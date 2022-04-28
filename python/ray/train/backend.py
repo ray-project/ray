@@ -318,7 +318,7 @@ class BackendExecutor:
     def start_training(
         self,
         train_func: Callable[[], T],
-        dataset_spec: Optional[_RayDatasetSpec] = None,
+        dataset_spec: _RayDatasetSpec,
         checkpoint: Optional[Dict] = None,
     ) -> None:
         """Executes a training function on all workers in a separate thread.
@@ -370,11 +370,7 @@ class BackendExecutor:
 
         if self.dataset_shards is None:
             actors = [worker.actor for worker in self.worker_group.workers]
-            if dataset_spec is None:
-                # If no Dataset spec is provided, return None for each shard.
-                self.dataset_shards = [None] * len(actors)
-            else:
-                self.dataset_shards = dataset_spec.get_dataset_shards(actors)
+            self.dataset_shards = dataset_spec.get_dataset_shards(actors)
 
         local_rank_map = self._create_local_rank_map()
 

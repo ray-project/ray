@@ -75,6 +75,8 @@ class _RayDatasetSpec:
                 one for each training worker.
 
         """
+        if not self.dataset_or_dict:
+            return [None] * len(training_worker_handles)
 
         if self.dataset_split_fn is None:
             return self._default_split_fn(training_worker_handles)
