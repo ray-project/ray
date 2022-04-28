@@ -227,6 +227,8 @@ def test_get_named_step_duplicate(workflow_start_regular):
 
 
 def test_no_init_run(shutdown_only):
+    ray.shutdown()
+
     @ray.remote
     def f():
         pass
@@ -235,6 +237,7 @@ def test_no_init_run(shutdown_only):
 
 
 def test_no_init_api(shutdown_only):
+    ray.shutdown()
     workflow.list_all()
 
 
