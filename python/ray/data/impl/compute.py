@@ -104,6 +104,11 @@ class ActorPoolStrategy(ComputeStrategy):
     To autoscale from ``m`` to ``n`` actors, specify
     ``compute=ActorPoolStrategy(m, n)``.
     For a fixed-sized pool of size ``n``, specify ``compute=ActorPoolStrategy(n, n)``.
+
+    To increase opportunities for pipelining task dependency prefetching with
+    computation and avoiding actor startup delays, set max_tasks_in_flight_per_actor
+    to 2 or greater; to try to decrease the delay due to queueing of tasks on the worker
+    actors, set max_tasks_in_flight_per_actor to 1.
     """
 
     def __init__(
