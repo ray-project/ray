@@ -83,7 +83,7 @@
                 "[0-9a-f]*": {
                   "type": "object",
                   "properties": {
-                    "jobSubmissionName": {
+                    "jobSubmissionId": {
                       "type": "string"
                     },
                     "status": {
@@ -130,7 +130,7 @@
                     }
                   },
                   "required": [
-                    "jobSubmissionName",
+                    "jobSubmissionId",
                     "status",
                     "entrypoint"
                   ]
