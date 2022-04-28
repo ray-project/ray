@@ -7,11 +7,11 @@ from ray.data.aggregate import AggregateFn, Count, Sum, Max, Min, Mean, Std
 from ray.data.block import BlockExecStats, KeyFn
 from ray.data.impl.plan import AllToAllStage
 from ray.data.impl.compute import CallableClass, ComputeStrategy
-from ray.data.impl.shuffle import ShuffleOp, SimpleShufflePlan
+from ray.data.impl.shuffle import ShuffleOp
 from ray.data.block import Block, BlockAccessor, BlockMetadata, T, U, KeyType
 
 
-class _GroupbyOp(ShuffleOp):
+class GroupbyOp(ShuffleOp):
     @staticmethod
     def map(
         idx: int,
@@ -45,10 +45,6 @@ class _GroupbyOp(ShuffleOp):
         return BlockAccessor.for_block(mapper_outputs[0]).aggregate_combined_blocks(
             list(mapper_outputs), key, aggs
         )
-
-
-class SimpleShuffleGroupbyOp(_GroupbyOp, SimpleShufflePlan):
-    pass
 
 
 @PublicAPI
@@ -122,7 +118,7 @@ class GroupedDataset(Generic[T]):
                     else self._key,
                     num_reducers,
                 )
-            shuffle_op = SimpleShuffleGroupbyOp(
+            shuffle_op = GroupbyOp(
                 map_args=[boundaries, self._key, aggs], reduce_args=[self._key, aggs]
             )
             return shuffle_op.execute(
