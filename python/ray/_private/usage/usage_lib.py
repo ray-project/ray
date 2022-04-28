@@ -48,6 +48,8 @@ import json
 import logging
 import time
 import yaml
+import queue
+import threading
 
 from dataclasses import dataclass, asdict
 from typing import Optional, List
@@ -59,6 +61,10 @@ import requests
 
 import ray.ray_constants as ray_constants
 import ray._private.usage.usage_constants as usage_constant
+from ray.experimental.internal_kv import (
+    _internal_kv_initialized,
+    _internal_kv_put,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +112,7 @@ class UsageStatsToReport:
     total_num_gpus: Optional[int]
     total_memory_gb: Optional[float]
     total_object_store_memory_gb: Optional[float]
+    library_usage: Optional[List[str]]
     # The total number of successful reports for the lifetime of the cluster.
     total_success: int
     # The total number of failed reports for the lifetime of the cluster.
@@ -133,6 +140,42 @@ class UsageStatsEnabledness(Enum):
     ENABLED_EXPLICITLY = auto()
     DISABLED_EXPLICITLY = auto()
     ENABLED_BY_DEFAULT = auto()
+
+
+_library_usage_queue = queue.Queue()
+
+
+def record_library_usage(library: str):
+    _library_usage_queue.put(library)
+
+
+def _report_library_usage(library_usage_queue):
+    while True:
+        library = library_usage_queue.get()
+        try:
+            _internal_kv_put(
+                f"{usage_constant.LIBRARY_USAGE_PREFIX}{library}",
+                "",
+                namespace=usage_constant.USAGE_STATS_NAMESPACE,
+            )
+        except Exception as e:
+            logger.debug(
+                f"Failed to put kv {usage_constant.LIBRARY_USAGE_PREFIX}{library}, {e}"
+            )
+            # Add back to the queue and retry later
+            library_usage_queue.put(library)
+            time.sleep(10)
+
+
+def start_report_library_usage_thread():
+    assert _internal_kv_initialized()
+    thread = threading.Thread(
+        target=_report_library_usage,
+        name="usage_stats_report_library_usage",
+        args=(_library_usage_queue,),
+    )
+    thread.daemon = True
+    thread.start()
 
 
 def _usage_stats_report_url():
@@ -318,6 +361,24 @@ def put_cluster_metadata(gcs_client, num_retries) -> None:
     return metadata
 
 
+def get_library_usage_to_report(gcs_client, num_retries) -> List[str]:
+    try:
+        result = []
+        libraries = ray._private.utils.internal_kv_list_with_retry(
+            gcs_client,
+            usage_constant.LIBRARY_USAGE_PREFIX,
+            namespace=usage_constant.USAGE_STATS_NAMESPACE,
+            num_retries=num_retries,
+        )
+        for library in libraries:
+            library = library.decode("utf-8")
+            result.append(library[len(usage_constant.LIBRARY_USAGE_PREFIX) :])
+        return result
+    except Exception as e:
+        logger.info(f"Failed to get library usage to report {e}")
+        return []
+
+
 def get_cluster_status_to_report(gcs_client, num_retries) -> ClusterStatusToReport:
     """Get the current status of this cluster.
 
@@ -498,6 +559,10 @@ def generate_report_data(
         ray.experimental.internal_kv.internal_kv_get_gcs_client(),
         num_retries=20,
     )
+    library_usage = get_library_usage_to_report(
+        ray.experimental.internal_kv.internal_kv_get_gcs_client(),
+        num_retries=20,
+    )
     data = UsageStatsToReport(
         ray_version=cluster_metadata["ray_version"],
         python_version=cluster_metadata["python_version"],
@@ -517,6 +582,7 @@ def generate_report_data(
         total_num_gpus=cluster_status_to_report.total_num_gpus,
         total_memory_gb=cluster_status_to_report.total_memory_gb,
         total_object_store_memory_gb=cluster_status_to_report.total_object_store_memory_gb,  # noqa: E501
+        library_usage=library_usage,
         total_success=total_success,
         total_failed=total_failed,
         seq_number=seq_number,

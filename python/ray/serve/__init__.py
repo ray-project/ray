@@ -21,8 +21,11 @@ except ModuleNotFoundError as e:
 # Mute the warning because Serve sometimes intentionally calls
 # ray.get inside async actors.
 import ray.worker
+from ray._private.usage import usage_lib
 
 ray.worker.blocking_get_inside_async_warned = True
+
+usage_lib.record_library_usage("serve")
 
 __all__ = [
     "batch",

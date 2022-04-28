@@ -80,6 +80,7 @@ from ray.data.impl.sort import sort_impl
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList
 from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
+from ray._private.usage import usage_lib
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +89,9 @@ _epoch_warned = False
 
 # Whether we have warned about using slow Dataset transforms.
 _slow_warned = False
+
+# Whether the dataset usage is recorded or not.
+_usage_recorded = False
 
 TensorflowFeatureTypeSpec = Union[
     "tf.TypeSpec", List["tf.TypeSpec"], Dict[str, "tf.TypeSpec"]
@@ -132,6 +136,11 @@ class Dataset(Generic[T]):
         if not lazy:
             # TODO(ekl) we should clear inputs once we have full lineage recorded.
             self._plan.execute(clear_input_blocks=False)
+
+        global _usage_recorded
+        if not _usage_recorded:
+            usage_lib.record_library_usage("dataset")
+            _usage_recorded = True
 
     @staticmethod
     def copy(dataset: "Dataset[T]") -> "Dataset[T]":

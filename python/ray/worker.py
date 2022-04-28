@@ -1616,6 +1616,9 @@ def connect(
     # temporarily using this implementation which constantly queries the
     # scheduler for new error messages.
     if mode == SCRIPT_MODE:
+        # Only report library usage from driver to reduce
+        # the load to kv store.
+        usage_lib.start_report_library_usage_thread()
         worker.listener_thread = threading.Thread(
             target=listen_error_messages,
             name="ray_listen_error_messages",
