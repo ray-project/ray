@@ -17,7 +17,6 @@ except ImportError:
 import ray._private.gcs_utils as gcs_utils
 import ray._private.logging_utils as logging_utils
 from ray.core.generated.gcs_pb2 import ErrorTableData
-from ray.core.generated import dependency_pb2
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import reporter_pb2
