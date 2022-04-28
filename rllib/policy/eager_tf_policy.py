@@ -252,6 +252,7 @@ class OptimizerWrapper:
 
 class EagerTFPolicy(Policy):
     """Dummy class to recognize any eagerized TFPolicy by its inheritance."""
+
     pass
 
 
