@@ -45,7 +45,7 @@ class PGConfig(TrainerConfig):
         # fmt: off
         # __sphinx_doc_begin__
         # Override some of TrainerConfig's default values with PG-specific values.
-        self.num_workers = 0
+        self.num_rollout_workers = 0
         self.lr = 0.0004
         self._disable_execution_plan_api = True
         self._disable_preprocessor_api = True

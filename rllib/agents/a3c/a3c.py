@@ -1,9 +1,10 @@
 import logging
-from typing import Any, Dict, Type
+from typing import Any, Dict, List, Optional, Type, Union
 
 from ray.actor import ActorHandle
 from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
 from ray.rllib.agents.trainer import Trainer, with_common_config
+from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
@@ -12,6 +13,7 @@ from ray.rllib.execution.rollout_ops import AsyncGradients
 from ray.rllib.execution.train_ops import ApplyGradients
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics import (
     APPLY_GRADS_TIMER,
     GRAD_WAIT_TIMER,
@@ -27,48 +29,163 @@ from ray.util.iter import LocalIterator
 
 logger = logging.getLogger(__name__)
 
-# fmt: off
-# __sphinx_doc_begin__
-DEFAULT_CONFIG = with_common_config({
-    # Should use a critic as a baseline (otherwise don't use value baseline;
-    # required for using GAE).
-    "use_critic": True,
-    # If true, use the Generalized Advantage Estimator (GAE)
-    # with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
-    "use_gae": True,
-    # Size of rollout batch
-    "rollout_fragment_length": 10,
-    # GAE(gamma) parameter
-    "lambda": 1.0,
-    # Max global norm for each gradient calculated by worker
-    "grad_clip": 40.0,
-    # Learning rate
-    "lr": 0.0001,
-    # Learning rate schedule
-    "lr_schedule": None,
-    # Value Function Loss coefficient
-    "vf_loss_coeff": 0.5,
-    # Entropy coefficient
-    "entropy_coeff": 0.01,
-    # Entropy coefficient schedule
-    "entropy_coeff_schedule": None,
-    # Min time (in seconds) per reporting.
-    # This causes not every call to `training_iteration` to be reported,
-    # but to wait until n seconds have passed and then to summarize the
-    # thus far collected results.
-    "min_time_s_per_reporting": 5,
-    # Workers sample async. Note that this increases the effective
-    # rollout_fragment_length by up to 5x due to async buffering of batches.
-    "sample_async": True,
 
-    # Use the Trainer's `training_iteration` function instead of `execution_plan`.
-    # Fixes a severe performance problem with A3C. Setting this to True leads to a
-    # speedup of up to 3x for a large number of workers and heavier
-    # gradient computations (e.g. ray/rllib/tuned_examples/a3c/pong-a3c.yaml)).
-    "_disable_execution_plan_api": True,
-})
-# __sphinx_doc_end__
-# fmt: on
+class A3CConfig(TrainerConfig):
+    """Defines a PPOTrainer configuration class from which a PPOTrainer can be built.
+
+    Example:
+        >>> config = A3CConfig().training(lr=0.01, grad_clip=30.0)\
+        ...          .resources(num_gpus=0)\
+        ...          .rollouts(num_rollout_workers=4)
+        >>> print(config.to_dict())
+        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> trainer = config.build(env="CartPole-v1")
+        >>> trainer.train()
+
+    Example:
+        >>> config = A3CConfig()
+        >>> # Print out some default values.
+        >>> print(config.sample_async)
+        >>> # Update the config object.
+        >>> config.training(lr=tune.grid_search([0.001, 0.0001]), use_critic=False)
+        >>> # Set the config object's env.
+        >>> config.environment(env="CartPole-v1")
+        >>> # Use to_dict() to get the old-style python config dict
+        >>> # when running with tune.
+        >>> tune.run(
+        ...     "A3C",
+        ...     stop={"episode_reward_mean": 200},
+        ...     config=config.to_dict(),
+        ... )
+    """
+
+    def __init__(self):
+        """Initializes a PPOConfig instance."""
+        super().__init__(trainer_class=A3CTrainer)
+
+        # fmt: off
+        # __sphinx_doc_begin__
+        #
+        self.use_critic = True
+        self.use_gae = True
+        self.lambda_ = 1.0
+        self.grad_clip = 40.0
+        self.lr_schedule = None
+        self.vf_loss_coeff = 0.5
+        self.entropy_coeff = 0.01
+        self.entropy_coeff_schedule = None
+        self.sample_async = True
+        # __sphinx_doc_end__
+        # fmt: on
+
+        # Override some of TrainerConfig's default values with PPO-specific values.
+        self.rollout_fragment_length = 200
+        self.lr = 0.0001
+        # Min time (in seconds) per reporting.
+        # This causes not every call to `training_iteration` to be reported,
+        # but to wait until n seconds have passed and then to summarize the
+        # thus far collected results.
+        self.min_time_s_per_reporting = 5
+        self._disable_execution_plan_api = True
+
+    @override(TrainerConfig)
+    def training(
+        self,
+        *,
+        lr_schedule: Optional[List[List[Union[int, float]]]] = None,
+        use_critic: Optional[bool] = None,
+        use_gae: Optional[bool] = None,
+        lambda_: Optional[float] = None,
+        grad_clip: Optional[float] = None,
+        vf_loss_coeff: Optional[float] = None,
+        entropy_coeff: Optional[float] = None,
+        entropy_coeff_schedule: Optional[List[List[Union[int, float]]]] = None,
+        sample_async: Optional[bool] = None,
+        **kwargs,
+    ) -> "A3CConfig":
+        """Sets the training related configuration.
+
+        Args:
+            lr_schedule: Learning rate schedule. In the format of
+                [[timestep, lr-value], [timestep, lr-value], ...]
+                Intermediary timesteps will be assigned to interpolated learning rate
+                values. A schedule should normally start from timestep 0.
+            use_critic: Should use a critic as a baseline (otherwise don't use value
+                baseline; required for using GAE).
+            use_gae: If true, use the Generalized Advantage Estimator (GAE)
+                with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
+            lambda_: GAE(gamma) parameter.
+            grad_clip: Max global norm for each gradient calculated by worker.
+            vf_loss_coeff: Value Function Loss coefficient.
+            entropy_coeff: Coefficient of the entropy regularizer.
+            entropy_coeff_schedule: Decay schedule for the entropy regularizer.
+            sample_async: Whether workers should sample async. Note that this
+                increases the effective rollout_fragment_length by up to 5x due
+                to async buffering of batches.
+
+        Returns:
+            This updated TrainerConfig object.
+        """
+        # Pass kwargs onto super's `training()` method.
+        super().training(**kwargs)
+
+        if lr_schedule is not None:
+            self.lr_schedule = lr_schedule
+        if use_critic is not None:
+            self.lr_schedule = use_critic
+        if use_gae is not None:
+            self.use_gae = use_gae
+        if lambda_ is not None:
+            self.lambda_ = lambda_
+        if grad_clip is not None:
+            self.grad_clip = grad_clip
+        if vf_loss_coeff is not None:
+            self.vf_loss_coeff = vf_loss_coeff
+        if entropy_coeff is not None:
+            self.entropy_coeff = entropy_coeff
+        if entropy_coeff_schedule is not None:
+            self.entropy_coeff_schedule = entropy_coeff_schedule
+        if sample_async is not None:
+            self.sample_async = sample_async
+
+        return self
+
+
+# Deprecated: Use ray.rllib.agents.ppo.PPOConfig instead!
+class _deprecated_default_config(dict):
+    def __init__(self):
+        super().__init__(
+            with_common_config(
+                {
+                    # A3C specific keys:
+                    "use_critic": True,
+                    "use_gae": True,
+                    "lambda": 1.0,
+                    "grad_clip": 40.0,
+                    "lr_schedule": None,
+                    "vf_loss_coeff": 0.5,
+                    "entropy_coeff": 0.01,
+                    "entropy_coeff_schedule": None,
+                    "sample_async": True,
+                    # TrainerConfig overrides:
+                    "rollout_fragment_length": 10,
+                    "lr": 0.0001,
+                    "min_time_s_per_reporting": 5,
+                    "_disable_execution_plan_api": True,
+                }
+            )
+        )
+
+    @Deprecated(
+        old="ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG",
+        new="ray.rllib.agents.ppo.ppo.PPOConfig(...)",
+        error=False,
+    )
+    def __getitem__(self, item):
+        return super().__getitem__(item)
+
+
+DEFAULT_CONFIG = _deprecated_default_config()
 
 
 class A3CTrainer(Trainer):
