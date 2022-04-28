@@ -14,12 +14,16 @@ from ray.tests.kuberay.utils import (
     get_pod,
     get_pod_names,
     get_raycluster,
+    ray_client_port_forward,
     kubectl_exec_python_script,
     wait_for_pods,
     wait_for_pod_to_start,
     wait_for_ray_health,
     wait_for_crd,
 )
+
+
+from ray.tests.kuberay.scripts import gpu_actor_placement, gpu_actor_validation
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -29,10 +33,13 @@ logging.basicConfig(
 
 # This image will be used for both the Ray nodes and the autoscaler.
 # The CI should pass an image built from the test branch.
-RAY_IMAGE = os.environ.get("RAY_IMAGE", "rayproject/ray:413fe0")
+RAY_IMAGE = os.environ.get("RAY_IMAGE", "rayproject/ray:8c5fe4")
+# By default, use the same image for the autoscaler and Ray containers.
+AUTOSCALER_IMAGE = os.environ.get("AUTOSCALER_IMAGE", RAY_IMAGE)
 # Set to IfNotPresent in kind CI.
 PULL_POLICY = os.environ.get("PULL_POLICY", "Always")
-logger.info(f"Using image `{RAY_IMAGE}` for autoscaler and Ray nodes.")
+logger.info(f"Using image `{RAY_IMAGE}` for Ray containers.")
+logger.info(f"Using image `{AUTOSCALER_IMAGE}` for Autoscaler containers.")
 logger.info(f"Using pull policy `{PULL_POLICY}` for all images.")
 # The default "rayproject/ray:413fe0" is the currently pinned autoscaler image
 # (to be replaced with rayproject/ray:1.12.0 upon 1.12.0 release).
@@ -84,44 +91,21 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         logger.info("Making sure RayCluster CRD has been registered.")
         wait_for_crd("rayclusters.ray.io")
 
-    def _get_ray_cr_config_file(self) -> str:
-        """Formats a RayCluster CR based on the example in the Ray documentation.
-
-        - Replaces Ray node and autoscaler images in example CR with the test image.
-        - Set image pull policies to IfNotPresent.
-        - Writes modified CR to temp file.
-        - Returns temp file's name.
-        """
-        # Set Ray and autoscaler images.
-        with open(EXAMPLE_CLUSTER_PATH) as example_cluster_file:
-            ray_cr_config_str = example_cluster_file.read()
-        ray_images = [
-            word for word in ray_cr_config_str.split() if "rayproject/ray:" in word
-        ]
-        for ray_image in ray_images:
-            ray_cr_config_str = ray_cr_config_str.replace(ray_image, RAY_IMAGE)
-
-        # CI should set pull policies to IfNotPresent to ensure no issues using a local
-        # test image on kind.
-        ray_cr_config_str = ray_cr_config_str.replace("Always", PULL_POLICY)
-
-        raycluster_cr_file = tempfile.NamedTemporaryFile(delete=False)
-        raycluster_cr_file.write(ray_cr_config_str.encode())
-        raycluster_cr_file.close()
-        return raycluster_cr_file.name
-
     def _get_ray_cr_config(
         self, min_replicas=0, max_replicas=300, replicas=0
     ) -> Dict[str, Any]:
         """Get Ray CR config yaml.
 
-        Use configurable replica fields for a CPU workerGroup.
+        - Use configurable replica fields for a CPU workerGroup.
 
-        Also add a GPU-annotated group for testing GPU upscaling.
+        - Add a GPU-annotated group for testing GPU upscaling.
+
+        - Fill in Ray image, autoscaler image, and image pull policies from env
+          variables.
         """
-        with open(self._get_ray_cr_config_file()) as ray_config_file:
-            ray_config_str = ray_config_file.read()
-        config = yaml.safe_load(ray_config_str)
+        with open(EXAMPLE_CLUSTER_PATH) as ray_cr_config_file:
+            ray_cr_config_str = ray_cr_config_file.read()
+        config = yaml.safe_load(ray_cr_config_str)
         cpu_group = config["spec"]["workerGroupSpecs"][0]
         cpu_group["replicas"] = replicas
         cpu_group["minReplicas"] = min_replicas
@@ -137,6 +121,31 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         gpu_group["maxReplicas"] = 1
         gpu_group["groupName"] = "fake-gpu-group"
         config["spec"]["workerGroupSpecs"].append(gpu_group)
+
+        # Substitute images.
+        for group_spec in config["spec"]["workerGroupSpecs"] + [
+            config["spec"]["headGroupSpec"]
+        ]:
+            containers = group_spec["template"]["spec"]["containers"]
+
+            ray_container = containers[0]
+            # Confirm the first container in the example config is the Ray container.
+            assert ray_container["name"] in ["ray-head", "ray-worker"]
+
+            ray_container["image"] = RAY_IMAGE
+
+            for container in containers:
+                container["imagePullPolicy"] = PULL_POLICY
+
+        head_containers = config["spec"]["headGroupSpec"]["template"]["spec"][
+            "containers"
+        ]
+        autoscaler_container = [
+            container
+            for container in head_containers
+            if container["name"] == "autoscaler"
+        ].pop()
+        autoscaler_container["image"] = AUTOSCALER_IMAGE
 
         return config
 
@@ -254,12 +263,11 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         )
         # 2. Trigger GPU upscaling by requesting placement of a GPU actor.
         logger.info("Scheduling an Actor with GPU demands.")
-        kubectl_exec_python_script(
-            script_name="gpu_actor_placement.py",
-            pod=head_pod,
-            container="ray-head",
-            namespace="default",
-        )
+        # Use Ray client to validate that it works against KubeRay.
+        with ray_client_port_forward(
+            head_service="raycluster-complete-head-svc", ray_namespace="gpu-test"
+        ):
+            gpu_actor_placement.main()
         # 3. Confirm new pod number and presence of fake GPU worker.
         logger.info("Confirming fake GPU worker up-scaling.")
         wait_for_pods(goal_num_pods=4, namespace="default")
@@ -272,12 +280,10 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         # 4. Confirm that the GPU actor is up and that Ray believes
         # the node the actor is on has a GPU.
         logger.info("Confirming GPU actor placement.")
-        out = kubectl_exec_python_script(
-            script_name="gpu_actor_validation.py",
-            pod=head_pod,
-            container="ray-head",
-            namespace="default",
-        )
+        with ray_client_port_forward(
+            head_service="raycluster-complete-head-svc", ray_namespace="gpu-test"
+        ):
+            out = gpu_actor_validation.main()
         # Confirms the actor was placed on a GPU-annotated node.
         # (See gpu_actor_validation.py for details.)
         assert "on-a-gpu-node" in out

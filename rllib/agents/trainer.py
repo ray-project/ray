@@ -1469,14 +1469,13 @@ class Trainer(Trainable):
         else:
             train_results = multi_gpu_train_one_step(self, train_batch)
 
-        # Update weights - after learning on the local worker - on all remote
-        # workers.
+        # Update weights and global_vars - after learning on the local worker - on all
+        # remote workers.
         global_vars = {
-            "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
+            "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
         }
-        if self.workers.remote_workers():
-            with self._timers[WORKER_UPDATE_TIMER]:
-                self.workers.sync_weights(global_vars=global_vars)
+        with self._timers[WORKER_UPDATE_TIMER]:
+            self.workers.sync_weights(global_vars=global_vars)
 
         return train_results
 
