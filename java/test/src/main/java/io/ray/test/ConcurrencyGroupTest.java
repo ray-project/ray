@@ -194,6 +194,7 @@ public class ConcurrencyGroupTest extends BaseTest {
 
   /// This case tests that the blocking concurrency group doesn't block the scheduling of
   /// other concurrency groups. See https://github.com/ray-project/ray/issues/19593 for details.
+  @Test(groups = {"cluster"})
   public void testBlockingCgNotBlockOthers() {
     ConcurrencyGroup group1 =
       new ConcurrencyGroupBuilder<ConcurrencyActor2>()
