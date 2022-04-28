@@ -192,6 +192,11 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         Items 1. and 2. protect the example in the documentation.
         Items 3. and 4. protect the autoscaler's ability to respond to Ray CR update.
 
+        Tests the following modes of interaction with the Ray cluster:
+        1. `kubectl exec`
+        2. Ray Client
+        3. Ray Job Submission.
+
         Resources requested by this test are safely within the bounds of an m5.xlarge
         instance.
 
@@ -229,6 +234,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             pod_name_filter="raycluster-complete-head", namespace="default"
         )
         assert head_pod, "Could not find the Ray head pod."
+        import pdb; pdb.set_trace()
         # Scale-up
         logger.info("Scaling up to one worker via Ray resource request.")
         # The request for 2 cpus should give us a 1-cpu head (already present) and a
@@ -330,7 +336,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             script_name="scale_up_custom.py",
             head_service="raycluster-complete-head-svc",
         )
-        assert "Submitted custom scale request!" in job_logs
+        assert job_logs == "Submitted custom scale request!\n"
 
         logger.info("Confirming two workers have scaled up.")
         wait_for_pods(goal_num_pods=3, namespace="default")

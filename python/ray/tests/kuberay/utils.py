@@ -366,7 +366,18 @@ def ray_job_submit(
     with _kubectl_port_forward(
         service=head_service, namespace=k8s_namespace, target_port=ray_dashboard_port
     ) as local_port:
-        client = JobSubmissionClient(f"http://127.0.0.1:{local_port}")
+        # It takes a bit of time to establish the connection.
+        # Try a few times to instantiate the JobSubmissionClient, as the client itself
+        # does not retry on connection errors.
+        for trie in range(1, 7):
+            time.sleep(5)
+            try:
+                client = JobSubmissionClient(f"http://127.0.0.1:{local_port}")
+            except ConnectionError as e:
+                if trie < 6:
+                    logger.info("Job client connection failed. Retrying in 5 seconds.")
+                else:
+                    raise e from None
         job_id = client.submit_job(
             entrypoint=f"python {script_name}",
             runtime_env={
@@ -377,15 +388,15 @@ def ray_job_submit(
             }
         )
         # Wait for the job to complete successfully.
-        # This logic is copied verbatim from the Job Submission docs.
+        # This logic is copied from the Job Submission docs.
         start = time.time()
-        timeout = 5
+        timeout = 60
         while time.time() - start <= timeout:
             status = client.get_job_status(job_id)
             print(f"status: {status}")
             if status in {JobStatus.SUCCEEDED, JobStatus.STOPPED, JobStatus.FAILED}:
                 break
-            time.sleep(1)
+            time.sleep(5)
 
         assert status == JobStatus.SUCCEEDED
         return client.get_job_logs(job_id)
