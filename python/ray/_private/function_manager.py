@@ -8,7 +8,6 @@ import logging
 import sys
 import time
 from typing import Optional
-import threading
 import traceback
 from collections import (
     namedtuple,
@@ -47,15 +46,6 @@ def make_function_table_key(key_type: bytes, job_id: JobID, key: Optional[bytes]
         return b":".join([key_type, job_id.hex().encode(), key])
 
 
-def make_exports_prefix(job_id: JobID) -> bytes:
-    return make_function_table_key(b"IsolatedExports", job_id)
-
-
-def make_export_key(pos: int, job_id: JobID) -> bytes:
-    # big-endian for ordering in binary
-    return make_function_table_key(b"IsolatedExports", job_id, pos.to_bytes(8, "big"))
-
-
 class FunctionActorManager:
     """A class used to export/load remote functions and actors.
     Attributes:
@@ -86,22 +76,11 @@ class FunctionActorManager:
         # these types.
         self.imported_actor_classes = set()
         self._loaded_actor_classes = {}
-        # Deserialize an ActorHandle will call load_actor_class(). If a
-        # function closure captured an ActorHandle, the deserialization of the
-        # function will be:
-        #     import_thread.py
-        #         -> fetch_and_register_remote_function (acquire lock)
-        #         -> _load_actor_class_from_gcs (acquire lock, too)
-        # So, the lock should be a reentrant lock.
-        self.lock = threading.RLock()
-        self.cv = threading.Condition(lock=self.lock)
-
         self.execution_infos = {}
-        # This is the counter to keep track of how many keys have already
-        # been exported so that we can find next key quicker.
-        self._num_exported = 0
-        # This is to protect self._num_exported when doing exporting
-        self._export_lock = threading.Lock()
+
+        if self._worker.mode == ray.worker.WORKER_MODE:
+            # load and execute functions to run
+            self._fetch_and_execute_functions()
 
     def increase_task_counter(self, function_descriptor):
         function_id = function_descriptor.function_id
@@ -318,6 +297,37 @@ class FunctionActorManager:
             )
             raise KeyError(message)
         return info
+
+    def _fetch_and_execute_functions(self):
+        function_keys = self._worker.gcs_client.internal_kv_keys(
+            make_function_table_key(b"FunctionsToRun", self._worker.current_job_id),
+            KV_NAMESPACE_FUNCTION_TABLE,
+        )
+        for function_key in function_keys:
+            vals = self.gcs_client.internal_kv_get(
+                function_key, ray_constants.KV_NAMESPACE_FUNCTION_TABLE
+            )
+            assert vals is not None
+            vals = pickle.loads(vals)
+            assert "function" in vals
+            job_id = vals["job_id"]
+            serialized_function = vals["function"]
+            try:
+                # Deserialize the function.
+                function = pickle.loads(serialized_function)
+                # Run the function.
+                function({"worker": self._worker})
+            except Exception:
+                # If an exception was thrown when the function was run, we record
+                # the traceback and notify the scheduler of the failure.
+                traceback_str = traceback.format_exc()
+                # Log the error message.
+                ray._private.utils.push_error_to_driver(
+                    self._worker,
+                    ray_constants.FUNCTION_TO_RUN_PUSH_ERROR,
+                    traceback_str,
+                    job_id=ray.JobID(job_id),
+                )
 
     def _load_function_from_local(self, function_descriptor):
         assert not function_descriptor.is_actor_method()
