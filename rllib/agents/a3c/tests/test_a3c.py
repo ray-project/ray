@@ -43,18 +43,26 @@ class TestA3C(unittest.TestCase):
 
     def test_a3c_entropy_coeff_schedule(self):
         """Test A3CTrainer entropy coeff schedule support."""
-        config = a3c.A3CConfig().\
-            rollouts(num_rollout_workers=1, num_envs_per_worker=1,
-                     batch_mode="truncate_episodes", rollout_fragment_length=10)
+        config = a3c.A3CConfig().rollouts(
+            num_rollout_workers=1,
+            num_envs_per_worker=1,
+            batch_mode="truncate_episodes",
+            rollout_fragment_length=10,
+        )
         # Initial entropy coeff, doesn't really matter because of the schedule below.
-        config.training(train_batch_size=20, entropy_coeff=0.01,
-                        entropy_coeff_schedule=[
-                            [0, 0.01],
-                            [120, 0.0001],
-                        ])
+        config.training(
+            train_batch_size=20,
+            entropy_coeff=0.01,
+            entropy_coeff_schedule=[
+                [0, 0.01],
+                [120, 0.0001],
+            ],
+        )
         # 0 metrics reporting delay, this makes sure timestep,
         # which entropy coeff depends on, is updated after each worker rollout.
-        config.reporting(min_sample_timesteps_per_reporting=20)
+        config.reporting(
+            min_time_s_per_reporting=0, min_sample_timesteps_per_reporting=20
+        )
 
         def _step_n_times(trainer, n: int):
             """Step trainer n times.

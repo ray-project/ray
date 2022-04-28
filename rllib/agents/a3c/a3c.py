@@ -66,6 +66,7 @@ class A3CConfig(TrainerConfig):
         # fmt: off
         # __sphinx_doc_begin__
         #
+        # A3C specific settings.
         self.use_critic = True
         self.use_gae = True
         self.lambda_ = 1.0
@@ -75,11 +76,9 @@ class A3CConfig(TrainerConfig):
         self.entropy_coeff = 0.01
         self.entropy_coeff_schedule = None
         self.sample_async = True
-        # __sphinx_doc_end__
-        # fmt: on
 
         # Override some of TrainerConfig's default values with PPO-specific values.
-        self.rollout_fragment_length = 200
+        self.rollout_fragment_length = 10
         self.lr = 0.0001
         # Min time (in seconds) per reporting.
         # This causes not every call to `training_iteration` to be reported,
@@ -87,6 +86,8 @@ class A3CConfig(TrainerConfig):
         # thus far collected results.
         self.min_time_s_per_reporting = 5
         self._disable_execution_plan_api = True
+        # __sphinx_doc_end__
+        # fmt: on
 
     @override(TrainerConfig)
     def training(

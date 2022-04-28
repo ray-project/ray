@@ -85,7 +85,7 @@ class PPOConfig(TrainerConfig):
 
         # fmt: off
         # __sphinx_doc_begin__
-        #
+        # PPO specific settings:
         self.lr_schedule = None
         self.use_critic = True
         self.use_gae = True
@@ -101,8 +101,6 @@ class PPOConfig(TrainerConfig):
         self.vf_clip_param = 10.0
         self.grad_clip = None
         self.kl_target = 0.01
-        # __sphinx_doc_end__
-        # fmt: on
 
         # Override some of TrainerConfig's default values with PPO-specific values.
         self.rollout_fragment_length = 200
@@ -110,6 +108,8 @@ class PPOConfig(TrainerConfig):
         self.lr = 5e-5
         self.model["vf_share_layers"] = False
         self._disable_execution_plan_api = True
+        # __sphinx_doc_end__
+        # fmt: on
 
     @override(TrainerConfig)
     def training(
@@ -208,7 +208,7 @@ class _deprecated_default_config(dict):
         super().__init__(
             with_common_config(
                 {
-                    # PPO specific keys:
+                    # PPO specific settings:
                     "use_critic": True,
                     "use_gae": True,
                     "lambda": 1.0,
