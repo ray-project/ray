@@ -363,48 +363,5 @@ class TestGC:
                 print(f"get_directory_size_bytes assertion {idx} passed.")
 
 
-# Set scope to "class" to force this to run before start_cluster, whose scope
-# is "function".  We need these env vars to be set before Ray is started.
-@pytest.fixture(scope="class")
-def skip_local_gc():
-    with mock.patch.dict(
-        os.environ,
-        {
-            "RAY_RUNTIME_ENV_SKIP_LOCAL_GC": "1",
-        },
-    ):
-        print("RAY_RUNTIME_ENV_SKIP_LOCAL_GC enabled.")
-        yield
-
-
-@pytest.mark.skip("#23617 must be resolved for skip_local_gc to work.")
-class TestSkipLocalGC:
-    @pytest.mark.parametrize("source", [lazy_fixture("tmp_working_dir")])
-    def test_skip_local_gc_env_var(
-        self,
-        skip_local_gc,
-        start_cluster,
-        working_dir_and_pymodules_disable_URI_cache,
-        source,
-    ):
-        cluster, address = start_cluster
-        ray.init(address, namespace="test", runtime_env={"working_dir": source})
-
-        @ray.remote
-        class A:
-            def test_import(self):
-                import test_module
-
-                test_module.one()
-
-        a = A.remote()
-        ray.get(a.test_import.remote())  # Check working_dir was downloaded
-
-        ray.shutdown()
-
-        time.sleep(1)  # Give time for GC to potentially happen
-        assert not check_local_files_gced(cluster)
-
-
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
