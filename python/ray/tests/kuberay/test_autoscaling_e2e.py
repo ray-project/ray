@@ -192,10 +192,10 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         Items 1. and 2. protect the example in the documentation.
         Items 3. and 4. protect the autoscaler's ability to respond to Ray CR update.
 
-        Tests the following modes of interaction with the Ray cluster:
-        1. `kubectl exec`
+        Tests the following modes of interaction with a Ray cluster on K8s:
+        1. kubectl exec
         2. Ray Client
-        3. Ray Job Submission.
+        3. Ray Job Submission
 
         Resources requested by this test are safely within the bounds of an m5.xlarge
         instance.
