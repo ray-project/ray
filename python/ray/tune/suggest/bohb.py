@@ -61,8 +61,6 @@ class TuneBOHB(Searcher):
             Parameters will be sampled from this space which will be used
             to run trials.
         bohb_config: configuration for HpBandSter BOHB algorithm
-        max_concurrent: Deprecated. Use
-            ``tune.suggest.ConcurrencyLimiter()``.
         metric: The training result objective value attribute. If None
             but a mode was passed, the anonymous metric `_metric` will be used
             per default.
@@ -126,7 +124,6 @@ class TuneBOHB(Searcher):
         self,
         space: Optional[Union[Dict, "ConfigSpace.ConfigurationSpace"]] = None,
         bohb_config: Optional[Dict] = None,
-        max_concurrent: Optional[int] = None,
         metric: Optional[str] = None,
         mode: Optional[str] = None,
         points_to_evaluate: Optional[List[Dict]] = None,
@@ -139,7 +136,6 @@ class TuneBOHB(Searcher):
             `pip install hpbandster ConfigSpace`."""
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
-        self._max_concurrent = max_concurrent
         self.trial_to_params = {}
         self._metric = metric
 
@@ -159,7 +155,8 @@ class TuneBOHB(Searcher):
         self._points_to_evaluate = points_to_evaluate
 
         super(TuneBOHB, self).__init__(
-            metric=self._metric, mode=mode, max_concurrent=max_concurrent
+            metric=self._metric,
+            mode=mode,
         )
 
         if self._space:

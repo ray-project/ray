@@ -88,4 +88,7 @@
 #/.travis.yml @ray-project/ray-core
 #/ci/ @ray-project/ray-core
 
+# Buildkite pipeline management
+.buildkite/hooks @simon-mo @krfricke
+
 /.github/ISSUE_TEMPLATE/ @ericl @stephanie-wang @scv119 @pcmoritz

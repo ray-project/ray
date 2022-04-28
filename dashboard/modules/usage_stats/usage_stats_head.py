@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 class UsageStatsHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
+        self.usage_stats_enabled = ray_usage_lib.usage_stats_enabled()
         self.cluster_metadata = ray_usage_lib.get_cluster_metadata(
             ray.experimental.internal_kv.internal_kv_get_gcs_client(),
             num_retries=20,
@@ -33,6 +34,19 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         # The seq number of report. It increments whenever a new report is sent.
         self.seq_no = 0
 
+    if ray._private.utils.check_dashboard_dependencies_installed():
+        import aiohttp
+
+        routes = ray.dashboard.optional_utils.ClassMethodRouteTable
+
+        @routes.get("/usage_stats_enabled")
+        async def get_usage_stats_enabled(self, req) -> aiohttp.web.Response:
+            return ray.dashboard.optional_utils.rest_response(
+                success=True,
+                message="Fetched usage stats enabled",
+                enabled=self.usage_stats_enabled,
+            )
+
     def _report_usage_sync(self):
         """
         - Always write usage_stats.json regardless of report success/failure.
@@ -40,7 +54,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         - If file write fails, the error will just stay at dashboard.log.
             usage_stats.json won't be written.
         """
-        if not ray_usage_lib._usage_stats_enabled():
+        if not self.usage_stats_enabled:
             return
 
         try:
@@ -73,7 +87,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
             logger.info(f"Usage report failed: {e}")
 
     async def _report_usage_async(self):
-        if not ray_usage_lib._usage_stats_enabled():
+        if not self.usage_stats_enabled:
             return
 
         loop = asyncio.get_event_loop()
@@ -85,7 +99,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         await self._report_usage_async()
 
     async def run(self, server):
-        if not ray_usage_lib._usage_stats_enabled():
+        if not self.usage_stats_enabled:
             logger.info("Usage reporting is disabled.")
             return
         else:

@@ -6,6 +6,7 @@ from ray.actor import ActorHandle
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.actors import create_colocated_actors
+from ray.rllib.utils.tf_utils import get_tf_eager_cls_if_necessary
 from ray.rllib.utils.typing import PolicyID, TrainerConfigDict
 
 
@@ -173,6 +174,10 @@ class _Shard:
 
         assert len(self.policy_actors) < self.max_num_policies
 
+        actual_policy_class = get_tf_eager_cls_if_necessary(
+            policy_spec.policy_class, cfg
+        )
+
         colocated = create_colocated_actors(
             actor_specs=[
                 (
@@ -181,7 +186,7 @@ class _Shard:
                         num_gpus=self.num_gpus_per_policy
                         if not cfg["_fake_gpus"]
                         else 0,
-                    )(policy_spec.policy_class),
+                    )(actual_policy_class),
                     # Policy c'tor args.
                     (policy_spec.observation_space, policy_spec.action_space, cfg),
                     # Policy c'tor kwargs={}.
@@ -207,6 +212,10 @@ class _Shard:
         assert self.replay_actor is None
         assert len(self.policy_actors) == 0
 
+        actual_policy_class = get_tf_eager_cls_if_necessary(
+            policy_spec.policy_class, config
+        )
+
         colocated = create_colocated_actors(
             actor_specs=[
                 (self.replay_actor_class, self.replay_actor_args, {}, 1),
@@ -218,7 +227,7 @@ class _Shard:
                         num_gpus=self.num_gpus_per_policy
                         if not config["_fake_gpus"]
                         else 0,
-                    )(policy_spec.policy_class),
+                    )(actual_policy_class),
                     # Policy c'tor args.
                     (policy_spec.observation_space, policy_spec.action_space, config),
                     # Policy c'tor kwargs={}.

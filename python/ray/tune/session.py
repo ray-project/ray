@@ -103,28 +103,6 @@ def report(_metric=None, **kwargs):
         return _session(_metric, **kwargs)
 
 
-def make_checkpoint_dir(step=None):
-    """Gets the next checkpoint dir.
-
-    .. versionadded:: 0.8.6
-
-    .. deprecated:: 0.8.7
-        Use tune.checkpoint_dir instead.
-    """
-    raise DeprecationWarning("Deprecated method. Use `tune.checkpoint_dir` instead.")
-
-
-def save_checkpoint(checkpoint):
-    """Register the given checkpoint.
-
-    .. versionadded:: 0.8.6
-
-    .. deprecated:: 0.8.7
-        Use tune.checkpoint_dir instead.
-    """
-    raise DeprecationWarning("Deprecated method. Use `tune.checkpoint_dir` instead.")
-
-
 @PublicAPI
 @contextmanager
 def checkpoint_dir(step: int):
