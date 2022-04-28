@@ -178,7 +178,7 @@ def _build_docker_image(
         raise ValueError(
             f"The provided CUDA version {image_type} is not "
             f"recognized. CUDA version must be one of"
-            f" {image_type.keys()}"
+            f" {BASE_IMAGES.keys()}"
         )
 
     # TODO(https://github.com/ray-project/ray/issues/16599):
@@ -712,7 +712,7 @@ if __name__ == "__main__":
             if len(ml_image_types) > 0:
                 prep_ray_ml()
                 build_for_all_versions(
-                    "ray-ml", py_versions, image_types=[ml_image_types]
+                    "ray-ml", py_versions, image_types=ml_image_types
                 )
 
             if build_type in {MERGE, PR}:
