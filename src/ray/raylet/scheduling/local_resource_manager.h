@@ -246,7 +246,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// Resources of local node.
   NodeResourceInstances local_resources_;
   /// Cached resources, used to compare with newest one in light heartbeat mode.
-  mutable std::unique_ptr<NodeResources> last_report_resources_;
+  std::unique_ptr<NodeResources> last_report_resources_;
   /// Function to get used object store memory.
   std::function<int64_t(void)> get_used_object_store_memory_;
   /// Function to get whether the pull manager is at capacity.

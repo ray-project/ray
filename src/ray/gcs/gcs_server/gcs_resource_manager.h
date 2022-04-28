@@ -144,7 +144,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   void UpdateResourceLoads(const rpc::ResourcesData &data);
 
  private:
-  /// io context
+  /// io context. This is to ensure thread safety. Ideally, all public
+  /// funciton needs to post job to this io_context.
   instrumented_io_context &io_context_;
 
   /// Newest resource usage of all nodes.
