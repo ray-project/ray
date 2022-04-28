@@ -140,11 +140,13 @@ class WorkerSet:
                     or not trainer_config.get("action_space")
                 )
             ):
-                # First assert that the first worker is ready.
+                # Assert that the first worker is ready.
                 # Not doing so leads to worker-not-ready errors sometimes on Windows.
                 for _ in range(10):
                     try:
-                        test = ray.get(self.remote_workers()[0].apply.remote(lambda w: w.worker_index))
+                        test = ray.get(self.remote_workers()[0].apply.remote(
+                            lambda w: w.worker_index)
+                        )
                         assert test == 1
                         break
                     except Exception as e:
