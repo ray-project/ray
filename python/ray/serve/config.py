@@ -284,8 +284,13 @@ class ReplicaConfig:
             ray_option_utils.validate_actor_options(ray_actor_options, in_options=True)
             self.ray_actor_options = ray_actor_options
 
+        # The ray_actor_options dictionary is what ultimately gets passed into
+        # each replica actor's .options() call. The resource_dict is used only
+        # to inform the user about their resource usage.
+        self.ray_actor_options.setdefault("num_cpus", None)
+        if self.ray_actor_options["num_cpus"] is None:
+            self.ray_actor_options["num_cpus"] = 1
         self.resource_dict = resources_from_ray_options(self.ray_actor_options)
-        self.resource_dict.setdefault("CPU", 1)
 
     @classmethod
     def from_proto(
