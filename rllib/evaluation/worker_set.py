@@ -142,13 +142,16 @@ class WorkerSet:
             ):
                 # Assert that the first worker is ready.
                 # Not doing so leads to worker-not-ready errors sometimes on Windows.
-                for _ in range(10):
+                for _ in range(5):
                     try:
+                        # Attempt at sending a small remote request to the 1st worker.
                         test = ray.get(self.remote_workers()[0].apply.remote(
                             lambda w: w.worker_index)
                         )
+                        # Make sure return value (worker index) is correct (1).
                         assert test == 1
                         break
+                    # If any error, give worker more time.
                     except Exception as e:
                         time.sleep(1.0)
                         pass
