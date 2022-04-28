@@ -1555,6 +1555,44 @@ def connect(
         logs_dir = ""
     else:
         logs_dir = node.get_logs_dir_path()
+
+    # Setup init functions on all nodes. This needs to run before CoreWorker
+    # is setup because for driver, we need write the function into GCS KV first.
+    # A better way to do this might be moving this into job_config.
+    if mode == SCRIPT_MODE:
+        # Add the directory containing the script that is running to the Python
+        # paths of the workers. Also add the current directory. Note that this
+        # assumes that the directory structures on the machines in the clusters
+        # are the same.
+        # When using an interactive shell, there is no script directory.
+        if not interactive_mode:
+            script_directory = os.path.abspath(os.path.dirname(sys.argv[0]))
+            worker.run_function_on_all_workers(
+                lambda worker_info: sys.path.insert(1, script_directory)
+            )
+        # In client mode, if we use runtime envs with "working_dir", then
+        # it'll be handled automatically.  Otherwise, add the current dir.
+        if not job_config.client_job and not job_config.runtime_env_has_uris():
+            current_directory = os.path.abspath(os.path.curdir)
+            worker.run_function_on_all_workers(
+                lambda worker_info: sys.path.insert(1, current_directory)
+            )
+        # TODO(rkn): Here we first export functions to run, then remote
+        # functions. The order matters. For example, one of the functions to
+        # run may set the Python path, which is needed to import a module used
+        # to define a remote function. We may want to change the order to
+        # simply be the order in which the exports were defined on the driver.
+        # In addition, we will need to retain the ability to decide what the
+        # first few exports are (mostly to set the Python path). Additionally,
+        # note that the first exports to be defined on the driver will be the
+        # ones defined in separate modules that are imported by the driver.
+        # Export cached functions_to_run.
+        for function in worker.cached_functions_to_run:
+            worker.run_function_on_all_workers(function)
+    elif mode == WORKER_MODE:
+        worker.function_actor_manager.fetch_and_execute_functions()
+    worker.cached_functions_to_run = None
+
     worker.core_worker = ray._raylet.CoreWorker(
         mode,
         node.plasma_store_socket_name,
@@ -1607,40 +1645,6 @@ def connect(
             )
             worker.logger_thread.daemon = True
             worker.logger_thread.start()
-
-    if mode == SCRIPT_MODE:
-        # Add the directory containing the script that is running to the Python
-        # paths of the workers. Also add the current directory. Note that this
-        # assumes that the directory structures on the machines in the clusters
-        # are the same.
-        # When using an interactive shell, there is no script directory.
-        if not interactive_mode:
-            script_directory = os.path.abspath(os.path.dirname(sys.argv[0]))
-            worker.run_function_on_all_workers(
-                lambda worker_info: sys.path.insert(1, script_directory)
-            )
-        # In client mode, if we use runtime envs with "working_dir", then
-        # it'll be handled automatically.  Otherwise, add the current dir.
-        if not job_config.client_job and not job_config.runtime_env_has_uris():
-            current_directory = os.path.abspath(os.path.curdir)
-            worker.run_function_on_all_workers(
-                lambda worker_info: sys.path.insert(1, current_directory)
-            )
-        # TODO(rkn): Here we first export functions to run, then remote
-        # functions. The order matters. For example, one of the functions to
-        # run may set the Python path, which is needed to import a module used
-        # to define a remote function. We may want to change the order to
-        # simply be the order in which the exports were defined on the driver.
-        # In addition, we will need to retain the ability to decide what the
-        # first few exports are (mostly to set the Python path). Additionally,
-        # note that the first exports to be defined on the driver will be the
-        # ones defined in separate modules that are imported by the driver.
-        # Export cached functions_to_run.
-        for function in worker.cached_functions_to_run:
-            worker.run_function_on_all_workers(function)
-    elif mode == WORKER_MODE:
-        worker.function_actor_manager.fetch_and_execute_functions()
-    worker.cached_functions_to_run = None
 
     # Setup tracing here
     tracing_hook_val = worker.gcs_client.internal_kv_get(

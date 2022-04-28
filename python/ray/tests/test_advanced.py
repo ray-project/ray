@@ -134,11 +134,13 @@ def test_caching_functions_to_run(shutdown_only):
 
 
 @pytest.mark.skipif(client_test_enabled(), reason="internal api")
-def test_running_function_on_all_workers(ray_start_regular):
-    def f(worker_info):
+def test_running_function_on_all_workers(shutdown_only):
+    def f1(worker_info):
         sys.path.append("fake_directory")
 
-    ray.worker.global_worker.run_function_on_all_workers(f)
+    ray.worker.global_worker.run_function_on_all_workers(f1)
+
+    ray.init()
 
     @ray.remote
     def get_path1():
@@ -148,13 +150,19 @@ def test_running_function_on_all_workers(ray_start_regular):
 
     # the function should only run on the current driver once.
     assert sys.path[-1] == "fake_directory"
+
     if len(sys.path) > 1:
         assert sys.path[-2] != "fake_directory"
 
-    def f(worker_info):
+    ray.shutdown()
+
+    ray.init()
+
+    def f2(worker_info):
         sys.path.pop(-1)
 
-    ray.worker.global_worker.run_function_on_all_workers(f)
+    ray.worker.global_worker.run_function_on_all_workers(f1)
+    ray.worker.global_worker.run_function_on_all_workers(f2)
 
     # Create a second remote function to guarantee that when we call
     # get_path2.remote(), the second function to run will have been run on

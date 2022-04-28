@@ -5,7 +5,6 @@ from ray._private.gcs_pubsub import (
     GcsPublisher,
     GcsErrorSubscriber,
     GcsLogSubscriber,
-    GcsFunctionKeySubscriber,
     GcsAioPublisher,
     GcsAioErrorSubscriber,
     GcsAioLogSubscriber,
@@ -103,23 +102,6 @@ async def test_aio_publish_and_subscribe_logs(ray_start_regular):
     assert await subscriber.poll() == log_batch
 
     await subscriber.close()
-
-
-def test_publish_and_subscribe_function_keys(ray_start_regular):
-    address_info = ray_start_regular
-    gcs_server_addr = address_info["gcs_address"]
-
-    subscriber = GcsFunctionKeySubscriber(address=gcs_server_addr)
-    subscriber.subscribe()
-
-    publisher = GcsPublisher(address=gcs_server_addr)
-    publisher.publish_function_key(b"111")
-    publisher.publish_function_key(b"222")
-
-    assert subscriber.poll() == b"111"
-    assert subscriber.poll() == b"222"
-
-    subscriber.close()
 
 
 @pytest.mark.asyncio
