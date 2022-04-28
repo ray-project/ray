@@ -59,9 +59,9 @@ class A3CConfig(TrainerConfig):
         ... )
     """
 
-    def __init__(self):
+    def __init__(self, trainer_class=None):
         """Initializes a PPOConfig instance."""
-        super().__init__(trainer_class=A3CTrainer)
+        super().__init__(trainer_class=trainer_class or A3CTrainer)
 
         # fmt: off
         # __sphinx_doc_begin__
