@@ -25,7 +25,7 @@ from serve_test_cluster_utils import (
     setup_anyscale_cluster,
 )
 from serve_test_utils import save_test_results
-from benchmark_utils import measure_latency
+from benchmark_utils import measure_latency_ms, measure_throughput_tps
 
 
 @serve.deployment
@@ -65,19 +65,25 @@ def test_long_chain_deployment_graph(
     return serve_dag
 
 
-async def benchmark_batch_throughput(dag_handle, expected, duration_secs=10):
-    """Enqueue all requests to dag handle and gather them all."""
-    pass
-
-
-async def benchmark_latency(dag_handle, expected, num_requests=100):
+async def benchmark_throughput_tps(dag_handle, expected, duration_secs=10):
     """Call deployment handle in a blocking for loop."""
-    latency_stats = await measure_latency(
+    throughput_stats_tps = await measure_throughput_tps(
+        dag_handle.predict.remote, 0, expected, duration_secs=duration_secs
+    )
+
+    mean = round(np.mean(throughput_stats_tps), 2)
+    std = round(np.std(throughput_stats_tps), 2)
+    return mean, std
+
+
+async def benchmark_latency_ms(dag_handle, expected, num_requests=100):
+    """Call deployment handle in a blocking for loop."""
+    latency_stats_ms = await measure_latency_ms(
         dag_handle.predict.remote, 0, expected, num_requests=num_requests
     )
 
-    mean = round(np.mean(latency_stats), 2)
-    std = round(np.std(latency_stats), 2)
+    mean = round(np.mean(latency_stats_ms), 2)
+    std = round(np.std(latency_stats_ms), 2)
     return mean, std
 
 
@@ -86,16 +92,18 @@ async def benchmark_latency(dag_handle, expected, num_requests=100):
 @click.option("--init-delay-secs", type=int, default=0)
 @click.option("--compute-delay-secs", type=int, default=0)
 @click.option("--num-requests-per-client", type=int, default=10)
+@click.option("--throughput-trial-duration-secs", type=int, default=10)
 @click.option("--local-test", type=bool, default=True)
 def main(
     chain_length: Optional[int],
     init_delay_secs: Optional[int],
     compute_delay_secs: Optional[int],
     num_requests_per_client: Optional[int],
+    throughput_trial_duration_secs: Optional[int],
     local_test: Optional[bool],
 ):
     if local_test:
-        setup_local_single_node_cluster(4, num_cpu_per_node=2)
+        setup_local_single_node_cluster(1, num_cpu_per_node=16)
     else:
         setup_anyscale_cluster()
 
@@ -111,11 +119,18 @@ def main(
     assert ray.get(dag_handle.predict.remote(0)) == expected
     loop = asyncio.get_event_loop()
 
-    # throughput_mean, throughput_std = loop.run_until_complete(
-    #     benchmark_batch_throughput(dag_handle, expected, num_calls=num_calls)
-    # )
-    latency_mean, latency_std = loop.run_until_complete(
-        benchmark_latency(dag_handle, expected, num_requests=num_requests_per_client)
+    throughput_mean_tps, throughput_std_tps = loop.run_until_complete(
+        benchmark_throughput_tps(
+            dag_handle, expected, duration_secs=throughput_trial_duration_secs
+        )
+    )
+    latency_mean_ms, latency_std_ms = loop.run_until_complete(
+        benchmark_latency_ms(dag_handle, expected, num_requests=num_requests_per_client)
+    )
+    print(f"latency_mean_ms: {latency_mean_ms}, " f"latency_std_ms: {latency_std_ms}")
+    print(
+        f"throughput_mean_tps: {throughput_mean_tps}, "
+        f"throughput_std_tps: {throughput_std_tps}"
     )
 
     results = {
@@ -125,24 +140,24 @@ def main(
         "local_test": local_test,
     }
     results["perf_metrics"] = [
-        # {
-        #     "perf_metric_name": "requests_per_s_avg",
-        #     "perf_metric_value": throughput_mean,
-        #     "perf_metric_type": "THROUGHPUT",
-        # },
-        # {
-        #     "perf_metric_name": "requests_per_s_std",
-        #     "perf_metric_value": throughput_std,
-        #     "perf_metric_type": "THROUGHPUT",
-        # },
         {
-            "perf_metric_name": "latency_per_s_avg",
-            "perf_metric_value": latency_mean,
+            "perf_metric_name": "throughput_mean_tps",
+            "perf_metric_value": throughput_mean_tps,
+            "perf_metric_type": "THROUGHPUT",
+        },
+        {
+            "perf_metric_name": "throughput_std_tps",
+            "perf_metric_value": throughput_std_tps,
+            "perf_metric_type": "THROUGHPUT",
+        },
+        {
+            "perf_metric_name": "latency_mean_ms",
+            "perf_metric_value": latency_mean_ms,
             "perf_metric_type": "LATENCY",
         },
         {
-            "perf_metric_name": "requests_per_s_std",
-            "perf_metric_value": latency_std,
+            "perf_metric_name": "requests_std_ms",
+            "perf_metric_value": latency_std_ms,
             "perf_metric_type": "LATENCY",
         },
     ]
