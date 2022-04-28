@@ -18,8 +18,7 @@ package ray.rpc.syncer;
 
 enum RayComponentId {
   RESOURCE_MANAGER = 0;
-  SCHEDULER = 1;
-  COMMANDS = 2;
+  COMMANDS = 1;
 }
 
 message RaySyncMessage {
