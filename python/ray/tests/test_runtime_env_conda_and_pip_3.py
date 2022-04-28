@@ -1,7 +1,6 @@
 import os
 import pytest
 import sys
-import time
 
 from ray._private.test_utils import (
     wait_for_condition,
@@ -9,8 +8,6 @@ from ray._private.test_utils import (
     generate_runtime_env_dict,
 )
 import ray
-
-from unittest import mock
 
 if not os.environ.get("CI"):
     # This flags turns on the local development that link against current ray
