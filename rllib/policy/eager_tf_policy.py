@@ -129,6 +129,12 @@ def check_too_many_retraces(obj):
     return _func
 
 
+class EagerTFPolicy(Policy):
+    """Dummy class to recognize any eagerized TFPolicy by its inheritance."""
+
+    pass
+
+
 def traced_eager_policy(eager_policy_cls):
     """Wrapper class that enables tracing for all eager policy methods.
 
@@ -237,6 +243,11 @@ def traced_eager_policy(eager_policy_cls):
             # `apply_gradients()` (which will call the traced helper).
             return super(TracedEagerPolicy, self).apply_gradients(grads)
 
+        @classmethod
+        def with_tracing(cls):
+            # Already traced -> Return same class.
+            return cls
+
     TracedEagerPolicy.__name__ = eager_policy_cls.__name__ + "_traced"
     TracedEagerPolicy.__qualname__ = eager_policy_cls.__qualname__ + "_traced"
     return TracedEagerPolicy
@@ -248,12 +259,6 @@ class OptimizerWrapper:
 
     def compute_gradients(self, loss, var_list):
         return list(zip(self.tape.gradient(loss, var_list), var_list))
-
-
-class EagerTFPolicy(Policy):
-    """Dummy class to recognize any eagerized TFPolicy by its inheritance."""
-
-    pass
 
 
 def build_eager_tf_policy(
@@ -293,7 +298,7 @@ def build_eager_tf_policy(
 
     This has the same signature as build_tf_policy()."""
 
-    base = add_mixins(Policy, mixins)
+    base = add_mixins(EagerTFPolicy, mixins)
 
     if obs_include_prev_action_reward != DEPRECATED_VALUE:
         deprecation_warning(old="obs_include_prev_action_reward", error=False)

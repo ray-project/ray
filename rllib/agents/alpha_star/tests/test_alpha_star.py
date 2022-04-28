@@ -55,7 +55,7 @@ class TestAlphaStar(unittest.TestCase):
 
         num_iterations = 2
 
-        for _ in framework_iterator(config, with_eager_tracing=True):
+        for _ in framework_iterator(config, with_eager_tracing=False):
             _config = config.copy()
             trainer = alpha_star.AlphaStarTrainer(config=_config)
             for i in range(num_iterations):

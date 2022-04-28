@@ -11,6 +11,7 @@ import ray
 from ray.actor import ActorHandle
 from ray.rllib.agents.alpha_star.distributed_learners import DistributedLearners
 from ray.rllib.agents.alpha_star.league_builder import AlphaStarLeagueBuilder
+from ray.rllib.agents.ppo.appo_tf_policy import AsyncPPOTFPolicy
 from ray.rllib.agents.trainer import Trainer
 import ray.rllib.agents.ppo.appo as appo
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -208,6 +209,28 @@ class AlphaStarTrainer(appo.APPOTrainer):
     @override(appo.APPOTrainer)
     def get_default_config(cls) -> TrainerConfigDict:
         return DEFAULT_CONFIG
+
+    @override(appo.APPOTrainer)
+    def get_default_policy_class(
+        self, config: PartialTrainerConfigDict
+    ) -> Optional[Type[Policy]]:
+        if config["framework"] == "torch":
+            from ray.rllib.agents.ppo.appo_torch_policy import AsyncPPOTorchPolicy
+
+            return AsyncPPOTorchPolicy
+        # We need to differentiate here beteween tf and tf2|tfe, due to the fact
+        # the the automatic `as_eager()` conversion of TFPolicies only happens
+        # when the policy lives inside a RolloutWorker (policy_map). Since
+        # AlphaStar has single policy learner actors, this auto-conversion does not
+        # happen on these actors.
+        elif config["framework"] == "tf":
+            return AsyncPPOTFPolicy
+        # For eager, return the eager'ized (and maybe traced) policy.
+        else:
+            cls = AsyncPPOTFPolicy.as_eager()
+            if config.get("eager_tracing"):
+                cls = cls.with_tracing()
+            return cls
 
     @override(appo.APPOTrainer)
     def validate_config(self, config: TrainerConfigDict):
