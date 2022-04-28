@@ -39,7 +39,9 @@ FunctionExecutionInfo = namedtuple(
 logger = logging.getLogger(__name__)
 
 
-def make_function_table_key(key_type: bytes, job_id: JobID, key: Optional[bytes]):
+def make_function_table_key(
+    key_type: bytes, job_id: JobID, key: Optional[bytes] = None
+):
     if key is None:
         return b":".join([key_type, job_id.hex().encode()])
     else:
@@ -203,54 +205,50 @@ class FunctionActorManager:
         job_id = ray.JobID(job_id_str)
         max_calls = int(max_calls)
 
-        # This function is called by ImportThread. This operation needs to be
-        # atomic. Otherwise, there is race condition. Another thread may use
-        # the temporary function above before the real function is ready.
-        with self.lock:
-            self._num_task_executions[function_id] = 0
+        self._num_task_executions[function_id] = 0
 
-            try:
-                function = pickle.loads(serialized_function)
-            except Exception:
+        try:
+            function = pickle.loads(serialized_function)
+        except Exception:
 
-                # If an exception was thrown when the remote function was
-                # imported, we record the traceback and notify the scheduler
-                # of the failure.
-                traceback_str = format_error_message(traceback.format_exc())
+            # If an exception was thrown when the remote function was
+            # imported, we record the traceback and notify the scheduler
+            # of the failure.
+            traceback_str = format_error_message(traceback.format_exc())
 
-                def f(*args, **kwargs):
-                    raise RuntimeError(
-                        "The remote function failed to import on the "
-                        "worker. This may be because needed library "
-                        "dependencies are not installed in the worker "
-                        "environment:\n\n{}".format(traceback_str)
-                    )
-
-                # Use a placeholder method when function pickled failed
-                self._function_execution_info[function_id] = FunctionExecutionInfo(
-                    function=f, function_name=function_name, max_calls=max_calls
+            def f(*args, **kwargs):
+                raise RuntimeError(
+                    "The remote function failed to import on the "
+                    "worker. This may be because needed library "
+                    "dependencies are not installed in the worker "
+                    "environment:\n\n{}".format(traceback_str)
                 )
 
-                # Log the error message. Log at DEBUG level to avoid overly
-                # spamming the log on import failure. The user gets the error
-                # via the RuntimeError message above.
-                logger.debug(
-                    "Failed to unpickle the remote function "
-                    f"'{function_name}' with "
-                    f"function ID {function_id.hex()}. "
-                    f"Job ID:{job_id}."
-                    f"Traceback:\n{traceback_str}. "
-                )
-            else:
-                # The below line is necessary. Because in the driver process,
-                # if the function is defined in the file where the python
-                # script was started from, its module is `__main__`.
-                # However in the worker process, the `__main__` module is a
-                # different module, which is `default_worker.py`
-                function.__module__ = module
-                self._function_execution_info[function_id] = FunctionExecutionInfo(
-                    function=function, function_name=function_name, max_calls=max_calls
-                )
+            # Use a placeholder method when function pickled failed
+            self._function_execution_info[function_id] = FunctionExecutionInfo(
+                function=f, function_name=function_name, max_calls=max_calls
+            )
+
+            # Log the error message. Log at DEBUG level to avoid overly
+            # spamming the log on import failure. The user gets the error
+            # via the RuntimeError message above.
+            logger.debug(
+                "Failed to unpickle the remote function "
+                f"'{function_name}' with "
+                f"function ID {function_id.hex()}. "
+                f"Job ID:{job_id}."
+                f"Traceback:\n{traceback_str}. "
+            )
+        else:
+            # The below line is necessary. Because in the driver process,
+            # if the function is defined in the file where the python
+            # script was started from, its module is `__main__`.
+            # However in the worker process, the `__main__` module is a
+            # different module, which is `default_worker.py`
+            function.__module__ = module
+            self._function_execution_info[function_id] = FunctionExecutionInfo(
+                function=function, function_name=function_name, max_calls=max_calls
+            )
         return True
 
     def get_execution_info(self, job_id, function_descriptor):
@@ -300,7 +298,7 @@ class FunctionActorManager:
             KV_NAMESPACE_FUNCTION_TABLE,
         )
         for function_key in function_keys:
-            vals = self.gcs_client.internal_kv_get(
+            vals = self._worker.gcs_client.internal_kv_get(
                 function_key, ray_constants.KV_NAMESPACE_FUNCTION_TABLE
             )
             assert vals is not None
@@ -364,23 +362,22 @@ class FunctionActorManager:
         # Only send the warning once.
         warning_sent = False
         while True:
-            with self.lock:
-                if self._worker.actor_id.is_nil():
-                    if function_descriptor.function_id in self._function_execution_info:
-                        break
-                    else:
-                        key = make_function_table_key(
-                            b"RemoteFunction",
-                            job_id,
-                            function_descriptor.function_id.binary(),
-                        )
-                        if self.fetch_and_register_remote_function(key) is True:
-                            break
-                else:
-                    assert not self._worker.actor_id.is_nil()
-                    # Actor loading will happen when execute_task is called.
-                    assert self._worker.actor_id in self._worker.actors
+            if self._worker.actor_id.is_nil():
+                if function_descriptor.function_id in self._function_execution_info:
                     break
+                else:
+                    key = make_function_table_key(
+                        b"RemoteFunction",
+                        job_id,
+                        function_descriptor.function_id.binary(),
+                    )
+                    if self.fetch_and_register_remote_function(key) is True:
+                        break
+            else:
+                assert not self._worker.actor_id.is_nil()
+                # Actor loading will happen when execute_task is called.
+                assert self._worker.actor_id in self._worker.actors
+                break
 
             if time.time() - start_time > timeout:
                 warning_message = (
