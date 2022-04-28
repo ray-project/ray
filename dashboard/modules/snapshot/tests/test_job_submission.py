@@ -76,6 +76,7 @@ def test_successful_job_status(
             "jobSubmission"
         ].items():
             if entry["status"] is not None:
+                assert entry["jobSubmissionName"] == job_id
                 assert entry["entrypoint"] == entrypoint
                 assert entry["status"] in {"PENDING", "RUNNING", "SUCCEEDED"}
                 assert entry["message"] is not None
