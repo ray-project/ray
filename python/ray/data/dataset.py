@@ -90,9 +90,6 @@ _epoch_warned = False
 # Whether we have warned about using slow Dataset transforms.
 _slow_warned = False
 
-# Whether the dataset usage is recorded or not.
-_usage_recorded = False
-
 TensorflowFeatureTypeSpec = Union[
     "tf.TypeSpec", List["tf.TypeSpec"], Dict[str, "tf.TypeSpec"]
 ]
@@ -128,6 +125,8 @@ class Dataset(Generic[T]):
         read methods to construct a dataset.
         """
         assert isinstance(plan, ExecutionPlan)
+        usage_lib.record_library_usage("dataset")
+
         self._plan = plan
         self._uuid = uuid4().hex
         self._epoch = epoch
@@ -136,11 +135,6 @@ class Dataset(Generic[T]):
         if not lazy:
             # TODO(ekl) we should clear inputs once we have full lineage recorded.
             self._plan.execute(clear_input_blocks=False)
-
-        global _usage_recorded
-        if not _usage_recorded:
-            usage_lib.record_library_usage("dataset")
-            _usage_recorded = True
 
     @staticmethod
     def copy(dataset: "Dataset[T]") -> "Dataset[T]":

@@ -143,9 +143,13 @@ class UsageStatsEnabledness(Enum):
 
 
 _library_usage_queue = queue.Queue()
+_library_usage_recorded = set()
 
 
 def record_library_usage(library: str):
+    if library in _library_usage_recorded:
+        return
+    _library_usage_recorded.add(library)
     _library_usage_queue.put(library)
 
 
