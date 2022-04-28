@@ -49,14 +49,15 @@ from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.actors import create_colocated_actors
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
-    SAMPLE_TIMER,
+    LAST_TARGET_UPDATE_TS,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_TRAINED,
-    SYNCH_WORKER_WEIGHTS_TIMER,
     NUM_TARGET_UPDATES,
-    LAST_TARGET_UPDATE_TS,
+    SAMPLE_TIMER,
+    SYNCH_WORKER_WEIGHTS_TIMER,
+    TARGET_NET_UPDATE_TIMER,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.typing import (
@@ -608,10 +609,11 @@ class ApexTrainer(DQNTrainer):
             >= self.config["target_network_update_freq"]
         ):
             self._num_ts_trained_since_last_target_update = 0
-            to_update = self.workers.local_worker().get_policies_to_train()
-            self.workers.local_worker().foreach_policy_to_train(
-                lambda p, pid: pid in to_update and p.update_target()
-            )
+            with self._timers[TARGET_NET_UPDATE_TIMER]:
+                to_update = self.workers.local_worker().get_policies_to_train()
+                self.workers.local_worker().foreach_policy_to_train(
+                    lambda p, pid: pid in to_update and p.update_target()
+                )
             self._counters[NUM_TARGET_UPDATES] += 1
             self._counters[LAST_TARGET_UPDATE_TS] = self._counters[
                 STEPS_TRAINED_COUNTER

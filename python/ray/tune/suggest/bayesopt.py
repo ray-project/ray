@@ -79,8 +79,6 @@ class BayesOptSearch(Searcher):
         analysis: Optionally, the previous analysis
             to integrate.
         verbose: Sets verbosity level for BayesOpt packages.
-        max_concurrent: Deprecated.
-        use_early_stopped_trials: Deprecated.
 
     Tune automatically converts search spaces to BayesOptSearch's format:
 
@@ -130,8 +128,6 @@ class BayesOptSearch(Searcher):
         patience: int = 5,
         skip_duplicate: bool = True,
         analysis: Optional[ExperimentAnalysis] = None,
-        max_concurrent: Optional[int] = None,
-        use_early_stopped_trials: Optional[bool] = None,
     ):
         assert byo is not None, (
             "BayesOpt must be installed!. You can install BayesOpt with"
@@ -139,7 +135,6 @@ class BayesOptSearch(Searcher):
         )
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
-        self.max_concurrent = max_concurrent
         self._config_counter = defaultdict(int)
         self._patience = patience
         # int: Precision at which to hash values.
@@ -150,8 +145,6 @@ class BayesOptSearch(Searcher):
         super(BayesOptSearch, self).__init__(
             metric=metric,
             mode=mode,
-            max_concurrent=max_concurrent,
-            use_early_stopped_trials=use_early_stopped_trials,
         )
 
         if utility_kwargs is None:

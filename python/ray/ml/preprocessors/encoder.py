@@ -179,7 +179,7 @@ def _get_unique_value_indices(
 ) -> Dict[str, Dict[str, int]]:
     """If drop_na_values is True, will silently drop NA values."""
 
-    def get_pd_unique_values(df: pd.DataFrame):
+    def get_pd_unique_values(df: pd.DataFrame) -> List[Dict[str, set]]:
         return [{col: set(df[col].unique()) for col in columns}]
 
     uniques = dataset.map_batches(get_pd_unique_values, batch_format="pandas")

@@ -19,9 +19,3 @@ def set_keras_threads(threads):
     # is heavily parallelized across multiple cores.
     tf.config.threading.set_inter_op_parallelism_threads(threads)
     tf.config.threading.set_intra_op_parallelism_threads(threads)
-
-
-def TuneKerasCallback(*args, **kwargs):
-    raise DeprecationWarning(
-        "TuneKerasCallback is now tune.integration.keras.TuneReporterCallback."
-    )
