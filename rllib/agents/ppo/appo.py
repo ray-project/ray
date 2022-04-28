@@ -140,5 +140,7 @@ class APPOTrainer(impala.ImpalaTrainer):
             from ray.rllib.agents.ppo.appo_torch_policy import AsyncPPOTorchPolicy
 
             return AsyncPPOTorchPolicy
-        else:
+        elif config["framework"] == "tf":
             return AsyncPPOTFPolicy
+        elif config["framework"] in ["tf2", "tfe"]:
+            return AsyncPPOTFPolicy.as_eager()
