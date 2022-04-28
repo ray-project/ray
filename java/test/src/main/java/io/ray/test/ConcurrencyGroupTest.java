@@ -192,6 +192,34 @@ public class ConcurrencyGroupTest extends BaseTest {
     Assert.assertEquals(myActor.task(ConcurrencyActor2::f2).remote().get(), "ok");
   }
 
+  /// This case tests that the blocking concurrency group doesn't block the scheduling of
+  /// other concurrency groups. See https://github.com/ray-project/ray/issues/19593 for details.
+  public void testBlockingCgNotBlockOthers() {
+    ConcurrencyGroup group1 =
+      new ConcurrencyGroupBuilder<ConcurrencyActor2>()
+        .setName("group1")
+        .setMaxConcurrency(1)
+        .addMethod(ConcurrencyActor2::f1)
+        .build();
+
+    ConcurrencyGroup group2 =
+      new ConcurrencyGroupBuilder<ConcurrencyActor2>()
+        .setName("group2")
+        .setMaxConcurrency(1)
+        .addMethod(ConcurrencyActor2::f2)
+        .build();
+
+    ActorHandle<ConcurrencyActor2> myActor =
+      Ray.actor(ConcurrencyActor2::new).setConcurrencyGroups(group1, group2).remote();
+
+    // f1 twice
+    myActor.task(ConcurrencyActor2::f1).remote(); // This task is sleep in threadpool.
+    myActor.task(ConcurrencyActor2::f1).remote(); // This task is blocked at `PostBlocking()` so that the next f2 cannot be scheduled in core worker.
+    // cg1 blocked.
+
+    Assert.assertEquals(myActor.task(ConcurrencyActor2::f2).remote().get(), "ok");
+  }
+
   @DefConcurrencyGroup(name = "io", maxConcurrency = 1)
   @DefConcurrencyGroup(name = "compute", maxConcurrency = 1)
   private static class StaticDefinedConcurrentActor {
@@ -241,4 +269,5 @@ public class ConcurrencyGroupTest extends BaseTest {
     Assert.assertNotEquals(threadId1, threadId5);
     Assert.assertNotEquals(threadId3, threadId5);
   }
+
 }
