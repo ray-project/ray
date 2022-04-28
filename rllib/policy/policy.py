@@ -982,7 +982,7 @@ class Policy(metaclass=ABCMeta):
                     self.view_requirements[key] = ViewRequirement(
                         used_for_compute_actions=False
                     )
-            if self._loss:
+            if self._loss or hasattr(self, "loss"):
                 # Tag those only needed for post-processing (with some
                 # exceptions).
                 for key in self._dummy_batch.accessed_keys:
