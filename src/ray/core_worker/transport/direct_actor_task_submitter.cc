@@ -26,14 +26,18 @@ namespace ray {
 namespace core {
 
 void CoreWorkerDirectActorTaskSubmitter::AddActorQueueIfNotExists(
-    const ActorID &actor_id, int32_t max_pending_calls, bool execute_out_of_order) {
+    const ActorID &actor_id,
+    int32_t max_pending_calls,
+    bool execute_out_of_order,
+    int64_t max_task_retries) {
   absl::MutexLock lock(&mu_);
   // No need to check whether the insert was successful, since it is possible
   // for this worker to have multiple references to the same actor.
   RAY_LOG(INFO) << "Set max pending calls to " << max_pending_calls << " for actor "
                 << actor_id;
-  client_queues_.emplace(actor_id,
-                         ClientQueue(actor_id, execute_out_of_order, max_pending_calls));
+  client_queues_.emplace(
+      actor_id,
+      ClientQueue(actor_id, execute_out_of_order, max_pending_calls, max_task_retries));
 }
 
 void CoreWorkerDirectActorTaskSubmitter::KillActor(const ActorID &actor_id,
@@ -333,8 +337,9 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
   auto &actor_submit_queue = client_queue.actor_submit_queue;
   if (!client_queue.rpc_client) {
     if (client_queue.state == rpc::ActorTableData::RESTARTING &&
-        client_queue.enable_task_fast_fail) {
-      // Fail all pending actor_submit_queue->
+        client_queue.max_task_retries == 0) {
+      // When `max_task_retries` is 0, tasks submitted while the actor is in `RESTARTING`
+      // state will fail immediately.
       while (true) {
         auto task = actor_submit_queue->PopNextTaskToSend();
         if (!task.has_value()) {

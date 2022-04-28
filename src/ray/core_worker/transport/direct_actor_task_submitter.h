@@ -47,7 +47,8 @@ class CoreWorkerDirectActorTaskSubmitterInterface {
  public:
   virtual void AddActorQueueIfNotExists(const ActorID &actor_id,
                                         int32_t max_pending_calls,
-                                        bool execute_out_of_order = false) = 0;
+                                        bool execute_out_of_order = false,
+                                        int64_t max_task_retries = 0) = 0;
   virtual void ConnectActor(const ActorID &actor_id,
                             const rpc::Address &address,
                             int64_t num_restarts) = 0;
@@ -89,9 +90,12 @@ class CoreWorkerDirectActorTaskSubmitter
   ///
   /// \param[in] actor_id The actor for whom to add a queue.
   /// \param[in] max_pending_calls The max pending calls for the actor to be added.
+  /// \param[in] max_task_retries How many times tasks may be retried on this actor if the
+  /// actor fails.
   void AddActorQueueIfNotExists(const ActorID &actor_id,
                                 int32_t max_pending_calls,
-                                bool execute_out_of_order = false);
+                                bool execute_out_of_order = false,
+                                int64_t max_task_retries = 0);
 
   /// Submit a task to an actor for execution.
   ///
@@ -155,8 +159,11 @@ class CoreWorkerDirectActorTaskSubmitter
 
  private:
   struct ClientQueue {
-    ClientQueue(ActorID actor_id, bool execute_out_of_order, int32_t max_pending_calls)
-        : max_pending_calls(max_pending_calls) {
+    ClientQueue(ActorID actor_id,
+                bool execute_out_of_order,
+                int32_t max_pending_calls,
+                int64_t max_task_retries)
+        : max_pending_calls(max_pending_calls), max_task_retries(max_task_retries) {
       if (execute_out_of_order) {
         actor_submit_queue = std::make_unique<OutofOrderActorSubmitQueue>(actor_id);
       } else {
@@ -209,6 +216,9 @@ class CoreWorkerDirectActorTaskSubmitter
 
     /// The current task number in this client queue.
     int32_t cur_pending_calls = 0;
+
+    /// How many times tasks may be retried on this actor if the actor fails.
+    int64_t max_task_retries = 0;
 
     /// Returns debug string for class.
     ///

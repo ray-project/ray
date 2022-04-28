@@ -560,8 +560,12 @@ TEST_P(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
   // Submit a task.
   task = CreateActorTaskHelper(actor_id, worker_id, 3);
   ASSERT_TRUE(CheckSubmitTask(task));
-  EXPECT_CALL(*task_finisher_, CompletePendingTask(task.TaskId(), _, _)).Times(0);
-  ASSERT_FALSE(worker_client_->ReplyPushTask(Status::OK()));
+  // Tasks submitted when the actor is in RESTARTING state will fail immediately.
+  // This happens in an io_service.post. Search `SendPendingTasks_ForceFail` to locate
+  // the code.
+  EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task.TaskId(), _, _, _, _))
+      .Times(1);
+  ASSERT_EQ(io_context.poll_one(), 1);
 
   // We receive the late messages. Nothing happens.
   addr.set_port(2);
@@ -569,9 +573,7 @@ TEST_P(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
   submitter_.DisconnectActor(actor_id, 2, /*dead=*/false, death_cause);
   ASSERT_EQ(num_clients_connected_, 2);
 
-  // The actor dies permanently. All tasks are failed.
-  EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task.TaskId(), _, _, _, _))
-      .Times(1);
+  // The actor dies permanently.
   submitter_.DisconnectActor(actor_id, 3, /*dead=*/true, death_cause);
   ASSERT_EQ(num_clients_connected_, 2);
 
