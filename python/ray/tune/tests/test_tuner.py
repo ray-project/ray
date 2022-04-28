@@ -112,6 +112,9 @@ class TunerTest(unittest.TestCase):
             run_config=RunConfig(name="test_tuner"),
             param_space=param_space,
             tune_config=TuneConfig(mode="min", metric="train-error"),
+            # limiting the number of trials running at one time.
+            # As the unit test only has access to 4 CPUs on Buildkite.
+            _tuner_kwargs={"max_concurrent_trials": 1},
         )
         results = tuner.fit()
         assert not isinstance(results.get_best_result().checkpoint, TrialCheckpoint)
@@ -169,6 +172,9 @@ class TunerTest(unittest.TestCase):
             ),
             param_space=param_space,
             tune_config=TuneConfig(mode="min", metric="train-error"),
+            # limiting the number of trials running at one time.
+            # As the unit test only has access to 4 CPUs on Buildkite.
+            _tuner_kwargs={"max_concurrent_trials": 1},
         )
         with self.assertRaises(TuneError):
             tuner.fit()
