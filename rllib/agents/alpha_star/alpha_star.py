@@ -11,7 +11,6 @@ import ray
 from ray.actor import ActorHandle
 from ray.rllib.agents.alpha_star.distributed_learners import DistributedLearners
 from ray.rllib.agents.alpha_star.league_builder import AlphaStarLeagueBuilder
-from ray.rllib.agents.ppo.appo_tf_policy import AsyncPPOTFPolicy
 from ray.rllib.agents.trainer import Trainer
 import ray.rllib.agents.ppo.appo as appo
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
