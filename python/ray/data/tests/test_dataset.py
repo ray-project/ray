@@ -97,6 +97,27 @@ def test_basic_actors(shutdown_only, pipelined):
         ds.map(lambda x: x + 1, compute=ray.data.ActorPoolStrategy(4, 4)).take()
     ) == list(range(1, n + 1))
 
+    # Test setting custom max inflight tasks.
+    ds = ray.data.range(10, parallelism=5)
+    ds = maybe_pipeline(ds, pipelined)
+    assert (
+        sorted(
+            ds.map(
+                lambda x: x + 1,
+                compute=ray.data.ActorPoolStrategy(max_tasks_in_flight_per_actor=3),
+            ).take()
+        )
+        == list(range(1, 11))
+    )
+
+    # Test invalid max tasks inflight arg.
+    with pytest.raises(ValueError):
+        ray.data.range(10).map(
+            lambda x: x,
+            compute=ray.data.ActorPoolStrategy(max_tasks_in_flight_per_actor=0),
+        )
+
+    # Test min no more than max check.
     with pytest.raises(ValueError):
         ray.data.range(10).map(lambda x: x, compute=ray.data.ActorPoolStrategy(8, 4))
 
