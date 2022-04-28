@@ -334,13 +334,7 @@ bool RaySyncer::Register(RayComponentId component_id,
   // Set job to pull from reporter periodically
   if (reporter != nullptr && pull_from_reporter_interval_ms > 0) {
     timer_.RunFnPeriodically(
-        [this, component_id]() {
-          auto msg = node_state_->CreateSyncMessage(component_id);
-          if (msg) {
-            RAY_CHECK(msg->node_id() == GetLocalNodeID());
-            BroadcastMessage(std::make_shared<RaySyncMessage>(std::move(*msg)));
-          }
-        },
+        [this, component_id]() { OnDemandBroadcasting(component_id); },
         pull_from_reporter_interval_ms);
   }
 
@@ -349,6 +343,16 @@ bool RaySyncer::Register(RayComponentId component_id,
                  << ", receiver:" << receiver
                  << ", pull_from_reporter_interval_ms:" << pull_from_reporter_interval_ms;
   return true;
+}
+
+bool RaySyncer::OnDemandBroadcasting(RayComponentId component_id) {
+  auto msg = node_state_->CreateSyncMessage(component_id);
+  if (msg) {
+    RAY_CHECK(msg->node_id() == GetLocalNodeID());
+    BroadcastMessage(std::make_shared<RaySyncMessage>(std::move(*msg)));
+    return true;
+  }
+  return false;
 }
 
 void RaySyncer::BroadcastMessage(std::shared_ptr<const RaySyncMessage> message) {

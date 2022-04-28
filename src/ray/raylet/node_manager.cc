@@ -561,28 +561,15 @@ ray::Status NodeManager::RegisterGcs() {
     ray_syncer_.Register(
         /* component_id */ syncer::RayComponentId::COMMANDS,
         /* reporter */ this,
-
         /* receiver */ this,
         /* pull_from_reporter_interval_ms */ 0);
+
     periodical_runner_.RunFnPeriodically(
         [this] {
+          auto triggered_by_global_gc = TryLocalGC();
           // If plasma store is under high pressure, we should try to schedule a global
           // gc.
-          auto triggered_by_global_gc = TryLocalGC();
-
-          if (triggered_by_global_gc) {
-            rpc::ResourcesData resources_data;
-            resources_data.set_should_global_gc(true);
-            syncer::RaySyncMessage msg;
-            msg.set_version(absl::GetCurrentTimeNanos());
-            msg.set_node_id(self_node_id_.Binary());
-            msg.set_component_id(syncer::RayComponentId::COMMANDS);
-            std::string serialized_msg;
-            RAY_CHECK(resources_data.SerializeToString(&serialized_msg));
-            msg.set_sync_message(std::move(serialized_msg));
-            ray_syncer_.BroadcastMessage(
-                std::make_shared<const syncer::RaySyncMessage>(std::move(msg)));
-          }
+          ray_syncer_.OnDemandBroadcasting(syncer::RayComponentId::COMMANDS);
         },
         RayConfig::instance().raylet_check_gc_period_milliseconds(),
         "NodeManager.CheckGC");
@@ -1824,13 +1811,8 @@ void NodeManager::HandleCommitBundleResources(
                  << GetDebugStringForBundles(bundle_specs);
   placement_group_resource_manager_->CommitBundles(bundle_specs);
   if (RayConfig::instance().use_ray_syncer()) {
-    auto sync_message =
-        cluster_resource_scheduler_->GetLocalResourceManager().CreateSyncMessage(
-            0,  // Use version = 0 to for a snapshot
-            syncer::RayComponentId::RESOURCE_MANAGER);
-    RAY_CHECK(sync_message);
-    ray_syncer_.BroadcastMessage(
-        std::make_shared<const syncer::RaySyncMessage>(std::move(*sync_message)));
+    // To reduce the lag, we trigger a broadcasting immediately.
+    RAY_CHECK(ray_syncer_.OnDemandBroadcasting(syncer::RayComponentId::RESOURCE_MANAGER));
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 
@@ -1870,13 +1852,8 @@ void NodeManager::HandleCancelResourceReserve(
   // Return bundle resources.
   placement_group_resource_manager_->ReturnBundle(bundle_spec);
   if (RayConfig::instance().use_ray_syncer()) {
-    auto sync_message =
-        cluster_resource_scheduler_->GetLocalResourceManager().CreateSyncMessage(
-            0,  // Use version = 0 to get a snapshot
-            syncer::RayComponentId::RESOURCE_MANAGER);
-    RAY_CHECK(sync_message);
-    ray_syncer_.BroadcastMessage(
-        std::make_shared<const syncer::RaySyncMessage>(std::move(*sync_message)));
+    // To reduce the lag, we trigger a broadcasting immediately.
+    RAY_CHECK(ray_syncer_.OnDemandBroadcasting(syncer::RayComponentId::RESOURCE_MANAGER));
   }
   cluster_task_manager_->ScheduleAndDispatchTasks();
   send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -2733,35 +2710,18 @@ void NodeManager::ConsumeSyncMessage(
 
 std::optional<syncer::RaySyncMessage> NodeManager::CreateSyncMessage(
     int64_t after_version, syncer::RayComponentId component_id) const {
-  // Right now snapshot is put in NodeManager which in long-term, them should
-  // be put into each component directly.
-  // The current blocker of doing this is some fields in NodeManager
-  // is being used.
-  // TODO(iycheng): Move the logic into the components directly.
-  if (component_id == syncer::RayComponentId::SCHEDULER) {
-    syncer::RaySyncMessage msg;
-    rpc::ResourcesData resource_data;
+  RAY_CHECK(component_id == syncer::RayComponentId::COMMANDS);
 
-    cluster_task_manager_->FillResourceUsage(resource_data);
-    if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
-      const_cast<NodeManager *>(this)->FillNormalTaskResourceUsage(resource_data);
-    }
-
-    resource_data.set_node_id(self_node_id_.Binary());
-    resource_data.set_node_manager_address(initial_config_.node_manager_address);
-    resource_data.set_cluster_full_of_actors_detected(resource_deadlock_warned_ >= 1);
-
-    msg.set_version(absl::GetCurrentTimeNanos());
-    msg.set_node_id(self_node_id_.Binary());
-    msg.set_component_id(syncer::RayComponentId::SCHEDULER);
-    std::string serialized_msg;
-    RAY_CHECK(resource_data.SerializeToString(&serialized_msg));
-    msg.set_sync_message(std::move(serialized_msg));
-    return std::make_optional(std::move(msg));
-  } else {
-    RAY_CHECK(false) << "Invalid component id: " << component_id;
-    return std::nullopt;
-  }
+  rpc::ResourcesData resources_data;
+  resources_data.set_should_global_gc(true);
+  syncer::RaySyncMessage msg;
+  msg.set_version(absl::GetCurrentTimeNanos());
+  msg.set_node_id(self_node_id_.Binary());
+  msg.set_component_id(syncer::RayComponentId::COMMANDS);
+  std::string serialized_msg;
+  RAY_CHECK(resources_data.SerializeToString(&serialized_msg));
+  msg.set_sync_message(std::move(serialized_msg));
+  return std::make_optional(std::move(msg));
 }
 
 void NodeManager::PublishInfeasibleTaskError(const RayTask &task) const {

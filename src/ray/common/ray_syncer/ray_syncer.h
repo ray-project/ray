@@ -118,9 +118,8 @@ class RaySyncer {
   /// \param reporter The local component to be broadcasted.
   /// \param receiver The consumer of the sync message sent by the other nodes in the
   /// cluster.
-  /// \param upward_only Only send the message to the upward of this node.
-  /// component.
-  /// \param pull_from_reporter_interval_ms The frequence to pull a message
+  /// \param pull_from_reporter_interval_ms The frequence to pull a message. 0 means
+  /// never pull a message in syncer.
   /// from reporter and push it to sending queue.
   bool Register(RayComponentId component_id,
                 const ReporterInterface *reporter,
@@ -129,6 +128,14 @@ class RaySyncer {
 
   /// Get the current node id.
   const std::string &GetLocalNodeID() const { return local_node_id_; }
+
+  /// Request trigger a broadcasting for a specific component immediately instead of
+  /// waiting for ray syncer to poll the message.
+  ///
+  /// \param component_id The component to check.
+  /// \return true if a message is generated. If the component doesn't have a new
+  /// version of message, false will be returned.
+  bool OnDemandBroadcasting(RayComponentId component_id);
 
  private:
   /// Get the io_context used by RaySyncer.
