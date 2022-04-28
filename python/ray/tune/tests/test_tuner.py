@@ -11,7 +11,6 @@ from ray.data import from_pandas, read_datasource, Dataset, Datasource, ReadTask
 from ray.data.block import BlockMetadata
 from ray.ml.config import RunConfig
 from ray.ml.examples.pytorch.torch_linear_example import train_func as linear_train_func
-from ray.ml.preprocessors import StandardScaler
 from ray.ml.train.integrations.torch import TorchTrainer
 from ray.ml.train.integrations.xgboost import XGBoostTrainer
 from ray.ml.train import Trainer
@@ -87,15 +86,15 @@ class TunerTest(unittest.TestCase):
             params={},
             datasets={"train": gen_dataset_func_eager()},
         )
-        prep_v1 = StandardScaler(["worst radius", "worst area"])
-        prep_v2 = StandardScaler(["worst concavity", "worst smoothness"])
+        # prep_v1 = StandardScaler(["worst radius", "worst area"])
+        # prep_v2 = StandardScaler(["worst concavity", "worst smoothness"])
         param_space = {
             "scaling_config": {
                 "num_workers": 1,
             },
-            "preprocessor": tune.grid_search([prep_v1, prep_v2]),
+            # "preprocessor": tune.grid_search([prep_v1, prep_v2]),
             "datasets": {
-                "train": tune.choice(
+                "train": tune.grid_search(
                     [gen_dataset_func(), gen_dataset_func(do_shuffle=True)]
                 ),
             },
@@ -130,15 +129,15 @@ class TunerTest(unittest.TestCase):
             params={},
             datasets={"train": gen_dataset_func_eager()},
         )
-        prep_v1 = StandardScaler(["worst radius", "worst area"])
-        prep_v2 = StandardScaler(["worst concavity", "worst smoothness"])
+        # prep_v1 = StandardScaler(["worst radius", "worst area"])
+        # prep_v2 = StandardScaler(["worst concavity", "worst smoothness"])
         param_space = {
             "scaling_config": {
                 "num_workers": 1,
             },
-            "preprocessor": tune.grid_search([prep_v1, prep_v2]),
+            # "preprocessor": tune.grid_search([prep_v1, prep_v2]),
             "datasets": {
-                "train": tune.choice(
+                "train": tune.grid_search(
                     [gen_dataset_func(), gen_dataset_func(do_shuffle=True)]
                 ),
             },
