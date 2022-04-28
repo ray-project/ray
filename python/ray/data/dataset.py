@@ -2492,8 +2492,13 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
         """
         import raydp
 
+        core_worker = ray.worker.global_worker.core_worker
+        locations = [
+            core_worker.get_owner_address(block)
+            for block in self.get_internal_block_refs()
+        ]
         return raydp.spark.ray_dataset_to_spark_dataframe(
-            spark, self.schema(), self.get_internal_block_refs()
+            spark, self.schema(), self.get_internal_block_refs(), locations
         )
 
     def to_pandas(self, limit: int = 100000) -> "pandas.DataFrame":
