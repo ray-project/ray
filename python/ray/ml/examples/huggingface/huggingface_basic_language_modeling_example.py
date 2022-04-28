@@ -121,7 +121,7 @@ def main(
         results.checkpoint,
         HuggingFacePredictor,
         task="text-generation",
-        tokenizer=tokenizer
+        tokenizer=tokenizer,
     )
     data = ray.data.from_pandas(pd.DataFrame(prompt, columns=["prompt"]))
     prediction = predictor.predict(data, num_gpus_per_worker=int(use_gpu))
