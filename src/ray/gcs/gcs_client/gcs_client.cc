@@ -73,6 +73,21 @@ void GcsSubscriberClient::PubsubCommandBatch(
       });
 }
 
+struct GcsRpcClientWithThread {
+  GcsRpcClientWithThread(const std::string &address, const int port)
+      : io_work(io_service),
+        thread([this]() { io_service.run(); }),
+        client_call_manager(io_service),
+        gcs_rpc_client(
+            address, port, client_call_manager, [](rpc::GcsServiceFailureType) {}) {}
+
+  instrumented_io_context io_service;
+  boost::asio::io_service::work io_work;
+  std::thread thread;
+  rpc::ClientCallManager client_call_manager;
+  rpc::GcsRpcClient gcs_rpc_client;
+};
+
 }  // namespace
 
 GcsClient::GcsClient(
@@ -178,6 +193,12 @@ void GcsClient::Disconnect() {
 
 std::pair<std::string, int> GcsClient::GetGcsServerAddress() {
   return current_gcs_server_address_;
+}
+
+rpc::GcsRpcClient &GcsClient::GetInternalGcsRpcClient() {
+  static auto *client = new GcsRpcClientWithThread(current_gcs_server_address_.first,
+                                                   current_gcs_server_address_.second);
+  return client->gcs_rpc_client;
 }
 
 /// Checks whether GCS at the specified address is healthy.

@@ -609,6 +609,8 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id,
     // have to check again here because the pull manager runs in a different
     // thread and the object may have been deactivated right before creating
     // the chunk.
+    RAY_LOG(INFO) << "Aborting object creation because it is no longer actively pulled: "
+                  << object_id;
     buffer_pool_.AbortCreate(object_id);
     return false;
   }

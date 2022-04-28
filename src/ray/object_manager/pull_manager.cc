@@ -343,6 +343,8 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(int64_t num_bytes_available)
 
   // Call the cancellation callbacks outside of the lock.
   for (const auto &obj_id : object_ids_to_cancel) {
+    RAY_LOG(INFO) << "Not enough memory to create requested object " << obj_id
+                  << ", aborting";
     cancel_pull_request_(obj_id);
   }
 
