@@ -12,6 +12,7 @@ from ray.actor import ActorHandle
 from ray.rllib import SampleBatch
 from ray.rllib.agents.impala.vtrace_tf_policy import VTraceTFPolicy
 from ray.rllib.agents.trainer import Trainer, with_common_config
+from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
 from ray.rllib.execution.learner_thread import LearnerThread
 from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
 from ray.rllib.execution.parallel_requests import asynchronous_parallel_requests
@@ -37,9 +38,6 @@ from ray.rllib.utils.metrics import (
 )
 
 # from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
-from ray.rllib.utils.replay_buffers.multi_agent_mixin_replay_buffer import (
-    MultiAgentMixInReplayBuffer,
-)
 from ray.rllib.utils.typing import (
     PartialTrainerConfigDict,
     ResultDict,
@@ -418,15 +416,13 @@ class ImpalaTrainer(Trainer):
                 #     capacity=self.config["replay_buffer_num_slots"],
                 #     replay_ratio=self.config["replay_ratio"],
                 # )
-                self.local_mixin_buffer = MultiAgentMixInReplayBuffer(
+                self.local_mixin_buffer = MixInMultiAgentReplayBuffer(
                     capacity=(
                         self.config["replay_buffer_num_slots"]
                         if self.config["replay_buffer_num_slots"] > 0
                         else 1
                     ),
                     replay_ratio=self.config["replay_ratio"],
-                    storage_unit="fragments",
-                    learning_starts=0,
                 )
 
             # Create and start the learner thread.
@@ -434,11 +430,7 @@ class ImpalaTrainer(Trainer):
                 self.workers.local_worker(), self.config
             )
             self._learner_thread.start()
-            self._batch_concatenator = ConcatBatches(
-                min_batch_size=self.config["train_batch_size"],
-                count_steps_by=self.config["multiagent"]["count_steps_by"],
-                using_iterators=False,
-            )
+
             self.workers_that_need_updates = set()
 
     @override(Trainer)
