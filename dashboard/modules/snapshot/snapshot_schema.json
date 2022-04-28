@@ -130,6 +130,7 @@
                     }
                   },
                   "required": [
+                    "jobSubmissionName",
                     "status",
                     "entrypoint"
                   ]
