@@ -133,7 +133,7 @@ class Dataset(Generic[T]):
         self._lazy = lazy
 
         if not lazy:
-            self._plan.execute(clear_input_blocks=False)
+            self._plan.execute(allow_clear_input_blocks=False)
 
     @staticmethod
     def copy(dataset: "Dataset[T]") -> "Dataset[T]":
@@ -2806,7 +2806,7 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
 
                 def gen():
                     ds = Dataset(
-                        ExecutionPlan(blocks, outer_stats), self._epoch, lazy=False
+                        ExecutionPlan(blocks, outer_stats), self._epoch, lazy=True
                     )
                     return ds
 
@@ -2860,32 +2860,27 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
             )
         return pipe
 
-    def fully_executed(
-        self,
-        preserve_input_blocks: bool = True,
-    ) -> "Dataset[T]":
+    def fully_executed(self, preserve_original: bool = True) -> "Dataset[T]":
         """Force full evaluation of the blocks of this dataset.
 
         This can be used to read all blocks into memory. By default, Datasets
         doesn't read blocks from the datasource until the first transform.
 
         Args:
-            preserve_input_blocks: Whether the input blocks of the dataset should not be
-                eagerly released. If this is False, the input blocks will be destroyed,
-                which means that reusing the base dataset ``ds`` in
-                ``ds.fully_executed()`` will recompute the input blocks if they're lazy,
-                and will fail if they're non-lazy.
+            preserve_original: Whether the original unexecuted dataset should be
+                preserved. If False, this function will mutate the original dataset,
+                which can more efficiently reclaim memory.
 
         Returns:
             A Dataset with all blocks fully materialized in memory.
         """
-        plan = self._plan.deep_copy(preserve_uuid=True)
-        plan.execute(
-            force_read=True,
-            destroy_unrecoverable_input_blocks=not preserve_input_blocks,
-        )
-        ds = Dataset(plan, self._epoch, lazy=False)
-        ds._set_uuid(self._get_uuid())
+        if preserve_original:
+            plan = self._plan.deep_copy(preserve_uuid=True)
+            ds = Dataset(plan, self._epoch, self._lazy)
+            ds._set_uuid(self._get_uuid())
+        else:
+            ds = self
+        ds._plan.execute(force_read=True)
         return ds
 
     def is_fully_executed(self) -> bool:

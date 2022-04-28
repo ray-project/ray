@@ -2,9 +2,12 @@ import pytest
 import numpy as np
 import pandas as pd
 import os
+from typing import List
 
 import ray
+from ray.data.block import BlockMetadata
 from ray.data.context import DatasetContext
+from ray.data.datasource import Datasource, ReadTask
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.internal.internal_api import memory_summary
 
@@ -56,7 +59,92 @@ def test_memory_sanity(shutdown_only):
     assert "Spilled" in meminfo, meminfo
 
 
+class OnesSource(Datasource):
+    def prepare_read(
+        self,
+        parallelism: int,
+        n_per_block: int,
+    ) -> List[ReadTask]:
+        read_tasks: List[ReadTask] = []
+        meta = BlockMetadata(
+            num_rows=1,
+            size_bytes=n_per_block,
+            schema=None,
+            input_files=None,
+            exec_stats=None,
+        )
+
+        for _ in range(parallelism):
+            read_tasks.append(
+                ReadTask(lambda: [[np.ones(n_per_block, dtype=np.uint8)]], meta)
+            )
+        return read_tasks
+
+
+@pytest.mark.parametrize("lazy_input", [True, False])
+def test_memory_release_pipeline(shutdown_only, lazy_input):
+    context = DatasetContext.get_current()
+    # Disable stage fusion so we can keep reads and maps from being fused together,
+    # since we're trying to test multi-stage memory releasing here.
+    context.optimize_fuse_stages = False
+    # This object store allocation can hold at most 1 copy of the transformed dataset.
+    if lazy_input:
+        object_store_memory = 3000e6
+    else:
+        object_store_memory = 3000e6
+
+    n = 10
+    info = ray.init(num_cpus=n, object_store_memory=object_store_memory)
+    if lazy_input:
+        ds = ray.data.read_datasource(
+            OnesSource(),
+            parallelism=n,
+            n_per_block=100 * 1024 * 1024,
+        )
+    else:
+        ds = ray.data.from_items(list(range(n)), parallelism=n)
+
+    # Create a single-window pipeline.
+    pipe = ds.window(blocks_per_window=n)
+
+    # Round 1.
+    def gen(x):
+        import time
+
+        # TODO(Clark): Remove this sleep once we have fixed memory pressure handling.
+        time.sleep(2)
+        if isinstance(x, np.ndarray):
+            return x
+        else:
+            return np.ones(100 * 1024 * 1024, dtype=np.uint8)
+
+    pipe = pipe.map(gen)
+
+    def inc(x):
+        import time
+
+        # TODO(Clark): Remove this sleep once we have fixed memory pressure handling.
+        time.sleep(2)
+        return x + 1
+
+    num_rounds = 10
+    for _ in range(num_rounds):
+        pipe = pipe.map(inc)
+
+    for block in pipe.iter_batches(batch_size=None):
+        for arr in block:
+            np.testing.assert_equal(
+                arr,
+                np.ones(100 * 1024 * 1024, dtype=np.uint8) + num_rounds,
+            )
+    meminfo = memory_summary(info["address"], stats_only=True)
+    assert "Spilled" not in meminfo, meminfo
+
+
 def test_memory_release_lazy(shutdown_only):
+    context = DatasetContext.get_current()
+    # Ensure that stage fusion is enabled.
+    context.optimize_fuse_stages = True
     info = ray.init(num_cpus=1, object_store_memory=1500e6)
     ds = ray.data.range(10)
 
@@ -113,7 +201,7 @@ def test_lazy_fanout(shutdown_only, local_path):
     # Test that fan-out of a lazy dataset results in re-execution up to the datasource,
     # due to block move semantics.
     ds = ray.data.read_datasource(source, parallelism=1, paths=path)
-    ds = ds._experimental_lazy()
+    ds = ds.experimental_lazy()
     ds1 = ds.map(inc)
     ds2 = ds1.map(inc)
     ds3 = ds1.map(inc)
@@ -144,7 +232,7 @@ def test_lazy_fanout(shutdown_only, local_path):
 
     # The source data shouldn't be cleared since it's non-lazy.
     ds = ray.data.from_items(list(range(10)))
-    ds = ds._experimental_lazy()
+    ds = ds.experimental_lazy()
     ds1 = ds.map(inc)
     ds2 = ds1.map(inc)
     ds3 = ds1.map(inc)

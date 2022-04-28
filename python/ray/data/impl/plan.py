@@ -47,6 +47,12 @@ class Stage:
         """Fuse this stage with a compatible stage."""
         raise NotImplementedError
 
+    def __repr__(self):
+        return f'{type(self).__name__}("{self.name}")'
+
+    def __str__(self):
+        return repr(self)
+
 
 class ExecutionPlan:
     """A lazy execution plan for a Dataset."""
@@ -225,16 +231,14 @@ class ExecutionPlan:
 
     def execute(
         self,
-        clear_input_blocks: bool = True,
-        destroy_unrecoverable_input_blocks: bool = False,
+        allow_clear_input_blocks: bool = True,
         force_read: bool = False,
     ) -> BlockList:
         """Execute this plan.
 
         Args:
-            destroy_unrecoverable_input_blocks: Whether to clear the non-lazy input
-                blocks for this plan. This will destroy the blocks, meaning that this
-                dataset will not be executable after this run.
+            allow_clear_input_blocks: Whether we should try to clear the input blocks
+                for each stage.
             force_read: Whether to force the read stage to fully execute.
 
         Returns:
@@ -243,14 +247,14 @@ class ExecutionPlan:
         if not self.has_computed_output():
             blocks, stats, stages = self._optimize()
             for stage_idx, stage in enumerate(stages):
-                should_clear_input_blocks = self._should_clear_input_blocks(
-                    blocks,
-                    stage_idx,
-                    clear_input_blocks,
-                    destroy_unrecoverable_input_blocks,
-                )
+                if allow_clear_input_blocks:
+                    clear_input_blocks = self._should_clear_input_blocks(
+                        blocks, stage_idx
+                    )
+                else:
+                    clear_input_blocks = False
                 stats_builder = stats.child_builder(stage.name)
-                blocks, stage_info = stage(blocks, should_clear_input_blocks)
+                blocks, stage_info = stage(blocks, clear_input_blocks)
                 if stage_info:
                     stats = stats_builder.build_multistage(stage_info)
                 else:
@@ -289,33 +293,22 @@ class ExecutionPlan:
         self,
         blocks: BlockList,
         stage_idx: int,
-        clear_input_blocks: bool,
-        destroy_unrecoverable_input_blocks: bool,
     ):
         """Whether the provided blocks should be cleared when passed into the stage.
 
         Args:
             blocks: The blocks that we may want to clear.
             stage_idx: The position of the stage in the optimized after-snapshot chain.
-            clear_input_blocks: Whether we want to clear input blocks at all. If this is
-                False, this function returns False.
-            destroy_unrecoverable_input_blocks: Whether we want to clear unrecoverable
-                (non-lazy) input blocks.
         """
-        if not clear_input_blocks:
-            return False
         if stage_idx != 0 or self._stages_before_snapshot:
             # Not the first stage, always clear stage input blocks.
             return True
         elif isinstance(blocks, LazyBlockList):
             # Always clear lazy input blocks since they can be recomputed.
             return True
-        elif destroy_unrecoverable_input_blocks:
-            # Only clear non-lazy input blocks if directed.
-            return True
         else:
             # Otherwise, we have non-lazy input blocks that's the source of this
-            # execution plan, and we've indicated that we don't want to clear these.
+            # execution plan, so we don't clear these.
             return False
 
     def _optimize(self) -> Tuple[BlockList, DatasetStats, List[Stage]]:
