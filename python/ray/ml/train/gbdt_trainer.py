@@ -200,9 +200,7 @@ class GBDTTrainer(Trainer):
 
         class GBDTTrainable(trainable_cls):
             def save_checkpoint(self, tmp_checkpoint_dir: str = ""):
-                checkpoint_path = super().save_checkpoint(
-                    tmp_checkpoint_dir=tmp_checkpoint_dir
-                )
+                checkpoint_path = super().save_checkpoint()
                 parent_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
 
                 preprocessor = self._merged_config.get("preprocessor", None)
