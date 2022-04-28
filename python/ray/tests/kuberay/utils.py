@@ -11,10 +11,7 @@ from typing import Any, Dict, Generator, List, Optional
 import yaml
 
 import ray
-from ray.job_submission import (
-    JobStatus,
-    JobSubmissionClient
-)
+from ray.job_submission import JobStatus, JobSubmissionClient
 
 
 logger = logging.getLogger(__name__)
@@ -384,8 +381,8 @@ def ray_job_submit(
                 "working_dir": SCRIPTS_DIR,
                 # Throw in some extra data for fun, to validate runtime envs.
                 "pip": ["pytest==6.0.0"],
-                "env_vars": {"key_foo": "value_bar"}
-            }
+                "env_vars": {"key_foo": "value_bar"},
+            },
         )
         # Wait for the job to complete successfully.
         # This logic is copied from the Job Submission docs.
