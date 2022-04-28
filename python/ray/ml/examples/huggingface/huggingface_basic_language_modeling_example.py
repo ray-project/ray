@@ -186,10 +186,12 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    # Requires at least torch 1.11 to pass
+    runtime_env = {"pip": ["torch==1.11.0"]}
     if args.address:
-        ray.init(args.address)
+        ray.init(args.address, runtime_env=runtime_env)
     else:
-        ray.init()
+        ray.init(runtime_env=runtime_env)
 
     main(
         model_checkpoint=args.model_checkpoint,
