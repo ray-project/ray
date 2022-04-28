@@ -1992,7 +1992,7 @@
   run:
     timeout: 3600
     long_running: false
-    script: python workloads/deployment_graph_long_chain.py --chain-length=10 --num-clients=4
+    script: python workloads/deployment_graph_long_chain.py --chain-length=10 --num-clients=4 --local-test=False
     type: sdk_command
     file_manager: job
 
@@ -2016,7 +2016,7 @@
   run:
     timeout: 3600
     long_running: false
-    script: python workloads/deployment_graph_wide_ensemble.py --fanout-degree=10 --num-clients=4
+    script: python workloads/deployment_graph_wide_ensemble.py --fanout-degree=10 --num-clients=4 --local-test=False
     type: sdk_command
     file_manager: job
 
