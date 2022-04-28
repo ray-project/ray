@@ -12,8 +12,7 @@ INPUT -> Node_1 -> Node_2 -> ... -> Node_20 -> OUTPUT
 import time
 import asyncio
 import click
-import pytest
-import sys
+
 import numpy as np
 from typing import Optional
 
@@ -26,6 +25,7 @@ from serve_test_cluster_utils import (
     setup_anyscale_cluster,
 )
 from serve_test_utils import save_test_results
+from benchmark_utils import measure_latency
 
 
 @serve.deployment
@@ -65,85 +65,33 @@ def test_long_chain_deployment_graph(
     return serve_dag
 
 
-async def measure_throughput(name, fn, multiplier=1):
-    # warmup
-    start = time.time()
-    while time.time() - start < 1:
-        await fn()
-    # real run
-    stats = []
-    for _ in range(4):
-        start = time.time()
-        count = 0
-        while time.time() - start < 2:
-            await fn()
-            count += 1
-        end = time.time()
-        stats.append(multiplier * count / (end - start))
-
-    mean = round(np.mean(stats), 2)
-    std = round(np.std(stats), 2)
-    print("\t{} {} +- {} requests/s".format(name, mean, std))
-    return mean, std
-
-
-async def measure_latency(name, fn):
-    # warmup
-    start = time.time()
-    while time.time() - start < 1:
-        await fn()
-    # real run
-    stats = []
-    for _ in range(4):
-        start = time.time()
-        while time.time() - start < 2:
-            await fn()
-        end = time.time()
-        stats.append(end - start)
-
-    mean = round(np.mean(stats), 2)
-    std = round(np.std(stats), 2)
-    print("\t{} {} +- {} sec".format(name, mean, std))
-    return mean, std
-
-
-async def benchmark_batch_throughput(dag_handle, expected, num_calls=10):
+async def benchmark_batch_throughput(dag_handle, expected, duration_secs=10):
     """Enqueue all requests to dag handle and gather them all."""
+    pass
 
-    async def run():
-        futures = []
-        for _ in range(num_calls):
-            futures.append(dag_handle.predict.remote(0))
-        results = await asyncio.gather(*futures)
-        for rst in results:
-            assert rst == expected
 
-    return await measure_throughput(
-        "benchmark_batch_throughput", run, multiplier=num_calls
+async def benchmark_latency(dag_handle, expected, num_requests=100):
+    """Call deployment handle in a blocking for loop."""
+    latency_stats = await measure_latency(
+        dag_handle.predict.remote, 0, expected, num_requests=num_requests
     )
 
-
-async def benchmark_latency(dag_handle, expected, num_calls=10):
-    """Call deployment handle in a blocking for loop."""
-
-    async def run():
-        for _ in range(num_calls):
-            assert await dag_handle.predict.remote(0) == expected
-
-    return await measure_latency("benchmark_batch_latency", run)
+    mean = round(np.mean(latency_stats), 2)
+    std = round(np.std(latency_stats), 2)
+    return mean, std
 
 
 @click.command()
 @click.option("--chain-length", type=int, default=4)
 @click.option("--init-delay-secs", type=int, default=0)
 @click.option("--compute-delay-secs", type=int, default=0)
-@click.option("--num-calls", type=int, default=10)
+@click.option("--num-requests-per-client", type=int, default=10)
 @click.option("--local-test", type=bool, default=True)
 def main(
     chain_length: Optional[int],
     init_delay_secs: Optional[int],
     compute_delay_secs: Optional[int],
-    num_calls: Optional[int],
+    num_requests_per_client: Optional[int],
     local_test: Optional[bool],
 ):
     if local_test:
@@ -163,11 +111,11 @@ def main(
     assert ray.get(dag_handle.predict.remote(0)) == expected
     loop = asyncio.get_event_loop()
 
-    throughput_mean, throughput_std = loop.run_until_complete(
-        benchmark_batch_throughput(dag_handle, expected, num_calls=num_calls)
-    )
+    # throughput_mean, throughput_std = loop.run_until_complete(
+    #     benchmark_batch_throughput(dag_handle, expected, num_calls=num_calls)
+    # )
     latency_mean, latency_std = loop.run_until_complete(
-        benchmark_latency(dag_handle, expected, num_calls=num_calls)
+        benchmark_latency(dag_handle, expected, num_requests=num_requests_per_client)
     )
 
     results = {
@@ -177,16 +125,16 @@ def main(
         "local_test": local_test,
     }
     results["perf_metrics"] = [
-        {
-            "perf_metric_name": "requests_per_s_avg",
-            "perf_metric_value": throughput_mean,
-            "perf_metric_type": "THROUGHPUT",
-        },
-        {
-            "perf_metric_name": "requests_per_s_std",
-            "perf_metric_value": throughput_std,
-            "perf_metric_type": "THROUGHPUT",
-        },
+        # {
+        #     "perf_metric_name": "requests_per_s_avg",
+        #     "perf_metric_value": throughput_mean,
+        #     "perf_metric_type": "THROUGHPUT",
+        # },
+        # {
+        #     "perf_metric_name": "requests_per_s_std",
+        #     "perf_metric_value": throughput_std,
+        #     "perf_metric_type": "THROUGHPUT",
+        # },
         {
             "perf_metric_name": "latency_per_s_avg",
             "perf_metric_value": latency_mean,
@@ -203,5 +151,7 @@ def main(
 
 if __name__ == "__main__":
     main()
+    import sys
+    import pytest
 
     sys.exit(pytest.main(["-v", "-s", __file__]))
