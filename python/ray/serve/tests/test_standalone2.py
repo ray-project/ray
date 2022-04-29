@@ -78,6 +78,61 @@ def test_deploy_with_overriden_namespace(shutdown_ray, detached):
 
 
 @pytest.mark.parametrize("detached", [True, False])
+def test_update_num_replicas_anonymous_namespace(shutdown_ray, detached):
+    """Test updating num_replicas with anonymous namespace."""
+
+    ray.init()
+    serve.start(detached=detached)
+
+    @serve.deployment(num_replicas=1)
+    def f(*args):
+        return "got f"
+
+    f.deploy()
+
+    num_actors = len(ray.util.list_named_actors(all_namespaces=True))
+
+    for _ in range(5):
+        f.deploy()
+        assert num_actors == len(ray.util.list_named_actors(all_namespaces=True))
+
+    serve.shutdown()
+
+
+@pytest.mark.parametrize("detached", [True, False])
+def test_update_num_replicas_with_overriden_namespace(shutdown_ray, detached):
+    """Test updating num_replicas with overriden namespace."""
+
+    ray_namespace = "ray_namespace"
+    controller_namespace = "controller_namespace"
+
+    ray.init(namespace=ray_namespace)
+    serve.start(detached=detached, _override_controller_namespace=controller_namespace)
+
+    @serve.deployment(num_replicas=2)
+    def f(*args):
+        return "got f"
+
+    f.deploy()
+
+    actors = ray.util.list_named_actors(all_namespaces=True)
+
+    f.options(num_replicas=4).deploy()
+    updated_actors = ray.util.list_named_actors(all_namespaces=True)
+
+    # Check that only 2 new replicas were created
+    assert len(updated_actors) == len(actors) + 2
+
+    f.options(num_replicas=1).deploy()
+    updated_actors = ray.util.list_named_actors(all_namespaces=True)
+
+    # Check that all but 1 replica has spun down
+    assert len(updated_actors) == len(actors) - 1
+
+    serve.shutdown()
+
+
+@pytest.mark.parametrize("detached", [True, False])
 def test_refresh_controller_after_death(shutdown_ray, detached):
     """Check if serve.start() refreshes the controller handle if it's dead."""
 

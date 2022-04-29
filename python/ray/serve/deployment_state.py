@@ -437,7 +437,9 @@ class ActorReplicaWrapper:
         Returns the timeout after which to kill the actor.
         """
         try:
-            handle = ray.get_actor(self._actor_name)
+            handle = ray.get_actor(
+                self._actor_name, namespace=self._controller_namespace
+            )
             self._graceful_shutdown_ref = handle.prepare_for_shutdown.remote()
         except ValueError:
             pass
@@ -447,7 +449,9 @@ class ActorReplicaWrapper:
     def check_stopped(self) -> bool:
         """Check if the actor has exited."""
         try:
-            handle = ray.get_actor(self._actor_name)
+            handle = ray.get_actor(
+                self._actor_name, namespace=self._controller_namespace
+            )
             stopped = self._check_obj_ref_ready(self._graceful_shutdown_ref)
             if stopped:
                 ray.kill(handle, no_restart=True)
@@ -580,7 +584,9 @@ class ActorReplicaWrapper:
     def force_stop(self):
         """Force the actor to exit without shutting down gracefully."""
         try:
-            ray.kill(ray.get_actor(self._actor_name))
+            ray.kill(
+                ray.get_actor(self._actor_name, namespace=self._controller_namespace)
+            )
         except ValueError:
             pass
 
