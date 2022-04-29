@@ -160,12 +160,35 @@ HTTP Adapters
 ^^^^^^^^^^^^^
 
 HTTP adapters are functions that convert raw HTTP request to Python types that you know and recognize. 
-You can use it in three different scenarios:
+Its input arguments should be type annotated. At minimal, it should accept a ``starlette.requests.Request`` type.
+But it can also accept any type that's recognized by the FastAPI's dependency injection framework. 
+
+For example, here is an adapter that extra the json content from request. 
+
+.. code-block:: python
+
+    async def json_resolver(request: starlette.requests.Request):
+        return await request.json()
+
+Here is an adapter that accept two HTTP query parameters.
+
+.. code-block:: python
+
+    def parse_query_args(field_a: int, field_b: str):
+        return YourDataClass(field_a, field_b)
+
+You can specify different type signatures to facilitate HTTP fields extraction
+include 
+`query parameters <https://fastapi.tiangolo.com/tutorial/query-params/>`_,
+`body parameters <https://fastapi.tiangolo.com/tutorial/body/>`_,
+and `many other data types <https://fastapi.tiangolo.com/tutorial/extra-data-types/>`_.
+For more detail, you can take a look at `FastAPI documentation <https://fastapi.tiangolo.com/>`_.
+
+You can use adapters in different scenarios within Serve:
 
 - Ray AIR ``ModelWrapper``
 - Serve Deployment Graph ``DAGDriver``
 - Embedded in Bring Your Own ``FastAPI`` Application
-
 
 Let's go over them one by one.
 
