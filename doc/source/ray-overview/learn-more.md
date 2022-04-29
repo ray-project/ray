@@ -12,7 +12,7 @@ Please raise an issue if any of the below links are broken, or if you'd like to 
 | Typical base image size (compressed) | ~4GB | 
 | Typical base image size for GPU (compressed) | ~9GB | 
 | Max number of actors | ~10,000 |
-| Task latency in Ray (add 2 numbers) | ~10ms |
+| Task latency in Ray (add 2 numbers) | ~200us |
 | Tasks processed per second (add 2 numbers | ~20,000/second |
 | Minimal memory footprint of a task (Python) | ~200MB |
 | Minimal memory footprint of an actor (Python) | ~200MB |
