@@ -364,8 +364,8 @@ def ray_job_submit(
         service=head_service, namespace=k8s_namespace, target_port=ray_dashboard_port
     ) as local_port:
         # It takes a bit of time to establish the connection.
-        # Try a few times to instantiate the JobSubmissionClient, as the client itself
-        # does not retry on connection errors.
+        # Try a few times to instantiate the JobSubmissionClient, as the client's
+        # instantiation does not retry on connection errors.
         for trie in range(1, 7):
             time.sleep(5)
             try:
