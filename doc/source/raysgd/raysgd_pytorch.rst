@@ -511,7 +511,7 @@ Simultaneous Multi-model Training
 
 In certain scenarios, such as training GANs, you may want to use multiple models in the training loop. You can do this by registering multiple models, optimizers, or schedulers in the ``setup`` method of ``TrainingOperator``. You must implement custom training and validation (:ref:`raysgd-custom-training`) to train across multiple models.
 
-You can see the `DCGAN script <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/dcgan.py>`_ for an end-to-end example.
+You can see the `DCGAN script <https://github.com/ray-project/ray/blob/releases/1.12.1/python/ray/util/sgd/torch/examples/dcgan.py>`_ for an end-to-end example.
 
 .. code-block:: python
 
