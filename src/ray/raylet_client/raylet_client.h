@@ -473,9 +473,29 @@ class RayletClient : public RayletClientInterface {
 
   const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
 
-  int64_t GetPinsInFlight() const { return pins_in_flight_.load(); }
+  int64_t GetPinsInFlight() const;
 
  private:
+  class PinBatcher {
+   public:
+    PinBatcher(const rpc::Address &owner_address);
+
+    void Add(const std::vector<ObjectID> &object_ids,
+             const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback);
+
+    void Flush();
+
+   private:
+    struct Request {
+      ObjectID object_id;
+      ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> callback;
+    };
+
+    const rpc::Address owner_address_;
+    std::vector<Request> inflight_;
+    std::vector<Request> buffered_;
+  };
+
   /// gRPC client to the raylet. Right now, this is only used for a couple
   /// request types.
   std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client_;
@@ -489,11 +509,9 @@ class RayletClient : public RayletClientInterface {
   /// The connection to the raylet server.
   std::unique_ptr<RayletConnection> conn_;
 
-  /// The number of object ID pin RPCs currently in flight.
-  std::atomic<int64_t> pins_in_flight_{0};
-
- protected:
-  RayletClient() {}
+  mutable absl::Mutex pin_mu_;
+  absl::flat_hash_map<std::string, PinBatcher> pin_batchers_;
+  int64_t total_inflight_pins_ = 0;
 };
 
 }  // namespace raylet
