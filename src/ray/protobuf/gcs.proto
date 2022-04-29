@@ -47,6 +47,7 @@ enum TablePrefix {
   KV = 19;
   ACTOR_TASK_SPEC = 20;
   // NOTE: This is the placeholder for the enumeration number.
+  // It must be placed at the end of TablePrefix.
   TABLE_PREFIX_MAX = 21;
 }
 
