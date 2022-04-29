@@ -93,6 +93,7 @@ MOCK_MODULES = [
     "dask.distributed",
     "datasets",
     "datasets.iterable_dataset",
+    "transformers.pipelines",
     "gym",
     "gym.spaces",
     "horovod",
