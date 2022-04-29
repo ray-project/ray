@@ -304,7 +304,8 @@ class FunctionActorManager:
                     "high pressure and unable to serve the request."
                     f"node={self._worker.node_ip_address}, "
                     f"worker_id={self._worker.worker_id.hex()}, "
-                    f"pid={os.getpid()}).")
+                    f"pid={os.getpid()})."
+                )
                 logger.error(warning_message)
                 ray._private.utils.push_error_to_driver(
                     self._worker,

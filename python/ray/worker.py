@@ -389,9 +389,7 @@ class Worker:
         # actually run the function locally.
         pickled_function = pickle.dumps(self.cached_functions_to_run)
 
-        key = make_function_table_key(
-            b"FunctionsToRun", self.current_job_id
-        )
+        key = make_function_table_key(b"FunctionsToRun", self.current_job_id)
 
         for function in self.cached_functions_to_run:
             # First run the function on the driver.
@@ -403,12 +401,15 @@ class Worker:
             )
 
         # Run the function on all workers.
-        assert self.gcs_client.internal_kv_put(
-            key,
-            pickled_function,
-            False,
-            ray_constants.KV_NAMESPACE_FUNCTION_TABLE,
-        ) > 0
+        assert (
+            self.gcs_client.internal_kv_put(
+                key,
+                pickled_function,
+                False,
+                ray_constants.KV_NAMESPACE_FUNCTION_TABLE,
+            )
+            > 0
+        )
         self.cached_functions_to_run = None
 
     def main_loop(self):

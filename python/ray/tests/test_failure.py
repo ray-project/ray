@@ -126,7 +126,6 @@ def test_get_throws_quickly_when_found_exception(ray_start_regular):
 
 
 def test_failed_function_to_run(shutdown_only):
-
     def f(worker):
         if ray.worker.global_worker.mode == ray.WORKER_MODE:
             raise Exception("Function to run failed.")
