@@ -17,6 +17,7 @@ from ray.rllib.utils.exploration.random_encoder import (
     update_beta,
 )
 from ray.rllib.utils.typing import AgentID, EnvType, PolicyID
+from ray.tune.callback import CallbackMeta
 
 # Import psutil after ray so the packaged version is used.
 import psutil
@@ -27,7 +28,7 @@ if TYPE_CHECKING:
 
 
 @PublicAPI
-class DefaultCallbacks:
+class DefaultCallbacks(metaclass=CallbackMeta):
     """Abstract base class for RLlib callbacks (similar to Keras callbacks).
 
     These callbacks can be used for custom metrics and custom postprocessing.
@@ -367,6 +368,8 @@ class MultiCallbacks(DefaultCallbacks):
                 ....
             ])
     """
+
+    IS_CALLBACK_CONTAINER = True
 
     def __init__(self, callback_class_list):
         super().__init__()
