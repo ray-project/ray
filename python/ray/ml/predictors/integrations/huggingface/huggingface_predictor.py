@@ -60,7 +60,7 @@ class HuggingFacePredictor(Predictor):
         """
         if not pipeline and "task" not in pipeline_kwargs:
             raise ValueError(
-                "If `pipeline` is not specified, 'task' must be passed as a " "kwarg."
+                "If `pipeline` is not specified, 'task' must be passed as a kwarg."
             )
         pipeline = pipeline or pipeline_factory
         with checkpoint.as_directory() as checkpoint_path:
