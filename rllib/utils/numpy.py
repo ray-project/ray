@@ -323,6 +323,7 @@ def make_action_immutable(obj):
     Examples:
         >>> import tree
         >>> import numpy as np
+        >>> from ray.rllib.utils.numpy import make_action_immutable
         >>> arr = np.arange(1,10)
         >>> d = dict(a = 1, b = (arr, arr))
         >>> tree.traverse(make_action_immutable, d, top_down=False)
