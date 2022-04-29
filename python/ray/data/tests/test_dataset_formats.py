@@ -24,6 +24,7 @@ from ray.data.datasource import (
     PathPartitionFilter,
     PathPartitionEncoder,
     PartitionStyle,
+    SimpleTorchDatasource,
     WriteResult,
 )
 from ray.data.impl.arrow_block import ArrowRow
@@ -1969,6 +1970,41 @@ def test_csv_write_block_path_provider(
         ]
     )
     assert df.equals(ds_df)
+
+
+def test_torch_datasource(ray_start_regular_shared, local_path):
+    import torchvision
+
+    # Download datasets to separate folders to prevent interference.
+    torch_dataset_root = os.path.join(local_path, "torch")
+    ray_dataset_root = os.path.join(local_path, "ray")
+
+    torch_dataset = torchvision.datasets.MNIST(torch_dataset_root, download=True)
+    expected_data = list(torch_dataset)
+
+    def dataset_factory():
+        return torchvision.datasets.MNIST(ray_dataset_root, download=True)
+
+    ray_dataset = ray.data.read_datasource(
+        SimpleTorchDatasource(), parallelism=1, dataset_factory=dataset_factory
+    )
+    actual_data = list(next(ray_dataset.iter_batches(batch_size=None)))
+
+    assert actual_data == expected_data
+
+
+def test_torch_datasource_value_error(ray_start_regular_shared, local_path):
+    import torchvision
+
+    dataset = torchvision.datasets.MNIST(local_path, download=True)
+
+    with pytest.raises(ValueError):
+        # `dataset_factory` should be a function, not a Torch dataset.
+        ray.data.read_datasource(
+            SimpleTorchDatasource(),
+            parallelism=1,
+            dataset_factory=dataset,
+        )
 
 
 # NOTE: The last test using the shared ray_start_regular_shared cluster must use the
