@@ -94,6 +94,7 @@ class CheckpointManagerTest(unittest.TestCase):
             _TuneCheckpoint(_TuneCheckpoint.PERSISTENT, i, self.mock_result(i, i))
             for i in range(16)
         ]
+        random.seed(1)
         random.shuffle(checkpoints)
 
         for checkpoint in checkpoints:
@@ -116,13 +117,14 @@ class CheckpointManagerTest(unittest.TestCase):
             )
             for i in range(2)
         ]
-        checkpoints += [
-            _TuneCheckpoint(_TuneCheckpoint.PERSISTENT, 3, self.mock_result(0, 3))
-        ]
-        random.shuffle(checkpoints)
 
         for checkpoint in checkpoints:
             checkpoint_manager.on_checkpoint(checkpoint)
+
+        print(checkpoint_manager._membership)
+        print(checkpoint_manager.best_checkpoints())
+
+        checkpoint_manager.on_checkpoint(_TuneCheckpoint(_TuneCheckpoint.PERSISTENT, 3, self.mock_result(0, 3)))
 
         best_checkpoints = checkpoint_manager.best_checkpoints()
         # best_checkpoints is sorted from worst to best
