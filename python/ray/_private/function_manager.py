@@ -334,7 +334,7 @@ class FunctionActorManager:
                     self._worker,
                     ray_constants.FUNCTION_TO_RUN_PUSH_ERROR,
                     traceback_str,
-                    job_id=ray.JobID(job_id),
+                    job_id=self._worker.current_job_id,
                 )
 
     def _load_function_from_local(self, function_descriptor):
