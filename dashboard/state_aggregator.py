@@ -201,8 +201,9 @@ class StateAPIManager:
         """List all runtime env information from the cluster.
 
         Returns:
-            A list of runtime env information in the cluster. The schema of returned "dict"
-            is equivalent to the `RuntimeEnvState` protobuf message.
+            A list of runtime env information in the cluster.
+            The schema of returned "dict" is equivalent to the
+            `RuntimeEnvState` protobuf message.
             We don't have id -> data mapping like other API because runtime env
             doesn't have unique ids.
         """
