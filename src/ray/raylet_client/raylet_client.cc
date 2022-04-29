@@ -94,43 +94,6 @@ void RayletConnection::ShutdownIfLocalRayletDisconnected(const Status &status) {
   }
 }
 
-class PinBatcher {
- public:
-  PinBatcher(std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client);
-
-  void Add(const rpc::Address &address,
-           std::vector<ObjectID> object_ids,
-           rpc::ClientCallback<rpc::PinObjectIDsReply> callback);
-
-  int64_t TotalPending() const;
-
- private:
-  struct Request {
-    Request(std::vector<ObjectID> oid, rpc::ClientCallback<rpc::PinObjectIDsReply> cb)
-        : object_ids(std::move(oid)), callback(std::move(cb)) {}
-
-    std::vector<ObjectID> object_ids;
-    rpc::ClientCallback<rpc::PinObjectIDsReply> callback;
-  };
-
-  struct RayletDestination {
-    RayletDestination(PinBatcher *batcher, const rpc::Address &address)
-        : pin_batcher_(batcher), raylet_address_(address) {}
-
-    PinBatcher *const pin_batcher_;
-    const rpc::Address raylet_address_;
-    std::vector<Request> inflight_;
-    std::vector<Request> buffered_;
-
-    bool Flush();
-  };
-
-  const std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client_;
-  mutable absl::Mutex mu_;
-  absl::flat_hash_map<std::string, RayletDestination> raylets_;
-  int64_t total_inflight_pins_ = 0;
-};
-
 RayletClient::RayletClient(std::shared_ptr<rpc::NodeManagerWorkerClient> grpc_client)
     : grpc_client_(std::move(grpc_client)) {
   pin_batcher_ = std::make_unique<PinBatcher>(grpc_client_);
@@ -572,6 +535,8 @@ void PinBatcher::Add(const rpc::Address &address,
   total_inflight_pins_++;
   RayletDestination &raylet =
       raylets_.try_emplace(address.raylet_id(), this, address).first->second;
+  // Assert the lock is held to make thread safety analysis happy.
+  raylet.pin_batcher_->mu_.AssertHeld();
   raylet.buffered_.emplace_back(std::move(object_ids), std::move(callback));
   raylet.Flush();
 }
@@ -586,7 +551,6 @@ bool PinBatcher::RayletDestination::Flush() {
     return false;
   }
   inflight_ = std::move(buffered_);
-  buffered_.clear();
 
   rpc::PinObjectIDsRequest request;
   request.mutable_owner_address()->CopyFrom(raylet_address_);
@@ -596,12 +560,18 @@ bool PinBatcher::RayletDestination::Flush() {
     }
   }
   auto rpc_callback = [this](Status status, const rpc::PinObjectIDsReply &reply) {
-    for (auto &req : inflight_) {
-      req.callback(status, reply);
+    std::vector<Request> inflight;
+    {
+      absl::MutexLock lock(&pin_batcher_->mu_);
+      inflight = std::move(inflight_);
+      pin_batcher_->total_inflight_pins_ -= inflight.size();
+      if (!Flush()) {
+        // No more buffered requests, so this RayletDestination can be dropped.
+        pin_batcher_->raylets_.erase(raylet_address_.raylet_id());
+      }
     }
-    absl::MutexLock lock(&this->pin_batcher_->mu_);
-    if (!Flush()) {
-      this->pin_batcher_->raylets_.erase(raylet_address_.raylet_id());
+    for (auto &req : inflight) {
+      req.callback(status, reply);
     }
   };
   pin_batcher_->grpc_client_->PinObjectIDs(request, std::move(rpc_callback));

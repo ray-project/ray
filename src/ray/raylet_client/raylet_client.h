@@ -230,7 +230,51 @@ class RayletConnection {
   std::mutex write_mutex_;
 };
 
-class PinBatcher;
+// Batches PinObjectIDsRequest so there would be only one outstanding
+// request per Raylet. This reduces the memory and CPU overhead when a
+// large number of objects need to be pinned.
+class PinBatcher {
+ public:
+  PinBatcher(std::shared_ptr<rpc::NodeManagerWorkerClient> grpc_client);
+
+  // Adds objects to be pinned at the address.
+  void Add(const rpc::Address &address,
+           std::vector<ObjectID> object_ids,
+           rpc::ClientCallback<rpc::PinObjectIDsReply> callback);
+
+  // Total number of objects waiting to be pinned.
+  int64_t TotalPending() const;
+
+ private:
+  // Request from a single Add() call.
+  struct Request {
+    Request(std::vector<ObjectID> oid, rpc::ClientCallback<rpc::PinObjectIDsReply> cb)
+        : object_ids(std::move(oid)), callback(std::move(cb)) {}
+
+    std::vector<ObjectID> object_ids;
+    rpc::ClientCallback<rpc::PinObjectIDsReply> callback;
+  };
+
+  struct RayletDestination {
+    RayletDestination(PinBatcher *batcher, const rpc::Address &address)
+        : pin_batcher_(batcher), raylet_address_(address) {}
+
+    // Tries sending out a request, if there are buffered messages but no
+    // request is inflight.
+    bool Flush() ABSL_EXCLUSIVE_LOCKS_REQUIRED(pin_batcher_->mu_);
+
+    PinBatcher *const pin_batcher_;
+    const rpc::Address raylet_address_;
+    std::vector<Request> inflight_ ABSL_GUARDED_BY(pin_batcher_->mu_);
+    std::vector<Request> buffered_ ABSL_GUARDED_BY(pin_batcher_->mu_);
+  };
+
+  const std::shared_ptr<rpc::NodeManagerWorkerClient> grpc_client_;
+  mutable absl::Mutex mu_;
+  // Maps Raylet ID to the address and buffered messages for the Raylet.
+  absl::flat_hash_map<std::string, RayletDestination> raylets_ ABSL_GUARDED_BY(mu_);
+  int64_t total_inflight_pins_ ABSL_GUARDED_BY(mu_) = 0;
+};
 
 class RayletClient : public RayletClientInterface {
  public:
@@ -257,7 +301,7 @@ class RayletClient : public RayletClientInterface {
   /// \param startup_token The startup token of the process assigned to
   /// it during startup as a command line argument.
   RayletClient(instrumented_io_context &io_service,
-               std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
+               std::shared_ptr<rpc::NodeManagerWorkerClient> grpc_client,
                const std::string &raylet_socket,
                const WorkerID &worker_id,
                rpc::WorkerType worker_type,
@@ -274,7 +318,7 @@ class RayletClient : public RayletClientInterface {
   /// Connect to the raylet via grpc only.
   ///
   /// \param grpc_client gRPC client to the raylet.
-  RayletClient(std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client);
+  RayletClient(std::shared_ptr<rpc::NodeManagerWorkerClient> grpc_client);
 
   ~RayletClient() override;
 
@@ -480,7 +524,7 @@ class RayletClient : public RayletClientInterface {
  private:
   /// gRPC client to the raylet. Right now, this is only used for a couple
   /// request types.
-  std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client_;
+  std::shared_ptr<rpc::NodeManagerWorkerClient> grpc_client_;
   const WorkerID worker_id_;
   const JobID job_id_;
 

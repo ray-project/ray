@@ -76,16 +76,19 @@ void GcsSubscriberClient::PubsubCommandBatch(
 struct GcsRpcClientWithThread {
   GcsRpcClientWithThread(const std::string &address, const int port)
       : io_work(io_service),
-        thread([this]() { io_service.run(); }),
         client_call_manager(io_service),
         gcs_rpc_client(
-            address, port, client_call_manager, [](rpc::GcsServiceFailureType) {}) {}
+            address, port, client_call_manager, [](rpc::GcsServiceFailureType) {}) {
+    // Using initializer list fails when compiling on Windows CI / MSVC 14.
+    auto f = [this]() { io_service.run(); };
+    thread = std::thread(std::move(f));
+  }
 
   instrumented_io_context io_service;
   boost::asio::io_service::work io_work;
-  std::thread thread;
   rpc::ClientCallManager client_call_manager;
   rpc::GcsRpcClient gcs_rpc_client;
+  std::thread thread;
 };
 
 }  // namespace
