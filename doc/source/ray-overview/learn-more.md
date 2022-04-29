@@ -1,7 +1,24 @@
 # Learn More
 
-Here are some talks, papers, and press coverage involving Ray and its libraries.
+Here are some general rules of thumb, talks, papers, and press coverage involving Ray and its libraries.
 Please raise an issue if any of the below links are broken, or if you'd like to add your own talk!
+
+## Latency numbers every Ray programmer should know
+
+| Stat | Value |
+| --- | --- | 
+| Typical Ray cluster startup time | ~6 minutes |
+| Max size of Ray cluster | ~500 machines |
+| Typical base image size (compressed) | ~4GB | 
+| Typical base image size for GPU (compressed) | ~9GB | 
+| Max number of actors | ~10,000 |
+| Task latency in Ray (add 2 numbers) | ~10ms |
+| Tasks processed per second (add 2 numbers | ~20,000/second |
+| Minimal memory footprint of a task (Python) | ~200MB |
+| Minimal memory footprint of an actor (Python) | ~200MB |
+| Average access time for object in the object store | ~100µs |
+
+[_Inspired by the excellent blog post from Peter Norvig, and talk from Jeff Dean._](https://colin-scott.github.io/personal_website/research/interactive_latency.html)
 
 ## Blog and Press
 
