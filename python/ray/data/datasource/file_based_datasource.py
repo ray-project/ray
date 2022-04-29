@@ -264,14 +264,14 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         path: str,
         **open_args,
     ) -> "pyarrow.NativeFile":
-        """Opens a source path for reading and returns the associated Arrow
-        NativeFile.
+        """Opens a source path for reading and returns the associated Arrow NativeFile.
 
-        This method should be implemented by subclasses.
+        The default implementation opens the source path as a sequential input stream.
+
+        Implementations that do not support streaming reads (e.g. that require random
+        access) should override this method.
         """
-        raise NotImplementedError(
-            "Subclasses of FileBasedDatasource must implement _open_input_source()."
-        )
+        return filesystem.open_input_stream(path, **open_args)
 
     def do_write(
         self,

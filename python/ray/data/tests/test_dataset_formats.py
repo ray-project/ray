@@ -22,6 +22,7 @@ from ray.data.datasource import (
     Datasource,
     DummyOutputDatasource,
     BaseFileMetadataProvider,
+    DefaultFileMetadataProvider,
     DefaultParquetMetadataProvider,
     FastFileMetadataProvider,
     PathPartitionFilter,
@@ -375,6 +376,137 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
     # Expect precomputed row counts and block sizes to be missing.
     assert ds._meta_count() is None
     assert ds._plan._snapshot_blocks.size_bytes() == -1
+
+    # Expect to lazily compute all metadata correctly.
+    assert ds._plan.execute()._num_computed() == 1
+    assert ds.count() == 6
+    assert ds.size_bytes() > 0
+    assert ds.schema() is not None
+    input_files = ds.input_files()
+    assert len(input_files) == 2, input_files
+    assert "test1.parquet" in str(input_files)
+    assert "test2.parquet" in str(input_files)
+    assert (
+        str(ds) == "Dataset(num_blocks=2, num_rows=6, "
+        "schema={one: int64, two: string})"
+    ), ds
+    assert (
+        repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
+        "schema={one: int64, two: string})"
+    ), ds
+    assert ds._plan.execute()._num_computed() == 2
+
+    # Forces a data read.
+    values = [[s["one"], s["two"]] for s in ds.take()]
+    assert ds._plan.execute()._num_computed() == 2
+    assert sorted(values) == [
+        [1, "a"],
+        [2, "b"],
+        [3, "c"],
+        [4, "e"],
+        [5, "f"],
+        [6, "g"],
+    ]
+
+
+@pytest.mark.parametrize(
+    "fs,data_path",
+    [
+        (None, lazy_fixture("local_path")),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (
+            lazy_fixture("s3_fs_with_space"),
+            lazy_fixture("s3_path_with_space"),
+        ),  # Path contains space.
+    ],
+)
+def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    table = pa.Table.from_pandas(df1)
+    setup_data_path = _unwrap_protocol(data_path)
+    path1 = os.path.join(setup_data_path, "test1.parquet")
+    pq.write_table(table, path1, filesystem=fs)
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    table = pa.Table.from_pandas(df2)
+    path2 = os.path.join(setup_data_path, "test2.parquet")
+    pq.write_table(table, path2, filesystem=fs)
+
+    # Expect directory path expansion to fail.
+    with pytest.raises(OSError):
+        ray.data.read_parquet_bulk(data_path, filesystem=fs)
+
+    # Expect individual file paths to be processed successfully.
+    paths = [path1, path2]
+    ds = ray.data.read_parquet_bulk(paths, filesystem=fs)
+
+    # Expect precomputed row counts to be missing.
+    assert ds._meta_count() is None
+
+    # Expect to lazily compute all metadata correctly.
+    assert ds._plan.execute()._num_computed() == 1
+    assert ds.count() == 6
+    assert ds.size_bytes() > 0
+    assert ds.schema() is not None
+    input_files = ds.input_files()
+    assert len(input_files) == 2, input_files
+    assert "test1.parquet" in str(input_files)
+    assert "test2.parquet" in str(input_files)
+    assert (
+        str(ds) == "Dataset(num_blocks=2, num_rows=6, "
+        "schema={one: int64, two: string})"
+    ), ds
+    assert (
+        repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
+        "schema={one: int64, two: string})"
+    ), ds
+    assert ds._plan.execute()._num_computed() == 2
+
+    # Forces a data read.
+    values = [[s["one"], s["two"]] for s in ds.take()]
+    assert ds._plan.execute()._num_computed() == 2
+    assert sorted(values) == [
+        [1, "a"],
+        [2, "b"],
+        [3, "c"],
+        [4, "e"],
+        [5, "f"],
+        [6, "g"],
+    ]
+
+
+@pytest.mark.parametrize(
+    "fs,data_path",
+    [
+        (None, lazy_fixture("local_path")),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (
+            lazy_fixture("s3_fs_with_space"),
+            lazy_fixture("s3_path_with_space"),
+        ),  # Path contains space.
+    ],
+)
+def test_parquet_read_bulk_meta_provider(ray_start_regular_shared, fs, data_path):
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    table = pa.Table.from_pandas(df1)
+    setup_data_path = _unwrap_protocol(data_path)
+    path1 = os.path.join(setup_data_path, "test1.parquet")
+    pq.write_table(table, path1, filesystem=fs)
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    table = pa.Table.from_pandas(df2)
+    path2 = os.path.join(setup_data_path, "test2.parquet")
+    pq.write_table(table, path2, filesystem=fs)
+
+    # Expect directory path expansion to succeed with the default metadata provider.
+    ds = ray.data.read_parquet_bulk(
+        data_path,
+        filesystem=fs,
+        meta_provider=DefaultFileMetadataProvider(),
+    )
+
+    # Expect precomputed row counts to be missing.
+    assert ds._meta_count() is None
 
     # Expect to lazily compute all metadata correctly.
     assert ds._plan.execute()._num_computed() == 1
