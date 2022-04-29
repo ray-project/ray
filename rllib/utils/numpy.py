@@ -326,7 +326,7 @@ def make_action_immutable(obj):
         >>> from ray.rllib.utils.numpy import make_action_immutable
         >>> arr = np.arange(1,10)
         >>> d = dict(a = 1, b = (arr, arr))
-        >>> tree.traverse(make_action_immutable, d, top_down=False)
+        >>> tree.traverse(make_action_immutable, d, top_down=False) # doctest: +SKIP
     """
     if isinstance(obj, np.ndarray):
         obj.setflags(write=False)
