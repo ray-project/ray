@@ -16,6 +16,7 @@ from ray.tests.conftest import *  # noqa
 from ray.data.dataset import Dataset, _sliding_window
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockAccessor
+from ray.data.context import DatasetContext
 from ray.data.row import TableRow
 from ray.data.impl.arrow_block import ArrowRow
 from ray.data.impl.block_builder import BlockBuilder
@@ -1440,6 +1441,15 @@ def test_iter_batches_basic(ray_start_regular_shared):
 
     # Prefetch more than number of blocks.
     batches = list(ds.iter_batches(prefetch_blocks=len(dfs), batch_format="pandas"))
+    assert len(batches) == len(dfs)
+    for batch, df in zip(batches, dfs):
+        assert isinstance(batch, pd.DataFrame)
+        assert batch.equals(df)
+
+    # Prefetch with ray.wait.
+    context = DatasetContext.get_current()
+    context.actor_prefetcher_enabled = False
+    batches = list(ds.iter_batches(prefetch_blocks=1, batch_format="pandas"))
     assert len(batches) == len(dfs)
     for batch, df in zip(batches, dfs):
         assert isinstance(batch, pd.DataFrame)
