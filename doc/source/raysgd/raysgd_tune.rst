@@ -53,4 +53,4 @@ The info dict contains the following values:
 
 If you would like any other information to be available in the ``info`` dict please file a feature request on `Github Issues <https://github.com/ray-project/ray/issues>`_!
 
-You can see the `Tune example script <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/tune_example.py>`_ for an end-to-end example.
+You can see the `Tune example script <https://github.com/ray-project/ray/blob/releases/1.12.1/python/ray/util/sgd/torch/examples/tune_example.py>`_ for an end-to-end example.

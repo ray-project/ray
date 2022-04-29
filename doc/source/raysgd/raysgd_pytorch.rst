@@ -244,7 +244,7 @@ Below is a partial example of a custom ``TrainingOperator`` that provides a ``tr
         stats = trainer.train()
         print(stats)
 
-See the `DCGAN example <https://github.com/ray-project/ray/blob/master/python/ray/util/sgd/torch/examples/dcgan.py>`__ for an end to end example. It constructs two models and two optimizers and uses a custom training operator to provide a non-standard training loop.
+See the `DCGAN example <https://github.com/ray-project/ray/blob/releases/1.12.1/python/ray/util/sgd/torch/examples/dcgan.py>`__ for an end to end example. It constructs two models and two optimizers and uses a custom training operator to provide a non-standard training loop.
 
 
 Custom DistributedDataParallel Wrappers
