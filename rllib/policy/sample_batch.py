@@ -1161,7 +1161,12 @@ class MultiAgentBatch:
             The single default policy's SampleBatch or a MultiAgentBatch
             (more than one policy).
         """
-        if len(policy_batches) == 1 and DEFAULT_POLICY_ID in policy_batches:
+        if (
+            len(policy_batches) == 1
+            and DEFAULT_POLICY_ID in policy_batches
+            # Otherwise: multi-agent case with DEFAULT_POLICY_ID
+            and policy_batches[DEFAULT_POLICY_ID].env_steps() == env_steps
+        ):
             return policy_batches[DEFAULT_POLICY_ID]
         return MultiAgentBatch(policy_batches=policy_batches, env_steps=env_steps)
 
