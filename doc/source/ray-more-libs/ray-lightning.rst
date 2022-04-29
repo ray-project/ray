@@ -188,7 +188,7 @@ FAQ
 
 ..
 
-   RaySGD already has a `Pytorch Lightning integration <https://docs.ray.io/en/master/raysgd/raysgd_ref.html>`__. What's the difference between this integration and that?
+   RaySGD already has a `Pytorch Lightning integration <https://docs.ray.io/en/latest/raysgd/raysgd_ref.html>`__. What's the difference between this integration and that?
 
 
 The key difference is which Trainer you'll be interacting with. In this library, you will still be using Pytorch Lightning's ``Trainer``. You'll be able to leverage all the features of Pytorch Lightning, and Ray is used just as a backend to handle distributed training.
