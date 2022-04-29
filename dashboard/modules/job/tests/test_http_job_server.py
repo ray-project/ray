@@ -542,15 +542,12 @@ os.environ["RAY_RUNTIME_ENV_HOOK"] =\
 ray.init(address="auto")
 """
     entrypoint = f"python -c '{run_job_script}'"
-    job_id = client.submit_job(
-        entrypoint=entrypoint, runtime_env=runtime_env
-    )
+    job_id = client.submit_job(entrypoint=entrypoint, runtime_env=runtime_env)
 
     wait_for_condition(_check_job_succeeded, client=client, job_id=job_id)
 
     with open(path) as f:
         assert f.read().strip() == "Ray rocks!"
-
 
 
 if __name__ == "__main__":
