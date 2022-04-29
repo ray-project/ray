@@ -921,11 +921,6 @@ def init(
         logger.debug("Could not import resource module (on Windows)")
         pass
 
-    if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ:
-        runtime_env = _load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
-            runtime_env
-        )
-
     if RAY_JOB_CONFIG_JSON_ENV_VAR in os.environ:
         if runtime_env:
             logger.warning(
@@ -938,9 +933,21 @@ def init(
         # ray job submission with driver script executed in subprocess
         job_config_json = json.loads(os.environ.get(RAY_JOB_CONFIG_JSON_ENV_VAR))
         job_config = ray.job_config.JobConfig.from_json(job_config_json)
+
+        if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ:
+            runtime_env = _load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
+                job_config.runtime_env
+            )
+            job_config.set_runtime_env(runtime_env)
+
     # RAY_JOB_CONFIG_JSON_ENV_VAR is only set at ray job manager level and has
     # higher priority in case user also provided runtime_env for ray.init()
     elif runtime_env:
+        if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ:
+            runtime_env = _load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
+                runtime_env
+            )
+
         # Set runtime_env in job_config if passed in as part of ray.init()
         if job_config is None:
             job_config = ray.job_config.JobConfig()
