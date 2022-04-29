@@ -52,7 +52,9 @@ class MockActorScheduler : public gcs::GcsActorSchedulerInterface {
   }
 
   size_t GetPendingActorsCount() const { return 0; }
-  bool RemovePendingActor(const std::shared_ptr<gcs::GcsActor> &actor) { return false; }
+  bool CancelInFlightActorScheduling(const std::shared_ptr<gcs::GcsActor> &actor) {
+    return false;
+  }
 
   MOCK_CONST_METHOD0(DebugString, std::string());
   MOCK_METHOD1(CancelOnNode, std::vector<ActorID>(const NodeID &node_id));
