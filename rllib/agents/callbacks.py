@@ -1,7 +1,7 @@
 import numpy as np
 import os
 import tracemalloc
-from typing import Dict, Optional, TYPE_CHECKING
+from typing import Dict, Optional, Tuple, TYPE_CHECKING
 
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
@@ -197,7 +197,7 @@ class DefaultCallbacks(metaclass=CallbackMeta):
         policy_id: PolicyID,
         policies: Dict[PolicyID, Policy],
         postprocessed_batch: SampleBatch,
-        original_batches: Dict[AgentID, SampleBatch],
+        original_batches: Dict[AgentID, Tuple[Policy, SampleBatch]],
         **kwargs,
     ) -> None:
         """Called immediately after a policy's postprocess_fn is called.
@@ -473,7 +473,7 @@ class MultiCallbacks(DefaultCallbacks):
         policy_id: PolicyID,
         policies: Dict[PolicyID, Policy],
         postprocessed_batch: SampleBatch,
-        original_batches: Dict[AgentID, SampleBatch],
+        original_batches: Dict[AgentID, Tuple[Policy, SampleBatch]],
         **kwargs,
     ) -> None:
         for callback in self._callback_list:
