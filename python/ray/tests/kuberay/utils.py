@@ -349,7 +349,7 @@ def ray_job_submit(
     """Submits a Python script via the Ray Job Submission API, using the Python SDK.
     Waits for successful completion of the job and returns the job logs as a string.
 
-    Portforwards the dashboard port to make this possible.
+    Uses `kubectl port-forward` to access the dashboard port.
 
     Scripts live in `tests/kuberay/scripts`. This directory is used as the working
     dir for the job.
