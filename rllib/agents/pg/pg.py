@@ -72,7 +72,7 @@ class PGTrainer(Trainer):
     @classmethod
     @override(Trainer)
     def get_default_config(cls) -> TrainerConfigDict:
-        return PGConfig.to_dict()
+        return PGConfig().to_dict()
 
     @override(Trainer)
     def get_default_policy_class(self, config) -> Type[Policy]:
