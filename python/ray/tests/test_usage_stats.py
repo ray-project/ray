@@ -293,11 +293,18 @@ def test_library_usages():
     ray.workflow.init()
     ray.data.range(10)
     from ray import serve
+
     serve.start()
     library_usages = ray_usage_lib.get_library_usages_to_report(
         ray.experimental.internal_kv.internal_kv_get_gcs_client(), num_retries=20
     )
-    assert set(library_usages) == {"pre_init", "post_init", "dataset", "workflow", "serve"}
+    assert set(library_usages) == {
+        "pre_init",
+        "post_init",
+        "dataset",
+        "workflow",
+        "serve",
+    }
     serve.shutdown()
     ray.shutdown()
 
@@ -588,6 +595,7 @@ provider:
                 ray.data.range(10)
 
                 from ray import serve
+
                 serve.start()
 
                 # Usage report should be sent to the URL every 1 second.
