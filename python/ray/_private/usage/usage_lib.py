@@ -154,7 +154,7 @@ def _put_library_usage(library_usage: str):
             num_retries=5,
         )
     except Exception as e:
-        logger.debug(f"Faild to put library usage, {e}")
+        logger.debug(f"Failed to put library usage, {e}")
 
 
 def record_library_usage(library_usage: str):
