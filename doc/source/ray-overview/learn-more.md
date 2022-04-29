@@ -14,8 +14,8 @@ Please raise an issue if any of the below links are broken, or if you'd like to 
 | Max number of actors | ~10,000 |
 | Task latency in Ray (add 2 numbers) | ~200us |
 | Tasks processed per second (add 2 numbers | ~20,000/second |
-| Minimal memory footprint of a task (Python) | ~200MB |
-| Minimal memory footprint of an actor (Python) | ~200MB |
+| Minimal memory footprint of a Python worker | ~200MB |
+| Minimal memory footprint of an Python actor | ~200MB |
 | Average access time for object in the object store | ~100µs |
 
 [_Inspired by the excellent blog post from Peter Norvig, and talk from Jeff Dean._](https://colin-scott.github.io/personal_website/research/interactive_latency.html)
