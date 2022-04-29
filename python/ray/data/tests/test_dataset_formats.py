@@ -27,6 +27,7 @@ from ray.data.datasource import (
     PathPartitionFilter,
     PathPartitionEncoder,
     PartitionStyle,
+    SimpleTensorFlowDatasource,
     SimpleTorchDatasource,
     WriteResult,
 )
@@ -2191,6 +2192,30 @@ def test_csv_write_block_path_provider(
         ]
     )
     assert df.equals(ds_df)
+
+
+def test_tensorflow_datasource(ray_start_regular_shared):
+    import tensorflow as tf
+    import tensorflow_datasets as tfds
+
+    tf_dataset = tfds.load("mnist", split=["train"], as_supervised=True)[0]
+
+    def dataset_factory():
+        return tfds.load("mnist", split=["train"], as_supervised=True)[0]
+
+    ray_dataset = ray.data.read_datasource(
+        SimpleTensorFlowDatasource(), parallelism=1, dataset_factory=dataset_factory
+    ).fully_executed()
+
+    assert ray_dataset.num_blocks() == 1
+
+    actual_data = ray_dataset.take_all()
+    expected_data = list(tf_dataset)
+    for (expected_features, expected_label), (actual_features, actual_label) in zip(
+        expected_data, actual_data
+    ):
+        tf.debugging.assert_equal(expected_features, actual_features)
+        tf.debugging.assert_equal(expected_label, actual_label)
 
 
 def test_torch_datasource(ray_start_regular_shared, local_path):
