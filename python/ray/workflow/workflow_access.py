@@ -177,13 +177,6 @@ class WorkflowManagementActor:
         Returns:
             Workflow execution result that contains the state and output.
         """
-        # Re-configure log file to send logs to correct driver.
-        node = ray.worker._global_node
-        out_file, err_file = node.get_log_file_handles(
-            get_worker_log_file_name("WORKER", job_id)
-        )
-        configure_log_file(out_file, err_file)
-
         if workflow_id in self._workflow_outputs and not ignore_existing:
             raise RuntimeError(
                 f"The output of workflow[id={workflow_id}] already exists."
