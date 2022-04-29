@@ -211,5 +211,5 @@ message RuntimeEnvState {
   /// env creation has failed.
   optional string error = 4;
   /// The time to create a runtime env in ms.
-  optional double creation_time_ms = 5;
+  optional int creation_time_ms = 5;
 }

@@ -176,8 +176,7 @@ def generate_runtime_env_info(runtime_env):
                 ref_cnt=1,
                 success=True,
                 error=None,
-                created_time_ms=1234,
-                retry_cnt=None,
+                creation_time_ms=1234,
             )
         ]
     )

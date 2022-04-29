@@ -214,7 +214,7 @@ class StateAPIManager:
             ]
         )
         result = []
-        for reply in replies:
+        for node_id, reply in zip(self._client.get_all_registered_agent_ids(), replies):
             states = reply.runtime_env_states
             for state in states:
                 data = self._message_to_dict(message=state, fields_to_decode=[])
@@ -222,6 +222,7 @@ class StateAPIManager:
                 data["runtime_env"] = RuntimeEnv.deserialize(
                     data["runtime_env"]
                 ).to_dict()
+                data["node_id"] = node_id
                 data = filter_fields(data, RuntimeEnvState)
                 result.append(data)
 

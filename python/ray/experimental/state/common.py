@@ -89,5 +89,5 @@ class RuntimeEnvState:
     ref_cnt: int
     success: bool
     error: str
-    created_time_ms: float
-    retry_cnt: int
+    creation_time_ms: float
+    node_id: str

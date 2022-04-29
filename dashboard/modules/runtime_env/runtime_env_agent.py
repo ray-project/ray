@@ -377,7 +377,7 @@ class RuntimeEnvAgent(
 
             Returns:
                 a tuple which contains result(bool), runtime env context(str), error
-                message(str), and total retry count(int).
+                message(str).
 
             """
             self._logger.info(
@@ -386,7 +386,6 @@ class RuntimeEnvAgent(
             )
             serialized_context = None
             error_message = None
-            retry_cnt = 0
             for _ in range(runtime_env_consts.RUNTIME_ENV_RETRY_TIMES):
                 try:
                     # python 3.6 requires the type of input is `Future`,
@@ -406,7 +405,6 @@ class RuntimeEnvAgent(
                     error_message = None
                     break
                 except Exception as e:
-                    retry_cnt += 1
                     err_msg = f"Failed to create runtime env {serialized_env}."
                     self._logger.exception(err_msg)
                     error_message = "".join(
@@ -421,14 +419,14 @@ class RuntimeEnvAgent(
                     "don't retry any more.",
                     runtime_env_consts.RUNTIME_ENV_RETRY_TIMES,
                 )
-                return False, None, error_message, retry_cnt
+                return False, None, error_message
             else:
                 self._logger.info(
                     "Successfully created runtime env: %s, the context: %s",
                     serialized_env,
                     serialized_context,
                 )
-                return True, serialized_context, None, retry_cnt
+                return True, serialized_context, None
 
         try:
             serialized_env = request.serialized_runtime_env
@@ -502,7 +500,6 @@ class RuntimeEnvAgent(
                 successful,
                 serialized_context,
                 error_message,
-                retry_cnt,
             ) = await _create_runtime_env_with_retry(
                 runtime_env,
                 serialized_env,
@@ -520,7 +517,6 @@ class RuntimeEnvAgent(
                 successful,
                 serialized_context if successful else error_message,
                 creation_time_ms,
-                retry_cnt,
             )
             # Reply the RPC
             return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
