@@ -1,4 +1,4 @@
-from typing import Dict, List, Union
+from typing import List
 from collections import OrderedDict
 
 from ray.experimental.dag import (
@@ -9,59 +9,22 @@ from ray.experimental.dag import (
 )
 from ray.experimental.dag.function_node import FunctionNode
 from ray.experimental.dag.input_node import InputNode
+from ray.experimental.dag.utils import DAGNodeNameGenerator
 from ray.serve.deployment import Deployment
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.pipeline.deployment_node import DeploymentNode
 from ray.serve.pipeline.deployment_function_node import DeploymentFunctionNode
 
 
-class DeploymentNameGenerator(object):
-    """
-    Generate unique suffix for each given deployment_name requested for name.
-    By default uses deployment_name for the very first time, then append
-    monotonic increasing id to it.
-    """
-
-    def __init__(self):
-        self.name_to_suffix: Dict[str, int] = dict()
-
-    def get_deployment_name(self, dag_node: Union[ClassNode, FunctionNode]):
-        assert isinstance(dag_node, (ClassNode, FunctionNode)), (
-            "get_deployment_name() should only be called on ClassNode or "
-            "FunctionNode instances."
-        )
-
-        deployment_name = (
-            dag_node.get_options().get("name", None) or dag_node._body.__name__
-        )
-        if deployment_name not in self.name_to_suffix:
-            self.name_to_suffix[deployment_name] = 0
-            return deployment_name
-        else:
-            self.name_to_suffix[deployment_name] += 1
-            suffix_num = self.name_to_suffix[deployment_name]
-
-            return f"{deployment_name}_{suffix_num}"
-
-    def reset(self):
-        self.name_to_suffix = dict()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        self.reset()
-
-
 def transform_ray_dag_to_serve_dag(
-    dag_node: DAGNode, deployment_name_generator: DeploymentNameGenerator
+    dag_node: DAGNode, node_name_generator: DAGNodeNameGenerator
 ):
     """
     Transform a Ray DAG to a Serve DAG. Map ClassNode to DeploymentNode with
     ray decorated body passed in, and ClassMethodNode to DeploymentMethodNode.
     """
     if isinstance(dag_node, ClassNode):
-        deployment_name = deployment_name_generator.get_deployment_name(dag_node)
+        deployment_name = node_name_generator.get_node_name(dag_node)
         return DeploymentNode(
             dag_node._body,
             deployment_name,
@@ -91,7 +54,7 @@ def transform_ray_dag_to_serve_dag(
         # TODO (jiaodong): We do not convert ray function to deployment function
         # yet, revisit this later
     ) and dag_node.get_other_args_to_resolve().get("is_from_serve_deployment"):
-        deployment_name = deployment_name_generator.get_deployment_name(dag_node)
+        deployment_name = node_name_generator.get_node_name(dag_node)
         return DeploymentFunctionNode(
             dag_node._body,
             deployment_name,
