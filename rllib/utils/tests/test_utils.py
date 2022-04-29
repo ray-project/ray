@@ -86,7 +86,7 @@ class TestUtils(unittest.TestCase):
         action = space.sample()
         action = make_action_immutable(action)
         self.assertFalse(action.flags["WRITEABLE"])
-        
+
         # Test Tuple space.
         space = gym.spaces.Tuple(
             (
