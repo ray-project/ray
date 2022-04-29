@@ -95,15 +95,12 @@ class EagerTFPolicyV2(Policy):
         # the model is created next.
         self.dist_class = None
         self.model = self.make_model()
-        # Auto-update model's inference view requirements, if recurrent.
-        self._update_model_view_requirements_from_init_state()
+
+        self._init_view_requirements()
 
         self.exploration = self._create_exploration()
         self._state_inputs = self.model.get_initial_state()
         self._is_recurrent = len(self._state_inputs) > 0
-
-        # Combine view_requirements for Model and Policy.
-        self.view_requirements.update(self.model.view_requirements)
 
         # Got to reset global_timestep again after fake run-throughs.
         self.global_timestep.assign(0)
@@ -368,6 +365,17 @@ class EagerTFPolicyV2(Policy):
                 Policy's Model.
         """
         return tf.keras.optimizers.Adam(self.config["lr"])
+
+    def _init_view_requirements(self):
+        # Auto-update model's inference view requirements, if recurrent.
+        self._update_model_view_requirements_from_init_state()
+        # Combine view_requirements for Model and Policy.
+        # TODO(jungong) : models will not carry view_requirements once they
+        # are migrated to be organic Keras models.
+        self.view_requirements.update(self.model.view_requirements)
+        # Disable env-info placeholder.
+        if SampleBatch.INFOS in self.view_requirements:
+            self.view_requirements[SampleBatch.INFOS].used_for_training = False
 
     def maybe_initialize_optimizer_and_loss(self):
         optimizers = force_list(self.optimizer())
