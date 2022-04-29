@@ -72,7 +72,11 @@ def batch_blocks(
             # ray.wait doesn't work as expected so that we use
             # the actor based prefetcher as a work around. Read
             # https://github.com/ray-project/ray/issues/23983 for details.
-            if len(block_window) > 1 and context.actor_prefetcher_enabled:
+            if (
+                len(block_window) > 1
+                and context.actor_prefetcher_enabled
+                and not ray.util.client.ray.is_connected()
+            ):
                 prefetcher = get_or_create_prefetcher()
                 prefetcher.prefetch.remote(*block_window)
             else:
