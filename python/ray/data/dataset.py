@@ -2889,10 +2889,17 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
         """
         return self._plan.execute().get_blocks()
 
-    def _experimental_lazy(self) -> "Dataset[T]":
-        """Enable lazy evaluation (experimental)."""
-        self._lazy = True
-        return self
+    def experimental_lazy(self) -> "Dataset[T]":
+        """EXPERIMENTAL: Enable lazy evaluation.
+
+        The returned dataset is a lazy dataset, where all subsequent operations on the
+        dataset won't be executed until the dataset is consumed (e.g. ``.take()``,
+        ``.iter_batches()``, ``.to_torch()``, ``.to_tf()``, etc.) or execution is
+        manually triggered via ``.fully_executed()``.
+        """
+        ds = Dataset(self._plan, self._epoch, lazy=True)
+        ds._set_uuid(self._get_uuid())
+        return ds
 
     def has_serializable_lineage(self) -> bool:
         """Whether this dataset's lineage is able to be serialized for storage and
