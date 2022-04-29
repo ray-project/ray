@@ -290,10 +290,15 @@ def test_library_usages():
     ray_usage_lib.record_library_usage("pre_init")
     ray.init()
     ray_usage_lib.record_library_usage("post_init")
+    ray.workflow.init()
+    ray.data.range(10)
+    from ray import serve
+    serve.start()
     library_usages = ray_usage_lib.get_library_usages_to_report(
         ray.experimental.internal_kv.internal_kv_get_gcs_client(), num_retries=20
     )
-    assert set(library_usages) == {"pre_init", "post_init"}
+    assert set(library_usages) == {"pre_init", "post_init", "dataset", "workflow", "serve"}
+    serve.shutdown()
     ray.shutdown()
 
 
@@ -549,6 +554,7 @@ provider:
         cluster.add_node(num_cpus=3)
         ray_usage_lib._recorded_library_usages.clear()
         from ray import tune  # noqa: F401
+        from ray.rllib.agents.ppo import PPOTrainer  # noqa: F401
 
         ray.init(address=cluster.address)
 
@@ -577,10 +583,11 @@ provider:
         @ray.remote(num_cpus=0, runtime_env={"pip": ["ray[serve]"]})
         class ServeInitator:
             def __init__(self):
-                # This is imported in the worker process
+                # This is used in the worker process
                 # so it won't be tracked as library usage.
-                from ray import serve
+                ray.data.range(10)
 
+                from ray import serve
                 serve.start()
 
                 # Usage report should be sent to the URL every 1 second.
@@ -628,7 +635,7 @@ provider:
         assert payload["total_num_gpus"] is None
         assert payload["total_memory_gb"] > 0
         assert payload["total_object_store_memory_gb"] > 0
-        assert set(payload["library_usages"]) == {"train", "tune"}
+        assert set(payload["library_usages"]) == {"rllib", "train", "tune"}
         validate(instance=payload, schema=schema)
         """
         Verify the usage_stats.json is updated.
