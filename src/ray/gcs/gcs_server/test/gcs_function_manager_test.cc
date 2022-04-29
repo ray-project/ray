@@ -41,7 +41,7 @@ TEST_F(GcsFunctionManagerTest, TestFunctionManagerGC) {
       .WillOnce(InvokeWithoutArgs(f));
   EXPECT_CALL(*kv, Del(StrEq("fun"), StartsWith("ActorClass:"), true, _))
       .WillOnce(InvokeWithoutArgs(f));
-  EXPECT_CALL(*kv, Del(StrEq("fun"), StartsWith("FunctionsToRun:"), true, _))
+  EXPECT_CALL(*kv, Del(StrEq("fun"), StartsWith("FunctionsToRun:"), false, _))
       .WillOnce(InvokeWithoutArgs(f));
   function_manager->AddJobReference(job_id);
   EXPECT_EQ(0, num_del_called);
