@@ -1,11 +1,8 @@
 import pathlib
 import tempfile
-import os
-import ray
 
 from ray.remote_function import RemoteFunction
 from ray import workflow
-from ray.workflow.storage import set_global_storage
 from ray.workflow.common import WORKFLOW_OPTIONS
 
 _GLOBAL_MARK_PATH = pathlib.Path(tempfile.gettempdir())
@@ -28,11 +25,7 @@ def check_global_mark(name="workflow"):
 
 
 def _alter_storage(new_storage):
-    set_global_storage(new_storage)
-    # alter the storage
-    ray.shutdown()
-    os.system("ray stop --force")
-    workflow.init(new_storage)
+    raise Exception("This method is deprecated.")
 
 
 def clear_marks():
