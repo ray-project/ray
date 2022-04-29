@@ -238,14 +238,12 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         logger.info("Scaling up to one worker via Ray resource request.")
         # The request for 2 cpus should give us a 1-cpu head (already present) and a
         # 1-cpu worker (will await scale-up).
-        kubectl_exec_python_script(
+        kubectl_exec_python_script(  # Interaction mode #1: `kubectl exec`
             script_name="scale_up.py",
             pod=head_pod,
             container="ray-head",
             namespace="default",
         )
-        # TODO (Dmitri) Use Ray Client and/or Ray Job submission API to submit
-        # instead of `kubectl exec`.
         logger.info("Confirming number of workers.")
         wait_for_pods(goal_num_pods=2, namespace="default")
 
@@ -270,7 +268,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         # 2. Trigger GPU upscaling by requesting placement of a GPU actor.
         logger.info("Scheduling an Actor with GPU demands.")
         # Use Ray client to validate that it works against KubeRay.
-        with ray_client_port_forward(
+        with ray_client_port_forward(  # Interaction mode #2: Ray client
             head_service="raycluster-complete-head-svc", ray_namespace="gpu-test"
         ):
             gpu_actor_placement.main()
@@ -331,7 +329,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         # Submit two {"Custom2": 3} bundles to upscale two workers with 5
         # Custom2 capacity each.
         logger.info("Scaling up workers with request for custom resources.")
-        job_logs = ray_job_submit(
+        job_logs = ray_job_submit(  # Interaction mode #3: Ray Job Submission
             script_name="scale_up_custom.py",
             head_service="raycluster-complete-head-svc",
         )
