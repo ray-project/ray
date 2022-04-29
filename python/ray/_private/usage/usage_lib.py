@@ -48,8 +48,6 @@ import json
 import logging
 import time
 import yaml
-import queue
-import threading
 
 from dataclasses import dataclass, asdict
 from typing import Optional, List
@@ -63,7 +61,7 @@ import ray.ray_constants as ray_constants
 import ray._private.usage.usage_constants as usage_constant
 from ray.experimental.internal_kv import (
     _internal_kv_initialized,
-    _internal_kv_put,
+    internal_kv_get_gcs_client,
 )
 
 logger = logging.getLogger(__name__)
@@ -142,44 +140,47 @@ class UsageStatsEnabledness(Enum):
     ENABLED_BY_DEFAULT = auto()
 
 
-_library_usage_queue = queue.Queue()
 _library_usage_recorded = set()
+
+
+def _put_library_usage(library: str):
+    assert _internal_kv_initialized()
+    try:
+        ray._private.utils.internal_kv_put_with_retry(
+            internal_kv_get_gcs_client(),
+            f"{usage_constant.LIBRARY_USAGE_PREFIX}{library}",
+            "",
+            namespace=usage_constant.USAGE_STATS_NAMESPACE,
+            num_retries=20,
+        )
+    except Exception as e:
+        logger.debug(f"Faild to put library usage, {e}")
 
 
 def record_library_usage(library: str):
     if library in _library_usage_recorded:
         return
     _library_usage_recorded.add(library)
-    _library_usage_queue.put(library)
+
+    if not _internal_kv_initialized():
+        # This happens if the library is imported before ray.init
+        return
+
+    # Only report library usage from driver to reduce
+    # the load to kv store.
+    if ray.worker.global_worker.mode == ray.SCRIPT_MODE:
+        _put_library_usage(library)
 
 
-def _report_library_usage(library_usage_queue):
-    while True:
-        library = library_usage_queue.get()
-        try:
-            _internal_kv_put(
-                f"{usage_constant.LIBRARY_USAGE_PREFIX}{library}",
-                "",
-                namespace=usage_constant.USAGE_STATS_NAMESPACE,
-            )
-        except Exception as e:
-            logger.debug(
-                f"Failed to put kv {usage_constant.LIBRARY_USAGE_PREFIX}{library}, {e}"
-            )
-            # Add back to the queue and retry later
-            library_usage_queue.put(library)
-            time.sleep(10)
-
-
-def start_report_library_usage_thread():
+def _put_pre_init_library_usage():
     assert _internal_kv_initialized()
-    thread = threading.Thread(
-        target=_report_library_usage,
-        name="usage_stats_report_library_usage",
-        args=(_library_usage_queue,),
-    )
-    thread.daemon = True
-    thread.start()
+    if ray.worker.global_worker.mode != ray.SCRIPT_MODE:
+        return
+    for library in _library_usage_recorded:
+        _put_library_usage(library)
+
+
+ray.worker._post_init_hooks.append(_put_pre_init_library_usage)
 
 
 def _usage_stats_report_url():
