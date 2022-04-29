@@ -2022,6 +2022,7 @@
     file_manager: job
 
   alert: default
+  stable: False
 
 ########################
 # Train tests
