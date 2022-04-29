@@ -537,7 +537,8 @@ def test_jobs_env_hook(job_sdk_client: JobSubmissionClient):
     run_job_script = """
 import os
 import ray
-os.environ["RAY_RUNTIME_ENV_HOOK"] = "ray.dashboard.modules.job.tests.test_http_job_server._hook"
+os.environ["RAY_RUNTIME_ENV_HOOK"] =\
+    "ray.dashboard.modules.job.tests.test_http_job_server._hook"
 ray.init(address="auto")
 """
     entrypoint = f"python -c '{run_job_script}'"
