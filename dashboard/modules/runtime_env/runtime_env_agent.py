@@ -42,16 +42,16 @@ SLEEP_FOR_TESTING_S = os.environ.get("RAY_RUNTIME_ENV_SLEEP_FOR_TESTING_S")
 
 # Sizes for the URI cache for each runtime_env field.  Defaults to 10 GB.
 WORKING_DIR_CACHE_SIZE_BYTES = int(
-    (1024 ** 3) * float(os.environ.get("RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB", 10))
+    (1024**3) * float(os.environ.get("RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB", 10))
 )
 PY_MODULES_CACHE_SIZE_BYTES = int(
-    (1024 ** 3) * float(os.environ.get("RAY_RUNTIME_ENV_PY_MODULES_CACHE_SIZE_GB", 10))
+    (1024**3) * float(os.environ.get("RAY_RUNTIME_ENV_PY_MODULES_CACHE_SIZE_GB", 10))
 )
 CONDA_CACHE_SIZE_BYTES = int(
-    (1024 ** 3) * float(os.environ.get("RAY_RUNTIME_ENV_CONDA_CACHE_SIZE_GB", 10))
+    (1024**3) * float(os.environ.get("RAY_RUNTIME_ENV_CONDA_CACHE_SIZE_GB", 10))
 )
 PIP_CACHE_SIZE_BYTES = int(
-    (1024 ** 3) * float(os.environ.get("RAY_RUNTIME_ENV_PIP_CACHE_SIZE_GB", 10))
+    (1024**3) * float(os.environ.get("RAY_RUNTIME_ENV_PIP_CACHE_SIZE_GB", 10))
 )
 
 
@@ -62,10 +62,8 @@ class CreatedEnvResult:
     # If success is True, will be a serialized RuntimeEnvContext
     # If success is False, will be an error message.
     result: str
-    # Creation time in milliseconds.
-    creation_time_ms: float
-    # Total number of retries before it is created.
-    retry_cnt: int
+    # The time to create a runtime env in ms.
+    creation_time_ms: int
 
 
 class UriType(Enum):
@@ -164,8 +162,12 @@ class ReferenceTable:
         self._decrease_reference_for_uris(uris)
 
     @property
-    def runtime_env_refs(self) -> dict:
-        """Return the runtime_env -> ref count mapping."""
+    def runtime_env_refs(self) -> Dict[str, int]:
+        """Return the runtime_env -> ref count mapping.
+
+        Returns:
+            The mapping of serialized runtime env -> ref count.
+        """
         return self._runtime_env_reference
 
 
@@ -507,7 +509,7 @@ class RuntimeEnvAgent(
                 request.serialized_allocated_resource_instances,
                 setup_timeout_seconds,
             )
-            creation_time_ms = (time.perf_counter() - start) * 1000
+            creation_time_ms = int(round((time.perf_counter() - start) * 1000, 0))
             if not successful:
                 # Recover the reference.
                 self._reference_table.decrease_reference(
@@ -578,8 +580,7 @@ class RuntimeEnvAgent(
             runtime_env_states[runtime_env].success = result.success
             if not result.success:
                 runtime_env_states[runtime_env].error = result.result
-            runtime_env_states[runtime_env].created_time_ms = result.creation_time_ms
-            runtime_env_states[runtime_env].retry_cnt = result.retry_cnt
+            runtime_env_states[runtime_env].creation_time_ms = result.creation_time_ms
 
         reply = runtime_env_agent_pb2.GetRuntimeEnvsInfoReply()
         for runtime_env_state in runtime_env_states.values():

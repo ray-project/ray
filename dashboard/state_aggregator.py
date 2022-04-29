@@ -201,7 +201,8 @@ class StateAPIManager:
         """List all runtime env information from the cluster.
 
         Returns:
-            A list of runtime env information in the cluster.
+            A list of runtime env information in the cluster. The schema of returned "dict"
+            is equivalent to the `RuntimeEnvState` protobuf message.
             We don't have id -> data mapping like other API because runtime env
             doesn't have unique ids.
         """
@@ -216,6 +217,7 @@ class StateAPIManager:
             states = reply.runtime_env_states
             for state in states:
                 data = self._message_to_dict(message=state, fields_to_decode=[])
+                # Need to deseiralize this field.
                 data["runtime_env"] = RuntimeEnv.deserialize(
                     data["runtime_env"]
                 ).to_dict()
