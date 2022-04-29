@@ -1435,7 +1435,7 @@ bool GcsActorManager::RemovePendingActor(std::shared_ptr<GcsActor> actor) {
     pending_actors_.erase(pending_it);
     return true;
   }
-  return gcs_actor_scheduler_->RemovePendingActor(actor);
+  return gcs_actor_scheduler_->CancelInFlightActorScheduling(actor);
 }
 
 size_t GcsActorManager::GetPendingActorsCount() const {

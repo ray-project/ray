@@ -700,7 +700,7 @@ TEST_F(GcsActorSchedulerTest, TestScheduleAndDestroyOneActor) {
   ASSERT_TRUE(worker_client_->ReplyPushTask());
   ASSERT_EQ(0, worker_client_->callbacks.size());
   ASSERT_EQ(0, cluster_task_manager_->GetInfeasibleQueueSize());
-  ASSERT_EQ(0, cluster_task_manager_->GetWaitingQueueSize());
+  ASSERT_EQ(0, cluster_task_manager_->GetPendingQueueSize());
   ASSERT_EQ(1, success_actors_.size());
   ASSERT_EQ(actor, success_actors_.front());
   ASSERT_EQ(actor->GetNodeID(), node_id);
@@ -839,7 +839,7 @@ TEST_F(GcsActorSchedulerTest, TestScheduleRetryWhenLeasingByGcs) {
   ASSERT_TRUE(worker_client_->ReplyPushTask());
   ASSERT_EQ(0, worker_client_->callbacks.size());
   ASSERT_EQ(0, cluster_task_manager_->GetInfeasibleQueueSize());
-  ASSERT_EQ(0, cluster_task_manager_->GetWaitingQueueSize());
+  ASSERT_EQ(0, cluster_task_manager_->GetPendingQueueSize());
   ASSERT_EQ(1, success_actors_.size());
   ASSERT_EQ(actor, success_actors_.front());
   ASSERT_EQ(actor->GetNodeID(), node_id);
@@ -886,7 +886,7 @@ TEST_F(GcsActorSchedulerTest, TestScheduleRetryWhenCreatingByGcs) {
   ASSERT_TRUE(worker_client_->ReplyPushTask());
   ASSERT_EQ(0, worker_client_->callbacks.size());
   ASSERT_EQ(0, cluster_task_manager_->GetInfeasibleQueueSize());
-  ASSERT_EQ(0, cluster_task_manager_->GetWaitingQueueSize());
+  ASSERT_EQ(0, cluster_task_manager_->GetPendingQueueSize());
   ASSERT_EQ(1, success_actors_.size());
   ASSERT_EQ(actor, success_actors_.front());
   ASSERT_EQ(actor->GetNodeID(), node_id);
@@ -934,7 +934,7 @@ TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenLeasingByGcs) {
 
   ASSERT_EQ(0, success_actors_.size());
   ASSERT_EQ(0, cluster_task_manager_->GetInfeasibleQueueSize());
-  ASSERT_EQ(0, cluster_task_manager_->GetWaitingQueueSize());
+  ASSERT_EQ(0, cluster_task_manager_->GetPendingQueueSize());
 }
 
 TEST_F(GcsActorSchedulerTest, TestLeasingCancelledWhenLeasingByGcs) {
@@ -974,7 +974,7 @@ TEST_F(GcsActorSchedulerTest, TestLeasingCancelledWhenLeasingByGcs) {
 
   ASSERT_EQ(0, success_actors_.size());
   ASSERT_EQ(0, cluster_task_manager_->GetInfeasibleQueueSize());
-  ASSERT_EQ(0, cluster_task_manager_->GetWaitingQueueSize());
+  ASSERT_EQ(0, cluster_task_manager_->GetPendingQueueSize());
 }
 
 TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenCreatingByGcs) {
@@ -1022,7 +1022,7 @@ TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenCreatingByGcs) {
 
   ASSERT_EQ(0, success_actors_.size());
   ASSERT_EQ(0, cluster_task_manager_->GetInfeasibleQueueSize());
-  ASSERT_EQ(0, cluster_task_manager_->GetWaitingQueueSize());
+  ASSERT_EQ(0, cluster_task_manager_->GetPendingQueueSize());
 }
 
 TEST_F(GcsActorSchedulerTest, TestWorkerFailedWhenCreatingByGcs) {
@@ -1067,7 +1067,7 @@ TEST_F(GcsActorSchedulerTest, TestWorkerFailedWhenCreatingByGcs) {
 
   ASSERT_EQ(0, success_actors_.size());
   ASSERT_EQ(0, cluster_task_manager_->GetInfeasibleQueueSize());
-  ASSERT_EQ(0, cluster_task_manager_->GetWaitingQueueSize());
+  ASSERT_EQ(0, cluster_task_manager_->GetPendingQueueSize());
 }
 
 TEST_F(GcsActorSchedulerTest, TestRescheduleByGcs) {
@@ -1122,7 +1122,7 @@ TEST_F(GcsActorSchedulerTest, TestRescheduleByGcs) {
   ASSERT_EQ(0, worker_client_->callbacks.size());
 
   ASSERT_EQ(0, cluster_task_manager_->GetInfeasibleQueueSize());
-  ASSERT_EQ(0, cluster_task_manager_->GetWaitingQueueSize());
+  ASSERT_EQ(0, cluster_task_manager_->GetPendingQueueSize());
   ASSERT_EQ(2, success_actors_.size());
 }
 

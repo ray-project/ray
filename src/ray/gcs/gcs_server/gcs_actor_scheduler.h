@@ -95,11 +95,11 @@ class GcsActorSchedulerInterface {
   /// \return The count of pending actors.
   virtual size_t GetPendingActorsCount() const = 0;
 
-  /// Remove a pending actor.
+  /// Cancel an in-flight actor scheduling.
   ///
-  /// \param The actor to be removed.
-  /// \return Whether the actor is removed successfully.
-  virtual bool RemovePendingActor(const std::shared_ptr<GcsActor> &actor) = 0;
+  /// \param The actor to be cancelled.
+  /// \return Whether the actor is cancelled successfully.
+  virtual bool CancelInFlightActorScheduling(const std::shared_ptr<GcsActor> &actor) = 0;
 
   virtual std::string DebugString() const = 0;
 
@@ -193,12 +193,11 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// \return The count of pending actors.
   size_t GetPendingActorsCount() const override;
 
-  /// Remove a pending actor, which considers both infeasible and waiting queues.
+  /// Cancel an in-flight actor scheduling.
   ///
-  /// \param The actor to be removed.
-  /// \return Whether the actor is found (at the infeasible or waiting queue) and removed
-  /// successfully.
-  bool RemovePendingActor(const std::shared_ptr<GcsActor> &actor) override;
+  /// \param The actor to be cancelled.
+  /// \return Whether the actor is cancelled successfully.
+  bool CancelInFlightActorScheduling(const std::shared_ptr<GcsActor> &actor) override;
 
  protected:
   /// The GcsLeasedWorker is kind of abstraction of remote leased worker inside raylet. It

@@ -376,7 +376,7 @@ size_t ClusterTaskManager::GetInfeasibleQueueSize() const {
   return count;
 }
 
-size_t ClusterTaskManager::GetWaitingQueueSize() const {
+size_t ClusterTaskManager::GetPendingQueueSize() const {
   size_t count = 0;
   for (const auto &cls_entry : tasks_to_schedule_) {
     count += cls_entry.second.size();

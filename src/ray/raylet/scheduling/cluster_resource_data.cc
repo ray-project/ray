@@ -59,6 +59,9 @@ float NodeResources::CalculateCriticalResourceUtilization() const {
       continue;
     }
     auto available = this->available.Get(ResourceID(i)).Double();
+    // Gcs scheduler handles the `normal_task_resources` specifically. So when calculating
+    // the available resources, we have to take one more step to take that into account.
+    // For raylet scheduling, the `normal_task_resources` is always empty.
     if (this->normal_task_resources.Has(ResourceID(i))) {
       available -= this->normal_task_resources.Get(ResourceID(i)).Double();
       if (available < 0) {

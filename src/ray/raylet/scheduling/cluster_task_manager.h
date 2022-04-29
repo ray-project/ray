@@ -129,7 +129,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// Get the count of tasks in `infeasible_tasks_`.
   size_t GetInfeasibleQueueSize() const;
   /// Get the count of tasks in `tasks_to_schedule_`.
-  size_t GetWaitingQueueSize() const;
+  size_t GetPendingQueueSize() const;
 
  private:
   void TryScheduleInfeasibleTask();

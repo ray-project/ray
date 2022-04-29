@@ -365,6 +365,10 @@ void GcsActorScheduler::HandleWorkerLeaseGrantedReply(
       RAY_CHECK(node_to_actors_when_leasing_[actor->GetNodeID()]
                     .emplace(actor->GetActorID())
                     .second);
+      // When receving the lease request, the spillback node only detects whether there
+      // are enough resources locally. If not, it rejects the request and we will then go
+      // back to the actor's owner's node for scheduling again. This design aims to
+      // reducing scheduling latency due to the stale resource view of spillback nodes.
       actor->SetGrantOrReject(true);
       LeaseWorkerFromNode(actor, spill_back_node);
     } else {
@@ -655,10 +659,11 @@ void GcsActorScheduler::ReturnActorAcquiredResources(std::shared_ptr<GcsActor> a
 
 size_t GcsActorScheduler::GetPendingActorsCount() const {
   return cluster_task_manager_->GetInfeasibleQueueSize() +
-         cluster_task_manager_->GetWaitingQueueSize();
+         cluster_task_manager_->GetPendingQueueSize();
 }
 
-bool GcsActorScheduler::RemovePendingActor(const std::shared_ptr<GcsActor> &actor) {
+bool GcsActorScheduler::CancelInFlightActorScheduling(
+    const std::shared_ptr<GcsActor> &actor) {
   return cluster_task_manager_->CancelTask(
       actor->GetCreationTaskSpecification().TaskId());
 }
