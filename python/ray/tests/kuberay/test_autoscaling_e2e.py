@@ -267,8 +267,8 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         )
         # 2. Trigger GPU upscaling by requesting placement of a GPU actor.
         logger.info("Scheduling an Actor with GPU demands.")
-        # Use Ray client to validate that it works against KubeRay.
-        with ray_client_port_forward(  # Interaction mode #2: Ray client
+        # Use Ray Client to validate that it works against KubeRay.
+        with ray_client_port_forward(  # Interaction mode #2: Ray Client
             head_service="raycluster-complete-head-svc", ray_namespace="gpu-test"
         ):
             gpu_actor_placement.main()
