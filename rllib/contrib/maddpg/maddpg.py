@@ -10,11 +10,10 @@ and the README for how to run with the multi-agent particle envs.
 """
 
 import logging
-from typing import Type
+from typing import Type, Optional
 
 from ray.rllib.agents.trainer import COMMON_CONFIG, with_common_config
 from ray.rllib.agents.dqn.dqn import DQNTrainer
-from ray.rllib.contrib.maddpg.maddpg_policy import MADDPGTFPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils import merge_dicts
@@ -22,8 +21,58 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.typing import TrainerConfigDict
 
+from ray.rllib.contrib.maddpg.maddpg_tf_policy import MADDPGTFPolicy
+from ray.rllib.contrib.maddpg.maddpg_torch_policy import MADDPGTorchPolicy
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+
+def maddpg_learn_on_batch(multi_agent_batch, workers, config):
+    policies = dict(
+        workers.local_worker().foreach_trainable_policy(lambda p, i: (i, p))
+    )
+    samples = {}
+    train_batch_size = config["train_batch_size"]
+    framework = config["framework"]
+
+    # Modify keys.
+    for pid, p in policies.items():
+        i = p.config["agent_id"]
+        keys = multi_agent_batch.policy_batches[pid].keys()
+        keys = ["_".join([k, str(i)]) for k in keys]
+        samples.update(dict(zip(keys, multi_agent_batch.policy_batches[pid].values())))
+
+    # Make ops and feed_dict to get "new_obs" from target action sampler.
+    new_obs_n = list()
+    new_act_n = list()
+    for k, v in samples.items():
+        if "new_obs" in k:
+            new_obs_n.append(v)
+
+    if framework == "torch":
+
+        def sampler(policy, obs):
+            return policy.compute_actions(obs)[0]
+
+        new_act_n = [
+            sampler(policy, obs) for policy, obs in zip(policies.values(), new_obs_n)
+        ]
+    else:
+        new_obs_ph_n = [p.new_obs_ph for p in policies.values()]
+        for i, p in enumerate(policies.values()):
+            feed_dict = {new_obs_ph_n[i]: new_obs_n[i]}
+            new_act = p.get_session().run(p.target_act_sampler, feed_dict)
+            samples.update({"new_actions_%d" % i: new_act})
+
+    samples.update(
+        {"new_actions_%d" % i: new_act for i, new_act in enumerate(new_act_n)}
+    )
+
+    # Share samples among agents.
+    policy_batches = {pid: SampleBatch(samples) for pid in policies.keys()}
+    return MultiAgentBatch(policy_batches, train_batch_size)
+
 
 # fmt: off
 # __sphinx_doc_begin__
@@ -88,6 +137,8 @@ DEFAULT_CONFIG = with_common_config({
     "multiagent": merge_dicts(COMMON_CONFIG["multiagent"], {
         "replay_mode": "lockstep",
     }),
+    # Callback to share multi-agent batch for maddpg
+    "before_learn_on_batch": maddpg_learn_on_batch,
 
     # === Optimization ===
     # Learning rate for the critic (Q-function) optimizer.
@@ -114,6 +165,22 @@ DEFAULT_CONFIG = with_common_config({
     # Number of env steps to optimize for before returning
     "timesteps_per_iteration": 0,
 
+    # Extra configuration that disables exploration.
+    "evaluation_config": {
+        "explore": False
+    },
+
+    # torch-specific model configs
+    "twin_q": False,
+    # delayed policy update
+    "policy_delay": 1,
+    # target policy smoothing
+    # (this also replaces OU exploration noise with IID Gaussian exploration noise, for now)
+    "smooth_target_policy": False,
+    "use_huber": False,
+    "huber_threshold": 1.0,
+    "l2_reg": None,
+
     # === Parallelism ===
     # Number of workers for collecting samples with. This only makes sense
     # to increase if your environment is particularly slow to sample, or if
@@ -131,33 +198,6 @@ DEFAULT_CONFIG = with_common_config({
 # fmt: on
 
 
-def before_learn_on_batch(multi_agent_batch, policies, train_batch_size):
-    samples = {}
-
-    # Modify keys.
-    for pid, p in policies.items():
-        i = p.config["agent_id"]
-        keys = multi_agent_batch.policy_batches[pid].keys()
-        keys = ["_".join([k, str(i)]) for k in keys]
-        samples.update(dict(zip(keys, multi_agent_batch.policy_batches[pid].values())))
-
-    # Make ops and feed_dict to get "new_obs" from target action sampler.
-    new_obs_ph_n = [p.new_obs_ph for p in policies.values()]
-    new_obs_n = list()
-    for k, v in samples.items():
-        if "new_obs" in k:
-            new_obs_n.append(v)
-
-    for i, p in enumerate(policies.values()):
-        feed_dict = {new_obs_ph_n[i]: new_obs_n[i]}
-        new_act = p.get_session().run(p.target_act_sampler, feed_dict)
-        samples.update({"new_actions_%d" % i: new_act})
-
-    # Share samples among agents.
-    policy_batches = {pid: SampleBatch(samples) for pid in policies.keys()}
-    return MultiAgentBatch(policy_batches, train_batch_size)
-
-
 class MADDPGTrainer(DQNTrainer):
     @classmethod
     @override(DQNTrainer)
@@ -165,23 +205,10 @@ class MADDPGTrainer(DQNTrainer):
         return DEFAULT_CONFIG
 
     @override(DQNTrainer)
-    def validate_config(self, config: TrainerConfigDict) -> None:
-        """Adds the `before_learn_on_batch` hook to the config.
-
-        This hook is called explicitly prior to TrainOneStep() in the execution
-        setups for DQN and APEX.
-        """
-        # Call super's validation method.
-        super().validate_config(config)
-
-        def f(batch, workers, config):
-            policies = dict(
-                workers.local_worker().foreach_policy_to_train(lambda p, i: (i, p))
-            )
-            return before_learn_on_batch(batch, policies, config["train_batch_size"])
-
-        config["before_learn_on_batch"] = f
-
-    @override(DQNTrainer)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
-        return MADDPGTFPolicy
+    def get_default_policy_class(
+        self, config: TrainerConfigDict
+    ) -> Optional[Type[Policy]]:
+        if config["framework"] == "torch":
+            return MADDPGTorchPolicy
+        else:
+            return MADDPGTFPolicy
