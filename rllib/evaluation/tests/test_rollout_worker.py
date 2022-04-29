@@ -406,7 +406,7 @@ class TestRolloutWorker(unittest.TestCase):
             clip_actions=False,
             batch_mode="complete_episodes",
         )
-        sample = ev.sample()
+        ev.sample()
         ev.stop()
 
     def test_reward_clipping(self):
