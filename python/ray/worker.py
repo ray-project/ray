@@ -379,8 +379,11 @@ class Worker:
         need to call export_initialization_functions_on_all_workers to push
         the functions to kv so that the other worker will be able to run them.
         """
-
-        self.cached_functions_to_run.append(function)
+        if self.cached_functions_to_run is None:
+            logger.warning(f"Fail to run {function} on all workers because it's called after"
+                           " ray.init has been called.")
+        else:
+            self.cached_functions_to_run.append(function)
 
     def export_initialization_functions_on_all_workers(self):
         # Attempt to pickle the function before we need it. This could
@@ -409,7 +412,7 @@ class Worker:
             )
             > 0
         )
-        self.cached_functions_to_run = []
+        self.cached_functions_to_run = None
 
     def main_loop(self):
         """The main loop a worker runs to receive and execute tasks."""
