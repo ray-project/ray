@@ -34,18 +34,18 @@ class TestDDPG(unittest.TestCase):
 
     def test_ddpg_compilation(self):
         """Test whether a DDPGTrainer can be built with both frameworks."""
-        config = ddpg.DEFAULT_CONFIG.copy()
-        config["seed"] = 42
-        config["num_workers"] = 1
-        config["num_envs_per_worker"] = 2
-        config["learning_starts"] = 0
-        config["exploration_config"]["random_timesteps"] = 100
+        config = ddpg.DDPGConfig()
+        config.seed = 42
+        config.num_workers = 1
+        config.num_envs_per_worker = 2
+        config.learning_starts = 0
+        config.exploration_config["random_timesteps"] = 100
 
         num_iterations = 1
 
         # Test against all frameworks.
         for _ in framework_iterator(config, with_eager_tracing=True):
-            trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v1")
+            trainer = config.build(env="Pendulum-v1")
             for i in range(num_iterations):
                 results = trainer.train()
                 check_train_results(results)
@@ -63,11 +63,11 @@ class TestDDPG(unittest.TestCase):
 
     def test_ddpg_checkpoint_save_and_restore(self):
         """Test whether a DDPGTrainer can save and load checkpoints."""
-        config = ddpg.DEFAULT_CONFIG.copy()
-        config["num_workers"] = 1
-        config["num_envs_per_worker"] = 2
-        config["learning_starts"] = 0
-        config["exploration_config"]["random_timesteps"] = 100
+        config = ddpg.DDPGConfig()
+        config.num_workers = 1
+        config.num_envs_per_worker = 2
+        config.learning_starts = 0
+        config.exploration_config["random_timesteps"] = 100
 
         # Test against all frameworks.
         for _ in framework_iterator(config, with_eager_tracing=True):
@@ -80,16 +80,16 @@ class TestDDPG(unittest.TestCase):
 
     def test_ddpg_exploration_and_with_random_prerun(self):
         """Tests DDPG's Exploration (w/ random actions for n timesteps)."""
-        core_config = ddpg.DEFAULT_CONFIG.copy()
-        core_config["num_workers"] = 0  # Run locally.
+        core_config = ddpg.DDPGConfig()
+        core_config.num_workers = 0  # Run locally.
         obs = np.array([0.0, 0.1, -0.1])
 
         # Test against all frameworks.
         for _ in framework_iterator(core_config):
             config = core_config.copy()
-            config["seed"] = 42
+            config.seed = 42
             # Default OUNoise setup.
-            trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v1")
+            trainer = config.build(env="Pendulum-v1")
             # Setting explore=False should always return the same action.
             a_ = trainer.compute_single_action(obs, explore=False)
             check(trainer.get_policy().global_timestep, 1)
@@ -141,24 +141,24 @@ class TestDDPG(unittest.TestCase):
 
     def test_ddpg_loss_function(self):
         """Tests DDPG loss function results across all frameworks."""
-        config = ddpg.DEFAULT_CONFIG.copy()
+        config = ddpg.DDPGConfig()
         # Run locally.
-        config["seed"] = 42
-        config["num_workers"] = 0
-        config["learning_starts"] = 0
-        config["twin_q"] = True
-        config["use_huber"] = True
-        config["huber_threshold"] = 1.0
-        config["gamma"] = 0.99
+        config.seed = 42
+        config.num_workers = 0
+        config.learning_starts = 0
+        config.twin_q = True
+        config.use_huber = True
+        config.huber_threshold = 1.0
+        config.gamma = 0.99
         # Make this small (seems to introduce errors).
-        config["l2_reg"] = 1e-10
-        config["prioritized_replay"] = False
+        config.l2_reg = 1e-10
+        config.prioritized_replay = False
         # Use very simple nets.
-        config["actor_hiddens"] = [10]
-        config["critic_hiddens"] = [10]
+        config.actor_hiddens = [10]
+        config.critic_hiddens = [10]
         # Make sure, timing differences do not affect trainer.train().
-        config["min_time_s_per_reporting"] = 0
-        config["timesteps_per_iteration"] = 100
+        config.min_time_s_per_reporting = 0
+        config.timesteps_per_iteration = 100
 
         map_ = {
             # Normal net.
@@ -232,7 +232,7 @@ class TestDDPG(unittest.TestCase):
             config, frameworks=("tf", "torch"), session=True
         ):
             # Generate Trainer and get its default Policy object.
-            trainer = ddpg.DDPGTrainer(config=config, env=env)
+            trainer = config.build(env=env)
             policy = trainer.get_policy()
             p_sess = None
             if sess:

@@ -29,16 +29,16 @@ class TestSimpleQ(unittest.TestCase):
 
     def test_simple_q_compilation(self):
         """Test whether a SimpleQTrainer can be built on all frameworks."""
-        config = dqn.SIMPLE_Q_DEFAULT_CONFIG.copy()
+        config = dqn.SimpleQConfig()
         # Run locally.
-        config["num_workers"] = 0
+        config.num_workers = 0
         # Test with compression.
-        config["compress_observations"] = True
+        config.compress_observations = True
 
         num_iterations = 2
 
         for _ in framework_iterator(config, with_eager_tracing=True):
-            trainer = dqn.SimpleQTrainer(config=config, env="CartPole-v0")
+            trainer = config.build(env="CartPole-v0")
             rw = trainer.workers.local_worker()
             for i in range(num_iterations):
                 sb = rw.sample()
