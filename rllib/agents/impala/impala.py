@@ -235,22 +235,24 @@ def gather_experiences_directly(workers, config):
     #     )
     # )
 
+    train_batches = rollouts.for_each(
+        lambda batch: batch.decompress_if_needed()
+    ).for_each(Identity())
     train_batches = (
-        rollouts.for_each(lambda batch: batch.decompress_if_needed())
-        .for_each(Identity())
-    )
-    train_batches = train_batches.for_each(
+        train_batches.for_each(
             MixInReplay(
                 num_slots=config["replay_buffer_num_slots"],
                 replay_proportion=config["replay_proportion"],
             )
-        ).flatten().combine(
+        )
+        .flatten()
+        .combine(
             ConcatBatches(
                 min_batch_size=config["train_batch_size"],
                 count_steps_by=config["multiagent"]["count_steps_by"],
             )
         )
-
+    )
 
     return train_batches
 
@@ -380,6 +382,7 @@ class ImpalaTrainer(Trainer):
             # Create extra aggregation workers and assign each rollout worker to
             # one of them.
             self.batches_to_place_on_learner = []
+            self.batch_being_built = []
             if self.config["num_aggregation_workers"] > 0:
                 # This spawns `num_aggregation_workers` actors that aggregate
                 # experiences coming from RolloutWorkers in parallel. We force
@@ -444,7 +447,6 @@ class ImpalaTrainer(Trainer):
                 unprocessed_sample_batches
             )
         else:
-            import ipdb; ipdb.set_trace()
             batch = self.process_experiences_directly(unprocessed_sample_batches)
 
         self.concatenate_batches_and_pre_queue(batch)
@@ -587,11 +589,12 @@ class ImpalaTrainer(Trainer):
         def aggregate_into_larger_batch():
             if (
                 sum(b.count for b in self.batch_being_built)
-                > self.config["train_batch_size"]
+                >= self.config["train_batch_size"]
             ):
                 batch_to_add = SampleBatch.concat_samples(self.batch_being_built)
                 self.batches_to_place_on_learner.append(batch_to_add)
                 self.batch_being_built = []
+
         for batch in batches:
             self.batch_being_built.append(batch)
             aggregate_into_larger_batch()
@@ -617,17 +620,16 @@ class ImpalaTrainer(Trainer):
             }
         return sample_batches
 
-    def place_processed_samples_on_learner_queue(
-        self, processed_sample_batches: List[SampleBatchType]
-    ) -> None:
+    def place_processed_samples_on_learner_queue(self) -> None:
         self._counters["num_samples_added_to_queue"] = 0
-        for batch in processed_sample_batches:
+
+        while self.batches_to_place_on_learner:
+            batch = self.batches_to_place_on_learner[0]
             try:
                 self._learner_thread.inqueue.put(batch, block=False)
+                self.batches_to_place_on_learner.pop(0)
                 self._counters[NUM_ENV_STEPS_SAMPLED] += batch.count
-                self._counters[
-                    NUM_AGENT_STEPS_SAMPLED
-                ] += batch.agent_steps()
+                self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
                 self._counters["num_samples_added_to_queue"] = batch.count
             except queue.Full:
                 self._counters["num_times_learner_queue_full"] += 1
@@ -666,7 +668,7 @@ class ImpalaTrainer(Trainer):
             for sample_batch_ref in refs_batch
         ]
         if not batches:
-            return None
+            return processed_batches
         if batches and isinstance(batches[0], ray.ObjectRef):
             batches = ray.get(batches)
         for batch in batches:

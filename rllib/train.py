@@ -284,7 +284,7 @@ def run(args, parser):
         experiments,
         scheduler=create_scheduler(args.scheduler, **args.scheduler_config),
         resume=args.resume,
-        verbose=0,
+        verbose=verbose,
         progress_reporter=progress_reporter,
         concurrent=True,
     )
