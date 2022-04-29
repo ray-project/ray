@@ -1,22 +1,24 @@
-from gym.spaces import Tuple, Discrete, Dict
+import gym
 import logging
 import numpy as np
 import tree  # pip install dm_tree
+from typing import Dict, List, Optional, Tuple
 
 import ray
 from ray.rllib.agents.qmix.mixers import VDNMixer, QMixer
 from ray.rllib.agents.qmix.model import RNNModel, _get_size
 from ray.rllib.env.multi_agent_env import ENV_STATE
 from ray.rllib.env.wrappers.group_agents_wrapper import GROUP_REWARDS
-from ray.rllib.models.torch.torch_action_dist import TorchCategorical
-from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.rnn_sequencing import chop_into_sequences
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import _unpack_obs
+from ray.rllib.models.torch.torch_action_dist import TorchCategorical
+from ray.rllib.policy.rnn_sequencing import chop_into_sequences
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.torch_policy import TorchPolicy
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.typing import TensorType
 
 # Torch must be installed.
 torch, nn = try_import_torch(error=True)
@@ -152,7 +154,7 @@ class QMixLoss(nn.Module):
 
 
 # TODO(sven): Make this a TorchPolicy child via `build_policy_class`.
-class QMixTorchPolicy(Policy):
+class QMixTorchPolicy(TorchPolicy):
     """QMix impl. Assumes homogeneous agents for now.
 
     You must use MultiAgentEnv.with_agent_groups() to group agents
@@ -168,7 +170,7 @@ class QMixTorchPolicy(Policy):
         _validate(obs_space, action_space)
         config = dict(ray.rllib.agents.qmix.qmix.DEFAULT_CONFIG, **config)
         self.framework = "torch"
-        super().__init__(obs_space, action_space, config)
+
         self.n_agents = len(obs_space.original_space.spaces)
         config["model"]["n_agents"] = self.n_agents
         self.n_actions = action_space.spaces[0].n
@@ -180,7 +182,7 @@ class QMixTorchPolicy(Policy):
         )
 
         agent_obs_space = obs_space.original_space.spaces[0]
-        if isinstance(agent_obs_space, Dict):
+        if isinstance(agent_obs_space, gym.spaces.Dict):
             space_keys = set(agent_obs_space.spaces.keys())
             if "obs" not in space_keys:
                 raise ValueError("Dict obs space must have subspace labeled `obs`")
@@ -228,6 +230,8 @@ class QMixTorchPolicy(Policy):
             default_model=RNNModel,
         ).to(self.device)
 
+        super().__init__(obs_space, action_space, config, model=self.model)
+
         self.exploration = self._create_exploration()
 
         # Setup the mixer network.
@@ -273,19 +277,22 @@ class QMixTorchPolicy(Policy):
             eps=config["optim_eps"],
         )
 
-    @override(Policy)
-    def compute_actions(
+    @override(TorchPolicy)
+    def compute_actions_from_input_dict(
         self,
-        obs_batch,
-        state_batches=None,
-        prev_action_batch=None,
-        prev_reward_batch=None,
-        info_batch=None,
-        episodes=None,
-        explore=None,
-        timestep=None,
-        **kwargs
-    ):
+        input_dict: Dict[str, TensorType],
+        explore: bool = None,
+        timestep: Optional[int] = None,
+        **kwargs,
+    ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
+
+        obs_batch = input_dict[SampleBatch.OBS]
+        state_batches = []
+        i = 0
+        while f"state_in_{i}" in input_dict:
+            state_batches.append(input_dict[f"state_in_{i}"])
+            i += 1
+
         explore = explore if explore is not None else self.config["explore"]
         obs_batch, action_mask, _ = self._unpack_observation(obs_batch)
         # We need to ensure we do not use the env global state
@@ -319,7 +326,11 @@ class QMixTorchPolicy(Policy):
 
         return tuple(actions.transpose([1, 0])), hiddens, {}
 
-    @override(Policy)
+    @override(TorchPolicy)
+    def compute_actions(self, *args, **kwargs):
+        return self.compute_actions_from_input_dict(*args, **kwargs)
+
+    @override(TorchPolicy)
     def compute_log_likelihoods(
         self,
         actions,
@@ -331,7 +342,7 @@ class QMixTorchPolicy(Policy):
         obs_batch, action_mask, _ = self._unpack_observation(obs_batch)
         return np.zeros(obs_batch.size()[0])
 
-    @override(Policy)
+    @override(TorchPolicy)
     def learn_on_batch(self, samples):
         obs_batch, action_mask, env_global_state = self._unpack_observation(
             samples[SampleBatch.CUR_OBS]
@@ -456,14 +467,14 @@ class QMixTorchPolicy(Policy):
         }
         return {LEARNER_STATS_KEY: stats}
 
-    @override(Policy)
+    @override(TorchPolicy)
     def get_initial_state(self):  # initial RNN state
         return [
             s.expand([self.n_agents, -1]).cpu().numpy()
             for s in self.model.get_initial_state()
         ]
 
-    @override(Policy)
+    @override(TorchPolicy)
     def get_weights(self):
         return {
             "model": self._cpu_dict(self.model.state_dict()),
@@ -474,7 +485,7 @@ class QMixTorchPolicy(Policy):
             else None,
         }
 
-    @override(Policy)
+    @override(TorchPolicy)
     def set_weights(self, weights):
         self.model.load_state_dict(self._device_dict(weights["model"]))
         self.target_model.load_state_dict(self._device_dict(weights["target_model"]))
@@ -484,13 +495,13 @@ class QMixTorchPolicy(Policy):
                 self._device_dict(weights["target_mixer"])
             )
 
-    @override(Policy)
+    @override(TorchPolicy)
     def get_state(self):
         state = self.get_weights()
         state["cur_epsilon"] = self.cur_epsilon
         return state
 
-    @override(Policy)
+    @override(TorchPolicy)
     def set_state(self, state):
         self.set_weights(state)
         self.set_epsilon(state["cur_epsilon"])
@@ -564,20 +575,20 @@ class QMixTorchPolicy(Policy):
 
 def _validate(obs_space, action_space):
     if not hasattr(obs_space, "original_space") or not isinstance(
-        obs_space.original_space, Tuple
+        obs_space.original_space, gym.spaces.Tuple
     ):
         raise ValueError(
             "Obs space must be a Tuple, got {}. Use ".format(obs_space)
             + "MultiAgentEnv.with_agent_groups() to group related "
             "agents for QMix."
         )
-    if not isinstance(action_space, Tuple):
+    if not isinstance(action_space, gym.spaces.Tuple):
         raise ValueError(
             "Action space must be a Tuple, got {}. ".format(action_space)
             + "Use MultiAgentEnv.with_agent_groups() to group related "
             "agents for QMix."
         )
-    if not isinstance(action_space.spaces[0], Discrete):
+    if not isinstance(action_space.spaces[0], gym.spaces.Discrete):
         raise ValueError(
             "QMix requires a discrete action space, got {}".format(
                 action_space.spaces[0]

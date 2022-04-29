@@ -861,7 +861,9 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
                 ) from connEx
             # Wait a little bit.
             time.sleep(delay)
-            delay *= 2
+            # Make sure the retry interval doesn't increase too large, which will
+            # affect the delivery time of the Ray cluster.
+            delay = 1000 if i >= 10 else delay * 2
         else:
             break
     else:

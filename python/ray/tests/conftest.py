@@ -32,6 +32,7 @@ from ray._private.test_utils import (
     get_and_run_node_killer,
 )
 import ray.util.client.server.server as ray_client_server
+from typing import Tuple
 
 
 @pytest.fixture
@@ -689,6 +690,124 @@ def pytest_runtest_makereport(item, call):
     # execute all other hooks to obtain the report object
     outcome = yield
     rep = outcome.get_result()
+
+    append_short_test_summary(rep)
+    create_ray_logs_for_failed_test(rep)
+
+
+def append_short_test_summary(rep):
+    """Writes a short summary txt for failed tests to be printed later."""
+    if rep.when != "call":
+        return
+
+    summary_dir = os.environ.get("RAY_TEST_SUMMARY_DIR")
+
+    if platform.system() != "Linux":
+        summary_dir = os.environ.get("RAY_TEST_SUMMARY_DIR_HOST")
+
+    if not summary_dir:
+        return
+
+    if not os.path.exists(summary_dir):
+        os.makedirs(summary_dir, exist_ok=True)
+
+    test_name = rep.nodeid.replace(os.sep, "::")
+
+    header_file = os.path.join(summary_dir, "000_header.txt")
+    summary_file = os.path.join(summary_dir, test_name + ".txt")
+
+    if rep.passed and os.path.exists(summary_file):
+        # The test succeeded after failing, thus it is flaky.
+        # We do not want to annotate flaky tests just now, so remove report.
+        os.remove(summary_file)
+        return
+
+    # Only consider failed tests from now on
+    if not rep.failed:
+        return
+
+    # No failing test information
+    if rep.longrepr is None:
+        return
+
+    # No failing test information
+    if not hasattr(rep.longrepr, "chain"):
+        return
+
+    if not os.path.exists(header_file):
+        with open(header_file, "wt") as fp:
+            test_label = os.environ.get("BUILDKITE_LABEL", "Unknown")
+            job_id = os.environ.get("BUILDKITE_JOB_ID")
+
+            fp.write(f"### Pytest failures for: [{test_label}](#{job_id})\n\n")
+
+    # Use `wt` here to overwrite so we only have one result per test (exclude retries)
+    with open(summary_file, "wt") as fp:
+        fp.write(_get_markdown_annotation(rep))
+
+
+def _get_markdown_annotation(rep) -> str:
+    # Main traceback is the last in the chain (where the last error is raised)
+    main_tb, main_loc, _ = rep.longrepr.chain[-1]
+    markdown = ""
+
+    # Header: Main error message
+    markdown += f"#### {rep.nodeid}\n\n"
+    markdown += "<details>\n"
+    markdown += f"<summary>{main_loc.message}</summary>\n\n"
+
+    # Add link to test definition
+    test_file, test_lineno, _test_node = rep.location
+    test_path, test_url = _get_repo_github_path_and_link(
+        os.path.abspath(test_file), test_lineno
+    )
+    markdown += f"Link to test: [{test_path}:{test_lineno}]({test_url})\n\n"
+
+    # Print main traceback
+    markdown += "##### Traceback\n\n"
+    markdown += "```\n"
+    markdown += str(main_tb)
+    markdown += "\n```\n\n"
+
+    # Print link to test definition in github
+    path, url = _get_repo_github_path_and_link(main_loc.path, main_loc.lineno)
+    markdown += f"[{path}:{main_loc.lineno}]({url})\n\n"
+
+    # If this is a longer exception chain, users can expand the full traceback
+    if len(rep.longrepr.chain) > 1:
+        markdown += "<details><summary>Full traceback</summary>\n\n"
+
+        # Here we just print each traceback and the link to the respective
+        # lines in GutHub
+        for tb, loc, _ in rep.longrepr.chain:
+            path, url = _get_repo_github_path_and_link(loc.path, loc.lineno)
+
+            markdown += "```\n"
+            markdown += str(tb)
+            markdown += "\n```\n\n"
+            markdown += f"[{path}:{loc.lineno}]({url})\n\n"
+
+        markdown += "</details>\n"
+
+    markdown += "</details>\n\n"
+    return markdown
+
+
+def _get_repo_github_path_and_link(file: str, lineno: int) -> Tuple[str, str]:
+    base_url = "https://github.com/ray-project/ray/blob/{commit}/{path}#L{lineno}"
+
+    commit = os.environ.get("BUILDKITE_COMMIT")
+
+    if not commit:
+        return file, ""
+
+    path = os.path.relpath(file, "/ray")
+
+    return path, base_url.format(commit=commit, path=path, lineno=lineno)
+
+
+def create_ray_logs_for_failed_test(rep):
+    """Creates artifact zip of /tmp/ray/session_latest/logs for failed tests"""
 
     # We temporarily restrict to Linux until we have artifact dirs
     # for Windows and Mac

@@ -1,5 +1,6 @@
 import os
 import shutil
+from typing import Union, List, Dict, Any
 
 import numpy as np
 import pandas as pd
@@ -15,13 +16,18 @@ from functools import partial
 import ray
 
 from ray.tests.conftest import *  # noqa
+from ray.types import ObjectRef
+from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.datasource import (
+    Datasource,
     DummyOutputDatasource,
     PathPartitionFilter,
     PathPartitionEncoder,
     PartitionStyle,
+    SimpleTorchDatasource,
+    WriteResult,
 )
-from ray.data.block import BlockAccessor
+from ray.data.impl.arrow_block import ArrowRow
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.datasource.parquet_datasource import PARALLELIZE_META_FETCH_THRESHOLD
 from ray.data.tests.conftest import *  # noqa
@@ -1964,6 +1970,148 @@ def test_csv_write_block_path_provider(
         ]
     )
     assert df.equals(ds_df)
+
+
+def test_torch_datasource(ray_start_regular_shared, local_path):
+    import torchvision
+
+    # Download datasets to separate folders to prevent interference.
+    torch_dataset_root = os.path.join(local_path, "torch")
+    ray_dataset_root = os.path.join(local_path, "ray")
+
+    torch_dataset = torchvision.datasets.MNIST(torch_dataset_root, download=True)
+    expected_data = list(torch_dataset)
+
+    def dataset_factory():
+        return torchvision.datasets.MNIST(ray_dataset_root, download=True)
+
+    ray_dataset = ray.data.read_datasource(
+        SimpleTorchDatasource(), parallelism=1, dataset_factory=dataset_factory
+    )
+    actual_data = list(next(ray_dataset.iter_batches(batch_size=None)))
+
+    assert actual_data == expected_data
+
+
+def test_torch_datasource_value_error(ray_start_regular_shared, local_path):
+    import torchvision
+
+    dataset = torchvision.datasets.MNIST(local_path, download=True)
+
+    with pytest.raises(ValueError):
+        # `dataset_factory` should be a function, not a Torch dataset.
+        ray.data.read_datasource(
+            SimpleTorchDatasource(),
+            parallelism=1,
+            dataset_factory=dataset,
+        )
+
+
+# NOTE: The last test using the shared ray_start_regular_shared cluster must use the
+# shutdown_only fixture so the shared cluster is shut down, otherwise the below
+# test_write_datasource_ray_remote_args test, which uses a cluster_utils cluster, will
+# fail with a double-init.
+def test_csv_read_no_header(shutdown_only, tmp_path):
+    from pyarrow import csv
+
+    file_path = os.path.join(tmp_path, "test.csv")
+    df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df.to_csv(file_path, index=False, header=False)
+    ds = ray.data.read_csv(
+        file_path,
+        read_options=csv.ReadOptions(column_names=["one", "two"]),
+    )
+    out_df = ds.to_pandas()
+    assert df.equals(out_df)
+
+
+class NodeLoggerOutputDatasource(Datasource[Union[ArrowRow, int]]):
+    """A writable datasource that logs node IDs of write tasks, for testing."""
+
+    def __init__(self):
+        @ray.remote
+        class DataSink:
+            def __init__(self):
+                self.rows_written = 0
+                self.enabled = True
+                self.node_ids = set()
+
+            def write(self, node_id: str, block: Block) -> str:
+                block = BlockAccessor.for_block(block)
+                if not self.enabled:
+                    raise ValueError("disabled")
+                self.rows_written += block.num_rows()
+                self.node_ids.add(node_id)
+                return "ok"
+
+            def get_rows_written(self):
+                return self.rows_written
+
+            def get_node_ids(self):
+                return self.node_ids
+
+            def set_enabled(self, enabled):
+                self.enabled = enabled
+
+        self.data_sink = DataSink.remote()
+        self.num_ok = 0
+        self.num_failed = 0
+
+    def do_write(
+        self,
+        blocks: List[ObjectRef[Block]],
+        metadata: List[BlockMetadata],
+        ray_remote_args: Dict[str, Any],
+        **write_args,
+    ) -> List[ObjectRef[WriteResult]]:
+        data_sink = self.data_sink
+
+        @ray.remote
+        def write(b):
+            node_id = ray.get_runtime_context().node_id.hex()
+            return ray.get(data_sink.write.remote(node_id, b))
+
+        tasks = []
+        for b in blocks:
+            tasks.append(write.options(**ray_remote_args).remote(b))
+        return tasks
+
+    def on_write_complete(self, write_results: List[WriteResult]) -> None:
+        assert all(w == "ok" for w in write_results), write_results
+        self.num_ok += 1
+
+    def on_write_failed(
+        self, write_results: List[ObjectRef[WriteResult]], error: Exception
+    ) -> None:
+        self.num_failed += 1
+
+
+def test_write_datasource_ray_remote_args(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(
+        resources={"foo": 100},
+        num_cpus=1,
+    )
+    cluster.add_node(resources={"bar": 100}, num_cpus=1)
+
+    ray.init(cluster.address)
+
+    @ray.remote
+    def get_node_id():
+        return ray.get_runtime_context().node_id.hex()
+
+    bar_node_id = ray.get(get_node_id.options(resources={"bar": 1}).remote())
+
+    output = NodeLoggerOutputDatasource()
+    ds = ray.data.range(100, parallelism=10)
+    # Pin write tasks to
+    ds.write_datasource(output, ray_remote_args={"resources": {"bar": 1}})
+    assert output.num_ok == 1
+    assert output.num_failed == 0
+    assert ray.get(output.data_sink.get_rows_written.remote()) == 100
+
+    node_ids = ray.get(output.data_sink.get_node_ids.remote())
+    assert node_ids == {bar_node_id}
 
 
 if __name__ == "__main__":

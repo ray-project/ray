@@ -108,6 +108,9 @@ struct GcsServerMocker {
       return GrantWorkerLease("", 0, WorkerID::FromRandom(), node_id, NodeID::Nil());
     }
 
+    void GetResourceLoad(
+        const ray::rpc::ClientCallback<ray::rpc::GetResourceLoadReply> &) override {}
+
     // Trigger reply to RequestWorkerLease.
     bool GrantWorkerLease(const std::string &address,
                           int port,

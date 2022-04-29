@@ -1,5 +1,6 @@
 from typing import Optional
 import threading
+import os
 
 import ray
 from ray.util.annotations import DeveloperAPI
@@ -31,6 +32,11 @@ DEFAULT_OPTIMIZE_FUSE_SHUFFLE_STAGES = True
 # Wether to use actor based block prefetcher.
 DEFAULT_ACTOR_PREFETCHER_ENABLED = True
 
+# Whether to use push-based shuffle by default.
+DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
+    os.environ.get("RAY_DATASET_PUSH_BASED_SHUFFLE", None)
+)
+
 
 @DeveloperAPI
 class DatasetContext:
@@ -50,6 +56,7 @@ class DatasetContext:
         optimize_fuse_read_stages: bool,
         optimize_fuse_shuffle_stages: bool,
         actor_prefetcher_enabled: bool,
+        use_push_based_shuffle: bool,
     ):
         """Private constructor (use get_current() instead)."""
         self.block_owner = block_owner
@@ -60,6 +67,7 @@ class DatasetContext:
         self.optimize_fuse_read_stages = optimize_fuse_read_stages
         self.optimize_fuse_shuffle_stages = optimize_fuse_shuffle_stages
         self.actor_prefetcher_enabled = actor_prefetcher_enabled
+        self.use_push_based_shuffle = use_push_based_shuffle
 
     @staticmethod
     def get_current() -> "DatasetContext":
@@ -82,6 +90,7 @@ class DatasetContext:
                     optimize_fuse_read_stages=DEFAULT_OPTIMIZE_FUSE_READ_STAGES,
                     optimize_fuse_shuffle_stages=DEFAULT_OPTIMIZE_FUSE_SHUFFLE_STAGES,
                     actor_prefetcher_enabled=DEFAULT_ACTOR_PREFETCHER_ENABLED,
+                    use_push_based_shuffle=DEFAULT_USE_PUSH_BASED_SHUFFLE,
                 )
 
             if (

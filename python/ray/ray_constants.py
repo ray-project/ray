@@ -181,7 +181,12 @@ REPORTER_UPDATE_INTERVAL_MS = env_integer("REPORTER_UPDATE_INTERVAL_MS", 2500)
 # Number of attempts to ping the Redis server. See
 # `services.py::wait_for_redis_to_start()` and
 # `services.py::create_redis_client()`
-START_REDIS_WAIT_RETRIES = env_integer("RAY_START_REDIS_WAIT_RETRIES", 16)
+START_REDIS_WAIT_RETRIES = env_integer("RAY_START_REDIS_WAIT_RETRIES", 60)
+
+# Temporary flag to disable log processing in the dashboard.  This is useful
+# if the dashboard is overloaded by logs and failing to process other
+# dashboard API requests (e.g. Job Submission).
+DISABLE_DASHBOARD_LOG_INFO = env_integer("RAY_DISABLE_DASHBOARD_LOG_INFO", 0)
 
 LOGGER_FORMAT = "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s"
 LOGGER_FORMAT_HELP = f"The logging format. default='{LOGGER_FORMAT}'"

@@ -17,6 +17,7 @@ from ray.rllib.utils.typing import (
     MultiAgentDict,
     MultiEnvDict,
 )
+from ray.util import log_once
 
 # If the obs space is Dict type, look for the global state under this key.
 ENV_STATE = "state"
@@ -156,7 +157,8 @@ class MultiAgentEnv(gym.Env):
         if self._spaces_in_preferred_format:
             return self.action_space.contains(x)
 
-        logger.warning("action_space_contains() has not been implemented")
+        if log_once("action_space_contains"):
+            logger.warning("action_space_contains() has not been implemented")
         return True
 
     @ExperimentalAPI
@@ -219,7 +221,8 @@ class MultiAgentEnv(gym.Env):
             samples = self.observation_space.sample()
             samples = {agent_id: samples[agent_id] for agent_id in agent_ids}
             return samples
-        logger.warning("observation_space_sample() has not been implemented")
+        if log_once("observation_space_sample"):
+            logger.warning("observation_space_sample() has not been implemented")
         return {}
 
     @PublicAPI
