@@ -25,8 +25,8 @@ NodeState::NodeState() { sync_message_versions_taken_.fill(-1); }
 bool NodeState::SetComponent(MessageType cid,
                              const ReporterInterface *reporter,
                              ReceiverInterface *receiver) {
-  if (cid < static_cast<MessageType>(kComponentArraySize) &&
-      reporters_[cid] == nullptr && receivers_[cid] == nullptr) {
+  if (cid < static_cast<MessageType>(kComponentArraySize) && reporters_[cid] == nullptr &&
+      receivers_[cid] == nullptr) {
     reporters_[cid] = reporter;
     receivers_[cid] = receiver;
     return true;

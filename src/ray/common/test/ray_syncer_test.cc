@@ -115,8 +115,7 @@ class RaySyncerTest : public ::testing::Test {
 TEST_F(RaySyncerTest, NodeStateCreateSyncMessage) {
   auto node_status = std::make_unique<NodeState>();
   node_status->SetComponent(MessageType::RESOURCE_MANAGER, nullptr, nullptr);
-  ASSERT_EQ(std::nullopt,
-            node_status->CreateSyncMessage(MessageType::RESOURCE_MANAGER));
+  ASSERT_EQ(std::nullopt, node_status->CreateSyncMessage(MessageType::RESOURCE_MANAGER));
 
   auto reporter = std::make_unique<MockReporterInterface>();
   ASSERT_TRUE(node_status->SetComponent(MessageType::RESOURCE_MANAGER,
@@ -134,9 +133,8 @@ TEST_F(RaySyncerTest, NodeStateCreateSyncMessage) {
 
 TEST_F(RaySyncerTest, NodeStateConsume) {
   auto node_status = std::make_unique<NodeState>();
-  node_status->SetComponent(MessageType::RESOURCE_MANAGER,
-                            nullptr,
-                            GetReceiver(MessageType::RESOURCE_MANAGER));
+  node_status->SetComponent(
+      MessageType::RESOURCE_MANAGER, nullptr, GetReceiver(MessageType::RESOURCE_MANAGER));
   auto from_node_id = NodeID::FromRandom();
   // The first time receiver the message
   auto msg = MakeMessage(MessageType::RESOURCE_MANAGER, 0, from_node_id);
