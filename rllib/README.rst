@@ -53,6 +53,70 @@ Install RLlib and run your first experiment on your laptop in seconds:
     $ rllib train --run APPO --env CartPole-v0 --torch
 
 
+Algorithms Supported
+----------------------
+
+Offline RL:
+- [BC] :ref:`Behavior Cloning (BC; derived from MARWIL implementation) <bc>`
+- [DQN] :ref:`Deep Q Networks (DQN) <dqn>`
+- [DDPG] :ref:`Deep Deterministic Policy Gradients (DDPG) <ddpg>`
+- [TD3] :ref:`Deep Deterministic Policy Gradients (TD3) <deep-deterministic-policy-gradients-ddpg-td3>`
+- [SAC] :ref:`Soft Actor Critic (SAC) <sac>`
+- [CQL] :ref:`Conservative Q-Learning (CQL) <cql>`
+
+Model-free RL:
+- [DQN] :ref:`Deep Q Networks (DQN) <dqn>`
+- [Rainbow] :ref:`Deep Q Networks (Rainbow) <dqn>`
+- [PDQN] :ref:`Deep Q Networks (Parametric DQN) <dqn>`
+- [APEX-DQN] :ref:`Distributed Prioritized Experience Replay (Ape-X DQN) <distributed-prioritized-experience-replay-ape-x>`
+- [DDPG] :ref:`Deep Deterministic Policy Gradients (DDPG) <ddpg>`
+- [TD3] :ref:`Deep Deterministic Policy Gradients (TD3) <deep-deterministic-policy-gradients-ddpg-td3>`
+- [APEX-DDPG] :ref:`Distributed Prioritized Experience Replay (Ape-X DDPG) <distributed-prioritized-experience-replay-ape-x>`
+- [MAML] :ref:`Model-agnostic Meta-Learning (contrib/MAML) <model-agnostic-meta-learning-maml>`
+- [RE3] :ref:`Random encoders (contrib/RE3) <re3-random-encoders-for-efficient-exploration>`
+
+Model-based RL:
+- [MB-MPO] :ref:`Model-Based Meta-Policy-Optimization (MB-MPO) <mbmpo>`
+- [Dreamer] :ref:`Image-only Dreamer (contrib/Dreamer) <dreamer>`
+- [RE3] :ref:`Random encoders (contrib/RE3) <re3-random-encoders-for-efficient-exploration>`
+
+Derivative-free algorithms:
+- [ARS] :ref:`Augmented Random Search (ARS) <augmented-random-search-ars>`
+- [ES] :ref:`Evolution Strategies <evolution-strategies>`
+- [MARWIL] :ref:`Monotonic Advantage Re-Weighted Imitation Learning (MARWIL)<monotonic-advantage-re-weighted-imitation-learning-marwil>`
+- [BC-MARWIL] :ref:`Behavior Cloning (BC; derived from MARWIL implementation) <behavior-cloning-bc-derived-from-marwil-implementation>`
+
+RL for games: 
+- [AlphaZero] :ref:`Single-Player Alpha Zero (contrib/AlphaZero) <alphazero>`
+- [PPO] :ref:`Proximal Policy Optimization (PPO) <proximal-policy-optimization-ppo>`
+- [APPO] :ref:`Asynchronous Proximal Policy Optimization (APPO) <asynchronous-proximal-policy-optimization-appo>`
+- [DD-PPO] :ref:`Decentralized Distributed Proximal Policy Optimization (DD-PPO) <decentralized-distributed-proximal-policy-optimization-dd-ppo>`
+- [IMPALA] :ref:`Importance Weighted Actor-Learner Architecture (IMPALA) <importance-weighted-actor-learner-architecture-impala>`
+- [A2C] :ref:`Advantage Actor-Critic (A2C) <a3c>`
+- [A3C] :ref:`Advantage Actor-Critic (A3C) <a3c>`
+- [R2D2] :ref:`Recurrent Replay Distributed DQN (R2D2) <recurrent-replay-distributed-dqn-r2d2>`
+- [QMIX] :ref:`QMIX Monotonic Value Factorisation (QMIX) <multi-agent-methods>`
+- [VDN] :ref:`QMIX Monotonic Value Factorisation (VDN) <multi-agent-methods>`
+- [IQN] :ref:`QMIX Monotonic Value Factorisation (IQN) <multi-agent-methods>`
+- [MADDPG] :ref:`Multi-Agent Deep Deterministic Policy Gradient (contrib/MADDPG) <multi-agent-deep-deterministic-policy-gradient-contrib-maddpg>`
+- [PS] :ref:`Parameter Sharing <parameter-sharing>`
+- [FIL] :ref:`Fully Independent Learning <fully-independent-learning>`
+- [SCM] :ref:`Shared Critic Methods <shared-critic-methods`
+
+RL for recommender systems:
+- [SLATEQ] :ref:`Augmented Random Search (SlateQ) <slateq>`
+
+Bandits:
+- [LinUCB] :ref:`Linear Upper Confidence Bound (BanditLinUCBTrainer) <lin-ucb>`
+- [LinTS] :ref:`Linear Thompson Sampling (BanditLinTSTrainer) <lints>`
+
+Others: 
+- [PG] :ref:`Policy Gradients <policy-gradients>`
+- [ICM] :ref:`Curiosity (ICM: Intrinsic Curiosity Module) <curiosity-icm-intrinsic-curiosity-mod>`
+
+A list of all the algorithms can be found `[here] <https://docs.ray.io/en/master/rllib/rllib-algorithms.html>`__ . 
+
+
 Quick First Experiment
 ----------------------
 
