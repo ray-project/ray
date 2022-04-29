@@ -13,7 +13,6 @@ import logging
 from typing import List, Optional, Type, Union
 
 from ray.util.debug import log_once
-from ray.rllib.agents import with_common_config
 from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.agents.trainer_config import TrainerConfig
@@ -201,23 +200,6 @@ class PPOConfig(TrainerConfig):
             self.kl_target = kl_target
 
         return self
-
-
-# Deprecated: Use ray.rllib.agents.ppo.PPOConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(PPOConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG",
-        new="ray.rllib.agents.ppo.ppo.PPOConfig(...)",
-        error=False,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()
 
 
 class UpdateKL:
@@ -527,3 +509,20 @@ class PPOTrainer(Trainer):
         return StandardMetricsReporting(train_op, workers, config).for_each(
             lambda result: warn_about_bad_reward_scales(config, result)
         )
+
+
+# Deprecated: Use ray.rllib.agents.ppo.PPOConfig instead!
+class _deprecated_default_config(dict):
+    def __init__(self):
+        super().__init__(PPOConfig().to_dict())
+
+    @Deprecated(
+        old="ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG",
+        new="ray.rllib.agents.ppo.ppo.PPOConfig(...)",
+        error=False,
+    )
+    def __getitem__(self, item):
+        return super().__getitem__(item)
+
+
+DEFAULT_CONFIG = _deprecated_default_config()

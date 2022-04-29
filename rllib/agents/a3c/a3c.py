@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional, Type, Union
 
 from ray.actor import ActorHandle
 from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
-from ray.rllib.agents.trainer import Trainer, with_common_config
+from ray.rllib.agents.trainer import Trainer
 from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
@@ -61,7 +61,7 @@ class A3CConfig(TrainerConfig):
     """
 
     def __init__(self, trainer_class=None):
-        """Initializes a PPOConfig instance."""
+        """Initializes a A3CConfig instance."""
         super().__init__(trainer_class=trainer_class or A3CTrainer)
 
         # fmt: off
@@ -153,28 +153,11 @@ class A3CConfig(TrainerConfig):
         return self
 
 
-# Deprecated: Use ray.rllib.agents.ppo.PPOConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(A3CConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG",
-        new="ray.rllib.agents.ppo.ppo.PPOConfig(...)",
-        error=False,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()
-
-
 class A3CTrainer(Trainer):
     @classmethod
     @override(Trainer)
     def get_default_config(cls) -> TrainerConfigDict:
-        return DEFAULT_CONFIG
+        return A3CConfig().to_dict()
 
     @override(Trainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
@@ -284,3 +267,20 @@ class A3CTrainer(Trainer):
         train_op = grads.for_each(ApplyGradients(workers, update_all=False))
 
         return StandardMetricsReporting(train_op, workers, config)
+
+
+# Deprecated: Use ray.rllib.agents.a3c.A3CConfig instead!
+class _deprecated_default_config(dict):
+    def __init__(self):
+        super().__init__(A3CConfig().to_dict())
+
+    @Deprecated(
+        old="ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG",
+        new="ray.rllib.agents.ppo.ppo.PPOConfig(...)",
+        error=False,
+    )
+    def __getitem__(self, item):
+        return super().__getitem__(item)
+
+
+DEFAULT_CONFIG = _deprecated_default_config()

@@ -23,7 +23,6 @@ from ray.rllib.execution.train_ops import (
     TrainOneStep,
 )
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics import (
@@ -74,7 +73,7 @@ class A2CConfig(A3CConfig):
     """
 
     def __init__(self):
-        """Initializes a PPOConfig instance."""
+        """Initializes a A2CConfig instance."""
         super().__init__(trainer_class=A2CTrainer)
 
         # fmt: off
@@ -117,28 +116,11 @@ class A2CConfig(A3CConfig):
         return self
 
 
-# Deprecated: Use ray.rllib.agents.a3c.A2CConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(A2CConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.agents.a3c.a2c.A2C_DEFAULT_CONFIG",
-        new="ray.rllib.agents.a3c.a2c.A2CConfig(...)",
-        error=False,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-A2C_DEFAULT_CONFIG = _deprecated_default_config()
-
-
 class A2CTrainer(A3CTrainer):
     @classmethod
     @override(A3CTrainer)
     def get_default_config(cls) -> TrainerConfigDict:
-        return A2C_DEFAULT_CONFIG
+        return A2CConfig().to_dict()
 
     @override(A3CTrainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
@@ -299,3 +281,20 @@ class A2CTrainer(A3CTrainer):
             ).for_each(train_step_op)
 
         return StandardMetricsReporting(train_op, workers, config)
+
+
+# Deprecated: Use ray.rllib.agents.a3c.A2CConfig instead!
+class _deprecated_default_config(dict):
+    def __init__(self):
+        super().__init__(A2CConfig().to_dict())
+
+    @Deprecated(
+        old="ray.rllib.agents.a3c.a2c.A2C_DEFAULT_CONFIG",
+        new="ray.rllib.agents.a3c.a2c.A2CConfig(...)",
+        error=False,
+    )
+    def __getitem__(self, item):
+        return super().__getitem__(item)
+
+
+A2C_DEFAULT_CONFIG = _deprecated_default_config()
