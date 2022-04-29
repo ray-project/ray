@@ -308,7 +308,7 @@ def make_action_immutable(obj):
 
     Can also be used with any tree-like structure containing either
     dictionaries, numpy arrays or already immutable objects per se.
-    Note, however that `tree.map_structure()` will in general not 
+    Note, however that `tree.map_structure()` will in general not
     include the shallow object containing all others and therefore
     immutability will hold only for all objects contained in it.
     Use `tree.traverse(fun, action, top_down=False)` to include
@@ -332,7 +332,7 @@ def make_action_immutable(obj):
         return obj
     elif isinstance(obj, OrderedDict):
         return MappingProxyType(dict(obj))
-    elif isinstance(obj, dict):                
+    elif isinstance(obj, dict):
         return MappingProxyType(obj)
     else:
         return obj
