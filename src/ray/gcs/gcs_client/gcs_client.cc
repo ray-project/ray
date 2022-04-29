@@ -75,8 +75,7 @@ void GcsSubscriberClient::PubsubCommandBatch(
 
 }  // namespace
 
-GcsClient::GcsClient(const GcsClientOptions &options)
-    : options_(options) {}
+GcsClient::GcsClient(const GcsClientOptions &options) : options_(options) {}
 
 Status GcsClient::Connect(instrumented_io_context &io_service) {
   auto resubscribe_func = [this]() {
@@ -90,9 +89,7 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
   // Connect to gcs service.
   client_call_manager_ = std::make_unique<rpc::ClientCallManager>(io_service);
   gcs_rpc_client_ = std::make_shared<rpc::GcsRpcClient>(
-      options_.gcs_address_,
-      options_.gcs_port_,
-      *client_call_manager_);
+      options_.gcs_address_, options_.gcs_port_, *client_call_manager_);
 
   rpc::Address gcs_address;
   gcs_address.set_ip_address(options_.gcs_address_);
@@ -132,9 +129,7 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
   return Status::OK();
 }
 
-void GcsClient::Disconnect() {
-
-}
+void GcsClient::Disconnect() {}
 
 }  // namespace gcs
 }  // namespace ray
