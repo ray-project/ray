@@ -77,6 +77,8 @@ if [[ "$platform" == "linux" ]]; then
 
     # Install the dependencies to run the tests.
     "$PIP_CMD" install -q aiohttp aiosignal frozenlist grpcio pytest==5.4.3 requests proxy.py
+    "$PIP_CMD" freeze
+    "$PYTHON_EXE" -m pip freeze
 
     # Run a simple test script to make sure that the wheel works.
     for SCRIPT in "${TEST_SCRIPTS[@]}"; do
@@ -118,6 +120,8 @@ elif [[ "$platform" == "macosx" ]]; then
 
     # Install the dependencies to run the tests.
     "$PIP_CMD" install -q aiohttp aiosignal frozenlist grpcio pytest==5.4.3 requests proxy.py
+    "$PIP_CMD" freeze
+    "$PYTHON_EXE" -m pip freeze
 
     # Run a simple test script to make sure that the wheel works.
     for SCRIPT in "${TEST_SCRIPTS[@]}"; do
