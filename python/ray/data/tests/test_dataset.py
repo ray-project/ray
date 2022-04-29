@@ -97,6 +97,27 @@ def test_basic_actors(shutdown_only, pipelined):
         ds.map(lambda x: x + 1, compute=ray.data.ActorPoolStrategy(4, 4)).take()
     ) == list(range(1, n + 1))
 
+    # Test setting custom max inflight tasks.
+    ds = ray.data.range(10, parallelism=5)
+    ds = maybe_pipeline(ds, pipelined)
+    assert (
+        sorted(
+            ds.map(
+                lambda x: x + 1,
+                compute=ray.data.ActorPoolStrategy(max_tasks_in_flight_per_actor=3),
+            ).take()
+        )
+        == list(range(1, 11))
+    )
+
+    # Test invalid max tasks inflight arg.
+    with pytest.raises(ValueError):
+        ray.data.range(10).map(
+            lambda x: x,
+            compute=ray.data.ActorPoolStrategy(max_tasks_in_flight_per_actor=0),
+        )
+
+    # Test min no more than max check.
     with pytest.raises(ValueError):
         ray.data.range(10).map(lambda x: x, compute=ray.data.ActorPoolStrategy(8, 4))
 
@@ -231,8 +252,9 @@ def test_dataset_lineage_serialization(shutdown_only, lazy):
 
 
 @pytest.mark.parametrize("lazy", [False, True])
-def test_dataset_lineage_serialization_in_memory(shutdown_only, lazy):
+def test_dataset_lineage_serialization_unsupported(shutdown_only, lazy):
     ray.init()
+    # In-memory data sources not supported.
     ds = ray.data.from_items(list(range(10)))
     ds = maybe_lazy(ds, lazy)
     ds = ds.map(lambda x: x + 1)
@@ -240,6 +262,43 @@ def test_dataset_lineage_serialization_in_memory(shutdown_only, lazy):
 
     with pytest.raises(ValueError):
         ds.serialize_lineage()
+
+    # In-memory data source unions not supported.
+    ds = ray.data.from_items(list(range(10)))
+    ds = maybe_lazy(ds, lazy)
+    ds1 = ray.data.from_items(list(range(10, 20)))
+    ds2 = ds.union(ds1)
+
+    with pytest.raises(ValueError):
+        ds2.serialize_lineage()
+
+    # Post-lazy-read unions not supported.
+    ds = ray.data.range(10).map(lambda x: x + 1)
+    ds = maybe_lazy(ds, lazy)
+    ds1 = ray.data.range(20).map(lambda x: 2 * x)
+    ds2 = ds.union(ds1)
+
+    with pytest.raises(ValueError):
+        ds2.serialize_lineage()
+
+    # Lazy read unions supported.
+    ds = ray.data.range(10)
+    ds = maybe_lazy(ds, lazy)
+    ds1 = ray.data.range(20)
+    ds2 = ds.union(ds1)
+
+    serialized_ds = ds2.serialize_lineage()
+    ds3 = Dataset.deserialize_lineage(serialized_ds)
+    assert ds3.take(30) == list(range(10)) + list(range(20))
+
+    # Zips not supported.
+    ds = ray.data.from_items(list(range(10)))
+    ds = maybe_lazy(ds, lazy)
+    ds1 = ray.data.from_items(list(range(10, 20)))
+    ds2 = ds.zip(ds1)
+
+    with pytest.raises(ValueError):
+        ds2.serialize_lineage()
 
 
 @pytest.mark.parametrize("pipelined", [False, True])
@@ -3360,59 +3419,64 @@ def test_column_name_type_check(ray_start_regular_shared):
 @pytest.mark.parametrize("use_push_based_shuffle", [False, True])
 def test_random_shuffle(shutdown_only, pipelined, use_push_based_shuffle):
     ctx = ray.data.context.DatasetContext.get_current()
-    ctx.use_push_based_shuffle = use_push_based_shuffle
 
-    def range(n, parallelism=200):
-        ds = ray.data.range(n, parallelism=parallelism)
+    try:
+        original = ctx.use_push_based_shuffle
+        ctx.use_push_based_shuffle = use_push_based_shuffle
+
+        def range(n, parallelism=200):
+            ds = ray.data.range(n, parallelism=parallelism)
+            if pipelined:
+                pipe = ds.repeat(2)
+                pipe.random_shuffle = pipe.random_shuffle_each_window
+                return pipe
+            else:
+                return ds
+
+        r1 = range(100).random_shuffle().take(999)
+        r2 = range(100).random_shuffle().take(999)
+        assert r1 != r2, (r1, r2)
+
+        r1 = range(100, parallelism=1).random_shuffle().take(999)
+        r2 = range(100, parallelism=1).random_shuffle().take(999)
+        assert r1 != r2, (r1, r2)
+
+        r1 = range(100).random_shuffle(num_blocks=1).take(999)
+        r2 = range(100).random_shuffle(num_blocks=1).take(999)
+        assert r1 != r2, (r1, r2)
+
+        r0 = range(100, parallelism=5).take(999)
+        r1 = range(100, parallelism=5).random_shuffle(seed=0).take(999)
+        r2 = range(100, parallelism=5).random_shuffle(seed=0).take(999)
+        r3 = range(100, parallelism=5).random_shuffle(seed=12345).take(999)
+        assert r1 == r2, (r1, r2)
+        assert r1 != r0, (r1, r0)
+        assert r1 != r3, (r1, r3)
+
+        r0 = ray.data.range_arrow(100, parallelism=5).take(999)
+        r1 = ray.data.range_arrow(100, parallelism=5).random_shuffle(seed=0).take(999)
+        r2 = ray.data.range_arrow(100, parallelism=5).random_shuffle(seed=0).take(999)
+        assert r1 == r2, (r1, r2)
+        assert r1 != r0, (r1, r0)
+
+        # Test move.
+        ds = range(100, parallelism=2)
+        r1 = ds.random_shuffle().take(999)
         if pipelined:
-            pipe = ds.repeat(2)
-            pipe.random_shuffle = pipe.random_shuffle_each_window
-            return pipe
+            with pytest.raises(RuntimeError):
+                ds = ds.map(lambda x: x).take(999)
         else:
-            return ds
-
-    r1 = range(100).random_shuffle().take(999)
-    r2 = range(100).random_shuffle().take(999)
-    assert r1 != r2, (r1, r2)
-
-    r1 = range(100, parallelism=1).random_shuffle().take(999)
-    r2 = range(100, parallelism=1).random_shuffle().take(999)
-    assert r1 != r2, (r1, r2)
-
-    r1 = range(100).random_shuffle(num_blocks=1).take(999)
-    r2 = range(100).random_shuffle(num_blocks=1).take(999)
-    assert r1 != r2, (r1, r2)
-
-    r0 = range(100, parallelism=5).take(999)
-    r1 = range(100, parallelism=5).random_shuffle(seed=0).take(999)
-    r2 = range(100, parallelism=5).random_shuffle(seed=0).take(999)
-    r3 = range(100, parallelism=5).random_shuffle(seed=12345).take(999)
-    assert r1 == r2, (r1, r2)
-    assert r1 != r0, (r1, r0)
-    assert r1 != r3, (r1, r3)
-
-    r0 = ray.data.range_arrow(100, parallelism=5).take(999)
-    r1 = ray.data.range_arrow(100, parallelism=5).random_shuffle(seed=0).take(999)
-    r2 = ray.data.range_arrow(100, parallelism=5).random_shuffle(seed=0).take(999)
-    assert r1 == r2, (r1, r2)
-    assert r1 != r0, (r1, r0)
-
-    # Test move.
-    ds = range(100, parallelism=2)
-    r1 = ds.random_shuffle().take(999)
-    if pipelined:
-        with pytest.raises(RuntimeError):
             ds = ds.map(lambda x: x).take(999)
-    else:
-        ds = ds.map(lambda x: x).take(999)
-    r2 = range(100).random_shuffle().take(999)
-    assert r1 != r2, (r1, r2)
+        r2 = range(100).random_shuffle().take(999)
+        assert r1 != r2, (r1, r2)
 
-    # Test empty dataset.
-    ds = ray.data.from_items([])
-    r1 = ds.random_shuffle()
-    assert r1.count() == 0
-    assert r1.take() == ds.take()
+        # Test empty dataset.
+        ds = ray.data.from_items([])
+        r1 = ds.random_shuffle()
+        assert r1.count() == 0
+        assert r1.take() == ds.take()
+    finally:
+        ctx.use_push_based_shuffle = original
 
 
 def test_random_shuffle_check_random(shutdown_only):
