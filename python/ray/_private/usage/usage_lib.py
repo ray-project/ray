@@ -151,7 +151,7 @@ def _put_library_usage(library_usage: str):
             f"{usage_constant.LIBRARY_USAGE_PREFIX}{library_usage}",
             "",
             namespace=usage_constant.USAGE_STATS_NAMESPACE,
-            num_retries=20,
+            num_retries=5,
         )
     except Exception as e:
         logger.debug(f"Faild to put library usage, {e}")
