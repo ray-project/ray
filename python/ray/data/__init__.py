@@ -4,6 +4,7 @@ from ray.data.read_api import (
     range_arrow,
     range_tensor,
     read_parquet,
+    read_parquet_bulk,
     read_json,
     read_csv,
     read_binary_files,
@@ -59,5 +60,6 @@ __all__ = [
     "read_json",
     "read_numpy",
     "read_parquet",
+    "read_parquet_bulk",
     "set_progress_bars",
 ]
