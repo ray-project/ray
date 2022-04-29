@@ -90,7 +90,7 @@ class TunerTest(unittest.TestCase):
         # prep_v2 = StandardScaler(["worst concavity", "worst smoothness"])
         param_space = {
             "scaling_config": {
-                "num_workers": 1,
+                "num_workers": tune.grid_search([1, 2]),
             },
             # "preprocessor": tune.grid_search([prep_v1, prep_v2]),
             "datasets": {
@@ -136,7 +136,7 @@ class TunerTest(unittest.TestCase):
         # prep_v2 = StandardScaler(["worst concavity", "worst smoothness"])
         param_space = {
             "scaling_config": {
-                "num_workers": 1,
+                "num_workers": tune.grid_search([1, 2]),
             },
             # "preprocessor": tune.grid_search([prep_v1, prep_v2]),
             "datasets": {
