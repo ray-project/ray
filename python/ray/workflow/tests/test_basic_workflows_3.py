@@ -24,6 +24,9 @@ def test_wf_run(workflow_start_regular, tmp_path):
 
 
 def test_wf_no_run():
+    # workflow should be able to run without explicit init
+    ray.shutdown()
+
     @ray.remote
     def f1():
         pass
@@ -35,9 +38,7 @@ def test_wf_no_run():
         pass
 
     f = workflow.create(f2.bind(*[f1.bind() for _ in range(10)]))
-
-    with pytest.raises(Exception):
-        f.run()
+    f.run()
 
 
 def test_dedupe_indirect(workflow_start_regular, tmp_path):
