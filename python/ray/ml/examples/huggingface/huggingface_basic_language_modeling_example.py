@@ -32,8 +32,11 @@ def main(
     use_gpu=False,
     smoke_test=False,
 ):
-    # block_size = tokenizer.model_max_length
     block_size = 128
+
+    # Uncomment the following if the maximum length thr model was
+    # pretrained with can fit in your memory.
+    # block_size = tokenizer.model_max_length
 
     # Run this as a remote function to avoid downloading on the driver
     @ray.remote
