@@ -37,8 +37,7 @@ def test_raydp_to_spark(spark):
     assert values == rows
 
 
-def test_raydp_to_torch_iter(spark_on_ray_small):
-    spark = spark_on_ray_small
+def test_raydp_to_torch_iter(spark):
     spark_df = spark.createDataFrame([(1, 0), (2, 0), (3, 1)], ["feature", "label"])
     data_size = spark_df.count()
     features = [r["feature"] for r in spark_df.take(data_size)]
