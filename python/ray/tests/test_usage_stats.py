@@ -286,6 +286,11 @@ def test_usage_lib_cluster_metadata_generation(monkeypatch, ray_start_cluster):
 
 
 def test_library_usages():
+    if os.environ.get("RAY_MINIMAL") == "1":
+        # Doesn't work with minimal installation
+        # since we import serve.
+        return
+
     ray_usage_lib._recorded_library_usages.clear()
     ray_usage_lib.record_library_usage("pre_init")
     ray.init()
@@ -560,12 +565,12 @@ provider:
         cluster = ray_start_cluster
         cluster.add_node(num_cpus=3)
         ray_usage_lib._recorded_library_usages.clear()
-        from ray import tune  # noqa: F401
-        from ray.rllib.agents.ppo import PPOTrainer  # noqa: F401
+        if os.environ.get("RAY_MINIMAL") != "1":
+            from ray import tune  # noqa: F401
+            from ray.rllib.agents.ppo import PPOTrainer  # noqa: F401
+            from ray import train  # noqa: F401
 
         ray.init(address=cluster.address)
-
-        from ray import train  # noqa: F401
 
         @ray.remote(num_cpus=0)
         class StatusReporter:
@@ -592,8 +597,6 @@ provider:
             def __init__(self):
                 # This is used in the worker process
                 # so it won't be tracked as library usage.
-                ray.data.range(10)
-
                 from ray import serve
 
                 serve.start()
@@ -643,7 +646,10 @@ provider:
         assert payload["total_num_gpus"] is None
         assert payload["total_memory_gb"] > 0
         assert payload["total_object_store_memory_gb"] > 0
-        assert set(payload["library_usages"]) == {"rllib", "train", "tune"}
+        if os.environ.get("RAY_MINIMAL") == "1":
+            assert set(payload["library_usages"]) == set()
+        else:
+            assert set(payload["library_usages"]) == {"rllib", "train", "tune"}
         validate(instance=payload, schema=schema)
         """
         Verify the usage_stats.json is updated.
