@@ -337,7 +337,7 @@ class HTTPProxyActor:
         http_middlewares: Optional[List["starlette.middleware.Middleware"]] = None,
     ):  # noqa: F821
         configure_component_logger(
-            component_name="http_proxy", message_type=node_id_to_ip_addr(node_id)
+            component_name="http_proxy", component_id=node_id_to_ip_addr(node_id)
         )
 
         if http_middlewares is None:

@@ -77,7 +77,7 @@ class ServeController:
         _override_controller_namespace: Optional[str] = None,
     ):
         configure_component_logger(
-            component_name="controller", message_type=str(os.getpid())
+            component_name="controller", component_id=str(os.getpid())
         )
 
         # Used to read/write checkpoints.
