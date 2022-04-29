@@ -726,6 +726,7 @@ class ImpalaTrainer(Trainer):
             and self._counters["steps_since_broadcast"]
             >= self.config["broadcast_interval"]
             and self._learner_thread.weights_updated
+            and self.self.workers_that_need_updates
         ):
             weights = ray.put(self.workers.local_worker().get_weights())
             self._counters["steps_since_broadcast"] = 0

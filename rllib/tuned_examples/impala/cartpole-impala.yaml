@@ -11,9 +11,9 @@ cartpole-impala:
         vtrace_drop_last_ts: false
         _disable_execution_plan_api:
             grid_search:
-                - true
+                - True
 
-        num_aggregation_workers:
-            grid_search:
-                - 0
-                - 1
+#        num_aggregation_workers:
+#            grid_search:
+#                - 0
+#                - 1
