@@ -10,7 +10,6 @@ from ray.workflow import recovery
 from ray.workflow import storage
 from ray.workflow import workflow_storage
 from ray.util.annotations import PublicAPI
-from ray._private.ray_logging import get_worker_log_file_name, configure_log_file
 
 if TYPE_CHECKING:
     from ray.actor import ActorHandle
