@@ -58,23 +58,23 @@ Algorithms Supported
 
 Offline RL:  
 
-- `[Behavior Cloning (BC; derived from MARWIL implementation)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#bc>`__ 
-- `[Deep Q Networks (DQN)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#dqn>`__ 
-- `[Deep Deterministic Policy Gradients (DDPG)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#ddpg>`__ 
-- `[Deep Deterministic Policy Gradients (TD3)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#td3>`__ 
-- `[Conservative Q-Learning (CQL)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#cql>`__ 
+- `Behavior Cloning (BC; derived from MARWIL implementation) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#bc>`__ 
+- `Deep Q Networks (DQN) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#dqn>`__ 
+- `Deep Deterministic Policy Gradients (DDPG) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#ddpg>`__ 
+- `Deep Deterministic Policy Gradients (TD3) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#td3>`__ 
+- `Conservative Q-Learning (CQL) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#cql>`__ 
 
 Model-free RL: 
 
-- `[Deep Q Networks (DQN)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#dqn>`__ 
-- `[Deep Q Networks (Rainbow)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#dqn>`__ 
-- `[Deep Q Networks (Parametric DQN)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#dqn>`__ 
-- `[Distributed Prioritized Experience Replay (Ape-X DQN)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#apex>`__ 
-- `[Deep Deterministic Policy Gradients (DDPG)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#ddpg>`__ 
-- `[Deep Deterministic Policy Gradients (TD3)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#ddpg>`__ 
-- `[Distributed Prioritized Experience Replay (Ape-X DDPG)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#apex>`__ 
-- `[Model-agnostic Meta-Learning (contrib/MAML) ] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#maml>`__ 
-- `[Random encoders (contrib/RE3)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#RE3>`__ 
+- `Deep Q Networks (DQN) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#dqn>`__ 
+- `Deep Q Networks (Rainbow) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#dqn>`__ 
+- `Deep Q Networks (Parametric DQN) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#dqn>`__ 
+- `Distributed Prioritized Experience Replay (Ape-X DQN)] <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#apex>`__ 
+- `Deep Deterministic Policy Gradients (DDPG) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#ddpg>`__ 
+- `Deep Deterministic Policy Gradients (TD3) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#ddpg>`__ 
+- `Distributed Prioritized Experience Replay (Ape-X DDPG)] <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#apex>`__ 
+- `Model-agnostic Meta-Learning (contrib/MAML) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#maml>`__ 
+- `Random encoders (contrib/RE3) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#RE3>`__ 
 
 Model-based RL: 
 
@@ -121,7 +121,8 @@ Others:
 - [PG] :ref:`Policy Gradients <policy-gradients>` 
 - [ICM] :ref:`Curiosity (ICM: Intrinsic Curiosity Module) <curiosity-icm-intrinsic-curiosity-mod>` 
 
-A list of all the algorithms can be found `[here] <https://docs.ray.io/en/master/rllib/rllib-algorithms.html>`__ . 
+A list of all the algorithms can be found `here <https://docs.ray.io/en/master/rllib/rllib-algorithms.html>`__ . 
+<br>
 
 
 Quick First Experiment
