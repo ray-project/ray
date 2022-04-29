@@ -74,7 +74,10 @@ from ray.data.impl.stats import DatasetStats
 from ray.data.impl.compute import cache_wrapper, CallableClass, ComputeStrategy
 from ray.data.impl.output_buffer import BlockOutputBuffer
 from ray.data.impl.progress_bar import ProgressBar
-from ray.data.impl.shuffle import ShufflePartitionOp
+from ray.data.impl.shuffle_and_partition import (
+    SimpleShufflePartitionOp,
+    PushBasedShufflePartitionOp,
+)
 from ray.data.impl.fast_repartition import fast_repartition
 from ray.data.impl.sort import sort_impl
 from ray.data.impl.block_list import BlockList
@@ -508,7 +511,12 @@ class Dataset(Generic[T]):
                     block_list.clear()
                 else:
                     blocks = block_list
-                shuffle_op = ShufflePartitionOp(block_udf, random_shuffle=False)
+                context = DatasetContext.get_current()
+                if context.use_push_based_shuffle:
+                    shuffle_op_cls = PushBasedShufflePartitionOp
+                else:
+                    shuffle_op_cls = SimpleShufflePartitionOp
+                shuffle_op = shuffle_op_cls(block_udf, random_shuffle=False)
                 return shuffle_op.execute(
                     blocks,
                     num_blocks,
@@ -578,7 +586,12 @@ class Dataset(Generic[T]):
                 block_list.clear()
             else:
                 blocks = block_list
-            random_shuffle_op = ShufflePartitionOp(
+            context = DatasetContext.get_current()
+            if context.use_push_based_shuffle:
+                shuffle_op_cls = PushBasedShufflePartitionOp
+            else:
+                shuffle_op_cls = SimpleShufflePartitionOp
+            random_shuffle_op = shuffle_op_cls(
                 block_udf, random_shuffle=True, random_seed=seed
             )
             return random_shuffle_op.execute(
@@ -2479,13 +2492,8 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
         """
         import raydp
 
-        core_worker = ray.worker.global_worker.core_worker
-        locations = [
-            core_worker.get_owner_address(block)
-            for block in self.get_internal_block_refs()
-        ]
         return raydp.spark.ray_dataset_to_spark_dataframe(
-            spark, self.schema(), self.get_internal_block_refs(), locations
+            spark, self.schema(), self.get_internal_block_refs()
         )
 
     def to_pandas(self, limit: int = 100000) -> "pandas.DataFrame":
@@ -2876,10 +2884,17 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
         """
         return self._plan.execute().get_blocks()
 
-    def _experimental_lazy(self) -> "Dataset[T]":
-        """Enable lazy evaluation (experimental)."""
-        self._lazy = True
-        return self
+    def experimental_lazy(self) -> "Dataset[T]":
+        """EXPERIMENTAL: Enable lazy evaluation.
+
+        The returned dataset is a lazy dataset, where all subsequent operations on the
+        dataset won't be executed until the dataset is consumed (e.g. ``.take()``,
+        ``.iter_batches()``, ``.to_torch()``, ``.to_tf()``, etc.) or execution is
+        manually triggered via ``.fully_executed()``.
+        """
+        ds = Dataset(self._plan, self._epoch, lazy=True)
+        ds._set_uuid(self._get_uuid())
+        return ds
 
     def has_serializable_lineage(self) -> bool:
         """Whether this dataset's lineage is able to be serialized for storage and
