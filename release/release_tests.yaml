@@ -1997,6 +1997,7 @@
     file_manager: job
 
   alert: default
+  stable: False
 
 - name: deployment_graph_wide_ensemble
   group: Serve tests
