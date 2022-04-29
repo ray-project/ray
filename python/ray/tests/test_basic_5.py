@@ -134,6 +134,7 @@ import ray
 from filelock import FileLock
 from pathlib import Path
 import pickle
+import os
 
 lock_file = r"{str(lock_file)}"
 data_file = Path(r"{str(data_file)}")
@@ -144,7 +145,7 @@ def init_func(worker_info):
             old = pickle.loads(data_file.read_bytes())
         else:
             old = []
-        old.append(worker_info['worker'].worker_id)
+        old.append(os.getpid())
         data_file.write_bytes(pickle.dumps(old))
 
 ray.worker.global_worker.run_function_on_all_workers(init_func)
@@ -153,8 +154,8 @@ ray.init(address='auto')
 @ray.remote
 def ready():
     with FileLock(lock_file):
-        worker_ids = pickle.loads(data_file.read_bytes())
-        assert ray.worker.global_worker.worker_id in worker_ids
+        pids = pickle.loads(data_file.read_bytes())
+        assert os.getpid() in pids
 
 ray.get(ready.remote())
 """
