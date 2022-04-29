@@ -247,7 +247,7 @@ class GlobalState:
             profile = gcs_utils.ProfileTableData.FromString(profile_table[i])
 
             component_type = profile.component_type
-            message_type = binary_to_hex(profile.message_type)
+            component_id = binary_to_hex(profile.component_id)
             node_ip_address = profile.node_ip_address
 
             for event in profile.profile_events:
@@ -257,7 +257,7 @@ class GlobalState:
                     extra_data = {}
                 profile_event = {
                     "event_type": event.event_type,
-                    "message_type": message_type,
+                    "component_id": component_id,
                     "node_ip_address": node_ip_address,
                     "component_type": component_type,
                     "start_time": event.start_time,
@@ -265,7 +265,7 @@ class GlobalState:
                     "extra_data": extra_data,
                 }
 
-                result[message_type].append(profile_event)
+                result[component_id].append(profile_event)
 
         return dict(result)
 
@@ -459,7 +459,7 @@ class GlobalState:
         profile_table = self.profile_table()
         all_events = []
 
-        for message_type_hex, component_events in profile_table.items():
+        for component_id_hex, component_events in profile_table.items():
             # Only consider workers and drivers.
             component_type = component_events[0]["component_type"]
             if component_type not in ["worker", "driver"]:
@@ -475,7 +475,7 @@ class GlobalState:
                     # appears in.
                     "pid": event["node_ip_address"],
                     # The identifier for the row that the event appears in.
-                    "tid": event["component_type"] + ":" + event["message_type"],
+                    "tid": event["component_type"] + ":" + event["component_id"],
                     # The start time in microseconds.
                     "ts": self._seconds_to_microseconds(event["start_time"]),
                     # The duration in microseconds.
