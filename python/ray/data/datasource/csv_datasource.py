@@ -43,12 +43,20 @@ class CSVDatasource(FileBasedDatasource):
             except StopIteration:
                 return
 
+    def _open_input_source(
+        self,
+        filesystem: "pyarrow.fs.FileSystem",
+        path: str,
+        **open_args,
+    ) -> "pyarrow.NativeFile":
+        return filesystem.open_input_stream(path, **open_args)
+
     def _write_block(
         self,
         f: "pyarrow.NativeFile",
         block: BlockAccessor,
         writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
-        **writer_args
+        **writer_args,
     ):
         from pyarrow import csv
 

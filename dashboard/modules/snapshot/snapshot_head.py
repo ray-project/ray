@@ -137,6 +137,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         for job_submission_id, job_info in self._job_info_client.get_all_jobs().items():
             if job_info is not None:
                 entry = {
+                    "job_submission_id": job_submission_id,
                     "status": job_info.status,
                     "message": job_info.message,
                     "error_type": job_info.error_type,
