@@ -1,7 +1,9 @@
 import gym
 from typing import Optional, List, Dict
 
-from ray.rllib.agents.sac.sac_torch_model import SACTorchModel
+from ray.rllib.agents.sac.sac_torch_model import (
+    SACTorchModel,
+)
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
@@ -92,7 +94,14 @@ class RNNSACTorchModel(SACTorchModel):
         seq_lens: TensorType,
     ) -> (TensorType, List[TensorType]):
         # Continuous case -> concat actions to model_out.
-        if actions is not None:
+        if (
+            actions is not None
+            and not model_out.get("obs_and_action_concatenated") is True
+        ):
+            # Make sure that, if we call this method twice with the same
+            # input, we don't concatenate twice
+            model_out["obs_and_action_concatenated"] = True
+
             if self.concat_obs_and_actions:
                 model_out[SampleBatch.OBS] = torch.cat(
                     [model_out[SampleBatch.OBS], actions], dim=-1
@@ -130,12 +139,6 @@ class RNNSACTorchModel(SACTorchModel):
         return self._get_q_value(
             model_out, actions, self.twin_q_net, state_in, seq_lens
         )
-
-    @override(SACTorchModel)
-    def get_policy_output(
-        self, model_out: TensorType, state_in: List[TensorType], seq_lens: TensorType
-    ) -> (TensorType, List[TensorType]):
-        return self.action_model(model_out, state_in, seq_lens)
 
     @override(ModelV2)
     def get_initial_state(self):

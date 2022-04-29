@@ -229,6 +229,20 @@ class TrainerConfig:
             config["input"] = getattr(self, "input_")
             config.pop("input_")
 
+        # Setup legacy multiagent sub-dict:
+        config["multiagent"] = {}
+        for k in [
+            "policies",
+            "policy_map_capacity",
+            "policy_map_cache",
+            "policy_mapping_fn",
+            "policies_to_train",
+            "observation_fn",
+            "replay_mode",
+            "count_steps_by",
+        ]:
+            config["multiagent"][k] = config.pop(k)
+
         # Switch out deprecated vs new config keys.
         config["callbacks"] = config.pop("callbacks_class", DefaultCallbacks)
         config["create_env_on_driver"] = config.pop("create_env_on_local_worker", 1)

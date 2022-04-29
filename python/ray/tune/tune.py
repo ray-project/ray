@@ -162,7 +162,6 @@ def run(
     # == internal only ==
     _experiment_checkpoint_dir: Optional[str] = None,
     # Deprecated args
-    queue_trials: Optional[bool] = None,
     loggers: Optional[Sequence[Type[Logger]]] = None,
     _remote: Optional[bool] = None,
 ) -> ExperimentAnalysis:
@@ -349,27 +348,6 @@ def run(
     Raises:
         TuneError: Any trials failed and `raise_on_failed_trial` is True.
     """
-
-    # To be removed in 1.9.
-    if queue_trials is not None:
-        raise DeprecationWarning(
-            "`queue_trials` has been deprecated and is replaced by "
-            "the `TUNE_MAX_PENDING_TRIALS_PG` environment variable. "
-            "Per default at least one Trial is queued at all times, "
-            "so you likely don't need to change anything other than "
-            "removing this argument from your call to `tune.run()`"
-        )
-
-    # Starting deprecation in ray 1.10.
-    if os.environ.get("TUNE_TRIAL_RESULT_WAIT_TIME_S") is not None:
-        warnings.warn("`TUNE_TRIAL_RESULT_WAIT_TIME_S` is deprecated.")
-
-    if os.environ.get("TUNE_TRIAL_STARTUP_GRACE_PERIOD") is not None:
-        warnings.warn("`TUNE_TRIAL_STARTUP_GRACE_PERIOD` is deprecated.")
-
-    if os.environ.get("TUNE_PLACEMENT_GROUP_WAIT_S") is not None:
-        warnings.warn("`TUNE_PLACEMENT_GROUP_WAIT_S` is deprecated.")
-
     # NO CODE IS TO BE ADDED ABOVE THIS COMMENT
     # remote_run_kwargs must be defined before any other
     # code is ran to ensure that at this point,
@@ -439,8 +417,8 @@ def run(
     all_start = time.time()
 
     if loggers:
-        # Raise DeprecationWarning in 1.9, remove in 1.10/1.11
-        warnings.warn(
+        # Deprecated: Remove in Ray > 1.13
+        raise DeprecationWarning(
             "The `loggers` argument is deprecated. Please pass the respective "
             "`LoggerCallback` classes to the `callbacks` argument instead. "
             "See https://docs.ray.io/en/latest/tune/api_docs/logging.html"
@@ -642,9 +620,7 @@ def run(
         )
 
     # Create syncer callbacks
-    callbacks = create_default_callbacks(
-        callbacks, sync_config, metric=metric, loggers=loggers
-    )
+    callbacks = create_default_callbacks(callbacks, sync_config, metric=metric)
 
     runner = TrialRunner(
         search_alg=search_alg,
@@ -803,7 +779,6 @@ def run_experiments(
     raise_on_failed_trial: bool = True,
     concurrent: bool = True,
     # Deprecated args.
-    queue_trials: Optional[bool] = None,
     callbacks: Optional[Sequence[Callback]] = None,
     _remote: Optional[bool] = None,
 ):
@@ -822,16 +797,6 @@ def run_experiments(
         List of Trial objects, holding data for each executed trial.
 
     """
-    # To be removed in 1.9.
-    if queue_trials is not None:
-        raise DeprecationWarning(
-            "`queue_trials` has been deprecated and is replaced by "
-            "the `TUNE_MAX_PENDING_TRIALS_PG` environment variable. "
-            "Per default at least one Trial is queued at all times, "
-            "so you likely don't need to change anything other than "
-            "removing this argument from your call to `tune.run()`"
-        )
-
     if _remote is None:
         _remote = ray.util.client.ray.is_connected()
 
