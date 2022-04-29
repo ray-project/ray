@@ -57,6 +57,7 @@ Algorithms Supported
 ----------------------
 
 Offline RL:  
+
 - `[Behavior Cloning (BC; derived from MARWIL implementation)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#bc>`__ 
 - `[Deep Q Networks (DQN)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#dqn>`__ 
 - `[Deep Deterministic Policy Gradients (DDPG)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#ddpg>`__ 
@@ -64,6 +65,7 @@ Offline RL:
 - `[Conservative Q-Learning (CQL)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#cql>`__ 
 
 Model-free RL: 
+
 - `[Deep Q Networks (DQN)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#dqn>`__ 
 - `[Deep Q Networks (Rainbow)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#dqn>`__ 
 - `[Deep Q Networks (Parametric DQN)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#dqn>`__ 
@@ -75,17 +77,20 @@ Model-free RL:
 - `[Random encoders (contrib/RE3)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#RE3>`__ 
 
 Model-based RL: 
+
 - `[Random encoders (contrib/RE3)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#mbmpo>`__ 
 - `[Image-only Dreamer (contrib/Dreamer)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#dreamer>`__ 
 - `[Random encoders (contrib/RE3)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#RE3>`__ 
 
 Derivative-free algorithms: 
+
 - [ARS] :ref:`Augmented Random Search (ARS) <augmented-random-search-ars>` 
 - [ES] :ref:`Evolution Strategies <evolution-strategies>` 
 - [MARWIL] :ref:`Monotonic Advantage Re-Weighted Imitation Learning (MARWIL)<monotonic-advantage-re-weighted-imitation-learning-marwil>` 
 - [BC-MARWIL] :ref:`Behavior Cloning (BC; derived from MARWIL implementation) <behavior-cloning-bc-derived-from-marwil-implementation>` 
 
 RL for games:  
+
 - [AlphaZero] :ref:`Single-Player Alpha Zero (contrib/AlphaZero) <alphazero>` 
 - [PPO] :ref:`Proximal Policy Optimization (PPO) <proximal-policy-optimization-ppo>` 
 - [APPO] :ref:`Asynchronous Proximal Policy Optimization (APPO) <asynchronous-proximal-policy-optimization-appo>` 
@@ -103,13 +108,16 @@ RL for games:
 - [SCM] :ref:`Shared Critic Methods <shared-critic-methods>` 
 
 RL for recommender systems: 
+
 - [SLATEQ] :ref:`Augmented Random Search (SlateQ) <slateq>` 
 
 Bandits: 
+
 - [LinUCB] :ref:`Linear Upper Confidence Bound (BanditLinUCBTrainer) <lin-ucb>` 
 - [LinTS] :ref:`Linear Thompson Sampling (BanditLinTSTrainer) <lints>` 
 
 Others:  
+
 - [PG] :ref:`Policy Gradients <policy-gradients>` 
 - [ICM] :ref:`Curiosity (ICM: Intrinsic Curiosity Module) <curiosity-icm-intrinsic-curiosity-mod>` 
 
