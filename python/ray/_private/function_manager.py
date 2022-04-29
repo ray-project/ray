@@ -311,7 +311,7 @@ class FunctionActorManager:
                     self._worker,
                     ray_constants.WAIT_FOR_FUNCTION_PUSH_ERROR,
                     warning_message,
-                    job_id=job_id,
+                    job_id=self._worker.current_job_id,
                 )
                 warning_sent = True
             vals = self._worker.gcs_client.internal_kv_get(

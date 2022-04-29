@@ -2,7 +2,6 @@ from contextlib import contextmanager
 import atexit
 import faulthandler
 import functools
-import hashlib
 import inspect
 import io
 import json
