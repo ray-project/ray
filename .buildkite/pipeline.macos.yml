@@ -57,6 +57,7 @@ steps:
     # Upload to latest directory.
     - if [ "$BUILDKITE_BRANCH" = "master" ]; then python .buildkite/copy_files.py --destination wheels --path ./.whl; fi
     - if [ "$BUILDKITE_BRANCH" = "master" ]; then python .buildkite/copy_files.py --destination jars --path ./.jar/darwin; fi
+  priority: 100
 
 
 - label: ":mac: :apple: Ray C++, Java and Libraries"
@@ -73,6 +74,7 @@ steps:
     - pip install clang-format==12.0.1
     - ./java/test.sh
     - *epilogue_commands
+  priority: 100
 
 - label: ":mac: :apple: Worker"
   <<: *common
@@ -80,6 +82,7 @@ steps:
     - *prelude_commands
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/travis/ci.sh test_cpp
+  priority: 100
 
 - label: ":mac: :apple: Small & Client"
   <<: *common
@@ -91,6 +94,7 @@ steps:
       --test_tag_filters=client_tests,small_size_python_tests
       -- python/ray/tests/...
     - *epilogue_commands
+  priority: 100
 
 - label: ":mac: :apple: Large"
   <<: *common
@@ -99,6 +103,7 @@ steps:
     - *prelude_commands
     - . ./ci/travis/ci.sh test_large
     - *epilogue_commands
+  priority: 100
 
 - label: ":mac: :apple: Medium A-J"
   <<: *common
@@ -108,6 +113,7 @@ steps:
       --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j
       python/ray/tests/...
     - *epilogue_commands
+  priority: 100
 
 - label: ":mac: :apple: Medium K-Z"
   <<: *common
@@ -117,3 +123,4 @@ steps:
       --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z
       python/ray/tests/...
     - *epilogue_commands
+  priority: 100
