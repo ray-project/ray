@@ -942,7 +942,7 @@ def init(
 
     # RAY_JOB_CONFIG_JSON_ENV_VAR is only set at ray job manager level and has
     # higher priority in case user also provided runtime_env for ray.init()
-    elif runtime_env:
+    else:
         if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ:
             runtime_env = _load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
                 runtime_env
