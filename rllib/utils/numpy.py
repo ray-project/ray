@@ -303,12 +303,11 @@ def flatten_inputs_to_1d_tensor(
 
 
 def make_action_immutable(obj):
-    """Flags actions immutable to notify users when trying to change
-    them.
+    """Flags actions immutable to notify users when trying to change them.
 
     Can also be used with any tree-like structure containing either
     dictionaries, numpy arrays or already immutable objects per se.
-    Note, however that `tree.map_structure()` will in general not 
+    Note, however that `tree.map_structure()` will in general not
     include the shallow object containing all others and therefore
     immutability will hold only for all objects contained in it.
     Use `tree.traverse(fun, action, top_down=False)` to include
@@ -325,14 +324,14 @@ def make_action_immutable(obj):
         >>> import numpy as np
         >>> arr = np.arange(1,10)
         >>> d = dict(a = 1, b = (arr, arr))
-        >>> tree.traverse(make_action_immutable, d, top_down=False)
+        >>> tree.traverse(make_action_immutable, d, top_down=False) # doctest: +SKIP
     """
     if isinstance(obj, np.ndarray):
         obj.setflags(write=False)
         return obj
     elif isinstance(obj, OrderedDict):
         return MappingProxyType(dict(obj))
-    elif isinstance(obj, dict):                
+    elif isinstance(obj, dict):
         return MappingProxyType(obj)
     else:
         return obj

@@ -2467,7 +2467,25 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
         Returns:
             A MARS dataframe created from this dataset.
         """
-        raise NotImplementedError  # P1
+        import pandas as pd
+        import pyarrow as pa
+        from mars.dataframe.datasource.read_raydataset import DataFrameReadRayDataset
+        from mars.dataframe.utils import parse_index
+        from ray.data.impl.pandas_block import PandasBlockSchema
+
+        refs = self.to_pandas_refs()
+        # remove this when https://github.com/mars-project/mars/issues/2945 got fixed
+        schema = self.schema()
+        if isinstance(schema, PandasBlockSchema):
+            dtypes = pd.Series(schema.types, index=schema.names)
+        elif isinstance(schema, pa.Schema):
+            dtypes = schema.empty_table().to_pandas().dtypes
+        else:
+            raise NotImplementedError(f"Unsupported format of schema {schema}")
+        index_value = parse_index(pd.RangeIndex(-1))
+        columns_value = parse_index(dtypes.index, store_data=True)
+        op = DataFrameReadRayDataset(refs=refs)
+        return op(index_value=index_value, columns_value=columns_value, dtypes=dtypes)
 
     def to_modin(self) -> "modin.DataFrame":
         """Convert this dataset into a Modin dataframe.

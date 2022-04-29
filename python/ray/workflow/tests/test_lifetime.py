@@ -32,6 +32,9 @@ if __name__ == "__main__":
 """
 
 
+@pytest.mark.skip(
+    reason="TODO (suquark): Figure out how to config a storage using 'ray start'."
+)
 def test_workflow_lifetime_1(call_ray_start, reset_workflow):
     # Case 1: driver exits normally
     with patch.dict(os.environ, {"RAY_ADDRESS": call_ray_start}):
@@ -41,6 +44,9 @@ def test_workflow_lifetime_1(call_ray_start, reset_workflow):
         assert ray.get(output) == 20
 
 
+@pytest.mark.skip(
+    reason="TODO (suquark): Figure out how to config a storage using 'ray start'."
+)
 def test_workflow_lifetime_2(call_ray_start, reset_workflow):
     # Case 2: driver terminated
     with patch.dict(os.environ, {"RAY_ADDRESS": call_ray_start}):
