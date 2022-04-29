@@ -34,7 +34,7 @@ def main(
 ):
     block_size = 128
 
-    # Uncomment the following if the maximum length thr model was
+    # Uncomment the following if the maximum length the model was
     # pretrained with can fit in your memory.
     # block_size = tokenizer.model_max_length
 
