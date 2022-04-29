@@ -41,7 +41,7 @@ def maybe_pipeline(ds, enabled):
 
 def maybe_lazy(ds, enabled):
     if enabled:
-        return ds._experimental_lazy()
+        return ds.experimental_lazy()
     else:
         return ds
 

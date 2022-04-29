@@ -50,7 +50,7 @@ def test_memory_release_lazy(shutdown_only):
     ds = ray.data.range(10)
 
     # Should get fused into single stage.
-    ds = ds._experimental_lazy()
+    ds = ds.experimental_lazy()
     ds = ds.map(lambda x: np.ones(100 * 1024 * 1024, dtype=np.uint8))
     ds = ds.map(lambda x: np.ones(100 * 1024 * 1024, dtype=np.uint8))
     ds = ds.map(lambda x: np.ones(100 * 1024 * 1024, dtype=np.uint8))
@@ -69,7 +69,7 @@ def test_memory_release_lazy_shuffle(shutdown_only):
             ds = ray.data.range(10)
 
             # Should get fused into single stage.
-            ds = ds._experimental_lazy()
+            ds = ds.experimental_lazy()
             ds = ds.map(lambda x: np.ones(100 * 1024 * 1024, dtype=np.uint8))
             ds.random_shuffle().fully_executed()
             meminfo = memory_summary(info.address_info["address"], stats_only=True)
@@ -84,7 +84,7 @@ def test_memory_release_lazy_shuffle(shutdown_only):
 
 
 def test_spread_hint_inherit(ray_start_regular_shared):
-    ds = ray.data.range(10)._experimental_lazy()
+    ds = ray.data.range(10).experimental_lazy()
     ds = ds.map(lambda x: x + 1)
     ds = ds.random_shuffle()
     for s in ds._plan._stages_before_snapshot:
@@ -97,7 +97,7 @@ def test_spread_hint_inherit(ray_start_regular_shared):
 
 
 def test_execution_preserves_original(ray_start_regular_shared):
-    ds = ray.data.range(10).map(lambda x: x + 1)._experimental_lazy()
+    ds = ray.data.range(10).map(lambda x: x + 1).experimental_lazy()
     ds1 = ds.map(lambda x: x + 1)
     assert ds1._plan._snapshot_blocks is not None
     assert len(ds1._plan._stages_after_snapshot) == 1
@@ -136,7 +136,7 @@ def test_stage_linking(ray_start_regular_shared):
     _assert_has_stages(ds._plan._last_optimized_stages, ["read->map"])
 
     # Test lazy dataset.
-    ds = ray.data.range(10)._experimental_lazy()
+    ds = ray.data.range(10).experimental_lazy()
     assert len(ds._plan._stages_before_snapshot) == 0
     assert len(ds._plan._stages_after_snapshot) == 0
     assert len(ds._plan._last_optimized_stages) == 0
@@ -328,7 +328,7 @@ def test_optimize_lazy_reuse_base_data(
     ds = ray.data.read_datasource(source, parallelism=4, paths=paths)
     num_reads = ray.get(counter.get.remote())
     assert num_reads == 1, num_reads
-    ds = ds._experimental_lazy()
+    ds = ds.experimental_lazy()
     ds = ds.map(lambda x: x)
     if with_shuffle:
         ds = ds.random_shuffle()
