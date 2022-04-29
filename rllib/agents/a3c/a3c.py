@@ -34,9 +34,10 @@ class A3CConfig(TrainerConfig):
     """Defines a PPOTrainer configuration class from which a PPOTrainer can be built.
 
     Example:
+        >>> from ray import tune
         >>> config = A3CConfig().training(lr=0.01, grad_clip=30.0)\
-        ...          .resources(num_gpus=0)\
-        ...          .rollouts(num_rollout_workers=4)
+        ...     .resources(num_gpus=0)\
+        ...     .rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
         >>> # Build a Trainer object from the config and run 1 training iteration.
         >>> trainer = config.build(env="CartPole-v1")
@@ -155,27 +156,7 @@ class A3CConfig(TrainerConfig):
 # Deprecated: Use ray.rllib.agents.ppo.PPOConfig instead!
 class _deprecated_default_config(dict):
     def __init__(self):
-        super().__init__(
-            with_common_config(
-                {
-                    # A3C specific keys:
-                    "use_critic": True,
-                    "use_gae": True,
-                    "lambda": 1.0,
-                    "grad_clip": 40.0,
-                    "lr_schedule": None,
-                    "vf_loss_coeff": 0.5,
-                    "entropy_coeff": 0.01,
-                    "entropy_coeff_schedule": None,
-                    "sample_async": True,
-                    # TrainerConfig overrides:
-                    "rollout_fragment_length": 10,
-                    "lr": 0.0001,
-                    "min_time_s_per_reporting": 5,
-                    "_disable_execution_plan_api": True,
-                }
-            )
-        )
+        super().__init__(A3CConfig().to_dict())
 
     @Deprecated(
         old="ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG",

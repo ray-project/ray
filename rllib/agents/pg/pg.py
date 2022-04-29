@@ -21,6 +21,7 @@ class PGConfig(TrainerConfig):
         >>> trainer.train()
 
     Example:
+        >>> from ray import tune
         >>> config = PGConfig()
         >>> # Print out some default values.
         >>> print(config.lr)
@@ -56,17 +57,7 @@ class PGConfig(TrainerConfig):
 # Deprecated: Use ray.rllib.agents.ppo.PGConfig instead!
 class _deprecated_default_config(dict):
     def __init__(self):
-        super().__init__(
-            with_common_config(
-                {
-                    # TrainerConfig overrides:
-                    "num_workers": 0,
-                    "lr": 0.0004,
-                    "_disable_execution_plan_api": True,
-                    "_disable_preprocessor_api": True,
-                }
-            )
-        )
+        super().__init__(PGConfig().to_dict())
 
     @Deprecated(
         old="ray.rllib.agents.pg.default_config::DEFAULT_CONFIG",

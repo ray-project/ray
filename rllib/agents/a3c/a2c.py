@@ -47,9 +47,10 @@ class A2CConfig(A3CConfig):
     """Defines a A2CTrainer configuration class from which a new Trainer can be built.
 
     Example:
+        >>> from ray import tune
         >>> config = A2CConfig().training(lr=0.01, grad_clip=30.0)\
-        ...          .resources(num_gpus=0)\
-        ...          .rollouts(num_rollout_workers=4)
+        ...     .resources(num_gpus=0)\
+        ...     .rollouts(num_rollout_workers=2)
         >>> print(config.to_dict())
         >>> # Build a Trainer object from the config and run 1 training iteration.
         >>> trainer = config.build(env="CartPole-v1")
@@ -119,17 +120,7 @@ class A2CConfig(A3CConfig):
 # Deprecated: Use ray.rllib.agents.a3c.A2CConfig instead!
 class _deprecated_default_config(dict):
     def __init__(self):
-        super().__init__(
-            merge_dicts(
-                A3CConfig().to_dict(),
-                {
-                    "rollout_fragment_length": 20,
-                    "min_time_s_per_reporting": 10,
-                    "sample_async": False,
-                    "microbatch_size": None,
-                },
-            )
-        )
+        super().__init__(A2CConfig().to_dict())
 
     @Deprecated(
         old="ray.rllib.agents.a3c.a2c.A2C_DEFAULT_CONFIG",

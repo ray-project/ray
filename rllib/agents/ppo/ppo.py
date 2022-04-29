@@ -55,14 +55,15 @@ class PPOConfig(TrainerConfig):
 
     Example:
         >>> config = PPOConfig(kl_coeff=0.3).training(gamma=0.9, lr=0.01)\
-                        .resources(num_gpus=0)\
-                        .rollouts(num_rollout_workers=4)
+        ...     .resources(num_gpus=0)\
+        ...     .rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
         >>> # Build a Trainer object from the config and run 1 training iteration.
         >>> trainer = config.build(env="CartPole-v1")
         >>> trainer.train()
 
     Example:
+        >>> from ray import tune
         >>> config = PPOConfig()
         >>> # Print out some default values.
         >>> print(config.clip_param)
@@ -205,36 +206,7 @@ class PPOConfig(TrainerConfig):
 # Deprecated: Use ray.rllib.agents.ppo.PPOConfig instead!
 class _deprecated_default_config(dict):
     def __init__(self):
-        super().__init__(
-            with_common_config(
-                {
-                    # PPO specific settings:
-                    "use_critic": True,
-                    "use_gae": True,
-                    "lambda": 1.0,
-                    "kl_coeff": 0.2,
-                    "sgd_minibatch_size": 128,
-                    "shuffle_sequences": True,
-                    "num_sgd_iter": 30,
-                    "lr_schedule": None,
-                    "vf_loss_coeff": 1.0,
-                    "entropy_coeff": 0.0,
-                    "entropy_coeff_schedule": None,
-                    "clip_param": 0.3,
-                    "vf_clip_param": 10.0,
-                    "grad_clip": None,
-                    "kl_target": 0.01,
-                    "rollout_fragment_length": 200,
-                    # TrainerConfig overrides:
-                    "train_batch_size": 4000,
-                    "lr": 5e-5,
-                    "model": {
-                        "vf_share_layers": False,
-                    },
-                    "_disable_execution_plan_api": True,
-                }
-            )
-        )
+        super().__init__(PPOConfig().to_dict())
 
     @Deprecated(
         old="ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG",
