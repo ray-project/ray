@@ -67,7 +67,7 @@ Finally, you can create a ``Dataset`` from existing data in the Ray object store
     dask_df = dd.from_pandas(pdf, npartitions=10)
     ds = ray.data.from_dask(dask_df)
 
-From Torch or TensorFlow
+From Torch/TensorFlow
 ---------------------------------------
 
 .. tabbed:: PyTorch
