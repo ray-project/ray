@@ -121,8 +121,8 @@ class TestUtils(unittest.TestCase):
 
         self.assertRaises(TypeError, fail_fun, action)
         self.assertFalse(action["b"].flags["WRITEABLE"])
-        self.assertFalse(action["c"][1].flags["WRITEABLE"]) 
-        self.assertTrue(isinstance(action, MappingProxyType))                       
+        self.assertFalse(action["c"][1].flags["WRITEABLE"])
+        self.assertTrue(isinstance(action, MappingProxyType))
 
     def test_flatten_inputs_to_1d_tensor(self):
         # B=3; no time axis.
