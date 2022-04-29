@@ -311,7 +311,7 @@ class HuggingFaceTrainer(TorchTrainer):
 
         super()._validate_attributes()
 
-    def _convert_directory_checkpoint_to_sync(
+    def _convert_directory_checkpoint_to_sync_if_needed(
         self, checkpoint: Checkpoint
     ) -> Checkpoint:
         """Replace the directory checkpoint with a node ip & path dict checkpoint
@@ -320,8 +320,19 @@ class HuggingFaceTrainer(TorchTrainer):
         with checkpoint.as_directory() as checkpoint_path:
             # Load checkpoint from path.
             checkpoint_path = Path(checkpoint_path).expanduser().absolute()
-            if not checkpoint_path.exists():
-                raise ValueError(f"Checkpoint path {checkpoint_path} does not exist.")
+            if not checkpoint_path.joinpath(TUNE_CHECKPOINT_ID).exists():
+                # If the ID file is missing, we assume that this is already
+                # a sync checkpoint
+                dict_checkpoint = checkpoint.to_dict()
+                if (
+                    NODE_IP_KEY not in dict_checkpoint
+                    or CHECKPOINT_PATH_ON_NODE_KEY not in dict_checkpoint
+                ):
+                    raise ValueError(
+                        "Wrong checkpoint format. Ensure the checkpoint is a "
+                        "result of `HuggingFaceTrainer`."
+                    )
+                return checkpoint
             with open(checkpoint_path.joinpath(TUNE_CHECKPOINT_ID), "r") as f:
                 tune_checkpoint_id = int(f.read())
 
@@ -334,13 +345,11 @@ class HuggingFaceTrainer(TorchTrainer):
             )
 
     def setup(self) -> None:
-        if (
-            self.resume_from_checkpoint
-            and self.resume_from_checkpoint.get_internal_representation()
-            == "local_path"
-        ):
-            self.resume_from_checkpoint = self._convert_directory_checkpoint_to_sync(
-                self.resume_from_checkpoint
+        if self.resume_from_checkpoint:
+            self.resume_from_checkpoint = (
+                self._convert_directory_checkpoint_to_sync_if_needed(
+                    self.resume_from_checkpoint
+                )
             )
 
     def as_trainable(self) -> Type[Trainable]:
@@ -351,7 +360,9 @@ class HuggingFaceTrainer(TorchTrainer):
         if resume_from_checkpoint:
             self._param_dict[
                 "resume_from_checkpoint"
-            ] = self._convert_directory_checkpoint_to_sync(resume_from_checkpoint)
+            ] = self._convert_directory_checkpoint_to_sync_if_needed(
+                resume_from_checkpoint
+            )
         try:
             ret = super().as_trainable()
         finally:
