@@ -59,7 +59,7 @@ def init() -> None:
 
 
 def _ensure_workflow_initialized() -> None:
-    if not _is_workflow_initialized:
+    if not _is_workflow_initialized or not ray.is_initialized():
         init()
 
 
