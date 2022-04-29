@@ -60,8 +60,8 @@ import requests
 import ray.ray_constants as ray_constants
 import ray._private.usage.usage_constants as usage_constant
 from ray.experimental.internal_kv import (
+    _internal_kv_put,
     _internal_kv_initialized,
-    internal_kv_get_gcs_client,
 )
 
 logger = logging.getLogger(__name__)
@@ -146,12 +146,10 @@ _recorded_library_usages = set()
 def _put_library_usage(library_usage: str):
     assert _internal_kv_initialized()
     try:
-        ray._private.utils.internal_kv_put_with_retry(
-            internal_kv_get_gcs_client(),
+        _internal_kv_put(
             f"{usage_constant.LIBRARY_USAGE_PREFIX}{library_usage}",
             "",
             namespace=usage_constant.USAGE_STATS_NAMESPACE,
-            num_retries=5,
         )
     except Exception as e:
         logger.debug(f"Failed to put library usage, {e}")
