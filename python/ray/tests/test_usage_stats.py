@@ -667,6 +667,25 @@ provider:
         assert read_file(temp_dir, "success")
 
 
+def test_first_usage_report_delayed(monkeypatch, ray_start_cluster):
+    with monkeypatch.context() as m:
+        m.setenv("RAY_USAGE_STATS_ENABLED", "1")
+        m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000")
+        m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "10")
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=0)
+        ray.init(address=cluster.address)
+
+        # The first report should be delayed for 10s.
+        time.sleep(5)
+        session_dir = ray.worker.global_worker.node.address_info["session_dir"]
+        session_path = Path(session_dir)
+        assert not (session_path / usage_constants.USAGE_STATS_FILE).exists()
+
+        time.sleep(10)
+        assert (session_path / usage_constants.USAGE_STATS_FILE).exists()
+
+
 def test_usage_report_disabled(monkeypatch, ray_start_cluster):
     """
     Make sure usage report module is disabled when the env var is not set.
