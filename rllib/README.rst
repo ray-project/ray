@@ -119,7 +119,7 @@ Bandits:
 Others:  
 
 - `Policy Gradients <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#pg>`__ 
-- `Curiosity (ICM: Intrinsic Curiosity Module) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#Curiosity>`__ 
+- `Curiosity (ICM: Intrinsic Curiosity Module) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#curiosity>`__ 
 
 A list of all the algorithms can be found `here <https://docs.ray.io/en/master/rllib/rllib-algorithms.html>`__ .  
 
