@@ -409,7 +409,7 @@ class Worker:
             )
             > 0
         )
-        self.cached_functions_to_run = None
+        self.cached_functions_to_run = []
 
     def main_loop(self):
         """The main loop a worker runs to receive and execute tasks."""
