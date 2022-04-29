@@ -52,23 +52,6 @@ class PGConfig(TrainerConfig):
         # fmt: on
 
 
-# Deprecated: Use ray.rllib.agents.ppo.PGConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(PGConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.agents.pg.default_config::DEFAULT_CONFIG",
-        new="ray.rllib.agents.pg.pg.PGConfig(...)",
-        error=False,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()
-
-
 class PGTrainer(Trainer):
     """Policy Gradient (PG) Trainer.
 
@@ -87,8 +70,25 @@ class PGTrainer(Trainer):
     @classmethod
     @override(Trainer)
     def get_default_config(cls) -> TrainerConfigDict:
-        return DEFAULT_CONFIG
+        return PGConfig().to_dict()
 
     @override(Trainer)
     def get_default_policy_class(self, config) -> Type[Policy]:
         return PGTorchPolicy if config.get("framework") == "torch" else PGTFPolicy
+
+
+# Deprecated: Use ray.rllib.agents.ppo.PGConfig instead!
+class _deprecated_default_config(dict):
+    def __init__(self):
+        super().__init__(PGConfig().to_dict())
+
+    @Deprecated(
+        old="ray.rllib.agents.pg.default_config::DEFAULT_CONFIG",
+        new="ray.rllib.agents.pg.pg.PGConfig(...)",
+        error=False,
+    )
+    def __getitem__(self, item):
+        return super().__getitem__(item)
+
+
+DEFAULT_CONFIG = _deprecated_default_config()
