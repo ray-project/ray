@@ -152,7 +152,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
   bool ResourcesExist(scheduling::ResourceID resource_id) const;
 
   std::optional<syncer::RaySyncMessage> CreateSyncMessage(
-      int64_t after_version, syncer::RayComponentId component_id) const override;
+      int64_t after_version, syncer::MessageType message_type) const override;
 
  private:
   /// Notify the subscriber that the local resouces has changed.

@@ -41,8 +41,7 @@ void GcsResourceManager::ConsumeSyncMessage(
         rpc::ResourcesData resources;
         resources.ParseFromString(message->sync_message());
         resources.set_node_id(message->node_id());
-        auto node_id = NodeID::FromBinary(message->node_id());
-        RAY_CHECK(message->component_id() == syncer::RayComponentId::RESOURCE_MANAGER);
+        RAY_CHECK(message->message_type() == syncer::MessageType::RESOURCE_MANAGER);
         UpdateFromResourceReport(resources);
       },
       "GcsResourceManager::Update");

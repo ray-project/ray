@@ -366,8 +366,8 @@ double LocalResourceManager::GetLocalAvailableCpus() const {
 }
 
 std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
-    int64_t after_version, syncer::RayComponentId component_id) const {
-  RAY_CHECK(component_id == syncer::RayComponentId::RESOURCE_MANAGER);
+    int64_t after_version, syncer::MessageType message_type) const {
+  RAY_CHECK(message_type == syncer::MessageType::RESOURCE_MANAGER);
   // We check the memory inside version, so version is not a const function.
   // Ideally, we need to move the memory check somewhere else.
   // TODO(iycheng): Make version as a const function.
@@ -404,7 +404,7 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
 
   msg.set_node_id(local_node_id_.Binary());
   msg.set_version(curr_version);
-  msg.set_component_id(component_id);
+  msg.set_message_type(message_type);
   std::string serialized_msg;
   RAY_CHECK(resources_data.SerializeToString(&serialized_msg));
   msg.set_sync_message(std::move(serialized_msg));

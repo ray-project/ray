@@ -550,7 +550,7 @@ ray::Status NodeManager::RegisterGcs() {
   if (RayConfig::instance().use_ray_syncer()) {
     // Register resource manager and scheduler
     ray_syncer_.Register(
-        /* component_id */ syncer::RayComponentId::RESOURCE_MANAGER,
+        /* message_type */ syncer::MessageType::RESOURCE_MANAGER,
         /* reporter */ &cluster_resource_scheduler_->GetLocalResourceManager(),
         /* receiver */ this,
         /* pull_from_reporter_interval_ms */
@@ -559,7 +559,7 @@ ray::Status NodeManager::RegisterGcs() {
     // Register a commands channel.
     // It's only used for GC right now.
     ray_syncer_.Register(
-        /* component_id */ syncer::RayComponentId::COMMANDS,
+        /* message_type */ syncer::MessageType::COMMANDS,
         /* reporter */ this,
         /* receiver */ this,
         /* pull_from_reporter_interval_ms */ 0);
@@ -570,7 +570,7 @@ ray::Status NodeManager::RegisterGcs() {
           // If plasma store is under high pressure, we should try to schedule a global
           // gc.
           if (triggered_by_global_gc) {
-            ray_syncer_.OnDemandBroadcasting(syncer::RayComponentId::COMMANDS);
+            ray_syncer_.OnDemandBroadcasting(syncer::MessageType::COMMANDS);
           }
         },
         RayConfig::instance().raylet_check_gc_period_milliseconds(),
@@ -1814,7 +1814,7 @@ void NodeManager::HandleCommitBundleResources(
   placement_group_resource_manager_->CommitBundles(bundle_specs);
   if (RayConfig::instance().use_ray_syncer()) {
     // To reduce the lag, we trigger a broadcasting immediately.
-    RAY_CHECK(ray_syncer_.OnDemandBroadcasting(syncer::RayComponentId::RESOURCE_MANAGER));
+    RAY_CHECK(ray_syncer_.OnDemandBroadcasting(syncer::MessageType::RESOURCE_MANAGER));
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 
@@ -1855,7 +1855,7 @@ void NodeManager::HandleCancelResourceReserve(
   placement_group_resource_manager_->ReturnBundle(bundle_spec);
   if (RayConfig::instance().use_ray_syncer()) {
     // To reduce the lag, we trigger a broadcasting immediately.
-    RAY_CHECK(ray_syncer_.OnDemandBroadcasting(syncer::RayComponentId::RESOURCE_MANAGER));
+    RAY_CHECK(ray_syncer_.OnDemandBroadcasting(syncer::MessageType::RESOURCE_MANAGER));
   }
   cluster_task_manager_->ScheduleAndDispatchTasks();
   send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -2696,12 +2696,12 @@ void NodeManager::RecordMetrics() {
 
 void NodeManager::ConsumeSyncMessage(
     std::shared_ptr<const syncer::RaySyncMessage> message) {
-  if (message->component_id() == syncer::RayComponentId::RESOURCE_MANAGER) {
+  if (message->message_type() == syncer::MessageType::RESOURCE_MANAGER) {
     rpc::ResourcesData data;
     data.ParseFromString(message->sync_message());
     NodeID node_id = NodeID::FromBinary(data.node_id());
     UpdateResourceUsage(node_id, data);
-  } else if (message->component_id() == syncer::RayComponentId::COMMANDS) {
+  } else if (message->message_type() == syncer::MessageType::COMMANDS) {
     rpc::ResourcesData data;
     data.ParseFromString(message->sync_message());
     if (data.should_global_gc()) {
@@ -2711,15 +2711,15 @@ void NodeManager::ConsumeSyncMessage(
 }
 
 std::optional<syncer::RaySyncMessage> NodeManager::CreateSyncMessage(
-    int64_t after_version, syncer::RayComponentId component_id) const {
-  RAY_CHECK(component_id == syncer::RayComponentId::COMMANDS);
+    int64_t after_version, syncer::MessageType message_type) const {
+  RAY_CHECK(message_type == syncer::MessageType::COMMANDS);
 
   rpc::ResourcesData resources_data;
   resources_data.set_should_global_gc(true);
   syncer::RaySyncMessage msg;
   msg.set_version(absl::GetCurrentTimeNanos());
   msg.set_node_id(self_node_id_.Binary());
-  msg.set_component_id(syncer::RayComponentId::COMMANDS);
+  msg.set_message_type(syncer::MessageType::COMMANDS);
   std::string serialized_msg;
   RAY_CHECK(resources_data.SerializeToString(&serialized_msg));
   msg.set_sync_message(std::move(serialized_msg));

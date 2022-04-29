@@ -5,8 +5,8 @@ from typing import Optional
 import ray
 from ray.serve.constants import DEBUG_LOG_ENV_VAR, SERVE_LOGGER_NAME
 
-COMPONENT_LOG_FMT = "%(levelname)s %(asctime)s {component_name} {component_id} %(filename)s:%(lineno)d - %(message)s"  # noqa:E501
-LOG_FILE_FMT = "{component_name}_{component_id}.log"
+COMPONENT_LOG_FMT = "%(levelname)s %(asctime)s {component_name} {message_type} %(filename)s:%(lineno)d - %(message)s"  # noqa:E501
+LOG_FILE_FMT = "{component_name}_{message_type}.log"
 
 
 def access_log_msg(*, method: str, route: str, status: str, latency_ms: float):
@@ -17,7 +17,7 @@ def access_log_msg(*, method: str, route: str, status: str, latency_ms: float):
 def configure_component_logger(
     *,
     component_name: str,
-    component_id: str,
+    message_type: str,
     component_type: Optional[str] = None,
     log_level: int = logging.INFO,
     log_to_stream: bool = True,
@@ -38,7 +38,7 @@ def configure_component_logger(
 
     formatter = logging.Formatter(
         COMPONENT_LOG_FMT.format(
-            component_name=component_name, component_id=component_id
+            component_name=component_name, message_type=message_type
         )
     )
     if log_to_stream:
@@ -52,7 +52,7 @@ def configure_component_logger(
         if component_type is not None:
             component_name = f"{component_type}_{component_name}"
         log_file_name = LOG_FILE_FMT.format(
-            component_name=component_name, component_id=component_id
+            component_name=component_name, message_type=message_type
         )
         file_handler = logging.FileHandler(os.path.join(logs_dir, log_file_name))
         file_handler.setFormatter(formatter)

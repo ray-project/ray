@@ -36,7 +36,7 @@ class NodeState {
   /// received messages are consumed.
   ///
   /// \return true if set successfully.
-  bool SetComponent(RayComponentId cid,
+  bool SetComponent(MessageType cid,
                     const ReporterInterface *reporter,
                     ReceiverInterface *receiver);
 
@@ -45,7 +45,7 @@ class NodeState {
   /// \param cid The component id to take the snapshot.
   ///
   /// \return If a snapshot is taken, return the message, otherwise std::nullopt.
-  std::optional<RaySyncMessage> CreateSyncMessage(RayComponentId cid);
+  std::optional<RaySyncMessage> CreateSyncMessage(MessageType cid);
 
   /// Consume a message. Receiver will consume this message if it doesn't have
   /// this message.
@@ -127,7 +127,7 @@ class NodeSyncConnection {
   std::function<void(std::shared_ptr<RaySyncMessage>)> message_processor_;
 
   /// Buffering all the updates. Sending will be done in an async way.
-  absl::flat_hash_map<std::pair<std::string, RayComponentId>,
+  absl::flat_hash_map<std::pair<std::string, MessageType>,
                       std::shared_ptr<const RaySyncMessage>>
       sending_buffer_;
 

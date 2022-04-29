@@ -194,7 +194,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void ConsumeSyncMessage(std::shared_ptr<const syncer::RaySyncMessage> message) override;
 
   std::optional<syncer::RaySyncMessage> CreateSyncMessage(
-      int64_t after_version, syncer::RayComponentId component_id) const override;
+      int64_t after_version, syncer::MessageType message_type) const override;
 
   int GetObjectManagerPort() const { return object_manager_.GetServerPort(); }
 
