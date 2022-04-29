@@ -1,5 +1,5 @@
 import logging
-from typing import Type, Optional, List
+from typing import List, Optional, Type
 
 from ray.rllib.agents.dqn.simple_q import SimpleQTrainer
 from ray.rllib.agents.ddpg.ddpg_tf_policy import DDPGTFPolicy
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 class DDPGConfig(TrainerConfig):
-    """Defines a DDPGTrainer configuration class from which a PGTrainer can be built.
+    """Defines a DDPGTrainer configuration class from which a DDPGTrainer can be built.
 
     Example:
         >>> from ray.rllib.agents.ddpg.ddpg import DDPGConfig
