@@ -33,6 +33,7 @@ from ray.workflow.storage import Storage
 from ray.workflow import workflow_access
 from ray.workflow.workflow_storage import get_workflow_storage
 from ray.util.annotations import PublicAPI
+from ray._private.usage import usage_lib
 
 if TYPE_CHECKING:
     from ray.workflow.virtual_actor_class import VirtualActorClass, VirtualActor
@@ -48,6 +49,8 @@ def init(storage: "Optional[Union[str, Storage]]" = None) -> None:
         storage: The external storage URL or a custom storage class. If not
             specified, ``/tmp/ray/workflow_data`` will be used.
     """
+    usage_lib.record_library_usage("workflow")
+
     if storage is None:
         storage = os.environ.get("RAY_WORKFLOW_STORAGE")
 

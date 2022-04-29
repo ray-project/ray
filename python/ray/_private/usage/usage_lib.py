@@ -110,7 +110,7 @@ class UsageStatsToReport:
     total_num_gpus: Optional[int]
     total_memory_gb: Optional[float]
     total_object_store_memory_gb: Optional[float]
-    library_usage: Optional[List[str]]
+    library_usages: Optional[List[str]]
     # The total number of successful reports for the lifetime of the cluster.
     total_success: int
     # The total number of failed reports for the lifetime of the cluster.
@@ -140,15 +140,15 @@ class UsageStatsEnabledness(Enum):
     ENABLED_BY_DEFAULT = auto()
 
 
-_library_usage_recorded = set()
+_recorded_library_usages = set()
 
 
-def _put_library_usage(library: str):
+def _put_library_usage(library_usage: str):
     assert _internal_kv_initialized()
     try:
         ray._private.utils.internal_kv_put_with_retry(
             internal_kv_get_gcs_client(),
-            f"{usage_constant.LIBRARY_USAGE_PREFIX}{library}",
+            f"{usage_constant.LIBRARY_USAGE_PREFIX}{library_usage}",
             "",
             namespace=usage_constant.USAGE_STATS_NAMESPACE,
             num_retries=20,
@@ -157,10 +157,11 @@ def _put_library_usage(library: str):
         logger.debug(f"Faild to put library usage, {e}")
 
 
-def record_library_usage(library: str):
-    if library in _library_usage_recorded:
+def record_library_usage(library_usage: str):
+    """Record library usage (e.g. which library is used)"""
+    if library_usage in _recorded_library_usages:
         return
-    _library_usage_recorded.add(library)
+    _recorded_library_usages.add(library_usage)
 
     if not _internal_kv_initialized():
         # This happens if the library is imported before ray.init
@@ -169,18 +170,18 @@ def record_library_usage(library: str):
     # Only report library usage from driver to reduce
     # the load to kv store.
     if ray.worker.global_worker.mode == ray.SCRIPT_MODE:
-        _put_library_usage(library)
+        _put_library_usage(library_usage)
 
 
-def _put_pre_init_library_usage():
+def _put_pre_init_library_usages():
     assert _internal_kv_initialized()
     if ray.worker.global_worker.mode != ray.SCRIPT_MODE:
         return
-    for library in _library_usage_recorded:
-        _put_library_usage(library)
+    for library_usage in _recorded_library_usages:
+        _put_library_usage(library_usage)
 
 
-ray.worker._post_init_hooks.append(_put_pre_init_library_usage)
+ray.worker._post_init_hooks.append(_put_pre_init_library_usages)
 
 
 def _usage_stats_report_url():
@@ -366,21 +367,21 @@ def put_cluster_metadata(gcs_client, num_retries) -> None:
     return metadata
 
 
-def get_library_usage_to_report(gcs_client, num_retries) -> List[str]:
+def get_library_usages_to_report(gcs_client, num_retries) -> List[str]:
     try:
         result = []
-        libraries = ray._private.utils.internal_kv_list_with_retry(
+        library_usages = ray._private.utils.internal_kv_list_with_retry(
             gcs_client,
             usage_constant.LIBRARY_USAGE_PREFIX,
             namespace=usage_constant.USAGE_STATS_NAMESPACE,
             num_retries=num_retries,
         )
-        for library in libraries:
-            library = library.decode("utf-8")
-            result.append(library[len(usage_constant.LIBRARY_USAGE_PREFIX) :])
+        for library_usage in library_usages:
+            library_usage = library_usage.decode("utf-8")
+            result.append(library_usage[len(usage_constant.LIBRARY_USAGE_PREFIX) :])
         return result
     except Exception as e:
-        logger.info(f"Failed to get library usage to report {e}")
+        logger.info(f"Failed to get library usages to report {e}")
         return []
 
 
@@ -564,7 +565,7 @@ def generate_report_data(
         ray.experimental.internal_kv.internal_kv_get_gcs_client(),
         num_retries=20,
     )
-    library_usage = get_library_usage_to_report(
+    library_usages = get_library_usages_to_report(
         ray.experimental.internal_kv.internal_kv_get_gcs_client(),
         num_retries=20,
     )
@@ -587,7 +588,7 @@ def generate_report_data(
         total_num_gpus=cluster_status_to_report.total_num_gpus,
         total_memory_gb=cluster_status_to_report.total_memory_gb,
         total_object_store_memory_gb=cluster_status_to_report.total_object_store_memory_gb,  # noqa: E501
-        library_usage=library_usage,
+        library_usages=library_usages,
         total_success=total_success,
         total_failed=total_failed,
         seq_number=seq_number,
