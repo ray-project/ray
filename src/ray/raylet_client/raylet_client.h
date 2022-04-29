@@ -50,10 +50,9 @@ namespace ray {
 class PinObjectsInterface {
  public:
   /// Request to a raylet to pin a plasma object. The callback will be sent via gRPC.
-  virtual void PinObjectIDs(
-      const rpc::Address &caller_address,
-      const std::vector<ObjectID> &object_ids,
-      const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) = 0;
+  virtual void PinObjectIDs(const rpc::Address &caller_address,
+                            std::vector<ObjectID> object_ids,
+                            rpc::ClientCallback<rpc::PinObjectIDsReply> callback) = 0;
 
   virtual ~PinObjectsInterface(){};
 };
@@ -231,6 +230,8 @@ class RayletConnection {
   std::mutex write_mutex_;
 };
 
+class PinBatcher;
+
 class RayletClient : public RayletClientInterface {
  public:
   /// Connect to the raylet.
@@ -274,6 +275,8 @@ class RayletClient : public RayletClientInterface {
   ///
   /// \param grpc_client gRPC client to the raylet.
   RayletClient(std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client);
+
+  ~RayletClient() override;
 
   /// Notify the raylet that this client is disconnecting gracefully. This
   /// is used by actors to exit gracefully so that the raylet doesn't
@@ -436,10 +439,9 @@ class RayletClient : public RayletClientInterface {
       const std::vector<rpc::Bundle> &bundles_in_use,
       const rpc::ClientCallback<rpc::ReleaseUnusedBundlesReply> &callback) override;
 
-  void PinObjectIDs(
-      const rpc::Address &caller_address,
-      const std::vector<ObjectID> &object_ids,
-      const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override;
+  void PinObjectIDs(const rpc::Address &caller_address,
+                    std::vector<ObjectID> object_ids,
+                    rpc::ClientCallback<rpc::PinObjectIDsReply> callback) override;
 
   void ShutdownRaylet(
       const NodeID &node_id,
@@ -476,26 +478,6 @@ class RayletClient : public RayletClientInterface {
   int64_t GetPinsInFlight() const;
 
  private:
-  class PinBatcher {
-   public:
-    PinBatcher(const rpc::Address &owner_address);
-
-    void Add(const std::vector<ObjectID> &object_ids,
-             const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback);
-
-    void Flush();
-
-   private:
-    struct Request {
-      ObjectID object_id;
-      ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> callback;
-    };
-
-    const rpc::Address owner_address_;
-    std::vector<Request> inflight_;
-    std::vector<Request> buffered_;
-  };
-
   /// gRPC client to the raylet. Right now, this is only used for a couple
   /// request types.
   std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client_;
@@ -509,9 +491,7 @@ class RayletClient : public RayletClientInterface {
   /// The connection to the raylet server.
   std::unique_ptr<RayletConnection> conn_;
 
-  mutable absl::Mutex pin_mu_;
-  absl::flat_hash_map<std::string, PinBatcher> pin_batchers_;
-  int64_t total_inflight_pins_ = 0;
+  std::unique_ptr<PinBatcher> pin_batcher_;
 };
 
 }  // namespace raylet
