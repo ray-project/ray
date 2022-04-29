@@ -13,8 +13,8 @@ limit = int(15784 * 0.9)
 CONCURRENY_GROUPS = {
     "tiny": 32,
     "small": 16,
-    "medium": 4,
-    "large": 2,
+    "medium": 8,
+    "large": 8,
     "small-gpu": 8,
     "large-gpu": 4,
 }
