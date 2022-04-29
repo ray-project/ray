@@ -4,8 +4,6 @@ from typing import Type
 
 from ray.rllib.utils.sgd import standardized
 from ray.rllib.agents import with_common_config
-from ray.rllib.agents.maml.maml_tf_policy import MAMLTFPolicy
-from ray.rllib.agents.maml.maml_torch_policy import MAMLTorchPolicy
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.evaluation.metrics import get_learner_stats
 from ray.rllib.evaluation.worker_set import WorkerSet
@@ -199,9 +197,14 @@ class MAMLTrainer(Trainer):
     @override(Trainer)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
+            from ray.rllib.agents.maml.maml_torch_policy import MAMLTorchPolicy
             return MAMLTorchPolicy
+        elif config["framework"] == "tf":
+            from ray.rllib.agents.maml.maml_tf_policy import MAMLDynamicTFPolicy
+            return MAMLDynamicTFPolicy
         else:
-            return MAMLTFPolicy
+            from ray.rllib.agents.maml.maml_tf_policy import MAMLEagerTFPolicy
+            return MAMLEagerTFPolicy
 
     @staticmethod
     @override(Trainer)

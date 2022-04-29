@@ -3,17 +3,17 @@ import gym
 from typing import Optional, Dict
 
 import ray
-from ray.rllib.agents.ppo.ppo_tf_policy import compute_and_clip_gradients
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.evaluation.postprocessing import compute_advantages, Postprocessing
+from ray.rllib.models.action_dist import ActionDistribution
+from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.policy.grad_utils import compute_and_clip_gradients
+from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.tf_policy import ValueNetworkMixin
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.framework import try_import_tf, get_variable
 from ray.rllib.utils.tf_utils import explained_variance, make_tf_callable
-from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.tf_policy import ValueNetworkMixin
 from ray.rllib.utils.typing import TrainerConfigDict, TensorType, PolicyID
-from ray.rllib.models.action_dist import ActionDistribution
-from ray.rllib.models.modelv2 import ModelV2
 
 tf1, tf, tfv = try_import_tf()
 

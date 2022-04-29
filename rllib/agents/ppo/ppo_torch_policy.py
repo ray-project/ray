@@ -10,13 +10,14 @@ from ray.rllib.evaluation.postprocessing import (
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_policy import (
+from ray.rllib.policy.torch_mixins import (
+    ComputeGAEMixIn,
     EntropyCoeffSchedule,
     KLCoeffMixin,
     LearningRateSchedule,
-    TorchPolicy,
     ValueNetworkMixin,
 )
+from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -33,11 +34,12 @@ logger = logging.getLogger(__name__)
 
 
 class PPOTorchPolicy(
+    ComputeGAEMixIn,
     ValueNetworkMixin,
     LearningRateSchedule,
     EntropyCoeffSchedule,
     KLCoeffMixin,
-    TorchPolicy
+    TorchPolicyV2
 ):
     """PyTorch policy class used with PPOTrainer."""
 
@@ -45,7 +47,7 @@ class PPOTorchPolicy(
         config = dict(ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG, **config)
         validate_config(config)
 
-        TorchPolicy.__init__(
+        TorchPolicyV2.__init__(
             self,
             observation_space,
             action_space,
@@ -53,6 +55,7 @@ class PPOTorchPolicy(
             max_seq_len=config["model"]["max_seq_len"],
         )
 
+        ComputeGAEMixIn.__init__(self)
         EntropyCoeffSchedule.__init__(
             self, config["entropy_coeff"], config["entropy_coeff_schedule"]
         )
@@ -63,20 +66,7 @@ class PPOTorchPolicy(
         # TODO: Don't require users to call this manually.
         self._initialize_loss_from_dummy_batch()
 
-    @override(TorchPolicy)
-    def postprocess_trajectory(
-        self, sample_batch, other_agent_batches=None, episode=None
-    ):
-        # Do all post-processing always with no_grad().
-        # Not using this here will introduce a memory leak
-        # in torch (issue #6962).
-        # TODO: no_grad still necessary?
-        with torch.no_grad():
-            return compute_gae_for_sample_batch(
-                self, sample_batch, other_agent_batches, episode
-            )
-
-    @override(TorchPolicy)
+    @override(TorchPolicyV2)
     def loss(
         self,
         model: ModelV2,
@@ -184,13 +174,13 @@ class PPOTorchPolicy(
 
     # TODO: Make this an event-style subscription (e.g.:
     #  "after_gradients_computed").
-    @override(TorchPolicy)
+    @override(TorchPolicyV2)
     def extra_grad_process(self, local_optimizer, loss):
         return apply_grad_clipping(self, local_optimizer, loss)
 
     # TODO: Make this an event-style subscription (e.g.:
     #  "after_losses_computed").
-    @override(TorchPolicy)
+    @override(TorchPolicyV2)
     def extra_grad_info(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
         return convert_to_numpy(
             {

@@ -615,7 +615,7 @@ class Policy(metaclass=ABCMeta):
         Note: The return value of this method will reside under the "weights"
         key in the return value of Policy.get_state(). Model weights are only
         one part of a Policy's state. Other state information contains:
-        optimizer variables, exploration state, and global state vars such as
+        variables, exploration state, and global state vars such as
         the sampling timestep.
 
         Returns:

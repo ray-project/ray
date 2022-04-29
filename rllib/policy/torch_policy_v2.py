@@ -27,10 +27,17 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.torch_policy import _directStepOptimizerSingleton
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import force_list, NullContextManager
-from ray.rllib.utils.annotations import DeveloperAPI, override
+from ray.rllib.utils.annotations import (
+    DeveloperAPI,
+    OverrideToImplementCustomLogic,
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
+    override,
+    is_overridden,
+)
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
@@ -57,7 +64,7 @@ logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-class TorchPolicy(Policy):
+class TorchPolicyV2(Policy):
     """PyTorch specific Policy class to use with RLlib."""
 
     @DeveloperAPI
@@ -68,30 +75,8 @@ class TorchPolicy(Policy):
         config: TrainerConfigDict,
         *,
         model: Optional[TorchModelV2] = None,
-        loss: Optional[
-            Callable[
-                [Policy, ModelV2, Type[TorchDistributionWrapper], SampleBatch],
-                Union[TensorType, List[TensorType]],
-            ]
-        ] = None,
         action_distribution_class: Optional[Type[TorchDistributionWrapper]] = None,
-        action_sampler_fn: Optional[
-            Callable[
-                [TensorType, List[TensorType]],
-                Union[
-                    Tuple[TensorType, TensorType, List[TensorType]],
-                    Tuple[TensorType, TensorType, TensorType, List[TensorType]],
-                ],
-            ]
-        ] = None,
-        action_distribution_fn: Optional[
-            Callable[
-                [Policy, ModelV2, TensorType, TensorType, TensorType],
-                Tuple[TensorType, Type[TorchDistributionWrapper], List[TensorType]],
-            ]
-        ] = None,
         max_seq_len: int = 20,
-        get_batch_divisibility_req: Optional[Callable[[Policy], int]] = None,
     ):
         """Initializes a TorchPolicy instance.
 
@@ -102,47 +87,11 @@ class TorchPolicy(Policy):
             model: PyTorch policy module. Given observations as
                 input, this module must return a list of outputs where the
                 first item is action logits, and the rest can be any value.
-            loss: Callable that returns one or more (a list of) scalar loss
-                terms.
             action_distribution_class: Class for a torch action distribution.
-            action_sampler_fn: A callable returning either a sampled action,
-                its log-likelihood and updated state or a sampled action, its
-                log-likelihood, updated state and action distribution inputs
-                given Policy, ModelV2, input_dict, state batches (optional),
-                explore, and timestep. Provide `action_sampler_fn` if you would
-                like to have full control over the action computation step,
-                including the model forward pass, possible sampling from a
-                distribution, and exploration logic.
-                Note: If `action_sampler_fn` is given, `action_distribution_fn`
-                must be None. If both `action_sampler_fn` and
-                `action_distribution_fn` are None, RLlib will simply pass
-                inputs through `self.model` to get distribution inputs, create
-                the distribution object, sample from it, and apply some
-                exploration logic to the results.
-                The callable takes as inputs: Policy, ModelV2, input_dict
-                (SampleBatch), state_batches (optional), explore, and timestep.
-            action_distribution_fn: A callable returning distribution inputs
-                (parameters), a dist-class to generate an action distribution
-                object from, and internal-state outputs (or an empty list if
-                not applicable).
-                Provide `action_distribution_fn` if you would like to only
-                customize the model forward pass call. The resulting
-                distribution parameters are then used by RLlib to create a
-                distribution object, sample from it, and execute any
-                exploration logic.
-                Note: If `action_distribution_fn` is given, `action_sampler_fn`
-                must be None. If both `action_sampler_fn` and
-                `action_distribution_fn` are None, RLlib will simply pass
-                inputs through `self.model` to get distribution inputs, create
-                the distribution object, sample from it, and apply some
-                exploration logic to the results.
-                The callable takes as inputs: Policy, ModelV2, ModelInputDict,
-                explore, timestep, is_training.
             max_seq_len: Max sequence length for LSTM training.
-            get_batch_divisibility_req: Optional callable that returns the
-                divisibility requirement for sample batches given the Policy.
         """
         self.framework = config["framework"] = "torch"
+
         super().__init__(observation_space, action_space, config)
 
         # Create multi-GPU model towers, if necessary.
@@ -260,19 +209,13 @@ class TorchPolicy(Policy):
 
         self.exploration = self._create_exploration()
         self.unwrapped_model = model  # used to support DistributedDataParallel
-        # To ensure backward compatibility:
-        # Old way: If `loss` provided here, use as-is (as a function).
-        if loss is not None:
-            self._loss = loss
-        # New way: Convert the overridden `self.loss` into a plain function,
-        # so it can be called the same way as `loss` would be, ensuring
-        # backward compatibility.
-        elif self.loss.__func__.__qualname__ != "Policy.loss":
-            self._loss = self.loss.__func__
-        # `loss` not provided nor overridden from Policy -> Set to None.
-        else:
-            self._loss = None
         self._optimizers = force_list(self.optimizer())
+
+        # Backward compatibility workaround so Policy will call self.loss() directly.
+        # TODO(jungong): clean up after all policies are migrated to new sub-class
+        # implementation.
+        self._loss = None
+
         # Store, which params (by index within the model's list of
         # parameters) should be updated per optimizer.
         # Maps optimizer idx to set or param indices.
@@ -291,18 +234,191 @@ class TorchPolicy(Policy):
         self._loaded_batches = [[] for _ in range(num_buffers)]
 
         self.dist_class = action_distribution_class
-        self.action_sampler_fn = action_sampler_fn
-        self.action_distribution_fn = action_distribution_fn
 
         # If set, means we are using distributed allreduce during learning.
         self.distributed_world_size = None
 
+        self.batch_divisibility_req = self.get_batch_divisibility_req()
         self.max_seq_len = max_seq_len
-        self.batch_divisibility_req = (
-            get_batch_divisibility_req(self)
-            if callable(get_batch_divisibility_req)
-            else (get_batch_divisibility_req or 1)
-        )
+
+    @DeveloperAPI
+    @OverrideToImplementCustomLogic
+    @override(Policy)
+    def loss(
+        self,
+        model: ModelV2,
+        dist_class: Type[TorchDistributionWrapper],
+        train_batch: SampleBatch,
+    ) -> Union[TensorType, List[TensorType]]:
+        """Constructs the loss for Proximal Policy Objective.
+
+        Args:
+            model: The Model to calculate the loss for.
+            dist_class: The action distr. class.
+            train_batch: The training data.
+
+        Returns:
+            Loss tensor given the input batch.
+        """
+        raise NotImplementedError
+
+    @DeveloperAPI
+    @OverrideToImplementCustomLogic
+    def action_sampler_fn(
+        self,
+        model: ModelV2,
+        *,
+        obs_batch: TensorType,
+        state_batches: TensorType,
+        **kwargs,
+    ) -> Tuple[TensorType, TensorType]:
+        """Build underlying model for this Policy.
+
+        Args:
+            obs_space: The policy's observation space.
+            action_space: The policy's action space.
+            config: Policy-specific configuration data.
+
+        Returns:
+            The Model for the Policy to use.
+        """
+        return None, None
+
+    @DeveloperAPI
+    @OverrideToImplementCustomLogic
+    def action_distribution_fn(
+        self,
+        model: ModelV2,
+        *,
+        obs_batch: TensorType,
+        state_batches: TensorType,
+        **kwargs,
+    ) -> Tuple[TensorType, type, List[TensorType]]:
+        """Action distribution function for this Policy.
+
+        Args:
+            model: Underlying model.
+            obs_batch: Observation tensor batch.
+
+        Returns:
+            Distribution input.
+            ActionDistribution class.
+            State outs.
+        """
+        return None, None, None
+
+    @DeveloperAPI
+    @OverrideToImplementCustomLogic
+    def get_batch_divisibility_req(self) -> int:
+        """Get batch divisibility request.
+
+        Returns:
+            Size N. A sample batch must be of size K*N.
+        """
+        # By default, any sized batch is ok, so simply return 1.
+        return 1
+
+    @DeveloperAPI
+    @OverrideToImplementCustomLogic
+    def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
+        """Stats function. Returns a dict of statistics.
+
+        Args:
+            train_batch: The SampleBatch (already) used for training.
+
+        Returns:
+            The stats dict.
+        """
+        return {}
+
+    @DeveloperAPI
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def extra_grad_process(
+        self, optimizer: "torch.optim.Optimizer", loss: TensorType
+    ) -> Dict[str, TensorType]:
+        """Called after each optimizer.zero_grad() + loss.backward() call.
+
+        Called for each self._optimizers/loss-value pair.
+        Allows for gradient processing before optimizer.step() is called.
+        E.g. for gradient clipping.
+
+        Args:
+            optimizer: A torch optimizer object.
+            loss: The loss tensor associated with the optimizer.
+
+        Returns:
+            An dict with information on the gradient processing step.
+        """
+        return {}
+
+    @DeveloperAPI
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def extra_compute_grad_fetches(self) -> Dict[str, Any]:
+        """Extra values to fetch and return from compute_gradients().
+
+        Returns:
+            Extra fetch dict to be added to the fetch dict of the
+            `compute_gradients` call.
+        """
+        return {LEARNER_STATS_KEY: {}}  # e.g, stats, td error, etc.
+
+    @DeveloperAPI
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def extra_action_out(
+        self,
+        input_dict: Dict[str, TensorType],
+        state_batches: List[TensorType],
+        model: TorchModelV2,
+        action_dist: TorchDistributionWrapper,
+    ) -> Dict[str, TensorType]:
+        """Returns dict of extra info to include in experience batch.
+
+        Args:
+            input_dict: Dict of model input tensors.
+            state_batches: List of state tensors.
+            model: Reference to the model object.
+            action_dist: Torch action dist object
+                to get log-probs (e.g. for already sampled actions).
+
+        Returns:
+            Extra outputs to return in a `compute_actions_from_input_dict()`
+            call (3rd return value).
+        """
+        return {}
+
+    @DeveloperAPI
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def extra_grad_info(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
+        """Return dict of extra grad info.
+
+        Args:
+            train_batch: The training batch for which to produce
+                extra grad info for.
+
+        Returns:
+            The info dict carrying grad info per str key.
+        """
+        return {}
+
+    @DeveloperAPI
+    @OverrideToImplementCustomLogic
+    def optimizer(
+        self,
+    ) -> Union[List["torch.optim.Optimizer"], "torch.optim.Optimizer"]:
+        """Custom the local PyTorch optimizer(s) to use.
+
+        Returns:
+            The local PyTorch optimizer(s) to use for this Policy.
+        """
+        if hasattr(self, "config"):
+            optimizers = [
+                torch.optim.Adam(self.model.parameters(), lr=self.config["lr"])
+            ]
+        else:
+            optimizers = [torch.optim.Adam(self.model.parameters())]
+        if getattr(self, "exploration", None):
+            optimizers = self.exploration.get_exploration_optimizer(optimizers)
+        return optimizers
 
     @override(Policy)
     def compute_actions_from_input_dict(
@@ -387,7 +503,10 @@ class TorchPolicy(Policy):
         actions_normalized: bool = True,
     ) -> TensorType:
 
-        if self.action_sampler_fn and self.action_distribution_fn is None:
+        if (
+            not is_overridden(self.action_sampler_fn) and
+            not is_overridden(self.action_distribution_fn)
+        ):
             raise ValueError(
                 "Cannot compute log-prob/likelihood w/o an "
                 "`action_distribution_fn` and a provided "
@@ -411,37 +530,16 @@ class TorchPolicy(Policy):
             self.exploration.before_compute_actions(explore=False)
 
             # Action dist class and inputs are generated via custom function.
-            if self.action_distribution_fn:
-
-                # Try new action_distribution_fn signature, supporting
-                # state_batches and seq_lens.
-                try:
-                    dist_inputs, dist_class, state_out = self.action_distribution_fn(
-                        self,
-                        self.model,
-                        input_dict=input_dict,
-                        state_batches=state_batches,
-                        seq_lens=seq_lens,
-                        explore=False,
-                        is_training=False,
-                    )
-                # Trying the old way (to stay backward compatible).
-                # TODO: Remove in future.
-                except TypeError as e:
-                    if (
-                        "positional argument" in e.args[0]
-                        or "unexpected keyword argument" in e.args[0]
-                    ):
-                        dist_inputs, dist_class, _ = self.action_distribution_fn(
-                            policy=self,
-                            model=self.model,
-                            obs_batch=input_dict[SampleBatch.CUR_OBS],
-                            explore=False,
-                            is_training=False,
-                        )
-                    else:
-                        raise e
-
+            if is_overridden(self.action_distribution_fn):
+                dist_inputs, dist_class, state_out = self.action_distribution_fn(
+                    self,
+                    self.model,
+                    input_dict=input_dict,
+                    state_batches=state_batches,
+                    seq_lens=seq_lens,
+                    explore=False,
+                    is_training=False,
+                )
             # Default action-dist inputs calculation.
             else:
                 dist_class = self.dist_class
@@ -771,90 +869,6 @@ class TorchPolicy(Policy):
         # Then the Policy's (NN) weights.
         super().set_state(state)
 
-    @DeveloperAPI
-    def extra_grad_process(
-        self, optimizer: "torch.optim.Optimizer", loss: TensorType
-    ) -> Dict[str, TensorType]:
-        """Called after each optimizer.zero_grad() + loss.backward() call.
-
-        Called for each self._optimizers/loss-value pair.
-        Allows for gradient processing before optimizer.step() is called.
-        E.g. for gradient clipping.
-
-        Args:
-            optimizer: A torch optimizer object.
-            loss: The loss tensor associated with the optimizer.
-
-        Returns:
-            An dict with information on the gradient processing step.
-        """
-        return {}
-
-    @DeveloperAPI
-    def extra_compute_grad_fetches(self) -> Dict[str, Any]:
-        """Extra values to fetch and return from compute_gradients().
-
-        Returns:
-            Extra fetch dict to be added to the fetch dict of the
-            `compute_gradients` call.
-        """
-        return {LEARNER_STATS_KEY: {}}  # e.g, stats, td error, etc.
-
-    @DeveloperAPI
-    def extra_action_out(
-        self,
-        input_dict: Dict[str, TensorType],
-        state_batches: List[TensorType],
-        model: TorchModelV2,
-        action_dist: TorchDistributionWrapper,
-    ) -> Dict[str, TensorType]:
-        """Returns dict of extra info to include in experience batch.
-
-        Args:
-            input_dict: Dict of model input tensors.
-            state_batches: List of state tensors.
-            model: Reference to the model object.
-            action_dist: Torch action dist object
-                to get log-probs (e.g. for already sampled actions).
-
-        Returns:
-            Extra outputs to return in a `compute_actions_from_input_dict()`
-            call (3rd return value).
-        """
-        return {}
-
-    @DeveloperAPI
-    def extra_grad_info(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
-        """Return dict of extra grad info.
-
-        Args:
-            train_batch: The training batch for which to produce
-                extra grad info for.
-
-        Returns:
-            The info dict carrying grad info per str key.
-        """
-        return {}
-
-    @DeveloperAPI
-    def optimizer(
-        self,
-    ) -> Union[List["torch.optim.Optimizer"], "torch.optim.Optimizer"]:
-        """Custom the local PyTorch optimizer(s) to use.
-
-        Returns:
-            The local PyTorch optimizer(s) to use for this Policy.
-        """
-        if hasattr(self, "config"):
-            optimizers = [
-                torch.optim.Adam(self.model.parameters(), lr=self.config["lr"])
-            ]
-        else:
-            optimizers = [torch.optim.Adam(self.model.parameters())]
-        if getattr(self, "exploration", None):
-            optimizers = self.exploration.get_exploration_optimizer(optimizers)
-        return optimizers
-
     @override(Policy)
     @DeveloperAPI
     def export_model(self, export_dir: str, onnx: Optional[int] = None) -> None:
@@ -940,58 +954,30 @@ class TorchPolicy(Policy):
         if self.model:
             self.model.eval()
 
-        if self.action_sampler_fn:
+        if is_overridden(self.action_sampler_fn):
             action_dist = dist_inputs = None
-            action_sampler_outputs = self.action_sampler_fn(
+            actions, logp, state_out = self.action_sampler_fn(
                 self,
                 self.model,
-                input_dict,
-                state_batches,
+                obs_batch=input_dict,
+                state_batches=state_batches,
                 explore=explore,
                 timestep=timestep,
             )
-            if len(action_sampler_outputs) == 4:
-                actions, logp, dist_inputs, state_out = action_sampler_outputs
-            else:
-                actions, logp, state_out = action_sampler_outputs
         else:
             # Call the exploration before_compute_actions hook.
             self.exploration.before_compute_actions(explore=explore, timestep=timestep)
-            if self.action_distribution_fn:
-                # Try new action_distribution_fn signature, supporting
-                # state_batches and seq_lens.
-                try:
-                    dist_inputs, dist_class, state_out = self.action_distribution_fn(
-                        self,
-                        self.model,
-                        input_dict=input_dict,
-                        state_batches=state_batches,
-                        seq_lens=seq_lens,
-                        explore=explore,
-                        timestep=timestep,
-                        is_training=False,
-                    )
-                # Trying the old way (to stay backward compatible).
-                # TODO: Remove in future.
-                except TypeError as e:
-                    if (
-                        "positional argument" in e.args[0]
-                        or "unexpected keyword argument" in e.args[0]
-                    ):
-                        (
-                            dist_inputs,
-                            dist_class,
-                            state_out,
-                        ) = self.action_distribution_fn(
-                            self,
-                            self.model,
-                            input_dict[SampleBatch.CUR_OBS],
-                            explore=explore,
-                            timestep=timestep,
-                            is_training=False,
-                        )
-                    else:
-                        raise e
+            if is_overridden(self.action_distribution_fn):
+                dist_inputs, dist_class, state_out = self.action_distribution_fn(
+                    self,
+                    self.model,
+                    input_dict=input_dict,
+                    state_batches=state_batches,
+                    seq_lens=seq_lens,
+                    explore=explore,
+                    timestep=timestep,
+                    is_training=False,
+                )
             else:
                 dist_class = self.dist_class
                 dist_inputs, state_out = self.model(input_dict, state_batches, seq_lens)
@@ -1073,7 +1059,7 @@ class TorchPolicy(Policy):
                     device
                 ):
                     loss_out = force_list(
-                        self._loss(self, model, self.dist_class, sample_batch)
+                        self.loss(model, self.dist_class, sample_batch)
                     )
 
                     # Call Model's custom-loss with Policy loss outputs and
@@ -1182,26 +1168,3 @@ class TorchPolicy(Policy):
                 raise output[0] from output[1]
             outputs.append(results[shard_idx])
         return outputs
-
-
-@DeveloperAPI
-class DirectStepOptimizer:
-    """Typesafe method for indicating `apply_gradients` can directly step the
-    optimizers with in-place gradients.
-    """
-
-    _instance = None
-
-    def __new__(cls):
-        if DirectStepOptimizer._instance is None:
-            DirectStepOptimizer._instance = super().__new__(cls)
-        return DirectStepOptimizer._instance
-
-    def __eq__(self, other):
-        return type(self) == type(other)
-
-    def __repr__(self):
-        return "DirectStepOptimizer"
-
-
-_directStepOptimizerSingleton = DirectStepOptimizer()

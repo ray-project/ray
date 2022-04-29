@@ -8,17 +8,16 @@ from typing import Dict, List, Optional, Type, Union
 
 import ray
 from ray.rllib.evaluation.episode import Episode
-from ray.rllib.evaluation.postprocessing import (
-    compute_gae_for_sample_batch,
-    Postprocessing,
-)
+from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.policy.dynamic_tf_policy_v2 import DynamicTFPolicyV2
 from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.tf_policy import (
+from ray.rllib.policy.tf_mixins import (
+    ComputeAndClipGradsMixIn,
+    ComputeGAEMixIn,
     EntropyCoeffSchedule,
     LearningRateSchedule,
     KLCoeffMixin,
@@ -54,9 +53,9 @@ def validate_config(config: TrainerConfigDict) -> None:
 
 
 # We need this builder function because we want to share the same
-# custom logics between TF1 static and TF2 eager policies.
+# custom logics between TF1 dynamic and TF2 eager policies.
 def get_ppo_tf_policy(base: type) -> type:
-    """Construct a PPOTFPolicy inheriting either static or eager base policies.
+    """Construct a PPOTFPolicy inheriting either dynamic or eager base policies.
 
     Args:
         base: Base class for this policy. DynamicTFPolicyV2 or EagerTFPolicyV2.
@@ -65,6 +64,8 @@ def get_ppo_tf_policy(base: type) -> type:
         A TF Policy to be used with PPOTrainer.
     """
     class PPOTFPolicy(
+        ComputeGAEMixIn,
+        ComputeAndClipGradsMixIn,
         EntropyCoeffSchedule,
         LearningRateSchedule,
         KLCoeffMixin,
@@ -79,6 +80,7 @@ def get_ppo_tf_policy(base: type) -> type:
             existing_model=None,
             existing_inputs=None,
         ):
+            config = dict(ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG, **config)
             validate_config(config)
 
             # Initialize base class.
@@ -92,6 +94,8 @@ def get_ppo_tf_policy(base: type) -> type:
             )
 
             # Initialize MixIns.
+            ComputeGAEMixIn.__init__(self)
+            ComputeAndClipGradsMixIn.__init__(self)
             ValueNetworkMixin.__init__(self, config)
             KLCoeffMixin.__init__(self, config)
             EntropyCoeffSchedule.__init__(
@@ -199,39 +203,6 @@ def get_ppo_tf_policy(base: type) -> type:
             self._value_fn_out = value_fn_out
 
             return total_loss
-
-        @override(base)
-        def postprocess_trajectory(
-            self, sample_batch, other_agent_batches=None, episode=None
-        ):
-            sample_batch = super().postprocess_trajectory(sample_batch)
-            return compute_gae_for_sample_batch(
-                self, sample_batch, other_agent_batches, episode
-            )
-
-        @override(base)
-        def compute_gradients_fn(
-            self, optimizer: LocalOptimizer, loss: TensorType
-        ) -> ModelGradients:
-            # Compute the gradients.
-            variables = self.model.trainable_variables
-            if isinstance(self.model, ModelV2):
-                variables = variables()
-            grads_and_vars = optimizer.compute_gradients(loss, variables)
-
-            # Clip by global norm, if necessary.
-            if self.config["grad_clip"] is not None:
-                # Defuse inf gradients (due to super large losses).
-                grads = [g for (g, v) in grads_and_vars]
-                grads, _ = tf.clip_by_global_norm(grads, self.config["grad_clip"])
-                # If the global_norm is inf -> All grads will be NaN. Stabilize this
-                # here by setting them to 0.0. This will simply ignore destructive loss
-                # calculations.
-                self.grads = [tf.where(tf.math.is_nan(g), tf.zeros_like(g), g) for g in grads]
-                clipped_grads_and_vars = list(zip(self.grads, variables))
-                return clipped_grads_and_vars
-            else:
-                return grads_and_vars
 
         @override(base)
         def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:

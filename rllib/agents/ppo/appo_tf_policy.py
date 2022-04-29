@@ -25,11 +25,11 @@ from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.policy.tf_policy import (
+from ray.rllib.policy.tf_policy import TFPolicy
+from ray.rllib.policy.tf_mixins import (
     EntropyCoeffSchedule,
     LearningRateSchedule,
     KLCoeffMixin,
-    TFPolicy,
     ValueNetworkMixin,
 )
 from ray.rllib.models.catalog import ModelCatalog

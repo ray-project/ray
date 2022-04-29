@@ -219,7 +219,6 @@ class DynamicTFPolicyV2(TFPolicy):
     @OverrideToImplementCustomLogic
     def compute_gradients_fn(
         self,
-        policy: Policy,
         optimizer: LocalOptimizer,
         loss: TensorType
     ) -> ModelGradients:
@@ -652,7 +651,7 @@ class DynamicTFPolicyV2(TFPolicy):
 
     @override(Policy)
     def _initialize_loss_from_dummy_batch(
-        self, auto_remove_unneeded_view_reqs: bool = True, stats_fn=None
+        self, auto_remove_unneeded_view_reqs: bool = True
     ) -> None:
         # Test calls depend on variable init, so initialize model first.
         self.get_session().run(tf1.global_variables_initializer())
