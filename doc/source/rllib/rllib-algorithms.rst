@@ -801,6 +801,8 @@ Tuned examples: `Multi-Agent Particle Environment <https://github.com/wsjeon/mad
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
 
+.. _parameter:
+
 Parameter Sharing
 -----------------
 
@@ -808,11 +810,15 @@ Parameter Sharing
 
 Tuned examples: `PettingZoo <https://github.com/PettingZoo-Team/PettingZoo>`__, `waterworld <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_parameter_sharing.py>`__, `rock-paper-scissors <https://github.com/ray-project/ray/blob/master/rllib/examples/rock_paper_scissors_multiagent.py>`__, `multi-agent cartpole <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_cartpole.py>`__
 
+.. _fil:
+
 Fully Independent Learning
 --------------------------
 `[instructions] <rllib-env.html#multi-agent-and-hierarchical>`__ Fully independent learning involves a collection of agents learning independently of each other via single agent methods. This typically works, but can be less effective than dedicated multi-agent RL methods, since they do not account for the non-stationarity of the multi-agent environment.
 
 Tuned examples: `waterworld <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_independent_learning.py>`__, `multiagent-cartpole <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_cartpole.py>`__
+
+.. _sc:
 
 Shared Critic Methods
 ---------------------
@@ -825,7 +831,7 @@ Tuned examples: `TwoStepGame <https://github.com/ray-project/ray/blob/master/rll
 Exploration-based plug-ins (can be combined with any algo)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. _Curiosity:
+.. _curiosity:
 
 Curiosity (ICM: Intrinsic Curiosity Module)
 -------------------------------------------
@@ -893,7 +899,7 @@ often: The "forward" model will eventually get better at predicting these next l
 
 
 
-.. _RE3:
+.. _re3:
 
 RE3 (Random Encoders for Efficient Exploration)
 -----------------------------------------------

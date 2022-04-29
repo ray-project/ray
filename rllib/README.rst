@@ -74,18 +74,18 @@ Model-free RL:
 - `Deep Deterministic Policy Gradients (TD3) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#ddpg>`__ 
 - `Distributed Prioritized Experience Replay (Ape-X DDPG)] <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#apex>`__ 
 - `Model-agnostic Meta-Learning (contrib/MAML) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#maml>`__ 
-- `Random encoders (contrib/RE3) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#RE3>`__ 
+- `Random encoders (contrib/RE3) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#re3>`__ 
 
 Model-based RL: 
 
-- `Random encoders (contrib/RE3) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#mbmpo>`__ 
+- `Model-Based Meta-Policy-Optimization (MB-MPO) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#mbmpo>`__ 
 - `Image-only Dreamer (contrib/Dreamer) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#dreamer>`__ 
-- `Random encoders (contrib/RE3) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#RE3>`__ 
+- `Random encoders (contrib/RE3) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#re3>`__ 
 
 Derivative-free algorithms: 
 
 - `Augmented Random Search (ARS) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#ars>`__ 
-- `Evolution Strategies <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#es`__ 
+- `Evolution Strategies <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#es>`__ 
 - `Monotonic Advantage Re-Weighted Imitation Learning (MARWIL) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#marwil>`__ 
 - `Behavior Cloning (BC; derived from MARWIL implementation) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#bc>`__ 
 
@@ -93,7 +93,7 @@ RL for games:
 
 - `Single-Player Alpha Zero (contrib/AlphaZero)  <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#alphazero>`__ 
 - `Proximal Policy Optimization (PPO) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#ppo>`__ 
-- `synchronous Proximal Policy Optimization (APPO) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#appo>`__ 
+- `Synchronous Proximal Policy Optimization (APPO) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#appo>`__ 
 - `Decentralized Distributed Proximal Policy Optimization (DD-PPO)  <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#ddppo>`__ 
 - `Importance Weighted Actor-Learner Architecture (IMPALA) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#impala>`__ 
 - `Advantage Actor-Critic (A2C) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#a3c>`__ 
@@ -103,9 +103,9 @@ RL for games:
 - `QMIX Monotonic Value Factorisation (VDN)  <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#qmix>`__ 
 - `QMIX Monotonic Value Factorisation (IQN) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#qmix>`__ 
 - `Multi-Agent Deep Deterministic Policy Gradient (contrib/MADDPG) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#maddpg>`__ 
-- `Parameter Sharing <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#maddpg>`__ 
-- `Fully Independent Learning <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#maddpg>`__ 
-- `Shared Critic Methods <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#maddpg>`__ 
+- `Parameter Sharing <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#parameter>`__ 
+- `Fully Independent Learning <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#fil>`__ 
+- `Shared Critic Methods <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#sc>`__ 
 
 RL for recommender systems: 
 
@@ -121,8 +121,7 @@ Others:
 - `Policy Gradients <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#pg>`__ 
 - `Curiosity (ICM: Intrinsic Curiosity Module) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#Curiosity>`__ 
 
-A list of all the algorithms can be found `here <https://docs.ray.io/en/master/rllib/rllib-algorithms.html>`__ . 
-<br>
+A list of all the algorithms can be found `here <https://docs.ray.io/en/master/rllib/rllib-algorithms.html>`__ .  
 
 
 Quick First Experiment
