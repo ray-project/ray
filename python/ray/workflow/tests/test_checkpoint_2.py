@@ -9,11 +9,14 @@ from ray.workflow.tests import utils
 from ray.exceptions import RaySystemError
 
 
+SIZE = 2 ** 15
+
+
 @ray.remote
 def checkpoint_dag(checkpoint):
     @ray.remote
     def large_input():
-        return np.arange(2 ** 24)
+        return np.arange(SIZE)
 
     @ray.remote
     def identity(x):
@@ -50,7 +53,7 @@ def test_checkpoint_dag_recovery_skip(workflow_start_regular_shared):
     start = time.time()
     recovered = ray.get(workflow.resume("checkpoint_skip_recovery"))
     recover_duration_skipped = time.time() - start
-    assert np.isclose(recovered, 8388607.5)
+    assert np.isclose(recovered, np.arange(SIZE).mean())
 
     print(
         f"[skipped] run_duration = {run_duration_skipped}, "
@@ -73,7 +76,7 @@ def test_checkpoint_dag_recovery_partial(workflow_start_regular_shared):
     start = time.time()
     recovered = ray.get(workflow.resume("checkpoint_partial_recovery"))
     recover_duration_partial = time.time() - start
-    assert np.isclose(recovered, 8388607.5)
+    assert np.isclose(recovered, np.arange(SIZE).mean())
     print(
         f"[partial] run_duration = {run_duration_partial}, "
         f"recover_duration = {recover_duration_partial}"
@@ -95,7 +98,7 @@ def test_checkpoint_dag_recovery_whole(workflow_start_regular_shared):
     start = time.time()
     recovered = ray.get(workflow.resume("checkpoint_whole_recovery"))
     recover_duration_whole = time.time() - start
-    assert np.isclose(recovered, 8388607.5)
+    assert np.isclose(recovered, np.arange(SIZE).mean())
 
     print(
         f"[whole] run_duration = {run_duration_whole}, "
