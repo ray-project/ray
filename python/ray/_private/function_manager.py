@@ -292,23 +292,37 @@ class FunctionActorManager:
             raise KeyError(message)
         return info
 
-    def fetch_and_execute_functions(self):
-        function_keys = self._worker.gcs_client.internal_kv_keys(
-            make_function_table_key(b"FunctionsToRun", self._worker.current_job_id),
-            KV_NAMESPACE_FUNCTION_TABLE,
-        )
-        for function_key in function_keys:
+    def fetch_and_execute_functions(self, timeout=10):
+        vals = None
+        warning_sent = False
+        start_time = time.time()
+        while vals is None:
+            if time.time() - start_time > timeout and not warning_sent:
+                warning_message = (
+                    "This worker is trying to fetch initialization functions and "
+                    "still waiting for the driver to push them. GCS might be under "
+                    "high pressure and unable to serve the request."
+                    f"node={self._worker.node_ip_address}, "
+                    f"worker_id={self._worker.worker_id.hex()}, "
+                    f"pid={os.getpid()}).")
+                logger.error(warning_message)
+                ray._private.utils.push_error_to_driver(
+                    self._worker,
+                    ray_constants.WAIT_FOR_FUNCTION_PUSH_ERROR,
+                    warning_message,
+                    job_id=job_id,
+                )
+                warning_sent = True
             vals = self._worker.gcs_client.internal_kv_get(
-                function_key, ray_constants.KV_NAMESPACE_FUNCTION_TABLE
+                make_function_table_key(b"FunctionsToRun", self._worker.current_job_id),
+                KV_NAMESPACE_FUNCTION_TABLE,
             )
-            assert vals is not None
-            vals = pickle.loads(vals)
-            assert "function" in vals
-            job_id = vals["job_id"]
-            serialized_function = vals["function"]
+            if vals is None:
+                time.sleep(0.1)
+
+        functions = pickle.loads(vals)
+        for function in functions:
             try:
-                # Deserialize the function.
-                function = pickle.loads(serialized_function)
                 # Run the function.
                 function({"worker": self._worker})
             except Exception:

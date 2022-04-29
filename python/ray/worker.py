@@ -376,56 +376,40 @@ class Worker:
     def run_function_on_all_workers(self, function):
         """Run arbitrary code on all of the workers.
 
-        This function will first be run on the driver, and then it will be
-        exported to all of the workers to be run. It will also be run on any
-        new workers that register later. If ray.init has not been called yet,
-        then cache the function and export it later.
-
-        Args:
-            function (Callable): The function to run on all of the workers. It
-                takes only one argument, a worker info dict. If it returns
-                anything, its return values will not be used.
+        This function will first push the function to the cached queue. The caller
+        need to call export_initialization_functions_on_all_workers to push
+        the functions to kv so that the other worker will be able to run them.
         """
-        # If ray.init has not been called yet, then cache the function and
-        # export it when connect is called. Otherwise, run the function on all
-        # workers.
-        if self.mode is None:
-            self.cached_functions_to_run.append(function)
-        else:
-            # Attempt to pickle the function before we need it. This could
-            # fail, and it is more convenient if the failure happens before we
-            # actually run the function locally.
-            pickled_function = pickle.dumps(function)
 
-            function_to_run_id = hashlib.shake_128(pickled_function).digest(
-                ray_constants.ID_SIZE
-            )
+        self.cached_functions_to_run.append(function)
 
-            key = make_function_table_key(
-                b"FunctionsToRun", self.current_job_id, function_to_run_id
-            )
+    def export_initialization_functions_on_all_workers(self):
+        # Attempt to pickle the function before we need it. This could
+        # fail, and it is more convenient if the failure happens before we
+        # actually run the function locally.
+        pickled_function = pickle.dumps(self.cached_functions_to_run)
 
+        key = make_function_table_key(
+            b"FunctionsToRun", self.current_job_id
+        )
+
+        for function in self.cached_functions_to_run:
             # First run the function on the driver.
             # We always run the task locally.
             function({"worker": self})
 
             check_oversized_function(
-                pickled_function, function.__name__, "function", self
+                pickle.dumps(function), function.__name__, "function", self
             )
 
-            # Run the function on all workers.
-            self.gcs_client.internal_kv_put(
-                key,
-                pickle.dumps(
-                    {
-                        "job_id": self.current_job_id.binary(),
-                        "function_id": function_to_run_id,
-                        "function": pickled_function,
-                    }
-                ),
-                True,
-                ray_constants.KV_NAMESPACE_FUNCTION_TABLE,
-            )
+        # Run the function on all workers.
+        assert self.gcs_client.internal_kv_put(
+            key,
+            pickled_function,
+            False,
+            ray_constants.KV_NAMESPACE_FUNCTION_TABLE,
+        ) > 0
+        self.cached_functions_to_run = None
 
     def main_loop(self):
         """The main loop a worker runs to receive and execute tasks."""
@@ -1556,43 +1540,6 @@ def connect(
     else:
         logs_dir = node.get_logs_dir_path()
 
-    # Setup init functions on all nodes. This needs to run before CoreWorker
-    # is setup because for driver, we need write the function into GCS KV first.
-    # A better way to do this might be moving this into job_config.
-    if mode == SCRIPT_MODE:
-        # Add the directory containing the script that is running to the Python
-        # paths of the workers. Also add the current directory. Note that this
-        # assumes that the directory structures on the machines in the clusters
-        # are the same.
-        # When using an interactive shell, there is no script directory.
-        if not interactive_mode:
-            script_directory = os.path.abspath(os.path.dirname(sys.argv[0]))
-            worker.run_function_on_all_workers(
-                lambda worker_info: sys.path.insert(1, script_directory)
-            )
-        # In client mode, if we use runtime envs with "working_dir", then
-        # it'll be handled automatically.  Otherwise, add the current dir.
-        if not job_config.client_job and not job_config.runtime_env_has_uris():
-            current_directory = os.path.abspath(os.path.curdir)
-            worker.run_function_on_all_workers(
-                lambda worker_info: sys.path.insert(1, current_directory)
-            )
-        # TODO(rkn): Here we first export functions to run, then remote
-        # functions. The order matters. For example, one of the functions to
-        # run may set the Python path, which is needed to import a module used
-        # to define a remote function. We may want to change the order to
-        # simply be the order in which the exports were defined on the driver.
-        # In addition, we will need to retain the ability to decide what the
-        # first few exports are (mostly to set the Python path). Additionally,
-        # note that the first exports to be defined on the driver will be the
-        # ones defined in separate modules that are imported by the driver.
-        # Export cached functions_to_run.
-        for function in worker.cached_functions_to_run:
-            worker.run_function_on_all_workers(function)
-    elif mode == WORKER_MODE:
-        worker.function_actor_manager.fetch_and_execute_functions()
-    worker.cached_functions_to_run = None
-
     worker.core_worker = ray._raylet.CoreWorker(
         mode,
         node.plasma_store_socket_name,
@@ -1645,6 +1592,38 @@ def connect(
             )
             worker.logger_thread.daemon = True
             worker.logger_thread.start()
+
+    if mode == SCRIPT_MODE:
+        # Add the directory containing the script that is running to the Python
+        # paths of the workers. Also add the current directory. Note that this
+        # assumes that the directory structures on the machines in the clusters
+        # are the same.
+        # When using an interactive shell, there is no script directory.
+        if not interactive_mode:
+            script_directory = os.path.abspath(os.path.dirname(sys.argv[0]))
+            worker.run_function_on_all_workers(
+                lambda worker_info: sys.path.insert(1, script_directory)
+            )
+        # In client mode, if we use runtime envs with "working_dir", then
+        # it'll be handled automatically.  Otherwise, add the current dir.
+        if not job_config.client_job and not job_config.runtime_env_has_uris():
+            current_directory = os.path.abspath(os.path.curdir)
+            worker.run_function_on_all_workers(
+                lambda worker_info: sys.path.insert(1, current_directory)
+            )
+        # TODO(rkn): Here we first export functions to run, then remote
+        # functions. The order matters. For example, one of the functions to
+        # run may set the Python path, which is needed to import a module used
+        # to define a remote function. We may want to change the order to
+        # simply be the order in which the exports were defined on the driver.
+        # In addition, we will need to retain the ability to decide what the
+        # first few exports are (mostly to set the Python path). Additionally,
+        # note that the first exports to be defined on the driver will be the
+        # ones defined in separate modules that are imported by the driver.
+        # Export cached functions_to_run.
+        worker.export_initialization_functions_on_all_workers()
+    elif mode == WORKER_MODE:
+        worker.function_actor_manager.fetch_and_execute_functions()
 
     # Setup tracing here
     tracing_hook_val = worker.gcs_client.internal_kv_get(
