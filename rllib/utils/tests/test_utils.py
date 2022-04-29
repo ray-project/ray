@@ -70,7 +70,7 @@ class TestUtils(unittest.TestCase):
         action = space.sample()
         action = make_action_immutable(action)
         self.assertFalse(action.flags["WRITEABLE"])
-        
+
         # Test Discrete space.
         # Nothing to be tested as sampled actions are integers
         # and integers are immutable by nature.
@@ -80,7 +80,7 @@ class TestUtils(unittest.TestCase):
         action = space.sample()
         action = make_action_immutable(action)
         self.assertFalse(action.flags["WRITEABLE"])
-        
+
         # Test MultiBinary space.
         space = gym.spaces.MultiBinary([2, 2, 2])
         action = space.sample()
