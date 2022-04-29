@@ -44,9 +44,9 @@ struct ObjectBuffer {
   int device_num;
 };
 
-class ClientImplInterface {
+class InternalClientInterface {
  public:
-  virtual ~ClientImplInterface() {}
+  virtual ~InternalClientInterface() {}
   /// Connect to the local plasma store. Return the resulting connection.
   ///
   /// \param store_socket_name The name of the UNIX domain socket to use to
@@ -537,7 +537,7 @@ class PlasmaClient : public PlasmaClientInterface {
   friend class PlasmaMutableBuffer;
   bool IsInUse(const ObjectID &object_id);
 
-  std::shared_ptr<ClientImplInterface> impl_;
+  std::shared_ptr<InternalClientInterface> impl_;
 };
 
 }  // namespace plasma

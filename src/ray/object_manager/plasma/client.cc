@@ -53,7 +53,7 @@ class PlasmaBuffer : public SharedMemoryBuffer {
  public:
   ~PlasmaBuffer();
 
-  PlasmaBuffer(std::shared_ptr<ClientImplInterface> client,
+  PlasmaBuffer(std::shared_ptr<InternalClientInterface> client,
                const ObjectID &object_id,
                const std::shared_ptr<Buffer> &buffer)
       : SharedMemoryBuffer(buffer, 0, buffer->Size()),
@@ -61,7 +61,7 @@ class PlasmaBuffer : public SharedMemoryBuffer {
         object_id_(object_id) {}
 
  private:
-  std::shared_ptr<ClientImplInterface> client_;
+  std::shared_ptr<InternalClientInterface> client_;
   ObjectID object_id_;
 };
 
@@ -70,13 +70,13 @@ class PlasmaBuffer : public SharedMemoryBuffer {
 /// be called in the associated Seal call.
 class RAY_NO_EXPORT PlasmaMutableBuffer : public SharedMemoryBuffer {
  public:
-  PlasmaMutableBuffer(std::shared_ptr<ClientImplInterface> client,
+  PlasmaMutableBuffer(std::shared_ptr<InternalClientInterface> client,
                       uint8_t *mutable_data,
                       int64_t data_size)
       : SharedMemoryBuffer(mutable_data, data_size), client_(client) {}
 
  private:
-  std::shared_ptr<ClientImplInterface> client_;
+  std::shared_ptr<InternalClientInterface> client_;
 };
 
 // ----------------------------------------------------------------------
@@ -96,7 +96,7 @@ struct ObjectInUseEntry {
   bool is_sealed;
 };
 
-class PlasmaClientImpl : public ClientImplInterface,
+class PlasmaClientImpl : public InternalClientInterface,
                          public std::enable_shared_from_this<PlasmaClientImpl> {
  public:
   PlasmaClientImpl();
