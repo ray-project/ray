@@ -48,7 +48,7 @@ enum ChannelType {
   /// A channel for logs from various Ray components.
   RAY_LOG_CHANNEL = 9;
   /// A channel for reporting node resource usage stats.
-  RAY_NODE_RESOURCE_USAGE_CHANNEL = 11;
+  RAY_NODE_RESOURCE_USAGE_CHANNEL = 10;
 }
 
 ///
@@ -65,6 +65,8 @@ message PubMessage {
     WorkerObjectEvictionMessage worker_object_eviction_message = 3;
     WorkerRefRemovedMessage worker_ref_removed_message = 4;
     WorkerObjectLocationsPubMessage worker_object_locations_message = 5;
+    // The message that indicates the given key id is not available anymore.
+    FailureMessage failure_message = 6;
     ActorTableData actor_message = 7;
     JobTableData job_message = 8;
     GcsNodeInfo node_info_message = 9;
@@ -72,10 +74,7 @@ message PubMessage {
     WorkerDeltaData worker_delta_message = 11;
     ErrorTableData error_info_message = 12;
     LogBatch log_batch_message = 13;
-    NodeResourceUsage node_resource_usage_message = 15;
-
-    // The message that indicates the given key id is not available anymore.
-    FailureMessage failure_message = 6;
+    NodeResourceUsage node_resource_usage_message = 14;
   }
 }
 
