@@ -252,10 +252,13 @@ class SimpleQTrainer(Trainer):
             self._counters[NUM_TARGET_UPDATES] += 1
             self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
 
-        # Update remote workers' weights after learning on local worker.
-        if self.workers.remote_workers():
-            with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-                self.workers.sync_weights()
+        # Update weights and global_vars - after learning on the local worker - on all
+        # remote workers.
+        global_vars = {
+            "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
+        }
+        with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+            self.workers.sync_weights(global_vars=global_vars)
 
         # Return all collected metrics for the iteration.
         return train_results
