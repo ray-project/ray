@@ -1,6 +1,8 @@
 """This example demonstrates the usage of SigOpt with Ray Tune.
 
 It also checks that it is usable with a separate scheduler.
+
+Requires the SigOpt library to be installed (`pip install sigopt`).
 """
 import sys
 import time
@@ -61,7 +63,6 @@ if __name__ == "__main__":
     algo = SigOptSearch(
         space,
         name="SigOpt Example Experiment",
-        max_concurrent=1,
         metric="mean_loss",
         mode="min",
     )

@@ -1,21 +1,26 @@
 import inspect
 import logging
 from pathlib import Path
-from typing import Dict, Callable, Optional, Union
+from typing import Dict, Callable, List, Optional, Union, TYPE_CHECKING
 
 import ray
 from ray import tune
+from ray.actor import ActorHandle
 from ray.ml.constants import TRAIN_DATASET_KEY, PREPROCESSOR_KEY
 from ray.ml.trainer import Trainer
-from ray.ml.config import ScalingConfig, RunConfig, ScalingConfigDataClass
+from ray.ml.config import ScalingConfig, RunConfig
 from ray.ml.trainer import GenDataset
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.train import BackendConfig, TrainingIterator
 from ray.train.backend import BackendExecutor
 from ray.train.checkpoint import TuneCheckpointManager
+from ray.train.impl.dataset_spec import _RayDatasetSpec
 from ray.train.utils import construct_train_func
 from ray.util.annotations import DeveloperAPI
+
+if TYPE_CHECKING:
+    from ray.data import Dataset
 
 logger = logging.getLogger(__name__)
 
@@ -181,8 +186,17 @@ class DataParallelTrainer(Trainer):
         resume_from_checkpoint: A checkpoint to resume training from.
     """
 
+    _scaling_config_allowed_keys = [
+        "num_workers",
+        "num_cpus_per_worker",
+        "num_gpus_per_worker",
+        "additional_resources_per_worker",
+        "use_gpu",
+    ]
+
     def __init__(
         self,
+        *,
         train_loop_per_worker: Union[Callable[[], None], Callable[[Dict], None]],
         train_loop_config: Optional[Dict] = None,
         backend_config: Optional[BackendConfig] = None,
@@ -198,6 +212,11 @@ class DataParallelTrainer(Trainer):
         self.train_loop_per_worker = train_loop_per_worker
         self.train_loop_config = train_loop_config
 
+        backend_config = (
+            backend_config if backend_config is not None else BackendConfig()
+        )
+        self.backend_config = backend_config
+
         super(DataParallelTrainer, self).__init__(
             scaling_config=scaling_config,
             run_config=run_config,
@@ -205,6 +224,9 @@ class DataParallelTrainer(Trainer):
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
         )
+
+    def _validate_attributes(self):
+        super()._validate_attributes()
 
         if (
             not self.scaling_config.get("use_gpu", False)
@@ -226,18 +248,24 @@ class DataParallelTrainer(Trainer):
                 f"integer. Received {self.scaling_config['num_workers']}"
             )
 
-        num_params = len(inspect.signature(self.train_loop_per_worker).parameters)
+        self._validate_train_loop_per_worker(
+            self.train_loop_per_worker, "train_loop_per_worker"
+        )
+
+    def _validate_train_loop_per_worker(
+        self, train_loop_per_worker: Callable, fn_name: str
+    ) -> None:
+        num_params = len(inspect.signature(train_loop_per_worker).parameters)
         if num_params > 1:
             raise ValueError(
-                f"train_loop_per_worker should take in 0 or 1 arguments, "
+                f"{fn_name} should take in 0 or 1 arguments, "
                 f"but it accepts {num_params} arguments instead."
             )
 
-        backend_config = backend_config if backend_config else BackendConfig()
-        self.backend_config = backend_config
-
     def training_loop(self) -> None:
-        scaling_config_dataclass = ScalingConfigDataClass(**self.scaling_config)
+        scaling_config_dataclass = self._validate_and_get_scaling_config_data_class(
+            self.scaling_config
+        )
 
         train_loop_per_worker = construct_train_func(
             self.train_loop_per_worker,
@@ -269,19 +297,9 @@ class DataParallelTrainer(Trainer):
         else:
             resume_checkpoint_dict = None
 
-        # Tell Ray Train to only shard the train dataset and not the other datasets.
-        # This is purely an implementation detail and users do not need to know about
-        # this.
-        # TODO(amog): Refactor this to remove hack and make this more modular.
-        #  TrainingIterator should accept a generic custom_ingest_func that contains
-        #  the logic for how to split the Datasets.
-        updated_dataset_dict = {}
-        for key, value in self.datasets.items():
-            if key == TRAIN_DATASET_KEY:
-                updated_dataset_dict[key] = value
-            else:
-                # Ray Train will strip out the added string before exposing to users.
-                updated_dataset_dict[key + "_NO-SHARD"] = value
+        dataset_spec = _RayDatasetSpec(
+            dataset_or_dict=self.datasets, dataset_split_fn=_default_dataset_split_fn
+        )
 
         # TODO(amog): Have TrainingIterator also accept a checkpoint ObjectRef instead
         #  of just a Dict.
@@ -289,7 +307,7 @@ class DataParallelTrainer(Trainer):
             backend_executor=backend_executor,
             backend_config=self.backend_config,
             train_func=train_loop_per_worker,
-            dataset=updated_dataset_dict if len(updated_dataset_dict) > 0 else None,
+            dataset_spec=dataset_spec,
             checkpoint_manager=checkpoint_manager,
             checkpoint=resume_checkpoint_dict,
             checkpoint_strategy=None,
@@ -325,3 +343,39 @@ class _DataParallelCheckpointManager(TuneCheckpointManager):
     @property
     def latest_checkpoint_dir(self) -> Optional[Path]:
         raise NotImplementedError
+
+
+def _default_dataset_split_fn(
+    dataset_dict: Dict[str, "Dataset"], training_worker_handles: List[ActorHandle]
+) -> List[Dict[str, "Dataset"]]:
+    """Defines splitting logic of Datasets passed into ``DataParallelTrainer``.
+
+    By default only training dataset will be split. All other datasets will not be
+    split and passed through directly to the training workers. This is because
+    validation implementation is often done on just the rank 0 worker.
+
+    Args:
+        dataset_dict: A dictionary of Datasets.
+        training_worker_handles: The actor handles of the training workers to use for
+            locality hints.
+
+    Returns:
+        A list of dataset dictionaries for each training worker.
+    """
+    dataset_dict_splits = [{} for _ in range(len(training_worker_handles))]
+
+    for key, dataset in dataset_dict.items():
+        if key == TRAIN_DATASET_KEY:
+            dataset_splits = dataset.split(
+                len(training_worker_handles),
+                equal=True,
+                locality_hints=training_worker_handles,
+            )
+        else:
+            # Only shard the training dataset.
+            dataset_splits = [dataset] * len(training_worker_handles)
+
+        for i in range(len(dataset_splits)):
+            dataset_dict_splits[i][key] = dataset_splits[i]
+
+    return dataset_dict_splits

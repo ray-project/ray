@@ -33,6 +33,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.iter import LocalIterator
+from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
 
 logger = logging.getLogger(__name__)
 
@@ -153,6 +154,11 @@ class SlateQTrainer(Trainer):
     @override(Trainer)
     def get_default_config(cls) -> TrainerConfigDict:
         return DEFAULT_CONFIG
+
+    @override(Trainer)
+    def validate_config(self, config: TrainerConfigDict) -> None:
+        super().validate_config(config)
+        validate_buffer_config(config)
 
     @override(Trainer)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:

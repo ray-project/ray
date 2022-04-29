@@ -57,7 +57,7 @@ using rpc::ResourceUsageBatchData;
 
 struct NodeManagerConfig {
   /// The node's resource configuration.
-  ResourceSet resource_config;
+  ResourceRequest resource_config;
   /// The IP address this node manager is running on.
   std::string node_manager_address;
   /// The port to use for listening to incoming connections. If this is 0 then
@@ -146,6 +146,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param object_manager A reference to the local object manager.
   NodeManager(instrumented_io_context &io_service,
               const NodeID &self_node_id,
+              const std::string &self_node_name,
               const NodeManagerConfig &config,
               const ObjectManagerConfig &object_manager_config,
               std::shared_ptr<gcs::GcsClient> gcs_client);
@@ -207,6 +208,22 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Stop this node manager.
   void Stop();
 
+  /// Query all of local core worker states.
+  ///
+  /// \param on_replied A callback that's called when each of query RPC is replied.
+  /// \param send_reply_callback A reply callback that will be called when all
+  /// RPCs are replied.
+  /// \param include_memory_info If true, it requires every object ref information
+  /// from all workers.
+  /// \param include_task_info If true, it requires every task metadata information
+  /// from all workers.
+  void QueryAllWorkerStates(
+      const std::function<void(const ray::Status &status,
+                               const rpc::GetCoreWorkerStatsReply &r)> &on_replied,
+      rpc::SendReplyCallback &send_reply_callback,
+      bool include_memory_info,
+      bool include_task_info);
+
  private:
   /// Methods for handling nodes.
 
@@ -231,7 +248,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param createUpdatedResources Created or updated resources.
   /// \return Void.
   void ResourceCreateUpdated(const NodeID &node_id,
-                             const ResourceSet &createUpdatedResources);
+                             const ResourceRequest &createUpdatedResources);
 
   /// Handler for the deletion of a resource in the GCS
   /// \param node_id ID of the node that deleted resources.
@@ -476,6 +493,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                                    rpc::RequestResourceReportReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `GetResourceLoad` request.
+  void HandleGetResourceLoad(const rpc::GetResourceLoadRequest &request,
+                             rpc::GetResourceLoadReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle a `PrepareBundleResources` request.
   void HandlePrepareBundleResources(const rpc::PrepareBundleResourcesRequest &request,
                                     rpc::PrepareBundleResourcesReply *reply,
@@ -561,6 +583,16 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                                  rpc::GetGcsServerAddressReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `HandleGetTasksInfo` request.
+  void HandleGetTasksInfo(const rpc::GetTasksInfoRequest &request,
+                          rpc::GetTasksInfoReply *reply,
+                          rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle a `HandleGetObjectsInfo` request.
+  void HandleGetObjectsInfo(const rpc::GetObjectsInfoRequest &request,
+                            rpc::GetObjectsInfoReply *reply,
+                            rpc::SendReplyCallback send_reply_callback) override;
+
   /// Trigger local GC on each worker of this raylet.
   void DoLocalGC(bool triggered_by_global_gc = false);
 
@@ -617,6 +649,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// ID of this node.
   NodeID self_node_id_;
+  /// The user-given identifier or name of this node.
+  std::string self_node_name_;
   instrumented_io_context &io_service_;
   /// A client connection to the GCS.
   std::shared_ptr<gcs::GcsClient> gcs_client_;

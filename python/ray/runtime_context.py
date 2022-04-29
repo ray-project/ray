@@ -70,22 +70,22 @@ class RuntimeContext(object):
 
         Example:
 
+            >>> import ray
             >>> @ray.remote
-            >>> class Actor:
-            >>>     def ready(self):
-            >>>         return True
+            ... class Actor:
+            ...     def ready(self):
+            ...         return True
             >>>
-            >>> @ray.remote
-            >>> def f():
-            >>>     return True
-            >>>
+            >>> @ray.remote # doctest: +SKIP
+            ... def f():
+            ...     return True
             >>> # All the below code will generate different task ids.
             >>> # Task ids are available for actor creation.
-            >>> a = Actor.remote()
+            >>> a = Actor.remote() # doctest: +SKIP
             >>> # Task ids are available for actor tasks.
-            >>> a.ready.remote()
+            >>> a.ready.remote() # doctest: +SKIP
             >>> # Task ids are available for normal tasks.
-            >>> f.remote()
+            >>> f.remote() # doctest: +SKIP
 
         Returns:
             The current worker's task id. None if there's no task id.
@@ -213,9 +213,11 @@ def get_runtime_context():
     """Get the runtime context of the current driver/worker.
 
     Example:
-
-    >>> ray.get_runtime_context().job_id # Get the job id.
-    >>> ray.get_runtime_context().get() # Get all the metadata.
+    >>> import ray
+    >>> # Get the job id.
+    >>> ray.get_runtime_context().job_id # doctest: +SKIP
+    >>> # Get all the metadata.
+    >>> ray.get_runtime_context().get() # doctest: +SKIP
     """
     global _runtime_context
     if _runtime_context is None:

@@ -115,14 +115,14 @@ class InputNode(DAGNode):
         assert isinstance(
             key, str
         ), "Please only access dag input attributes with str key."
-        return InputAtrributeNode(self, key, "__getattr__")
+        return InputAttributeNode(self, key, "__getattr__")
 
     def __getitem__(self, key: Union[int, str]) -> Any:
         assert isinstance(key, (str, int)), (
             "Please only use int index or str as first-level key to "
             "access fields of dag input."
         )
-        return InputAtrributeNode(self, key, "__getitem__")
+        return InputAttributeNode(self, key, "__getitem__")
 
     def __enter__(self):
         self.set_context(IN_CONTEXT_MANAGER, True)
@@ -131,20 +131,22 @@ class InputNode(DAGNode):
     def __exit__(self, *args):
         pass
 
-    def to_json(self, encoder_cls) -> Dict[str, Any]:
-        json_dict = super().to_json_base(encoder_cls, InputNode.__name__)
-        return json_dict
+    def to_json(self) -> Dict[str, Any]:
+        return {
+            DAGNODE_TYPE_KEY: InputNode.__name__,
+            "other_args_to_resolve": self.get_other_args_to_resolve(),
+            "uuid": self.get_stable_uuid(),
+        }
 
     @classmethod
-    def from_json(cls, input_json, object_hook=None):
+    def from_json(cls, input_json):
         assert input_json[DAGNODE_TYPE_KEY] == InputNode.__name__
-        args_dict = super().from_json_base(input_json, object_hook=object_hook)
-        node = cls(_other_args_to_resolve=args_dict["other_args_to_resolve"])
+        node = cls(_other_args_to_resolve=input_json["other_args_to_resolve"])
         node._stable_uuid = input_json["uuid"]
         return node
 
 
-class InputAtrributeNode(DAGNode):
+class InputAttributeNode(DAGNode):
     """Represents partial access of user input based on an index (int),
      object attribute or dict key (str).
 
@@ -193,14 +195,14 @@ class InputAtrributeNode(DAGNode):
         new_options: Dict[str, Any],
         new_other_args_to_resolve: Dict[str, Any],
     ):
-        return InputAtrributeNode(
+        return InputAttributeNode(
             new_other_args_to_resolve["dag_input_node"],
             new_other_args_to_resolve["key"],
             new_other_args_to_resolve["accessor_method"],
         )
 
     def _execute_impl(self, *args, **kwargs):
-        """Executor of InputAtrributeNode.
+        """Executor of InputAttributeNode.
 
         Args and kwargs are to match base class signature, but not in the
         implementation. All args and kwargs should be resolved and replaced
@@ -212,7 +214,7 @@ class InputAtrributeNode(DAGNode):
             return self._dag_input_node[self._key]
         else:
             # dag.execute() is called with only one arg, thus when an
-            # InputAtrributeNode is executed, its dependent InputNode is
+            # InputAttributeNode is executed, its dependent InputNode is
             # resolved with original user input python object.
             user_input_python_object = self._dag_input_node
             if isinstance(self._key, str):
@@ -231,18 +233,20 @@ class InputAtrributeNode(DAGNode):
     def __str__(self) -> str:
         return get_dag_node_str(self, f'["{self._key}"]')
 
-    def to_json(self, encoder_cls) -> Dict[str, Any]:
-        json_dict = super().to_json_base(encoder_cls, InputAtrributeNode.__name__)
-        return json_dict
+    def to_json(self) -> Dict[str, Any]:
+        return {
+            DAGNODE_TYPE_KEY: InputAttributeNode.__name__,
+            "other_args_to_resolve": self.get_other_args_to_resolve(),
+            "uuid": self.get_stable_uuid(),
+        }
 
     @classmethod
-    def from_json(cls, input_json, object_hook=None):
-        assert input_json[DAGNODE_TYPE_KEY] == InputAtrributeNode.__name__
-        args_dict = super().from_json_base(input_json, object_hook=object_hook)
+    def from_json(cls, input_json):
+        assert input_json[DAGNODE_TYPE_KEY] == InputAttributeNode.__name__
         node = cls(
-            args_dict["other_args_to_resolve"]["dag_input_node"],
-            args_dict["other_args_to_resolve"]["key"],
-            args_dict["other_args_to_resolve"]["accessor_method"],
+            input_json["other_args_to_resolve"]["dag_input_node"],
+            input_json["other_args_to_resolve"]["key"],
+            input_json["other_args_to_resolve"]["accessor_method"],
         )
         node._stable_uuid = input_json["uuid"]
         return node

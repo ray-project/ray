@@ -421,14 +421,19 @@ class Worker:
         else:
             deadline = time.monotonic() + timeout
 
+        max_blocking_operation_time = MAX_BLOCKING_OPERATION_TIME_S
+        if "RAY_CLIENT_MAX_BLOCKING_OPERATION_TIME_S" in os.environ:
+            max_blocking_operation_time = float(
+                os.environ["RAY_CLIENT_MAX_BLOCKING_OPERATION_TIME_S"]
+            )
         while True:
             if deadline:
                 op_timeout = min(
-                    MAX_BLOCKING_OPERATION_TIME_S,
+                    max_blocking_operation_time,
                     max(deadline - time.monotonic(), 0.001),
                 )
             else:
-                op_timeout = MAX_BLOCKING_OPERATION_TIME_S
+                op_timeout = max_blocking_operation_time
             try:
                 res = self._get(to_get, op_timeout)
                 break
@@ -711,7 +716,10 @@ class Worker:
     def internal_kv_get(self, key: bytes) -> bytes:
         req = ray_client_pb2.KVGetRequest(key=key)
         resp = self._call_stub("KVGet", req, metadata=self.metadata)
-        return resp.value
+        if resp.HasField("value"):
+            return resp.value
+        # Value is None when the key does not exist in the KV.
+        return None
 
     def internal_kv_exists(self, key: bytes) -> bytes:
         req = ray_client_pb2.KVGetRequest(key=key)
@@ -810,44 +818,15 @@ class Worker:
     def _convert_actor(self, actor: "ActorClass") -> str:
         """Register a ClientActorClass for the ActorClass and return a UUID"""
         key = uuid.uuid4().hex
-        md = actor.__ray_metadata__
-        cls = md.modified_class
-        self._converted[key] = ClientActorClass(
-            cls,
-            options={
-                "max_restarts": md.max_restarts,
-                "max_task_retries": md.max_task_retries,
-                "num_cpus": md.num_cpus,
-                "num_gpus": md.num_gpus,
-                "memory": md.memory,
-                "object_store_memory": md.object_store_memory,
-                "resources": md.resources,
-                "accelerator_type": md.accelerator_type,
-                "runtime_env": md.runtime_env,
-                "concurrency_groups": md.concurrency_groups,
-                "scheduling_strategy": md.scheduling_strategy,
-            },
-        )
+        cls = actor.__ray_metadata__.modified_class
+        self._converted[key] = ClientActorClass(cls, options=actor._default_options)
         return key
 
     def _convert_function(self, func: "RemoteFunction") -> str:
         """Register a ClientRemoteFunc for the ActorClass and return a UUID"""
         key = uuid.uuid4().hex
-        f = func._function
         self._converted[key] = ClientRemoteFunc(
-            f,
-            options={
-                "num_cpus": func._num_cpus,
-                "num_gpus": func._num_gpus,
-                "max_calls": func._max_calls,
-                "max_retries": func._max_retries,
-                "resources": func._resources,
-                "accelerator_type": func._accelerator_type,
-                "num_returns": func._num_returns,
-                "memory": func._memory,
-                "runtime_env": func._runtime_env,
-                "scheduling_strategy": func._scheduling_strategy,
-            },
+            func._function, options=func._default_options
         )
         return key
 

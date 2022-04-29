@@ -115,7 +115,7 @@ def pad_batch_to_sequences_of_same_size(
         elif (
             not feature_keys
             and not k.startswith("state_out_")
-            and k not in ["infos", SampleBatch.SEQ_LENS]
+            and k not in [SampleBatch.INFOS, SampleBatch.SEQ_LENS]
         ):
             feature_keys_.append(k)
 
@@ -197,7 +197,9 @@ def add_time_dimension(
                 axis=0,
             )
         )
-        return tf.reshape(padded_inputs, new_shape)
+        ret = tf.reshape(padded_inputs, new_shape)
+        ret.set_shape([None, None] + padded_inputs.shape[1:].as_list())
+        return ret
     else:
         assert framework == "torch", "`framework` must be either tf or torch!"
         padded_batch_size = padded_inputs.shape[0]
@@ -256,18 +258,19 @@ def chop_into_sequences(
         seq_lens (list): List of sequence lengths, of shape [NUM_SEQUENCES].
 
     Examples:
-        >>> f_pad, s_init, seq_lens = chop_into_sequences(
-                episode_ids=[1, 1, 5, 5, 5, 5],
-                unroll_ids=[4, 4, 4, 4, 4, 4],
-                agent_indices=[0, 0, 0, 0, 0, 0],
-                feature_columns=[[4, 4, 8, 8, 8, 8],
-                                 [1, 1, 0, 1, 1, 0]],
-                state_columns=[[4, 5, 4, 5, 5, 5]],
-                max_seq_len=3)
-        >>> print(f_pad)
+        >>> from ray.rllib.policy.rnn_sequencing import chop_into_sequences
+        >>> f_pad, s_init, seq_lens = chop_into_sequences( # doctest: +SKIP
+        ...     episode_ids=[1, 1, 5, 5, 5, 5],
+        ...     unroll_ids=[4, 4, 4, 4, 4, 4],
+        ...     agent_indices=[0, 0, 0, 0, 0, 0],
+        ...     feature_columns=[[4, 4, 8, 8, 8, 8],
+        ...                      [1, 1, 0, 1, 1, 0]],
+        ...     state_columns=[[4, 5, 4, 5, 5, 5]],
+        ...     max_seq_len=3)
+        >>> print(f_pad) # doctest: +SKIP
         [[4, 4, 0, 8, 8, 8, 8, 0, 0],
          [1, 1, 0, 0, 1, 1, 0, 0, 0]]
-        >>> print(s_init)
+        >>> print(s_init) # doctest: +SKIP
         [[4, 4, 5]]
         >>> print(seq_lens)
         [2, 3, 1]

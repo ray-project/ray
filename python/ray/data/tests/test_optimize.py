@@ -50,7 +50,7 @@ def test_memory_release_lazy(shutdown_only):
     ds = ray.data.range(10)
 
     # Should get fused into single stage.
-    ds = ds._experimental_lazy()
+    ds = ds.experimental_lazy()
     ds = ds.map(lambda x: np.ones(100 * 1024 * 1024, dtype=np.uint8))
     ds = ds.map(lambda x: np.ones(100 * 1024 * 1024, dtype=np.uint8))
     ds = ds.map(lambda x: np.ones(100 * 1024 * 1024, dtype=np.uint8))
@@ -69,7 +69,7 @@ def test_memory_release_lazy_shuffle(shutdown_only):
             ds = ray.data.range(10)
 
             # Should get fused into single stage.
-            ds = ds._experimental_lazy()
+            ds = ds.experimental_lazy()
             ds = ds.map(lambda x: np.ones(100 * 1024 * 1024, dtype=np.uint8))
             ds.random_shuffle().fully_executed()
             meminfo = memory_summary(info.address_info["address"], stats_only=True)
@@ -84,14 +84,70 @@ def test_memory_release_lazy_shuffle(shutdown_only):
 
 
 def test_spread_hint_inherit(ray_start_regular_shared):
-    ds = ray.data.range(10)._experimental_lazy()
+    ds = ray.data.range(10).experimental_lazy()
     ds = ds.map(lambda x: x + 1)
     ds = ds.random_shuffle()
-    for s in ds._plan._stages:
+    for s in ds._plan._stages_before_snapshot:
         assert s.ray_remote_args == {}, s.ray_remote_args
-    ds._plan._optimize()
-    assert len(ds._plan._stages) == 1, ds._plan._stages
-    assert ds._plan._stages[0].ray_remote_args == {"scheduling_strategy": "SPREAD"}
+    for s in ds._plan._stages_after_snapshot:
+        assert s.ray_remote_args == {}, s.ray_remote_args
+    _, _, optimized_stages = ds._plan._optimize()
+    assert len(optimized_stages) == 1, optimized_stages
+    assert optimized_stages[0].ray_remote_args == {"scheduling_strategy": "SPREAD"}
+
+
+def test_execution_preserves_original(ray_start_regular_shared):
+    ds = ray.data.range(10).map(lambda x: x + 1).experimental_lazy()
+    ds1 = ds.map(lambda x: x + 1)
+    assert ds1._plan._snapshot_blocks is not None
+    assert len(ds1._plan._stages_after_snapshot) == 1
+    ds2 = ds1.fully_executed()
+    # Confirm that snapshot blocks and stages on original lazy dataset have not changed.
+    assert ds1._plan._snapshot_blocks is not None
+    assert len(ds1._plan._stages_after_snapshot) == 1
+    # Confirm that UUID on executed dataset is properly set.
+    assert ds2._get_uuid() == ds1._get_uuid()
+    # Check content.
+    assert ds2.take() == list(range(2, 12))
+    # Check original lazy dataset content.
+    assert ds1.take() == list(range(2, 12))
+    # Check source lazy dataset content.
+    # TODO(Clark): Uncomment this when we add new block clearing semantics.
+    # assert ds.take() == list(range(1, 11))
+
+
+def _assert_has_stages(stages, stage_names):
+    assert len(stages) == len(stage_names)
+    for stage, name in zip(stages, stage_names):
+        assert stage.name == name
+
+
+def test_stage_linking(ray_start_regular_shared):
+    # NOTE: This tests the internals of `ExecutionPlan`, which is bad practice. Remove
+    # this test once we have proper unit testing of `ExecutionPlan`.
+    # Test eager dataset.
+    ds = ray.data.range(10)
+    assert len(ds._plan._stages_before_snapshot) == 0
+    assert len(ds._plan._stages_after_snapshot) == 0
+    assert len(ds._plan._last_optimized_stages) == 0
+    ds = ds.map(lambda x: x + 1)
+    _assert_has_stages(ds._plan._stages_before_snapshot, ["map"])
+    assert len(ds._plan._stages_after_snapshot) == 0
+    _assert_has_stages(ds._plan._last_optimized_stages, ["read->map"])
+
+    # Test lazy dataset.
+    ds = ray.data.range(10).experimental_lazy()
+    assert len(ds._plan._stages_before_snapshot) == 0
+    assert len(ds._plan._stages_after_snapshot) == 0
+    assert len(ds._plan._last_optimized_stages) == 0
+    ds = ds.map(lambda x: x + 1)
+    assert len(ds._plan._stages_before_snapshot) == 0
+    _assert_has_stages(ds._plan._stages_after_snapshot, ["map"])
+    assert ds._plan._last_optimized_stages is None
+    ds = ds.fully_executed()
+    _assert_has_stages(ds._plan._stages_before_snapshot, ["map"])
+    assert len(ds._plan._stages_after_snapshot) == 0
+    _assert_has_stages(ds._plan._last_optimized_stages, ["read->map"])
 
 
 def test_optimize_fuse(ray_start_regular_shared):
@@ -220,7 +276,7 @@ class MySource(CSVDatasource):
     def _read_stream(self, f, path: str, **reader_args):
         count = self.counter.increment.remote()
         ray.get(count)
-        for block in CSVDatasource._read_stream(self, f, path, **reader_args):
+        for block in super()._read_stream(f, path, **reader_args):
             yield block
 
 
@@ -251,6 +307,34 @@ def test_optimize_reread_base_data(ray_start_regular_shared, local_path):
     pipe.take()
     num_reads = ray.get(counter.get.remote())
     assert num_reads == 1, num_reads
+
+
+@pytest.mark.skip(reason="reusing base data not enabled")
+@pytest.mark.parametrize("with_shuffle", [True, False])
+@pytest.mark.parametrize("enable_dynamic_splitting", [True, False])
+def test_optimize_lazy_reuse_base_data(
+    ray_start_regular_shared, local_path, enable_dynamic_splitting, with_shuffle
+):
+    context = DatasetContext.get_current()
+    context.block_splitting_enabled = enable_dynamic_splitting
+
+    num_blocks = 4
+    dfs = [pd.DataFrame({"one": list(range(i, i + 4))}) for i in range(num_blocks)]
+    paths = [os.path.join(local_path, f"test{i}.csv") for i in range(num_blocks)]
+    for df, path in zip(dfs, paths):
+        df.to_csv(path, index=False)
+    counter = Counter.remote()
+    source = MySource(counter)
+    ds = ray.data.read_datasource(source, parallelism=4, paths=paths)
+    num_reads = ray.get(counter.get.remote())
+    assert num_reads == 1, num_reads
+    ds = ds.experimental_lazy()
+    ds = ds.map(lambda x: x)
+    if with_shuffle:
+        ds = ds.random_shuffle()
+    ds.take()
+    num_reads = ray.get(counter.get.remote())
+    assert num_reads == num_blocks, num_reads
 
 
 if __name__ == "__main__":

@@ -28,7 +28,7 @@ from ray.tune.schedulers import (
 from ray.tune.schedulers.pbt import explore, PopulationBasedTrainingReplay
 from ray.tune.suggest._mock import _MockSearcher
 from ray.tune.suggest.suggestion import ConcurrencyLimiter
-from ray.tune.trial import Trial, Checkpoint
+from ray.tune.trial import Trial, _TuneCheckpoint
 from ray.tune.trial_executor import TrialExecutor
 from ray.tune.resources import Resources
 
@@ -248,8 +248,8 @@ class _MockTrialExecutor(TrialExecutor):
     def restore(self, trial, checkpoint=None, block=False):
         pass
 
-    def save(self, trial, type=Checkpoint.PERSISTENT, result=None):
-        return Checkpoint(Checkpoint.PERSISTENT, trial.trainable_name, result)
+    def save(self, trial, type=_TuneCheckpoint.PERSISTENT, result=None):
+        return _TuneCheckpoint(_TuneCheckpoint.PERSISTENT, trial.trainable_name, result)
 
     def reset_trial(self, trial, new_config, new_experiment_tag):
         return False
@@ -303,8 +303,11 @@ class _MockTrialRunner:
     def get_trials(self):
         return self.trials
 
+    def get_live_trials(self):
+        return {t for t in self.trials if t.status != Trial.TERMINATED}
+
     def _pause_trial(self, trial):
-        self.trial_executor.save(trial, Checkpoint.MEMORY, None)
+        self.trial_executor.save(trial, _TuneCheckpoint.MEMORY, None)
         trial.status = Trial.PAUSED
 
     def _launch_trial(self, trial):
@@ -839,7 +842,7 @@ class _MockTrial(Trial):
 
     @property
     def checkpoint(self):
-        return Checkpoint(Checkpoint.MEMORY, self.trainable_name, None)
+        return _TuneCheckpoint(_TuneCheckpoint.MEMORY, self.trainable_name, None)
 
 
 class PopulationBasedTestingSuite(unittest.TestCase):
@@ -2146,6 +2149,57 @@ class AsyncHyperBandSuite(unittest.TestCase):
             scheduler2.on_trial_result(None, new_trial, result(1, 2)),
             TrialScheduler.STOP,
         )
+
+    def testAsyncHBNonStopTrials(self):
+        trials = [Trial("PPO") for i in range(4)]
+        scheduler = AsyncHyperBandScheduler(
+            metric="metric",
+            mode="max",
+            grace_period=1,
+            max_t=3,
+            reduction_factor=2,
+            brackets=1,
+            stop_last_trials=False,
+        )
+        scheduler.on_trial_add(None, trials[0])
+        scheduler.on_trial_add(None, trials[1])
+        scheduler.on_trial_add(None, trials[2])
+        scheduler.on_trial_add(None, trials[3])
+
+        # Report one result
+        action = scheduler.on_trial_result(
+            None, trials[0], {"training_iteration": 2, "metric": 10}
+        )
+        assert action == TrialScheduler.CONTINUE
+        action = scheduler.on_trial_result(
+            None, trials[1], {"training_iteration": 2, "metric": 8}
+        )
+        assert action == TrialScheduler.STOP
+        action = scheduler.on_trial_result(
+            None, trials[2], {"training_iteration": 2, "metric": 6}
+        )
+        assert action == TrialScheduler.STOP
+        action = scheduler.on_trial_result(
+            None, trials[3], {"training_iteration": 2, "metric": 4}
+        )
+        assert action == TrialScheduler.STOP
+
+        # Report more. This will fail if `stop_last_trials=True`
+        action = scheduler.on_trial_result(
+            None, trials[0], {"training_iteration": 4, "metric": 10}
+        )
+        assert action == TrialScheduler.CONTINUE
+
+        action = scheduler.on_trial_result(
+            None, trials[0], {"training_iteration": 8, "metric": 10}
+        )
+        assert action == TrialScheduler.CONTINUE
+
+        # Also continue if we fall below the cutoff eventually
+        action = scheduler.on_trial_result(
+            None, trials[0], {"training_iteration": 14, "metric": 1}
+        )
+        assert action == TrialScheduler.CONTINUE
 
     def testMedianStoppingNanInf(self):
         scheduler = MedianStoppingRule(metric="episode_reward_mean", mode="max")

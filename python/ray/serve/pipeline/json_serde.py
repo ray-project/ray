@@ -9,7 +9,7 @@ from ray.experimental.dag import (
     ClassMethodNode,
     FunctionNode,
     InputNode,
-    InputAtrributeNode,
+    InputAttributeNode,
     DAGNODE_TYPE_KEY,
 )
 from ray.serve.pipeline.deployment_node import DeploymentNode
@@ -27,17 +27,40 @@ from ray.serve.handle import (
     serve_handle_from_json_dict,
 )
 from ray.serve.constants import SERVE_HANDLE_JSON_KEY
-from ray.serve.api import RayServeDAGHandle
+from ray.serve.deployment_graph import RayServeDAGHandle
 
 
 def convert_to_json_safe_obj(obj: Any, *, err_key: str) -> Any:
-    # XXX: comment, err msg
-    return json.loads(json.dumps(obj, cls=DAGNodeEncoder))
+    """Converts the provided object into a JSON-safe version of it.
+
+    The returned object can safely be `json.dumps`'d to a string.
+
+    Uses the Ray Serve encoder to serialize special objects such as
+    ServeHandles and DAGHandles.
+
+    Raises: TypeError if the object contains fields that cannot be
+    JSON-serialized.
+    """
+    try:
+        return json.loads(json.dumps(obj, cls=DAGNodeEncoder))
+    except Exception as e:
+        raise TypeError(
+            "All provided fields must be JSON-serializable to build the "
+            f"Serve app. Failed while serializing {err_key}:\n{e}"
+        )
 
 
-def convert_from_json_safe_obj(obj: Any) -> Any:
-    # XXX: comment, err msg
-    return json.loads(json.dumps(obj), object_hook=dagnode_from_json)
+def convert_from_json_safe_obj(obj: Any, *, err_key: str) -> Any:
+    """Converts a JSON-safe object to one that contains Serve special types.
+
+    The provided object should have been serialized using
+    convert_to_json_safe_obj. Any special-cased objects such as ServeHandles
+    will be recovered on this pass.
+    """
+    try:
+        return json.loads(json.dumps(obj), object_hook=dagnode_from_json)
+    except Exception as e:
+        raise ValueError(f"Failed to convert {err_key} from JSON:\n{e}")
 
 
 class DAGNodeEncoder(json.JSONEncoder):
@@ -79,19 +102,9 @@ class DAGNodeEncoder(json.JSONEncoder):
             }
         # For all other DAGNode types.
         elif isinstance(obj, DAGNode):
-            return obj.to_json(DAGNodeEncoder)
+            return obj.to_json()
         else:
-            # Let the base class default method raise the TypeError
-            try:
-                return json.JSONEncoder.default(self, obj)
-            except Exception as e:
-                raise TypeError(
-                    "All args and kwargs used in Ray DAG building for serve "
-                    "deployment need to be JSON serializable. Please JSON "
-                    "serialize your args to make your ray application "
-                    "deployment ready."
-                    f"\n Original exception message: {e}"
-                )
+            return json.JSONEncoder.default(self, obj)
 
 
 def dagnode_from_json(input_json: Any) -> Union[DAGNode, RayServeHandle, Any]:
@@ -129,28 +142,22 @@ def dagnode_from_json(input_json: Any) -> Union[DAGNode, RayServeHandle, Any]:
         )
     # Deserialize DAGNode type
     elif input_json[DAGNODE_TYPE_KEY] == InputNode.__name__:
-        return InputNode.from_json(input_json, object_hook=dagnode_from_json)
-    elif input_json[DAGNODE_TYPE_KEY] == InputAtrributeNode.__name__:
-        return InputAtrributeNode.from_json(input_json, object_hook=dagnode_from_json)
+        return InputNode.from_json(input_json)
+    elif input_json[DAGNODE_TYPE_KEY] == InputAttributeNode.__name__:
+        return InputAttributeNode.from_json(input_json)
     elif input_json[DAGNODE_TYPE_KEY] == ClassMethodNode.__name__:
-        return ClassMethodNode.from_json(input_json, object_hook=dagnode_from_json)
+        return ClassMethodNode.from_json(input_json)
     elif input_json[DAGNODE_TYPE_KEY] == DeploymentNode.__name__:
-        return DeploymentNode.from_json(input_json, object_hook=dagnode_from_json)
+        return DeploymentNode.from_json(input_json)
     elif input_json[DAGNODE_TYPE_KEY] == DeploymentMethodNode.__name__:
-        return DeploymentMethodNode.from_json(input_json, object_hook=dagnode_from_json)
+        return DeploymentMethodNode.from_json(input_json)
     elif input_json[DAGNODE_TYPE_KEY] == DeploymentFunctionNode.__name__:
-        return DeploymentFunctionNode.from_json(
-            input_json, object_hook=dagnode_from_json
-        )
+        return DeploymentFunctionNode.from_json(input_json)
     else:
         # Class and Function nodes require original module as body.
         module_name, attr_name = parse_import_path(input_json["import_path"])
         module = getattr(import_module(module_name), attr_name)
         if input_json[DAGNODE_TYPE_KEY] == FunctionNode.__name__:
-            return FunctionNode.from_json(
-                input_json, module, object_hook=dagnode_from_json
-            )
+            return FunctionNode.from_json(input_json, module)
         elif input_json[DAGNODE_TYPE_KEY] == ClassNode.__name__:
-            return ClassNode.from_json(
-                input_json, module, object_hook=dagnode_from_json
-            )
+            return ClassNode.from_json(input_json, module)

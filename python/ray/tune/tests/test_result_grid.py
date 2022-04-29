@@ -14,11 +14,15 @@ def test_result_grid():
             with open(path, "w") as f:
                 f.write(json.dumps({"step": 0}))
 
-    analysis = tune.run(f)
+    analysis = tune.run(f, config={"a": 1})
     analysis._legacy_checkpoint = False
     result_grid = ResultGrid(analysis)
     result = result_grid[0]
     assert isinstance(result.checkpoint, Checkpoint)
+    assert isinstance(result.metrics, dict)
+    assert isinstance(result.config, dict)
+    assert result.config == {"a": 1}
+    assert result.metrics["config"] == result.config
 
 
 def test_result_grid_no_checkpoint():

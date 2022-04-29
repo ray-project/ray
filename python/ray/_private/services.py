@@ -33,6 +33,10 @@ resource = None
 if sys.platform != "win32":
     import resource
 
+    _timeout = 30
+else:
+    _timeout = 60
+
 EXE_SUFFIX = ".exe" if sys.platform == "win32" else ""
 
 # True if processes are run in the valgrind profiler.
@@ -266,6 +270,7 @@ def _find_address_from_flag(flag: str):
             cmdline = proc.cmdline()
             # NOTE(kfstorm): To support Windows, we can't use
             # `os.path.basename(cmdline[0]) == "raylet"` here.
+
             if len(cmdline) > 0 and "raylet" in os.path.basename(cmdline[0]):
                 for arglist in cmdline:
                     # Given we're merely seeking --redis-address, we just split
@@ -359,7 +364,7 @@ def wait_for_node(
     gcs_address,
     node_plasma_store_socket_name,
     redis_password=None,
-    timeout=30,
+    timeout=_timeout,
 ):
     """Wait until this node has appeared in the client table.
 
@@ -551,7 +556,9 @@ def create_redis_client(redis_address, password=None):
     if not hasattr(create_redis_client, "instances"):
         create_redis_client.instances = {}
 
-    for _ in range(ray_constants.START_REDIS_WAIT_RETRIES):
+    num_retries = ray_constants.START_REDIS_WAIT_RETRIES
+    delay = 0.001
+    for i in range(num_retries):
         cli = create_redis_client.instances.get(redis_address)
         if cli is None:
             redis_ip_address, redis_port = extract_ip_port(
@@ -566,7 +573,12 @@ def create_redis_client(redis_address, password=None):
             return cli
         except Exception:
             create_redis_client.instances.pop(redis_address)
-            time.sleep(2)
+            if i >= num_retries - 1:
+                break
+            # Wait a little bit.
+            time.sleep(delay)
+            # Make sure the retry interval doesn't increase too large.
+            delay = min(1, delay * 2)
 
     raise RuntimeError(f"Unable to connect to Redis at {redis_address}")
 
@@ -856,7 +868,9 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
                 ) from connEx
             # Wait a little bit.
             time.sleep(delay)
-            delay *= 2
+            # Make sure the retry interval doesn't increase too large, which will
+            # affect the delivery time of the Ray cluster.
+            delay = min(1, delay * 2)
         else:
             break
     else:
@@ -1571,6 +1585,7 @@ def start_raylet(
     backup_count=0,
     ray_debugger_external=False,
     env_updates=None,
+    node_name=None,
 ):
     """Start a raylet, which is a combined local scheduler and object manager.
 
@@ -1795,6 +1810,10 @@ def start_raylet(
         command.append("--huge_pages")
     if socket_to_use:
         socket_to_use.close()
+    if node_name is not None:
+        command.append(
+            f"--node-name={node_name}",
+        )
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_RAYLET,

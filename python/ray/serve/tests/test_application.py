@@ -5,10 +5,12 @@ import sys
 import os
 import yaml
 import requests
+import numpy as np
 
 import ray
 from ray import serve
-from ray.serve.api import Application
+from ray.serve.application import Application
+from ray.serve.api import build as build_app
 from ray._private.test_utils import wait_for_condition
 
 
@@ -42,7 +44,7 @@ class TestApplicationConstruction:
             Application([self.f, 5, "hello"])
 
 
-class TestRun:
+class TestServeRun:
     @serve.deployment
     def f():
         return "f reached"
@@ -270,6 +272,35 @@ def decorated_func(req=None):
 class DecoratedClass:
     def __call__(self, req=None):
         return "got decorated class"
+
+
+class TestServeBuild:
+    @serve.deployment
+    class A:
+        pass
+
+    def test_build_non_json_serializable_args(self, serve_instance):
+        with pytest.raises(
+            TypeError, match="must be JSON-serializable to build.*init_args"
+        ):
+            build_app(self.A.bind(np.zeros(100))).to_dict()
+
+    def test_build_non_json_serializable_kwargs(self, serve_instance):
+        with pytest.raises(
+            TypeError, match="must be JSON-serializable to build.*init_kwargs"
+        ):
+            build_app(self.A.bind(kwarg=np.zeros(100))).to_dict()
+
+    def test_build_non_importable(self, serve_instance):
+        def gen_deployment():
+            @serve.deployment
+            def f():
+                pass
+
+            return f
+
+        with pytest.raises(RuntimeError, match="must be importable"):
+            build_app(gen_deployment().bind()).to_dict()
 
 
 def compare_specified_options(deployments1: Dict, deployments2: Dict):

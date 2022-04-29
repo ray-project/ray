@@ -1,12 +1,11 @@
 from io import BytesIO
-from typing import List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from fastapi import File
 from pydantic import BaseModel, Field
 import numpy as np
 
 from ray.serve.utils import require_packages
-from ray.ml.predictor import DataBatchType
 import starlette.requests
 
 
@@ -41,8 +40,8 @@ class NdArray(BaseModel):
     )
 
 
-def array_to_databatch(payload: NdArray) -> DataBatchType:
-    """Accepts an NdArray from an HTTP body and converts it to a DataBatchType."""
+def json_to_ndarray(payload: NdArray) -> np.ndarray:
+    """Accepts an NdArray JSON from an HTTP body and converts it to a numpy array."""
     arr = np.array(payload.array)
     if payload.shape:
         arr = arr.reshape(*payload.shape)
@@ -59,10 +58,15 @@ def starlette_request(
     return request
 
 
+async def json_request(request: starlette.requests.Request) -> Dict[str, Any]:
+    """Return the JSON object from request body."""
+    return await request.json()
+
+
 @require_packages(["PIL"])
-def image_to_databatch(img: bytes = File(...)) -> DataBatchType:
+def image_to_ndarray(img: bytes = File(...)) -> np.ndarray:
     """Accepts a PIL-readable file from an HTTP form and converts
-    it to a DataBatchType.
+    it to a numpy array.
     """
     from PIL import Image
 

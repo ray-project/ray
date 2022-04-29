@@ -479,8 +479,8 @@ class Policy(metaclass=ABCMeta):
             Dictionary of extra metadata from `compute_gradients()`.
 
         Examples:
-            >>> sample_batch = ev.sample()
-            >>> ev.learn_on_batch(sample_batch)
+            >>> policy, sample_batch = ... # doctest: +SKIP
+            >>> policy.learn_on_batch(sample_batch) # doctest: +SKIP
         """
         # The default implementation is simply a fused `compute_gradients` plus
         # `apply_gradients` call.
@@ -737,7 +737,14 @@ class Policy(metaclass=ABCMeta):
         """
         # Store the current global time step (sum over all policies' sample
         # steps).
-        self.global_timestep = global_vars["timestep"]
+        # Make sure, we keep global_timestep as a Tensor for tf-eager
+        # (leads to memory leaks if not doing so).
+        from ray.rllib.policy.eager_tf_policy import EagerTFPolicy
+
+        if self.framework in ["tf2", "tfe"] and isinstance(self, EagerTFPolicy):
+            self.global_timestep.assign(global_vars["timestep"])
+        else:
+            self.global_timestep = global_vars["timestep"]
 
     @DeveloperAPI
     def export_checkpoint(self, export_dir: str) -> None:

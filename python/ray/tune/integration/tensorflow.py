@@ -1,5 +1,6 @@
 import json
 import logging
+import warnings
 
 import ray
 import os
@@ -141,8 +142,7 @@ def DistributedTrainableCreator(
 
     Args:
         func: A training function that takes in
-            a config dict for hyperparameters and should initialize
-            horovod via horovod.init.
+            a config dict for hyperparameters.
         num_gpus_per_worker: Number of GPUs to request
             from Ray per worker.
         num_cpus_per_worker: Number of CPUs to request
@@ -171,6 +171,16 @@ def DistributedTrainableCreator(
         tune.run(tf_trainable,
                  num_samples=1)
     """
+    warnings.warn(
+        "Ray Tune's `DistributedTrainableCreator` will be deprecated in Ray "
+        "2.0, and will be replaced by Ray AI Runtime (Ray AIR). Ray AIR ("
+        "https://docs.ray.io/en/latest/ray-air/getting-started.html) will "
+        "provide greater functionality than `DistributedTrainableCreator`, "
+        "and with a more flexible and easy-to-use API.",
+        PendingDeprecationWarning,
+        stacklevel=2,
+    )
+
     detect_checkpoint_function(func, abort=True)
     if num_workers_per_host:
         if num_workers % num_workers_per_host:

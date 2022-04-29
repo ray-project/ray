@@ -7,14 +7,16 @@ import sys
 import time
 from unittest.mock import MagicMock
 
+
 import ray
 from ray import tune
 from ray.tune import Trainable
-from ray.tune.trial import Trial, Checkpoint
+from ray.tune.trial import Trial, _TuneCheckpoint
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import PopulationBasedTraining
 from ray._private.test_utils import object_memory_usage
+
 
 # Import psutil after ray so the packaged version is used.
 import psutil
@@ -437,7 +439,7 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
         class MockTrial(Trial):
             @property
             def checkpoint(self):
-                return Checkpoint(Checkpoint.MEMORY, "None", {})
+                return _TuneCheckpoint(_TuneCheckpoint.MEMORY, "None", {})
 
             @property
             def status(self):
@@ -507,6 +509,17 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
         )
 
         self.assertEqual(trial4.config["num"], 3)
+
+        # Assert that trials do not hang after `burn_in_period`
+        self.assertTrue(all(t.status == "PAUSED" for t in runner.get_trials()))
+        self.assertTrue(scheduler.choose_trial_to_run(runner))
+
+        # Assert that trials do not hang when a terminated trial is added
+        trial5 = Trial("PPO", config=dict(num=5))
+        runner.add_trial(trial5)
+        scheduler.on_trial_add(runner, trial5)
+        trial5.set_status(Trial.TERMINATED)
+        self.assertTrue(scheduler.choose_trial_to_run(runner))
 
 
 if __name__ == "__main__":

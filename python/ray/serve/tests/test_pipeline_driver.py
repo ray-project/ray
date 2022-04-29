@@ -6,6 +6,7 @@ import starlette.requests
 from starlette.testclient import TestClient
 
 from ray.serve.drivers import DAGDriver, SimpleSchemaIngress, load_input_schema
+from ray.serve.http_adapters import json_request
 from ray.experimental.dag.input_node import InputNode
 from ray import serve
 import ray
@@ -15,7 +16,6 @@ def my_resolver(a: int):
     return a
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Import behavior different.")
 def test_loading_check():
     with pytest.raises(ValueError, match="callable"):
         load_input_schema(["not function"])
@@ -25,9 +25,12 @@ def test_loading_check():
             return a
 
         load_input_schema(func)
-    assert (
-        load_input_schema("ray.serve.tests.test_pipeline_driver.my_resolver")
-        == my_resolver
+
+    loaded_my_resolver = load_input_schema(
+        "ray.serve.tests.test_pipeline_driver.my_resolver"
+    )
+    assert (loaded_my_resolver == my_resolver) or (
+        loaded_my_resolver.__code__.co_code == my_resolver.__code__.co_code
     )
 
 
@@ -96,6 +99,27 @@ def test_dag_driver_custom_schema(serve_instance):
     print(resp.text)
     resp.raise_for_status()
     assert resp.json() == 100
+
+
+@serve.deployment
+def combine(*args):
+    return list(args)
+
+
+def test_dag_driver_partial_input(serve_instance):
+    with InputNode() as inp:
+        dag = DAGDriver.bind(
+            combine.bind(echo.bind(inp[0]), echo.bind(inp[1]), echo.bind(inp[2])),
+            input_schema=json_request,
+        )
+    handle = serve.run(dag)
+    assert ray.get(handle.predict.remote([1, 2, [3, 4]])) == [1, 2, [3, 4]]
+    assert ray.get(handle.predict.remote(1, 2, [3, 4])) == [1, 2, [3, 4]]
+
+    resp = requests.post("http://127.0.0.1:8000/", json=[1, 2, [3, 4]])
+    print(resp.text)
+    resp.raise_for_status()
+    assert resp.json() == [1, 2, [3, 4]]
 
 
 if __name__ == "__main__":

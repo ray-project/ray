@@ -82,7 +82,7 @@ TEST_F(GcsActorSchedulerTest, KillWorkerLeak1) {
   rpc::ActorTableData actor_data;
   actor_data.set_state(rpc::ActorTableData::PENDING_CREATION);
   actor_data.set_actor_id(actor_id.Binary());
-  auto actor = std::make_shared<GcsActor>(actor_data);
+  auto actor = std::make_shared<GcsActor>(actor_data, rpc::TaskSpec());
   std::function<void(const Status &, const rpc::RequestWorkerLeaseReply &)> cb;
   EXPECT_CALL(*raylet_client, RequestWorkerLease(An<const rpc::TaskSpec &>(), _, _, _, _))
       .WillOnce(testing::SaveArg<2>(&cb));
@@ -109,16 +109,16 @@ TEST_F(GcsActorSchedulerTest, KillWorkerLeak2) {
   rpc::ActorTableData actor_data;
   actor_data.set_state(rpc::ActorTableData::PENDING_CREATION);
   actor_data.set_actor_id(actor_id.Binary());
-  auto actor = std::make_shared<GcsActor>(actor_data);
+  auto actor = std::make_shared<GcsActor>(actor_data, rpc::TaskSpec());
   rpc::ClientCallback<rpc::RequestWorkerLeaseReply> request_worker_lease_cb;
   // Ensure actor is killed
   EXPECT_CALL(*core_worker_client, KillActor(_, _));
   EXPECT_CALL(*raylet_client, RequestWorkerLease(An<const rpc::TaskSpec &>(), _, _, _, _))
       .WillOnce(testing::SaveArg<2>(&request_worker_lease_cb));
 
-  std::function<void(ray::Status)> async_put_with_index_cb;
+  std::function<void(bool)> async_put_with_index_cb;
   // Leasing successfully
-  EXPECT_CALL(*store_client, AsyncPutWithIndex(_, _, _, _, _))
+  EXPECT_CALL(*store_client, AsyncPut(_, _, _, _, _))
       .WillOnce(DoAll(SaveArg<4>(&async_put_with_index_cb), Return(Status::OK())));
   actor_scheduler->Schedule(actor);
   rpc::RequestWorkerLeaseReply reply;
@@ -130,7 +130,7 @@ TEST_F(GcsActorSchedulerTest, KillWorkerLeak2) {
   // Worker start to run task
   EXPECT_CALL(*core_worker_client, PushNormalTask(_, _))
       .WillOnce(testing::SaveArg<1>(&push_normal_task_cb));
-  async_put_with_index_cb(Status::OK());
+  async_put_with_index_cb(true);
   actor->GetMutableActorTableData()->set_state(rpc::ActorTableData::DEAD);
   actor_scheduler->CancelOnWorker(node_id, worker_id);
   push_normal_task_cb(Status::OK(), rpc::PushTaskReply());

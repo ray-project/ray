@@ -66,6 +66,8 @@ message RequestWorkerLeaseReply {
     // Scheduling is cancelled because task/actor is intentionally cancelled. E.g.,
     // ray.kill or ray.cancel
     SCHEDULING_CANCELLED_INTENDED = 4;
+    // Scheduling is cancelled because the task/actor is no longer schedulable.
+    SCHEDULING_CANCELLED_UNSCHEDULABLE = 5;
   }
 
   // Address of the leased worker. If this is empty, then the request should be
@@ -296,10 +298,30 @@ message GetGcsServerAddressReply {
   int32 port = 2;
 }
 
+message GetTasksInfoRequest {}
+
+message GetTasksInfoReply {
+  repeated TaskInfoEntry task_info_entries = 1;
+}
+
+message GetObjectsInfoRequest {}
+
+message GetObjectsInfoReply {
+  repeated CoreWorkerStats core_workers_stats = 1;
+}
+
+message GetResourceLoadRequest {}
+
+message GetResourceLoadReply {
+  ResourcesData resources = 1;
+}
+
 // Service for inter-node-manager communication.
 service NodeManagerService {
-  // Update the node's view of the cluster resource usage
+  // Update the node's view of the cluster resource usage.
   rpc UpdateResourceUsage(UpdateResourceUsageRequest) returns (UpdateResourceUsageReply);
+  // Get the resource load of the raylet.
+  rpc GetResourceLoad(GetResourceLoadRequest) returns (GetResourceLoadReply);
   // Request the current resource usage from this raylet
   rpc RequestResourceReport(RequestResourceReportRequest)
       returns (RequestResourceReportReply);
@@ -353,4 +375,8 @@ service NodeManagerService {
   rpc GetSystemConfig(GetSystemConfigRequest) returns (GetSystemConfigReply);
   // Get gcs server address.
   rpc GetGcsServerAddress(GetGcsServerAddressRequest) returns (GetGcsServerAddressReply);
+  // [State API] Get the all task information of the node.
+  rpc GetTasksInfo(GetTasksInfoRequest) returns (GetTasksInfoReply);
+  // [State API] Get the all object information of the node.
+  rpc GetObjectsInfo(GetObjectsInfoRequest) returns (GetObjectsInfoReply);
 }

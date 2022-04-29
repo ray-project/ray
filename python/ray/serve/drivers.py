@@ -6,7 +6,7 @@ import starlette
 from fastapi import Depends, FastAPI
 
 from ray._private.utils import import_attr
-from ray.serve.api import RayServeDAGHandle
+from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.http_util import ASGIHTTPSender
 from ray import serve
 
@@ -77,6 +77,6 @@ class DAGDriver(SimpleSchemaIngress):
         self.dag_handle = dag_handle
         super().__init__(input_schema)
 
-    async def predict(self, inp):
+    async def predict(self, *args, **kwargs):
         """Perform inference directly without HTTP."""
-        return await self.dag_handle.remote(inp)
+        return await self.dag_handle.remote(*args, **kwargs)
