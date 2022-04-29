@@ -56,62 +56,62 @@ Install RLlib and run your first experiment on your laptop in seconds:
 Algorithms Supported
 ----------------------
 
-Offline RL: <br>
-- `[Behavior Cloning (BC; derived from MARWIL implementation)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#bc>`__<br>
-- `[Deep Q Networks (DQN)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#dqn>`__<br>
-- `[Deep Deterministic Policy Gradients (DDPG)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#ddpg>`__<br>
-- `[Deep Deterministic Policy Gradients (TD3)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#td3>`__<br>
-- `[Conservative Q-Learning (CQL)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#cql>`__<br>
+Offline RL:  
+- `[Behavior Cloning (BC; derived from MARWIL implementation)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#bc>`__ 
+- `[Deep Q Networks (DQN)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#dqn>`__ 
+- `[Deep Deterministic Policy Gradients (DDPG)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#ddpg>`__ 
+- `[Deep Deterministic Policy Gradients (TD3)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#td3>`__ 
+- `[Conservative Q-Learning (CQL)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#cql>`__ 
 
-Model-free RL:<br>
-- `[Deep Q Networks (DQN)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#dqn>`__<br>
-- `[Deep Q Networks (Rainbow)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#dqn>`__<br>
-- `[Deep Q Networks (Parametric DQN)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#dqn>`__<br>
-- `[Distributed Prioritized Experience Replay (Ape-X DQN)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#apex>`__<br>
-- `[Deep Deterministic Policy Gradients (DDPG)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#ddpg>`__<br>
-- `[Deep Deterministic Policy Gradients (TD3)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#ddpg>`__<br>
-- `[Distributed Prioritized Experience Replay (Ape-X DDPG)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#apex>`__<br>
-- `[Model-agnostic Meta-Learning (contrib/MAML) ] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#maml>`__<br>
-- `[Random encoders (contrib/RE3)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#RE3>`__<br>
+Model-free RL: 
+- `[Deep Q Networks (DQN)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#dqn>`__ 
+- `[Deep Q Networks (Rainbow)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#dqn>`__ 
+- `[Deep Q Networks (Parametric DQN)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#dqn>`__ 
+- `[Distributed Prioritized Experience Replay (Ape-X DQN)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#apex>`__ 
+- `[Deep Deterministic Policy Gradients (DDPG)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#ddpg>`__ 
+- `[Deep Deterministic Policy Gradients (TD3)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#ddpg>`__ 
+- `[Distributed Prioritized Experience Replay (Ape-X DDPG)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#apex>`__ 
+- `[Model-agnostic Meta-Learning (contrib/MAML) ] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#maml>`__ 
+- `[Random encoders (contrib/RE3)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#RE3>`__ 
 
-Model-based RL:<br>
-- `[Random encoders (contrib/RE3)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#mbmpo>`__<br>
-- `[Image-only Dreamer (contrib/Dreamer)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#dreamer>`__<br>
-- `[Random encoders (contrib/RE3)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#RE3>`__<br>
+Model-based RL: 
+- `[Random encoders (contrib/RE3)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#mbmpo>`__ 
+- `[Image-only Dreamer (contrib/Dreamer)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#dreamer>`__ 
+- `[Random encoders (contrib/RE3)] <file:///Users/christy/Documents/ray_christy/ray/doc/_build/html/rllib/rllib-algorithms.html#RE3>`__ 
 
-Derivative-free algorithms:<br>
-- [ARS] :ref:`Augmented Random Search (ARS) <augmented-random-search-ars>`<br>
-- [ES] :ref:`Evolution Strategies <evolution-strategies>`<br>
-- [MARWIL] :ref:`Monotonic Advantage Re-Weighted Imitation Learning (MARWIL)<monotonic-advantage-re-weighted-imitation-learning-marwil>`<br>
-- [BC-MARWIL] :ref:`Behavior Cloning (BC; derived from MARWIL implementation) <behavior-cloning-bc-derived-from-marwil-implementation>`<br>
+Derivative-free algorithms: 
+- [ARS] :ref:`Augmented Random Search (ARS) <augmented-random-search-ars>` 
+- [ES] :ref:`Evolution Strategies <evolution-strategies>` 
+- [MARWIL] :ref:`Monotonic Advantage Re-Weighted Imitation Learning (MARWIL)<monotonic-advantage-re-weighted-imitation-learning-marwil>` 
+- [BC-MARWIL] :ref:`Behavior Cloning (BC; derived from MARWIL implementation) <behavior-cloning-bc-derived-from-marwil-implementation>` 
 
-RL for games: <br>
-- [AlphaZero] :ref:`Single-Player Alpha Zero (contrib/AlphaZero) <alphazero>`<br>
-- [PPO] :ref:`Proximal Policy Optimization (PPO) <proximal-policy-optimization-ppo>`<br>
-- [APPO] :ref:`Asynchronous Proximal Policy Optimization (APPO) <asynchronous-proximal-policy-optimization-appo>`<br>
-- [DD-PPO] :ref:`Decentralized Distributed Proximal Policy Optimization (DD-PPO) <decentralized-distributed-proximal-policy-optimization-dd-ppo>`<br>
-- [IMPALA] :ref:`Importance Weighted Actor-Learner Architecture (IMPALA) <importance-weighted-actor-learner-architecture-impala>`<br>
-- [A2C] :ref:`Advantage Actor-Critic (A2C) <a3c>`<br>
-- [A3C] :ref:`Advantage Actor-Critic (A3C) <a3c>`<br>
-- [R2D2] :ref:`Recurrent Replay Distributed DQN (R2D2) <recurrent-replay-distributed-dqn-r2d2>`<br>
-- [QMIX] :ref:`QMIX Monotonic Value Factorisation (QMIX) <multi-agent-methods>`<br>
-- [VDN] :ref:`QMIX Monotonic Value Factorisation (VDN) <multi-agent-methods>`<br>
-- [IQN] :ref:`QMIX Monotonic Value Factorisation (IQN) <multi-agent-methods>`<br>
-- [MADDPG] :ref:`Multi-Agent Deep Deterministic Policy Gradient (contrib/MADDPG) <multi-agent-deep-deterministic-policy-gradient-contrib-maddpg>`<br>
-- [PS] :ref:`Parameter Sharing <parameter-sharing>`<br>
-- [FIL] :ref:`Fully Independent Learning <fully-independent-learning>`<br>
-- [SCM] :ref:`Shared Critic Methods <shared-critic-methods>`<br>
+RL for games:  
+- [AlphaZero] :ref:`Single-Player Alpha Zero (contrib/AlphaZero) <alphazero>` 
+- [PPO] :ref:`Proximal Policy Optimization (PPO) <proximal-policy-optimization-ppo>` 
+- [APPO] :ref:`Asynchronous Proximal Policy Optimization (APPO) <asynchronous-proximal-policy-optimization-appo>` 
+- [DD-PPO] :ref:`Decentralized Distributed Proximal Policy Optimization (DD-PPO) <decentralized-distributed-proximal-policy-optimization-dd-ppo>` 
+- [IMPALA] :ref:`Importance Weighted Actor-Learner Architecture (IMPALA) <importance-weighted-actor-learner-architecture-impala>` 
+- [A2C] :ref:`Advantage Actor-Critic (A2C) <a3c>` 
+- [A3C] :ref:`Advantage Actor-Critic (A3C) <a3c>` 
+- [R2D2] :ref:`Recurrent Replay Distributed DQN (R2D2) <recurrent-replay-distributed-dqn-r2d2>` 
+- [QMIX] :ref:`QMIX Monotonic Value Factorisation (QMIX) <multi-agent-methods>` 
+- [VDN] :ref:`QMIX Monotonic Value Factorisation (VDN) <multi-agent-methods>` 
+- [IQN] :ref:`QMIX Monotonic Value Factorisation (IQN) <multi-agent-methods>` 
+- [MADDPG] :ref:`Multi-Agent Deep Deterministic Policy Gradient (contrib/MADDPG) <multi-agent-deep-deterministic-policy-gradient-contrib-maddpg>` 
+- [PS] :ref:`Parameter Sharing <parameter-sharing>` 
+- [FIL] :ref:`Fully Independent Learning <fully-independent-learning>` 
+- [SCM] :ref:`Shared Critic Methods <shared-critic-methods>` 
 
-RL for recommender systems:<br>
-- [SLATEQ] :ref:`Augmented Random Search (SlateQ) <slateq>`<br>
+RL for recommender systems: 
+- [SLATEQ] :ref:`Augmented Random Search (SlateQ) <slateq>` 
 
-Bandits:<br>
-- [LinUCB] :ref:`Linear Upper Confidence Bound (BanditLinUCBTrainer) <lin-ucb>`<br>
-- [LinTS] :ref:`Linear Thompson Sampling (BanditLinTSTrainer) <lints>`<br>
+Bandits: 
+- [LinUCB] :ref:`Linear Upper Confidence Bound (BanditLinUCBTrainer) <lin-ucb>` 
+- [LinTS] :ref:`Linear Thompson Sampling (BanditLinTSTrainer) <lints>` 
 
-Others: <br>
-- [PG] :ref:`Policy Gradients <policy-gradients>`<br>
-- [ICM] :ref:`Curiosity (ICM: Intrinsic Curiosity Module) <curiosity-icm-intrinsic-curiosity-mod>`<br>
+Others:  
+- [PG] :ref:`Policy Gradients <policy-gradients>` 
+- [ICM] :ref:`Curiosity (ICM: Intrinsic Curiosity Module) <curiosity-icm-intrinsic-curiosity-mod>` 
 
 A list of all the algorithms can be found `[here] <https://docs.ray.io/en/master/rllib/rllib-algorithms.html>`__ . 
 
