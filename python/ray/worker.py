@@ -380,8 +380,10 @@ class Worker:
         the functions to kv so that the other worker will be able to run them.
         """
         if self.cached_functions_to_run is None:
-            logger.warning(f"Fail to run {function} on all workers because it's called after"
-                           " ray.init has been called.")
+            logger.warning(
+                f"Fail to run {function} on all workers because it's called after"
+                " ray.init has been called."
+            )
         else:
             self.cached_functions_to_run.append(function)
 
