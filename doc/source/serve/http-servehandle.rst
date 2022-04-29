@@ -178,7 +178,7 @@ to one click deploy pre-trained models.
 
 For example, we provide a simple adapter for n-dimensional array.
 
-With :ref:`model wrappers<air-serve-integration>`, you can specify it via the ``input_schema`` field.
+With :ref:`model wrappers<air-serve-integration>`, you can specify it via the ``http_adapter`` field.
 
 .. code-block:: python
 
@@ -189,13 +189,13 @@ With :ref:`model wrappers<air-serve-integration>`, you can specify it via the ``
     ModelWrapperDeployment.options(name="my_model").deploy(
         my_ray_air_predictor,
         my_ray_air_checkpoint,
-        input_schema=json_to_ndarray
+        http_adapter=json_to_ndarray
     )
 
 Serve Deployment Graph ``DAGDriver``
 """"""""""""""""""""""""""""""""""""
 In :ref:`Serve Deployment Graph <serve-deployment-graph>`, you can configure
-``ray.serve.drivers.DAGDriver`` to accept an http adapter via it's ``input_schema`` field. 
+``ray.serve.drivers.DAGDriver`` to accept an http adapter via it's ``http_adapter`` field. 
 
 For example, the json request adapters parse JSON in HTTP body:
 
@@ -207,7 +207,7 @@ For example, the json request adapters parse JSON in HTTP body:
 
     with InputNode() as input_node:
         ...
-        dag = DAGDriver.bind(other_node, input_schema=json_request)
+        dag = DAGDriver.bind(other_node, http_adapter=json_request)
 
 
 Embedded in Bring Your Own ``FastAPI`` Application
