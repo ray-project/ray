@@ -948,10 +948,11 @@ def init(
                 runtime_env
             )
 
-        # Set runtime_env in job_config if passed in as part of ray.init()
-        if job_config is None:
-            job_config = ray.job_config.JobConfig()
-        job_config.set_runtime_env(runtime_env)
+        if runtime_env:
+            # Set runtime_env in job_config if passed in as part of ray.init()
+            if job_config is None:
+                job_config = ray.job_config.JobConfig()
+            job_config.set_runtime_env(runtime_env)
 
     if _node_ip_address is not None:
         node_ip_address = services.resolve_ip_for_localhost(_node_ip_address)
