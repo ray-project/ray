@@ -153,7 +153,7 @@ def _setup_cluster_for_test(request, ray_start_cluster):
     a = A.remote()
     obj_refs = [f.remote(), a.ping.remote()]
     # Infeasible task
-    b = f.options(resources={"a": 1}) # noqa
+    b = f.options(resources={"a": 1})  # noqa
 
     node_info_list = ray.nodes()
     prom_addresses = []
