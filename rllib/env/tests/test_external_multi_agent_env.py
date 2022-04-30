@@ -8,7 +8,8 @@ from ray.rllib.env.tests.test_external_env import make_simple_serving
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.tests.test_rollout_worker import MockPolicy
 from ray.rllib.examples.env.multi_agent import BasicMultiAgent
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID
+
 
 SimpleMultiServing = make_simple_serving(True, ExternalMultiAgentEnv)
 
@@ -24,29 +25,43 @@ class TestExternalMultiAgentEnv(unittest.TestCase):
 
     def test_external_multi_agent_env_complete_episodes(self):
         agents = 4
-        ev = RolloutWorker(
-            env_creator=lambda _: SimpleMultiServing(BasicMultiAgent(agents)),
-            policy_spec=MockPolicy,
-            rollout_fragment_length=40,
-            batch_mode="complete_episodes",
-        )
-        for _ in range(3):
-            batch = ev.sample()
-            self.assertEqual(batch.count, 40)
-            self.assertEqual(len(np.unique(batch[SampleBatch.AGENT_INDEX])), agents)
+        for count_steps_by in ("env_steps", "agent_steps"):
+            ev = RolloutWorker(
+                env_creator=lambda _: SimpleMultiServing(BasicMultiAgent(agents)),
+                policy_spec=MockPolicy,
+                rollout_fragment_length=40,
+                count_steps_by=count_steps_by,
+                batch_mode="complete_episodes",
+            )
+            for _ in range(3):
+                ma_batch = ev.sample()
+                steps = 40 if count_steps_by == "env_steps" else 40 * agents
+                self.assertEqual(ma_batch.count, steps)
+                sample_batch = ma_batch.policy_batches[DEFAULT_POLICY_ID]
+                self.assertEqual(
+                    len(np.unique(sample_batch[SampleBatch.AGENT_INDEX])),
+                    agents,
+                )
 
     def test_external_multi_agent_env_truncate_episodes(self):
         agents = 4
-        ev = RolloutWorker(
-            env_creator=lambda _: SimpleMultiServing(BasicMultiAgent(agents)),
-            policy_spec=MockPolicy,
-            rollout_fragment_length=40,
-            batch_mode="truncate_episodes",
-        )
-        for _ in range(3):
-            batch = ev.sample()
-            self.assertEqual(batch.count, 160)
-            self.assertEqual(len(np.unique(batch[SampleBatch.AGENT_INDEX])), agents)
+        for count_steps_by in ("env_steps", "agent_steps"):
+            ev = RolloutWorker(
+                env_creator=lambda _: SimpleMultiServing(BasicMultiAgent(agents)),
+                policy_spec=MockPolicy,
+                rollout_fragment_length=40,
+                count_steps_by=count_steps_by,
+                batch_mode="truncate_episodes",
+            )
+            for _ in range(3):
+                ma_batch = ev.sample()
+                steps = 40 if count_steps_by == "env_steps" else 40 * agents
+                self.assertEqual(ma_batch.count, steps)
+                sample_batch = ma_batch.policy_batches[DEFAULT_POLICY_ID]
+                self.assertEqual(
+                    len(np.unique(sample_batch[SampleBatch.AGENT_INDEX])),
+                    agents,
+                )
 
     def test_external_multi_agent_env_sample(self):
         agents = 2
@@ -60,6 +75,7 @@ class TestExternalMultiAgentEnv(unittest.TestCase):
             },
             policy_mapping_fn=lambda aid, **kwargs: "p{}".format(aid % 2),
             rollout_fragment_length=50,
+            count_steps_by="env_steps",
         )
         batch = ev.sample()
         self.assertEqual(batch.count, 50)
