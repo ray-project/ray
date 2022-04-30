@@ -731,7 +731,6 @@ class ImpalaTrainer(Trainer):
             self._counters["steps_since_broadcast"] = 0
             self._learner_thread.weights_updated = False
 
-
             for worker in self.workers_that_need_updates:
                 self._counters["num_weight_broadcasts"] += 1
                 worker.set_weights.remote(weights, global_vars)
