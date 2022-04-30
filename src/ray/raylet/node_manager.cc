@@ -2301,7 +2301,7 @@ Status NodeManager::GetObjectsFromPlasma(
   // heavy load, then this request can still block the NodeManager event loop
   // since we must wait for the plasma store's reply. We should consider using
   // an `AsyncGet` instead.
-  RAY_RETURN_IF_NOT_OK(store_client_.Get(
+  RAY_RETURN_NOT_OK(store_client_.Get(
       object_ids, /*timeout_ms=*/0, &plasma_results, /*is_from_worker=*/false));
 
   for (const auto &plasma_result : plasma_results) {

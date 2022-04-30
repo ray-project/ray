@@ -461,9 +461,9 @@ void RayletClient::ReleaseUnusedBundles(
 }
 
 void RayletClient::PinObjectIDs(const rpc::Address &caller_address,
-                                std::vector<ObjectID> object_ids,
+                                const ObjectID &object_id,
                                 rpc::ClientCallback<rpc::PinObjectIDsReply> callback) {
-  pin_batcher_->Add(caller_address, std::move(object_ids), std::move(callback));
+  pin_batcher_->Add(caller_address, object_id, std::move(callback));
 }
 
 void RayletClient::ShutdownRaylet(
@@ -529,7 +529,7 @@ PinBatcher::PinBatcher(std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_c
     : grpc_client_(std::move(grpc_client)) {}
 
 void PinBatcher::Add(const rpc::Address &address,
-                     std::vector<ObjectID> object_ids,
+                     const ObjectID &object_id,
                      rpc::ClientCallback<rpc::PinObjectIDsReply> callback) {
   absl::MutexLock lock(&mu_);
   total_inflight_pins_++;
@@ -537,7 +537,7 @@ void PinBatcher::Add(const rpc::Address &address,
       raylets_.try_emplace(address.raylet_id(), this, address).first->second;
   // Assert the lock is held to make thread safety analysis happy.
   raylet.pin_batcher_->mu_.AssertHeld();
-  raylet.buffered_.emplace_back(std::move(object_ids), std::move(callback));
+  raylet.buffered_.emplace_back(object_id, std::move(callback));
   raylet.Flush();
 }
 
@@ -556,9 +556,7 @@ bool PinBatcher::RayletDestination::Flush() {
   rpc::PinObjectIDsRequest request;
   request.mutable_owner_address()->CopyFrom(raylet_address_);
   for (const auto &req : inflight_) {
-    for (const auto &object_id : req.object_ids) {
-      request.add_object_ids(object_id.Binary());
-    }
+    request.add_object_ids(req.object_id.Binary());
   }
   auto rpc_callback = [this](Status status, const rpc::PinObjectIDsReply &reply) {
     std::vector<Request> inflight;

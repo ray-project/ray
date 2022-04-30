@@ -51,7 +51,7 @@ class PinObjectsInterface {
  public:
   /// Request to a raylet to pin a plasma object. The callback will be sent via gRPC.
   virtual void PinObjectIDs(const rpc::Address &caller_address,
-                            std::vector<ObjectID> object_ids,
+                            const ObjectID &object_id,
                             rpc::ClientCallback<rpc::PinObjectIDsReply> callback) = 0;
 
   virtual ~PinObjectsInterface(){};
@@ -239,7 +239,7 @@ class PinBatcher {
 
   // Adds objects to be pinned at the address.
   void Add(const rpc::Address &address,
-           std::vector<ObjectID> object_ids,
+           const ObjectID &object_id,
            rpc::ClientCallback<rpc::PinObjectIDsReply> callback);
 
   // Total number of objects waiting to be pinned.
@@ -248,10 +248,10 @@ class PinBatcher {
  private:
   // Request from a single Add() call.
   struct Request {
-    Request(std::vector<ObjectID> oid, rpc::ClientCallback<rpc::PinObjectIDsReply> cb)
-        : object_ids(std::move(oid)), callback(std::move(cb)) {}
+    Request(ObjectID oid, rpc::ClientCallback<rpc::PinObjectIDsReply> cb)
+        : object_id(oid), callback(std::move(cb)) {}
 
-    std::vector<ObjectID> object_ids;
+    ObjectID object_id;
     rpc::ClientCallback<rpc::PinObjectIDsReply> callback;
   };
 
@@ -486,7 +486,7 @@ class RayletClient : public RayletClientInterface {
       const rpc::ClientCallback<rpc::ReleaseUnusedBundlesReply> &callback) override;
 
   void PinObjectIDs(const rpc::Address &caller_address,
-                    std::vector<ObjectID> object_ids,
+                    const ObjectID &object_id,
                     rpc::ClientCallback<rpc::PinObjectIDsReply> callback) override;
 
   void ShutdownRaylet(

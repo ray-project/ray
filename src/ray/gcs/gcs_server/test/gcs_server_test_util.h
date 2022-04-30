@@ -254,7 +254,7 @@ struct GcsServerMocker {
 
     /// PinObjectsInterface
     void PinObjectIDs(const rpc::Address &caller_address,
-                      std::vector<ObjectID> object_ids,
+                      const ObjectID &object_id,
                       rpc::ClientCallback<rpc::PinObjectIDsReply> callback) override {}
 
     /// DependencyWaiterInterface

@@ -19,7 +19,7 @@ class MockPinObjectsInterface : public PinObjectsInterface {
   MOCK_METHOD(void,
               PinObjectIDs,
               (const rpc::Address &caller_address,
-               std::vector<ObjectID> object_ids,
+               const ObjectID &object_ids,
                rpc::ClientCallback<rpc::PinObjectIDsReply> callback),
               (override));
 };
@@ -190,7 +190,7 @@ class MockRayletClientInterface : public RayletClientInterface {
   MOCK_METHOD(void,
               PinObjectIDs,
               (const rpc::Address &caller_address,
-               std::vector<ObjectID> object_ids,
+               const ObjectID &object_id,
                rpc::ClientCallback<rpc::PinObjectIDsReply> callback),
               (override));
   MOCK_METHOD(void,
