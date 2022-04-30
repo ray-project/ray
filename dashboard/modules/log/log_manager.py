@@ -1,43 +1,24 @@
-from typing import List
-from dataclasses import dataclass, fields, is_dataclass
+from typing import List, TypeVar
 import asyncio
 import aiohttp.web
 import logging
+from dataclasses import fields, is_dataclass
 
+from ray.experimental.log.common import (
+    NodeIdentifiers,
+    LogIdentifiers,
+    LogStreamOptions
+)
 from ray.dashboard.datacenter import DataSource
 from ray import ray_constants
 
 
 logger = logging.getLogger(__name__)
 
-
-@dataclass(init=True)
-class NodeIdentifiers:
-    node_id: str = None
-    node_ip: str = None
+T = TypeVar('T')      # Declare type variable
 
 
-@dataclass(init=True)
-class FileIdentifiers:
-    log_file_name: str = None
-    actor_id: str = None
-    pid: str = None
-
-
-@dataclass(init=True)
-class LogIdentifiers:
-    file: FileIdentifiers
-    node: NodeIdentifiers
-
-
-@dataclass(init=True)
-class LogStreamOptions:
-    media_type: str = None
-    lines: int = None
-    interval: float = None
-
-
-def to_schema(req: aiohttp.web.Request, Dataclass):
+def to_schema(req: aiohttp.web.Request, Dataclass: T) -> T:
     """Converts a aiohttp Request into the given dataclass
 
     Args:
