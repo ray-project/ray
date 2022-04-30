@@ -84,6 +84,7 @@ from ray.data.impl.sort import sort_impl
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList
 from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
+from ray._private.usage import usage_lib
 
 logger = logging.getLogger(__name__)
 
@@ -128,6 +129,8 @@ class Dataset(Generic[T]):
         read methods to construct a dataset.
         """
         assert isinstance(plan, ExecutionPlan)
+        usage_lib.record_library_usage("dataset")
+
         self._plan = plan
         self._uuid = uuid4().hex
         self._epoch = epoch
