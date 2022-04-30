@@ -230,19 +230,19 @@ class RayletConnection {
   std::mutex write_mutex_;
 };
 
-// Batches PinObjectIDsRequest so there would be only one outstanding
-// request per Raylet. This reduces the memory and CPU overhead when a
-// large number of objects need to be pinned.
+/// Batches PinObjectIDsRequest so there would be only one outstanding
+/// request per Raylet. This reduces the memory and CPU overhead when a
+/// large number of objects need to be pinned.
 class PinBatcher {
  public:
   PinBatcher(std::shared_ptr<rpc::NodeManagerWorkerClient> grpc_client);
 
-  // Adds objects to be pinned at the address.
+  /// Adds objects to be pinned at the address.
   void Add(const rpc::Address &address,
            const ObjectID &object_id,
            rpc::ClientCallback<rpc::PinObjectIDsReply> callback);
 
-  // Total number of objects waiting to be pinned.
+  /// Total number of objects waiting to be pinned.
   int64_t TotalPending() const;
 
  private:
@@ -255,21 +255,20 @@ class PinBatcher {
     rpc::ClientCallback<rpc::PinObjectIDsReply> callback;
   };
 
+  // Collects buffered pin object requests intended for a raylet.
   struct RayletDestination {
-    RayletDestination(PinBatcher *batcher, const rpc::Address &address)
-        : pin_batcher_(batcher), raylet_address_(address) {}
+    RayletDestination(const rpc::Address &address) : raylet_address_(address) {}
 
-    /// Tries sending out a batched pin request with buffered object IDs.
-    ///
-    /// \return true if a request is sent out, false otherwise, e.g. when
-    /// there is already an inflight request, or there is no buffered Object IDs.
-    bool Flush() ABSL_EXCLUSIVE_LOCKS_REQUIRED(pin_batcher_->mu_);
-
-    PinBatcher *const pin_batcher_;
     const rpc::Address raylet_address_;
-    std::vector<Request> inflight_ ABSL_GUARDED_BY(pin_batcher_->mu_);
-    std::vector<Request> buffered_ ABSL_GUARDED_BY(pin_batcher_->mu_);
+    std::vector<Request> inflight_;
+    std::vector<Request> buffered_;
   };
+
+  /// Tries sending out a batched pin request with buffered object IDs.
+  ///
+  /// \return true if a request is sent out, false otherwise, e.g. when
+  /// there is already an inflight request, or there is no buffered Object IDs.
+  bool Flush(const std::string &raylet_id) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   const std::shared_ptr<rpc::NodeManagerWorkerClient> grpc_client_;
   mutable absl::Mutex mu_;

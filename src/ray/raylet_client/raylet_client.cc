@@ -534,11 +534,9 @@ void PinBatcher::Add(const rpc::Address &address,
   absl::MutexLock lock(&mu_);
   total_inflight_pins_++;
   RayletDestination &raylet =
-      raylets_.try_emplace(address.raylet_id(), this, address).first->second;
-  // Assert the lock is held to make thread safety analysis happy.
-  raylet.pin_batcher_->mu_.AssertHeld();
+      raylets_.try_emplace(address.raylet_id(), address).first->second;
   raylet.buffered_.emplace_back(object_id, std::move(callback));
-  raylet.Flush();
+  Flush(address.raylet_id());
 }
 
 int64_t PinBatcher::TotalPending() const {
@@ -546,35 +544,38 @@ int64_t PinBatcher::TotalPending() const {
   return total_inflight_pins_;
 }
 
-bool PinBatcher::RayletDestination::Flush() {
-  if (buffered_.empty() || !inflight_.empty()) {
+bool PinBatcher::Flush(const std::string &raylet_id) {
+  auto &raylet = raylets_.at(raylet_id);
+  if (raylet.buffered_.empty() || !raylet.inflight_.empty()) {
     return false;
   }
-  inflight_ = std::move(buffered_);
-  buffered_.clear();
+  raylet.inflight_ = std::move(raylet.buffered_);
+  raylet.buffered_.clear();
 
   rpc::PinObjectIDsRequest request;
-  request.mutable_owner_address()->CopyFrom(raylet_address_);
-  for (const auto &req : inflight_) {
+  request.mutable_owner_address()->CopyFrom(raylet.raylet_address_);
+  for (const auto &req : raylet.inflight_) {
     request.add_object_ids(req.object_id.Binary());
   }
-  auto rpc_callback = [this](Status status, const rpc::PinObjectIDsReply &reply) {
+  auto rpc_callback = [this, raylet_id](Status status,
+                                        const rpc::PinObjectIDsReply &reply) {
     std::vector<Request> inflight;
     {
-      absl::MutexLock lock(&pin_batcher_->mu_);
-      inflight = std::move(inflight_);
-      inflight_.clear();
-      pin_batcher_->total_inflight_pins_ -= inflight.size();
-      if (!Flush()) {
+      absl::MutexLock lock(&mu_);
+      auto &raylet = raylets_.at(raylet_id);
+      inflight = std::move(raylet.inflight_);
+      raylet.inflight_.clear();
+      total_inflight_pins_ -= inflight.size();
+      if (!Flush(raylet_id)) {
         // No more buffered requests, so this RayletDestination can be dropped.
-        pin_batcher_->raylets_.erase(raylet_address_.raylet_id());
+        raylets_.erase(raylet_id);
       }
     }
     for (auto &req : inflight) {
       req.callback(status, reply);
     }
   };
-  pin_batcher_->grpc_client_->PinObjectIDs(request, std::move(rpc_callback));
+  grpc_client_->PinObjectIDs(request, std::move(rpc_callback));
 
   return true;
 }
