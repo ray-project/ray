@@ -179,7 +179,7 @@ class TrainerConfig:
         self.output_max_file_size = 64 * 1024 * 1024
 
         # `self.evaluation()`
-        self.evaluation_interval = 0
+        self.evaluation_interval = None
         self.evaluation_duration = 10
         self.evaluation_duration_unit = "episodes"
         self.evaluation_parallel_to_training = False

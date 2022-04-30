@@ -19,7 +19,7 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
@@ -130,6 +130,20 @@ class CQLTrainer(SACTrainer):
 
     @override(SACTrainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
+        # First check, whether old `timesteps_per_iteration` is used. If so
+        # convert right away as for CQL, we must measure in training timesteps,
+        # never sampling timesteps (CQL does not sample).
+        if config.get("timesteps_per_iteration", DEPRECATED_VALUE) != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="timesteps_per_iteration",
+                new="min_train_timesteps_per_reporting",
+                error=False,
+            )
+            config["min_train_timesteps_per_reporting"] = config[
+                "timesteps_per_iteration"
+            ]
+            config["timesteps_per_iteration"] = DEPRECATED_VALUE
+
         # Call super's validation method.
         super().validate_config(config)
 

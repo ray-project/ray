@@ -32,6 +32,7 @@ from ray.data.datasource.partitioning import (
     PathPartitionFilter,
     PathPartitionParser,
 )
+from ray.data.datasource.tensorflow_datasource import SimpleTensorFlowDatasource
 from ray.data.datasource.torch_datasource import SimpleTorchDatasource
 
 __all__ = [
@@ -59,6 +60,7 @@ __all__ = [
     "RandomIntRowDatasource",
     "RangeDatasource",
     "ReadTask",
+    "SimpleTensorFlowDatasource",
     "SimpleTorchDatasource",
     "WriteResult",
     "_S3FileSystemWrapper",

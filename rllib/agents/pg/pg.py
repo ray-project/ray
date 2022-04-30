@@ -21,6 +21,7 @@ class PGConfig(TrainerConfig):
         >>> trainer.train()
 
     Example:
+        >>> from ray import tune
         >>> config = PGConfig()
         >>> # Print out some default values.
         >>> print(config.lr)
@@ -77,7 +78,7 @@ class PGTrainer(Trainer):
         return PGTorchPolicy if config.get("framework") == "torch" else PGTFPolicy
 
 
-# Deprecated: Use ray.rllib.agents.ppo.PGConfig instead!
+# Deprecated: Use ray.rllib.agents.pg.PGConfig instead!
 class _deprecated_default_config(dict):
     def __init__(self):
         super().__init__(PGConfig().to_dict())

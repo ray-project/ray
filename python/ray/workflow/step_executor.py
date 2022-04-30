@@ -1,5 +1,4 @@
 import time
-import asyncio
 from dataclasses import dataclass
 import functools
 import logging
@@ -26,7 +25,6 @@ from ray.workflow.common import (
     StepID,
     WorkflowData,
     WorkflowStaticRef,
-    asyncio_run,
     CheckpointMode,
 )
 
@@ -62,7 +60,6 @@ def _resolve_dynamic_workflow_refs(workflow_refs: "List[WorkflowRef]"):
     workflow_manager = get_or_create_management_actor()
     context = workflow_context.get_workflow_step_context()
     workflow_id = context.workflow_id
-    storage_url = context.storage_url
     workflow_ref_mapping = []
     for workflow_ref in workflow_refs:
         step_ref = ray.get(
@@ -89,7 +86,7 @@ def _resolve_dynamic_workflow_refs(workflow_refs: "List[WorkflowRef]"):
                     f"Current step: '{current_step_id}'"
                 )
                 step_ref = recovery.resume_workflow_step(
-                    workflow_id, workflow_ref.step_id, storage_url, None
+                    workflow_id, workflow_ref.step_id, None
                 ).persisted_output
                 output = _resolve_static_workflow_ref(step_ref)
         workflow_ref_mapping.append(output)
@@ -255,7 +252,7 @@ def execute_workflow(workflow: Workflow) -> "WorkflowExecutionResult":
     return result
 
 
-async def _write_step_inputs(
+def _write_step_inputs(
     wf_storage: workflow_storage.WorkflowStorage, step_id: StepID, inputs: WorkflowData
 ) -> None:
     """Save workflow inputs."""
@@ -265,24 +262,21 @@ async def _write_step_inputs(
         # with plasma store object in memory.
         args_obj = ray.get(inputs.inputs.args)
     workflow_id = wf_storage._workflow_id
-    storage = wf_storage._storage
-    save_tasks = [
-        # TODO (Alex): Handle the json case better?
-        wf_storage._put(wf_storage._key_step_input_metadata(step_id), metadata, True),
-        wf_storage._put(
-            wf_storage._key_step_user_metadata(step_id), inputs.user_metadata, True
-        ),
-        serialization.dump_to_storage(
-            wf_storage._key_step_function_body(step_id),
-            inputs.func_body,
-            workflow_id,
-            storage,
-        ),
-        serialization.dump_to_storage(
-            wf_storage._key_step_args(step_id), args_obj, workflow_id, storage
-        ),
-    ]
-    await asyncio.gather(*save_tasks)
+
+    # TODO (Alex): Handle the json case better?
+    wf_storage._put(wf_storage._key_step_input_metadata(step_id), metadata, True),
+    wf_storage._put(
+        wf_storage._key_step_user_metadata(step_id), inputs.user_metadata, True
+    ),
+    serialization.dump_to_storage(
+        wf_storage._key_step_function_body(step_id),
+        inputs.func_body,
+        workflow_id,
+        wf_storage,
+    ),
+    serialization.dump_to_storage(
+        wf_storage._key_step_args(step_id), args_obj, workflow_id, wf_storage
+    ),
 
 
 def commit_step(
@@ -309,7 +303,6 @@ def commit_step(
             # its input (again).
             if w.ref is None:
                 tasks.append(_write_step_inputs(store, w.step_id, w.data))
-        asyncio_run(asyncio.gather(*tasks))
 
     context = workflow_context.get_workflow_step_context()
     store.save_step_output(
