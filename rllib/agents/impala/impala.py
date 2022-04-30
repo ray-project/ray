@@ -725,15 +725,15 @@ class ImpalaTrainer(Trainer):
             self.workers.remote_workers()
             and self._counters["steps_since_broadcast"]
             >= self.config["broadcast_interval"]
-            and self._learner_thread.weights_updated
-            and self.self.workers_that_need_updates
+            and self.workers_that_need_updates
         ):
             weights = ray.put(self.workers.local_worker().get_weights())
             self._counters["steps_since_broadcast"] = 0
             self._learner_thread.weights_updated = False
-            self._counters["num_weight_broadcasts"] += 1
+
 
             for worker in self.workers_that_need_updates:
+                self._counters["num_weight_broadcasts"] += 1
                 worker.set_weights.remote(weights, global_vars)
             self.workers_that_need_updates = set()
 
