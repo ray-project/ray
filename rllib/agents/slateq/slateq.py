@@ -139,8 +139,6 @@ DEFAULT_CONFIG = with_common_config({
 
     # Switch on no-preprocessors for easier Q-model coding.
     "_disable_preprocessor_api": True,
-    # Use `training_iteration()` instead of `execution_plan()` by default.
-    "_disable_execution_plan_api": True,
 
     # Deprecated keys:
     # Use `capacity` in `replay_buffer_config` instead.
