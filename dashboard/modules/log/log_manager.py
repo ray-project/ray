@@ -9,6 +9,10 @@ from ray.experimental.log.common import (
     LogIdentifiers,
     LogStreamOptions
 )
+from ray.experimental.log.consts import (
+    RAY_LOG_CATEGORIES,
+    RAY_WORKER_LOG_CATEGORIES,
+)
 from ray.dashboard.datacenter import DataSource
 from ray import ray_constants
 
@@ -177,30 +181,34 @@ class LogsManager:
         logs["worker_errors"] = list(
             filter(lambda s: "worker" in s and s.endswith(".err"), filtered)
         )
-        logs["worker_outs"] = list(
+        logs["worker_stdout"] = list(
             filter(lambda s: "worker" in s and s.endswith(".out"), filtered)
         )
         for lang in ray_constants.LANGUAGE_WORKER_TYPES:
-            logs[f"{lang}_core_worker_logs"] = list(
+            logs[f"{lang}_core_worker"] = list(
                 filter(
                     lambda s: f"{lang}-core-worker" in s and s.endswith(".log"),
                     filtered,
                 )
             )
-            logs[f"{lang}_driver_logs"] = list(
+            logs[f"{lang}_driver"] = list(
                 filter(
                     lambda s: f"{lang}-core-driver" in s and s.endswith(".log"),
                     filtered,
                 )
             )
-        logs["dashboard"] = list(filter(lambda s: "dashboard" in s, filtered))
-        logs["raylet"] = list(filter(lambda s: "raylet" in s, filtered))
-        logs["gcs_server"] = list(filter(lambda s: "gcs" in s, filtered))
-        logs["ray_client"] = list(filter(lambda s: "ray_client" in s, filtered))
-        logs["autoscaler"] = list(
-            filter(lambda s: "monitor" in s and "log_monitor" not in s, filtered)
-        )
-        logs["runtime_env"] = list(filter(lambda s: "runtime_env" in s, filtered))
+        for key in logs:
+            assert key in RAY_WORKER_LOG_CATEGORIES
+
+        LOG_MATCH_BY_CATEGORY_EXCEPTIONS = ["autoscaler", "misc"]
+        for category in RAY_LOG_CATEGORIES:
+            if category not in LOG_MATCH_BY_CATEGORY_EXCEPTIONS:
+                logs[category] = list(filter(lambda s: category in s, filtered))
+            elif category == "autoscaler":
+                logs["autoscaler"] = list(
+                    filter(lambda s: "monitor" in s and "log_monitor" not in s, filtered)
+                )
+
         logs["folders"] = list(filter(lambda s: "." not in s, filtered))
         logs["misc"] = list(
             filter(lambda s: all([s not in logs[k] for k in logs]), filtered)
