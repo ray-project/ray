@@ -7,8 +7,12 @@ import ray.ray_constants as ray_constants
 from ray.experimental.log.common import (
     NodeIdentifiers,
     FileIdentifiers,
-    LogStreamOptions
 )
+from ray.experimental.log.consts import (
+    RAY_LOG_CATEGORIES,
+    RAY_WORKER_LOG_CATEGORIES,
+)
+from dataclasses import fields
 
 SESSION_DASHBOARD_URL = None
 
@@ -36,42 +40,50 @@ def _get_dashboard_url():
 def get_log(
     file_identifiers: FileIdentifiers,
     node_identifiers: NodeIdentifiers,
+    stream: bool = False,
     lines: int = 100,
     interval: float = 0.5,
     api_server_url: str = None,
 ):
     """
+    Gets a log file from the cluster using the provided identifiers.
+
     Streams the log in real time starting from `lines` number of lines from
     the end of the file if `stream == True`. Else, it terminates the
     stream once there are no more bytes to read from the log file.
 
     Raises a ValueError if the identifying input params provided cannot match
     a single log file in the cluster.
-    Returns a generator yielding strings. Note that this API is blocking.
 
     Args:
-        file_identifiers: FileIdentifiers, a dataclass with the fields:
+        file_identifiers: FileIdentifiers, a dataclass with the optional fields:
             log_file_name, pid, actor_id, task_id
-        node_identifiers: NodeIdentifiers, a dataclass with the fields:
+        node_identifiers: NodeIdentifiers, a dataclass with the optional fields:
             node_id, node_ip
-        stream: whether to continue to stream the log file as it is updated.
+        stream (optional): whether to stream the log file in real time.
         lines (optional): number of lines to tail from the file. Indicates the initial
             number of lines tailed if streaming.
         interval (optional): how frequently to read new lines from the file if streaming
         api_server_url (optional): the URL for the desired cluster's API server
+    Returns:
+        A generator yielding strings. Note that this API is blocking.
 
     """
     api_server_url = api_server_url or _get_dashboard_url()
-    file_identifiers.task_id is not None:
+    if file_identifiers.task_id is not None:
         raise NotImplementedError(
             "querying for logs by`task_id` is not yet implemented"
         )
 
     query_strings = []
     for field in fields(NodeIdentifiers):
-        query_strings.append(f"{field.name}={getattr(node_identifiers, field.name)}")
+        value = getattr(node_identifiers, field.name)
+        if value:
+            query_strings.append(f"{field.name}={value}")
     for field in fields(FileIdentifiers):
-        query_strings.append(f"{field.name}={getattr(file_identifiers, field.name)}")
+        value = getattr(file_identifiers, field.name)
+        if value:
+            query_strings.append(f"{field.name}={value}")
 
     if stream:
         media_type = "stream"
@@ -94,15 +106,14 @@ def list_logs(
     api_server_url: str = None,
 ):
     """
-    Returns a JSON file containing, for each node in the cluster,
-    a dict mapping a category of log component to a list of filenames.
-    If a node_ip or node_id is provided, only that node's logs will be
-    returned.
+    Lists the logs in the Ray cluster or the given node.
 
     Args:
-        node_identifiers: NodeIdentifiers, a dataclass with the fields:
+        node_identifiers: NodeIdentifiers, a dataclass with the optional fields:
             node_id, node_ip
         filters: a list of strings to match against each filename.
+    Returns:
+        JSON {node_id: str -> {category: str -> List[filename]}}
 
     If the given node_identifiers cannot be resolved, it will throw a
     ValueError.
@@ -111,11 +122,13 @@ def list_logs(
 
     query_strings = []
     for field in fields(NodeIdentifiers):
-        query_strings.append(f"{field.name}={getattr(node_identifiers, field.name)}")
+        value = getattr(node_identifiers, field.name)
+        if value:
+            query_strings.append(f"{field.name}={value}")
 
     response = requests.get(
         f"{api_server_url}/api/experimental/logs/list?{'&'.join(query_strings)}"
-        f"filters={','.join(filters)}"
+        f"&filters={','.join(filters)}"
     )
     if response.status_code != 200:
         raise ValueError(response.text)
@@ -124,9 +137,9 @@ def list_logs(
 
 
 def pretty_print_logs_index(node_id: str, files: List[str]):
-    def print_section(name, key):
+    def print_section(key):
         if len(files[key]) > 0:
-            print(f"\n{name}")
+            print(f"\n{key}")
             print("----------------------------")
             [
                 print(
@@ -135,18 +148,7 @@ def pretty_print_logs_index(node_id: str, files: List[str]):
                 )
                 for log in files[key]
             ]
-
-    for lang in ray_constants.LANGUAGE_WORKER_TYPES:
-        print_section(f"{lang.capitalize()} Core Driver Logs", f"{lang}_driver_logs")
-        print_section(
-            f"{lang.capitalize()} Core Worker Logs", f"{lang}_core_worker_logs"
-        )
-    print_section("Worker Errors", "worker_errors")
-    print_section("Worker Stdout", "worker_outs")
-    print_section("Raylet Logs", "raylet")
-    print_section("GCS Logs", "gcs_server")
-    print_section("Miscellaneous Logs", "misc")
-    print_section("Autoscaler Monitor Logs", "autoscaler")
-    print_section("Runtime Environment Logs", "runtime_env")
-    print_section("Dashboard Logs", "dashboard")
-    print_section("Ray Client Logs", "ray_client")
+    for category in RAY_LOG_CATEGORIES:
+        print_section(category)
+    for category in RAY_WORKER_LOG_CATEGORIES:
+        print_section(category)
