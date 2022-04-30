@@ -259,8 +259,10 @@ class PinBatcher {
     RayletDestination(PinBatcher *batcher, const rpc::Address &address)
         : pin_batcher_(batcher), raylet_address_(address) {}
 
-    // Tries sending out a request, if there are buffered messages but no
-    // request is inflight.
+    /// Tries sending out a batched pin request with buffered object IDs.
+    ///
+    /// \return true if a request is sent out, false otherwise, e.g. when
+    /// there is already an inflight request, or there is no buffered Object IDs.
     bool Flush() ABSL_EXCLUSIVE_LOCKS_REQUIRED(pin_batcher_->mu_);
 
     PinBatcher *const pin_batcher_;
@@ -534,7 +536,8 @@ class RayletClient : public RayletClientInterface {
   ResourceMappingType resource_ids_;
   /// The connection to the raylet server.
   std::unique_ptr<RayletConnection> conn_;
-
+  /// Batches pin object ID requests to the same raylet. All PinObjectIDs requests
+  /// should go through this.
   std::unique_ptr<PinBatcher> pin_batcher_;
 };
 

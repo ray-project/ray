@@ -551,6 +551,7 @@ bool PinBatcher::RayletDestination::Flush() {
     return false;
   }
   inflight_ = std::move(buffered_);
+  buffered_.clear();
 
   rpc::PinObjectIDsRequest request;
   request.mutable_owner_address()->CopyFrom(raylet_address_);
@@ -564,6 +565,7 @@ bool PinBatcher::RayletDestination::Flush() {
     {
       absl::MutexLock lock(&pin_batcher_->mu_);
       inflight = std::move(inflight_);
+      inflight_.clear();
       pin_batcher_->total_inflight_pins_ -= inflight.size();
       if (!Flush()) {
         // No more buffered requests, so this RayletDestination can be dropped.
