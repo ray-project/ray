@@ -109,12 +109,13 @@ async def test_logs_manager_list_logs(logs_manager):
 
 @pytest.mark.asyncio
 async def test_logs_manager_stream_log(logs_manager):
+    NUM_LOG_CHUNKS = 10
     logs_client = logs_manager.client
 
     logs_client.get_all_registered_nodes = MagicMock()
     logs_client.get_all_registered_nodes.return_value = ["1", "2"]
     logs_client.ip_to_node_id = MagicMock()
-    logs_client.stream_log.return_value = generate_logs_stream(10)
+    logs_client.stream_log.return_value = generate_logs_stream(NUM_LOG_CHUNKS)
 
     # Test file_name, media_type="file", node_id
     stream_options = LogStreamOptions(media_type="file", lines=10, interval=0.5)
@@ -129,6 +130,7 @@ async def test_logs_manager_stream_log(logs_manager):
     async for chunk in stream:
         assert chunk.data.decode("utf-8") == generate_logs_stream_chunk(index=i)
         i += 1
+    assert i == NUM_LOG_CHUNKS
     logs_client.stream_log.assert_awaited_with(
         node_id="1",
         log_file_name="raylet.out",
@@ -153,6 +155,7 @@ async def test_logs_manager_stream_log(logs_manager):
     async for chunk in stream:
         assert chunk.data.decode("utf-8") == generate_logs_stream_chunk(index=i)
         i += 1
+    assert i == NUM_LOG_CHUNKS
     logs_client.stream_log.assert_awaited_with(
         node_id="1",
         log_file_name="worker-0-0-10.out",
