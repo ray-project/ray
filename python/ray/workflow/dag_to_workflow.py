@@ -1,9 +1,35 @@
 from typing import Any
 
-from ray import workflow
+from ray.workflow.common import WORKFLOW_OPTIONS, WorkflowStepRuntimeOptions, StepType
 
 from ray.experimental.dag import DAGNode, FunctionNode, InputNode
-from ray.experimental.dag.input_node import InputAtrributeNode, DAGInputData
+from ray.experimental.dag.input_node import InputAttributeNode, DAGInputData
+
+
+def _make_workflow_step_function(node: FunctionNode):
+    from ray.workflow.step_function import WorkflowStepFunction
+
+    bound_options = node._bound_options.copy()
+    workflow_options = bound_options.pop("_metadata", {}).get(WORKFLOW_OPTIONS, {})
+    # "_resolve_like_object_ref_in_args" indicates we should resolve the
+    # workflow like an ObjectRef, when included in the arguments of
+    # another workflow.
+    bound_options["_resolve_like_object_ref_in_args"] = True
+    step_options = WorkflowStepRuntimeOptions.make(
+        step_type=StepType.FUNCTION,
+        catch_exceptions=workflow_options.get("catch_exceptions", None),
+        max_retries=workflow_options.get("max_retries", None),
+        allow_inplace=workflow_options.get("allow_inplace", False),
+        checkpoint=workflow_options.get("checkpoint", None),
+        ray_options=bound_options,
+    )
+
+    return WorkflowStepFunction(
+        node._body,
+        step_options=step_options,
+        name=workflow_options.get("name", None),
+        metadata=workflow_options.pop("metadata", None),
+    )
 
 
 def transform_ray_dag_to_workflow(dag_node: DAGNode, input_context: DAGInputData):
@@ -23,12 +49,10 @@ def transform_ray_dag_to_workflow(dag_node: DAGNode, input_context: DAGInputData
             # "_resolve_like_object_ref_in_args" indicates we should resolve the
             # workflow like an ObjectRef, when included in the arguments of
             # another workflow.
-            workflow_step = workflow.step(node._body).options(
-                **node._bound_options, _resolve_like_object_ref_in_args=True
-            )
+            workflow_step = _make_workflow_step_function(node)
             wf = workflow_step.step(*node._bound_args, **node._bound_kwargs)
             return wf
-        if isinstance(node, InputAtrributeNode):
+        if isinstance(node, InputAttributeNode):
             return node._execute_impl()  # get data from input node
         if isinstance(node, InputNode):
             return input_context  # replace input node with input data

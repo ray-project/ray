@@ -1,5 +1,5 @@
 from io import BytesIO
-from typing import List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from fastapi import File
 from pydantic import BaseModel, Field
@@ -56,6 +56,11 @@ def starlette_request(
     """Returns the raw request object."""
     # NOTE(simon): This adapter is used for ease of getting started.
     return request
+
+
+async def json_request(request: starlette.requests.Request) -> Dict[str, Any]:
+    """Return the JSON object from request body."""
+    return await request.json()
 
 
 @require_packages(["PIL"])

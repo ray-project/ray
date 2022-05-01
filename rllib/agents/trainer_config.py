@@ -179,7 +179,7 @@ class TrainerConfig:
         self.output_max_file_size = 64 * 1024 * 1024
 
         # `self.evaluation()`
-        self.evaluation_interval = 0
+        self.evaluation_interval = None
         self.evaluation_duration = 10
         self.evaluation_duration_unit = "episodes"
         self.evaluation_parallel_to_training = False
@@ -228,6 +228,20 @@ class TrainerConfig:
             assert hasattr(self, "input_")
             config["input"] = getattr(self, "input_")
             config.pop("input_")
+
+        # Setup legacy multiagent sub-dict:
+        config["multiagent"] = {}
+        for k in [
+            "policies",
+            "policy_map_capacity",
+            "policy_map_cache",
+            "policy_mapping_fn",
+            "policies_to_train",
+            "observation_fn",
+            "replay_mode",
+            "count_steps_by",
+        ]:
+            config["multiagent"][k] = config.pop(k)
 
         # Switch out deprecated vs new config keys.
         config["callbacks"] = config.pop("callbacks_class", DefaultCallbacks)

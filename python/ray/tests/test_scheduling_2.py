@@ -481,6 +481,82 @@ def test_spread_scheduling_strategy(ray_start_cluster, connect_to_client):
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="FakeAutoscaler doesn't work on Windows"
 )
+def test_demand_report_for_node_affinity_scheduling_strategy(shutdown_only):
+    from ray.cluster_utils import AutoscalingCluster
+
+    cluster = AutoscalingCluster(
+        head_resources={"CPU": 0},
+        worker_node_types={
+            "cpu_node": {
+                "resources": {
+                    "CPU": 1,
+                    "object_store_memory": 1024 * 1024 * 1024,
+                },
+                "node_config": {},
+                "min_workers": 1,
+                "max_workers": 1,
+            },
+        },
+    )
+
+    cluster.start()
+    info = ray.init(address="auto")
+
+    @ray.remote(num_cpus=1)
+    def f(sleep_s):
+        time.sleep(sleep_s)
+        return ray.get_runtime_context().node_id
+
+    worker_node_id = ray.get(f.remote(0))
+
+    tasks = []
+    tasks.append(f.remote(10000))
+    # This is not reported since there is feasible node.
+    tasks.append(
+        f.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(
+                worker_node_id, soft=False
+            )
+        ).remote(0)
+    )
+    # This is reported since there is no feasible node and soft is True.
+    tasks.append(
+        f.options(
+            num_gpus=1,
+            scheduling_strategy=NodeAffinitySchedulingStrategy(
+                ray.NodeID.from_random().hex(), soft=True
+            ),
+        ).remote(0)
+    )
+
+    global_state_accessor = make_global_state_accessor(info)
+
+    def check_resource_demand():
+        message = global_state_accessor.get_all_resource_usage()
+        if message is None:
+            return False
+
+        resource_usage = gcs_utils.ResourceUsageBatchData.FromString(message)
+        aggregate_resource_load = resource_usage.resource_load_by_shape.resource_demands
+
+        if len(aggregate_resource_load) != 1:
+            return False
+
+        if aggregate_resource_load[0].num_infeasible_requests_queued != 1:
+            return False
+
+        if aggregate_resource_load[0].shape != {"CPU": 1.0, "GPU": 1.0}:
+            return False
+
+        return True
+
+    wait_for_condition(check_resource_demand, 20)
+    cluster.shutdown()
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="FakeAutoscaler doesn't work on Windows"
+)
 @pytest.mark.skipif(os.environ.get("ASAN_OPTIONS") is not None, reason="ASAN is slow")
 def test_demand_report_when_scale_up(shutdown_only):
     # https://github.com/ray-project/ray/issues/22122
