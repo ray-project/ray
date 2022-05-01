@@ -1,5 +1,6 @@
 from gym import Env
 from gym.spaces import Box, Dict, Discrete, Tuple
+from gym.envs.registration import EnvSpec
 import numpy as np
 import re
 import unittest
@@ -489,6 +490,55 @@ class TestSAC(unittest.TestCase):
                         else:
                             check(tf_var, torch_var, atol=0.003)
             trainer.stop()
+
+    def test_sac_dict_obs_order(self):
+        dict_space = Dict(
+            {
+                "img": Box(low=0, high=1, shape=(42, 42, 3)),
+                "cont": Box(low=0, high=100, shape=(3,)),
+            }
+        )
+
+        # Dict space .sample() returns an ordered dict.
+        # Make sure the keys in samples are ordered differently.
+        dict_samples = [
+            {k: v for k, v in reversed(dict_space.sample().items())} for _ in range(10)
+        ]
+
+        class NestedDictEnv(Env):
+            def __init__(self):
+                self.action_space = Box(low=-1.0, high=1.0, shape=(2,))
+                self.observation_space = dict_space
+                self._spec = EnvSpec("NestedDictEnv-v0")
+                self.steps = 0
+
+            def reset(self):
+                self.steps = 0
+                return dict_samples[0]
+
+            def step(self, action):
+                self.steps += 1
+                return dict_samples[self.steps], 1, self.steps >= 5, {}
+
+        tune.register_env("nested", lambda _: NestedDictEnv())
+
+        config = sac.DEFAULT_CONFIG.copy()
+        config["num_workers"] = 0  # Run locally.
+        config["learning_starts"] = 0
+        config["rollout_fragment_length"] = 5
+        config["train_batch_size"] = 5
+        config["replay_buffer_config"]["capacity"] = 10
+        # Disable preprocessors.
+        config["_disable_preprocessor_api"] = True
+        num_iterations = 1
+
+        for _ in framework_iterator(config, with_eager_tracing=True):
+            trainer = sac.SACTrainer(env="nested", config=config)
+            for _ in range(num_iterations):
+                results = trainer.train()
+                check_train_results(results)
+                print(results)
+            check_compute_single_action(trainer)
 
     def _get_batch_helper(self, obs_size, actions, batch_size):
         return SampleBatch(

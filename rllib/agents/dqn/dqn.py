@@ -36,6 +36,7 @@ from ray.rllib.execution.train_ops import (
 )
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.replay_buffers.utils import update_priorities_in_replay_buffer
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import (
     ResultDict,
@@ -93,6 +94,7 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         # Deprecated, use capacity in replay_buffer_config instead.
         "buffer_size": DEPRECATED_VALUE,
         "replay_buffer_config": {
+            # Enable the new ReplayBuffer API.
             "_enable_replay_buffer_api": True,
             "type": "MultiAgentPrioritizedReplayBuffer",
             # Size of the replay buffer. Note that if async_updates is set,
@@ -200,6 +202,90 @@ class DQNTrainer(SimpleQTrainer):
         else:
             return DQNTFPolicy
 
+    @ExperimentalAPI
+    def training_iteration(self) -> ResultDict:
+        """DQN training iteration function.
+
+        Each training iteration, we:
+        - Sample (MultiAgentBatch) from workers.
+        - Store new samples in replay buffer.
+        - Sample training batch (MultiAgentBatch) from replay buffer.
+        - Learn on training batch.
+        - Update remote workers' new policy weights.
+        - Update target network every target_network_update_freq steps.
+        - Return all collected metrics for the iteration.
+
+        Returns:
+            The results dict from executing the training iteration.
+        """
+        train_results = {}
+
+        # We alternate between storing new samples and sampling and training
+        store_weight, sample_and_train_weight = calculate_rr_weights(self.config)
+
+        for _ in range(store_weight):
+            # Sample (MultiAgentBatch) from workers.
+            new_sample_batch = synchronous_parallel_sample(
+                worker_set=self.workers, concat=True
+            )
+
+            # Update counters
+            self._counters[NUM_AGENT_STEPS_SAMPLED] += new_sample_batch.agent_steps()
+            self._counters[NUM_ENV_STEPS_SAMPLED] += new_sample_batch.env_steps()
+
+            # Store new samples in replay buffer.
+            self.local_replay_buffer.add_batch(new_sample_batch)
+
+        for _ in range(sample_and_train_weight):
+            # Sample training batch (MultiAgentBatch) from replay buffer.
+            train_batch = self.local_replay_buffer.replay()
+
+            # Old-style replay buffers return None if learning has not started
+            if not train_batch:
+                continue
+
+            # Postprocess batch before we learn on it
+            post_fn = self.config.get("before_learn_on_batch") or (lambda b, *a: b)
+            train_batch = post_fn(train_batch, self.workers, self.config)
+
+            # Learn on training batch.
+            # Use simple optimizer (only for multi-agent or tf-eager; all other
+            # cases should use the multi-GPU optimizer, even if only using 1 GPU)
+            if self.config.get("simple_optimizer") is True:
+                train_results = train_one_step(self, train_batch)
+            else:
+                train_results = multi_gpu_train_one_step(self, train_batch)
+
+            # Update replay buffer priorities.
+            update_priorities_in_replay_buffer(
+                self.local_replay_buffer,
+                self.config,
+                train_batch,
+                train_results,
+            )
+
+            # Update target network every `target_network_update_freq` steps.
+            cur_ts = self._counters[NUM_ENV_STEPS_SAMPLED]
+            last_update = self._counters[LAST_TARGET_UPDATE_TS]
+            if cur_ts - last_update >= self.config["target_network_update_freq"]:
+                to_update = self.workers.local_worker().get_policies_to_train()
+                self.workers.local_worker().foreach_policy_to_train(
+                    lambda p, pid: pid in to_update and p.update_target()
+                )
+                self._counters[NUM_TARGET_UPDATES] += 1
+                self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
+
+            # Update weights and global_vars - after learning on the local worker -
+            # on all remote workers.
+            global_vars = {
+                "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
+            }
+            with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+                self.workers.sync_weights(global_vars=global_vars)
+
+        # Return all collected metrics for the iteration.
+        return train_results
+
     @staticmethod
     @override(SimpleQTrainer)
     def execution_plan(
@@ -296,117 +382,6 @@ class DQNTrainer(SimpleQTrainer):
         )
 
         return StandardMetricsReporting(train_op, workers, config)
-
-    @ExperimentalAPI
-    def training_iteration(self) -> ResultDict:
-        """DQN training iteration function.
-
-        Each training iteration, we:
-        - Sample (MultiAgentBatch) from workers.
-        - Store new samples in replay buffer.
-        - Sample training batch (MultiAgentBatch) from replay buffer.
-        - Learn on training batch.
-        - Update remote workers' new policy weights.
-        - Update target network every target_network_update_freq steps.
-        - Return all collected metrics for the iteration.
-
-        Returns:
-            The results dict from executing the training iteration.
-        """
-        local_worker = self.workers.local_worker()
-
-        train_results = {}
-
-        # We alternate between storing new samples and sampling and training
-        store_weight, sample_and_train_weight = calculate_rr_weights(self.config)
-
-        for _ in range(store_weight):
-            # (1) Sample (MultiAgentBatch) from workers
-            new_sample_batch = synchronous_parallel_sample(
-                worker_set=self.workers, concat=True
-            )
-
-            # Update counters
-            self._counters[NUM_AGENT_STEPS_SAMPLED] += new_sample_batch.agent_steps()
-            self._counters[NUM_ENV_STEPS_SAMPLED] += new_sample_batch.env_steps()
-
-            # (2) Store new samples in replay buffer
-            self.local_replay_buffer.add_batch(new_sample_batch)
-
-        for _ in range(sample_and_train_weight):
-            # (3) Sample training batch (MultiAgentBatch) from replay buffer.
-            train_batch = self.local_replay_buffer.replay()
-
-            # Old-style replay buffers return None if learning has not started
-            if not train_batch:
-                continue
-
-            # Postprocess batch before we learn on it
-            post_fn = self.config.get("before_learn_on_batch") or (lambda b, *a: b)
-            train_batch = post_fn(train_batch, self.workers, self.config)
-
-            # (4) Learn on training batch.
-            # Use simple optimizer (only for multi-agent or tf-eager; all other
-            # cases should use the multi-GPU optimizer, even if only using 1 GPU)
-            if self.config.get("simple_optimizer") is True:
-                train_results = train_one_step(self, train_batch)
-            else:
-                train_results = multi_gpu_train_one_step(self, train_batch)
-
-            # Update priorities
-            if (
-                type(self.local_replay_buffer) is LegacyMultiAgentReplayBuffer
-                and self.config["replay_buffer_config"].get(
-                    "prioritized_replay_alpha", 0.0
-                )
-                > 0.0
-            ) or isinstance(
-                self.local_replay_buffer, MultiAgentPrioritizedReplayBuffer
-            ):
-                prio_dict = {}
-                for policy_id, info in train_results.items():
-                    # TODO(sven): This is currently structured differently for
-                    #  torch/tf. Clean up these results/info dicts across
-                    #  policies (note: fixing this in torch_policy.py will
-                    #  break e.g. DDPPO!).
-                    td_error = info.get(
-                        "td_error", info[LEARNER_STATS_KEY].get("td_error")
-                    )
-                    train_batch.policy_batches[policy_id].set_get_interceptor(None)
-                    batch_indices = train_batch.policy_batches[policy_id].get(
-                        "batch_indexes"
-                    )
-                    # In case the buffer stores sequences, TD-error could
-                    # already be calculated per sequence chunk.
-                    if len(batch_indices) != len(td_error):
-                        T = self.local_replay_buffer.replay_sequence_length
-                        assert (
-                            len(batch_indices) > len(td_error)
-                            and len(batch_indices) % T == 0
-                        )
-                        batch_indices = batch_indices.reshape([-1, T])[:, 0]
-                        assert len(batch_indices) == len(td_error)
-                    prio_dict[policy_id] = (batch_indices, td_error)
-                self.local_replay_buffer.update_priorities(prio_dict)
-
-            # (6) Update target network every target_network_update_freq steps
-            cur_ts = self._counters[NUM_ENV_STEPS_SAMPLED]
-            last_update = self._counters[LAST_TARGET_UPDATE_TS]
-            if cur_ts - last_update >= self.config["target_network_update_freq"]:
-                to_update = local_worker.get_policies_to_train()
-                local_worker.foreach_policy_to_train(
-                    lambda p, pid: pid in to_update and p.update_target()
-                )
-                self._counters[NUM_TARGET_UPDATES] += 1
-                self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
-
-            # Update remote workers's weights after learning on local worker
-            if self.workers.remote_workers():
-                with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-                    self.workers.sync_weights()
-
-        # (7) Return all collected metrics for the iteration.
-        return train_results
 
 
 @Deprecated(

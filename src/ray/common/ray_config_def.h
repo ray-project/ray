@@ -49,6 +49,10 @@ RAY_CONFIG(int64_t, handler_warning_timeout_ms, 1000)
 
 /// The duration between heartbeats sent by the raylets.
 RAY_CONFIG(uint64_t, raylet_heartbeat_period_milliseconds, 1000)
+
+/// The duration between loads pulled by GCS
+RAY_CONFIG(uint64_t, gcs_pull_resource_loads_period_milliseconds, 1000)
+
 /// If a component has not sent a heartbeat in the last num_heartbeats_timeout
 /// heartbeat intervals, the raylet monitor process will report
 /// it as dead to the db_client table.
@@ -160,7 +164,7 @@ RAY_CONFIG(uint64_t, actor_creation_min_retries, 3)
 
 /// Warn if more than this many tasks are queued for submission to an actor.
 /// It likely indicates a bug in the user code.
-RAY_CONFIG(int64_t, actor_excess_queueing_warn_threshold, 5000)
+RAY_CONFIG(uint64_t, actor_excess_queueing_warn_threshold, 5000)
 
 /// When trying to resolve an object, the initial period that the raylet will
 /// wait before contacting the object's owner to check if the object is still

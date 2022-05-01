@@ -181,7 +181,7 @@ DEFAULT_CONFIG = with_common_config({
     # If True, the execution plan API will not be used. Instead,
     # a Trainer's `training_iteration` method will be called as-is each
     # training iteration.
-    "_disable_execution_plan_api": False,
+    "_disable_execution_plan_api": True,
 })
 # __sphinx_doc_end__
 # fmt: on
