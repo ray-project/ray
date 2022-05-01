@@ -37,7 +37,7 @@ from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.filter import Filter
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.utils.numpy import convert_to_numpy, make_action_immutable
 from ray.rllib.utils.spaces.space_utils import clip_action, unsquash_action, unbatch
 from ray.rllib.utils.typing import (
     SampleBatchType,
@@ -1250,6 +1250,9 @@ def _process_policy_eval_results(
                 episode._set_last_action(agent_id, action)
 
             assert agent_id not in actions_to_send[env_id]
+            # Flag actions as immutable to notify the user when trying to change it
+            # and to avoid hardly traceable errors.
+            tree.traverse(make_action_immutable, action_to_send, top_down=False)
             actions_to_send[env_id][agent_id] = action_to_send
 
     return actions_to_send

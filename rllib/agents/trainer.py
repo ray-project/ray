@@ -676,7 +676,7 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Use `metrics_num_episodes_for_smoothing` instead.
     "metrics_smoothing_episodes": DEPRECATED_VALUE,
     # Use `min_[env|train]_timesteps_per_reporting` instead.
-    "timesteps_per_iteration": 0,
+    "timesteps_per_iteration": DEPRECATED_VALUE,
     # Use `min_time_s_per_reporting` instead.
     "min_iter_time_s": DEPRECATED_VALUE,
     # Use `metrics_episode_collection_timeout_s` instead.
@@ -1469,14 +1469,13 @@ class Trainer(Trainable):
         else:
             train_results = multi_gpu_train_one_step(self, train_batch)
 
-        # Update weights - after learning on the local worker - on all remote
-        # workers.
+        # Update weights and global_vars - after learning on the local worker - on all
+        # remote workers.
         global_vars = {
-            "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
+            "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
         }
-        if self.workers.remote_workers():
-            with self._timers[WORKER_UPDATE_TIMER]:
-                self.workers.sync_weights(global_vars=global_vars)
+        with self._timers[WORKER_UPDATE_TIMER]:
+            self.workers.sync_weights(global_vars=global_vars)
 
         return train_results
 

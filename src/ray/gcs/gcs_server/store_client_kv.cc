@@ -26,6 +26,9 @@ void StoreClientInternalKV::Get(
     const std::string &table_name,
     const std::string &key,
     std::function<void(std::optional<std::string>)> callback) {
+  if (!callback) {
+    callback = [](auto) {};
+  }
   RAY_CHECK_OK(delegate_->AsyncGet(
       table_name, key, [callback = std::move(callback)](auto status, auto result) {
         callback(result.has_value() ? std::optional<std::string>(result.value())
@@ -38,6 +41,9 @@ void StoreClientInternalKV::Put(const std::string &table_name,
                                 const std::string &value,
                                 bool overwrite,
                                 std::function<void(bool)> callback) {
+  if (!callback) {
+    callback = [](auto) {};
+  }
   RAY_CHECK_OK(delegate_->AsyncPut(table_name, key, value, overwrite, callback));
 }
 
@@ -45,6 +51,9 @@ void StoreClientInternalKV::Del(const std::string &table_name,
                                 const std::string &key,
                                 bool del_by_prefix,
                                 std::function<void(int64_t)> callback) {
+  if (!callback) {
+    callback = [](auto) {};
+  }
   if (!del_by_prefix) {
     RAY_CHECK_OK(delegate_->AsyncDelete(
         table_name, key, [callback = std::move(callback)](bool deleted) {
@@ -66,12 +75,18 @@ void StoreClientInternalKV::Del(const std::string &table_name,
 void StoreClientInternalKV::Exists(const std::string &table_name,
                                    const std::string &key,
                                    std::function<void(bool)> callback) {
+  if (!callback) {
+    callback = [](auto) {};
+  }
   RAY_CHECK_OK(delegate_->AsyncExists(table_name, key, std::move(callback)));
 }
 
 void StoreClientInternalKV::Keys(const std::string &table_name,
                                  const std::string &prefix,
                                  std::function<void(std::vector<std::string>)> callback) {
+  if (!callback) {
+    callback = [](auto) {};
+  }
   RAY_CHECK_OK(delegate_->AsyncGetKeys(table_name, prefix, std::move(callback)));
 }
 

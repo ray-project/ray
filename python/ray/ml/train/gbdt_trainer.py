@@ -6,6 +6,7 @@ import ray.cloudpickle as cpickle
 from ray.ml.trainer import GenDataset
 from ray.ml.config import ScalingConfig, RunConfig, ScalingConfigDataClass
 from ray.ml.preprocessor import Preprocessor
+from ray.tune.utils.trainable import TrainableUtil
 from ray.util.annotations import DeveloperAPI
 from ray.ml.trainer import Trainer
 from ray.ml.checkpoint import Checkpoint
@@ -198,18 +199,21 @@ class GBDTTrainer(Trainer):
         default_ray_params = self._default_ray_params
 
         class GBDTTrainable(trainable_cls):
+            def save_checkpoint(self, tmp_checkpoint_dir: str = ""):
+                checkpoint_path = super().save_checkpoint()
+                parent_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
+
+                preprocessor = self._merged_config.get("preprocessor", None)
+                if parent_dir and preprocessor:
+                    with open(os.path.join(parent_dir, PREPROCESSOR_KEY), "wb") as f:
+                        cpickle.dump(preprocessor, f)
+                return checkpoint_path
+
             @classmethod
             def default_resource_request(cls, config):
                 updated_scaling_config = config.get("scaling_config", scaling_config)
                 return _convert_scaling_config_to_ray_params(
                     updated_scaling_config, ray_params_cls, default_ray_params
                 ).get_tune_resources()
-
-            def _postprocess_checkpoint(self, checkpoint_path: str):
-                preprocessor = self._merged_config.get("preprocessor", None)
-                if not checkpoint_path or preprocessor is None:
-                    return
-                with open(os.path.join(checkpoint_path, PREPROCESSOR_KEY), "wb") as f:
-                    cpickle.dump(preprocessor, f)
 
         return GBDTTrainable

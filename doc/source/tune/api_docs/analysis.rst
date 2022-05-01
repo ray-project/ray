@@ -45,9 +45,3 @@ ExperimentAnalysis (tune.ExperimentAnalysis)
 
 .. autoclass:: ray.tune.ExperimentAnalysis
     :members:
-
-TrialCheckpoint (tune.cloud.TrialCheckpoint)
---------------------------------------------
-
-.. autoclass:: ray.tune.cloud.TrialCheckpoint
-    :members:

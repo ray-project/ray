@@ -276,11 +276,11 @@ class CoreWorkerDirectActorTaskSubmitter
   TaskFinisherInterface &task_finisher_;
 
   /// Used to warn of excessive queueing.
-  std::function<void(const ActorID &, int64_t num_queued)> warn_excess_queueing_;
+  std::function<void(const ActorID &, uint64_t num_queued)> warn_excess_queueing_;
 
   /// Warn the next time the number of queued task submissions to an actor
   /// exceeds this quantity. This threshold is doubled each time it is hit.
-  int64_t next_queueing_warn_threshold_;
+  uint64_t next_queueing_warn_threshold_;
 
   /// The event loop where the actor task events are handled.
   instrumented_io_context &io_service_;
