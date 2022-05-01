@@ -29,6 +29,7 @@
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
 #include "ray/gcs/gcs_server/stats_handler_impl.h"
 #include "ray/gcs/gcs_server/store_client_kv.h"
+#include "ray/gcs/store_client/observable_store_client.h"
 #include "ray/pubsub/publisher.h"
 
 namespace ray {
@@ -57,7 +58,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
   if (storage_type_ == "redis") {
     gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(GetOrConnectRedis());
   } else if (storage_type_ == "memory") {
-    gcs_table_storage_ = std::make_shared<InMemoryGcsTableStorage>(main_service_);
+    gcs_table_storage_ = std::make_shared<ObservableStoreClient>(
+        std::make_unique<InMemoryGcsTableStorage>(main_service_));
   }
 
   auto on_done = [this](const ray::Status &status) {
@@ -481,8 +483,9 @@ void GcsServer::InitKVManager() {
   if (storage_type_ == "redis") {
     instance = std::make_unique<RedisInternalKV>(GetRedisClientOptions());
   } else if (storage_type_ == "memory") {
-    instance = std::make_unique<StoreClientInternalKV>(
-        std::make_unique<InMemoryStoreClient>(main_service_));
+    instance =
+        std::make_unique<StoreClientInternalKV>(std::make_unique<ObservableStoreClient>(
+            std::make_unique<InMemoryGcsTableStorage>(main_service_)));
   }
 
   kv_manager_ = std::make_unique<GcsInternalKVManager>(std::move(instance));
