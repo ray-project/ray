@@ -2511,12 +2511,12 @@ class Trainer(Trainable):
             ]
 
         if config["timesteps_per_iteration"] != DEPRECATED_VALUE:
-            # TODO: Warn once all algos use the `training_iteration` method.
-            # deprecation_warning(
-            #     old="timesteps_per_iteration",
-            #     new="min_sample_timesteps_per_reporting",
-            #     error=False,
-            # )
+            deprecation_warning(
+                old="timesteps_per_iteration",
+                new="`min_sample_timesteps_per_reporting` OR "
+                "`min_train_timesteps_per_reporting`",
+                error=False,
+            )
             config["min_sample_timesteps_per_reporting"] = config[
                 "timesteps_per_iteration"
             ]
