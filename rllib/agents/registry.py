@@ -188,6 +188,7 @@ def _import_td3():
 ALGORITHMS = {
     "PPO": _import_ppo,
     "MAML": _import_maml,
+    "MBMPO": _import_mbmpo,
 }
 
 

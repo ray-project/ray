@@ -29,6 +29,7 @@ from ray.rllib.utils.annotations import (
     DeveloperAPI,
     ExperimentalAPI,
     OverrideToImplementCustomLogic,
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.exploration.exploration import Exploration
@@ -413,6 +414,7 @@ class Policy(metaclass=ABCMeta):
         raise NotImplementedError
 
     @DeveloperAPI
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
     def postprocess_trajectory(
         self,
         sample_batch: SampleBatch,

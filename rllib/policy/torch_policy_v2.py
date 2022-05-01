@@ -74,8 +74,6 @@ class TorchPolicyV2(Policy):
         action_space: gym.spaces.Space,
         config: TrainerConfigDict,
         *,
-        model: Optional[TorchModelV2] = None,
-        action_distribution_class: Optional[Type[TorchDistributionWrapper]] = None,
         max_seq_len: int = 20,
     ):
         """Initializes a TorchPolicy instance.
@@ -84,15 +82,14 @@ class TorchPolicyV2(Policy):
             observation_space: Observation space of the policy.
             action_space: Action space of the policy.
             config: The Policy's config dict.
-            model: PyTorch policy module. Given observations as
-                input, this module must return a list of outputs where the
-                first item is action logits, and the rest can be any value.
-            action_distribution_class: Class for a torch action distribution.
             max_seq_len: Max sequence length for LSTM training.
         """
         self.framework = config["framework"] = "torch"
 
         super().__init__(observation_space, action_space, config)
+
+        # Create model.
+        model, dist_class = self._init_model_and_dist_class()
 
         # Create multi-GPU model towers, if necessary.
         # - The central main model will be stored under self.model, residing
@@ -105,21 +102,6 @@ class TorchPolicyV2(Policy):
         #   updating all towers' weights from the main model.
         # - In case of just one device (1 (fake or real) GPU or 1 CPU), no
         #   parallelization will be done.
-
-        # If no Model is provided, build a default one here.
-        if model is None:
-            dist_class, logit_dim = ModelCatalog.get_action_dist(
-                action_space, self.config["model"], framework=self.framework
-            )
-            model = ModelCatalog.get_model_v2(
-                obs_space=self.observation_space,
-                action_space=self.action_space,
-                num_outputs=logit_dim,
-                model_config=self.config["model"],
-                framework=self.framework,
-            )
-            if action_distribution_class is None:
-                action_distribution_class = dist_class
 
         # Get devices to build the graph on.
         worker_idx = self.config.get("worker_index", 0)
@@ -193,6 +175,9 @@ class TorchPolicyV2(Policy):
                 }
             self.model = self.model_gpu_towers[0]
 
+        self.dist_class = dist_class
+        self.unwrapped_model = model  # used to support DistributedDataParallel
+
         # Lock used for locking some methods on the object-level.
         # This prevents possible race conditions when calling the model
         # first, then its value function (e.g. in a loss function), in
@@ -208,7 +193,6 @@ class TorchPolicyV2(Policy):
         self.view_requirements.update(self.model.view_requirements)
 
         self.exploration = self._create_exploration()
-        self.unwrapped_model = model  # used to support DistributedDataParallel
         self._optimizers = force_list(self.optimizer())
 
         # Backward compatibility workaround so Policy will call self.loss() directly.
@@ -232,8 +216,6 @@ class TorchPolicyV2(Policy):
         # one with m towers (num_gpus).
         num_buffers = self.config.get("num_multi_gpu_tower_stacks", 1)
         self._loaded_batches = [[] for _ in range(num_buffers)]
-
-        self.dist_class = action_distribution_class
 
         # If set, means we are using distributed allreduce during learning.
         self.distributed_world_size = None
@@ -306,6 +288,31 @@ class TorchPolicyV2(Policy):
             State outs.
         """
         return None, None, None
+
+    @DeveloperAPI
+    @OverrideToImplementCustomLogic
+    def make_model_and_action_dist(
+        self,
+        observation_space: gym.spaces.Space,
+        action_space: gym.spaces.Space,
+        config: TrainerConfigDict
+    ) -> Tuple[ModelV2, Type[TorchDistributionWrapper]]:
+        """Create model and action distribution function.
+
+        Note, if the returned action distribution is None,
+        TorchPolicy will try to figure out the distribution
+        automatically based on ModelCatalog.
+
+        Args:
+            observation_space: Observation space of the policy.
+            action_space: Action space of the policy.
+            config: The Policy's config dict.
+
+        Returns:
+            ModelV2 model.
+            ActionDistribution class.
+        """
+        return None, None
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
@@ -419,6 +426,28 @@ class TorchPolicyV2(Policy):
         if getattr(self, "exploration", None):
             optimizers = self.exploration.get_exploration_optimizer(optimizers)
         return optimizers
+
+    def _init_model_and_dist_class(self):
+        if is_overridden(self.make_model_and_action_dist):
+            model, dist_class = self.make_model_and_action_dist(
+                self.observation_space, self.action_space, self.config
+            )
+            if dist_class is None:
+                dist_class, _ = ModelCatalog.get_action_dist(
+                    self.action_space, self.config["model"], framework=self.framework
+                )
+        else:
+            dist_class, logit_dim = ModelCatalog.get_action_dist(
+                self.action_space, self.config["model"], framework=self.framework
+            )
+            model = ModelCatalog.get_model_v2(
+                obs_space=self.observation_space,
+                action_space=self.action_space,
+                num_outputs=logit_dim,
+                model_config=self.config["model"],
+                framework=self.framework,
+            )
+        return model, dist_class
 
     @override(Policy)
     def compute_actions_from_input_dict(
