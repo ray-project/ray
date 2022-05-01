@@ -67,21 +67,21 @@ Offline RL:
 
 Model-free RL: 
 
-- `Deep Q Networks (DQN) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#dqn>`__ 
-- `Deep Q Networks (Rainbow) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#dqn>`__ 
-- `Deep Q Networks (Parametric DQN) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#dqn>`__ 
+- `Random encoders (contrib/RE3) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#re3>`__ 
 - `Distributed Prioritized Experience Replay (Ape-X DQN)] <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#apex>`__ 
 - `Deep Deterministic Policy Gradients (DDPG) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#ddpg>`__ 
 - `Deep Deterministic Policy Gradients (TD3) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#ddpg>`__ 
 - `Distributed Prioritized Experience Replay (Ape-X DDPG)] <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#apex>`__ 
-- `Model-agnostic Meta-Learning (contrib/MAML) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#maml>`__ 
-- `Random encoders (contrib/RE3) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#re3>`__ 
+- `Deep Q Networks (DQN) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#dqn>`__ 
+- `Deep Q Networks (Rainbow) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#dqn>`__ 
+- `Deep Q Networks (Parametric DQN) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#dqn>`__ 
 
 Model-based RL: 
 
-- `Model-Based Meta-Policy-Optimization (MB-MPO) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#mbmpo>`__ 
-- `Image-only Dreamer (contrib/Dreamer) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#dreamer>`__ 
 - `Random encoders (contrib/RE3) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#re3>`__ 
+- `Image-only Dreamer (contrib/Dreamer) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#dreamer>`__ 
+- `Model-agnostic Meta-Learning (contrib/MAML) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#maml>`__ 
+- `Model-Based Meta-Policy-Optimization (MB-MPO) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#mbmpo>`__ 
 
 Derivative-free algorithms: 
 
@@ -93,10 +93,10 @@ Derivative-free algorithms:
 RL for games:  
 
 - `Single-Player Alpha Zero (contrib/AlphaZero)  <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#alphazero>`__ 
-- `Proximal Policy Optimization (PPO) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#ppo>`__ 
 - `Synchronous Proximal Policy Optimization (APPO) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#appo>`__ 
 - `Decentralized Distributed Proximal Policy Optimization (DD-PPO)  <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#ddppo>`__ 
 - `Importance Weighted Actor-Learner Architecture (IMPALA) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#impala>`__ 
+- `Proximal Policy Optimization (PPO) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#ppo>`__ 
 - `Advantage Actor-Critic (A2C) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#a3c>`__ 
 - `Advantage Actor-Critic (A3C) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#a3c>`__ 
 - `Recurrent Replay Distributed DQN (R2D2) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#r2d2>`__ 
@@ -120,7 +120,6 @@ Bandits:
 
 Others:  
 
-- `Vanilla Policy Gradients <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#pg>`__ 
 - `Curiosity (ICM: Intrinsic Curiosity Module) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#curiosity>`__ 
 
 A list of all the algorithms can be found `here <https://docs.ray.io/en/master/rllib/rllib-algorithms.html>`__ .  
