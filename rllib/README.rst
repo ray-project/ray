@@ -58,12 +58,12 @@ Algorithms Supported
 
 Offline RL:  
 
-- :ref:`Behavior Cloning (BC; derived from MARWIL implementation) <bc>` 
-- :ref:`Conservative Q-Learning (CQL) <cql>` 
-- :ref:`Soft Actor Critic (SAC) <sac>` 
-- :ref:`Deep Deterministic Policy Gradients (TD3) <ddpg>` 
-- :ref:`Deep Q Networks (DQN) <dqn>` 
-- :ref:`Deep Deterministic Policy Gradients (DDPG) <ddpg>` 
+- :ref:`Behavior Cloning (BC; derived from MARWIL implementation) <bc>`
+- :ref:`Conservative Q-Learning (CQL) <cql>`
+- :ref:`Soft Actor Critic (SAC) <sac>`
+- :ref:`Deep Deterministic Policy Gradients (TD3) <ddpg>`
+- :ref:`Deep Q Networks (DQN) <dqn>`
+- :ref:`Deep Deterministic Policy Gradients (DDPG) <ddpg>`
 
 Model-free RL: 
 
