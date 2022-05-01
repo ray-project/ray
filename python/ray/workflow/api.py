@@ -29,6 +29,7 @@ from ray.workflow.event_listener import EventListener, EventListenerType, TimerL
 from ray.workflow import workflow_access
 from ray.workflow.workflow_storage import get_workflow_storage
 from ray.util.annotations import PublicAPI
+from ray._private.usage import usage_lib
 
 if TYPE_CHECKING:
     from ray.workflow.virtual_actor_class import VirtualActorClass, VirtualActor
@@ -46,6 +47,8 @@ def init() -> None:
     If Ray is not initialized, we will initialize Ray and
     use ``/tmp/ray/workflow_data`` as the default storage.
     """
+    usage_lib.record_library_usage("workflow")
+
     if not ray.is_initialized():
         # We should use get_temp_dir_path, but for ray client, we don't
         # have this one. We need a flag to tell whether it's a client

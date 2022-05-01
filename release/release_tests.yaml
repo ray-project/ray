@@ -1689,7 +1689,7 @@
     type: sdk_command
     file_manager: job
 
-  alert: default  
+  alert: default
 
 - name: jobs_basic_remote_working_dir
   group: Jobs tests
@@ -1716,7 +1716,7 @@
     type: sdk_command
     file_manager: job
 
-  alert: default 
+  alert: default
 
 ########################
 # Runtime env tests
@@ -1973,6 +1973,56 @@
     file_manager: job
 
   alert: default
+
+- name: deployment_graph_long_chain
+  group: Serve tests
+  working_dir: serve_tests
+
+  legacy:
+    test_name: deployment_graph_long_chain
+    test_suite: serve_tests
+
+  frequency: nightly
+  team: serve
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl_single_node_32_cpu.yaml
+
+  run:
+    timeout: 3600
+    long_running: false
+    script: python workloads/deployment_graph_long_chain.py --chain-length=10 --num-clients=4 --local-test=False
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+  stable: False
+
+- name: deployment_graph_wide_ensemble
+  group: Serve tests
+  working_dir: serve_tests
+
+  legacy:
+    test_name: deployment_graph_wide_ensemble
+    test_suite: serve_tests
+
+  frequency: nightly
+  team: serve
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl_single_node_32_cpu.yaml
+
+  run:
+    timeout: 3600
+    long_running: false
+    script: python workloads/deployment_graph_wide_ensemble.py --fanout-degree=10 --num-clients=4 --local-test=False
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+  stable: False
 
 ########################
 # Train tests
@@ -3601,4 +3651,3 @@
 
     type: sdk_command
     file_manager: sdk
-
