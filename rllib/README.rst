@@ -58,11 +58,12 @@ Algorithms Supported
 
 Offline RL:  
 
-- `Behavior Cloning (BC; derived from MARWIL implementation) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#bc>`__ 
-- `Deep Q Networks (DQN) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#dqn>`__ 
-- `Deep Deterministic Policy Gradients (DDPG) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#ddpg>`__ 
-- `Deep Deterministic Policy Gradients (TD3) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#ddpg>`__ 
-- `Conservative Q-Learning (CQL) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#cql>`__ 
+- :ref:`Behavior Cloning (BC; derived from MARWIL implementation) <bc>` 
+- :ref:`Conservative Q-Learning (CQL) <cql>` 
+- :ref:`Soft Actor Critic (SAC) <sac>` 
+- :ref:`Deep Deterministic Policy Gradients (TD3) <ddpg>` 
+- :ref:`Deep Q Networks (DQN) <dqn>` 
+- :ref:`Deep Deterministic Policy Gradients (DDPG) <ddpg>` 
 
 Model-free RL: 
 
@@ -103,6 +104,7 @@ RL for games:
 - `QMIX Monotonic Value Factorisation (VDN)  <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#qmix>`__ 
 - `QMIX Monotonic Value Factorisation (IQN) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#qmix>`__ 
 - `Multi-Agent Deep Deterministic Policy Gradient (contrib/MADDPG) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#maddpg>`__ 
+- `Vanilla Policy Gradient (PG) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#pg>`__ 
 - `Parameter Sharing <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#parameter>`__ 
 - `Fully Independent Learning <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#fil>`__ 
 - `Shared Critic Methods <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#sc>`__ 
@@ -118,7 +120,7 @@ Bandits:
 
 Others:  
 
-- `Policy Gradients <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#pg>`__ 
+- `Vanilla Policy Gradients <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#pg>`__ 
 - `Curiosity (ICM: Intrinsic Curiosity Module) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#curiosity>`__ 
 
 A list of all the algorithms can be found `here <https://docs.ray.io/en/master/rllib/rllib-algorithms.html>`__ .  
