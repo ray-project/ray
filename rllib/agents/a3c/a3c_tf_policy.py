@@ -12,7 +12,7 @@ from ray.rllib.evaluation.postprocessing import (
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.tf_policy import (
+from ray.rllib.policy.tf_mixins import (
     LearningRateSchedule,
     EntropyCoeffSchedule,
     ValueNetworkMixin,

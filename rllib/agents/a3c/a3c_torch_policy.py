@@ -13,7 +13,7 @@ from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_policy import (
+from ray.rllib.policy.torch_mixins import (
     LearningRateSchedule,
     EntropyCoeffSchedule,
     ValueNetworkMixin,
