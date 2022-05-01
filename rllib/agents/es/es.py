@@ -16,6 +16,12 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import FilterManager
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.metrics import (
+    NUM_AGENT_STEPS_SAMPLED,
+    NUM_AGENT_STEPS_TRAINED,
+    NUM_ENV_STEPS_SAMPLED,
+    NUM_ENV_STEPS_TRAINED,
+)
 from ray.rllib.utils.torch_utils import set_torch_seed
 from ray.rllib.utils.typing import TrainerConfigDict
 
@@ -311,6 +317,9 @@ class ESTrainer(Trainer):
         results, num_episodes, num_timesteps = self._collect_results(
             theta_id, config["episodes_per_batch"], config["train_batch_size"]
         )
+        # Update our sample steps counters.
+        self._counters[NUM_AGENT_STEPS_SAMPLED] += num_timesteps
+        self._counters[NUM_ENV_STEPS_SAMPLED] += num_timesteps
 
         all_noise_indices = []
         all_training_returns = []
@@ -363,6 +372,11 @@ class ESTrainer(Trainer):
         )
         # Compute the new weights theta.
         theta, update_ratio = self.optimizer.update(-g + config["l2_coeff"] * theta)
+
+        # Update our train steps counters.
+        self._counters[NUM_AGENT_STEPS_TRAINED] += num_timesteps
+        self._counters[NUM_ENV_STEPS_TRAINED] += num_timesteps
+
         # Set the new weights in the local copy of the policy.
         self.policy.set_flat_weights(theta)
         # Store the rewards
