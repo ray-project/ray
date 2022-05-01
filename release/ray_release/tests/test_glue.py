@@ -68,6 +68,7 @@ class MockReturn:
         return object.__getattribute__(self, item)
 
 
+@patch("ray_release.glue.reinstall_anyscale_dependencies", lambda: None)
 class GlueTest(unittest.TestCase):
     def writeClusterEnv(self, content: str):
         with open(os.path.join(self.tempdir, "cluster_env.yaml"), "wt") as fp:
