@@ -58,13 +58,12 @@ Algorithms Supported
 
 Offline RL:  
 
--  :ref:`Behavior Cloning (BC; derived from MARWIL implementation) <bc>`
--  :ref:`Conservative Q-Learning (CQL) <cql>`
--  :ref:`Soft Actor Critic (SAC) <sac>`
--  :ref:`Deep Deterministic Policy Gradients (TD3) <ddpg>`
--  :ref:`Deep Deterministic Policy Gradients (DDPG) <ddpg>`
--  :ref:`Monotonic Advantage Re-Weighted Imitation Learning (MARWIL) <marwil>`
--  :ref:`Deep Q Networks (DQN) <dqn>`
+- `Behavior Cloning (BC; derived from MARWIL implementation) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#bc>`__ 
+- `Conservative Q-Learning (CQL) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#cql>`__ 
+- `Soft Actor Critic (SAC)<https://docs.ray.io/en/master/rllib/rllib-algorithms.html#sac>`__ 
+- `Deep Deterministic Policy Gradients (TD3) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#ddpg>`__ 
+- `Deep Deterministic Policy Gradients (DDPG) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#ddpg>`__ 
+- `Monotonic Advantage Re-Weighted Imitation Learning (MARWIL) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#marwil>`__ 
 
 Model-free RL: 
 
