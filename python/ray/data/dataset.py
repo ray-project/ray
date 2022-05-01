@@ -84,6 +84,7 @@ from ray.data.impl.sort import sort_impl
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList
 from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
+from ray._private.usage import usage_lib
 
 logger = logging.getLogger(__name__)
 
@@ -128,14 +129,15 @@ class Dataset(Generic[T]):
         read methods to construct a dataset.
         """
         assert isinstance(plan, ExecutionPlan)
+        usage_lib.record_library_usage("dataset")
+
         self._plan = plan
         self._uuid = uuid4().hex
         self._epoch = epoch
         self._lazy = lazy
 
         if not lazy:
-            # TODO(ekl) we should clear inputs once we have full lineage recorded.
-            self._plan.execute(clear_input_blocks=False)
+            self._plan.execute(allow_clear_input_blocks=False)
 
     @staticmethod
     def copy(dataset: "Dataset[T]") -> "Dataset[T]":
@@ -2679,7 +2681,7 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
 
         ctx = DatasetContext.get_current()
         if self._plan.is_read_stage() and ctx.optimize_fuse_read_stages:
-            blocks, _ = self._plan._get_source_blocks()
+            blocks, _, _ = self._plan._get_source_blocks_and_stages()
             blocks.clear()
             blocks, outer_stats, read_stage = _rewrite_read_stage(blocks)
         else:
@@ -2798,7 +2800,7 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
 
         ctx = DatasetContext.get_current()
         if self._plan.is_read_stage() and ctx.optimize_fuse_read_stages:
-            blocks, _ = self._plan._get_source_blocks()
+            blocks, _, _ = self._plan._get_source_blocks_and_stages()
             blocks.clear()
             blocks, outer_stats, read_stage = _rewrite_read_stage(blocks)
         else:
@@ -2819,7 +2821,7 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
 
                 def gen():
                     ds = Dataset(
-                        ExecutionPlan(blocks, outer_stats), self._epoch, lazy=False
+                        ExecutionPlan(blocks, outer_stats), self._epoch, lazy=True
                     )
                     return ds
 
@@ -2873,19 +2875,27 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
             )
         return pipe
 
-    def fully_executed(self) -> "Dataset[T]":
+    def fully_executed(self, preserve_original: bool = True) -> "Dataset[T]":
         """Force full evaluation of the blocks of this dataset.
 
         This can be used to read all blocks into memory. By default, Datasets
         doesn't read blocks from the datasource until the first transform.
 
+        Args:
+            preserve_original: Whether the original unexecuted dataset should be
+                preserved. If False, this function will mutate the original dataset,
+                which can more efficiently reclaim memory.
+
         Returns:
             A Dataset with all blocks fully materialized in memory.
         """
-        plan = self._plan.deep_copy(preserve_uuid=True)
-        plan.execute(force_read=True)
-        ds = Dataset(plan, self._epoch, lazy=False)
-        ds._set_uuid(self._get_uuid())
+        if preserve_original:
+            plan = self._plan.deep_copy(preserve_uuid=True)
+            ds = Dataset(plan, self._epoch, self._lazy)
+            ds._set_uuid(self._get_uuid())
+        else:
+            ds = self
+        ds._plan.execute(force_read=True)
         return ds
 
     def is_fully_executed(self) -> bool:
