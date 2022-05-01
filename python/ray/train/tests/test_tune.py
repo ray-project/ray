@@ -178,6 +178,25 @@ def test_retry(ray_start_2_cpus):
     assert len(trial_dfs[0]["training_iteration"]) == 4
 
 
+def test_large_dataset(ray_start_8_cpus):
+    # Tests that a large dataset can be passed into Tune.
+
+    def train_func():
+        ds = train.get_dataset_shard("train")
+        assert ds.count() == 10000000
+
+    def generate_ds():
+        # Generate a large dataset
+        return ray.data.range(10000000).repartition(1000)
+
+    datasets = {"train": generate_ds(), "valid": generate_ds(), "other": generate_ds()}
+
+    trainer = Trainer(TestConfig(), num_workers=1)
+    TestTrainable = trainer.to_tune_trainable(train_func, dataset=datasets)
+
+    tune.run(TestTrainable)
+
+
 if __name__ == "__main__":
     import pytest
     import sys

@@ -865,7 +865,9 @@ def _create_tune_trainable(
     This function populates class attributes and methods.
     """
 
-    # TODO(matt): Move dataset to Ray object store, like tune.with_parameters.
+    # Place datasets in object store and only serialize the object reference.
+    dataset_ref = ray.put(dataset)
+
     def tune_function(config, checkpoint_dir=None):
         trainer = Trainer(
             backend=backend_config,
@@ -881,8 +883,9 @@ def _create_tune_trainable(
         else:
             checkpoint_path = None
 
+        resolved_dataset = ray.get(dataset_ref)
         iterator = trainer.run_iterator(
-            train_func, config, dataset=dataset, checkpoint=checkpoint_path
+            train_func, config, dataset=resolved_dataset, checkpoint=checkpoint_path
         )
 
         for results in iterator:
