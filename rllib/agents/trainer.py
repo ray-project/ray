@@ -2500,7 +2500,7 @@ class Trainer(Trainable):
                 new="min_time_s_per_reporting",
                 error=False,
             )
-            config["min_time_s_per_reporting"] = config["min_iter_time_s"]
+            config["min_time_s_per_reporting"] = config["min_iter_time_s"] or 0
 
         if config["collect_metrics_timeout"] != DEPRECATED_VALUE:
             # TODO: Warn once all algos use the `training_iteration` method.
@@ -2522,7 +2522,7 @@ class Trainer(Trainable):
             )
             config["min_sample_timesteps_per_reporting"] = config[
                 "timesteps_per_iteration"
-            ]
+            ] or 0
 
         # Evaluation settings.
 
