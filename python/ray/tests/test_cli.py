@@ -279,7 +279,7 @@ def test_ray_start_hook(configure_lang, monkeypatch, tmp_path):
     monkeypatch.setenv("RAY_START_HOOK", "ray.tests.test_cli._ray_start_hook")
     runner = CliRunner()
     temp_dir = os.path.join("/tmp", uuid.uuid4().hex)
-    result = runner.invoke(
+    runner.invoke(
         scripts.start,
         [
             "--head",
