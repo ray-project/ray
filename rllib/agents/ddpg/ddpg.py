@@ -84,7 +84,7 @@ DEFAULT_CONFIG = with_common_config({
         "scale_timesteps": 10000,
     },
     # Number of env steps to optimize for before returning
-    "timesteps_per_iteration": 1000,
+    "min_sample_timesteps_per_reporting": 1000,
     # Extra configuration that disables exploration.
     "evaluation_config": {
         "explore": False
