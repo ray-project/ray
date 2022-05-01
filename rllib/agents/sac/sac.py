@@ -87,7 +87,7 @@ DEFAULT_CONFIG = with_common_config({
     # postprocessed to become sa[discounted sum of R][s t+n] tuples.
     "n_step": 1,
     # Number of env steps to optimize for before returning.
-    "timesteps_per_iteration": 100,
+    "min_sample_timesteps_per_reporting": 100,
 
     # === Replay buffer ===
     # Size of the replay buffer (in time steps).

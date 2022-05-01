@@ -66,7 +66,7 @@ DEFAULT_CONFIG = with_common_config({
 
     # Minimum env steps to optimize for per train call. This value does
     # not affect learning, only the length of iterations.
-    "timesteps_per_iteration": 1000,
+    "min_sample_timesteps_per_reporting": 1000,
     # Update the target network every `target_network_update_freq` steps.
     "target_network_update_freq": 3200,
     # Update the target by \tau * policy + (1-\tau) * target_policy.
