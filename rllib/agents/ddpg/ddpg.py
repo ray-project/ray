@@ -168,6 +168,8 @@ DEFAULT_CONFIG = with_common_config({
     "worker_side_prioritization": False,
     # Prevent reporting frequency from going lower than this time span.
     "min_time_s_per_reporting": 1,
+    # Use `min_[env|train]_timesteps_per_reporting` instead.
+    "timesteps_per_iteration": DEPRECATED_VALUE,
     # Experimental flag.
     # If True, the execution plan API will not be used. Instead,
     # a Trainer's `training_iteration` method will be called as-is each
