@@ -37,10 +37,7 @@ from ray.rllib.execution.train_ops import (
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import (
-    Deprecated,
-    DEPRECATED_VALUE
-)
+from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
@@ -152,20 +149,18 @@ class SimpleQConfig(TrainerConfig):
             "type": "EpsilonGreedy",
             "initial_epsilon": 1.0,
             "final_epsilon": 0.02,
-            "epsilon_timesteps": 10000
+            "epsilon_timesteps": 10000,
         }
-        
+
         # `evaluation()`
-        self.evaluation_config = {
-            "explore": False
-        }
+        self.evaluation_config = {"explore": False}
 
         # `reporting()`
         self.min_time_s_per_reporting = 1
 
         # `experimental()`
         self._disable_execution_plan_api = True
-   
+
     @override(TrainerConfig)
     def training(
         self,
@@ -240,6 +235,7 @@ class SimpleQConfig(TrainerConfig):
         if learning_starts is not None:
             self.learning_starts = learning_starts
 
+
 # Deprecated: Use ray.rllib.agents.dqn.simple_q.SimpleQConfig instead!
 class _deprecated_default_config(dict):
     def __init__(self):
@@ -300,7 +296,9 @@ class _deprecated_default_config(dict):
     def __getitem__(self, item):
         return super().__getitem__(item)
 
+
 DEFAULT_CONFIG = _deprecated_default_config()
+
 
 class SimpleQTrainer(Trainer):
     # TODO: Change the return value of this method to return a TrainerConfig object

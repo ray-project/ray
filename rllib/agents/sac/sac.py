@@ -1,11 +1,8 @@
 import logging
-from typing import Optional, Type 
+from typing import Optional, Type
 
 from ray.rllib.agents.trainer import with_common_config
-from ray.rllib.agents.dqn.dqn import (
-    DQNConfig,
-    DQNTrainer
-)
+from ray.rllib.agents.dqn.dqn import DQNConfig, DQNTrainer
 from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.agents.sac.sac_tf_policy import SACTFPolicy
 from ray.rllib.policy.policy import Policy
@@ -13,7 +10,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import (
     Deprecated,
     DEPRECATED_VALUE,
-    deprecation_warning
+    deprecation_warning,
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.typing import TrainerConfigDict
@@ -149,7 +146,7 @@ class SACConfig(DQNConfig):
         # fmt: on
         # __sphinx_doc_end__
         #
-     
+
     @override(TrainerConfig)
     def training(
         twin_q: Optional[bool] = None,
@@ -269,7 +266,7 @@ class SACConfig(DQNConfig):
             self.replay_buffers_config = replay_buffers_config
         if store_buffer_in_checkpoints is not None:
             self.store_buffer_in_checkpoints = store_buffer_in_checkpoints
-        if prioritized_replay is not None: 
+        if prioritized_replay is not None:
             self.prioritized_replay = prioritized_replay
         if prioritized_replay_alpha is not None:
             self.prioritized_replay_alpha = prioritized_replay_alpha
@@ -280,11 +277,11 @@ class SACConfig(DQNConfig):
         if compress_observations is not None:
             self.compress_observations = compress_observations
         if training_intensity is not None:
-            self.training_intensity = training_intensity 
+            self.training_intensity = training_intensity
         if optimization is not None:
-            self.optimization = optimization 
+            self.optimization = optimization
         if optimization is not None:
-            self.optimization = optimization 
+            self.optimization = optimization
         if grad_clip is not None:
             self.grad_clip = grad_clip
         if learning_starts is not None:
@@ -292,11 +289,11 @@ class SACConfig(DQNConfig):
         if rollout_fragment_length is not None:
             self.rollout_fragment_length = rollout_fragment_length
         if train_batch_size is not None:
-            self.train_batch_size = train_batch_size 
+            self.train_batch_size = train_batch_size
         if target_network_update_freq is not None:
             self.target_network_update_freq = target_network_update_freq
         if num_gpus is not None:
-            self.num_gpus = num_gpus 
+            self.num_gpus = num_gpus
         if num_workers is not None:
             self.num_workers = num_workers
         if num_gpus_per_workers is not None:
@@ -311,6 +308,7 @@ class SACConfig(DQNConfig):
             self._deterministic_loss = _determinisitic_loss
         if _use_beta_distribution is not None:
             self._use_beta_distribution = _use_beta_distribution
+
 
 # Deprecated: Use ray.rllib.agents.sac.SACConfig instead!
 class _deprecated_default_config(dict):
@@ -376,6 +374,7 @@ class _deprecated_default_config(dict):
                 },
             )
         )
+
     @Deprecated(
         old="ray.rllib.agents.sac.sac.DEFAULT_CONFIG",
         new="ray.rllib.agents.sac.sac.SACConfig",
@@ -384,7 +383,9 @@ class _deprecated_default_config(dict):
     def __getitem__(self, item):
         return super().__getitem__(item)
 
+
 DEFAULT_CONFIG = _deprecated_default_config()
+
 
 class SACTrainer(DQNTrainer):
     """Soft Actor Critic (SAC) Trainer class.
