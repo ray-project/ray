@@ -186,14 +186,10 @@ def _usage_stats_report_url():
     # The usage collection server URL.
     # The environment variable is testing-purpose only.
     default_url = "https://usage-stats.ray.io/"
-    """
     if ray.__commit__ == "{{RAY_COMMIT_SHA}}":
         # By default, don't send dev usage report to the server.
         default_url = "http://127.0.0.1:8000"
-    """
-    url = os.getenv("RAY_USAGE_STATS_REPORT_URL", default_url)
-    assert url != "https://usage-stats.ray.io/"
-    return url
+    return os.getenv("RAY_USAGE_STATS_REPORT_URL", default_url)
 
 
 def _usage_stats_report_interval_s():
