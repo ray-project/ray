@@ -165,6 +165,7 @@ class TestDDPG(unittest.TestCase):
         config.min_time_s_per_reporting = 0
         config.timesteps_per_iteration = 100
 
+
         map_ = {
             # Normal net.
             "default_policy/actor_hidden_0/kernel": "policy_model.action_0."

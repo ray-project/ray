@@ -71,6 +71,10 @@ void AgentManager::StartAgent() {
   for (const std::string &arg : options_.agent_commands) {
     argv.push_back(arg.c_str());
   }
+  // Disable metrics report if needed.
+  if (!RayConfig::instance().enable_metrics_collection()) {
+    argv.push_back("--disable-metrics-collection");
+  }
   argv.push_back(NULL);
   // Set node id to agent.
   ProcessEnvironment env;
