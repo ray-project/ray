@@ -189,6 +189,7 @@ class SimpleQConfig(TrainerConfig):
         **kwargs,
     ) -> "SimpleQConfig":
         """Sets the training related configuration.
+
         Args:
             timesteps_per_iteration: Minimum env steps to optimize for per train call.
             This value does not affect learning, only the length of iterations.
