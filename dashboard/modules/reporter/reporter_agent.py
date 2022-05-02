@@ -31,6 +31,9 @@ enable_gpu_usage_check = True
 
 # Are we in a K8s pod?
 IN_KUBERNETES_POD = "KUBERNETES_SERVICE_HOST" in os.environ
+# Flag to enable showing disk usage stats for the HOST running a
+# Ray pod on K8s.
+ENABLE_K8S_DISK_USAGE = os.environ.get("ENABLE_K8S_DISK_USAGE", False)
 
 try:
     import gpustat.core as gpustat
@@ -304,7 +307,7 @@ class ReporterAgent(
 
     @staticmethod
     def _get_disk_usage():
-        if IN_KUBERNETES_POD:
+        if IN_KUBERNETES_POD and not ENABLE_K8S_DISK_USAGE:
             # If in a K8s pod, disable disk display by passing in dummy values.
             return {
                 "/": psutil._common.sdiskusage(total=1, used=0, free=1, percent=0.0)
