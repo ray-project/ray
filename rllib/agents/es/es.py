@@ -6,9 +6,10 @@ import logging
 import numpy as np
 import random
 import time
+from typing import Optional
 
 import ray
-from ray.rllib.agents import Trainer, with_common_config
+from ray.rllib.agents import Trainer, TrainerConfig
 from ray.rllib.agents.es import optimizers, utils
 from ray.rllib.agents.es.es_tf_policy import ESTFPolicy, rollout
 from ray.rllib.env.env_context import EnvContext
@@ -33,32 +34,130 @@ Result = namedtuple(
     ],
 )
 
-# fmt: off
-# __sphinx_doc_begin__
-DEFAULT_CONFIG = with_common_config({
-    "action_noise_std": 0.01,
-    "l2_coeff": 0.005,
-    "noise_stdev": 0.02,
-    "episodes_per_batch": 1000,
-    "train_batch_size": 10000,
-    "eval_prob": 0.003,
-    "return_proc_mode": "centered_rank",
-    "num_workers": 10,
-    "stepsize": 0.01,
-    "observation_filter": "MeanStdFilter",
-    "noise_size": 250000000,
-    "report_length": 10,
-    # ARS will use Trainer's evaluation WorkerSet (if evaluation_interval > 0).
-    # Therefore, we must be careful not to use more than 1 env per eval worker
-    # (would break ESPolicy's compute_single_action method) and to not do
-    # obs-filtering.
-    "evaluation_config": {
-        "num_envs_per_worker": 1,
-        "observation_filter": "NoFilter"
-    },
-})
-# __sphinx_doc_end__
-# fmt: on
+
+class ESConfig(TrainerConfig):
+    """Defines an ESTrainer configuration class from which an ESTrainer can be built.
+
+    Example:
+        >>> from ray.rllib.agents.es import ESConfig
+        >>> config = ESConfig().training(sgd_stepsize=0.02, report_length=20)\
+        ...     .resources(num_gpus=0)\
+        ...     .rollouts(num_rollout_workers=4)
+        >>> print(config.to_dict())
+        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> trainer = config.build(env="CartPole-v1")
+        >>> trainer.train()
+
+    Example:
+        >>> from ray.rllib.agents.es import ESConfig
+        >>> from ray import tune
+        >>> config = ESConfig()
+        >>> # Print out some default values.
+        >>> print(config.action_noise_std)
+        >>> # Update the config object.
+        >>> config.training(rollouts_used=tune.grid_search([32, 64]), eval_prob=0.5)
+        >>> # Set the config object's env.
+        >>> config.environment(env="CartPole-v1")
+        >>> # Use to_dict() to get the old-style python config dict
+        >>> # when running with tune.
+        >>> tune.run(
+        ...     "ES",
+        ...     stop={"episode_reward_mean": 200},
+        ...     config=config.to_dict(),
+        ... )
+    """
+
+    def __init__(self):
+        """Initializes a ESConfig instance."""
+        super().__init__(trainer_class=ESTrainer)
+
+        # fmt: off
+        # __sphinx_doc_begin__
+
+        # ES specific settings:
+        self.action_noise_std = 0.01
+        self.l2_coeff = 0.005
+        self.noise_stdev = 0.02
+        self.episodes_per_batch = 1000
+        self.eval_prob = 0.03
+        # self.return_proc_mode = "centered_rank"  # only supported return_proc_mode
+        self.stepsize = 0.01
+        self.noise_size = 250000000
+        self.report_length = 10
+
+        # Override some of TrainerConfig's default values with ES-specific values.
+        self.train_batch_size = 10000
+        self.num_workers = 10
+        self.observation_filter = "MeanStdFilter"
+        # ARS will use Trainer's evaluation WorkerSet (if evaluation_interval > 0).
+        # Therefore, we must be careful not to use more than 1 env per eval worker
+        # (would break ARSPolicy's compute_single_action method) and to not do
+        # obs-filtering.
+        self.evaluation_config["num_envs_per_worker"] = 1
+        self.evaluation_config["observation_filter"] = "NoFilter"
+
+        # __sphinx_doc_end__
+        # fmt: on
+
+    @override(TrainerConfig)
+    def training(
+        self,
+        *,
+        action_noise_std: Optional[float] = None,
+        l2_coeff: Optional[float] = None,
+        noise_stdev: Optional[int] = None,
+        episodes_per_batch: Optional[int] = None,
+        eval_prob: Optional[float] = None,
+        # return_proc_mode: Optional[int] = None,
+        stepsize: Optional[float] = None,
+        noise_size: Optional[int] = None,
+        report_length: Optional[int] = None,
+        **kwargs,
+    ) -> "ESConfig":
+        """Sets the training related configuration.
+
+        Args:
+            action_noise_std: Std. deviation to be used when adding (standard normal)
+                noise to computed actions. Action noise is only added, if
+                `compute_actions` is called with the `add_noise` arg set to True.
+            l2_coeff: Coefficient to multiply current weights with inside the globalg
+                optimizer update term.
+            noise_stdev: Std. deviation of parameter noise.
+            episodes_per_batch: Minimum number of episodes to pack into the train batch.
+            eval_prob: Probability of evaluating the parameter rewards.
+            stepsize: SGD step-size used for the Adam optimizer.
+            noise_size: Number of rows in the noise table (shared across workers).
+                Each row contains a gaussian noise value for each model parameter.
+            report_length: How many of the last rewards we average over.
+
+        Returns:
+            This updated TrainerConfig object.
+        """
+        # Pass kwargs onto super's `training()` method.
+        super().training(**kwargs)
+
+        if action_noise_std is not None:
+            self.action_noise_std = action_noise_std
+        if l2_coeff is not None:
+            self.l2_coeff = l2_coeff
+        if noise_stdev is not None:
+            self.noise_stdev = noise_stdev
+        if episodes_per_batch is not None:
+            self.episodes_per_batch = episodes_per_batch
+        if eval_prob is not None:
+            self.eval_prob = eval_prob
+        # Only supported return_proc mode is "centered_rank" right now. No need to
+        # configure this.
+        # if return_proc_mode is not None:
+        #    self.return_proc_mode = return_proc_mode
+        if stepsize is not None:
+            self.stepsize = stepsize
+        if noise_size is not None:
+            self.noise_size = noise_size
+        if report_length is not None:
+            self.report_length = report_length
+
+        return self
 
 
 @ray.remote
@@ -220,7 +319,7 @@ class ESTrainer(Trainer):
     @classmethod
     @override(Trainer)
     def get_default_config(cls) -> TrainerConfigDict:
-        return DEFAULT_CONFIG
+        return ESConfig().to_dict()
 
     @override(Trainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
@@ -247,9 +346,12 @@ class ESTrainer(Trainer):
     def setup(self, config):
         # Setup our config: Merge the user-supplied config (which could
         # be a partial config dict with the class' default).
-        self.config = self.merge_trainer_configs(
-            self.get_default_config(), config, self._allow_unknown_configs
-        )
+        if isinstance(config, dict):
+            self.config = self.merge_trainer_configs(
+                self.get_default_config(), config, self._allow_unknown_configs
+            )
+        else:
+            self.config = config.to_dict()
 
         # Call super's validation method.
         self.validate_config(self.config)
@@ -306,8 +408,8 @@ class ESTrainer(Trainer):
 
         # Put the current policy weights in the object store.
         theta_id = ray.put(theta)
-        # Use the actors to do rollouts, note that we pass in the ID of the
-        # policy weights.
+        # Use the actors to do rollouts. Note that we pass in the ID of the
+        # policy weights as these are shared.
         results, num_episodes, num_timesteps = self._collect_results(
             theta_id, config["episodes_per_batch"], config["train_batch_size"]
         )
@@ -344,10 +446,7 @@ class ESTrainer(Trainer):
         noisy_lengths = np.array(all_training_lengths)
 
         # Process the returns.
-        if config["return_proc_mode"] == "centered_rank":
-            proc_noisy_returns = utils.compute_centered_ranks(noisy_returns)
-        else:
-            raise NotImplementedError(config["return_proc_mode"])
+        proc_noisy_returns = utils.compute_centered_ranks(noisy_returns)
 
         # Compute and take a step.
         g, count = utils.batched_weighted_sum(
@@ -454,3 +553,20 @@ class ESTrainer(Trainer):
         FilterManager.synchronize(
             {DEFAULT_POLICY_ID: self.policy.observation_filter}, self.workers
         )
+
+
+# Deprecated: Use ray.rllib.agents.es.ESConfig instead!
+class _deprecated_default_config(dict):
+    def __init__(self):
+        super().__init__(ESConfig().to_dict())
+
+    @Deprecated(
+        old="ray.rllib.agents.es.es.DEFAULT_CONFIG",
+        new="ray.rllib.agents.es.es.ESConfig(...)",
+        error=False,
+    )
+    def __getitem__(self, item):
+        return super().__getitem__(item)
+
+
+DEFAULT_CONFIG = _deprecated_default_config()

@@ -11,7 +11,7 @@ import ray
 from ray.exceptions import GetTimeoutError
 from ray import serve
 from ray._private.test_utils import SignalActor
-from ray.serve.api import internal_get_global_client
+from ray.serve.context import get_global_client
 
 
 @pytest.fixture
@@ -146,7 +146,7 @@ def test_nested_actors(serve_instance):
 
 def test_handle_cache_out_of_scope(serve_instance):
     # https://github.com/ray-project/ray/issues/18980
-    initial_num_cached = len(internal_get_global_client().handle_cache)
+    initial_num_cached = len(get_global_client().handle_cache)
 
     @serve.deployment(name="f")
     def f():
@@ -155,7 +155,7 @@ def test_handle_cache_out_of_scope(serve_instance):
     f.deploy()
     handle = serve.get_deployment("f").get_handle()
 
-    handle_cache = internal_get_global_client().handle_cache
+    handle_cache = get_global_client().handle_cache
     assert len(handle_cache) == initial_num_cached + 1
 
     def sender_where_handle_goes_out_of_scope():

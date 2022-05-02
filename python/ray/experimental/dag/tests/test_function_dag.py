@@ -111,8 +111,10 @@ def test_invalid_task_options(shared_ray_instance):
 
     # Ensure current DAG is executable
     assert ray.get(dag.execute()) == 4
-    invalid_dag = b.options(num_cpus=-1).bind(a_ref)
-    with pytest.raises(ValueError, match=".*Resource quantities may not be negative.*"):
+    with pytest.raises(
+        ValueError, match=r".*only accepts None, 0 or a positive number.*"
+    ):
+        invalid_dag = b.options(num_cpus=-1).bind(a_ref)
         ray.get(invalid_dag.execute())
 
 
@@ -127,14 +129,14 @@ def test_node_accessors(shared_ray_instance):
     node = a.bind(1, tmp1, x=tmp2, y={"foo": tmp3})
     assert node.get_args() == (1, tmp1)
     assert node.get_kwargs() == {"x": tmp2, "y": {"foo": tmp3}}
-    assert node._get_toplevel_child_nodes() == {tmp1, tmp2}
-    assert node._get_all_child_nodes() == {tmp1, tmp2, tmp3}
+    assert node._get_toplevel_child_nodes() == [tmp1, tmp2]
+    assert node._get_all_child_nodes() == [tmp1, tmp2, tmp3]
 
     tmp4 = a.bind()
     tmp5 = a.bind()
     replace = {tmp1: tmp4, tmp2: tmp4, tmp3: tmp5}
     n2 = node._apply_and_replace_all_child_nodes(lambda x: replace[x])
-    assert n2._get_all_child_nodes() == {tmp4, tmp5}
+    assert n2._get_all_child_nodes() == [tmp4, tmp5]
 
 
 def test_nested_args(shared_ray_instance):

@@ -1,49 +1,67 @@
+from ray.data.datasource.binary_datasource import BinaryDatasource
+from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.datasource.datasource import (
     Datasource,
-    RangeDatasource,
     DummyOutputDatasource,
-    ReadTask,
     RandomIntRowDatasource,
+    RangeDatasource,
+    ReadTask,
     WriteResult,
 )
-from ray.data.datasource.json_datasource import JSONDatasource
-from ray.data.datasource.csv_datasource import CSVDatasource
-from ray.data.datasource.numpy_datasource import NumpyDatasource
-from ray.data.datasource.parquet_datasource import (
-    ParquetDatasource,
-    ParquetMetadataProvider,
-    DefaultParquetMetadataProvider,
-)
-from ray.data.datasource.binary_datasource import BinaryDatasource
 from ray.data.datasource.file_based_datasource import (
-    FileBasedDatasource,
-    _S3FileSystemWrapper,
     BlockWritePathProvider,
     DefaultBlockWritePathProvider,
+    FileBasedDatasource,
+    _S3FileSystemWrapper,
+)
+from ray.data.datasource.file_meta_provider import (
     BaseFileMetadataProvider,
     DefaultFileMetadataProvider,
+    DefaultParquetMetadataProvider,
+    FastFileMetadataProvider,
+    FileMetadataProvider,
+    ParquetMetadataProvider,
 )
-from ray.data.datasource.file_meta_provider import FileMetadataProvider
+from ray.data.datasource.json_datasource import JSONDatasource
+from ray.data.datasource.numpy_datasource import NumpyDatasource
+from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
+from ray.data.datasource.parquet_datasource import ParquetDatasource
+from ray.data.datasource.partitioning import (
+    PartitionStyle,
+    PathPartitionEncoder,
+    PathPartitionFilter,
+    PathPartitionParser,
+)
+from ray.data.datasource.tensorflow_datasource import SimpleTensorFlowDatasource
+from ray.data.datasource.torch_datasource import SimpleTorchDatasource
 
 __all__ = [
-    "JSONDatasource",
-    "CSVDatasource",
-    "NumpyDatasource",
-    "ParquetDatasource",
-    "BinaryDatasource",
-    "FileBasedDatasource",
-    "_S3FileSystemWrapper",
-    "Datasource",
-    "RangeDatasource",
-    "RandomIntRowDatasource",
-    "DummyOutputDatasource",
-    "ReadTask",
-    "WriteResult",
-    "BlockWritePathProvider",
-    "DefaultBlockWritePathProvider",
-    "FileMetadataProvider",
     "BaseFileMetadataProvider",
+    "BinaryDatasource",
+    "BlockWritePathProvider",
+    "CSVDatasource",
+    "Datasource",
+    "DefaultBlockWritePathProvider",
     "DefaultFileMetadataProvider",
-    "ParquetMetadataProvider",
     "DefaultParquetMetadataProvider",
+    "DummyOutputDatasource",
+    "FastFileMetadataProvider",
+    "FileBasedDatasource",
+    "FileMetadataProvider",
+    "JSONDatasource",
+    "NumpyDatasource",
+    "ParquetBaseDatasource",
+    "ParquetDatasource",
+    "ParquetMetadataProvider",
+    "PartitionStyle",
+    "PathPartitionEncoder",
+    "PathPartitionFilter",
+    "PathPartitionParser",
+    "RandomIntRowDatasource",
+    "RangeDatasource",
+    "ReadTask",
+    "SimpleTensorFlowDatasource",
+    "SimpleTorchDatasource",
+    "WriteResult",
+    "_S3FileSystemWrapper",
 ]

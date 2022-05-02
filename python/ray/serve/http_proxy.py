@@ -197,7 +197,7 @@ class HTTPProxy:
     ):
         # Set the controller name so that serve will connect to the
         # controller instance this proxy is running in.
-        ray.serve.api._set_internal_replica_context(
+        ray.serve.context.set_internal_replica_context(
             None, None, controller_name, controller_namespace, None
         )
 
@@ -205,7 +205,7 @@ class HTTPProxy:
         self.route_info: Dict[str, EndpointTag] = dict()
 
         def get_handle(name):
-            return serve.api.internal_get_global_client().get_handle(
+            return serve.context.get_global_client().get_handle(
                 name,
                 sync=False,
                 missing_ok=True,

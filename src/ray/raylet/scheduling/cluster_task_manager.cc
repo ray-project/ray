@@ -36,10 +36,13 @@ ClusterTaskManager::ClusterTaskManager(
       get_node_info_(get_node_info),
       announce_infeasible_task_(announce_infeasible_task),
       local_task_manager_(std::move(local_task_manager)),
-      scheduler_resource_reporter_(
-          tasks_to_schedule_, infeasible_tasks_, *local_task_manager_),
-      internal_stats_(*this, *local_task_manager_),
-      get_time_ms_(get_time_ms) {}
+      get_time_ms_(get_time_ms) {
+  if (local_task_manager_) {
+    scheduler_resource_reporter_ = std::make_unique<SchedulerResourceReporter>(
+        tasks_to_schedule_, infeasible_tasks_, *local_task_manager_);
+    internal_stats_ = std::make_unique<SchedulerStats>(*this, *local_task_manager_);
+  }
+}
 
 void ClusterTaskManager::QueueAndScheduleTask(
     const RayTask &task,
@@ -138,7 +141,9 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
       auto &work_queue = shapes_it->second;
       const auto &work = work_queue[0];
       const RayTask task = work->task;
-      announce_infeasible_task_(task);
+      if (announce_infeasible_task_) {
+        announce_infeasible_task_(task);
+      }
 
       // TODO(sang): Use a shared pointer deque to reduce copy overhead.
       infeasible_tasks_[shapes_it->first] = shapes_it->second;
@@ -149,8 +154,9 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
       shapes_it++;
     }
   }
-
-  local_task_manager_->ScheduleAndDispatchTasks();
+  if (local_task_manager_) {
+    local_task_manager_->ScheduleAndDispatchTasks();
+  }
 }
 
 void ClusterTaskManager::TryScheduleInfeasibleTask() {
@@ -229,18 +235,26 @@ bool ClusterTaskManager::CancelTask(
     }
   }
 
-  return local_task_manager_->CancelTask(
-      task_id, failure_type, scheduling_failure_message);
+  if (local_task_manager_) {
+    return local_task_manager_->CancelTask(
+        task_id, failure_type, scheduling_failure_message);
+  } else {
+    return false;
+  }
 }
 
 void ClusterTaskManager::FillPendingActorInfo(rpc::GetNodeStatsReply *reply) const {
-  scheduler_resource_reporter_.FillPendingActorInfo(reply);
+  if (scheduler_resource_reporter_) {
+    scheduler_resource_reporter_->FillPendingActorInfo(reply);
+  }
 }
 
 void ClusterTaskManager::FillResourceUsage(
     rpc::ResourcesData &data,
-    const std::shared_ptr<SchedulingResources> &last_reported_resources) {
-  scheduler_resource_reporter_.FillResourceUsage(data, last_reported_resources);
+    const std::shared_ptr<NodeResources> &last_reported_resources) {
+  if (scheduler_resource_reporter_) {
+    scheduler_resource_reporter_->FillResourceUsage(data, last_reported_resources);
+  }
 }
 
 bool ClusterTaskManager::AnyPendingTasksForResourceAcquisition(
@@ -294,10 +308,18 @@ bool ClusterTaskManager::AnyPendingTasksForResourceAcquisition(
   return *any_pending;
 }
 
-void ClusterTaskManager::RecordMetrics() const { internal_stats_.RecordMetrics(); }
+void ClusterTaskManager::RecordMetrics() const {
+  if (internal_stats_) {
+    internal_stats_->RecordMetrics();
+  }
+}
 
 std::string ClusterTaskManager::DebugStr() const {
-  return internal_stats_.ComputeAndReportDebugStr();
+  if (internal_stats_) {
+    return internal_stats_->ComputeAndReportDebugStr();
+  } else {
+    return std::string("");
+  }
 }
 
 void ClusterTaskManager::ScheduleOnNode(const NodeID &spillback_to,
@@ -314,8 +336,9 @@ void ClusterTaskManager::ScheduleOnNode(const NodeID &spillback_to,
     send_reply_callback();
     return;
   }
-
-  internal_stats_.TaskSpilled();
+  if (internal_stats_) {
+    internal_stats_->TaskSpilled();
+  }
   const auto &task = work->task;
   const auto &task_spec = task.GetTaskSpecification();
   RAY_LOG(DEBUG) << "Spilling task " << task_spec.TaskId() << " to node " << spillback_to;
@@ -339,5 +362,27 @@ void ClusterTaskManager::ScheduleOnNode(const NodeID &spillback_to,
 
   send_reply_callback();
 }
+
+std::shared_ptr<ClusterResourceScheduler>
+ClusterTaskManager::GetClusterResourceScheduler() const {
+  return cluster_resource_scheduler_;
+}
+
+size_t ClusterTaskManager::GetInfeasibleQueueSize() const {
+  size_t count = 0;
+  for (const auto &cls_entry : infeasible_tasks_) {
+    count += cls_entry.second.size();
+  }
+  return count;
+}
+
+size_t ClusterTaskManager::GetPendingQueueSize() const {
+  size_t count = 0;
+  for (const auto &cls_entry : tasks_to_schedule_) {
+    count += cls_entry.second.size();
+  }
+  return count;
+}
+
 }  // namespace raylet
 }  // namespace ray

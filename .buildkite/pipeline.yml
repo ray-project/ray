@@ -6,7 +6,7 @@
     ]
   commands:
     # Build the wheels and jars
-    - LINUX_WHEELS=1 LINUX_JARS=1 ./ci/ci.sh build
+    - UPLOAD_WHEELS_AS_ARTIFACTS=1 LINUX_WHEELS=1 LINUX_JARS=1 ./ci/ci.sh build
     - bash ./java/build-jar-multiplatform.sh linux
     # Upload the wheels and jars
     # We don't want to push on PRs, in fact, the copy_files will fail because unauthenticated.
@@ -391,9 +391,16 @@
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    # Set up local kind cluster.
+    - echo "--- Setting up Python 3.7 environment."
+    - PYTHON=3.7 ./ci/env/install-dependencies.sh
+    # Specifying PYTHON=3.7 above somehow messes up the Ray install.
+    # Uninstall and re-install Ray so that we can use Ray Client.
+    # (Remove thirdparty_files to sidestep an issue with psutil.)
+    - pip uninstall -y ray && rm -rf /ray/python/ray/thirdparty_files
+    - pip install -e /ray/python
+    - echo "--- Setting up local kind cluster."
     - ./ci/k8s/prep-k8s-environment.sh
-    # Build py37-cpu Ray image for the test.
+    - echo "--- Building py37-cpu Ray image for the test."
     - LINUX_WHEELS=1 ./ci/ci.sh build
     - pip install -q docker
     - python ci/build/build-docker-images.py --py-versions py37 --device-types cpu --build-type LOCAL --build-base
@@ -401,8 +408,10 @@
     - docker tag rayproject/ray:nightly-py37-cpu ray-ci:kuberay-test
     # Load the image into the kind node.
     - kind load docker-image ray-ci:kuberay-test
+    - echo "--- Running the test."
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --test_tag_filters=kuberay_operator
       --test_env=RAY_IMAGE=docker.io/library/ray-ci:kuberay-test
+      --test_env=PULL_POLICY=IfNotPresent
       --test_env=KUBECONFIG=/root/.kube/config
       python/ray/tests/...

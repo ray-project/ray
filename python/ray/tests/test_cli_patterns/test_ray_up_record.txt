@@ -1,4 +1,3 @@
-Usage stats collection will be enabled by default in the next release\. See https://github.com/ray-project/ray/issues/20857 for more details\.
 .+\.py.*Cluster: test-cli
 .+\.py.*Checking AWS environment settings
 .+\.py.*Creating new IAM instance profile ray-autoscaler-v1 for use as the default\.
@@ -12,6 +11,7 @@ Usage stats collection will be enabled by default in the next release\. See http
 .+\.py.*EC2 Security groups \(all available node types\): sg-.+ \[default\]
 .+\.py.*EC2 AMI \(all available node types\): ami-dca37ea5 \[dlami\]
 .+\.py.*No head node found\. Launching a new cluster\. Confirm \[y/N\]: y \[automatic, due to --yes\]
+.+\.py.*Usage stats collection is enabled by default without user confirmation because this stdin is detected to be non-interactively\..+
 .+\.py.*Acquiring an up-to-date head node
 .+\.py.*Launched 1 nodes \[subnet_id=subnet-.+\]
 .+\.py.*Launched instance i-.+ \[state=pending, info=pending\]
@@ -74,9 +74,9 @@ Usage stats collection will be enabled by default in the next release\. See http
 .+\.py.*Full command is `ssh.+`
 .+\.py.*NodeUpdater: i-.+: Setup commands succeeded \[LogTimer=.+\]
 .+\.py.*\[7/7\] Starting the Ray runtime
-.+\.py.*Running `export RAY_OVERRIDE_RESOURCES='{"CPU":1}';ray stop`
+.+\.py.*Running `export RAY_USAGE_STATS_ENABLED=1;export RAY_OVERRIDE_RESOURCES='{"CPU":1}';ray stop`
 .+\.py.*Full command is `ssh.+`
-.+\.py.*Running `export RAY_OVERRIDE_RESOURCES='{"CPU":1}';ray start --head --autoscaling-config=~/ray_bootstrap_config\.yaml`
+.+\.py.*Running `export RAY_USAGE_STATS_ENABLED=1;export RAY_OVERRIDE_RESOURCES='{"CPU":1}';ray start --head --autoscaling-config=~/ray_bootstrap_config\.yaml`
 .+\.py.*Full command is `ssh.+`
 .+\.py.*NodeUpdater: i-.+: Ray start commands succeeded \[LogTimer=.+\]
 .+\.py.*NodeUpdater: i-.+: Applied config .+  \[LogTimer=.+\]

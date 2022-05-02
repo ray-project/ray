@@ -8,7 +8,9 @@ from ray.rllib.agents.sac.sac import SACTrainer, DEFAULT_CONFIG as SAC_CONFIG
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.replay_ops import Replay
 from ray.rllib.execution.train_ops import (
+    multi_gpu_train_one_step,
     MultiGPUTrainOneStep,
+    train_one_step,
     TrainOneStep,
     UpdateTargetNetwork,
 )
@@ -17,10 +19,19 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
+from ray.rllib.utils.metrics import (
+    LAST_TARGET_UPDATE_TS,
+    NUM_AGENT_STEPS_TRAINED,
+    NUM_ENV_STEPS_TRAINED,
+    NUM_TARGET_UPDATES,
+    TARGET_NET_UPDATE_TIMER,
+    SYNCH_WORKER_WEIGHTS_TIMER,
+)
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
-from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.replay_buffers.utils import update_priorities_in_replay_buffer
+from ray.rllib.utils.typing import ResultDict, TrainerConfigDict
 
 tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
@@ -46,13 +57,27 @@ CQL_DEFAULT_CONFIG = merge_dicts(
         "lagrangian_thresh": 5.0,
         # Min Q weight multiplier.
         "min_q_weight": 5.0,
-        # Replay buffer should be larger or equal the size of the offline
-        # dataset.
-        "buffer_size": DEPRECATED_VALUE,
         "replay_buffer_config": {
+            "_enable_replay_buffer_api": False,
             "type": "MultiAgentReplayBuffer",
+            # Replay buffer should be larger or equal the size of the offline
+            # dataset.
             "capacity": int(1e6),
         },
+        # Reporting: As CQL is offline (no sampling steps), we need to limit
+        # `self.train()` reporting by the number of steps trained (not sampled).
+        "min_sample_timesteps_per_reporting": 0,
+        "min_train_timesteps_per_reporting": 100,
+
+        # Use the Trainer's `training_iteration` function instead of `execution_plan`.
+        "_disable_execution_plan_api": True,
+
+        # Deprecated keys.
+        # Use `replay_buffer_config.capacity` instead.
+        "buffer_size": DEPRECATED_VALUE,
+        # Use `min_sample_timesteps_per_reporting` and
+        # `min_train_timesteps_per_reporting` instead.
+        "timesteps_per_iteration": DEPRECATED_VALUE,
     })
 # __sphinx_doc_end__
 # fmt: on
@@ -66,12 +91,11 @@ class CQLTrainer(SACTrainer):
 
         # Add the entire dataset to Replay Buffer (global variable)
         reader = self.workers.local_worker().input_reader
-        replay_buffer = self.local_replay_buffer
 
         # For d4rl, add the D4RLReaders' dataset to the buffer.
         if isinstance(self.config["input"], str) and "d4rl" in self.config["input"]:
             dataset = reader.dataset
-            replay_buffer.add_batch(dataset)
+            self.local_replay_buffer.add(dataset)
         # For a list of files, add each file's entire content to the buffer.
         elif isinstance(reader, ShuffledInput):
             num_batches = 0
@@ -89,10 +113,11 @@ class CQLTrainer(SACTrainer):
                         [obs[1:], np.zeros_like(obs[0:1])]
                     )
                     batch[SampleBatch.DONES][-1] = True
-                replay_buffer.add_batch(batch)
+                self.local_replay_buffer.add_batch(batch)
             print(
                 f"Loaded {num_batches} batches ({total_timesteps} ts) into the"
-                f" replay buffer, which has capacity {replay_buffer.capacity}."
+                " replay buffer, which has capacity "
+                f"{self.local_replay_buffer.capacity}."
             )
         else:
             raise ValueError(
@@ -108,6 +133,20 @@ class CQLTrainer(SACTrainer):
 
     @override(SACTrainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
+        # First check, whether old `timesteps_per_iteration` is used. If so
+        # convert right away as for CQL, we must measure in training timesteps,
+        # never sampling timesteps (CQL does not sample).
+        if config.get("timesteps_per_iteration", DEPRECATED_VALUE) != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="timesteps_per_iteration",
+                new="min_train_timesteps_per_reporting",
+                error=False,
+            )
+            config["min_train_timesteps_per_reporting"] = config[
+                "timesteps_per_iteration"
+            ]
+            config["timesteps_per_iteration"] = DEPRECATED_VALUE
+
         # Call super's validation method.
         super().validate_config(config)
 
@@ -135,6 +174,58 @@ class CQLTrainer(SACTrainer):
             return CQLTorchPolicy
         else:
             return CQLTFPolicy
+
+    @override(SACTrainer)
+    def training_iteration(self) -> ResultDict:
+
+        # Sample training batch from replay buffer.
+        train_batch = self.local_replay_buffer.replay()
+
+        # Old-style replay buffers return None if learning has not started
+        if not train_batch:
+            return {}
+
+        # Postprocess batch before we learn on it.
+        post_fn = self.config.get("before_learn_on_batch") or (lambda b, *a: b)
+        train_batch = post_fn(train_batch, self.workers, self.config)
+
+        # Learn on training batch.
+        # Use simple optimizer (only for multi-agent or tf-eager; all other
+        # cases should use the multi-GPU optimizer, even if only using 1 GPU)
+        if self.config.get("simple_optimizer") is True:
+            train_results = train_one_step(self, train_batch)
+        else:
+            train_results = multi_gpu_train_one_step(self, train_batch)
+
+        # Update replay buffer priorities.
+        update_priorities_in_replay_buffer(
+            self.local_replay_buffer,
+            self.config,
+            train_batch,
+            train_results,
+        )
+
+        # Update target network every target_network_update_freq steps
+        cur_ts = self._counters[
+            NUM_AGENT_STEPS_TRAINED if self._by_agent_steps else NUM_ENV_STEPS_TRAINED
+        ]
+        last_update = self._counters[LAST_TARGET_UPDATE_TS]
+        if cur_ts - last_update >= self.config["target_network_update_freq"]:
+            with self._timers[TARGET_NET_UPDATE_TIMER]:
+                to_update = self.workers.local_worker().get_policies_to_train()
+                self.workers.local_worker().foreach_policy_to_train(
+                    lambda p, pid: pid in to_update and p.update_target()
+                )
+            self._counters[NUM_TARGET_UPDATES] += 1
+            self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
+
+        # Update remote workers's weights after learning on local worker
+        if self.workers.remote_workers():
+            with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+                self.workers.sync_weights()
+
+        # Return all collected metrics for the iteration.
+        return train_results
 
     @staticmethod
     @override(SACTrainer)

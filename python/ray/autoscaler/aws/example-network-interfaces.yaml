@@ -46,7 +46,7 @@ available_node_types:
     node_config:
       NetworkInterfaces:
         - DeviceIndex: 0 # Primary network interface.
-          SubnetId: subnet-00000000 # Replace with your Subnet ID.
+          SubnetId: subnet-0000000 # Replace with your Subnet ID.
           # Head node network interfaces can optionally associate fixed private
           # addresses with the head node.
           PrivateIpAddress: 172.31.64.10 # Replace with an IP in your subnet.

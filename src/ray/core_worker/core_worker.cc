@@ -351,7 +351,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         new raylet::RayletClient(std::move(grpc_client)));
   };
 
-  auto on_excess_queueing = [this](const ActorID &actor_id, int64_t num_queued) {
+  auto on_excess_queueing = [this](const ActorID &actor_id, uint64_t num_queued) {
     auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(
                          std::chrono::system_clock::now().time_since_epoch())
                          .count();
@@ -3150,6 +3150,10 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
     reference_counter_->AddObjectRefStats(plasma_store_provider_->UsedObjectsList(),
                                           stats);
     task_manager_->AddTaskStatusInfo(stats);
+  }
+
+  if (request.include_task_info()) {
+    task_manager_->FillTaskInfo(reply);
   }
 
   send_reply_callback(Status::OK(), nullptr, nullptr);

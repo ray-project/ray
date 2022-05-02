@@ -38,7 +38,23 @@ class MockActorScheduler : public gcs::GcsActorSchedulerInterface {
   void Reschedule(std::shared_ptr<gcs::GcsActor> actor) {}
   void ReleaseUnusedWorkers(
       const absl::flat_hash_map<NodeID, std::vector<WorkerID>> &node_to_workers) {}
-  void OnActorDestruction(std::shared_ptr<gcs::GcsActor> actor) {}
+  void OnActorDestruction(std::shared_ptr<gcs::GcsActor> actor) {
+    const auto &actor_id = actor->GetActorID();
+    auto pending_it =
+        std::find_if(actors.begin(),
+                     actors.end(),
+                     [actor_id](const std::shared_ptr<gcs::GcsActor> &actor) {
+                       return actor->GetActorID() == actor_id;
+                     });
+    if (pending_it != actors.end()) {
+      actors.erase(pending_it);
+    }
+  }
+
+  size_t GetPendingActorsCount() const { return 0; }
+  bool CancelInFlightActorScheduling(const std::shared_ptr<gcs::GcsActor> &actor) {
+    return false;
+  }
 
   MOCK_CONST_METHOD0(DebugString, std::string());
   MOCK_METHOD1(CancelOnNode, std::vector<ActorID>(const NodeID &node_id));
@@ -129,7 +145,6 @@ class GcsActorManagerTest : public ::testing::Test {
     kv_ = std::make_unique<gcs::MockInternalKVInterface>();
     function_manager_ = std::make_unique<gcs::GcsFunctionManager>(*kv_);
     gcs_actor_manager_ = std::make_unique<gcs::GcsActorManager>(
-        io_service_,
         mock_actor_scheduler_,
         gcs_table_storage_,
         gcs_publisher_,
@@ -310,17 +325,10 @@ TEST_F(GcsActorManagerTest, TestSchedulingFailed) {
   mock_actor_scheduler_->actors.clear();
 
   gcs_actor_manager_->OnActorSchedulingFailed(
-      actor, rpc::RequestWorkerLeaseReply::SCHEDULING_FAILED, "");
-  gcs_actor_manager_->SchedulePendingActors();
-  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
-  mock_actor_scheduler_->actors.clear();
-  ASSERT_EQ(finished_actors.size(), 0);
-
-  // Check that the actor is in state `ALIVE`.
-  actor->UpdateAddress(RandomAddress());
-  gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
-  WaitActorCreated(actor->GetActorID());
-  ASSERT_EQ(finished_actors.size(), 1);
+      actor,
+      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED,
+      "");
+  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 0);
 }
 
 TEST_F(GcsActorManagerTest, TestWorkerFailure) {
@@ -365,7 +373,6 @@ TEST_F(GcsActorManagerTest, TestWorkerFailure) {
       actor->GetActorTableData().death_cause().actor_died_error_context().error_message(),
       "worker process has died."));
   // No more actors to schedule.
-  gcs_actor_manager_->SchedulePendingActors();
   ASSERT_EQ(mock_actor_scheduler_->actors.size(), 0);
 
   ASSERT_TRUE(worker_client_->Reply());
@@ -415,7 +422,6 @@ TEST_F(GcsActorManagerTest, TestNodeFailure) {
       actor->GetActorTableData().death_cause().actor_died_error_context().error_message(),
       "node has died."));
   // No more actors to schedule.
-  gcs_actor_manager_->SchedulePendingActors();
   ASSERT_EQ(mock_actor_scheduler_->actors.size(), 0);
 
   ASSERT_TRUE(worker_client_->Reply());
@@ -458,7 +464,6 @@ TEST_F(GcsActorManagerTest, TestActorReconstruction) {
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::RESTARTING);
 
   // Add node and check that the actor is restarted.
-  gcs_actor_manager_->SchedulePendingActors();
   ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
   mock_actor_scheduler_->actors.clear();
   ASSERT_EQ(finished_actors.size(), 1);
@@ -485,7 +490,6 @@ TEST_F(GcsActorManagerTest, TestActorReconstruction) {
       actor->GetActorTableData().death_cause().actor_died_error_context().error_message(),
       "node has died."));
   // No more actors to schedule.
-  gcs_actor_manager_->SchedulePendingActors();
   ASSERT_EQ(mock_actor_scheduler_->actors.size(), 0);
 
   ASSERT_TRUE(worker_client_->Reply());
@@ -539,7 +543,6 @@ TEST_F(GcsActorManagerTest, TestActorRestartWhenOwnerDead) {
   EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(node_id));
   OnNodeDead(node_id);
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
-  gcs_actor_manager_->SchedulePendingActors();
   ASSERT_TRUE(mock_actor_scheduler_->actors.empty());
 }
 

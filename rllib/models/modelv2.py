@@ -428,6 +428,12 @@ def _unpack_obs(obs: TensorType, space: Space, tensorlib: Any = tf) -> TensorStr
     """
 
     if isinstance(space, (gym.spaces.Dict, gym.spaces.Tuple, Repeated)):
+        # Already unpacked?
+        if (isinstance(space, gym.spaces.Tuple) and isinstance(obs, (list, tuple))) or (
+            isinstance(space, gym.spaces.Dict) and isinstance(obs, dict)
+        ):
+            return obs
+        # Unpack using preprocessor
         if id(space) in _cache:
             prep = _cache[id(space)]
         else:
@@ -435,12 +441,7 @@ def _unpack_obs(obs: TensorType, space: Space, tensorlib: Any = tf) -> TensorStr
             # Make an attempt to cache the result, if enough space left.
             if len(_cache) < 999:
                 _cache[id(space)] = prep
-        # Already unpacked?
-        if (isinstance(space, gym.spaces.Tuple) and isinstance(obs, (list, tuple))) or (
-            isinstance(space, gym.spaces.Dict) and isinstance(obs, dict)
-        ):
-            return obs
-        elif len(obs.shape) < 2 or obs.shape[-1] != prep.shape[0]:
+        if len(obs.shape) < 2 or obs.shape[-1] != prep.shape[0]:
             raise ValueError(
                 "Expected flattened obs shape of [..., {}], got {}".format(
                     prep.shape[0], obs.shape

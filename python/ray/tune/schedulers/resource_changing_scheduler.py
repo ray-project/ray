@@ -6,7 +6,6 @@ from typing import Dict, Any, List, Optional, Set, Tuple, Union, Callable
 import pickle
 import warnings
 
-from ray.util import log_once
 from ray.util.annotations import PublicAPI, Deprecated
 from ray.tune import trial_runner
 from ray.tune.resources import Resources
@@ -583,6 +582,7 @@ _DistributeResourcesDefault = DistributeResources(add_bundles=False)
 _DistributeResourcesDistributedDefault = DistributeResources(add_bundles=True)
 
 
+# Deprecated: Remove in Ray > 1.13
 @Deprecated
 def evenly_distribute_cpus_gpus(
     trial_runner: "trial_runner.TrialRunner",
@@ -621,18 +621,16 @@ def evenly_distribute_cpus_gpus(
             the function.
     """
 
-    if log_once("evenly_distribute_cpus_gpus_deprecated"):
-        warnings.warn(
-            "DeprecationWarning: `evenly_distribute_cpus_gpus` "
-            "and `evenly_distribute_cpus_gpus_distributed` are "
-            "being deprecated. Use `DistributeResources()` and "
-            "`DistributeResources(add_bundles=False)` instead "
-            "for equivalent functionality."
-        )
-
-    return _DistributeResourcesDefault(trial_runner, trial, result, scheduler)
+    raise DeprecationWarning(
+        "DeprecationWarning: `evenly_distribute_cpus_gpus` "
+        "and `evenly_distribute_cpus_gpus_distributed` are "
+        "being deprecated. Use `DistributeResources()` and "
+        "`DistributeResources(add_bundles=False)` instead "
+        "for equivalent functionality."
+    )
 
 
+# Deprecated: Remove in Ray > 1.13
 @Deprecated
 def evenly_distribute_cpus_gpus_distributed(
     trial_runner: "trial_runner.TrialRunner",
@@ -671,17 +669,12 @@ def evenly_distribute_cpus_gpus_distributed(
             the function.
     """
 
-    if log_once("evenly_distribute_cpus_gpus_deprecated"):
-        warnings.warn(
-            "DeprecationWarning: `evenly_distribute_cpus_gpus` "
-            "and `evenly_distribute_cpus_gpus_distributed` are "
-            "being deprecated. Use `DistributeResources()` and "
-            "`DistributeResources(add_bundles=False)` instead "
-            "for equivalent functionality."
-        )
-
-    return _DistributeResourcesDistributedDefault(
-        trial_runner, trial, result, scheduler
+    raise DeprecationWarning(
+        "DeprecationWarning: `evenly_distribute_cpus_gpus` "
+        "and `evenly_distribute_cpus_gpus_distributed` are "
+        "being deprecated. Use `DistributeResources()` and "
+        "`DistributeResources(add_bundles=False)` instead "
+        "for equivalent functionality."
     )
 
 

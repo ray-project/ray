@@ -11,6 +11,25 @@ py_test(
     deps = [":ml_lib"]
 )
 
+py_test(
+    name = "distributed_sage_example",
+    size = "large",
+    main = "examples/pytorch_geometric/distributed_sage_example.py",
+    srcs = ["examples/pytorch_geometric/distributed_sage_example.py"],
+    tags = ["team:ml", "exclusive", "gpu"],
+    deps = [":ml_lib"],
+    args = ["--use-gpu", "--num-workers=2", "--epochs=1", "--dataset=fake"]
+)
+
+py_test (
+    name = "huggingface_basic_language_modeling_example",
+    size = "medium",
+    srcs = ["examples/huggingface/huggingface_basic_language_modeling_example.py"],
+    args = ["--smoke-test", "--num-epochs 3"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
 py_test (
     name = "lightgbm_example",
     size = "medium",
@@ -173,6 +192,22 @@ py_test(
 )
 
 py_test(
+    name = "test_huggingface_predictor",
+    size = "small",
+    srcs = ["tests/test_huggingface_predictor.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_huggingface_trainer",
+    size = "medium",
+    srcs = ["tests/test_huggingface_trainer.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
     name = "test_lightgbm_predictor",
     size = "small",
     srcs = ["tests/test_lightgbm_predictor.py"],
@@ -200,6 +235,14 @@ py_test(
     name = "test_preprocessors",
     size = "small",
     srcs = ["tests/test_preprocessors.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_rl_predictor",
+    size = "small",
+    srcs = ["tests/test_rl_predictor.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )

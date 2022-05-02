@@ -97,7 +97,7 @@ apex:
         rollout_fragment_length: 20
         train_batch_size: 512
         target_network_update_freq: 50000
-        timesteps_per_iteration: 25000
+        min_sample_timesteps_per_reporting: 25000
 atari-a2c:
     env: BreakoutNoFrameskip-v4
     run: A2C
@@ -140,4 +140,4 @@ atari-basic-dqn:
           final_epsilon: 0.01
         prioritized_replay_alpha: 0.5
         num_gpus: 0.2
-        timesteps_per_iteration: 10000
+        min_sample_timesteps_per_reporting: 10000

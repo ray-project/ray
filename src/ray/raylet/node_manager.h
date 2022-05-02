@@ -57,7 +57,7 @@ using rpc::ResourceUsageBatchData;
 
 struct NodeManagerConfig {
   /// The node's resource configuration.
-  ResourceSet resource_config;
+  ResourceRequest resource_config;
   /// The IP address this node manager is running on.
   std::string node_manager_address;
   /// The port to use for listening to incoming connections. If this is 0 then
@@ -208,6 +208,22 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Stop this node manager.
   void Stop();
 
+  /// Query all of local core worker states.
+  ///
+  /// \param on_replied A callback that's called when each of query RPC is replied.
+  /// \param send_reply_callback A reply callback that will be called when all
+  /// RPCs are replied.
+  /// \param include_memory_info If true, it requires every object ref information
+  /// from all workers.
+  /// \param include_task_info If true, it requires every task metadata information
+  /// from all workers.
+  void QueryAllWorkerStates(
+      const std::function<void(const ray::Status &status,
+                               const rpc::GetCoreWorkerStatsReply &r)> &on_replied,
+      rpc::SendReplyCallback &send_reply_callback,
+      bool include_memory_info,
+      bool include_task_info);
+
  private:
   /// Methods for handling nodes.
 
@@ -232,7 +248,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param createUpdatedResources Created or updated resources.
   /// \return Void.
   void ResourceCreateUpdated(const NodeID &node_id,
-                             const ResourceSet &createUpdatedResources);
+                             const ResourceRequest &createUpdatedResources);
 
   /// Handler for the deletion of a resource in the GCS
   /// \param node_id ID of the node that deleted resources.
@@ -477,6 +493,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                                    rpc::RequestResourceReportReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `GetResourceLoad` request.
+  void HandleGetResourceLoad(const rpc::GetResourceLoadRequest &request,
+                             rpc::GetResourceLoadReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle a `PrepareBundleResources` request.
   void HandlePrepareBundleResources(const rpc::PrepareBundleResourcesRequest &request,
                                     rpc::PrepareBundleResourcesReply *reply,
@@ -561,6 +582,16 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void HandleGetGcsServerAddress(const rpc::GetGcsServerAddressRequest &request,
                                  rpc::GetGcsServerAddressReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle a `HandleGetTasksInfo` request.
+  void HandleGetTasksInfo(const rpc::GetTasksInfoRequest &request,
+                          rpc::GetTasksInfoReply *reply,
+                          rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle a `HandleGetObjectsInfo` request.
+  void HandleGetObjectsInfo(const rpc::GetObjectsInfoRequest &request,
+                            rpc::GetObjectsInfoReply *reply,
+                            rpc::SendReplyCallback send_reply_callback) override;
 
   /// Trigger local GC on each worker of this raylet.
   void DoLocalGC(bool triggered_by_global_gc = false);

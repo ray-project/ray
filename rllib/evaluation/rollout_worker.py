@@ -1442,8 +1442,14 @@ class RolloutWorker(ParallelIteratorWorker):
             `func([policy, pid, **kwargs])`.
         """
         return [
-            func(policy, pid, **kwargs)
-            for pid, policy in self.policy_map.items()
+            # Make sure to only iterate over keys() and not items(). Iterating over
+            # items will access policy_map elements even for pids that we do not need,
+            # i.e. those that are not in policy_to_train. Access to policy_map elements
+            # can cause disk access for policies that were offloaded to disk. Since
+            # these policies will be skipped in the for-loop accessing them is
+            # unnecessary, making subsequent disk access unnecessary.
+            func(self.policy_map[pid], pid, **kwargs)
+            for pid in self.policy_map.keys()
             if self.is_policy_to_train(pid, None)
         ]
 
@@ -1522,7 +1528,7 @@ class RolloutWorker(ParallelIteratorWorker):
                         f"PolicyID '{pid}' was probably added on-the-fly (not"
                         " part of the static `multagent.policies` config) and"
                         " no PolicySpec objects found in the pickled policy "
-                        "state. Will not add `{pid}`, but ignore it for now."
+                        f"state. Will not add `{pid}`, but ignore it for now."
                     )
                 else:
                     self.add_policy(
@@ -1562,8 +1568,14 @@ class RolloutWorker(ParallelIteratorWorker):
         policies = force_list(policies)
 
         return {
-            pid: policy.get_weights()
-            for pid, policy in self.policy_map.items()
+            # Make sure to only iterate over keys() and not items(). Iterating over
+            # items will access policy_map elements even for pids that we do not need,
+            # i.e. those that are not in policies. Access to policy_map elements can
+            # cause disk access for policies that were offloaded to disk. Since these
+            # policies will be skipped in the for-loop accessing them is unnecessary,
+            # making subsequent disk access unnecessary.
+            pid: self.policy_map[pid].get_weights()
+            for pid in self.policy_map.keys()
             if pid in policies
         }
 
@@ -1625,7 +1637,10 @@ class RolloutWorker(ParallelIteratorWorker):
             >>> global_vars = worker.set_global_vars( # doctest: +SKIP
             ...     {"timestep": 4242})
         """
-        self.foreach_policy(lambda p, _: p.on_global_var_update(global_vars))
+        # Only update policies that are being trained in order to avoid superfluous
+        # access of policies which might have been offloaded to disk. This is important
+        # here since global vars are constantly being updated.
+        self.foreach_policy_to_train(lambda p, _: p.on_global_var_update(global_vars))
         self.global_vars = global_vars
 
     @DeveloperAPI
@@ -1794,16 +1809,18 @@ class RolloutWorker(ParallelIteratorWorker):
             env = env_creator(env_ctx)
             # Validate first.
             if not disable_env_checking:
-                logger.warning(
-                    "We've added a module for checking environments that "
-                    "are used in experiments. It will cause your "
-                    "environment to fail if your environment is not set up"
-                    "correctly. You can disable check env by setting "
-                    "`disable_env_checking` to True in your experiment config "
-                    "dictionary. You can run the environment checking module "
-                    "standalone by calling ray.rllib.utils.check_env(env)."
-                )
-                check_env(env)
+                try:
+                    check_env(env)
+                except Exception as e:
+                    logger.warning(
+                        "We've added a module for checking environments that "
+                        "are used in experiments. Your env may not be set up"
+                        "correctly. You can disable env checking for now by setting "
+                        "`disable_env_checking` to True in your experiment config "
+                        "dictionary. You can run the environment checking module "
+                        "standalone by calling ray.rllib.utils.check_env(env)."
+                    )
+                    raise e
             # Custom validation function given by user.
             if validate_env is not None:
                 validate_env(env, env_ctx)
