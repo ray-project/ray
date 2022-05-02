@@ -8,7 +8,7 @@ from enum import Enum, unique
 from ray.util.debug import log_once
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import ExperimentalAPI
-from ray.rllib.utils.deprecation import Deprecated, deprecation_warning, DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.replay_buffers.storage import LocalStorage, InMemoryStorage, OnDiskStorage
 from ray.rllib.utils.typing import SampleBatchType
 
