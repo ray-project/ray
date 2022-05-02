@@ -4,6 +4,7 @@
 import gym
 import numpy as np
 import tree  # pip install dm_tree
+from typing import Optional
 
 import ray
 import ray.experimental.tf_utils
