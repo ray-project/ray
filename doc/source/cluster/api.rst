@@ -1,3 +1,5 @@
+.. _ref-cluster-api:
+
 Ray Cluster API
 ===============
 
