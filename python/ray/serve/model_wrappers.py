@@ -1,8 +1,5 @@
 from typing import Dict, Optional, Type, Union
 
-import numpy as np
-import pandas as pd
-
 from ray._private.utils import import_attr
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.predictor import Predictor
@@ -108,14 +105,6 @@ class ModelWrapper(SimpleSchemaIngress):
     async def predict(self, inp):
         """Perform inference directly without HTTP."""
         results = await self.batched_predict(inp)
-
-        # Convert received data to native python
-        if isinstance(results, np.ndarray):
-            results = results.tolist()
-        elif isinstance(results, np.generic):
-            results = results.item()
-        elif isinstance(results, pd.DataFrame):
-            results = results.to_numpy(copy=False).tolist()
 
         return results
 
