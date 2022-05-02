@@ -57,29 +57,29 @@ Unlike Ray tasks, you are not allowed to call ``ray.get()`` or ``ray.wait()`` on
 
     dag = add.bind(100, one.bind())
 
-Steps
-~~~~~
 
-It takes a single line of code to turn a DAG into a workflow. Each node in the DAG becomes a workflow step.
+Workflows
+~~~~~~~~~
 
-Steps are retried on failure, but once a step finishes successfully it will never be run again.
-
+It takes a single line of code to turn a DAG into a workflow DAG:
 
 .. code-block:: python
-    :caption: Turning the DAG into a workflow:
+    :caption: Turning the DAG into a workflow DAG:
 
     from ray import workflow
 
     output: "Workflow[int]" = workflow.create(dag)
 
-Workflows
-~~~~~~~~~
-A workflow is an execution graph of steps created with ``Workflow.run()`` or ``Workflow.run_async()``. Once started, a workflow's execution is durably logged to storage. On system failure, workflows can be resumed on any Ray cluster with access to the storage.
+Execute the workflow DAG by ``<workflow>.run()`` or ``<workflow>.run_async()``. Once started, a workflow's execution is durably logged to storage. On system failure, workflows can be resumed on any Ray cluster with access to the storage.
+
+When executing the workflow DAG, remote functions are retried on failure, but once they finish successfully and the results are persisted by the workflow engine, they will never be run again.
 
 .. code-block:: python
-    :caption: Creating a new workflow run:
+    :caption: Run the workflow:
 
-    workflow.init(storage="/tmp/data")
+    # configure the storage with "ray.init". A default temporary storage is used by
+    # by the workflow if starting without Ray init.
+    ray.init(storage="/tmp/data")
     assert output.run(workflow_id="run_1") == 101
     assert workflow.get_status("run_1") == workflow.WorkflowStatus.SUCCESSFUL
     assert workflow.get_output("run_1") == 101
@@ -108,7 +108,6 @@ Large data objects can be stored in the Ray object store. References to these ob
     def concat(words: List[ray.ObjectRef]) -> str:
         return " ".join([ray.get(w) for w in words])
 
-    workflow.init()
     assert workflow.create(concat.bind(words.bind())).run() == "hello world"
 
 Dynamic Workflows

@@ -50,12 +50,10 @@ A single line is all you need to turn the previous DAG into a workflow:
     # <follow the previous code>
     from ray import workflow
 
-    # Initialize workflow.
-    workflow.init()
     # Create the workflow from the DAG.
     wf = workflow.create(output)
     # Execute the workflow and print the result.
-    print(output.run())
+    print(wf.run())
 
     # The workflow can also be executed asynchronously.
     # print(ray.get(output.run_async()))
