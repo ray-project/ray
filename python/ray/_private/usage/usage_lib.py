@@ -185,7 +185,13 @@ ray.worker._post_init_hooks.append(_put_pre_init_library_usages)
 def _usage_stats_report_url():
     # The usage collection server URL.
     # The environment variable is testing-purpose only.
-    return os.getenv("RAY_USAGE_STATS_REPORT_URL", "https://usage-stats.ray.io/")
+    default_url = "https://usage-stats.ray.io/"
+    if ray.__commit__ == "{{RAY_COMMIT_SHA}}":
+        # By default, don't send dev usage report to the server.
+        default_url = "http://127.0.0.1:8000"
+    url = os.getenv("RAY_USAGE_STATS_REPORT_URL", default_url)
+    assert url != "https://usage-stats.ray.io/"
+    return url
 
 
 def _usage_stats_report_interval_s():
