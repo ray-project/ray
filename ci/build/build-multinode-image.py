@@ -16,7 +16,7 @@ def build_multinode_image(source_image: str, target_image: str):
     dockerfile = os.path.join(tempdir, "Dockerfile")
     with open(dockerfile, "wt") as f:
         f.write(f"FROM {source_image}\n")
-        f.write("ENV RAY_USAGE_STATS_REPORT_URL=http://127.0.0.1:8000")
+        f.write("ENV RAY_USAGE_STATS_REPORT_URL=http://127.0.0.1:8000\n")
         f.write("RUN sudo apt update\n")
         f.write("RUN sudo apt install -y openssh-server\n")
 
