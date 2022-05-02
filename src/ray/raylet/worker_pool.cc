@@ -1361,7 +1361,6 @@ void WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
     if (!RemoveWorker(it->second.alive_started_workers, worker)) {
       it->second.num_starting_workers--;
     }
-    it->second.alive_started_workers.erase(worker);
     if (it->second.alive_started_workers.size() == 0 &&
         it->second.num_starting_workers == 0) {
       DeleteRuntimeEnvIfPossible(it->second.runtime_env_info.serialized_runtime_env());
