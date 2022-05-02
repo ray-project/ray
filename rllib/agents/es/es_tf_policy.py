@@ -19,8 +19,13 @@ from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, unbat
 tf1, tf, tfv = try_import_tf()
 
 
-def rollout(policy: Policy, env: gym.Env, timestep_limit: Optional[int] = None,
-            add_noise: bool = False, offset: float = 0.0):
+def rollout(
+    policy: Policy,
+    env: gym.Env,
+    timestep_limit: Optional[int] = None,
+    add_noise: bool = False,
+    offset: float = 0.0,
+):
     """Do a rollout.
 
     If add_noise is True, the rollout will take noisy actions with
