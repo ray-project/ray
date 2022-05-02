@@ -190,7 +190,7 @@ TEST_P(DirectActorSubmitterTest, TestQueueingWarning) {
   for (int i = 0; i < 7500; i++) {
     auto task = CreateActorTaskHelper(actor_id, worker_id, i);
     ASSERT_TRUE(CheckSubmitTask(task));
-    worker_client_->acked_seqno = i;
+    ASSERT_TRUE(worker_client_->ReplyPushTask());
   }
   ASSERT_EQ(last_queue_warning_, 0);
 
@@ -199,24 +199,14 @@ TEST_P(DirectActorSubmitterTest, TestQueueingWarning) {
     ASSERT_TRUE(CheckSubmitTask(task));
     /* no ack */
   }
-  // TODO(ekl) support warning when true.
-  // https://github.com/ray-project/ray/issues/22278
-  if (execute_out_of_order) {
-    ASSERT_EQ(last_queue_warning_, 0);
-  } else {
-    ASSERT_EQ(last_queue_warning_, 5000);
-  }
+  ASSERT_EQ(last_queue_warning_, 5000);
 
   for (int i = 15000; i < 35000; i++) {
     auto task = CreateActorTaskHelper(actor_id, worker_id, i);
     ASSERT_TRUE(CheckSubmitTask(task));
     /* no ack */
   }
-  if (execute_out_of_order) {
-    ASSERT_EQ(last_queue_warning_, 0);
-  } else {
-    ASSERT_EQ(last_queue_warning_, 20000);
-  }
+  ASSERT_EQ(last_queue_warning_, 20000);
 }
 
 TEST_P(DirectActorSubmitterTest, TestDependencies) {

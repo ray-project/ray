@@ -455,19 +455,22 @@ COMMON_CONFIG: TrainerConfigDict = {
     "metrics_episode_collection_timeout_s": 180,
     # Smooth metrics over this many episodes.
     "metrics_num_episodes_for_smoothing": 100,
-    # Minimum time interval to run one `train()` call for:
-    # If - after one `step_attempt()`, this time limit has not been reached,
-    # will perform n more `step_attempt()` calls until this minimum time has
-    # been consumed. Set to None or 0 for no minimum time.
-    "min_time_s_per_reporting": None,
-    # Minimum train/sample timesteps to optimize for per `train()` call.
-    # This value does not affect learning, only the length of train iterations.
+    # Minimum time interval over which to accumulate within a single `train()` call.
+    # This value does not affect learning, only the number of times
+    # `self.step_attempt()` is called by `self.train()`.
+    # If - after one `step_attempt()`, the time limit has not been reached,
+    # will perform n more `step_attempt()` calls until this minimum time has been
+    # consumed. Set to 0 for no minimum time.
+    "min_time_s_per_reporting": 0,
+    # Minimum train/sample timesteps to accumulate within a single `train()` call.
+    # This value does not affect learning, only the number of times
+    # `self.step_attempt()` is called by `self.train()`.
     # If - after one `step_attempt()`, the timestep counts (sampling or
     # training) have not been reached, will perform n more `step_attempt()`
     # calls until the minimum timesteps have been executed.
-    # Set to None or 0 for no minimum timesteps.
-    "min_train_timesteps_per_reporting": None,
-    "min_sample_timesteps_per_reporting": None,
+    # Set to 0 for no minimum timesteps.
+    "min_train_timesteps_per_reporting": 0,
+    "min_sample_timesteps_per_reporting": 0,
 
     # This argument, in conjunction with worker_index, sets the random seed of
     # each worker, so that identically configured trials will have identical
@@ -676,7 +679,7 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Use `metrics_num_episodes_for_smoothing` instead.
     "metrics_smoothing_episodes": DEPRECATED_VALUE,
     # Use `min_[env|train]_timesteps_per_reporting` instead.
-    "timesteps_per_iteration": 0,
+    "timesteps_per_iteration": DEPRECATED_VALUE,
     # Use `min_time_s_per_reporting` instead.
     "min_iter_time_s": DEPRECATED_VALUE,
     # Use `metrics_episode_collection_timeout_s` instead.
@@ -2497,7 +2500,7 @@ class Trainer(Trainable):
                 new="min_time_s_per_reporting",
                 error=False,
             )
-            config["min_time_s_per_reporting"] = config["min_iter_time_s"]
+            config["min_time_s_per_reporting"] = config["min_iter_time_s"] or 0
 
         if config["collect_metrics_timeout"] != DEPRECATED_VALUE:
             # TODO: Warn once all algos use the `training_iteration` method.
@@ -2511,15 +2514,15 @@ class Trainer(Trainable):
             ]
 
         if config["timesteps_per_iteration"] != DEPRECATED_VALUE:
-            # TODO: Warn once all algos use the `training_iteration` method.
-            # deprecation_warning(
-            #     old="timesteps_per_iteration",
-            #     new="min_sample_timesteps_per_reporting",
-            #     error=False,
-            # )
-            config["min_sample_timesteps_per_reporting"] = config[
-                "timesteps_per_iteration"
-            ]
+            deprecation_warning(
+                old="timesteps_per_iteration",
+                new="`min_sample_timesteps_per_reporting` OR "
+                "`min_train_timesteps_per_reporting`",
+                error=False,
+            )
+            config["min_sample_timesteps_per_reporting"] = (
+                config["timesteps_per_iteration"] or 0
+            )
 
         # Evaluation settings.
 

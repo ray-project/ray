@@ -27,7 +27,6 @@ from ray.internal import storage
 from ray._private.gcs_utils import GcsClient
 from ray._private.resource_spec import ResourceSpec
 from ray._private.utils import try_to_create_directory, try_to_symlink, open_log
-import ray._private.usage.usage_lib as ray_usage_lib
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray configures it by default automatically
@@ -347,6 +346,8 @@ class Node:
         Raises:
             Exception: An exception is raised if there is a version mismatch.
         """
+        import ray._private.usage.usage_lib as ray_usage_lib
+
         cluster_metadata = ray_usage_lib.get_cluster_metadata(
             self.get_gcs_client(), num_retries=NUM_REDIS_GET_RETRIES
         )
@@ -1054,6 +1055,8 @@ class Node:
         Check `usage_stats_head.py` for more details.
         """
         # Make sure the cluster metadata wasn't reported before.
+        import ray._private.usage.usage_lib as ray_usage_lib
+
         ray_usage_lib.put_cluster_metadata(self.get_gcs_client(), NUM_REDIS_GET_RETRIES)
 
     def start_head_processes(self):

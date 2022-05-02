@@ -164,7 +164,7 @@ RAY_CONFIG(uint64_t, actor_creation_min_retries, 3)
 
 /// Warn if more than this many tasks are queued for submission to an actor.
 /// It likely indicates a bug in the user code.
-RAY_CONFIG(int64_t, actor_excess_queueing_warn_threshold, 5000)
+RAY_CONFIG(uint64_t, actor_excess_queueing_warn_threshold, 5000)
 
 /// When trying to resolve an object, the initial period that the raylet will
 /// wait before contacting the object's owner to check if the object is still
@@ -342,7 +342,7 @@ RAY_CONFIG(uint64_t, gcs_service_address_check_interval_milliseconds, 1000)
 RAY_CONFIG(int64_t, metrics_report_batch_size, 100)
 
 /// Whether or not we enable metrics collection.
-RAY_CONFIG(int64_t, enable_metrics_collection, true)
+RAY_CONFIG(bool, enable_metrics_collection, true)
 
 // Max number bytes of inlined objects in a task rpc request/response.
 RAY_CONFIG(int64_t, task_rpc_inlined_bytes_limit, 10 * 1024 * 1024)
