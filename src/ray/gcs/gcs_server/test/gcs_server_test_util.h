@@ -22,7 +22,6 @@
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/gcs_client/accessor.h"
-#include "ray/gcs/gcs_server/gcs_actor_distribution.h"
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
@@ -107,6 +106,9 @@ struct GcsServerMocker {
     bool GrantWorkerLease() {
       return GrantWorkerLease("", 0, WorkerID::FromRandom(), node_id, NodeID::Nil());
     }
+
+    void GetResourceLoad(
+        const ray::rpc::ClientCallback<ray::rpc::GetResourceLoadReply> &) override {}
 
     // Trigger reply to RequestWorkerLease.
     bool GrantWorkerLease(const std::string &address,
@@ -308,38 +310,9 @@ struct GcsServerMocker {
     std::list<rpc::ClientCallback<rpc::CancelResourceReserveReply>> return_callbacks = {};
   };
 
-  class MockedRayletBasedActorScheduler : public gcs::RayletBasedActorScheduler {
+  class MockedGcsActorScheduler : public gcs::GcsActorScheduler {
    public:
-    using gcs::RayletBasedActorScheduler::RayletBasedActorScheduler;
-
-    void TryLeaseWorkerFromNodeAgain(std::shared_ptr<gcs::GcsActor> actor,
-                                     std::shared_ptr<rpc::GcsNodeInfo> node) {
-      DoRetryLeasingWorkerFromNode(std::move(actor), std::move(node));
-    }
-
-   protected:
-    void RetryLeasingWorkerFromNode(std::shared_ptr<gcs::GcsActor> actor,
-                                    std::shared_ptr<rpc::GcsNodeInfo> node) override {
-      ++num_retry_leasing_count_;
-      if (num_retry_leasing_count_ <= 1) {
-        DoRetryLeasingWorkerFromNode(actor, node);
-      }
-    }
-
-    void RetryCreatingActorOnWorker(std::shared_ptr<gcs::GcsActor> actor,
-                                    std::shared_ptr<GcsLeasedWorker> worker) override {
-      ++num_retry_creating_count_;
-      DoRetryCreatingActorOnWorker(actor, worker);
-    }
-
-   public:
-    int num_retry_leasing_count_ = 0;
-    int num_retry_creating_count_ = 0;
-  };
-
-  class MockedGcsBasedActorScheduler : public gcs::GcsBasedActorScheduler {
-   public:
-    using gcs::GcsBasedActorScheduler::GcsBasedActorScheduler;
+    using gcs::GcsActorScheduler::GcsActorScheduler;
 
     void TryLeaseWorkerFromNodeAgain(std::shared_ptr<gcs::GcsActor> actor,
                                      std::shared_ptr<rpc::GcsNodeInfo> node) {

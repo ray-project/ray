@@ -709,7 +709,7 @@ def append_short_test_summary(rep):
         return
 
     if not os.path.exists(summary_dir):
-        os.makedirs(summary_dir)
+        os.makedirs(summary_dir, exist_ok=True)
 
     test_name = rep.nodeid.replace(os.sep, "::")
 
@@ -720,10 +720,6 @@ def append_short_test_summary(rep):
         # The test succeeded after failing, thus it is flaky.
         # We do not want to annotate flaky tests just now, so remove report.
         os.remove(summary_file)
-
-        # If there is only the header file left, remove directory
-        if len(os.listdir(summary_dir)) <= 1:
-            shutil.rmtree(summary_dir)
         return
 
     # Only consider failed tests from now on

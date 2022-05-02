@@ -57,6 +57,7 @@ from ray.serve.context import (
     get_internal_replica_context,
     ReplicaContext,
 )
+from ray._private.usage import usage_lib
 
 logger = logging.getLogger(__file__)
 
@@ -108,6 +109,8 @@ def start(
         dedicated_cpu (bool): Whether to reserve a CPU core for the internal
           Serve controller actor.  Defaults to False.
     """
+    usage_lib.record_library_usage("serve")
+
     http_deprecated_args = ["http_host", "http_port", "http_middlewares"]
     for key in http_deprecated_args:
         if key in kwargs:
@@ -176,7 +179,7 @@ def start(
             )
         except ray.exceptions.GetTimeoutError:
             raise TimeoutError(
-                "HTTP proxies not available after {HTTP_PROXY_TIMEOUT}s."
+                f"HTTP proxies not available after {HTTP_PROXY_TIMEOUT}s."
             )
 
     client = ServeControllerClient(

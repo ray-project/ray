@@ -43,6 +43,10 @@ from ray.tune.schedulers import create_scheduler
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.utils.trainable import with_parameters
 
+from ray._private.usage import usage_lib
+
+usage_lib.record_library_usage("tune")
+
 __all__ = [
     "Trainable",
     "DurableTrainable",
