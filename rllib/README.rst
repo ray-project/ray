@@ -58,10 +58,10 @@ Algorithms Supported
 
 Offline RL:  
 
-- :ref:`Behavior Cloning (BC; derived from MARWIL implementation) <bc>`
-- :ref:`Conservative Q-Learning (CQL) <cql>`
-- :ref:`Importance Sampling, Weighted Importance Sampling (OPE) <is>`
-- :ref:`Monotonic Advantage Re-Weighted Imitation Learning (MARWIL) <marwil>`
+- `Behavior Cloning (BC; derived from MARWIL implementation) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#bc>`__ 
+- `Conservative Q-Learning (CQL) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#cql>`__ 
+- `Importance Sampling and Weighted Importance Sampling (OPE) <https://docs.ray.io/en/latest/rllib/rllib-offline.html#is>`__ 
+- `Monotonic Advantage Re-Weighted Imitation Learning (MARWIL) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#marwil>`__ 
 
 Model-free RL: 
 
@@ -71,21 +71,16 @@ Model-free RL:
   - `Decentralized Distributed Proximal Policy Optimization (DD-PPO)  <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#ddppo>`__ 
   - `Proximal Policy Optimization (PPO) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#ppo>`__ 
   - `Importance Weighted Actor-Learner Architecture (IMPALA) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#impala>`__   
-  - `Advantage Actor-Critic (A2C) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#a3c>`__ 
-  - `Advantage Actor-Critic (A3C) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#a3c>`__ 
+  - `Advantage Actor-Critic (A2C, A3C) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#a3c>`__ 
   - `Vanilla Policy Gradient (PG) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#pg>`__ 
   - `Model-agnostic Meta-Learning (contrib/MAML) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#maml>`__ 
 
 - Off-policy:
 
-  - `Distributed Prioritized Experience Replay (Ape-X DQN)] <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#apex>`__ 
-  - `Distributed Prioritized Experience Replay (Ape-X DDPG)] <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#apex>`__ 
+  - `Distributed Prioritized Experience Replay (Ape-X DQN, Ape-X DDPG)] <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#apex>`__ 
   - `Recurrent Replay Distributed DQN (R2D2) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#r2d2>`__ 
-  - `Deep Q Networks (DQN) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#dqn>`__ 
-  - `Deep Q Networks (Rainbow) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#dqn>`__ 
-  - `Deep Q Networks (Parametric DQN) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#dqn>`__ 
-  - `Deep Deterministic Policy Gradients (DDPG) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#ddpg>`__ 
-  - `Deep Deterministic Policy Gradients (TD3) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#ddpg>`__ 
+  - `Deep Q Networks (DQN, Rainbow, Parametric DQN) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#dqn>`__ 
+  - `Deep Deterministic Policy Gradients (DDPG, TD3) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#ddpg>`__ 
   - `Soft Actor Critic (SAC) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#sac>`__ 
 
 Model-based RL: 
@@ -111,9 +106,7 @@ Multi-agent:
 
 - `Single-Player Alpha Zero (contrib/AlphaZero)  <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#alphazero>`__ 
 - `Parameter Sharing <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#parameter>`__ 
-- `QMIX Monotonic Value Factorisation (QMIX)) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#qmix>`__ 
-- `QMIX Monotonic Value Factorisation (VDN)  <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#qmix>`__ 
-- `QMIX Monotonic Value Factorisation (IQN) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#qmix>`__ 
+- `QMIX Monotonic Value Factorisation (QMIX, VDN, IQN)) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#qmix>`__ 
 - `Multi-Agent Deep Deterministic Policy Gradient (contrib/MADDPG) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#maddpg>`__ 
 - `Shared Critic Methods <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#sc>`__ 
 
