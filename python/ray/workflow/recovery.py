@@ -13,7 +13,6 @@ from ray.workflow.common import (
 )
 from ray.workflow import workflow_storage
 from ray.workflow.step_function import WorkflowStepFunction
-from ray._private.ray_logging import get_worker_log_file_name, configure_log_file
 
 
 class WorkflowStepNotRecoverableError(Exception):
@@ -172,38 +171,33 @@ def _resume_workflow_step_executor(
     step_id: "StepID",
     current_output: [ray.ObjectRef],
 ) -> Tuple[ray.ObjectRef, ray.ObjectRef]:
-    # Re-configure log file to send logs to correct driver.
-    node = ray.worker._global_node
-    out_file, err_file = node.get_log_file_handles(
-        get_worker_log_file_name("WORKER", job_id)
-    )
-    configure_log_file(out_file, err_file)
-    # TODO (yic): We need better dependency management for virtual actor
-    # The current output will always be empty for normal workflow
-    # For virtual actor, if it's not empty, it means the previous job is
-    # running. This is a really bad one.
-    for ref in current_output:
+    with workflow_context.workflow_logging_context(job_id):
+        # TODO (yic): We need better dependency management for virtual actor
+        # The current output will always be empty for normal workflow
+        # For virtual actor, if it's not empty, it means the previous job is
+        # running. This is a really bad one.
+        for ref in current_output:
+            try:
+                while isinstance(ref, ray.ObjectRef):
+                    ref = ray.get(ref)
+            except Exception:
+                pass
         try:
-            while isinstance(ref, ray.ObjectRef):
-                ref = ray.get(ref)
-        except Exception:
-            pass
-    try:
-        wf_store = workflow_storage.WorkflowStorage(workflow_id)
-        r = _construct_resume_workflow_from_step(wf_store, step_id, {})
-    except Exception as e:
-        raise WorkflowNotResumableError(workflow_id) from e
+            wf_store = workflow_storage.WorkflowStorage(workflow_id)
+            r = _construct_resume_workflow_from_step(wf_store, step_id, {})
+        except Exception as e:
+            raise WorkflowNotResumableError(workflow_id) from e
 
-    if isinstance(r, Workflow):
-        with workflow_context.workflow_step_context(
-            workflow_id, last_step_of_workflow=True
-        ):
-            from ray.workflow.step_executor import execute_workflow
+        if isinstance(r, Workflow):
+            with workflow_context.workflow_step_context(
+                workflow_id, last_step_of_workflow=True
+            ):
+                from ray.workflow.step_executor import execute_workflow
 
-            result = execute_workflow(job_id, r)
-            return result.persisted_output, result.volatile_output
-    assert isinstance(r, StepID)
-    return wf_store.load_step_output(r), None
+                result = execute_workflow(job_id, r)
+                return result.persisted_output, result.volatile_output
+        assert isinstance(r, StepID)
+        return wf_store.load_step_output(r), None
 
 
 def resume_workflow_step(

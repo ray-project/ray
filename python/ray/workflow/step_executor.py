@@ -6,7 +6,6 @@ from typing import List, Tuple, Any, Dict, Callable, Optional, TYPE_CHECKING, Un
 import ray
 from ray import ObjectRef
 from ray._private import signature
-from ray._private.ray_logging import get_worker_log_file_name, configure_log_file
 
 from ray.workflow import workflow_context
 from ray.workflow import recovery
@@ -546,15 +545,10 @@ def _workflow_step_executor_remote(
     runtime_options: "WorkflowStepRuntimeOptions",
 ) -> Any:
     """The remote version of '_workflow_step_executor'."""
-    # Re-configure log file to send logs to correct driver.
-    node = ray.worker._global_node
-    out_file, err_file = node.get_log_file_handles(
-        get_worker_log_file_name("WORKER", job_id)
-    )
-    configure_log_file(out_file, err_file)
-    return _workflow_step_executor(
-        func, context, job_id, step_id, baked_inputs, runtime_options
-    )
+    with workflow_context.workflow_logging_context(job_id):
+        return _workflow_step_executor(
+            func, context, job_id, step_id, baked_inputs, runtime_options
+        )
 
 
 def _workflow_wait_executor(
@@ -608,15 +602,10 @@ def _workflow_wait_executor_remote(
     runtime_options: "WorkflowStepRuntimeOptions",
 ) -> Any:
     """The remote version of '_workflow_wait_executor'"""
-    # Re-configure log file to send logs to correct driver.
-    node = ray.worker._global_node
-    out_file, err_file = node.get_log_file_handles(
-        get_worker_log_file_name("WORKER", job_id)
-    )
-    configure_log_file(out_file, err_file)
-    return _workflow_wait_executor(
-        func, context, job_id, step_id, baked_inputs, runtime_options
-    )
+    with workflow_context.workflow_logging_context(job_id):
+        return _workflow_wait_executor(
+            func, context, job_id, step_id, baked_inputs, runtime_options
+        )
 
 
 class _SelfDereference:
