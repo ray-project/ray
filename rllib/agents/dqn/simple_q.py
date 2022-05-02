@@ -10,7 +10,7 @@ See `simple_q_[tf|torch]_policy.py` for the definition of the policy loss.
 """
 
 import logging
-from typing import Optional, Type, List, Union
+from typing import List, Optional, Type, Union
 
 from ray.rllib.agents.dqn.simple_q_tf_policy import SimpleQTFPolicy
 from ray.rllib.agents.dqn.simple_q_torch_policy import SimpleQTorchPolicy
