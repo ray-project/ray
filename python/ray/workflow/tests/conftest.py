@@ -50,6 +50,7 @@ def workflow_start_regular_shared(storage_type, request):
 
 @pytest.fixture(scope="function")
 def workflow_start_cluster(storage_type, request):
+    # This code follows the design of "call_ray_start" fixture.
     with simulate_storage(storage_type) as storage_url:
         utils.clear_marks()
         parameter = getattr(
