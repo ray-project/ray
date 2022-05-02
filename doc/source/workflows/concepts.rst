@@ -148,7 +148,7 @@ Virtual actors have their state durably logged to workflow storage. This enables
             self.count += 1
             return self.count
 
-    workflow.init(storage="/tmp/data")
+    ray.init(storage="/tmp/data")
     c1 = Counter.get_or_create("counter_1")
     assert c1.incr.run() == 1
     assert c1.incr.run() == 2
