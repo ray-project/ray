@@ -302,7 +302,7 @@ class WandbLoggerCallback(LoggerCallback):
 
     def __init__(
         self,
-        project: str,
+        project: Optional[str] = None,
         group: Optional[str] = None,
         api_key_file: Optional[str] = None,
         api_key: Optional[str] = None,
@@ -326,6 +326,12 @@ class WandbLoggerCallback(LoggerCallback):
             os.path.expanduser(self.api_key_path) if self.api_key_path else None
         )
         _set_api_key(self.api_key_file, self.api_key)
+        if os.environ.get("WANDB_PROJECT_NAME"):
+            self.project = os.environ.get("WANDB_PROJECT_NAME")
+        if not self.project:
+            raise ValueError("Please pass `project_name` as argument or through WANDB_PROJECT_NAME")
+        if os.environ.get("WANDB_GROUP_NAME"):
+            self.group = os.environ.get("WANDB_GROUP_NAME")
         wandb.require("service")
         wandb.setup()
 
