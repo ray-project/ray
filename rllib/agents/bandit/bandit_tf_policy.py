@@ -86,15 +86,19 @@ def validate_spaces(
     """
     # Only support single Box or single Discrete spaces.
     if not isinstance(action_space, gym.spaces.Discrete):
-        msg = f"Action space ({action_space}) of {policy} is not supported for " \
-              f"Bandit algorithms. Must be `Discrete`."
+        msg = (
+            f"Action space ({action_space}) of {policy} is not supported for "
+            f"Bandit algorithms. Must be `Discrete`."
+        )
         # Hint at using the MultiDiscrete to Discrete wrapper for Bandits.
         if isinstance(action_space, gym.spaces.MultiDiscrete):
-            msg += " Try to wrap your environment with the " \
-                   "`ray.rllib.env.wrappers.recsim::" \
-                   "MultiDiscreteToDiscreteActionWrapper` class: `tune.register_env(" \
-                   "[some str], lambda ctx: MultiDiscreteToDiscreteActionWrapper(" \
-                   "[your gym env])); config = {'env': [some str]}`"
+            msg += (
+                " Try to wrap your environment with the "
+                "`ray.rllib.env.wrappers.recsim::"
+                "MultiDiscreteToDiscreteActionWrapper` class: `tune.register_env("
+                "[some str], lambda ctx: MultiDiscreteToDiscreteActionWrapper("
+                "[your gym env])); config = {'env': [some str]}`"
+            )
         raise UnsupportedSpaceException(msg)
 
 
