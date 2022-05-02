@@ -268,23 +268,6 @@ class DDPGConfig(TrainerConfig):
         return self
 
 
-# Deprecated: Use ray.rllib.agents.ddpg.DDPGConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(DDPGConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.agents.ddpg.ddpg::DEFAULT_CONFIG",
-        new="ray.rllib.agents.ddpg.ddpg.DDPGConfig(...)",
-        error=False,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()
-
-
 class DDPGTrainer(SimpleQTrainer):
     @classmethod
     @override(SimpleQTrainer)
@@ -336,3 +319,20 @@ class DDPGTrainer(SimpleQTrainer):
                     "Worker side prioritization is not supported when "
                     "prioritized_replay=False."
                 )
+
+
+# Deprecated: Use ray.rllib.agents.ddpg.DDPGConfig instead!
+class _deprecated_default_config(dict):
+    def __init__(self):
+        super().__init__(DDPGConfig().to_dict())
+
+    @Deprecated(
+        old="ray.rllib.agents.ddpg.ddpg::DEFAULT_CONFIG",
+        new="ray.rllib.agents.ddpg.ddpg.DDPGConfig(...)",
+        error=False,
+    )
+    def __getitem__(self, item):
+        return super().__getitem__(item)
+
+
+DEFAULT_CONFIG = _deprecated_default_config()

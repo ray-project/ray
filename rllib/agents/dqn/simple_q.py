@@ -72,6 +72,7 @@ class SimpleQConfig(TrainerConfig):
         >>> config.training(replay_buffer_config=replay_config)\
         ...       .resources(num_gpus=1)\
         ...       .rollouts(num_rollout_workers=3)
+
     Example:
         >>> from ray.rllib.agents.dqn import SimpleQConfig
         from ray import tune
@@ -236,23 +237,6 @@ class SimpleQConfig(TrainerConfig):
         return self
 
 
-# Deprecated: Use ray.rllib.agents.dqn.simple_q.SimpleQConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(SimpleQConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.agents.dqn.simple_q.DEFAULT_CONFIG",
-        new="ray.rllib.agents.dqn.simple_q.SimpleQConfig(...)",
-        error=False,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()
-
-
 class SimpleQTrainer(Trainer):
     @classmethod
     @override(Trainer)
@@ -412,3 +396,20 @@ class SimpleQTrainer(Trainer):
         )
 
         return StandardMetricsReporting(train_op, workers, config)
+
+
+# Deprecated: Use ray.rllib.agents.dqn.simple_q.SimpleQConfig instead!
+class _deprecated_default_config(dict):
+    def __init__(self):
+        super().__init__(SimpleQConfig().to_dict())
+
+    @Deprecated(
+        old="ray.rllib.agents.dqn.simple_q.DEFAULT_CONFIG",
+        new="ray.rllib.agents.dqn.simple_q.SimpleQConfig(...)",
+        error=False,
+    )
+    def __getitem__(self, item):
+        return super().__getitem__(item)
+
+
+DEFAULT_CONFIG = _deprecated_default_config()

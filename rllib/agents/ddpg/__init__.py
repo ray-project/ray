@@ -5,8 +5,8 @@ from ray.rllib.agents.ddpg.td3 import TD3Trainer
 
 __all__ = [
     "ApexDDPGTrainer",
-    "DDPGTrainer",
     "DDPGConfig",
+    "DDPGTrainer",
     "DEFAULT_CONFIG",
     "TD3Trainer",
 ]
