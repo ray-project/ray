@@ -26,7 +26,7 @@ class TestApexDQN(unittest.TestCase):
         config["num_gpus"] = 0
         config["learning_starts"] = 1000
         config["prioritized_replay"] = True
-        config["timesteps_per_iteration"] = 100
+        config["min_sample_timesteps_per_reporting"] = 100
         config["min_time_s_per_reporting"] = 1
         config["optimizer"]["num_replay_buffer_shards"] = 1
         for _ in framework_iterator(config):
@@ -43,7 +43,7 @@ class TestApexDQN(unittest.TestCase):
         config["num_gpus"] = 0
         config["learning_starts"] = 1000
         config["prioritized_replay"] = True
-        config["timesteps_per_iteration"] = 100
+        config["min_sample_timesteps_per_reporting"] = 100
         config["min_time_s_per_reporting"] = 1
         config["optimizer"]["num_replay_buffer_shards"] = 1
 
@@ -94,7 +94,7 @@ class TestApexDQN(unittest.TestCase):
             # Epsilon to add to the TD errors when updating priorities.
             "prioritized_replay_eps": 1e-6,
         }
-        config["timesteps_per_iteration"] = 10
+        config["min_sample_timesteps_per_reporting"] = 10
         # 0 metrics reporting delay, this makes sure timestep,
         # which lr depends on, is updated after each worker rollout.
         config["min_time_s_per_reporting"] = 0
