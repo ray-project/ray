@@ -344,14 +344,14 @@ class RolloutWorker(ParallelIteratorWorker):
                 DefaultCallbacks for training/policy/rollout-worker callbacks.
             input_creator: Function that returns an InputReader object for
                 loading previous generated experiences.
-            input_evaluation: How to evaluate the policy
-                performance. This only makes sense to set when the input is
-                reading offline data. Available options:
-                - "simulation": Run the environment in the background, but use
+            input_evaluation: How to evaluate the policy performance. Setting this only
+                makes sense when the input is reading offline data.
+                Available options:
+                - "simulation" (str): Run the environment in the background, but use
                 this data for evaluation only and not for learning.
-                - Any subclass of OffPolicyEstimator, e.g.
-                ray.rllib.offline.estimators::ImportanceSampling or your own
-                custom subclass.
+                - Any subclass (type) of the OffPolicyEstimator API class, e.g.
+                `ray.rllib.offline.estimators.importance_sampling::ImportanceSampling`
+                or your own custom subclass.
             output_creator: Function that returns an OutputWriter object for
                 saving generated experiences.
             remote_worker_envs: If using num_envs_per_worker > 1,
