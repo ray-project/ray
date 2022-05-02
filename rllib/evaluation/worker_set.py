@@ -710,7 +710,8 @@ class WorkerSet:
         local_worker = self.local_worker()
         if local_worker is not None:
             return [
-                pid for pid in local_worker.policy_map.keys()
+                pid
+                for pid in local_worker.policy_map.keys()
                 if local_worker.is_policy_to_train(pid, None)
             ]
         else:
