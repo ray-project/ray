@@ -971,9 +971,10 @@ class SimpleListCollector(SampleCollector):
             if collector.agent_steps > 0:
                 ma_batch[pid] = collector.build()
         # Create the batch.
-        ma_batch = MultiAgentBatch.wrap_as_needed(
-            ma_batch, env_steps=episode.batch_builder.env_steps
-        )
+        ma_batch = MultiAgentBatch(policy_batches=ma_batch, env_steps=episode.batch_builder.env_steps)
+        #ma_batch = MultiAgentBatch.wrap_as_needed(
+        #    ma_batch, env_steps=episode.batch_builder.env_steps
+        #)
 
         # PolicyCollectorGroup is empty.
         episode.batch_builder.env_steps = 0
