@@ -61,7 +61,7 @@ Offline RL:
 - :ref:`Behavior Cloning (BC; derived from MARWIL implementation)<bc>`
 - :ref:`Conservative Q-Learning (CQL)<cql>`
 - :ref:`Importance Sampling, Weighted Importance Sampling (OPE)<is>`
-- :ref:`Monotonic Advantage Re-Weighted Imitation Learning (MARWIL)<marwil>`
+-:ref:`Monotonic Advantage Re-Weighted Imitation Learning (MARWIL)<marwil>`
 
 Model-free RL: 
 
