@@ -468,7 +468,7 @@ COMMON_CONFIG: TrainerConfigDict = {
     # If - after one `step_attempt()`, the timestep counts (sampling or
     # training) have not been reached, will perform n more `step_attempt()`
     # calls until the minimum timesteps have been executed.
-    # Set to None or 0 for no minimum timesteps.
+    # Set to 0 for no minimum timesteps.
     "min_train_timesteps_per_reporting": 0,
     "min_sample_timesteps_per_reporting": 0,
 

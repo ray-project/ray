@@ -116,6 +116,11 @@ APEX_DEFAULT_CONFIG = merge_dicts(
         "train_batch_size": 512,
         "rollout_fragment_length": 50,
         "target_network_update_freq": 500000,
+        # Minimum env sampling timesteps to accumulate within a single `train()` call. This
+        # value does not affect learning, only the number of times `Trainer.step_attempt()`
+        # is called by `Trauber.train()`. If - after one `step_attempt()`, the env sampling
+        # timestep count has not been reached, will perform n more `step_attempt()` calls
+        # until the minimum timesteps have been executed. Set to 0 for no minimum timesteps.
         "min_sample_timesteps_per_reporting": 25000,
         "exploration_config": {"type": "PerWorkerEpsilonGreedy"},
         "worker_side_prioritization": True,

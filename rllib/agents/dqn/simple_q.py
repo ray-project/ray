@@ -78,8 +78,11 @@ DEFAULT_CONFIG = with_common_config({
         "explore": False,
     },
 
-    # Minimum env steps to optimize for per train call. This value does
-    # not affect learning, only the length of iterations.
+    # Minimum env sampling timesteps to accumulate within a single `train()` call. This
+    # value does not affect learning, only the number of times `Trainer.step_attempt()`
+    # is called by `Trauber.train()`. If - after one `step_attempt()`, the env sampling
+    # timestep count has not been reached, will perform n more `step_attempt()` calls
+    # until the minimum timesteps have been executed. Set to 0 for no minimum timesteps.
     "min_sample_timesteps_per_reporting": 1000,
     # Update the target network every `target_network_update_freq` steps.
     "target_network_update_freq": 500,
