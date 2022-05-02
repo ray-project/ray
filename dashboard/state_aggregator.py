@@ -227,7 +227,18 @@ class StateAPIManager:
                 result.append(data)
 
         # Sort to make the output deterministic.
-        result.sort(key=lambda entry: entry["ref_cnt"])
+        def sort_func(entry):
+            # If creation time is not there yet (runtime env is failed
+            # to be created or not created yet, they are the highest priority.
+            # Otherwise, "bigger" creation time is coming first.
+            if "creation_time_ms" not in entry:
+                return float("inf")
+            elif entry["creation_time_ms"] is None:
+                return float("inf")
+            else:
+                return float(entry["creation_time_ms"])
+
+        result.sort(key=sort_func, reverse=True)
         return list(islice(result, option.limit))
 
     def _message_to_dict(
