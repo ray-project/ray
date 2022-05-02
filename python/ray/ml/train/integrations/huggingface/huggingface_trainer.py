@@ -5,6 +5,7 @@ import tempfile
 from distutils.version import LooseVersion
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple, Type, Union
+import warnings
 from ray.ml.utils.torch_utils import load_torch_model
 
 import torch
@@ -466,13 +467,12 @@ def _huggingface_train_loop_per_worker(config):
         train_torch_dataset, eval_torch_dataset, **config
     )
 
-    if trainer.args.push_to_hub:
-        raise ValueError(
-            "`push_to_hub` parameter in `TrainingArgs` is not supported by "
-            "`HuggingFaceTrainer`. If you would like to push your model to hub "
-            "after training, use the `HuggingFaceTrainer.load_huggingface_checkpoint`"
-            " method to obtain the model from a returned checkpoint, and use it to "
-            "instantiate the `transformers.Trainer` class."
+    if trainer.args.push_to_hub and not trainer.args.hub_token:
+        warnings.warn(
+            "You have set `push_to_hub=True` but didn't specify `hub_token`. "
+            "Pushing to hub will most likely fail, as the credentials will not "
+            "be automatically propagated from the local enviroment to the Ray Actors. "
+            "If that happens, specify `hub_token` in `TrainingArguments`."
         )
 
     trainer = wrap_transformers_trainer(trainer)
@@ -498,7 +498,6 @@ def _huggingface_train_loop_per_worker(config):
         if source_ip == target_ip:
             checkpoint_path = source_path
         else:
-            # TODO(yard1): Confirm if tempdir is the right approach here.
             checkpoint_path = tempfile.mkdtemp(
                 suffix=Path(trainer.args.output_dir).name
             )
