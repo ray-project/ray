@@ -79,12 +79,13 @@ class TestDDPG(unittest.TestCase):
 
     def test_ddpg_exploration_and_with_random_prerun(self):
         """Tests DDPG's Exploration (w/ random actions for n timesteps)."""
-        config = ddpg.DDPGConfig()
-        config.num_workers = 0  # Run locally.
+
+        config = ddpg.DDPGConfig().rollouts(num_rollout_workers=0)
         obs = np.array([0.0, 0.1, -0.1])
 
         # Test against all frameworks.
         for _ in framework_iterator(config):
+            config = ddpg.DDPGConfig().rollouts(num_rollout_workers=0)
             config.seed = 42
             # Default OUNoise setup.
             trainer = config.build(env="Pendulum-v1")
@@ -104,14 +105,14 @@ class TestDDPG(unittest.TestCase):
             trainer.stop()
 
             # Check randomness at beginning.
-            config.exploration(
-                exploration_config={
+            config.exploration_config.update(
+                {
                     # Act randomly at beginning ...
                     "random_timesteps": 50,
                     # Then act very closely to deterministic actions thereafter.
-                    # "ou_base_scale": 0.001,
-                    # "initial_scale": 0.001,
-                    # "final_scale": 0.001,
+                    "ou_base_scale": 0.001,
+                    "initial_scale": 0.001,
+                    "final_scale": 0.001,
                 }
             )
 

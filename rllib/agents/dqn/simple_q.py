@@ -84,6 +84,7 @@ class SimpleQConfig(TrainerConfig):
         >>>     stop={"episode_reward_mean": 200},
         >>>     config=config.to_dict()
         >>> )
+
     Example:
         >>> from ray.rllib.agents.dqn import SimpleQConfig
         >>> config = SimpleQConfig()
@@ -93,10 +94,11 @@ class SimpleQConfig(TrainerConfig):
         >>>         "initial_epsilon": 1.5,
         >>>         "final_epsilon": 0.01,
         >>>         "epsilon_timesteps": 5000,
-        >>>     }
+        >>>     })
         >>> config = SimpleQConfig().rollouts(rollout_fragment_length=32)\
         >>>                         .exploration(exploration_config=explore_config)\
         >>>                         .training(learning_starts=200)
+
     Example:
         >>> from ray.rllib.agents.dqn import SimpleQConfig
         >>> config = SimpleQConfig()
@@ -105,7 +107,7 @@ class SimpleQConfig(TrainerConfig):
         >>>     {
         >>>         "type": "softq",
         >>>         "temperature": [1.0],
-        >>>     }
+        >>>     })
         >>> config = SimpleQConfig().training(lr_schedule=[[1, 1e-3], [500, 5e-3]])\
         >>>                         .exploration(exploration_config=explore_config)
     """
