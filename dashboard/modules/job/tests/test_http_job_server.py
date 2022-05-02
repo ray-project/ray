@@ -523,5 +523,32 @@ for i in range(100):
         wait_for_condition(_check_job_succeeded, client=client, job_id=job_id)
 
 
+def _hook(env):
+    with open(env["env_vars"]["TEMPPATH"], "w+") as f:
+        f.write(env["env_vars"]["TOKEN"])
+    return env
+
+
+def test_jobs_env_hook(job_sdk_client: JobSubmissionClient):
+    client = job_sdk_client
+
+    _, path = tempfile.mkstemp()
+    runtime_env = {"env_vars": {"TEMPPATH": path, "TOKEN": "Ray rocks!"}}
+    run_job_script = """
+import os
+import ray
+os.environ["RAY_RUNTIME_ENV_HOOK"] =\
+    "ray.dashboard.modules.job.tests.test_http_job_server._hook"
+ray.init(address="auto")
+"""
+    entrypoint = f"python -c '{run_job_script}'"
+    job_id = client.submit_job(entrypoint=entrypoint, runtime_env=runtime_env)
+
+    wait_for_condition(_check_job_succeeded, client=client, job_id=job_id)
+
+    with open(path) as f:
+        assert f.read().strip() == "Ray rocks!"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

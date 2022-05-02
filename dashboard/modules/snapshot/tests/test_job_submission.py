@@ -72,10 +72,12 @@ def test_successful_job_status(
                 legacy_job_succeeded = job_entry["status"] == "SUCCEEDED"
 
         # Test new jobs snapshot (0 to N drivers per job).
+        assert data["data"]["snapshot"]["jobSubmission"]
         for job_submission_id, entry in data["data"]["snapshot"][
             "jobSubmission"
         ].items():
             if entry["status"] is not None:
+                assert entry["jobSubmissionId"] == job_id
                 assert entry["entrypoint"] == entrypoint
                 assert entry["status"] in {"PENDING", "RUNNING", "SUCCEEDED"}
                 assert entry["message"] is not None
@@ -136,10 +138,12 @@ def test_failed_job_status(
                 legacy_job_failed = job_entry["status"] == "FAILED"
 
         # Test new jobs snapshot (0 to N drivers per job).
+        assert data["data"]["snapshot"]["jobSubmission"]
         for job_submission_id, entry in data["data"]["snapshot"][
             "jobSubmission"
         ].items():
             if entry["status"] is not None:
+                assert entry["jobSubmissionId"] == job_id
                 assert entry["entrypoint"] == entrypoint
                 assert entry["status"] in {"PENDING", "RUNNING", "FAILED"}
                 assert entry["message"] is not None
