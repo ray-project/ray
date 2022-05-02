@@ -97,11 +97,12 @@ class Executor {
                 : Status(StatusCode(reply.status().code()), reply.status().message()); \
         callback(status, reply);                                                       \
         delete executor;                                                               \
-      } else {                                                                         \
-        gcs_service_failure_detected_(GcsServiceFailureType::RPC_DISCONNECT);          \
-        executor->Retry();                                                             \
-      }                                                                                \
-    };                                                                                 \
+      } else if(gcs_is_down_) {                                         \
+        queued_executors_.emplace_back(executor);                       \
+      } else {                                                          \
+        executor->Retry();                                              \
+      }                                                                 \
+    };                                                                  \
     auto operation =                                                                   \
         [request, operation_callback, timeout_ms](GcsRpcClient *gcs_rpc_client) {      \
           RAY_UNUSED(INVOKE_RPC_CALL(SERVICE,                                          \
@@ -140,15 +141,16 @@ class GcsRpcClient {
   GcsRpcClient(
       const std::string &address,
       const int port,
-      ClientCallManager &client_call_manager,
-      std::function<void(GcsServiceFailureType)> gcs_service_failure_detected = nullptr)
-      : gcs_service_failure_detected_(std::move(gcs_service_failure_detected)) {
+      ClientCallManager &client_call_manager) {
     Reset(address, port, client_call_manager);
   };
 
   void Reset(const std::string &address,
              const int port,
              ClientCallManager &client_call_manager) {
+    io_context_ = &client_call_manager.GetMainService();
+    periodical_runner_ = std::make_unique<PeriodicalRunner>(*io_context_);
+
     job_info_grpc_client_ = std::make_unique<GrpcClient<JobInfoGcsService>>(
         address, port, client_call_manager);
     actor_info_grpc_client_ = std::make_unique<GrpcClient<ActorInfoGcsService>>(
@@ -171,6 +173,13 @@ class GcsRpcClient {
         address, port, client_call_manager);
     internal_pubsub_grpc_client_ = std::make_unique<GrpcClient<InternalPubSubGcsService>>(
         address, port, client_call_manager);
+    // Setup monitor for gRPC channel status.
+    // TODO(iycheng): Push this into ClientCallManager with CQ by using async call.
+    periodical_runner_->RunFnPeriodically(
+        [this] {
+
+        },
+        RayConfig::instance().gcs_client_check_connection_status_interval_milliseconds());
   }
 
   /// Add job info to GCS Service.
@@ -412,8 +421,27 @@ class GcsRpcClient {
                              internal_pubsub_grpc_client_,
                              /*method_timeout_ms*/ -1, )
  private:
+    void ReconnectHelper(absl::Time deadline,
+                         std::shared_ptr<boost::asio::deadline_timer> timer) {
+    if (absl::Now() > deadline) {
+      RAY_LOG(FATAL) << "Fail to reconnect to GCS";
+    }
+    if (gcs_service_failure_detected_(GcsServiceFailureType::RPC_DISCONNECT)) {
+      gcs_is_down_ = false;
+      while (!queued_executors_.empty()) {
+        auto e = queued_executors_.back();
+        e->Retry();
+        queued_executors_.pop_back();
+      }
+    } else {
+      RAY_LOG(INFO) << "Try to reconnect to GCS failed, " << absl::ToInt64Seconds(deadline - absl::Now()) << " seconds left";
+      timer->expires_from_now(boost::posix_time::seconds(1));
+      timer->async_wait(
+          [this, deadline, timer](const auto &ec) { ReconnectHelper(deadline, timer); });
+    }
+  }
+
   instrumented_io_context *io_context_;
-  std::function<void(GcsServiceFailureType)> gcs_service_failure_detected_;
 
   /// The gRPC-generated stub.
   std::unique_ptr<GrpcClient<JobInfoGcsService>> job_info_grpc_client_;
@@ -428,6 +456,8 @@ class GcsRpcClient {
   std::unique_ptr<GrpcClient<InternalKVGcsService>> internal_kv_grpc_client_;
   std::unique_ptr<GrpcClient<InternalPubSubGcsService>> internal_pubsub_grpc_client_;
 
+  bool gcs_is_down_ = false;
+  std::unique_ptr<PeriodicalRunner> periodical_runner_;
   std::vector<Executor *> queued_executors_;
 };
 
