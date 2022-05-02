@@ -641,10 +641,10 @@ def run(
             "route_prefix": deployment.route_prefix,
             "url": deployment.url,
         }
-
         parameter_group.append(deployment_parameters)
-
-    client.deploy_group(parameter_group, _blocking=_blocking)
+    client.deploy_group(
+        parameter_group, _blocking=_blocking, remove_past_deployments=True
+    )
 
     if ingress is not None:
         return ingress.get_handle()
