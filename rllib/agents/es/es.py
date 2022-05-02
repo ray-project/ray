@@ -39,6 +39,7 @@ class ESConfig(TrainerConfig):
     """Defines an ESTrainer configuration class from which an ESTrainer can be built.
 
     Example:
+        >>> from ray.rllib.agents.es import ESConfig
         >>> config = ESConfig().training(sgd_stepsize=0.02, report_length=20)\
         ...     .resources(num_gpus=0)\
         ...     .rollouts(num_rollout_workers=4)
@@ -48,6 +49,7 @@ class ESConfig(TrainerConfig):
         >>> trainer.train()
 
     Example:
+        >>> from ray.rllib.agents.es import ESConfig
         >>> from ray import tune
         >>> config = ESConfig()
         >>> # Print out some default values.
@@ -78,7 +80,7 @@ class ESConfig(TrainerConfig):
         self.noise_stdev = 0.02
         self.episodes_per_batch = 1000
         self.eval_prob = 0.03
-        self.return_proc_mode = "centered_rank"
+        # self.return_proc_mode = "centered_rank"  # only supported return_proc_mode
         self.stepsize = 0.01
         self.noise_size = 250000000
         self.report_length = 10
@@ -106,7 +108,7 @@ class ESConfig(TrainerConfig):
         noise_stdev: Optional[int] = None,
         episodes_per_batch: Optional[int] = None,
         eval_prob: Optional[float] = None,
-        return_proc_mode: Optional[int] = None,
+        # return_proc_mode: Optional[int] = None,
         stepsize: Optional[float] = None,
         noise_size: Optional[int] = None,
         report_length: Optional[int] = None,
@@ -115,14 +117,17 @@ class ESConfig(TrainerConfig):
         """Sets the training related configuration.
 
         Args:
-            action_noise_std:
-            l2_coeff:
+            action_noise_std: Std. deviation to be used when adding (standard normal)
+                noise to computed actions. Action noise is only added, if
+                `compute_actions` is called with the `add_noise` arg set to True.
+            l2_coeff: Coefficient to multiply current weights with inside the globalg
+                optimizer update term.
             noise_stdev: Std. deviation of parameter noise.
-            episodes_per_batch:
+            episodes_per_batch: Minimum number of episodes to pack into the train batch.
             eval_prob: Probability of evaluating the parameter rewards.
-            return_proc_mode:
-            stepsize:
-            noise_size:
+            stepsize: SGD step-size used for the Adam optimizer.
+            noise_size: Number of rows in the noise table (shared across workers).
+                Each row contains a gaussian noise value for each model parameter.
             report_length: How many of the last rewards we average over.
 
         Returns:
@@ -141,8 +146,10 @@ class ESConfig(TrainerConfig):
             self.episodes_per_batch = episodes_per_batch
         if eval_prob is not None:
             self.eval_prob = eval_prob
-        if return_proc_mode is not None:
-            self.return_proc_mode = return_proc_mode
+        # Only supported return_proc mode is "centered_rank" right now. No need to
+        # configure this.
+        # if return_proc_mode is not None:
+        #    self.return_proc_mode = return_proc_mode
         if stepsize is not None:
             self.stepsize = stepsize
         if noise_size is not None:
@@ -401,8 +408,8 @@ class ESTrainer(Trainer):
 
         # Put the current policy weights in the object store.
         theta_id = ray.put(theta)
-        # Use the actors to do rollouts, note that we pass in the ID of the
-        # policy weights.
+        # Use the actors to do rollouts. Note that we pass in the ID of the
+        # policy weights as these are shared.
         results, num_episodes, num_timesteps = self._collect_results(
             theta_id, config["episodes_per_batch"], config["train_batch_size"]
         )
@@ -439,10 +446,7 @@ class ESTrainer(Trainer):
         noisy_lengths = np.array(all_training_lengths)
 
         # Process the returns.
-        if config["return_proc_mode"] == "centered_rank":
-            proc_noisy_returns = utils.compute_centered_ranks(noisy_returns)
-        else:
-            raise NotImplementedError(config["return_proc_mode"])
+        proc_noisy_returns = utils.compute_centered_ranks(noisy_returns)
 
         # Compute and take a step.
         g, count = utils.batched_weighted_sum(

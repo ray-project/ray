@@ -41,6 +41,7 @@ class ARSConfig(TrainerConfig):
     """Defines an ARSTrainer configuration class from which an ARSTrainer can be built.
 
     Example:
+        >>> from ray.rllib.agents.ars import ARSConfig
         >>> config = ARSConfig().training(sgd_stepsize=0.02, report_length=20)\
         ...     .resources(num_gpus=0)\
         ...     .rollouts(num_rollout_workers=4)
@@ -50,6 +51,7 @@ class ARSConfig(TrainerConfig):
         >>> trainer.train()
 
     Example:
+        >>> from ray.rllib.agents.ars import ARSConfig
         >>> from ray import tune
         >>> config = ARSConfig()
         >>> # Print out some default values.
@@ -116,15 +118,19 @@ class ARSConfig(TrainerConfig):
         """Sets the training related configuration.
 
         Args:
-            action_noise_std:
+            action_noise_std: Std. deviation to be used when adding (standard normal)
+                noise to computed actions. Action noise is only added, if
+                `compute_actions` is called with the `add_noise` arg set to True.
             noise_stdev: Std. deviation of parameter noise.
             num_rollouts: Number of perturbs to try.
             rollouts_used: Number of perturbs to keep in gradient estimate.
-            sgd_stepsize: SGD step-size.
-            noise_size:
+            sgd_stepsize: SGD step-size used for the Adam optimizer.
+            noise_size: Number of rows in the noise table (shared across workers).
+                Each row contains a gaussian noise value for each model parameter.
             eval_prob: Probability of evaluating the parameter rewards.
             report_length: How many of the last rewards we average over.
-            offset:
+            offset: Value to subtract from the reward (e.g. survival bonus
+                from humanoid) during rollouts.
 
         Returns:
             This updated TrainerConfig object.
