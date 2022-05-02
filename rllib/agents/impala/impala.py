@@ -104,6 +104,8 @@ class ImpalaConfig(TrainerConfig):
         self.num_gpus = 1
         self.lr = 0.0005
         self.min_time_s_per_reporting = 10
+        # IMPALA and APPO are not on the new training_iteration API yet.
+        self._disable_execution_plan_api = False
         # __sphinx_doc_end__
         # fmt: on
 
