@@ -1,4 +1,5 @@
-from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer, StorageUnit
+from ray.rllib.utils.replay_buffers.storage import LocalStorage, InMemoryStorage, OnDiskStorage
+from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer, StorageUnit, StorageLocation
 from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import (
     MultiAgentReplayBuffer,
     ReplayMode,
@@ -15,8 +16,12 @@ from ray.rllib.utils.replay_buffers.multi_agent_prioritized_replay_buffer import
 )
 
 __all__ = [
+    "LocalStorage",
+    "InMemoryStorage",
+    "OnDiskStorage",
     "ReplayBuffer",
     "StorageUnit",
+    "StorageLocation",
     "MultiAgentReplayBuffer",
     "ReplayMode",
     "ReservoirBuffer",

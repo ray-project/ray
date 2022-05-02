@@ -72,6 +72,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
         self,
         capacity: int = 10000,
         storage_unit: str = "timesteps",
+        storage_location: str = "in_memory",
         num_shards: int = 1,
         prioritized_replay_alpha: float = 0.6,
         prioritized_replay_beta: float = 0.4,
@@ -92,6 +93,8 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
             storage_unit: Either 'timesteps', 'sequences' or
                 'episodes'. Specifies how experiences are stored. If they
                 are stored in episodes, replay_sequence_length is ignored.
+            storage_location: Either 'in_memory' or 'on_disk'.
+                Specifies where experiences are stored.
             num_shards: The number of buffer shards that exist in total
                 (including this one).
             learning_starts: Number of timesteps after which a call to
@@ -148,6 +151,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
             self,
             capacity=capacity,
             storage_unit=storage_unit,
+            storage_location=storage_location,
             prioritized_replay_alpha=prioritized_replay_alpha,
             prioritized_replay_beta=prioritized_replay_beta,
             prioritized_replay_eps=prioritized_replay_eps,

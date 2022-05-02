@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 @ExperimentalAPI
-class ReplayMode(Enum):
+class ReplayMode(str, Enum):
     LOCKSTEP = "lockstep"
     INDEPENDENT = "independent"
 
@@ -63,6 +63,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         self,
         capacity: int = 10000,
         storage_unit: str = "timesteps",
+        storage_location: str = "in_memory",
         num_shards: int = 1,
         replay_batch_size: int = 1,
         learning_starts: int = 1000,
@@ -81,6 +82,8 @@ class MultiAgentReplayBuffer(ReplayBuffer):
             storage_unit: Either 'timesteps', 'sequences' or
                 'episodes'. Specifies how experiences are stored. If they
                 are stored in episodes, replay_sequence_length is ignored.
+            storage_location: Either 'in_memory' or 'on_disk'.
+                Specifies where experiences are stored.
             learning_starts: Number of timesteps after which a call to
                 `sample()` will yield samples (before that, `sample()` will
                 return None).
@@ -112,7 +115,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
             **kwargs: Forward compatibility kwargs.
         """
         shard_capacity = capacity // num_shards
-        ReplayBuffer.__init__(self, capacity, storage_unit)
+        ReplayBuffer.__init__(self, capacity, storage_unit, storage_location)
 
         # If the user provides an underlying buffer config, we use to
         # instantiate and interact with underlying buffers
@@ -129,22 +132,23 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         self.replay_burn_in = replay_burn_in
         self.replay_zero_init_states = replay_zero_init_states
 
-        if replay_mode in ["lockstep", ReplayMode.LOCKSTEP]:
-            self.replay_mode = ReplayMode.LOCKSTEP
+        if self.replay_mode == ReplayMode.LOCKSTEP:
             if self._storage_unit in [StorageUnit.EPISODES, StorageUnit.SEQUENCES]:
                 raise ValueError(
                     "MultiAgentReplayBuffer does not support "
                     "lockstep mode with storage unit `episodes`"
                     "or `sequences`."
                 )
-        elif replay_mode in ["independent", ReplayMode.INDEPENDENT]:
-            self.replay_mode = ReplayMode.INDEPENDENT
-        else:
+        elif self.replay_mode != ReplayMode.INDEPENDENT:
             raise ValueError("Unsupported replay mode: {}".format(replay_mode))
 
         if self.underlying_buffer_config:
             ctor_args = {
-                **{"capacity": shard_capacity, "storage_unit": storage_unit},
+                **{
+                    "capacity": shard_capacity,
+                    "storage_unit": storage_unit,
+                    "storage_location": storage_location,
+                },
                 **self.underlying_buffer_config,
             }
 
@@ -158,6 +162,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
                 return ReplayBuffer(
                     self.capacity,
                     storage_unit=storage_unit,
+                    storage_location=storage_location,
                 )
 
         self.replay_buffers = collections.defaultdict(new_buffer)
@@ -231,7 +236,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         # For the storage unit `timesteps`, the underlying buffer will
         # simply store the samples how they arrive. For sequences and
         # episodes, the underlying buffer may split them itself.
-        if self._storage_unit is StorageUnit.TIMESTEPS:
+        if self._storage_unit == StorageUnit.TIMESTEPS:
             if self.replay_sequence_length == 1:
                 timeslices = batch.timeslices(1)
             else:

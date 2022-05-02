@@ -76,12 +76,12 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
 
         # After adding a single batch to a buffer, it should not be full
         assert len(buffer) == 2
-        assert buffer._num_timesteps_added == 8
-        assert buffer._num_timesteps_added_wrap == 8
-        assert buffer._next_idx == 2
-        assert buffer._eviction_started is False
+        assert buffer._storage.num_timesteps_added == 8
+        assert buffer._storage.num_timesteps == 8
+        assert buffer._storage._offset_idx == 0
+        assert buffer._storage.eviction_started is False
 
-        # Sampling three times should yield 3 batches of 5 timesteps each
+        # Sampling three times should yield 3 batches of 4 timesteps each
         buffer.sample(3, beta=0.5)
         assert buffer._num_timesteps_sampled == 12
 
@@ -91,9 +91,9 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
 
         # After adding two more batches, the buffer should be full
         assert len(buffer) == 5
-        assert buffer._num_timesteps_added == 26
-        assert buffer._num_timesteps_added_wrap == 26
-        assert buffer._next_idx == 5
+        assert buffer._storage.num_timesteps_added == 26
+        assert buffer._storage.num_timesteps == 26
+        assert buffer._storage._offset_idx == 0
 
     def test_sequence_size(self):
         # Seq-len=1.
@@ -129,32 +129,32 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
 
         # Assert indices 0 before insert.
         self.assertEqual(len(buffer), 0)
-        self.assertEqual(buffer._next_idx, 0)
+        self.assertEqual(buffer._storage._offset_idx, 0)
 
         # Insert single record.
         data = self._generate_data()
         buffer.add(data, weight=0.5)
-        self.assertTrue(len(buffer) == 1)
-        self.assertTrue(buffer._next_idx == 1)
+        self.assertEqual(len(buffer), 1)
+        self.assertEqual(buffer._storage._offset_idx, 0)
 
         # Insert single record.
         data = self._generate_data()
         buffer.add(data, weight=0.1)
-        self.assertTrue(len(buffer) == 2)
-        self.assertTrue(buffer._next_idx == 0)
+        self.assertEqual(len(buffer), 2)
+        self.assertEqual(buffer._storage._offset_idx, 0)
 
         # Insert over capacity.
         data = self._generate_data()
         buffer.add(data, weight=1.0)
-        self.assertTrue(len(buffer) == 2)
-        self.assertTrue(buffer._next_idx == 1)
+        self.assertEqual(len(buffer), 2)
+        self.assertEqual(buffer._storage._offset_idx, 1)
 
         # Test get_state/set_state.
         state = buffer.get_state()
         new_memory = PrioritizedReplayBuffer(capacity=2, alpha=self.alpha)
         new_memory.set_state(state)
-        self.assertTrue(len(new_memory) == 2)
-        self.assertTrue(new_memory._next_idx == 1)
+        self.assertEqual(len(new_memory), 2)
+        self.assertEqual(new_memory._storage._offset_idx, 1)
 
     def test_update_priorities(self):
         buffer = PrioritizedReplayBuffer(self.capacity, alpha=self.alpha)
@@ -164,15 +164,15 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
         for i in range(num_records):
             data = self._generate_data()
             buffer.add(data, weight=1.0)
-            self.assertTrue(len(buffer) == i + 1)
-            self.assertTrue(buffer._next_idx == i + 1)
+            self.assertEqual(len(buffer),  i + 1)
+            self.assertEqual(buffer._storage._offset_idx, 0)
 
         # Test get_state/set_state.
         state = buffer.get_state()
         new_memory = PrioritizedReplayBuffer(self.capacity, alpha=self.alpha)
         new_memory.set_state(state)
-        self.assertTrue(len(new_memory) == num_records)
-        self.assertTrue(new_memory._next_idx == num_records)
+        self.assertEqual(len(new_memory), num_records)
+        self.assertEqual(new_memory._storage._offset_idx, 0)
 
         # Fetch records, their indices and weights.
         batch = buffer.sample(3, beta=self.beta)
@@ -180,8 +180,8 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
         indices = batch["batch_indexes"]
         check(weights, np.ones(shape=(3,)))
         self.assertEqual(3, len(indices))
-        self.assertTrue(len(buffer) == num_records)
-        self.assertTrue(buffer._next_idx == num_records)
+        self.assertEqual(len(buffer), num_records)
+        self.assertEqual(buffer._storage._offset_idx, 0)
 
         # Update weight of indices 0, 2, 3, 4 to very small.
         buffer.update_priorities(
@@ -274,8 +274,8 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
         for i in range(num_records):
             data = self._generate_data()
             buffer.add(data, weight=1.0)
-            self.assertTrue(len(buffer) == i + 6)
-            self.assertTrue(buffer._next_idx == (i + 6) % self.capacity)
+            self.assertEqual(len(buffer), i + 6)
+            self.assertEqual(buffer._storage._offset_idx, 0)
 
         # Update all weights to be 1.0 to 10.0 and sample a >100 batch.
         buffer.update_priorities(
@@ -336,14 +336,14 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
         for i in range(num_records):
             data = self._generate_data()
             buffer.add(data, weight=float(np.random.rand()))
-            self.assertTrue(len(buffer) == i + 1)
-            self.assertTrue(buffer._next_idx == i + 1)
+            self.assertEqual(len(buffer), i + 1)
+            self.assertEqual(buffer._storage._offset_idx, 0)
         # Test get_state/set_state.
         state = buffer.get_state()
         new_memory = PrioritizedReplayBuffer(self.capacity, alpha=0.01)
         new_memory.set_state(state)
-        self.assertTrue(len(new_memory) == num_records)
-        self.assertTrue(new_memory._next_idx == num_records)
+        self.assertEqual(len(new_memory), num_records)
+        self.assertEqual(new_memory._storage._offset_idx, 0)
 
         # Fetch records, their indices and weights.
         batch = buffer.sample(1000, beta=self.beta)
@@ -438,11 +438,11 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
 
         # After adding 1 more batch, eviction has started with 15
         # timesteps added in total
-        assert len(buffer) == 5
-        assert buffer._num_timesteps_added == sum(range(1, 6))
-        assert buffer._num_timesteps_added_wrap == 5
-        assert buffer._next_idx == 1
-        assert buffer._eviction_started is True
+        assert len(buffer) == 3
+        assert buffer._storage.num_timesteps_added == sum(range(1, 6))
+        assert buffer._storage.num_timesteps == 9
+        assert buffer._storage._offset_idx == 3
+        assert buffer._storage._eviction_started is True
 
         num_sampled_dict = {_id: 0 for _id in range(1, 6)}
         num_samples = 200
@@ -531,6 +531,12 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
             weight=1,
         )
 
+        assert len(buffer) == 6
+        assert buffer._storage.num_timesteps_added == 5 * 4 - 2
+        assert buffer._storage.num_timesteps == 18
+        assert buffer._storage._offset_idx == 0
+        assert buffer._storage._eviction_started is False
+
         num_sampled_dict = {_id: 0 for _id in range(7)}
         num_samples = 200
         for i in range(num_samples):
@@ -564,10 +570,10 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
         # After adding 1 more batch, eviction has started with 24
         # timesteps added in total, 2 of which were discarded
         assert len(buffer) == 6
-        assert buffer._num_timesteps_added == 4 * 6 - 2
-        assert buffer._num_timesteps_added_wrap == 4
-        assert buffer._next_idx == 1
-        assert buffer._eviction_started is True
+        assert buffer._storage.num_timesteps_added == 4 * 6 - 2
+        assert buffer._storage.num_timesteps == 18
+        assert buffer._storage._offset_idx == 1
+        assert buffer._storage._eviction_started is True
 
         num_sampled_dict = {_id: 0 for _id in range(8)}
         num_samples = 200

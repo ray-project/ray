@@ -1,13 +1,8 @@
 from typing import Any, Dict
 import random
 
-# Import ray before psutil will make sure we use psutil's bundled version
-import ray  # noqa F401
-import psutil  # noqa E402
-
 from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer
-from ray.rllib.execution.buffers.replay_buffer import warn_replay_capacity
 from ray.rllib.utils.typing import SampleBatchType
 
 
@@ -21,7 +16,11 @@ class ReservoirBuffer(ReplayBuffer):
     """
 
     def __init__(
-        self, capacity: int = 10000, storage_unit: str = "timesteps", **kwargs
+        self,
+        capacity: int = 10000,
+        storage_unit: str = "timesteps",
+        storage_location: str = "in_memory",
+        **kwargs
     ):
         """Initializes a ReservoirBuffer instance.
 
@@ -30,9 +29,11 @@ class ReservoirBuffer(ReplayBuffer):
                 buffer. After reaching this number, older samples will be
                 dropped to make space for new ones.
             storage_unit: Either 'timesteps', 'sequences' or
-            'episodes'. Specifies how experiences are stored.
+                'episodes'. Specifies how experiences are stored.
+            storage_location: Either 'in_memory' or 'on_disk'.
+                Specifies where experiences are stored.
         """
-        ReplayBuffer.__init__(self, capacity, storage_unit)
+        ReplayBuffer.__init__(self, capacity, storage_unit, storage_location)
         self._num_add_calls = 0
         self._num_evicted = 0
 
@@ -49,33 +50,16 @@ class ReservoirBuffer(ReplayBuffer):
             item: The batch to be added.
             **kwargs: Forward compatibility kwargs.
         """
-        self._num_timesteps_added += item.count
-        self._num_timesteps_added_wrap += item.count
-
         # Update add counts.
         self._num_add_calls += 1
-        # Update our timesteps counts.
 
-        if self._num_timesteps_added < self.capacity:
-            self._storage.append(item)
-            self._est_size_bytes += item.size_bytes()
-        else:
-            # Eviction of older samples has already started (buffer is "full")
-            self._eviction_started = True
+        if self._storage.eviction_started:
             idx = random.randint(0, self._num_add_calls - 1)
             if idx < len(self._storage):
                 self._num_evicted += 1
-                self._evicted_hit_stats.push(self._hit_count[idx])
-                self._hit_count[idx] = 0
-                # This is a bit of a hack: ReplayBuffer always inserts at
-                # self._next_idx
-                self._next_idx = idx
-                self._evicted_hit_stats.push(self._hit_count[idx])
-                self._hit_count[idx] = 0
                 self._storage[idx] = item
-
-                assert item.count > 0, item
-                warn_replay_capacity(item=item, num_items=self.capacity / item.count)
+        else:
+            ReplayBuffer._add_single_batch(item, **kwargs)
 
     @ExperimentalAPI
     @override(ReplayBuffer)

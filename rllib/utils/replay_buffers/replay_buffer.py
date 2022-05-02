@@ -2,23 +2,15 @@ import logging
 import platform
 from typing import Any, Dict, List, Optional
 
-import numpy as np
 import random
-from enum import Enum
-
-# Import ray before psutil will make sure we use psutil's bundled version
-import ray  # noqa F401
-import psutil  # noqa E402
+from enum import Enum, unique
 
 from ray.util.debug import log_once
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import ExperimentalAPI
-from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.metrics.window_stat import WindowStat
+from ray.rllib.utils.deprecation import Deprecated, deprecation_warning, DEPRECATED_VALUE
+from ray.rllib.utils.replay_buffers.storage import LocalStorage, InMemoryStorage, OnDiskStorage
 from ray.rllib.utils.typing import SampleBatchType
-from ray.rllib.execution.buffers.replay_buffer import warn_replay_capacity
-from ray.rllib.utils.deprecation import deprecation_warning
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.execution.buffers.multi_agent_replay_buffer import (
     MultiAgentReplayBuffer as Legacy_MultiAgentReplayBuffer,
 )
@@ -31,10 +23,18 @@ logger = logging.getLogger(__name__)
 
 
 @ExperimentalAPI
-class StorageUnit(Enum):
+@unique
+class StorageUnit(str, Enum):
     TIMESTEPS = "timesteps"
     SEQUENCES = "sequences"
     EPISODES = "episodes"
+
+
+@ExperimentalAPI
+@unique
+class StorageLocation(str, Enum):
+    ON_DISK = "on_disk"
+    IN_MEMORY = "in_memory"
 
 
 @ExperimentalAPI
@@ -254,7 +254,11 @@ def validate_buffer_config(config: dict):
 @ExperimentalAPI
 class ReplayBuffer:
     def __init__(
-        self, capacity: int = 10000, storage_unit: str = "timesteps", **kwargs
+        self,
+        capacity: int = 10000,
+        storage_unit: str = "timesteps",
+        storage_location: str = "in_memory",
+        **kwargs
     ):
         """Initializes a (FIFO) ReplayBuffer instance.
 
@@ -266,20 +270,13 @@ class ReplayBuffer:
                 `episodes`. Specifies how experiences are stored.
             **kwargs: Forward compatibility kwargs.
         """
-
-        if storage_unit in ["timesteps", StorageUnit.TIMESTEPS]:
-            self._storage_unit = StorageUnit.TIMESTEPS
-        elif storage_unit in ["sequences", StorageUnit.SEQUENCES]:
-            self._storage_unit = StorageUnit.SEQUENCES
-        elif storage_unit in ["episodes", StorageUnit.EPISODES]:
-            self._storage_unit = StorageUnit.EPISODES
-        else:
+        if storage_unit not in list(StorageUnit):
             raise ValueError(
-                "storage_unit must be either 'timesteps', `sequences` or `episodes`."
+                "storage_unit must be one of {}.".format(
+                    ', '.join(f"'{s}'" for s in StorageUnit)
+                )
             )
-
-        # The actual storage (list of SampleBatches or MultiAgentBatches).
-        self._storage = []
+        self._storage_unit = storage_unit
 
         # Caps the number of timesteps stored in this buffer
         if capacity <= 0:
@@ -287,34 +284,32 @@ class ReplayBuffer:
                 "Capacity of replay buffer has to be greater than zero "
                 "but was set to {}.".format(capacity)
             )
-        self.capacity = capacity
-        # The next index to override in the buffer.
-        self._next_idx = 0
-        # len(self._hit_count) must always be less than len(capacity)
-        self._hit_count = np.zeros(self.capacity)
 
-        # Whether we have already hit our capacity (and have therefore
-        # started to evict older samples).
-        self._eviction_started = False
-
-        # Number of (single) timesteps that have been added to the buffer
-        # over its lifetime. Note that each added item (batch) may contain
-        # more than one timestep.
-        self._num_timesteps_added = 0
-        self._num_timesteps_added_wrap = 0
+        # The actual storage (stores SampleBatches or MultiAgentBatches).
+        if storage_location not in list(StorageLocation):
+            raise ValueError(
+                "storage_location must be one of {}.".format(
+                    ', '.join(f"'{s}'" for s in StorageLocation)
+                )
+            )
+        self._storage_location = storage_location
+        self._storage = self._create_storage(capacity)
 
         # Number of (single) timesteps that have been sampled from the buffer
         # over its lifetime.
         self._num_timesteps_sampled = 0
-
-        self._evicted_hit_stats = WindowStat("evicted_hit", 1000)
-        self._est_size_bytes = 0
 
         self.batch_size = None
 
     def __len__(self) -> int:
         """Returns the number of items currently stored in this buffer."""
         return len(self._storage)
+
+    @ExperimentalAPI
+    @property
+    def capacity(self) -> int:
+        """Capacity of the replay buffer (`int`, read-only)."""
+        return self._storage.capacity
 
     @ExperimentalAPI
     @Deprecated(old="add_batch", new="add", error=False)
@@ -341,8 +336,6 @@ class ReplayBuffer:
             **kwargs: Forward compatibility kwargs.
         """
         assert batch.count > 0, batch
-        warn_replay_capacity(item=batch, num_items=self.capacity / batch.count)
-
         if (
             type(batch) == MultiAgentBatch
             and self._storage_unit != StorageUnit.TIMESTEPS
@@ -393,27 +386,7 @@ class ReplayBuffer:
             item: The batch to be added.
             **kwargs: Forward compatibility kwargs.
         """
-        self._num_timesteps_added += item.count
-        self._num_timesteps_added_wrap += item.count
-
-        if self._next_idx >= len(self._storage):
-            self._storage.append(item)
-            self._est_size_bytes += item.size_bytes()
-        else:
-            self._storage[self._next_idx] = item
-
-        # Eviction of older samples has already started (buffer is "full").
-        if self._eviction_started:
-            self._evicted_hit_stats.push(self._hit_count[self._next_idx])
-            self._hit_count[self._next_idx] = 0
-
-        # Wrap around storage as a circular buffer once we hit capacity.
-        if self._num_timesteps_added_wrap >= self.capacity:
-            self._eviction_started = True
-            self._num_timesteps_added_wrap = 0
-            self._next_idx = 0
-        else:
-            self._next_idx += 1
+        self._storage.add(item)
 
     @ExperimentalAPI
     def sample(self, num_items: int, **kwargs) -> Optional[SampleBatchType]:
@@ -458,15 +431,15 @@ class ReplayBuffer:
             A dictionary of stats about this buffer.
         """
         data = {
-            "added_count": self._num_timesteps_added,
-            "added_count_wrapped": self._num_timesteps_added_wrap,
-            "eviction_started": self._eviction_started,
             "sampled_count": self._num_timesteps_sampled,
-            "est_size_bytes": self._est_size_bytes,
+            "added_count": self._storage.num_timesteps_added,
+            "current_count": self._storage.num_timesteps,
+            "eviction_started": self._storage.eviction_started,
+            "size_bytes": self._storage.size_bytes,
             "num_entries": len(self._storage),
         }
         if debug:
-            data.update(self._evicted_hit_stats.stats())
+            data.update(self._storage.evicted_hit_stats)
         return data
 
     @ExperimentalAPI
@@ -476,7 +449,11 @@ class ReplayBuffer:
         Returns:
             The serializable local state.
         """
-        state = {"_storage": self._storage, "_next_idx": self._next_idx}
+        state = {
+            "_storage": self._storage.get_state(),
+            "_storage_unit": self._storage_unit,
+            "_storage_location": self._storage_location,
+        }
         state.update(self.stats(debug=False))
         return state
 
@@ -489,20 +466,24 @@ class ReplayBuffer:
                 obtained by calling `self.get_state()`.
         """
         # The actual storage.
-        self._storage = state["_storage"]
-        self._next_idx = state["_next_idx"]
+        self._storage_unit = state["_storage_unit"]
+        self._storage_location = state["_storage_location"]
+        self._storage = self._create_storage(1)
+        self._storage.set_state(state["_storage"])
         # Stats and counts.
-        self._num_timesteps_added = state["added_count"]
-        self._num_timesteps_added_wrap = state["added_count_wrapped"]
-        self._eviction_started = state["eviction_started"]
         self._num_timesteps_sampled = state["sampled_count"]
-        self._est_size_bytes = state["est_size_bytes"]
+
+    def _create_storage(self, capacity: int) -> LocalStorage:
+        if self._storage_location == StorageLocation.IN_MEMORY:
+            return InMemoryStorage(capacity)
+        elif self._storage_location == StorageLocation.ON_DISK:
+            return OnDiskStorage(capacity)
+        raise ValueError("Unknown storage location: {}".format(self._storage_location))
 
     def _encode_sample(self, idxes: List[int]) -> SampleBatchType:
         """Fetches concatenated samples at given indeces from the storage."""
         samples = []
         for i in idxes:
-            self._hit_count[i] += 1
             samples.append(self._storage[i])
 
         if samples:

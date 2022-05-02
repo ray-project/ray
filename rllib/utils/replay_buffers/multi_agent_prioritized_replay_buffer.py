@@ -33,6 +33,7 @@ class MultiAgentPrioritizedReplayBuffer(MultiAgentReplayBuffer):
         self,
         capacity: int = 10000,
         storage_unit: str = "timesteps",
+        storage_location: str = "in_memory",
         num_shards: int = 1,
         replay_batch_size: int = 1,
         learning_starts: int = 1000,
@@ -56,6 +57,8 @@ class MultiAgentPrioritizedReplayBuffer(MultiAgentReplayBuffer):
                 are stored in episodes, replay_sequence_length is ignored.
                 If they are stored in episodes, replay_sequence_length is
                 ignored.
+            storage_location: Either 'in_memory' or 'on_disk'.
+                Specifies where experiences are stored.
             learning_starts: Number of timesteps after which a call to
                 `replay()` will yield samples (before that, `replay()` will
                 return None).
@@ -96,8 +99,7 @@ class MultiAgentPrioritizedReplayBuffer(MultiAgentReplayBuffer):
             **kwargs: Forward compatibility kwargs.
         """
         if "replay_mode" in kwargs and (
-            kwargs["replay_mode"] == "lockstep"
-            or kwargs["replay_mode"] == ReplayMode.LOCKSTEP
+            kwargs["replay_mode"] == ReplayMode.LOCKSTEP
         ):
             if log_once("lockstep_mode_not_supported"):
                 logger.error(
@@ -128,6 +130,7 @@ class MultiAgentPrioritizedReplayBuffer(MultiAgentReplayBuffer):
             self,
             shard_capacity,
             storage_unit,
+            storage_location,
             **kwargs,
             underlying_buffer_config=prioritized_replay_buffer_config,
             replay_batch_size=replay_batch_size,
@@ -161,7 +164,7 @@ class MultiAgentPrioritizedReplayBuffer(MultiAgentReplayBuffer):
         # For the storage unit `timesteps`, the underlying buffer will
         # simply store the samples how they arrive. For sequences and
         # episodes, the underlying buffer may split them itself.
-        if self._storage_unit is StorageUnit.TIMESTEPS:
+        if self._storage_unit == StorageUnit.TIMESTEPS:
             if self.replay_sequence_length == 1:
                 timeslices = batch.timeslices(1)
             else:
@@ -175,7 +178,7 @@ class MultiAgentPrioritizedReplayBuffer(MultiAgentReplayBuffer):
                 # If SampleBatch has prio-replay weights, average
                 # over these to use as a weight for the entire
                 # sequence.
-                if self.replay_mode is ReplayMode.INDEPENDENT:
+                if self.replay_mode == ReplayMode.INDEPENDENT:
                     if "weights" in time_slice and len(time_slice["weights"]):
                         weight = np.mean(time_slice["weights"])
                     else:

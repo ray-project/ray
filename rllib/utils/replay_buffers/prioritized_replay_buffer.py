@@ -2,10 +2,6 @@ import random
 from typing import Any, Dict, List, Optional
 import numpy as np
 
-# Import ray before psutil will make sure we use psutil's bundled version
-import ray  # noqa F401
-import psutil  # noqa E402
-
 from ray.rllib.execution.segment_tree import SumSegmentTree, MinSegmentTree
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override, ExperimentalAPI
@@ -28,6 +24,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         self,
         capacity: int = 10000,
         storage_unit: str = "timesteps",
+        storage_location: str = "in_memory",
         alpha: float = 1.0,
         **kwargs
     ):
@@ -39,11 +36,13 @@ class PrioritizedReplayBuffer(ReplayBuffer):
                 dropped to make space for new ones.
             storage_unit: Either 'timesteps', 'sequences' or
                 'episodes'. Specifies how experiences are stored.
+            storage_location: Either 'in_memory' or 'on_disk'.
+                Specifies where experiences are stored.
             alpha: How much prioritization is used
                 (0.0=no prioritization, 1.0=full prioritization).
             **kwargs: Forward compatibility kwargs.
         """
-        ReplayBuffer.__init__(self, capacity, storage_unit, **kwargs)
+        ReplayBuffer.__init__(self, capacity, storage_unit, storage_location, **kwargs)
 
         assert alpha > 0
         self._alpha = alpha
@@ -76,17 +75,34 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         if weight is None:
             weight = self._max_priority
 
-        self._it_sum[self._next_idx] = weight ** self._alpha
-        self._it_min[self._next_idx] = weight ** self._alpha
+        len_before_add = len(self._storage)
+        add_idx = self._storage._get_internal_index(len_before_add)
+        self._it_sum[add_idx] = weight ** self._alpha
+        self._it_min[add_idx] = weight ** self._alpha
 
         ReplayBuffer._add_single_batch(self, item)
 
+        if len(self._storage) <= len_before_add:
+            num_del = len_before_add - len(self._storage) + 1
+            for i in range(1, num_del + 1):
+                del_idx = (self._storage._get_internal_index(0) - i) % self.capacity
+                assert self._it_sum[del_idx] != self._it_sum.neutral_element
+                assert self._it_min[del_idx] != self._it_min.neutral_element
+                self._it_sum[del_idx] = self._it_sum.neutral_element
+                self._it_min[del_idx] = self._it_min.neutral_element
+
     def _sample_proportional(self, num_items: int) -> List[int]:
+        start_idx = self._storage._get_internal_index(0)
+        end_idx = self._storage._get_internal_index(len(self._storage))
+        if end_idx > start_idx:
+            mass = self._it_sum.sum(start_idx, end_idx)
+        else:
+            mass = self._it_sum.sum(0, end_idx)
+            mass += self._it_sum.sum(start_idx, len(self._storage))
         res = []
         for _ in range(num_items):
             # TODO(szymon): should we ensure no repeats?
-            mass = random.random() * self._it_sum.sum(0, len(self._storage))
-            idx = self._it_sum.find_prefixsum_idx(mass)
+            idx = self._it_sum.find_prefixsum_idx(mass * random.random())
             res.append(idx)
         return res
 
@@ -102,7 +118,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         Examples for storage of SamplesBatches:
         - If storage unit `timesteps` has been chosen and batches of
         size 5 have been added, sample(5) will yield a concatenated batch of
-        15 timesteps.
+        25 timesteps.
         - If storage unit 'sequences' has been chosen and sequences of
         different lengths have been added, sample(5) will yield a concatenated
         batch with a number of timesteps equal to the sum of timesteps in
@@ -125,30 +141,30 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         """
         assert beta >= 0.0
 
-        idxes = self._sample_proportional(num_items)
+        internal_idxes = self._sample_proportional(num_items)
 
+        ext_idxes = [0] * len(internal_idxes)
         weights = []
         batch_indexes = []
         p_min = self._it_min.min() / self._it_sum.sum()
         max_weight = (p_min * len(self)) ** (-beta)
 
-        for idx in idxes:
+        for i, idx in enumerate(internal_idxes):
             p_sample = self._it_sum[idx] / self._it_sum.sum()
             weight = (p_sample * len(self)) ** (-beta)
-            count = self._storage[idx].count
+            ext_idx = self._storage._get_external_index(idx)
+            sample = self._storage[ext_idx]
             # If zero-padded, count will not be the actual batch size of the
             # data.
-            if (
-                isinstance(self._storage[idx], SampleBatch)
-                and self._storage[idx].zero_padded
-            ):
-                actual_size = self._storage[idx].max_seq_len
+            if isinstance(sample, SampleBatch) and sample.zero_padded:
+                actual_size = sample.max_seq_len
             else:
-                actual_size = count
+                actual_size = sample.count
+            ext_idxes[i] = ext_idx
             weights.extend([weight / max_weight] * actual_size)
-            batch_indexes.extend([idx] * actual_size)
-            self._num_timesteps_sampled += count
-        batch = self._encode_sample(idxes)
+            batch_indexes.extend([ext_idx] * actual_size)
+            self._num_timesteps_sampled += sample.count
+        batch = self._encode_sample(ext_idxes)
 
         # Note: prioritization is not supported in multi agent lockstep
         if isinstance(batch, SampleBatch):
@@ -179,10 +195,13 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         for idx, priority in zip(idxes, priorities):
             assert priority > 0
             assert 0 <= idx < len(self._storage)
-            delta = priority ** self._alpha - self._it_sum[idx]
+            int_idx = self._storage._get_internal_index(idx)
+            delta = priority ** self._alpha - self._it_sum[int_idx]
             self._prio_change_stats.push(delta)
-            self._it_sum[idx] = priority ** self._alpha
-            self._it_min[idx] = priority ** self._alpha
+            assert self._it_sum[int_idx] != self._it_sum.neutral_element
+            assert self._it_min[int_idx] != self._it_min.neutral_element
+            self._it_sum[int_idx] = priority ** self._alpha
+            self._it_min[int_idx] = priority ** self._alpha
 
             self._max_priority = max(self._max_priority, priority)
 
