@@ -113,7 +113,8 @@ class HuggingFaceTrainer(TorchTrainer):
     argument in ``TrainingArguments`` will be automatically set. Please note
     that if you want to use CPU training, you will need to set the ``no_cuda``
     argument in ``TrainingArguments`` manually - otherwise, an exception
-    (segfault) may be thrown.
+    (segfault) may be thrown. Furthermore, 'steps' value for ``save_strategy``,
+    ``logging_strategy`` and ``evaluation_strategy`` is not yet supported.
 
     Example:
         .. code-block:: python
@@ -478,10 +479,11 @@ def _huggingface_train_loop_per_worker(config):
     if (
         trainer.args.evaluation_strategy == "steps"
         or trainer.args.save_strategy == "steps"
+        or trainer.args.logging_strategy == "steps"
     ):
         raise ValueError(
-            "'steps' value for `evaluation_strategy` and `save_strategy` "
-            "is not yet supported."
+            "'steps' value for `evaluation_strategy`, `logging_strategy` "
+            "or `save_strategy` is not yet supported."
         )
 
     trainer = wrap_transformers_trainer(trainer)
