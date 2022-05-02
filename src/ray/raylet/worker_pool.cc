@@ -1531,8 +1531,8 @@ void WorkerPool::TryStartIOWorkers(const Language &language,
   auto &state = GetStateForLanguage(language);
   auto &io_worker_state = GetIOWorkerStateFromWorkerType(worker_type, state);
 
-  int available_io_workers_num = io_worker_state.num_starting_io_workers +
-                                 io_worker_state.started_io_workers.size();
+  int available_io_workers_num =
+      io_worker_state.num_starting_io_workers + io_worker_state.started_io_workers.size();
   int max_workers_to_start =
       RayConfig::instance().max_io_workers() - available_io_workers_num;
   // Compare first to prevent unsigned underflow.

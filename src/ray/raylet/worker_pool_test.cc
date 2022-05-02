@@ -643,9 +643,10 @@ TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
   }
 
   {
-    // Test the case where DisconnectClient happens after RegisterClientRequest but before AnnounceWorkerPort.
+    // Test the case where DisconnectClient happens after RegisterClientRequest but before
+    // AnnounceWorkerPort.
     auto [proc, token] = worker_pool_->StartWorkerProcess(
-      Language::PYTHON, rpc::WorkerType::WORKER, JOB_ID, &status);
+        Language::PYTHON, rpc::WorkerType::WORKER, JOB_ID, &status);
     auto worker = worker_pool_->CreateWorker(Process(), Language::PYTHON);
     ASSERT_EQ(worker_pool_->NumWorkersStarting(), 1);
     RAY_CHECK_OK(worker_pool_->RegisterWorker(
@@ -1945,7 +1946,8 @@ TEST_F(WorkerPoolTest, TestIOWorkerFailureAndSpawn) {
   }
 
   {
-    // Test the case where DisconnectClient happens after RegisterClientRequest but before AnnounceWorkerPort.
+    // Test the case where DisconnectClient happens after RegisterClientRequest but before
+    // AnnounceWorkerPort.
     auto status = PopWorkerStatus::OK;
     auto [proc, token] = worker_pool_->StartWorkerProcess(
         rpc::Language::PYTHON, rpc::WorkerType::SPILL_WORKER, JobID::Nil(), &status);
