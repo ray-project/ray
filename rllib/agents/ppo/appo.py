@@ -28,10 +28,10 @@ from ray.rllib.utils.typing import PartialTrainerConfigDict, TrainerConfigDict
 
 
 class APPOConfig(impala.ImpalaConfig):
-    """Defines a A2CTrainer configuration class from which a new Trainer can be built.
+    """Defines a APPOTrainer configuration class from which a new Trainer can be built.
 
     Example:
-        >>> from ray import tune
+        >>> from ray.rllib.agents.ppo import APPOConfig
         >>> config = APPOConfig().training(lr=0.01, grad_clip=30.0)\
         ...     .resources(num_gpus=1)\
         ...     .rollouts(num_rollout_workers=16)
@@ -41,6 +41,8 @@ class APPOConfig(impala.ImpalaConfig):
         >>> trainer.train()
 
     Example:
+        >>> from ray.rllib.agents.ppo import APPOConfig
+        >>> from ray import tune
         >>> config = APPOConfig()
         >>> # Print out some default values.
         >>> print(config.sample_async)
@@ -215,7 +217,7 @@ class APPOTrainer(impala.ImpalaTrainer):
             return AsyncPPOTFPolicy
 
 
-# Deprecated: Use ray.rllib.agents.a3c.A3CConfig instead!
+# Deprecated: Use ray.rllib.agents.ppo.APPOConfig instead!
 class _deprecated_default_config(dict):
     def __init__(self):
         super().__init__(APPOConfig().to_dict())
