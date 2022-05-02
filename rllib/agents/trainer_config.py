@@ -16,8 +16,9 @@ from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
 from ray.rllib.evaluation.collectors.simple_list_collector import SimpleListCollector
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.offline.estimators.importance_sampling import ImportanceSampling
-from ray.rllib.offline.estimators.weighted_importance_sampling import \
-    WeightedImportanceSampling
+from ray.rllib.offline.estimators.weighted_importance_sampling import (
+    WeightedImportanceSampling,
+)
 from ray.rllib.utils.typing import (
     EnvConfigDict,
     EnvType,
@@ -175,7 +176,7 @@ class TrainerConfig:
         self.actions_in_input_normalized = False
         self.input_evaluation = [
             ImportanceSampling,
-            WeightedImportanceSamplin,
+            WeightedImportanceSampling,
         ]
         self.postprocess_inputs = False
         self.shuffle_buffer_size = 0
