@@ -14,7 +14,6 @@ from ray.rllib.agents.bandit.bandit_tf_model import (
 )
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import restore_original_dimensions
-from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
@@ -87,7 +86,8 @@ def validate_spaces(
     """
     # Only support single Box or single Discrete spaces.
     if not isinstance(action_space, gym.spaces.Discrete):
-        msg = f"Action space ({action_space}) of {policy} is not supported for Bandit algorithms. Must be `Discrete`."
+        msg = f"Action space ({action_space}) of {policy} is not supported for " \
+              f"Bandit algorithms. Must be `Discrete`."
         # Hint at using the MultiDiscrete to Discrete wrapper for Bandits.
         if isinstance(action_space, gym.spaces.MultiDiscrete):
             msg += " Try to wrap your environment with the " \
