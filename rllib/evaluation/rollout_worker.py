@@ -35,8 +35,9 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.models.preprocessors import Preprocessor
 from ray.rllib.offline import NoopOutput, IOContext, OutputWriter, InputReader
 from ray.rllib.offline.off_policy_estimator import OffPolicyEstimator, OffPolicyEstimate
-from ray.rllib.offline.is_estimator import ImportanceSamplingEstimator
-from ray.rllib.offline.wis_estimator import WeightedImportanceSamplingEstimator
+from ray.rllib.offline.estimators.importance_sampling import ImportanceSampling
+from ray.rllib.offline.estimators.weighted_importance_sampling import \
+    WeightedImportanceSampling
 from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.policy_map import PolicyMap
@@ -349,7 +350,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 - "simulation": Run the environment in the background, but use
                 this data for evaluation only and not for learning.
                 - Any subclass of OffPolicyEstimator, e.g.
-                ray.rllib.offline.is_estimator::ImportanceSamplingEstimator or your own
+                ray.rllib.offline.estimators::ImportanceSampling or your own
                 custom subclass.
             output_creator: Function that returns an OutputWriter object for
                 saving generated experiences.
@@ -712,7 +713,7 @@ class RolloutWorker(ParallelIteratorWorker):
         self.reward_estimators: List[OffPolicyEstimator] = []
         for method in input_evaluation:
             if method == "is":
-                method = ImportanceSamplingEstimator
+                method = ImportanceSampling
                 deprecation_warning(
                     old="config.input_evaluation=[is]",
                     new="from ray.rllib.offline.is_estimator import "
@@ -721,7 +722,7 @@ class RolloutWorker(ParallelIteratorWorker):
                     error=False,
                 )
             elif method == "wis":
-                method = WeightedImportanceSamplingEstimator
+                method = WeightedImportanceSampling
                 deprecation_warning(
                     old="config.input_evaluation=[is]",
                     new="from ray.rllib.offline.wis_estimator import "

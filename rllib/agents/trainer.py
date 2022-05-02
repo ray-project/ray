@@ -45,8 +45,9 @@ from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.buffers.multi_agent_replay_buffer import (
     MultiAgentReplayBuffer as Legacy_MultiAgentReplayBuffer,
 )
-from ray.rllib.offline.is_estimator import ImportanceSamplingEstimator
-from ray.rllib.offline.wis_estimator import WeightedImportanceSamplingEstimator
+from ray.rllib.offline.estimators.importance_sampling import ImportanceSampling
+from ray.rllib.offline.estimators.weighted_importance_sampling import \
+    WeightedImportanceSampling
 from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer
 from ray.rllib.execution.common import WORKER_UPDATE_TIMER
 from ray.rllib.execution.rollout_ops import (
@@ -563,10 +564,12 @@ COMMON_CONFIG: TrainerConfigDict = {
     #  - "simulation": Run the environment in the background, but use
     #    this data for evaluation only and not for learning.
     #  - Any subclass of OffPolicyEstimator, e.g.
-    #    ray.rllib.offline.is_estimator::ImportanceSamplingEstimator or your own custom
+    #    ray.rllib.offline.estimators.is::ImportanceSampling or your own custom
     #    subclass.
-    "input_evaluation": [ImportanceSamplingEstimator,
-                         WeightedImportanceSamplingEstimator],
+    "input_evaluation": [
+        ImportanceSampling,
+        WeightedImportanceSampling,
+    ],
     # Whether to run postprocess_trajectory() on the trajectory fragments from
     # offline inputs. Note that postprocessing will be done using the *current*
     # policy, not the *behavior* policy, which is typically undesirable for
