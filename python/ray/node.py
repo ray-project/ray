@@ -140,11 +140,11 @@ class Node:
             resources={},
             temp_dir=ray._private.utils.get_ray_temp_dir(),
             worker_path=os.path.join(
-                os.path.dirname(os.path.abspath(__file__)), "workers/default_worker.py"
+                os.path.dirname(os.path.abspath(__file__)), "workers", "default_worker.py"
             ),
             setup_worker_path=os.path.join(
                 os.path.dirname(os.path.abspath(__file__)),
-                f"workers/{ray_constants.SETUP_WORKER_FILENAME}",
+                f"workers", ray_constants.SETUP_WORKER_FILENAME,
             ),
         )
 
