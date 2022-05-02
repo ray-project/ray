@@ -172,8 +172,10 @@ class TrainerConfig:
         self.input_ = "sampler"
         self.input_config = {}
         self.actions_in_input_normalized = False
-        self.input_evaluation = [ImportanceSamplingEstimator,
-                                 WeightedImportanceSamplingEstimator]
+        self.input_evaluation = [
+            ImportanceSamplingEstimator,
+            WeightedImportanceSamplingEstimator,
+        ]
         self.postprocess_inputs = False
         self.shuffle_buffer_size = 0
         self.output = None

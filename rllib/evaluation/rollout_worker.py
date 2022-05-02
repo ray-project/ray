@@ -716,8 +716,8 @@ class RolloutWorker(ParallelIteratorWorker):
                 deprecation_warning(
                     old="config.input_evaluation=[is]",
                     new="from ray.rllib.offline.is_estimator import "
-                        f"{method.__name__}; config.input_evaluation="
-                        f"[{method.__name__}]",
+                    f"{method.__name__}; config.input_evaluation="
+                    f"[{method.__name__}]",
                     error=False,
                 )
             elif method == "wis":
@@ -725,8 +725,8 @@ class RolloutWorker(ParallelIteratorWorker):
                 deprecation_warning(
                     old="config.input_evaluation=[is]",
                     new="from ray.rllib.offline.wis_estimator import "
-                        f"{method.__name__}; config.input_evaluation="
-                        f"[{method.__name__}]",
+                    f"{method.__name__}; config.input_evaluation="
+                    f"[{method.__name__}]",
                     error=False,
                 )
 
@@ -738,7 +738,8 @@ class RolloutWorker(ParallelIteratorWorker):
                 sample_async = True
             elif isinstance(method, type) and issubclass(method, OffPolicyEstimator):
                 self.reward_estimators.append(
-                    method.create_from_io_context(self.io_context))
+                    method.create_from_io_context(self.io_context)
+                )
             else:
                 raise ValueError(
                     f"Unknown evaluation method: {method}! Must be "
