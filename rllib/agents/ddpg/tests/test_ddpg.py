@@ -39,8 +39,9 @@ class TestDDPG(unittest.TestCase):
         config.num_workers = 1
         config.num_envs_per_worker = 2
         config.learning_starts = 0
-        config.exploration_config["random_timesteps"] = 100
-
+        config.exploration(
+            exploration_config={"random_timesteps": 100}
+        )
         num_iterations = 1
 
         # Test against all frameworks.
@@ -52,7 +53,7 @@ class TestDDPG(unittest.TestCase):
                 print(results)
             check_compute_single_action(trainer)
             # Ensure apply_gradient_fn is being called and updating global_step
-            if config["framework"] == "tf":
+            if config.framework == "tf":
                 a = trainer.get_policy().global_step.eval(
                     trainer.get_policy().get_session()
                 )
@@ -67,7 +68,9 @@ class TestDDPG(unittest.TestCase):
         config.num_workers = 1
         config.num_envs_per_worker = 2
         config.learning_starts = 0
-        config.exploration_config["random_timesteps"] = 100
+        config.exploration(
+            exploration_config={"random_timesteps": 100}
+        )
 
         # Test against all frameworks.
         for _ in framework_iterator(config, with_eager_tracing=True):
@@ -80,13 +83,12 @@ class TestDDPG(unittest.TestCase):
 
     def test_ddpg_exploration_and_with_random_prerun(self):
         """Tests DDPG's Exploration (w/ random actions for n timesteps)."""
-        core_config = ddpg.DDPGConfig()
-        core_config.num_workers = 0  # Run locally.
+        config = ddpg.DDPGConfig()
+        config.num_workers = 0  # Run locally.
         obs = np.array([0.0, 0.1, -0.1])
 
         # Test against all frameworks.
-        for _ in framework_iterator(core_config):
-            config = core_config.copy()
+        for _ in framework_iterator(config):
             config.seed = 42
             # Default OUNoise setup.
             trainer = config.build(env="Pendulum-v1")
@@ -106,14 +108,17 @@ class TestDDPG(unittest.TestCase):
             trainer.stop()
 
             # Check randomness at beginning.
-            config["exploration_config"] = {
-                # Act randomly at beginning ...
-                "random_timesteps": 50,
-                # Then act very closely to deterministic actions thereafter.
-                "ou_base_scale": 0.001,
-                "initial_scale": 0.001,
-                "final_scale": 0.001,
-            }
+            config.exploration(
+                exploration_config={
+                    # Act randomly at beginning ...
+                    "random_timesteps": 50,
+                    # Then act very closely to deterministic actions thereafter.
+                    # "ou_base_scale": 0.001,
+                    # "initial_scale": 0.001,
+                    # "final_scale": 0.001,
+                }
+            )
+
             trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v1")
             # ts=0 (get a deterministic action as per explore=False).
             deterministic_action = trainer.compute_single_action(obs, explore=False)
@@ -261,9 +266,9 @@ class TestDDPG(unittest.TestCase):
                     weights_dict,
                     sorted(weights_dict.keys()),
                     fw,
-                    gamma=config["gamma"],
-                    huber_threshold=config["huber_threshold"],
-                    l2_reg=config["l2_reg"],
+                    gamma=config.gamma,
+                    huber_threshold=config.huber_threshold,
+                    l2_reg=config.l2_reg,
                     sess=sess,
                 )
 

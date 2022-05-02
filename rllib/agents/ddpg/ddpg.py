@@ -79,8 +79,7 @@ class DDPGConfig(TrainerConfig):
         # fmt: on
 
         # .exploration()
-        self.exploration_config = (
-            {
+        self.exploration_config = {
                 # DDPG uses OrnsteinUhlenbeck (stateful) noise to be added to NN-output
                 # actions (after a possible pure random phase of n timesteps).
                 "type": "OrnsteinUhlenbeckNoise",
@@ -99,8 +98,8 @@ class DDPGConfig(TrainerConfig):
                 "final_scale": 0.02,
                 # Timesteps over which to anneal scale (from initial to final values).
                 "scale_timesteps": 10000,
-            },
-        )
+            }
+
         self.timesteps_per_iteration = 1000
         self.evaluation_config = {"explore": False}
 
@@ -109,7 +108,7 @@ class DDPGConfig(TrainerConfig):
         self.evaluation_duration = 10
 
         # Common SimpleQ buffer parameters
-        self.buffer_size = (DEPRECATED_VALUE,)
+        self.buffer_size = DEPRECATED_VALUE
         self.replay_buffer_config = {
             "type": "MultiAgentReplayBuffer",
             "capacity": 50000,
@@ -122,17 +121,17 @@ class DDPGConfig(TrainerConfig):
         self.compress_observations = False
 
         # Common SimpleQ training parameters
-        self.grad_clip = (None,)
-        self.learning_starts = (1500,)
-        self.rollout_fragment_length = (1,)
-        self.train_batch_size = (256,)
+        self.grad_clip = None
+        self.learning_starts = 1500
+        self.rollout_fragment_length = 1
+        self.train_batch_size = 256
 
         # === Parallelism ===
-        self.worker_side_prioritization = (False,)
+        self.worker_side_prioritization = False
         self.num_workers = 0
 
         # .reporting()
-        self.min_time_s_per_reporting = (1,)
+        self.min_time_s_per_reporting = 1
 
         # .experimental()
         self._disable_execution_plan_api = False
@@ -273,7 +272,7 @@ class DDPGTrainer(SimpleQTrainer):
     @override(SimpleQTrainer)
     # TODO make this return a TrainerConfig
     def get_default_config(cls) -> TrainerConfigDict:
-        return DDPGConfig.to_dict()
+        return DDPGConfig().to_dict()
 
     @override(SimpleQTrainer)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
