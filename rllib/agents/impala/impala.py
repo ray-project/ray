@@ -11,12 +11,14 @@ import ray
 from ray.actor import ActorHandle
 from ray.rllib import SampleBatch
 from ray.rllib.agents.impala.vtrace_tf_policy import VTraceTFPolicy
-from ray.rllib.agents.trainer import Trainer, with_common_config
+from ray.rllib.agents.trainer import Trainer, with_common_config, TrainerConfig
 from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
-from ray.rllib.agents.trainer import Trainer, TrainerConfig
 from ray.rllib.execution.learner_thread import LearnerThread
 from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
-from ray.rllib.execution.parallel_requests import asynchronous_parallel_requests
+from ray.rllib.execution.parallel_requests import (
+    asynchronous_parallel_requests,
+    wait_asynchronous_requests,
+)
 from ray.rllib.execution.tree_agg import gather_experiences_tree_aggregation
 from ray.rllib.execution.common import (
     STEPS_TRAINED_COUNTER,
@@ -31,8 +33,6 @@ from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.actors import create_colocated_actors
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import (Deprecated, DEPRECATED_VALUE,
-    deprecation_warning)
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_TRAINED,
@@ -107,10 +107,14 @@ class ImpalaConfig(TrainerConfig):
         self.minibatch_buffer_size = 1
         self.num_sgd_iter = 1
         self.replay_proportion = 0.0
+        self.replay_ratio = ((1 / self.replay_proportion) if self.replay_proportion
+                                                             > 0 else 0.0)
         self.replay_buffer_num_slots = 0
         self.learner_queue_size = 16
         self.learner_queue_timeout = 300
         self.max_sample_requests_in_flight_per_worker = 2
+        self.aggregator_wait_timeout = 0.03
+        self.sample_wait_timeout = 0.03
         self.broadcast_interval = 1
         self.num_aggregation_workers = 0
         self.grad_clip = 40.0
@@ -137,6 +141,7 @@ class ImpalaConfig(TrainerConfig):
         # fmt: on
 
         # Deprecated value.
+        self._disable_execution_plan_api = True
         self.num_data_loader_buffers = DEPRECATED_VALUE
 
     @override(TrainerConfig)
@@ -155,6 +160,8 @@ class ImpalaConfig(TrainerConfig):
         learner_queue_size: Optional[int] = None,
         learner_queue_timeout: Optional[float] = None,
         max_sample_requests_in_flight_per_worker: Optional[int] = None,
+        aggregator_wait_timeout: Optional[float] = None,
+        sample_wait_timeout: Optional[float] = None,
         broadcast_interval: Optional[int] = None,
         num_aggregation_workers: Optional[int] = None,
         grad_clip: Optional[float] = None,
@@ -200,7 +207,8 @@ class ImpalaConfig(TrainerConfig):
                 minibatching. This conf only has an effect if `num_sgd_iter > 1`.
             num_sgd_iter: Number of passes to make over each train batch.
             replay_proportion: Set >0 to enable experience replay. Saved samples will
-                be replayed with a p:1 proportion to new data samples.
+                be replayed with a p:1 proportion to new data samples. Used in the
+                execution plan API.
             replay_buffer_num_slots: Number of sample batches to store for replay.
                 The number of transitions saved total will be
                 (replay_buffer_num_slots * rollout_fragment_length).
@@ -209,7 +217,12 @@ class ImpalaConfig(TrainerConfig):
             learner_queue_timeout: Wait for train batches to be available in minibatch
                 buffer queue this many seconds. This may need to be increased e.g. when
                 training with a slow environment.
-            max_sample_requests_in_flight_per_worker: Level of queuing for sampling.
+            max_sample_requests_in_flight_per_worker: Level of queuing for sampling
+                and replay aggregator operations (if using aggregator workers).
+            aggregator_wait_timeout: Amount of time to block and wait on pending calls
+                to replay aggregator workers.
+            sample_wait_timeout: Amount of time to block and wait on pending calls to
+                sampling workers.
             broadcast_interval: Max number of workers to broadcast one set of
                 weights to.
 
@@ -269,6 +282,10 @@ class ImpalaConfig(TrainerConfig):
             self.max_sample_requests_in_flight_per_worker = (
                 max_sample_requests_in_flight_per_worker
             )
+        if aggregator_wait_timeout is not None:
+            self.aggregator_wait_timeout = aggregator_wait_timeout
+        if sample_wait_timeout is not None:
+            self.sample_wait_timeout = sample_wait_timeout
         if broadcast_interval is not None:
             self.broadcast_interval = broadcast_interval
         if num_aggregation_workers is not None:
@@ -532,10 +549,6 @@ class ImpalaTrainer(Trainer):
 
             else:
                 # Create our local mixin buffer if the num of aggregation workers is 0.
-                # self.local_mixin_buffer = MixInMultiAgentReplayBuffer(
-                #     capacity=self.config["replay_buffer_num_slots"],
-                #     replay_ratio=self.config["replay_ratio"],
-                # )
                 self.local_mixin_buffer = MixInMultiAgentReplayBuffer(
                     capacity=(
                         self.config["replay_buffer_num_slots"]
@@ -717,7 +730,7 @@ class ImpalaTrainer(Trainer):
             ] = asynchronous_parallel_requests(
                 remote_requests_in_flight=self.remote_requests_in_flight,
                 actors=self.workers.remote_workers(),
-                ray_wait_timeout_s=0.03,
+                ray_wait_timeout_s=self.config["sample_wait_timeout"],
                 max_remote_requests_in_flight_per_actor=self.config[
                     "max_sample_requests_in_flight_per_worker"
                 ],
@@ -807,7 +820,7 @@ class ImpalaTrainer(Trainer):
                 actors=[aggregator],
                 remote_fn=lambda actor, b: actor.process_episodes(b),
                 remote_kwargs=[{"b": batch}],
-                ray_wait_timeout_s=0.0,
+                ray_wait_timeout_s=self.config["aggregator_wait_timeout"],
                 max_remote_requests_in_flight_per_actor=float("inf"),
             )
             for ready_sub_batches in processed_sample_batches.values():
@@ -815,12 +828,9 @@ class ImpalaTrainer(Trainer):
 
         waiting_processed_sample_batches: Dict[
             ActorHandle, List[ObjectRef]
-        ] = asynchronous_parallel_requests(
+        ] = wait_asynchronous_requests(
             remote_requests_in_flight=self.remote_aggregator_requests_in_flight,
-            actors=self.aggregator_workers,
-            remote_fn=None,
-            ray_wait_timeout_s=0.005,
-            max_remote_requests_in_flight_per_actor=float("inf"),
+            ray_wait_timeout_s=self.config["aggregator_wait_timeout"],
         )
         for ready_sub_batches in waiting_processed_sample_batches.values():
             ready_processed_batches.extend(ready_sub_batches)
@@ -840,9 +850,9 @@ class ImpalaTrainer(Trainer):
             weights = ray.put(self.workers.local_worker().get_weights())
             self._counters["steps_since_broadcast"] = 0
             self._learner_thread.weights_updated = False
+            self._counters["num_weight_broadcasts"] += 1
 
             for worker in self.workers_that_need_updates:
-                self._counters["num_weight_broadcasts"] += 1
                 worker.set_weights.remote(weights, global_vars)
             self.workers_that_need_updates = set()
 
@@ -876,16 +886,10 @@ class AggregatorWorker:
         )
 
     def process_episodes(self, batch: SampleBatchType) -> SampleBatchType:
-        processed_batches = []
-
         batch = batch.decompress_if_needed()
         self._mixin_buffer.add_batch(batch)
-        batch = self._mixin_buffer.replay()
-        if batch:
-            processed_batches.append(batch)
-        if processed_batches:
-            return SampleBatch.concat_samples(processed_batches)
-        return None
+        processed_batches = self._mixin_buffer.replay()
+        return processed_batches
 
     def apply(
         self,

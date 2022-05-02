@@ -9,11 +9,3 @@ cartpole-impala:
         framework: tf
         num_gpus: 0
         vtrace_drop_last_ts: false
-        _disable_execution_plan_api:
-            grid_search:
-                - True
-
-#        num_aggregation_workers:
-#            grid_search:
-#                - 0
-#                - 1
