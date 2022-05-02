@@ -1872,6 +1872,7 @@ cc_library(
         ":gcs",
         ":gcs_in_memory_store_client",
         ":pubsub_lib",
+        ":observable_store_client",
         ":ray_common",
         ":redis_store_client",
     ],

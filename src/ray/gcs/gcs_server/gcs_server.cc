@@ -58,8 +58,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
   if (storage_type_ == "redis") {
     gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(GetOrConnectRedis());
   } else if (storage_type_ == "memory") {
-    gcs_table_storage_ = std::make_shared<ObservableStoreClient>(
-        std::make_unique<InMemoryGcsTableStorage>(main_service_));
+    gcs_table_storage_ = std::make_shared<InMemoryGcsTableStorage>(main_service_);
   }
 
   auto on_done = [this](const ray::Status &status) {
@@ -485,7 +484,7 @@ void GcsServer::InitKVManager() {
   } else if (storage_type_ == "memory") {
     instance =
         std::make_unique<StoreClientInternalKV>(std::make_unique<ObservableStoreClient>(
-            std::make_unique<InMemoryGcsTableStorage>(main_service_)));
+            std::make_unique<InMemoryStoreClient>(main_service_)));
   }
 
   kv_manager_ = std::make_unique<GcsInternalKVManager>(std::move(instance));
