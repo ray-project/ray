@@ -1,7 +1,7 @@
 import inspect
 import logging
 from pathlib import Path
-from typing import Dict, Callable, List, Optional, Union, TYPE_CHECKING
+from typing import Callable, Dict, List, Optional, Union, Type, TYPE_CHECKING
 
 import ray
 from ray import tune
@@ -23,6 +23,28 @@ if TYPE_CHECKING:
     from ray.data import Dataset
 
 logger = logging.getLogger(__name__)
+
+
+# TODO(team-ml): Refactor checkpoint management along with Tune.
+class _DataParallelCheckpointManager(TuneCheckpointManager):
+    def on_init(self, preprocessor: Preprocessor):
+        self.preprocessor = preprocessor
+        super(_DataParallelCheckpointManager, self).on_init()
+
+    def write_checkpoint(self, checkpoint: Dict):
+        self.add_tune_checkpoint_id(checkpoint)
+
+        # Add the preprocessor to the checkpoint.
+        checkpoint[PREPROCESSOR_KEY] = self.preprocessor
+
+        checkpoint_obj = Checkpoint.from_dict(checkpoint)
+        # If inside a Tune Trainable, then checkpoint with Tune.
+        with tune.checkpoint_dir(step=self._latest_checkpoint_id) as checkpoint_dir:
+            checkpoint_obj.to_directory(path=checkpoint_dir)
+
+    @property
+    def latest_checkpoint_dir(self) -> Optional[Path]:
+        raise NotImplementedError
 
 
 @DeveloperAPI
@@ -186,6 +208,10 @@ class DataParallelTrainer(Trainer):
         resume_from_checkpoint: A checkpoint to resume training from.
     """
 
+    _checkpoint_manager_cls: Type[
+        TuneCheckpointManager
+    ] = _DataParallelCheckpointManager
+
     _scaling_config_allowed_keys = [
         "num_workers",
         "num_cpus_per_worker",
@@ -286,7 +312,7 @@ class DataParallelTrainer(Trainer):
             max_retries=0,
         )
 
-        checkpoint_manager = _DataParallelCheckpointManager()
+        checkpoint_manager = self._checkpoint_manager_cls()
         checkpoint_manager.on_init(preprocessor=self.preprocessor)
 
         # Start the remote actors.
@@ -321,28 +347,6 @@ class DataParallelTrainer(Trainer):
 
         # Shutdown workers.
         backend_executor.shutdown()
-
-
-# TODO(team-ml): Refactor checkpoint management along with Tune.
-class _DataParallelCheckpointManager(TuneCheckpointManager):
-    def on_init(self, preprocessor: Preprocessor):
-        self.preprocessor = preprocessor
-        super(_DataParallelCheckpointManager, self).on_init()
-
-    def write_checkpoint(self, checkpoint: Dict):
-        self.add_tune_checkpoint_id(checkpoint)
-
-        # Add the preprocessor to the checkpoint.
-        checkpoint[PREPROCESSOR_KEY] = self.preprocessor
-
-        checkpoint_obj = Checkpoint.from_dict(checkpoint)
-        # If inside a Tune Trainable, then checkpoint with Tune.
-        with tune.checkpoint_dir(step=self._latest_checkpoint_id) as checkpoint_dir:
-            checkpoint_obj.to_directory(path=checkpoint_dir)
-
-    @property
-    def latest_checkpoint_dir(self) -> Optional[Path]:
-        raise NotImplementedError
 
 
 def _default_dataset_split_fn(
