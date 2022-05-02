@@ -34,7 +34,7 @@ CONFIGS = {
     },
     "DDPG": {
         "explore": False,
-        "timesteps_per_iteration": 100,
+        "min_sample_timesteps_per_reporting": 100,
     },
     "DQN": {
         "explore": False,

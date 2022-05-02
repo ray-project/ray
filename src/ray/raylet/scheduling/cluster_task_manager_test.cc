@@ -146,7 +146,8 @@ RayTask CreateTask(
     const std::unordered_map<std::string, double> &required_resources,
     int num_args = 0,
     std::vector<ObjectID> args = {},
-    const std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info = nullptr) {
+    const std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info = nullptr,
+    rpc::SchedulingStrategy scheduling_strategy = rpc::SchedulingStrategy()) {
   TaskSpecBuilder spec_builder;
   TaskID id = RandomTaskId();
   JobID job_id = RandomJobId();
@@ -177,6 +178,8 @@ RayTask CreateTask(
       spec_builder.AddArg(TaskArgByReference(put_id, rpc::Address(), ""));
     }
   }
+
+  spec_builder.SetNormalTaskSpec(0, false, scheduling_strategy);
 
   return RayTask(spec_builder.Build());
 }
@@ -1212,6 +1215,66 @@ TEST_F(ClusterTaskManagerTest, HeartbeatTest) {
       ASSERT_TRUE(found);
     }
   }
+}
+
+TEST_F(ClusterTaskManagerTest, ResourceReportForNodeAffinitySchedulingStrategyTasks) {
+  rpc::RequestWorkerLeaseReply reply;
+  bool callback_occurred = false;
+  bool *callback_occurred_ptr = &callback_occurred;
+  auto callback = [callback_occurred_ptr](
+                      Status, std::function<void()>, std::function<void()>) {
+    *callback_occurred_ptr = true;
+  };
+
+  // Feasible strict task won't be reported.
+  rpc::SchedulingStrategy scheduling_strategy;
+  scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_node_id(
+      id_.Binary());
+  scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_soft(false);
+  RayTask task1 =
+      CreateTask({{ray::kCPU_ResourceLabel, 1}}, 0, {}, nullptr, scheduling_strategy);
+  task_manager_.QueueAndScheduleTask(task1, false, false, &reply, callback);
+
+  // Feasible soft task won't be reported.
+  scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_node_id(
+      id_.Binary());
+  scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_soft(true);
+  RayTask task2 =
+      CreateTask({{ray::kCPU_ResourceLabel, 2}}, 0, {}, nullptr, scheduling_strategy);
+  task_manager_.QueueAndScheduleTask(task2, false, false, &reply, callback);
+
+  // Infeasible soft task will be reported.
+  scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_node_id(
+      id_.Binary());
+  scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_soft(true);
+  RayTask task3 =
+      CreateTask({{ray::kGPU_ResourceLabel, 1}}, 0, {}, nullptr, scheduling_strategy);
+  task_manager_.QueueAndScheduleTask(task3, false, false, &reply, callback);
+  ASSERT_FALSE(callback_occurred);
+
+  // Infeasible strict task won't be reported (will fail immediately).
+  scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_node_id(
+      id_.Binary());
+  scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_soft(false);
+  RayTask task4 =
+      CreateTask({{ray::kGPU_ResourceLabel, 2}}, 0, {}, nullptr, scheduling_strategy);
+  task_manager_.QueueAndScheduleTask(task4, false, false, &reply, callback);
+  ASSERT_TRUE(callback_occurred);
+  ASSERT_TRUE(reply.canceled());
+  ASSERT_EQ(reply.failure_type(),
+            rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE);
+
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(pool_.workers.size(), 0);
+
+  rpc::ResourcesData data;
+  task_manager_.FillResourceUsage(data);
+  auto resource_load_by_shape = data.resource_load_by_shape();
+  ASSERT_EQ(resource_load_by_shape.resource_demands().size(), 1);
+  auto demand = resource_load_by_shape.resource_demands()[0];
+  ASSERT_EQ(demand.num_infeasible_requests_queued(), 1);
+  ASSERT_EQ(demand.num_ready_requests_queued(), 0);
+  ASSERT_EQ(demand.shape().at("GPU"), 1);
 }
 
 TEST_F(ClusterTaskManagerTest, BacklogReportTest) {

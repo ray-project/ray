@@ -104,8 +104,11 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
             return
         else:
             logger.info("Usage reporting is enabled.")
+            # Wait for 1 minutes to send the first report
+            # so autoscaler has the chance to set DEBUG_AUTOSCALING_STATUS.
+            await asyncio.sleep(min(60, ray_usage_lib._usage_stats_report_interval_s()))
             await self._report_usage_async()
-            # Add a random offset before the first report to remove sample bias.
+            # Add a random offset before the second report to remove sample bias.
             await asyncio.sleep(
                 random.randint(0, ray_usage_lib._usage_stats_report_interval_s())
             )
