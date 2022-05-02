@@ -2520,9 +2520,9 @@ class Trainer(Trainable):
                 "`min_train_timesteps_per_reporting`",
                 error=False,
             )
-            config["min_sample_timesteps_per_reporting"] = config[
-                "timesteps_per_iteration"
-            ] or 0
+            config["min_sample_timesteps_per_reporting"] = (
+                config["timesteps_per_iteration"] or 0
+            )
 
         # Evaluation settings.
 
