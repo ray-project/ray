@@ -135,17 +135,27 @@ class Node:
 
         self._raylet_ip_address = raylet_ip_address
 
+        temp_dir = ray._private.utils.get_ray_temp_dir()
+        worker_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "workers", "default_worker.py"
+        )
+        setup_worker_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "workers", ray_constants.SETUP_WORKER_FILENAME,
+        )
+
+        if sys.platform == "win32":  # Enclose in double quotes for paths with spaces
+            temp_dir = f'"{temp_dir}"'
+            worker_path = f'"{worker_path}"'
+            setup_worker_path = f'"{setup_worker_path}"'
+
         ray_params.update_if_absent(
             include_log_monitor=True,
             resources={},
-            temp_dir=ray._private.utils.get_ray_temp_dir(),
-            worker_path=os.path.join(
-                os.path.dirname(os.path.abspath(__file__)), "workers", "default_worker.py"
-            ),
-            setup_worker_path=os.path.join(
-                os.path.dirname(os.path.abspath(__file__)),
-                f"workers", ray_constants.SETUP_WORKER_FILENAME,
-            ),
+            temp_dir=temp_dir,
+            worker_path=worker_path,
+            setup_worker_path=setup_worker_path,
         )
 
         self._resource_spec = None
