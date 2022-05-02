@@ -34,6 +34,7 @@ class ImpalaConfig(TrainerConfig):
     """Defines an ARSTrainer configuration class from which an ImpalaTrainer can be built.
 
     Example:
+        >>> from ray.rllib.agents.impala import ImpalaConfig
         >>> config = ImpalaConfig().training(lr=0.0003, train_batch_size=512)\
         ...     .resources(num_gpus=4)\
         ...     .rollouts(num_rollout_workers=64)
@@ -43,6 +44,7 @@ class ImpalaConfig(TrainerConfig):
         >>> trainer.train()
 
     Example:
+        >>> from ray.rllib.agents.impala import ImpalaConfig
         >>> from ray import tune
         >>> config = ImpalaConfig()
         >>> # Print out some default values.
