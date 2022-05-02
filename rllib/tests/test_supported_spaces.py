@@ -179,7 +179,7 @@ class TestSupportedSpacesOffPolicy(unittest.TestCase):
             "DDPG",
             {
                 "exploration_config": {"ou_base_scale": 100.0},
-                "timesteps_per_iteration": 1,
+                "min_sample_timesteps_per_reporting": 1,
                 "buffer_size": 1000,
                 "use_state_preprocessor": True,
             },
@@ -187,7 +187,7 @@ class TestSupportedSpacesOffPolicy(unittest.TestCase):
         )
 
     def test_dqn(self):
-        config = {"timesteps_per_iteration": 1, "buffer_size": 1000}
+        config = {"min_sample_timesteps_per_reporting": 1, "buffer_size": 1000}
         check_support("DQN", config, tfe=True)
 
     def test_sac(self):
