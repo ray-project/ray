@@ -182,26 +182,6 @@ def test_replica_config_validation():
             ReplicaConfig(Class, ray_actor_options={option: None})
 
 
-@pytest.mark.parametrize(
-    "memory_omitted_options",
-    [
-        None,
-        {},
-        {"num_cpus": 1, "num_gpus": 3},
-        {"num_cpus": 1, "num_gpus": 3, "memory": None},
-    ],
-)
-def test_replica_config_default_memory_none(memory_omitted_options):
-    """Checks that ReplicaConfig's default memory is None."""
-
-    if memory_omitted_options is None:
-        config = ReplicaConfig("fake.import_path")
-        assert config.ray_actor_options.get("memory") is None
-
-    config = ReplicaConfig("fake.import_path", ray_actor_options=memory_omitted_options)
-    assert config.ray_actor_options.get("memory") is None
-
-
 def test_http_options():
     HTTPOptions()
     HTTPOptions(host="8.8.8.8", middlewares=[object()])
