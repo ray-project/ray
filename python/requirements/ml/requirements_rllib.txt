@@ -22,7 +22,7 @@ pybullet==3.2.0
 recsim==0.2.4
 tensorflow_estimator==2.6.0
 # DeepMind's OpenSpiel
-open-spiel==1.0.2
+open-spiel==1.1.0
 
 # Other.
 # ------
