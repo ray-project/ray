@@ -19,7 +19,7 @@ class MockPinObjectsInterface : public PinObjectsInterface {
   MOCK_METHOD(void,
               PinObjectIDs,
               (const rpc::Address &caller_address,
-               const ObjectID &object_ids,
+               const ObjectID &object_id,
                rpc::ClientCallback<rpc::PinObjectIDsReply> callback),
               (override));
 };
