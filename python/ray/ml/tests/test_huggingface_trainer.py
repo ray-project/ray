@@ -1,5 +1,7 @@
 import pandas as pd
 import pytest
+from unittest.mock import patch
+from ray.ml.train.integrations.huggingface.huggingface_utils import TrainReportCallback
 
 from transformers import (
     AutoConfig,
@@ -8,6 +10,7 @@ from transformers import (
     Trainer,
     TrainingArguments,
 )
+from transformers.trainer_callback import TrainerState
 
 import ray.data
 from ray.ml.train.integrations.huggingface import HuggingFaceTrainer
@@ -98,3 +101,35 @@ def test_e2e(ray_start_4_cpus, save_strategy):
 
     predictions = predictor.predict(ray.data.from_pandas(prompts))
     assert predictions.count() == 3
+
+
+def test_reporting():
+    reports = []
+
+    def _fake_report(**kwargs):
+        reports.append(kwargs)
+
+    with patch("ray.train.report", _fake_report):
+        state = TrainerState()
+        report_callback = TrainReportCallback()
+        report_callback.on_epoch_begin(None, state, None)
+        state.epoch = 0.5
+        report_callback.on_log(None, state, None, logs={"log1": 1})
+        state.epoch = 1
+        report_callback.on_log(None, state, None, logs={"log2": 1})
+        report_callback.on_epoch_end(None, state, None)
+        report_callback.on_epoch_begin(None, state, None)
+        state.epoch = 1.5
+        report_callback.on_log(None, state, None, logs={"log1": 1})
+        state.epoch = 2
+        report_callback.on_log(None, state, None, logs={"log2": 1})
+        report_callback.on_epoch_end(None, state, None)
+        report_callback.on_train_end(None, state, None)
+
+    assert len(reports) == 2
+    assert "log1" in reports[0]
+    assert "log2" in reports[0]
+    assert reports[0]["epoch"] == 1
+    assert "log1" in reports[1]
+    assert "log2" in reports[1]
+    assert reports[1]["epoch"] == 2
