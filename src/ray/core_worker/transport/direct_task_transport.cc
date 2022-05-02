@@ -669,33 +669,38 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
         RAY_LOG(DEBUG) << "CancelTask RPC response received for " << task_spec.TaskId()
                        << " with status " << status.ToString();
         cancelled_tasks_.erase(task_spec.TaskId());
-        if (status.ok()) {
-          if (reply.requested_task_running()) {
-            if (!reply.attempt_succeeded()) {
-              // Retry cancel request if failed.
-              if (cancel_retry_timer_.has_value()) {
-                if (cancel_retry_timer_->expiry().time_since_epoch() <=
-                    std::chrono::high_resolution_clock::now().time_since_epoch()) {
-                  cancel_retry_timer_->expires_after(boost::asio::chrono::milliseconds(
-                      RayConfig::instance().cancellation_retry_ms()));
-                }
-                cancel_retry_timer_->async_wait(
-                    boost::bind(&CoreWorkerDirectTaskSubmitter::CancelTask,
-                                this,
-                                task_spec,
-                                force_kill,
-                                recursive));
-              }
-            }
-          } else {
-            if (!reply.attempt_succeeded()) {
-              RAY_LOG(ERROR) << "Try to cancel task " << task_spec.TaskId()
-                             << " in a worker that doesn't have this task.";
-            }
-          }
-        }
+
         // Retry is not attempted if !status.ok() because force-kill may kill the worker
         // before the reply is sent.
+        if (!status.ok()) {
+          RAY_LOG(ERROR) << "Failed to cancel a task due to " << status.ToString();
+          return;
+        }
+
+        if (!reply.attempt_succeeded()) {
+          if (reply.requested_task_running()) {
+            // Retry cancel request if failed.
+            if (cancel_retry_timer_.has_value()) {
+              if (cancel_retry_timer_->expiry().time_since_epoch() <=
+                  std::chrono::high_resolution_clock::now().time_since_epoch()) {
+                cancel_retry_timer_->expires_after(boost::asio::chrono::milliseconds(
+                    RayConfig::instance().cancellation_retry_ms()));
+              }
+              cancel_retry_timer_->async_wait(
+                  boost::bind(&CoreWorkerDirectTaskSubmitter::CancelTask,
+                              this,
+                              task_spec,
+                              force_kill,
+                              recursive));
+            } else {
+              RAY_LOG(ERROR)
+                  << "Failed to cancel a task which is running. Stop retrying.";
+            }
+          } else {
+            RAY_LOG(ERROR) << "Attempt to cancel task " << task_spec.TaskId()
+                           << " in a worker that doesn't have this task.";
+          }
+        }
       });
   return Status::OK();
 }

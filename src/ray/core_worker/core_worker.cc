@@ -3044,7 +3044,8 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
   if (request.recursive()) {
     auto recursive_cancel = CancelChildren(task_id, request.force_kill());
     if (!recursive_cancel.ok()) {
-      RAY_LOG(ERROR) << "Recursive cancel failed for a task " << task_id;
+      RAY_LOG(ERROR) << "Recursive cancel failed for a task " << task_id
+                     << " due to reason: " << recursive_cancel.ToString();
     }
   }
 
