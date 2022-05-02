@@ -45,7 +45,7 @@ class WeightedImportanceSamplingEstimator(OffPolicyEstimator):
             V_step_WIS += p[t] / w_t * rewards[t] * self.gamma ** t
 
         estimation = OffPolicyEstimate(
-            "wis",
+            "weighted_importance_sampling",
             {
                 "V_prev": V_prev,
                 "V_step_WIS": V_step_WIS,

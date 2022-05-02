@@ -15,6 +15,8 @@ from ray.rllib.env.env_context import EnvContext
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
 from ray.rllib.evaluation.collectors.simple_list_collector import SimpleListCollector
 from ray.rllib.models import MODEL_DEFAULTS
+from ray.rllib.offline.is_estimator import ImportanceSamplingEstimator
+from ray.rllib.offline.wis_estimator import WeightedImportanceSamplingEstimator
 from ray.rllib.utils.typing import (
     EnvConfigDict,
     EnvType,
@@ -170,7 +172,8 @@ class TrainerConfig:
         self.input_ = "sampler"
         self.input_config = {}
         self.actions_in_input_normalized = False
-        self.input_evaluation = ["is", "wis"]
+        self.input_evaluation = [ImportanceSamplingEstimator,
+                                 WeightedImportanceSamplingEstimator]
         self.postprocess_inputs = False
         self.shuffle_buffer_size = 0
         self.output = None
@@ -866,10 +869,11 @@ class TrainerConfig:
             input_evaluation: Specify how to evaluate the current policy. This only has
                 an effect when reading offline experiences ("input" is not "sampler").
                 Available options:
-                - "wis": the weighted step-wise importance sampling estimator.
-                - "is": the step-wise importance sampling estimator.
-                - "simulation": run the environment in the background, but use
+                - "simulation": Run the environment in the background, but use
                 this data for evaluation only and not for learning.
+                - Any subclass of OffPolicyEstimator, e.g.
+                ray.rllib.offline.is_estimator::ImportanceSamplingEstimator or your own
+                custom subclass.
             postprocess_inputs: Whether to run postprocess_trajectory() on the
                 trajectory fragments from offline inputs. Note that postprocessing will
                 be done using the *current* policy, not the *behavior* policy, which
