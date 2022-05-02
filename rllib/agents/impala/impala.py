@@ -11,7 +11,7 @@ import ray
 from ray.actor import ActorHandle
 from ray.rllib import SampleBatch
 from ray.rllib.agents.impala.vtrace_tf_policy import VTraceTFPolicy
-from ray.rllib.agents.trainer import Trainer, with_common_config, TrainerConfig
+from ray.rllib.agents.trainer import Trainer, TrainerConfig
 from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
 from ray.rllib.execution.learner_thread import LearnerThread
 from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
@@ -52,7 +52,6 @@ from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
     deprecation_warning,
 )
-from ray.rllib.utils.typing import PartialTrainerConfigDict, TrainerConfigDict
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.types import ObjectRef
 
@@ -107,8 +106,8 @@ class ImpalaConfig(TrainerConfig):
         self.minibatch_buffer_size = 1
         self.num_sgd_iter = 1
         self.replay_proportion = 0.0
-        self.replay_ratio = ((1 / self.replay_proportion) if self.replay_proportion
-                                                             > 0 else 0.0)
+        self.replay_ratio = ((1 / self.replay_proportion)
+                             if self.replay_proportion > 0 else 0.0)
         self.replay_buffer_num_slots = 0
         self.learner_queue_size = 16
         self.learner_queue_timeout = 300
