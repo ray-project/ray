@@ -28,7 +28,7 @@ Where to go from here?
     In this quick start tutorial you will take a sample application designed to run on a laptop and scale it up in the cloud.
 
     +++
-    .. link-button:: cluster-quick-start
+    .. link-button:: ref-cluster-quick-start
         :type: ref
         :text: Ray Clusters Quick Start
         :classes: btn-outline-info btn-block
@@ -52,7 +52,7 @@ Where to go from here?
     Learn how to set up a distributed Ray cluster and run your workloads on it.
 
     +++
-    .. link-button:: deployment-guide
+    .. link-button:: ref-deployment-guide
         :type: ref
         :text: Deploy on a Ray Cluster
         :classes: btn-outline-info btn-block
@@ -61,11 +61,10 @@ Where to go from here?
     API
     ^^^
 
-    Get more in-depth information about the various APIs to interact with Ray Clusters, including the :ref:`Ray cluster
-config YAML and CLI<cluster-config>` and the :ref:`Ray job submission API<ray-job-submission-api-ref>`.
+    Get more in-depth information about the various APIs to interact with Ray Clusters, including the :ref:`Ray cluster config YAML and CLI<cluster-config>` and the :ref:`Ray job submission API<ray-job-submission-api-ref>`.
 
     +++
-    .. link-button:: cluster-api
+    .. link-button:: ref-cluster-api
         :type: ref
         :text: Read the API Reference
         :classes: btn-outline-info btn-block
