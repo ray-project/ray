@@ -475,6 +475,15 @@ def _huggingface_train_loop_per_worker(config):
             "If that happens, specify `hub_token` in `TrainingArguments`."
         )
 
+    if (
+        trainer.args.evaluation_strategy == "steps"
+        or trainer.args.save_strategy == "steps"
+    ):
+        raise ValueError(
+            "'steps' value for `evaluation_strategy` and `save_strategy` "
+            "is not yet supported."
+        )
+
     trainer = wrap_transformers_trainer(trainer)
 
     # ensure no HF logging callbacks are added
