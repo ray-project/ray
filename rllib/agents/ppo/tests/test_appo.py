@@ -96,7 +96,7 @@ class TestAPPO(unittest.TestCase):
         config["train_batch_size"] = 20
         config["batch_mode"] = "truncate_episodes"
         config["rollout_fragment_length"] = 10
-        config["timesteps_per_iteration"] = 20
+        config["min_sample_timesteps_per_reporting"] = 20
         # 0 metrics reporting delay, this makes sure timestep,
         # which entropy coeff depends on, is updated after each worker rollout.
         config["min_time_s_per_reporting"] = 0
