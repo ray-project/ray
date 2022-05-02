@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 import logging
 from typing import Optional, List, TYPE_CHECKING
 from contextlib import contextmanager
+import ray
 from ray.workflow.common import WorkflowStatus
 from ray._private.ray_logging import get_worker_log_file_name, configure_log_file
 
