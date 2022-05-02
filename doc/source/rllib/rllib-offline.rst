@@ -66,6 +66,7 @@ Then, we can tell DQN to train using these previously generated experiences with
                 "temperature": 1.0,
             }'
 
+.. _is:
 This example plot shows the Q-value metric in addition to importance sampling (IS) and weighted importance sampling (WIS) gain estimates (>1.0 means there is an estimated improvement over the original policy):
 
 .. image:: images/offline-q.png

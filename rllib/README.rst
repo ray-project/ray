@@ -58,12 +58,10 @@ Algorithms Supported
 
 Offline RL:  
 
-- `Behavior Cloning (BC; derived from MARWIL implementation) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#bc>`__ 
-- `Conservative Q-Learning (CQL) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#cql>`__ 
-- `Soft Actor Critic (SAC) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#sac>`__ 
-- `Deep Deterministic Policy Gradients (TD3) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#ddpg>`__ 
-- `Deep Deterministic Policy Gradients (DDPG) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#ddpg>`__ 
-- `Monotonic Advantage Re-Weighted Imitation Learning (MARWIL) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#marwil>`__ 
+- :ref:`Behavior Cloning (BC; derived from MARWIL implementation)<bc>` 
+- :ref:`Conservative Q-Learning (CQL)<cql>` 
+- :ref:`Importance Sampling, Weighted Importance Sampling (OPE)<is>`
+- :ref:`Monotonic Advantage Re-Weighted Imitation Learning (MARWIL)<marwil>` 
 
 Model-free RL: 
 
@@ -75,6 +73,9 @@ Model-free RL:
 - `Deep Q Networks (DQN) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#dqn>`__ 
 - `Deep Q Networks (Rainbow) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#dqn>`__ 
 - `Deep Q Networks (Parametric DQN) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#dqn>`__ 
+- `Soft Actor Critic (SAC) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#sac>`__ 
+- `Deep Deterministic Policy Gradients (TD3) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#ddpg>`__ 
+- `Deep Deterministic Policy Gradients (DDPG) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#ddpg>`__ 
 
 Model-based RL: 
 
