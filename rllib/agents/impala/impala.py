@@ -62,9 +62,9 @@ class ImpalaConfig(TrainerConfig):
         ... )
     """
 
-    def __init__(self):
+    def __init__(self, trainer_class=None):
         """Initializes a ImpalaConfig instance."""
-        super().__init__(trainer_class=ImpalaTrainer)
+        super().__init__(trainer_class=trainer_class or ImpalaTrainer)
 
         # fmt: off
         # __sphinx_doc_begin__
