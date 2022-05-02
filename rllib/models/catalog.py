@@ -515,7 +515,7 @@ class ModelCatalog:
 
                 def track_var_creation(next_creator, **kw):
                     v = next_creator(**kw)
-                    created.add(v)
+                    created.add(v.ref())
                     return v
 
                 with tf.variable_creator_scope(track_var_creation):
