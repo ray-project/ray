@@ -59,7 +59,8 @@ class TestSimpleQ(unittest.TestCase):
             model={
                 "fcnet_hiddens": [10],
                 "fcnet_activation": "linear",
-            })
+            }
+        )
 
         for fw in framework_iterator(config):
             # Generate Trainer and get its default Policy object.
@@ -125,9 +126,7 @@ class TestSimpleQ(unittest.TestCase):
                 1,
             )
             # TD-errors (Bellman equation).
-            td_error = (
-                q_t - config.gamma * input_[SampleBatch.REWARDS] + q_target_tp1
-            )
+            td_error = q_t - config.gamma * input_[SampleBatch.REWARDS] + q_target_tp1
             # Huber/Square loss on TD-error.
             expected_loss = huber_loss(td_error).mean()
 

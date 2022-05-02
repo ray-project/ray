@@ -39,9 +39,7 @@ class TestDDPG(unittest.TestCase):
         config.num_workers = 1
         config.num_envs_per_worker = 2
         config.learning_starts = 0
-        config.exploration(
-            exploration_config={"random_timesteps": 100}
-        )
+        config.exploration(exploration_config={"random_timesteps": 100})
         num_iterations = 1
 
         # Test against all frameworks.
@@ -68,9 +66,7 @@ class TestDDPG(unittest.TestCase):
         config.num_workers = 1
         config.num_envs_per_worker = 2
         config.learning_starts = 0
-        config.exploration(
-            exploration_config={"random_timesteps": 100}
-        )
+        config.exploration(exploration_config={"random_timesteps": 100})
 
         # Test against all frameworks.
         for _ in framework_iterator(config, with_eager_tracing=True):
@@ -164,7 +160,6 @@ class TestDDPG(unittest.TestCase):
         # Make sure, timing differences do not affect trainer.train().
         config.min_time_s_per_reporting = 0
         config.timesteps_per_iteration = 100
-
 
         map_ = {
             # Normal net.
