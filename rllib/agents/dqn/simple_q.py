@@ -242,7 +242,7 @@ class SimpleQTrainer(Trainer):
     @classmethod
     @override(Trainer)
     def get_default_config(cls) -> TrainerConfigDict:
-        return SimpleQConfig.to_dict()
+        return SimpleQConfig().to_dict()
 
     @override(Trainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
