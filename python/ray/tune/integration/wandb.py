@@ -9,6 +9,7 @@ import urllib
 
 from ray import logger
 from ray.tune import Trainable
+from ray.tune.checkpoint_manager import _TuneCheckpoint
 from ray.tune.function_runner import FunctionRunner
 from ray.tune.logger import LoggerCallback, Logger
 from ray.tune.utils import flatten_dict
@@ -198,12 +199,18 @@ class _WandbLoggingProcess(Process):
         self.kwargs = kwargs
 
     def run(self):
-        # Since we're running in a separate process already, use threads.
+        wandb.require("service")
         wandb.init(*self.args, **self.kwargs)
+        wandb.setup()
         while True:
             result = self.queue.get()
             if result == _WANDB_QUEUE_END:
                 break
+
+            if isinstance(result, _TuneCheckpoint):
+                self._handle_checkpoint(result.value)
+                continue
+
             log, config_update = self._handle_result(result)
             try:
                 wandb.config.update(config_update, allow_val_change=True)
@@ -213,6 +220,11 @@ class _WandbLoggingProcess(Process):
                 # big issue, as long as things eventually recover.
                 logger.warn("Failed to log result to w&b: {}".format(str(e)))
         wandb.finish()
+
+    def _handle_checkpoint(self, checkpoint_path: str):
+        checkpoint_path = os.path.join(checkpoint_path, "")
+        checkpoint_glob = checkpoint_path + "*"
+        wandb.save(checkpoint_glob, base_path=checkpoint_path)
 
     def _handle_result(self, result: Dict) -> Tuple[Dict, Dict]:
         config_update = result.get("config", {}).copy()
@@ -308,6 +320,7 @@ class WandbLoggerCallback(LoggerCallback):
         api_key: Optional[str] = None,
         excludes: Optional[List[str]] = None,
         log_config: bool = False,
+        save_checkpoints: bool = True,
         **kwargs
     ):
         self.project = project
@@ -316,18 +329,17 @@ class WandbLoggerCallback(LoggerCallback):
         self.api_key = api_key
         self.excludes = excludes or []
         self.log_config = log_config
+        self.save_checkpoints = save_checkpoints
         self.kwargs = kwargs
 
         self._trial_processes: Dict["Trial", _WandbLoggingProcess] = {}
         self._trial_queues: Dict["Trial", Queue] = {}
 
-    def setup(self):
+    def setup(self, *args, **kwargs):
         self.api_key_file = (
             os.path.expanduser(self.api_key_path) if self.api_key_path else None
         )
         _set_api_key(self.api_key_file, self.api_key)
-        wandb.require("service")
-        wandb.setup()
 
     def log_trial_start(self, trial: "Trial"):
         config = trial.config.copy()
@@ -383,6 +395,10 @@ class WandbLoggerCallback(LoggerCallback):
 
         result = _clean_log(result)
         self._trial_queues[trial].put(result)
+
+    def log_trial_save(self, trial: "Trial"):
+        if self.save_checkpoints and trial.checkpoint:
+            self._trial_queues[trial].put(trial.checkpoint)
 
     def log_trial_end(self, trial: "Trial", failed: bool = False):
         self._trial_queues[trial].put(_WANDB_QUEUE_END)
