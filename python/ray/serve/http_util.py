@@ -81,7 +81,7 @@ class Response:
 
             self.body = json.dumps(
                 jsonable_encoder(content, custom_encoder=serve_encoders)
-            )
+            ).encode()
             self.set_content_type("json")
 
     def set_content_type(self, content_type):
