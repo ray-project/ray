@@ -233,7 +233,7 @@ def read_datasource(
             _prepare_read, retry_exceptions=False, num_cpus=0
         )
         read_tasks = ray.get(
-            prepare_read.options(scheduling_strategy="SPREAD").remote(
+            prepare_read.remote(
                 datasource,
                 ctx,
                 parallelism,
