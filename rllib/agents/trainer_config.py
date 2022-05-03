@@ -194,7 +194,7 @@ class TrainerConfig:
         self.evaluation_num_workers = 0
         self.custom_evaluation_function = None
         self.always_attach_evaluation_results = False
-        #self.in_evaluation = False
+        # self.in_evaluation = False
 
         # `self.reporting()`
         self.keep_per_episode_custom_metrics = False
