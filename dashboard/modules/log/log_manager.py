@@ -13,6 +13,7 @@ from ray.experimental.log.consts import (
     RAY_LOG_CATEGORIES,
     RAY_WORKER_LOG_CATEGORIES,
 )
+from ray.dashboard.modules.log.log_grpc_client import LogsGrpcClient
 from ray.dashboard.datacenter import DataSource
 from ray import ray_constants
 
@@ -51,7 +52,7 @@ def wait_until_client_initializes(func):
 
 
 class LogsManager:
-    def __init__(self, grpc_client):
+    def __init__(self, grpc_client: LogsGrpcClient):
         self.client = grpc_client
 
     @property

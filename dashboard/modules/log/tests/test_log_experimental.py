@@ -4,9 +4,10 @@ import requests
 import asyncio
 import time
 
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import MagicMock
 from typing import List
 import pytest
+import sys
 
 import ray
 
@@ -25,6 +26,8 @@ from ray.experimental.log.common import (
     FileIdentifiers,
 )
 from ray.dashboard.modules.log.log_grpc_client import LogsGrpcClient
+
+ASYNCMOCK_MIN_PYTHON_VER = (3, 8)
 
 # Unit Tests (LogAgentV1)
 
@@ -61,6 +64,9 @@ def test_logs_tail():
 
 @pytest.fixture
 def logs_manager():
+    if sys.version_info < ASYNCMOCK_MIN_PYTHON_VER:
+        raise Exception(f"Unsupported for this version of python {sys.version_info}")
+    from unittest.mock import AsyncMock
     grpc_client = AsyncMock(LogsGrpcClient)
     manager = LogsManager(grpc_client)
     yield manager
@@ -88,6 +94,11 @@ async def raise_timeout():
     raise ValueError("timed out")
 
 
+@pytest.mark.skipif(
+    sys.version_info < ASYNCMOCK_MIN_PYTHON_VER,
+    reason=f"unittest.mock.AsyncMock requires python {ASYNCMOCK_MIN_PYTHON_VER}"
+    " or higher"
+)
 @pytest.mark.asyncio
 async def test_logs_manager_list_logs(logs_manager):
     logs_client = logs_manager.logs_client
@@ -108,6 +119,11 @@ async def test_logs_manager_list_logs(logs_manager):
     logs_client.list_logs.assert_awaited_with("2", timeout=None)
 
 
+@pytest.mark.skipif(
+    sys.version_info < ASYNCMOCK_MIN_PYTHON_VER,
+    reason=f"unittest.mock.AsyncMock requires python {ASYNCMOCK_MIN_PYTHON_VER}"
+    " or higher"
+)
 @pytest.mark.asyncio
 async def test_logs_manager_stream_log(logs_manager):
     NUM_LOG_CHUNKS = 10
@@ -173,6 +189,11 @@ async def test_logs_manager_stream_log(logs_manager):
     # Currently cannot test actor_id with AsyncMock
 
 
+@pytest.mark.skipif(
+    sys.version_info < ASYNCMOCK_MIN_PYTHON_VER,
+    reason=f"unittest.mock.AsyncMock requires python {ASYNCMOCK_MIN_PYTHON_VER}"
+    " or higher"
+)
 @pytest.mark.asyncio
 async def test_log_manager_wait_for_client(logs_manager):
     # Check that logs manager raises error if client does not initialize
