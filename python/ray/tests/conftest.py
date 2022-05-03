@@ -1,23 +1,25 @@
 """
 This file defines the common pytest fixtures used in current directory.
 """
+import json
 import os
-from contextlib import contextmanager
-import pytest
-import tempfile
+import platform
+import shutil
 import socket
 import subprocess
-import json
+import tempfile
 import time
+from contextlib import contextmanager
 from pathlib import Path
-from unittest import mock
-import shutil
-import platform
 from tempfile import gettempdir
+from typing import List, Tuple
+from unittest import mock
+
+import pytest
 
 import ray
 import ray.ray_constants as ray_constants
-from ray.cluster_utils import Cluster, AutoscalingCluster, cluster_not_supported
+import ray.util.client.server.server as ray_client_server
 from ray._private.runtime_env.pip import PipProcessor
 from ray._private.services import (
     REDIS_EXECUTABLE,
@@ -31,8 +33,7 @@ from ray._private.test_utils import (
     teardown_tls,
     get_and_run_node_killer,
 )
-import ray.util.client.server.server as ray_client_server
-from typing import Tuple
+from ray.cluster_utils import Cluster, AutoscalingCluster, cluster_not_supported
 
 
 @pytest.fixture
@@ -751,10 +752,13 @@ def _get_markdown_annotation(rep) -> str:
     main_tb, main_loc, _ = rep.longrepr.chain[-1]
     markdown = ""
 
+    # Only keep last line of the message
+    short_message = list(filter(None, main_loc.message.split("\n")))[-1]
+
     # Header: Main error message
     markdown += f"#### {rep.nodeid}\n\n"
     markdown += "<details>\n"
-    markdown += f"<summary>{main_loc.message}</summary>\n\n"
+    markdown += f"<summary>{short_message}</summary>\n\n"
 
     # Add link to test definition
     test_file, test_lineno, _test_node = rep.location
@@ -789,8 +793,23 @@ def _get_markdown_annotation(rep) -> str:
 
         markdown += "</details>\n"
 
+    markdown += "<details><summary>PIP packages</summary>\n\n"
+    markdown += "```\n"
+    markdown += "\n".join(_get_pip_packages())
+    markdown += "\n```\n\n"
+    markdown += "</details>\n"
+
     markdown += "</details>\n\n"
     return markdown
+
+
+def _get_pip_packages() -> List[str]:
+    try:
+        from pip._internal.operations import freeze
+
+        return list(freeze.freeze())
+    except Exception:
+        return ["invalid"]
 
 
 def _get_repo_github_path_and_link(file: str, lineno: int) -> Tuple[str, str]:
