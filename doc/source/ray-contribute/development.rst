@@ -328,10 +328,38 @@ update the documentation!
 When you make documentation changes, build them locally to verify they render
 correctly. `Sphinx <http://sphinx-doc.org/>`_ is used to generate the documentation.
 
+Building Docs for Apple Silicon (M1)
+------------------------------------
+
+If you are using an Apple Silicon (M1 processor) some of the dependencies required for building the docs don't have binary packages available by default.
+
+The simplest way to install those dependencies is with ``conda`` (https://docs.conda.io/en/latest/miniconda.html) first, that way ``pip`` won't try to install them by building them from scratch.
+
+.. code-block:: shell
+
+  conda install -c conda-forge xboost lightgbm
+
+Install Dependencies to Build the Docs
+--------------------------------------
+
+Start from the Ray git project directory cloned with the instructions above from above.
+
+Make sure you activate the Python (virtual) environment that you are using.
+
+Next go to the subdirectory ``doc``:
+
 .. code-block:: shell
 
     cd doc
+
+From there, you can install the dependencies for building the docs with:
+
+  .. code-block:: shell
+
     pip install -r requirements-doc.txt
+
+After that you can use the ``make`` command to build the docs:
+
     make html
 
 Once done, the docs will be in ``doc/_build/html``. For example, on Mac
