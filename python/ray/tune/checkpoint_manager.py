@@ -56,6 +56,11 @@ class CheckpointManager(CommonCheckpointManager):
         super().__init__(checkpoint_strategy=checkpoint_strategy)
 
     def on_checkpoint(self, checkpoint: _TrackedCheckpoint):
+        checkpoint.checkpoint_id = (
+            checkpoint.checkpoint_id or self._latest_checkpoint_id
+        )
+        self._latest_checkpoint_id += 1
+
         if checkpoint.storage_mode == _TrackedCheckpoint.MEMORY:
             self._replace_latest_memory_checkpoint(checkpoint)
         else:
@@ -68,17 +73,13 @@ class CheckpointManager(CommonCheckpointManager):
 
     def _skip_persisted_checkpoint(self, persisted_checkpoint: _TrackedCheckpoint):
         assert persisted_checkpoint.storage_mode == _TrackedCheckpoint.PERSISTENT
-        # Ray Tune always keeps track of the latest persisted checkpoint
+        super()._skip_persisted_checkpoint(persisted_checkpoint=persisted_checkpoint)
+        # Ray Tune always keeps track of the latest persisted checkpoint.
+        # Note that this checkpoint will be deleted once it is not the
+        # latest checkpoint anymore
         self._replace_latest_persisted_checkpoint(
             persisted_checkpoint=persisted_checkpoint
         )
-        logger.debug(f"Skipping checkpoint due to low score: {persisted_checkpoint}.")
-
-    def _delete_persisted_checkpoint(self, persisted_checkpoint: _TrackedCheckpoint):
-        if persisted_checkpoint == self._latest_persisted_checkpoint:
-            self._checkpoints_to_clean_up.add(persisted_checkpoint)
-        else:
-            persisted_checkpoint.delete()
 
     # Tune-specific properties
 

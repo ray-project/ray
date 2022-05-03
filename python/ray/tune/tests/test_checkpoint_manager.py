@@ -17,7 +17,11 @@ class CheckpointManagerTest(unittest.TestCase):
         return {"i": metric, TRAINING_ITERATION: i}
 
     def checkpoint_manager(self, keep_checkpoints_num):
-        return CheckpointManager(keep_checkpoints_num, "i", delete_fn=lambda c: None)
+        return CheckpointManager(
+            keep_checkpoints_num=keep_checkpoints_num,
+            checkpoint_score_attr="i",
+            delete_fn=lambda c: None,
+        )
 
     def testNewestCheckpoint(self):
         checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num=1)
@@ -53,7 +57,9 @@ class CheckpointManagerTest(unittest.TestCase):
             for i in range(3)
         ]
 
-        with patch.object(checkpoint_manager, "delete") as delete_mock:
+        with patch.object(
+            checkpoint_manager, "_delete_persisted_checkpoint"
+        ) as delete_mock:
             for j in range(3):
                 checkpoint_manager.on_checkpoint(checkpoints[j])
                 expected_deletes = 0 if j != 2 else 1
@@ -83,11 +89,17 @@ class CheckpointManagerTest(unittest.TestCase):
             for i in range(3, -1, -1)
         ]
 
-        with patch.object(checkpoint_manager, "delete") as delete_mock:
+        with patch.object(
+            checkpoint_manager, "_delete_persisted_checkpoint"
+        ) as delete_mock:
             for j in range(0, len(checkpoints)):
                 checkpoint_manager.on_checkpoint(checkpoints[j])
                 expected_deletes = 0 if j != 3 else 1
-                self.assertEqual(delete_mock.call_count, expected_deletes)
+                self.assertEqual(
+                    delete_mock.call_count,
+                    expected_deletes,
+                    msg=f"Called {delete_mock.call_count} times",
+                )
                 self.assertEqual(
                     checkpoint_manager.newest_persistent_checkpoint, checkpoints[j]
                 )
@@ -120,7 +132,7 @@ class CheckpointManagerTest(unittest.TestCase):
             best_checkpoints = checkpoint_manager.best_checkpoints()
             self.assertEqual(len(best_checkpoints), keep_checkpoints_num)
             for i in range(len(best_checkpoints)):
-                self.assertEqual(best_checkpoints[i].value, i + 4)
+                self.assertEqual(best_checkpoints[i].checkpoint_dir_or_data, i + 4)
 
     def testBestCheckpointsWithNan(self):
         """
@@ -150,8 +162,8 @@ class CheckpointManagerTest(unittest.TestCase):
             best_checkpoints = checkpoint_manager.best_checkpoints()
             # best_checkpoints is sorted from worst to best
             self.assertEqual(len(best_checkpoints), keep_checkpoints_num)
-            self.assertEqual(best_checkpoints[0].value, None)
-            self.assertEqual(best_checkpoints[1].value, 3)
+            self.assertEqual(best_checkpoints[0].checkpoint_dir_or_data, None)
+            self.assertEqual(best_checkpoints[1].checkpoint_dir_or_data, 3)
 
     def testBestCheckpointsOnlyNan(self):
         """
@@ -174,8 +186,8 @@ class CheckpointManagerTest(unittest.TestCase):
         best_checkpoints = checkpoint_manager.best_checkpoints()
         # best_checkpoints is sorted from worst to best
         self.assertEqual(len(best_checkpoints), keep_checkpoints_num)
-        self.assertEqual(best_checkpoints[0].value, 2)
-        self.assertEqual(best_checkpoints[1].value, 3)
+        self.assertEqual(best_checkpoints[0].checkpoint_dir_or_data, 2)
+        self.assertEqual(best_checkpoints[1].checkpoint_dir_or_data, 3)
 
     def testOnCheckpointUnavailableAttribute(self):
         """
@@ -190,7 +202,9 @@ class CheckpointManagerTest(unittest.TestCase):
             result={},
         )
 
-        with patch.object(logger, "error") as log_error_mock:
+        from ray.util.ml_utils.checkpoint_manager import logger as cp_logger
+
+        with patch.object(cp_logger, "error") as log_error_mock:
             checkpoint_manager.on_checkpoint(no_attr_checkpoint)
             log_error_mock.assert_called_once()
             # The newest checkpoint should still be set despite this error.
@@ -221,7 +235,9 @@ class CheckpointManagerTest(unittest.TestCase):
 
     def testSameCheckpoint(self):
         checkpoint_manager = CheckpointManager(
-            1, "i", delete_fn=lambda c: os.remove(c.value)
+            keep_checkpoints_num=1,
+            checkpoint_score_attr="i",
+            delete_fn=lambda c: os.remove(c.checkpoint_dir_or_data),
         )
 
         tmpfiles = []
@@ -255,7 +271,7 @@ class CheckpointManagerTest(unittest.TestCase):
         ]
         for checkpoint in checkpoints:
             checkpoint_manager.on_checkpoint(checkpoint)
-            self.assertTrue(os.path.exists(checkpoint.value))
+            self.assertTrue(os.path.exists(checkpoint.checkpoint_dir_or_data))
 
         for tmpfile in tmpfiles:
             if os.path.exists(tmpfile):

@@ -6,18 +6,12 @@ import os
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Dict, Union, Callable, Tuple, List
+from typing import Optional, Dict, Union, Callable, Tuple, List, Any
 
 import ray
-from ray.train.constants import TIMESTAMP, TUNE_INSTALLED
-from ray.tune.result import NODE_IP
+from ray.tune.result import NODE_IP, TRAINING_ITERATION
 from ray.util import PublicAPI
 from ray.util.ml_utils.util import is_nan
-
-if TUNE_INSTALLED:
-    pass
-else:
-    tune = None
 
 MAX = "max"
 MIN = "min"
@@ -33,7 +27,7 @@ class _TrackedCheckpoint:
         self,
         checkpoint_dir_or_data: Optional[Union[str, Path, Dict, ray.ObjectRef]],
         storage_mode: str,
-        checkpoint_id: int = 0,
+        checkpoint_id: Optional[int] = None,
         result: Optional[Dict] = None,
         node_ip: Optional[str] = None,
         delete_fn: Optional[Callable[["_TrackedCheckpoint"], None]] = None,
@@ -54,26 +48,35 @@ class _TrackedCheckpoint:
     def delete(self):
         self._delete_fn(self)
 
+    def __repr__(self):
+        if self.storage_mode == _TrackedCheckpoint.MEMORY:
+            return f"<_TrackedCheckpoint storage='MEMORY' result={self.result}>"
+
+        return (
+            f"<_TrackedCheckpoint storage='PERSISTENT' "
+            f"checkpoint_dir_or_data={self.checkpoint_dir_or_data}>"
+        )
+
 
 def _default_delete_fn(checkpoint: _TrackedCheckpoint):
     if checkpoint.storage_mode != _TrackedCheckpoint.PERSISTENT:
         return
 
-    if os.path.isfile(checkpoint.checkpoint_dir_or_data):
-        os.remove(checkpoint.checkpoint_dir_or_data)
-    elif os.path.isdir(checkpoint.checkpoint_dir_or_data):
-        shutil.rmtree(checkpoint.checkpoint_dir_or_data)
-    else:
-        logger.warning(
-            f"Could not delete checkpoint {checkpoint} from disk as it is "
-            f"neither file not directory. Path: {checkpoint.checkpoint_dir_or_data}."
-        )
+    if isinstance(checkpoint.checkpoint_dir_or_data, (str, bytes, os.PathLike)):
+        if os.path.isfile(checkpoint.checkpoint_dir_or_data):
+            os.remove(checkpoint.checkpoint_dir_or_data)
+            return
+        elif os.path.isdir(checkpoint.checkpoint_dir_or_data):
+            shutil.rmtree(checkpoint.checkpoint_dir_or_data)
+            return
+    logger.warning(
+        f"Could not delete checkpoint {checkpoint} from disk as it is "
+        f"neither file not directory. Path: {checkpoint.checkpoint_dir_or_data}."
+    )
 
 
 class _HeapCheckpointWrapper:
-    def __init__(
-        self, priority: numbers.Number, tracked_checkpoint: _TrackedCheckpoint
-    ):
+    def __init__(self, priority: Any, tracked_checkpoint: _TrackedCheckpoint):
         self.priority = priority
         self.tracked_checkpoint = tracked_checkpoint
 
@@ -113,7 +116,7 @@ class CheckpointStrategy:
     """
 
     num_to_keep: Optional[int] = None
-    checkpoint_score_attribute: str = TIMESTAMP
+    checkpoint_score_attribute: str = TRAINING_ITERATION
     checkpoint_score_order: str = MAX
 
     def __post_init__(self):
@@ -165,7 +168,9 @@ class CheckpointManager:
         self._latest_persisted_checkpoint = persisted_checkpoint
 
         if self._checkpoint_strategy.num_to_keep == 0:
-            self._delete_persisted_checkpoint(second_to_latest_persisted_checkpoint)
+            self._maybe_delete_persisted_checkpoint(
+                second_to_latest_persisted_checkpoint
+            )
 
     def _maybe_replace_best_persisted_checkpoint(
         self, persisted_checkpoint: _TrackedCheckpoint
@@ -184,13 +189,23 @@ class CheckpointManager:
         checkpoint_score_attribute = (
             self._checkpoint_strategy.checkpoint_score_attribute
         )
+        if checkpoint_score_attribute not in checkpoint.result:
+            logger.error(
+                f"Result dict has no key: {checkpoint_score_attribute}. "
+                f"checkpoint_score_attr must be set to a key in the "
+                f"result dict."
+            )
+            checkpoint_result = float("-inf")
+        else:
+            checkpoint_result = checkpoint.result[checkpoint_score_attribute]
+
         checkpoint_score_order = self._checkpoint_strategy.checkpoint_score_order
-        if checkpoint_score_order == MIN:
+        if checkpoint_score_order == MAX:
             order_factor = 1.0
         else:
             order_factor = -1.0
 
-        checkpoint_score = order_factor * checkpoint.result[checkpoint_score_attribute]
+        checkpoint_score = order_factor * checkpoint_result
 
         if not isinstance(checkpoint_score, numbers.Number):
             raise ValueError(
@@ -224,14 +239,22 @@ class CheckpointManager:
             checkpoint.commit(path=self._get_next_checkpoint_path())
             heapq.heappush(self._top_persisted_checkpoints, wrapped_checkpoint)
             self._replace_latest_persisted_checkpoint(checkpoint)
-        elif wrapped_checkpoint.priority > self._top_persisted_checkpoints[0].priority:
+        elif wrapped_checkpoint.priority >= self._top_persisted_checkpoints[0].priority:
             # Priority is higher than current worst checkpoint, so replace worst
             checkpoint.commit(path=self._get_next_checkpoint_path())
             worst_checkpoint = heapq.heappushpop(
                 self._top_persisted_checkpoints, wrapped_checkpoint
             ).tracked_checkpoint
-            self._delete_persisted_checkpoint(worst_checkpoint)
-            logger.debug(f"Removed worst checkpoint from " f"{worst_checkpoint}.")
+
+            # Only remove if checkpoint data is different
+            if (
+                worst_checkpoint.checkpoint_dir_or_data
+                != checkpoint.checkpoint_dir_or_data
+            ):
+                self._maybe_delete_persisted_checkpoint(worst_checkpoint)
+                logger.debug(f"Removed worst checkpoint from " f"{worst_checkpoint}.")
+
+            self._replace_latest_persisted_checkpoint(checkpoint)
         else:
             # If the latest checkpoint has the same or lower priority, skip it.
             self._skip_persisted_checkpoint(checkpoint)
@@ -239,18 +262,25 @@ class CheckpointManager:
         self._maybe_replace_best_persisted_checkpoint(persisted_checkpoint=checkpoint)
         self._cleanup_checkpoints()
 
-    def _delete_persisted_checkpoint(self, persisted_checkpoint: _TrackedCheckpoint):
+    def _maybe_delete_persisted_checkpoint(
+        self, persisted_checkpoint: _TrackedCheckpoint
+    ):
         if persisted_checkpoint == self._latest_persisted_checkpoint:
             self._checkpoints_to_clean_up.add(persisted_checkpoint)
         else:
-            persisted_checkpoint.delete()
+            self._delete_persisted_checkpoint(persisted_checkpoint=persisted_checkpoint)
+
+    def _delete_persisted_checkpoint(self, persisted_checkpoint: _TrackedCheckpoint):
+        persisted_checkpoint.delete()
+        self._checkpoints_to_clean_up.discard(persisted_checkpoint)
 
     def _cleanup_checkpoints(self):
-        for checkpoint in self._checkpoints_to_clean_up:
-            self._delete_persisted_checkpoint(persisted_checkpoint=checkpoint)
+        for checkpoint in list(self._checkpoints_to_clean_up):
+            self._maybe_delete_persisted_checkpoint(persisted_checkpoint=checkpoint)
 
     def _skip_persisted_checkpoint(self, persisted_checkpoint: _TrackedCheckpoint):
         logger.debug(f"Skipping checkpoint due to low score: {persisted_checkpoint}.")
+        self._checkpoints_to_clean_up.add(persisted_checkpoint)
 
     def _get_next_checkpoint_path(self) -> Optional[Path]:
         return None
