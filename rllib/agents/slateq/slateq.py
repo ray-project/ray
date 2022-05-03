@@ -74,9 +74,26 @@ class SlateQConfig(TrainerConfig):
 
         # fmt: off
         # __sphinx_doc_begin__
-        # Override some of TrainerConfig's default values with PG-specific values.
+        # Override some of TrainerConfig's default values with SlateQ-specific values.
+        self.exploration_config = {
+            # The Exploration class to use.
+            # Must be SlateEpsilonGreedy or SlateSoftQ to handle the problem that
+            # the action space of the policy is different from the space used inside
+            # the exploration component.
+            # E.g.: action_space=MultiDiscrete([5, 5]) <- slate-size=2, num-docs=5,
+            # but action distribution is Categorical(5*4) -> all possible unique slates.
+            "type": "SlateEpsilonGreedy",
+            "warmup_timesteps": 20000,
+            "epsilon_timesteps": 250000,
+            "final_epsilon": 0.01,
+        }
         self.num_workers = 0
-        self.lr = 0.0004
+        self.rollout_fragment_length = 4
+        self.train_batch_size = 32
+        self.lr = 0.00025
+        self.min_sample_timesteps_per_reporting = 1000
+        self.min_time_s_per_reporting = 1
+        self.compress_observations = False
         self._disable_preprocessor_api = True
         # __sphinx_doc_end__
         # fmt: on
@@ -89,29 +106,12 @@ DEFAULT_CONFIG = with_common_config({
     "fcnet_hiddens_per_candidate": [256, 32],
 
     # === Exploration Settings ===
-    "exploration_config": {
-        # The Exploration class to use.
-        # Must be SlateEpsilonGreedy or SlateSoftQ to handle the problem that
-        # the action space of the policy is different from the space used inside
-        # the exploration component.
-        # E.g.: action_space=MultiDiscrete([5, 5]) <- slate-size=2, num-docs=5,
-        # but action distribution is Categorical(5*4) -> all possible unique slates.
-        "type": "SlateEpsilonGreedy",
-        "warmup_timesteps": 20000,
-        "epsilon_timesteps": 250000,
-        "final_epsilon": 0.01,
-    },
     # Switch to greedy actions in evaluation workers.
+    # TODO: How do we do this?
     "evaluation_config": {
         "explore": False,
     },
 
-    # Minimum env sampling timesteps to accumulate within a single `train()` call. This
-    # value does not affect learning, only the number of times `Trainer.step_attempt()`
-    # is called by `Trauber.train()`. If - after one `step_attempt()`, the env sampling
-    # timestep count has not been reached, will perform n more `step_attempt()` calls
-    # until the minimum timesteps have been executed. Set to 0 for no minimum timesteps.
-    "min_sample_timesteps_per_reporting": 1000,
     # Update the target network every `target_network_update_freq` steps.
     "target_network_update_freq": 3200,
     # Update the target by \tau * policy + (1-\tau) * target_policy.
@@ -138,8 +138,6 @@ DEFAULT_CONFIG = with_common_config({
         # be set to greater than 1 to support recurrent models.
         "replay_sequence_length": 1,
     },
-    # Whether to LZ4 compress observations
-    "compress_observations": False,
     # If set, this will fix the ratio of replayed from a buffer and learned on
     # timesteps to sampled from an environment and stored in the replay buffer
     # timesteps. Otherwise, the replay will proceed at the native ratio
@@ -147,8 +145,6 @@ DEFAULT_CONFIG = with_common_config({
     "training_intensity": None,
 
     # === Optimization ===
-    # Learning rate for RMSprop optimizer for the q-model.
-    "lr": 0.00025,
     # Learning rate schedule.
     # In the format of [[timestep, value], [timestep, value], ...]
     # A schedule should normally start from timestep 0.
@@ -162,25 +158,12 @@ DEFAULT_CONFIG = with_common_config({
     "grad_clip": None,
     # How many steps of the model to sample before learning starts.
     "learning_starts": 20000,
-    # Update the replay buffer with this many samples at once. Note that
-    # this setting applies per-worker if num_workers > 1.
-    "rollout_fragment_length": 4,
-    # Size of a batch sampled from replay buffer for training. Note that
-    # if async_updates is set, then each worker returns gradients for a
-    # batch of this size.
-    "train_batch_size": 32,
     # N-step Q learning
     "n_step": 1,
 
     # === Parallelism ===
-    # Number of workers for collecting samples with. This only makes sense
-    # to increase if your environment is particularly slow to sample, or if
-    # you"re using the Async or Ape-X optimizers.
-    "num_workers": 0,
     # Whether to compute priorities on workers.
     "worker_side_prioritization": False,
-    # Prevent reporting frequency from going lower than this time span.
-    "min_time_s_per_reporting": 1,
 
 })
 
