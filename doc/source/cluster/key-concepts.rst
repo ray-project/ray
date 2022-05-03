@@ -79,6 +79,13 @@ to a remote Ray cluster. It simplifies the experience of packaging, deploying,
 and managing a Ray application. To learn more about Ray jobs, refer to the
 :ref:`documentation<ray-job-submission-api-ref>`.
 
+Cloud clusters
+--------------
+
+If you’re using AWS, Azure, GCP or Aliyun, you can use the
+:ref:`Ray cluster launcher<cluster-launcher>` to launch cloud clusters, which
+greatly simplifies the cluster setup process.
+
 Cluster managers
 ----------------
 
