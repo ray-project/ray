@@ -246,7 +246,9 @@ message CancelTaskRequest {
 
 message CancelTaskReply {
   // Whether the requested task is the currently running task.
-  bool attempt_succeeded = 1;
+  bool requested_task_running = 1;
+  // Whether the task is canceled.
+  bool attempt_succeeded = 2;
 }
 
 message RemoteCancelTaskRequest {

@@ -9,6 +9,8 @@ This section should help you:
 
 .. contents:: Calling Deployments via HTTP and Python
 
+.. _serve-http:
+
 Calling Deployments via HTTP
 ============================
 
@@ -157,14 +159,49 @@ To try it out, save a code snippet in a local python file (i.e. main.py) and in 
 HTTP Adapters
 ^^^^^^^^^^^^^
 
+HTTP adapters are functions that convert raw HTTP request to Python types that you know and recognize. 
+Its input arguments should be type annotated. At minimal, it should accept a ``starlette.requests.Request`` type.
+But it can also accept any type that's recognized by the FastAPI's dependency injection framework. 
+
+For example, here is an adapter that extra the json content from request. 
+
+.. code-block:: python
+
+    async def json_resolver(request: starlette.requests.Request):
+        return await request.json()
+
+Here is an adapter that accept two HTTP query parameters.
+
+.. code-block:: python
+
+    def parse_query_args(field_a: int, field_b: str):
+        return YourDataClass(field_a, field_b)
+
+You can specify different type signatures to facilitate HTTP fields extraction
+include 
+`query parameters <https://fastapi.tiangolo.com/tutorial/query-params/>`_,
+`body parameters <https://fastapi.tiangolo.com/tutorial/body/>`_,
+and `many other data types <https://fastapi.tiangolo.com/tutorial/extra-data-types/>`_.
+For more detail, you can take a look at `FastAPI documentation <https://fastapi.tiangolo.com/>`_.
+
+You can use adapters in different scenarios within Serve:
+
+- Ray AIR ``ModelWrapper``
+- Serve Deployment Graph ``DAGDriver``
+- Embedded in Bring Your Own ``FastAPI`` Application
+
+Let's go over them one by one.
+
+Ray AIR ``ModelWrapper``
+""""""""""""""""""""""""
+
 Ray Serve provides a suite of adapters to convert HTTP requests to ML inputs like `numpy` arrays.
 You can just use it with :ref:`Ray AI Runtime (AIR) model wrapper<air-serve-integration>` feature
 to one click deploy pre-trained models.
-Alternatively, you can directly import them and put them into your FastAPI app.
 
 For example, we provide a simple adapter for n-dimensional array.
 
-With :ref:`model wrappers<air-serve-integration>`, you can specify it via the ``input_schema`` field.
+With :ref:`model wrappers<air-serve-integration>`, you can specify it via the ``http_adapter`` field.
 
 .. code-block:: python
 
@@ -175,8 +212,29 @@ With :ref:`model wrappers<air-serve-integration>`, you can specify it via the ``
     ModelWrapperDeployment.options(name="my_model").deploy(
         my_ray_air_predictor,
         my_ray_air_checkpoint,
-        input_schema=json_to_ndarray
+        http_adapter=json_to_ndarray
     )
+
+Serve Deployment Graph ``DAGDriver``
+""""""""""""""""""""""""""""""""""""
+In :ref:`Serve Deployment Graph <serve-deployment-graph>`, you can configure
+``ray.serve.drivers.DAGDriver`` to accept an http adapter via it's ``http_adapter`` field. 
+
+For example, the json request adapters parse JSON in HTTP body:
+
+.. code-block:: python
+
+    from ray.serve.drivers import DAGDriver
+    from ray.serve.http_adapters import json_request
+    from ray.experimental.dag.input_node import InputNode
+
+    with InputNode() as input_node:
+        ...
+        dag = DAGDriver.bind(other_node, http_adapter=json_request)
+
+
+Embedded in Bring Your Own ``FastAPI`` Application
+""""""""""""""""""""""""""""""""""""""""""""""""""
 
 You can also bring the adapter to your own FastAPI app using
 `Depends <https://fastapi.tiangolo.com/tutorial/dependencies/#import-depends>`_.
@@ -200,10 +258,13 @@ It has the following schema for input:
 .. autopydantic_model:: ray.serve.http_adapters.NdArray
 
 
+List of Built-in Adapters
+"""""""""""""""""""""""""
+
 Here is a list of adapters and please feel free to `contribute more <https://github.com/ray-project/ray/issues/new/choose>`_!
 
 .. automodule:: ray.serve.http_adapters
-    :members: json_to_ndarray, image_to_ndarray
+    :members: json_to_ndarray, image_to_ndarray, starlette_request, json_request
 
 
 Configuring HTTP Server Locations

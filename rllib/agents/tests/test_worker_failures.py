@@ -152,7 +152,7 @@ class IgnoresWorkerFailure(unittest.TestCase):
         self.do_test(
             "APEX",
             {
-                "timesteps_per_iteration": 1000,
+                "min_sample_timesteps_per_reporting": 1000,
                 "num_gpus": 0,
                 "min_time_s_per_reporting": 1,
                 "explore": False,
@@ -168,7 +168,7 @@ class IgnoresWorkerFailure(unittest.TestCase):
         self.do_test("IMPALA", {"num_gpus": 0})
 
     def test_sync_replay(self):
-        self.do_test("DQN", {"timesteps_per_iteration": 1})
+        self.do_test("DQN", {"min_sample_timesteps_per_reporting": 1})
 
     def test_multi_g_p_u(self):
         self.do_test(

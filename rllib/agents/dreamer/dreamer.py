@@ -75,7 +75,10 @@ DEFAULT_CONFIG = with_common_config({
     "env_config": {
         # Repeats action send by policy for frame_skip times in env
         "frame_skip": 2,
-    }
+    },
+
+    # Use `execution_plan` instead of `training_iteration`.
+    "_disable_execution_plan_api": False,
 })
 # __sphinx_doc_end__
 # fmt: on

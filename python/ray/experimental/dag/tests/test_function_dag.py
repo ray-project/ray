@@ -129,14 +129,14 @@ def test_node_accessors(shared_ray_instance):
     node = a.bind(1, tmp1, x=tmp2, y={"foo": tmp3})
     assert node.get_args() == (1, tmp1)
     assert node.get_kwargs() == {"x": tmp2, "y": {"foo": tmp3}}
-    assert node._get_toplevel_child_nodes() == {tmp1, tmp2}
-    assert node._get_all_child_nodes() == {tmp1, tmp2, tmp3}
+    assert node._get_toplevel_child_nodes() == [tmp1, tmp2]
+    assert node._get_all_child_nodes() == [tmp1, tmp2, tmp3]
 
     tmp4 = a.bind()
     tmp5 = a.bind()
     replace = {tmp1: tmp4, tmp2: tmp4, tmp3: tmp5}
     n2 = node._apply_and_replace_all_child_nodes(lambda x: replace[x])
-    assert n2._get_all_child_nodes() == {tmp4, tmp5}
+    assert n2._get_all_child_nodes() == [tmp4, tmp5]
 
 
 def test_nested_args(shared_ray_instance):
