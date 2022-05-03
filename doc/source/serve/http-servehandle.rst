@@ -217,9 +217,9 @@ With :ref:`model wrappers<air-serve-integration>`, you can specify it via the ``
 
 .. note::
 
-    Serve also support pydantic model as short-hand for http adapter in model wrapper. Instead of function,
-    you can directly pass in a pydantic model class to mean "validate http body with this schema".
-    Once validated, the model instances will passed to predictor.
+    Serve also supports pydantic models as a short-hand for HTTP adapters in model wrappers. Instead of functions,
+    you can directly pass in a pydantic model class to mean "validate the HTTP body with this schema".
+    Once validated, the model instance will passed to the predictor.
 
     .. code-block:: python
 
@@ -254,9 +254,9 @@ For example, the json request adapters parse JSON in HTTP body:
 
 .. note::
 
-    Serve also support pydantic model as short-hand for http adapter in DAGDriver. Instead of function,
-    you can directly pass in a pydantic model to signify "validate this schema with http body".
-    Once validated, the model instances will passed as ``input_node`` variable.
+    Serve also supports pydantic models as a short-hand for HTTP adapters in model wrappers. Instead of functions,
+    you can directly pass in a pydantic model class to mean "validate the HTTP body with this schema".
+    Once validated, the model instance will passed as ``input_node`` variable.
 
     .. code-block:: python
 

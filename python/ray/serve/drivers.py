@@ -30,7 +30,9 @@ def load_http_adapter(
             return inp
 
     if not inspect.isfunction(http_adapter):
-        raise ValueError("input schema must be a callable function.")
+        raise ValueError(
+            "input schema must be a callable function or pydantic model class."
+        )
 
     if any(
         param.annotation == inspect.Parameter.empty
