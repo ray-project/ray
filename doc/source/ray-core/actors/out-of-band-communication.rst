@@ -12,9 +12,10 @@ The actual communication between actors is mostly done out-of-band using existin
 For example, Horovod-on-Ray uses NCCL or MPI-based collective communications, and RayDP uses Spark's internal RPC and object manager.
 See `Ray Distributed Library Patterns <https://www.anyscale.com/blog/ray-distributed-library-patterns>`_ for more details.
 
-GPU-to-GPU Data Transfer
-------------------------
-Currently Ray's object store only manages CPU memory, so efficient GPU-to-GPU data transfer needs to be done out-of-band (e.g., via ``cudaMemcpyPeer``).
+Ray Collective
+--------------
+Ray collective communication library (\ ``ray.util.collectve``\ ) allows efficient out-of-band collective and point-to-point communication between distributed CPUs or GPUs.
+See :ref:`Ray Collective <ray-collective>` for more details.
 
 HTTP Server
 -----------
