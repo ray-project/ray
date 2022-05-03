@@ -260,6 +260,7 @@ class ClientCallManager {
 
   /// Get the main service of this rpc.
   instrumented_io_context &GetMainService() { return main_service_; }
+
  private:
   /// This function runs in a background thread. It keeps polling events from the
   /// `CompletionQueue`, and dispatches the event to the callbacks via the `ClientCall`

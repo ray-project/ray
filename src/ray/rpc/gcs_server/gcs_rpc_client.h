@@ -138,8 +138,8 @@ class GcsRpcClient {
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   /// \param[in] gcs_service_failure_detected The function is used to redo subscription
   /// and reconnect to GCS RPC server when gcs service failure is detected.
-  /// \param[in] reconnection_callback The callback function when the channel get reconnected
-  /// due to some error.
+  /// \param[in] reconnection_callback The callback function when the channel get
+  /// reconnected due to some error.
   GcsRpcClient(const std::string &address,
                const int port,
                ClientCallManager &client_call_manager,
@@ -213,7 +213,8 @@ class GcsRpcClient {
             RAY_CHECK(false) << "Not covered status: " << status;
           }
         },
-        ::RayConfig::instance().gcs_client_check_connection_status_interval_milliseconds());
+        ::RayConfig::instance()
+            .gcs_client_check_connection_status_interval_milliseconds());
   }
 
   /// Add job info to GCS Service.
@@ -456,7 +457,7 @@ class GcsRpcClient {
                              /*method_timeout_ms*/ -1, )
 
   void Shutdown() {
-    if(shutdown_) {
+    if (shutdown_) {
       RAY_LOG(ERROR) << "GCS client has already been shutdown.";
     }
     shutdown_ = true;
