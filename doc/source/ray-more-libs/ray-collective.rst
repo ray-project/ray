@@ -318,6 +318,7 @@ An example code utilizing the multi-GPU collective APIs is provided below:
               self.recv2 = cp.ones((4, ), dtype=cp.float32) * 2
 
       def setup(self, world_size, rank):
+          self.rank = rank
           collective.init_collective_group(world_size, rank, "nccl", "177")
           return True
 

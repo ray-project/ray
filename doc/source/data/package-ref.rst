@@ -89,6 +89,9 @@ Aggregate API
 .. autoclass:: ray.data.aggregate.Std
     :members:
 
+.. autoclass:: ray.data.aggregate.AbsMax
+    :members:
+
 RandomAccessDataset API
 -----------------------
 
@@ -117,6 +120,36 @@ Custom Datasource API
     :members:
 
 .. autoclass:: ray.data.ReadTask
+    :members:
+
+Built-in Datasources
+--------------------
+
+.. autoclass:: ray.data.datasource.BinaryDatasource
+    :members:
+
+.. autoclass:: ray.data.datasource.CSVDatasource
+    :members:
+
+.. autoclass:: ray.data.datasource.FileBasedDatasource
+    :members:
+
+.. autoclass:: ray.data.datasource.JSONDatasource
+    :members:
+
+.. autoclass:: ray.data.datasource.NumpyDatasource
+    :members:
+
+.. autoclass:: ray.data.datasource.ParquetDatasource
+    :members:
+
+.. autoclass:: ray.data.datasource.RangeDatasource
+    :members:
+    
+.. autoclass:: ray.data.datasource.SimpleTensorFlowDatasource
+    :members:
+
+.. autoclass:: ray.data.datasource.SimpleTorchDatasource
     :members:
 
 Table Row API

@@ -7,12 +7,16 @@ from ray.dashboard.modules.job.common import JobInfo
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_RPC_TIMEOUT = 30
+DEFAULT_LIMIT = 1000
+
 
 def filter_fields(data: dict, state_dataclass) -> dict:
     """Filter the given data using keys from a given state dataclass."""
     filtered_data = {}
     for field in fields(state_dataclass):
-        filtered_data[field.name] = data[field.name]
+        if field.name in data:
+            filtered_data[field.name] = data[field.name]
     return filtered_data
 
 
@@ -20,6 +24,11 @@ def filter_fields(data: dict, state_dataclass) -> dict:
 class ListApiOptions:
     limit: int
     timeout: int
+
+    # TODO(sang): Use Pydantic instead.
+    def __post_init__(self):
+        assert isinstance(self.limit, int)
+        assert isinstance(self.timeout, int)
 
 
 # TODO(sang): Replace it with Pydantic or gRPC schema (once interface is finalized).
@@ -73,6 +82,16 @@ class ObjectState:
     submitted_task_ref_count: int
     contained_in_owned: int
     type: str
+
+
+@dataclass(init=True)
+class RuntimeEnvState:
+    runtime_env: str
+    ref_cnt: int
+    success: bool
+    error: str
+    creation_time_ms: float
+    node_id: str
 
 
 @dataclass(init=True)

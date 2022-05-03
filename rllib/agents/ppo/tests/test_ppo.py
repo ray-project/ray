@@ -136,7 +136,7 @@ class TestPPO(unittest.TestCase):
                         )
                     )
 
-                    trainer = ppo.PPOTrainer(config=config, env=env)
+                    trainer = config.build(env=env)
                     policy = trainer.get_policy()
                     entropy_coeff = trainer.get_policy().entropy_coeff
                     lr = policy.cur_lr

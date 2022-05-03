@@ -103,10 +103,10 @@ To check if Ray is initialized, use the ``is_initialized`` API.
 
         import ray
         ray.init()
-        assert ray.is_initialized() == True
+        assert ray.is_initialized()
 
         ray.shutdown()
-        assert ray.is_initialized() == False
+        assert not ray.is_initialized()
 
 .. tabbed:: Java
 
