@@ -12,7 +12,6 @@ from typing import (
 )
 
 from fastapi import APIRouter, FastAPI
-import numpy as np
 from starlette.requests import Request
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
