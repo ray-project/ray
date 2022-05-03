@@ -31,8 +31,9 @@ enable_gpu_usage_check = True
 
 # Are we in a K8s pod?
 IN_KUBERNETES_POD = "KUBERNETES_SERVICE_HOST" in os.environ
-# Flag to enable showing disk usage stats for the HOST running a
-# Ray pod on K8s.
+# Flag to enable showing disk usage when running in a K8s pod,
+# disk usage defined as the result of running psutil.disk_usage("/")
+# in the Ray container.
 ENABLE_K8S_DISK_USAGE = os.environ.get("ENABLE_K8S_DISK_USAGE", False)
 
 try:
