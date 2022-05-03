@@ -50,6 +50,11 @@ try:
 except NameError:
     IS_NOTEBOOK = False
 
+try:
+    from IPython.core.display import display, HTML
+except ImportError:
+    display, HTML = None
+
 
 @PublicAPI
 class ProgressReporter:
@@ -97,10 +102,20 @@ class ProgressReporter:
     def report(self, trials: List[Trial], done: bool, *sys_info: Dict):
         """Reports progress across trials.
 
+        This should make use of the ``display`` method.
+
         Args:
             trials: Trials to report on.
             done: Whether this is the last progress report attempt.
             sys_info: System info.
+        """
+        raise NotImplementedError
+
+    def display(self, string: str) -> None:
+        """Display the progress string.
+
+        Args:
+            string: String to display.
         """
         raise NotImplementedError
 
@@ -421,7 +436,7 @@ class JupyterNotebookReporter(TuneReporterBase):
     """Jupyter notebook-friendly Reporter that can update display in-place.
 
     Args:
-        overwrite: Flag for overwriting the last reported progress.
+        overwrite: Flag for overwriting the cell contents before initialization.
         metric_columns: Names of metrics to
             include in progress table. If this is a dict, the keys should
             be metric names and the values should be the displayed names.
@@ -456,7 +471,7 @@ class JupyterNotebookReporter(TuneReporterBase):
 
     def __init__(
         self,
-        overwrite: bool,
+        overwrite: bool = True,
         metric_columns: Optional[Union[List[str], Dict[str, str]]] = None,
         parameter_columns: Optional[Union[List[str], Dict[str, str]]] = None,
         total_samples: Optional[int] = None,
@@ -483,6 +498,12 @@ class JupyterNotebookReporter(TuneReporterBase):
             sort_by_metric,
         )
 
+        if not display or not HTML:
+            raise ImportError(
+                "`JupyterNotebookReporter` requires the `IPython` "
+                "library to be installed."
+            )
+
         if not IS_NOTEBOOK:
             logger.warning(
                 "You are using the `JupyterNotebookReporter`, but not "
@@ -495,32 +516,31 @@ class JupyterNotebookReporter(TuneReporterBase):
 
         self._overwrite = overwrite
         self._output_queue = None
+        self._display_handle = None
+        self.display("")  # initialize display to update later
 
     def set_output_queue(self, queue: Queue):
         self._output_queue = queue
 
     def report(self, trials: List[Trial], done: bool, *sys_info: Dict):
-        overwrite = self._overwrite
         progress_str = self._progress_str(
             trials, done, *sys_info, fmt="html", delim="<br>"
         )
 
-        def update_output():
-            from IPython.display import clear_output
-            from IPython.core.display import display, HTML
-
-            if overwrite:
-                clear_output(wait=True)
-
-            display(HTML(progress_str))
-
         if self._output_queue is not None:
-            # If an output queue is set, send callable (e.g. when using
-            # Ray client)
-            self._output_queue.put(update_output)
+            # If an output queue is set, send string
+            self._output_queue.put(progress_str)
         else:
             # Else, output directly
-            update_output()
+            self.display(progress_str)
+
+    def display(self, string: str) -> None:
+        if not self._display_handle:
+            self._display_handle = display(
+                HTML(string), display_id=True, clear=self._overwrite
+            )
+        else:
+            self._display_handle.update(HTML(string))
 
 
 @PublicAPI
@@ -590,7 +610,10 @@ class CLIReporter(TuneReporterBase):
         )
 
     def report(self, trials: List[Trial], done: bool, *sys_info: Dict):
-        print(self._progress_str(trials, done, *sys_info))
+        self.display(self._progress_str(trials, done, *sys_info))
+
+    def display(self, string: str) -> None:
+        print(string)
 
 
 def memory_debug_str():
