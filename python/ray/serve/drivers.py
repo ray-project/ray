@@ -24,7 +24,7 @@ def load_http_adapter(
     if isinstance(http_adapter, str):
         http_adapter = import_attr(http_adapter)
 
-    if issubclass(http_adapter, BaseModel):
+    if inspect.isclass(http_adapter) and issubclass(http_adapter, BaseModel):
 
         def http_adapter(inp: http_adapter = Body(...)):
             return inp
