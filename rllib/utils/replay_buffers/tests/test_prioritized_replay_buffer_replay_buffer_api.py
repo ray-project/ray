@@ -164,7 +164,7 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
         for i in range(num_records):
             data = self._generate_data()
             buffer.add(data, weight=1.0)
-            self.assertEqual(len(buffer),  i + 1)
+            self.assertEqual(len(buffer), i + 1)
             self.assertEqual(buffer._storage._offset_idx, 0)
 
         # Test get_state/set_state.

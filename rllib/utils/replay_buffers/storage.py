@@ -38,7 +38,7 @@ class LocalStorage(Sized, Iterable):
                 dropped to make space for new ones.
         """
         if capacity < 1:
-            raise ValueError('Storage capacity must be strictly positive')
+            raise ValueError("Storage capacity must be strictly positive")
         self._capacity = capacity
 
         # Whether we have already hit our capacity (and have therefore
@@ -158,7 +158,7 @@ class LocalStorage(Sized, Iterable):
     @ExperimentalAPI
     def __getitem__(self, i: int) -> SampleBatchType:
         if i >= len(self) or i < 0:
-            raise IndexError('Buffer index out of range')
+            raise IndexError("Buffer index out of range")
         idx = self._get_internal_index(i)
         self._hit_count[idx] += 1
         return self._get(idx)
@@ -166,7 +166,7 @@ class LocalStorage(Sized, Iterable):
     @ExperimentalAPI
     def __setitem__(self, i: int, item: SampleBatchType) -> None:
         if i >= len(self) or i < 0:
-            raise IndexError('Buffer index out of range')
+            raise IndexError("Buffer index out of range")
         if not self.eviction_started:
             raise RuntimeError(
                 "Assigning items to an index is only allowed "
@@ -190,9 +190,9 @@ class LocalStorage(Sized, Iterable):
 
     @ExperimentalAPI
     def add(self, item: SampleBatchType) -> None:
-        """ Add a new item to the storage. The index of the new item
+        """Add a new item to the storage. The index of the new item
         will be automatically assigned. Moreover, old items may be
-        automatically dropped with respect to the storage's capactiy.
+        automatically dropped with respect to the storage's capacity.
 
         Args:
             item: Item (batch) to add to the storage.
@@ -243,7 +243,7 @@ class LocalStorage(Sized, Iterable):
             Internal index from interval [0, capacity)
         """
         if idx < 0:
-            raise IndexError('Buffer index out of range')
+            raise IndexError("Buffer index out of range")
         return (self._offset_idx + idx) % self.capacity
 
     def _get_external_index(self, idx: int):
@@ -257,7 +257,7 @@ class LocalStorage(Sized, Iterable):
             External index from interval [0, len(storage))
         """
         if idx < 0:
-            raise IndexError('Buffer index out of range')
+            raise IndexError("Buffer index out of range")
         if idx >= self._offset_idx:
             return idx - self._offset_idx
         else:
@@ -303,6 +303,10 @@ class LocalStorage(Sized, Iterable):
         using an actual data structure for storing the data.
         This data structure must be capable of dealing with
         indices between 0 <= idx < capacity.
+
+        Note: Removing the item from the actual data structure is
+        not required for a properly working storage but is highly
+        recommended to reduce its memory footprint.
 
         Args:
             idx: Index of the item of interest.
@@ -388,7 +392,9 @@ class OnDiskStorage(LocalStorage):
 
     @ExperimentalAPI
     @override(LocalStorage)
-    def __init__(self, capacity: int = 10000, buffer_file: Optional[str] = None) -> None:
+    def __init__(
+        self, capacity: int = 10000, buffer_file: Optional[str] = None
+    ) -> None:
         """Initializes an OnDiskStorage instance for storing timesteps on disk.
         This allows replay buffers larger than memory.
 
@@ -406,7 +412,7 @@ class OnDiskStorage(LocalStorage):
         self._rm_file_on_del = False
         if not self._buffer_file:
             self._rm_file_on_del = True
-            with NamedTemporaryFile(prefix='replay_buffer_', suffix='.dat') as f:
+            with NamedTemporaryFile(prefix="replay_buffer_", suffix=".dat") as f:
                 self._buffer_file = f.name
         if os.path.exists(self._buffer_file):
             raise ValueError("buffer_file must not exist: {}".format(self._buffer_file))
@@ -416,12 +422,12 @@ class OnDiskStorage(LocalStorage):
 
         # The actual storage (shelf / dict of SampleBatches).
         if pickle.HIGHEST_PROTOCOL < 5:
-            logger.warning('Recommended pickle protocol is at least 5 '
-                           'for fast zero-copy access of arrays')
+            logger.warning(
+                "Recommended pickle protocol is at least 5 "
+                "for fast zero-copy access of arrays"
+            )
         self._samples = shelve.open(
-            self._buffer_file[:-4],
-            flag='c',
-            protocol=pickle.HIGHEST_PROTOCOL
+            self._buffer_file[:-4], flag="c", protocol=pickle.HIGHEST_PROTOCOL
         )
         # Make sure shelve created correct file for storage
         assert os.path.exists(self._buffer_file)
@@ -448,9 +454,7 @@ class OnDiskStorage(LocalStorage):
         self._buffer_file = state["_buffer_file"]
         self._rm_file_on_del = state["_rm_file_on_del"]
         self._samples = shelve.open(
-            self._buffer_file[:-4],
-            flag='w',
-            protocol=state["_pkl_proto"]
+            self._buffer_file[:-4], flag="w", protocol=state["_pkl_proto"]
         )
         super().set_state(state)
 

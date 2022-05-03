@@ -9,7 +9,11 @@ from ray.util.debug import log_once
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.replay_buffers.storage import LocalStorage, InMemoryStorage, OnDiskStorage
+from ray.rllib.utils.replay_buffers.storage import (
+    InMemoryStorage,
+    LocalStorage,
+    OnDiskStorage,
+)
 from ray.rllib.utils.typing import SampleBatchType
 
 # Constant that represents all policies in lockstep replay mode.
@@ -40,7 +44,7 @@ class ReplayBuffer:
         capacity: int = 10000,
         storage_unit: str = "timesteps",
         storage_location: str = "in_memory",
-        **kwargs
+        **kwargs,
     ):
         """Initializes a (FIFO) ReplayBuffer instance.
 
@@ -50,12 +54,14 @@ class ReplayBuffer:
                 dropped to make space for new ones.
             storage_unit: Either 'timesteps', `sequences` or
                 `episodes`. Specifies how experiences are stored.
+            storage_location: Either 'in_memory' or 'on_disk'.
+                Specifies where experiences are stored.
             **kwargs: Forward compatibility kwargs.
         """
         if storage_unit not in list(StorageUnit):
             raise ValueError(
                 "storage_unit must be one of {}.".format(
-                    ', '.join(f"'{s}'" for s in StorageUnit)
+                    ", ".join(f"'{s}'" for s in StorageUnit)
                 )
             )
         self._storage_unit = storage_unit
@@ -71,7 +77,7 @@ class ReplayBuffer:
         if storage_location not in list(StorageLocation):
             raise ValueError(
                 "storage_location must be one of {}.".format(
-                    ', '.join(f"'{s}'" for s in StorageLocation)
+                    ", ".join(f"'{s}'" for s in StorageLocation)
                 )
             )
         self._storage_location = storage_location

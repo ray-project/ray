@@ -98,9 +98,7 @@ class MultiAgentPrioritizedReplayBuffer(MultiAgentReplayBuffer):
                 prioritized_replay_eps: 0.5}
             **kwargs: Forward compatibility kwargs.
         """
-        if "replay_mode" in kwargs and (
-            kwargs["replay_mode"] == ReplayMode.LOCKSTEP
-        ):
+        if "replay_mode" in kwargs and (kwargs["replay_mode"] == ReplayMode.LOCKSTEP):
             if log_once("lockstep_mode_not_supported"):
                 logger.error(
                     "Replay mode `lockstep` is not supported for "

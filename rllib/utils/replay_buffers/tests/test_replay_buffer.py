@@ -175,10 +175,15 @@ class TestReplayBuffer(unittest.TestCase):
 
         assert (other_buffer._storage._samples == buffer._storage._samples).all()
         assert other_buffer._storage._offset_idx == buffer._storage._offset_idx
-        assert other_buffer._storage._num_timesteps_added == buffer._storage._num_timesteps_added
+        assert (
+            other_buffer._storage._num_timesteps_added
+            == buffer._storage._num_timesteps_added
+        )
         assert other_buffer._storage._num_timesteps == buffer._storage._num_timesteps
         assert other_buffer._num_timesteps_sampled == buffer._num_timesteps_sampled
-        assert other_buffer._storage.eviction_started == buffer._storage.eviction_started
+        assert (
+            other_buffer._storage.eviction_started == buffer._storage.eviction_started
+        )
         assert other_buffer._storage.size_bytes == buffer._storage.size_bytes
         assert len(other_buffer) == len(buffer)
 

@@ -12,12 +12,16 @@ from ray.rllib.utils.replay_buffers.prioritized_replay_buffer import (
     PrioritizedReplayBuffer,
 )
 from ray.rllib.utils.replay_buffers.replay_buffer import (
-    ReplayBuffer, StorageLocation, StorageUnit
+    ReplayBuffer,
+    StorageLocation,
+    StorageUnit,
 )
 from ray.rllib.utils.replay_buffers.reservoir_buffer import ReservoirBuffer
 from ray.rllib.utils.replay_buffers.simple_replay_buffer import SimpleReplayBuffer
 from ray.rllib.utils.replay_buffers.storage import (
-    InMemoryStorage, LocalStorage, OnDiskStorage
+    InMemoryStorage,
+    LocalStorage,
+    OnDiskStorage,
 )
 
 __all__ = [

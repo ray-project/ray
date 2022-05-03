@@ -32,7 +32,7 @@ class TestStorage(unittest.TestCase):
 
     def test_stats(self):
         """Tests stats by adding and sampling few samples and checking the
-        values of the buffer's stats.
+        values of the storage's stats.
         """
         self.batch_id = 0
 
@@ -44,7 +44,7 @@ class TestStorage(unittest.TestCase):
         # Test add/sample
         self._add_data_to_storage(storage, batch_size=batch_size, num_batches=1)
 
-        # After adding a single batch to a buffer, it should not be full
+        # After adding a single batch to a storage, it should not be full
         assert len(storage) == 1
         assert storage.num_timesteps_added == 5
         assert storage.num_timesteps == 5
@@ -56,7 +56,7 @@ class TestStorage(unittest.TestCase):
 
         self._add_data_to_storage(storage, batch_size=batch_size, num_batches=2)
 
-        # After adding two more batches, the buffer should be full,
+        # After adding two more batches, the storage should be full,
         # but eviction has not started yet
         assert len(storage) == 3
         assert storage.num_timesteps_added == 15
@@ -130,6 +130,7 @@ class TestStorage(unittest.TestCase):
         assert len(other_storage) == len(storage)
 
     def test_index_conversion(self):
+        """Test conversion between external and internal storage indices."""
         storage = InMemoryStorage(43)
 
         for i in range(len(storage)):
@@ -177,6 +178,9 @@ class TestStorage(unittest.TestCase):
             assert (i % storage.capacity) == i_idx
 
     def test_memory_and_disk_behavior(self):
+        """Apply same operations to `InMemoryStorage` and `OnDiskStorage`
+        and check if both storages behave the same.
+        """
         m_storage = InMemoryStorage(100)
         d_storage = OnDiskStorage(100)
 

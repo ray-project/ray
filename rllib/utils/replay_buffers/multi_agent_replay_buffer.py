@@ -1,7 +1,7 @@
 import logging
 import collections
 from typing import Any, Dict, Optional
-from enum import Enum
+from enum import Enum, unique
 
 import ray
 from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES
@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 @ExperimentalAPI
+@unique
 class ReplayMode(str, Enum):
     LOCKSTEP = "lockstep"
     INDEPENDENT = "independent"
