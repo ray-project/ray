@@ -150,9 +150,12 @@ class GcsRpcClient {
     io_context_ = &client_call_manager.GetMainService();
     periodical_runner_ = std::make_unique<PeriodicalRunner>(*io_context_);
     grpc::ChannelArguments arguments;
-    arguments.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS, RayConfig::instance().gcs_grpc_max_reconnect_backoff_ms());
-    arguments.SetInt(GRPC_ARG_MIN_RECONNECT_BACKOFF_MS, RayConfig::instance().gcs_grpc_min_reconnect_backoff_ms());
-    arguments.SetInt(GRPC_ARG_INITIAL_RECONNECT_BACKOFF_MS, RayConfig::instance().gcs_grpc_initial_reconnect_backoff_ms());
+    arguments.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS,
+                     RayConfig::instance().gcs_grpc_max_reconnect_backoff_ms());
+    arguments.SetInt(GRPC_ARG_MIN_RECONNECT_BACKOFF_MS,
+                     RayConfig::instance().gcs_grpc_min_reconnect_backoff_ms());
+    arguments.SetInt(GRPC_ARG_INITIAL_RECONNECT_BACKOFF_MS,
+                     RayConfig::instance().gcs_grpc_initial_reconnect_backoff_ms());
 
     channel_ = BuildChannel(address, port, arguments);
     job_info_grpc_client_ =
@@ -182,9 +185,36 @@ class GcsRpcClient {
     // TODO(iycheng): Push this into ClientCallManager with CQ by using async call.
     periodical_runner_->RunFnPeriodically(
         [this] {
-          auto status = channel_->GetState();
-          if(status ==
-        },
+      auto status = channel_->GetState();
+      switch (status) {
+      case GRPC_CHANNEL_TRANSIENT_FAILURE:
+        RAY_CHECK(
+            absl::ToInt64Seconds(gcs_last_alive_time_ - absl::Now()) <
+            absl::Seconds(::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s()))
+            << "Failed to connect to GCS within "
+            << RayConfig::instance().gcs_rpc_server_reconnect_timeout_s() << " seconds";
+        gcs_is_down_ = true;
+        break;
+      case SHUTDOWN:
+        RAY_CHECK(shutdown_) << "Channel shoud never go to this status.";
+        break;
+      case CONNECTING:
+      case READY:
+      case IDLE:
+        gcs_last_alive_time_ = absl::Now();
+        gcs_is_down_ = false;
+        // Retry the one queued.
+        while (!queued_executors_.empty()) {
+          queued_executors_.back()->Retry();
+          queued_executors_.pop_back();
+        }
+        break;
+      default:
+        RAY_CHECK(false) << "Not covered status: " << status;
+      }
+      if (status == TRANSIENT_FAILURE) {
+        gcs_is_down_ = true;
+      },
         RayConfig::instance().gcs_client_check_connection_status_interval_milliseconds());
   }
 
@@ -426,26 +456,33 @@ class GcsRpcClient {
                              GcsSubscriberCommandBatch,
                              internal_pubsub_grpc_client_,
                              /*method_timeout_ms*/ -1, )
+
+
+   void Shutdown() {
+      shutdown_ = true;
+      periodical_runner_.reset();
+   }
  private:
   void ReconnectHelper(absl::Time deadline,
                        std::shared_ptr<boost::asio::deadline_timer> timer) {
-    if (absl::Now() > deadline) {
-      RAY_LOG(FATAL) << "Fail to reconnect to GCS";
-    }
-    if (gcs_service_failure_detected_(GcsServiceFailureType::RPC_DISCONNECT)) {
-      gcs_is_down_ = false;
-      while (!queued_executors_.empty()) {
-        auto e = queued_executors_.back();
-        e->Retry();
-        queued_executors_.pop_back();
+      if (absl::Now() > deadline) {
+        RAY_LOG(FATAL) << "Fail to reconnect to GCS";
       }
-    } else {
-      RAY_LOG(INFO) << "Try to reconnect to GCS failed, "
-                    << absl::ToInt64Seconds(deadline - absl::Now()) << " seconds left";
-      timer->expires_from_now(boost::posix_time::seconds(1));
-      timer->async_wait(
-          [this, deadline, timer](const auto &ec) { ReconnectHelper(deadline, timer); });
-    }
+      if (gcs_service_failure_detected_(GcsServiceFailureType::RPC_DISCONNECT)) {
+        gcs_is_down_ = false;
+        while (!queued_executors_.empty()) {
+          auto e = queued_executors_.back();
+          e->Retry();
+          queued_executors_.pop_back();
+        }
+      } else {
+        RAY_LOG(INFO) << "Try to reconnect to GCS failed, "
+                      << absl::ToInt64Seconds(deadline - absl::Now()) << " seconds left";
+        timer->expires_from_now(boost::posix_time::seconds(1));
+        timer->async_wait([this, deadline, timer](const auto &ec) {
+          ReconnectHelper(deadline, timer);
+        });
+      }
   }
 
   instrumented_io_context *io_context_;
@@ -465,9 +502,11 @@ class GcsRpcClient {
 
   std::shared_ptr<grpc::Channel> channel_;
   bool gcs_is_down_ = false;
+  absl::Time gcs_last_alive_time_;
+  bool shutdown_ = false;
   std::unique_ptr<PeriodicalRunner> periodical_runner_;
   std::vector<Executor *> queued_executors_;
-};
+  };
 
 }  // namespace rpc
 }  // namespace ray
