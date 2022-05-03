@@ -67,6 +67,7 @@ def logs_manager():
     if sys.version_info < ASYNCMOCK_MIN_PYTHON_VER:
         raise Exception(f"Unsupported for this version of python {sys.version_info}")
     from unittest.mock import AsyncMock
+
     grpc_client = AsyncMock(LogsGrpcClient)
     manager = LogsManager(grpc_client)
     yield manager
@@ -97,7 +98,7 @@ async def raise_timeout():
 @pytest.mark.skipif(
     sys.version_info < ASYNCMOCK_MIN_PYTHON_VER,
     reason=f"unittest.mock.AsyncMock requires python {ASYNCMOCK_MIN_PYTHON_VER}"
-    " or higher"
+    " or higher",
 )
 @pytest.mark.asyncio
 async def test_logs_manager_list_logs(logs_manager):
@@ -122,7 +123,7 @@ async def test_logs_manager_list_logs(logs_manager):
 @pytest.mark.skipif(
     sys.version_info < ASYNCMOCK_MIN_PYTHON_VER,
     reason=f"unittest.mock.AsyncMock requires python {ASYNCMOCK_MIN_PYTHON_VER}"
-    " or higher"
+    " or higher",
 )
 @pytest.mark.asyncio
 async def test_logs_manager_stream_log(logs_manager):
@@ -192,7 +193,7 @@ async def test_logs_manager_stream_log(logs_manager):
 @pytest.mark.skipif(
     sys.version_info < ASYNCMOCK_MIN_PYTHON_VER,
     reason=f"unittest.mock.AsyncMock requires python {ASYNCMOCK_MIN_PYTHON_VER}"
-    " or higher"
+    " or higher",
 )
 @pytest.mark.asyncio
 async def test_log_manager_wait_for_client(logs_manager):
