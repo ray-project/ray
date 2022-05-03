@@ -194,6 +194,8 @@ class TrainerConfig:
         self.evaluation_num_workers = 0
         self.custom_evaluation_function = None
         self.always_attach_evaluation_results = False
+        # TODO: Set this flag still in the config or - much better - in the
+        #  RolloutWorker as a property.
         # self.in_evaluation = False
 
         # `self.reporting()`
