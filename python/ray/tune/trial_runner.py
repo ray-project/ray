@@ -35,13 +35,14 @@ from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.stopper import NoopStopper, Stopper
 from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm
 from ray.tune.syncer import CloudSyncer, get_cloud_syncer, SyncConfig
-from ray.tune.trial import _TuneCheckpoint, Trial
+from ray.tune.trial import Trial
 from ray.tune.utils import warn_if_slow, flatten_dict
 from ray.tune.utils.log import Verbosity, has_verbosity
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncoder
 from ray.tune.web_server import TuneServer
 from ray.util.debug import log_once
+from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint
 
 MAX_DEBUG_TRIALS = 20
 
@@ -1108,7 +1109,7 @@ class TrialRunner:
         logger.debug("Trial %s: Processing trial save.", trial)
 
         try:
-            trial.saving_to.value = checkpoint_value
+            trial.saving_to.checkpoint_dir_or_data = checkpoint_value
             self._callbacks.on_checkpoint(
                 iteration=self._iteration,
                 trials=self._trials,
@@ -1116,7 +1117,7 @@ class TrialRunner:
                 checkpoint=trial.saving_to,
             )
             trial.on_checkpoint(trial.saving_to)
-            if trial.checkpoint.storage != _TuneCheckpoint.MEMORY:
+            if trial.checkpoint.storage_mode != _TrackedCheckpoint.MEMORY:
                 self.trial_executor.mark_trial_to_checkpoint(trial)
         except Exception:
             logger.exception(
@@ -1203,7 +1204,7 @@ class TrialRunner:
         if trial.should_checkpoint() or force:
             # Save trial runtime if possible.
             if trial.runner:
-                self.trial_executor.save(trial, storage=_TuneCheckpoint.PERSISTENT)
+                self.trial_executor.save(trial, storage=_TrackedCheckpoint.PERSISTENT)
 
     def _try_recover(self, trial: Trial, exc: Union[TuneError, RayTaskError]):
         """Tries to recover trial.

@@ -18,11 +18,13 @@ from ray.tune.ray_trial_executor import (
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS
 from ray.tune.result import PID, TRAINING_ITERATION, TRIAL_ID
 from ray.tune.suggest import BasicVariantGenerator
-from ray.tune.trial import Trial, _TuneCheckpoint
+from ray.tune.trial import Trial
 from ray.tune.resources import Resources
 from ray.cluster_utils import Cluster
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from unittest.mock import patch
+
+from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint
 
 
 class TrialExecutorInsufficientResourcesTest(unittest.TestCase):
@@ -118,9 +120,9 @@ class RayTrialExecutorTest(unittest.TestCase):
             trial.update_last_result(training_result)
 
     def _simulate_saving(self, trial):
-        checkpoint = self.trial_executor.save(trial, _TuneCheckpoint.PERSISTENT)
+        checkpoint = self.trial_executor.save(trial, _TrackedCheckpoint.PERSISTENT)
         self.assertEqual(checkpoint, trial.saving_to)
-        self.assertEqual(trial.checkpoint.value, None)
+        self.assertEqual(trial.checkpoint.checkpoint_dir_or_data, None)
         event = self.trial_executor.get_next_executor_event(
             live_trials={trial}, next_trial_exists=False
         )
@@ -187,7 +189,7 @@ class RayTrialExecutorTest(unittest.TestCase):
         # Pause
         self.trial_executor.pause_trial(trial)
         self.assertEqual(Trial.PAUSED, trial.status)
-        self.assertEqual(trial.checkpoint.storage, _TuneCheckpoint.MEMORY)
+        self.assertEqual(trial.checkpoint.storage_mode, _TrackedCheckpoint.MEMORY)
 
         # Resume
         self._simulate_starting_trial(trial)
@@ -374,7 +376,7 @@ class RayTrialExecutorTest(unittest.TestCase):
     def process_trial_save(self, trial, checkpoint_value):
         """Simulates trial runner save."""
         checkpoint = trial.saving_to
-        checkpoint.value = checkpoint_value
+        checkpoint.checkpoint_dir_or_data = checkpoint_value
         trial.on_checkpoint(checkpoint)
 
 

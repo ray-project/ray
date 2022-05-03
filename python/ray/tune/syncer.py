@@ -24,7 +24,6 @@ import yaml
 from ray.ml.utils.remote_storage import get_fs_and_path, fs_hint
 from ray.tune import TuneError
 from ray.tune.callback import Callback
-from ray.tune.checkpoint_manager import _TuneCheckpoint
 from ray.tune.result import NODE_IP
 from ray.util import get_node_ip_address
 from ray.util.debug import log_once
@@ -38,6 +37,7 @@ from ray.tune.sync_client import (
     RemoteTaskClient,
 )
 from ray.util.annotations import PublicAPI
+from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint
 
 if TYPE_CHECKING:
     from ray.tune.trial import Trial
@@ -522,11 +522,8 @@ class SyncerCallback(Callback):
             trial.logdir, remote_dir=trial.logdir, sync_function=self._sync_function
         )
 
-    def _remove_trial_syncer(self, trial: "Trial"):
-        self._syncers.pop(trial, None)
-
-    def _sync_trial_checkpoint(self, trial: "Trial", checkpoint: _TuneCheckpoint):
-        if checkpoint.storage == _TuneCheckpoint.MEMORY:
+    def _sync_trial_checkpoint(self, trial: "Trial", checkpoint: _TrackedCheckpoint):
+        if checkpoint.storage_mode == _TrackedCheckpoint.MEMORY:
             return
 
         trial_syncer = self._get_trial_syncer(trial)
@@ -565,7 +562,7 @@ class SyncerCallback(Callback):
                     # shouldn't track it with the checkpoint_manager.
                     raise e
             if not trial.uses_cloud_checkpointing:
-                if not os.path.exists(checkpoint.value):
+                if not os.path.exists(checkpoint.checkpoint_dir_or_data):
                     raise TuneError(
                         "Trial {}: Checkpoint path {} not "
                         "found after successful sync down. "
@@ -575,7 +572,9 @@ class SyncerCallback(Callback):
                         "You'll need to use cloud-checkpointing "
                         "if that's the case, see instructions "
                         "here: {} .".format(
-                            trial, checkpoint.value, CLOUD_CHECKPOINTING_URL
+                            trial,
+                            checkpoint.checkpoint_dir_or_data,
+                            CLOUD_CHECKPOINTING_URL,
                         )
                     )
 
@@ -605,17 +604,15 @@ class SyncerCallback(Callback):
         else:
             trainable_ip = ray.get(trial.runner.get_current_ip.remote())
         trial_syncer.set_worker_ip(trainable_ip)
-        # Always sync down when trial completed
-        trial_syncer.sync_down()
+        trial_syncer.sync_down_if_needed()
         trial_syncer.close()
-        self._remove_trial_syncer(trial)
 
     def on_checkpoint(
         self,
         iteration: int,
         trials: List["Trial"],
         trial: "Trial",
-        checkpoint: _TuneCheckpoint,
+        checkpoint: _TrackedCheckpoint,
         **info,
     ):
         self._sync_trial_checkpoint(trial, checkpoint)

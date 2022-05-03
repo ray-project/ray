@@ -9,7 +9,6 @@ import ray
 from ray.rllib import _register_all
 
 from ray.tune import TuneError
-from ray.tune.checkpoint_manager import _TuneCheckpoint
 from ray.tune.schedulers import FIFOScheduler
 from ray.tune.result import DONE
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS
@@ -19,6 +18,7 @@ from ray.tune.resources import Resources
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.tests.utils_for_test_trial_runner import TrialResultObserver
 from ray.tune.utils.trainable import TrainableUtil
+from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint
 
 
 def create_mock_components():
@@ -333,8 +333,10 @@ class TrialRunnerTest2(unittest.TestCase):
             with open(os.path.join(checkpoint_dir, "cp.json"), "w") as f:
                 json.dump(result, f)
 
-            tune_cp = _TuneCheckpoint(
-                _TuneCheckpoint.PERSISTENT, checkpoint_dir, result
+            tune_cp = _TrackedCheckpoint(
+                checkpoint_dir_or_data=checkpoint_dir,
+                storage_mode=_TrackedCheckpoint.PERSISTENT,
+                result=result,
             )
             trial.saving_to = tune_cp
             trial.on_checkpoint(tune_cp)

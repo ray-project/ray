@@ -7,7 +7,8 @@ import unittest
 from unittest.mock import patch
 
 from ray.tune.result import TRAINING_ITERATION
-from ray.tune.checkpoint_manager import _TuneCheckpoint, CheckpointManager, logger
+from ray.tune.checkpoint_manager import CheckpointManager, logger
+from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint
 
 
 class CheckpointManagerTest(unittest.TestCase):
@@ -20,12 +21,16 @@ class CheckpointManagerTest(unittest.TestCase):
 
     def testNewestCheckpoint(self):
         checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num=1)
-        memory_checkpoint = _TuneCheckpoint(
-            _TuneCheckpoint.MEMORY, {0}, self.mock_result(0, 0)
+        memory_checkpoint = _TrackedCheckpoint(
+            checkpoint_dir_or_data={0},
+            storage_mode=_TrackedCheckpoint.MEMORY,
+            result=self.mock_result(0, 0),
         )
         checkpoint_manager.on_checkpoint(memory_checkpoint)
-        persistent_checkpoint = _TuneCheckpoint(
-            _TuneCheckpoint.PERSISTENT, {1}, self.mock_result(1, 1)
+        persistent_checkpoint = _TrackedCheckpoint(
+            checkpoint_dir_or_data={1},
+            storage_mode=_TrackedCheckpoint.PERSISTENT,
+            result=self.mock_result(1, 1),
         )
         checkpoint_manager.on_checkpoint(persistent_checkpoint)
         self.assertEqual(
@@ -40,7 +45,11 @@ class CheckpointManagerTest(unittest.TestCase):
         keep_checkpoints_num = 2
         checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num)
         checkpoints = [
-            _TuneCheckpoint(_TuneCheckpoint.PERSISTENT, {i}, self.mock_result(i, i))
+            _TrackedCheckpoint(
+                checkpoint_dir_or_data={i},
+                storage_mode=_TrackedCheckpoint.PERSISTENT,
+                result=self.mock_result(i, i),
+            )
             for i in range(3)
         ]
 
@@ -66,7 +75,11 @@ class CheckpointManagerTest(unittest.TestCase):
         keep_checkpoints_num = 2
         checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num)
         checkpoints = [
-            _TuneCheckpoint(_TuneCheckpoint.PERSISTENT, {i}, self.mock_result(i, i))
+            _TrackedCheckpoint(
+                checkpoint_dir_or_data={i},
+                storage_mode=_TrackedCheckpoint.PERSISTENT,
+                result=self.mock_result(i, i),
+            )
             for i in range(3, -1, -1)
         ]
 
@@ -90,7 +103,11 @@ class CheckpointManagerTest(unittest.TestCase):
         """
         keep_checkpoints_num = 4
         checkpoints = [
-            _TuneCheckpoint(_TuneCheckpoint.PERSISTENT, i, self.mock_result(i, i))
+            _TrackedCheckpoint(
+                checkpoint_dir_or_data=i,
+                storage_mode=_TrackedCheckpoint.PERSISTENT,
+                result=self.mock_result(i, i),
+            )
             for i in range(8)
         ]
 
@@ -111,11 +128,19 @@ class CheckpointManagerTest(unittest.TestCase):
         """
         keep_checkpoints_num = 2
         checkpoints = [
-            _TuneCheckpoint(
-                _TuneCheckpoint.PERSISTENT, None, self.mock_result(float("nan"), i)
+            _TrackedCheckpoint(
+                checkpoint_dir_or_data=None,
+                storage_mode=_TrackedCheckpoint.PERSISTENT,
+                result=self.mock_result(float("nan"), i),
             )
             for i in range(2)
-        ] + [_TuneCheckpoint(_TuneCheckpoint.PERSISTENT, 3, self.mock_result(0, 3))]
+        ] + [
+            _TrackedCheckpoint(
+                checkpoint_dir_or_data=3,
+                storage_mode=_TrackedCheckpoint.PERSISTENT,
+                result=self.mock_result(0, 3),
+            )
+        ]
 
         for permutation in itertools.permutations(checkpoints):
             checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num)
@@ -135,8 +160,10 @@ class CheckpointManagerTest(unittest.TestCase):
         keep_checkpoints_num = 2
         checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num)
         checkpoints = [
-            _TuneCheckpoint(
-                _TuneCheckpoint.PERSISTENT, i, self.mock_result(float("nan"), i)
+            _TrackedCheckpoint(
+                checkpoint_dir_or_data=i,
+                storage_mode=_TrackedCheckpoint.PERSISTENT,
+                result=self.mock_result(float("nan"), i),
             )
             for i in range(4)
         ]
@@ -157,7 +184,12 @@ class CheckpointManagerTest(unittest.TestCase):
         """
         checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num=1)
 
-        no_attr_checkpoint = _TuneCheckpoint(_TuneCheckpoint.PERSISTENT, 0, {})
+        no_attr_checkpoint = _TrackedCheckpoint(
+            checkpoint_dir_or_data=0,
+            storage_mode=_TrackedCheckpoint.PERSISTENT,
+            result={},
+        )
+
         with patch.object(logger, "error") as log_error_mock:
             checkpoint_manager.on_checkpoint(no_attr_checkpoint)
             log_error_mock.assert_called_once()
@@ -168,8 +200,16 @@ class CheckpointManagerTest(unittest.TestCase):
 
     def testOnMemoryCheckpoint(self):
         checkpoints = [
-            _TuneCheckpoint(_TuneCheckpoint.MEMORY, 0, self.mock_result(0, 0)),
-            _TuneCheckpoint(_TuneCheckpoint.MEMORY, 0, self.mock_result(0, 0)),
+            _TrackedCheckpoint(
+                checkpoint_dir_or_data=0,
+                storage_mode=_TrackedCheckpoint.MEMORY,
+                result=self.mock_result(0, 0),
+            ),
+            _TrackedCheckpoint(
+                checkpoint_dir_or_data=0,
+                storage_mode=_TrackedCheckpoint.MEMORY,
+                result=self.mock_result(0, 0),
+            ),
         ]
         checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num=1)
         checkpoint_manager.on_checkpoint(checkpoints[0])
@@ -192,17 +232,25 @@ class CheckpointManagerTest(unittest.TestCase):
             tmpfiles.append(tmpfile)
 
         checkpoints = [
-            _TuneCheckpoint(
-                _TuneCheckpoint.PERSISTENT, tmpfiles[0], self.mock_result(5, 5)
+            _TrackedCheckpoint(
+                checkpoint_dir_or_data=tmpfiles[0],
+                storage_mode=_TrackedCheckpoint.PERSISTENT,
+                result=self.mock_result(5, 5),
             ),
-            _TuneCheckpoint(
-                _TuneCheckpoint.PERSISTENT, tmpfiles[1], self.mock_result(10, 10)
+            _TrackedCheckpoint(
+                checkpoint_dir_or_data=tmpfiles[1],
+                storage_mode=_TrackedCheckpoint.PERSISTENT,
+                result=self.mock_result(10, 10),
             ),
-            _TuneCheckpoint(
-                _TuneCheckpoint.PERSISTENT, tmpfiles[2], self.mock_result(0, 0)
+            _TrackedCheckpoint(
+                checkpoint_dir_or_data=tmpfiles[2],
+                storage_mode=_TrackedCheckpoint.PERSISTENT,
+                result=self.mock_result(0, 0),
             ),
-            _TuneCheckpoint(
-                _TuneCheckpoint.PERSISTENT, tmpfiles[1], self.mock_result(20, 20)
+            _TrackedCheckpoint(
+                checkpoint_dir_or_data=tmpfiles[1],
+                storage_mode=_TrackedCheckpoint.PERSISTENT,
+                result=self.mock_result(20, 20),
             ),
         ]
         for checkpoint in checkpoints:

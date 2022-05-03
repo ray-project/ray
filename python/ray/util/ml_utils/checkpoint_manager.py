@@ -6,7 +6,7 @@ import os
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Dict, Union, Callable, Tuple
+from typing import Optional, Dict, Union, Callable, Tuple, List
 
 import ray
 from ray.train.constants import TIMESTAMP, TUNE_INSTALLED
@@ -32,8 +32,8 @@ class _TrackedCheckpoint:
     def __init__(
         self,
         checkpoint_dir_or_data: Optional[Union[str, Path, Dict, ray.ObjectRef]],
-        checkpoint_id: int,
         storage_mode: str,
+        checkpoint_id: int = 0,
         result: Optional[Dict] = None,
         node_ip: Optional[str] = None,
         delete_fn: Optional[Callable[["_TrackedCheckpoint"], None]] = None,
@@ -141,7 +141,7 @@ class CheckpointManager:
         self._latest_checkpoint_id = latest_checkpoint_id
 
         # Used for keeping top K checkpoints.
-        self._top_persisted_checkpoints = []
+        self._top_persisted_checkpoints: List[_HeapCheckpointWrapper] = []
 
         # Best checkpoint altogether.
         # Used for exposing best_checkpoint_path.

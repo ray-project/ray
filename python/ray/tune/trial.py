@@ -15,7 +15,7 @@ import ray
 import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError, RayTaskError
 from ray.tune import TuneError
-from ray.tune.checkpoint_manager import _TuneCheckpoint, CheckpointManager
+from ray.tune.checkpoint_manager import CheckpointManager
 
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
@@ -40,6 +40,7 @@ from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils import date_str, flatten_dict
 from ray.util.annotations import DeveloperAPI
 from ray._private.utils import binary_to_hex, hex_to_binary
+from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint
 
 DEBUG_PRINT_INTERVAL = 5
 logger = logging.getLogger(__name__)
@@ -99,7 +100,7 @@ class CheckpointDeleter:
         self.trial_id = trial_id
         self.runner = runner
 
-    def __call__(self, checkpoint: _TuneCheckpoint):
+    def __call__(self, checkpoint: _TrackedCheckpoint):
         """Requests checkpoint deletion asynchronously.
 
         Args:
@@ -108,8 +109,11 @@ class CheckpointDeleter:
         if not self.runner:
             return
 
-        if checkpoint.storage == _TuneCheckpoint.PERSISTENT and checkpoint.value:
-            checkpoint_path = checkpoint.value
+        if (
+            checkpoint.storage_mode == _TrackedCheckpoint.PERSISTENT
+            and checkpoint.checkpoint_dir_or_data
+        ):
+            checkpoint_path = checkpoint.checkpoint_dir_or_data
 
             logger.debug(
                 "Trial %s: Deleting checkpoint %s", self.trial_id, checkpoint_path
@@ -462,8 +466,11 @@ class Trial:
             checkpoint = self.checkpoint_manager.newest_persistent_checkpoint
         else:
             checkpoint = self.checkpoint_manager.newest_checkpoint
-        if checkpoint.value is None:
-            checkpoint = _TuneCheckpoint(_TuneCheckpoint.PERSISTENT, self.restore_path)
+        if checkpoint.checkpoint_dir_or_data is None:
+            checkpoint = _TrackedCheckpoint(
+                checkpoint_dir_or_data=self.restore_path,
+                storage_mode=_TrackedCheckpoint.PERSISTENT,
+            )
         return checkpoint
 
     @classmethod
@@ -641,14 +648,14 @@ class Trial:
         )
 
     def has_checkpoint(self):
-        return self.checkpoint.value is not None
+        return self.checkpoint.checkpoint_dir_or_data is not None
 
     def clear_checkpoint(self):
-        self.checkpoint.value = None
+        self.checkpoint.checkpoint_dir_or_data = None
         self.restoring_from = None
         self.invalidate_json_state()
 
-    def on_checkpoint(self, checkpoint: _TuneCheckpoint):
+    def on_checkpoint(self, checkpoint: _TrackedCheckpoint):
         """Hook for handling checkpoints taken by the Trainable.
 
         Args:
