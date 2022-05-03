@@ -11,7 +11,7 @@
 Ray Collective Communication Lib
 ================================
 
-The Ray collective communication library (\ ``ray.util.collectve``\ ) offers a set of native collective primitives for 
+The Ray collective communication library (\ ``ray.util.collective``\ ) offers a set of native collective primitives for
 communication between distributed CPUs or GPUs.
 
 Ray collective communication library
