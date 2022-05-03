@@ -3,10 +3,11 @@ from pathlib import Path
 from typing import List, Optional, Dict, Union, Callable
 
 from ray import cloudpickle
-from ray.train.constants import TUNE_CHECKPOINT_FILE_NAME, TUNE_CHECKPOINT_ID
+from ray.train.constants import TUNE_CHECKPOINT_FILE_NAME, TUNE_CHECKPOINT_ID, TIMESTAMP
 from ray.train.constants import TUNE_INSTALLED, TRAIN_CHECKPOINT_SUBDIR
 from ray.train.session import TrainingResult
 from ray.train.utils import construct_path
+from ray.tune.result import TRAINING_ITERATION as TUNE_TRAINING_ITERATION
 from ray.util.ml_utils.checkpoint_manager import (
     CheckpointManager as CommonCheckpointManager,
     _TrackedCheckpoint,
@@ -156,6 +157,19 @@ class CheckpointManager(CommonCheckpointManager):
         """Path to the next checkpoint to persist."""
         checkpoint_file = construct_checkpoint_file_name(self._latest_checkpoint_id + 1)
         return self.latest_checkpoint_dir.joinpath(checkpoint_file)
+
+    def on_start_training(
+        self,
+        checkpoint_strategy: CheckpointStrategy,
+        run_dir: str,
+        latest_checkpoint_id: int,
+    ):
+        if checkpoint_strategy.checkpoint_score_attribute == TUNE_TRAINING_ITERATION:
+            checkpoint_strategy.checkpoint_score_attribute = TIMESTAMP
+
+        self._checkpoint_strategy = checkpoint_strategy
+        self.run_dir = run_dir
+        self._latest_checkpoint_id = latest_checkpoint_id
 
     # Train-specific attributes
     @property

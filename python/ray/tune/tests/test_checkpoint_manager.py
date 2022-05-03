@@ -7,8 +7,8 @@ import unittest
 from unittest.mock import patch
 
 from ray.tune.result import TRAINING_ITERATION
-from ray.tune.checkpoint_manager import CheckpointManager, logger
-from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint
+from ray.tune.checkpoint_manager import CheckpointManager
+from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint, logger
 
 
 class CheckpointManagerTest(unittest.TestCase):
@@ -202,9 +202,7 @@ class CheckpointManagerTest(unittest.TestCase):
             result={},
         )
 
-        from ray.util.ml_utils.checkpoint_manager import logger as cp_logger
-
-        with patch.object(cp_logger, "error") as log_error_mock:
+        with patch.object(logger, "error") as log_error_mock:
             checkpoint_manager.on_checkpoint(no_attr_checkpoint)
             log_error_mock.assert_called_once()
             # The newest checkpoint should still be set despite this error.
