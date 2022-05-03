@@ -422,11 +422,19 @@ class TuneReporterBase(ProgressReporter):
 
 
 @DeveloperAPI
-class RemoteReporter:
-    """Remote reporter abstract class.
+class RemoteReporterMixin:
+    """Remote reporter abstract mixin class.
 
     Subclasses of this class will use a Ray Queue to display output
     on the driver side when running Ray Client."""
+
+    @property
+    def output_queue(self) -> Queue:
+        return getattr(self, "_output_queue", None)
+
+    @output_queue.setter
+    def output_queue(self, value: Queue):
+        self._output_queue = value
 
     def display(self, string: str) -> None:
         """Display the progress string.
@@ -438,7 +446,7 @@ class RemoteReporter:
 
 
 @PublicAPI
-class JupyterNotebookReporter(RemoteReporter, TuneReporterBase):
+class JupyterNotebookReporter(TuneReporterBase, RemoteReporterMixin):
     """Jupyter notebook-friendly Reporter that can update display in-place.
 
     Args:
@@ -521,21 +529,17 @@ class JupyterNotebookReporter(RemoteReporter, TuneReporterBase):
             )
 
         self._overwrite = overwrite
-        self._output_queue = None
         self._display_handle = None
-        self.display("")  # initialize display to update later
-
-    def set_output_queue(self, queue: Queue):
-        self._output_queue = queue
+        self.display("")  # initialize empty display to update later
 
     def report(self, trials: List[Trial], done: bool, *sys_info: Dict):
         progress_str = self._progress_str(
             trials, done, *sys_info, fmt="html", delim="<br>"
         )
 
-        if self._output_queue is not None:
+        if self.output_queue is not None:
             # If an output queue is set, send string
-            self._output_queue.put(progress_str)
+            self.output_queue.put(progress_str)
         else:
             # Else, output directly
             self.display(progress_str)

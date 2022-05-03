@@ -20,7 +20,7 @@ from ray.tune.error import TuneError
 from ray.tune.experiment import Experiment, convert_to_experiment_list
 from ray.tune.logger import Logger
 from ray.tune.progress_reporter import (
-    RemoteReporter,
+    RemoteReporterMixin,
     detect_reporter,
     ProgressReporter,
 )
@@ -376,11 +376,11 @@ def run(
         # (e.g. via Ray client) as they don't have access to the main
         # process stdout. So we introduce a queue here that accepts
         # strings, which will then be displayed on the driver side.
-        if isinstance(progress_reporter, RemoteReporter):
+        if isinstance(progress_reporter, RemoteReporterMixin):
             string_queue = Queue(
                 actor_options={"num_cpus": 0, **force_on_current_node(None)}
             )
-            progress_reporter.set_output_queue(string_queue)
+            progress_reporter.output_queue = string_queue
 
             def get_next_queue_item():
                 try:
