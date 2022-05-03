@@ -47,7 +47,7 @@ def parse_request_item(request_item):
 
 
 class _ServeCustomEncoders:
-    """Groups of custom encoders for common types that's not handled by FastAPI."""
+    """Group of custom encoders for common types that's not handled by FastAPI."""
 
     @staticmethod
     def encode_np_array(obj):
