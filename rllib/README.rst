@@ -58,14 +58,12 @@ Algorithms Supported
 
 Offline RL:  
 
-- `Behavior Cloning (BC; derived from MARWIL implementation) <bc>`_ 
-- `Conservative Q-Learning (CQL) <cql>`__ 
-- `Importance Sampling and Weighted Importance Sampling (OPE) <is>`__ 
-- `Monotonic Advantage Re-Weighted Imitation Learning (MARWIL) <marwil>`__ 
+- `Behavior Cloning (BC; derived from MARWIL implementation) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#bc>`__ 
+- `Conservative Q-Learning (CQL) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#cql>`__ 
+- `Importance Sampling and Weighted Importance Sampling (OPE) <https://docs.ray.io/en/latest/rllib/rllib-offline.html#is>`__ 
+- `Monotonic Advantage Re-Weighted Imitation Learning (MARWIL) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#marwil>`__ 
 
-Model-free RL: 
-
-- On-policy:
+Model-free On-policy RL (for Games):
 
   - `Synchronous Proximal Policy Optimization (APPO) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#appo>`__ 
   - `Decentralized Distributed Proximal Policy Optimization (DD-PPO)  <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#ddppo>`__ 
@@ -75,7 +73,7 @@ Model-free RL:
   - `Vanilla Policy Gradient (PG) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#pg>`__ 
   - `Model-agnostic Meta-Learning (contrib/MAML) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#maml>`__ 
 
-- Off-policy:
+Model-free Off-policy RL:
 
   - `Distributed Prioritized Experience Replay (Ape-X DQN, Ape-X DDPG)] <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#apex>`__ 
   - `Recurrent Replay Distributed DQN (R2D2) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#r2d2>`__ 
