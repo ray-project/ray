@@ -50,7 +50,7 @@ For example you could use Python's integrated ``venv`` module to create one:
 
 .. code-block:: shell
 
-    python3.8 -m venv env
+    python -m venv env
 
 That will create a virtual environment called ``env`` in the current directory, it will contain a directory with all the packages used by the local Python of your project. You only need to make this step once.
 
@@ -89,7 +89,7 @@ RLlib, Tune, Autoscaler, and most Python files do not require you to build and c
 
 .. code-block:: shell
 
-    # For Python 3.8:
+    # For example, for Python 3.8:
     pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
 
 4. Replace Python files in the installed package with your local editable copy. We provide a simple script to help you do this: ``python python/ray/setup-dev.py``.
