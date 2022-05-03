@@ -43,6 +43,10 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.utils import update_priorities_in_replay_buffer
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
+from ray.rllib.utils.deprecation import (
+    Deprecated,
+    DEPRECATED_VALUE,
+)
 from ray.rllib.utils.typing import (
     ResultDict,
     TrainerConfigDict,
@@ -126,7 +130,7 @@ class DQNConfig(SimpleQConfig):
 
     def __init__(self):
         """Initializes a DQNConfig instance."""
-        SimpleQConfig.__init__(self)
+        super().__init__(self)
 
         # DQN specific
         # fmt: off
@@ -160,6 +164,8 @@ class DQNConfig(SimpleQConfig):
 
     @override(SimpleQConfig)
     def training(
+        self,
+        *,
         num_atoms: Optional[int] = None,
         v_min: Optional[float] = None,
         v_max: Optional[float] = None,
@@ -173,6 +179,7 @@ class DQNConfig(SimpleQConfig):
         training_intensity: Optional[float] = None,
         worker_side_prioritization: Optional[bool] = None,
         replay_buffer_config: Optional[dict] = None,
+        **kwargs,
     ) -> "DQNConfig":
         """Sets the training related configuration.
 

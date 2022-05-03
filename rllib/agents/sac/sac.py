@@ -2,7 +2,7 @@ import logging
 from typing import Optional, Type
 
 from ray.rllib.agents.trainer import with_common_config
-from ray.rllib.agents.dqn.dqn import DQNConfig, DQNTrainer
+from ray.rllib.agents.dqn.dqn import DQNTrainer
 from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.agents.sac.sac_tf_policy import SACTFPolicy
 from ray.rllib.policy.policy import Policy
@@ -32,7 +32,7 @@ OPTIMIZER_SHARED_CONFIGS = [
 ]
 
 
-class SACConfig(DQNConfig):
+class SACConfig(TrainerConfig):
     """Defines a SACTrainer configuration class from which a SACTrainer can be built.
 
     Example:
@@ -83,7 +83,7 @@ class SACConfig(DQNConfig):
 
     def __init__(self):
         """Initializes a SACConfig instance."""
-        DQNConfig.__init__(self)
+        super().__init__(self)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -149,6 +149,8 @@ class SACConfig(DQNConfig):
 
     @override(TrainerConfig)
     def training(
+        self,
+        *,
         twin_q: Optional[bool] = None,
         Q_model: Optional[dict] = None,
         policy_model: Optional[dict] = None,
@@ -180,6 +182,7 @@ class SACConfig(DQNConfig):
         min_time_s_per_reporting: Optional[int] = None,
         _deterministic_loss: Optional[bool] = None,
         _use_beta_distribution: Optional[bool] = None,
+        **kwargs,
     ) -> "SACConfig":
         """Sets the training related configuration.
 
@@ -262,8 +265,8 @@ class SACConfig(DQNConfig):
             self.n_step = n_step
         if timesteps_per_iteration is not None:
             self.timesteps_per_iteration = timesteps_per_iteration
-        if replay_buffers_config is not None:
-            self.replay_buffers_config = replay_buffers_config
+        if replay_buffer_config is not None:
+            self.replay_buffer_config = replay_buffer_config
         if store_buffer_in_checkpoints is not None:
             self.store_buffer_in_checkpoints = store_buffer_in_checkpoints
         if prioritized_replay is not None:
@@ -296,8 +299,8 @@ class SACConfig(DQNConfig):
             self.num_gpus = num_gpus
         if num_workers is not None:
             self.num_workers = num_workers
-        if num_gpus_per_workers is not None:
-            self.num_gpus_per_workers = num_gpus_per_workers
+        if num_gpus_per_worker is not None:
+            self.num_gpus_per_worker = num_gpus_per_worker
         if num_cpus_per_worker is not None:
             self.num_cpus_per_worker = num_cpus_per_worker
         if worker_side_prioritization is not None:
