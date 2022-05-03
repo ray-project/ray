@@ -58,10 +58,10 @@ Algorithms Supported
 
 Offline RL:  
 
-- `Behavior Cloning (BC; derived from MARWIL implementation) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#bc>`__ 
-- `Conservative Q-Learning (CQL) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#cql>`__ 
-- `Importance Sampling and Weighted Importance Sampling (OPE) <https://docs.ray.io/en/latest/rllib/rllib-offline.html#is>`__ 
-- `Monotonic Advantage Re-Weighted Imitation Learning (MARWIL) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#marwil>`__ 
+- `Behavior Cloning (BC; derived from MARWIL implementation) <bc>`_ 
+- `Conservative Q-Learning (CQL) <cql>`__ 
+- `Importance Sampling and Weighted Importance Sampling (OPE) <is>`__ 
+- `Monotonic Advantage Re-Weighted Imitation Learning (MARWIL) <marwil>`__ 
 
 Model-free RL: 
 
