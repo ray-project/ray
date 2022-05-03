@@ -10,10 +10,10 @@ RAY_LOG_CATEGORIES = [
     "ray_client",
 ]
 
-RAY_WORKER_LOG_CATEGORIES = [
-    "worker_errors",
-    "worker_stdout",
-] + sum([
-    [f"{lang}_driver", f"{lang}_core_worker"]
-    for lang in ray_constants.LANGUAGE_WORKER_TYPES
-], [])
+RAY_WORKER_LOG_CATEGORIES = ["worker_errors", "worker_stdout"] + sum(
+    [
+        [f"{lang}_driver", f"{lang}_core_worker"]
+        for lang in ray_constants.LANGUAGE_WORKER_TYPES
+    ],
+    [],
+)

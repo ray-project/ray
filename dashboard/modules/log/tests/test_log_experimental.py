@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, AsyncMock
 from typing import List
 import pytest
 
+import ray
 
 from ray._private.test_utils import (
     format_web_url,
@@ -16,8 +17,8 @@ from ray._private.test_utils import (
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.core.generated.reporter_pb2 import StreamLogReply, ListLogsReply
 from ray.dashboard.modules.log.log_agent import tail as tail_file
-from ray.dashboard.modules.log.log_manager import (
-    LogsManager,
+from ray.dashboard.modules.log.log_manager import LogsManager
+from ray.experimental.log.common import (
     LogStreamOptions,
     LogIdentifiers,
     NodeIdentifiers,
@@ -140,14 +141,19 @@ async def test_logs_manager_stream_log(logs_manager):
     )
 
     # Test pid, media_type = "stream", node_ip
+
     logs_client.ip_to_node_id.return_value = "1"
+    logs_client.list_logs.side_effect = [
+        generate_list_logs(["raylet.out", "gcs_server.out", "worker-0-0-10.out"]),
+    ]
+
     stream_options = LogStreamOptions(media_type="stream", lines=100, interval=0.5)
     node_identifiers = NodeIdentifiers(node_ip="1")
     file_identifiers = FileIdentifiers(pid="10")
     identifiers = LogIdentifiers(file=file_identifiers, node=node_identifiers)
-    logs_client.list_logs.side_effect = [
-        generate_list_logs(["raylet.out", "gcs_server.out", "worker-0-0-10.out"]),
-    ]
+
+    logs_client.stream_log.return_value = generate_logs_stream(NUM_LOG_CHUNKS)
+
     stream = await logs_manager.create_log_stream(
         identifiers=identifiers, stream_options=stream_options
     )
@@ -236,14 +242,14 @@ def test_logs_list(ray_start_with_dashboard):
     node_id = next(iter(logs))
 
     # test worker logs
-    outs = logs[node_id]["worker_outs"]
-    errs = logs[node_id]["worker_outs"]
-    core_worker_logs = logs[node_id]["python_core_worker_logs"]
+    outs = logs[node_id]["worker_stdout"]
+    errs = logs[node_id]["worker_errors"]
+    core_worker_logs = logs[node_id]["python_core_worker"]
 
     assert len(outs) == len(errs) == len(core_worker_logs)
     assert len(outs) > 0
 
-    for file in ["debug_state_gcs.txt", "gcs_server.out", "gcs_server.err"]:
+    for file in ["gcs_server.out", "gcs_server.err"]:
         assert file in logs[node_id]["gcs_server"]
     for file in ["raylet.out", "raylet.err"]:
         assert file in logs[node_id]["raylet"]
@@ -268,8 +274,8 @@ def test_logs_list(ray_start_with_dashboard):
     assert len(logs) == 1
     node_id = next(iter(logs))
     worker_log_categories = [
-        "python_core_worker_logs",
-        "worker_outs",
+        "python_core_worker",
+        "worker_stdout",
         "worker_errors",
     ]
     assert all([cat in logs[node_id] for cat in worker_log_categories])

@@ -7,7 +7,7 @@ from dataclasses import fields, is_dataclass
 from ray.experimental.log.common import (
     NodeIdentifiers,
     LogIdentifiers,
-    LogStreamOptions
+    LogStreamOptions,
 )
 from ray.experimental.log.consts import (
     RAY_LOG_CATEGORIES,
@@ -19,7 +19,7 @@ from ray import ray_constants
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar('T')      # Declare type variable
+T = TypeVar("T")  # Declare type variable
 
 
 def to_schema(req: aiohttp.web.Request, Dataclass: T) -> T:
@@ -107,7 +107,7 @@ class LogsManager:
 
                 index = await self.list_logs(node_id, [worker_id])
                 for node in index:
-                    for file in index[node]["worker_outs"]:
+                    for file in index[node]["worker_stdout"]:
                         if file.split(".")[0].split("-")[1] == worker_id:
                             log_file_name = file
                             if node_id is None:
@@ -125,7 +125,7 @@ class LogsManager:
                         f"with pid: {pid}. "
                     )
                 index = await self.list_logs(node_id, [pid])
-                for file in index[node_id]["worker_outs"]:
+                for file in index[node_id]["worker_stdout"]:
                     if file.split(".")[0].split("-")[3] == pid:
                         log_file_name = file
                         break
@@ -206,7 +206,9 @@ class LogsManager:
                 logs[category] = list(filter(lambda s: category in s, filtered))
             elif category == "autoscaler":
                 logs["autoscaler"] = list(
-                    filter(lambda s: "monitor" in s and "log_monitor" not in s, filtered)
+                    filter(
+                        lambda s: "monitor" in s and "log_monitor" not in s, filtered
+                    )
                 )
 
         logs["folders"] = list(filter(lambda s: "." not in s, filtered))

@@ -1,9 +1,8 @@
 import requests
 import json
-from typing import List
+from typing import List, Dict
 
 import ray._private.services as services
-import ray.ray_constants as ray_constants
 from ray.experimental.log.common import (
     NodeIdentifiers,
     FileIdentifiers,
@@ -136,7 +135,15 @@ def list_logs(
     return logs_dict
 
 
-def pretty_print_logs_index(node_id: str, files: List[str]):
+def pretty_print_logs_index(node_id: str, files: Dict[str, List[str]]):
+    """
+    Pretty prints the logs by category.
+
+    Args:
+        node_id: the node_id for the files
+        files: {category: str -> filenames: List[str]}
+    """
+
     def print_section(key):
         if len(files[key]) > 0:
             print(f"\n{key}")
@@ -148,6 +155,7 @@ def pretty_print_logs_index(node_id: str, files: List[str]):
                 )
                 for log in files[key]
             ]
+
     for category in RAY_LOG_CATEGORIES:
         print_section(category)
     for category in RAY_WORKER_LOG_CATEGORIES:

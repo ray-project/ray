@@ -39,10 +39,14 @@ from ray.autoscaler._private.commands import (
 from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.autoscaler._private.kuberay.run_autoscaler import run_autoscaler_with_retries
-from ray.experimental.logs import (
+from ray.experimental.log.api import (
     get_log,
     list_logs,
     pretty_print_logs_index,
+)
+from ray.experimental.log.common import (
+    FileIdentifiers,
+    NodeIdentifiers,
 )
 from ray.internal.internal_api import memory_summary
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger, cf
@@ -73,6 +77,29 @@ def cli(logging_level, logging_format):
     level = logging.getLevelName(logging_level.upper())
     ray._private.ray_logging.setup_logger(level, logging_format)
     cli_logger.set_format(format_tmpl=logging_format)
+
+
+def hide_exception_stacktrace(func):
+    """Helper function to hide exception stacktrace from CLI commands"""
+
+    @click.option(
+        "--show-stacktrace",
+        type=bool,
+        default=False,
+        is_flag=True,
+        help="Shows full stacktrace for CLI exceptions.",
+    )
+    @functools.wraps(func)
+    def inner(show_stacktrace: bool, *args, **kwargs):
+        if not show_stacktrace:
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                print(f"Ray CLI Error ({e.__class__.__name__}): ", e)
+        else:
+            return func(*args, **kwargs)
+
+    return inner
 
 
 @click.command()
@@ -1868,27 +1895,6 @@ def local_dump(
     )
 
 
-def hide_exception_stacktrace(func):
-    @click.option(
-        "--show-stacktrace",
-        type=bool,
-        default=False,
-        is_flag=True,
-        help="Shows full stacktrace for CLI exceptions.",
-    )
-    @functools.wraps(func)
-    def inner(show_stacktrace: bool, *args, **kwargs):
-        if not show_stacktrace:
-            try:
-                return func(*args, **kwargs)
-            except Exception as e:
-                print(f"Client Error ({e.__class__.__name__}): ", e)
-        else:
-            return func(*args, **kwargs)
-
-    return inner
-
-
 @cli.command(hidden=True)
 @click.argument(
     "filters",
@@ -2015,7 +2021,10 @@ def logs(
     if not match_unique:
         # Try to match a single log file.
         # If we find more than one match, we output the index.
-        logs_dict = list_logs(node_id, node_ip, filters)
+        logs_dict = list_logs(
+            node_identifiers=NodeIdentifiers(node_id=node_id, node_ip=node_ip),
+            filters=filters,
+        )
         if len(logs_dict) == 0:
             raise ValueError(f"Could not find node {node_id}")
         if filename is None:
@@ -2036,12 +2045,6 @@ def logs(
                 )
 
     if found_many:
-        print(
-            "Warning: More than one log file matches your query. Please add "
-            "additional flags or filname globs to narrow down the "
-            "search results to a single file. Check --help for more."
-        )
-
         MAX_NODES = 10
         for i, (node_id, logs) in enumerate(logs_dict.items()):
             if i >= MAX_NODES:
@@ -2052,6 +2055,12 @@ def logs(
                 break
             print(f"\nNode ID: {node_id}")
             pretty_print_logs_index(node_id, logs)
+
+        print(
+            "\nWarning: More than one log file matches your query. Please add "
+            "additional flags or filname globs to narrow down the "
+            "search results to a single file. Check --help for more."
+        )
     else:
 
         def default_lines(lines):
@@ -2063,7 +2072,12 @@ def logs(
 
         lines = lines or default_lines(1000 if follow else 100)
         for chunk in get_log(
-            node_ip, pid, node_id, actor_id, task_id, filename, follow, lines
+            file_identifiers=FileIdentifiers(
+                log_file_name=filename, pid=pid, actor_id=actor_id, task_id=task_id
+            ),
+            node_identifiers=NodeIdentifiers(node_ip=node_ip, node_id=node_id),
+            stream=follow,
+            lines=lines,
         ):
             print(chunk, end="", flush=True)
 
