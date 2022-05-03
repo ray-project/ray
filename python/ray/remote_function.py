@@ -204,7 +204,7 @@ class RemoteFunction:
                 msg = (
                     "Could not serialize the function "
                     f"{self._function_descriptor.repr}. Check "
-                    "https://docs.ray.io/en/master/serialization.html#troubleshooting "
+                    "https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting "
                     "for more information."
                 )
                 raise TypeError(msg) from e
