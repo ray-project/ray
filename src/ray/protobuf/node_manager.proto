@@ -314,6 +314,7 @@ message GetResourceLoadRequest {}
 
 message GetResourceLoadReply {
   ResourcesData resources = 1;
+}
 
 message TaskResourceUsage {
   // Function descriptor for the task
