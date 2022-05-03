@@ -201,19 +201,7 @@ class Trainer:
                     "`resources_per_worker."
                 )
 
-        runtime_env = {
-            "env_vars": {
-                var_name: os.environ[var_name]
-                for var_name in BACKEND_ENV_VARS
-                if var_name in os.environ
-            }
-        }
-
-        remote_executor = ray.remote(num_cpus=0)(BackendExecutor)
-
-        backend_executor_actor = remote_executor.options(
-            runtime_env=runtime_env
-        ).remote(
+        self._backend_executor = BackendExecutor(
             backend_config=self._backend_config,
             num_workers=num_workers,
             num_cpus_per_worker=num_cpus,
@@ -221,8 +209,6 @@ class Trainer:
             additional_resources_per_worker=resources_per_worker,
             max_retries=max_retries,
         )
-
-        self._backend_executor = ActorWrapper(backend_executor_actor)
 
         if self._is_tune_enabled():
             self.checkpoint_manager = TuneCheckpointManager()
