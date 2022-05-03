@@ -201,7 +201,10 @@ class Node:
         self._init_temp()
 
         # Validate and initialize the persistent storage API.
-        storage._init_storage(ray_params.storage, is_head=head)
+        if head:
+            storage._init_storage(ray_params.storage, is_head=True)
+        else:
+            storage._init_storage(ray._private.services.get_storage_uri_from_internal_kv(), is_head=False)
 
         # If it is a head node, try validating if
         # external storage is configurable.
@@ -283,6 +286,12 @@ class Node:
             self.get_gcs_client().internal_kv_put(
                 b"temp_dir",
                 self._temp_dir.encode(),
+                True,
+                ray_constants.KV_NAMESPACE_SESSION,
+            )
+            self.get_gcs_client().internal_kv_put(
+                b"storage",
+                ray_params.storage.encode(),
                 True,
                 ray_constants.KV_NAMESPACE_SESSION,
             )
