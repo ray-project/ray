@@ -530,7 +530,14 @@ provider:
         # We need to start a serve with runtime env to make this test
         # work with minimal installation.
         s = ServeInitator.remote()
-        ray.get(s.ready.remote())
+        try:
+            ray.get(s.ready.remote())
+        except Exception:
+            # print contents of dashboard_agent.log
+            with open("tmp/ray/session_latest/logs/dashboard_agent.log") as f:
+                print(f.read())
+            assert False
+
 
         # Query our endpoint over HTTP.
         r = client.report_usage_data("http://127.0.0.1:8000/usage", d)
