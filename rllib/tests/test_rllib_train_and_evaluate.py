@@ -38,8 +38,7 @@ def evaluate_test(algo, env="CartPole-v0", test_episode_rollout=False):
             + ', "min_sample_timesteps_per_reporting": 5,'
             '"min_time_s_per_reporting": 0.1, '
             '"model": {"fcnet_hiddens": [10]}'
-            "}' --stop='{\"training_iteration\": 1}'"
-            + " --env={} --no-ray-ui".format(env)
+            "}' --stop='{\"training_iteration\": 1}'" + " --env={}".format(env)
         )
 
         checkpoint_path = os.popen(

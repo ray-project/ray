@@ -71,7 +71,6 @@ class MyTrainer(Trainer):
         # parameters.
         return with_common_config(
             {
-                "_disable_execution_plan_api": True,
                 "num_sgd_iter": 10,
                 "sgd_minibatch_size": 128,
             }

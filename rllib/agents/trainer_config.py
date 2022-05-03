@@ -214,7 +214,7 @@ class TrainerConfig:
         self._tf_policy_handles_more_than_one_loss = False
         self._disable_preprocessor_api = False
         self._disable_action_flattening = False
-        self._disable_execution_plan_api = False
+        self._disable_execution_plan_api = True
 
     def to_dict(self) -> TrainerConfigDict:
         """Converts all settings into a legacy config dict for backward compatibility.

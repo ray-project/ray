@@ -643,6 +643,11 @@ COMMON_CONFIG: TrainerConfigDict = {
     "logger_config": None,
 
     # === API deprecations/simplifications/changes ===
+    # If True, the execution plan API will not be used. Instead,
+    # a Trainer's `training_iteration()` method will be called on each
+    # training iteration.
+    "_disable_execution_plan_api": True,
+
     # Experimental flag.
     # If True, TFPolicy will handle more than one loss/optimizer.
     # Set this to True, if you would like to return more than
@@ -663,11 +668,6 @@ COMMON_CONFIG: TrainerConfigDict = {
     # - Models that have the previous action(s) as part of their input.
     # - Algorithms reading from offline files (incl. action information).
     "_disable_action_flattening": False,
-    # Experimental flag.
-    # If True, the execution plan API will not be used. Instead,
-    # a Trainer's `training_iteration` method will be called as-is each
-    # training iteration.
-    "_disable_execution_plan_api": False,
 
     # If True, disable the environment pre-checking module.
     "disable_env_checking": False,
