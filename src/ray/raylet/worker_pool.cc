@@ -1359,6 +1359,8 @@ void WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
   auto it = state.worker_processes.find(worker->GetStartupToken());
   if (it != state.worker_processes.end()) {
     if (!RemoveWorker(it->second.alive_started_workers, worker)) {
+      // Worker is either starting or started,
+      // if it's not started, we should remove it from starting.
       it->second.num_starting_workers--;
     }
     if (it->second.alive_started_workers.size() == 0 &&
@@ -1373,6 +1375,8 @@ void WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
     auto &io_worker_state =
         GetIOWorkerStateFromWorkerType(worker->GetWorkerType(), state);
     if (!RemoveWorker(io_worker_state.started_io_workers, worker)) {
+      // IO worker is either starting or started,
+      // if it's not started, we should remove it from starting.
       io_worker_state.num_starting_io_workers--;
     }
     RemoveWorker(io_worker_state.idle_io_workers, worker);
