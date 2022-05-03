@@ -2413,7 +2413,7 @@ def test_csv_read_with_column_type_specified(shutdown_only, tmp_path):
     # Incorrect to parse scientific notation in int64 as PyArrow represents
     # it as double.
     with pytest.raises(pa.lib.ArrowInvalid):
-        ds = ray.data.read_csv(
+        ray.data.read_csv(
             file_path,
             convert_options=csv.ConvertOptions(
                 column_types={"one": "int64", "two": "string"}),
