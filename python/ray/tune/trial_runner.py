@@ -314,13 +314,6 @@ class TrialRunner:
 
         self._metric = metric
 
-        if "TRIALRUNNER_WALLTIME_LIMIT" in os.environ:
-            raise ValueError(
-                "The TRIALRUNNER_WALLTIME_LIMIT environment variable is "
-                "deprecated. "
-                "Use `tune.run(time_budget_s=limit)` instead."
-            )
-
         self._total_time = 0
         self._iteration = 0
         self._has_errored = False
@@ -780,7 +773,7 @@ class TrialRunner:
 
         next_trial = self._update_trial_queue_and_get_next_trial()
         if next_trial:
-            logger.debug(f"Running trial {next_trial}")
+            logger.debug(f"Got new trial to run: {next_trial}")
 
         self._wait_and_handle_event(next_trial)
 
@@ -818,7 +811,7 @@ class TrialRunner:
                 return False
 
         assert next_trial is not None
-        logger.info(f"starting {next_trial}")
+        logger.debug(f"Trying to start trial: {next_trial}")
         if not _start_trial(next_trial) and next_trial.status != Trial.ERROR:
             # Only try to start another trial if previous trial startup
             # did not error (e.g. it just didn't start because its
@@ -832,7 +825,7 @@ class TrialRunner:
                 # Must be able to start.
                 assert _start_trial(next_trial)
             else:
-                logger.info(f"reconciling {self.get_trials()}")
+                logger.debug(f"Reconciling resource requests: {self.get_trials()}")
                 self.trial_executor._pg_manager.reconcile_placement_groups(
                     self.get_trials()
                 )
@@ -949,7 +942,7 @@ class TrialRunner:
             ]
 
     def _process_trial_results(self, trial, results):
-        logger.debug(f"process_trial_results {results}")
+        logger.debug(f"Processing trial results for trial {trial}: {results}")
         with warn_if_slow(
             "process_trial_results",
             message="Processing trial results took {duration:.3f} s, "
@@ -1030,7 +1023,7 @@ class TrialRunner:
         self._checkpoint_trial_if_needed(trial, force=force_checkpoint)
 
         if trial.is_saving:
-            logger.debug(f"caching trial decision {trial}")
+            logger.debug(f"Caching trial decision for trial {trial}: {decision}")
             # Cache decision to execute on after the save is processed.
             # This prevents changing the trial's state or kicking off
             # another training step prematurely.
@@ -1308,7 +1301,7 @@ class TrialRunner:
             while (
                 not trial and not self.is_finished() and time.time() - start < timeout
             ):
-                logger.info("Blocking for next trial...")
+                logger.debug("Blocking for next trial...")
                 trial = self._search_alg.next_trial()
                 time.sleep(1)
 

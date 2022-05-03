@@ -142,6 +142,13 @@ class Checkpoint:
                     f"Cannot create checkpoint from path as it does "
                     f"not exist on local node: {local_path}"
                 )
+            elif not os.path.isdir(local_path):
+                raise RuntimeError(
+                    f"Cannot create checkpoint from path as it does "
+                    f"not point to a directory: {local_path}. If your checkpoint "
+                    f"is a single file, consider passing the enclosing directory "
+                    f"instead."
+                )
         elif data_dict:
             assert not local_path and not uri and not obj_ref
             if not isinstance(data_dict, dict):

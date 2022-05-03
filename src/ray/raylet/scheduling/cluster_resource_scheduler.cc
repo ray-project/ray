@@ -23,21 +23,14 @@ namespace ray {
 
 using namespace ::ray::raylet_scheduling_policy;
 
-ClusterResourceScheduler::ClusterResourceScheduler()
-    : local_node_id_(scheduling::NodeID::Nil()),
-      is_node_available_fn_([](auto) { return true; }) {
-  cluster_resource_manager_ = std::make_unique<ClusterResourceManager>();
-  NodeResources node_resources;
-  Init(node_resources,
-       /*get_used_object_store_memory=*/nullptr,
-       /*get_pull_manager_at_capacity=*/nullptr);
-}
-
 ClusterResourceScheduler::ClusterResourceScheduler(
     scheduling::NodeID local_node_id,
     const NodeResources &local_node_resources,
-    std::function<bool(scheduling::NodeID)> is_node_available_fn)
-    : local_node_id_(local_node_id), is_node_available_fn_(is_node_available_fn) {
+    std::function<bool(scheduling::NodeID)> is_node_available_fn,
+    bool is_local_node_with_raylet)
+    : local_node_id_(local_node_id),
+      is_node_available_fn_(is_node_available_fn),
+      is_local_node_with_raylet_(is_local_node_with_raylet) {
   Init(local_node_resources,
        /*get_used_object_store_memory=*/nullptr,
        /*get_pull_manager_at_capacity=*/nullptr);
@@ -65,12 +58,11 @@ void ClusterResourceScheduler::Init(
       local_node_resources,
       get_used_object_store_memory,
       get_pull_manager_at_capacity,
-      [&](const NodeResources &local_resource_update) {
+      [this](const NodeResources &local_resource_update) {
         cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_resource_update);
       });
-  if (!local_node_id_.IsNil()) {
-    cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_node_resources);
-  }
+  RAY_CHECK(!local_node_id_.IsNil());
+  cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_node_resources);
   scheduling_policy_ =
       std::make_unique<raylet_scheduling_policy::CompositeSchedulingPolicy>(
           local_node_id_,
@@ -86,7 +78,7 @@ void ClusterResourceScheduler::Init(
 
 bool ClusterResourceScheduler::NodeAlive(scheduling::NodeID node_id) const {
   if (node_id == local_node_id_) {
-    return true;
+    return is_local_node_with_raylet_;
   }
   if (node_id.IsNil()) {
     return false;

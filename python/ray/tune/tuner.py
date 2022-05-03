@@ -70,6 +70,12 @@ class Tuner:
                     "CPU": tune.grid_search([1, 2]),
                 },
             },
+            # You can even grid search various datasets in Tune.
+            # "datasets": {
+            #     "train": tune.grid_search(
+            #         [ds1, ds2]
+            #     ),
+            # },
             "params": {
                 "objective": "binary:logistic",
                 "tree_method": "approx",

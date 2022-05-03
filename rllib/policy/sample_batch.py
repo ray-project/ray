@@ -655,7 +655,7 @@ class SampleBatch(dict):
         if seq_lens is None:
             raise ValueError(
                 "Cannot right-zero-pad SampleBatch if no `seq_lens` field "
-                "present! SampleBatch={self}"
+                f"present! SampleBatch={self}"
             )
 
         length = len(seq_lens) * max_seq_len

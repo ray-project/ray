@@ -31,6 +31,10 @@ enable_gpu_usage_check = True
 
 # Are we in a K8s pod?
 IN_KUBERNETES_POD = "KUBERNETES_SERVICE_HOST" in os.environ
+# Flag to enable showing disk usage when running in a K8s pod,
+# disk usage defined as the result of running psutil.disk_usage("/")
+# in the Ray container.
+ENABLE_K8S_DISK_USAGE = os.environ.get("RAY_DASHBOARD_ENABLE_K8S_DISK_USAGE") == "1"
 
 try:
     import gpustat.core as gpustat
@@ -192,10 +196,13 @@ class ReporterAgent(
         self._disk_io_stats_hist = [
             (0, (0.0, 0.0, 0, 0))
         ]  # time, (bytes read, bytes written, read ops, write ops)
-        self._metrics_agent = MetricsAgent(
-            "127.0.0.1" if self._ip == "127.0.0.1" else "",
-            dashboard_agent.metrics_export_port,
-        )
+        self._metrics_collection_disabled = dashboard_agent.metrics_collection_disabled
+        self._metrics_agent = None
+        if not self._metrics_collection_disabled:
+            self._metrics_agent = MetricsAgent(
+                "127.0.0.1" if self._ip == "127.0.0.1" else "",
+                dashboard_agent.metrics_export_port,
+            )
         self._key = (
             f"{reporter_consts.REPORTER_PREFIX}" f"{self._dashboard_agent.node_id}"
         )
@@ -225,6 +232,10 @@ class ReporterAgent(
         )
 
     async def ReportOCMetrics(self, request, context):
+        # Do nothing if metrics collection is disabled.
+        if self._metrics_collection_disabled:
+            return reporter_pb2.ReportOCMetricsReply()
+
         # This function receives a GRPC containing OpenCensus (OC) metrics
         # from a Ray process, then exposes those metrics to Prometheus.
         try:
@@ -297,7 +308,7 @@ class ReporterAgent(
 
     @staticmethod
     def _get_disk_usage():
-        if IN_KUBERNETES_POD:
+        if IN_KUBERNETES_POD and not ENABLE_K8S_DISK_USAGE:
             # If in a K8s pod, disable disk display by passing in dummy values.
             return {
                 "/": psutil._common.sdiskusage(total=1, used=0, free=1, percent=0.0)
@@ -687,15 +698,17 @@ class ReporterAgent(
                 formatted_status_string = internal_kv._internal_kv_get(
                     DEBUG_AUTOSCALING_STATUS
                 )
-                cluster_stats = (
-                    json.loads(formatted_status_string.decode())
-                    if formatted_status_string
-                    else {}
-                )
 
                 stats = self._get_all_stats()
-                records_reported = self._record_stats(stats, cluster_stats)
-                self._metrics_agent.record_reporter_stats(records_reported)
+                # Report stats only when metrics collection is enabled.
+                if not self._metrics_collection_disabled:
+                    cluster_stats = (
+                        json.loads(formatted_status_string.decode())
+                        if formatted_status_string
+                        else {}
+                    )
+                    records_reported = self._record_stats(stats, cluster_stats)
+                    self._metrics_agent.record_reporter_stats(records_reported)
                 await publisher.publish_resource_usage(self._key, jsonify_asdict(stats))
 
             except Exception:

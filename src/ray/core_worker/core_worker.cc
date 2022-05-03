@@ -351,7 +351,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         new raylet::RayletClient(std::move(grpc_client)));
   };
 
-  auto on_excess_queueing = [this](const ActorID &actor_id, int64_t num_queued) {
+  auto on_excess_queueing = [this](const ActorID &actor_id, uint64_t num_queued) {
     auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(
                          std::chrono::system_clock::now().time_since_epoch())
                          .count();
@@ -3035,7 +3035,7 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
     RAY_LOG(INFO) << "Cancelling a running task " << main_thread_task_id_;
     success = options_.kill_main();
   } else if (!requested_task_running) {
-    RAY_LOG(INFO) << "Cancelling a task " << main_thread_task_id_
+    RAY_LOG(INFO) << "Cancelling a task " << task_id
                   << " that's not running. Tasks will be removed from a queue.";
     // If the task is not currently running, check if it is in the worker's queue of
     // normal tasks, and remove it if found.
@@ -3043,8 +3043,9 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
   }
   if (request.recursive()) {
     auto recursive_cancel = CancelChildren(task_id, request.force_kill());
-    if (recursive_cancel.ok()) {
-      RAY_LOG(INFO) << "Recursive cancel failed for a task " << task_id;
+    if (!recursive_cancel.ok()) {
+      RAY_LOG(ERROR) << "Recursive cancel failed for a task " << task_id
+                     << " due to reason: " << recursive_cancel.ToString();
     }
   }
 
@@ -3052,6 +3053,7 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
   requested_task_running = main_thread_task_id_ == task_id;
 
   reply->set_attempt_succeeded(success);
+  reply->set_requested_task_running(requested_task_running);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 
   // Do force kill after reply callback sent

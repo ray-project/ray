@@ -13,7 +13,6 @@ import logging
 from typing import List, Optional, Type, Union
 
 from ray.util.debug import log_once
-from ray.rllib.agents import with_common_config
 from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.agents.trainer_config import TrainerConfig
@@ -54,15 +53,16 @@ class PPOConfig(TrainerConfig):
     """Defines a PPOTrainer configuration class from which a PPOTrainer can be built.
 
     Example:
-        >>> config = PPOConfig(kl_coeff=0.3).training(gamma=0.9, lr=0.01)\
-                        .resources(num_gpus=0)\
-                        .rollouts(num_workers=4)
+        >>> config = PPOConfig().training(gamma=0.9, lr=0.01)\
+        ...     .resources(num_gpus=0)\
+        ...     .rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
         >>> # Build a Trainer object from the config and run 1 training iteration.
         >>> trainer = config.build(env="CartPole-v1")
         >>> trainer.train()
 
     Example:
+        >>> from ray import tune
         >>> config = PPOConfig()
         >>> # Print out some default values.
         >>> print(config.clip_param)
@@ -85,7 +85,7 @@ class PPOConfig(TrainerConfig):
 
         # fmt: off
         # __sphinx_doc_begin__
-        #
+        # PPO specific settings:
         self.lr_schedule = None
         self.use_critic = True
         self.use_gae = True
@@ -101,15 +101,14 @@ class PPOConfig(TrainerConfig):
         self.vf_clip_param = 10.0
         self.grad_clip = None
         self.kl_target = 0.01
-        # __sphinx_doc_end__
-        # fmt: on
 
         # Override some of TrainerConfig's default values with PPO-specific values.
         self.rollout_fragment_length = 200
         self.train_batch_size = 4000
         self.lr = 5e-5
         self.model["vf_share_layers"] = False
-        self._disable_execution_plan_api = True
+        # __sphinx_doc_end__
+        # fmt: on
 
     @override(TrainerConfig)
     def training(
@@ -200,52 +199,6 @@ class PPOConfig(TrainerConfig):
             self.kl_target = kl_target
 
         return self
-
-
-# Deprecated: Use ray.rllib.agents.ppo.PPOConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(
-            with_common_config(
-                {
-                    # PPO specific keys:
-                    "use_critic": True,
-                    "use_gae": True,
-                    "lambda": 1.0,
-                    "kl_coeff": 0.2,
-                    "sgd_minibatch_size": 128,
-                    "shuffle_sequences": True,
-                    "num_sgd_iter": 30,
-                    "lr_schedule": None,
-                    "vf_loss_coeff": 1.0,
-                    "entropy_coeff": 0.0,
-                    "entropy_coeff_schedule": None,
-                    "clip_param": 0.3,
-                    "vf_clip_param": 10.0,
-                    "grad_clip": None,
-                    "kl_target": 0.01,
-                    "rollout_fragment_length": 200,
-                    # TrainerConfig overrides:
-                    "train_batch_size": 4000,
-                    "lr": 5e-5,
-                    "model": {
-                        "vf_share_layers": False,
-                    },
-                    "_disable_execution_plan_api": True,
-                }
-            )
-        )
-
-    @Deprecated(
-        old="ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG",
-        new="ray.rllib.agents.ppo.ppo.PPOConfig(...)",
-        error=False,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()
 
 
 class UpdateKL:
@@ -555,3 +508,20 @@ class PPOTrainer(Trainer):
         return StandardMetricsReporting(train_op, workers, config).for_each(
             lambda result: warn_about_bad_reward_scales(config, result)
         )
+
+
+# Deprecated: Use ray.rllib.agents.ppo.PPOConfig instead!
+class _deprecated_default_config(dict):
+    def __init__(self):
+        super().__init__(PPOConfig().to_dict())
+
+    @Deprecated(
+        old="ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG",
+        new="ray.rllib.agents.ppo.ppo.PPOConfig(...)",
+        error=False,
+    )
+    def __getitem__(self, item):
+        return super().__getitem__(item)
+
+
+DEFAULT_CONFIG = _deprecated_default_config()

@@ -222,6 +222,10 @@ install_upgrade_pip() {
 
   if "${python}" -m pip --version || "${python}" -m ensurepip; then  # Configure pip if present
     "${python}" -m pip install --quiet pip==21.3.1
+    # cryptography 37.0.0 breaks ensurepip.
+    # Example build failure:
+    # https://buildkite.com/ray-project/ray-builders-branch/builds/7207#a16e8f76-a993-4d8d-a5f0-09c4f76245dc
+    "${python}" -m pip install cryptography==36.0.2
 
     # If we're in a CI environment, do some configuration
     if [ "${CI-}" = true ]; then

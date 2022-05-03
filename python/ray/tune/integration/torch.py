@@ -6,6 +6,7 @@ import logging
 import shutil
 import tempfile
 from typing import Callable, Dict, Generator, Optional, Type, Any
+import warnings
 
 import torch
 from datetime import timedelta
@@ -198,7 +199,6 @@ def DistributedTrainableCreator(
     num_workers_per_host: Optional[int] = None,
     backend: str = "gloo",
     timeout_s: int = NCCL_TIMEOUT_S,
-    use_gpu=None,
 ) -> Type[_TorchTrainable]:
     """Creates a class that executes distributed training.
 
@@ -239,10 +239,17 @@ def DistributedTrainableCreator(
             train_func, num_workers=2)
         analysis = tune.run(trainable_cls)
     """
-    if use_gpu:
-        raise DeprecationWarning(
-            "use_gpu is deprecated. Use 'num_gpus_per_worker' instead."
-        )
+
+    warnings.warn(
+        "Ray Tune's `DistributedTrainableCreator` will be deprecated in Ray "
+        "2.0, and will be replaced by Ray AI Runtime (Ray AIR). Ray AIR ("
+        "https://docs.ray.io/en/latest/ray-air/getting-started.html) will "
+        "provide greater functionality than `DistributedTrainableCreator`, "
+        "and with a more flexible and easy-to-use API.",
+        PendingDeprecationWarning,
+        stacklevel=2,
+    )
+
     detect_checkpoint_function(func, abort=True)
     if num_workers_per_host:
         if num_workers % num_workers_per_host:
