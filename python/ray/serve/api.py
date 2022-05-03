@@ -12,6 +12,7 @@ from typing import (
 )
 
 from fastapi import APIRouter, FastAPI
+import numpy as np
 from starlette.requests import Request
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
@@ -44,6 +45,7 @@ from ray.serve.utils import (
     get_random_letters,
     in_interactive_shell,
     DEFAULT,
+    install_serve_encoders_to_fastapi,
 )
 from ray.util.annotations import PublicAPI
 import ray
@@ -289,6 +291,8 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
         class ASGIAppWrapper(cls):
             async def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
+
+                install_serve_encoders_to_fastapi()
 
                 self._serve_app = frozen_app
 
