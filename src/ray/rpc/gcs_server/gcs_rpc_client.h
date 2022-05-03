@@ -138,24 +138,23 @@ class GcsRpcClient {
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   /// \param[in] gcs_service_failure_detected The function is used to redo subscription
   /// and reconnect to GCS RPC server when gcs service failure is detected.
+  /// \param[in] reconnection_callback The callback function when the channel get reconnected
+  /// due to some error.
   GcsRpcClient(const std::string &address,
                const int port,
-               ClientCallManager &client_call_manager) {
-    Reset(address, port, client_call_manager);
-  };
-
-  void Reset(const std::string &address,
-             const int port,
-             ClientCallManager &client_call_manager) {
-    io_context_ = &client_call_manager.GetMainService();
-    periodical_runner_ = std::make_unique<PeriodicalRunner>(*io_context_);
+               ClientCallManager &client_call_manager,
+               std::function<void()> reconnection_callback)
+      : gcs_address_(address),
+        gcs_port_(port),
+        io_context_(&client_call_manager.GetMainService()),
+        periodical_runner_(std::make_unique<PeriodicalRunner>(*io_context_)) {
     grpc::ChannelArguments arguments;
     arguments.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS,
-                     RayConfig::instance().gcs_grpc_max_reconnect_backoff_ms());
+                     ::RayConfig::instance().gcs_grpc_max_reconnect_backoff_ms());
     arguments.SetInt(GRPC_ARG_MIN_RECONNECT_BACKOFF_MS,
-                     RayConfig::instance().gcs_grpc_min_reconnect_backoff_ms());
+                     ::RayConfig::instance().gcs_grpc_min_reconnect_backoff_ms());
     arguments.SetInt(GRPC_ARG_INITIAL_RECONNECT_BACKOFF_MS,
-                     RayConfig::instance().gcs_grpc_initial_reconnect_backoff_ms());
+                     ::RayConfig::instance().gcs_grpc_initial_reconnect_backoff_ms());
 
     channel_ = BuildChannel(address, port, arguments);
     job_info_grpc_client_ =
@@ -184,16 +183,15 @@ class GcsRpcClient {
     // Setup monitor for gRPC channel status.
     // TODO(iycheng): Push this into ClientCallManager with CQ by using async call.
     periodical_runner_->RunFnPeriodically(
-        [this] {
-          auto status = channel_->GetState();
+        [this, reconnection_callback] {
+          auto status = channel_->GetState(true);
           switch (status) {
           case GRPC_CHANNEL_TRANSIENT_FAILURE:
           case GRPC_CHANNEL_CONNECTING:
-            RAY_CHECK(absl::ToInt64Seconds(gcs_last_alive_time_ - absl::Now()) <
-                      absl::Seconds(
-                          ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s()))
+            RAY_CHECK(absl::ToInt64Seconds(absl::Now() - gcs_last_alive_time_) <
+                      ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s())
                 << "Failed to connect to GCS within "
-                << RayConfig::instance().gcs_rpc_server_reconnect_timeout_s()
+                << ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s()
                 << " seconds";
             gcs_is_down_ = true;
             break;
@@ -204,6 +202,7 @@ class GcsRpcClient {
           case GRPC_CHANNEL_IDLE:
             gcs_last_alive_time_ = absl::Now();
             gcs_is_down_ = false;
+            reconnection_callback();
             // Retry the one queued.
             while (!queued_executors_.empty()) {
               queued_executors_.back()->Retry();
@@ -214,7 +213,7 @@ class GcsRpcClient {
             RAY_CHECK(false) << "Not covered status: " << status;
           }
         },
-        RayConfig::instance().gcs_client_check_connection_status_interval_milliseconds());
+        ::RayConfig::instance().gcs_client_check_connection_status_interval_milliseconds());
   }
 
   /// Add job info to GCS Service.
@@ -457,31 +456,20 @@ class GcsRpcClient {
                              /*method_timeout_ms*/ -1, )
 
   void Shutdown() {
+    if(shutdown_) {
+      RAY_LOG(ERROR) << "GCS client has already been shutdown.";
+    }
     shutdown_ = true;
     periodical_runner_.reset();
   }
 
- private:
-  void ReconnectHelper(absl::Time deadline,
-                       std::shared_ptr<boost::asio::deadline_timer> timer) {
-    if (absl::Now() > deadline) {
-      RAY_LOG(FATAL) << "Fail to reconnect to GCS";
-    }
-    if (gcs_service_failure_detected_(GcsServiceFailureType::RPC_DISCONNECT)) {
-      gcs_is_down_ = false;
-      while (!queued_executors_.empty()) {
-        auto e = queued_executors_.back();
-        e->Retry();
-        queued_executors_.pop_back();
-      }
-    } else {
-      RAY_LOG(INFO) << "Try to reconnect to GCS failed, "
-                    << absl::ToInt64Seconds(deadline - absl::Now()) << " seconds left";
-      timer->expires_from_now(boost::posix_time::seconds(1));
-      timer->async_wait(
-          [this, deadline, timer](const auto &ec) { ReconnectHelper(deadline, timer); });
-    }
+  std::pair<std::string, int64_t> GetAddress() const {
+    return std::make_pair(gcs_address_, gcs_port_);
   }
+
+ private:
+  std::string gcs_address_;
+  int64_t gcs_port_;
 
   instrumented_io_context *io_context_;
 

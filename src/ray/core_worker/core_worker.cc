@@ -186,16 +186,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         gcs_server_address_.second = port;
       });
 
-  gcs_client_ = std::make_shared<gcs::GcsClient>(
-      options_.gcs_options, [this](std::pair<std::string, int> *address) {
-        absl::MutexLock lock(&gcs_server_address_mutex_);
-        if (gcs_server_address_.second != 0) {
-          address->first = gcs_server_address_.first;
-          address->second = gcs_server_address_.second;
-          return true;
-        }
-        return false;
-      });
+  gcs_client_ = std::make_shared<gcs::GcsClient>(options_.gcs_options);
 
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
   RegisterToGcs();

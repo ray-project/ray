@@ -340,6 +340,9 @@ RAY_CONFIG(int32_t, gcs_grpc_max_reconnect_backoff_ms, 2000)
 RAY_CONFIG(int32_t, gcs_grpc_min_reconnect_backoff_ms, 100)
 RAY_CONFIG(int32_t, gcs_grpc_initial_reconnect_backoff_ms, 100)
 
+/// The duration between two checks for grpc status.
+RAY_CONFIG(int32_t, gcs_client_check_connection_status_interval_milliseconds, 1000)
+
 /// The interval at which the gcs client will check if the address of gcs service has
 /// changed. When the address changed, we will resubscribe again.
 RAY_CONFIG(uint64_t, gcs_service_address_check_interval_milliseconds, 1000)
