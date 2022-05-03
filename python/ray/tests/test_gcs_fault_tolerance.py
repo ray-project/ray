@@ -3,8 +3,6 @@ import sys
 import ray
 import ray._private.gcs_utils as gcs_utils
 import pytest
-import json
-import threading
 from time import sleep
 from ray._private.test_utils import (
     generate_system_config_map,
