@@ -372,7 +372,7 @@ class Trial:
         self.checkpoint_manager = CheckpointManager(
             keep_checkpoints_num,
             checkpoint_score_attr,
-            CheckpointDeleter(self._trainable_name(), self.runner),
+            delete_fn=CheckpointDeleter(self._trainable_name(), self.runner),
         )
 
         # Restoration fields
@@ -564,7 +564,7 @@ class Trial:
             self._default_result_or_future = runner.get_auto_filled_metrics.remote(
                 debug_metrics_only=True
             )
-        self.checkpoint_manager.delete = CheckpointDeleter(
+        self.checkpoint_manager._delete_fn = CheckpointDeleter(
             self._trainable_name(), runner
         )
         # No need to invalidate state cache: runner is not stored in json

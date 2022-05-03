@@ -1,7 +1,4 @@
-import heapq
 import logging
-import numbers
-import os
 from pathlib import Path
 from typing import List, Optional, Dict, Union, Callable
 
@@ -10,8 +7,11 @@ from ray.train.constants import TUNE_CHECKPOINT_FILE_NAME, TUNE_CHECKPOINT_ID
 from ray.train.constants import TUNE_INSTALLED, TRAIN_CHECKPOINT_SUBDIR
 from ray.train.session import TrainingResult
 from ray.train.utils import construct_path
-from ray.util.ml_utils.checkpoint_manager import MAX, \
-    CheckpointManager as CommonCheckpointManager, _TrackedCheckpoint
+from ray.util.ml_utils.checkpoint_manager import (
+    CheckpointManager as CommonCheckpointManager,
+    _TrackedCheckpoint,
+    CheckpointStrategy,
+)
 
 if TUNE_INSTALLED:
     from ray import tune
@@ -31,65 +31,40 @@ def load_checkpoint_from_path(checkpoint_to_load: Union[str, Path]) -> Dict:
 
 
 class _NotYetPersistedCheckpoint(_TrackedCheckpoint):
-    def commit(self):
-        # Todo: write self.checkpoint_data_or_dict to disk
-        pass
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self._committed = False
+
+    def commit(self, path: Optional[Path] = None):
+        if self._committed:
+            return
+
+        assert path
+
+        # Get or create checkpoint dir.
+        path.parent.mkdir(parents=True, exist_ok=True)
+        # Write checkpoint to disk.
+        with path.open("wb") as f:
+            cloudpickle.dump(self, f)
+            logger.debug(f"Checkpoint successfully written to: {path}")
+
+        self._committed = True
 
     def delete(self):
-        pass
+        if not self._committed:
+            return
+        return super().delete()
+
+    @classmethod
+    def from_tracked_checkpoint(cls, checkpoint: _TrackedCheckpoint):
+        new_checkpoint = cls(
+            **{**checkpoint.__dict__, "storage_mode": _TrackedCheckpoint.PERSISTENT}
+        )
+        return new_checkpoint
 
 
 class CheckpointManager(CommonCheckpointManager):
-    def __init__(self, run_dir: str):
-        self.run_dir = run_dir
-
-    def _load_checkpoint(
-        self, checkpoint_to_load: Optional[Union[Dict, str, Path]]
-    ) -> Optional[Dict]:
-        """Load the checkpoint dictionary from the input dict or path."""
-        if checkpoint_to_load is None:
-            return None
-        if isinstance(checkpoint_to_load, Dict):
-            return checkpoint_to_load
-        else:
-            # Load checkpoint from path.
-            return load_checkpoint_from_path(checkpoint_to_load)
-
-    def _process_checkpoint(
-        self,
-        checkpoint_results: List[TrainingResult],
-        decode_checkpoint_fn: Callable,
-    ) -> None:
-        """Perform all processing for a checkpoint."""
-
-        # Get checkpoint from first worker.
-        checkpoint_data = checkpoint_results[0].data
-
-        # Decode checkpoint.
-        checkpoint_data = decode_checkpoint_fn(checkpoint_data)
-
-        score_attr = self._checkpoint_strategy.checkpoint_score_attribute
-        tracked_checkpoint = _TrackedCheckpoint(
-            checkpoint_dir_or_data=checkpoint_data,
-            checkpoint_id=self._latest_checkpoint_id,
-            storage_mode=_TrackedCheckpoint.MEMORY,
-            result={score_attr: checkpoint_data[score_attr]},
-
-        )
-
-        self.decide_what_to_do_with_checkpoint(tracked_checkpoint)
-
-        # Store checkpoint in memory.
-        self.latest_checkpoint = checkpoint_data
-
-        # Write checkpoint to disk.
-        self.write_checkpoint(checkpoint_data)
-
-        # Increment checkpoint id.
-        self._latest_checkpoint_id += 1
-
-
-class CheckpointManagerLegacy:
     """Manages checkpoint processing, writing, and loading.
 
 
@@ -117,94 +92,72 @@ class CheckpointManagerLegacy:
             checkpoint may not be saved to disk.
     """
 
+    def __init__(self, run_dir: Path, checkpoint_strategy: CheckpointStrategy):
+        self.run_dir = run_dir
 
+        super().__init__(checkpoint_strategy=checkpoint_strategy)
 
-    def write_checkpoint(self, checkpoint: Dict):
-        """Writes checkpoint to disk."""
-        num_to_keep = self._checkpoint_strategy.num_to_keep
+    def _load_checkpoint(
+        self, checkpoint_to_load: Optional[Union[Dict, str, Path]]
+    ) -> Optional[Dict]:
+        """Load the checkpoint dictionary from the input dict or path."""
+        if checkpoint_to_load is None:
+            return None
+        if isinstance(checkpoint_to_load, Dict):
+            return checkpoint_to_load
+        else:
+            # Load checkpoint from path.
+            return load_checkpoint_from_path(checkpoint_to_load)
 
-        if num_to_keep == 0:
-            # Checkpoints should not be persisted to disk.
-            return
+    def _process_checkpoint(
+        self,
+        checkpoint_results: List[TrainingResult],
+        decode_checkpoint_fn: Callable,
+    ) -> None:
+        """Perform all processing for a checkpoint."""
 
-        checkpoint_score_attribute = (
-            self._checkpoint_strategy.checkpoint_score_attribute
-        )
-        checkpoint_score_order = self._checkpoint_strategy.checkpoint_score_order
-        if checkpoint_score_attribute not in checkpoint:
+        # Get checkpoint from first worker.
+        checkpoint_data = checkpoint_results[0].data
+
+        # Decode checkpoint.
+        checkpoint_data = decode_checkpoint_fn(checkpoint_data)
+
+        score_attr = self._checkpoint_strategy.checkpoint_score_attribute
+        if (
+            self._checkpoint_strategy.num_to_keep != 0
+            and score_attr not in checkpoint_data
+        ):
             raise ValueError(
                 f"Unable to persist checkpoint for "
                 f"checkpoint_score_attribute: "
-                f"{checkpoint_score_attribute}. "
+                f"{score_attr}. "
                 f"Include this attribute in the call to "
                 f"train.save_checkpoint."
             )
-        checkpoint_score = checkpoint[checkpoint_score_attribute]
 
-        if not isinstance(checkpoint_score, numbers.Number):
-            raise ValueError(
-                f"Unable to persist checkpoint for "
-                f"checkpoint_score_attribute: "
-                f"{checkpoint_score_attribute} with value "
-                f"{checkpoint_score}. "
-                f"This attribute must be numerical."
-            )
-
-        def priority(checkpoint_score_order, checkpoint_score):
-            if checkpoint_score_order == MAX:
-                return checkpoint_score
-            else:
-                return -checkpoint_score
-
-        checkpoint_priority = priority(checkpoint_score_order, checkpoint_score)
-
-        persisted_checkpoint = PersistedCheckpoint(
-            self.next_checkpoint_path, checkpoint_priority
+        tracked_checkpoint = _TrackedCheckpoint(
+            checkpoint_dir_or_data=checkpoint_data,
+            checkpoint_id=self._latest_checkpoint_id,
+            storage_mode=_TrackedCheckpoint.MEMORY,
+            result={score_attr: checkpoint_data.get(score_attr, 0.0)},
         )
 
-        def write_to_disk(path: Path):
-            # Get or create checkpoint dir.
-            path.parent.mkdir(parents=True, exist_ok=True)
-            # Write checkpoint to disk.
-            with path.open("wb") as f:
-                cloudpickle.dump(checkpoint, f)
-                logger.debug(f"Checkpoint successfully written to: " f"{path}")
+        # Always update the latest memory checkpoint
+        self._replace_latest_memory_checkpoint(tracked_checkpoint)
 
-        def remove_from_disk(path: Path):
-            os.remove(path)
-
-        if num_to_keep is None:
-            # Keep all checkpoints.
-            write_to_disk(self.next_checkpoint_path)
-        elif len(self._top_persisted_checkpoints) < num_to_keep:
-            # Keep first num_to_keep checkpoints.
-            write_to_disk(self.next_checkpoint_path)
-            heapq.heappush(self._top_persisted_checkpoints, persisted_checkpoint)
-        elif (
-            persisted_checkpoint.priority > self._top_persisted_checkpoints[0].priority
-        ):
-            # Keep top num_to_keep checkpoints.
-            write_to_disk(self.next_checkpoint_path)
-            worst_checkpoint = heapq.heappushpop(
-                self._top_persisted_checkpoints, persisted_checkpoint
+        # Only process further if we consider keeping this checkpoint on disk
+        if self._checkpoint_strategy.num_to_keep != 0:
+            not_yet_persisted_checkpoint = (
+                _NotYetPersistedCheckpoint.from_tracked_checkpoint(tracked_checkpoint)
             )
-            worst_checkpoint_path = worst_checkpoint.path
-            remove_from_disk(worst_checkpoint_path)
-            logger.debug(f"Removed worst checkpoint from " f"{worst_checkpoint_path}.")
-        else:
-            # If the latest checkpoint has the same or lower priority, skip it.
-            logger.debug(
-                f"Skipping checkpoint due to low score:" f"{self.next_checkpoint_path}."
-            )
+            self._decide_what_to_do_with_checkpoint(not_yet_persisted_checkpoint)
 
-        # Update single best checkpoint.
-        if (
-            self._best_persisted_checkpoint is None
-            or persisted_checkpoint.priority > self._best_persisted_checkpoint.priority
-        ):
-            # If the latest checkpoint has the same or lower priority, skip it.
-            self._best_persisted_checkpoint = persisted_checkpoint
+    def _get_next_checkpoint_path(self) -> Optional[Path]:
+        """Path to the next checkpoint to persist."""
+        checkpoint_file = construct_checkpoint_file_name(self._latest_checkpoint_id + 1)
+        return self.latest_checkpoint_dir.joinpath(checkpoint_file)
 
+    # Train-specific attributes
     @property
     def latest_checkpoint_dir(self) -> Optional[Path]:
         """Path to the latest checkpoint directory."""
@@ -229,7 +182,7 @@ class CheckpointManagerLegacy:
     def best_checkpoint_path(self) -> Optional[Path]:
         """Path to the best persisted checkpoint."""
         if self._best_persisted_checkpoint:
-            return self._best_persisted_checkpoint.path
+            return Path(self._best_persisted_checkpoint.checkpoint_dir_or_data)
         else:
             return None
 
@@ -263,8 +216,10 @@ class TuneCheckpointManager(CheckpointManager):
         # resumed after failure or cancellation.
         checkpoint[TUNE_CHECKPOINT_ID] = self._latest_checkpoint_id
 
-    def write_checkpoint(self, checkpoint: Dict):
-        self.add_tune_checkpoint_id(checkpoint)
+    def _decide_what_to_do_with_checkpoint(
+        self, checkpoint: _NotYetPersistedCheckpoint
+    ):
+        self.add_tune_checkpoint_id(checkpoint.checkpoint_dir_or_data)
         # If inside a Tune Trainable, then checkpoint with Tune.
         with tune.checkpoint_dir(step=self._latest_checkpoint_id) as checkpoint_dir:
             path = Path(checkpoint_dir)
@@ -273,6 +228,7 @@ class TuneCheckpointManager(CheckpointManager):
             file_path = path.joinpath(TUNE_CHECKPOINT_FILE_NAME)
             with file_path.open("wb") as f:
                 cloudpickle.dump(checkpoint, f)
+        checkpoint._committed = True
 
 
 def construct_checkpoint_file_name(checkpoint_id: int) -> str:

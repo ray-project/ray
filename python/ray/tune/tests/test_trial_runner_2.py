@@ -323,7 +323,7 @@ class TrialRunnerTest2(unittest.TestCase):
 
         trial = Trial("__fake", keep_checkpoints_num=2)
         trial.init_logdir()
-        trial.checkpoint_manager.delete = lambda cp: shutil.rmtree(cp.value)
+        trial.checkpoint_manager._delete_fn = lambda cp: shutil.rmtree(cp.value)
 
         def write_checkpoint(trial: Trial, index: int):
             checkpoint_dir = TrainableUtil.make_checkpoint_dir(
@@ -377,7 +377,7 @@ class TrialRunnerTest2(unittest.TestCase):
         runner.resume()
 
         trial = runner.get_trials()[0]
-        trial.checkpoint_manager.delete = lambda cp: shutil.rmtree(cp.value)
+        trial.checkpoint_manager._delete_fn = lambda cp: shutil.rmtree(cp.value)
 
         # Write fourth checkpoint
         result = write_checkpoint(trial, 4)
