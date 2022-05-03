@@ -48,6 +48,7 @@ from ray.rllib.utils.typing import (
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
     NUM_TARGET_UPDATES,
+    NUM_ENV_STEPS_TRAINED,
 )
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
@@ -245,7 +246,7 @@ class SimpleQTrainer(Trainer):
         # self._counters[NUM_AGENT_STEPS_TRAINED] += train_batch.agent_steps()
 
         # Update target network every `target_network_update_freq` steps.
-        cur_ts = self._counters[NUM_ENV_STEPS_SAMPLED]
+        cur_ts = self._counters[NUM_ENV_STEPS_TRAINED]
         last_update = self._counters[LAST_TARGET_UPDATE_TS]
         if cur_ts - last_update >= self.config["target_network_update_freq"]:
             with self._timers[TARGET_NET_UPDATE_TIMER]:
