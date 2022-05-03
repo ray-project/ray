@@ -3,6 +3,7 @@ from typing import (
     Dict,
     List,
     Tuple,
+    Union,
     Iterator,
     Any,
     TypeVar,
@@ -14,8 +15,13 @@ import collections
 import numpy as np
 
 from ray.data.block import BlockAccessor, BlockMetadata, KeyFn, U
+from ray.data.extensions.tensor_extension import TensorArray
 from ray.data.row import TableRow
-from ray.data.impl.table_block import TableBlockAccessor, TableBlockBuilder
+from ray.data.impl.table_block import (
+    TableBlockAccessor,
+    TableBlockBuilder,
+    TENSOR_COL_NAME,
+)
 from ray.data.impl.arrow_block import ArrowBlockAccessor
 from ray.data.aggregate import AggregateFn
 
@@ -71,6 +77,13 @@ class PandasBlockBuilder(TableBlockBuilder[T]):
 
     def _table_from_pydict(self, columns: Dict[str, List[Any]]) -> "pandas.DataFrame":
         pandas = lazy_import_pandas()
+        for key, value in columns.items():
+            if key == TENSOR_COL_NAME or isinstance(
+                next(iter(value), None), np.ndarray
+            ):
+                if len(value) == 1:
+                    value = value[0]
+                columns[key] = TensorArray(value)
         return pandas.DataFrame(columns)
 
     def _concat_tables(self, tables: List["pandas.DataFrame"]) -> "pandas.DataFrame":
@@ -92,8 +105,13 @@ class PandasBlockAccessor(TableBlockAccessor):
     def __init__(self, table: "pandas.DataFrame"):
         super().__init__(table)
 
-    def _create_table_row(self, row: "pandas.DataFrame") -> PandasRow:
-        return PandasRow(row)
+    def _create_table_row(
+        self, row: "pandas.DataFrame"
+    ) -> Union[PandasRow, np.ndarray]:
+        if row.columns.tolist() == [TENSOR_COL_NAME]:
+            return row[TENSOR_COL_NAME][0]
+        else:
+            return PandasRow(row)
 
     def slice(self, start: int, end: int, copy: bool) -> "pandas.DataFrame":
         view = self._table[start:end]
@@ -122,19 +140,27 @@ class PandasBlockAccessor(TableBlockAccessor):
     def to_pandas(self) -> "pandas.DataFrame":
         return self._table
 
-    def to_numpy(self, column: str = None) -> np.ndarray:
-        if not column:
-            raise ValueError(
-                "`column` must be specified when calling .to_numpy() "
-                "on Pandas blocks."
-            )
-        if column not in self._table.columns:
-            raise ValueError(
-                "Cannot find column {}, available columns: {}".format(
-                    column, self._table.columns.tolist()
+    def to_numpy(
+        self, columns: Optional[Union[str, List[str]]] = None
+    ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
+        if columns is None:
+            columns = self._table.columns.tolist()
+        if not isinstance(columns, list):
+            columns = [columns]
+        for column in columns:
+            if column not in self._table.columns:
+                raise ValueError(
+                    f"Cannot find column {column}, available columns: "
+                    f"{self._table.columns.tolist()}"
                 )
-            )
-        return self._table[column].to_numpy()
+        arrays = []
+        for column in columns:
+            arrays.append(self._table[column].to_numpy())
+        if len(arrays) == 1:
+            arrays = arrays[0]
+        else:
+            arrays = dict(zip(columns, arrays))
+        return arrays
 
     def to_arrow(self) -> "pyarrow.Table":
         import pyarrow

@@ -1,6 +1,7 @@
 import collections
-
 from typing import Dict, Iterator, List, Union, Any, TypeVar, TYPE_CHECKING
+
+import numpy as np
 
 from ray.data.block import Block, BlockAccessor
 from ray.data.row import TableRow
@@ -9,6 +10,9 @@ from ray.data.impl.size_estimator import SizeEstimator
 
 if TYPE_CHECKING:
     from ray.data.impl.sort import SortKeyT
+
+
+TENSOR_COL_NAME = "__RAY_TC__"
 
 T = TypeVar("T")
 
@@ -30,9 +34,11 @@ class TableBlockBuilder(BlockBuilder[T]):
         self._num_compactions = 0
         self._block_type = block_type
 
-    def add(self, item: Union[dict, TableRow]) -> None:
+    def add(self, item: Union[dict, TableRow, np.ndarray]) -> None:
         if isinstance(item, TableRow):
             item = item.as_pydict()
+        elif isinstance(item, np.ndarray):
+            item = {TENSOR_COL_NAME: item}
         if not isinstance(item, dict):
             raise ValueError(
                 "Returned elements of an TableBlock must be of type `dict`, "
@@ -53,6 +59,7 @@ class TableBlockBuilder(BlockBuilder[T]):
                 f"{block}"
             )
         accessor = BlockAccessor.for_block(block)
+        block = accessor.to_block()
         self._tables.append(block)
         self._tables_size_bytes += accessor.size_bytes()
         self._num_rows += accessor.num_rows()
@@ -109,7 +116,7 @@ class TableBlockAccessor(BlockAccessor):
     def to_block(self) -> Block:
         return self._table
 
-    def iter_rows(self) -> Iterator[TableRow]:
+    def iter_rows(self) -> Iterator[Union[TableRow, np.ndarray]]:
         outer = self
 
         class Iter:

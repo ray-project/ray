@@ -22,6 +22,7 @@ from ray.data.impl.arrow_block import ArrowRow
 from ray.data.impl.block_builder import BlockBuilder
 from ray.data.impl.lazy_block_list import LazyBlockList
 from ray.data.impl.pandas_block import PandasRow
+from ray.data.impl.table_block import TENSOR_COL_NAME
 from ray.data.aggregate import AggregateFn, Count, Sum, Min, Max, Mean, Std
 from ray.data.extensions.tensor_extension import (
     TensorArray,
@@ -443,21 +444,122 @@ def test_range_table(ray_start_regular_shared):
     assert ds.take() == [{"value": i} for i in range(10)]
 
 
-def test_tensors(ray_start_regular_shared):
+def test_tensors_basic(ray_start_regular_shared):
     # Create directly.
-    ds = ray.data.range_tensor(5, shape=(3, 5))
+    tensor_shape = (3, 5)
+    ds = ray.data.range_tensor(6, shape=tensor_shape)
     assert str(ds) == (
-        "Dataset(num_blocks=5, num_rows=5, "
-        "schema={value: <ArrowTensorType: shape=(3, 5), dtype=int64>})"
+        "Dataset(num_blocks=6, num_rows=6, "
+        f"schema={{{TENSOR_COL_NAME}: <ArrowTensorType: shape=(3, 5), dtype=int64>}})"
     )
 
-    # Pandas conversion.
+    # Test row iterator yields tensors.
+    for tensor in ds.iter_rows():
+        assert isinstance(tensor, np.ndarray)
+        assert tensor.shape == tensor_shape
+
+    # Test batch iterator yields tensors.
+    for tensor in ds.iter_batches(batch_size=2):
+        assert isinstance(tensor, np.ndarray)
+        assert tensor.shape == (2,) + tensor_shape
+
+    # Native format.
+    def np_mapper(arr):
+        assert isinstance(arr, np.ndarray)
+        return arr + 1
+
+    res = ray.data.range_tensor(2, shape=(2, 2)).map(np_mapper).take()
+    np.testing.assert_equal(res, [np.ones((2, 2)), 2 * np.ones((2, 2))])
+
+    # Explicit NumPy format.
     res = (
-        ray.data.range_tensor(10)
-        .map_batches(lambda t: t + 2, batch_format="pandas")
-        .take(2)
+        ray.data.range_tensor(2, shape=(2, 2))
+        .map_batches(np_mapper, batch_format="numpy")
+        .take()
     )
-    assert str(res) == "[{'value': array([2])}, {'value': array([3])}]"
+    np.testing.assert_equal(res, [np.ones((2, 2)), 2 * np.ones((2, 2))])
+
+    # Pandas conversion.
+    def pd_mapper(df):
+        assert isinstance(df, pd.DataFrame)
+        return df + 2
+
+    res = ray.data.range_tensor(2).map_batches(pd_mapper, batch_format="pandas").take()
+    np.testing.assert_equal(res, [np.array([2]), np.array([3])])
+
+    # Arrow columns in NumPy format.
+    def mapper(col_arrs):
+        assert all(isinstance(col_arr, np.ndarray) for col_arr in col_arrs)
+        return pa.table({"a": col_arrs[0] + 1, "b": col_arrs[1] + 1})
+
+    t = pa.table({"a": [1, 2, 3], "b": [4.0, 5.0, 6.0]})
+    res = (
+        ray.data.from_arrow(t)
+        .map_batches(mapper, batch_size=2, batch_format="numpy")
+        .take()
+    )
+    assert res == [{"a": 2, "b": 5.0}, {"a": 3, "b": 6.0}, {"a": 4, "b": 7.0}]
+
+    # Pandas columns in NumPy format.
+    def mapper(col_arrs):
+        assert all(isinstance(col_arr, np.ndarray) for col_arr in col_arrs)
+        return pd.DataFrame({"a": col_arrs[0] + 1, "b": col_arrs[1] + 1})
+
+    df = pd.DataFrame({"a": [1, 2, 3], "b": [4.0, 5.0, 6.0]})
+    res = (
+        ray.data.from_pandas(df)
+        .map_batches(mapper, batch_size=2, batch_format="numpy")
+        .take()
+    )
+    assert res == [{"a": 2, "b": 5.0}, {"a": 3, "b": 6.0}, {"a": 4, "b": 7.0}]
+
+    # Simple dataset in NumPy format.
+    def mapper(arr):
+        arr = np_mapper(arr)
+        return arr.tolist()
+
+    res = (
+        ray.data.range(10, parallelism=2)
+        .map_batches(mapper, batch_format="numpy")
+        .take()
+    )
+    assert res == list(range(1, 11))
+
+
+def test_tensors_inferred_from_map(ray_start_regular_shared):
+    # Test map.
+    ds = ray.data.range(10).map(lambda _: np.ones((4, 4)))
+    assert str(ds) == (
+        "Dataset(num_blocks=10, num_rows=10, "
+        f"schema={{{TENSOR_COL_NAME}: <ArrowTensorType: shape=(4, 4), dtype=double>}})"
+    )
+
+    # Test map_batches.
+
+    #  - Test top-level ndarray.
+    ds = ray.data.range(16, parallelism=4).map_batches(
+        lambda _: np.ones((3, 4, 4)), batch_size=2
+    )
+    assert str(ds) == (
+        "Dataset(num_blocks=4, num_rows=24, "
+        f"schema={{{TENSOR_COL_NAME}: <ArrowTensorType: shape=(4, 4), dtype=double>}})"
+    )
+
+    #  - Test list of ndarrays.
+    ds = ray.data.range(16, parallelism=4).map_batches(
+        lambda _: [np.ones((4, 4)), np.ones((4, 4))], batch_size=2
+    )
+    assert str(ds) == (
+        "Dataset(num_blocks=4, num_rows=16, "
+        f"schema={{{TENSOR_COL_NAME}: <ArrowTensorType: shape=(4, 4), dtype=double>}})"
+    )
+
+    # Test flat_map.
+    ds = ray.data.range(10).flat_map(lambda _: [np.ones((4, 4)), np.ones((4, 4))])
+    assert str(ds) == (
+        "Dataset(num_blocks=10, num_rows=20, "
+        f"schema={{{TENSOR_COL_NAME}: <ArrowTensorType: shape=(4, 4), dtype=double>}})"
+    )
 
 
 def test_tensor_array_ops(ray_start_regular_shared):
@@ -1465,6 +1567,12 @@ def test_iter_batches_basic(ray_start_regular_shared):
     for batch, df in zip(ds.iter_batches(batch_format="pyarrow"), dfs):
         assert isinstance(batch, pa.Table)
         assert batch.equals(pa.Table.from_pandas(df))
+
+    # NumPy format.
+    for batch, df in zip(ds.iter_batches(batch_format="numpy"), dfs):
+        assert isinstance(batch, list)
+        assert all(isinstance(col, np.ndarray) for col in batch)
+        np.testing.assert_equal(batch, [col.to_numpy() for _, col in df.items()])
 
     # blocks format.
     for batch, df in zip(ds.iter_batches(batch_format="native"), dfs):

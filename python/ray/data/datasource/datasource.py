@@ -16,6 +16,7 @@ from ray.data.block import (
 )
 from ray.data.context import DatasetContext
 from ray.data.impl.arrow_block import ArrowRow
+from ray.data.impl.table_block import TENSOR_COL_NAME
 from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.impl.util import _check_pyarrow_version
 from ray.util.annotations import DeveloperAPI
@@ -144,11 +145,14 @@ class ReadTask(Callable[[], BlockPartition]):
         if context.block_splitting_enabled:
             partition: BlockPartition = []
             for block in result:
-                metadata = BlockAccessor.for_block(block).get_metadata(
+                accessor = BlockAccessor.for_block(block)
+                metadata = accessor.get_metadata(
                     input_files=self._metadata.input_files, exec_stats=None
                 )  # No exec stats for the block splits.
                 assert context.block_owner
-                partition.append((ray.put(block, _owner=context.block_owner), metadata))
+                partition.append(
+                    (ray.put(accessor.to_block(), _owner=context.block_owner), metadata)
+                )
             if len(partition) == 0:
                 raise ValueError("Read task must return non-empty list.")
             return partition
@@ -199,7 +203,7 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
                         tuple(range(1, 1 + len(tensor_shape))),
                     )
                 )
-                return pa.Table.from_pydict({"value": tensor})
+                return pa.Table.from_pydict({TENSOR_COL_NAME: tensor})
             else:
                 return list(builtins.range(start, start + count))
 
@@ -222,7 +226,7 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
                         np.arange(0, 10), tuple(range(1, 1 + len(tensor_shape)))
                     )
                 )
-                schema = pa.Table.from_pydict({"value": tensor}).schema
+                schema = pa.Table.from_pydict({TENSOR_COL_NAME: tensor}).schema
             elif block_format == "list":
                 schema = int
             else:

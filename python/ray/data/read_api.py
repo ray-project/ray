@@ -173,10 +173,10 @@ def range_tensor(
         >>> import ray
         >>> ds = ray.data.range_tensor(1000, shape=(3, 10)) # doctest: +SKIP
         >>> ds.map_batches( # doctest: +SKIP
-        ...     lambda arr: arr * 2, batch_format="pandas").show()
+        ...     lambda arr: arr * 2, batch_format="numpy").show()
 
     This is similar to range_table(), but uses the ArrowTensorArray extension
-    type. The dataset elements take the form {"value": array(N, shape=shape)}.
+    type. The dataset elements take the form {TENSOR_COL_NAME: array(N, shape=shape)}.
 
     Args:
         n: The upper bound of the range of integer records.
@@ -1019,15 +1019,10 @@ def _df_to_block(df: "pandas.DataFrame") -> Block[ArrowRow]:
 
 def _ndarray_to_block(ndarray: np.ndarray) -> Block[np.ndarray]:
     stats = BlockExecStats.builder()
-    import pyarrow as pa
-    from ray.data.extensions import TensorArray
-
-    table = pa.Table.from_pydict({"value": TensorArray(ndarray)})
+    accessor = BlockAccessor.for_block(ndarray)
     return (
-        table,
-        BlockAccessor.for_block(table).get_metadata(
-            input_files=None, exec_stats=stats.build()
-        ),
+        accessor.to_block(),
+        accessor.get_metadata(input_files=None, exec_stats=stats.build()),
     )
 
 

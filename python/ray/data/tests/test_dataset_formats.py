@@ -33,6 +33,7 @@ from ray.data.datasource import (
     WriteResult,
 )
 from ray.data.impl.arrow_block import ArrowRow
+from ray.data.impl.table_block import TENSOR_COL_NAME
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.datasource.parquet_datasource import PARALLELIZE_META_FETCH_THRESHOLD
 from ray.data.tests.conftest import *  # noqa
@@ -121,7 +122,7 @@ def test_from_numpy(ray_start_regular_shared, from_ref):
         ds = ray.data.from_numpy_refs([ray.put(arr) for arr in arrs])
     else:
         ds = ray.data.from_numpy(arrs)
-    values = np.stack([x["value"] for x in ds.take(8)])
+    values = np.stack(ds.take(8))
     np.testing.assert_array_equal(values, np.concatenate((arr1, arr2)))
 
     # Test from single NumPy ndarray.
@@ -129,7 +130,7 @@ def test_from_numpy(ray_start_regular_shared, from_ref):
         ds = ray.data.from_numpy_refs(ray.put(arr1))
     else:
         ds = ray.data.from_numpy(arr1)
-    values = np.stack([x["value"] for x in ds.take(4)])
+    values = np.stack(ds.take(4))
     np.testing.assert_array_equal(values, arr1)
 
 
@@ -197,13 +198,27 @@ def test_to_numpy_refs(ray_start_regular_shared):
 
     # Tensor Dataset
     ds = ray.data.range_tensor(10, parallelism=2)
-    arr = np.concatenate(ray.get(ds.to_numpy_refs(column="value")))
+    arr = np.concatenate(ray.get(ds.to_numpy_refs()))
     np.testing.assert_equal(arr, np.expand_dims(np.arange(0, 10), 1))
 
     # Table Dataset
     ds = ray.data.range_table(10)
-    arr = np.concatenate(ray.get(ds.to_numpy_refs(column="value")))
+    arr = np.concatenate(ray.get(ds.to_numpy_refs()))
     np.testing.assert_equal(arr, np.arange(0, 10))
+
+    # Test multi-column Arrow dataset.
+    ds = ray.data.from_arrow(pa.table({"a": [1, 2, 3], "b": [4, 5, 6]}))
+    arrs = ray.get(ds.to_numpy_refs())
+    np.testing.assert_equal(
+        arrs, [{"a": np.array([1, 2, 3]), "b": np.array([4, 5, 6])}]
+    )
+
+    # Test multi-column Pandas dataset.
+    ds = ray.data.from_pandas(pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]}))
+    arrs = ray.get(ds.to_numpy_refs())
+    np.testing.assert_equal(
+        arrs, [{"a": np.array([1, 2, 3]), "b": np.array([4, 5, 6])}]
+    )
 
 
 def test_to_arrow_refs(ray_start_regular_shared):
@@ -998,9 +1013,9 @@ def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
     ds = ray.data.read_numpy(data_path, filesystem=fs)
     assert str(ds) == (
         "Dataset(num_blocks=2, num_rows=None, "
-        "schema={value: <ArrowTensorType: shape=(1,), dtype=int64>})"
+        f"schema={{{TENSOR_COL_NAME}: <ArrowTensorType: shape=(1,), dtype=int64>}})"
     )
-    assert str(ds.take(2)) == "[{'value': array([0])}, {'value': array([1])}]"
+    np.testing.assert_equal(ds.take(2), [np.array([0]), np.array([1])])
 
 
 def test_numpy_read(ray_start_regular_shared, tmp_path):
@@ -1010,9 +1025,9 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_numpy(path)
     assert str(ds) == (
         "Dataset(num_blocks=1, num_rows=10, "
-        "schema={value: <ArrowTensorType: shape=(1,), dtype=int64>})"
+        f"schema={{{TENSOR_COL_NAME}: <ArrowTensorType: shape=(1,), dtype=int64>}})"
     )
-    assert str(ds.take(2)) == "[{'value': array([0])}, {'value': array([1])}]"
+    np.testing.assert_equal(ds.take(2), [np.array([0]), np.array([1])])
 
 
 def test_numpy_read_meta_provider(ray_start_regular_shared, tmp_path):
@@ -1023,9 +1038,9 @@ def test_numpy_read_meta_provider(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_numpy(path, meta_provider=FastFileMetadataProvider())
     assert str(ds) == (
         "Dataset(num_blocks=1, num_rows=10, "
-        "schema={value: <ArrowTensorType: shape=(1,), dtype=int64>})"
+        f"schema={{{TENSOR_COL_NAME}: <ArrowTensorType: shape=(1,), dtype=int64>}})"
     )
-    assert str(ds.take(2)) == "[{'value': array([0])}, {'value': array([1])}]"
+    np.testing.assert_equal(ds.take(2), [np.array([0]), np.array([1])])
 
     with pytest.raises(NotImplementedError):
         ray.data.read_binary_files(
@@ -1077,10 +1092,10 @@ def test_numpy_read_partitioned_with_filter(
         ds = ray.data.read_numpy(base_dir, partition_filter=partition_path_filter)
 
         vals = [[1, 0], [1, 1], [1, 2], [3, 3], [3, 4], [3, 5]]
-        val_str = "".join([f"{{'value': array({v}, dtype=int8)}}, " for v in vals])[:-2]
+        val_str = "".join(f"array({v}, dtype=int8), " for v in vals)[:-2]
         assert_base_partitioned_ds(
             ds,
-            schema="{value: <ArrowTensorType: shape=(2,), dtype=int8>}",
+            schema=f"{{{TENSOR_COL_NAME}: <ArrowTensorType: shape=(2,), dtype=int8>}}",
             sorted_values=f"[[{val_str}]]",
             ds_take_transform_fn=lambda taken: [taken],
             sorted_values_transform_fn=lambda sorted_values: str(sorted_values),
@@ -1119,7 +1134,7 @@ def test_numpy_write(ray_start_regular_shared, fs, data_path, endpoint_url):
     assert len(arr2) == 5
     assert arr1.sum() == 10
     assert arr2.sum() == 35
-    assert str(ds.take(1)) == "[{'value': array([0])}]"
+    np.testing.assert_equal(ds.take(1), [np.array([0])])
 
 
 @pytest.mark.parametrize(
@@ -1158,7 +1173,7 @@ def test_numpy_write_block_path_provider(
     assert len(arr2) == 5
     assert arr1.sum() == 10
     assert arr2.sum() == 35
-    assert str(ds.take(1)) == "[{'value': array([0])}]"
+    np.testing.assert_equal(ds.take(1), [np.array([0])])
 
 
 def test_read_text(ray_start_regular_shared, tmp_path):

@@ -1,5 +1,7 @@
 from typing import Any
 
+import numpy as np
+
 from ray.data.block import Block, T, BlockAccessor
 from ray.data.impl.block_builder import BlockBuilder
 from ray.data.impl.simple_block import SimpleBlockBuilder
@@ -26,6 +28,8 @@ class DelegatingBlockBuilder(BlockBuilder[T]):
                     self._builder = ArrowBlockBuilder()
                 except (TypeError, pyarrow.lib.ArrowInvalid):
                     self._builder = SimpleBlockBuilder()
+            elif isinstance(item, np.ndarray):
+                self._builder = ArrowBlockBuilder()
             elif isinstance(item, PandasRow):
                 self._builder = PandasBlockBuilder()
             else:
@@ -34,6 +38,7 @@ class DelegatingBlockBuilder(BlockBuilder[T]):
 
     def add_block(self, block: Block) -> None:
         accessor = BlockAccessor.for_block(block)
+        block = accessor.to_block()
         if accessor.num_rows() == 0:
             # Don't infer types of empty lists. Store the block and use it if no
             # other data is added. https://github.com/ray-project/ray/issues/20290

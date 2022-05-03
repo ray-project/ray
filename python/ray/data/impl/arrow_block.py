@@ -6,6 +6,7 @@ from typing import (
     Dict,
     List,
     Tuple,
+    Union,
     Iterator,
     Any,
     TypeVar,
@@ -30,7 +31,11 @@ from ray.data.block import (
     KeyType,
 )
 from ray.data.row import TableRow
-from ray.data.impl.table_block import TableBlockAccessor, TableBlockBuilder
+from ray.data.impl.table_block import (
+    TableBlockAccessor,
+    TableBlockBuilder,
+    TENSOR_COL_NAME,
+)
 from ray.data.aggregate import AggregateFn
 
 if TYPE_CHECKING:
@@ -73,6 +78,13 @@ class ArrowBlockBuilder(TableBlockBuilder[T]):
         super().__init__(pyarrow.Table)
 
     def _table_from_pydict(self, columns: Dict[str, List[Any]]) -> Block:
+        for col_name, col in columns.items():
+            if col_name == TENSOR_COL_NAME or isinstance(
+                next(iter(col), None), np.ndarray
+            ):
+                from ray.data.extensions.tensor_extension import ArrowTensorArray
+
+                columns[col_name] = ArrowTensorArray.from_numpy(col)
         return pyarrow.Table.from_pydict(columns)
 
     def _concat_tables(self, tables: List[Block]) -> Block:
@@ -89,13 +101,26 @@ class ArrowBlockAccessor(TableBlockAccessor):
             raise ImportError("Run `pip install pyarrow` for Arrow support")
         super().__init__(table)
 
-    def _create_table_row(self, row: "pyarrow.Table") -> ArrowRow:
-        return ArrowRow(row)
+    def _create_table_row(self, row: "pyarrow.Table") -> Union[ArrowRow, np.ndarray]:
+        if row.column_names == [TENSOR_COL_NAME]:
+            return row.column(TENSOR_COL_NAME)[0]
+        else:
+            return ArrowRow(row)
 
     @classmethod
     def from_bytes(cls, data: bytes):
         reader = pyarrow.ipc.open_stream(data)
         return cls(reader.read_all())
+
+    @classmethod
+    def from_numpy(cls, data: Union[np.ndarray, List[np.ndarray]]):
+        import pyarrow as pa
+        from ray.data.extensions.tensor_extension import ArrowTensorArray
+
+        table = pa.Table.from_pydict(
+            {TENSOR_COL_NAME: ArrowTensorArray.from_numpy(data)}
+        )
+        return cls(table)
 
     def slice(self, start: int, end: int, copy: bool) -> "pyarrow.Table":
         view = self._table.slice(start, end - start)
@@ -113,26 +138,40 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def to_pandas(self) -> "pandas.DataFrame":
         return self._table.to_pandas()
 
-    def to_numpy(self, column: str = None) -> np.ndarray:
-        if column is None:
-            raise ValueError(
-                "`column` must be specified when calling .to_numpy() "
-                "on Arrow blocks."
-            )
-        if column not in self._table.column_names:
-            raise ValueError(
-                f"Cannot find column {column}, available columns: "
-                f"{self._table.column_names}"
-            )
-        array = self._table[column]
-        if array.num_chunks > 1:
-            # TODO(ekl) combine fails since we can't concat
-            # ArrowTensorType?
-            array = array.combine_chunks()
+    def to_numpy(
+        self, columns: Optional[Union[str, List[str]]] = None
+    ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
+        if columns is None:
+            columns = self._table.column_names
+        if not isinstance(columns, list):
+            columns = [columns]
+        for column in columns:
+            if column not in self._table.column_names:
+                raise ValueError(
+                    f"Cannot find column {column}, available columns: "
+                    f"{self._table.column_names}"
+                )
+        arrays = []
+        for column in columns:
+            array = self._table[column]
+            if array.num_chunks == 0:
+                array = pyarrow.array([], type=array.type)
+            elif array.num_chunks == 1:
+                array = array.chunk(0)
+            elif isinstance(array.chunk(0), pyarrow.ExtensionArray):
+                # If an extension array, we manually concatenate the underlying storage
+                # arrays.
+                chunk = array.chunk(0)
+                array = type(chunk).from_storage(
+                    chunk.type,
+                    pyarrow.concat_arrays([chunk.storage for chunk in array.chunks]),
+                )
+            arrays.append(array.to_numpy(zero_copy_only=False))
+        if len(arrays) == 1:
+            arrays = arrays[0]
         else:
-            assert array.num_chunks == 1, array
-            array = array.chunk(0)
-        return array.to_numpy(zero_copy_only=False)
+            arrays = dict(zip(columns, arrays))
+        return arrays
 
     def to_arrow(self) -> "pyarrow.Table":
         return self._table

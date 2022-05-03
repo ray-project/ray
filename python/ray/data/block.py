@@ -3,6 +3,7 @@ import time
 from typing import (
     TypeVar,
     List,
+    Dict,
     Generic,
     Iterator,
     Tuple,
@@ -210,11 +211,13 @@ class BlockAccessor(Generic[T]):
         """Convert this block into a Pandas dataframe."""
         raise NotImplementedError
 
-    def to_numpy(self, column: str = None) -> np.ndarray:
-        """Convert this block (or column of block) into a NumPy ndarray.
+    def to_numpy(
+        self, columns: Optional[Union[str, List[str]]] = None
+    ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
+        """Convert this block (or columns of block) into a NumPy ndarray.
 
         Args:
-            column: Name of column to convert, or None.
+            columns: Name of columns to convert, or None if converting all columns.
         """
         raise NotImplementedError
 
@@ -274,7 +277,16 @@ class BlockAccessor(Generic[T]):
             from ray.data.impl.arrow_block import ArrowBlockAccessor
 
             return ArrowBlockAccessor.from_bytes(block)
+        elif isinstance(block, np.ndarray):
+            from ray.data.impl.arrow_block import ArrowBlockAccessor
+
+            return ArrowBlockAccessor.from_numpy(block)
         elif isinstance(block, list):
+            if block and all(isinstance(item, np.ndarray) for item in block):
+                from ray.data.impl.arrow_block import ArrowBlockAccessor
+
+                return ArrowBlockAccessor.from_numpy(block)
+
             from ray.data.impl.simple_block import SimpleBlockAccessor
 
             return SimpleBlockAccessor(block)
