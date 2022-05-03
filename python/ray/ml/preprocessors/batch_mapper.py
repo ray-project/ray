@@ -23,7 +23,7 @@ class BatchMapper(Preprocessor):
         self.fn = fn
 
     def _transform_pandas(self, df: "pandas.DataFrame") -> "pandas.DataFrame":
-        return df.transform(self.fn)
+        return self.fn(df)
 
     def __repr__(self):
         fn_name = getattr(self.fn, "__name__", self.fn)
