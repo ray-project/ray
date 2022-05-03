@@ -25,7 +25,7 @@ from ray.data.impl.util import _check_pyarrow_version
 
 logger = logging.getLogger(__name__)
 
-PIECES_PER_META_FETCH = 18
+PIECES_PER_META_FETCH = 6
 PARALLELIZE_META_FETCH_THRESHOLD = 24
 
 # The number of rows to read per batch. This is sized to generate 10MiB batches
@@ -221,7 +221,8 @@ def _fetch_metadata_remotely(
         for pcs in np.array_split(pieces, parallelism):
             if len(pcs) == 0:
                 continue
-            metas.append(remote_fetch_metadata.remote(cloudpickle.dumps(pcs)))
+            metas.append(remote_fetch_metadata.options(
+                scheduling_strategy="SPREAD").remote(cloudpickle.dumps(pcs)))
     finally:
         _deregister_parquet_file_fragment_serialization()
     metas = meta_fetch_bar.fetch_until_complete(metas)
