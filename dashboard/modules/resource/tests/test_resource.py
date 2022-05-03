@@ -31,7 +31,7 @@ class Actor:
 @pytest.mark.parametrize(
     "ray_start_cluster", [{"include_dashboard": True}], indirect=True
 )
-def test_all(ray_start_cluster):
+def test_resource_summary_and_usage(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=32, num_gpus=4, resources={"custom_a": 16})
     cluster.add_node(num_cpus=32, resources={"custom_b": 16})

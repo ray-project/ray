@@ -76,9 +76,9 @@ class ObjectState:
 
 
 @dataclass(init=True)
-class DetailedResourceSummary:
-    summary: "ResourceSummary"
-    usage: "TaskResourceUsage"
+class ResourceSetCount:
+    resource_set: Dict[str, float]
+    count: int
 
 
 @dataclass(init=True)
@@ -92,10 +92,10 @@ class TaskResourceUsage:
     task_name: str
     # List of resource sets used by this task
     # and their respective counts
-    resource_set_counts: List["ResourceSetCount"]
+    resource_set_list: List[ResourceSetCount]
 
 
 @dataclass(init=True)
-class ResourceSetCount:
-    resource_set: Dict[str, float]
-    count: int
+class DetailedResourceSummary:
+    summary: ResourceSummary
+    usage: TaskResourceUsage

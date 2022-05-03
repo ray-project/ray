@@ -43,6 +43,8 @@ from ray.experimental.state.api import (
     list_workers,
     list_tasks,
     list_objects,
+    resource_summary,
+    task_resource_usage
 )
 from ray.experimental.state.common import (
     ActorState,
@@ -59,6 +61,12 @@ from ray.experimental.state.state_manager import (
 from ray.experimental.state.state_cli import list_state_cli_group
 from ray._private.test_utils import wait_for_condition
 from ray.job_submission import JobSubmissionClient
+# TODO:
+# Add Unit Tests (mocking)
+# Integration Tests (is instance grpc reply)
+# verify cli output (sanity check)
+# Integration test
+
 
 """
 Unit tests
@@ -402,14 +410,14 @@ def test_cli_apis_sanity_check(ray_start_cluster):
     class Actor:
         pass
 
-    obj = ray.put(3)  # noqa
-    task = f.remote()  # noqa
-    actor = Actor.remote()  # noqa
-    job_id = client.submit_job(  # noqa
+    obj = ray.put(3)
+    task = f.remote()
+    actor = Actor.remote()
+    job_id = client.submit_job(
         # Entrypoint shell command to execute
         entrypoint="ls",
     )
-    pg = ray.util.placement_group(bundles=[{"CPU": 1}])  # noqa
+    pg = ray.util.placement_group(bundles=[{"CPU": 1}])
 
     def verify_output(resource_name, necessary_substrings: List[str]):
         result = runner.invoke(list_state_cli_group, [resource_name])
@@ -429,6 +437,8 @@ def test_cli_apis_sanity_check(ray_start_cluster):
     wait_for_condition(lambda: verify_output("jobs", ["raysubmit"]))
     wait_for_condition(lambda: verify_output("tasks", ["task_id"]))
     wait_for_condition(lambda: verify_output("objects", ["object_id"]))
+
+    del obj, task, actor, job_id, pg
 
 
 @pytest.mark.skipif(
@@ -551,8 +561,8 @@ def test_list_tasks(shutdown_only):
 
         time.sleep(30)
 
-    out = [f.remote() for _ in range(2)]  # noqa
-    g_out = g.remote(f.remote())  # noqa
+    out = [f.remote() for _ in range(2)]
+    g_out = g.remote(f.remote())
 
     def verify():
         tasks = list(list_tasks().values())
@@ -573,6 +583,8 @@ def test_list_tasks(shutdown_only):
 
     wait_for_condition(verify)
     print(list_tasks())
+
+    del out, g_out
 
 
 def test_list_objects(shutdown_only):

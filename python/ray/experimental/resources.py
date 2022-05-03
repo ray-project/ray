@@ -41,13 +41,17 @@ def get_check_and_parse_json(path: str):
 
 def total(by_node: bool = False):
     return get_check_and_parse_json(
-        "/api/experimental/resources/total" + path_leaf(by_node))
+        "/api/experimental/resources/total" + path_leaf(by_node)
+    )
 
 
 def available(by_node: bool = False):
     return get_check_and_parse_json(
-        "/api/experimental/resources/available" + path_leaf(by_node))
+        "/api/experimental/resources/available" + path_leaf(by_node)
+    )
 
 
 def usage(by_node: bool = False):
-    return get_check_and_parse_json("/api/experimental/resources/usage" + path_leaf(by_node))
+    return get_check_and_parse_json(
+        "/api/experimental/resources/usage" + path_leaf(by_node)
+    )
