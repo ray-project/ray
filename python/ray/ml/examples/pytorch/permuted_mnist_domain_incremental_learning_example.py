@@ -254,7 +254,6 @@ def predict(checkpoint: Checkpoint, test_dataset_stream: Iterator[ray.data.Datas
         model_output = batch_predictor.predict(
             data=test_dataset, feature_columns=["image"], unsqueeze=False
         )
-        model_output.show(limit=3)
         # Postprocess model outputs.
         # Convert logits outputted from model into actual class predictions.
         # TODO: Find a better way to do this. This is pretty ugly right now.
@@ -286,6 +285,7 @@ def predict(checkpoint: Checkpoint, test_dataset_stream: Iterator[ray.data.Datas
         acc_results.append(correct_dataset.sum(on="correct") / test_dataset.count())
 
     print(acc_results)
+    return acc_results
 
 
 if __name__ == "__main__":
