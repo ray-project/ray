@@ -142,7 +142,7 @@ def test_yaml_compatibility(serve_instance):
                             "checkpoint_cls": checkpoint_cls,
                             "uri": path,
                         },
-                        "input_schema": schema_func,
+                        "http_adapter": schema_func,
                         "batching_params": {"max_batch_size": 1},
                     },
                 }

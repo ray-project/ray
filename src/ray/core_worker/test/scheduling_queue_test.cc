@@ -186,7 +186,7 @@ TEST(SchedulingQueueTest, TestSkipAlreadyProcessedByClient) {
 }
 
 TEST(SchedulingQueueTest, TestCancelQueuedTask) {
-  NormalSchedulingQueue *queue = new NormalSchedulingQueue();
+  std::unique_ptr<SchedulingQueue> queue = std::make_unique<NormalSchedulingQueue>();
   ASSERT_TRUE(queue->TaskQueueEmpty());
   int n_ok = 0;
   int n_rej = 0;
@@ -201,7 +201,7 @@ TEST(SchedulingQueueTest, TestCancelQueuedTask) {
   ASSERT_FALSE(queue->TaskQueueEmpty());
   queue->ScheduleRequests();
   ASSERT_EQ(n_ok, 4);
-  ASSERT_EQ(n_rej, 0);
+  ASSERT_EQ(n_rej, 1);
 }
 
 }  // namespace core

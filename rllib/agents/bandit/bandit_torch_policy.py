@@ -2,6 +2,7 @@ import logging
 import time
 
 from gym import spaces
+from ray.rllib.agents.bandit.bandit_tf_policy import validate_spaces
 from ray.rllib.agents.bandit.bandit_torch_model import (
     DiscreteLinearModelThompsonSampling,
     DiscreteLinearModelUCB,
@@ -99,6 +100,7 @@ def init_cum_regret(policy, *args):
 BanditTorchPolicy = build_policy_class(
     name="BanditTorchPolicy",
     framework="torch",
+    validate_spaces=validate_spaces,
     loss_fn=None,
     after_init=init_cum_regret,
     make_model_and_action_dist=make_model_and_action_dist,

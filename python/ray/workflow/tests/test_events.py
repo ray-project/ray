@@ -4,7 +4,6 @@ import pytest
 import asyncio
 import ray
 from ray import workflow
-from ray.workflow import storage
 from ray.workflow.tests import utils
 import subprocess
 import time
@@ -165,7 +164,11 @@ def test_event_during_arg_resolution(workflow_start_regular_shared):
 def test_crash_during_event_checkpointing(workflow_start_regular_shared):
     """Ensure that if the cluster dies while the event is being checkpointed, we
     properly re-poll for the event."""
-    _storage = storage.get_global_storage()
+
+    from ray.internal import storage
+
+    storage_uri = storage._storage_uri
+
     """Ensure that we don't re-call poll_for_event after `event_checkpointed`
        returns, even after a crash."""
 
@@ -200,8 +203,8 @@ def test_crash_during_event_checkpointing(workflow_start_regular_shared):
     # Give the workflow some time to kill the cluster.
     # time.sleep(3)
 
-    ray.init(num_cpus=4)
-    workflow.init(storage=_storage)
+    ray.init(num_cpus=4, storage=storage_uri)
+    workflow.init()
     workflow.resume("workflow")
     utils.set_global_mark("resume")
 
@@ -220,13 +223,15 @@ def test_crash_during_event_checkpointing(workflow_start_regular_shared):
     indirect=True,
 )
 def test_crash_after_commit(workflow_start_regular_shared):
-    _storage = storage.get_global_storage()
     """Ensure that we don't re-call poll_for_event after `event_checkpointed`
-       returns, even after a crash. Here we must call `event_checkpointed`
-       twice, because there's no way to know if we called it after
-       checkpointing.
-
+    returns, even after a crash. Here we must call `event_checkpointed`
+    twice, because there's no way to know if we called it after
+    checkpointing.
     """
+
+    from ray.internal import storage
+
+    storage_uri = storage._storage_uri
 
     class MyEventListener(workflow.EventListener):
         async def poll_for_event(self):
@@ -249,8 +254,8 @@ def test_crash_after_commit(workflow_start_regular_shared):
     ray.shutdown()
     subprocess.check_output(["ray", "stop", "--force"])
 
-    ray.init(num_cpus=4)
-    workflow.init(storage=_storage)
+    ray.init(num_cpus=4, storage=storage_uri)
+    workflow.init()
     workflow.resume("workflow")
 
     ray.get(workflow.get_output("workflow"))

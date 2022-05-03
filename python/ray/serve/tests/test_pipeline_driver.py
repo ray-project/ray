@@ -5,7 +5,8 @@ import requests
 import starlette.requests
 from starlette.testclient import TestClient
 
-from ray.serve.drivers import DAGDriver, SimpleSchemaIngress, load_input_schema
+from ray.serve.drivers import DAGDriver, SimpleSchemaIngress, load_http_adapter
+from ray.serve.http_adapters import json_request
 from ray.experimental.dag.input_node import InputNode
 from ray import serve
 import ray
@@ -17,15 +18,15 @@ def my_resolver(a: int):
 
 def test_loading_check():
     with pytest.raises(ValueError, match="callable"):
-        load_input_schema(["not function"])
+        load_http_adapter(["not function"])
     with pytest.raises(ValueError, match="type annotated"):
 
         def func(a):
             return a
 
-        load_input_schema(func)
+        load_http_adapter(func)
 
-    loaded_my_resolver = load_input_schema(
+    loaded_my_resolver = load_http_adapter(
         "ray.serve.tests.test_pipeline_driver.my_resolver"
     )
     assert (loaded_my_resolver == my_resolver) or (
@@ -41,7 +42,7 @@ def test_unit_schema_injection():
     async def resolver(my_custom_param: int):
         return my_custom_param
 
-    server = Impl(input_schema=resolver)
+    server = Impl(http_adapter=resolver)
     client = TestClient(server.app)
 
     response = client.post("/")
@@ -91,13 +92,34 @@ def test_dag_driver_custom_schema(serve_instance):
     with InputNode() as inp:
         dag = echo.bind(inp)
 
-    handle = serve.run(DAGDriver.bind(dag, input_schema=resolver))
+    handle = serve.run(DAGDriver.bind(dag, http_adapter=resolver))
     assert ray.get(handle.predict.remote(42)) == 42
 
     resp = requests.get("http://127.0.0.1:8000/?my_custom_param=100")
     print(resp.text)
     resp.raise_for_status()
     assert resp.json() == 100
+
+
+@serve.deployment
+def combine(*args):
+    return list(args)
+
+
+def test_dag_driver_partial_input(serve_instance):
+    with InputNode() as inp:
+        dag = DAGDriver.bind(
+            combine.bind(echo.bind(inp[0]), echo.bind(inp[1]), echo.bind(inp[2])),
+            http_adapter=json_request,
+        )
+    handle = serve.run(dag)
+    assert ray.get(handle.predict.remote([1, 2, [3, 4]])) == [1, 2, [3, 4]]
+    assert ray.get(handle.predict.remote(1, 2, [3, 4])) == [1, 2, [3, 4]]
+
+    resp = requests.post("http://127.0.0.1:8000/", json=[1, 2, [3, 4]])
+    print(resp.text)
+    resp.raise_for_status()
+    assert resp.json() == [1, 2, [3, 4]]
 
 
 if __name__ == "__main__":
