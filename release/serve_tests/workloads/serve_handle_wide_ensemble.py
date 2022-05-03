@@ -2,7 +2,7 @@
 This test is parity of
 release/serve_tests/workloads/deployment_graph_wide_ensemble.py
 Instead of using graph api, the test is using pure handle to
-test wide fanout graph.
+test wide fanout graph
 
 
        -> Node_1
