@@ -20,9 +20,9 @@ from ray.tune.error import TuneError
 from ray.tune.experiment import Experiment, convert_to_experiment_list
 from ray.tune.logger import Logger
 from ray.tune.progress_reporter import (
+    RemoteReporter,
     detect_reporter,
     ProgressReporter,
-    JupyterNotebookReporter,
 )
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.registry import get_trainable_cls, is_function_trainable
@@ -376,7 +376,7 @@ def run(
         # (e.g. via Ray client) as they don't have access to the main
         # process stdout. So we introduce a queue here that accepts
         # strings, which will then be displayed on the driver side.
-        if isinstance(progress_reporter, JupyterNotebookReporter):
+        if isinstance(progress_reporter, RemoteReporter):
             string_queue = Queue(
                 actor_options={"num_cpus": 0, **force_on_current_node(None)}
             )

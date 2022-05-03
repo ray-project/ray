@@ -102,20 +102,10 @@ class ProgressReporter:
     def report(self, trials: List[Trial], done: bool, *sys_info: Dict):
         """Reports progress across trials.
 
-        This should make use of the ``display`` method.
-
         Args:
             trials: Trials to report on.
             done: Whether this is the last progress report attempt.
             sys_info: System info.
-        """
-        raise NotImplementedError
-
-    def display(self, string: str) -> None:
-        """Display the progress string.
-
-        Args:
-            string: String to display.
         """
         raise NotImplementedError
 
@@ -431,8 +421,24 @@ class TuneReporterBase(ProgressReporter):
         return best_trial, metric
 
 
+@DeveloperAPI
+class RemoteReporter:
+    """Remote reporter abstract class.
+
+    Subclasses of this class will use a Ray Queue to display output
+    on the driver side when running Ray Client."""
+
+    def display(self, string: str) -> None:
+        """Display the progress string.
+
+        Args:
+            string: String to display.
+        """
+        raise NotImplementedError
+
+
 @PublicAPI
-class JupyterNotebookReporter(TuneReporterBase):
+class JupyterNotebookReporter(RemoteReporter, TuneReporterBase):
     """Jupyter notebook-friendly Reporter that can update display in-place.
 
     Args:
@@ -610,10 +616,7 @@ class CLIReporter(TuneReporterBase):
         )
 
     def report(self, trials: List[Trial], done: bool, *sys_info: Dict):
-        self.display(self._progress_str(trials, done, *sys_info))
-
-    def display(self, string: str) -> None:
-        print(string)
+        print(self._progress_str(trials, done, *sys_info))
 
 
 def memory_debug_str():
