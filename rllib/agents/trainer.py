@@ -303,7 +303,7 @@ class Trainer(Trainable):
 
     @classmethod
     def get_default_config(cls) -> TrainerConfigDict:
-        return cls._default_config or TrainerConfig().to_dict()
+        return TrainerConfig().to_dict()
 
     @override(Trainable)
     def setup(self, config: PartialTrainerConfigDict):
