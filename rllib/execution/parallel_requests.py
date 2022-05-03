@@ -1,6 +1,8 @@
 import logging
+import random
 from collections import defaultdict
-from typing import Any, Callable, DefaultDict, Dict, List, Optional, Set
+from queue import Queue
+from typing import Any, Callable, DefaultDict, Dict, List, Optional, Set, Union
 
 import ray
 from ray.actor import ActorHandle
@@ -182,3 +184,85 @@ def wait_asynchronous_requests(
         remote_fn=None,
     )
     return ready_requests
+
+
+class AsyncRequestsManager:
+    """Manages asynchronous requests to actors."""
+
+    def __init__(
+        self,
+        workers: Union[List[ActorHandle], Set[ActorHandle]],
+        max_remote_requests_in_flight: int = 2,
+        ray_wait_timeout_s: Optional[float] = 0.03,
+        return_object_refs: bool = False,
+    ):
+        self._available_workers = workers if isinstance(workers, set) else set(workers)
+        self._unavailable_workers = set()
+        self._max_remote_requests_in_flight = max_remote_requests_in_flight
+        self._ray_wait_timeout_s = ray_wait_timeout_s
+        self._return_object_refs = return_object_refs
+        self._remote_requests_in_flight = defaultdict(set)
+        self._pending_to_actor = {}
+        self._call_queue = Queue(max_size=0)
+        self._pending_remotes = []
+
+    def submit(
+        self, remote_fn: Callable, fn_args: List[Any], fn_kwargs: Dict[str, Any]
+    ) -> None:
+        """Submit a remote function call to call on one of the workers
+
+        Args:
+            remote_fn: The remote function to call
+            fn_args: The arguments to pass to the remote function
+            fn_kwargs: The keyword arguments to pass to the remote function
+        """
+        call = (remote_fn, fn_args, fn_kwargs)
+        self._call_queue.put(call)
+
+    def run(self) -> int:
+        """Run submitted requests on available workers"""
+        num_requests_launched = 0
+        available_actor = self._get_available_actor()
+        while available_actor and self.call_queue.qsize() > 0:
+            remote_fn, fn_args, fn_kwargs = self.call_queue.get()
+            req = available_actor.apply.remote(remote_fn, *fn_args, **fn_kwargs)
+            self._remote_requests_in_flight[available_actor].add(req)
+            if (
+                len(self._remote_requests_in_flight[available_actor])
+                >= self._max_remote_requests_in_flight
+            ):
+                self._unavailable_workers.add(available_actor)
+                self._available_workers.remove(available_actor)
+            self._pending_remotes.append(req)
+            self._pending_to_actor[req] = available_actor
+            available_actor = self._get_available_actor()
+            num_requests_launched += 1
+        return num_requests_launched
+
+    def get_ready_requests(self) -> Dict[ActorHandle, Any]:
+        """Get requests that are ready to be returned"""
+        ret = defaultdict(list)
+        ready, self._pending_remotes = ray.wait(
+            self._pending_remotes,
+            timeout=self._ray_wait_timeout_s,
+        )
+        if not self._return_object_refs:
+            objs = ray.get(ready)
+        else:
+            objs = ready
+
+        for req, obj in zip(ready, objs):
+            actor = self._pending_to_actor[req]
+            self._remote_requests_in_flight[actor].remove(req)
+            ret[actor].append(obj)
+            if actor in self._unavailable_workers:
+                self._available_workers.add(actor)
+                self._unavailable_workers.remove(actor)
+        del ready
+        return dict(ret)
+
+    def _get_available_actor(self) -> Optional[ActorHandle]:
+        """Get an available actor to run a remote request"""
+        if not self._available_workers:
+            return None
+        return random.choice(self._available_workers)
