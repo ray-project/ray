@@ -34,7 +34,7 @@ IN_KUBERNETES_POD = "KUBERNETES_SERVICE_HOST" in os.environ
 # Flag to enable showing disk usage when running in a K8s pod,
 # disk usage defined as the result of running psutil.disk_usage("/")
 # in the Ray container.
-ENABLE_K8S_DISK_USAGE = os.environ.get("ENABLE_K8S_DISK_USAGE", False)
+ENABLE_K8S_DISK_USAGE = os.environ.get("RAY_DASHBOARD_ENABLE_K8S_DISK_USAGE") == "1"
 
 try:
     import gpustat.core as gpustat
