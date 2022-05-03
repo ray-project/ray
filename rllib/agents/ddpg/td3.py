@@ -37,6 +37,7 @@ TD3_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
         },
         # other changes & things we want to keep fixed:
         # larger actor learning rate, no l2 regularisation, no Huber loss, etc.
+        "learning_starts": 10000,
         "actor_hiddens": [400, 300],
         "critic_hiddens": [400, 300],
         "n_step": 1,
@@ -59,7 +60,6 @@ TD3_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
             "_enable_replay_buffer_api": True,
             "type": "MultiAgentReplayBuffer",
             "capacity": 1000000,
-            "learning_starts": 10000,
         },
         "_disable_execution_plan_api": True,
     },

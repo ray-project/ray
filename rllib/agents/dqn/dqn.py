@@ -203,7 +203,6 @@ class DQNTrainer(SimpleQTrainer):
             return DQNTFPolicy
 
     @ExperimentalAPI
-    @override(SimpleQTrainer)
     def training_iteration(self) -> ResultDict:
         """DQN training iteration function.
 

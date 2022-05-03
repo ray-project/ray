@@ -11,10 +11,8 @@ pendulum-td3:
         # === Model ===
         actor_hiddens: [64, 64]
         critic_hiddens: [64, 64]
-        # === Replay Buffer ===
-        replay_buffer_config:
-          learning_starts: 5000
         # === Exploration ===
+        learning_starts: 5000
         exploration_config:
             random_timesteps: 5000
         # === Evaluation ===

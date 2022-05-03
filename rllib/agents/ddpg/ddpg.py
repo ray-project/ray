@@ -2,7 +2,7 @@ import logging
 from typing import Type
 
 from ray.rllib.agents.trainer import with_common_config
-from ray.rllib.agents.dqn.dqn import DQNTrainer
+from ray.rllib.agents.dqn.simple_q import SimpleQTrainer
 from ray.rllib.agents.ddpg.ddpg_tf_policy import DDPGTFPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
@@ -180,13 +180,13 @@ DEFAULT_CONFIG = with_common_config({
 # fmt: on
 
 
-class DDPGTrainer(DQNTrainer):
+class DDPGTrainer(SimpleQTrainer):
     @classmethod
-    @override(DQNTrainer)
+    @override(SimpleQTrainer)
     def get_default_config(cls) -> TrainerConfigDict:
         return DEFAULT_CONFIG
 
-    @override(DQNTrainer)
+    @override(SimpleQTrainer)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             from ray.rllib.agents.ddpg.ddpg_torch_policy import DDPGTorchPolicy
@@ -195,7 +195,7 @@ class DDPGTrainer(DQNTrainer):
         else:
             return DDPGTFPolicy
 
-    @override(DQNTrainer)
+    @override(SimpleQTrainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
         # Call super's validation method.
         super().validate_config(config)
