@@ -538,7 +538,6 @@ provider:
                 print(f.read())
             assert False
 
-
         # Query our endpoint over HTTP.
         r = client.report_usage_data("http://127.0.0.1:8000/usage", d)
         r.raise_for_status()
