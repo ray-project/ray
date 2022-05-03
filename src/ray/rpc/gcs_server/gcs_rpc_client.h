@@ -162,7 +162,7 @@ class GcsRpcClient {
     heartbeat_info_grpc_client_ = std::make_unique<GrpcClient<HeartbeatInfoGcsService>>(
         channel, client_call_manager);
     stats_grpc_client_ =
-        std::make_unique<GrpcClient<StatsGcsService>>(address, port, client_call_manager);
+        std::make_unique<GrpcClient<StatsGcsService>>(channel, client_call_manager);
     worker_info_grpc_client_ =
         std::make_unique<GrpcClient<WorkerInfoGcsService>>(channel, client_call_manager);
     placement_group_info_grpc_client_ =
