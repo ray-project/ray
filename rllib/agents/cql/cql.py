@@ -64,13 +64,10 @@ CQL_DEFAULT_CONFIG = merge_dicts(
             # dataset.
             "capacity": int(1e6),
         },
-        # Reporting: As CQL is offline (no sampling steps), we need to limit an
-        # iteration's reporting by the number of steps trained (not sampled).
+        # Reporting: As CQL is offline (no sampling steps), we need to limit
+        # `self.train()` reporting by the number of steps trained (not sampled).
         "min_sample_timesteps_per_reporting": 0,
         "min_train_timesteps_per_reporting": 100,
-
-        # Use the Trainer's `training_iteration` function instead of `execution_plan`.
-        "_disable_execution_plan_api": True,
 
         # Deprecated keys.
         # Use `replay_buffer_config.capacity` instead.
