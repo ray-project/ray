@@ -149,41 +149,43 @@ class GcsRpcClient {
              ClientCallManager &client_call_manager) {
     io_context_ = &client_call_manager.GetMainService();
     periodical_runner_ = std::make_unique<PeriodicalRunner>(*io_context_);
+    grpc::ChannelArguments arguments;
+    arguments.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS, RayConfig::instance().gcs_grpc_max_reconnect_backoff_ms());
+    arguments.SetInt(GRPC_ARG_MIN_RECONNECT_BACKOFF_MS, RayConfig::instance().gcs_grpc_min_reconnect_backoff_ms());
+    arguments.SetInt(GRPC_ARG_INITIAL_RECONNECT_BACKOFF_MS, RayConfig::instance().gcs_grpc_initial_reconnect_backoff_ms());
 
-    auto channel = BuildChannel(address, port);
+    channel_ = BuildChannel(address, port, arguments);
     job_info_grpc_client_ =
-        std::make_unique<GrpcClient<JobInfoGcsService>>(channel, client_call_manager);
+        std::make_unique<GrpcClient<JobInfoGcsService>>(channel_, client_call_manager);
     actor_info_grpc_client_ =
-        std::make_unique<GrpcClient<ActorInfoGcsService>>(channel, client_call_manager);
+        std::make_unique<GrpcClient<ActorInfoGcsService>>(channel_, client_call_manager);
     node_info_grpc_client_ =
-        std::make_unique<GrpcClient<NodeInfoGcsService>>(channel, client_call_manager);
+        std::make_unique<GrpcClient<NodeInfoGcsService>>(channel_, client_call_manager);
     node_resource_info_grpc_client_ =
-        std::make_unique<GrpcClient<NodeResourceInfoGcsService>>(channel,
+        std::make_unique<GrpcClient<NodeResourceInfoGcsService>>(channel_,
                                                                  client_call_manager);
     heartbeat_info_grpc_client_ = std::make_unique<GrpcClient<HeartbeatInfoGcsService>>(
-        channel, client_call_manager);
+        channel_, client_call_manager);
     stats_grpc_client_ =
-        std::make_unique<GrpcClient<StatsGcsService>>(address, port, client_call_manager);
+        std::make_unique<GrpcClient<StatsGcsService>>(channel_, client_call_manager);
     worker_info_grpc_client_ =
-        std::make_unique<GrpcClient<WorkerInfoGcsService>>(channel, client_call_manager);
+        std::make_unique<GrpcClient<WorkerInfoGcsService>>(channel_, client_call_manager);
     placement_group_info_grpc_client_ =
-        std::make_unique<GrpcClient<PlacementGroupInfoGcsService>>(channel,
+        std::make_unique<GrpcClient<PlacementGroupInfoGcsService>>(channel_,
                                                                    client_call_manager);
     internal_kv_grpc_client_ =
-        std::make_unique<GrpcClient<InternalKVGcsService>>(channel, client_call_manager);
+        std::make_unique<GrpcClient<InternalKVGcsService>>(channel_, client_call_manager);
     internal_pubsub_grpc_client_ = std::make_unique<GrpcClient<InternalPubSubGcsService>>(
+        channel_, client_call_manager);
 
-        address, port, client_call_manager);
     // Setup monitor for gRPC channel status.
     // TODO(iycheng): Push this into ClientCallManager with CQ by using async call.
     periodical_runner_->RunFnPeriodically(
         [this] {
-
+          auto status = channel_->GetState();
+          if(status ==
         },
         RayConfig::instance().gcs_client_check_connection_status_interval_milliseconds());
-=======
-        channel, client_call_manager);
->>>>>>> gcs-shared-channel
   }
 
   /// Add job info to GCS Service.
@@ -461,6 +463,7 @@ class GcsRpcClient {
   std::unique_ptr<GrpcClient<InternalKVGcsService>> internal_kv_grpc_client_;
   std::unique_ptr<GrpcClient<InternalPubSubGcsService>> internal_pubsub_grpc_client_;
 
+  std::shared_ptr<grpc::Channel> channel_;
   bool gcs_is_down_ = false;
   std::unique_ptr<PeriodicalRunner> periodical_runner_;
   std::vector<Executor *> queued_executors_;

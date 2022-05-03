@@ -51,12 +51,13 @@ inline std::shared_ptr<grpc::Channel> BuildChannel(
     std::optional<grpc::ChannelArguments> arguments = std::nullopt) {
   if (!arguments.has_value()) {
     arguments = grpc::ChannelArguments();
-    // Disable http proxy since it disrupts local connections. TODO(ekl) we should make
-    // this configurable, or selectively set it for known local connections only.
-    arguments->SetInt(GRPC_ARG_ENABLE_HTTP_PROXY, 0);
-    arguments->SetMaxSendMessageSize(::RayConfig::instance().max_grpc_message_size());
-    arguments->SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
   }
+
+  // Disable http proxy since it disrupts local connections. TODO(ekl) we should make
+  // this configurable, or selectively set it for known local connections only.
+  arguments->SetInt(GRPC_ARG_ENABLE_HTTP_PROXY, 0);
+  arguments->SetMaxSendMessageSize(::RayConfig::instance().max_grpc_message_size());
+  arguments->SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
 
   std::shared_ptr<grpc::Channel> channel;
   if (::RayConfig::instance().USE_TLS()) {
