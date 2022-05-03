@@ -197,9 +197,6 @@ class Trainer(Trainable):
         "replay_buffer_config",
     ]
 
-    # TODO: Deprecate. Instead, override `Trainer.get_default_config()`.
-    _default_config = TrainerConfig().to_dict()
-
     @PublicAPI
     def __init__(
         self,
@@ -1915,7 +1912,7 @@ class Trainer(Trainable):
         )
 
         # Metrics settings.
-        if config["metrics_smoothing_episodes"] != DEPRECATED_VALUE:
+        if config.get("metrics_smoothing_episodes", DEPRECATED_VALUE) != DEPRECATED_VALUE:
             deprecation_warning(
                 old="metrics_smoothing_episodes",
                 new="metrics_num_episodes_for_smoothing",
@@ -1924,7 +1921,7 @@ class Trainer(Trainable):
             config["metrics_num_episodes_for_smoothing"] = config[
                 "metrics_smoothing_episodes"
             ]
-        if config["min_iter_time_s"] != DEPRECATED_VALUE:
+        if config.get("min_iter_time_s", DEPRECATED_VALUE) != DEPRECATED_VALUE:
             deprecation_warning(
                 old="min_iter_time_s",
                 new="min_time_s_per_reporting",
@@ -1932,7 +1929,7 @@ class Trainer(Trainable):
             )
             config["min_time_s_per_reporting"] = config["min_iter_time_s"] or 0
 
-        if config["collect_metrics_timeout"] != DEPRECATED_VALUE:
+        if config.get("collect_metrics_timeout", DEPRECATED_VALUE) != DEPRECATED_VALUE:
             # TODO: Warn once all algos use the `training_iteration` method.
             # deprecation_warning(
             #     old="collect_metrics_timeout",
@@ -1943,7 +1940,7 @@ class Trainer(Trainable):
                 "collect_metrics_timeout"
             ]
 
-        if config["timesteps_per_iteration"] != DEPRECATED_VALUE:
+        if config.get("timesteps_per_iteration", DEPRECATED_VALUE) != DEPRECATED_VALUE:
             deprecation_warning(
                 old="timesteps_per_iteration",
                 new="`min_sample_timesteps_per_reporting` OR "
@@ -1957,7 +1954,7 @@ class Trainer(Trainable):
         # Evaluation settings.
 
         # Deprecated setting: `evaluation_num_episodes`.
-        if config["evaluation_num_episodes"] != DEPRECATED_VALUE:
+        if config.get("evaluation_num_episodes", DEPRECATED_VALUE) != DEPRECATED_VALUE:
             deprecation_warning(
                 old="evaluation_num_episodes",
                 new="`evaluation_duration` and `evaluation_duration_unit=episodes`",
@@ -2414,4 +2411,4 @@ class Trainer(Trainable):
 
 # TODO: Create a dict that throw a deprecation warning once we have fully moved
 #  to TrainerConfig() objects (some algos still missing).
-COMMON_CONFIG: TrainerConfigDict = TrainerConfig().to_dict()
+COMMON_CONFIG: TrainerConfigDict = TrainerConfig(Trainer).to_dict()

@@ -62,11 +62,6 @@ class TrainerConfig:
 
         # Define the default RLlib Trainer class that this TrainerConfig will be
         # applied to.
-        if trainer_class is None:
-            from ray.rllib.agents.trainer import Trainer
-
-            trainer_class = Trainer
-
         self.trainer_class = trainer_class
 
         # `self.python_environment()`
@@ -196,7 +191,7 @@ class TrainerConfig:
         self.always_attach_evaluation_results = False
         # TODO: Set this flag still in the config or - much better - in the
         #  RolloutWorker as a property.
-        # self.in_evaluation = False
+        self.in_evaluation = False
 
         # `self.reporting()`
         self.keep_per_episode_custom_metrics = False
@@ -261,13 +256,7 @@ class TrainerConfig:
         config["framework"] = config.pop("framework_str", None)
         config["num_cpus_for_driver"] = config.pop("num_cpus_for_local_worker", 1)
 
-        # Get our Trainer class' default config.
-        from ray.rllib.agents.trainer import Trainer, COMMON_CONFIG
-
-        # Add our overrides to the default config.
-        return Trainer.merge_trainer_configs(
-            COMMON_CONFIG, config, _allow_unknown_configs=True
-        )
+        return config
 
     def build(
         self,
