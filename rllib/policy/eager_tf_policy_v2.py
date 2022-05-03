@@ -148,7 +148,7 @@ class EagerTFPolicyV2(Policy):
         dist_class: Type[TFActionDistribution],
         train_batch: SampleBatch,
     ) -> Union[TensorType, List[TensorType]]:
-        """Loss function for this policy.
+        """Compute loss for this policy using model, dist_class and a train_batch.
 
         Args:
             model: The Model to calculate the loss for.

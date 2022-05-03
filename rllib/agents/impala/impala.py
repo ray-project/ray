@@ -437,24 +437,33 @@ class ImpalaTrainer(Trainer):
     def get_default_policy_class(
         self, config: PartialTrainerConfigDict
     ) -> Optional[Type[Policy]]:
-        if config["framework"] == "torch":
-            if config["vtrace"]:
-                from ray.rllib.agents.impala.vtrace_torch_policy import (
-                    VTraceTorchPolicy,
-                )
-
-                return VTraceTorchPolicy
-            else:
+        # If vtrace loss is not enabled, simply use A3C policies.
+        if not config["vtrace"]:
+            if config["framework"] == "torch":
                 from ray.rllib.agents.a3c.a3c_torch_policy import A3CTorchPolicy
 
                 return A3CTorchPolicy
-        else:
-            if config["vtrace"]:
-                return VTraceTFPolicy
+
             else:
                 from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
 
                 return A3CTFPolicy
+
+        if config["framework"] == "torch":
+            from ray.rllib.agents.impala.vtrace_torch_policy import (
+                VTraceTorchPolicy,
+            )
+            return VTraceTorchPolicy
+        elif config["framework"] == "tf":
+            from ray.rllib.agents.impala.vtrace_tf_policy import (
+                VTraceDynamicTFPolicy,
+            )
+            return VTraceDynamicTFPolicy
+        else:
+            from ray.rllib.agents.impala.vtrace_tf_policy import (
+                VTraceEagerTFPolicy,
+            )
+            return VTraceEagerTFPolicy
 
     @override(Trainer)
     def validate_config(self, config):

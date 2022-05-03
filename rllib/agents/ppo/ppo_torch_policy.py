@@ -56,12 +56,12 @@ class PPOTorchPolicy(
         )
 
         ComputeGAEMixIn.__init__(self)
+        ValueNetworkMixin.__init__(self, config)
+        LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
         EntropyCoeffSchedule.__init__(
             self, config["entropy_coeff"], config["entropy_coeff_schedule"]
         )
-        LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
         KLCoeffMixin.__init__(self, config)
-        ValueNetworkMixin.__init__(self, config)
 
         # TODO: Don't require users to call this manually.
         self._initialize_loss_from_dummy_batch()
@@ -73,7 +73,7 @@ class PPOTorchPolicy(
         dist_class: Type[ActionDistribution],
         train_batch: SampleBatch,
     ) -> Union[TensorType, List[TensorType]]:
-        """Constructs the loss for Proximal Policy Objective.
+        """Compute loss for Proximal Policy Objective.
 
         Args:
             model: The Model to calculate the loss for.
@@ -178,8 +178,6 @@ class PPOTorchPolicy(
     def extra_grad_process(self, local_optimizer, loss):
         return apply_grad_clipping(self, local_optimizer, loss)
 
-    # TODO: Make this an event-style subscription (e.g.:
-    #  "after_losses_computed").
     @override(TorchPolicyV2)
     def extra_grad_info(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
         return convert_to_numpy(

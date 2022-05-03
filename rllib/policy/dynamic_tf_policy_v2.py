@@ -157,7 +157,7 @@ class DynamicTFPolicyV2(TFPolicy):
         dist_class: Type[TFActionDistribution],
         train_batch: SampleBatch,
     ) -> Union[TensorType, List[TensorType]]:
-        """Constructs loss graph for this policy.
+        """Constructs loss computation graph for this TF1 policy.
 
         Args:
             model: The Model to calculate the loss for.
