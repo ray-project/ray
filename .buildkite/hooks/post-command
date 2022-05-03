@@ -12,7 +12,11 @@
 # upload them as artifacts and delete them afterwards.
 set -e
 if [ -d "/tmp/artifacts/test-summaries" ] && [ "$(ls -A /tmp/artifacts/test-summaries)" ]; then
-    cat /tmp/artifacts/test-summaries/*.txt | buildkite-agent annotate --job "${BUILDKITE_JOB_ID}" --append --style error --context "${BUILDKITE_JOB_ID}"
+    # Only upload annotations if there are at least 2 files in the directory:
+    # 1 header and 1 failed test.
+    if [ "$(find /tmp/artifacts/test-summaries -maxdepth 1 -name '*.txt' | wc -l)" -ge 2 ]; then
+      cat /tmp/artifacts/test-summaries/*.txt | buildkite-agent annotate --job "${BUILDKITE_JOB_ID}" --append --style error --context "${BUILDKITE_JOB_ID}"
+    fi
 
     # Remove test summaries files (don't actually upload as artifacts)
     # This has to be done with docker to avoid permission issues

@@ -9,7 +9,7 @@ from ray.experimental.dag import (
     ClassMethodNode,
     FunctionNode,
     InputNode,
-    InputAtrributeNode,
+    InputAttributeNode,
     DAGNODE_TYPE_KEY,
 )
 from ray.serve.pipeline.deployment_node import DeploymentNode
@@ -143,8 +143,8 @@ def dagnode_from_json(input_json: Any) -> Union[DAGNode, RayServeHandle, Any]:
     # Deserialize DAGNode type
     elif input_json[DAGNODE_TYPE_KEY] == InputNode.__name__:
         return InputNode.from_json(input_json)
-    elif input_json[DAGNODE_TYPE_KEY] == InputAtrributeNode.__name__:
-        return InputAtrributeNode.from_json(input_json)
+    elif input_json[DAGNODE_TYPE_KEY] == InputAttributeNode.__name__:
+        return InputAttributeNode.from_json(input_json)
     elif input_json[DAGNODE_TYPE_KEY] == ClassMethodNode.__name__:
         return ClassMethodNode.from_json(input_json)
     elif input_json[DAGNODE_TYPE_KEY] == DeploymentNode.__name__:

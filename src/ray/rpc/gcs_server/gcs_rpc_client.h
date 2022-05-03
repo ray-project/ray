@@ -151,27 +151,29 @@ class GcsRpcClient {
     io_context_ = &client_call_manager.GetMainService();
     periodical_runner_ = std::make_unique<PeriodicalRunner>(*io_context_);
 
-    job_info_grpc_client_ = std::make_unique<GrpcClient<JobInfoGcsService>>(
-        address, port, client_call_manager);
-    actor_info_grpc_client_ = std::make_unique<GrpcClient<ActorInfoGcsService>>(
-        address, port, client_call_manager);
-    node_info_grpc_client_ = std::make_unique<GrpcClient<NodeInfoGcsService>>(
-        address, port, client_call_manager);
+    auto channel = BuildChannel(address, port);
+    job_info_grpc_client_ =
+        std::make_unique<GrpcClient<JobInfoGcsService>>(channel, client_call_manager);
+    actor_info_grpc_client_ =
+        std::make_unique<GrpcClient<ActorInfoGcsService>>(channel, client_call_manager);
+    node_info_grpc_client_ =
+        std::make_unique<GrpcClient<NodeInfoGcsService>>(channel, client_call_manager);
     node_resource_info_grpc_client_ =
-        std::make_unique<GrpcClient<NodeResourceInfoGcsService>>(
-            address, port, client_call_manager);
+        std::make_unique<GrpcClient<NodeResourceInfoGcsService>>(channel,
+                                                                 client_call_manager);
     heartbeat_info_grpc_client_ = std::make_unique<GrpcClient<HeartbeatInfoGcsService>>(
-        address, port, client_call_manager);
+        channel, client_call_manager);
     stats_grpc_client_ =
         std::make_unique<GrpcClient<StatsGcsService>>(address, port, client_call_manager);
-    worker_info_grpc_client_ = std::make_unique<GrpcClient<WorkerInfoGcsService>>(
-        address, port, client_call_manager);
+    worker_info_grpc_client_ =
+        std::make_unique<GrpcClient<WorkerInfoGcsService>>(channel, client_call_manager);
     placement_group_info_grpc_client_ =
-        std::make_unique<GrpcClient<PlacementGroupInfoGcsService>>(
-            address, port, client_call_manager);
-    internal_kv_grpc_client_ = std::make_unique<GrpcClient<InternalKVGcsService>>(
-        address, port, client_call_manager);
+        std::make_unique<GrpcClient<PlacementGroupInfoGcsService>>(channel,
+                                                                   client_call_manager);
+    internal_kv_grpc_client_ =
+        std::make_unique<GrpcClient<InternalKVGcsService>>(channel, client_call_manager);
     internal_pubsub_grpc_client_ = std::make_unique<GrpcClient<InternalPubSubGcsService>>(
+
         address, port, client_call_manager);
     // Setup monitor for gRPC channel status.
     // TODO(iycheng): Push this into ClientCallManager with CQ by using async call.
@@ -180,6 +182,9 @@ class GcsRpcClient {
 
         },
         RayConfig::instance().gcs_client_check_connection_status_interval_milliseconds());
+=======
+        channel, client_call_manager);
+>>>>>>> gcs-shared-channel
   }
 
   /// Add job info to GCS Service.

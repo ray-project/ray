@@ -179,7 +179,7 @@ class TrainerConfig:
         self.output_max_file_size = 64 * 1024 * 1024
 
         # `self.evaluation()`
-        self.evaluation_interval = 0
+        self.evaluation_interval = None
         self.evaluation_duration = 10
         self.evaluation_duration_unit = "episodes"
         self.evaluation_parallel_to_training = False
@@ -193,8 +193,8 @@ class TrainerConfig:
         self.metrics_episode_collection_timeout_s = 180
         self.metrics_num_episodes_for_smoothing = 100
         self.min_time_s_per_reporting = None
-        self.min_train_timesteps_per_reporting = None
-        self.min_sample_timesteps_per_reporting = None
+        self.min_train_timesteps_per_reporting = 0
+        self.min_sample_timesteps_per_reporting = 0
 
         # `self.debugging()`
         self.logger_config = None
@@ -228,6 +228,20 @@ class TrainerConfig:
             assert hasattr(self, "input_")
             config["input"] = getattr(self, "input_")
             config.pop("input_")
+
+        # Setup legacy multiagent sub-dict:
+        config["multiagent"] = {}
+        for k in [
+            "policies",
+            "policy_map_capacity",
+            "policy_map_cache",
+            "policy_mapping_fn",
+            "policies_to_train",
+            "observation_fn",
+            "replay_mode",
+            "count_steps_by",
+        ]:
+            config["multiagent"][k] = config.pop(k)
 
         # Switch out deprecated vs new config keys.
         config["callbacks"] = config.pop("callbacks_class", DefaultCallbacks)
@@ -995,18 +1009,20 @@ class TrainerConfig:
                 for: If - after one `step_attempt()`, this time limit has not been
                 reached, will perform n more `step_attempt()` calls until this minimum
                 time has been consumed. Set to None or 0 for no minimum time.
-            min_train_timesteps_per_reporting: Minimum train timesteps to
-                optimize for per `train()` call. This value does not affect learning,
-                only the length of train iterations. If - after one `step_attempt()`,
-                the training timestep counts have not been reached, will
-                perform n more `step_attempt()` calls until the minimum timesteps have
-                been executed. Set to None or 0 for no minimum timesteps.
-            min_sample_timesteps_per_reporting: Minimum sample timesteps to
-                optimize for per `train()` call. This value does not affect learning,
-                only the length of train iterations. If - after one `step_attempt()`,
-                the sampling timestep counts (have not been reached, will
-                perform n more `step_attempt()` calls until the minimum timesteps have
-                been executed. Set to None or 0 for no minimum timesteps.
+            min_train_timesteps_per_reporting: Minimum training timesteps to accumulate
+                within a single `train()` call. This value does not affect learning,
+                only the number of times `Trainer.step_attempt()` is called by
+                `Trauber.train()`. If - after one `step_attempt()`, the training
+                timestep count has not been reached, will perform n more
+                `step_attempt()` calls until the minimum timesteps have been executed.
+                Set to 0 for no minimum timesteps.
+            min_sample_timesteps_per_reporting: Minimum env samplingtimesteps to
+                accumulate within a single `train()` call. This value does not affect
+                learning, only the number of times `Trainer.step_attempt()` is called by
+                `Trauber.train()`. If - after one `step_attempt()`, the env sampling
+                timestep count has not been reached, will perform n more
+                `step_attempt()` calls until the minimum timesteps have been executed.
+                Set to 0 for no minimum timesteps.
 
         Returns:
             This updated TrainerConfig object.

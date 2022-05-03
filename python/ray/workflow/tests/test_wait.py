@@ -264,12 +264,9 @@ def test_wait_recovery_step_id(workflow_start_regular_shared):
     ready, unready = ray.get(workflow.resume("test_wait_recovery_step_id"))
     assert ready == [42]
 
-    from ray.workflow import storage, workflow_storage
+    from ray.workflow import workflow_storage
 
-    global_storage = storage.get_global_storage()
-    wf_storage = workflow_storage.WorkflowStorage(
-        "test_wait_recovery_step_id", global_storage
-    )
+    wf_storage = workflow_storage.WorkflowStorage("test_wait_recovery_step_id")
     index = wf_storage.gen_step_id("workflow.wait")
     # no new step id
     assert index <= 1
