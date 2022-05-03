@@ -185,6 +185,8 @@ class GcsRpcClient {
     periodical_runner_->RunFnPeriodically(
         [this, reconnection_callback] {
           auto status = channel_->GetState(true);
+          // https://grpc.github.io/grpc/core/connectivity__state_8h_source.html
+          RAY_LOG(DEBUG) << "GCS channel status: " << status;
           switch (status) {
           case GRPC_CHANNEL_TRANSIENT_FAILURE:
           case GRPC_CHANNEL_CONNECTING:
