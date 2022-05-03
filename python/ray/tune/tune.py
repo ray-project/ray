@@ -370,6 +370,7 @@ def run(
         # Make sure tune.run is called on the sever node.
         remote_run = force_on_current_node(remote_run)
 
+        set_verbosity(verbose)
         progress_reporter = progress_reporter or detect_reporter()
 
         # JupyterNotebooks don't work with remote tune runs out of the box
