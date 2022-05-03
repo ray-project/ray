@@ -18,7 +18,7 @@ from typing import List, Type
 from ray.rllib.agents.dqn.dqn import DQNTrainer
 from ray.rllib.agents.slateq.slateq_tf_policy import SlateQTFPolicy
 from ray.rllib.agents.slateq.slateq_torch_policy import SlateQTorchPolicy
-from ray.rllib.agents.trainer import with_common_config
+from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
@@ -39,8 +39,50 @@ from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
 logger = logging.getLogger(__name__)
 
 
-# fmt: off
-# __sphinx_doc_begin__
+class SlateQConfig(TrainerConfig):
+    """Defines a configuration class from which a SlateQTrainer can be built.
+
+    Example:
+        >>> config = SlateQConfig().training(lr=0.01).resources(num_gpus=1)
+        >>> print(config.to_dict())
+        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> trainer = config.build(env="CartPole-v1")
+        >>> trainer.train()
+
+    Example:
+        >>> from ray import tune
+        >>> config = SlateQConfig()
+        >>> # Print out some default values.
+        >>> print(config.lr)
+        ... 0.0004
+        >>> # Update the config object.
+        >>> config.training(lr=tune.grid_search([0.001, 0.0001]))
+        >>> # Set the config object's env.
+        >>> config.environment(env="CartPole-v1")
+        >>> # Use to_dict() to get the old-style python config dict
+        >>> # when running with tune.
+        >>> tune.run(
+        ...     "SlateQ",
+        ...     stop={"episode_reward_mean": 160.0},
+        ...     config=config.to_dict(),
+        ... )
+    """
+
+    def __init__(self):
+        """Initializes a PGConfig instance."""
+        super().__init__(trainer_class=SlateQTrainer)
+
+        # fmt: off
+        # __sphinx_doc_begin__
+        # Override some of TrainerConfig's default values with PG-specific values.
+        self.num_workers = 0
+        self.lr = 0.0004
+        self._disable_preprocessor_api = True
+        # __sphinx_doc_end__
+        # fmt: on
+
+
+
 DEFAULT_CONFIG = with_common_config({
     # === Model ===
     # Dense-layer setup for each the n (document) candidate Q-network stacks.
@@ -140,17 +182,7 @@ DEFAULT_CONFIG = with_common_config({
     # Prevent reporting frequency from going lower than this time span.
     "min_time_s_per_reporting": 1,
 
-    # Switch on no-preprocessors for easier Q-model coding.
-    "_disable_preprocessor_api": True,
-
-    # Deprecated keys:
-    # Use `capacity` in `replay_buffer_config` instead.
-    "buffer_size": DEPRECATED_VALUE,
-    # Use `replay_sequence_length` in `replay_buffer_config` instead.
-    "replay_sequence_length": DEPRECATED_VALUE,
 })
-# __sphinx_doc_end__
-# fmt: on
 
 
 def calculate_round_robin_weights(config: TrainerConfigDict) -> List[float]:
