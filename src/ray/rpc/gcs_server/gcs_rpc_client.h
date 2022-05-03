@@ -97,12 +97,12 @@ class Executor {
                 : Status(StatusCode(reply.status().code()), reply.status().message()); \
         callback(status, reply);                                                       \
         delete executor;                                                               \
-      } else if(gcs_is_down_) {                                         \
-        queued_executors_.emplace_back(executor);                       \
-      } else {                                                          \
-        executor->Retry();                                              \
-      }                                                                 \
-    };                                                                  \
+      } else if (gcs_is_down_) {                                                       \
+        queued_executors_.emplace_back(executor);                                      \
+      } else {                                                                         \
+        executor->Retry();                                                             \
+      }                                                                                \
+    };                                                                                 \
     auto operation =                                                                   \
         [request, operation_callback, timeout_ms](GcsRpcClient *gcs_rpc_client) {      \
           RAY_UNUSED(INVOKE_RPC_CALL(SERVICE,                                          \
@@ -138,10 +138,9 @@ class GcsRpcClient {
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   /// \param[in] gcs_service_failure_detected The function is used to redo subscription
   /// and reconnect to GCS RPC server when gcs service failure is detected.
-  GcsRpcClient(
-      const std::string &address,
-      const int port,
-      ClientCallManager &client_call_manager) {
+  GcsRpcClient(const std::string &address,
+               const int port,
+               ClientCallManager &client_call_manager) {
     Reset(address, port, client_call_manager);
   };
 
@@ -426,8 +425,8 @@ class GcsRpcClient {
                              internal_pubsub_grpc_client_,
                              /*method_timeout_ms*/ -1, )
  private:
-    void ReconnectHelper(absl::Time deadline,
-                         std::shared_ptr<boost::asio::deadline_timer> timer) {
+  void ReconnectHelper(absl::Time deadline,
+                       std::shared_ptr<boost::asio::deadline_timer> timer) {
     if (absl::Now() > deadline) {
       RAY_LOG(FATAL) << "Fail to reconnect to GCS";
     }
@@ -439,7 +438,8 @@ class GcsRpcClient {
         queued_executors_.pop_back();
       }
     } else {
-      RAY_LOG(INFO) << "Try to reconnect to GCS failed, " << absl::ToInt64Seconds(deadline - absl::Now()) << " seconds left";
+      RAY_LOG(INFO) << "Try to reconnect to GCS failed, "
+                    << absl::ToInt64Seconds(deadline - absl::Now()) << " seconds left";
       timer->expires_from_now(boost::posix_time::seconds(1));
       timer->async_wait(
           [this, deadline, timer](const auto &ec) { ReconnectHelper(deadline, timer); });
