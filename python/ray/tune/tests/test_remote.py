@@ -56,12 +56,14 @@ class RemoteTest(unittest.TestCase):
         self.assertFalse(args)
         kwargs.pop("run_or_experiment")
         kwargs.pop("_remote")
+        kwargs.pop("progress_reporter")  # gets autodetected and set
 
         default_kwargs = {
             k: v.default for k, v in inspect.signature(run).parameters.items()
         }
         default_kwargs.pop("run_or_experiment")
         default_kwargs.pop("_remote")
+        default_kwargs.pop("progress_reporter")
 
         self.assertDictEqual(kwargs, default_kwargs)
 
