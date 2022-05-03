@@ -14,7 +14,7 @@ See `Ray Distributed Library Patterns <https://www.anyscale.com/blog/ray-distrib
 
 Ray Collective
 --------------
-Ray collective communication library (\ ``ray.util.collective``\ ) allows efficient out-of-band collective and point-to-point communication between distributed CPUs or GPUs.
+Ray's collective communication library (\ ``ray.util.collective``\ ) allows efficient out-of-band collective and point-to-point communication between distributed CPUs or GPUs.
 See :ref:`Ray Collective <ray-collective>` for more details.
 
 HTTP Server
@@ -31,4 +31,4 @@ Similarly, you can expose other types of servers as well (e.g., gRPC servers).
 Limitations
 -----------
 
-When using out-of-band communication with Ray actors, keep in mind that Ray does not manage the calls between actors. This means that functionalities like distributed reference counting will not work with out-of-band communication, so you should take care not to pass object references in this way.
+When using out-of-band communication with Ray actors, keep in mind that Ray does not manage the calls between actors. This means that functionality like distributed reference counting will not work with out-of-band communication, so you should take care not to pass object references in this way.
