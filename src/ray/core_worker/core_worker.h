@@ -852,12 +852,13 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// (WORKER mode only) Exit the worker. This is the entrypoint used to shutdown a
   /// worker.
   /// SANG-TODO
-  void Exit(const rpc::WorkerExitInfo &exit_info,
+  void Exit(const rpc::WorkerExitType exit_type,
+            const string &detail,
             const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes =
                 nullptr);
-  
+
   /// SANG-TODO
-  void ForceExit(const rpc::WorkerExitType exit_type, const string &detail, bool notify_raylet);
+  void ForceExit(const rpc::WorkerExitType exit_type, const string &detail);
 
   /// Register this worker or driver to GCS.
   void RegisterToGcs();

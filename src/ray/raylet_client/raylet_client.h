@@ -280,7 +280,8 @@ class RayletClient : public RayletClientInterface {
   /// SANG-TODO
   /// \return ray::Status.
   ray::Status Disconnect(
-      const rpc::WorkerExitInfo &exit_info,
+      const rpc::WorkerExitType &exit_type,
+      const std::string &exit_detail,
       const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes);
 
   /// Tell the raylet which port this worker's gRPC server is listening on.

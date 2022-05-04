@@ -143,12 +143,6 @@ void Raylet::HandleAccept(const boost::system::error_code &error) {
                                             const std::vector<uint8_t> &message) {
       node_manager_.ProcessClientMessage(client, message_type, message.data());
     };
-    flatbuffers::FlatBufferBuilder fbb;
-    protocol::DisconnectClientBuilder builder(fbb);
-    builder.add_disconnect_type(static_cast<int>(rpc::WorkerExitType::SYSTEM_ERROR_EXIT));
-    fbb.Finish(builder.Finish());
-    std::vector<uint8_t> message_data(fbb.GetBufferPointer(),
-                                      fbb.GetBufferPointer() + fbb.GetSize());
     // Accept a new local client and dispatch it to the node manager.
     auto new_connection = ClientConnection::Create(
         client_handler,
@@ -156,8 +150,7 @@ void Raylet::HandleAccept(const boost::system::error_code &error) {
         std::move(socket_),
         "worker",
         node_manager_message_enum,
-        static_cast<int64_t>(protocol::MessageType::DisconnectClient),
-        message_data);
+        static_cast<int64_t>(protocol::MessageType::DisconnectClient));
   }
   // We're ready to accept another client.
   DoAccept();

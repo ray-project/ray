@@ -68,6 +68,7 @@ const ray::rpc::ActorDeathCause GenOwnerDiedCause(
     const ray::gcs::GcsActor *actor,
     const WorkerID &owner_id,
     const ray::rpc::WorkerExitType disconnect_type,
+    const std::string &disconnect_detail,
     const std::string owner_ip_address) {
   ray::rpc::ActorDeathCause death_cause;
   auto actor_died_error_ctx = death_cause.mutable_actor_died_error_context();
@@ -78,7 +79,9 @@ const ray::rpc::ActorDeathCause GenOwnerDiedCause(
                    " Owner Ip address: ",
                    owner_ip_address,
                    " Owner worker exit type: ",
-                   ray::rpc::WorkerExitType_Name(disconnect_type)));
+                   ray::rpc::WorkerExitType_Name(disconnect_type),
+                   " Worker exit detail: ",
+                   disconnect_detail));
   return death_cause;
 }
 
@@ -843,7 +846,7 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
                                      ", has creation_task_exception = ",
                                      (creation_task_exception != nullptr));
   if (disconnect_type == rpc::WorkerExitType::INTENDED_EXIT ||
-      disconnect_type == rpc::WorkerExitType::IDLE_EXIT) {
+      disconnect_type == rpc::WorkerExitType::INTENDED_SYSTEM_EXIT) {
     RAY_LOG(DEBUG) << message;
   } else {
     RAY_LOG(WARNING) << message;
@@ -859,9 +862,11 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
     // list.
     const auto children_ids = owner->second.children_actor_ids;
     for (const auto &child_id : children_ids) {
-      DestroyActor(
-          child_id,
-          GenOwnerDiedCause(GetActor(child_id), worker_id, disconnect_type, worker_ip));
+      DestroyActor(child_id,
+                   GenOwnerDiedCause(GetActor(child_id),
+                                     worker_id,
+                                     disconnect_type,
+                                     "Owner's worker process has crashed." worker_ip));
     }
   }
 
@@ -871,9 +876,11 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
   auto unresolved_actors = GetUnresolvedActorsByOwnerWorker(node_id, worker_id);
   for (auto &actor_id : unresolved_actors) {
     if (registered_actors_.count(actor_id)) {
-      DestroyActor(
-          actor_id,
-          GenOwnerDiedCause(GetActor(actor_id), worker_id, disconnect_type, worker_ip));
+      DestroyActor(actor_id,
+                   GenOwnerDiedCause(GetActor(actor_id),
+                                     worker_id,
+                                     disconnect_type,
+                                     "Owner's worker process has crashed." worker_ip));
     }
   }
 
@@ -933,7 +940,8 @@ void GcsActorManager::OnNodeDead(const NodeID &node_id,
       DestroyActor(child_id,
                    GenOwnerDiedCause(GetActor(child_id),
                                      owner_id,
-                                     rpc::WorkerExitType::NODE_DIED,
+                                     rpc::WorkerExitType::SYSTEM_ERROR_EXIT,
+                                     "Owner's node has crashed.",
                                      node_ip_address));
     }
   }
@@ -971,7 +979,8 @@ void GcsActorManager::OnNodeDead(const NodeID &node_id,
         DestroyActor(actor_id,
                      GenOwnerDiedCause(GetActor(actor_id),
                                        owner_id,
-                                       rpc::WorkerExitType::NODE_DIED,
+                                       rpc::WorkerExitType::SYSTEM_ERROR_EXIT,
+                                       "Owner's node has crashed.",
                                        node_ip_address));
       }
     }

@@ -108,6 +108,7 @@ inline std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
     int32_t port,
     int64_t timestamp,
     rpc::WorkerExitType disconnect_type,
+    const std::string &disconnect_detail,
     const rpc::RayException *creation_task_exception = nullptr) {
   auto worker_failure_info_ptr = std::make_shared<ray::rpc::WorkerTableData>();
   worker_failure_info_ptr->mutable_worker_address()->set_raylet_id(raylet_id.Binary());
@@ -116,6 +117,7 @@ inline std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
   worker_failure_info_ptr->mutable_worker_address()->set_port(port);
   worker_failure_info_ptr->set_timestamp(timestamp);
   worker_failure_info_ptr->set_exit_type(disconnect_type);
+  worker_failure_info_ptr->set_exit_detail(disconnect_detail);
   if (creation_task_exception != nullptr) {
     // this pointer will be freed by protobuf internal codes
     auto copied_data = new rpc::RayException(*creation_task_exception);

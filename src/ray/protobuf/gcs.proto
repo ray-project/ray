@@ -317,7 +317,7 @@ message WorkerTableData {
   // Whether it's an intentional disconnect, only applies then `is_alive` is false.
   optional WorkerExitType exit_type = 19;
   // The detailed message about worker exit.
-  optional string worker_exit_detail = 20;
+  optional string exit_detail = 20;
 }
 
 // Fields to publish when worker fails.

@@ -157,10 +157,11 @@ raylet::RayletClient::RayletClient(
 }
 
 Status raylet::RayletClient::Disconnect(
-    const rpc::WorkerExitInfo &exit_info,
+    const rpc::WorkerExitType &exit_type,
+    const std::string &exit_detail,
     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
   RAY_LOG(INFO) << "RayletClient::Disconnect, exit_type="
-                << rpc::WorkerExitType_Name(exit_info.exit_type())
+                << rpc::WorkerExitType_Name(exit_type) << ", exit_detail=" << exit_detail
                 << ", has creation_task_exception_pb_bytes="
                 << (creation_task_exception_pb_bytes != nullptr);
   flatbuffers::FlatBufferBuilder fbb;
@@ -177,6 +178,7 @@ Status raylet::RayletClient::Disconnect(
     builder.add_creation_task_exception_pb(creation_task_exception_pb_bytes_fb_vector);
   }
   builder.add_disconnect_type(static_cast<int>(exit_info.exit_type()));
+  builder.add_disconnect_detail(exit_detail);
   fbb.Finish(builder.Finish());
   auto status = conn_->WriteMessage(MessageType::DisconnectClient, &fbb);
   // Don't be too strict for disconnection errors.
