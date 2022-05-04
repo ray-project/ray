@@ -83,7 +83,7 @@ pytest-lazy-fixture
 pytest-timeout
 pytest-virtualenv
 redis >= 3.5.0, < 4.0.0
-scikit-learn==0.22.2
+scikit-learn==0.24.2
 testfixtures
 werkzeug
 xlrd
