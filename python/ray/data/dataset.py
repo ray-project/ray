@@ -996,8 +996,9 @@ class Dataset(Generic[T]):
     def split_proportionately(self, proportions: List[float]) -> List["Dataset[T]"]:
         """Split the dataset using proportions.
 
-        The calculated indices will be rounded down, so that the last split
-        always contains at least one element.
+        The indices to split at will be calculated in such a way so that all splits
+        always contains at least one element. If that is not possible,
+        an exception will be raised.
 
         This is equivalent to caulculating the indices manually and calling
         ``Dataset.split_at_indices``.
@@ -1035,7 +1036,22 @@ class Dataset(Generic[T]):
 
         dataset_length = self.count()
         cumulative_proportions = np.cumsum(proportions)
-        split_indices = [int(dataset_length * proportion) for proportion in cumulative_proportions]
+        split_indices = [
+            int(dataset_length * proportion) for proportion in cumulative_proportions
+        ]
+
+        # Ensure each split has at least one element
+        subtract = 0
+        for i in range(len(split_indices) - 2, -1, -1):
+            split_indices[i] -= subtract
+            if split_indices[i] == split_indices[i + 1]:
+                subtract += 1
+                split_indices[i] -= 1
+        if any(i <= 0 for i in split_indices):
+            raise ValueError(
+                "Couldn't create non-empty splits with the given proportions."
+            )
+
         return self.split_at_indices(split_indices)
 
     def union(self, *other: List["Dataset[T]"]) -> "Dataset[T]":

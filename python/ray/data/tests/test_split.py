@@ -221,6 +221,44 @@ def test_split_at_indices(ray_start_regular_shared):
     assert r == [[], [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]]
 
 
+def test_split_proportionately(ray_start_regular_shared):
+    ds = ray.data.range(10, parallelism=3)
+
+    with pytest.raises(ValueError):
+        ds.split_proportionately([])
+
+    with pytest.raises(ValueError):
+        ds.split_proportionately([-1])
+
+    with pytest.raises(ValueError):
+        ds.split_proportionately([0])
+
+    with pytest.raises(ValueError):
+        ds.split_proportionately([1])
+
+    with pytest.raises(ValueError):
+        ds.split_proportionately([0.5, 0.5])
+
+    splits = ds.split_proportionately([0.5])
+    r = [s.take() for s in splits]
+    assert r == [[0, 1, 2, 3, 4], [5, 6, 7, 8, 9]]
+
+    splits = ds.split_proportionately([0.2, 0.3])
+    r = [s.take() for s in splits]
+    assert r == [[0, 1], [2, 3, 4], [5, 6, 7, 8, 9]]
+
+    splits = ds.split_proportionately([0.2, 0.3, 0.3])
+    r = [s.take() for s in splits]
+    assert r == [[0, 1], [2, 3, 4], [5, 6, 7], [8, 9]]
+
+    splits = ds.split_proportionately([0.98, 0.01])
+    r = [s.take() for s in splits]
+    assert r == [[0, 1, 2, 3, 4, 5, 6, 7], [8], [9]]
+
+    with pytest.raises(ValueError):
+        ds.split_proportionately([0.90] + ([0.001] * 90))
+
+
 def test_split(ray_start_regular_shared):
     ds = ray.data.range(20, parallelism=10)
     assert ds.num_blocks() == 10
