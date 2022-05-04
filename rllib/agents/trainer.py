@@ -1912,7 +1912,10 @@ class Trainer(Trainable):
         )
 
         # Metrics settings.
-        if config.get("metrics_smoothing_episodes", DEPRECATED_VALUE) != DEPRECATED_VALUE:
+        if (
+            config.get("metrics_smoothing_episodes", DEPRECATED_VALUE)
+            != DEPRECATED_VALUE
+        ):
             deprecation_warning(
                 old="metrics_smoothing_episodes",
                 new="metrics_num_episodes_for_smoothing",
