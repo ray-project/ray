@@ -53,7 +53,7 @@ class PPOConfig(TrainerConfig):
     """Defines a PPOTrainer configuration class from which a PPOTrainer can be built.
 
     Example:
-        >>> config = PPOConfig(kl_coeff=0.3).training(gamma=0.9, lr=0.01)\
+        >>> config = PPOConfig().training(gamma=0.9, lr=0.01)\
         ...     .resources(num_gpus=0)\
         ...     .rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
@@ -107,7 +107,6 @@ class PPOConfig(TrainerConfig):
         self.train_batch_size = 4000
         self.lr = 5e-5
         self.model["vf_share_layers"] = False
-        self._disable_execution_plan_api = True
         # __sphinx_doc_end__
         # fmt: on
 
