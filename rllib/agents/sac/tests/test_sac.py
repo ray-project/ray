@@ -155,12 +155,14 @@ class TestSAC(unittest.TestCase):
                     new_trainer = sac.SACTrainer(config, env=env)
                     new_trainer.restore(checkpoint)
                     # Get some data from the buffer and compare.
-                    data = trainer.local_replay_buffer.replay_buffers[
+                    storage = trainer.local_replay_buffer.replay_buffers[
                         "default_policy"
-                    ]._storage[: 42 + 42]
-                    new_data = new_trainer.local_replay_buffer.replay_buffers[
+                    ]._storage
+                    data = [storage[i] for i in range(42 + 42)]
+                    new_storage = new_trainer.local_replay_buffer.replay_buffers[
                         "default_policy"
-                    ]._storage[: 42 + 42]
+                    ]._storage
+                    new_data = [new_storage[i] for i in range(42 + 42)]
                     check(data, new_data)
                     new_trainer.stop()
 

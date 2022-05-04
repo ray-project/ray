@@ -59,7 +59,7 @@ class ReservoirBuffer(ReplayBuffer):
                 self._num_evicted += 1
                 self._storage[idx] = item
         else:
-            ReplayBuffer._add_single_batch(item, **kwargs)
+            ReplayBuffer._add_single_batch(self, item, **kwargs)
 
     @ExperimentalAPI
     @override(ReplayBuffer)

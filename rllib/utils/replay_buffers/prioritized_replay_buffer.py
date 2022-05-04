@@ -77,8 +77,6 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
         len_before_add = len(self._storage)
         add_idx = self._storage._get_internal_index(len_before_add)
-        self._it_sum[add_idx] = weight ** self._alpha
-        self._it_min[add_idx] = weight ** self._alpha
 
         ReplayBuffer._add_single_batch(self, item)
 
@@ -86,10 +84,14 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             num_del = len_before_add - len(self._storage) + 1
             for i in range(1, num_del + 1):
                 del_idx = (self._storage._get_internal_index(0) - i) % self.capacity
-                assert self._it_sum[del_idx] != self._it_sum.neutral_element
-                assert self._it_min[del_idx] != self._it_min.neutral_element
-                self._it_sum[del_idx] = self._it_sum.neutral_element
-                self._it_min[del_idx] = self._it_min.neutral_element
+                if del_idx != add_idx:
+                    assert self._it_sum[del_idx] != self._it_sum.neutral_element
+                    assert self._it_min[del_idx] != self._it_min.neutral_element
+                    self._it_sum[del_idx] = self._it_sum.neutral_element
+                    self._it_min[del_idx] = self._it_min.neutral_element
+
+        self._it_sum[add_idx] = weight ** self._alpha
+        self._it_min[add_idx] = weight ** self._alpha
 
     def _sample_proportional(self, num_items: int) -> List[int]:
         start_idx = self._storage._get_internal_index(0)

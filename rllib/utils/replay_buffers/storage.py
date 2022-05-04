@@ -157,16 +157,20 @@ class LocalStorage(Sized, Iterable):
 
     @ExperimentalAPI
     def __getitem__(self, i: int) -> SampleBatchType:
+        if not isinstance(i, int):
+            raise ValueError("Only single integer indices supported for getting values.")
         if i >= len(self) or i < 0:
-            raise IndexError("Buffer index out of range")
+            raise IndexError("Buffer index out of range.")
         idx = self._get_internal_index(i)
         self._hit_count[idx] += 1
         return self._get(idx)
 
     @ExperimentalAPI
     def __setitem__(self, i: int, item: SampleBatchType) -> None:
+        if not isinstance(i, int):
+            raise ValueError("Only single integer indices supported for setting values.")
         if i >= len(self) or i < 0:
-            raise IndexError("Buffer index out of range")
+            raise IndexError("Buffer index out of range.")
         if not self.eviction_started:
             raise RuntimeError(
                 "Assigning items to an index is only allowed "

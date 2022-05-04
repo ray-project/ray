@@ -193,7 +193,7 @@ class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
         assert 6 == len(indices)
         assert len(buffer) == num_batches
         policy_buffer = buffer.replay_buffers[DEFAULT_POLICY_ID]
-        assert policy_buffer._next_idx == num_batches
+        assert policy_buffer._storage._offset_idx == 0
         # Update weight of indices 0, 2, 3, 4, like in our
         # PrioritizedReplayBuffer tests
         priority_dict = {
