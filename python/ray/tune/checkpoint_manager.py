@@ -56,10 +56,14 @@ class CheckpointManager(CommonCheckpointManager):
         super().__init__(checkpoint_strategy=checkpoint_strategy)
 
     def on_checkpoint(self, checkpoint: _TrackedCheckpoint):
+        # Set checkpoint ID
         checkpoint.checkpoint_id = (
             checkpoint.checkpoint_id or self._latest_checkpoint_id
         )
         self._latest_checkpoint_id += 1
+
+        # Set delete fn
+        checkpoint._delete_fn = checkpoint._delete_fn or self._delete_fn
 
         if checkpoint.storage_mode == _TrackedCheckpoint.MEMORY:
             self._replace_latest_memory_checkpoint(checkpoint)
