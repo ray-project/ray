@@ -786,15 +786,16 @@ def _get_markdown_annotation(rep) -> str:
         # Here we just print each traceback and the link to the respective
         # lines in GutHub
         for tb, loc, _ in rep.longrepr.chain:
-            if not loc:
-                continue
-
-            path, url = _get_repo_github_path_and_link(loc.path, loc.lineno)
+            if loc:
+                path, url = _get_repo_github_path_and_link(loc.path, loc.lineno)
+                github_link = f"[{path}:{loc.lineno}]({url})\n\n"
+            else:
+                github_link = ""
 
             markdown += "```\n"
             markdown += str(tb)
             markdown += "\n```\n\n"
-            markdown += f"[{path}:{loc.lineno}]({url})\n\n"
+            markdown += github_link
 
         markdown += "</details>\n"
 
