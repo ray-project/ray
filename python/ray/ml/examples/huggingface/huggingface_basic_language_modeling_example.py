@@ -72,8 +72,8 @@ def main(
             batch_size=1000,
             num_proc=1,
         )
-        ray_train = ray.data.from_arrow(lm_datasets["train"]._data.table)
-        ray_validation = ray.data.from_arrow(lm_datasets["validation"]._data.table)
+        ray_train = ray.data.from_huggingface(lm_datasets["train"])
+        ray_validation = ray.data.from_huggingface(lm_datasets["validation"])
         return ray_train, ray_validation
 
     ray_train, ray_validation = ray.get(get_dataset.remote())
