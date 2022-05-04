@@ -409,7 +409,6 @@ class ExternalStorageRayStorageImpl(ExternalStorage):
             # Read a part of the file and recover the object.
             with self._fs.open_input_file(url) as f:
                 f.seek(offset)
-                f = self._fs._wrap_input_stream(f, url, None, self._buffer_size)
                 address_len = int.from_bytes(f.read(8), byteorder="little")
                 metadata_len = int.from_bytes(f.read(8), byteorder="little")
                 buf_len = int.from_bytes(f.read(8), byteorder="little")
