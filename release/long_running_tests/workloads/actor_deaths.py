@@ -91,6 +91,7 @@ class Parent(object):
         except ray.exceptions.RayActorError as e:
             # Sleep for 30 more seconds so that drivers will get more
             # information from GCS when actors are unexpectedly failed.
+            print("Failed to kill a children actor. Error: ", e)
             time.sleep(30)
             raise e
 
