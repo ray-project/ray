@@ -180,6 +180,10 @@ class CheckpointManager(CommonCheckpointManager):
 
     # Train-specific attributes
     @property
+    def latest_checkpoint(self):
+        return self._latest_memory_checkpoint.checkpoint_dir_or_data
+
+    @property
     def latest_checkpoint_dir(self) -> Optional[Path]:
         """Path to the latest checkpoint directory."""
         checkpoint_dir = Path(TRAIN_CHECKPOINT_SUBDIR)

@@ -138,8 +138,6 @@ class CheckpointManager:
     ):
         self._checkpoint_strategy = checkpoint_strategy
 
-        self.latest_checkpoint = None
-
         # Incremental unique checkpoint ID of this run.
         self._latest_checkpoint_id = latest_checkpoint_id
 
