@@ -479,7 +479,7 @@ class GcsRpcClient {
 
   void Shutdown() {
     if (shutdown_) {
-      RAY_LOG(ERROR) << "GCS client has already been shutdown.";
+      RAY_LOG(DEBUG) << "GCS client has already been shutdown.";
     }
     shutdown_ = true;
     periodical_runner_.reset();
