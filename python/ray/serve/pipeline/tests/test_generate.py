@@ -111,7 +111,7 @@ def test_single_class_with_invalid_deployment_options(serve_instance):
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
     assert len(deployments) == 1
     with pytest.raises(
-        ValueError, match="Specifying name in ray_actor_options is not allowed"
+        ValueError, match="Specifying 'name' in ray_actor_options is not allowed"
     ):
         deployments[0].deploy()
 

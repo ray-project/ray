@@ -275,7 +275,6 @@ class ReplicaConfig:
                 "object_store_memory",
                 "resources",
                 # other options
-                "name",
                 "runtime_env",
             }
             for option in ray_actor_options:
