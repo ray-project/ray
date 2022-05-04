@@ -141,6 +141,12 @@ class FunctionActorManager:
 
     def load_function_or_class_from_local(self, module_name, function_or_class_name):
         """Try to load a function or class in the module from local."""
+
+        if module_name == "__main__":
+            import __main__ as main
+
+            if not hasattr(main, "__file__") or main.__file__ == "<stdin>":
+                return None
         try:
             module = importlib.import_module(module_name)
             parts = [part for part in function_or_class_name.split(".") if part]
@@ -321,6 +327,7 @@ class FunctionActorManager:
         # There's no need to load again
         if function_id in self._function_execution_info:
             return self._function_execution_info[function_id]
+        print("DBG>>>", self._worker.load_code_from_local)
         if self._worker.load_code_from_local:
             # Load function from local code.
             if not function_descriptor.is_actor_method():

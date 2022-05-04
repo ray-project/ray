@@ -1111,7 +1111,7 @@ def init(
     # assumes that the directory structures on the machines in the clusters
     # are the same.
     # When using an interactive shell, there is no script directory.
-    if hasattr(main, "__file__"):
+    if hasattr(main, "__file__") and main.__file__ != "<stdin>":
         script_directory = os.path.abspath(os.path.dirname(sys.argv[0]))
         job_config.code_search_path.append(script_directory)
 
