@@ -160,10 +160,12 @@ class CheckpointManager(CommonCheckpointManager):
 
     def on_start_training(
         self,
-        checkpoint_strategy: CheckpointStrategy,
+        checkpoint_strategy: Optional[CheckpointStrategy],
         run_dir: str,
         latest_checkpoint_id: int,
     ):
+        checkpoint_strategy = checkpoint_strategy or CheckpointStrategy()
+
         if checkpoint_strategy.checkpoint_score_attribute == TUNE_TRAINING_ITERATION:
             checkpoint_strategy.checkpoint_score_attribute = TIMESTAMP
 
