@@ -1441,7 +1441,7 @@ def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes):
     "--extra-screen-args",
     default=None,
     help="if screen is enabled, add the provided args to it. A useful example "
-    "usage scenario is passing --extra-screen-args='-Logfile /some/full/path/blah_log.txt'"
+    "usage scenario is passing --extra-screen-args='-Logfile /full/path/blah_log.txt'"
     " as it redirects screen output also to a custom file",
 )
 @add_click_logging_options
