@@ -13,7 +13,7 @@ environment (https://github.com/google-research/recsim).
 """
 
 import logging
-from typing import List, Type
+from typing import List, Optional, Type, Union
 
 from ray.rllib.agents.dqn.dqn import DQNTrainer
 from ray.rllib.agents.slateq.slateq_tf_policy import SlateQTFPolicy
@@ -74,6 +74,22 @@ class SlateQConfig(TrainerConfig):
 
         # fmt: off
         # __sphinx_doc_begin__
+
+        # SlateQ specific settings:
+        self.fcnet_hiddens_per_candidate = [256, 32]
+        self.target_network_update_freq = 3200
+        self.tau = 1.0
+        self.use_huber = False
+        self.huber_threshold = 1.0
+        self.training_intensity = None
+        self.lr_schedule = None
+        self.lr_choice_model = 1e-3
+        self.rmsprop_epsilon = 1e-5
+        self.grad_clip = None
+        self.learning_starts = 20000
+        self.n_step = 1
+        self.worker_side_prioritization = False
+
         # Override some of TrainerConfig's default values with SlateQ-specific values.
         self.exploration_config = {
             # The Exploration class to use.
@@ -98,30 +114,101 @@ class SlateQConfig(TrainerConfig):
         # __sphinx_doc_end__
         # fmt: on
 
+    @override(TrainerConfig)
+    def training(
+        self,
+        *,
+        fcnet_hiddens_per_candidate: Optional[List[int]] = None,
+        target_network_update_freq: Optional[int] = None,
+        tau: Optional[float] = None,
+        use_huber: Optional[bool] = None,
+        huber_threshold: Optional[float] = None,
+        training_intensity: Optional[float] = None,
+        lr_schedule: Optional[List[List[Union[int, float]]]] = None,
+        lr_choice_model: Optional[bool] = None,
+        rmsprop_epsilon: Optional[float] = None,
+        grad_clip: Optional[float] = None,
+        learning_starts: Optional[int] = None,
+        n_step: Optional[int] = None,
+        worker_side_prioritization: Optional[bool] = None,
+        **kwargs,
+    ) -> "SlateQConfig":
+        """Sets the training related configuration.
+
+        Args:
+            fcnet_hiddens_per_candidate: Dense-layer setup for each the n (document)
+                candidate Q-network stacks.
+            target_network_update_freq: Update the target network every
+                `target_network_update_freq` steps.
+            tau: Update the target by \tau * policy + (1-\tau) * target_policy.
+            use_huber: If True, use huber loss instead of squared loss for critic
+                network. Conventionally, no need to clip gradients if using a huber
+                loss.
+            huber_threshold: The threshold for the Huber loss.
+            training_intensity: If set, this will fix the ratio of replayed from a
+                buffer and learned on timesteps to sampled from an environment and
+                stored in the replay buffer timesteps. Otherwise, the replay will
+                proceed at the native ratio determined by
+                `(train_batch_size / rollout_fragment_length)`.
+            lr_schedule: Learning rate schedule. In the format of
+                [[timestep, lr-value], [timestep, lr-value], ...]
+                Intermediary timesteps will be assigned to interpolated learning rate
+                values. A schedule should normally start from timestep 0.
+            lr_choice_model: Learning rate for adam optimizer for the user choice model.
+                So far, only relevant/supported for framework=torch.
+            rmsprop_epsilon: RMSProp epsilon hyperparameter.
+            grad_clip: If not None, clip gradients during optimization at this value.
+            learning_starts: How many steps of the model to sample before learning
+                starts.
+            n_step: N-step parameter for Q-learning.
+            worker_side_prioritization: Whether to compute priorities for the replay
+                buffer on the workers.
+            **kwargs:
+
+        Returns:
+            This updated TrainerConfig object.
+        """
+        # Pass kwargs onto super's `training()` method.
+        super().training(**kwargs)
+
+        if fcnet_hiddens_per_candidate is None:
+            self.fcnet_hiddens_per_candidate = fcnet_hiddens_per_candidate
+        if target_network_update_freq is None:
+            self.target_network_update_freq = target_network_update_freq
+        if tau is None:
+            self.tau = tau
+        if use_huber is None:
+            self.use_huber = use_huber
+        if huber_threshold is None:
+            self.huber_threshold = huber_threshold
+        if training_intensity is None:
+            self.training_intensity = training_intensity
+        if lr_schedule is None:
+            self.lr_schedule = lr_schedule
+        if lr_choice_model is None:
+            self.lr_choice_model = lr_choice_model
+        if rmsprop_epsilon is None:
+            self.rmsprop_epsilon = rmsprop_epsilon
+        if grad_clip is None:
+            self.grad_clip = grad_clip
+        if learning_starts is None:
+            self.learning_starts = learning_starts
+        if n_step is None:
+            self.n_step = n_step
+        if worker_side_prioritization is None:
+            self.worker_side_prioritization = worker_side_prioritization
+
+        return self
 
 
+# TODO: Wait for MAx's PR on how we solve Buffer configs.
 DEFAULT_CONFIG = with_common_config({
-    # === Model ===
-    # Dense-layer setup for each the n (document) candidate Q-network stacks.
-    "fcnet_hiddens_per_candidate": [256, 32],
-
     # === Exploration Settings ===
     # Switch to greedy actions in evaluation workers.
     # TODO: How do we do this?
     "evaluation_config": {
         "explore": False,
     },
-
-    # Update the target network every `target_network_update_freq` steps.
-    "target_network_update_freq": 3200,
-    # Update the target by \tau * policy + (1-\tau) * target_policy.
-    "tau": 1.0,
-
-    # If True, use huber loss instead of squared loss for critic network
-    # Conventionally, no need to clip gradients if using a huber loss
-    "use_huber": False,
-    # Threshold of the huber loss.
-    "huber_threshold": 1.0,
 
     # === Replay buffer ===
     "replay_buffer_config": {
@@ -138,32 +225,6 @@ DEFAULT_CONFIG = with_common_config({
         # be set to greater than 1 to support recurrent models.
         "replay_sequence_length": 1,
     },
-    # If set, this will fix the ratio of replayed from a buffer and learned on
-    # timesteps to sampled from an environment and stored in the replay buffer
-    # timesteps. Otherwise, the replay will proceed at the native ratio
-    # determined by (train_batch_size / rollout_fragment_length).
-    "training_intensity": None,
-
-    # === Optimization ===
-    # Learning rate schedule.
-    # In the format of [[timestep, value], [timestep, value], ...]
-    # A schedule should normally start from timestep 0.
-    "lr_schedule": None,
-    # Learning rate for adam optimizer for the user choice model.
-    "lr_choice_model": 1e-3,  # Only relevant for framework=torch.
-
-    # RMSProp epsilon hyper parameter.
-    "rmsprop_epsilon": 1e-5,
-    # If not None, clip gradients during optimization at this value
-    "grad_clip": None,
-    # How many steps of the model to sample before learning starts.
-    "learning_starts": 20000,
-    # N-step Q learning
-    "n_step": 1,
-
-    # === Parallelism ===
-    # Whether to compute priorities on workers.
-    "worker_side_prioritization": False,
 
 })
 
