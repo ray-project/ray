@@ -984,7 +984,13 @@ def from_huggingface(
 
     if isinstance(dataset, datasets.DatasetDict):
         return {k: convert(ds) for k, ds in dataset.items()}
-    return convert(dataset)
+    elif isinstance(dataset, datasets.Dataset):
+        return convert(dataset)
+    else:
+        raise TypeError(
+            "`dataset` must be a `datasets.Dataset` or `datasets.DatasetDict`, "
+            f"got {type(dataset)}"
+        )
 
 
 def _df_to_block(df: "pandas.DataFrame") -> Block[ArrowRow]:
