@@ -36,7 +36,7 @@ class JobConfig:
         self.code_search_path = code_search_path or []
         # It's difficult to find the error that caused by the
         # code_search_path is a string. So we assert here.
-        assert isinstance(self.code_search_path, (list, tuple)), (
+        assert isinstance(self.code_search_path, list), (
             f"The type of code search path is incorrect: " f"{type(code_search_path)}"
         )
         self.client_job = client_job

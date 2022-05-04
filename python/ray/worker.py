@@ -1101,6 +1101,27 @@ def init(
             spawn_reaper=False,
             connect_only=True,
         )
+    if job_config is None:
+        job_config = ray.job_config.JobConfig()
+    
+
+    import __main__ as main
+    interactive_mode = not hasattr(main, "__file__"):
+    
+    # Add the directory containing the script that is running to the Python
+    # paths of the workers. Also add the current directory. Note that this
+    # assumes that the directory structures on the machines in the clusters
+    # are the same.
+    # When using an interactive shell, there is no script directory.
+    if not interactive_mode:
+        script_directory = os.path.abspath(os.path.dirname(sys.argv[0]))
+        job_config.append(script_directory)
+
+    # In client mode, if we use runtime envs with "working_dir", then
+    # it'll be handled automatically.  Otherwise, add the current dir.
+    if not job_config.client_job and not job_config.runtime_env.get('working_dir') is not None:
+        current_directory = os.path.abspath(os.path.curdir)
+        job_config.append(current_directory)
 
     connect(
         _global_node,
@@ -1112,6 +1133,7 @@ def init(
         namespace=namespace,
         job_config=job_config,
     )
+
     if job_config and job_config.code_search_path:
         global_worker.set_load_code_from_local(True)
     else:
@@ -1525,7 +1547,6 @@ def connect(
     driver_name = ""
     log_stdout_file_path = ""
     log_stderr_file_path = ""
-    interactive_mode = False
     if mode == SCRIPT_MODE:
         import __main__ as main
 
@@ -1581,6 +1602,16 @@ def connect(
         logs_dir = ""
     else:
         logs_dir = node.get_logs_dir_path()
+
+    # Add code search path to sys.path.
+    code_search_path = job_config.code_search_path
+    if code_search_path:
+        worker.set_load_code_from_local(True)
+        for p in code_search_path:
+            if os.path.isfile(p):
+                p = os.path.dirname(p)
+            sys.path.insert(1, p)
+
     worker.core_worker = ray._raylet.CoreWorker(
         mode,
         node.plasma_store_socket_name,
@@ -1643,23 +1674,6 @@ def connect(
             worker.logger_thread.start()
 
     if mode == SCRIPT_MODE:
-        # Add the directory containing the script that is running to the Python
-        # paths of the workers. Also add the current directory. Note that this
-        # assumes that the directory structures on the machines in the clusters
-        # are the same.
-        # When using an interactive shell, there is no script directory.
-        if not interactive_mode:
-            script_directory = os.path.abspath(os.path.dirname(sys.argv[0]))
-            worker.run_function_on_all_workers(
-                lambda worker_info: sys.path.insert(1, script_directory)
-            )
-        # In client mode, if we use runtime envs with "working_dir", then
-        # it'll be handled automatically.  Otherwise, add the current dir.
-        if not job_config.client_job and not job_config.runtime_env_has_uris():
-            current_directory = os.path.abspath(os.path.curdir)
-            worker.run_function_on_all_workers(
-                lambda worker_info: sys.path.insert(1, current_directory)
-            )
         # TODO(rkn): Here we first export functions to run, then remote
         # functions. The order matters. For example, one of the functions to
         # run may set the Python path, which is needed to import a module used
@@ -1670,6 +1684,7 @@ def connect(
         # note that the first exports to be defined on the driver will be the
         # ones defined in separate modules that are imported by the driver.
         # Export cached functions_to_run.
+
         for function in worker.cached_functions_to_run:
             worker.run_function_on_all_workers(function)
     worker.cached_functions_to_run = None
