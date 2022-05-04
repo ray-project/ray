@@ -368,10 +368,11 @@ def warn_replay_buffer_capacity(*, item: SampleBatchType, capacity: int) -> None
 def patch_buffer_with_fake_sampling_method(
     buffer: ReplayBuffer, fake_sample_output: SampleBatchType
 ) -> None:
-    """Patch a ReplayBuffer with a fake sampling method that always returns fake_sample_output.
+    """Patch a ReplayBuffer such that we always sample fake_sample_output.
 
-    Transforms fake_sample_output into a MultiAgentBatch if it is not a MultiAgentBatch and the buffer is a
-    MultiAgentBuffer. This is useful for testing purposes if we need deterministic sampling.
+    Transforms fake_sample_output into a MultiAgentBatch if it is not a
+    MultiAgentBatch and the buffer is a MultiAgentBuffer. This is useful for testing
+    purposes if we need deterministic sampling.
 
     Args:
         buffer: The buffer to be patched
@@ -384,12 +385,12 @@ def patch_buffer_with_fake_sampling_method(
         fake_sample_output = SampleBatch(fake_sample_output).as_multi_agent()
 
     def fake_sample(_: Any, __: Any = None, **kwargs) -> Optional[SampleBatchType]:
-        """Always returns a predefined batch defined by patch_buffer_with_fake_sampling_method().
+        """Always returns a predefined batch.
 
         Args:
-            _: dummy arg to match signature of sample() method, this will be ignored
-            __: dummy arg to match signature of sample() method, this will be ignored
-            **kwargs: dummy args to match signature of sample() method, these will be ignored
+            _: dummy arg to match signature of sample() method
+            __: dummy arg to match signature of sample() method
+            **kwargs: dummy args to match signature of sample() method
 
         Returns:
             Predefined MultiAgentBatch fake_sample_output
