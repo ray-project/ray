@@ -339,7 +339,7 @@ class PullManager {
   int64_t num_active_bundles_ = 0;
 
   /// Callback to pin plasma objects.
-  std::function<std::unique_ptr<RayObject>(const ObjectID &object_ids)> pin_object_;
+  std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object_;
 
   /// The last time OOM was reported. Track this so we don't spam warnings when
   /// the object store is full.

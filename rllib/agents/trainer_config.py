@@ -19,6 +19,7 @@ from ray.rllib.offline.estimators.importance_sampling import ImportanceSampling
 from ray.rllib.offline.estimators.weighted_importance_sampling import (
     WeightedImportanceSampling,
 )
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.typing import (
     EnvConfigDict,
     EnvType,
@@ -214,6 +215,17 @@ class TrainerConfig:
         self._disable_preprocessor_api = False
         self._disable_action_flattening = False
         self._disable_execution_plan_api = True
+
+        # TODO: Remove, once all deprecation_warning calls upon using these keys
+        #  have been removed.
+        # === Deprecated keys ===
+        self.simple_optimizer = DEPRECATED_VALUE
+        self.monitor = DEPRECATED_VALUE
+        self.evaluation_num_episodes = DEPRECATED_VALUE
+        self.metrics_smoothing_episodes = DEPRECATED_VALUE
+        self.timesteps_per_iteration = DEPRECATED_VALUE
+        self.min_iter_time_s = DEPRECATED_VALUE
+        self.collect_metrics_timeout = DEPRECATED_VALUE
 
     def to_dict(self) -> TrainerConfigDict:
         """Converts all settings into a legacy config dict for backward compatibility.
