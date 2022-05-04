@@ -276,9 +276,11 @@ class RayletClient : public RayletClientInterface {
   /// is used by actors to exit gracefully so that the raylet doesn't
   /// propagate an error message to the driver.
   ///
+  /// It's a blocking call.
+  /// SANG-TODO
   /// \return ray::Status.
   ray::Status Disconnect(
-      rpc::WorkerExitType exit_type,
+      const rpc::WorkerExitInfo &exit_info,
       const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes);
 
   /// Tell the raylet which port this worker's gRPC server is listening on.

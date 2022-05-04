@@ -138,6 +138,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                    << raylet_client_status;
     // Quit the process immediately.
     QuickExit();
+    ForceExit("", /*notify_raylet*/false);
   }
 
   connected_ = true;
@@ -585,20 +586,20 @@ void CoreWorker::ConnectToRaylet() {
 }
 
 void CoreWorker::Disconnect(
-    rpc::WorkerExitType exit_type,
+    const rpc::WorkerExitInfo &exit_info,
     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
   if (connected_) {
     RAY_LOG(INFO) << "Disconnecting to the raylet.";
     connected_ = false;
     if (local_raylet_client_) {
       RAY_IGNORE_EXPR(
-          local_raylet_client_->Disconnect(exit_type, creation_task_exception_pb_bytes));
+          local_raylet_client_->Disconnect(exit_info, creation_task_exception_pb_bytes));
     }
   }
 }
 
 void CoreWorker::Exit(
-    rpc::WorkerExitType exit_type,
+    const rpc::WorkerExitInfo &exit_info,
     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
   RAY_LOG(INFO) << "Exit signal received, this process will exit after all outstanding "
                    "tasks have finished"
@@ -614,18 +615,17 @@ void CoreWorker::Exit(
   /// leaked. See https://github.com/ray-project/ray/issues/19639.
   reference_counter_->ReleaseAllLocalReferences();
   // Callback to shutdown.
-  auto shutdown = [this, exit_type, creation_task_exception_pb_bytes]() {
+  auto shutdown = [this, exit_info = std::move(exit_info), creation_task_exception_pb_bytes]() {
     // To avoid problems, make sure shutdown is always called from the same
     // event loop each time.
     task_execution_service_.post(
-        [this, exit_type, creation_task_exception_pb_bytes]() {
+        [this, exit_info = std::move(exit_info), creation_task_exception_pb_bytes]() {
+          const auto exit_type = exit_info.exit_type();
           if (exit_type == rpc::WorkerExitType::CREATION_TASK_ERROR ||
               exit_type == rpc::WorkerExitType::INTENDED_EXIT ||
               exit_type == rpc::WorkerExitType::IDLE_EXIT) {
             // Notify the raylet about this exit.
-            // Only CREATION_TASK_ERROR and INTENDED_EXIT needs to disconnect
-            // manually.
-            Disconnect(exit_type, creation_task_exception_pb_bytes);
+            Disconnect(exit_info, creation_task_exception_pb_bytes);
           }
           Shutdown();
         },
@@ -665,6 +665,21 @@ void CoreWorker::Exit(
 
   task_manager_->DrainAndShutdown(drain_references_callback);
 }
+
+void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type, const string &detail, bool notify_raylet) {
+  RAY_LOG(WARNING) << "Force exit the process. " << " Notify raylet: " << notify_raylet << " Details: " << detail;
+  if (notify_raylet) {
+    rpc::WorkerExitInfo worker_exit_info;
+    worker_exit_info.set_exit_type(exit_type);
+    worker_exit_info.set_detail(detail);
+    Disconnect(worker_exit_info);
+  }
+  // NOTE(hchen): Use `QuickExit()` to force-exit this process without doing cleanup.
+  // `exit()` will destruct static objects in an incorrect order, which will lead to
+  // core dumps.
+  QuickExit();
+}
+
 void CoreWorker::RunIOService() {
 #ifndef _WIN32
   // Block SIGINT and SIGTERM so they will be handled by the main thread.
@@ -3056,14 +3071,14 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
 
   // Do force kill after reply callback sent
   if (requested_task_running && request.force_kill()) {
-    RAY_LOG(INFO) << "A task " << main_thread_task_id_
+    std::ostringstream stream;
+    const auto spec = task_manager_->GetTaskSpec(task_id)
+    RAY_CHECK(spec.has_value());
+    const auto task_name = spec.value().GetName();
+    stream << "A task " << task_name << " thread id: " << main_thread_task_id_
                   << " has received a force kill request after the cancellation. Killing "
                      "a worker...";
-    Disconnect();
-    // NOTE(hchen): Use `QuickExit()` to force-exit this process without doing cleanup.
-    // `exit()` will destruct static objects in an incorrect order, which will lead to
-    // core dumps.
-    QuickExit();
+    ForceExit(rpc::WorkerExitType::INTENDED_EXIT, stream.str(), /*notify_raylet*/false);
   }
 }
 
@@ -3084,9 +3099,6 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
 
   if (request.force_kill()) {
     RAY_LOG(INFO) << "Force kill actor request has received. exiting immediately...";
-    if (request.no_restart()) {
-      Disconnect();
-    }
     if (options_.num_workers > 1) {
       // TODO (kfstorm): Should we add some kind of check before sending the killing
       // request?
@@ -3096,10 +3108,10 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
              "please create the Java actor with some dynamic options to make it being "
              "hosted in a dedicated worker process.";
     }
-    // NOTE(hchen): Use `QuickExit()` to force-exit this process without doing cleanup.
-    // `exit()` will destruct static objects in an incorrect order, which will lead to
-    // core dumps.
-    QuickExit();
+    std::ostringstream stream;
+    stream << "Actor force kill request recieved. Worker is killed immediately.";
+    // If we don't need to restart this actor, we notify raylet before force killing it.
+    ForceExit(rpc::WorkerExitType::INTENDED_EXIT, "", /*notify_raylet*/request.no_restart())
   } else {
     Exit(rpc::WorkerExitType::INTENDED_EXIT);
   }

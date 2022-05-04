@@ -93,11 +93,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void ConnectToRaylet();
 
   /// Gracefully disconnect the worker from Raylet.
-  /// If this function is called during shutdown, Raylet will treat it as an intentional
-  /// disconnect.
   ///
+  /// SANG-TODO
   /// \return Void.
-  void Disconnect(rpc::WorkerExitType exit_type = rpc::WorkerExitType::INTENDED_EXIT,
+  void Disconnect(const rpc::WorkerExitInfo &exit_info,
                   const std::shared_ptr<LocalMemoryBuffer>
                       &creation_task_exception_pb_bytes = nullptr);
 
@@ -852,9 +851,13 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// (WORKER mode only) Exit the worker. This is the entrypoint used to shutdown a
   /// worker.
-  void Exit(rpc::WorkerExitType exit_type,
+  /// SANG-TODO
+  void Exit(const rpc::WorkerExitInfo &exit_info,
             const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes =
                 nullptr);
+  
+  /// SANG-TODO
+  void ForceExit(const rpc::WorkerExitType exit_type, const string &detail, bool notify_raylet);
 
   /// Register this worker or driver to GCS.
   void RegisterToGcs();

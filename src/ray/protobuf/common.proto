@@ -631,7 +631,8 @@ message MetricPoint {
 enum WorkerExitType {
   // Worker exit due to system level failures (i.e. worker crash).
   SYSTEM_ERROR_EXIT = 0;
-  // Intended, initiated worker exit via raylet API.
+  // Intended exit (e.g., users exit workers with exit code 0
+  // or exit initated by Ray API such as ray.kill).
   INTENDED_EXIT = 1;
   // Worker exit due to resource bundle release.
   UNUSED_RESOURCE_RELEASED = 2;
@@ -643,6 +644,11 @@ enum WorkerExitType {
   IDLE_EXIT = 5;
   // Worker killed because its node is dead.
   NODE_DIED = 6;
+}
+
+message WorkerExitInfo {
+  WorkerExitType exit_type = 0;
+  string detail = 1;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
