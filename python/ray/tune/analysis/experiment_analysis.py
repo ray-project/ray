@@ -423,7 +423,8 @@ class ExperimentAnalysis:
             # Support metrics given as paths, e.g.
             # "info/learner/default_policy/policy_loss".
             return [
-                (c.value, unflattened_lookup(metric, c.result)) for c in checkpoints
+                (c.checkpoint_dir_or_data, unflattened_lookup(metric, c.result))
+                for c in checkpoints
             ]
         else:
             raise ValueError("trial should be a string or a Trial instance.")

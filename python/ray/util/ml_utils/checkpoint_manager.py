@@ -230,6 +230,7 @@ class CheckpointManager:
             # Keep all checkpoints
             checkpoint.commit(path=self._get_next_checkpoint_path())
             self._replace_latest_persisted_checkpoint(checkpoint)
+            self._top_persisted_checkpoints.append(wrapped_checkpoint)
         elif (
             len(self._top_persisted_checkpoints) < self._checkpoint_strategy.num_to_keep
         ):
