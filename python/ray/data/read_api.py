@@ -974,7 +974,7 @@ def from_huggingface(
             ``IterableDataset`` is not supported.
 
     Returns:
-        Dataset holding Arrow records from the Dataset, or a
+        Dataset holding Arrow records from the Hugging Face Dataset, or a
         dict of datasets in case ``dataset`` is a ``DatasetDict``.
     """
     import datasets
