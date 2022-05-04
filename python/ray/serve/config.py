@@ -278,7 +278,8 @@ class ReplicaConfig:
             for option in ray_actor_options:
                 if option not in allowed_ray_actor_options:
                     raise ValueError(
-                        f"Specifying {option} in ray_actor_options is not allowed."
+                        f"Specifying '{option}' in ray_actor_options is not allowed. "
+                        f"Allowed options: {allowed_ray_actor_options}"
                     )
             ray_option_utils.validate_actor_options(ray_actor_options, in_options=True)
             self.ray_actor_options = ray_actor_options
