@@ -39,7 +39,9 @@ class TestDDPG(unittest.TestCase):
         config.num_workers = 1
         config.num_envs_per_worker = 2
         config.learning_starts = 0
-        config.exploration(exploration_config={"random_timesteps": 100})
+        explore = config.exploration_config.update({"random_timesteps": 100})
+        config.exploration(exploration_config=explore)
+
         num_iterations = 1
 
         # Test against all frameworks.
@@ -66,7 +68,7 @@ class TestDDPG(unittest.TestCase):
         config.num_workers = 1
         config.num_envs_per_worker = 2
         config.learning_starts = 0
-        config.exploration(exploration_config={"random_timesteps": 100})
+        config.exploration_config.update({"random_timesteps": 100})
 
         # Test against all frameworks.
         for _ in framework_iterator(config, with_eager_tracing=True):
