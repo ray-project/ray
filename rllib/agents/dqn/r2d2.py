@@ -32,14 +32,8 @@ R2D2_DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         # === Replay buffer ===
         "replay_buffer_config": {
             # For now we don't use the new ReplayBuffer API here
-            "_enable_replay_buffer_api": False,
+            "_enable_replay_buffer_api": True,
             "type": "MultiAgentReplayBuffer",
-            "prioritized_replay": False,
-            "prioritized_replay_alpha": 0.6,
-            # Beta parameter for sampling from prioritized replay buffer.
-            "prioritized_replay_beta": 0.4,
-            # Epsilon to add to the TD errors when updating priorities.
-            "prioritized_replay_eps": 1e-6,
             # Size of the replay buffer (in sequences, not timesteps).
             "capacity": 100000,
             # Set automatically: The number
