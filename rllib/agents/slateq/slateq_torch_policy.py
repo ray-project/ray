@@ -19,6 +19,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import (
     apply_grad_clipping,
+    concat_multi_gpu_td_errors,
     convert_to_torch_tensor,
     huber_loss,
 )
@@ -256,10 +257,6 @@ def build_slateq_stats(policy: Policy, batch) -> Dict[str, TensorType]:
             torch.stack(policy.get_tower_stats("target_clicked"))
         ),
         "q_loss": torch.mean(torch.stack(policy.get_tower_stats("q_loss"))),
-        "td_error": torch.cat(policy.get_tower_stats("td_error")),
-        "mean_td_error": torch.mean(
-            torch.stack(policy.get_tower_stats("mean_td_error"))
-        ),
         "mean_actions": torch.mean(torch.stack(policy.get_tower_stats("mean_actions"))),
         "choice_loss": torch.mean(torch.stack(policy.get_tower_stats("choice_loss"))),
         # "choice_beta": torch.mean(torch.stack(policy.get_tower_stats("choice_beta"))),
@@ -437,5 +434,6 @@ SlateQTorchPolicy = build_policy_class(
     # Post processing sampled trajectory data.
     # postprocess_fn=postprocess_fn_add_next_actions_for_sarsa,
     extra_grad_process_fn=apply_grad_clipping,
+    extra_learn_fetches_fn=concat_multi_gpu_td_errors,
     mixins=[TargetNetworkMixin],
 )
