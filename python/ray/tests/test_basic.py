@@ -296,7 +296,7 @@ def check():
     import os
     assert "CUDA_VISIBLE_DEVICES" not in os.environ
 
-print("remote", ray.get(check.remote(), timeout=10))
+print("remote", ray.get(check.remote()))
 """
 
     run_string_as_driver(

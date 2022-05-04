@@ -143,6 +143,9 @@ class FunctionActorManager:
         """Try to load a function or class in the module from local."""
 
         if module_name == "__main__":
+            # If the function come from main module, check whether we have
+            # file to this module or not. It could be from atty or stdin.
+            # For these case, we are sure worker won't have them, so return None
             import __main__ as main
 
             if not hasattr(main, "__file__") or main.__file__ == "<stdin>":
@@ -327,7 +330,6 @@ class FunctionActorManager:
         # There's no need to load again
         if function_id in self._function_execution_info:
             return self._function_execution_info[function_id]
-        print("DBG>>>", self._worker.load_code_from_local)
         if self._worker.load_code_from_local:
             # Load function from local code.
             if not function_descriptor.is_actor_method():
