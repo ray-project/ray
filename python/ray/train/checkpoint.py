@@ -35,10 +35,15 @@ class _NotYetPersistedCheckpoint(_TrackedCheckpoint):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self._committed = False
+        self._data_to_commit = self.checkpoint_dir_or_data
+        self.checkpoint_dir_or_data = None
+
+    @property
+    def committed(self):
+        return not self._data_to_commit
 
     def commit(self, path: Optional[Path] = None):
-        if self._committed:
+        if self.committed:
             return
 
         assert path
@@ -47,10 +52,10 @@ class _NotYetPersistedCheckpoint(_TrackedCheckpoint):
         path.parent.mkdir(parents=True, exist_ok=True)
         # Write checkpoint to disk.
         with path.open("wb") as f:
-            cloudpickle.dump(self, f)
+            cloudpickle.dump(self._data_to_commit, f)
             logger.debug(f"Checkpoint successfully written to: {path}")
 
-        self._committed = True
+        self.checkpoint_dir_or_data = path
 
     def delete(self):
         if not self._committed:
@@ -181,6 +186,8 @@ class CheckpointManager(CommonCheckpointManager):
     # Train-specific attributes
     @property
     def latest_checkpoint(self):
+        if not self._latest_memory_checkpoint:
+            return None
         return self._latest_memory_checkpoint.checkpoint_dir_or_data
 
     @property
@@ -252,7 +259,7 @@ class TuneCheckpointManager(CheckpointManager):
             # the checkpoint from.
             file_path = path.joinpath(TUNE_CHECKPOINT_FILE_NAME)
             with file_path.open("wb") as f:
-                cloudpickle.dump(checkpoint, f)
+                cloudpickle.dump(checkpoint.checkpoint_dir_or_data, f)
         checkpoint._committed = True
 
 
