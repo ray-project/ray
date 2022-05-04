@@ -149,28 +149,29 @@ class GcsRpcClient {
   void Reset(const std::string &address,
              const int port,
              ClientCallManager &client_call_manager) {
-    job_info_grpc_client_ = std::make_unique<GrpcClient<JobInfoGcsService>>(
-        address, port, client_call_manager);
-    actor_info_grpc_client_ = std::make_unique<GrpcClient<ActorInfoGcsService>>(
-        address, port, client_call_manager);
-    node_info_grpc_client_ = std::make_unique<GrpcClient<NodeInfoGcsService>>(
-        address, port, client_call_manager);
+    auto channel = BuildChannel(address, port);
+    job_info_grpc_client_ =
+        std::make_unique<GrpcClient<JobInfoGcsService>>(channel, client_call_manager);
+    actor_info_grpc_client_ =
+        std::make_unique<GrpcClient<ActorInfoGcsService>>(channel, client_call_manager);
+    node_info_grpc_client_ =
+        std::make_unique<GrpcClient<NodeInfoGcsService>>(channel, client_call_manager);
     node_resource_info_grpc_client_ =
-        std::make_unique<GrpcClient<NodeResourceInfoGcsService>>(
-            address, port, client_call_manager);
+        std::make_unique<GrpcClient<NodeResourceInfoGcsService>>(channel,
+                                                                 client_call_manager);
     heartbeat_info_grpc_client_ = std::make_unique<GrpcClient<HeartbeatInfoGcsService>>(
-        address, port, client_call_manager);
+        channel, client_call_manager);
     stats_grpc_client_ =
-        std::make_unique<GrpcClient<StatsGcsService>>(address, port, client_call_manager);
-    worker_info_grpc_client_ = std::make_unique<GrpcClient<WorkerInfoGcsService>>(
-        address, port, client_call_manager);
+        std::make_unique<GrpcClient<StatsGcsService>>(channel, client_call_manager);
+    worker_info_grpc_client_ =
+        std::make_unique<GrpcClient<WorkerInfoGcsService>>(channel, client_call_manager);
     placement_group_info_grpc_client_ =
-        std::make_unique<GrpcClient<PlacementGroupInfoGcsService>>(
-            address, port, client_call_manager);
-    internal_kv_grpc_client_ = std::make_unique<GrpcClient<InternalKVGcsService>>(
-        address, port, client_call_manager);
+        std::make_unique<GrpcClient<PlacementGroupInfoGcsService>>(channel,
+                                                                   client_call_manager);
+    internal_kv_grpc_client_ =
+        std::make_unique<GrpcClient<InternalKVGcsService>>(channel, client_call_manager);
     internal_pubsub_grpc_client_ = std::make_unique<GrpcClient<InternalPubSubGcsService>>(
-        address, port, client_call_manager);
+        channel, client_call_manager);
   }
 
   /// Add job info to GCS Service.
