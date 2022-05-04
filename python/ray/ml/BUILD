@@ -25,8 +25,8 @@ py_test(
     name = "horovod_cifar_pbt_example",
     size = "medium",
     srcs = ["examples/horovod/horovod_cifar_pbt_example.py"],
-    tags = ["team:ml", "exlusive", "pytorch", "example", "release", "py37"],
-    deps = [":tune_lib"],
+    tags = ["team:ml", "exlusive"],
+    deps = [":ml_lib"],
     args = ["--smoke-test"]
 )
 
