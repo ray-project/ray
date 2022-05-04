@@ -39,6 +39,7 @@ from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.autoscaler._private.kuberay.run_autoscaler import run_autoscaler_with_retries
 from ray.internal.internal_api import memory_summary
+from ray.internal.storage import _load_class
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger, cf
 from ray.dashboard.modules.job.cli import job_cli_group
 from ray.experimental.state.state_cli import list_state_cli_group
@@ -630,6 +631,9 @@ def start(
         tracing_startup_hook=tracing_startup_hook,
         ray_debugger_external=ray_debugger_external,
     )
+
+    if ray_constants.RAY_START_HOOK in os.environ:
+        _load_class(os.environ[ray_constants.RAY_START_HOOK])(ray_params, head)
 
     if head:
         # Start head node.

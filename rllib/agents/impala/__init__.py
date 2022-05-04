@@ -1,6 +1,7 @@
-from ray.rllib.agents.impala.impala import DEFAULT_CONFIG, ImpalaTrainer
+from ray.rllib.agents.impala.impala import DEFAULT_CONFIG, ImpalaConfig, ImpalaTrainer
 
 __all__ = [
-    "DEFAULT_CONFIG",
+    "ImpalaConfig",
     "ImpalaTrainer",
+    "DEFAULT_CONFIG",
 ]

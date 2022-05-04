@@ -79,8 +79,12 @@ DEFAULT_CONFIG = with_common_config({
         "explore": False,
     },
 
-    # Number of env steps to optimize for before returning.
-    "timesteps_per_iteration": 1000,
+    # Minimum env sampling timesteps to accumulate within a single `train()` call. This
+    # value does not affect learning, only the number of times `Trainer.step_attempt()`
+    # is called by `Trauber.train()`. If - after one `step_attempt()`, the env sampling
+    # timestep count has not been reached, will perform n more `step_attempt()` calls
+    # until the minimum timesteps have been executed. Set to 0 for no minimum timesteps.
+    "min_sample_timesteps_per_reporting": 1000,
     # Update the target network every `target_network_update_freq` steps.
     "target_network_update_freq": 500,
 
@@ -128,12 +132,6 @@ DEFAULT_CONFIG = with_common_config({
     },
     # Only torch supported so far.
     "framework": "torch",
-
-    # === Experimental Flags ===
-    # If True, the execution plan API will not be used. Instead,
-    # a Trainer's `training_iteration` method will be called as-is each
-    # training iteration.
-    "_disable_execution_plan_api": True,
 
     # Deprecated keys:
     # Use `replay_buffer_config.learning_starts` instead.

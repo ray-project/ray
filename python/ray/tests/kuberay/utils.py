@@ -1,14 +1,22 @@
 """Utilities for e2e tests of KubeRay/Ray integration.
 For consistency, all K8s interactions use kubectl through subprocess calls.
 """
+import atexit
+import contextlib
 import logging
-from pathlib import Path
+import pathlib
 import subprocess
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Generator, List, Optional
 import yaml
 
+import ray
+from ray.job_submission import JobStatus, JobSubmissionClient
+
+
 logger = logging.getLogger(__name__)
+
+SCRIPTS_DIR = pathlib.Path(__file__).resolve().parent / "scripts"
 
 
 def wait_for_crd(crd_name: str, tries=60, backoff_s=5):
@@ -78,7 +86,6 @@ def get_pod_names(namespace: str) -> List[str]:
         return []
     else:
         return get_pods_output.split("\n")
-    pass
 
 
 def wait_for_pod_to_start(
@@ -208,7 +215,7 @@ def kubectl_exec_python_script(
 
     Prints and return kubectl's output as a string.
     """
-    script_path = Path(__file__).resolve().parent / "scripts" / script_name
+    script_path = SCRIPTS_DIR / script_name
     with open(script_path) as script_file:
         script_string = script_file.read()
     return kubectl_exec(["python", "-c", script_string], pod, namespace, container)
@@ -227,3 +234,166 @@ def get_raycluster(raycluster: str, namespace: str) -> Dict[str, Any]:
         .strip()
     )
     return yaml.safe_load(get_raycluster_output)
+
+
+def _get_service_port(service: str, namespace: str, target_port: int) -> int:
+    """Given a K8s service and a port targetted by the service, returns the
+    corresponding port exposed by the service.
+
+    Args:
+        service: Name of a K8s service.
+        namespace: Namespace to which the service belongs.
+        target_port: Port targeted by the service.
+
+    Returns:
+        service_port: The port exposed by the service.
+    """
+    service_str = (
+        subprocess.check_output(
+            ["kubectl", "-n", namespace, "get", "service", service, "-o", "yaml"]
+        )
+        .decode()
+        .strip()
+    )
+    service_dict = yaml.safe_load(service_str)
+    service_ports: List = service_dict["spec"]["ports"]
+    matching_ports = [
+        port for port in service_ports if port["targetPort"] == target_port
+    ]
+    assert matching_ports
+    service_port = matching_ports[0]["port"]
+    return service_port
+
+
+@contextlib.contextmanager
+def _kubectl_port_forward(
+    service: str, namespace: str, target_port: int, local_port: Optional[int] = None
+) -> Generator[int, None, None]:
+    """Context manager which creates a kubectl port-forward process targeting a
+    K8s service.
+
+    Terminates the port-forwarding process upon exit.
+
+    Args:
+        service: Name of a K8s service.
+        namespace: Namespace to which the service belongs.
+        target_port: The port targeted by the service.
+        local_port: Forward from this port. Optional. By default, uses the port exposed
+        by the service.
+
+    Yields:
+        The local port. The service can then be accessed at 127.0.0.1:<local_port>.
+    """
+    # First, figure out which port the service exposes for the given target port.
+    service_port = _get_service_port(service, namespace, target_port)
+    if not local_port:
+        local_port = service_port
+
+    process = subprocess.Popen(
+        [
+            "kubectl",
+            "-n",
+            namespace,
+            "port-forward",
+            f"service/{service}",
+            f"{local_port}:{service_port}",
+        ]
+    )
+
+    def terminate_process():
+        process.terminate()
+        # Wait 10 seconds for the process to terminate.
+        # This cleans up the zombie entry from the process table.
+        # 10 seconds is a deliberately excessive amount of time to wait.
+        process.wait(timeout=10)
+
+    # Ensure clean-up in case of interrupt.
+    atexit.register(terminate_process)
+    # terminate_process is ok to execute multiple times.
+
+    try:
+        yield local_port
+    finally:
+        terminate_process()
+
+
+@contextlib.contextmanager
+def ray_client_port_forward(
+    head_service: str,
+    k8s_namespace: str = "default",
+    ray_namespace: Optional[str] = None,
+    ray_client_port: int = 10001,
+):
+    """Context manager which manages a Ray client connection using kubectl port-forward.
+
+    Args:
+        head_service: The name of the Ray head K8s service.
+        k8s_namespace: K8s namespace the Ray cluster belongs to.
+        ray_namespace: The Ray namespace to connect to.
+        ray_client_port: The port on which the Ray head is running the Ray client
+            server.
+    """
+    with _kubectl_port_forward(
+        service=head_service, namespace=k8s_namespace, target_port=ray_client_port
+    ) as local_port:
+        with ray.init(f"ray://127.0.0.1:{local_port}", namespace=ray_namespace):
+            yield
+
+
+def ray_job_submit(
+    script_name: str,
+    head_service: str,
+    k8s_namespace: str = "default",
+    ray_dashboard_port: int = 8265,
+) -> str:
+    """Submits a Python script via the Ray Job Submission API, using the Python SDK.
+    Waits for successful completion of the job and returns the job logs as a string.
+
+    Uses `kubectl port-forward` to access the Ray head's dashboard port.
+
+    Scripts live in `tests/kuberay/scripts`. This directory is used as the working
+    dir for the job.
+
+    Args:
+        script_name: The name of the script to submit.
+        head_service: The name of the Ray head K8s service.
+        k8s_namespace: K8s namespace the Ray cluster belongs to.
+        ray_dashboard_port: The port on which the Ray head is running the Ray dashboard.
+    """
+    with _kubectl_port_forward(
+        service=head_service, namespace=k8s_namespace, target_port=ray_dashboard_port
+    ) as local_port:
+        # It takes a bit of time to establish the connection.
+        # Try a few times to instantiate the JobSubmissionClient, as the client's
+        # instantiation does not retry on connection errors.
+        for trie in range(1, 7):
+            time.sleep(5)
+            try:
+                client = JobSubmissionClient(f"http://127.0.0.1:{local_port}")
+            except ConnectionError as e:
+                if trie < 6:
+                    logger.info("Job client connection failed. Retrying in 5 seconds.")
+                else:
+                    raise e from None
+        job_id = client.submit_job(
+            entrypoint=f"python {script_name}",
+            runtime_env={
+                "working_dir": SCRIPTS_DIR,
+                # Throw in some extra data for fun, to validate runtime envs.
+                "pip": ["pytest==6.0.0"],
+                "env_vars": {"key_foo": "value_bar"},
+            },
+        )
+        # Wait for the job to complete successfully.
+        # This logic is copied from the Job Submission docs.
+        start = time.time()
+        timeout = 60
+        while time.time() - start <= timeout:
+            status = client.get_job_status(job_id)
+            print(f"status: {status}")
+            if status in {JobStatus.SUCCEEDED, JobStatus.STOPPED, JobStatus.FAILED}:
+                break
+            time.sleep(5)
+
+        assert status == JobStatus.SUCCEEDED
+        return client.get_job_logs(job_id)

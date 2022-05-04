@@ -38,16 +38,15 @@ class NormalSchedulingQueue : public SchedulingQueue {
   size_t Size() const override;
 
   /// Add a new task's callbacks to the worker queue.
-  void Add(
-      int64_t seq_no,
-      int64_t client_processed_up_to,
-      std::function<void(rpc::SendReplyCallback)> accept_request,
-      std::function<void(rpc::SendReplyCallback)> reject_request,
-      rpc::SendReplyCallback send_reply_callback,
-      const std::string &concurrency_group_name = "",
-      const FunctionDescriptor &function_descriptor = FunctionDescriptorBuilder::Empty(),
-      TaskID task_id = TaskID::Nil(),
-      const std::vector<rpc::ObjectReference> &dependencies = {}) override;
+  void Add(int64_t seq_no,
+           int64_t client_processed_up_to,
+           std::function<void(rpc::SendReplyCallback)> accept_request,
+           std::function<void(rpc::SendReplyCallback)> reject_request,
+           rpc::SendReplyCallback send_reply_callback,
+           const std::string &concurrency_group_name,
+           const FunctionDescriptor &function_descriptor,
+           TaskID task_id,
+           const std::vector<rpc::ObjectReference> &dependencies) override;
 
   // Search for an InboundRequest associated with the task that we are trying to cancel.
   // If found, remove the InboundRequest from the queue and return true. Otherwise,
