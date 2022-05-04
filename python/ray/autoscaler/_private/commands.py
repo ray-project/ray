@@ -1031,7 +1031,7 @@ def exec_cluster(
         run_env: whether to run the command on the host or in a container.
             Select between "auto", "host" and "docker"
         screen: whether to run in a screen
-        extra_screen_args: optional custom additional args to pass to screen (only active if 'screen' used as well)
+        extra_screen_args: optional custom additional args to screen command
         tmux: whether to run in a tmux session
         stop: whether to stop the cluster after command run
         start: whether to start the cluster if it isn't up
@@ -1127,7 +1127,7 @@ def _exec(
     with_output: bool = False,
     run_env: str = "auto",
     shutdown_after_run: bool = False,
-    extra_screen_args:str = None,
+    extra_screen_args: str = None,
 ) -> str:
     if cmd:
         if screen:
@@ -1137,7 +1137,7 @@ def _exec(
                 "-dm",
             ]
 
-            if extra_screen_args is not None and len(extra_screen_args)>0:
+            if extra_screen_args is not None and len(extra_screen_args) > 0:
                 wrapped_cmd += [extra_screen_args]
 
             wrapped_cmd += [
@@ -1157,7 +1157,6 @@ def _exec(
                 quote(cmd + "; exec bash"),
             ]
             cmd = " ".join(wrapped_cmd)
-            #print('DEBUG: final cmd=', cmd)
     return updater.cmd_runner.run(
         cmd,
         exit_on_fail=True,

@@ -1438,7 +1438,11 @@ def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes):
     help="If True, the usage stats collection will be disabled.",
 )
 @click.option(
-    "--extra-screen-args", default=None, help="if screen is enabled, add the provided args to it. A useful example usage  scenario is passing --extra-screen-args='-Logfile /some/full/path/blah_log.txt' as it redirects screen output also to a custom file"
+    "--extra-screen-args",
+    default=None,
+    help="if screen is enabled, add the provided args to it. A useful example "
+    "usage scenario is passing --extra-screen-args='-Logfile /some/full/path/blah_log.txt'"
+    " as it redirects screen output also to a custom file",
 )
 @add_click_logging_options
 def submit(
@@ -1454,7 +1458,7 @@ def submit(
     args,
     script_args,
     disable_usage_stats,
-    extra_screen_args:str = None,
+    extra_screen_args: str = None,
 ):
     """Uploads and runs a script on the specified cluster.
 
