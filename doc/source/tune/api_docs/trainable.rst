@@ -47,10 +47,6 @@ Tune will run this function on a separate thread in a Ray actor process.
 You'll notice that Ray Tune will output extra values in addition to the user reported metrics,
 such as ``iterations_since_restore``. See :ref:`tune-autofilled-metrics` for an explanation/glossary of these values.
 
-.. tip:: If you want to leverage multi-node data parallel training with PyTorch while using parallel
-    hyperparameter tuning, check out our :ref:`PyTorch <tune-pytorch-cifar-ref>` user guide and
-    Tune's :ref:`distributed pytorch integrations <tune-integration-torch>`.
-
 Function API return and yield values
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Instead of using ``tune.report()``, you can also use Python's ``yield``
@@ -379,35 +375,6 @@ Utilities
 .. autofunction:: ray.tune.utils.diagnose_serialization
 
 .. autofunction:: ray.tune.utils.validate_save_restore
-
-
-.. _tune-ddp-doc:
-
-Distributed Torch
------------------
-
-Ray offers lightweight integrations to distribute your PyTorch training on Ray Tune.
-
-
-.. autofunction:: ray.tune.integration.torch.DistributedTrainableCreator
-   :noindex:
-
-.. autofunction:: ray.tune.integration.torch.distributed_checkpoint_dir
-   :noindex:
-
-.. autofunction:: ray.tune.integration.torch.is_distributed_trainable
-   :noindex:
-
-.. _tune-dist-tf-doc:
-
-Distributed TensorFlow
-----------------------
-
-Ray also offers lightweight integrations to distribute your TensorFlow training on Ray Tune.
-
-
-.. autofunction:: ray.tune.integration.tensorflow.DistributedTrainableCreator
-   :noindex:
 
 
 .. _tune-with-parameters:

@@ -1,3 +1,5 @@
+.. _air:
+
 Ray AI Runtime (alpha)
 ======================
 
