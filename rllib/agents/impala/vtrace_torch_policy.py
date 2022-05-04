@@ -186,11 +186,14 @@ class VTraceOptimizer:
             )
 
 
+# VTrace mixins are placed in front of more general mixins to make sure
+# their functions like optimizer() overrides all the other implementations
+# (e.g., LearningRateSchedule.optimizer())
 class VTraceTorchPolicy(
-    LearningRateSchedule,
-    EntropyCoeffSchedule,
     GradClippingMixin,
     VTraceOptimizer,
+    LearningRateSchedule,
+    EntropyCoeffSchedule,
     TorchPolicyV2
 ):
     """PyTorch policy class used with PPOTrainer."""
@@ -198,7 +201,9 @@ class VTraceTorchPolicy(
     def __init__(self, observation_space, action_space, config):
         config = dict(ray.rllib.agents.impala.impala.DEFAULT_CONFIG, **config)
 
-        # Need to initiate learning rate and entropy coeff fields first.
+        GradClippingMixin.__init__(self)
+        VTraceOptimizer.__init__(self)
+        # Need to initialize learning rate variable before calling TorchPolicyV2.__init__.
         LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
         EntropyCoeffSchedule.__init__(
             self, config["entropy_coeff"], config["entropy_coeff_schedule"]
@@ -211,9 +216,6 @@ class VTraceTorchPolicy(
             config,
             max_seq_len=config["model"]["max_seq_len"],
         )
-
-        GradClippingMixin.__init__(self)
-        VTraceOptimizer.__init__(self)
 
         # TODO: Don't require users to call this manually.
         self._initialize_loss_from_dummy_batch()

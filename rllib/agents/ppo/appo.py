@@ -211,9 +211,9 @@ class APPOTrainer(impala.ImpalaTrainer):
         self, config: PartialTrainerConfigDict
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
-            from ray.rllib.agents.ppo.appo_torch_policy import AsyncPPOTorchPolicy
+            from ray.rllib.agents.ppo.appo_torch_policy import APPOTorchPolicy
 
-            return AsyncPPOTorchPolicy
+            return APPOTorchPolicy
         elif config["framework"] == "tf":
             from ray.rllib.agents.ppo.appo_tf_policy import APPODynamicTFPolicy
 

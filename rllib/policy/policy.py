@@ -156,11 +156,21 @@ class Policy(metaclass=ABCMeta):
         # Child classes may set this.
         self.dist_class: Optional[Type] = None
 
-        # Maximal view requirements dict for `learn_on_batch()` and
-        # `compute_actions` calls.
-        # View requirements will be automatically filtered out later based
-        # on the postprocessing and loss functions to ensure optimal data
-        # collection and transfer performance.
+        # Initialize view requirements.
+        self.init_view_requirements()
+
+        # Whether the Model's initial state (method) has been added
+        # automatically based on the given view requirements of the model.
+        self._model_init_state_automatically_added = False
+
+    @DeveloperAPI
+    def init_view_requirements(self):
+        """Maximal view requirements dict for `learn_on_batch()` and
+        `compute_actions` calls.
+
+        Specific policies can override this function to provide custom
+        list of view requirements.
+        """
         view_reqs = self._get_default_view_requirements()
         if not hasattr(self, "view_requirements"):
             self.view_requirements = view_reqs
@@ -168,9 +178,6 @@ class Policy(metaclass=ABCMeta):
             for k, v in view_reqs.items():
                 if k not in self.view_requirements:
                     self.view_requirements[k] = v
-        # Whether the Model's initial state (method) has been added
-        # automatically based on the given view requirements of the model.
-        self._model_init_state_automatically_added = False
 
     @DeveloperAPI
     def compute_single_action(

@@ -261,11 +261,14 @@ def get_vtrace_tf_policy(base: type) -> type:
     Returns:
         A TF Policy to be used with ImpalaTrainer.
     """
+    # VTrace mixins are placed in front of more general mixins to make sure
+    # their functions like optimizer() overrides all the other implementations
+    # (e.g., LearningRateSchedule.optimizer())
     class VTraceTFPolicy(
-        LearningRateSchedule,
-        EntropyCoeffSchedule,
         VTraceClipGradients,
         VTraceOptimizer,
+        LearningRateSchedule,
+        EntropyCoeffSchedule,
         base
     ):
         def __init__(
@@ -288,12 +291,12 @@ def get_vtrace_tf_policy(base: type) -> type:
                 existing_model=existing_model,
             )
 
+            VTraceClipGradients.__init__(self)
+            VTraceOptimizer.__init__(self)
             LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
             EntropyCoeffSchedule.__init__(
                 self, config["entropy_coeff"], config["entropy_coeff_schedule"]
             )
-            VTraceClipGradients.__init__(self)
-            VTraceOptimizer.__init__(self)
 
             # Note: this is a bit ugly, but loss and optimizer initialization must
             # happen after all the MixIns are initialized.

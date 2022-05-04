@@ -128,14 +128,14 @@ def get_appo_tf_policy(base: type) -> type:
         A TF Policy to be used with ImpalaTrainer.
     """
     class APPOTFPolicy(
+        VTraceClipGradients,
+        VTraceOptimizer,
         LearningRateSchedule,
         KLCoeffMixin,
         EntropyCoeffSchedule,
         ValueNetworkMixin,
         MakeAPPOModel,
         TargetNetworkMixin,
-        VTraceClipGradients,
-        VTraceOptimizer,
         base,
     ):
         def __init__(
@@ -151,6 +151,8 @@ def get_appo_tf_policy(base: type) -> type:
             # Although this is a no-op, we call __init__ here to make it clear
             # that base.__init__ will use the make_model() call.
             MakeAPPOModel.__init__(self)
+            VTraceClipGradients.__init__(self)
+            VTraceOptimizer.__init__(self)
             LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
             EntropyCoeffSchedule.__init__(
                 self, config["entropy_coeff"], config["entropy_coeff_schedule"]
@@ -168,8 +170,6 @@ def get_appo_tf_policy(base: type) -> type:
 
             ValueNetworkMixin.__init__(self, config)
             KLCoeffMixin.__init__(self, config)
-            VTraceClipGradients.__init__(self)
-            VTraceOptimizer.__init__(self)
 
             # Note: this is a bit ugly, but loss and optimizer initialization must
             # happen after all the MixIns are initialized.

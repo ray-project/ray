@@ -8,20 +8,26 @@ Keep in sync with changes to VTraceTFPolicy.
 import gym
 import numpy as np
 import logging
-from typing import Type
+from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
+import ray
 import ray.rllib.agents.impala.vtrace_torch as vtrace
 from ray.rllib.agents.impala.vtrace_torch_policy import (
     make_time_major,
     VTraceOptimizer,
 )
 from ray.rllib.agents.ppo.appo_tf_policy import MakeAPPOModel
-from ray.rllib.evaluation.postprocessing import Postprocessing
+from ray.rllib.evaluation.postprocessing import (
+    compute_gae_for_sample_batch,
+    Postprocessing,
+)
+from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import (
     TorchDistributionWrapper,
     TorchCategorical,
 )
+from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_mixins import (
     EntropyCoeffSchedule,
@@ -31,6 +37,8 @@ from ray.rllib.policy.torch_mixins import (
     ValueNetworkMixin,
     TargetNetworkMixin,
 )
+from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import (
@@ -45,15 +53,18 @@ torch, nn = try_import_torch()
 logger = logging.getLogger(__name__)
 
 
+# We need this builder function because we want to share the same
+# custom logics between TF1 dynamic and TF2 eager policies.
 class APPOTorchPolicy(
+    MakeAPPOModel,
+    GradClippingMixin,
+    VTraceOptimizer,
     LearningRateSchedule,
     EntropyCoeffSchedule,
     KLCoeffMixin,
     ValueNetworkMixin,
-    MakeAPPOModel,
-    GradClippingMixin,
     TargetNetworkMixin,
-    VTraceOptimizer,
+    TorchPolicyV2,
 ):
     """PyTorch policy class used with APPOTrainer."""
 
@@ -63,6 +74,8 @@ class APPOTorchPolicy(
         # Although this is a no-op, we call __init__ here to make it clear
         # that base.__init__ will use the make_model() call.
         MakeAPPOModel.__init__(self)
+        GradClippingMixin.__init__(self)
+        VTraceOptimizer.__init__(self)
         LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
         EntropyCoeffSchedule.__init__(
             self, config["entropy_coeff"], config["entropy_coeff_schedule"]
@@ -78,14 +91,16 @@ class APPOTorchPolicy(
 
         ValueNetworkMixin.__init__(self, config)
         KLCoeffMixin.__init__(self, config)
-        GradClippingMixin.__init__(self)
-        VTraceOptimizer.__init__(self)
 
         # TODO: Don't require users to call this manually.
         self._initialize_loss_from_dummy_batch()
 
         # Initiate TargetNetwork ops after loss initialization.
-        TargetNetworkMixin.__init__(self, obs_space, action_space, config)
+        TargetNetworkMixin.__init__(self)
+
+    @override(TorchPolicyV2)
+    def init_view_requirements(self):
+        self.view_requirements = self._get_default_view_requirements()
 
     @override(TorchPolicyV2)
     def loss(
@@ -124,7 +139,7 @@ class APPOTorchPolicy(
 
         def _make_time_major(*args, **kwargs):
             return make_time_major(
-                policy, train_batch.get(SampleBatch.SEQ_LENS), *args, **kwargs
+                self, train_batch.get(SampleBatch.SEQ_LENS), *args, **kwargs
             )
 
         actions = train_batch[SampleBatch.ACTIONS]
@@ -374,17 +389,19 @@ class APPOTorchPolicy(
         other_agent_batches: Optional[Dict[Any, SampleBatch]] = None,
         episode: Optional["Episode"] = None,
     ):
-        # Do all post-processing always with no_grad().
-        # Not using this here will introduce a memory leak
-        # in torch (issue #6962).
-        with self._no_grad_context():
-            # Call super's postprocess_trajectory first.
-            sample_batch = super().postprocess_trajectory(
-                sample_batch, other_agent_batches, episode
-            )
-            return compute_gae_for_sample_batch(
-                self, sample_batch, other_agent_batches, episode
-            )
+        # Call super's postprocess_trajectory first.
+        sample_batch = super().postprocess_trajectory(
+            sample_batch, other_agent_batches, episode
+        )
+        if not self.config["vtrace"]:
+            # Do all post-processing always with no_grad().
+            # Not using this here will introduce a memory leak
+            # in torch (issue #6962).
+            with torch.no_grad():
+                sample_batch = compute_gae_for_sample_batch(
+                    self, sample_batch, other_agent_batches, episode
+                )
+        return sample_batch
 
     @override(TorchPolicyV2)
     def get_batch_divisibility_req(self) -> int:

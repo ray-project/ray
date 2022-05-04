@@ -90,3 +90,18 @@ class ViewRequirement:
 
         self.used_for_compute_actions = used_for_compute_actions
         self.used_for_training = used_for_training
+
+    def __str__(self):
+        """For easier inspection of view requirements.
+        """
+        return "|".join([str(v) for v in [
+            self.data_col,
+            self.space,
+            self.shift,
+            self.shift_from,
+            self.shift_to,
+            self.index,
+            self.batch_repeat_value,
+            self.used_for_training,
+            self.used_for_compute_actions
+        ]])
