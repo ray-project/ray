@@ -1589,7 +1589,6 @@ def connect(
     else:
         logs_dir = node.get_logs_dir_path()
 
-    print("DBG>", sys.path, job_config.code_search_path)
     worker.core_worker = ray._raylet.CoreWorker(
         mode,
         node.plasma_store_socket_name,
@@ -1611,12 +1610,14 @@ def connect(
     )
 
     # Add code search path to sys.path.
-    code_search_path = worker.get_job_config().code_search_path
+    code_search_path = worker.core_worker.get_job_config().code_search_path
+
     if code_search_path:
         for p in code_search_path:
             if os.path.isfile(p):
                 p = os.path.dirname(p)
             sys.path.insert(1, p)
+        worker.set_load_code_from_local(True)
 
     # Notify raylet that the core worker is ready.
     worker.core_worker.notify_raylet()
