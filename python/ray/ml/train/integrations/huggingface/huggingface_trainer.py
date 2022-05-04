@@ -5,6 +5,7 @@ import tempfile
 from distutils.version import LooseVersion
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple, Type, Union
+import warnings
 from ray.ml.utils.torch_utils import load_torch_model
 
 import torch
@@ -112,7 +113,8 @@ class HuggingFaceTrainer(TorchTrainer):
     argument in ``TrainingArguments`` will be automatically set. Please note
     that if you want to use CPU training, you will need to set the ``no_cuda``
     argument in ``TrainingArguments`` manually - otherwise, an exception
-    (segfault) may be thrown.
+    (segfault) may be thrown. Furthermore, 'steps' value for ``save_strategy``,
+    ``logging_strategy`` and ``evaluation_strategy`` is not yet supported.
 
     Example:
         .. code-block:: python
@@ -466,13 +468,22 @@ def _huggingface_train_loop_per_worker(config):
         train_torch_dataset, eval_torch_dataset, **config
     )
 
-    if trainer.args.push_to_hub:
+    if trainer.args.push_to_hub and not trainer.args.hub_token:
+        warnings.warn(
+            "You have set `push_to_hub=True` but didn't specify `hub_token`. "
+            "Pushing to hub will most likely fail, as the credentials will not "
+            "be automatically propagated from the local enviroment to the Ray Actors. "
+            "If that happens, specify `hub_token` in `TrainingArguments`."
+        )
+
+    if (
+        trainer.args.evaluation_strategy == "steps"
+        or trainer.args.save_strategy == "steps"
+        or trainer.args.logging_strategy == "steps"
+    ):
         raise ValueError(
-            "`push_to_hub` parameter in `TrainingArgs` is not supported by "
-            "`HuggingFaceTrainer`. If you would like to push your model to hub "
-            "after training, use the `HuggingFaceTrainer.load_huggingface_checkpoint`"
-            " method to obtain the model from a returned checkpoint, and use it to "
-            "instantiate the `transformers.Trainer` class."
+            "'steps' value for `evaluation_strategy`, `logging_strategy` "
+            "or `save_strategy` is not yet supported."
         )
 
     trainer = wrap_transformers_trainer(trainer)
@@ -498,7 +509,6 @@ def _huggingface_train_loop_per_worker(config):
         if source_ip == target_ip:
             checkpoint_path = source_path
         else:
-            # TODO(yard1): Confirm if tempdir is the right approach here.
             checkpoint_path = tempfile.mkdtemp(
                 suffix=Path(trainer.args.output_dir).name
             )

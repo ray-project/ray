@@ -114,6 +114,7 @@ class WorkerInterface {
   FRIEND_TEST(WorkerPoolTest, TestWorkerCappingLaterNWorkersNotOwningObjects);
   FRIEND_TEST(WorkerPoolTest, TestWorkerCappingWithExitDelay);
   FRIEND_TEST(WorkerPoolTest, MaximumStartupConcurrency);
+  FRIEND_TEST(WorkerPoolTest, HandleWorkerRegistration);
 };
 
 /// Worker class encapsulates the implementation details of a worker. A worker

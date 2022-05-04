@@ -466,7 +466,7 @@ class FunctionActorManager:
             msg = (
                 "Could not serialize the actor class "
                 f"{actor_creation_function_descriptor.repr}. "
-                "Check https://docs.ray.io/en/master/serialization.html#troubleshooting "  # noqa
+                "Check https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting "  # noqa
                 "for more information."
             )
             raise TypeError(msg) from e

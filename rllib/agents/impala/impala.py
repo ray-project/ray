@@ -104,6 +104,8 @@ class ImpalaConfig(TrainerConfig):
         self.num_gpus = 1
         self.lr = 0.0005
         self.min_time_s_per_reporting = 10
+        # IMPALA and APPO are not on the new training_iteration API yet.
+        self._disable_execution_plan_api = False
         # __sphinx_doc_end__
         # fmt: on
 
@@ -183,24 +185,26 @@ class ImpalaConfig(TrainerConfig):
             max_sample_requests_in_flight_per_worker: Level of queuing for sampling.
             broadcast_interval: Max number of workers to broadcast one set of
                 weights to.
-
             num_aggregation_workers: Use n (`num_aggregation_workers`) extra Actors for
                 multi-level aggregation of the data produced by the m RolloutWorkers
                 (`num_workers`). Note that n should be much smaller than m.
                 This can make sense if ingesting >2GB/s of samples, or if
                 the data requires decompression.
-            grad_clip:
+            grad_clip: If specified, clip the global norm of gradients by this amount.
             opt_type: Either "adam" or "rmsprop".
-            lr_schedule:
-
-            decay: `opt_type=rmsprop` settings.
-            momentum:
-            epsilon:
-
+            lr_schedule: Learning rate schedule. In the format of
+                [[timestep, lr-value], [timestep, lr-value], ...]
+                Intermediary timesteps will be assigned to interpolated learning rate
+                values. A schedule should normally start from timestep 0.
+            decay: Decay setting for the RMSProp optimizer, in case `opt_type=rmsprop`.
+            momentum: Momentum setting for the RMSProp optimizer, in case
+                `opt_type=rmsprop`.
+            epsilon: Epsilon setting for the RMSProp optimizer, in case
+                `opt_type=rmsprop`.
             vf_loss_coeff: Coefficient for the value function term in the loss function.
             entropy_coeff: Coefficient for the entropy regularizer term in the loss
                 function.
-            entropy_coeff_schedule:
+            entropy_coeff_schedule: Decay schedule for the entropy regularizer.
             _separate_vf_optimizer: Set this to true to have two separate optimizers
                 optimize the policy-and value networks.
             _lr_vf: If _separate_vf_optimizer is True, define separate learning rate
