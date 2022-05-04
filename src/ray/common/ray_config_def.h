@@ -152,7 +152,8 @@ RAY_CONFIG(int64_t, max_direct_call_object_size, 100 * 1024)
 
 // The max gRPC message size (the gRPC internal default is 4MB). We use a higher
 // limit in Ray to avoid crashing with many small inlined task arguments.
-RAY_CONFIG(int64_t, max_grpc_message_size, 100 * 1024 * 1024)
+// Keep in sync with GCS_STORAGE_MAX_SIZE in packaging.py.
+RAY_CONFIG(int64_t, max_grpc_message_size, 250 * 1024 * 1024)
 
 // Retry timeout for trying to create a gRPC server. Only applies if the number
 // of retries is non zero.

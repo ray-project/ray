@@ -1,20 +1,32 @@
 """
-Test that focuses on long chain of deployment graph
-INPUT -> Node_1 -> Node_2 -> ... -> Node_10 -> OUTPUT
+This test is parity of
+release/serve_tests/workloads/deployment_graph_wide_ensemble.py
+Instead of using graph api, the test is using pure handle to
+test wide fanout graph
+
+
+       -> Node_1
+      /          \
+INPUT --> Node_2  --> combine -> OUTPUT
+      \    ...   /
+       -> Node_10
+
  1) Intermediate blob size can be large / small
  2) Compute time each node can be long / short
  3) Init time can be long / short
 """
+
 import time
 import asyncio
 import click
 
+from typing import List
 from typing import Optional
 
 import ray
 from ray import serve
-from ray.experimental.dag import InputNode
-from ray.serve.drivers import DAGDriver
+from ray.serve.handle import RayServeSyncHandle
+from ray.serve.context import get_global_client
 from serve_test_cluster_utils import (
     setup_local_single_node_cluster,
     setup_anyscale_cluster,
@@ -22,7 +34,7 @@ from serve_test_cluster_utils import (
 from serve_test_utils import save_test_results
 from benchmark_utils import benchmark_throughput_tps, benchmark_latency_ms
 
-DEFAULT_CHAIN_LENGTH = 4
+DEFAULT_FANOUT_DEGREE = 4
 
 DEFAULT_NUM_REQUESTS_PER_CLIENT = 20  # request sent for latency test
 DEFAULT_NUM_CLIENTS = 1  # Clients concurrently sending request to deployment
@@ -36,44 +48,56 @@ class Node:
         time.sleep(init_delay_secs)
         self.id = id
 
-    async def compute(self, prev_val, compute_delay_secs=0):
+    async def predict(self, input_data, compute_delay_secs=0):
         await asyncio.sleep(compute_delay_secs)
 
-        return prev_val + 1
+        return input_data + self.id
 
 
-def test_long_chain_deployment_graph(
-    chain_length, init_delay_secs=0, compute_delay_secs=0
-):
-    """
-    Test that focuses on long chain of deployment graph
-    INPUT -> Node_1 -> Node_2 -> ... -> Node_10 -> OUTPUT
-    1) Intermediate blob size can be large / small
-    2) Compute time each node can be long / short
-    3) Init time can be long / short
-    """
+@serve.deployment
+class CombineNode:
+    def __init__(
+        self,
+        input_nodes: List[RayServeSyncHandle],
+        compute_delay_secs,
+        sync_handle=True,
+    ):
+        assert type(input_nodes) == list
+        self.input_nodes = input_nodes
+        self.compute_delay_secs = compute_delay_secs
+        self.sync_handle = sync_handle
 
-    nodes = [Node.bind(i, init_delay_secs=init_delay_secs) for i in range(chain_length)]
-    prev_outputs = [None for _ in range(chain_length)]
+    async def predict(self, data):
+        results = [
+            node.predict.remote(data, self.compute_delay_secs)
+            for node in self.input_nodes
+        ]
+        if self.sync_handle:
+            results = await asyncio.gather(*results)
+        else:
+            results = await asyncio.gather(*await asyncio.gather(*results))
+        return sum(results)
 
-    with InputNode() as user_input:
-        for i in range(chain_length):
-            if i == 0:
-                prev_outputs[i] = nodes[i].compute.bind(
-                    user_input, compute_delay_secs=compute_delay_secs
-                )
-            else:
-                prev_outputs[i] = nodes[i].compute.bind(
-                    prev_outputs[i - 1], compute_delay_secs=compute_delay_secs
-                )
 
-        serve_dag = DAGDriver.bind(prev_outputs[-1])
+def construct_wide_fanout_graph_with_pure_handle(
+    fanout_degree, sync_handle: bool, init_delay_secs=0, compute_delay_secs=0
+) -> RayServeSyncHandle:
+    nodes = []
+    for id in range(fanout_degree):
+        Node.options(name=str(id)).deploy(id, init_delay_secs=init_delay_secs)
+        nodes.append(get_global_client().get_handle(str(id), sync=sync_handle))
+    CombineNode.options(name="combine").deploy(
+        nodes, compute_delay_secs, sync_handle=sync_handle
+    )
+    return get_global_client().get_handle("combine", sync=sync_handle)
 
-    return serve_dag
+
+async def sanity_check_graph_deployment_with_async_handle(handle, expected_result):
+    assert await (await handle.predict.remote(0)) == expected_result
 
 
 @click.command()
-@click.option("--chain-length", type=int, default=DEFAULT_CHAIN_LENGTH)
+@click.option("--fanout-degree", type=int, default=DEFAULT_FANOUT_DEGREE)
 @click.option("--init-delay-secs", type=int, default=0)
 @click.option("--compute-delay-secs", type=int, default=0)
 @click.option(
@@ -88,46 +112,54 @@ def test_long_chain_deployment_graph(
     default=DEFAULT_THROUGHPUT_TRIAL_DURATION_SECS,
 )
 @click.option("--local-test", type=bool, default=True)
+@click.option("--sync-handle", type=bool, default=True)
 def main(
-    chain_length: Optional[int],
+    fanout_degree: Optional[int],
     init_delay_secs: Optional[int],
     compute_delay_secs: Optional[int],
     num_requests_per_client: Optional[int],
     num_clients: Optional[int],
     throughput_trial_duration_secs: Optional[int],
     local_test: Optional[bool],
+    sync_handle: Optional[bool],
 ):
     if local_test:
         setup_local_single_node_cluster(1, num_cpu_per_node=8)
     else:
         setup_anyscale_cluster()
 
-    serve_dag = test_long_chain_deployment_graph(
-        chain_length,
+    handle = construct_wide_fanout_graph_with_pure_handle(
+        fanout_degree,
+        sync_handle,
         init_delay_secs=init_delay_secs,
         compute_delay_secs=compute_delay_secs,
     )
-    dag_handle = serve.run(serve_dag)
-    assert ray.get(dag_handle.predict.remote(0)) == chain_length
+
+    # 0 + 1 + 2 + 3 + 4 + ... + (fanout_degree - 1)
+    expected = ((0 + fanout_degree - 1) * fanout_degree) / 2
+    if sync_handle:
+        assert ray.get(handle.predict.remote(0)) == expected
+    else:
+        sanity_check_graph_deployment_with_async_handle(handle, expected)
     loop = asyncio.get_event_loop()
 
     throughput_mean_tps, throughput_std_tps = loop.run_until_complete(
         benchmark_throughput_tps(
-            dag_handle,
-            chain_length,
+            handle,
+            expected,
             duration_secs=throughput_trial_duration_secs,
             num_clients=num_clients,
         )
     )
     latency_mean_ms, latency_std_ms = loop.run_until_complete(
         benchmark_latency_ms(
-            dag_handle,
-            chain_length,
+            handle,
+            expected,
             num_requests=num_requests_per_client,
             num_clients=num_clients,
         )
     )
-    print(f"chain_length: {chain_length}, num_clients: {num_clients}")
+    print(f"fanout_degree: {fanout_degree}, num_clients: {num_clients}")
     print(f"latency_mean_ms: {latency_mean_ms}, " f"latency_std_ms: {latency_std_ms}")
     print(
         f"throughput_mean_tps: {throughput_mean_tps}, "
@@ -135,10 +167,11 @@ def main(
     )
 
     results = {
-        "chain_length": chain_length,
+        "fanout_degree": fanout_degree,
         "init_delay_secs": init_delay_secs,
         "compute_delay_secs": compute_delay_secs,
         "local_test": local_test,
+        "sync_handle": sync_handle,
     }
     results["perf_metrics"] = [
         {

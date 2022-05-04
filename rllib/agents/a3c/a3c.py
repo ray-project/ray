@@ -86,7 +86,6 @@ class A3CConfig(TrainerConfig):
         # but to wait until n seconds have passed and then to summarize the
         # thus far collected results.
         self.min_time_s_per_reporting = 5
-        self._disable_execution_plan_api = True
         # __sphinx_doc_end__
         # fmt: on
 
