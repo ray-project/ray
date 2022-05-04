@@ -966,8 +966,6 @@ def from_spark(
 @PublicAPI
 def from_huggingface(
     dataset: Union["datasets.Dataset", "datasets.DatasetDict"],
-    *,
-    parallelism: Optional[int] = None,
 ) -> Union[Dataset[ArrowRow], Dict[str, Dataset[ArrowRow]]]:
     """Create a dataset from a Hugging Face Datasets Dataset.
 
