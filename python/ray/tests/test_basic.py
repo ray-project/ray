@@ -284,7 +284,7 @@ def test_options():
         with pytest.raises(TypeError):
             v.validate(k, unique_object)
 
-    # test updating "_metadata" with special rules
+    # test updating each namespace of "_metadata" independently
     assert ray_option_utils.update_options(
         {
             "_metadata": {"ns1": {"a1": 1, "b1": 2, "c1": 3}, "ns2": {"a2": 1}},
