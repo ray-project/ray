@@ -15,7 +15,7 @@ from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.replay_buffers import (
     MultiAgentPrioritizedReplayBuffer,
     ReplayBuffer,
-    MultiAgentReplayBuffer
+    MultiAgentReplayBuffer,
 )
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.typing import ResultDict, SampleBatchType, TrainerConfigDict
@@ -365,7 +365,9 @@ def warn_replay_buffer_capacity(*, item: SampleBatchType, capacity: int) -> None
             logger.info(msg)
 
 
-def patch_buffer_with_fake_sampling_method(buffer: ReplayBuffer, fake_sample_output: SampleBatchType) -> None:
+def patch_buffer_with_fake_sampling_method(
+    buffer: ReplayBuffer, fake_sample_output: SampleBatchType
+) -> None:
     """Patch a ReplayBuffer with a fake sampling method that always returns fake_sample_output.
 
     Transforms fake_sample_output into a MultiAgentBatch if it is not a MultiAgentBatch and the buffer is a
@@ -376,7 +378,9 @@ def patch_buffer_with_fake_sampling_method(buffer: ReplayBuffer, fake_sample_out
         fake_sample_output: The output to be sampled
 
     """
-    if isinstance(buffer, MultiAgentReplayBuffer) and not isinstance(fake_sample_output, MultiAgentBatch):
+    if isinstance(buffer, MultiAgentReplayBuffer) and not isinstance(
+        fake_sample_output, MultiAgentBatch
+    ):
         fake_sample_output = SampleBatch(fake_sample_output).as_multi_agent()
 
     def fake_sample(_: Any, __: Any = None, **kwargs) -> Optional[SampleBatchType]:
