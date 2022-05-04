@@ -169,8 +169,7 @@ message PinObjectIDRequest {
   repeated bytes object_ids = 2;
 }
 
-message PinObjectIDReply {
-}
+message PinObjectIDReply {}
 
 message GetNodeStatsRequest {
   // Whether to include memory stats. This could be large since it includes
