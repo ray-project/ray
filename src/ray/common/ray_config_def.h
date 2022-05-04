@@ -331,6 +331,9 @@ RAY_CONFIG(bool, support_fork, false)
 /// Each reconnection ping will be retried every 1 second.
 RAY_CONFIG(int32_t, gcs_rpc_server_reconnect_timeout_s, 60)
 
+/// The timeout for GCS connection in seconds
+RAY_CONFIG(int32_t, gcs_rpc_server_connect_timeout_s, 5)
+
 /// Minimum interval between reconnecting gcs rpc server when gcs server restarts.
 RAY_CONFIG(int32_t, minimum_gcs_reconnect_interval_milliseconds, 5000)
 

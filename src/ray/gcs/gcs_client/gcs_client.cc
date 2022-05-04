@@ -78,18 +78,10 @@ void GcsSubscriberClient::PubsubCommandBatch(
 GcsClient::GcsClient(const GcsClientOptions &options) : options_(options) {}
 
 Status GcsClient::Connect(instrumented_io_context &io_service) {
-  auto resubscribe_func = [this]() {
-    job_accessor_->AsyncResubscribe();
-    actor_accessor_->AsyncResubscribe();
-    node_accessor_->AsyncResubscribe();
-    node_resource_accessor_->AsyncResubscribe();
-    worker_accessor_->AsyncResubscribe();
-  };
-
   // Connect to gcs service.
   client_call_manager_ = std::make_unique<rpc::ClientCallManager>(io_service);
   gcs_rpc_client_ = std::make_shared<rpc::GcsRpcClient>(
-      options_.gcs_address_, options_.gcs_port_, *client_call_manager_, resubscribe_func);
+      options_.gcs_address_, options_.gcs_port_, *client_call_manager_);
 
   rpc::Address gcs_address;
   gcs_address.set_ip_address(options_.gcs_address_);

@@ -142,8 +142,7 @@ class GcsRpcClient {
   /// reconnected due to some error.
   GcsRpcClient(const std::string &address,
                const int port,
-               ClientCallManager &client_call_manager,
-               std::function<void()> reconnection_callback)
+               ClientCallManager &client_call_manager)
       : gcs_address_(address),
         gcs_port_(port),
         io_context_(&client_call_manager.GetMainService()),
@@ -157,6 +156,18 @@ class GcsRpcClient {
                      ::RayConfig::instance().gcs_grpc_initial_reconnect_backoff_ms());
 
     channel_ = BuildChannel(address, port, arguments);
+
+    // If not the reconnection will continue to work.
+    auto deadline = std::chrono::system_clock::now() + std::chrono::seconds(::RayConfig::instance().gcs_rpc_server_connect_timeout_s());
+    if(!channel_->WaitForConnected(deadline)) {
+      RAY_LOG(ERROR) << "Failed to connect to GCS at address " << address << ":" << port
+                     << " within " << ::RayConfig::instance().gcs_rpc_server_connect_timeout_s()
+                     << " seconds.";
+      gcs_is_down_ = true;
+    } else {
+      gcs_is_down_ = false;
+    }
+
     job_info_grpc_client_ =
         std::make_unique<GrpcClient<JobInfoGcsService>>(channel_, client_call_manager);
     actor_info_grpc_client_ =
@@ -183,19 +194,25 @@ class GcsRpcClient {
     // Setup monitor for gRPC channel status.
     // TODO(iycheng): Push this into ClientCallManager with CQ by using async call.
     periodical_runner_->RunFnPeriodically(
-        [this, reconnection_callback] {
+        [this] {
+          if(shutdown_) {
+            return;
+          }
           auto status = channel_->GetState(true);
           // https://grpc.github.io/grpc/core/connectivity__state_8h_source.html
           RAY_LOG(DEBUG) << "GCS channel status: " << status;
           switch (status) {
           case GRPC_CHANNEL_TRANSIENT_FAILURE:
           case GRPC_CHANNEL_CONNECTING:
-            RAY_CHECK(absl::ToInt64Seconds(absl::Now() - gcs_last_alive_time_) <
-                      ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s())
-                << "Failed to connect to GCS within "
-                << ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s()
-                << " seconds";
-            gcs_is_down_ = true;
+            if(!gcs_is_down_) {
+              gcs_is_down_ = true;
+            } else {
+              RAY_CHECK(absl::ToInt64Seconds(absl::Now() - gcs_last_alive_time_) <
+                        ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s())
+                  << "Failed to connect to GCS within "
+                  << ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s()
+                  << " seconds";
+            }
             break;
           case GRPC_CHANNEL_SHUTDOWN:
             RAY_CHECK(shutdown_) << "Channel shoud never go to this status.";
@@ -204,7 +221,6 @@ class GcsRpcClient {
           case GRPC_CHANNEL_IDLE:
             gcs_last_alive_time_ = absl::Now();
             gcs_is_down_ = false;
-            reconnection_callback();
             // Retry the one queued.
             while (!queued_executors_.empty()) {
               queued_executors_.back()->Retry();
@@ -492,6 +508,7 @@ class GcsRpcClient {
   std::shared_ptr<grpc::Channel> channel_;
   bool gcs_is_down_ = false;
   absl::Time gcs_last_alive_time_ = absl::Now();
+
   bool shutdown_ = false;
   std::unique_ptr<PeriodicalRunner> periodical_runner_;
   std::vector<Executor *> queued_executors_;
