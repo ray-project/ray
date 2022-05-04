@@ -102,7 +102,11 @@ class CheckpointManager(CommonCheckpointManager):
 
     @property
     def newest_memory_checkpoint(self):
-        return self._latest_memory_checkpoint
+        return self._latest_memory_checkpoint or _TrackedCheckpoint(
+            checkpoint_dir_or_data=None,
+            checkpoint_id=0,
+            storage_mode=_TrackedCheckpoint.MEMORY,
+        )
 
     def best_checkpoints(self):
         """Returns best PERSISTENT checkpoints, sorted by score."""
