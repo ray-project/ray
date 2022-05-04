@@ -267,12 +267,15 @@ class ReplicaConfig:
             if not isinstance(ray_actor_options, dict):
                 raise TypeError("ray_actor_options must be a dictionary.")
             allowed_ray_actor_options = {
+                # resource options
                 "accelerator_type",
                 "memory",
                 "num_cpus",
                 "num_gpus",
                 "object_store_memory",
                 "resources",
+                # other options
+                "name",
                 "runtime_env",
             }
             for option in ray_actor_options:
