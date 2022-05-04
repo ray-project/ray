@@ -3558,8 +3558,6 @@
     test_name: dataset_shuffle_sort_1tb_small_instances
     test_suite: dataset_test
 
-  stable: false
-
   frequency: nightly
   team: core
   cluster:
