@@ -21,7 +21,7 @@ Then you can clone it to your machine:
 
     git clone https://github.com/[your username]/ray.git
 
-Next make sure you connect your repository to the upstream (main project) ray repository. This will allow you to push your changes to your repository when proposing changes (in Pull Requests) while also pulling updates from the main project.
+Next make sure you connect your repository to the upstream (main project) Ray repository. This will allow you to push your code to your repository when proposing changes (in pull requests) while also pulling updates from the main project:
 
 .. code-block:: shell
     
@@ -52,7 +52,7 @@ For example you could use Python's integrated ``venv`` module to create one:
 
     python -m venv env
 
-That will create a virtual environment called ``env`` in the current directory, it will contain a directory with all the packages used by the local Python of your project. You only need to make this step once.
+That will create a virtual environment called ``env`` in the current directory, it will contain a directory with all the packages used by the local Python of your project. You only need to do this step once.
 
 Next, you need to activate the environment to tell your shell/terminal to use this particular Python. This will also depend on the system you use to set up your virtual environment (conda, venv, or other methods).
 
@@ -101,7 +101,7 @@ Running the script will remove the  ``ray/tune``, ``ray/rllib``, ``ray/autoscale
     # with your local `ray/python/ray/<package>`.
     python python/ray/setup-dev.py
 
-.. warning:: Do not run ``pip uninstall ray`` or ``pip install -U`` (for Ray or Ray wheels) if setting up your environment this way. To uninstall or upgrade, you must first ``rm -rf`` the pip-installation site (usually a ``site-packages/ray`` location), then do a pip reinstall (see the command above), and finally run the above ``setup-dev.py``` script again.
+.. warning:: Do not run ``pip uninstall ray`` or ``pip install -U`` (for Ray or Ray wheels) if setting up your environment this way. To uninstall or upgrade, you must first ``rm -rf`` the pip-installation site (usually a directory at the ``site-packages/ray`` location), then do a pip reinstall (see the command above), and finally run the above ``setup-dev.py`` script again.
 
 .. code-block:: shell
 
@@ -138,9 +138,9 @@ In RedHat, install bazel manually from this link: https://docs.bazel.build/versi
 Preparing to build Ray on MacOS
 -------------------------------
 
-.. tip:: Assuming you already have brew and bazel installed on your mac and you also have grpc and protobuf installed on your mac consider removing those (grpc and protobuf) for smooth build through commands ``brew uninstall grpc``, ``brew uninstall protobuf``. If you have built the source code earlier and it still fails with error as ``No such file or directory:``, try cleaning previous builds on your host by running commands ``brew uninstall binutils`` and ``bazel clean --expunge``.
+.. tip:: Assuming you already have brew and bazel installed on your mac and you also have grpc and protobuf installed on your mac consider removing those (grpc and protobuf) for smooth build through the commands ``brew uninstall grpc``, ``brew uninstall protobuf``. If you have built the source code earlier and it still fails with errors like ``No such file or directory:``, try cleaning previous builds on your host by running the commands ``brew uninstall binutils`` and ``bazel clean --expunge``.
 
-To build Ray on MacOS, first install these dependencies.
+To build Ray on MacOS, first install these dependencies:
 
 .. code-block:: bash
 
@@ -157,7 +157,11 @@ Make sure you have a local clone of the git repository as explained above.
 
 You will also need to install NodeJS to build the dashboard: https://nodejs.org
 
-Enter into the project directory.
+Enter into the project directory, for example:
+
+.. code-block:: shell
+
+    cd ray
 
 Now you can build the dashboard. From inside of your local Ray project directory run:
 
@@ -172,7 +176,7 @@ Now let's build Ray for Python.
 
 Make sure you activate any Python virtual (or conda) environment you could be using as described above.
 
-Enter into the internal directory for Python and install the project with ``pip``.
+Enter into the directory for Python inside of the Ray project directory and install the project with ``pip``:
 
 .. code-block:: bash
 
@@ -331,9 +335,11 @@ correctly. `Sphinx <http://sphinx-doc.org/>`_ is used to generate the documentat
 Building Docs for Apple Silicon (M1)
 ------------------------------------
 
-If you are using an Apple Silicon (M1 processor) some of the dependencies required for building the docs don't have binary packages available by default.
+If you are using an Apple Silicon (M1) some of the dependencies required for building the docs don't have binary packages available by default (not available in PyPI).
 
 The simplest way to install those dependencies is with ``conda`` (https://docs.conda.io/en/latest/miniconda.html) first, that way ``pip`` won't try to install them by building them from scratch.
+
+To do that, make sure you create and/or activate the conda environment, and then install the dependencies with:
 
 .. code-block:: shell
 
@@ -354,13 +360,15 @@ Next go to the subdirectory ``doc``:
 
 From there, you can install the dependencies for building the docs with:
 
-  .. code-block:: shell
+.. code-block:: shell
 
-    pip install -r requirements-doc.txt
+  pip install -r requirements-doc.txt
 
 After that you can use the ``make`` command to build the docs:
 
-    make html
+.. code-block:: shell
+
+  make html
 
 Once done, the docs will be in ``doc/_build/html``. For example, on Mac
 OSX, you can open the docs (assuming you are still in the ``doc``
