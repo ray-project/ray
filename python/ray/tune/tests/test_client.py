@@ -42,13 +42,6 @@ def test_optuna_example(start_client_server):
     run_optuna_tune(smoke_test=True)
 
 
-def test_ddp_mnist_pytorch(start_client_server_2_cpus):
-    assert ray.util.client.ray.is_connected()
-    from ray.tune.examples.ddp_mnist_torch import run_ddp_tune
-
-    run_ddp_tune(num_workers=2, num_gpus_per_worker=0, workers_per_node=None)
-
-
 def test_cifar10_pytorch(start_client_server_2_cpus):
     assert ray.util.client.ray.is_connected()
     from ray.tune.examples.cifar10_pytorch import main
@@ -68,13 +61,6 @@ def test_mnist_ptl_mini(start_client_server):
     from ray.tune.examples.mnist_ptl_mini import tune_mnist
 
     tune_mnist(num_samples=1, num_epochs=1, gpus_per_trial=0)
-
-
-def test_horovod_simple(start_client_server_2_cpus):
-    assert ray.util.client.ray.is_connected()
-    from ray.tune.examples.horovod_simple import tune_horovod
-
-    tune_horovod(num_workers=2, num_samples=2, use_gpu=False)
 
 
 def test_xgboost_example(start_client_server):
