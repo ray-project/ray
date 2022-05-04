@@ -1,17 +1,10 @@
 import pytest
 import ray
 import datasets
+from ray.tests.conftest import *  # noqa
 
 
-@pytest.fixture(scope="module")
-def ray_start_regular(request):  # pragma: no cover
-    try:
-        yield ray.init(num_cpus=16)
-    finally:
-        ray.shutdown()
-
-
-def test_huggingface(ray_start_regular):
+def test_huggingface(ray_start_regular_shared):
     data = datasets.load_dataset("emotion")
 
     assert isinstance(data, datasets.DatasetDict)
