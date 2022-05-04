@@ -121,7 +121,12 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
   return Status::OK();
 }
 
-void GcsClient::Disconnect() { gcs_rpc_client_->Shutdown(); }
+void GcsClient::Disconnect() {
+  if(gcs_rpc_client_) {
+    gcs_rpc_client_->Shutdown();
+    gcs_rpc_client_.reset();
+  }
+}
 
 std::pair<std::string, int> GcsClient::GetGcsServerAddress() const {
   return gcs_rpc_client_->GetAddress();
