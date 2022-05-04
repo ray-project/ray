@@ -407,6 +407,19 @@ class TorchPolicyV2(Policy):
         """
         return {}
 
+    @override(Policy)
+    @DeveloperAPI
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def postprocess_trajectory(
+        self,
+        sample_batch: SampleBatch,
+        other_agent_batches: Optional[Dict[Any, SampleBatch]] = None,
+        episode: Optional["Episode"] = None,
+    ):
+        """Additional custom postprocessing of SampleBatch.
+        """
+        return sample_batch
+
     @DeveloperAPI
     @OverrideToImplementCustomLogic
     def optimizer(

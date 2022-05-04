@@ -171,6 +171,33 @@ class ValueNetworkMixin:
         }
 
 
+class TargetNetworkMixin:
+    """Assign the `update_target` method to the SimpleQTorchPolicy
+
+    The function is called every `target_network_update_freq` steps by the
+    master learner.
+    """
+
+    def __init__(self):
+        # Hard initial update from Q-net(s) to target Q-net(s).
+        self.update_target()
+
+    def update_target(self):
+        # Update_target_fn will be called periodically to copy Q network to
+        # target Q networks.
+        state_dict = self.model.state_dict()
+        for target in self.target_models.values():
+            target.load_state_dict(state_dict)
+
+    @override(TorchPolicy)
+    def set_weights(self, weights):
+        # Makes sure that whenever we restore weights for this policy's
+        # model, we sync the target network (from the main model)
+        # at the same time.
+        TorchPolicy.set_weights(self, weights)
+        self.update_target()
+
+
 class ComputeGAEMixIn:
     """Postprocess SampleBatch to Compute GAE before they get used for training.
     """

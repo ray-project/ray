@@ -11,6 +11,7 @@ from ray.rllib.policy.torch_mixins import ComputeGAEMixIn, ValueNetworkMixin
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.agents.ppo.ppo_tf_policy import validate_config
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import apply_grad_clipping
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import TensorType
@@ -405,9 +406,9 @@ class MAMLTorchPolicy(
     @override(TorchPolicyV2)
     def extra_grad_info(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
         if self.config["worker_index"]:
-            return {"worker_loss": self.loss_obj.loss}
+            return convert_to_numpy({"worker_loss": self.loss_obj.loss})
         else:
-            return {
+            return convert_to_numpy({
                 "cur_kl_coeff": self.kl_coeff_val,
                 "cur_lr": self.cur_lr,
                 "total_loss": self.loss_obj.loss,
@@ -416,7 +417,7 @@ class MAMLTorchPolicy(
                 "kl_loss": self.loss_obj.mean_kl_loss,
                 "inner_kl": self.loss_obj.mean_inner_kl,
                 "entropy": self.loss_obj.mean_entropy,
-            }
+            })
 
     def extra_grad_process(
         self, optimizer: "torch.optim.Optimizer", loss: TensorType
