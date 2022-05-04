@@ -158,10 +158,13 @@ class GcsRpcClient {
     channel_ = BuildChannel(address, port, arguments);
 
     // If not the reconnection will continue to work.
-    auto deadline = std::chrono::system_clock::now() + std::chrono::seconds(::RayConfig::instance().gcs_rpc_server_connect_timeout_s());
-    if(!channel_->WaitForConnected(deadline)) {
+    auto deadline =
+        std::chrono::system_clock::now() +
+        std::chrono::seconds(::RayConfig::instance().gcs_rpc_server_connect_timeout_s());
+    if (!channel_->WaitForConnected(deadline)) {
       RAY_LOG(ERROR) << "Failed to connect to GCS at address " << address << ":" << port
-                     << " within " << ::RayConfig::instance().gcs_rpc_server_connect_timeout_s()
+                     << " within "
+                     << ::RayConfig::instance().gcs_rpc_server_connect_timeout_s()
                      << " seconds.";
       gcs_is_down_ = true;
     } else {
@@ -195,7 +198,7 @@ class GcsRpcClient {
     // TODO(iycheng): Push this into ClientCallManager with CQ by using async call.
     periodical_runner_->RunFnPeriodically(
         [this] {
-          if(shutdown_) {
+          if (shutdown_) {
             return;
           }
           auto status = channel_->GetState(true);
@@ -204,7 +207,7 @@ class GcsRpcClient {
           switch (status) {
           case GRPC_CHANNEL_TRANSIENT_FAILURE:
           case GRPC_CHANNEL_CONNECTING:
-            if(!gcs_is_down_) {
+            if (!gcs_is_down_) {
               gcs_is_down_ = true;
             } else {
               RAY_CHECK(absl::ToInt64Seconds(absl::Now() - gcs_last_alive_time_) <
