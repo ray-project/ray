@@ -1,3 +1,7 @@
+.. include:: /_includes/rllib/announcement.rst
+
+.. include:: /_includes/rllib/we_are_hiring.rst
+
 Working With Offline Data
 =========================
 
