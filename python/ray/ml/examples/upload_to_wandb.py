@@ -1,12 +1,20 @@
-"""
+# ---
+# jupyter:
+#   jupytext:
+#     text_representation:
+#       extension: .py
+#       format_name: light
+#       format_version: '1.5'
+#       jupytext_version: 1.13.6
+#   kernelspec:
+#     display_name: Python 3
+#     language: python
+#     name: python3
+# ---
 
-```
-pip install -U wandb wandbfs
-```
-
-
-"""
+# # Experiment tracking and model upload with Weights & Biases
 import ray
+
 from ray.ml import RunConfig
 from ray.ml.result import Result
 from ray.ml.train.integrations.xgboost import XGBoostTrainer
@@ -21,18 +29,19 @@ def get_train_dataset() -> ray.data.Dataset:
     return ray.data.from_pandas(df)
 
 
-def train_model(train_dataset: ray.data.Dataset) -> Result:
+def train_model(train_dataset: ray.data.Dataset, wandb_project: str) -> Result:
     trainer = XGBoostTrainer(
-        scaling_config={
-            "num_workers": 2,
-        },
+        scaling_config={"num_workers": 2},
         params={"tree_method": "auto"},
         label_column="target",
         datasets={"train": train_dataset},
         num_boost_round=10,
         run_config=RunConfig(
             callbacks=[
-                WandbLoggerCallback(project="Wandb_example", save_checkpoints=True)
+                WandbLoggerCallback(
+                    project=wandb_project,
+                    save_checkpoints=True,
+                )
             ]
         ),
     )
@@ -40,5 +49,15 @@ def train_model(train_dataset: ray.data.Dataset) -> Result:
     return result
 
 
+wandb_project = "Wandb_example"
+
 train_dataset = get_train_dataset()
-result = train_model(train_dataset=train_dataset)
+result = train_model(train_dataset=train_dataset, wandb_project=wandb_project)
+
+
+# Clean-up all runs (this is only needed for CI):
+# import wandb  # noqa: E402
+#
+# api = wandb.Api()
+# for run in api.runs(wandb_project):
+#     run.delete()
