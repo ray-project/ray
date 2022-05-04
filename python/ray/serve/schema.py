@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, Extra, root_validator, validator
-from typing import Union, Tuple, List, Dict
+from typing import Union, List, Dict
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve.common import DeploymentStatus, DeploymentStatusInfo
 from ray.serve.utils import DEFAULT
@@ -77,32 +77,6 @@ class RayActorOptionsSchema(BaseModel, extra=Extra.forbid):
 class DeploymentSchema(BaseModel, extra=Extra.forbid):
     name: str = Field(
         ..., description=("Globally-unique name identifying this deployment.")
-    )
-    import_path: str = Field(
-        default=None,
-        description=(
-            "The application's full import path. Should be of the "
-            'form "module.submodule_1...submodule_n.'
-            'MyClassOrFunction." This is equivalent to '
-            '"from module.submodule_1...submodule_n import '
-            'MyClassOrFunction". Only works with Python '
-            "applications."
-        ),
-        # This regex checks that there is at least one character, followed by
-        # a dot, followed by at least one more character.
-        regex=r".+\..+",
-    )
-    init_args: Union[Tuple, List] = Field(
-        default=None,
-        description=(
-            "The application's init_args. Only works with Python applications."
-        ),
-    )
-    init_kwargs: Dict = Field(
-        default=None,
-        description=(
-            "The application's init_args. Only works with Python applications."
-        ),
     )
     num_replicas: int = Field(
         default=None,
@@ -295,6 +269,18 @@ class DeploymentSchema(BaseModel, extra=Extra.forbid):
 
 
 class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
+    graph_import_path: str = Field (
+        ...,
+        default="",
+        description="The Deployment Graph's import path."
+    )
+    graph_runtime_env: dict = Field(
+        default={},
+        description=(
+            "The Deployment Graphs's runtime_env. working_dir and "
+            "py_modules may contain only remote URIs."
+        ),
+    )
     deployments: List[DeploymentSchema] = Field(...)
 
 
