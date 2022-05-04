@@ -691,8 +691,14 @@ def pytest_runtest_makereport(item, call):
     outcome = yield
     rep = outcome.get_result()
 
-    append_short_test_summary(rep)
-    create_ray_logs_for_failed_test(rep)
+    try:
+        append_short_test_summary(rep)
+    except Exception as e:
+        print(f"+++ Error creating PyTest summary\n{e}")
+    try:
+        create_ray_logs_for_failed_test(rep)
+    except Exception as e:
+        print(f"+++ Error saving Ray logs for failing test\n{e}")
 
 
 def append_short_test_summary(rep):
@@ -780,6 +786,9 @@ def _get_markdown_annotation(rep) -> str:
         # Here we just print each traceback and the link to the respective
         # lines in GutHub
         for tb, loc, _ in rep.longrepr.chain:
+            if not loc:
+                continue
+
             path, url = _get_repo_github_path_and_link(loc.path, loc.lineno)
 
             markdown += "```\n"
