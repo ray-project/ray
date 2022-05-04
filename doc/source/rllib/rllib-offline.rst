@@ -241,6 +241,7 @@ You can configure experience input for an agent using the following options:
 
 
 .. code-block:: python
+
     # Specify how to generate experiences:
     #  - "sampler": Generate experiences via online (env) simulation (default).
     #  - A local directory or file glob expression (e.g., "/tmp/*.json").

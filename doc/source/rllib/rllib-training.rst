@@ -170,6 +170,7 @@ Common Parameters
 The following is a list of the common algorithm hyper-parameters:
 
 .. code-block:: python
+
     # === Settings for Rollout Worker processes ===
     # Number of rollout worker actors to create for parallel sampling. Setting
     # this to 0 will force rollouts to be done in the trainer actor.
