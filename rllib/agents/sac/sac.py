@@ -94,7 +94,7 @@ DEFAULT_CONFIG = with_common_config({
     "prioritized_replay_eps": DEPRECATED_VALUE,
     "replay_buffer_config": {
         "_enable_replay_buffer_api": True,
-        "type": "MultiAgentReplayBuffer",
+        "type": "MultiAgentPrioritizedReplayBuffer",
         "capacity": int(1e6),
         # How many steps of the model to sample before learning starts.
         "learning_starts": 1500,
