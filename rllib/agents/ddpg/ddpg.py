@@ -83,8 +83,6 @@ DEFAULT_CONFIG = with_common_config({
         # Timesteps over which to anneal scale (from initial to final values).
         "scale_timesteps": 10000,
     },
-    # Number of env steps to optimize for before returning
-    "min_sample_timesteps_per_reporting": 1000,
     # Extra configuration that disables exploration.
     "evaluation_config": {
         "explore": False
