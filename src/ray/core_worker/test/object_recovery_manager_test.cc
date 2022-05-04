@@ -58,12 +58,11 @@ class MockTaskResubmitter : public TaskResubmissionInterface {
 
 class MockRayletClient : public PinObjectsInterface {
  public:
-  void PinObjectIDs(
-      const rpc::Address &caller_address,
-      const std::vector<ObjectID> &object_ids,
-      const rpc::ClientCallback<rpc::PinObjectIDsReply> &callback) override {
-    RAY_LOG(INFO) << "PinObjectIDs " << object_ids.size();
-    callbacks.push_back(callback);
+  void PinObjectIDs(const rpc::Address &caller_address,
+                    const ObjectID &object_id,
+                    rpc::ClientCallback<rpc::PinObjectIDsReply> callback) override {
+    RAY_LOG(INFO) << "PinObjectIDs " << object_id.Hex();
+    callbacks.push_back(std::move(callback));
   }
 
   size_t Flush() {
