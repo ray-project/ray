@@ -60,7 +60,12 @@ class _NotYetPersistedCheckpoint(_TrackedCheckpoint):
     @classmethod
     def from_tracked_checkpoint(cls, checkpoint: _TrackedCheckpoint):
         new_checkpoint = cls(
-            **{**checkpoint.__dict__, "storage_mode": _TrackedCheckpoint.PERSISTENT}
+            checkpoint_dir_or_data=checkpoint.checkpoint_dir_or_data,
+            storage_mode=_TrackedCheckpoint.PERSISTENT,
+            checkpoint_id=checkpoint.checkpoint_id,
+            result=checkpoint.result,
+            node_ip=checkpoint.node_ip,
+            delete_fn=checkpoint._delete_fn,
         )
         return new_checkpoint
 
@@ -162,7 +167,7 @@ class CheckpointManager(CommonCheckpointManager):
         self,
         checkpoint_strategy: Optional[CheckpointStrategy],
         run_dir: str,
-        latest_checkpoint_id: int,
+        latest_checkpoint_id: Optional[int] = 0,
     ):
         checkpoint_strategy = checkpoint_strategy or CheckpointStrategy()
 
@@ -171,7 +176,7 @@ class CheckpointManager(CommonCheckpointManager):
 
         self._checkpoint_strategy = checkpoint_strategy
         self.run_dir = run_dir
-        self._latest_checkpoint_id = latest_checkpoint_id
+        self._latest_checkpoint_id = latest_checkpoint_id or 0
 
     # Train-specific attributes
     @property
