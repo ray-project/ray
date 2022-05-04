@@ -22,10 +22,8 @@ def get_datasets(a=5, b=10, size=1000, split=0.8) -> Tuple[Dataset]:
 
     dataset = get_dataset(a, b, size)
 
-    split_index = int(dataset.count() * split)
-
-    train_dataset, validation_dataset = dataset.random_shuffle().split_at_indices(
-        [split_index]
+    train_dataset, validation_dataset = dataset.random_shuffle().split_proportionately(
+        [split]
     )
 
     return train_dataset, validation_dataset
