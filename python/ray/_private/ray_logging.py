@@ -177,8 +177,9 @@ class StandardFdRedirectionRotatingFileHandler(RotatingFileHandler):
         os.dup2(self.stream.fileno(), self.get_original_stream().fileno())
 
 
-def get_worker_log_file_name(worker_type):
-    job_id = os.environ.get("RAY_JOB_ID")
+def get_worker_log_file_name(worker_type, job_id=None):
+    if job_id is None:
+        job_id = os.environ.get("RAY_JOB_ID")
     if worker_type == "WORKER":
         assert job_id is not None, (
             "RAY_JOB_ID should be set as an env "

@@ -109,7 +109,6 @@ class PPOConfig(TrainerConfig):
         self.train_batch_size = 4000
         self.lr = 5e-5
         self.model["vf_share_layers"] = False
-        self._disable_execution_plan_api = True
         # __sphinx_doc_end__
         # fmt: on
 

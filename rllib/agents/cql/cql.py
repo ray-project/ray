@@ -69,9 +69,6 @@ CQL_DEFAULT_CONFIG = merge_dicts(
         "min_sample_timesteps_per_reporting": 0,
         "min_train_timesteps_per_reporting": 100,
 
-        # Use the Trainer's `training_iteration` function instead of `execution_plan`.
-        "_disable_execution_plan_api": True,
-
         # Deprecated keys.
         # Use `replay_buffer_config.capacity` instead.
         "buffer_size": DEPRECATED_VALUE,
