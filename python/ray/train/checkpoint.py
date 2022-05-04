@@ -251,16 +251,19 @@ class TuneCheckpointManager(CheckpointManager):
     def _decide_what_to_do_with_checkpoint(
         self, checkpoint: _NotYetPersistedCheckpoint
     ):
-        self.add_tune_checkpoint_id(checkpoint.checkpoint_dir_or_data)
+        assert isinstance(checkpoint, _NotYetPersistedCheckpoint)
+        assert not checkpoint.committed
+
+        self.add_tune_checkpoint_id(checkpoint._data_to_commit)
         # If inside a Tune Trainable, then checkpoint with Tune.
         with tune.checkpoint_dir(step=self._latest_checkpoint_id) as checkpoint_dir:
             path = Path(checkpoint_dir)
             # Use a standard file name so that we know which file to load
             # the checkpoint from.
             file_path = path.joinpath(TUNE_CHECKPOINT_FILE_NAME)
-            with file_path.open("wb") as f:
-                cloudpickle.dump(checkpoint.checkpoint_dir_or_data, f)
-        checkpoint._committed = True
+            checkpoint.commit(file_path)
+
+        return super()._decide_what_to_do_with_checkpoint(checkpoint)
 
 
 def construct_checkpoint_file_name(checkpoint_id: int) -> str:
