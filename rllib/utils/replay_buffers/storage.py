@@ -24,7 +24,6 @@ logger = logging.getLogger(__name__)
 
 @ExperimentalAPI
 class LocalStorage(Sized, Iterable):
-
     @ExperimentalAPI
     def __init__(self, capacity: int = 10000) -> None:
         """Initializes an empty LocalStorage instance for storing timesteps in a ring buffer.
@@ -210,7 +209,7 @@ class LocalStorage(Sized, Iterable):
                 )
             )
             return
-        
+
         self._num_timesteps_added += item.count
         self._num_timesteps += item.count
         self._size_bytes += item.size_bytes()
@@ -323,7 +322,6 @@ class LocalStorage(Sized, Iterable):
 
 @ExperimentalAPI
 class InMemoryStorage(LocalStorage):
-
     @ExperimentalAPI
     @override(LocalStorage)
     def __init__(self, capacity: int = 10000) -> None:
@@ -393,7 +391,6 @@ class InMemoryStorage(LocalStorage):
 
 @ExperimentalAPI
 class OnDiskStorage(LocalStorage):
-
     @ExperimentalAPI
     @override(LocalStorage)
     def __init__(
