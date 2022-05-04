@@ -394,7 +394,7 @@ def test_migration_checkpoint_removal(start_connected_emptyhead_cluster, trainab
         cluster.add_node(num_cpus=1)
         cluster.remove_node(node)
         cluster.wait_for_nodes()
-        shutil.rmtree(os.path.dirname(t1.checkpoint.value))
+        shutil.rmtree(os.path.dirname(t1.checkpoint.checkpoint_dir_or_data))
         while not runner.is_finished():
             runner.step()
     assert t1.status == Trial.TERMINATED, runner.debug_string()

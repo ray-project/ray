@@ -211,7 +211,7 @@ class TrialRunnerTest2(unittest.TestCase):
         self.assertEqual(ray.get(trials[0].runner.set_info.remote(1)), 1)
         runner.step()  # Process result, dispatch save
         runner.step()  # Process save, stop trial
-        kwargs["restore_path"] = trials[0].checkpoint.value
+        kwargs["restore_path"] = trials[0].checkpoint.checkpoint_dir_or_data
         self.assertEqual(trials[0].status, Trial.TERMINATED)
 
         runner.add_trial(Trial("__fake", **kwargs))
@@ -224,7 +224,7 @@ class TrialRunnerTest2(unittest.TestCase):
         self.assertEqual(trials[0].status, Trial.TERMINATED)
         self.assertEqual(trials[1].status, Trial.RUNNING)
         self.assertEqual(ray.get(trials[1].runner.get_info.remote()), 1)
-        self.addCleanup(os.remove, trials[0].checkpoint.value)
+        self.addCleanup(os.remove, trials[0].checkpoint.checkpoint_dir_or_data)
 
     def testRestoreMetricsAfterCheckpointing(self):
         ray.init(num_cpus=1, num_gpus=1)
@@ -244,7 +244,7 @@ class TrialRunnerTest2(unittest.TestCase):
 
         self.assertEqual(trials[0].status, Trial.TERMINATED)
 
-        kwargs["restore_path"] = trials[0].checkpoint.value
+        kwargs["restore_path"] = trials[0].checkpoint.checkpoint_dir_or_data
         kwargs.pop("stopping_criterion")
         kwargs.pop("checkpoint_freq")  # No checkpointing for next trial
         runner.add_trial(Trial("__fake", **kwargs))
@@ -263,7 +263,7 @@ class TrialRunnerTest2(unittest.TestCase):
         self.assertEqual(trials[1].last_result["timesteps_since_restore"], 20)
         self.assertEqual(trials[1].last_result["iterations_since_restore"], 2)
         self.assertGreater(trials[1].last_result["time_since_restore"], 0)
-        self.addCleanup(os.remove, trials[0].checkpoint.value)
+        self.addCleanup(os.remove, trials[0].checkpoint.checkpoint_dir_or_data)
 
     def testCheckpointingAtEnd(self):
         ray.init(num_cpus=1, num_gpus=1)

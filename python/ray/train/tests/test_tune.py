@@ -117,7 +117,9 @@ def test_tune_checkpoint(ray_start_2_cpus):
     TestTrainable = trainer.to_tune_trainable(train_func)
 
     [trial] = tune.run(TestTrainable).trials
-    checkpoint_file = os.path.join(trial.checkpoint.value, TUNE_CHECKPOINT_FILE_NAME)
+    checkpoint_file = os.path.join(
+        trial.checkpoint.checkpoint_dir_or_data, TUNE_CHECKPOINT_FILE_NAME
+    )
     assert os.path.exists(checkpoint_file)
     with open(checkpoint_file, "rb") as f:
         checkpoint = cloudpickle.load(f)
@@ -139,7 +141,7 @@ def test_reuse_checkpoint(ray_start_2_cpus):
     TestTrainable = trainer.to_tune_trainable(train_func)
 
     [trial] = tune.run(TestTrainable, config={"max_iter": 5}).trials
-    last_ckpt = trial.checkpoint.value
+    last_ckpt = trial.checkpoint.checkpoint_dir_or_data
     checkpoint_file = os.path.join(last_ckpt, TUNE_CHECKPOINT_FILE_NAME)
     assert os.path.exists(checkpoint_file)
     with open(checkpoint_file, "rb") as f:
@@ -168,7 +170,7 @@ def test_retry(ray_start_2_cpus):
     TestTrainable = trainer.to_tune_trainable(train_func)
 
     analysis = tune.run(TestTrainable, max_failures=3)
-    last_ckpt = analysis.trials[0].checkpoint.value
+    last_ckpt = analysis.trials[0].checkpoint.checkpoint_dir_or_data
     checkpoint_file = os.path.join(last_ckpt, TUNE_CHECKPOINT_FILE_NAME)
     assert os.path.exists(checkpoint_file)
     with open(checkpoint_file, "rb") as f:
