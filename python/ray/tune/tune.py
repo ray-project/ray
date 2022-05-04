@@ -397,10 +397,9 @@ def run(
 
         def _handle_string_queue():
             string_item = get_next_queue_item()
-            while string_item:
-                if string_item:
-                    # This happens on the driver side
-                    progress_reporter.display(string_item)
+            while string_item is not None:
+                # This happens on the driver side
+                progress_reporter.display(string_item)
 
                 string_item = get_next_queue_item()
 
