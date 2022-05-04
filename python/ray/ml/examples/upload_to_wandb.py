@@ -49,15 +49,7 @@ def train_model(train_dataset: ray.data.Dataset, wandb_project: str) -> Result:
     return result
 
 
-wandb_project = "Wandb_example"
+wandb_project = "ray_air_example"
 
 train_dataset = get_train_dataset()
 result = train_model(train_dataset=train_dataset, wandb_project=wandb_project)
-
-
-# Clean-up all runs (this is only needed for CI):
-# import wandb  # noqa: E402
-#
-# api = wandb.Api()
-# for run in api.runs(wandb_project):
-#     run.delete()
