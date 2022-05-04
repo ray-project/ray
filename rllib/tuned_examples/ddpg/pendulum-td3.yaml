@@ -16,5 +16,8 @@ pendulum-td3:
         exploration_config:
             random_timesteps: 5000
         # === Evaluation ===
-        evaluation_interval: 1
-        evaluation_num_episodes: 5
+        evaluation_duration: "auto"
+        evaluation_num_workers: 1
+        evaluation_parallel_to_training: True
+        evaluation_duration_unit: "timesteps"
+        evaluation_interval: 10

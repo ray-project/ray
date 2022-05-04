@@ -83,21 +83,21 @@ DEFAULT_CONFIG = with_common_config({
         # Timesteps over which to anneal scale (from initial to final values).
         "scale_timesteps": 10000,
     },
+    # Number of env steps to optimize for before returning
+    "min_sample_timesteps_per_reporting": 1000,
     # Extra configuration that disables exploration.
     "evaluation_config": {
         "explore": False
     },
     # === Replay buffer ===
-    # Deprecated, use capacity in replay_buffer_config instead.
+    # Size of the replay buffer. Note that if async_updates is set, then
+    # each worker will have a replay buffer of this size.
     "buffer_size": DEPRECATED_VALUE,
     "replay_buffer_config": {
-        # For now we don't use the new ReplayBuffer API here
-        "_enable_replay_buffer_api": False,
-        "type": "MultiAgentReplayBuffer",
-        # Size of the replay buffer. Note that if async_updates is set,
-        # then each worker will have a replay buffer of this size.
+        "_enable_replay_buffer_api": True,
+        "type": "MultiAgentPrioritizedReplayBuffer",
         "capacity": 50000,
-        "replay_batch_size": 256,
+        # Alpha parameter for prioritized replay buffer.
         "prioritized_replay_alpha": 0.6,
         # Beta parameter for sampling from prioritized replay buffer.
         "prioritized_replay_beta": 0.4,
@@ -112,11 +112,9 @@ DEFAULT_CONFIG = with_common_config({
     # - This is False AND restoring from a checkpoint that does contain
     #   buffer data.
     "store_buffer_in_checkpoints": False,
-    # The number of contiguous environment steps to replay at once. This may
-    # be set to greater than 1 to support recurrent models.
-    "replay_sequence_length": 1,
     # Whether to LZ4 compress observations
     "compress_observations": False,
+
     # The intensity with which to update the model (vs collecting samples from
     # the env). If None, uses the "natural" value of:
     # `train_batch_size` / (`rollout_fragment_length` x `num_workers` x
@@ -181,7 +179,7 @@ DEFAULT_CONFIG = with_common_config({
     # If True, the execution plan API will not be used. Instead,
     # a Trainer's `training_iteration` method will be called as-is each
     # training iteration.
-    "_disable_execution_plan_api": False,
+    "_disable_execution_plan_api": True,
 })
 # __sphinx_doc_end__
 # fmt: on
@@ -225,15 +223,3 @@ class DDPGTrainer(SimpleQTrainer):
                     "batch_mode=complete_episodes."
                 )
                 config["batch_mode"] = "complete_episodes"
-
-        if config.get("prioritized_replay"):
-            if config["multiagent"]["replay_mode"] == "lockstep":
-                raise ValueError(
-                    "Prioritized replay is not supported when replay_mode=lockstep."
-                )
-        else:
-            if config.get("worker_side_prioritization"):
-                raise ValueError(
-                    "Worker side prioritization is not supported when "
-                    "prioritized_replay=False."
-                )

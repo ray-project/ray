@@ -6,6 +6,7 @@ TD3 paper.
 from ray.rllib.agents.ddpg.ddpg import DDPGTrainer, DEFAULT_CONFIG as DDPG_CONFIG
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 TD3_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
     DDPG_CONFIG,
@@ -53,17 +54,14 @@ TD3_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
         "worker_side_prioritization": False,
         "clip_rewards": False,
         "use_state_preprocessor": False,
-        # === Replay buffer ===
-        # Deprecated, use capacity in replay_buffer_config instead.
+        # Size of the replay buffer (in time steps).
+        "buffer_size": DEPRECATED_VALUE,
         "replay_buffer_config": {
-            # For now we don't use the new ReplayBuffer API here
-            "_enable_replay_buffer_api": False,
+            "_enable_replay_buffer_api": True,
             "type": "MultiAgentReplayBuffer",
-            # Size of the replay buffer. Note that if async_updates is set,
-            # then each worker will have a replay buffer of this size.
             "capacity": 1000000,
-            "replay_batch_size": 100,
         },
+        "_disable_execution_plan_api": True,
     },
 )
 
