@@ -25,7 +25,7 @@ def _add_to_resources_list(
     found = False
     for idx, resource in enumerate(resources_list):
         if resource[0] == resource_set:
-            resources_list[idx] = [resource[0], resource[1]+1]
+            resources_list[idx] = [resource[0], resource[1] + 1]
             found = True
             break
     if not found:

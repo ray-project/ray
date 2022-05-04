@@ -247,9 +247,7 @@ class StateAPIManager:
         result.sort(key=sort_func, reverse=True)
         return list(islice(result, option.limit))
 
-    async def get_resource_summary(
-        self, per_node: bool = False
-    ) -> dict:
+    async def get_resource_summary(self, per_node: bool = False) -> dict:
         """Summarizes the total/available resources in the cluster.
 
         Returns:
@@ -279,35 +277,39 @@ class StateAPIManager:
 
         async def fill_available_resources():
             reply = await self.data_source_client.get_all_available_resources(
-                timeout=DEFAULT_RPC_TIMEOUT)
-            fill_resources(resources_available, "resources_available",
-                           reply.resources_list)
+                timeout=DEFAULT_RPC_TIMEOUT
+            )
+            fill_resources(
+                resources_available, "resources_available", reply.resources_list
+            )
 
         async def fill_total_resources():
             reply = await self.data_source_client.get_all_node_info(
-                timeout=DEFAULT_RPC_TIMEOUT)
-            fill_resources(resources_total, "resources_total",
-                           reply.node_info_list)
+                timeout=DEFAULT_RPC_TIMEOUT
+            )
+            fill_resources(resources_total, "resources_total", reply.node_info_list)
 
-        await asyncio.gather(
-            *[fill_total_resources(), fill_available_resources()]
-        )
+        await asyncio.gather(*[fill_total_resources(), fill_available_resources()])
         if per_node:
             # Combine resources_total and resources_available into
             # ResourceSummary per node
             response = {}
             all_node_ids = {k for k in resources_available}.union(
-                {k for k in resources_total})
+                {k for k in resources_total}
+            )
             for node_id in all_node_ids:
-                response[node_id] = filter_fields({
-                    "total": resources_total.get(node_id) or {},
-                    "available": resources_available.get(node_id) or {}
-                }, ResourceSummary)  # sanity check
+                response[node_id] = filter_fields(
+                    {
+                        "total": resources_total.get(node_id) or {},
+                        "available": resources_available.get(node_id) or {},
+                    },
+                    ResourceSummary,
+                )  # sanity check
         else:
-            response = filter_fields({
-                "total": resources_total,
-                "available": resources_available
-            }, ResourceSummary)  # sanity check
+            response = filter_fields(
+                {"total": resources_total, "available": resources_available},
+                ResourceSummary,
+            )  # sanity check
         return response
 
     async def get_task_resource_usage(self, per_node: bool = False):
@@ -320,15 +322,18 @@ class StateAPIManager:
                 task_resource_usage_dict
             task_resource_usage_dict's schema is in TaskResourceUsage
         """
+
         async def _fill_for_node(node_id: str, resource_usage: dict):
             reply = await self._client.get_resource_usage_by_task(
-                    node_id, timeout=DEFAULT_RPC_TIMEOUT)
+                node_id, timeout=DEFAULT_RPC_TIMEOUT
+            )
 
             for task in reply.task_resource_usage:
                 task_name = get_task_name(task)
                 resource_set = self._message_to_dict(task.resource_usage)
                 aggregate_resource_usage_for_task(
-                    task_name, resource_set, resource_usage)
+                    task_name, resource_set, resource_usage
+                )
 
         if per_node:
             result = {}

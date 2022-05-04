@@ -26,7 +26,7 @@ from ray.core.generated.node_manager_pb2 import (
     GetNodeStatsRequest,
     GetNodeStatsReply,
     GetResourceUsageByTaskRequest,
-    GetResourceUsageByTaskReply
+    GetResourceUsageByTaskReply,
 )
 from ray.core.generated.runtime_env_agent_pb2 import (
     GetRuntimeEnvsInfoRequest,
@@ -110,8 +110,8 @@ class StateDataSourceClient:
         self._gcs_node_info_stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(
             gcs_channel
         )
-        self._gcs_node_resource_info_stub = gcs_service_pb2_grpc.NodeResourceInfoGcsServiceStub(
-            gcs_channel
+        self._gcs_node_resource_info_stub = (
+            gcs_service_pb2_grpc.NodeResourceInfoGcsServiceStub(gcs_channel)
         )
 
     def register_raylet_client(self, node_id: str, address: str, port: int):
@@ -239,5 +239,6 @@ class StateDataSourceClient:
             raise ValueError(f"Raylet for the node id: {node_id} doesn't exist.")
 
         reply = await stub.GetResourceUsageByTask(
-            GetResourceUsageByTaskRequest(), timeout=timeout)
+            GetResourceUsageByTaskRequest(), timeout=timeout
+        )
         return reply

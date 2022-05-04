@@ -18,7 +18,7 @@ def aggregate_resource_usage_for_task(
     else:
         task_resource_count_mapping[task] = {
             "task_name": task,
-            "resource_set_list": [{"resource_set": resource_set, "count": 1}]
+            "resource_set_list": [{"resource_set": resource_set, "count": 1}],
         }
 
 
