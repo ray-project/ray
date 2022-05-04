@@ -53,7 +53,8 @@ except NameError:
 try:
     from IPython.core.display import display, HTML
 except ImportError:
-    display, HTML = None
+    display = None
+    HTML = None
 
 
 @PublicAPI
