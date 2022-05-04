@@ -1406,6 +1406,12 @@ py_test(
     srcs = ["execution/tests/test_prioritized_replay_buffer.py"]
 )
 
+py_test(
+    name = "test_async_request_manager",
+    tags = ["team:ml", "execution"],
+    size = "small",
+    srcs = ["execution/tests/test_async_requests_manager.py"]
+)
 # --------------------------------------------------------------------
 # Models and Distributions
 # rllib/models/

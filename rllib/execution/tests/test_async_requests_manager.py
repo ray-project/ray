@@ -98,3 +98,10 @@ class TestAsyncRequestsManager(unittest.TestCase):
                 "We should return the 2 ready requests in this case from the actors"
                 " that have longer tasks"
             )
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
