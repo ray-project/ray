@@ -2,8 +2,6 @@ import argparse
 import base64
 import json
 import time
-import sys
-import os
 
 import ray
 import ray.actor
