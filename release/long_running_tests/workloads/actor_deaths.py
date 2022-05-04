@@ -86,7 +86,13 @@ class Parent(object):
 
     def kill(self):
         # Clean up children.
-        ray.get([child.__ray_terminate__.remote() for child in self.children])
+        try:
+            ray.get([child.__ray_terminate__.remote() for child in self.children])
+        except ray.exceptions.RayActorError as e:
+            # Sleep for 30 more seconds so that drivers will get more
+            # information from GCS when actors are unexpectedly failed.
+            time.sleep(30)
+            raise e
 
 
 parents = [Parent.remote(num_children, death_probability) for _ in range(num_parents)]
