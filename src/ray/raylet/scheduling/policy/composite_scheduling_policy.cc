@@ -32,6 +32,8 @@ scheduling::NodeID CompositeSchedulingPolicy::Schedule(
     return random_policy_.Schedule(resource_request, options);
   case SchedulingType::HYBRID:
     return hybrid_policy_.Schedule(resource_request, options);
+  case SchedulingType::NODE_AFFINITY:
+    return node_affinity_policy_.Schedule(resource_request, options);
   default:
     RAY_LOG(FATAL) << "Unsupported scheduling type: "
                    << static_cast<typename std::underlying_type<SchedulingType>::type>(

@@ -20,7 +20,6 @@
 #include "ray/common/id.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/gcs/gcs_server/gcs_actor_distribution.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_function_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
@@ -32,7 +31,6 @@
 
 namespace ray {
 namespace gcs {
-class GcsActorWorkerAssignment;
 
 /// GcsActor just wraps `ActorTableData` and provides some convenient interfaces to access
 /// the fields inside `ActorTableData`.
@@ -45,10 +43,22 @@ class GcsActor {
   explicit GcsActor(rpc::ActorTableData actor_table_data)
       : actor_table_data_(std::move(actor_table_data)) {}
 
+  /// Create a GcsActor by actor_table_data and task_spec.
+  /// This is only for ALIVE actors.
+  ///
+  /// \param actor_table_data Data of the actor (see gcs.proto).
+  /// \param task_spec Task spec of the actor.
+  explicit GcsActor(rpc::ActorTableData actor_table_data, rpc::TaskSpec task_spec)
+      : actor_table_data_(std::move(actor_table_data)),
+        task_spec_(std::make_unique<rpc::TaskSpec>(task_spec)) {
+    RAY_CHECK(actor_table_data_.state() != rpc::ActorTableData::DEAD);
+  }
+
   /// Create a GcsActor by TaskSpec.
   ///
   /// \param task_spec Contains the actor creation task specification.
-  explicit GcsActor(const ray::rpc::TaskSpec &task_spec, std::string ray_namespace) {
+  explicit GcsActor(const ray::rpc::TaskSpec &task_spec, std::string ray_namespace)
+      : task_spec_(std::make_unique<rpc::TaskSpec>(task_spec)) {
     RAY_CHECK(task_spec.type() == TaskType::ACTOR_CREATION_TASK);
     const auto &actor_creation_task_spec = task_spec.actor_creation_task_spec();
     actor_table_data_.set_actor_id(actor_creation_task_spec.actor_id());
@@ -59,17 +69,25 @@ class GcsActor {
     auto dummy_object = TaskSpecification(task_spec).ActorDummyObject().Binary();
     actor_table_data_.set_actor_creation_dummy_object_id(dummy_object);
 
+    actor_table_data_.mutable_function_descriptor()->CopyFrom(
+        task_spec.function_descriptor());
+
     actor_table_data_.set_is_detached(actor_creation_task_spec.is_detached());
     actor_table_data_.set_name(actor_creation_task_spec.name());
     actor_table_data_.mutable_owner_address()->CopyFrom(task_spec.caller_address());
 
     actor_table_data_.set_state(rpc::ActorTableData::DEPENDENCIES_UNREADY);
-    actor_table_data_.mutable_task_spec()->CopyFrom(task_spec);
 
     actor_table_data_.mutable_address()->set_raylet_id(NodeID::Nil().Binary());
     actor_table_data_.mutable_address()->set_worker_id(WorkerID::Nil().Binary());
 
     actor_table_data_.set_ray_namespace(ray_namespace);
+
+    // Set required resources.
+    auto resource_map =
+        GetCreationTaskSpecification().GetRequiredResources().GetResourceMap();
+    actor_table_data_.mutable_required_resources()->insert(resource_map.begin(),
+                                                           resource_map.end());
 
     const auto &function_descriptor = task_spec.function_descriptor();
     switch (function_descriptor.function_descriptor_case()) {
@@ -127,17 +145,22 @@ class GcsActor {
   const rpc::ActorTableData &GetActorTableData() const;
   /// Get the mutable ActorTableData of this actor.
   rpc::ActorTableData *GetMutableActorTableData();
+  rpc::TaskSpec *GetMutableTaskSpec();
 
-  std::shared_ptr<const GcsActorWorkerAssignment> GetActorWorkerAssignment() const;
-
-  void SetActorWorkerAssignment(std::shared_ptr<GcsActorWorkerAssignment> assignment_ptr);
+  const ResourceRequest &GetAcquiredResources() const;
+  void SetAcquiredResources(ResourceRequest &&resource_request);
+  bool GetGrantOrReject() const;
+  void SetGrantOrReject(bool grant_or_reject);
 
  private:
   /// The actor meta data which contains the task specification as well as the state of
   /// the gcs actor and so on (see gcs.proto).
   rpc::ActorTableData actor_table_data_;
-  // TODO(Chong-Li): Considering shared assignments, this pointer would be moved out.
-  std::shared_ptr<GcsActorWorkerAssignment> assignment_ptr_ = nullptr;
+  const std::unique_ptr<rpc::TaskSpec> task_spec_;
+  /// Resources acquired by this actor.
+  ResourceRequest acquired_resources_;
+  /// Whether the actor's target node only grants or rejects the lease request.
+  bool grant_or_reject_ = false;
 };
 
 using RegisterActorCallback = std::function<void(std::shared_ptr<GcsActor>)>;
@@ -195,7 +218,6 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param gcs_table_storage Used to flush actor data to storage.
   /// \param gcs_publisher Used to publish gcs message.
   GcsActorManager(
-      boost::asio::io_context &io_context,
       std::shared_ptr<GcsActorSchedulerInterface> scheduler,
       std::shared_ptr<GcsTableStorage> gcs_table_storage,
       std::shared_ptr<GcsPublisher> gcs_publisher,
@@ -361,10 +383,6 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// Collect stats from gcs actor manager in-memory data structures.
   void RecordMetrics() const;
 
-  bool GetSchedulePendingActorsPosted() const;
-
-  void SetSchedulePendingActorsPosted(bool posted);
-
  private:
   /// A data structure representing an actor's owner.
   struct Owner {
@@ -482,6 +500,17 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   ///
   const GcsActor *GetActor(const ActorID &actor_id) const;
 
+  /// Remove a pending actor.
+  ///
+  /// \param actor The actor to be removed.
+  /// \return True if the actor was successfully found and removed. Otherwise, return
+  /// false.
+  bool RemovePendingActor(std::shared_ptr<GcsActor> actor);
+
+  /// Get the total count of pending actors.
+  /// \return The total count of pending actors in all pending queues.
+  size_t GetPendingActorsCount() const;
+
   /// Callbacks of pending `RegisterActor` requests.
   /// Maps actor ID to actor registration callbacks, which is used to filter duplicated
   /// messages from a driver/worker caused by some network problems.
@@ -520,7 +549,6 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// according to its owner, or the owner dies.
   absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, Owner>> owners_;
 
-  boost::asio::io_context &io_context_;
   /// The scheduler to schedule all registered actors.
   std::shared_ptr<GcsActorSchedulerInterface> gcs_actor_scheduler_;
   /// Used to update actor information upon creation, deletion, etc.
@@ -546,9 +574,6 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
       run_delayed_;
   const boost::posix_time::milliseconds actor_gc_delay_;
-
-  /// Indicate whether a call of SchedulePendingActors has been posted.
-  bool schedule_pending_actors_posted_;
 
   // Debug info.
   enum CountType {

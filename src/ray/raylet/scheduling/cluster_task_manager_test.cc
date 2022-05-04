@@ -146,7 +146,8 @@ RayTask CreateTask(
     const std::unordered_map<std::string, double> &required_resources,
     int num_args = 0,
     std::vector<ObjectID> args = {},
-    const std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info = nullptr) {
+    const std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info = nullptr,
+    rpc::SchedulingStrategy scheduling_strategy = rpc::SchedulingStrategy()) {
   TaskSpecBuilder spec_builder;
   TaskID id = RandomTaskId();
   JobID job_id = RandomJobId();
@@ -177,6 +178,8 @@ RayTask CreateTask(
       spec_builder.AddArg(TaskArgByReference(put_id, rpc::Address(), ""));
     }
   }
+
+  spec_builder.SetNormalTaskSpec(0, false, scheduling_strategy);
 
   return RayTask(spec_builder.Build());
 }
@@ -971,6 +974,35 @@ TEST_F(ClusterTaskManagerTest, NotOKPopWorkerTest) {
   AssertNoLeaks();
 }
 
+TEST_F(ClusterTaskManagerTest, TaskUnschedulableTest) {
+  TaskSpecification task_spec =
+      CreateTask({{ray::kCPU_ResourceLabel, 1}}).GetTaskSpecification();
+  task_spec.GetMutableMessage()
+      .mutable_scheduling_strategy()
+      ->mutable_node_affinity_scheduling_strategy()
+      ->set_node_id(NodeID::FromRandom().Binary());
+  task_spec.GetMutableMessage()
+      .mutable_scheduling_strategy()
+      ->mutable_node_affinity_scheduling_strategy()
+      ->set_soft(false);
+  rpc::RequestWorkerLeaseReply reply;
+
+  bool callback_called = false;
+  bool *callback_called_ptr = &callback_called;
+  auto callback = [callback_called_ptr](
+                      Status, std::function<void()>, std::function<void()>) {
+    *callback_called_ptr = true;
+  };
+
+  task_manager_.QueueAndScheduleTask(RayTask(task_spec), false, false, &reply, callback);
+  ASSERT_TRUE(callback_called);
+  ASSERT_TRUE(reply.canceled());
+  ASSERT_EQ(reply.failure_type(),
+            rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE);
+
+  AssertNoLeaks();
+}
+
 TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
   std::shared_ptr<MockWorker> worker =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
@@ -1183,6 +1215,66 @@ TEST_F(ClusterTaskManagerTest, HeartbeatTest) {
       ASSERT_TRUE(found);
     }
   }
+}
+
+TEST_F(ClusterTaskManagerTest, ResourceReportForNodeAffinitySchedulingStrategyTasks) {
+  rpc::RequestWorkerLeaseReply reply;
+  bool callback_occurred = false;
+  bool *callback_occurred_ptr = &callback_occurred;
+  auto callback = [callback_occurred_ptr](
+                      Status, std::function<void()>, std::function<void()>) {
+    *callback_occurred_ptr = true;
+  };
+
+  // Feasible strict task won't be reported.
+  rpc::SchedulingStrategy scheduling_strategy;
+  scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_node_id(
+      id_.Binary());
+  scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_soft(false);
+  RayTask task1 =
+      CreateTask({{ray::kCPU_ResourceLabel, 1}}, 0, {}, nullptr, scheduling_strategy);
+  task_manager_.QueueAndScheduleTask(task1, false, false, &reply, callback);
+
+  // Feasible soft task won't be reported.
+  scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_node_id(
+      id_.Binary());
+  scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_soft(true);
+  RayTask task2 =
+      CreateTask({{ray::kCPU_ResourceLabel, 2}}, 0, {}, nullptr, scheduling_strategy);
+  task_manager_.QueueAndScheduleTask(task2, false, false, &reply, callback);
+
+  // Infeasible soft task will be reported.
+  scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_node_id(
+      id_.Binary());
+  scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_soft(true);
+  RayTask task3 =
+      CreateTask({{ray::kGPU_ResourceLabel, 1}}, 0, {}, nullptr, scheduling_strategy);
+  task_manager_.QueueAndScheduleTask(task3, false, false, &reply, callback);
+  ASSERT_FALSE(callback_occurred);
+
+  // Infeasible strict task won't be reported (will fail immediately).
+  scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_node_id(
+      id_.Binary());
+  scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_soft(false);
+  RayTask task4 =
+      CreateTask({{ray::kGPU_ResourceLabel, 2}}, 0, {}, nullptr, scheduling_strategy);
+  task_manager_.QueueAndScheduleTask(task4, false, false, &reply, callback);
+  ASSERT_TRUE(callback_occurred);
+  ASSERT_TRUE(reply.canceled());
+  ASSERT_EQ(reply.failure_type(),
+            rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE);
+
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(pool_.workers.size(), 0);
+
+  rpc::ResourcesData data;
+  task_manager_.FillResourceUsage(data);
+  auto resource_load_by_shape = data.resource_load_by_shape();
+  ASSERT_EQ(resource_load_by_shape.resource_demands().size(), 1);
+  auto demand = resource_load_by_shape.resource_demands()[0];
+  ASSERT_EQ(demand.num_infeasible_requests_queued(), 1);
+  ASSERT_EQ(demand.num_ready_requests_queued(), 0);
+  ASSERT_EQ(demand.shape().at("GPU"), 1);
 }
 
 TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
@@ -1617,6 +1709,12 @@ TEST_F(ClusterTaskManagerTest, TestSpillWaitingTasks) {
       auto missing_arg = task.GetTaskSpecification().GetDependencyIds()[0];
       missing_objects_.insert(missing_arg);
     }
+    if (i == 0) {
+      const_cast<TaskSpecification &>(task.GetTaskSpecification())
+          .GetMutableMessage()
+          .mutable_scheduling_strategy()
+          ->mutable_spread_scheduling_strategy();
+    }
     task_manager_.QueueAndScheduleTask(task, false, false, replies[i].get(), callback);
     pool_.TriggerCallbacks();
   }
@@ -1666,6 +1764,12 @@ TEST_F(ClusterTaskManagerTest, TestSpillWaitingTasks) {
   ASSERT_FALSE(task_manager_.CancelTask(tasks[1].GetTaskSpecification().TaskId()));
   // One task dispatched.
   ASSERT_EQ(replies[4]->worker_address().port(), 1234);
+
+  // Spread task won't be spilled due to waiting for dependencies.
+  AddNode(remote_node_id, 8);
+  task_manager_.ScheduleAndDispatchTasks();
+  ASSERT_EQ(num_callbacks, 4);
+  ASSERT_EQ(replies[0]->retry_at_raylet_address().raylet_id(), "");
 
   RayTask finished_task;
   local_task_manager_->TaskFinished(leased_workers_.begin()->second, &finished_task);
@@ -1802,21 +1906,21 @@ TEST_F(ClusterTaskManagerTest, LargeArgsNoStarvationTest) {
 }
 
 TEST_F(ClusterTaskManagerTest, TestResourceDiff) {
-  // When scheduling_resources is null, resource is always marked as changed
+  // When node_resources is null, resource is always marked as changed
   rpc::ResourcesData resource_data;
   task_manager_.FillResourceUsage(resource_data, nullptr);
   ASSERT_TRUE(resource_data.resource_load_changed());
-  auto scheduling_resources = std::make_shared<SchedulingResources>();
+  auto node_resources = std::make_shared<NodeResources>();
   // Same resources(empty), not changed.
   resource_data.set_resource_load_changed(false);
-  task_manager_.FillResourceUsage(resource_data, scheduling_resources);
+  task_manager_.FillResourceUsage(resource_data, node_resources);
   ASSERT_FALSE(resource_data.resource_load_changed());
   // Resource changed.
   resource_data.set_resource_load_changed(false);
-  ResourceSet res;
-  res.AddOrUpdateResource("CPU", 100);
-  scheduling_resources->SetLoadResources(std::move(res));
-  task_manager_.FillResourceUsage(resource_data, scheduling_resources);
+  ResourceRequest res;
+  res.Set(ResourceID::CPU(), 100);
+  node_resources->load = std::move(res);
+  task_manager_.FillResourceUsage(resource_data, node_resources);
   ASSERT_TRUE(resource_data.resource_load_changed());
 }
 

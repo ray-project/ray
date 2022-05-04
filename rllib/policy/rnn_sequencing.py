@@ -115,7 +115,7 @@ def pad_batch_to_sequences_of_same_size(
         elif (
             not feature_keys
             and not k.startswith("state_out_")
-            and k not in ["infos", SampleBatch.SEQ_LENS]
+            and k not in [SampleBatch.INFOS, SampleBatch.SEQ_LENS]
         ):
             feature_keys_.append(k)
 
@@ -197,18 +197,22 @@ def add_time_dimension(
                 axis=0,
             )
         )
-        return tf.reshape(padded_inputs, new_shape)
+        ret = tf.reshape(padded_inputs, new_shape)
+        ret.set_shape([None, None] + padded_inputs.shape[1:].as_list())
+        return ret
     else:
         assert framework == "torch", "`framework` must be either tf or torch!"
         padded_batch_size = padded_inputs.shape[0]
 
         # Dynamically reshape the padded batch to introduce a time dimension.
         new_batch_size = padded_batch_size // max_seq_len
+        batch_major_shape = (new_batch_size, max_seq_len) + padded_inputs.shape[1:]
+        padded_outputs = padded_inputs.view(batch_major_shape)
+
         if time_major:
-            new_shape = (max_seq_len, new_batch_size) + padded_inputs.shape[1:]
-        else:
-            new_shape = (new_batch_size, max_seq_len) + padded_inputs.shape[1:]
-        return torch.reshape(padded_inputs, new_shape)
+            # Swap the batch and time dimensions
+            padded_outputs = padded_outputs.transpose(0, 1)
+        return padded_outputs
 
 
 @DeveloperAPI

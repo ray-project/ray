@@ -6,6 +6,7 @@ import ray
 from ray.experimental.dag.dag_node import DAGNode
 from ray.experimental.dag.input_node import InputNode
 from ray import serve
+from ray.experimental.dag.utils import DAGNodeNameGenerator
 from ray.serve.handle import (
     RayServeSyncHandle,
     serve_handle_to_json_dict,
@@ -21,6 +22,7 @@ from ray.serve.pipeline.tests.resources.test_modules import (
     combine,
     Counter,
     ClassHello,
+    fn,
     fn_hello,
     Combine,
     NESTED_HANDLE_KEY,
@@ -123,10 +125,10 @@ def test_simple_function_node_json_serde(serve_instance):
         expected_json_dict={
             DAGNODE_TYPE_KEY: "FunctionNode",
             "import_path": "ray.serve.pipeline.tests.resources.test_modules.combine",
-            "args": "[1, 2]",
-            "kwargs": "{}",
-            "options": "{}",
-            "other_args_to_resolve": "{}",
+            "args": [1, 2],
+            "kwargs": {},
+            "options": {},
+            "other_args_to_resolve": {},
             "uuid": original_dag_node.get_stable_uuid(),
         },
     )
@@ -138,10 +140,10 @@ def test_simple_function_node_json_serde(serve_instance):
         expected_json_dict={
             DAGNODE_TYPE_KEY: "FunctionNode",
             "import_path": "ray.serve.pipeline.tests.resources.test_modules.combine",
-            "args": "[1, 2]",
-            "kwargs": '{"kwargs_output": 3}',
-            "options": "{}",
-            "other_args_to_resolve": "{}",
+            "args": [1, 2],
+            "kwargs": {"kwargs_output": 3},
+            "options": {},
+            "other_args_to_resolve": {},
             "uuid": original_dag_node.get_stable_uuid(),
         },
     )
@@ -153,10 +155,10 @@ def test_simple_function_node_json_serde(serve_instance):
         expected_json_dict={
             DAGNODE_TYPE_KEY: "FunctionNode",
             "import_path": "ray.serve.pipeline.tests.resources.test_modules.fn_hello",
-            "args": "[]",
-            "kwargs": "{}",
-            "options": "{}",
-            "other_args_to_resolve": "{}",
+            "args": [],
+            "kwargs": {},
+            "options": {},
+            "other_args_to_resolve": {},
             "uuid": original_dag_node.get_stable_uuid(),
         },
     )
@@ -183,10 +185,10 @@ def test_simple_class_node_json_serde(serve_instance):
         expected_json_dict={
             DAGNODE_TYPE_KEY: "ClassNode",
             "import_path": "ray.serve.pipeline.tests.resources.test_modules.ClassHello",
-            "args": "[]",
-            "kwargs": "{}",
-            "options": "{}",
-            "other_args_to_resolve": "{}",
+            "args": [],
+            "kwargs": {},
+            "options": {},
+            "other_args_to_resolve": {},
             "uuid": original_dag_node.get_stable_uuid(),
         },
     )
@@ -198,10 +200,10 @@ def test_simple_class_node_json_serde(serve_instance):
         expected_json_dict={
             DAGNODE_TYPE_KEY: "ClassNode",
             "import_path": "ray.serve.pipeline.tests.resources.test_modules.Model",
-            "args": "[1]",
-            "kwargs": "{}",
-            "options": "{}",
-            "other_args_to_resolve": "{}",
+            "args": [1],
+            "kwargs": {},
+            "options": {},
+            "other_args_to_resolve": {},
             "uuid": original_dag_node.get_stable_uuid(),
         },
     )
@@ -213,10 +215,10 @@ def test_simple_class_node_json_serde(serve_instance):
         expected_json_dict={
             DAGNODE_TYPE_KEY: "ClassNode",
             "import_path": "ray.serve.pipeline.tests.resources.test_modules.Model",
-            "args": "[1]",
-            "kwargs": '{"ratio": 0.5}',
-            "options": "{}",
-            "other_args_to_resolve": "{}",
+            "args": [1],
+            "kwargs": {"ratio": 0.5},
+            "options": {},
+            "other_args_to_resolve": {},
             "uuid": original_dag_node.get_stable_uuid(),
         },
     )
@@ -233,7 +235,10 @@ def _test_deployment_json_serde_helper(
         3) Deserialized serve dag can extract correct number and definition of
             serve deployments.
     """
-    serve_root_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
+    with DAGNodeNameGenerator() as node_name_generator:
+        serve_root_dag = ray_dag.apply_recursive(
+            lambda node: transform_ray_dag_to_serve_dag(node, node_name_generator)
+        )
     json_serialized = json.dumps(serve_root_dag, cls=DAGNodeEncoder)
     deserialized_serve_root_dag_node = json.loads(
         json_serialized, object_hook=dagnode_from_json
@@ -346,6 +351,20 @@ class TestHandleJSON:
         # Load the handle back from the dict.
         handle = serve_handle_from_json_dict(json.loads(serialized))
         assert await call(handle, "hi") == "hi"
+
+
+def test_chain_of_values():
+    with InputNode() as dag_input:
+        out = fn.bind(1)
+        out_2 = fn.bind(out, incr=2)
+        out_val = fn.bind(out_2, incr=3)
+        model = Model.bind(out_val)
+        ray_dag = model.forward.bind(dag_input)
+
+    json_serialized = json.dumps(ray_dag, cls=DAGNodeEncoder)
+    deserialized_dag_node = json.loads(json_serialized, object_hook=dagnode_from_json)
+
+    assert ray.get(deserialized_dag_node.execute(2)) == ray.get(ray_dag.execute(2))
 
 
 if __name__ == "__main__":

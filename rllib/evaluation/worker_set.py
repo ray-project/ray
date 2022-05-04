@@ -33,6 +33,7 @@ from ray.rllib.utils.typing import (
     EnvType,
     PolicyID,
     SampleBatchType,
+    TensorType,
     TrainerConfigDict,
 )
 from ray.tune.registry import registry_contains_input, registry_get_input
@@ -189,6 +190,7 @@ class WorkerSet:
         self,
         policies: Optional[List[PolicyID]] = None,
         from_worker: Optional[RolloutWorker] = None,
+        global_vars: Optional[Dict[str, TensorType]] = None,
     ) -> None:
         """Syncs model weights from the local worker to all remote workers.
 
@@ -205,6 +207,7 @@ class WorkerSet:
             )
 
         # Only sync if we have remote workers or `from_worker` is provided.
+        weights = None
         if self.remote_workers() or from_worker is not None:
             weights = (from_worker or self.local_worker()).get_weights(policies)
             # Put weights only once into object store and use same object
@@ -212,12 +215,16 @@ class WorkerSet:
             weights_ref = ray.put(weights)
             # Sync to all remote workers in this WorkerSet.
             for to_worker in self.remote_workers():
-                to_worker.set_weights.remote(weights_ref)
+                to_worker.set_weights.remote(weights_ref, global_vars=global_vars)
 
-            # If `from_worker` is provided, also sync to this WorkerSet's
-            # local worker.
-            if from_worker is not None and self.local_worker() is not None:
-                self.local_worker().set_weights(weights)
+        # If `from_worker` is provided, also sync to this WorkerSet's
+        # local worker.
+        if from_worker is not None and self.local_worker() is not None:
+            self.local_worker().set_weights(weights, global_vars=global_vars)
+        # If `global_vars` is provided and local worker exists  -> Update its
+        # global_vars.
+        elif self.local_worker() is not None and global_vars is not None:
+            self.local_worker().set_global_vars(global_vars)
 
     def add_workers(self, num_workers: int) -> None:
         """Creates and adds a number of remote workers to this worker set.
@@ -703,8 +710,9 @@ class WorkerSet:
         local_worker = self.local_worker()
         if local_worker is not None:
             return [
-                local_worker.is_policy_to_train(pid, None)
+                pid
                 for pid in local_worker.policy_map.keys()
+                if local_worker.is_policy_to_train(pid, None)
             ]
         else:
             raise NotImplementedError

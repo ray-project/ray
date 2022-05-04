@@ -35,6 +35,8 @@
 # - Examples directory (everything in rllib/examples/...), tagged: "examples" and
 #   "examples_[A-Z]"
 
+# - Memory leak tests tagged "memory_leak_tests".
+
 # Note: The "examples" and "tests_dir" tags have further sub-tags going by the
 # starting letter of the test name (e.g. "examples_A", or "tests_dir_F") for
 # split-up purposes in buildkite.
@@ -82,6 +84,16 @@ py_test(
 )
 
 py_test(
+    name = "learning_tests_cartpole_a2c_microbatch",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/a3c/cartpole-a2c-microbatch.yaml"],
+    args = ["--yaml-dir=tuned_examples/a3c"]
+)
+
+py_test(
     name = "learning_tests_cartpole_a2c_fake_gpus",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
@@ -109,7 +121,7 @@ py_test(
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/alpha_star/multi-agent-cartpole-alpha-star.yaml"],
-    args = ["--yaml-dir=tuned_examples/alpha_star", "--num-cpus=20"]
+    args = ["--yaml-dir=tuned_examples/alpha_star", "--num-cpus=10"]
 )
 
 # APEX-DQN
@@ -244,6 +256,16 @@ py_test(
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = glob(["tuned_examples/ppo/cartpole-ddppo.yaml"]),
+    args = ["--yaml-dir=tuned_examples/ppo"]
+)
+
+py_test(
+    name = "learning_tests_pendulum_ddppo",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:ml", "torch_only", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = glob(["tuned_examples/ppo/pendulum-ddppo.yaml"]),
     args = ["--yaml-dir=tuned_examples/ppo"]
 )
 
@@ -583,6 +605,14 @@ py_test(
 )
 
 py_test(
+    name = "test_memory_leaks_generic",
+    main = "agents/tests/test_memory_leaks.py",
+    tags = ["team:ml", "trainers_dir"],
+    size = "large",
+    srcs = ["agents/tests/test_memory_leaks.py"]
+)
+
+py_test(
     name = "test_trainer",
     tags = ["team:ml", "trainers_dir", "trainers_dir_generic"],
     size = "large",
@@ -851,6 +881,82 @@ py_test(
     args = ["--training-iteration=1", "--num-workers=2", "--ray-num-cpus=3"]
 )
 
+
+# --------------------------------------------------------------------
+# Memory leak tests
+#
+# Tag: memory_leak_tests
+# --------------------------------------------------------------------
+
+py_test(
+    name = "test_memory_leak_a3c",
+    tags = ["team:ml", "memory_leak_tests"],
+    main = "utils/tests/run_memory_leak_tests.py",
+    size = "large",
+    srcs = ["utils/tests/run_memory_leak_tests.py"],
+    data = ["tuned_examples/a3c/memory-leak-test-a3c.yaml"],
+    args = ["--yaml-dir=tuned_examples/a3c"]
+)
+
+py_test(
+    name = "test_memory_leak_appo",
+    tags = ["team:ml", "memory_leak_tests"],
+    main = "utils/tests/run_memory_leak_tests.py",
+    size = "large",
+    srcs = ["utils/tests/run_memory_leak_tests.py"],
+    data = ["tuned_examples/ppo/memory-leak-test-appo.yaml"],
+    args = ["--yaml-dir=tuned_examples/ppo"]
+)
+
+py_test(
+    name = "test_memory_leak_ddpg",
+    tags = ["team:ml", "memory_leak_tests"],
+    main = "utils/tests/run_memory_leak_tests.py",
+    size = "large",
+    srcs = ["utils/tests/run_memory_leak_tests.py"],
+    data = ["tuned_examples/ddpg/memory-leak-test-ddpg.yaml"],
+    args = ["--yaml-dir=tuned_examples/ddpg"]
+)
+
+py_test(
+    name = "test_memory_leak_dqn",
+    tags = ["team:ml", "memory_leak_tests"],
+    main = "utils/tests/run_memory_leak_tests.py",
+    size = "large",
+    srcs = ["utils/tests/run_memory_leak_tests.py"],
+    data = ["tuned_examples/dqn/memory-leak-test-dqn.yaml"],
+    args = ["--yaml-dir=tuned_examples/dqn"]
+)
+
+py_test(
+    name = "test_memory_leak_impala",
+    tags = ["team:ml", "memory_leak_tests"],
+    main = "utils/tests/run_memory_leak_tests.py",
+    size = "large",
+    srcs = ["utils/tests/run_memory_leak_tests.py"],
+    data = ["tuned_examples/impala/memory-leak-test-impala.yaml"],
+    args = ["--yaml-dir=tuned_examples/impala"]
+)
+
+py_test(
+    name = "test_memory_leak_ppo",
+    tags = ["team:ml", "memory_leak_tests"],
+    main = "utils/tests/run_memory_leak_tests.py",
+    size = "large",
+    srcs = ["utils/tests/run_memory_leak_tests.py"],
+    data = ["tuned_examples/ppo/memory-leak-test-ppo.yaml"],
+    args = ["--yaml-dir=tuned_examples/ppo"]
+)
+
+py_test(
+    name = "test_memory_leak_sac",
+    tags = ["team:ml", "memory_leak_tests"],
+    main = "utils/tests/run_memory_leak_tests.py",
+    size = "large",
+    srcs = ["utils/tests/run_memory_leak_tests.py"],
+    data = ["tuned_examples/sac/memory-leak-test-sac.yaml"],
+    args = ["--yaml-dir=tuned_examples/sac"]
+)
 
 # --------------------------------------------------------------------
 # Agents (quick training test iterations via `rllib train`)
@@ -1144,7 +1250,7 @@ sh_test(
     tags = ["team:ml", "env"],
     size = "medium",
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
-    args = ["local", "cartpole"],
+    args = ["local", "cartpole", "8800"],
     data = glob(["examples/serving/*.py"]),
 )
 
@@ -1153,7 +1259,7 @@ sh_test(
     tags = ["team:ml", "env"],
     size = "medium",
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
-    args = ["remote", "cartpole"],
+    args = ["remote", "cartpole", "8810"],
     data = glob(["examples/serving/*.py"]),
 )
 
@@ -1162,7 +1268,7 @@ sh_test(
     tags = ["team:ml", "env"],
     size = "large",
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
-    args = ["remote", "cartpole_lstm"],
+    args = ["remote", "cartpole_lstm", "8820"],
     data = glob(["examples/serving/*.py"]),
 )
 
@@ -1171,7 +1277,7 @@ sh_test(
     tags = ["team:ml", "env"],
     size = "medium",
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
-    args = ["local", "cartpole-dummy-2-episodes"],
+    args = ["local", "cartpole-dummy-2-episodes", "8830"],
     data = glob(["examples/serving/*.py"]),
 )
 
@@ -1180,7 +1286,7 @@ sh_test(
     tags = ["team:ml", "env"],
     size = "medium",
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
-    args = ["remote", "cartpole-dummy-2-episodes"],
+    args = ["remote", "cartpole-dummy-2-episodes", "8840"],
     data = glob(["examples/serving/*.py"]),
 )
 
@@ -1189,7 +1295,7 @@ sh_test(
     tags = ["team:ml", "env"],
     size = "medium",
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
-    args = ["local", "unity3d"],
+    args = ["local", "unity3d", "8850"],
     data = glob(["examples/serving/*.py"]),
 )
 
@@ -1198,7 +1304,7 @@ sh_test(
     tags = ["team:ml", "env"],
     size = "medium",
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
-    args = ["remote", "unity3d"],
+    args = ["remote", "unity3d", "8860"],
     data = glob(["examples/serving/*.py"]),
 )
 

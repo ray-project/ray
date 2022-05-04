@@ -242,38 +242,104 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingIdInsertOrDieTest) {
 
 TEST_F(ClusterResourceSchedulerTest, SchedulingInitClusterTest) {
   int num_nodes = 10;
-  ClusterResourceScheduler resource_scheduler;
+  ClusterResourceScheduler resource_scheduler(
+      scheduling::NodeID(num_nodes + 1), NodeResources(), [](auto) { return true; });
   AssertPredefinedNodeResources();
 
   initCluster(resource_scheduler, num_nodes);
 
-  ASSERT_EQ(resource_scheduler.GetClusterResourceManager().NumNodes(), num_nodes);
+  ASSERT_EQ(resource_scheduler.GetClusterResourceManager().NumNodes(), num_nodes + 1);
 }
 
 TEST_F(ClusterResourceSchedulerTest, SchedulingDeleteClusterNodeTest) {
   int num_nodes = 4;
   int64_t remove_id = 2;
 
-  ClusterResourceScheduler resource_scheduler;
+  ClusterResourceScheduler resource_scheduler(
+      scheduling::NodeID(num_nodes + 1), NodeResources(), [](auto) { return true; });
 
   initCluster(resource_scheduler, num_nodes);
   resource_scheduler.GetClusterResourceManager().RemoveNode(
       scheduling::NodeID(remove_id));
 
-  ASSERT_TRUE(num_nodes - 1 == resource_scheduler.GetClusterResourceManager().NumNodes());
+  ASSERT_TRUE(num_nodes == resource_scheduler.GetClusterResourceManager().NumNodes());
 }
 
 TEST_F(ClusterResourceSchedulerTest, SchedulingModifyClusterNodeTest) {
   int num_nodes = 4;
   int64_t update_id = 2;
-  ClusterResourceScheduler resource_scheduler;
+  ClusterResourceScheduler resource_scheduler(
+      scheduling::NodeID(num_nodes + 1), NodeResources(), [](auto) { return true; });
 
   initCluster(resource_scheduler, num_nodes);
 
   NodeResources node_resources = RandomNodeResources();
   resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
       scheduling::NodeID(update_id), node_resources);
-  ASSERT_TRUE(num_nodes == resource_scheduler.GetClusterResourceManager().NumNodes());
+  ASSERT_TRUE(num_nodes + 1 == resource_scheduler.GetClusterResourceManager().NumNodes());
+}
+
+TEST_F(ClusterResourceSchedulerTest, NodeAffinitySchedulingStrategyTest) {
+  absl::flat_hash_map<std::string, double> resource_total({{"CPU", 10}});
+  auto local_node_id = scheduling::NodeID(NodeID::FromRandom().Binary());
+  ClusterResourceScheduler resource_scheduler(
+      local_node_id, resource_total, is_node_available_fn_);
+  AssertPredefinedNodeResources();
+  auto remote_node_id = scheduling::NodeID(NodeID::FromRandom().Binary());
+  resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
+      remote_node_id, resource_total, resource_total);
+
+  absl::flat_hash_map<std::string, double> resource_request({{"CPU", 1}});
+  int64_t violations;
+  bool is_infeasible;
+  rpc::SchedulingStrategy scheduling_strategy;
+  scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_node_id(
+      remote_node_id.Binary());
+  scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_soft(false);
+  auto node_id_1 = resource_scheduler.GetBestSchedulableNode(resource_request,
+                                                             scheduling_strategy,
+                                                             false,
+                                                             false,
+                                                             false,
+                                                             &violations,
+                                                             &is_infeasible);
+  ASSERT_EQ(node_id_1, remote_node_id);
+
+  scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_node_id(
+      local_node_id.Binary());
+  scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_soft(false);
+  auto node_id_2 = resource_scheduler.GetBestSchedulableNode(resource_request,
+                                                             scheduling_strategy,
+                                                             false,
+                                                             false,
+                                                             false,
+                                                             &violations,
+                                                             &is_infeasible);
+  ASSERT_EQ(node_id_2, local_node_id);
+
+  scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_node_id(
+      NodeID::FromRandom().Binary());
+  scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_soft(false);
+  auto node_id_3 = resource_scheduler.GetBestSchedulableNode(resource_request,
+                                                             scheduling_strategy,
+                                                             false,
+                                                             false,
+                                                             false,
+                                                             &violations,
+                                                             &is_infeasible);
+  ASSERT_TRUE(node_id_3.IsNil());
+
+  scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_node_id(
+      NodeID::FromRandom().Binary());
+  scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_soft(true);
+  auto node_id_4 = resource_scheduler.GetBestSchedulableNode(resource_request,
+                                                             scheduling_strategy,
+                                                             false,
+                                                             false,
+                                                             false,
+                                                             &violations,
+                                                             &is_infeasible);
+  ASSERT_EQ(node_id_4, local_node_id);
 }
 
 TEST_F(ClusterResourceSchedulerTest, SpreadSchedulingStrategyTest) {
@@ -386,7 +452,8 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest) {
 }
 
 TEST_F(ClusterResourceSchedulerTest, SchedulingAddOrUpdateNodeTest) {
-  ClusterResourceScheduler resource_scheduler;
+  ClusterResourceScheduler resource_scheduler(
+      scheduling::NodeID(0), NodeResources(), [](auto) { return true; });
   NodeResources nr, nr_out;
   int64_t node_id = 1;
 
@@ -1108,7 +1175,7 @@ TEST_F(ClusterResourceSchedulerTest, ResourceUsageReportTest) {
         allocation_map, allocations);
     rpc::ResourcesData data;
     resource_scheduler.GetLocalResourceManager().ResetLastReportResourceUsage(
-        SchedulingResources{});
+        NodeResources{});
     resource_scheduler.GetLocalResourceManager().FillResourceUsage(data);
 
     auto available = data.resources_available();

@@ -83,8 +83,6 @@ DEFAULT_CONFIG = with_common_config({
         # Timesteps over which to anneal scale (from initial to final values).
         "scale_timesteps": 10000,
     },
-    # Number of env steps to optimize for before returning
-    "timesteps_per_iteration": 1000,
     # Extra configuration that disables exploration.
     "evaluation_config": {
         "explore": False
@@ -169,6 +167,18 @@ DEFAULT_CONFIG = with_common_config({
     "worker_side_prioritization": False,
     # Prevent reporting frequency from going lower than this time span.
     "min_time_s_per_reporting": 1,
+    # Minimum env sampling timesteps to accumulate within a single `train()` call. This
+    # value does not affect learning, only the number of times `Trainer.step_attempt()`
+    # is called by `Trauber.train()`. If - after one `step_attempt()`, the env sampling
+    # timestep count has not been reached, will perform n more `step_attempt()` calls
+    # until the minimum timesteps have been executed. Set to 0 for no minimum timesteps.
+    "min_sample_timesteps_per_reporting": 1000,
+
+    # Experimental flag.
+    # If True, the execution plan API will not be used. Instead,
+    # a Trainer's `training_iteration` method will be called as-is each
+    # training iteration.
+    "_disable_execution_plan_api": False,
 })
 # __sphinx_doc_end__
 # fmt: on

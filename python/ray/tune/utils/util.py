@@ -1,24 +1,22 @@
-from typing import Dict, List, Union, Type, Callable, Any
 import copy
 import glob
+import inspect
 import logging
 import os
-import inspect
 import threading
 import time
 import uuid
 from collections import defaultdict
 from datetime import datetime
 from threading import Thread
+from typing import Dict, List, Union, Type, Callable, Any
 from typing import Optional
 
 import numpy as np
-import ray
 import psutil
+import ray
 from ray.ml.checkpoint import Checkpoint
-from ray.util.ml_utils.cloud import clear_bucket
-
-from ray.util.ml_utils.json import SafeFallbackEncoder  # noqa
+from ray.ml.utils.remote_storage import delete_at_uri
 from ray.util.ml_utils.dict import (  # noqa: F401
     merge_dicts,
     deep_update,
@@ -26,6 +24,11 @@ from ray.util.ml_utils.dict import (  # noqa: F401
     unflatten_dict,
     unflatten_list_dict,
     unflattened_lookup,
+)
+from ray.util.ml_utils.json import SafeFallbackEncoder  # noqa
+from ray.util.ml_utils.util import (  # noqa: F401
+    is_nan,
+    is_nan_or_inf,
 )
 
 logger = logging.getLogger(__name__)
@@ -118,20 +121,6 @@ class UtilMonitor(Thread):
         self.stopped = True
 
 
-def pin_in_object_store(obj):
-    """Deprecated, use ray.put(value) instead."""
-
-    obj_ref = ray.put(obj)
-    _pinned_objects.append(obj_ref)
-    return obj_ref
-
-
-def get_pinned_object(pinned_id):
-    """Deprecated."""
-
-    return ray.get(pinned_id)
-
-
 def retry_fn(
     fn: Callable[[], Any],
     exception_type: Type[Exception],
@@ -179,7 +168,7 @@ def get_checkpoint_from_remote_node(
 
 
 def delete_external_checkpoint(checkpoint_uri: str):
-    clear_bucket(checkpoint_uri)
+    delete_at_uri(checkpoint_uri)
 
 
 class warn_if_slow:
@@ -275,10 +264,6 @@ class Tee(object):
 
 def date_str():
     return datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-
-
-def is_nan_or_inf(value):
-    return np.isnan(value) or np.isinf(value)
 
 
 def _to_pinnable(obj):
@@ -457,7 +442,6 @@ def wait_for_gpu(
         retry: Number of times to check GPU limit. Sleeps `delay_s`
             seconds between checks.
         delay_s: Seconds to wait before check.
-        gpu_memory_limit: Deprecated.
 
     Returns:
         bool: True if free.
@@ -477,8 +461,7 @@ def wait_for_gpu(
         tune.run(tune_func, resources_per_trial={"GPU": 1}, num_samples=10)
     """
     GPUtil = _import_gputil()
-    if gpu_memory_limit:
-        raise ValueError("'gpu_memory_limit' is deprecated. Use 'target_util' instead.")
+
     if GPUtil is None:
         raise RuntimeError("GPUtil must be installed if calling `wait_for_gpu`.")
 
@@ -701,11 +684,3 @@ def validate_warmstart(
                 + " and points_to_evaluate {}".format(points_to_evaluate)
                 + " do not match."
             )
-
-
-if __name__ == "__main__":
-    ray.init()
-    X = pin_in_object_store("hello")
-    print(X)
-    result = get_pinned_object(X)
-    print(result)

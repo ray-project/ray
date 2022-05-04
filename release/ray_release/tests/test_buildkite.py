@@ -1,8 +1,11 @@
 import os
 import sys
+import tempfile
 import unittest
 from typing import Dict
 from unittest.mock import patch
+
+import yaml
 
 from ray_release.buildkite.concurrency import (
     get_test_resources_from_cluster_compute,
@@ -158,6 +161,23 @@ class BuildkiteSettingsTest(unittest.TestCase):
             updated_settings,
             {
                 "frequency": Frequency.NIGHTLY,
+                "prefer_smoke_tests": False,
+                "test_attr_regex_filters": {"name": "name_filter"},
+                "ray_wheels": "custom-wheels",
+                "ray_test_repo": "https://github.com/user/ray.git",
+                "ray_test_branch": "sub/branch",
+                "priority": Priority.MANUAL,
+                "no_concurrency_limit": False,
+            },
+        )
+
+        os.environ["RELEASE_FREQUENCY"] = "any-smoke"
+        update_settings_from_environment(updated_settings)
+        self.assertDictEqual(
+            updated_settings,
+            {
+                "frequency": Frequency.ANY,
+                "prefer_smoke_tests": True,
                 "test_attr_regex_filters": {"name": "name_filter"},
                 "ray_wheels": "custom-wheels",
                 "ray_test_repo": "https://github.com/user/ray.git",
@@ -307,6 +327,24 @@ class BuildkiteSettingsTest(unittest.TestCase):
                 updated_settings,
                 {
                     "frequency": Frequency.NIGHTLY,
+                    "prefer_smoke_tests": False,
+                    "test_attr_regex_filters": {"name": "name_filter"},
+                    "ray_wheels": "custom-wheels",
+                    "ray_test_repo": "https://github.com/user/ray.git",
+                    "ray_test_branch": "sub/branch",
+                    "priority": Priority.MANUAL,
+                    "no_concurrency_limit": False,
+                },
+            )
+
+            self.buildkite["release-frequency"] = "any-smoke"
+            update_settings_from_buildkite(updated_settings)
+
+            self.assertDictEqual(
+                updated_settings,
+                {
+                    "frequency": Frequency.ANY,
+                    "prefer_smoke_tests": True,
                     "test_attr_regex_filters": {"name": "name_filter"},
                     "ray_wheels": "custom-wheels",
                     "ray_test_repo": "https://github.com/user/ray.git",
@@ -363,6 +401,22 @@ class BuildkiteSettingsTest(unittest.TestCase):
             ],
         )
 
+        filtered = self._filter_names_smoke(
+            tests,
+            frequency=Frequency.ANY,
+            prefer_smoke_tests=True,
+        )
+        self.assertSequenceEqual(
+            filtered,
+            [
+                ("test_1", True),
+                ("test_2", True),
+                ("other_1", False),
+                ("other_2", True),
+                ("test_3", False),
+            ],
+        )
+
         filtered = self._filter_names_smoke(tests, frequency=Frequency.NIGHTLY)
         self.assertSequenceEqual(
             filtered,
@@ -370,6 +424,21 @@ class BuildkiteSettingsTest(unittest.TestCase):
                 ("test_1", False),
                 ("test_2", True),
                 ("other_2", False),
+                ("test_3", False),
+            ],
+        )
+
+        filtered = self._filter_names_smoke(
+            tests,
+            frequency=Frequency.NIGHTLY,
+            prefer_smoke_tests=True,
+        )
+        self.assertSequenceEqual(
+            filtered,
+            [
+                ("test_1", True),
+                ("test_2", True),
+                ("other_2", True),
                 ("test_3", False),
             ],
         )
@@ -504,7 +573,9 @@ class BuildkiteSettingsTest(unittest.TestCase):
         test_concurrency(12800, 9, "large-gpu")
         test_concurrency(12800, 8, "small-gpu")
         test_concurrency(12800, 1, "small-gpu")
-        test_concurrency(12800, 0, "large")
+        test_concurrency(12800, 0, "enormous")
+        test_concurrency(1025, 0, "enormous")
+        test_concurrency(1024, 0, "large")
         test_concurrency(513, 0, "large")
         test_concurrency(512, 0, "medium")
         test_concurrency(129, 0, "medium")
@@ -512,6 +583,55 @@ class BuildkiteSettingsTest(unittest.TestCase):
         test_concurrency(1, 0, "tiny")
         test_concurrency(32, 0, "tiny")
         test_concurrency(33, 0, "small")
+
+    def testConcurrencyGroupSmokeTest(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cluster_config_full = {
+                "head_node_type": {
+                    "instance_type": "n1-standard-16"  # 16 CPUs, 0 GPUs
+                },
+                "worker_node_types": [
+                    {
+                        "instance_type": "random-str-xxx-32",  # 32 CPUS, 0 GPUs
+                        "max_workers": 10,
+                    },
+                ],
+            }
+
+            cluster_config_smoke = {
+                "head_node_type": {
+                    "instance_type": "n1-standard-16"  # 16 CPUs, 0 GPUs
+                },
+                "worker_node_types": [
+                    {
+                        "instance_type": "random-str-xxx-32",  # 32 CPUS, 0 GPUs
+                        "max_workers": 1,
+                    },
+                ],
+            }
+
+            cluster_config_full_path = os.path.join(tmpdir, "full.yaml")
+            with open(cluster_config_full_path, "w") as fp:
+                yaml.safe_dump(cluster_config_full, fp)
+
+            cluster_config_smoke_path = os.path.join(tmpdir, "smoke.yaml")
+            with open(cluster_config_smoke_path, "w") as fp:
+                yaml.safe_dump(cluster_config_smoke, fp)
+
+            test = Test(
+                {
+                    "name": "test_1",
+                    "cluster": {"cluster_compute": cluster_config_full_path},
+                    "smoke_test": {
+                        "cluster": {"cluster_compute": cluster_config_smoke_path},
+                    },
+                }
+            )
+            step = get_step(test, smoke_test=False)
+            self.assertEquals(step["concurrency_group"], "medium")
+
+            step = get_step(test, smoke_test=True)
+            self.assertEquals(step["concurrency_group"], "small")
 
 
 if __name__ == "__main__":

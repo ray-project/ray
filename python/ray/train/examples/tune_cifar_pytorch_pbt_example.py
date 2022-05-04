@@ -14,7 +14,7 @@ from ray import tune
 from ray.train import Trainer
 from ray.tune import CLIReporter
 from ray.tune.schedulers import PopulationBasedTraining
-from ray.util.sgd.torch.resnet import ResNet18
+from ray.util.ml_utils.resnet import ResNet18
 
 
 def train_epoch(dataloader, model, loss_fn, optimizer):

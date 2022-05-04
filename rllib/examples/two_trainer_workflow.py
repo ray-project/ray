@@ -71,7 +71,6 @@ class MyTrainer(Trainer):
         # parameters.
         return with_common_config(
             {
-                "_disable_execution_plan_api": True,
                 "num_sgd_iter": 10,
                 "sgd_minibatch_size": 128,
             }
@@ -94,7 +93,9 @@ class MyTrainer(Trainer):
         num_env_steps = 0
         # PPO batch size fixed at 200.
         while num_env_steps < 200:
-            ma_batches = synchronous_parallel_sample(self.workers)
+            ma_batches = synchronous_parallel_sample(
+                worker_set=self.workers, concat=False
+            )
             # Loop through (parallely collected) ma-batches.
             for ma_batch in ma_batches:
                 # Update sampled counters.

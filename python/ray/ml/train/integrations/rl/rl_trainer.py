@@ -1,11 +1,14 @@
 import inspect
+import os
 from typing import Optional, Dict, Type, Union, Callable, Any
 
+import ray.cloudpickle as cpickle
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.config import ScalingConfig, RunConfig
+from ray.ml.constants import PREPROCESSOR_KEY
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.trainer import Trainer, GenDataset
-from ray.rllib.agents.trainer import Trainer as RLLibTrainer
+from ray.rllib.agents.trainer import Trainer as RLlibTrainer
 from ray.rllib.utils.typing import PartialTrainerConfigDict, EnvType
 from ray.tune import Trainable, PlacementGroupFactory
 from ray.tune.logger import Logger
@@ -15,11 +18,15 @@ from ray.util.annotations import PublicAPI
 from ray.util.ml_utils.dict import merge_dicts
 
 
+RL_TRAINER_CLASS_FILE = "trainer_class.pkl"
+RL_CONFIG_FILE = "config.pkl"
+
+
 @PublicAPI(stability="alpha")
 class RLTrainer(Trainer):
     """Reinforcement learning trainer.
 
-    This trainer provides an interface to RLLib trainables.
+    This trainer provides an interface to RLlib trainables.
 
     If datasets and preprocessors are used, they can be utilized for
     offline training, e.g. using behavior cloning. Otherwise, this trainer
@@ -27,7 +34,7 @@ class RLTrainer(Trainer):
 
     Args:
         algorithm: Algorithm to train on. Can be a string reference,
-            (e.g. ``"PPO"``) or a RLLib trainer class.
+            (e.g. ``"PPO"``) or a RLlib trainer class.
         scaling_config: Configuration for how to scale training.
         run_config: Configuration for the execution of the training run.
         datasets: Any Ray Datasets to use for training. Use the key "train"
@@ -36,7 +43,7 @@ class RLTrainer(Trainer):
             it will be fit on the training dataset. All datasets will be transformed
             by the ``preprocessor`` if one is provided.
             If specified, datasets will be used for offline training. Will be
-            configured as an RLLib ``input`` config item.
+            configured as an RLlib ``input`` config item.
         preprocessor: A preprocessor to preprocess the provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
 
@@ -102,7 +109,7 @@ class RLTrainer(Trainer):
 
     def __init__(
         self,
-        algorithm: Union[str, Type[RLLibTrainer]],
+        algorithm: Union[str, Type[RLlibTrainer]],
         config: Optional[Dict[str, Any]] = None,
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
@@ -126,10 +133,10 @@ class RLTrainer(Trainer):
 
         if not isinstance(self._algorithm, str) and not (
             inspect.isclass(self._algorithm)
-            and issubclass(self._algorithm, RLLibTrainer)
+            and issubclass(self._algorithm, RLlibTrainer)
         ):
             raise ValueError(
-                f"`algorithm` should be either a string or a RLLib trainer class, "
+                f"`algorithm` should be either a string or a RLlib trainer class, "
                 f"found {type(self._algorithm)} with value `{self._algorithm}`."
             )
 
@@ -177,8 +184,9 @@ class RLTrainer(Trainer):
 
     def as_trainable(self) -> Type[Trainable]:
         param_dict = self._param_dict
-        base_config = self._config
+        base_config = self._config or {}
         trainer_cls = self.__class__
+        preprocessor = self.preprocessor
 
         if isinstance(self._algorithm, str):
             rllib_trainer = get_trainable_cls(self._algorithm)
@@ -194,19 +202,39 @@ class RLTrainer(Trainer):
                 remote_checkpoint_dir: Optional[str] = None,
                 sync_function_tpl: Optional[str] = None,
             ):
-                resolved_config = merge_dicts(base_config, config)
+                resolved_config = merge_dicts(base_config, config or {})
                 param_dict["config"] = resolved_config
 
                 trainer = trainer_cls(**param_dict)
                 rllib_config = trainer._get_rllib_config(process_datasets=True)
 
                 super(AIRRLTrainer, self).__init__(
-                    rllib_config,
-                    env,
-                    logger_creator,
-                    remote_checkpoint_dir,
-                    sync_function_tpl,
+                    config=rllib_config,
+                    env=env,
+                    logger_creator=logger_creator,
+                    remote_checkpoint_dir=remote_checkpoint_dir,
+                    sync_function_tpl=sync_function_tpl,
                 )
+
+            def save_checkpoint(self, checkpoint_dir: str):
+                checkpoint_path = super(AIRRLTrainer, self).save_checkpoint(
+                    checkpoint_dir
+                )
+
+                trainer_class_path = os.path.join(checkpoint_dir, RL_TRAINER_CLASS_FILE)
+                with open(trainer_class_path, "wb") as fp:
+                    cpickle.dump(self.__class__, fp)
+
+                config_path = os.path.join(checkpoint_dir, RL_CONFIG_FILE)
+                with open(config_path, "wb") as fp:
+                    cpickle.dump(self.config, fp)
+
+                if preprocessor:
+                    preprocessor_path = os.path.join(checkpoint_dir, PREPROCESSOR_KEY)
+                    with open(preprocessor_path, "wb") as fp:
+                        cpickle.dump(preprocessor, fp)
+
+                return checkpoint_path
 
             @classmethod
             def default_resource_request(

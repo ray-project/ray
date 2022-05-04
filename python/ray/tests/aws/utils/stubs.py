@@ -1,3 +1,4 @@
+from typing import Dict, List
 import ray
 import copy
 
@@ -78,13 +79,15 @@ def skip_to_configure_sg(ec2_client_stub, iam_client_stub):
     configure_subnet_default(ec2_client_stub)
 
 
-def describe_subnets_echo(ec2_client_stub, subnet):
+def describe_subnets_echo(ec2_client_stub, subnets: List[Dict[str, str]]):
     ec2_client_stub.add_response(
         "describe_subnets",
         expected_params={
-            "Filters": [{"Name": "subnet-id", "Values": [subnet["SubnetId"]]}]
+            "Filters": [
+                {"Name": "subnet-id", "Values": [s["SubnetId"] for s in subnets]}
+            ]
         },
-        service_response={"Subnets": [subnet]},
+        service_response={"Subnets": subnets},
     )
 
 

@@ -1,38 +1,40 @@
-import asyncio
-import logging
-import pickle
-import inspect
-from typing import Any, Callable, Optional, Tuple, Dict
-import time
 import aiorwlock
+import asyncio
 from importlib import import_module
+import inspect
+import logging
+import os
+import pickle
+import time
+from typing import Any, Callable, Optional, Tuple, Dict
 
 import starlette.responses
 
 import ray
 from ray import cloudpickle
-from ray.remote_function import RemoteFunction
 from ray.actor import ActorClass, ActorHandle
+from ray.remote_function import RemoteFunction
+from ray.util import metrics
 from ray._private.async_compat import sync_to_async
 
 from ray.serve.autoscaling_metrics import start_metrics_pusher
 from ray.serve.common import ReplicaTag
 from ray.serve.config import DeploymentConfig
-from ray.serve.http_util import ASGIHTTPSender
-from ray.serve.utils import parse_request_item, _get_logger
-from ray.serve.exceptions import RayServeException
-from ray.util import metrics
-from ray.serve.router import Query, RequestMetadata
 from ray.serve.constants import (
     HEALTH_CHECK_METHOD,
     RECONFIGURE_METHOD,
     DEFAULT_LATENCY_BUCKET_MS,
+    SERVE_LOGGER_NAME,
 )
-from ray.serve.version import DeploymentVersion
-from ray.serve.utils import wrap_to_ray_error, parse_import_path
 from ray.serve.deployment import Deployment
+from ray.serve.exceptions import RayServeException
+from ray.serve.http_util import ASGIHTTPSender
+from ray.serve.logging_utils import access_log_msg, configure_component_logger
+from ray.serve.router import Query, RequestMetadata
+from ray.serve.utils import parse_import_path, parse_request_item, wrap_to_ray_error
+from ray.serve.version import DeploymentVersion
 
-logger = _get_logger()
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 def create_replica_wrapper(
@@ -70,6 +72,11 @@ def create_replica_wrapper(
             controller_namespace: str,
             detached: bool,
         ):
+            configure_component_logger(
+                component_type="deployment",
+                component_name=deployment_name,
+                component_id=replica_tag,
+            )
 
             if import_path is not None:
                 module_name, attr_name = parse_import_path(import_path)
@@ -109,7 +116,7 @@ def create_replica_wrapper(
             # Set the controller name so that serve.connect() in the user's
             # code will connect to the instance that this deployment is running
             # in.
-            ray.serve.api._set_internal_replica_context(
+            ray.serve.context.set_internal_replica_context(
                 deployment_name,
                 replica_tag,
                 controller_name,
@@ -141,7 +148,7 @@ def create_replica_wrapper(
                     await sync_to_async(_callable.__init__)(*init_args, **init_kwargs)
 
                 # Setting the context again to update the servable_object.
-                ray.serve.api._set_internal_replica_context(
+                ray.serve.context.set_internal_replica_context(
                     deployment_name,
                     replica_tag,
                     controller_name,
@@ -194,8 +201,10 @@ def create_replica_wrapper(
             return ray.get_runtime_context().node_id
 
         async def reconfigure(
-            self, user_config: Optional[Any] = None
+            self, user_config: Optional[Any] = None, _after: Optional[Any] = None
         ) -> Tuple[DeploymentConfig, DeploymentVersion]:
+            # Unused `_after` argument is for scheduling: passing an ObjectRef
+            # allows delaying reconfiguration until after this call has returned.
             if self.replica is None:
                 await self._initialize_replica()
             if user_config is not None:
@@ -314,6 +323,11 @@ class RayServeReplica:
                 controller_handle=controller_handle,
             )
 
+        # NOTE(edoakes): we used to recommend that users use the "ray" logger
+        # and tagged the logs with metadata as below. We now recommend using
+        # the "ray.serve" 'component logger' (as of Ray 1.13). This is left to
+        # maintain backwards compatibility with users who were using the
+        # existing logger. We can consider removing it in Ray 2.0.
         ray_logger = logging.getLogger("ray")
         for handler in ray_logger.handlers:
             handler.setFormatter(
@@ -378,7 +392,12 @@ class RayServeReplica:
             return sender.build_asgi_response()
         return response
 
-    async def invoke_single(self, request_item: Query) -> Any:
+    async def invoke_single(self, request_item: Query) -> Tuple[Any, bool]:
+        """Executes the provided request on this replica.
+
+        Returns the user-provided output and a boolean indicating if the
+        request succeeded (user code didn't raise an exception).
+        """
         logger.debug(
             "Replica {} started executing request {}".format(
                 self.replica_tag, request_item.metadata.request_id
@@ -386,8 +405,8 @@ class RayServeReplica:
         )
         args, kwargs = parse_request_item(request_item)
 
-        start = time.time()
         method_to_call = None
+        success = True
         try:
             runner_method = self.get_runner_method(request_item)
             method_to_call = sync_to_async(runner_method)
@@ -395,15 +414,24 @@ class RayServeReplica:
             if len(inspect.signature(runner_method).parameters) > 0:
                 result = await method_to_call(*args, **kwargs)
             else:
-                # The method doesn't take in anything, including the request
-                # information, so we pass nothing into it
-                result = await method_to_call()
+                # When access via http http_arg_is_pickled with no args:
+                # args = (<starlette.requests.Request object at 0x7fe900694cc0>,)
+                # When access via python with no args:
+                # args = ()
+                if len(args) == 1 and isinstance(args[0], starlette.requests.Request):
+                    # The method doesn't take in anything, including the request
+                    # information, so we pass nothing into it
+                    result = await method_to_call()
+                else:
+                    # Will throw due to signature mismatch if user attempts to
+                    # call with non-empty args
+                    result = await method_to_call(*args, **kwargs)
 
             result = await self.ensure_serializable_response(result)
             self.request_counter.inc()
         except Exception as e:
-            import os
-
+            logger.exception(f"Request failed due to {type(e).__name__}:")
+            success = False
             if "RAY_PDB" in os.environ:
                 ray.util.pdb.post_mortem()
             function_name = "unknown"
@@ -412,10 +440,7 @@ class RayServeReplica:
             result = wrap_to_ray_error(function_name, e)
             self.error_counter.inc()
 
-        latency_ms = (time.time() - start) * 1000
-        self.processing_latency_tracker.observe(latency_ms)
-
-        return result
+        return result, success
 
     async def reconfigure(self, user_config: Any):
         async with self.rwlock.writer_lock:
@@ -440,21 +465,21 @@ class RayServeReplica:
 
     async def handle_request(self, request: Query) -> asyncio.Future:
         async with self.rwlock.reader_lock:
-            request.tick_enter_replica = time.time()
-            logger.debug(
-                "Replica {} received request {}".format(
-                    self.replica_tag, request.metadata.request_id
-                )
-            )
-
             num_running_requests = self._get_handle_request_stats()["running"]
             self.num_processing_items.set(num_running_requests)
 
-            result = await self.invoke_single(request)
-            request_time_ms = (time.time() - request.tick_enter_replica) * 1000
-            logger.debug(
-                "Replica {} finished request {} in {:.2f}ms".format(
-                    self.replica_tag, request.metadata.request_id, request_time_ms
+            start_time = time.time()
+            result, success = await self.invoke_single(request)
+            latency_ms = (time.time() - start_time) * 1000
+
+            self.processing_latency_tracker.observe(latency_ms)
+
+            logger.info(
+                access_log_msg(
+                    method="HANDLE",
+                    route=request.metadata.call_method,
+                    status="OK" if success else "ERROR",
+                    latency_ms=latency_ms,
                 )
             )
 

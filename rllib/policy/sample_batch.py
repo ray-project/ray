@@ -138,13 +138,12 @@ class SampleBatch(dict):
             # value that is actually a ndarray/tensor. This would fail if
             # all values are nested dicts/tuples of more complex underlying
             # structures.
-            len_ = (
-                len(v)
-                if isinstance(v, (list, np.ndarray)) or (torch and torch.is_tensor(v))
-                else None
-            )
-            if len_:
-                lengths.append(len_)
+            try:
+                len_ = len(v) if not isinstance(v, (dict, tuple)) else None
+                if len_:
+                    lengths.append(len_)
+            except Exception:
+                pass
 
         if (
             self.get(SampleBatch.SEQ_LENS) is not None
@@ -415,7 +414,9 @@ class SampleBatch(dict):
         self_as_dict = {k: v for k, v in self.items()}
         shuffled = tree.map_structure(lambda v: v[permutation], self_as_dict)
         self.update(shuffled)
-
+        # Flush cache such that intercepted values are recalculated after the
+        # shuffling.
+        self.intercepted_values = {}
         return self
 
     @PublicAPI
@@ -654,7 +655,7 @@ class SampleBatch(dict):
         if seq_lens is None:
             raise ValueError(
                 "Cannot right-zero-pad SampleBatch if no `seq_lens` field "
-                "present! SampleBatch={self}"
+                f"present! SampleBatch={self}"
             )
 
         length = len(seq_lens) * max_seq_len
@@ -937,26 +938,30 @@ class SampleBatch(dict):
             # Build our slice-map, if not done already.
             if not self._slice_map:
                 sum_ = 0
-                for i, l in enumerate(self[SampleBatch.SEQ_LENS]):
-                    for _ in range(l):
-                        self._slice_map.append((i, sum_))
-                    sum_ += l
+                for i, l in enumerate(map(int, self[SampleBatch.SEQ_LENS])):
+                    self._slice_map.extend([(i, sum_)] * l)
+                    sum_ = sum_ + l
                 # In case `stop` points to the very end (lengths of this
                 # batch), return the last sequence (the -1 here makes sure we
                 # never go beyond it; would result in an index error below).
                 self._slice_map.append((len(self[SampleBatch.SEQ_LENS]), sum_))
 
-            start_seq_len, start = self._slice_map[start]
-            stop_seq_len, stop = self._slice_map[stop]
+            start_seq_len, start_unpadded = self._slice_map[start]
+            stop_seq_len, stop_unpadded = self._slice_map[stop]
+            start_padded = start_unpadded
+            stop_padded = stop_unpadded
             if self.zero_padded:
-                start = start_seq_len * self.max_seq_len
-                stop = stop_seq_len * self.max_seq_len
+                start_padded = start_seq_len * self.max_seq_len
+                stop_padded = stop_seq_len * self.max_seq_len
 
             def map_(path, value):
                 if path[0] != SampleBatch.SEQ_LENS and not path[0].startswith(
                     "state_in_"
                 ):
-                    return value[start:stop]
+                    if path[0] != SampleBatch.INFOS:
+                        return value[start_padded:stop_padded]
+                    else:
+                        return value[start_unpadded:stop_unpadded]
                 else:
                     return value[start_seq_len:stop_seq_len]
 

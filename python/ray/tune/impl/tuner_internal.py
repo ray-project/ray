@@ -43,7 +43,8 @@ class TunerInternal:
         tune_config: Tuning algorithm specific configs.
             Refer to ray.tune.tune_config.TuneConfig for more info.
         run_config: Runtime configuration that is specific to individual trials.
-            Refer to ray.ml.config.RunConfig for more info.
+            If passed, this will overwrite the run config passed to the Trainer,
+            if applicable. Refer to ray.ml.config.RunConfig for more info.
     """
 
     def __init__(
@@ -81,6 +82,11 @@ class TunerInternal:
         # Start from fresh
         if not trainable:
             raise TuneError("You need to provide a trainable to tune.")
+
+        # If no run config was passed to Tuner directly, use the one from the Trainer,
+        # if available
+        if not run_config and isinstance(trainable, Trainer):
+            run_config = trainable.run_config
 
         self._is_restored = False
         self._trainable = trainable
@@ -174,6 +180,7 @@ class TunerInternal:
             ),
             _experiment_checkpoint_dir=self._experiment_checkpoint_dir,
             raise_on_failed_trial=False,
+            verbose=self._run_config.verbose,
             **self._tuner_kwargs,
         )
         return analysis

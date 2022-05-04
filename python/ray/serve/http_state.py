@@ -1,19 +1,21 @@
 import asyncio
+import logging
 import random
 from typing import Dict, List, Tuple, Optional
 
 import ray
 from ray.actor import ActorHandle
 from ray.serve.config import HTTPOptions, DeploymentMode
-from ray.serve.constants import ASYNC_CONCURRENCY, SERVE_PROXY_NAME
+from ray.serve.constants import ASYNC_CONCURRENCY, SERVE_LOGGER_NAME, SERVE_PROXY_NAME
 from ray.serve.http_proxy import HTTPProxyActor
 from ray.serve.utils import (
     format_actor_name,
-    logger,
     get_all_node_ids,
     get_current_node_resource_key,
 )
 from ray.serve.common import EndpointTag, NodeId
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 class HTTPState:
@@ -33,7 +35,7 @@ class HTTPState:
         _start_proxies_on_init: bool = True,
     ):
         self._controller_name = controller_name
-        self._controller_namespace = ray.serve.api._get_controller_namespace(
+        self._controller_namespace = ray.serve.client.get_controller_namespace(
             detached, _override_controller_namespace=_override_controller_namespace
         )
         self._detached = detached
@@ -128,6 +130,7 @@ class HTTPState:
                     self._config.root_path,
                     controller_name=self._controller_name,
                     controller_namespace=self._controller_namespace,
+                    node_id=node_id,
                     http_middlewares=self._config.middlewares,
                 )
 

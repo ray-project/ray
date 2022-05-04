@@ -1,5 +1,4 @@
-from typing import Any, Dict, List, Union
-import threading
+from typing import List
 from collections import OrderedDict
 
 from ray.experimental.dag import (
@@ -10,82 +9,28 @@ from ray.experimental.dag import (
 )
 from ray.experimental.dag.function_node import FunctionNode
 from ray.experimental.dag.input_node import InputNode
+from ray.experimental.dag.utils import DAGNodeNameGenerator
 from ray.serve.deployment import Deployment
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.pipeline.deployment_node import DeploymentNode
 from ray.serve.pipeline.deployment_function_node import DeploymentFunctionNode
 
 
-class DeploymentNameGenerator(object):
-    """
-    Generate unique suffix for each given deployment_name requested for name.
-    By default uses deployment_name for the very first time, then append
-    monotonic increasing id to it.
-    """
-
-    __lock = threading.Lock()
-    __shared_state = dict()
-
-    @classmethod
-    def get_deployment_name(cls, dag_node: Union[ClassNode, FunctionNode]):
-        assert isinstance(dag_node, (ClassNode, FunctionNode)), (
-            "get_deployment_name() should only be called on ClassNode or "
-            "FunctionNode instances."
-        )
-        with cls.__lock:
-            deployment_name = (
-                dag_node.get_options().get("name", None) or dag_node._body.__name__
-            )
-            if deployment_name not in cls.__shared_state:
-                cls.__shared_state[deployment_name] = 0
-                return deployment_name
-            else:
-                cls.__shared_state[deployment_name] += 1
-                suffix_num = cls.__shared_state[deployment_name]
-
-                return f"{deployment_name}_{suffix_num}"
-
-    @classmethod
-    def reset(cls):
-        with cls.__lock:
-            cls.__shared_state = dict()
-
-
-def _remove_non_default_ray_actor_options(ray_actor_options: Dict[str, Any]):
-    """
-    In Ray DAG building we pass full ray_actor_options regardless if a field
-    was explicitly set. Since some values are invalid, we need to remove them
-    from ray_actor_options.
-    """
-    # TODO: (jiaodong) Revisit when we implement build() when user explicitly
-    # pass default value
-    ray_actor_options = {k: v for k, v in ray_actor_options.items() if v}
-    if ray_actor_options.get("placement_group") == "default":
-        del ray_actor_options["placement_group"]
-    if ray_actor_options.get("placement_group_bundle_index") == -1:
-        del ray_actor_options["placement_group_bundle_index"]
-    if ray_actor_options.get("max_pending_calls") == -1:
-        del ray_actor_options["max_pending_calls"]
-
-    return ray_actor_options
-
-
-def transform_ray_dag_to_serve_dag(dag_node):
+def transform_ray_dag_to_serve_dag(
+    dag_node: DAGNode, node_name_generator: DAGNodeNameGenerator
+):
     """
     Transform a Ray DAG to a Serve DAG. Map ClassNode to DeploymentNode with
-    ray decorated body passed in, ans ClassMethodNode to DeploymentMethodNode.
+    ray decorated body passed in, and ClassMethodNode to DeploymentMethodNode.
     """
     if isinstance(dag_node, ClassNode):
-        deployment_name = DeploymentNameGenerator.get_deployment_name(dag_node)
-        ray_actor_options = _remove_non_default_ray_actor_options(
-            dag_node.get_options()
-        )
+        deployment_name = node_name_generator.get_node_name(dag_node)
         return DeploymentNode(
             dag_node._body,
             deployment_name,
             dag_node.get_args(),
             dag_node.get_kwargs(),
-            ray_actor_options,
+            dag_node.get_options(),
             # TODO: (jiaodong) Support .options(metadata=xxx) for deployment
             other_args_to_resolve=dag_node.get_other_args_to_resolve(),
         )
@@ -109,7 +54,7 @@ def transform_ray_dag_to_serve_dag(dag_node):
         # TODO (jiaodong): We do not convert ray function to deployment function
         # yet, revisit this later
     ) and dag_node.get_other_args_to_resolve().get("is_from_serve_deployment"):
-        deployment_name = DeploymentNameGenerator.get_deployment_name(dag_node)
+        deployment_name = node_name_generator.get_node_name(dag_node)
         return DeploymentFunctionNode(
             dag_node._body,
             deployment_name,

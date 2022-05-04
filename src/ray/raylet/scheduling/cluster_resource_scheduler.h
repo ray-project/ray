@@ -44,15 +44,17 @@ using rpc::HeartbeatTableData;
 /// resources at those nodes.
 class ClusterResourceScheduler {
  public:
-  ClusterResourceScheduler();
   /// Constructor initializing the resources associated with the local node.
   ///
   /// \param local_node_id: ID of local node,
   /// \param local_node_resources: The total and the available resources associated
   /// with the local node.
+  /// \param is_node_available_fn: Function to determine whether a node is available.
+  /// \param is_local_node_with_raylet: Whether there is a raylet on the local node.
   ClusterResourceScheduler(scheduling::NodeID local_node_id,
                            const NodeResources &local_node_resources,
-                           std::function<bool(scheduling::NodeID)> is_node_available_fn);
+                           std::function<bool(scheduling::NodeID)> is_node_available_fn,
+                           bool is_local_node_with_raylet = true);
 
   ClusterResourceScheduler(
       scheduling::NodeID local_node_id,
@@ -83,8 +85,8 @@ class ClusterResourceScheduler {
   ///  prioritize_local_node if set to true.
   ///  \param requires_object_store_memory: take object store memory usage as part of
   ///  scheduling decision.
-  ///  \param is_infeasible[out]: It is set true if the task is not schedulable because it
-  ///  is infeasible.
+  ///  \param is_infeasible[out]: It is set
+  ///  true if the task is not schedulable because it is infeasible.
   ///
   ///  \return emptry string, if no node can schedule the current request; otherwise,
   ///          return the string name of a node that can schedule the resource request.
@@ -114,7 +116,8 @@ class ClusterResourceScheduler {
   /// \param node_name Name of the node.
   /// \param shape The resource demand's shape.
   bool IsSchedulableOnNode(scheduling::NodeID node_id,
-                           const absl::flat_hash_map<std::string, double> &shape);
+                           const absl::flat_hash_map<std::string, double> &shape,
+                           bool requires_object_store_memory);
 
   LocalResourceManager &GetLocalResourceManager() { return *local_resource_manager_; }
   ClusterResourceManager &GetClusterResourceManager() {
@@ -199,6 +202,8 @@ class ClusterResourceScheduler {
   /// The bundle scheduling policy to use.
   std::unique_ptr<raylet_scheduling_policy::IBundleSchedulingPolicy>
       bundle_scheduling_policy_;
+  /// Whether there is a raylet on the local node.
+  bool is_local_node_with_raylet_ = true;
 
   friend class ClusterResourceSchedulerTest;
   FRIEND_TEST(ClusterResourceSchedulerTest, PopulatePredefinedResources);
@@ -206,6 +211,7 @@ class ClusterResourceScheduler {
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingModifyClusterNodeTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateAvailableResourcesTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingAddOrUpdateNodeTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, NodeAffinitySchedulingStrategyTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SpreadSchedulingStrategyTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingResourceRequestTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest);

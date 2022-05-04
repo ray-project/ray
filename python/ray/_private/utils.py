@@ -12,7 +12,7 @@ import sys
 import tempfile
 import threading
 import time
-from typing import Optional, Sequence, Tuple, Any, Union
+from typing import Optional, Sequence, Tuple, Any, Union, Dict
 import uuid
 import grpc
 import warnings
@@ -28,8 +28,8 @@ from pathlib import Path
 import numpy as np
 
 import ray
+from ray.core.generated.gcs_pb2 import ErrorTableData
 import ray.ray_constants as ray_constants
-from ray._private.gcs_pubsub import construct_error_message
 from ray._private.tls_utils import load_certs_from_env
 
 # Import psutil after ray so the packaged version is used.
@@ -114,6 +114,27 @@ def push_error_to_driver(worker, error_type, message, job_id=None):
         job_id = ray.JobID.nil()
     assert isinstance(job_id, ray.JobID)
     worker.core_worker.push_error(job_id, error_type, message, time.time())
+
+
+def construct_error_message(job_id, error_type, message, timestamp):
+    """Construct an ErrorTableData object.
+
+    Args:
+        job_id: The ID of the job that the error should go to. If this is
+            nil, then the error will go to all drivers.
+        error_type: The type of the error.
+        message: The error message.
+        timestamp: The time of the error.
+
+    Returns:
+        The ErrorTableData object.
+    """
+    data = ErrorTableData()
+    data.job_id = job_id.binary()
+    data.type = error_type
+    data.error_message = message
+    data.timestamp = timestamp
+    return data
 
 
 def publish_error_to_driver(
@@ -283,52 +304,16 @@ def set_cuda_visible_devices(gpu_ids):
     last_set_gpu_ids = gpu_ids
 
 
-def resources_from_resource_arguments(
-    default_num_cpus,
-    default_num_gpus,
-    default_memory,
-    default_object_store_memory,
-    default_resources,
-    default_accelerator_type,
-    runtime_num_cpus,
-    runtime_num_gpus,
-    runtime_memory,
-    runtime_object_store_memory,
-    runtime_resources,
-    runtime_accelerator_type,
-):
+def resources_from_ray_options(options_dict: Dict[str, Any]) -> Dict[str, Any]:
     """Determine a task's resource requirements.
 
     Args:
-        default_num_cpus: The default number of CPUs required by this function
-            or actor method.
-        default_num_gpus: The default number of GPUs required by this function
-            or actor method.
-        default_memory: The default heap memory required by this function
-            or actor method.
-        default_object_store_memory: The default object store memory required
-            by this function or actor method.
-        default_resources: The default custom resources required by this
-            function or actor method.
-        runtime_num_cpus: The number of CPUs requested when the task was
-            invoked.
-        runtime_num_gpus: The number of GPUs requested when the task was
-            invoked.
-        runtime_memory: The heap memory requested when the task was invoked.
-        runtime_object_store_memory: The object store memory requested when
-            the task was invoked.
-        runtime_resources: The custom resources requested when the task was
-            invoked.
+        options_dict: The dictionary that contains resources requirements.
 
     Returns:
         A dictionary of the resource requirements for the task.
     """
-    if runtime_resources is not None:
-        resources = runtime_resources.copy()
-    elif default_resources is not None:
-        resources = default_resources.copy()
-    else:
-        resources = {}
+    resources = (options_dict.get("resources") or {}).copy()
 
     if "CPU" in resources or "GPU" in resources:
         raise ValueError(
@@ -340,33 +325,25 @@ def resources_from_resource_arguments(
             "contain the key 'memory' or 'object_store_memory'"
         )
 
-    assert default_num_cpus is not None
-    resources["CPU"] = (
-        default_num_cpus if runtime_num_cpus is None else runtime_num_cpus
-    )
+    num_cpus = options_dict.get("num_cpus")
+    num_gpus = options_dict.get("num_gpus")
+    memory = options_dict.get("memory")
+    object_store_memory = options_dict.get("object_store_memory")
+    accelerator_type = options_dict.get("accelerator_type")
 
-    if runtime_num_gpus is not None:
-        resources["GPU"] = runtime_num_gpus
-    elif default_num_gpus is not None:
-        resources["GPU"] = default_num_gpus
-
-    # Order of arguments matter for short circuiting.
-    memory = runtime_memory or default_memory
-    object_store_memory = runtime_object_store_memory or default_object_store_memory
+    if num_cpus is not None:
+        resources["CPU"] = num_cpus
+    if num_gpus is not None:
+        resources["GPU"] = num_gpus
     if memory is not None:
         resources["memory"] = ray_constants.to_memory_units(memory, round_up=True)
     if object_store_memory is not None:
         resources["object_store_memory"] = ray_constants.to_memory_units(
             object_store_memory, round_up=True
         )
-
-    if runtime_accelerator_type is not None:
+    if accelerator_type is not None:
         resources[
-            f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}" f"{runtime_accelerator_type}"
-        ] = 0.001
-    elif default_accelerator_type is not None:
-        resources[
-            f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}" f"{default_accelerator_type}"
+            f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}"
         ] = 0.001
 
     return resources
@@ -414,7 +391,12 @@ def open_log(path, unbuffered=False, **kwargs):
         return stream
 
 
-def get_system_memory():
+def get_system_memory(
+    # For cgroups v1:
+    memory_limit_filename="/sys/fs/cgroup/memory/memory.limit_in_bytes",
+    # For cgroups v2:
+    memory_limit_filename_v2="/sys/fs/cgroup/memory.max",
+):
     """Return the total amount of system memory in bytes.
 
     Returns:
@@ -424,16 +406,17 @@ def get_system_memory():
     # container. Note that this file is not specific to Docker and its value is
     # often much larger than the actual amount of memory.
     docker_limit = None
-    # For cgroups v1:
-    memory_limit_filename = "/sys/fs/cgroup/memory/memory.limit_in_bytes"
-    # For cgroups v2:
-    memory_limit_filename_v2 = "/sys/fs/cgroup/memory.max"
     if os.path.exists(memory_limit_filename):
         with open(memory_limit_filename, "r") as f:
             docker_limit = int(f.read())
     elif os.path.exists(memory_limit_filename_v2):
         with open(memory_limit_filename_v2, "r") as f:
-            docker_limit = int(f.read())
+            max_file = f.read()
+            if max_file.isnumeric():
+                docker_limit = int(max_file)
+            else:
+                # max_file is "max", i.e. is unset.
+                docker_limit = None
 
     # Use psutil if it is available.
     psutil_memory_in_bytes = psutil.virtual_memory().total
@@ -1208,6 +1191,42 @@ def check_dashboard_dependencies_installed() -> bool:
         return False
 
 
+def internal_kv_list_with_retry(gcs_client, prefix, namespace, num_retries=20):
+    result = None
+    if isinstance(prefix, str):
+        prefix = prefix.encode()
+    if isinstance(namespace, str):
+        namespace = namespace.encode()
+    for _ in range(num_retries):
+        try:
+            result = gcs_client.internal_kv_keys(prefix, namespace)
+        except Exception as e:
+            if isinstance(e, grpc.RpcError) and e.code() in (
+                grpc.StatusCode.UNAVAILABLE,
+                grpc.StatusCode.UNKNOWN,
+            ):
+                logger.warning(
+                    f"Unable to connect to GCS at {gcs_client.address}. "
+                    "Check that (1) Ray GCS with matching version started "
+                    "successfully at the specified address, and (2) there is "
+                    "no firewall setting preventing access."
+                )
+            else:
+                logger.exception("Internal KV List failed")
+            result = None
+
+        if result is not None:
+            break
+        else:
+            logger.debug(f"Fetched {prefix}=None from KV. Retrying.")
+            time.sleep(2)
+    if result is None:
+        raise RuntimeError(
+            f"Could not list '{prefix}' from GCS. Did GCS start successfully?"
+        )
+    return result
+
+
 def internal_kv_get_with_retry(gcs_client, key, namespace, num_retries=20):
     result = None
     if isinstance(key, str):
@@ -1245,6 +1264,10 @@ def internal_kv_get_with_retry(gcs_client, key, namespace, num_retries=20):
 def internal_kv_put_with_retry(gcs_client, key, value, namespace, num_retries=20):
     if isinstance(key, str):
         key = key.encode()
+    if isinstance(value, str):
+        value = value.encode()
+    if isinstance(namespace, str):
+        namespace = namespace.encode()
     error = None
     for _ in range(num_retries):
         try:
@@ -1292,3 +1315,29 @@ def get_directory_size_bytes(path: Union[str, Path] = ".") -> int:
                 total_size_bytes += os.path.getsize(fp)
 
     return total_size_bytes
+
+
+def check_version_info(cluster_metadata):
+    """Check if the Python and Ray versions stored in GCS matches this process.
+    Args:
+        cluster_metadata: Ray cluster metadata from GCS.
+
+    Raises:
+        Exception: An exception is raised if there is a version mismatch.
+    """
+    cluster_version_info = (
+        cluster_metadata["ray_version"],
+        cluster_metadata["python_version"],
+    )
+    version_info = compute_version_info()
+    if version_info != cluster_version_info:
+        node_ip_address = ray._private.services.get_node_ip_address()
+        error_message = (
+            "Version mismatch: The cluster was started with:\n"
+            "    Ray: " + cluster_version_info[0] + "\n"
+            "    Python: " + cluster_version_info[1] + "\n"
+            "This process on node " + node_ip_address + " was started with:" + "\n"
+            "    Ray: " + version_info[0] + "\n"
+            "    Python: " + version_info[1] + "\n"
+        )
+        raise RuntimeError(error_message)

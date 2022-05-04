@@ -24,7 +24,6 @@ from ray.rllib.examples.env.mock_env import (
 )
 from ray.rllib.examples.env.multi_agent import BasicMultiAgent, MultiAgentCartPole
 from ray.rllib.examples.policy.random_policy import RandomPolicy
-from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, STEPS_TRAINED_COUNTER
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import (
     DEFAULT_POLICY_ID,
@@ -32,6 +31,7 @@ from ray.rllib.policy.sample_batch import (
     SampleBatch,
 )
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.metrics import NUM_AGENT_STEPS_SAMPLED, NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.test_utils import check, framework_iterator
 from ray.tune.registry import register_env
 
@@ -159,15 +159,19 @@ class TestRolloutWorker(unittest.TestCase):
                 result = agent.train()
                 print(
                     "{}={}".format(
-                        STEPS_TRAINED_COUNTER, result["info"][STEPS_TRAINED_COUNTER]
+                        NUM_AGENT_STEPS_TRAINED, result["info"][NUM_AGENT_STEPS_TRAINED]
                     )
                 )
                 print(
                     "{}={}".format(
-                        STEPS_SAMPLED_COUNTER, result["info"][STEPS_SAMPLED_COUNTER]
+                        NUM_AGENT_STEPS_SAMPLED, result["info"][NUM_AGENT_STEPS_SAMPLED]
                     )
                 )
-                global_timesteps = policy.global_timestep
+                global_timesteps = (
+                    policy.global_timestep
+                    if fw == "tf"
+                    else policy.global_timestep.numpy()
+                )
                 print("global_timesteps={}".format(global_timesteps))
                 expected_lr = 0.1 - ((0.1 - 0.000001) / 100000) * global_timesteps
                 lr = policy.cur_lr
@@ -354,6 +358,55 @@ class TestRolloutWorker(unittest.TestCase):
         # space.
         self.assertGreater(np.max(sample["actions"]), action_space.high[0])
         self.assertLess(np.min(sample["actions"]), action_space.low[0])
+        ev.stop()
+
+    def test_action_immutability(self):
+        from ray.rllib.examples.env.random_env import RandomEnv
+
+        action_space = gym.spaces.Box(0.0001, 0.0002, (5,))
+
+        class ActionMutationEnv(RandomEnv):
+            def init(self, config):
+                self.test_case = config["test_case"]
+                super().__init__(config=config)
+
+            def step(self, action):
+                # Ensure that it is called from inside the sampling process.
+                import inspect
+
+                curframe = inspect.currentframe()
+                called_from_check = any(
+                    [
+                        frame[3] == "check_gym_environments"
+                        for frame in inspect.getouterframes(curframe, 2)
+                    ]
+                )
+                # Check, whether the action is immutable.
+                if action.flags.writeable and not called_from_check:
+                    self.test_case.assertFalse(
+                        action.flags.writeable, "Action is mutable"
+                    )
+                return super().step(action)
+
+        ev = RolloutWorker(
+            env_creator=lambda _: ActionMutationEnv(
+                config=dict(
+                    test_case=self,
+                    action_space=action_space,
+                    max_episode_len=10,
+                    p_done=0.0,
+                    check_action_bounds=True,
+                )
+            ),
+            policy_spec=RandomPolicy,
+            policy_config=dict(
+                action_space=action_space,
+                ignore_action_bounds=True,
+            ),
+            clip_actions=False,
+            batch_mode="complete_episodes",
+        )
+        ev.sample()
         ev.stop()
 
     def test_reward_clipping(self):
@@ -584,7 +637,7 @@ class TestRolloutWorker(unittest.TestCase):
             batch = ev.sample()
             self.assertEqual(batch.count, 10)
         result = collect_metrics(ev, [])
-        self.assertGreater(result["episodes_this_iter"], 7)
+        self.assertGreater(result["episodes_this_iter"], 6)
         ev.stop()
 
     def test_truncate_episodes(self):

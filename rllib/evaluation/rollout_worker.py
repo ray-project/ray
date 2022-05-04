@@ -35,16 +35,18 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.models.preprocessors import Preprocessor
 from ray.rllib.offline import NoopOutput, IOContext, OutputWriter, InputReader
 from ray.rllib.offline.off_policy_estimator import OffPolicyEstimator, OffPolicyEstimate
-from ray.rllib.offline.is_estimator import ImportanceSamplingEstimator
-from ray.rllib.offline.wis_estimator import WeightedImportanceSamplingEstimator
+from ray.rllib.offline.estimators.importance_sampling import ImportanceSampling
+from ray.rllib.offline.estimators.weighted_importance_sampling import (
+    WeightedImportanceSampling,
+)
 from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils import force_list, merge_dicts, check_env
-from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, ExperimentalAPI
+from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI
 from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.error import ERR_MSG_NO_GPUS, HOWTO_CHANGE_CONFIG
 from ray.rllib.utils.filter import get_filter, Filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -343,13 +345,14 @@ class RolloutWorker(ParallelIteratorWorker):
                 DefaultCallbacks for training/policy/rollout-worker callbacks.
             input_creator: Function that returns an InputReader object for
                 loading previous generated experiences.
-            input_evaluation: How to evaluate the policy
-                performance. This only makes sense to set when the input is
-                reading offline data. The possible values include:
-                - "is": the step-wise importance sampling estimator.
-                - "wis": the weighted step-wise is estimator.
-                - "simulation": run the environment in the background, but
-                use this data for evaluation only and never for learning.
+            input_evaluation: How to evaluate the policy performance. Setting this only
+                makes sense when the input is reading offline data.
+                Available options:
+                - "simulation" (str): Run the environment in the background, but use
+                this data for evaluation only and not for learning.
+                - Any subclass (type) of the OffPolicyEstimator API class, e.g.
+                `ray.rllib.offline.estimators.importance_sampling::ImportanceSampling`
+                or your own custom subclass.
             output_creator: Function that returns an OutputWriter object for
                 saving generated experiences.
             remote_worker_envs: If using num_envs_per_worker > 1,
@@ -508,15 +511,6 @@ class RolloutWorker(ParallelIteratorWorker):
         if self.env is not None:
             # Validate environment (general validation function).
             if not self._disable_env_checking:
-                logger.warning(
-                    "We've added a module for checking environments that "
-                    "are used in experiments. It will cause your "
-                    "environment to fail if your environment is not set up"
-                    "correctly. You can disable check env by setting "
-                    "`disable_env_checking` to True in your experiment config "
-                    "dictionary. You can run the environment checking module "
-                    "standalone by calling ray.rllib.utils.check_env(env)."
-                )
                 check_env(self.env)
             # Custom validation function given, typically a function attribute of the
             # algorithm trainer.
@@ -719,24 +713,41 @@ class RolloutWorker(ParallelIteratorWorker):
         )
         self.reward_estimators: List[OffPolicyEstimator] = []
         for method in input_evaluation:
+            if method == "is":
+                method = ImportanceSampling
+                deprecation_warning(
+                    old="config.input_evaluation=[is]",
+                    new="from ray.rllib.offline.is_estimator import "
+                    f"{method.__name__}; config.input_evaluation="
+                    f"[{method.__name__}]",
+                    error=False,
+                )
+            elif method == "wis":
+                method = WeightedImportanceSampling
+                deprecation_warning(
+                    old="config.input_evaluation=[is]",
+                    new="from ray.rllib.offline.wis_estimator import "
+                    f"{method.__name__}; config.input_evaluation="
+                    f"[{method.__name__}]",
+                    error=False,
+                )
+
             if method == "simulation":
                 logger.warning(
                     "Requested 'simulation' input evaluation method: "
                     "will discard all sampler outputs and keep only metrics."
                 )
                 sample_async = True
-            elif method == "is":
-                ise = ImportanceSamplingEstimator.create_from_io_context(
-                    self.io_context
+            elif isinstance(method, type) and issubclass(method, OffPolicyEstimator):
+                self.reward_estimators.append(
+                    method.create_from_io_context(self.io_context)
                 )
-                self.reward_estimators.append(ise)
-            elif method == "wis":
-                wise = WeightedImportanceSamplingEstimator.create_from_io_context(
-                    self.io_context
-                )
-                self.reward_estimators.append(wise)
             else:
-                raise ValueError("Unknown evaluation method: {}".format(method))
+                raise ValueError(
+                    f"Unknown evaluation method: {method}! Must be "
+                    "either `simulation` or a sub-class of ray.rllib.offline."
+                    "off_policy_estimator::OffPolicyEstimator"
+                )
 
         render = False
         if policy_config.get("render_env") is True and (
@@ -950,11 +961,13 @@ class RolloutWorker(ParallelIteratorWorker):
             info_out.update({pid: builders[pid].get(v) for pid, v in to_fetch.items()})
         else:
             if self.is_policy_to_train(DEFAULT_POLICY_ID, samples):
-                info_out = {
-                    DEFAULT_POLICY_ID: self.policy_map[
-                        DEFAULT_POLICY_ID
-                    ].learn_on_batch(samples)
-                }
+                info_out.update(
+                    {
+                        DEFAULT_POLICY_ID: self.policy_map[
+                            DEFAULT_POLICY_ID
+                        ].learn_on_batch(samples)
+                    }
+                )
         if log_once("learn_out"):
             logger.debug("Training out:\n\n{}\n".format(summarize(info_out)))
         return info_out
@@ -1449,8 +1462,14 @@ class RolloutWorker(ParallelIteratorWorker):
             `func([policy, pid, **kwargs])`.
         """
         return [
-            func(policy, pid, **kwargs)
-            for pid, policy in self.policy_map.items()
+            # Make sure to only iterate over keys() and not items(). Iterating over
+            # items will access policy_map elements even for pids that we do not need,
+            # i.e. those that are not in policy_to_train. Access to policy_map elements
+            # can cause disk access for policies that were offloaded to disk. Since
+            # these policies will be skipped in the for-loop accessing them is
+            # unnecessary, making subsequent disk access unnecessary.
+            func(self.policy_map[pid], pid, **kwargs)
+            for pid in self.policy_map.keys()
             if self.is_policy_to_train(pid, None)
         ]
 
@@ -1529,7 +1548,7 @@ class RolloutWorker(ParallelIteratorWorker):
                         f"PolicyID '{pid}' was probably added on-the-fly (not"
                         " part of the static `multagent.policies` config) and"
                         " no PolicySpec objects found in the pickled policy "
-                        "state. Will not add `{pid}`, but ignore it for now."
+                        f"state. Will not add `{pid}`, but ignore it for now."
                     )
                 else:
                     self.add_policy(
@@ -1569,8 +1588,14 @@ class RolloutWorker(ParallelIteratorWorker):
         policies = force_list(policies)
 
         return {
-            pid: policy.get_weights()
-            for pid, policy in self.policy_map.items()
+            # Make sure to only iterate over keys() and not items(). Iterating over
+            # items will access policy_map elements even for pids that we do not need,
+            # i.e. those that are not in policies. Access to policy_map elements can
+            # cause disk access for policies that were offloaded to disk. Since these
+            # policies will be skipped in the for-loop accessing them is unnecessary,
+            # making subsequent disk access unnecessary.
+            pid: self.policy_map[pid].get_weights()
+            for pid in self.policy_map.keys()
             if pid in policies
         }
 
@@ -1632,7 +1657,10 @@ class RolloutWorker(ParallelIteratorWorker):
             >>> global_vars = worker.set_global_vars( # doctest: +SKIP
             ...     {"timestep": 4242})
         """
-        self.foreach_policy(lambda p, _: p.on_global_var_update(global_vars))
+        # Only update policies that are being trained in order to avoid superfluous
+        # access of policies which might have been offloaded to disk. This is important
+        # here since global vars are constantly being updated.
+        self.foreach_policy_to_train(lambda p, _: p.on_global_var_update(global_vars))
         self.global_vars = global_vars
 
     @DeveloperAPI
@@ -1801,16 +1829,18 @@ class RolloutWorker(ParallelIteratorWorker):
             env = env_creator(env_ctx)
             # Validate first.
             if not disable_env_checking:
-                logger.warning(
-                    "We've added a module for checking environments that "
-                    "are used in experiments. It will cause your "
-                    "environment to fail if your environment is not set up"
-                    "correctly. You can disable check env by setting "
-                    "`disable_env_checking` to True in your experiment config "
-                    "dictionary. You can run the environment checking module "
-                    "standalone by calling ray.rllib.utils.check_env(env)."
-                )
-                check_env(env)
+                try:
+                    check_env(env)
+                except Exception as e:
+                    logger.warning(
+                        "We've added a module for checking environments that "
+                        "are used in experiments. Your env may not be set up"
+                        "correctly. You can disable env checking for now by setting "
+                        "`disable_env_checking` to True in your experiment config "
+                        "dictionary. You can run the environment checking module "
+                        "standalone by calling ray.rllib.utils.check_env(env)."
+                    )
+                    raise e
             # Custom validation function given by user.
             if validate_env is not None:
                 validate_env(env, env_ctx)

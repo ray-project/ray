@@ -181,7 +181,7 @@ if __name__ == "__main__":
         config.update(
             {
                 "learning_starts": 100,
-                "timesteps_per_iteration": 200,
+                "min_sample_timesteps_per_reporting": 200,
                 "n_step": 3,
                 "rollout_fragment_length": 4,
                 "train_batch_size": 8,
@@ -195,7 +195,12 @@ if __name__ == "__main__":
             config["model"]["use_lstm"] = args.use_lstm
 
     elif args.run == "IMPALA":
-        config.update({"model": {"use_lstm": args.use_lstm}})
+        config.update(
+            {
+                "num_gpus": 0,
+                "model": {"use_lstm": args.use_lstm},
+            }
+        )
 
     # PPO.
     else:

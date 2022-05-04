@@ -248,6 +248,11 @@ code and set this number based on end to end latency objective.
   The ``version`` field is required for autoscaling. We are actively working on removing
   this limitation.
 
+.. note::
+  The Ray Serve Autoscaler is an application-level autoscaler that sits on top of the :ref:`Ray Autoscaler<cluster-index>`.  
+  Concretely, this means that the Ray Serve autoscaler asks Ray to start a number of replica actors based on the request demand.
+  If the Ray Autoscaler determines there aren't enough available CPUs to place these actors, it responds by adding more nodes.
+  Similarly, when Ray Serve scales down and terminates some replica actors, it may result in some nodes being empty, at which point the Ray autoscaler will remove those nodes.
 
 .. _`serve-cpus-gpus`:
 
@@ -347,11 +352,6 @@ Runtime Environments feature is installed.
 Example:
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/conda_env.py
-
-.. note::
-  When using a Ray library (for example, Ray Serve) in a runtime environment, it must
-  explicitly be included in the dependencies, as in the above example.  This is not
-  required when just using Ray Core.
 
 .. tip::
   Avoid dynamically installing packages that install from source: these can be slow and

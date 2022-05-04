@@ -97,18 +97,6 @@ class ReplayBuffer:
         return len(self._storage)
 
     @ExperimentalAPI
-    @Deprecated(old="add_batch", new="add", error=False)
-    def add_batch(self, batch: SampleBatchType, **kwargs) -> None:
-        """Deprecated in favor of new ReplayBuffer API."""
-        return self.add(batch, **kwargs)
-
-    @ExperimentalAPI
-    @Deprecated(old="replay", new="sample", error=False)
-    def replay(self, num_items: int = 1, **kwargs) -> Optional[SampleBatchType]:
-        """Deprecated in favor of new ReplayBuffer API."""
-        return self.sample(num_items, **kwargs)
-
-    @ExperimentalAPI
     def add(self, batch: SampleBatchType, **kwargs) -> None:
         """Adds a batch of experiences to this buffer.
 
@@ -302,3 +290,11 @@ class ReplayBuffer:
             name could not be determined.
         """
         return platform.node()
+
+    @Deprecated(old="ReplayBuffer.add_batch()", new="RepayBuffer.add()", error=False)
+    def add_batch(self, *args, **kwargs):
+        return self.add(*args, **kwargs)
+
+    @Deprecated(old="RepayBuffer.replay()", new="RepayBuffer.sample()", error=False)
+    def replay(self, *args, **kwargs):
+        return self.sample(*args, **kwargs)

@@ -15,6 +15,11 @@ from ray.rllib.env.env_context import EnvContext
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
 from ray.rllib.evaluation.collectors.simple_list_collector import SimpleListCollector
 from ray.rllib.models import MODEL_DEFAULTS
+from ray.rllib.offline.estimators.importance_sampling import ImportanceSampling
+from ray.rllib.offline.estimators.weighted_importance_sampling import (
+    WeightedImportanceSampling,
+)
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.typing import (
     EnvConfigDict,
     EnvType,
@@ -58,11 +63,6 @@ class TrainerConfig:
 
         # Define the default RLlib Trainer class that this TrainerConfig will be
         # applied to.
-        if trainer_class is None:
-            from ray.rllib.agents.trainer import Trainer
-
-            trainer_class = Trainer
-
         self.trainer_class = trainer_class
 
         # `self.python_environment()`
@@ -170,7 +170,10 @@ class TrainerConfig:
         self.input_ = "sampler"
         self.input_config = {}
         self.actions_in_input_normalized = False
-        self.input_evaluation = ["is", "wis"]
+        self.input_evaluation = [
+            ImportanceSampling,
+            WeightedImportanceSampling,
+        ]
         self.postprocess_inputs = False
         self.shuffle_buffer_size = 0
         self.output = None
@@ -179,7 +182,7 @@ class TrainerConfig:
         self.output_max_file_size = 64 * 1024 * 1024
 
         # `self.evaluation()`
-        self.evaluation_interval = 0
+        self.evaluation_interval = None
         self.evaluation_duration = 10
         self.evaluation_duration_unit = "episodes"
         self.evaluation_parallel_to_training = False
@@ -187,16 +190,20 @@ class TrainerConfig:
         self.evaluation_num_workers = 0
         self.custom_evaluation_function = None
         self.always_attach_evaluation_results = False
+        # TODO: Set this flag still in the config or - much better - in the
+        #  RolloutWorker as a property.
+        self.in_evaluation = False
 
         # `self.reporting()`
         self.keep_per_episode_custom_metrics = False
         self.metrics_episode_collection_timeout_s = 180
         self.metrics_num_episodes_for_smoothing = 100
         self.min_time_s_per_reporting = None
-        self.min_train_timesteps_per_reporting = None
-        self.min_sample_timesteps_per_reporting = None
+        self.min_train_timesteps_per_reporting = 0
+        self.min_sample_timesteps_per_reporting = 0
 
         # `self.debugging()`
+        self.logger_creator = None
         self.logger_config = None
         self.log_level = "WARN"
         self.log_sys_usage = True
@@ -207,7 +214,18 @@ class TrainerConfig:
         self._tf_policy_handles_more_than_one_loss = False
         self._disable_preprocessor_api = False
         self._disable_action_flattening = False
-        self._disable_execution_plan_api = False
+        self._disable_execution_plan_api = True
+
+        # TODO: Remove, once all deprecation_warning calls upon using these keys
+        #  have been removed.
+        # === Deprecated keys ===
+        self.simple_optimizer = DEPRECATED_VALUE
+        self.monitor = DEPRECATED_VALUE
+        self.evaluation_num_episodes = DEPRECATED_VALUE
+        self.metrics_smoothing_episodes = DEPRECATED_VALUE
+        self.timesteps_per_iteration = DEPRECATED_VALUE
+        self.min_iter_time_s = DEPRECATED_VALUE
+        self.collect_metrics_timeout = DEPRECATED_VALUE
 
     def to_dict(self) -> TrainerConfigDict:
         """Converts all settings into a legacy config dict for backward compatibility.
@@ -229,6 +247,20 @@ class TrainerConfig:
             config["input"] = getattr(self, "input_")
             config.pop("input_")
 
+        # Setup legacy multiagent sub-dict:
+        config["multiagent"] = {}
+        for k in [
+            "policies",
+            "policy_map_capacity",
+            "policy_map_cache",
+            "policy_mapping_fn",
+            "policies_to_train",
+            "observation_fn",
+            "replay_mode",
+            "count_steps_by",
+        ]:
+            config["multiagent"][k] = config.pop(k)
+
         # Switch out deprecated vs new config keys.
         config["callbacks"] = config.pop("callbacks_class", DefaultCallbacks)
         config["create_env_on_driver"] = config.pop("create_env_on_local_worker", 1)
@@ -236,13 +268,7 @@ class TrainerConfig:
         config["framework"] = config.pop("framework_str", None)
         config["num_cpus_for_driver"] = config.pop("num_cpus_for_local_worker", 1)
 
-        # Get our Trainer class' default config.
-        from ray.rllib.agents.trainer import Trainer, COMMON_CONFIG
-
-        # Add our overrides to the default config.
-        return Trainer.merge_trainer_configs(
-            COMMON_CONFIG, config, _allow_unknown_configs=True
-        )
+        return config
 
     def build(
         self,
@@ -267,11 +293,13 @@ class TrainerConfig:
             self.env = env
             if self.evaluation_config is not None:
                 self.evaluation_config["env"] = env
+        if logger_creator is not None:
+            self.logger_creator = logger_creator
 
         return self.trainer_class(
             config=self.to_dict(),
-            env=env,
-            logger_creator=logger_creator,
+            env=self.env,
+            logger_creator=self.logger_creator,
         )
 
     def python_environment(
@@ -832,6 +860,24 @@ class TrainerConfig:
     ) -> "TrainerConfig":
         """Sets the config's offline data settings.
 
+        TODO(jungong, sven): we can potentially unify all input types
+          under input and input_config keys. E.g.
+          input: sample
+          input_config {
+            env: Cartpole-v0
+          }
+          or:
+          input: json_reader
+          input_config {
+            path: /tmp/
+          }
+          or:
+          input: dataset
+          input_config {
+            format: parquet
+            path: /tmp/
+          }
+
         Args:
             input_: Specify how to generate experiences:
              - "sampler": Generate experiences via online (env) simulation (default).
@@ -849,13 +895,15 @@ class TrainerConfig:
                 are already normalized (between -1.0 and 1.0). This is usually the case
                 when the offline file has been generated by another RLlib algorithm
                 (e.g. PPO or SAC), while "normalize_actions" was set to True.
-            input_evaluation: Specify how to evaluate the current policy. This only has
-                an effect when reading offline experiences ("input" is not "sampler").
+            input_evaluation: Specify how to evaluate the current policy.
+                This only has an effect when reading offline experiences
+                ("input" is not "sampler").
                 Available options:
-                - "wis": the weighted step-wise importance sampling estimator.
-                - "is": the step-wise importance sampling estimator.
-                - "simulation": run the environment in the background, but use
+                - "simulation": Run the environment in the background, but use
                 this data for evaluation only and not for learning.
+                - Any subclass of OffPolicyEstimator, e.g.
+                ray.rllib.offline.estimators.is::ImportanceSampling or your own custom
+                subclass.
             postprocess_inputs: Whether to run postprocess_trajectory() on the
                 trajectory fragments from offline inputs. Note that postprocessing will
                 be done using the *current* policy, not the *behavior* policy, which
@@ -995,18 +1043,20 @@ class TrainerConfig:
                 for: If - after one `step_attempt()`, this time limit has not been
                 reached, will perform n more `step_attempt()` calls until this minimum
                 time has been consumed. Set to None or 0 for no minimum time.
-            min_train_timesteps_per_reporting: Minimum train timesteps to
-                optimize for per `train()` call. This value does not affect learning,
-                only the length of train iterations. If - after one `step_attempt()`,
-                the training timestep counts have not been reached, will
-                perform n more `step_attempt()` calls until the minimum timesteps have
-                been executed. Set to None or 0 for no minimum timesteps.
-            min_sample_timesteps_per_reporting: Minimum sample timesteps to
-                optimize for per `train()` call. This value does not affect learning,
-                only the length of train iterations. If - after one `step_attempt()`,
-                the sampling timestep counts (have not been reached, will
-                perform n more `step_attempt()` calls until the minimum timesteps have
-                been executed. Set to None or 0 for no minimum timesteps.
+            min_train_timesteps_per_reporting: Minimum training timesteps to accumulate
+                within a single `train()` call. This value does not affect learning,
+                only the number of times `Trainer.step_attempt()` is called by
+                `Trauber.train()`. If - after one `step_attempt()`, the training
+                timestep count has not been reached, will perform n more
+                `step_attempt()` calls until the minimum timesteps have been executed.
+                Set to 0 for no minimum timesteps.
+            min_sample_timesteps_per_reporting: Minimum env samplingtimesteps to
+                accumulate within a single `train()` call. This value does not affect
+                learning, only the number of times `Trainer.step_attempt()` is called by
+                `Trauber.train()`. If - after one `step_attempt()`, the env sampling
+                timestep count has not been reached, will perform n more
+                `step_attempt()` calls until the minimum timesteps have been executed.
+                Set to 0 for no minimum timesteps.
 
         Returns:
             This updated TrainerConfig object.
@@ -1031,6 +1081,7 @@ class TrainerConfig:
     def debugging(
         self,
         *,
+        logger_creator: Optional[Callable[[], Logger]] = None,
         logger_config: Optional[dict] = None,
         log_level: Optional[str] = None,
         log_sys_usage: Optional[bool] = None,
@@ -1040,6 +1091,8 @@ class TrainerConfig:
         """Sets the config's debugging settings.
 
         Args:
+            logger_creator: Callable that creates a ray.tune.Logger
+                object. If unspecified, a default logger is created.
             logger_config: Define logger-specific configuration to be used inside Logger
                 Default value None allows overwriting with nested dicts.
             log_level: Set the ray.rllib.* log level for the agent process and its
@@ -1058,6 +1111,8 @@ class TrainerConfig:
         Returns:
             This updated TrainerConfig object.
         """
+        if logger_creator is not None:
+            self.logger_creator = logger_creator
         if logger_config is not None:
             self.logger_config = logger_config
         if log_level is not None:

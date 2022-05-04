@@ -24,7 +24,10 @@
 /python/setup.py @richardliaw @ericl @edoakes
 
 # Formatting tool
-/ci/travis/format.sh @richardliaw @ericl @edoakes
+/ci/lint/format.sh @richardliaw @ericl @edoakes
+
+# Docker image build script.
+/ci/build/build-docker-images.py @amogkam @krfricke
 
 # Python worker.
 #/python/ray/ @ray-project/ray-core-python
@@ -60,7 +63,7 @@
 /doc/source/workflows/ @ericl @iycheng @stephanie-wang @suquark
 
 # RLlib.
-/rllib/ @sven1977 @gjoliver @avnishn @arturniederfahrenhorst @smorad
+/rllib/ @sven1977 @gjoliver @avnishn @arturniederfahrenhorst @smorad @maxpumperla @kouroshhakha
 
 # ML Docker Dependencies
 /python/requirements/ml/requirements_dl.txt @amogkam @sven1977 @richardliaw @matthewdeng
@@ -83,6 +86,9 @@
 
 # CI scripts.
 #/.travis.yml @ray-project/ray-core
-#/ci/travis/ @ray-project/ray-core
+#/ci/ @ray-project/ray-core
 
-/.github/ISSUE_TEMPLATE/ @ericl @stephanie-wang
+# Buildkite pipeline management
+.buildkite/hooks @simon-mo @krfricke
+
+/.github/ISSUE_TEMPLATE/ @ericl @stephanie-wang @scv119 @pcmoritz

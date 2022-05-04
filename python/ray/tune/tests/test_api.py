@@ -1,20 +1,20 @@
-import pickle
-from collections import Counter
 import copy
-from functools import partial
-import gym
-import numpy as np
 import os
+import pickle
 import shutil
 import sys
 import tempfile
 import time
 import unittest
+from collections import Counter
+from functools import partial
 from unittest.mock import patch
 
+import gym
+import numpy as np
 import ray
 from ray import tune
-from ray.ml.tests.utils import mock_s3_sync
+from ray.ml.utils.remote_storage import _ensure_directory
 from ray.rllib import _register_all
 from ray.tune import (
     register_env,
@@ -28,7 +28,7 @@ from ray.tune import (
 from ray.tune.callback import Callback
 from ray.tune.experiment import Experiment
 from ray.tune.function_runner import wrap_function
-from ray.tune.logger import Logger
+from ray.tune.logger import Logger, LegacyLoggerCallback
 from ray.tune.ray_trial_executor import noop_logger_creator
 from ray.tune.resources import Resources
 from ray.tune.result import (
@@ -52,14 +52,14 @@ from ray.tune.stopper import (
     ExperimentPlateauStopper,
 )
 from ray.tune.suggest import BasicVariantGenerator, grid_search
-from ray.tune.suggest.hyperopt import HyperOptSearch
-from ray.tune.suggest.ax import AxSearch
 from ray.tune.suggest._mock import _MockSuggestionAlgorithm
+from ray.tune.suggest.ax import AxSearch
+from ray.tune.suggest.hyperopt import HyperOptSearch
 from ray.tune.suggest.suggestion import ConcurrencyLimiter
 from ray.tune.sync_client import CommandBasedClient
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
-from ray.tune.utils import flatten_dict, get_pinned_object, pin_in_object_store
+from ray.tune.utils import flatten_dict
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 
 
@@ -122,14 +122,14 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         [trial1] = run(
             _function_trainable,
-            loggers=[FunctionAPILogger],
+            callbacks=[LegacyLoggerCallback([FunctionAPILogger])],
             raise_on_failed_trial=False,
             scheduler=MockScheduler(),
         ).trials
 
         [trial2] = run(
             class_trainable_name,
-            loggers=[ClassAPILogger],
+            callbacks=[LegacyLoggerCallback([ClassAPILogger])],
             raise_on_failed_trial=False,
             scheduler=MockScheduler(),
         ).trials
@@ -179,33 +179,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
         )
 
         return function_output, trials
-
-    def testPinObject(self):
-        X = pin_in_object_store("hello")
-
-        @ray.remote
-        def f():
-            return get_pinned_object(X)
-
-        self.assertEqual(ray.get(f.remote()), "hello")
-
-    def testFetchPinned(self):
-        X = pin_in_object_store("hello")
-
-        def train(config, reporter):
-            get_pinned_object(X)
-            reporter(timesteps_total=100, done=True)
-
-        register_trainable("f1", train)
-        [trial] = run_experiments(
-            {
-                "foo": {
-                    "run": "f1",
-                }
-            }
-        )
-        self.assertEqual(trial.status, Trial.TERMINATED)
-        self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 100)
 
     def testRegisterEnv(self):
         register_env("foo", lambda: None)
@@ -756,7 +729,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
             },
             verbose=1,
             local_dir=tmpdir,
-            loggers=None,
         )
         trials = tune.run(test, raise_on_failed_trial=False, **config).trials
         self.assertEqual(Counter(t.status for t in trials)["ERROR"], 5)
@@ -980,44 +952,39 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertTrue(all(complete_results1))
 
     def _testDurableTrainable(self, trainable, function=False, cleanup=True):
-        tempdir = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, tempdir)
-        mocked_subprocess = mock_s3_sync(tempdir)
-        remote_checkpoint_dir = "s3://unit-test/bucket"
+        remote_checkpoint_dir = "memory:///unit-test/bucket"
+        _ensure_directory(remote_checkpoint_dir)
 
-        with patch("subprocess.check_call", mocked_subprocess):
-            log_creator = partial(
-                noop_logger_creator, logdir="~/tmp/ray_results/exp/trial"
-            )
+        log_creator = partial(noop_logger_creator, logdir="~/tmp/ray_results/exp/trial")
+        test_trainable = trainable(
+            logger_creator=log_creator, remote_checkpoint_dir=remote_checkpoint_dir
+        )
+        result = test_trainable.train()
+        self.assertEqual(result["metric"], 1)
+        checkpoint_path = test_trainable.save()
+        result = test_trainable.train()
+        self.assertEqual(result["metric"], 2)
+        result = test_trainable.train()
+        self.assertEqual(result["metric"], 3)
+        result = test_trainable.train()
+        self.assertEqual(result["metric"], 4)
+
+        shutil.rmtree("~/tmp/ray_results/exp/")
+        if not function:
+            test_trainable.state["hi"] = 2
+            test_trainable.restore(checkpoint_path)
+            self.assertEqual(test_trainable.state["hi"], 1)
+        else:
+            # Cannot re-use function trainable, create new
+            tune.session.shutdown()
             test_trainable = trainable(
-                logger_creator=log_creator, remote_checkpoint_dir=remote_checkpoint_dir
+                logger_creator=log_creator,
+                remote_checkpoint_dir=remote_checkpoint_dir,
             )
-            result = test_trainable.train()
-            self.assertEqual(result["metric"], 1)
-            checkpoint_path = test_trainable.save()
-            result = test_trainable.train()
-            self.assertEqual(result["metric"], 2)
-            result = test_trainable.train()
-            self.assertEqual(result["metric"], 3)
-            result = test_trainable.train()
-            self.assertEqual(result["metric"], 4)
+            test_trainable.restore(checkpoint_path)
 
-            shutil.rmtree("~/tmp/ray_results/exp/")
-            if not function:
-                test_trainable.state["hi"] = 2
-                test_trainable.restore(checkpoint_path)
-                self.assertEqual(test_trainable.state["hi"], 1)
-            else:
-                # Cannot re-use function trainable, create new
-                tune.session.shutdown()
-                test_trainable = trainable(
-                    logger_creator=log_creator,
-                    remote_checkpoint_dir=remote_checkpoint_dir,
-                )
-                test_trainable.restore(checkpoint_path)
-
-            result = test_trainable.train()
-            self.assertEqual(result["metric"], 2)
+        result = test_trainable.train()
+        self.assertEqual(result["metric"], 2)
 
     def testDurableTrainableClass(self):
         class TestTrain(Trainable):

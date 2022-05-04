@@ -4,6 +4,8 @@ A multi-agent, distributed multi-GPU, league-capable asynch. PPO
 """
 import gym
 from typing import Optional, Type
+import tree
+
 
 import ray
 from ray.actor import ActorHandle
@@ -59,12 +61,12 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         # Timeout to use for `ray.wait()` when waiting for samplers to have placed
         # new data into the buffers. If no samples are ready within the timeout,
         # the buffers used for mixin-sampling will return only older samples.
-        "sample_wait_timeout": 0.0,
+        "sample_wait_timeout": 0.01,
         # Timeout to use for `ray.wait()` when waiting for the policy learner actors
         # to have performed an update and returned learning stats. If no learner
         # actors have produced any learning results in the meantime, their
         # learner-stats in the results will be empty for that iteration.
-        "learn_wait_timeout": 0.0,
+        "learn_wait_timeout": 0.1,
 
         # League-building parameters.
         # The LeagueBuilder class to be used for league building logic.
@@ -114,9 +116,6 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
 
         # Reporting interval.
         "min_time_s_per_reporting": 2,
-
-        # Use the `training_iteration` method instead of an execution plan.
-        "_disable_execution_plan_api": True,
     },
     _allow_unknown_configs=True,
 )
@@ -306,9 +305,10 @@ class AlphaStarTrainer(appo.APPOTrainer):
                 remote_fn=self._sample_and_send_to_buffer,
             )
         # Update sample counters.
-        for (env_steps, agent_steps) in sample_results.values():
-            self._counters[NUM_ENV_STEPS_SAMPLED] += env_steps
-            self._counters[NUM_AGENT_STEPS_SAMPLED] += agent_steps
+        for sample_result in sample_results.values():
+            for (env_steps, agent_steps) in sample_result:
+                self._counters[NUM_ENV_STEPS_SAMPLED] += env_steps
+                self._counters[NUM_AGENT_STEPS_SAMPLED] += agent_steps
 
         # Trigger asynchronous training update requests on all learning
         # policies.
@@ -328,11 +328,12 @@ class AlphaStarTrainer(appo.APPOTrainer):
             )
 
         # Update sample counters.
-        for result in train_results.values():
-            if NUM_AGENT_STEPS_TRAINED in result:
-                self._counters[NUM_AGENT_STEPS_TRAINED] += result[
-                    NUM_AGENT_STEPS_TRAINED
-                ]
+        for train_result in train_results.values():
+            for result in train_result:
+                if NUM_AGENT_STEPS_TRAINED in result:
+                    self._counters[NUM_AGENT_STEPS_TRAINED] += result[
+                        NUM_AGENT_STEPS_TRAINED
+                    ]
 
         # For those policies that have been updated in this iteration
         # (not all policies may have undergone an updated as we are
@@ -343,7 +344,20 @@ class AlphaStarTrainer(appo.APPOTrainer):
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
             train_infos = {}
             policy_weights = {}
-            for pol_actor, policy_result in train_results.items():
+            for pol_actor, policy_results in train_results.items():
+                results_have_same_structure = True
+                for result1, result2 in zip(policy_results, policy_results[1:]):
+                    try:
+                        tree.assert_same_structure(result1, result2)
+                    except (ValueError, TypeError):
+                        results_have_same_structure = False
+                        break
+                if len(policy_results) > 1 and results_have_same_structure:
+                    policy_result = tree.map_structure(
+                        lambda *_args: sum(_args) / len(policy_results), *policy_results
+                    )
+                else:
+                    policy_result = policy_results[-1]
                 if policy_result:
                     pid = self.distributed_learners.get_policy_id(pol_actor)
                     train_infos[pid] = policy_result

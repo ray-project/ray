@@ -92,16 +92,16 @@ class TestDDPG(unittest.TestCase):
             trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v1")
             # Setting explore=False should always return the same action.
             a_ = trainer.compute_single_action(obs, explore=False)
-            self.assertEqual(trainer.get_policy().global_timestep, 1)
+            check(trainer.get_policy().global_timestep, 1)
             for i in range(50):
                 a = trainer.compute_single_action(obs, explore=False)
-                self.assertEqual(trainer.get_policy().global_timestep, i + 2)
+                check(trainer.get_policy().global_timestep, i + 2)
                 check(a, a_)
             # explore=None (default: explore) should return different actions.
             actions = []
             for i in range(50):
                 actions.append(trainer.compute_single_action(obs))
-                self.assertEqual(trainer.get_policy().global_timestep, i + 52)
+                check(trainer.get_policy().global_timestep, i + 52)
             check(np.std(actions), 0.0, false=True)
             trainer.stop()
 
@@ -117,25 +117,25 @@ class TestDDPG(unittest.TestCase):
             trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v1")
             # ts=0 (get a deterministic action as per explore=False).
             deterministic_action = trainer.compute_single_action(obs, explore=False)
-            self.assertEqual(trainer.get_policy().global_timestep, 1)
+            check(trainer.get_policy().global_timestep, 1)
             # ts=1-49 (in random window).
             random_a = []
             for i in range(1, 50):
                 random_a.append(trainer.compute_single_action(obs, explore=True))
-                self.assertEqual(trainer.get_policy().global_timestep, i + 1)
+                check(trainer.get_policy().global_timestep, i + 1)
                 check(random_a[-1], deterministic_action, false=True)
             self.assertTrue(np.std(random_a) > 0.5)
 
             # ts > 50 (a=deterministic_action + scale * N[0,1])
             for i in range(50):
                 a = trainer.compute_single_action(obs, explore=True)
-                self.assertEqual(trainer.get_policy().global_timestep, i + 51)
+                check(trainer.get_policy().global_timestep, i + 51)
                 check(a, deterministic_action, rtol=0.1)
 
             # ts >> 50 (BUT: explore=False -> expect deterministic action).
             for i in range(50):
                 a = trainer.compute_single_action(obs, explore=False)
-                self.assertEqual(trainer.get_policy().global_timestep, i + 101)
+                check(trainer.get_policy().global_timestep, i + 101)
                 check(a, deterministic_action)
             trainer.stop()
 
@@ -158,7 +158,7 @@ class TestDDPG(unittest.TestCase):
         config["critic_hiddens"] = [10]
         # Make sure, timing differences do not affect trainer.train().
         config["min_time_s_per_reporting"] = 0
-        config["timesteps_per_iteration"] = 100
+        config["min_sample_timesteps_per_reporting"] = 100
 
         map_ = {
             # Normal net.

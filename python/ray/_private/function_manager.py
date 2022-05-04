@@ -229,13 +229,12 @@ class FunctionActorManager:
         self._worker.gcs_client.internal_kv_put(
             key, val, True, KV_NAMESPACE_FUNCTION_TABLE
         )
-        self.export_key(key)
 
     def fetch_and_register_remote_function(self, key):
         """Import a remote function."""
         vals = self._worker.gcs_client.internal_kv_get(key, KV_NAMESPACE_FUNCTION_TABLE)
         if vals is None:
-            vals = {}
+            return False
         else:
             vals = pickle.loads(vals)
         fields = [
@@ -307,6 +306,7 @@ class FunctionActorManager:
                 self._function_execution_info[function_id] = FunctionExecutionInfo(
                     function=function, function_name=function_name, max_calls=max_calls
                 )
+        return True
 
     def get_execution_info(self, job_id, function_descriptor):
         """Get the FunctionExecutionInfo of a remote function.
@@ -389,14 +389,23 @@ class FunctionActorManager:
         warning_sent = False
         while True:
             with self.lock:
-                if self._worker.actor_id.is_nil() and (
-                    function_descriptor.function_id in self._function_execution_info
-                ):
+                if self._worker.actor_id.is_nil():
+                    if function_descriptor.function_id in self._function_execution_info:
+                        break
+                    else:
+                        key = make_function_table_key(
+                            b"RemoteFunction",
+                            job_id,
+                            function_descriptor.function_id.binary(),
+                        )
+                        if self.fetch_and_register_remote_function(key) is True:
+                            break
+                else:
+                    assert not self._worker.actor_id.is_nil()
+                    # Actor loading will happen when execute_task is called.
+                    assert self._worker.actor_id in self._worker.actors
                     break
-                elif not self._worker.actor_id.is_nil() and (
-                    self._worker.actor_id in self._worker.actors
-                ):
-                    break
+
             if time.time() - start_time > timeout:
                 warning_message = (
                     "This worker was asked to execute a function "
@@ -418,22 +427,6 @@ class FunctionActorManager:
             # importer thread did not run.
             self._worker.import_thread._do_importing()
             time.sleep(0.001)
-
-    def _publish_actor_class_to_key(self, key, actor_class_info):
-        """Push an actor class definition to Redis.
-        The is factored out as a separate function because it is also called
-        on cached actor class definitions when a worker connects for the first
-        time.
-        Args:
-            key: The key to store the actor class info at.
-            actor_class_info: Information about the actor class.
-        """
-        # We set the driver ID here because it may not have been available when
-        # the actor class was defined.
-        self._worker.gcs_client.internal_kv_put(
-            key, pickle.dumps(actor_class_info), True, KV_NAMESPACE_FUNCTION_TABLE
-        )
-        self.export_key(key)
 
     def export_actor_class(
         self, Class, actor_creation_function_descriptor, actor_method_names
@@ -473,7 +466,7 @@ class FunctionActorManager:
             msg = (
                 "Could not serialize the actor class "
                 f"{actor_creation_function_descriptor.repr}. "
-                "Check https://docs.ray.io/en/master/serialization.html#troubleshooting "  # noqa
+                "Check https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting "  # noqa
                 "for more information."
             )
             raise TypeError(msg) from e
@@ -493,7 +486,9 @@ class FunctionActorManager:
             self._worker,
         )
 
-        self._publish_actor_class_to_key(key, actor_class_info)
+        self._worker.gcs_client.internal_kv_put(
+            key, pickle.dumps(actor_class_info), True, KV_NAMESPACE_FUNCTION_TABLE
+        )
         # TODO(rkn): Currently we allow actor classes to be defined
         # within tasks. I tried to disable this, but it may be necessary
         # because of https://github.com/ray-project/ray/issues/1146.
@@ -610,27 +605,6 @@ class FunctionActorManager:
             job_id,
             actor_creation_function_descriptor.function_id.binary(),
         )
-        # Only wait for the actor class if it was exported from the same job.
-        # It will hang if the job id mismatches, since we isolate actor class
-        # exports from the import thread. It's important to wait since this
-        # guarantees import order, though we fetch the actor class directly.
-        # Import order isn't important across jobs, as we only need to fetch
-        # the class for `ray.get_actor()`.
-        if job_id.binary() == self._worker.current_job_id.binary():
-            # Wait for the actor class key to have been imported by the
-            # import thread. TODO(rkn): It shouldn't be possible to end
-            # up in an infinite loop here, but we should push an error to
-            # the driver if too much time is spent here.
-            while key not in self.imported_actor_classes:
-                try:
-                    # If we're in the process of deserializing an ActorHandle
-                    # and we hold the function_manager lock, we may be blocking
-                    # the import_thread from loading the actor class. Use wait
-                    # to temporarily yield control to the import thread.
-                    self.cv.wait()
-                except RuntimeError:
-                    # We don't hold the function_manager lock, just sleep
-                    time.sleep(0.001)
 
         # Fetch raw data from GCS.
         vals = self._worker.gcs_client.internal_kv_get(key, KV_NAMESPACE_FUNCTION_TABLE)

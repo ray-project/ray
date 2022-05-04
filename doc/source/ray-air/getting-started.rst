@@ -37,7 +37,6 @@ Quick Start
     .. literalinclude:: /../../python/ray/ml/examples/tf/tensorflow_linear_dataset_example.py
 
 
-
 Why Ray AIR?
 ------------
 
@@ -63,7 +62,6 @@ We believe Ray AIR provides unique value deriving from Ray.
     :animate: fade-in-slide-down
 
     Ray's scalability and flexibility makes Ray AIR future-proof. Advanced serving pipelines, elastic training, online learning, reinforcement learning applications are being built and scaled today on Ray. Common patterns are being incorporated into libraries like Serve.
-
 
 
 Next Steps
