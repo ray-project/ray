@@ -404,10 +404,10 @@ class ExternalStorageRayStorageImpl(ExternalStorage):
             url_with_offset = url_with_offset_list[i].decode()
             # Retrieve the information needed.
             parsed_result = parse_url_with_offset(url_with_offset)
-            url = parsed_result.base_url
+            base_url = parsed_result.base_url
             offset = parsed_result.offset
             # Read a part of the file and recover the object.
-            with self._fs.open_input_file(url) as f:
+            with self._fs.open_input_file(base_url) as f:
                 f.seek(offset)
                 address_len = int.from_bytes(f.read(8), byteorder="little")
                 metadata_len = int.from_bytes(f.read(8), byteorder="little")
