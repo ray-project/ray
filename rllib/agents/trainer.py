@@ -45,6 +45,10 @@ from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.buffers.multi_agent_replay_buffer import (
     MultiAgentReplayBuffer as Legacy_MultiAgentReplayBuffer,
 )
+from ray.rllib.offline.estimators.importance_sampling import ImportanceSampling
+from ray.rllib.offline.estimators.weighted_importance_sampling import (
+    WeightedImportanceSampling,
+)
 from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer
 from ray.rllib.execution.common import WORKER_UPDATE_TIMER
 from ray.rllib.execution.rollout_ops import (
@@ -558,11 +562,15 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Specify how to evaluate the current policy. This only has an effect when
     # reading offline experiences ("input" is not "sampler").
     # Available options:
-    #  - "wis": the weighted step-wise importance sampling estimator.
-    #  - "is": the step-wise importance sampling estimator.
-    #  - "simulation": run the environment in the background, but use
+    #  - "simulation": Run the environment in the background, but use
     #    this data for evaluation only and not for learning.
-    "input_evaluation": ["is", "wis"],
+    #  - Any subclass of OffPolicyEstimator, e.g.
+    #    ray.rllib.offline.estimators.is::ImportanceSampling or your own custom
+    #    subclass.
+    "input_evaluation": [
+        ImportanceSampling,
+        WeightedImportanceSampling,
+    ],
     # Whether to run postprocess_trajectory() on the trajectory fragments from
     # offline inputs. Note that postprocessing will be done using the *current*
     # policy, not the *behavior* policy, which is typically undesirable for
@@ -635,6 +643,11 @@ COMMON_CONFIG: TrainerConfigDict = {
     "logger_config": None,
 
     # === API deprecations/simplifications/changes ===
+    # If True, the execution plan API will not be used. Instead,
+    # a Trainer's `training_iteration()` method will be called on each
+    # training iteration.
+    "_disable_execution_plan_api": True,
+
     # Experimental flag.
     # If True, TFPolicy will handle more than one loss/optimizer.
     # Set this to True, if you would like to return more than
@@ -655,11 +668,6 @@ COMMON_CONFIG: TrainerConfigDict = {
     # - Models that have the previous action(s) as part of their input.
     # - Algorithms reading from offline files (incl. action information).
     "_disable_action_flattening": False,
-    # Experimental flag.
-    # If True, the execution plan API will not be used. Instead,
-    # a Trainer's `training_iteration` method will be called as-is each
-    # training iteration.
-    "_disable_execution_plan_api": False,
 
     # If True, disable the environment pre-checking module.
     "disable_env_checking": False,
