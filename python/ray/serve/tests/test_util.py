@@ -6,9 +6,15 @@ import sys
 import subprocess
 import pytest
 
+from fastapi.encoders import jsonable_encoder
+
 import ray
 from ray import serve
-from ray.serve.utils import ServeEncoder, get_deployment_import_path, node_id_to_ip_addr
+from ray.serve.utils import (
+    serve_encoders,
+    get_deployment_import_path,
+    node_id_to_ip_addr,
+)
 
 
 def test_node_id_to_ip_addr():
@@ -21,7 +27,7 @@ def test_node_id_to_ip_addr():
 def test_bytes_encoder():
     data_before = {"inp": {"nest": b"bytes"}}
     data_after = {"inp": {"nest": "bytes"}}
-    assert json.loads(json.dumps(data_before, cls=ServeEncoder)) == data_after
+    assert json.loads(json.dumps(jsonable_encoder(data_before))) == data_after
 
 
 def test_numpy_encoding():
@@ -30,9 +36,23 @@ def test_numpy_encoding():
     ints = floats.astype(np.int32)
     uints = floats.astype(np.uint32)
 
-    assert json.loads(json.dumps(floats, cls=ServeEncoder)) == data
-    assert json.loads(json.dumps(ints, cls=ServeEncoder)) == data
-    assert json.loads(json.dumps(uints, cls=ServeEncoder)) == data
+    assert (
+        json.loads(json.dumps(jsonable_encoder(floats, custom_encoder=serve_encoders)))
+        == data
+    )
+    assert (
+        json.loads(json.dumps(jsonable_encoder(ints, custom_encoder=serve_encoders)))
+        == data
+    )
+    assert (
+        json.loads(json.dumps(jsonable_encoder(uints, custom_encoder=serve_encoders)))
+        == data
+    )
+
+    nested = {"a": np.array([1, 2])}
+    assert json.loads(
+        json.dumps(jsonable_encoder(nested, custom_encoder=serve_encoders))
+    ) == {"a": [1, 2]}
 
 
 @serve.deployment
