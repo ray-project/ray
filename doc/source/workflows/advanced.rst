@@ -4,9 +4,9 @@ Advanced Topics
 Inplace Execution
 -----------------
 
-When executing a workflow step inside another workflow step, it is usually executed in another Ray worker process. This is good for resource and performance isolation, but at the cost of lower efficiency due to non-locality, scheduling and data transfer.
+When executing a workflow task inside another workflow task, it is usually executed in another Ray worker process. This is good for resource and performance isolation, but at the cost of lower efficiency due to non-locality, scheduling and data transfer.
 
-For example, this recursive workflow calculates the exponent. We write it with workflow so that we can recover from any step. However, it is really inefficient to scheduling each step in a different worker.
+For example, this recursive workflow calculates the exponent. We write it with workflow so that we can recover from any task. However, it is really inefficient to scheduling each task in a different worker.
 
 .. code-block:: python
     :caption: Workflow without inplace execution:
@@ -28,9 +28,9 @@ We could optimize it with inplace option:
         return workflow.continuation(exp_inplace.options(allow_inplace=True).bind(
             2 * k, n - 1, worker_id))
 
-With ``allow_inplace=True``, the step that called ``.bind()`` executes in the function. Ray options are ignored because they are used for remote execution. Also, you cannot retrieve the output of an inplace step using ``workflow.get_output()`` before it finishes execution.
+With ``allow_inplace=True``, the task that called ``.bind()`` executes in the function. Ray options are ignored because they are used for remote execution. Also, you cannot retrieve the output of an inplace task using ``workflow.get_output()`` before it finishes execution.
 
-Inplace is also useful when you need to pass something that is only valid in the current process/physical machine to another step. For example:
+Inplace is also useful when you need to pass something that is only valid in the current process/physical machine to another task. For example:
 
 .. code-block:: python
 
@@ -43,18 +43,18 @@ Inplace is also useful when you need to pass something that is only valid in the
 Wait for Partial Results
 ------------------------
 
-By default, a workflow step will only execute after the completion of all of its dependencies. This blocking behavior prevents certain types of workflows from being expressed (e.g., wait for two of the three steps to finish).
+By default, a workflow task will only execute after the completion of all of its dependencies. This blocking behavior prevents certain types of workflows from being expressed (e.g., wait for two of the three tasks to finish).
 
-Analogous to ``ray.wait()``, in Ray Workflow we have ``workflow.wait(*steps: List[Workflow[T]], num_returns: int = 1, timeout: float = None) -> (List[T], List[Workflow[T])``. Calling `workflow.wait` would generate a logical step . The output of the logical step is a tuple of ready workflow results, and workflow results that have not yet been computed. For example, you can use it to print out workflow results as they are computed in the following dynamic workflow:
+Analogous to ``ray.wait()``, in Ray Workflow we have ``workflow.wait(*tasks: List[Workflow[T]], num_returns: int = 1, timeout: float = None) -> (List[T], List[Workflow[T])``. Calling `workflow.wait` would generate a logical task . The output of the logical task is a tuple of ready workflow results, and workflow results that have not yet been computed. For example, you can use it to print out workflow results as they are computed in the following dynamic workflow:
 
 .. code-block:: python
 
-    @workflow.step
+    @ray.remote
     def do_task(i):
        time.sleep(random.random())
        return "task {}".format(i)
 
-    @workflow.step
+    @ray.remote
     def report_results(wait_result: Tuple[List[str], List[Workflow[str]]]):
         ready, remaining = wait_result
         for result in ready:
@@ -62,16 +62,16 @@ Analogous to ``ray.wait()``, in Ray Workflow we have ``workflow.wait(*steps: Lis
         if not remaining:
             return "All done"
         else:
-            return report_results.step(workflow.wait(remaining))
+            return workflow.continuation(report_results.bind(workflow.wait(remaining)))
 
-    tasks = [do_task.step(i) for i in range(100)]
-    report_results.step(workflow.wait(tasks)).run()
+    tasks = [do_task.bind(i) for i in range(100)]
+    report_results.bind(workflow.wait(tasks)).run()
 
 
-Workflow Step Checkpointing
+Workflow task Checkpointing
 ---------------------------
 
-Ray Workflows provides strong fault tolerance and exactly-once execution semantics by checkpointing. However, checkpointing could be time consuming, especially when you have large inputs and outputs for workflow steps. When exactly-once execution semantics is not required, you can skip some checkpoints to speed up your workflow.
+Ray Workflows provides strong fault tolerance and exactly-once execution semantics by checkpointing. However, checkpointing could be time consuming, especially when you have large inputs and outputs for workflow tasks. When exactly-once execution semantics is not required, you can skip some checkpoints to speed up your workflow.
 
 
 We control the checkpoints by specify the checkpoint options like this:
@@ -84,5 +84,5 @@ This example skips checkpointing the output of ``read_data``. During recovery, `
 
 By default, we have ``checkpoint=True`` if not specified.
 
-If the output of a step is another step (i.e. dynamic workflows), we skips checkpointing the entire step.
+If the output of a task is another task (i.e. dynamic workflows), we skips checkpointing the entire task.
 

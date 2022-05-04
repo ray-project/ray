@@ -17,9 +17,9 @@ Ray Workflows provides high-performance, *durable* application workflows using R
 Why Workflows?
 --------------
 
-**Flexibility:** Combine the flexibility of Ray's dynamic task graphs with strong durability guarantees. Branch or loop conditionally based on runtime data. Use Ray distributed libraries seamlessly within workflow steps.
+**Flexibility:** Combine the flexibility of Ray's dynamic task graphs with strong durability guarantees. Branch or loop conditionally based on runtime data. Use Ray distributed libraries seamlessly within workflow tasks.
 
-**Performance:** Workflows offers sub-second overheads for task launch and supports workflows with hundreds of thousands of steps. Take advantage of the Ray object store to pass distributed datasets between steps with zero-copy overhead.
+**Performance:** Workflows offers sub-second overheads for task launch and supports workflows with hundreds of thousands of tasks. Take advantage of the Ray object store to pass distributed datasets between tasks with zero-copy overhead.
 
 **Dependency management:** Workflows leverages Ray's runtime environment feature to snapshot the code dependencies of a workflow. This enables management of workflows and virtual actors as code is upgraded over time.
 
@@ -27,7 +27,7 @@ You might find that workflows is *lower level* compared to engines such as `AirF
 
 Concepts
 --------
-Workflows provides the *step* and *virtual actor* durable primitives, which are analogous to Ray's non-durable tasks and actors.
+Workflows provides the *task* and *virtual actor* durable primitives, which are analogous to Ray's non-durable tasks and actors.
 
 Ray DAG
 ~~~~~~~
@@ -86,7 +86,7 @@ When executing the workflow DAG, remote functions are retried on failure, but on
 
 Objects
 ~~~~~~~
-Large data objects can be stored in the Ray object store. References to these objects can be passed into and returned from steps. Objects are checkpointed when initially returned from a step. After checkpointing, the object can be shared among any number of workflow steps at memory-speed via the Ray object store.
+Large data objects can be stored in the Ray object store. References to these objects can be passed into and returned from tasks. Objects are checkpointed when initially returned from a task. After checkpointing, the object can be shared among any number of workflow tasks at memory-speed via the Ray object store.
 
 .. code-block:: python
     :caption: Using Ray objects in a workflow:
@@ -112,7 +112,7 @@ Large data objects can be stored in the Ray object store. References to these ob
 
 Dynamic Workflows
 ~~~~~~~~~~~~~~~~~
-Workflows can generate new steps at runtime. This is achieved by returning a continuation of a DAG.
+Workflows can generate new tasks at runtime. This is achieved by returning a continuation of a DAG.
 A continuation is something returned by a function and executed after it returns.
 The continuation feature enables nesting, looping, and recursion within workflows.
 
@@ -161,14 +161,14 @@ Workflows can be efficiently triggered by timers or external events using the ev
     :caption: Using events.
 
     # Sleep is a special type of event.
-    sleep_step = workflow.sleep(100)
+    sleep_task = workflow.sleep(100)
 
     # `wait_for_events` allows for pluggable event listeners.
-    event_step = workflow.wait_for_event(MyEventListener)
+    event_task = workflow.wait_for_event(MyEventListener)
 
     @ray.remote
     def gather(*args):
         return args
 
-    # If a step's arguments include events, the step function won't be executed until all of the events have occured.
-    workflow.create(gather.bind(sleep_step, event_step, "hello world")).run()
+    # If a task's arguments include events, the task won't be executed until all of the events have occured.
+    workflow.create(gather.bind(sleep_task, event_task, "hello world")).run()

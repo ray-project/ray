@@ -15,8 +15,8 @@ A workflow can be in one of several states:
 Status              Description
 =================== =======================================================================================
 RUNNING             The workflow is currently running in the cluster.
-FAILED              This workflow failed with an application error. It can be resumed from the failed step.
-RESUMABLE           This workflow failed with a system error. It can be resumed from the failed step.
+FAILED              This workflow failed with an application error. It can be resumed from the failed task.
+RESUMABLE           This workflow failed with a system error. It can be resumed from the failed task.
 CANCELED            The workflow was canceled. Its result is unavailable, and it cannot be resumed.
 SUCCESSFUL          The workflow has been executed successfully.
 =================== =======================================================================================
@@ -96,6 +96,6 @@ Handling Dependencies
 
 Ray logs the runtime environment (code and dependencies) of the workflow to storage at submission time. This ensures that the workflow can be resumed at a future time on a different Ray cluster.
 
-You can also explicitly set the runtime environment for a particular step (e.g., specify conda environment, container image, etc.).
+You can also explicitly set the runtime environment for a particular task (e.g., specify conda environment, container image, etc.).
 
 For virtual actors, the runtime environment of the actor can be upgraded via the virtual actor management API.
