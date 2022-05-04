@@ -87,7 +87,7 @@ class CheckpointManager(CommonCheckpointManager):
     def newest_persistent_checkpoint(self):
         return self._latest_persisted_checkpoint or _TrackedCheckpoint(
             checkpoint_dir_or_data=None,
-            checkpoint_id=0,
+            checkpoint_id=-1,
             storage_mode=_TrackedCheckpoint.PERSISTENT,
         )
 
@@ -104,7 +104,7 @@ class CheckpointManager(CommonCheckpointManager):
     def newest_memory_checkpoint(self):
         return self._latest_memory_checkpoint or _TrackedCheckpoint(
             checkpoint_dir_or_data=None,
-            checkpoint_id=0,
+            checkpoint_id=-1,
             storage_mode=_TrackedCheckpoint.MEMORY,
         )
 
