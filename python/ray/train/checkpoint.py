@@ -163,6 +163,8 @@ class CheckpointManager(CommonCheckpointManager):
             )
             self._decide_what_to_do_with_checkpoint(not_yet_persisted_checkpoint)
 
+        self._latest_checkpoint_id += 1
+
     def _get_next_checkpoint_path(self) -> Optional[Path]:
         """Path to the next checkpoint to persist."""
         checkpoint_file = construct_checkpoint_file_name(self._latest_checkpoint_id + 1)

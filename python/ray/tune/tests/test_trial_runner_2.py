@@ -339,7 +339,6 @@ class TrialRunnerTest2(unittest.TestCase):
                 result=result,
             )
             trial.saving_to = tune_cp
-            trial.on_checkpoint(tune_cp)
 
             return checkpoint_dir
 
