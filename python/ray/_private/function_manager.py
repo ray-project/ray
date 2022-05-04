@@ -369,6 +369,8 @@ class FunctionActorManager:
 
         function = self.load_function_or_class_from_local(module_name, function_name)
         if function is not None:
+            if isinstance(function, ray.remote_function.RemoteFunction):
+                function = function._function
             self._function_execution_info[function_id] = FunctionExecutionInfo(
                 function=function,
                 function_name=function_name,
@@ -515,24 +517,17 @@ class FunctionActorManager:
         actor_class = self._loaded_actor_classes.get(function_id, None)
         if actor_class is None:
             # Load actor class.
-            if self._worker.load_code_from_local:
-                # Load actor class from local code first.
-                actor_class = self._load_actor_class_from_local(
-                    actor_creation_function_descriptor
-                )
-                # If the actor is unable to be loaded
-                # from local, try to load it
-                # from GCS even if load_code_from_local is set True
-                if actor_class is None:
-                    actor_class = self._load_actor_class_from_gcs(
-                        job_id, actor_creation_function_descriptor
-                    )
-
-            else:
-                # Load actor class from GCS.
+            actor_class = self._load_actor_class_from_local(
+                actor_creation_function_descriptor
+            )
+            # If the actor is unable to be loaded
+            # from local, try to load it
+            # from GCS even if load_code_from_local is set True
+            if actor_class is None:
                 actor_class = self._load_actor_class_from_gcs(
                     job_id, actor_creation_function_descriptor
                 )
+
             # Save the loaded actor class in cache.
             self._loaded_actor_classes[function_id] = actor_class
 
@@ -577,13 +572,13 @@ class FunctionActorManager:
             actor_creation_function_descriptor.class_name,
         )
 
-        object = self.load_function_or_class_from_local(module_name, class_name)
+        actor_class = self.load_function_or_class_from_local(module_name, class_name)
 
-        if object is not None:
-            if isinstance(object, ray.actor.ActorClass):
-                return object.__ray_metadata__.modified_class
+        if actor_class is not None:
+            if isinstance(actor_class, ray.actor.ActorClass):
+                return actor_class.__ray_metadata__.modified_class
             else:
-                return object
+                return actor_class
         else:
             return None
 
