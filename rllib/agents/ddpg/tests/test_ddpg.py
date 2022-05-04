@@ -17,6 +17,7 @@ from ray.rllib.utils.test_utils import (
     framework_iterator,
 )
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
+from ray.rllib.utils.replay_buffers.utils import patch_buffer_with_fake_sampling_method
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -380,7 +381,7 @@ class TestDDPG(unittest.TestCase):
                     # Set a fake-batch to use
                     # (instead of sampling from replay buffer).
                     buf = trainer.local_replay_buffer
-                    buf._fake_batch = in_
+                    patch_buffer_with_fake_sampling_method(buf, in_)
                     trainer.train()
                     updated_weights = policy.get_weights()
                     # Net must have changed.
@@ -401,7 +402,7 @@ class TestDDPG(unittest.TestCase):
                     # Set a fake-batch to use
                     # (instead of sampling from replay buffer).
                     buf = trainer.local_replay_buffer
-                    buf._fake_batch = in_
+                    patch_buffer_with_fake_sampling_method(buf, in_)
                     trainer.train()
                     # Compare updated model and target weights.
                     for tf_key in tf_weights.keys():
