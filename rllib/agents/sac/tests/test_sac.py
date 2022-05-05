@@ -80,7 +80,6 @@ class TestSAC(unittest.TestCase):
         config["n_step"] = 3
         config["twin_q"] = True
         config["replay_buffer_config"]["learning_starts"] = 0
-        config["replay_buffer_config"]["prioritized_replay"] = True
         config["rollout_fragment_length"] = 10
         config["train_batch_size"] = 10
         # If we use default buffer size (1e6), the buffer will take up
@@ -549,6 +548,7 @@ class TestSAC(unittest.TestCase):
                 SampleBatch.DONES: np.random.choice([True, False], size=(batch_size,)),
                 SampleBatch.NEXT_OBS: np.random.random(size=obs_size),
                 "weights": np.random.random(size=(batch_size,)),
+                "batch_indexes": [0] * batch_size,
             }
         )
 
