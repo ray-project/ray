@@ -331,45 +331,42 @@ class StateAPIManager:
             available: dict,
             resource_usage: dict
         ):
+            reply = await self._client.get_resource_usage_by_task(
+                node_id, timeout=DEFAULT_RPC_TIMEOUT
+            )
 
-            logger.error(f"filling for node {node_id}")
-            # reply = await self._client.get_resource_usage_by_task(
-            #     node_id, timeout=DEFAULT_RPC_TIMEOUT
-            # )
-            # logger.error(f"got reply {reply}")
-            #
-            # # def insert_or_accumulate(existing: dict, new: dict):
-            # #     # merge intersection
-            # #     for key in existing:
-            # #         if key in new:
-            # #             existing[key] += new[key]
-            # #     # merge difference
-            # #     for key in new:
-            # #         if key not in existing:
-            # #             existing[key] = new[key]
-            # #
-            # # insert_or_accumulate(total, self._message_to_dict(reply.total))
-            # # insert_or_accumulate(available, self._message_to_dict(reply.available))
-            #
-            # for task in reply.task_resource_usage:
-            #     task_name = get_task_name(task)
-            #     resource_set = self._message_to_dict(task.resource_usage)
-            #     aggregate_resource_usage_for_task(
-            #         task_name, resource_set, resource_usage
-            #     )
+            def insert_or_accumulate(existing: dict, new: dict):
+                # merge intersection
+                for key in existing:
+                    if key in new:
+                        existing[key] += new[key]
+                # merge difference
+                for key in new:
+                    if key not in existing:
+                        existing[key] = new[key]
 
-        logger.error(f"running {self.data_source_client._raylet_stubs}")
+            insert_or_accumulate(total, reply.total)
+            insert_or_accumulate(available, reply.available)
+
+            for task in reply.task_resource_usage:
+                task_name = get_task_name(task)
+                resource_set = {k: v for k, v in task.resource_usage.items()}
+                aggregate_resource_usage_for_task(
+                    task_name, resource_set, resource_usage
+                )
+
         if per_node:
             result = {}
 
             async def _fill_result(node_id: str):
                 total, available, resource_usage = {}, {}, {}
-                _fill_for_node(node_id, total, available, resource_usage)
-                result[node_id] = {}
-                result[node_id]["summary"] = {
-                    "total": total, "available": available,
+                await _fill_for_node(node_id, total, available, resource_usage)
+                result[node_id] = {
+                    "summary": {
+                        "total": total, "available": available,
+                    },
+                    "usage": resource_usage
                 }
-                result[node_id]["usage"] = resource_usage
 
             await asyncio.gather(
                 *[
@@ -378,6 +375,7 @@ class StateAPIManager:
                 ]
             )
         else:
+            result = {}
             total, available, resource_usage = {}, {}, {}
             await asyncio.gather(
                 *[
@@ -385,10 +383,12 @@ class StateAPIManager:
                     for node_id in self._client.get_all_registered_raylet_ids()
                 ]
             )
-            result["summary"] = {
-                "total": total, "available": available,
+            result = {
+                "summary": {
+                    "total": total, "available": available,
+                },
+                "usage": resource_usage
             }
-            result["usage"] = resource_usage
         logger.error(f"DONE: {result}")
         return result
 
