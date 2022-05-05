@@ -3330,7 +3330,7 @@
 
   run:
     timeout: 9600
-    script: python pipelined_training.py --epochs 2 --num-windows 2 --num-files 915
+    script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python pipelined_training.py --epochs 2 --num-windows 1 --num-files 915
       --debug
 
     wait_for_nodes:
