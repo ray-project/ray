@@ -1,5 +1,4 @@
 from typing import Callable, Optional, Dict, Tuple, Type, Union
-from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY
 import tensorflow as tf
 
 from ray.train.tensorflow import TensorflowConfig
@@ -8,6 +7,7 @@ from ray.ml.train.data_parallel_trainer import DataParallelTrainer
 from ray.ml.config import ScalingConfig, RunConfig
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
+from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY
 from ray.util import PublicAPI
 
 
