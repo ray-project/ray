@@ -1,23 +1,25 @@
 """
 This file defines the common pytest fixtures used in current directory.
 """
+import json
 import os
-from contextlib import contextmanager
-import pytest
-import tempfile
+import platform
+import shutil
 import socket
 import subprocess
-import json
+import tempfile
 import time
+from contextlib import contextmanager
 from pathlib import Path
-from unittest import mock
-import shutil
-import platform
 from tempfile import gettempdir
+from typing import List, Tuple
+from unittest import mock
+
+import pytest
 
 import ray
 import ray.ray_constants as ray_constants
-from ray.cluster_utils import Cluster, AutoscalingCluster, cluster_not_supported
+import ray.util.client.server.server as ray_client_server
 from ray._private.runtime_env.pip import PipProcessor
 from ray._private.services import (
     REDIS_EXECUTABLE,
@@ -31,8 +33,7 @@ from ray._private.test_utils import (
     teardown_tls,
     get_and_run_node_killer,
 )
-import ray.util.client.server.server as ray_client_server
-from typing import Tuple
+from ray.cluster_utils import Cluster, AutoscalingCluster, cluster_not_supported
 
 
 @pytest.fixture
@@ -691,8 +692,14 @@ def pytest_runtest_makereport(item, call):
     outcome = yield
     rep = outcome.get_result()
 
-    append_short_test_summary(rep)
-    create_ray_logs_for_failed_test(rep)
+    try:
+        append_short_test_summary(rep)
+    except Exception as e:
+        print(f"+++ Error creating PyTest summary\n{e}")
+    try:
+        create_ray_logs_for_failed_test(rep)
+    except Exception as e:
+        print(f"+++ Error saving Ray logs for failing test\n{e}")
 
 
 def append_short_test_summary(rep):
@@ -751,10 +758,13 @@ def _get_markdown_annotation(rep) -> str:
     main_tb, main_loc, _ = rep.longrepr.chain[-1]
     markdown = ""
 
+    # Only keep last line of the message
+    short_message = list(filter(None, main_loc.message.split("\n")))[-1]
+
     # Header: Main error message
     markdown += f"#### {rep.nodeid}\n\n"
     markdown += "<details>\n"
-    markdown += f"<summary>{main_loc.message}</summary>\n\n"
+    markdown += f"<summary>{short_message}</summary>\n\n"
 
     # Add link to test definition
     test_file, test_lineno, _test_node = rep.location
@@ -780,17 +790,36 @@ def _get_markdown_annotation(rep) -> str:
         # Here we just print each traceback and the link to the respective
         # lines in GutHub
         for tb, loc, _ in rep.longrepr.chain:
-            path, url = _get_repo_github_path_and_link(loc.path, loc.lineno)
+            if loc:
+                path, url = _get_repo_github_path_and_link(loc.path, loc.lineno)
+                github_link = f"[{path}:{loc.lineno}]({url})\n\n"
+            else:
+                github_link = ""
 
             markdown += "```\n"
             markdown += str(tb)
             markdown += "\n```\n\n"
-            markdown += f"[{path}:{loc.lineno}]({url})\n\n"
+            markdown += github_link
 
         markdown += "</details>\n"
 
+    markdown += "<details><summary>PIP packages</summary>\n\n"
+    markdown += "```\n"
+    markdown += "\n".join(_get_pip_packages())
+    markdown += "\n```\n\n"
+    markdown += "</details>\n"
+
     markdown += "</details>\n\n"
     return markdown
+
+
+def _get_pip_packages() -> List[str]:
+    try:
+        from pip._internal.operations import freeze
+
+        return list(freeze.freeze())
+    except Exception:
+        return ["invalid"]
 
 
 def _get_repo_github_path_and_link(file: str, lineno: int) -> Tuple[str, str]:

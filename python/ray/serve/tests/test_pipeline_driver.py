@@ -1,4 +1,5 @@
 import sys
+from pydantic import BaseModel
 
 import pytest
 import requests
@@ -34,15 +35,16 @@ def test_loading_check():
     )
 
 
-def test_unit_schema_injection():
-    class Impl(SimpleSchemaIngress):
-        async def predict(self, inp):
-            return inp
+class EchoIngress(SimpleSchemaIngress):
+    async def predict(self, inp):
+        return inp
 
+
+def test_unit_schema_injection():
     async def resolver(my_custom_param: int):
         return my_custom_param
 
-    server = Impl(http_adapter=resolver)
+    server = EchoIngress(http_adapter=resolver)
     client = TestClient(server.app)
 
     response = client.post("/")
@@ -59,6 +61,25 @@ def test_unit_schema_injection():
         "schema": {"title": "My Custom Param", "type": "integer"},
         "name": "my_custom_param",
         "in": "query",
+    }
+
+
+class MyType(BaseModel):
+    a: int
+    b: str
+
+
+def test_unit_pydantic_class_adapter():
+
+    server = EchoIngress(http_adapter=MyType)
+    client = TestClient(server.app)
+    response = client.get("/openapi.json")
+    assert response.status_code == 200
+    assert response.json()["paths"]["/"]["get"]["requestBody"] == {
+        "content": {
+            "application/json": {"schema": {"$ref": "#/components/schemas/MyType"}}
+        },
+        "required": True,
     }
 
 
@@ -99,6 +120,19 @@ def test_dag_driver_custom_schema(serve_instance):
     print(resp.text)
     resp.raise_for_status()
     assert resp.json() == 100
+
+
+def test_dag_driver_custom_pydantic_schema(serve_instance):
+    with InputNode() as inp:
+        dag = echo.bind(inp)
+
+    handle = serve.run(DAGDriver.bind(dag, http_adapter=MyType))
+    assert ray.get(handle.predict.remote(MyType(a=1, b="str"))) == MyType(a=1, b="str")
+
+    resp = requests.post("http://127.0.0.1:8000/", json={"a": 1, "b": "str"})
+    print(resp.text)
+    resp.raise_for_status()
+    assert resp.json() == {"a": 1, "b": "str"}
 
 
 @serve.deployment

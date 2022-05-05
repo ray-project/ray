@@ -133,12 +133,6 @@ DEFAULT_CONFIG = with_common_config({
     # Only torch supported so far.
     "framework": "torch",
 
-    # === Experimental Flags ===
-    # If True, the execution plan API will not be used. Instead,
-    # a Trainer's `training_iteration` method will be called as-is each
-    # training iteration.
-    "_disable_execution_plan_api": True,
-
     # Deprecated keys:
     # Use `replay_buffer_config.learning_starts` instead.
     "learning_starts": DEPRECATED_VALUE,

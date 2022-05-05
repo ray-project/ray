@@ -143,7 +143,7 @@ class RemoteFunction:
         # max_calls could not be used in ".options()", we should remove it before
         # merging options from '@ray.remote'.
         default_options.pop("max_calls", None)
-        updated_options = {**default_options, **task_options}
+        updated_options = ray_option_utils.update_options(default_options, task_options)
         ray_option_utils.validate_task_options(updated_options, in_options=True)
 
         # only update runtime_env when ".options()" specifies new runtime_env
@@ -204,7 +204,7 @@ class RemoteFunction:
                 msg = (
                     "Could not serialize the function "
                     f"{self._function_descriptor.repr}. Check "
-                    "https://docs.ray.io/en/master/serialization.html#troubleshooting "
+                    "https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting "  # noqa
                     "for more information."
                 )
                 raise TypeError(msg) from e

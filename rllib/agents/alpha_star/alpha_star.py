@@ -116,9 +116,6 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
 
         # Reporting interval.
         "min_time_s_per_reporting": 2,
-
-        # Use the `training_iteration` method instead of an execution plan.
-        "_disable_execution_plan_api": True,
     },
     _allow_unknown_configs=True,
 )
