@@ -646,6 +646,10 @@ class Dataset(Generic[T]):
         def process_batch(batch):
             rows = self._meta_count()
             n_required = rows // self.num_blocks()
+
+            if not isinstance(batch, list):
+                # Should handle dataframes and tensors
+                return batch.sample(n_required)
             return random.sample(batch, n_required)
 
         sample_population = self.map_batches(process_batch)
