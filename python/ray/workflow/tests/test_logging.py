@@ -8,7 +8,7 @@ def test_basic_workflow_logs(workflow_start_regular):
 import ray
 from ray import workflow
 
-ray.init(address='auto', storage="{_storage_uri}")
+ray.init(address='auto')
 
 @workflow.step(name="f")
 def f():
@@ -35,7 +35,7 @@ def test_chained_workflow_logs(workflow_start_regular):
 import ray
 from ray import workflow
 
-ray.init(address='auto', storage="{_storage_uri}")
+ray.init(address='auto')
 
 @workflow.step(name="f1")
 def f1():
@@ -68,7 +68,7 @@ def test_dynamic_workflow_logs(workflow_start_regular):
 import ray
 from ray import workflow
 
-ray.init(address='auto', storage="{_storage_uri}")
+ray.init(address='auto')
 
 @workflow.step(name="f3")
 def f3(x):
@@ -101,7 +101,7 @@ def test_virtual_actor_logs(workflow_start_regular):
 import ray
 from ray import workflow
 
-ray.init(address='auto', storage="{_storage_uri}")
+ray.init(address='auto')
 
 @workflow.virtual_actor
 class Counter:
