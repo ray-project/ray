@@ -139,7 +139,9 @@ class FunctionActorManager:
         # Return a hash of the identifier in case it is too large.
         return hashlib.sha1(collision_identifier.encode("utf-8")).digest()
 
-    def load_function_or_class_from_local(self, module_name, function_or_class_name):
+    def load_function_or_class_from_local(
+        self, module_name, function_or_class_name, function_id
+    ):
         """Try to load a function or class in the module from local."""
         if module_name == "__main__":
             # If the function come from main module, check whether we have
@@ -155,6 +157,15 @@ class FunctionActorManager:
             func = module
             for part in parts:
                 func = getattr(func, part)
+            # check they match
+            import inspect
+
+            if inspect.isclass(func):
+                descriptor = PythonFunctionDescriptor.from_class(func)
+            else:
+                descriptor = PythonFunctionDescriptor.from_function(func)
+            if descriptor.function_id != descriptor.function_id:
+                return None
             return func
         except Exception:
             return None
@@ -203,7 +214,9 @@ class FunctionActorManager:
             # If the function is dynamic, we still export it to GCS
             # even if load_code_from_local is set True.
             if (
-                self.load_function_or_class_from_local(module_name, function_name)
+                self.load_function_or_class_from_local(
+                    module_name, function_name, function_descriptor.function_id
+                )
                 is not None
             ):
                 return
@@ -444,7 +457,12 @@ class FunctionActorManager:
 
         # If the class is dynamic, we still export it to GCS
         # even if load_code_from_local is set True.
-        if self.load_function_or_class_from_local(module_name, class_name) is not None:
+        if (
+            self.load_function_or_class_from_local(
+                module_name, class_name, actor_creation_function_descriptor.function_id
+            )
+            is not None
+        ):
             return
 
         # `current_job_id` shouldn't be NIL, unless:
@@ -565,7 +583,9 @@ class FunctionActorManager:
             actor_creation_function_descriptor.class_name,
         )
 
-        actor_class = self.load_function_or_class_from_local(module_name, class_name)
+        actor_class = self.load_function_or_class_from_local(
+            module_name, class_name, actor_creation_function_descriptor.function_id
+        )
         if actor_class is not None:
             if isinstance(actor_class, ray.actor.ActorClass):
                 return actor_class.__ray_metadata__.modified_class
