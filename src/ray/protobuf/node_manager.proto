@@ -331,7 +331,12 @@ message GetResourceUsageByTaskRequest {
 }
 
 message GetResourceUsageByTaskReply {
-  repeated TaskResourceUsage task_resource_usage = 1;
+  // Total resources on this node
+  map<string, double> total = 1;
+  // Available (i.e. unused) resources on this node
+  map<string, double> available = 2;
+  // The task resource usages of the resource-consuming tasks/actors on this node
+  repeated TaskResourceUsage task_resource_usage = 3;
 }
 
 // Service for inter-node-manager communication.

@@ -1049,16 +1049,9 @@ void LocalTaskManager::DebugStr(std::stringstream &buffer) const {
   auto max_iteration = RayConfig::instance().worker_max_resource_analysis_iteration();
   uint32_t iteration = 0;
   for (const auto &worker : worker_pool_.GetAllRegisteredWorkers(
-           /*filter_dead_workers*/ true)) {
+    /*filter_dead_workers*/ true, /*filter_inactive_workers*/ true)) {
     if (max_iteration < iteration++) {
       break;
-    }
-    if (worker->IsDead()        // worker is dead
-        || worker->IsBlocked()  // worker is blocked by blocking Ray API
-        || (worker->GetAssignedTaskId().IsNil() &&
-            worker->GetActorId().IsNil())) {  // Tasks or actors not assigned
-      // Then this shouldn't have allocated resources.
-      continue;
     }
 
     const auto &task_or_actor_name = worker->GetAssignedTask()

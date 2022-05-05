@@ -113,9 +113,12 @@ class WorkerPoolInterface {
   /// Get all the registered workers.
   ///
   /// \param filter_dead_workers whether or not if this method will filter dead workers
-  /// that are still registered. \return A list containing all the workers.
+  /// that are still registered.
+  /// \param filter_inactive_workers whether or not this method will filter workers
+  /// that don't consume any resources.
+  /// \return A list containing all the workers.
   virtual const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
-      bool filter_dead_workers = false) const = 0;
+      bool filter_dead_workers = false, bool filter_inactive_workers = false) const = 0;
 
   virtual ~WorkerPoolInterface(){};
 };
@@ -367,9 +370,12 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// Get all the registered workers.
   ///
   /// \param filter_dead_workers whether or not if this method will filter dead workers
-  /// that are still registered. \return A list containing all the workers.
+  /// that are still registered. 
+  /// \param filter_inactive_workers whether or not this method will filter workers
+  /// that don't consume any resources.
+  /// \return A list containing all the workers.
   const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
-      bool filter_dead_workers = false) const;
+      bool filter_dead_workers = false, bool filter_inactive_workers = false) const;
 
   /// Get all the registered drivers.
   ///

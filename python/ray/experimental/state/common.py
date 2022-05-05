@@ -115,6 +115,6 @@ class TaskResourceUsage:
 
 
 @dataclass(init=True)
-class DetailedResourceSummary:
+class DetailedResourceUsage:
     summary: ResourceSummary
     usage: TaskResourceUsage
