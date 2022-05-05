@@ -17,10 +17,10 @@ namespace ray {
 class MockPinObjectsInterface : public PinObjectsInterface {
  public:
   MOCK_METHOD(void,
-              PinObjectIDs,
+              PinObjectID,
               (const rpc::Address &caller_address,
                const ObjectID &object_id,
-               rpc::ClientCallback<rpc::PinObjectIDsReply> callback),
+               rpc::ClientCallback<rpc::PinObjectIDReply> callback),
               (override));
 };
 
@@ -188,10 +188,10 @@ class MockRayletClientInterface : public RayletClientInterface {
                const rpc::ClientCallback<rpc::ReleaseUnusedBundlesReply> &callback),
               (override));
   MOCK_METHOD(void,
-              PinObjectIDs,
+              PinObjectID,
               (const rpc::Address &caller_address,
                const ObjectID &object_id,
-               rpc::ClientCallback<rpc::PinObjectIDsReply> callback),
+               rpc::ClientCallback<rpc::PinObjectIDReply> callback),
               (override));
   MOCK_METHOD(void,
               GetSystemConfig,

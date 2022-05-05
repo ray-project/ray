@@ -50,9 +50,8 @@ class DDPGConfig(TrainerConfig):
 
         # fmt: off
         # __sphinx_doc_begin__
-        # Override some of TrainerConfig's default values with DDPG-specific values.
 
-        # .training()
+        # DDPG-specific settings.
         self.twin_q = False
         self.policy_delay = 1
         self.smooth_target_policy = False
@@ -78,6 +77,7 @@ class DDPGConfig(TrainerConfig):
         # __sphinx_doc_end__
         # fmt: on
 
+        # Override some of TrainerConfig's default values with DDPG-specific values.
         # .exploration()
         self.exploration_config = {
             # DDPG uses OrnsteinUhlenbeck (stateful) noise to be added to NN-output
@@ -100,41 +100,39 @@ class DDPGConfig(TrainerConfig):
             "scale_timesteps": 10000,
         }
 
-        self.timesteps_per_iteration = 1000
-        self.evaluation_config = {"explore": False}
-
         # .evaluation()
         self.evaluation_interval = None
         self.evaluation_duration = 10
+        self.evaluation_config = {"explore": False}
 
         # Common SimpleQ buffer parameters
         self.buffer_size = DEPRECATED_VALUE
         self.replay_buffer_config = {
-            "type": "MultiAgentReplayBuffer",
+            "type": "MultiAgentPrioritizedReplayBuffer",
             "capacity": 50000,
+            # Alpha parameter for prioritized replay buffer.
+            "prioritized_replay_alpha": 0.6,
+            # Beta parameter for sampling from prioritized replay buffer.
+            "prioritized_replay_beta": 0.4,
+            # Epsilon to add to the TD errors when updating priorities.
+            "prioritized_replay_eps": 1e-6,
+            "learning_starts": 1500,
         }
         self.store_buffer_in_checkpoints = False
-        self.prioritized_replay = True
-        self.prioritized_replay_alpha = 0.6
-        self.prioritized_replay_beta = 0.4
-        self.prioritized_replay_eps = 1e-6
-        self.compress_observations = False
 
-        # Common SimpleQ training parameters
+        # .training()
         self.grad_clip = None
-        self.learning_starts = 1500
-        self.rollout_fragment_length = 1
         self.train_batch_size = 256
 
-        # === Parallelism ===
-        self.worker_side_prioritization = False
+        # .rollouts()
         self.num_workers = 0
+        self.rollout_fragment_length = 1
+        self.worker_side_prioritization = False
+        self.compress_observations = False
 
         # .reporting()
         self.min_time_s_per_reporting = 1
-
-        # .experimental()
-        self._disable_execution_plan_api = False
+        self.min_sample_timesteps_per_reporting = 1000
 
     @override(TrainerConfig)
     def training(
@@ -306,18 +304,6 @@ class DDPGTrainer(SimpleQTrainer):
                     "batch_mode=complete_episodes."
                 )
                 config["batch_mode"] = "complete_episodes"
-
-        if config.get("prioritized_replay"):
-            if config["multiagent"]["replay_mode"] == "lockstep":
-                raise ValueError(
-                    "Prioritized replay is not supported when replay_mode=lockstep."
-                )
-        else:
-            if config.get("worker_side_prioritization"):
-                raise ValueError(
-                    "Worker side prioritization is not supported when "
-                    "prioritized_replay=False."
-                )
 
 
 # Deprecated: Use ray.rllib.agents.ddpg.DDPGConfig instead!
