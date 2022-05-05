@@ -1,3 +1,7 @@
-from ray.rllib.contrib.maddpg.maddpg import MADDPGTrainer, DEFAULT_CONFIG
+from ray.rllib.utils.deprecation import deprecation_warning
 
-__all__ = ["MADDPGTrainer", "DEFAULT_CONFIG"]
+deprecation_warning(
+    old="ray.rllib.contrib.maddpg",
+    new="ray.rllib.agents.maddpg",
+    error=True,
+)

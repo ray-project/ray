@@ -2,7 +2,7 @@
 
 Configurations you can try:
     - normal policy gradients (PG)
-    - contrib/MADDPG
+    - MADDPG
     - QMIX
 
 See also: centralized_critic.py for centralized critic PPO on this game.
@@ -96,7 +96,7 @@ if __name__ == "__main__":
         ),
     )
 
-    if args.run == "contrib/MADDPG":
+    if args.run == "MADDPG":
         obs_space = Discrete(6)
         act_space = TwoStepGame.action_space
         config = {
