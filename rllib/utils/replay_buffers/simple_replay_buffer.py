@@ -10,7 +10,13 @@ from ray.rllib.utils.typing import SampleBatchType
 class SimpleReplayBuffer(ReplayBuffer):
     """Simple replay buffer that operates over entire batches."""
 
-    def __init__(self, capacity: int, storage_unit: str = "episodes", learning_starts: int = 0, **kwargs):
+    def __init__(
+        self,
+        capacity: int,
+        storage_unit: str = "episodes",
+        learning_starts: int = 0,
+        **kwargs
+    ):
         """Initialize a SimpleReplayBuffer instance."""
         super().__init__(capacity=capacity, storage_unit="episodes", **kwargs)
         self.replay_batches = []

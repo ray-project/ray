@@ -241,7 +241,9 @@ class AlphaZeroTrainer(Trainer):
                 self.local_replay_buffer.add(batch)
 
         if self.local_replay_buffer is not None:
-            train_batch = self.local_replay_buffer.sample(self.config["train_batch_size"])
+            train_batch = self.local_replay_buffer.sample(
+                self.config["train_batch_size"]
+            )
         else:
             train_batch = SampleBatch.concat_samples(new_sample_batches)
 
