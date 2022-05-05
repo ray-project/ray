@@ -76,14 +76,17 @@ def test_sort_partition_same_key_to_same_block(
 
 @pytest.mark.parametrize("num_items,parallelism", [(100, 1), (1000, 4)])
 @pytest.mark.parametrize("use_push_based_shuffle", [False, True])
-def test_sort_arrow(ray_start_regular, num_items, parallelism, use_push_based_shuffle):
+@pytest.mark.parametrize("use_polars", [False, True])
+def test_sort_arrow(ray_start_regular, num_items, parallelism, use_push_based_shuffle, use_polars):
     ctx = ray.data.context.DatasetContext.get_current()
 
     try:
-        original = ctx.use_push_based_shuffle
+        original_push_based_shuffle = ctx.use_push_based_shuffle
         ctx.use_push_based_shuffle = use_push_based_shuffle
+        original_use_polars = ctx.use_polars
+        ctx.use_polars = use_polars
 
-        a = list(reversed(range(num_items)))
+        a = list(reversed([i // 3 for i in range(num_items)]))
         b = [f"{x:03}" for x in range(num_items)]
         shard = int(np.ceil(num_items / parallelism))
         offset = 0
@@ -112,7 +115,8 @@ def test_sort_arrow(ray_start_regular, num_items, parallelism, use_push_based_sh
         assert_sorted(ds.sort(key="b"), zip(a, b))
         assert_sorted(ds.sort(key="a", descending=True), zip(a, b))
     finally:
-        ctx.use_push_based_shuffle = original
+        ctx.use_push_based_shuffle = original_push_based_shuffle
+        ctx.use_polars = original_use_polars
 
 
 @pytest.mark.parametrize("use_push_based_shuffle", [False, True])
