@@ -1,6 +1,7 @@
 import os
 from typing import Optional
 
+import numpy
 import numpy as np
 import pandas as pd
 import ray.cloudpickle as cpickle
@@ -120,4 +121,4 @@ class RLPredictor(Predictor):
             input_dict={"obs": obs}
         )
 
-        return actions
+        return np.ndarray(actions)
