@@ -166,7 +166,7 @@ class TestDDPG(unittest.TestCase):
         config.critic_hiddens = [10]
         # Make sure, timing differences do not affect trainer.train().
         config.min_time_s_per_reporting = 0
-        config.timesteps_per_iteration = 100
+        config.min_sample_timesteps_per_reporting = 100
 
         map_ = {
             # Normal net.

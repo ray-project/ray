@@ -120,8 +120,6 @@ class SimpleQConfig(TrainerConfig):
         # Simple Q specific
         # fmt: off
         # __sphinx_doc_begin__
-        #
-        self.timesteps_per_iteration = 1000
         self.target_network_update_freq = 500
         self.replay_buffer_config = {
             "_enable_replay_buffer_api": True,
@@ -162,6 +160,7 @@ class SimpleQConfig(TrainerConfig):
 
         # `reporting()`
         self.min_time_s_per_reporting = 1
+        self.min_sample_timesteps_per_reporting = 1000
 
         # `experimental()`
         self._disable_execution_plan_api = True
@@ -180,7 +179,6 @@ class SimpleQConfig(TrainerConfig):
     def training(
         self,
         *,
-        timesteps_per_iteration: Optional[int] = None,
         target_network_update_freq: Optional[int] = None,
         replay_buffer_config: Optional[dict] = None,
         store_buffer_in_checkpoints: Optional[bool] = None,
@@ -193,7 +191,6 @@ class SimpleQConfig(TrainerConfig):
         """Sets the training related configuration.
 
         Args:
-            timesteps_per_iteration: Minimum env steps to optimize for per train call.
             This value does not affect learning, only the length of iterations.
             target_network_update_freq: Update the target network every
                 `target_network_update_freq` steps.
@@ -220,8 +217,6 @@ class SimpleQConfig(TrainerConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        if timesteps_per_iteration is not None:
-            self.timesteps_per_iteration = timesteps_per_iteration
         if target_network_update_freq is not None:
             self.target_network_update_freq = target_network_update_freq
         if replay_buffer_config is not None:
