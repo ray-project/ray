@@ -630,16 +630,20 @@ class Dataset(Generic[T]):
             seed: Seeds the python random pRNG generator.
 
         Returns:
-            N elements from the shuffled dataset.
+            N elements, randomly sampled from the dataset.
         """
         import random
 
-        idx = random.randint(0, self.num_blocks())
-        if idx + number >= self.num_blocks():
-            idx = self.num_blocks() - number
-        spliced = self.split_at_indices([idx, idx + number])
-        sample_choice = spliced[1]
-        return sample_choice.take(number)
+        if seed:
+            random.seed(seed)
+
+        rows = self._meta_count()
+
+        n_required = rows // self.num_blocks()
+
+        sample_population = self.map_batches(lambda batch: random.sample(batch, n_required))
+
+        return sample_population.take(number)
 
     def split(
         self, n: int, *, equal: bool = False, locality_hints: Optional[List[Any]] = None
