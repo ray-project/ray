@@ -11,6 +11,7 @@ from ray.workflow.common import (
     WorkflowNotFoundError,
 )
 from ray.workflow.tests import utils
+import tempfile
 import subprocess
 import time
 
@@ -241,7 +242,10 @@ f.step().run()
     script3 = script.format(
         f"ray.init(address='auto', storage='{another_tmp_path.name}')"
     )
-    err_str = "ValueError: When connecting to an existing cluster, storage must not be provided."
+    err_str = (
+        "ValueError: When connecting to an existing cluster, "
+        "storage must not be provided."
+    )
 
     proc1 = run_string_as_driver_nonblocking(script1)
     out_str1 = proc1.stdout.read().decode("ascii") + proc1.stderr.read().decode("ascii")
