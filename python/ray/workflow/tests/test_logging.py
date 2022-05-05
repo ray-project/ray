@@ -2,8 +2,6 @@ from ray._private.test_utils import run_string_as_driver_nonblocking
 
 
 def test_basic_workflow_logs(workflow_start_regular):
-    from ray.internal.storage import _storage_uri
-
     script = f"""
 import ray
 from ray import workflow
@@ -29,8 +27,6 @@ f.step().run("wid")
 
 
 def test_chained_workflow_logs(workflow_start_regular):
-    from ray.internal.storage import _storage_uri
-
     script = f"""
 import ray
 from ray import workflow
@@ -62,8 +58,6 @@ f2.step(f1.step()).run("wid1")
 
 
 def test_dynamic_workflow_logs(workflow_start_regular):
-    from ray.internal.storage import _storage_uri
-
     script = f"""
 import ray
 from ray import workflow
@@ -95,8 +89,6 @@ f4.step(10).run("wid2")
 
 
 def test_virtual_actor_logs(workflow_start_regular):
-    from ray.internal.storage import _storage_uri
-
     script = f"""
 import ray
 from ray import workflow
