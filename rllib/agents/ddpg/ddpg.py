@@ -108,6 +108,7 @@ class DDPGConfig(TrainerConfig):
         # Common SimpleQ buffer parameters
         self.buffer_size = DEPRECATED_VALUE
         self.replay_buffer_config = {
+            "_enable_replay_buffer_api": True,
             "type": "MultiAgentPrioritizedReplayBuffer",
             "capacity": 50000,
             # Alpha parameter for prioritized replay buffer.
@@ -161,6 +162,7 @@ class DDPGConfig(TrainerConfig):
         l2_reg: Optional[float] = None,
         worker_side_prioritization: Optional[bool] = None,
         training_intensity: Optional[float] = None,
+        replay_buffer_config: Optional[dict] = None,
         **kwargs,
     ) -> "DDPGConfig":
         """Sets the training related configuration.
@@ -172,13 +174,13 @@ class DDPGConfig(TrainerConfig):
         instead of OrnsteinUhlenbeck exploration noise.
 
         Args:
-            twin_q: use twin Q-net
-            policy_delay: delayed policy update
-            smooth_target_policy: target policy smoothing (this also replaces
+            twin_q: Use twin Q-net.
+            policy_delay: Delayed policy update.
+            smooth_target_policy: Target policy smoothing (this also replaces
                 OrnsteinUhlenbeck exploration noise with IID Gaussian exploration
-                noise, for now)
-            target_noise: gaussian stddev of target action noise for smoothing
-            target_noise_clip: target noise limit (bound)
+                noise, for now).
+            target_noise: Gaussian stddev of target action noise for smoothing.
+            target_noise_clip: Target noise limit (bound).
             use_state_preprocessor: Apply a state preprocessor with spec given by the
                 "model" config option
                 (like other RL algorithms). This is mostly useful if you have a weird
@@ -219,6 +221,8 @@ class DDPGConfig(TrainerConfig):
                     -> will make sure that replay+train op will be executed 4x as
                     often as rollout+insert op (4 * 250 = 1000).
                 See: rllib/agents/dqn/dqn.py::calculate_rr_weights for further details.
+            replay_buffer_config: Replay buffer config.
+
         Returns:
             This updated DDPGConfig object.
         """
@@ -264,6 +268,8 @@ class DDPGConfig(TrainerConfig):
             self.worker_side_prioritization = worker_side_prioritization
         if training_intensity is not None:
             self.training_intensity = training_intensity
+        if replay_buffer_config is not None:
+            self.replay_buffer_config = replay_buffer_config
 
         return self
 

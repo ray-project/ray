@@ -166,9 +166,8 @@ class SimpleQConfig(TrainerConfig):
         # `experimental()`
         self._disable_execution_plan_api = True
 
-        # deprecated
+        # Deprecated.
         self.buffer_size = DEPRECATED_VALUE
-        # The following values have moved because of the new ReplayBuffer API
         self.prioritized_replay = DEPRECATED_VALUE
         self.learning_starts = DEPRECATED_VALUE
         self.replay_batch_size = DEPRECATED_VALUE
