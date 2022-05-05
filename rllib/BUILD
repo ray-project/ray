@@ -1407,7 +1407,7 @@ py_test(
 )
 
 py_test(
-    name = "test_async_request_manager",
+    name = "test_async_requests_manager",
     tags = ["team:ml", "execution"],
     size = "small",
     srcs = ["execution/tests/test_async_requests_manager.py"]
