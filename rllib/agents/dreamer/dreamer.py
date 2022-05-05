@@ -10,10 +10,18 @@ from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, _get_shared_metric
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.agents.dreamer.dreamer_model import DreamerModel
-from ray.rllib.execution.rollout_ops import ParallelRollouts
+from ray.rllib.execution.rollout_ops import (
+    ParallelRollouts,
+    synchronous_parallel_sample,
+)
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
-from ray.rllib.utils.typing import SampleBatchType, TrainerConfigDict
+from ray.rllib.utils.typing import (
+    PartialTrainerConfigDict,
+    SampleBatchType,
+    TrainerConfigDict,
+    ResultDict,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -77,21 +85,28 @@ DEFAULT_CONFIG = with_common_config({
         "frame_skip": 2,
     },
 
-    # Use `execution_plan` instead of `training_iteration`.
-    "_disable_execution_plan_api": False,
+    # Use `training_iteration` instead of `execution_plan`.
+    "_disable_execution_plan_api": True,
 })
 # __sphinx_doc_end__
 # fmt: on
 
 
+def _postprocess_gif(gif: np.ndarray):
+    """Process provided gif to a format that can be logged to Tensorboard."""
+    gif = np.clip(255 * gif, 0, 255).astype(np.uint8)
+    B, T, C, H, W = gif.shape
+    frames = gif.transpose((1, 2, 3, 0, 4)).reshape((1, T, C, H, B * W))
+    return frames
+
+
 class EpisodicBuffer(object):
     def __init__(self, max_length: int = 1000, length: int = 50):
-        """Data structure that stores episodes and samples chunks
-        of size length from episodes
+        """Stores episodes and samples chunks of size ``length`` from episodes.
 
         Args:
             max_length: Maximum episodes it can store
-            length: Episode chunking lengh in sample()
+            length: Episode chunking length in sample()
         """
 
         # Stores all episodes into a list: List[SampleBatchType]
@@ -101,8 +116,7 @@ class EpisodicBuffer(object):
         self.length = length
 
     def add(self, batch: SampleBatchType):
-        """Splits a SampleBatch into episodes and adds episodes
-        to the episode buffer
+        """Splits a SampleBatch into episodes and adds episodes to the episode buffer.
 
         Args:
             batch: SampleBatch to be added
@@ -151,7 +165,6 @@ class DreamerIteration:
         self.batch_size = batch_size
 
     def __call__(self, samples):
-
         # Dreamer training loop.
         for n in range(self.dreamer_train_iters):
             print(f"sub-iteration={n}/{self.dreamer_train_iters}")
@@ -161,7 +174,7 @@ class DreamerIteration:
             fetches = self.worker.learn_on_batch(batch)
 
         # Custom Logging
-        policy_fetches = self.policy_stats(fetches)
+        policy_fetches = fetches[DEFAULT_POLICY_ID]["learner_stats"]
         if "log_gif" in policy_fetches:
             gif = policy_fetches["log_gif"]
             policy_fetches["log_gif"] = self.postprocess_gif(gif)
@@ -180,13 +193,7 @@ class DreamerIteration:
         return res
 
     def postprocess_gif(self, gif: np.ndarray):
-        gif = np.clip(255 * gif, 0, 255).astype(np.uint8)
-        B, T, C, H, W = gif.shape
-        frames = gif.transpose((1, 2, 3, 0, 4)).reshape((1, T, C, H, B * W))
-        return frames
-
-    def policy_stats(self, fetches):
-        return fetches[DEFAULT_POLICY_ID]["learner_stats"]
+        return _postprocess_gif(gif=gif)
 
 
 class DREAMERTrainer(Trainer):
@@ -217,6 +224,22 @@ class DREAMERTrainer(Trainer):
     @override(Trainer)
     def get_default_policy_class(self, config: TrainerConfigDict):
         return DreamerTorchPolicy
+
+    @override(Trainer)
+    def setup(self, config: PartialTrainerConfigDict):
+        super().setup(config)
+        # `training_iteration` implementation: Setup buffer in `setup`, not
+        # in `execution_plan` (deprecated).
+        if self.config["_disable_execution_plan_api"] is True:
+            self.local_replay_buffer = EpisodicBuffer(length=config["batch_length"])
+
+            # Prefill episode buffer with initial exploration (uniform sampling)
+            while (
+                total_sampled_timesteps(self.workers.local_worker())
+                < self.config["prefill_timesteps"]
+            ):
+                samples = self.workers.local_worker().sample()
+                self.local_replay_buffer.add(samples)
 
     @staticmethod
     @override(Trainer)
@@ -250,3 +273,44 @@ class DREAMERTrainer(Trainer):
             )
         )
         return rollouts
+
+    @override(Trainer)
+    def training_iteration(self) -> ResultDict:
+        local_worker = self.workers.local_worker()
+
+        # Number of sub-iterations for Dreamer
+        dreamer_train_iters = self.config["dreamer_train_iters"]
+        batch_size = self.config["batch_size"]
+        action_repeat = self.config["action_repeat"]
+
+        # Collect SampleBatches from rollout workers.
+        batch = synchronous_parallel_sample(worker_set=self.workers)
+
+        fetches = None
+
+        # Dreamer training loop.
+        # Run multiple sub-iterations for each training iteration.
+        for n in range(dreamer_train_iters):
+            print(f"sub-iteration={n}/{dreamer_train_iters}")
+            batch = self.local_replay_buffer.sample(batch_size)
+            fetches = local_worker.learn_on_batch(batch)
+
+        if fetches:
+            # Custom Logging
+            policy_fetches = fetches[DEFAULT_POLICY_ID]["learner_stats"]
+            if "log_gif" in policy_fetches:
+                gif = policy_fetches["log_gif"]
+                policy_fetches["log_gif"] = self._postprocess_gif(gif)
+
+        self._counters[STEPS_SAMPLED_COUNTER] = self.local_replay_buffer.timesteps
+        self._counters[STEPS_SAMPLED_COUNTER] *= action_repeat
+
+        # TODO: Need to update res somewhere?
+        # res = collect_metrics(local_worker=self.worker)
+        # res["info"] = metrics.info
+        # res["info"].update(metrics.counters)
+        # res["timesteps_total"] = metrics.counters[STEPS_SAMPLED_COUNTER]
+
+        self.local_replay_buffer.add(batch)
+
+        return fetches
