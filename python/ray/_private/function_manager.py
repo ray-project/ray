@@ -376,7 +376,9 @@ class FunctionActorManager:
             function_descriptor.function_name,
         )
 
-        function = self.load_function_or_class_from_local(module_name, function_name)
+        function = self.load_function_or_class_from_local(
+            module_name, function_name, function_id
+        )
         if function is not None:
             if isinstance(function, ray.remote_function.RemoteFunction):
                 function = function._function
