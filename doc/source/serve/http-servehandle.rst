@@ -215,10 +215,29 @@ With :ref:`model wrappers<air-serve-integration>`, you can specify it via the ``
         http_adapter=json_to_ndarray
     )
 
+.. note::
+
+    Serve also supports pydantic models as a short-hand for HTTP adapters in model wrappers. Instead of functions,
+    you can directly pass in a pydantic model class to mean "validate the HTTP body with this schema".
+    Once validated, the model instance will passed to the predictor.
+
+    .. code-block:: python
+
+        from pydantic import BaseModel
+
+        class User(BaseModel):
+            user_id: int
+            user_name: str
+        
+        ...
+        ModelWrapperDeployment.deploy(..., http_adapter=User)
+
+
 Serve Deployment Graph ``DAGDriver``
 """"""""""""""""""""""""""""""""""""
 In :ref:`Serve Deployment Graph <serve-deployment-graph>`, you can configure
 ``ray.serve.drivers.DAGDriver`` to accept an http adapter via it's ``http_adapter`` field. 
+
 
 For example, the json request adapters parse JSON in HTTP body:
 
@@ -231,6 +250,24 @@ For example, the json request adapters parse JSON in HTTP body:
     with InputNode() as input_node:
         ...
         dag = DAGDriver.bind(other_node, http_adapter=json_request)
+
+
+.. note::
+
+    Serve also supports pydantic models as a short-hand for HTTP adapters in model wrappers. Instead of functions,
+    you can directly pass in a pydantic model class to mean "validate the HTTP body with this schema".
+    Once validated, the model instance will passed as ``input_node`` variable.
+
+    .. code-block:: python
+
+        from pydantic import BaseModel
+
+        class User(BaseModel):
+            user_id: int
+            user_name: str
+        
+        ...
+        DAGDriver.bind(other_node, http_adapter=User)
 
 
 Embedded in Bring Your Own ``FastAPI`` Application
