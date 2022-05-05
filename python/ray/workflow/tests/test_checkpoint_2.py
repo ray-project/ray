@@ -30,8 +30,8 @@ def checkpoint_dag(checkpoint):
     def average(x):
         return np.mean(x)
 
-    x = utils.update_workflow_options(large_input, checkpoint=checkpoint).bind()
-    y = utils.update_workflow_options(identity, checkpoint=checkpoint).bind(x)
+    x = large_input.options(**workflow.options(checkpoint=checkpoint)).bind()
+    y = identity.options(**workflow.options(checkpoint=checkpoint)).bind(x)
     return workflow.continuation(average.bind(y))
 
 
@@ -40,12 +40,9 @@ def test_checkpoint_dag_recovery_skip(workflow_start_regular_shared):
 
     start = time.time()
     with pytest.raises(RaySystemError):
-        utils.run_workflow_dag_with_options(
-            checkpoint_dag,
-            (False,),
-            workflow_id="checkpoint_skip_recovery",
-            checkpoint=False,
-        )
+        workflow.create(
+            checkpoint_dag.options(**workflow.options(checkpoint=False)).bind(False)
+        ).run(workflow_id="checkpoint_skip_recovery")
     run_duration_skipped = time.time() - start
 
     utils.set_global_mark()

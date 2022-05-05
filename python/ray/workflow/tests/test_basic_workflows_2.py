@@ -3,7 +3,6 @@ import ray
 from filelock import FileLock
 from ray._private.test_utils import SignalActor
 from ray import workflow
-from ray.workflow.tests.utils import update_workflow_options
 from ray.tests.conftest import *  # noqa
 
 
@@ -84,7 +83,9 @@ def test_get_output_3(workflow_start_regular, tmp_path):
         return 10
 
     with pytest.raises(ray.exceptions.RaySystemError):
-        workflow.create(update_workflow_options(incr, max_retries=0).bind()).run("incr")
+        workflow.create(incr.options(**workflow.options(max_retries=0)).bind()).run(
+            "incr"
+        )
 
     assert cnt_file.read_text() == "1"
 
@@ -105,8 +106,8 @@ def test_get_named_step_output_finished(workflow_start_regular, tmp_path):
 
     # Get the result from named step after workflow finished
     assert 4 == workflow.create(
-        update_workflow_options(double, name="outer").bind(
-            update_workflow_options(double, name="inner").bind(1)
+        double.options(**workflow.options(name="outer")).bind(
+            double.options(**workflow.options(name="inner")).bind(1)
         )
     ).run("double")
     assert ray.get(workflow.get_output("double", name="inner")) == 2
@@ -127,8 +128,9 @@ def test_get_named_step_output_running(workflow_start_regular, tmp_path):
     lock = FileLock(lock_path)
     lock.acquire()
     output = workflow.create(
-        update_workflow_options(double, name="outer").bind(
-            update_workflow_options(double, name="inner").bind(1, lock_path), lock_path
+        double.options(**workflow.options(name="outer")).bind(
+            double.options(**workflow.options(name="inner")).bind(1, lock_path),
+            lock_path,
         )
     ).run_async("double-2")
 
@@ -176,8 +178,8 @@ def test_get_named_step_output_error(workflow_start_regular, tmp_path):
     # Force it to fail for the outer step
     with pytest.raises(Exception):
         workflow.create(
-            update_workflow_options(double, name="outer").bind(
-                update_workflow_options(double, name="inner").bind(1, False), True
+            double.options(**workflow.options(name="outer")).bind(
+                double.options(**workflow.options(name="inner")).bind(1, False), True
             )
         ).run("double")
 

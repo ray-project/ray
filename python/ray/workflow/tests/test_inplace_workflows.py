@@ -3,7 +3,6 @@ from ray.tests.conftest import *  # noqa
 
 import pytest
 from ray import workflow
-from ray.workflow.tests.utils import update_workflow_options
 
 
 @ray.remote
@@ -21,11 +20,13 @@ def inplace_test():
     from ray.worker import global_worker
 
     worker_id = global_worker.worker_id
-    x = update_workflow_options(check_and_update, allow_inplace=True).bind(
+    x = check_and_update.options(**workflow.options(allow_inplace=True)).bind(
         "@", worker_id
     )
     y = check_and_update.bind(x, worker_id)
-    z = update_workflow_options(check_and_update, allow_inplace=True).bind(y, worker_id)
+    z = check_and_update.options(**workflow.options(allow_inplace=True)).bind(
+        y, worker_id
+    )
     return workflow.continuation(z)
 
 
@@ -42,7 +43,7 @@ def exp_inplace(k, n, worker_id=None):
     if n == 0:
         return k
     return workflow.continuation(
-        update_workflow_options(exp_inplace, allow_inplace=True).bind(
+        exp_inplace.options(**workflow.options(allow_inplace=True)).bind(
             2 * k, n - 1, worker_id
         )
     )
@@ -81,7 +82,7 @@ def test_tail_recursion_optimization(workflow_start_regular_shared):
         if n <= 0:
             return "ok"
         return workflow.continuation(
-            update_workflow_options(tail_recursion, allow_inplace=True).bind(n - 1)
+            tail_recursion.options(**workflow.options(allow_inplace=True)).bind(n - 1)
         )
 
     workflow.create(tail_recursion.bind(30)).run()
