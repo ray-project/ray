@@ -291,12 +291,13 @@ class Node:
                 True,
                 ray_constants.KV_NAMESPACE_SESSION,
             )
-            self.get_gcs_client().internal_kv_put(
-                b"storage",
-                ray_params.storage.encode(),
-                True,
-                ray_constants.KV_NAMESPACE_SESSION,
-            )
+            if ray_params.storage is not None:
+                self.get_gcs_client().internal_kv_put(
+                    b"storage",
+                    ray_params.storage.encode(),
+                    True,
+                    ray_constants.KV_NAMESPACE_SESSION,
+                )
             # Add tracing_startup_hook to redis / internal kv manually
             # since internal kv is not yet initialized.
             if ray_params.tracing_startup_hook:
