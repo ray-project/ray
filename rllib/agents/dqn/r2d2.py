@@ -41,6 +41,14 @@ R2D2_DEFAULT_CONFIG = Trainer.merge_trainer_configs(
             # model->max_seq_len + burn_in.
             # Do not set this to any valid value!
             "replay_sequence_length": -1,
+            # If > 0, use the `replay_burn_in` first steps of each replay-sampled
+            # sequence (starting either from all 0.0-values if `zero_init_state=True` or
+            # from the already stored values) to calculate an even more accurate
+            # initial states for the actual sequence (starting after this burn-in
+            # window). In the burn-in case, the actual length of the sequence
+            # used for loss calculation is `n - replay_burn_in` time steps
+            # (n=LSTM’s/attention net’s max_seq_len).
+            "replay_burn_in": 0,
         },
         # If True, assume a zero-initialized state input (no matter where in
         # the episode the sequence is located).
@@ -49,14 +57,7 @@ R2D2_DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         # and update that initial state during training (from the internal
         # state outputs of the immediately preceding sequence).
         "zero_init_states": True,
-        # If > 0, use the `burn_in` first steps of each replay-sampled sequence
-        # (starting either from all 0.0-values if `zero_init_state=True` or
-        # from the already stored values) to calculate an even more accurate
-        # initial states for the actual sequence (starting after this burn-in
-        # window). In the burn-in case, the actual length of the sequence
-        # used for loss calculation is `n - burn_in` time steps
-        # (n=LSTM’s/attention net’s max_seq_len).
-        "burn_in": 0,
+
 
         # Whether to use the h-function from the paper [1] to scale target
         # values in the R2D2-loss function:
