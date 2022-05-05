@@ -14,6 +14,6 @@ For more details, there is a Ray/RLlib [blogpost](https://medium.com/distributed
 
 Dreamer. 
 
-  **[Detailed Documentation](https://docs.ray.io/en/master/rllib-algorithms.html#dqn)**
+  **[Detailed Documentation](https://docs.ray.io/en/latest/rllib/rllib-algorithms.html#dreamer)**
 
-  **[Implementation](https://github.com/ray-project/ray/blob/master/rllib/agents/dqn/simple_q.py)**
+  **[Implementation](https://github.com/ray-project/ray/blob/master/rllib/agents/dreamer/dreamer.py)**

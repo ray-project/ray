@@ -218,6 +218,11 @@ class DREAMERTrainer(Trainer):
             raise ValueError("Distributed Dreamer not supported yet!")
         if config["clip_actions"]:
             raise ValueError("Clipping is done inherently via policy tanh!")
+        if config["dreamer_train_iters"] <= 0:
+            raise ValueError(
+                "`dreamer_train_iters` must be a positive integer. "
+                f"Received {config['dreamer_train_iters']} instead."
+            )
         if config["action_repeat"] > 1:
             config["horizon"] = config["horizon"] / config["action_repeat"]
 
@@ -286,7 +291,7 @@ class DREAMERTrainer(Trainer):
         # Collect SampleBatches from rollout workers.
         batch = synchronous_parallel_sample(worker_set=self.workers)
 
-        fetches = None
+        fetches = {}
 
         # Dreamer training loop.
         # Run multiple sub-iterations for each training iteration.
