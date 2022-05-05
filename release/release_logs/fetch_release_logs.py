@@ -105,13 +105,13 @@ def get_results_from_build_collection(bk: Buildkite, build_dict_list: list):
     results_to_fetch = RESULTS_TO_FETCH.copy()
     fetched_results = {}
 
-    for build_dict in build_dict_list:
+    for build_dict in sorted(build_dict_list, key=lambda bd: -bd["number"]):
         if not results_to_fetch:
             break
 
         build = Build(
             id=build_dict["id"],
-            number=487,
+            number=build_dict["number"],
             commit=build_dict["commit"],
             job_dict_list=build_dict["jobs"],
         )
