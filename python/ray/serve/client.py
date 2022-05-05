@@ -314,7 +314,7 @@ class ServeControllerClient:
     
     @_ensure_connected
     def deploy_config(self, config: Dict) -> None:
-        self._controller.deploy_config(config)
+        self._controller.deploy_config.remote(config)
 
     @_ensure_connected
     def delete_deployments(self, names: Iterable[str], blocking: bool = True) -> None:

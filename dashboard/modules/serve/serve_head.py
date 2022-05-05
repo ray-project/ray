@@ -56,10 +56,9 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def put_all_deployments(self, req: Request) -> Response:
         from ray import serve
-        from ray.serve.application import Application
 
-        app = Application.from_dict(await req.json())
-        serve.run(app, _blocking=False)
+        client = serve.start(detached=True, _override_controller_namespace="serve")
+        client.deploy_config(await req.json())
 
         return Response()
 
