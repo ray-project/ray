@@ -96,7 +96,7 @@ DEFAULT_CONFIG = with_common_config({
         # Size of the replay buffer in batches (not timesteps!).
         "capacity": 1000,
         # When to start returning samples (in batches, not timesteps!).
-        "learning_starts": 50,
+        "learning_starts": 300,
     },
 
     # === Optimization ===
