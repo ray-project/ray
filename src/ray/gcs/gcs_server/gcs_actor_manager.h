@@ -329,6 +329,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
                     const WorkerID &worker_id,
                     const std::string &worker_ip,
                     const rpc::WorkerExitType disconnect_type,
+                    const std::string &disconnect_detail,
                     const rpc::RayException *creation_task_exception = nullptr);
 
   /// Testing only.

@@ -636,16 +636,9 @@ enum WorkerExitType {
   INTENDED_EXIT = 1;
   // Worker exit due to exceptions in creation task.
   CREATION_TASK_ERROR = 4;
-  // Worker killed because its node is dead.
-  NODE_DIED = 6;
   // System-level exit that is intended. E.g.,
   // Workers that are killed because they are idle for a long time.
   INTENDED_SYSTEM_EXIT = 7;
-}
-
-message WorkerExitInfo {
-  WorkerExitType exit_type = 0;
-  string detail = 1;
 }
 
 ///////////////////////////////////////////////////////////////////////////////

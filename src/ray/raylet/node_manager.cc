@@ -565,9 +565,9 @@ void NodeManager::KillWorker(std::shared_ptr<WorkerInterface> worker) {
   });
 }
 
-void NodeManager::DestroyWorker(
-    std::shared_ptr<WorkerInterface> worker,
-    rpc::WorkerExitType disconnect_type const std::string &disconnect_detail) {
+void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
+                                rpc::WorkerExitType disconnect_type,
+                                const std::string &disconnect_detail) {
   // We should disconnect the client first. Otherwise, we'll remove bundle resources
   // before actual resources are returned. Subsequent disconnect request that comes
   // due to worker dead will be ignored.
@@ -1473,7 +1473,7 @@ void NodeManager::ProcessDisconnectClientMessage(
     const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   auto message = flatbuffers::GetRoot<protocol::DisconnectClient>(message_data);
   auto disconnect_type = static_cast<rpc::WorkerExitType>(message->disconnect_type());
-  const auto &disconnect_detail = message->disconnect_detail();
+  const auto &disconnect_detail = message->disconnect_detail()->str();
   const flatbuffers::Vector<uint8_t> *exception_pb =
       message->creation_task_exception_pb();
 
@@ -1583,8 +1583,8 @@ void NodeManager::ProcessWaitRequestMessage(
         } else {
           // We failed to write to the client, so disconnect the client.
           std::ostringstream stream;
-          stream << "Failed to write WaitReply to the client. Status " << stats
-                 << ", message: " status.message();
+          stream << "Failed to write WaitReply to the client. Status " << status
+                 << ", message: " << status.message();
           DisconnectClient(client, rpc::WorkerExitType::SYSTEM_ERROR_EXIT, stream.str());
         }
       });

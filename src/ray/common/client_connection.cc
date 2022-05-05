@@ -496,9 +496,13 @@ void ClientConnection::ProcessMessage(const boost::system::error_code &error) {
   if (error) {
     flatbuffers::FlatBufferBuilder fbb;
     protocol::DisconnectClientBuilder builder(fbb);
-    builder.add_disconnect_type(static_cast<int>(rpc::WorkerExitType::SYSTEM_ERROR_EXIT));
+    builder.add_disconnect_type(
+        static_cast<int>(ray::rpc::WorkerExitType::SYSTEM_ERROR_EXIT));
     builder.add_disconnect_detail(
-        "Worker has unexpectedly crashed. Error: " << error.message());
+        fbb.CreateString(absl::StrCat("Worker has unexpectedly crashed. Error name: ",
+                                      error.value(),
+                                      " Error message: ",
+                                      error.message())));
     fbb.Finish(builder.Finish());
     std::vector<uint8_t> error_data(fbb.GetBufferPointer(),
                                     fbb.GetBufferPointer() + fbb.GetSize());

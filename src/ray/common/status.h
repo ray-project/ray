@@ -171,17 +171,16 @@ class RAY_EXPORT Status {
     return Status(StatusCode::Interrupted, msg);
   }
 
-  static Status IntentionalSystemExit() {
-    return Status(StatusCode::IntentionalSystemExit, "intentional system exit");
+  static Status IntentionalSystemExit(const std::string &msg) {
+    return Status(StatusCode::IntentionalSystemExit, msg);
   }
 
-  static Status UnexpectedSystemExit() {
-    return Status(StatusCode::UnexpectedSystemExit, "user code caused exit");
+  static Status UnexpectedSystemExit(const std::string &msg) {
+    return Status(StatusCode::UnexpectedSystemExit, msg);
   }
 
-  static Status CreationTaskError() {
-    return Status(StatusCode::CreationTaskError,
-                  "error raised in creation task, cause worker to exit");
+  static Status CreationTaskError(const std::string &msg) {
+    return Status(StatusCode::CreationTaskError, msg);
   }
 
   static Status NotFound(const std::string &msg) {

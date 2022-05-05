@@ -599,7 +599,7 @@ void CoreWorker::Disconnect(
 
 void CoreWorker::Exit(
     const rpc::WorkerExitType exit_type,
-    const string &detail,
+    const std::string &detail,
     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
   RAY_LOG(INFO) << "Exit signal received, this process will exit after all outstanding "
                    "tasks have finished"
@@ -615,17 +615,17 @@ void CoreWorker::Exit(
   /// leaked. See https://github.com/ray-project/ray/issues/19639.
   reference_counter_->ReleaseAllLocalReferences();
 
-  rpc::WorkerExitInfo exit_info;
-  exit_info.set_exit_type(exit_type);
-  exit_info.set_detail(detail);
   // Callback to shutdown.
   auto shutdown =
-      [this, exit_info = std::move(exit_info), creation_task_exception_pb_bytes]() {
+      [this, exit_type, detail = std::move(detail), creation_task_exception_pb_bytes]() {
         // To avoid problems, make sure shutdown is always called from the same
         // event loop each time.
         task_execution_service_.post(
-            [this, exit_info = std::move(exit_info), creation_task_exception_pb_bytes]() {
-              Disconnect(exit_info, creation_task_exception_pb_bytes);
+            [this,
+             exit_type,
+             detail = std::move(detail),
+             creation_task_exception_pb_bytes]() {
+              Disconnect(exit_type, detail, creation_task_exception_pb_bytes);
               Shutdown();
             },
             "CoreWorker.Shutdown");
@@ -665,13 +665,11 @@ void CoreWorker::Exit(
   task_manager_->DrainAndShutdown(drain_references_callback);
 }
 
-void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type, const string &detail) {
+void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type,
+                           const std::string &detail) {
   RAY_LOG(WARNING) << "Force exit the process. "
                    << " Details: " << detail;
-  rpc::WorkerExitInfo worker_exit_info;
-  worker_exit_info.set_exit_type(exit_type);
-  worker_exit_info.set_detail(detail);
-  Disconnect(worker_exit_info);
+  Disconnect(exit_type, detail);
   // NOTE(hchen): Use `QuickExit()` to force-exit this process without doing cleanup.
   // `exit()` will destruct static objects in an incorrect order, which will lead to
   // core dumps.
@@ -2429,8 +2427,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
          stream.str(),
          creation_task_exception_pb_bytes);
   } else if (status.IsIntentionalSystemExit()) {
-    stream << "Worker exits because it is requested from Ray. Details: "
-           << status.message();
+    stream << "Worker exits because it is requested. Details: " << status.message();
     Exit(rpc::WorkerExitType::INTENDED_EXIT,
          stream.str(),
          creation_task_exception_pb_bytes);
@@ -3100,12 +3097,13 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
   // Do force kill after reply callback sent
   if (requested_task_running && request.force_kill()) {
     std::ostringstream stream;
-    const auto spec = task_manager_->GetTaskSpec(task_id) RAY_CHECK(spec.has_value());
+    const auto spec = task_manager_->GetTaskSpec(task_id);
+    RAY_CHECK(spec.has_value());
     const auto task_name = spec.value().GetName();
-    stream << "A task " << task_name < < < <
-        " has received a force kill request after the cancellation. Killing "
-        "a worker... thread id: "
-            << main_thread_task_id_;
+    stream << "A task " << task_name
+           << " has received a force kill request after the cancellation. Killing "
+              "a worker... thread id: "
+           << main_thread_task_id_;
     ForceExit(rpc::WorkerExitType::INTENDED_EXIT, stream.str());
   }
 }
@@ -3138,7 +3136,7 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
     }
     // If we don't need to restart this actor, we notify raylet before force killing it.
     ForceExit(rpc::WorkerExitType::INTENDED_EXIT,
-              "Worker exits due to forceful actor kill request.")
+              "Worker exits due to forceful actor kill request.");
   } else {
     Exit(rpc::WorkerExitType::INTENDED_EXIT,
          "Worker exits due to graceful actor kill request.");

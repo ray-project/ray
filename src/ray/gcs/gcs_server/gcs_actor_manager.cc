@@ -55,13 +55,16 @@ const ray::rpc::ActorDeathCause GenNodeDiedCause(const ray::gcs::GcsActor *actor
 const ray::rpc::ActorDeathCause GenWorkerDiedCause(
     const ray::gcs::GcsActor *actor,
     const std::string &ip_address,
-    const ray::rpc::WorkerExitType &disconnect_type) {
+    const ray::rpc::WorkerExitType &disconnect_type,
+    const std::string &disconnect_detail) {
   ray::rpc::ActorDeathCause death_cause;
   auto actor_died_error_ctx = death_cause.mutable_actor_died_error_context();
   AddActorInfo(actor, actor_died_error_ctx);
   actor_died_error_ctx->set_error_message(absl::StrCat(
       "The actor is dead because its worker process has died. Worker exit type: ",
-      ray::rpc::WorkerExitType_Name(disconnect_type)));
+      ray::rpc::WorkerExitType_Name(disconnect_type),
+      " Worker exit details: ",
+      disconnect_detail));
   return death_cause;
 }
 const ray::rpc::ActorDeathCause GenOwnerDiedCause(
@@ -813,13 +816,18 @@ absl::flat_hash_set<ActorID> GcsActorManager::GetUnresolvedActorsByOwnerWorker(
 
 void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
                                    const ray::WorkerID &worker_id) {
-  OnWorkerDead(node_id, worker_id, "", rpc::WorkerExitType::SYSTEM_ERROR_EXIT);
+  OnWorkerDead(node_id,
+               worker_id,
+               "",
+               rpc::WorkerExitType::SYSTEM_ERROR_EXIT,
+               "Worker exits unexpectedly.");
 }
 
 void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
                                    const ray::WorkerID &worker_id,
                                    const std::string &worker_ip,
                                    const rpc::WorkerExitType disconnect_type,
+                                   const std::string &disconnect_detail,
                                    const rpc::RayException *creation_task_exception) {
   std::string message = absl::StrCat("Worker ",
                                      worker_id.Hex(),
@@ -850,7 +858,8 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
                    GenOwnerDiedCause(GetActor(child_id),
                                      worker_id,
                                      disconnect_type,
-                                     "Owner's worker process has crashed." worker_ip));
+                                     "Owner's worker process has crashed.",
+                                     worker_ip));
     }
   }
 
@@ -864,7 +873,8 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
                    GenOwnerDiedCause(GetActor(actor_id),
                                      worker_id,
                                      disconnect_type,
-                                     "Owner's worker process has crashed." worker_ip));
+                                     "Owner's worker process has crashed.",
+                                     worker_ip));
     }
   }
 
@@ -898,7 +908,8 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
     death_cause.mutable_creation_task_failure_context()->CopyFrom(
         *creation_task_exception);
   } else {
-    death_cause = GenWorkerDiedCause(GetActor(actor_id), worker_ip, disconnect_type);
+    death_cause = GenWorkerDiedCause(
+        GetActor(actor_id), worker_ip, disconnect_type, disconnect_detail);
   }
   // Otherwise, try to reconstruct the actor that was already created or in the creation
   // process.

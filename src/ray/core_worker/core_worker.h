@@ -96,7 +96,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// SANG-TODO
   /// \return Void.
-  void Disconnect(const rpc::WorkerExitInfo &exit_info,
+  void Disconnect(const rpc::WorkerExitType &exit_type,
+                  const std::string &exit_detail,
                   const std::shared_ptr<LocalMemoryBuffer>
                       &creation_task_exception_pb_bytes = nullptr);
 
@@ -853,12 +854,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// worker.
   /// SANG-TODO
   void Exit(const rpc::WorkerExitType exit_type,
-            const string &detail,
+            const std::string &detail,
             const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes =
                 nullptr);
 
   /// SANG-TODO
-  void ForceExit(const rpc::WorkerExitType exit_type, const string &detail);
+  void ForceExit(const rpc::WorkerExitType exit_type, const std::string &detail);
 
   /// Register this worker or driver to GCS.
   void RegisterToGcs();
