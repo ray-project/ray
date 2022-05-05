@@ -518,8 +518,9 @@ class ImpalaTrainer(Trainer):
             # Setup after_train_step callback.
             self._after_train_step = lambda *a, **k: None
             if self.config["after_train_step"]:
-                self._after_train_step = \
-                    self.config["after_train_step"](self.workers, self.config)
+                self._after_train_step = self.config["after_train_step"](
+                    self.workers, self.config
+                )
 
             # Create extra aggregation workers and assign each rollout worker to
             # one of them.
