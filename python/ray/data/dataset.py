@@ -613,6 +613,35 @@ class Dataset(Generic[T]):
         )
         return Dataset(plan, self._epoch, self._lazy)
 
+    def random_sample(self, number: int,
+                      *,
+                      seed: Optional[int] = None) -> List[Any]:
+        """Randomly samples N elements from the dataset.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.range(100) # doctest: +SKIP
+            >>> ds.random_sample(5) # doctest: +SKIP
+            >>> # Sample this dataset with a fixed random seed.
+            >>> ds.random_sample(5, seed=12345) # doctest: +SKIP
+
+
+        Args:
+            number: The number of elements to sample from the dataset.
+
+            seed: Seeds the python random pRNG generator.
+
+        Returns:
+            N elements from the shuffled dataset.
+        """
+        import random
+        idx = random.randint(0, self.num_blocks())
+        if idx + number >= self.num_blocks():
+            idx = self.num_blocks() - number
+        spliced = self.split_at_indices([idx, idx + number])
+        sample_choice = spliced[1]
+        return sample_choice.take(number)
+
     def split(
         self, n: int, *, equal: bool = False, locality_hints: Optional[List[Any]] = None
     ) -> List["Dataset[T]"]:
@@ -889,8 +918,8 @@ class Dataset(Generic[T]):
             actors_state = ray.state.actors()
             return {
                 actor: actors_state.get(actor._actor_id.hex(), {})
-                .get("Address", {})
-                .get("NodeID")
+                    .get("Address", {})
+                    .get("NodeID")
                 for actor in actors
             }
 
