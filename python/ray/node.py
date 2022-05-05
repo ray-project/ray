@@ -205,8 +205,8 @@ class Node:
             storage._init_storage(ray_params.storage, is_head=True)
         else:
             storage._init_storage(
-                ray._private.services.get_storage_uri_from_internal_kv(),
-                is_head=False)
+                ray._private.services.get_storage_uri_from_internal_kv(), is_head=False
+            )
 
         # If it is a head node, try validating if
         # external storage is configurable.
