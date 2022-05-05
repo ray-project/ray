@@ -14,6 +14,9 @@
 
 #pragma once
 
+#include <chrono>
+#include <thread>
+
 #include "ray/common/network_util.h"
 #include "ray/rpc/grpc_client.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
@@ -98,7 +101,18 @@ class Executor {
         callback(status, reply);                                                       \
         delete executor;                                                               \
       } else if (gcs_is_down_) {                                                       \
-        queued_executors_.emplace_back(executor);                                      \
+        pending_requests_.emplace_back(executor);                                      \
+        if (pending_requests_.size() >                                                 \
+            ::RayConfig::instance().gcs_grpc_max_request_queued()) {                   \
+          RAY_LOG(WARNING) << "Pending queue for failed GCS request has reached the "  \
+                           << "limit. Blocking the current thread until GCS is back";  \
+          while (gcs_is_down_ && !shutdown_) {                                         \
+            CheckChannelStatus();                                                      \
+            std::this_thread::sleep_for(std::chrono::milliseconds(                     \
+                ::RayConfig::instance()                                                \
+                    .gcs_client_check_connection_status_interval_milliseconds()));     \
+          }                                                                            \
+        }                                                                              \
       } else {                                                                         \
         executor->Retry();                                                             \
       }                                                                                \
@@ -147,15 +161,7 @@ class GcsRpcClient {
         gcs_port_(port),
         io_context_(&client_call_manager.GetMainService()),
         periodical_runner_(std::make_unique<PeriodicalRunner>(*io_context_)) {
-    grpc::ChannelArguments arguments;
-    arguments.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS,
-                     ::RayConfig::instance().gcs_grpc_max_reconnect_backoff_ms());
-    arguments.SetInt(GRPC_ARG_MIN_RECONNECT_BACKOFF_MS,
-                     ::RayConfig::instance().gcs_grpc_min_reconnect_backoff_ms());
-    arguments.SetInt(GRPC_ARG_INITIAL_RECONNECT_BACKOFF_MS,
-                     ::RayConfig::instance().gcs_grpc_initial_reconnect_backoff_ms());
-
-    channel_ = BuildChannel(address, port, arguments);
+    channel_ = BuildChannel(address, port);
 
     // If not the reconnection will continue to work.
     auto deadline =
@@ -197,43 +203,7 @@ class GcsRpcClient {
     // Setup monitor for gRPC channel status.
     // TODO(iycheng): Push this into ClientCallManager with CQ by using async call.
     periodical_runner_->RunFnPeriodically(
-        [this] {
-          if (shutdown_) {
-            return;
-          }
-          auto status = channel_->GetState(true);
-          // https://grpc.github.io/grpc/core/connectivity__state_8h_source.html
-          RAY_LOG(DEBUG) << "GCS channel status: " << status;
-          switch (status) {
-          case GRPC_CHANNEL_TRANSIENT_FAILURE:
-          case GRPC_CHANNEL_CONNECTING:
-            if (!gcs_is_down_) {
-              gcs_is_down_ = true;
-            } else {
-              RAY_CHECK(absl::ToInt64Seconds(absl::Now() - gcs_last_alive_time_) <
-                        ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s())
-                  << "Failed to connect to GCS within "
-                  << ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s()
-                  << " seconds";
-            }
-            break;
-          case GRPC_CHANNEL_SHUTDOWN:
-            RAY_CHECK(shutdown_) << "Channel shoud never go to this status.";
-            break;
-          case GRPC_CHANNEL_READY:
-          case GRPC_CHANNEL_IDLE:
-            gcs_last_alive_time_ = absl::Now();
-            gcs_is_down_ = false;
-            // Retry the one queued.
-            while (!queued_executors_.empty()) {
-              queued_executors_.back()->Retry();
-              queued_executors_.pop_back();
-            }
-            break;
-          default:
-            RAY_CHECK(false) << "Not covered status: " << status;
-          }
-        },
+        [this] { CheckChannelStatus(); },
         ::RayConfig::instance()
             .gcs_client_check_connection_status_interval_milliseconds());
   }
@@ -490,6 +460,43 @@ class GcsRpcClient {
   }
 
  private:
+  void CheckChannelStatus() {
+    if (shutdown_) {
+      return;
+    }
+    auto status = channel_->GetState(/* try_to_connect = */ true);
+    // https://grpc.github.io/grpc/core/md_doc_connectivity-semantics-and-api.html
+    // https://grpc.github.io/grpc/core/connectivity__state_8h_source.html
+    RAY_LOG(DEBUG) << "GCS channel status: " << status;
+    switch (status) {
+    case GRPC_CHANNEL_TRANSIENT_FAILURE:
+    case GRPC_CHANNEL_CONNECTING:
+      if (!gcs_is_down_) {
+        gcs_is_down_ = true;
+      } else {
+        RAY_CHECK(absl::ToInt64Seconds(absl::Now() - gcs_last_alive_time_) <
+                  ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s())
+            << "Failed to connect to GCS within "
+            << ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s() << " seconds";
+      }
+      break;
+    case GRPC_CHANNEL_SHUTDOWN:
+      RAY_CHECK(shutdown_) << "Channel shoud never go to this status.";
+      break;
+    case GRPC_CHANNEL_READY:
+    case GRPC_CHANNEL_IDLE:
+      gcs_last_alive_time_ = absl::Now();
+      gcs_is_down_ = false;
+      // Retry the one queued.
+      while (!pending_requests_.empty()) {
+        pending_requests_.back()->Retry();
+        pending_requests_.pop_back();
+      }
+      break;
+    default:
+      RAY_CHECK(false) << "Not covered status: " << status;
+    }
+  }
   std::string gcs_address_;
   int64_t gcs_port_;
 
@@ -514,7 +521,7 @@ class GcsRpcClient {
 
   bool shutdown_ = false;
   std::unique_ptr<PeriodicalRunner> periodical_runner_;
-  std::vector<Executor *> queued_executors_;
+  std::vector<Executor *> pending_requests_;
 };
 
 }  // namespace rpc
