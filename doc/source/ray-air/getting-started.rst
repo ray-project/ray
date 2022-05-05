@@ -12,7 +12,7 @@ The main focuses of the Ray AI Runtime:
 * It is designed to interoperate with other systems for storage and metadata needs.
 
 
-Ray AIR consists of 5 key components -- Data processing (:ref:`Ray Data <dataset>`), Model Training (:ref:`Ray Train <train-docs>`), Reinforcement Learning (:ref:`Ray RLlib <rllib-index>`), Hyperparameter Tuning (:ref:`Ray Tune <tune-main>`), and Model Serving (:ref:`Ray Serve <rayserve>`).
+Ray AIR consists of 5 key components -- Data processing (:ref:`Ray Data <datasets>`), Model Training (:ref:`Ray Train <train-docs>`), Reinforcement Learning (:ref:`Ray RLlib <rllib-index>`), Hyperparameter Tuning (:ref:`Ray Tune <tune-main>`), and Model Serving (:ref:`Ray Serve <rayserve>`).
 
 Users can use these libraries interchangeably to scale different parts of standard ML workflows.
 

@@ -21,9 +21,9 @@ Preprocessors
 
 
 .. _air-trainer-ref:
+
 Trainer
 ~~~~~~~
-
 
 .. autoclass:: ray.ml.trainer.Trainer
     :members:
