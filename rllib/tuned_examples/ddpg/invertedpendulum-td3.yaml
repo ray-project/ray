@@ -22,4 +22,4 @@ invertedpendulum-td3:
 
         # === Evaluation ===
         evaluation_interval: 10
-        evaluation_num_episodes: 5
+        evaluation_duration: 5
