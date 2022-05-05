@@ -1,9 +1,8 @@
 from ray.rllib.agents.dqn.apex import ApexTrainer
 from ray.rllib.agents.ddpg.ddpg import DDPGTrainer, DEFAULT_CONFIG as DDPG_CONFIG
-from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import TrainerConfigDict
-from ray.util.iter import LocalIterator
+from ray.rllib.utils.typing import PartialTrainerConfigDict, ResultDict,\
+    TrainerConfigDict
 
 APEX_DDPG_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
     DDPG_CONFIG,  # see also the options in ddpg.py, which are also supported
@@ -17,9 +16,13 @@ APEX_DDPG_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
         "n_step": 3,
         "num_gpus": 0,
         "num_workers": 32,
-        "buffer_size": 2000000,
-        # TODO(jungong) : update once Apex supports replay_buffer_config.
-        "no_local_replay_buffer": True,
+        "replay_buffer_config": {
+            # For now we don't use the new ReplayBuffer API here
+            "_enable_replay_buffer_api": False,
+            "no_local_replay_buffer": True,
+            "type": "MultiAgentReplayBuffer",
+            "capacity": 2000000,
+        },
         # Whether all shards of the replay buffer must be co-located
         # with the learner process (running the execution plan).
         # This is preferred b/c the learner process should have quick
@@ -30,17 +33,16 @@ APEX_DDPG_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
         # on which the learner is located.
         "replay_buffer_shards_colocated_with_driver": True,
         "learning_starts": 50000,
+
         "train_batch_size": 512,
+
         "rollout_fragment_length": 50,
-        "target_network_update_freq": 500000,
-        "min_sample_timesteps_per_reporting": 25000,
         "worker_side_prioritization": True,
+
+        "target_network_update_freq": 500000,
+
+        "min_sample_timesteps_per_reporting": 25000,
         "min_time_s_per_reporting": 30,
-        # Experimental flag.
-        # If True, the execution plan API will not be used. Instead,
-        # a Trainer's `training_iteration` method will be called as-is each
-        # training iteration.
-        "_disable_execution_plan_api": False,
     },
     _allow_unknown_configs=True,
 )
@@ -52,10 +54,10 @@ class ApexDDPGTrainer(DDPGTrainer):
     def get_default_config(cls) -> TrainerConfigDict:
         return APEX_DDPG_DEFAULT_CONFIG
 
-    @staticmethod
     @override(DDPGTrainer)
-    def execution_plan(
-        workers: WorkerSet, config: dict, **kwargs
-    ) -> LocalIterator[dict]:
-        """Use APEX-DQN's execution plan."""
-        return ApexTrainer.execution_plan(workers, config, **kwargs)
+    def setup(self, config: PartialTrainerConfigDict):
+        return ApexTrainer.setup(self, config)
+
+    @override(DDPGTrainer)
+    def training_iteration(self) -> ResultDict:
+        return ApexTrainer.training_iteration(self)
