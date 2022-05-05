@@ -133,14 +133,16 @@ Shuffle can be challenging to scale to large data sizes and clusters, especially
 Starting in Ray v1.13, Datasets provides an alternative shuffle implementation known as push-based shuffle for improving large-scale performance.
 We recommend trying this out if your dataset has more than 1k partitions (input files) or 1TB of data.
 
-To try this out locally or on a cluster, you can start with the :nightly release test:`https://github.com/ray-project/ray/blob/master/release/nightly_tests/dataset/sort.py` that Ray runs for ``Dataset.random_shuffle`` and ``Dataset.sort``.
-To get an idea of the performance you can expect, here are some run time results for this test running ``Dataset.random_shuffle`` on 1-10TB of data, on 20 machines (m5.4xlarge instances on AWS EC2, each with 16 vCPUs, 64GB RAM).
+To try this out locally or on a cluster, you can start with the `nightly release test <https://github.com/ray-project/ray/blob/master/release/nightly_tests/dataset/sort.py>`_ that Ray runs for ``Dataset.random_shuffle`` and ``Dataset.sort``.
+To get an idea of the performance you can expect, here are some run time results for ``Dataset.random_shuffle`` on 1-10TB of data on 20 machines (m5.4xlarge instances on AWS EC2, each with 16 vCPUs, 64GB RAM).
 
 .. image:: https://docs.google.com/spreadsheets/d/e/2PACX-1vQvBWpdxHsW0-loasJsBpdarAixb7rjoo-lTgikghfCeKPQtjQDDo2fY51Yc1B6k_S4bnYEoChmFrH2/pubchart?oid=598567373&format=image
+   :align: center
 
 To try out push-based shuffle, set the environment variable ``RAY_DATASET_PUSH_BASED_SHUFFLE=1`` when running your application:
 
 .. code-block:: bash
+
     $ wget https://raw.githubusercontent.com/ray-project/ray/master/release/nightly_tests/dataset/sort.py
     $ RAY_DATASET_PUSH_BASED_SHUFFLE=1 python sort.py --num-partitions=10 --partition-size=1e7
     # Dataset size: 10 partitions, 0.01GB partition size, 0.1GB total
@@ -153,6 +155,7 @@ You can also specify the shuffle implementation during program execution by
 setting the ``DatasetContext.use_push_based_shuffle`` flag:
 
 .. code-block:: python
+
     import ray.data
 
     ctx = ray.data.context.DatasetContext.get_current()
