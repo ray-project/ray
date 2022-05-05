@@ -311,7 +311,7 @@ class ServeControllerClient:
                 new_deployments_names
             )
             self.delete_deployments(deployment_names_to_delete)
-    
+
     @_ensure_connected
     def deploy_config(self, config: Dict) -> None:
         self._controller.deploy_config.remote(config)

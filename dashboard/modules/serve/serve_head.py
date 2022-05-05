@@ -53,7 +53,7 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
         return Response()
 
     @routes.put("/api/serve/deployments/")
-    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
+    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
     async def put_all_deployments(self, req: Request) -> Response:
         from ray import serve
 

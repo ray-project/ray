@@ -84,6 +84,9 @@ class ServeController:
         # Used to read/write checkpoints.
         self.controller_namespace = ray.get_runtime_context().namespace
         self.controller_name = controller_name
+
+        logger.info(f'Controller named "{self.controller_name} starting in "{self.controller_namespace}" namespace.')
+
         self.checkpoint_path = checkpoint_path
         kv_store_namespace = f"{self.controller_name}-{self.controller_namespace}"
         self.kv_store = make_kv_store(checkpoint_path, namespace=kv_store_namespace)
@@ -500,15 +503,13 @@ class ServeController:
                 deployment_status_info_proto
             )
         return deployment_status_info_list.SerializeToString()
-    
+
     def deploy_config(self, config: Dict) -> None:
 
         if self.deploy_config_task_ref is not None:
             ray.cancel(self.deploy_config_task_ref)
 
-        @ray.remote(
-            runtime_env=config.get("graph_runtime_env", {})
-        )
+        @ray.remote(runtime_env=config.get("graph_runtime_env", {}))
         def run_graph(graph_import_path: str, config_options: Dict):
             from ray import serve
             from ray.serve.api import build
@@ -517,10 +518,28 @@ class ServeController:
             app = build(graph)
 
             for deployment_dict in config_options:
+                del deployment_dict["import_path"]
+
+                for setting in {
+                    "_autoscaling_config",
+                    "_graceful_shutdown_wait_loop_s",
+                    "_graceful_shutdown_timeout_s",
+                    "_health_check_period_s",
+                    "_health_check_timeout_s",
+                }:
+                    deployment_dict[setting] = deployment_dict[setting[1:]]
+                    del deployment_dict[setting[1:]]
+
                 name = deployment_dict["name"]
                 app.deployments[name].set_options(**deployment_dict)
 
             # Run DAG locally on cluster
+            serve.start(_override_controller_namespace="serve")
             serve.run(graph)
-        
-        self.deploy_config_task_ref = run_graph.remote(config["graph_import_path"], config["deployments"])
+
+        self.deploy_config_task_ref = run_graph.remote(
+            config["graph_import_path"], config["deployments"]
+        )
+
+    def get_ref(self):
+        return self.deploy_config_task_ref

@@ -426,8 +426,8 @@ def build(app_dir: str, output_path: Optional[str], import_path: str):
             raise ValueError("FILE_PATH must end with '.yaml'.")
 
         with open(output_path, "w") as f:
-            f.write(f"graph_import_path: {import_path}\n")
+            f.write(f"graph_import_path: {import_path}")
             app.to_yaml(f)
     else:
-        print(f"graph_import_path: {import_path}\n")
+        print(f"graph_import_path: {import_path}")
         print(app.to_yaml(), end="")

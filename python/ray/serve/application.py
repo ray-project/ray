@@ -137,9 +137,10 @@ class Application:
                 yaml.safe_dump(). Returned only if no file pointer is passed in.
         """
 
-        return yaml.safe_dump(
-            self.to_dict(), stream=f, default_flow_style=False, sort_keys=False
-        )
+        d = self.to_dict()
+        del d["graph_import_path"]
+
+        return yaml.safe_dump(d, stream=f, default_flow_style=False, sort_keys=False)
 
     @classmethod
     def from_yaml(cls, str_or_file: Union[str, TextIO]) -> "Application":
