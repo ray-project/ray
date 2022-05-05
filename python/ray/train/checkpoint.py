@@ -57,10 +57,12 @@ class _NotYetPersistedCheckpoint(_TrackedCheckpoint):
 
         self.checkpoint_dir_or_data = path
 
-    def delete(self):
+    def delete(
+        self, delete_fn: Optional[Callable[["_TrackedCheckpoint"], None]] = None
+    ):
         if not self.committed:
             return
-        return super().delete()
+        return super().delete(delete_fn=delete_fn)
 
     @classmethod
     def from_tracked_checkpoint(cls, checkpoint: _TrackedCheckpoint):
