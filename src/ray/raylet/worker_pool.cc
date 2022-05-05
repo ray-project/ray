@@ -423,11 +423,11 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
       worker_command_args.push_back("--serialized-runtime-env-context=" +
                                     serialized_runtime_env_context);
     } else if (language == Language::PYTHON && worker_command_args.size() >= 2 &&
-          worker_command_args[1].find(kSetupWorkerFilename) != std::string::npos) {
+               worker_command_args[1].find(kSetupWorkerFilename) != std::string::npos) {
       // Check that the arg really is the path to the setup worker before erasing it, to
       // prevent breaking tests that mock out the worker command args.
-        worker_command_args.erase(worker_command_args.begin() + 1,
-                                  worker_command_args.begin() + 2);
+      worker_command_args.erase(worker_command_args.begin() + 1,
+                                worker_command_args.begin() + 2);
     } else if (language == Language::JAVA) {
       worker_command_args.push_back("--language=" + Language_Name(language));
     }
