@@ -643,7 +643,9 @@ class Dataset(Generic[T]):
         count = self._meta_count()
 
         if number > count:
-            raise ValueError(f"Cannot sample more elements than there are in the dataset")
+            raise ValueError(
+                "Cannot sample more elements than there are in the dataset"
+            )
 
         if seed:
             random.seed(seed)
