@@ -75,11 +75,11 @@ class TestIMPALA(unittest.TestCase):
                     [0, 0.05],
                     [100000, 0.000001],
                 ],
-                num_envs_per_worker=2,
                 train_batch_size=100,
             )
+            .rollouts(num_envs_per_worker=2)
+            .environment(env="CartPole-v0")
         )
-        config.environment(env="CartPole-v0")
 
         def get_lr(result):
             return result["info"][LEARNER_INFO][DEFAULT_POLICY_ID][LEARNER_STATS_KEY][
