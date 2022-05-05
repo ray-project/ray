@@ -6,7 +6,7 @@ import tensorflow as tf
 from ray.ml.predictor import Predictor, DataBatchType
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
-from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY
+from ray.ml.train.data_parallel_trainer import DataParallelTrainer
 
 
 class TensorflowPredictor(Predictor):
@@ -49,15 +49,9 @@ class TensorflowPredictor(Predictor):
         """
         # Cannot use TensorflowTrainer.load_checkpoint here
         # due to instantiated models not being pickleable
-        checkpoint_dict = checkpoint.to_dict()
-        preprocessor = checkpoint_dict.get(PREPROCESSOR_KEY, None)
-        if MODEL_KEY not in checkpoint_dict:
-            raise RuntimeError(
-                f"No item with key: {MODEL_KEY} is found in the "
-                f"Checkpoint. Make sure this key exists when saving the "
-                f"checkpoint in ``TensorflowTrainer``."
-            )
-        model_weights = checkpoint_dict[MODEL_KEY]
+        model_weights, preprocessor = DataParallelTrainer._load_checkpoint(
+            checkpoint, "TensorflowTrainer"
+        )
         return TensorflowPredictor(
             model_definition=model_definition,
             model_weights=model_weights,

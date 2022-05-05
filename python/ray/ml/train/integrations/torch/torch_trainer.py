@@ -8,7 +8,6 @@ from ray.ml.config import ScalingConfig, RunConfig
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.util import PublicAPI
-from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY
 from ray.ml.utils.torch_utils import load_torch_model
 
 
@@ -208,15 +207,8 @@ class TorchTrainer(DataParallelTrainer):
                 the model itself, then the state dict will be loaded to this
                 ``model``.
         """
-        checkpoint_dict = checkpoint.to_dict()
-        preprocessor = checkpoint_dict.get(PREPROCESSOR_KEY, None)
-        if MODEL_KEY not in checkpoint_dict:
-            raise RuntimeError(
-                f"No item with key: {MODEL_KEY} is found in the "
-                f"Checkpoint. Make sure this key exists when saving the "
-                f"checkpoint in ``TorchTrainer``."
-            )
-        model = load_torch_model(
-            saved_model=checkpoint_dict[MODEL_KEY], model_definition=model
+        saved_model, preprocessor = DataParallelTrainer._load_checkpoint(
+            checkpoint, "TorchTrainer"
         )
+        model = load_torch_model(saved_model=saved_model, model_definition=model)
         return model, preprocessor

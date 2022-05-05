@@ -7,7 +7,6 @@ from ray.ml.train.data_parallel_trainer import DataParallelTrainer
 from ray.ml.config import ScalingConfig, RunConfig
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
-from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY
 from ray.util import PublicAPI
 
 
@@ -201,15 +200,9 @@ class TensorflowTrainer(DataParallelTrainer):
                 to use, or an instantiated model.
                 Model weights will be loaded from the checkpoint.
         """
-        checkpoint_dict = checkpoint.to_dict()
-        preprocessor = checkpoint_dict.get(PREPROCESSOR_KEY, None)
-        if MODEL_KEY not in checkpoint_dict:
-            raise RuntimeError(
-                f"No item with key: {MODEL_KEY} is found in the "
-                f"Checkpoint. Make sure this key exists when saving the "
-                f"checkpoint in ``TensorflowTrainer``."
-            )
-        model_weights = checkpoint_dict[MODEL_KEY]
+        model_weights, preprocessor = DataParallelTrainer._load_checkpoint(
+            checkpoint, "TensorflowTrainer"
+        )
         if isinstance(model, type) or callable(model):
             model = model()
         model.set_weights(model_weights)
