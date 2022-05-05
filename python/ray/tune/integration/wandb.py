@@ -209,7 +209,6 @@ class _WandbLoggingProcess(Process):
     def run(self):
         wandb.require("service")
         wandb.init(*self.args, **self.kwargs)
-        wandb.setup()
         while True:
             result = self.queue.get()
             if result == _WANDB_QUEUE_END:
@@ -276,7 +275,7 @@ class WandbLoggerCallback(LoggerCallback):
             parameters will change during training, e.g. with
             PopulationBasedTraining. Defaults to False.
         save_checkpoints: If ``True``, model checkpoints will be saved to
-            Wandb as artifacts. Defaults to ``True``.
+            Wandb as artifacts. Defaults to ``False``.
         **kwargs: The keyword arguments will be pased to ``wandb.init()``.
 
     Wandb's ``group``, ``run_id`` and ``run_name`` are automatically selected
@@ -330,7 +329,7 @@ class WandbLoggerCallback(LoggerCallback):
         api_key: Optional[str] = None,
         excludes: Optional[List[str]] = None,
         log_config: bool = False,
-        save_checkpoints: bool = True,
+        save_checkpoints: bool = False,
         **kwargs
     ):
         self.project = project
