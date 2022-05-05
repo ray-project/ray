@@ -172,9 +172,6 @@ DEFAULT_CONFIG = with_common_config({
     # timestep count has not been reached, will perform n more `step_attempt()` calls
     # until the minimum timesteps have been executed. Set to 0 for no minimum timesteps.
     "min_sample_timesteps_per_reporting": 1000,
-
-    # Experimental flag.
-    "_disable_execution_plan_api": True,
 })
 # __sphinx_doc_end__
 # fmt: on
