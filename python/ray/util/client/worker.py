@@ -552,7 +552,7 @@ class Worker:
     def _call_schedule_for_task(
         self, task: ray_client_pb2.ClientTask, num_returns: int
     ) -> List[Future]:
-        logger.debug("Scheduling %s" % task)
+        logger.debug(f"Scheduling task {task.name} {task.type} {task.payload_id}")
         task.client_id = self._client_id
         if num_returns is None:
             num_returns = 1
