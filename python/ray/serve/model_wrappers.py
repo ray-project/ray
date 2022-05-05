@@ -104,9 +104,7 @@ class ModelWrapper(SimpleSchemaIngress):
 
     async def predict(self, inp):
         """Perform inference directly without HTTP."""
-        results = await self.batched_predict(inp)
-
-        return results
+        return await self.batched_predict(inp)
 
 
 @serve.deployment
