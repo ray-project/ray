@@ -4,6 +4,7 @@ import logging
 import numbers
 import os
 import shutil
+
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Dict, Union, Callable, Tuple, List, Any
@@ -40,11 +41,13 @@ class _TrackedCheckpoint:
         self.node_ip = node_ip or self.result.get(NODE_IP, None)
 
     def commit(self, path: Optional[Path] = None):
+        """Commit checkpoint to disk, if needed."""
         pass
 
     def delete(
         self, delete_fn: Optional[Callable[["_TrackedCheckpoint"], None]] = None
     ):
+        """Delete checkpoint from disk, if needed."""
         delete_fn = delete_fn or _default_delete_fn
         delete_fn(self)
 
@@ -90,7 +93,7 @@ class _HeapCheckpointWrapper:
 @PublicAPI(stability="beta")
 @dataclass
 class CheckpointStrategy:
-    """Configurable parameters for defining the Train checkpointing strategy.
+    """Configurable parameters for defining the checkpointing strategy.
 
     Default behavior is to persist all checkpoints to disk. If
     ``num_to_keep`` is set, the default retention policy is to keep the

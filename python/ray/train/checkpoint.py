@@ -3,8 +3,13 @@ from pathlib import Path
 from typing import List, Optional, Dict, Union, Callable
 
 from ray import cloudpickle
-from ray.train.constants import TUNE_CHECKPOINT_FILE_NAME, TUNE_CHECKPOINT_ID, TIMESTAMP
-from ray.train.constants import TUNE_INSTALLED, TRAIN_CHECKPOINT_SUBDIR
+from ray.train.constants import (
+    TRAIN_CHECKPOINT_SUBDIR,
+    TRAINING_ITERATION,
+    TUNE_CHECKPOINT_FILE_NAME,
+    TUNE_CHECKPOINT_ID,
+    TUNE_INSTALLED,
+)
 from ray.train.session import TrainingResult
 from ray.train.utils import construct_path
 from ray.tune.result import TRAINING_ITERATION as TUNE_TRAINING_ITERATION
@@ -180,8 +185,11 @@ class CheckpointManager(CommonCheckpointManager):
     ):
         checkpoint_strategy = checkpoint_strategy or CheckpointStrategy()
 
+        # We only want to support one CheckpointStrategy object. Thus,
+        # for Ray Train we update the default score attribute for Ray Train's
+        # version.
         if checkpoint_strategy.checkpoint_score_attribute == TUNE_TRAINING_ITERATION:
-            checkpoint_strategy.checkpoint_score_attribute = TIMESTAMP
+            checkpoint_strategy.checkpoint_score_attribute = TRAINING_ITERATION
 
         self._checkpoint_strategy = checkpoint_strategy
         self.run_dir = run_dir
