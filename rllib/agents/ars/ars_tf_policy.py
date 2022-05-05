@@ -7,7 +7,7 @@ import tree  # pip install dm_tree
 
 import ray
 import ray.experimental.tf_utils
-from ray.rllib.agents.es.es_tf_policy import make_session
+from ray.rllib.algorithms.es.es_tf_policy import make_session
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch

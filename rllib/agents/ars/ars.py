@@ -12,8 +12,8 @@ from typing import Optional
 import ray
 from ray.rllib.agents import Trainer, TrainerConfig
 from ray.rllib.agents.ars.ars_tf_policy import ARSTFPolicy
-from ray.rllib.agents.es import optimizers, utils
-from ray.rllib.agents.es.es_tf_policy import rollout
+from ray.rllib.algorithms.es import optimizers, utils
+from ray.rllib.algorithms.es.es_tf_policy import rollout
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import FilterManager
