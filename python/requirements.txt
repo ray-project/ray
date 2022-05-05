@@ -60,7 +60,7 @@ google-cloud-storage
 gym-minigrid
 kubernetes
 lxml
-moto
+moto[s3,server]
 mypy
 networkx
 numba

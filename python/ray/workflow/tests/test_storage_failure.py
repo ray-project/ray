@@ -4,10 +4,9 @@ import tempfile
 import pytest
 import ray
 from ray import workflow
-from ray.workflow.storage import get_global_storage
 from ray.workflow.storage.debug import DebugStorage
 from ray.workflow.workflow_storage import STEP_OUTPUTS_METADATA
-from ray.workflow.workflow_storage import asyncio_run
+from ray.workflow.common import asyncio_run
 from ray.workflow.storage.filesystem import FilesystemStorageImpl
 from ray.workflow.tests.utils import _alter_storage
 
@@ -61,6 +60,7 @@ def _locate_initial_commit(debug_store: DebugStorage) -> int:
     return -1
 
 
+@pytest.mark.skip(reason="TODO (suquark): Support debug storage.")
 @pytest.mark.parametrize(
     "workflow_start_regular",
     [
@@ -72,7 +72,7 @@ def _locate_initial_commit(debug_store: DebugStorage) -> int:
 )
 def test_failure_with_storage(workflow_start_regular):
     with tempfile.TemporaryDirectory() as temp_dir:
-        debug_store = DebugStorage(get_global_storage(), temp_dir)
+        debug_store = DebugStorage(temp_dir)
         _alter_storage(debug_store)
 
         wf = construct_workflow(length=3)

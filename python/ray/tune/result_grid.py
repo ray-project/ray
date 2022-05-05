@@ -8,6 +8,7 @@ from ray.ml.result import Result
 from ray.tune import ExperimentAnalysis
 from ray.tune.error import TuneError
 from ray.tune.trial import Trial
+from ray.tune.utils.trainable import TrainableUtil
 from ray.util import PublicAPI
 
 
@@ -98,10 +99,14 @@ class ResultGrid:
         return None
 
     def _trial_to_result(self, trial: Trial) -> Result:
+        if trial.checkpoint.value:
+            checkpoint_dir = TrainableUtil.find_checkpoint_dir(trial.checkpoint.value)
+            checkpoint = Checkpoint.from_directory(checkpoint_dir)
+        else:
+            checkpoint = None
+
         result = Result(
-            checkpoint=Checkpoint.from_directory(trial.checkpoint.value)
-            if trial.checkpoint.value
-            else None,
+            checkpoint=checkpoint,
             metrics=trial.last_result.copy(),
             error=self._populate_exception(trial),
         )
