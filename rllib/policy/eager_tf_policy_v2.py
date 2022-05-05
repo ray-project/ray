@@ -67,7 +67,7 @@ class EagerTFPolicyV2(Policy):
         # have been activated yet.
         if not tf1.executing_eagerly():
             tf1.enable_eager_execution()
-        self.framework = config.get("framework", "tfe")
+        self.framework = config.get("framework", "tf2")
 
         # Log device.
         logger.info(
@@ -451,6 +451,8 @@ class EagerTFPolicyV2(Policy):
         self.global_timestep.assign_add(tree.flatten(ret[0])[0].shape.as_list()[0])
         return convert_to_numpy(ret)
 
+    # TODO(jungong) : deprecate this API and make compute_actions_from_input_dict the
+    # only canonical entry point for inference.
     @override(Policy)
     def compute_actions(
         self,

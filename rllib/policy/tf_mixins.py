@@ -116,11 +116,11 @@ class EntropyCoeffSchedule:
 
 
 class KLCoeffMixin:
-    """Assigns the `update_kl()` and other KL-related methods to the PPOPolicy.
+    """Assigns the `update_kl()` and other KL-related methods to a TFPolicy.
 
-    This is used in PPO's execution plan (see ppo.py) for updating the KL
-    coefficient after each learning step based on `config.kl_target` and
-    the measured KL value (from the train_batch).
+    This is used in Trainers to update the KL coefficient after each
+    learning step based on `config.kl_target` and the measured KL value
+    (from the train_batch).
     """
 
     def __init__(self, config):
@@ -190,7 +190,7 @@ class KLCoeffMixin:
 
 
 class ValueNetworkMixin:
-    """Assigns the `_value()` method to the PPOPolicy.
+    """Assigns the `_value()` method to a TFPolicy.
 
     This way, Policy can call `_value()` to get the current VF estimate on a
     single(!) observation (as done in `postprocess_trajectory_fn`).
