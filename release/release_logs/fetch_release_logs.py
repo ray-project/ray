@@ -6,6 +6,10 @@ Specifically, this will loop through all release test pipeline builds for the
 specified Ray version and fetch the latest available results from the respective
 tests. It will then write these to the respective directory.
 
+To use this script, either set the BUILDKITE_TOKEN environment variable to a
+valid Buildkite API token with read access, or authenticate in AWS with the
+OSS CI account.
+
 Usage:
 
     python fetch_release_logs.pg <version>
