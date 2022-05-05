@@ -123,7 +123,8 @@ class R2D2Trainer(DQNTrainer):
         # Add the `burn_in` to the Model's max_seq_len.
         # Set the replay sequence length to the max_seq_len of the model.
         config["replay_buffer_config"]["replay_sequence_length"] = (
-            config["burn_in"] + config["model"]["max_seq_len"]
+            config["replay_buffer_config"]["replay_burn_in"]
+            + config["model"]["max_seq_len"]
         )
 
         if config.get("batch_mode") != "complete_episodes":
