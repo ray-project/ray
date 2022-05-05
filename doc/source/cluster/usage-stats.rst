@@ -6,6 +6,10 @@ Usage Stats Collection
 Starting Ray 1.13, Ray collects usage stats data by default and the data will be used by the Ray team to understand how to improve Ray.
 For more context, please refer to this `RFC <https://github.com/ray-project/ray/issues/20857>`_.
 
+What data is collected
+----------------------
+We collect non-sensitive data that helps us understand how Ray is used (e.g. which Ray library is used).
+The personally identifiable data is never collected. Please check ``UsageStatsToReport`` in `usage_lib.py <https://github.com/ray-project/ray/blob/master/python/ray/_private/usage/usage_lib.py>`_ for all the data we collect.
 
 How does it work
 ----------------
@@ -25,11 +29,6 @@ and report to ``https://usage-stats.ray.io/`` every hour. The reported usage sta
 ``/tmp/ray/session_xxx/usage_stats.json`` on the head node for inspection. You can check the existence of this file to see if collection is enabled.
 
 Usage stats collection is very lightweight and should have no impact on your workload in any way.
-
-What data is collected
-----------------------
-We collect non-sensitive data that helps us understand how Ray is used (e.g. which Ray library is used).
-The personally identifiable data is never collected. Please check `usage_lib.py <https://github.com/ray-project/ray/blob/master/python/ray/_private/usage/usage_lib.py>`_ for all the data we collect.
 
 How to disable it
 -----------------
