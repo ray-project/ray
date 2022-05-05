@@ -511,6 +511,12 @@ class ImpalaTrainer(Trainer):
         ] = defaultdict(set)
 
         if self.config["_disable_execution_plan_api"]:
+            # Setup after_train_step callback.
+            self._after_train_step = lambda *a, **k: None
+            if self.config["after_train_step"]:
+                self._after_train_step = \
+                    self.config["after_train_step"](self.workers, self.config)
+
             # Create extra aggregation workers and assign each rollout worker to
             # one of them.
             self.batches_to_place_on_learner = []
@@ -585,8 +591,7 @@ class ImpalaTrainer(Trainer):
 
         # Callback for APPO to use to update KL, target network periodically.
         # The input to the callback is the learner fetches dict.
-        if self.config["after_train_step"]:
-            self.config["after_train_step"](trainer=self, config=self.config)
+        self._after_train_step(learner_results)
 
         return learner_results
 
