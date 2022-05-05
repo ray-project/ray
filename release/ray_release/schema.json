@@ -162,8 +162,7 @@
 				}
 			},
 			"required": [
-				"num_nodes",
-				"timeout"
+				"num_nodes"
 			],
 			"title": "WaitForNodes"
 		},

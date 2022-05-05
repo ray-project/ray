@@ -78,6 +78,9 @@ DEFAULT_CONFIG = with_common_config({
     # to tune vf_loss_coeff.
     # Use config.model.vf_share_layers instead.
     "vf_share_layers": DEPRECATED_VALUE,
+
+    # Use `execution_plan` instead of `training_iteration`.
+    "_disable_execution_plan_api": False,
 })
 # __sphinx_doc_end__
 # fmt: on

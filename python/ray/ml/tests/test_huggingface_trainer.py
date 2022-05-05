@@ -1,5 +1,7 @@
 import pandas as pd
 import pytest
+from unittest.mock import patch
+from ray.ml.train.integrations.huggingface.huggingface_utils import TrainReportCallback
 
 from transformers import (
     AutoConfig,
@@ -8,6 +10,7 @@ from transformers import (
     Trainer,
     TrainingArguments,
 )
+from transformers.trainer_callback import TrainerState
 
 import ray.data
 from ray.ml.train.integrations.huggingface import HuggingFaceTrainer
@@ -66,26 +69,27 @@ def test_e2e(ray_start_4_cpus, save_strategy):
     scaling_config = {"num_workers": 2, "use_gpu": False}
     trainer = HuggingFaceTrainer(
         trainer_init_per_worker=train_function,
-        trainer_init_config={"epochs": 3, "save_strategy": save_strategy},
+        trainer_init_config={"epochs": 4, "save_strategy": save_strategy},
         scaling_config=scaling_config,
         datasets={"train": ray_train, "evaluation": ray_validation},
     )
     result = trainer.fit()
 
-    assert result.metrics["epoch"] == 3
-    assert result.metrics["training_iteration"] == 3
+    assert result.metrics["epoch"] == 4
+    assert result.metrics["training_iteration"] == 4
     assert result.checkpoint
 
     trainer2 = HuggingFaceTrainer(
         trainer_init_per_worker=train_function,
-        trainer_init_config={"epochs": 4},  # this will train for 1 epoch: 4 - 3 = 1
+        trainer_init_config={"epochs": 5},  # this will train for 1 epoch: 5 - 4 = 1
         scaling_config=scaling_config,
         datasets={"train": ray_train, "evaluation": ray_validation},
         resume_from_checkpoint=result.checkpoint,
     )
     result2 = trainer2.fit()
 
-    assert result2.metrics["epoch"] == 4
+    assert result2.metrics["epoch"] == 5
+    assert result2.metrics["training_iteration"] == 1
     assert result2.checkpoint
 
     predictor = BatchPredictor.from_checkpoint(
@@ -97,3 +101,35 @@ def test_e2e(ray_start_4_cpus, save_strategy):
 
     predictions = predictor.predict(ray.data.from_pandas(prompts))
     assert predictions.count() == 3
+
+
+def test_reporting():
+    reports = []
+
+    def _fake_report(**kwargs):
+        reports.append(kwargs)
+
+    with patch("ray.train.report", _fake_report):
+        state = TrainerState()
+        report_callback = TrainReportCallback()
+        report_callback.on_epoch_begin(None, state, None)
+        state.epoch = 0.5
+        report_callback.on_log(None, state, None, logs={"log1": 1})
+        state.epoch = 1
+        report_callback.on_log(None, state, None, logs={"log2": 1})
+        report_callback.on_epoch_end(None, state, None)
+        report_callback.on_epoch_begin(None, state, None)
+        state.epoch = 1.5
+        report_callback.on_log(None, state, None, logs={"log1": 1})
+        state.epoch = 2
+        report_callback.on_log(None, state, None, logs={"log2": 1})
+        report_callback.on_epoch_end(None, state, None)
+        report_callback.on_train_end(None, state, None)
+
+    assert len(reports) == 2
+    assert "log1" in reports[0]
+    assert "log2" in reports[0]
+    assert reports[0]["epoch"] == 1
+    assert "log1" in reports[1]
+    assert "log2" in reports[1]
+    assert reports[1]["epoch"] == 2
