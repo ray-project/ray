@@ -263,18 +263,21 @@ class EagerTFPolicyV2(Policy):
         obs_batch: TensorType,
         state_batches: TensorType,
         **kwargs,
-    ) -> Tuple[TensorType, TensorType]:
-        """Build underlying model for this Policy.
+    ) -> Tuple[TensorType, TensorType, TensorType, List[TensorType]]:
+        """Custom function for sampling new actions given policy.
 
         Args:
-            obs_space: The policy's observation space.
-            action_space: The policy's action space.
-            config: Policy-specific configuration data.
+            model: Underlying model.
+            obs_batch: Observation tensor batch.
+            state_batches: Action sampling state batch.
 
         Returns:
-            The Model for the Policy to use.
+            Sampled action
+            Log-likelihood
+            Action distribution inputs
+            Updated state
         """
-        return None, None
+        return None, None, None, None
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
@@ -291,6 +294,7 @@ class EagerTFPolicyV2(Policy):
         Args:
             model: Underlying model.
             obs_batch: Observation tensor batch.
+            state_batches: Action sampling state batch.
 
         Returns:
             Distribution input.
