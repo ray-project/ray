@@ -1,3 +1,8 @@
+"""
+In this example, we train a simple XGBoost model and log the training
+results to Weights & Biases. We also save the resulting model checkpoints
+as artifacts.
+"""
 import ray
 
 from ray.ml import RunConfig
@@ -8,6 +13,7 @@ from sklearn.datasets import load_breast_cancer
 
 
 def get_train_dataset() -> ray.data.Dataset:
+    """Return the "Breast cancer" dataset as a Ray dataset."""
     data_raw = load_breast_cancer(as_frame=True)
     df = data_raw["data"]
     df["target"] = data_raw["target"]
@@ -15,6 +21,7 @@ def get_train_dataset() -> ray.data.Dataset:
 
 
 def train_model(train_dataset: ray.data.Dataset, wandb_project: str) -> Result:
+    """Train a simple XGBoost model and return the result."""
     trainer = XGBoostTrainer(
         scaling_config={"num_workers": 2},
         params={"tree_method": "auto"},
@@ -23,6 +30,8 @@ def train_model(train_dataset: ray.data.Dataset, wandb_project: str) -> Result:
         num_boost_round=10,
         run_config=RunConfig(
             callbacks=[
+                # This is the part needed to enable logging to Weights & Biases.
+                # It assumes you've logged in before, e.g. with `wandb login`.
                 WandbLoggerCallback(
                     project=wandb_project,
                     save_checkpoints=True,

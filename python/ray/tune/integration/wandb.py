@@ -186,12 +186,20 @@ class _WandbLoggingProcess(Process):
     """
     We need a `multiprocessing.Process` to allow multiple concurrent
     wandb logging instances locally.
+
+    We use a queue for the driver to communicate with the logging process.
+    The queue accepts the following items:
+
+    - If it's a dict, it is assumed to be a result and will be logged using
+      ``wandb.log()``
+    - If it's a checkpoint object, it will be saved using ``wandb.log_artifact()``.
     """
 
     def __init__(
         self, queue: Queue, exclude: List[str], to_config: List[str], *args, **kwargs
     ):
         super(_WandbLoggingProcess, self).__init__()
+
         self.queue = queue
         self._exclude = set(exclude)
         self._to_config = set(to_config)
@@ -222,9 +230,9 @@ class _WandbLoggingProcess(Process):
         wandb.finish()
 
     def _handle_checkpoint(self, checkpoint_path: str):
-        checkpoint_path = os.path.join(checkpoint_path, "")
-        checkpoint_glob = checkpoint_path + "*"
-        wandb.save(checkpoint_glob, base_path=checkpoint_path)
+        artifact = wandb.Artifact(name="checkpoint", type="model")
+        artifact.add_dir(checkpoint_path)
+        wandb.log_artifact(artifact)
 
     def _handle_result(self, result: Dict) -> Tuple[Dict, Dict]:
         config_update = result.get("config", {}).copy()
@@ -267,6 +275,8 @@ class WandbLoggerCallback(LoggerCallback):
             the ``results`` dict should be logged. This makes sense if
             parameters will change during training, e.g. with
             PopulationBasedTraining. Defaults to False.
+        save_checkpoints: If ``True``, model checkpoints will be saved to
+            Wandb as artifacts. Defaults to ``True``.
         **kwargs: The keyword arguments will be pased to ``wandb.init()``.
 
     Wandb's ``group``, ``run_id`` and ``run_name`` are automatically selected
