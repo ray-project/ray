@@ -67,6 +67,7 @@ parts:
           - file: serve/http-servehandle
           - file: serve/ml-models
           - file: serve/deployment-graph
+          - file: serve/deployment-graph-cookbook
           - file: serve/deployment
           - file: serve/monitoring
           - file: serve/performance

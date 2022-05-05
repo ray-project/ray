@@ -554,6 +554,10 @@ Total of `0.45` secs.
 
 +++
 
+## More Examples using deployment graph api
+
+We provide more examples in using the deployment graph api in [here](./deployment-graph-cookbook.md)
+
 ## Conclusion
 
 We've walked through key concepts and a simple representative example that covers many important details we support in deployment graph building. There're still some rough edges in user experience that we're dedicated to polish in the next a few months, so please reach out to us if you have any feedback or suggestions:
