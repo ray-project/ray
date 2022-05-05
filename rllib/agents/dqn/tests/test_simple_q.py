@@ -51,7 +51,7 @@ class TestSimpleQ(unittest.TestCase):
 
     def test_simple_q_loss_function(self):
         """Tests the Simple-Q loss function results on all frameworks."""
-        config = dqn.SIMPLE_Q_DEFAULT_CONFIG.copy()
+        config = dqn.SimpleQConfig()
         # Run locally.
         config.num_workers = 0
         # Use very simple net (layer0=10 nodes, q-layer=2 nodes (2 actions)).
