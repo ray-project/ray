@@ -16,6 +16,7 @@ from ray.experimental.state.api import (
     list_workers,
     list_tasks,
     list_objects,
+    list_runtime_envs,
 )
 
 
@@ -92,3 +93,10 @@ def tasks(ctx):
 def objects(ctx):
     url = ctx.obj["api_server_url"]
     pprint(list_objects(url))
+
+
+@list_state_cli_group.command()
+@click.pass_context
+def runtime_envs(ctx):
+    url = ctx.obj["api_server_url"]
+    pprint(list_runtime_envs(url))

@@ -50,7 +50,10 @@ def StandardMetricsReporting(
     output_op = (
         train_op.filter(
             OncePerTimestepsElapsed(
-                config["timesteps_per_iteration"], by_steps_trained=by_steps_trained
+                config["min_train_timesteps_per_reporting"] or 0
+                if by_steps_trained
+                else config["min_sample_timesteps_per_reporting"] or 0,
+                by_steps_trained=by_steps_trained,
             )
         )
         .filter(OncePerTimeInterval(config["min_time_s_per_reporting"]))

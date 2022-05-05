@@ -56,20 +56,10 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def put_all_deployments(self, req: Request) -> Response:
         from ray import serve
-        from ray.serve.context import get_global_client
         from ray.serve.application import Application
 
         app = Application.from_dict(await req.json())
         serve.run(app, _blocking=False)
-
-        new_names = set()
-        for deployment in app.deployments.values():
-            new_names.add(deployment.name)
-
-        all_deployments = serve.list_deployments()
-        all_names = set(all_deployments.keys())
-        names_to_delete = all_names.difference(new_names)
-        get_global_client().delete_deployments(names_to_delete)
 
         return Response()
 

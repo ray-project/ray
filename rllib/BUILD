@@ -114,16 +114,15 @@ py_test(
 )
 
 # AlphaStar
-# Todo (rllib-team): Re-activate once flakiness fixed
-# py_test(
-#     name = "learning_tests_cartpole_alpha_star",
-#     main = "tests/run_regression_tests.py",
-#     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-#     size = "large",
-#     srcs = ["tests/run_regression_tests.py"],
-#     data = ["tuned_examples/alpha_star/multi-agent-cartpole-alpha-star.yaml"],
-#     args = ["--yaml-dir=tuned_examples/alpha_star", "--num-cpus=20"]
-# )
+py_test(
+    name = "learning_tests_cartpole_alpha_star",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/alpha_star/multi-agent-cartpole-alpha-star.yaml"],
+    args = ["--yaml-dir=tuned_examples/alpha_star", "--num-cpus=10"]
+)
 
 # APEX-DQN
 py_test(
@@ -229,25 +228,25 @@ py_test(
 )
 
 # DDPG
-# py_test(
-#    name = "learning_tests_pendulum_ddpg",
-#    main = "tests/run_regression_tests.py",
-#    tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
-#    size = "large",
-#    srcs = ["tests/run_regression_tests.py"],
-#    data = glob(["tuned_examples/ddpg/pendulum-ddpg.yaml"]),
-#    args = ["--yaml-dir=tuned_examples/ddpg"]
-# )
+py_test(
+   name = "learning_tests_pendulum_ddpg",
+   main = "tests/run_regression_tests.py",
+   tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+   size = "large",
+   srcs = ["tests/run_regression_tests.py"],
+   data = glob(["tuned_examples/ddpg/pendulum-ddpg.yaml"]),
+   args = ["--yaml-dir=tuned_examples/ddpg"]
+)
 
-# py_test(
-#    name = "learning_tests_pendulum_ddpg_fake_gpus",
-#    main = "tests/run_regression_tests.py",
-#    tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "fake_gpus"],
-#    size = "large",
-#    srcs = ["tests/run_regression_tests.py"],
-#    data = ["tuned_examples/ddpg/pendulum-ddpg-fake-gpus.yaml"],
-#    args = ["--yaml-dir=tuned_examples/ddpg"]
-# )
+py_test(
+   name = "learning_tests_pendulum_ddpg_fake_gpus",
+   main = "tests/run_regression_tests.py",
+   tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "fake_gpus"],
+   size = "large",
+   srcs = ["tests/run_regression_tests.py"],
+   data = ["tuned_examples/ddpg/pendulum-ddpg-fake-gpus.yaml"],
+   args = ["--yaml-dir=tuned_examples/ddpg"]
+)
 
 # DDPPO
 py_test(

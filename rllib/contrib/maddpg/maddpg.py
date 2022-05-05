@@ -111,8 +111,6 @@ DEFAULT_CONFIG = with_common_config({
     # if async_updates is set, then each worker returns gradients for a
     # batch of this size.
     "train_batch_size": 1024,
-    # Number of env steps to optimize for before returning
-    "timesteps_per_iteration": 0,
 
     # === Parallelism ===
     # Number of workers for collecting samples with. This only makes sense
