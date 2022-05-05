@@ -110,7 +110,6 @@ parts:
             sections:
               - file: ray-air/key-concepts
               - file: ray-air/deployment
-              - file: ray-air/faq
               - file: ray-air/package-ref
           - file: ray-more-libs/joblib
           - file: ray-more-libs/lightgbm-ray
