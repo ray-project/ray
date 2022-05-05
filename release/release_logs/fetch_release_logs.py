@@ -4,7 +4,7 @@ OSS release testing pipeline on buildkite.
 
 Specifically, this will loop through all release test pipeline builds for the
 specified Ray version and fetch the latest available results from the respective
-tests. It will then write these to the respective directory.
+tests. It will then write these to the directory in `ray/release/release_logs`.
 
 To use this script, either set the BUILDKITE_TOKEN environment variable to a
 valid Buildkite API token with read access, or authenticate in AWS with the
@@ -12,7 +12,7 @@ OSS CI account.
 
 Usage:
 
-    python fetch_release_logs.pg <version>
+    python fetch_release_logs.py <version>
 
 Example:
 
