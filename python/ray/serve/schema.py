@@ -270,7 +270,6 @@ class DeploymentSchema(BaseModel, extra=Extra.forbid):
 
 class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
     graph_import_path: str = Field (
-        ...,
         default="",
         description="The Deployment Graph's import path."
     )

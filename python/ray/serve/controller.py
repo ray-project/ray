@@ -9,6 +9,7 @@ from typing import Dict, Iterable, List, Optional, Tuple, Any
 
 import ray
 from ray.actor import ActorHandle
+from ray._private.utils import import_attr
 
 from ray.serve.autoscaling_metrics import InMemoryMetricsStore
 from ray.serve.autoscaling_policy import BasicAutoscalingPolicy
@@ -118,6 +119,9 @@ class ServeController:
 
         # TODO(simon): move autoscaling related stuff into a manager.
         self.autoscaling_metrics_store = InMemoryMetricsStore()
+
+        # Hold reference to any in-progress deployment-via-config requests
+        self.deploy_config_task_ref = None
 
         asyncio.get_event_loop().create_task(self.run_control_loop())
 
@@ -496,3 +500,27 @@ class ServeController:
                 deployment_status_info_proto
             )
         return deployment_status_info_list.SerializeToString()
+    
+    def deploy_config(self, config: Dict) -> None:
+
+        if self.deploy_config_task_ref is not None:
+            ray.cancel(self.deploy_config_task_ref)
+
+        @ray.remote(
+            runtime_env=config.get("graph_runtime_env", {})
+        )
+        def run_graph(graph_import_path: str, config_options: Dict):
+            from ray import serve
+            from ray.serve.api import build
+
+            graph = import_attr(graph_import_path)
+            app = build(graph)
+
+            for deployment_dict in config_options:
+                name = deployment_dict["name"]
+                app.deployments[name].set_options(**deployment_dict)
+
+            # Run DAG locally on cluster
+            serve.run(graph)
+        
+        self.deploy_config_task_ref = run_graph.remote(config["graph_import_path"], config["deployments"])
