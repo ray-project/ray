@@ -18,7 +18,7 @@ from ray.rllib.models.torch.torch_action_dist import (
 from ray.rllib.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_mixin import TargetNetworkMixin
+from ray.rllib.policy.torch_mixins import TargetNetworkMixin
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
