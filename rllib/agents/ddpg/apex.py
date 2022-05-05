@@ -22,6 +22,11 @@ APEX_DDPG_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
             "no_local_replay_buffer": True,
             "type": "MultiAgentReplayBuffer",
             "capacity": 2000000,
+            "prioritized_replay_alpha": 0.6,
+            # Beta parameter for sampling from prioritized replay buffer.
+            "prioritized_replay_beta": 0.4,
+            # Epsilon to add to the TD errors when updating priorities.
+            "prioritized_replay_eps": 1e-6,
         },
         # Whether all shards of the replay buffer must be co-located
         # with the learner process (running the execution plan).
@@ -48,7 +53,7 @@ APEX_DDPG_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
 )
 
 
-class ApexDDPGTrainer(DDPGTrainer):
+class ApexDDPGTrainer(DDPGTrainer, ApexTrainer):
     @classmethod
     @override(DDPGTrainer)
     def get_default_config(cls) -> TrainerConfigDict:
