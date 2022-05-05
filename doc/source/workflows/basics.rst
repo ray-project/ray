@@ -303,7 +303,7 @@ Ray Integration
 ---------------
 
 Mixing workflow tasks with Ray tasks and actors
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Workflows are compatible with Ray tasks and actors. There are two methods of using them together:
 
