@@ -56,6 +56,7 @@ class _NotYetPersistedCheckpoint(_TrackedCheckpoint):
             logger.debug(f"Checkpoint successfully written to: {path}")
 
         self.checkpoint_dir_or_data = path
+        self._data_to_commit = None
 
     def delete(
         self, delete_fn: Optional[Callable[["_TrackedCheckpoint"], None]] = None
