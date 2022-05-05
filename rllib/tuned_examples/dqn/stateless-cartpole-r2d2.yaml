@@ -9,7 +9,8 @@ stateless-cartpole-r2d2:
         framework: tf
         num_workers: 0
         # R2D2 settings.
-        burn_in: 20
+        replay_buffer_config:
+          replay_burn_in: 20
         zero_init_states: true
         #dueling: false
         lr: 0.0005
