@@ -105,7 +105,9 @@ def maybe_fetch_buildkite_token() -> str:
     ]
 
 
-def get_results_from_build_collection(bk: Buildkite, build_dict_list: list):
+def get_results_from_build_collection(
+    bk: Buildkite, build_dict_list: List[Dict]
+) -> Dict[str, Dict]:
     results_to_fetch = RESULTS_TO_FETCH.copy()
     fetched_results = {}
 
@@ -125,7 +127,7 @@ def get_results_from_build_collection(bk: Buildkite, build_dict_list: list):
     return fetched_results
 
 
-def get_results_from_build(bk: Buildkite, build: Build, results_to_fetch: Dict):
+def get_results_from_build(bk: Buildkite, build: Build, results_to_fetch: Dict) -> Dict:
     fetched_results = {}
 
     for job_dict in build.job_dict_list:
@@ -151,7 +153,7 @@ def get_results_from_build(bk: Buildkite, build: Build, results_to_fetch: Dict):
     return fetched_results
 
 
-def get_results_artifact_for_job(bk: Buildkite, job: Job) -> Optional[dict]:
+def get_results_artifact_for_job(bk: Buildkite, job: Job) -> Optional[Dict]:
     artifacts = bk.artifacts().list_artifacts_for_job(
         organization=job.build.organization,
         pipeline=job.build.pipeline,
@@ -165,7 +167,7 @@ def get_results_artifact_for_job(bk: Buildkite, job: Job) -> Optional[dict]:
     return None
 
 
-def download_results_artifact(bk: Buildkite, artifact: Artifact) -> dict:
+def download_results_artifact(bk: Buildkite, artifact: Artifact) -> Dict:
     blob = bk.artifacts().download_artifact(
         organization=artifact.job.build.organization,
         pipeline=artifact.job.build.pipeline,
@@ -177,7 +179,7 @@ def download_results_artifact(bk: Buildkite, artifact: Artifact) -> dict:
     return data_dict.get("results", {})
 
 
-def write_results(log_dir: Path, fetched_results: Dict[str, Any]):
+def write_results(log_dir: Path, fetched_results: Dict[str, Any]) -> None:
     log_dir.mkdir(parents=True, exist_ok=True)
 
     for filepath, content in fetched_results.items():
