@@ -17,6 +17,10 @@ class LightGBMTrainer(GBDTTrainer):
     This Trainer runs the LightGBM training loop in a distributed manner
     using multiple Ray Actors.
 
+    If you would like to take advantage of LightGBM's built-in handling
+    for features with the categorical data type, consider using the
+    :class:`Categorizer` preprocessor to set the dtypes in the dataset.
+
     Example:
         .. code-block:: python
 

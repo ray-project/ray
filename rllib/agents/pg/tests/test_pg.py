@@ -30,11 +30,13 @@ class TestPG(unittest.TestCase):
 
     def test_pg_compilation(self):
         """Test whether a PGTrainer can be built with all frameworks."""
-        config = pg.DEFAULT_CONFIG.copy()
-        config["num_workers"] = 1
-        config["rollout_fragment_length"] = 500
+        config = pg.PGConfig()
         # Test with filter to see whether they work w/o preprocessing.
-        config["observation_filter"] = "MeanStdFilter"
+        config.rollouts(
+            num_rollout_workers=1,
+            rollout_fragment_length=500,
+            observation_filter="MeanStdFilter",
+        )
         num_iterations = 1
 
         image_space = Box(-1.0, 1.0, shape=(84, 84, 3))
@@ -77,7 +79,7 @@ class TestPG(unittest.TestCase):
                 "FrozenLake-v1",
             ]:
                 print(f"env={env}")
-                trainer = pg.PGTrainer(config=config, env=env)
+                trainer = config.build(env=env)
                 for i in range(num_iterations):
                     results = trainer.train()
                     check_train_results(results)
@@ -87,11 +89,17 @@ class TestPG(unittest.TestCase):
 
     def test_pg_loss_functions(self):
         """Tests the PG loss function math."""
-        config = pg.DEFAULT_CONFIG.copy()
-        config["num_workers"] = 0  # Run locally.
-        config["gamma"] = 0.99
-        config["model"]["fcnet_hiddens"] = [10]
-        config["model"]["fcnet_activation"] = "linear"
+        config = (
+            pg.PGConfig()
+            .rollouts(num_rollout_workers=0)
+            .training(
+                gamma=0.99,
+                model={
+                    "fcnet_hiddens": [10],
+                    "fcnet_activation": "linear",
+                },
+            )
+        )
 
         # Fake CartPole episode of n time steps.
         train_batch = SampleBatch(
@@ -109,7 +117,7 @@ class TestPG(unittest.TestCase):
 
         for fw, sess in framework_iterator(config, session=True):
             dist_cls = Categorical if fw != "torch" else TorchCategorical
-            trainer = pg.PGTrainer(config=config, env="CartPole-v0")
+            trainer = config.build(env="CartPole-v0")
             policy = trainer.get_policy()
             vars = policy.model.trainable_variables()
             if sess:

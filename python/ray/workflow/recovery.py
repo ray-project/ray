@@ -11,7 +11,6 @@ from ray.workflow.common import (
     WorkflowExecutionResult,
     StepType,
 )
-from ray.workflow import storage
 from ray.workflow import workflow_storage
 from ray.workflow.step_function import WorkflowStepFunction
 
@@ -167,50 +166,54 @@ def _construct_resume_workflow_from_step(
 
 @ray.remote(num_returns=2)
 def _resume_workflow_step_executor(
-    workflow_id: str, step_id: "StepID", store_url: str, current_output: [ray.ObjectRef]
+    job_id: str,
+    workflow_id: str,
+    step_id: "StepID",
+    current_output: [ray.ObjectRef],
 ) -> Tuple[ray.ObjectRef, ray.ObjectRef]:
-    # TODO (yic): We need better dependency management for virtual actor
-    # The current output will always be empty for normal workflow
-    # For virtual actor, if it's not empty, it means the previous job is
-    # running. This is a really bad one.
-    for ref in current_output:
+    with workflow_context.workflow_logging_context(job_id):
+        # TODO (yic): We need better dependency management for virtual actor
+        # The current output will always be empty for normal workflow
+        # For virtual actor, if it's not empty, it means the previous job is
+        # running. This is a really bad one.
+        for ref in current_output:
+            try:
+                while isinstance(ref, ray.ObjectRef):
+                    ref = ray.get(ref)
+            except Exception:
+                pass
         try:
-            while isinstance(ref, ray.ObjectRef):
-                ref = ray.get(ref)
-        except Exception:
-            pass
-    try:
-        store = storage.create_storage(store_url)
-        wf_store = workflow_storage.WorkflowStorage(workflow_id, store)
-        r = _construct_resume_workflow_from_step(wf_store, step_id, {})
-    except Exception as e:
-        raise WorkflowNotResumableError(workflow_id) from e
+            wf_store = workflow_storage.WorkflowStorage(workflow_id)
+            r = _construct_resume_workflow_from_step(wf_store, step_id, {})
+        except Exception as e:
+            raise WorkflowNotResumableError(workflow_id) from e
 
-    if isinstance(r, Workflow):
-        with workflow_context.workflow_step_context(
-            workflow_id, store.storage_url, last_step_of_workflow=True
-        ):
-            from ray.workflow.step_executor import execute_workflow
+        if isinstance(r, Workflow):
+            with workflow_context.workflow_step_context(
+                workflow_id, last_step_of_workflow=True
+            ):
+                from ray.workflow.step_executor import execute_workflow
 
-            result = execute_workflow(r)
-            return result.persisted_output, result.volatile_output
-    assert isinstance(r, StepID)
-    return wf_store.load_step_output(r), None
+                result = execute_workflow(job_id, r)
+                return result.persisted_output, result.volatile_output
+        assert isinstance(r, StepID)
+        return wf_store.load_step_output(r), None
 
 
 def resume_workflow_step(
+    job_id: str,
     workflow_id: str,
     step_id: "StepID",
-    store_url: str,
     current_output: Optional[ray.ObjectRef],
 ) -> WorkflowExecutionResult:
     """Resume a step of a workflow.
 
     Args:
+        job_id: The ID of the job that submits the workflow execution. The ID
+        is used to identify the submitter of the workflow.
         workflow_id: The ID of the workflow job. The ID is used to identify
             the workflow.
         step_id: The step to resume in the workflow.
-        store_url: The url of the storage to access the workflow.
 
     Raises:
         WorkflowNotResumableException: fail to resume the workflow.
@@ -224,26 +227,25 @@ def resume_workflow_step(
         current_output = [current_output]
 
     persisted_output, volatile_output = _resume_workflow_step_executor.remote(
-        workflow_id, step_id, store_url, current_output
+        job_id, workflow_id, step_id, current_output
     )
     persisted_output = WorkflowStaticRef.from_output(step_id, persisted_output)
     volatile_output = WorkflowStaticRef.from_output(step_id, volatile_output)
     return WorkflowExecutionResult(persisted_output, volatile_output)
 
 
-def get_latest_output(workflow_id: str, store: storage.Storage) -> Any:
+def get_latest_output(workflow_id: str) -> Any:
     """Get the latest output of a workflow. This function is intended to be
     used by readonly virtual actors. To resume a workflow,
     `resume_workflow_job` should be used instead.
 
     Args:
         workflow_id: The ID of the workflow.
-        store: The storage of the workflow.
 
     Returns:
         The output of the workflow.
     """
-    reader = workflow_storage.WorkflowStorage(workflow_id, store)
+    reader = workflow_storage.WorkflowStorage(workflow_id)
     try:
         step_id: StepID = reader.get_latest_progress()
         while True:

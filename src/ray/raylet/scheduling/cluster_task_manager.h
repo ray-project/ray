@@ -124,6 +124,13 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// The helper to dump the debug state of the cluster task manater.
   std::string DebugStr() const override;
 
+  std::shared_ptr<ClusterResourceScheduler> GetClusterResourceScheduler() const;
+
+  /// Get the count of tasks in `infeasible_tasks_`.
+  size_t GetInfeasibleQueueSize() const;
+  /// Get the count of tasks in `tasks_to_schedule_`.
+  size_t GetPendingQueueSize() const;
+
  private:
   void TryScheduleInfeasibleTask();
 
@@ -160,8 +167,8 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
       infeasible_tasks_;
 
-  const SchedulerResourceReporter scheduler_resource_reporter_;
-  mutable SchedulerStats internal_stats_;
+  std::unique_ptr<SchedulerResourceReporter> scheduler_resource_reporter_;
+  mutable std::unique_ptr<SchedulerStats> internal_stats_;
 
   /// Returns the current time in milliseconds.
   std::function<int64_t()> get_time_ms_;
