@@ -634,14 +634,21 @@ class Dataset(Generic[T]):
         """
         import random
 
+        if self.num_blocks() == 0:
+            raise ValueError("Cannot from an empty dataset")
+
+        if number < 1:
+            raise ValueError("Cannot sample less than 1 element.")
+
         if seed:
             random.seed(seed)
 
-        rows = self._meta_count()
+        def process_batch(batch):
+            rows = self._meta_count()
+            n_required = rows // self.num_blocks()
+            return random.sample(batch, n_required)
 
-        n_required = rows // self.num_blocks()
-
-        sample_population = self.map_batches(lambda batch: random.sample(batch, n_required))
+        sample_population = self.map_batches(process_batch)
 
         return sample_population.take(number)
 
