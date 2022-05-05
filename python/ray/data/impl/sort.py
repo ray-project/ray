@@ -61,7 +61,7 @@ class _SortOp(ShuffleOp):
     def reduce(
         key: SortKeyT, descending: bool, *mapper_outputs: List[Block]
     ) -> (Block, BlockMetadata):
-        return ArrowBlockAccessor.merge_sorted_blocks(
+        return BlockAccessor.for_block(mapper_outputs[0]).merge_sorted_blocks(
             mapper_outputs, key, descending
         )
 
@@ -117,6 +117,14 @@ def sample_boundaries(
 def sort_impl(
     blocks: BlockList, clear_input_blocks: bool, key: SortKeyT, descending: bool = False
 ) -> Tuple[BlockList, dict]:
+    context = DatasetContext.get_current()
+    if context.use_polars:
+        try:
+            import polars as pl
+        except ModuleNotFoundError:
+            logger.info("polars not installed, falling back to pyarrow sort. To use polars-based sort, first install polars (`pip install polars`).")
+            context.use_polars = False
+
     stage_info = {}
     blocks_list = blocks.get_blocks()
     if len(blocks_list) == 0:
@@ -136,7 +144,6 @@ def sort_impl(
     if descending:
         boundaries.reverse()
 
-    context = DatasetContext.get_current()
     if context.use_push_based_shuffle:
         sort_op_cls = PushBasedSortOp
     else:
