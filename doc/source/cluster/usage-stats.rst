@@ -8,7 +8,7 @@ For more context, please refer to this `RFC <https://github.com/ray-project/ray/
 
 
 How does it work
-================
+----------------
 When a Ray cluster is started via ``ray start --head``, ``ray up``, ``ray submit --start`` or ``ray exec --start``,
 Ray will decide whether usage stats collection should be enabled or not by considering the following factors in order:
 
@@ -27,12 +27,12 @@ and report to ``https://usage-stats.ray.io/`` every hour. The reported usage sta
 Usage stats collection is very lightweight and should have no impact on your workload in any way.
 
 What data is collected
-======================
+----------------------
 We collect non-sensitive data that helps us understand how Ray is used (e.g. which Ray library is used).
 The personally identifiable data is never collected. Please check `usage_lib.py <https://github.com/ray-project/ray/blob/master/python/ray/_private/usage/usage_lib.py>`_ for all the data we collect.
 
 How to disable it
-=================
+-----------------
 There are multiple ways to disable usage stats collection before starting a cluster:
 
 #. Add ``--disable-usage-stats`` option to the command that starts the Ray cluster (e.g. ``ray start --head --disable-usage-stats``).
@@ -44,9 +44,9 @@ There are multiple ways to disable usage stats collection before starting a clus
 Currently there is no way to enable or disable collection for a running cluster, you have to stop and restart the cluster.
 
 How to request removal of collected data
-========================================
+----------------------------------------
 To request removal of collected data, please email us at ``usage_stats@ray.io`` with the ``session_id`` that you can find in ``/tmp/ray/session_xxx/usage_stats.json``.
 
 Contact us
-==========
+----------
 If you have any feedback regarding usage stats collection, please email us at ``usage_stats@ray.io``.
