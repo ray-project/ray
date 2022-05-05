@@ -2,7 +2,6 @@ import time
 import ray
 import requests
 import pytest
-import json
 
 from ray.dashboard.tests.conftest import *  # noqa
 from ray._private.test_utils import (
@@ -55,8 +54,9 @@ def test_resource_summary_and_usage(ray_start_cluster):
     resources_url_path = webui_url + "/api/v0/resources"
 
     def get_check_and_parse(path: str):
-        response = requests.get(resources_url_path + path,
-                                headers={"Content-Type": "application/json"})
+        response = requests.get(
+            resources_url_path + path, headers={"Content-Type": "application/json"}
+        )
         response.raise_for_status()
         json_response = response.json()
         if not json_response["result"]:
@@ -201,8 +201,9 @@ def test_resource_blocked_consumes_no_resources(ray_start_cluster):
     resources_url_path = webui_url + "/api/v0/resources"
 
     def get_check_and_parse(path: str):
-        response = requests.get(resources_url_path + path,
-                                headers={"Content-Type": "application/json"})
+        response = requests.get(
+            resources_url_path + path, headers={"Content-Type": "application/json"}
+        )
         response.raise_for_status()
         json_response = response.json()
         if not json_response["result"]:
@@ -231,10 +232,12 @@ def test_resource_blocked_consumes_no_resources(ray_start_cluster):
 
     assert cluster_resources_summary == cluster_resource_detailed_summary
 
-    h_resources = [{
-        "resource_set": {"CPU": 1.0},
-        "count": 16,
-    }]
+    h_resources = [
+        {
+            "resource_set": {"CPU": 1.0},
+            "count": 16,
+        }
+    ]
     assert "nested" not in cluster_resource_usage
     assert cluster_resource_usage["h"]["resource_set_list"] == h_resources
 

@@ -370,7 +370,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// Get all the registered workers.
   ///
   /// \param filter_dead_workers whether or not if this method will filter dead workers
-  /// that are still registered. 
+  /// that are still registered.
   /// \param filter_inactive_workers whether or not this method will filter workers
   /// that don't consume any resources.
   /// \return A list containing all the workers.

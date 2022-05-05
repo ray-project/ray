@@ -14,11 +14,12 @@
 
 #include "ray/raylet/node_manager.h"
 
+#include <google/protobuf/map.h>
+
 #include <cctype>
 #include <csignal>
 #include <fstream>
 #include <memory>
-#include <google/protobuf/map.h>
 
 #include "boost/filesystem.hpp"
 #include "boost/system/error_code.hpp"
@@ -2441,36 +2442,39 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
   }
 }
 
-void NodeManager::HandleGetResourceUsageByTask(const rpc::GetResourceUsageByTaskRequest &request,
-                                               rpc::GetResourceUsageByTaskReply *reply,
-                                               rpc::SendReplyCallback send_reply_callback) {
-
-  RAY_LOG(INFO) << "HandleGetResourceUsageByTask: lease workers: " << leased_workers_.size();
+void NodeManager::HandleGetResourceUsageByTask(
+    const rpc::GetResourceUsageByTaskRequest &request,
+    rpc::GetResourceUsageByTaskReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(INFO) << "HandleGetResourceUsageByTask: lease workers: "
+                << leased_workers_.size();
   auto total_map = reply->mutable_total();
   auto available_map = reply->mutable_available();
-  auto node_resources = cluster_resource_scheduler_->GetLocalResourceManager().GetLocalResources();
-  for (const auto &resource: node_resources.total.ToResourceRequest().ToResourceMap()) {
+  auto node_resources =
+      cluster_resource_scheduler_->GetLocalResourceManager().GetLocalResources();
+  for (const auto &resource : node_resources.total.ToResourceRequest().ToResourceMap()) {
     (*total_map)[resource.first] = resource.second;
   }
-  for (const auto &resource: node_resources.available.ToResourceRequest().ToResourceMap()) {
+  for (const auto &resource :
+       node_resources.available.ToResourceRequest().ToResourceMap()) {
     (*available_map)[resource.first] = resource.second;
   }
   // We get the logical resources acquired by each worker that the raylet has leased out
-  RAY_LOG(INFO) << "HandleGetResourceUsageByTask: lease workers: " << leased_workers_.size();
+  RAY_LOG(INFO) << "HandleGetResourceUsageByTask: lease workers: "
+                << leased_workers_.size();
   for (const auto &worker_it : worker_pool_.GetAllRegisteredWorkers(
-      /*filter_dead_workers*/ true, /*filter_inactive_workers*/ true
-  )) {
+           /*filter_dead_workers*/ true, /*filter_inactive_workers*/ true)) {
     // Check that worker is also leased
     RAY_CHECK(leased_workers_.find(worker_it->WorkerId()) != leased_workers_.end());
 
     rpc::TaskResourceUsage task_resource_usage;
     const auto &task_spec = worker_it->GetAssignedTask().GetTaskSpecification();
     task_resource_usage.mutable_function_descriptor()->MergeFrom(
-      task_spec.GetMessage().function_descriptor());
+        task_spec.GetMessage().function_descriptor());
     task_resource_usage.set_language(task_spec.GetMessage().language());
     task_resource_usage.set_is_actor(task_spec.IsActorCreationTask());
 
-    for (auto it: task_spec.GetRequiredResources().GetResourceMap()) {
+    for (auto it : task_spec.GetRequiredResources().GetResourceMap()) {
       (*task_resource_usage.mutable_resource_usage())[it.first] = it.second;
     }
 

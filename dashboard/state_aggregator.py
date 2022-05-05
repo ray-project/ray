@@ -17,8 +17,6 @@ from ray.experimental.state.common import (
     TaskState,
     ObjectState,
     ResourceSummary,
-    TaskResourceUsage,
-    DetailedResourceUsage,
     RuntimeEnvState,
     ListApiOptions,
     DEFAULT_RPC_TIMEOUT,
@@ -296,9 +294,7 @@ class StateAPIManager:
             # Combine resources_total and resources_available into
             # ResourceSummary per node
             response = {}
-            all_node_ids = {k for k in resources_available}.union(
-                {k for k in resources_total}
-            )
+            all_node_ids = set(resources_available).union(set(resources_total))
             for node_id in all_node_ids:
                 response[node_id] = filter_fields(
                     {
@@ -326,10 +322,7 @@ class StateAPIManager:
         """
 
         async def _fill_for_node(
-            node_id: str,
-            total: dict,
-            available: dict,
-            resource_usage: dict
+            node_id: str, total: dict, available: dict, resource_usage: dict
         ):
             reply = await self._client.get_resource_usage_by_task(
                 node_id, timeout=DEFAULT_RPC_TIMEOUT
@@ -363,9 +356,10 @@ class StateAPIManager:
                 await _fill_for_node(node_id, total, available, resource_usage)
                 result[node_id] = {
                     "summary": {
-                        "total": total, "available": available,
+                        "total": total,
+                        "available": available,
                     },
-                    "usage": resource_usage
+                    "usage": resource_usage,
                 }
 
             await asyncio.gather(
@@ -385,9 +379,10 @@ class StateAPIManager:
             )
             result = {
                 "summary": {
-                    "total": total, "available": available,
+                    "total": total,
+                    "available": available,
                 },
-                "usage": resource_usage
+                "usage": resource_usage,
             }
         logger.error(f"DONE: {result}")
         return result

@@ -592,7 +592,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void HandleGetObjectsInfo(const rpc::GetObjectsInfoRequest &request,
                             rpc::GetObjectsInfoReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
-                            
+
   /// Handle a `GetResourceUsageByTask` request.
   void HandleGetResourceUsageByTask(const rpc::GetResourceUsageByTaskRequest &request,
                                     rpc::GetResourceUsageByTaskReply *reply,

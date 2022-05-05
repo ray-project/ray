@@ -1460,11 +1460,11 @@ const std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegistered
         continue;
       }
       if (filter_inactive_workers) {
-          // The worker shouldn't have allocated resources if
-          if (worker->IsDead()        // worker is dead
-              || worker->IsBlocked()  // worker is blocked by blocking Ray API
-              || (worker->GetAssignedTaskId().IsNil() &&
-                  worker->GetActorId().IsNil())) {  // Tasks or actors not assigned
+        // The worker shouldn't have allocated resources if
+        if (worker->IsDead()        // worker is dead
+            || worker->IsBlocked()  // worker is blocked by blocking Ray API
+            || (worker->GetAssignedTaskId().IsNil() &&
+                worker->GetActorId().IsNil())) {  // Tasks or actors not assigned
           continue;
         }
       }

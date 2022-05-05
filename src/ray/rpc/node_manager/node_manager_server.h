@@ -154,7 +154,7 @@ class NodeManagerServiceHandler {
   virtual void HandleGetObjectsInfo(const GetObjectsInfoRequest &request,
                                     GetObjectsInfoReply *reply,
                                     SendReplyCallback send_reply_callback) = 0;
-                                    
+
   virtual void HandleGetResourceUsageByTask(const GetResourceUsageByTaskRequest &request,
                                             GetResourceUsageByTaskReply *reply,
                                             SendReplyCallback send_reply_callback) = 0;
