@@ -1,8 +1,7 @@
 import logging
-import random
 from collections import defaultdict
 from queue import Queue
-from typing import Any, Callable, DefaultDict, Dict, List, Optional, Set, Union
+from typing import Any, Callable, DefaultDict, Dict, List, Optional, Set
 
 import ray
 from ray.actor import ActorHandle
@@ -230,13 +229,14 @@ class AsyncRequestsManager:
 
     def __init__(
         self,
-        workers: Union[List[ActorHandle], Set[ActorHandle]],
+        workers: List[ActorHandle],
         max_remote_requests_in_flight: int = 2,
         ray_wait_timeout_s: Optional[float] = 0.03,
         return_object_refs: bool = False,
     ):
         self._num_workers = len(workers)
-        self._available_workers = workers if isinstance(workers, set) else set(workers)
+        self._available_workers = workers.copy()
+        self._available_workers_set = set(self._available_workers)
         self._unavailable_workers = set()
         self._max_remote_requests_in_flight = max_remote_requests_in_flight
         self._ray_wait_timeout_s = ray_wait_timeout_s
@@ -285,12 +285,6 @@ class AsyncRequestsManager:
             remote_fn, fn_args, fn_kwargs = self._call_queue.get()
             req = available_actor.apply.remote(remote_fn, *fn_args, **fn_kwargs)
             self._remote_requests_in_flight[available_actor].add(req)
-            if (
-                len(self._remote_requests_in_flight[available_actor])
-                >= self._max_remote_requests_in_flight
-            ):
-                self._unavailable_workers.add(available_actor)
-                self._available_workers.remove(available_actor)
             self._pending_remotes.append(req)
             self._pending_to_actor[req] = available_actor
             available_actor = self._get_available_actor()
@@ -324,8 +318,10 @@ class AsyncRequestsManager:
             self._remote_requests_in_flight[actor].remove(req)
             ready_requests_dict[actor].append(obj)
             if actor in self._unavailable_workers:
-                self._available_workers.add(actor)
+                self._available_workers.append(actor)
+                self._available_workers_set.add(actor)
                 self._unavailable_workers.remove(actor)
+            del self._pending_to_actor[req]
         del ready
         del ready_requests
         self._run()
@@ -333,6 +329,22 @@ class AsyncRequestsManager:
 
     def _get_available_actor(self) -> Optional[ActorHandle]:
         """Get an available actor to run a remote request"""
-        if not self._available_workers:
-            return None
-        return random.choice(list(self._available_workers))
+        available_actor = (
+            self._available_workers[0] if self._available_workers else None
+        )
+        while available_actor:
+            if (
+                len(self._remote_requests_in_flight[available_actor])
+                >= self._max_remote_requests_in_flight
+            ):
+                self._unavailable_workers.add(available_actor)
+                self._available_workers_set.remove(available_actor)
+                self._available_workers.pop(0)
+                available_actor = (
+                    self._available_workers[0] if self._available_workers else None
+                )
+            else:
+                available_actor = self._available_workers.pop(0)
+                self._available_workers.append(available_actor)
+                return available_actor
+        return None

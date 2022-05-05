@@ -1,14 +1,15 @@
 import logging
 from typing import Any, Dict, List, Optional, Type, Union
 
-from ray.actor import ActorHandle
 from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.execution.parallel_requests import asynchronous_parallel_requests
+from ray.rllib.execution.parallel_requests import (
+    AsyncRequestsManager,
+)
 from ray.rllib.execution.rollout_ops import AsyncGradients
 from ray.rllib.execution.train_ops import ApplyGradients
 from ray.rllib.policy.policy import Policy
@@ -24,7 +25,11 @@ from ray.rllib.utils.metrics import (
     SYNCH_WORKER_WEIGHTS_TIMER,
 )
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
-from ray.rllib.utils.typing import ResultDict, TrainerConfigDict
+from ray.rllib.utils.typing import (
+    ResultDict,
+    TrainerConfigDict,
+    PartialTrainerConfigDict,
+)
 from ray.util.iter import LocalIterator
 
 logger = logging.getLogger(__name__)
@@ -159,6 +164,13 @@ class A3CTrainer(Trainer):
         return A3CConfig().to_dict()
 
     @override(Trainer)
+    def setup(self, config: PartialTrainerConfigDict):
+        super().setup(config)
+        self._worker_manager = AsyncRequestsManager(
+            self.workers.remote_workers(), max_remote_requests_in_flight=1
+        )
+
+    @override(Trainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
         # Call super's validation method.
         super().validate_config(config)
@@ -199,13 +211,8 @@ class A3CTrainer(Trainer):
         with self._timers[GRAD_WAIT_TIMER]:
             # Results are a mapping from ActorHandle (RolloutWorker) to their
             # returned gradient calculation results.
-            async_results: Dict[ActorHandle, Dict] = asynchronous_parallel_requests(
-                remote_requests_in_flight=self.remote_requests_in_flight,
-                actors=self.workers.remote_workers(),
-                ray_wait_timeout_s=0.0,
-                max_remote_requests_in_flight_per_actor=1,
-                remote_fn=sample_and_compute_grads,
-            )
+            self._worker_manager.submit(sample_and_compute_grads, for_all_workers=True)
+            async_results = self._worker_manager.get_ready_requests()
 
         # Loop through all fetched worker-computed gradients (if any)
         # and apply them - one by one - to the local worker's model.

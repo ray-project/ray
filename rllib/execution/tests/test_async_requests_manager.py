@@ -60,22 +60,36 @@ class TestAsyncRequestsManager(unittest.TestCase):
     def test_test_async_requests_task_buffering(self):
         """Tests that the async manager can properly buffer tasks and not
         schedule more inflight requests than allowed"""
-        workers = [RemoteRLlibActor.remote(sleep_time=0.1) for _ in range(1)]
+        workers = [RemoteRLlibActor.remote(sleep_time=0.1) for _ in range(2)]
         manager = AsyncRequestsManager(workers, max_remote_requests_in_flight=2)
-        for _ in range(4):
+        for _ in range(8):
             manager.submit(lambda w: w.task())
-        time.sleep(3)
-        if not len(manager.get_ready_requests()[workers[0]]) == 2:
+        if (
+            len(manager._available_workers) != 0
+            and len(manager._available_workers_set) != 0
+        ):
             raise Exception(
-                "We should return the 2 ready requests in this case from the actors"
-                " that have shorter tasks"
+                "We should have no available workers in this case since we have"
+                " more tasks than allowed inflight"
             )
+        assert len(manager._pending_remotes) == 4
         time.sleep(3)
-        if not len(manager.get_ready_requests()[workers[0]]) == 2:
-            raise Exception(
-                "We should return the 2 ready requests in this case from the actors"
-                " that have longer tasks"
-            )
+        ready_requests = manager.get_ready_requests()
+        for worker in workers:
+            if not len(ready_requests[worker]) == 2:
+                raise Exception(
+                    "We should return the 2 ready requests in this case from each "
+                    "actors"
+                )
+        # new tasks scheduled from the buffer
+        time.sleep(3)
+        ready_requests = manager.get_ready_requests()
+        for worker in workers:
+            if not len(ready_requests[worker]) == 2:
+                raise Exception(
+                    "We should return the 2 ready requests in this case from each "
+                    "actors"
+                )
 
     def test_args_kwargs(self):
         """Tests that the async manager can properly handle actors with tasks that
