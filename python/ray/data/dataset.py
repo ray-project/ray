@@ -640,17 +640,23 @@ class Dataset(Generic[T]):
         if number < 1:
             raise ValueError("Cannot sample less than 1 element.")
 
+        count = self._meta_count()
+
+        if number > count:
+            raise ValueError(f"Cannot sample more elements than there are in the dataset")
+
         if seed:
             random.seed(seed)
 
-        def process_batch(batch):
-            rows = self._meta_count()
-            n_required = rows // self.num_blocks()
+        n_required = number // self.num_blocks()
+        n_required += 1 if number % self.num_blocks() else 0
 
+        def process_batch(batch):
             if not isinstance(batch, list):
                 # Should handle dataframes and tensors
                 return batch.sample(n_required)
-            return random.sample(batch, n_required)
+            # Prevent sampling more than the batch can handle
+            return random.sample(batch, min(len(batch), n_required))
 
         sample_population = self.map_batches(process_batch)
 
