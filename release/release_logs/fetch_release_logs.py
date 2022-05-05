@@ -190,6 +190,7 @@ def write_results(log_dir: Path, fetched_results: Dict[str, Any]) -> None:
 
         with open(path, "w") as fp:
             json.dump(content, fp, sort_keys=True, indent=4)
+            fp.write("\n")
 
 
 @click.command()
