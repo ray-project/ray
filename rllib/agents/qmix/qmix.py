@@ -95,7 +95,8 @@ DEFAULT_CONFIG = with_common_config({
         "type": "SimpleReplayBuffer",
         # Size of the replay buffer in batches (not timesteps!).
         "capacity": 1000,
-        "learning_starts": 1000,
+        # When to start returning samples (in batches, not timesteps!).
+        "learning_starts": 50,
     },
 
     # === Optimization ===
@@ -111,8 +112,9 @@ DEFAULT_CONFIG = with_common_config({
     # this setting applies per-worker if num_workers > 1.
     "rollout_fragment_length": 4,
     # Minimum batch size used for training (in timesteps). With the default buffer
-    # (ReplayBuffer) this means, sampling from the buffer (entire-episode SampleBatches)
-    # as many times as is required to reach at least this number of timesteps.
+    # (SimpleReplayBuffer) this means, sampling from the buffer
+    # (entire-episode SampleBatches) as many times as is required to reach at least
+    # this number of timesteps.
     "train_batch_size": 32,
 
     # === Parallelism ===
