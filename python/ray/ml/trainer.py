@@ -1,17 +1,22 @@
 import abc
 import inspect
 import logging
-from typing import Dict, Union, Callable, Optional, TYPE_CHECKING, Type
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
 
-from ray.ml.preprocessor import Preprocessor
+import ray
+from ray.util import PublicAPI
 from ray.ml.checkpoint import Checkpoint
-from ray.ml.result import Result
 from ray.ml.config import RunConfig, ScalingConfig, ScalingConfigDataClass
 from ray.ml.constants import TRAIN_DATASET_KEY
+from ray.ml.preprocessor import Preprocessor
+from ray.ml.result import Result
+from ray.ml.utils.config import (
+    ensure_only_allowed_dataclass_keys_updated,
+    ensure_only_allowed_dict_keys_set,
+)
 from ray.tune import Trainable
 from ray.tune.error import TuneError
 from ray.tune.function_runner import wrap_function
-from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
 from ray.util.ml_utils.dict import merge_dicts
 
@@ -131,8 +136,11 @@ class Trainer(abc.ABC):
         resume_from_checkpoint: A checkpoint to resume training from.
     """
 
+    _scaling_config_allowed_keys: List[str] = []
+
     def __init__(
         self,
+        *,
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
@@ -140,11 +148,13 @@ class Trainer(abc.ABC):
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
 
-        self.scaling_config = scaling_config if scaling_config else {}
-        self.run_config = run_config if run_config else RunConfig()
-        self.datasets = datasets if datasets else {}
+        self.scaling_config = scaling_config if scaling_config is not None else {}
+        self.run_config = run_config if run_config is not None else RunConfig()
+        self.datasets = datasets if datasets is not None else {}
         self.preprocessor = preprocessor
         self.resume_from_checkpoint = resume_from_checkpoint
+
+        self._validate_attributes()
 
     def __new__(cls, *args, **kwargs):
         """Store the init args as attributes so this can be merged with Tune hparams."""
@@ -156,6 +166,73 @@ class Trainer(abc.ABC):
         arg_dict = dict(zip(parameters, args))
         trainer._param_dict = {**arg_dict, **kwargs}
         return trainer
+
+    def _validate_attributes(self):
+        """Called on __init()__ to validate trainer attributes."""
+        # Run config
+        if not isinstance(self.run_config, RunConfig):
+            raise ValueError(
+                f"`run_config` should be an instance of `ray.ml.RunConfig`, "
+                f"found {type(self.run_config)} with value `{self.run_config}`."
+            )
+        # Scaling config
+        # Todo: move to ray.ml.ScalingConfig
+        if not isinstance(self.scaling_config, dict):
+            raise ValueError(
+                f"`scaling_config` should be an instance of `dict`, "
+                f"found {type(self.run_config)} with value `{self.run_config}`."
+            )
+        # Datasets
+        if not isinstance(self.datasets, dict):
+            raise ValueError(
+                f"`datasets` should be a dict mapping from a string to "
+                f"`ray.data.Dataset` objects, "
+                f"found {type(self.datasets)} with value `{self.datasets}`."
+            )
+        elif any(
+            not isinstance(ds, ray.data.Dataset) and not callable(ds)
+            for ds in self.datasets.values()
+        ):
+            raise ValueError(
+                f"At least one value in the `datasets` dict is not a "
+                f"`ray.data.Dataset`: {self.datasets}"
+            )
+        # Preprocessor
+        if self.preprocessor is not None and not isinstance(
+            self.preprocessor, ray.ml.preprocessor.Preprocessor
+        ):
+            raise ValueError(
+                f"`preprocessor` should be an instance of `ray.ml.Preprocessor`, "
+                f"found {type(self.preprocessor)} with value `{self.preprocessor}`."
+            )
+
+        if self.resume_from_checkpoint is not None and not isinstance(
+            self.resume_from_checkpoint, ray.ml.Checkpoint
+        ):
+            raise ValueError(
+                f"`resume_from_checkpoint` should be an instance of "
+                f"`ray.ml.Checkpoint`, found {type(self.resume_from_checkpoint)} "
+                f"with value `{self.resume_from_checkpoint}`."
+            )
+
+    @classmethod
+    def _validate_and_get_scaling_config_data_class(
+        cls, dataclass_or_dict: Union[ScalingConfigDataClass, Dict[str, Any]]
+    ) -> ScalingConfigDataClass:
+        """Return scaling config dataclass after validating updated keys."""
+        if isinstance(dataclass_or_dict, dict):
+            ensure_only_allowed_dict_keys_set(
+                dataclass_or_dict, cls._scaling_config_allowed_keys
+            )
+            scaling_config_dataclass = ScalingConfigDataClass(**dataclass_or_dict)
+
+            return scaling_config_dataclass
+
+        ensure_only_allowed_dataclass_keys_updated(
+            dataclass=dataclass_or_dict,
+            allowed_keys=cls._scaling_config_allowed_keys,
+        )
+        return dataclass_or_dict
 
     def setup(self) -> None:
         """Called during fit() to perform initial setup on the Trainer.
@@ -180,9 +257,9 @@ class Trainer(abc.ABC):
         If the ``Trainer`` has both a datasets dict and
         a preprocessor, the datasets dict contains a training dataset (denoted by
         the "train" key), and the preprocessor has not yet
-        been fit, then it will be fit on the train.
+        been fit, then it will be fit on the train dataset.
 
-        Then, the Trainer's datasets will be transformed by the preprocessor.
+        Then, all Trainer's datasets will be transformed by the preprocessor.
 
         The transformed datasets will be set back in the ``self.datasets`` attribute
         of the Trainer to be used when overriding ``training_loop``.
@@ -192,7 +269,7 @@ class Trainer(abc.ABC):
 
         if self.preprocessor:
             train_dataset = self.datasets.get(TRAIN_DATASET_KEY, None)
-            if train_dataset and not self.preprocessor.check_is_fitted():
+            if train_dataset:
                 self.preprocessor.fit(train_dataset)
 
             # Execute dataset transformations serially for now.
@@ -253,8 +330,8 @@ class Trainer(abc.ABC):
             result = result_grid[0]
             if result.error:
                 raise result.error
-        except TuneError:
-            raise TrainingFailedError
+        except TuneError as e:
+            raise TrainingFailedError from e
         return result
 
     def as_trainable(self) -> Type[Trainable]:
@@ -277,6 +354,11 @@ class Trainer(abc.ABC):
             trainer.setup()
             trainer.preprocess_datasets()
             trainer.training_loop()
+
+        # Change the name of the training function to match the name of the Trainer
+        # class. This will mean the Tune trial name will match the name of Trainer on
+        # stdout messages and the results directory.
+        train_func.__name__ = trainer_cls.__name__
 
         trainable_cls = wrap_function(train_func)
 
@@ -301,8 +383,10 @@ class Trainer(abc.ABC):
             @classmethod
             def default_resource_request(cls, config):
                 updated_scaling_config = config.get("scaling_config", scaling_config)
-                scaling_config_dataclass = ScalingConfigDataClass(
-                    **updated_scaling_config
+                scaling_config_dataclass = (
+                    trainer_cls._validate_and_get_scaling_config_data_class(
+                        updated_scaling_config
+                    )
                 )
                 return scaling_config_dataclass.as_placement_group_factory()
 

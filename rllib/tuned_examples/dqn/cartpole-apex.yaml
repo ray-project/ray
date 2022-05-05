@@ -5,7 +5,7 @@
 # evaluation_interval: 1
 # evaluation_config:
 #     explore: False
-cartpole-apex-dqn:
+cartpole-apex-dqn-training-itr:
     env: CartPole-v0
     run: APEX
     stop:
@@ -24,5 +24,6 @@ cartpole-apex-dqn:
         min_time_s_per_reporting: 5
         target_network_update_freq: 500
         learning_starts: 1000
-        timesteps_per_iteration: 1000
+        min_sample_timesteps_per_reporting: 1000
         buffer_size: 20000
+        training_intensity: 4

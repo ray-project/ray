@@ -4,22 +4,21 @@ import pytest
 import asyncio
 import ray
 from ray import workflow
-from ray.workflow import storage
 from ray.workflow.tests import utils
 import subprocess
 import time
 
 
 def test_sleep(workflow_start_regular_shared):
-    @workflow.step
+    @ray.remote
+    def after_sleep(sleep_start_time, _):
+        return sleep_start_time, time.time()
+
+    @ray.remote
     def sleep_helper():
-        @workflow.step
-        def after_sleep(sleep_start_time, _):
-            return (sleep_start_time, time.time())
+        return workflow.continuation(after_sleep.bind(time.time(), workflow.sleep(2)))
 
-        return after_sleep.step(time.time(), workflow.sleep(2))
-
-    start, end = sleep_helper.step().run()
+    start, end = workflow.create(sleep_helper.bind()).run()
     duration = end - start
 
     assert 1 < duration
@@ -31,7 +30,7 @@ def test_sleep_checkpointing(workflow_start_regular_shared):
     sleep_step = workflow.sleep(2)
     time.sleep(2)
     start_time = time.time()
-    sleep_step.run()
+    workflow.create(sleep_step).run()
     end_time = time.time()
     duration = end_time - start_time
     assert 1 < duration
@@ -66,14 +65,16 @@ def test_wait_for_multiple_events(workflow_start_regular_shared):
                 await asyncio.sleep(0.1)
             return "event2"
 
-    @workflow.step
+    @ray.remote
     def trivial_step(arg1, arg2):
         return f"{arg1} {arg2}"
 
     event1_promise = workflow.wait_for_event(EventListener1)
     event2_promise = workflow.wait_for_event(EventListener2)
 
-    promise = trivial_step.step(event1_promise, event2_promise).run_async()
+    promise = workflow.create(
+        trivial_step.bind(event1_promise, event2_promise)
+    ).run_async()
 
     while not (
         utils.check_global_mark("listener1") and utils.check_global_mark("listener2")
@@ -106,17 +107,20 @@ def test_event_after_arg_resolution(workflow_start_regular_shared):
             # Give the other step time to finish.
             await asyncio.sleep(1)
 
-    @workflow.step
+    @ray.remote
     def triggers_event():
         utils.set_global_mark()
 
-    @workflow.step
+    @ray.remote
     def gather(*args):
         return args
 
     event_promise = workflow.wait_for_event(MyEventListener)
 
-    assert gather.step(event_promise, triggers_event.step()).run() == (None, None)
+    assert workflow.create(gather.bind(event_promise, triggers_event.bind())).run() == (
+        None,
+        None,
+    )
 
 
 @pytest.mark.parametrize(
@@ -140,24 +144,31 @@ def test_event_during_arg_resolution(workflow_start_regular_shared):
                 await asyncio.sleep(0.1)
             utils.set_global_mark("event_returning")
 
-    @workflow.step
+    @ray.remote
     def triggers_event():
         utils.set_global_mark()
         while not utils.check_global_mark("event_returning"):
             time.sleep(0.1)
 
-    @workflow.step
+    @ray.remote
     def gather(*args):
         return args
 
     event_promise = workflow.wait_for_event(MyEventListener)
-    assert gather.step(event_promise, triggers_event.step()).run() == (None, None)
+    assert workflow.create(gather.bind(event_promise, triggers_event.bind())).run() == (
+        None,
+        None,
+    )
 
 
 def test_crash_during_event_checkpointing(workflow_start_regular_shared):
     """Ensure that if the cluster dies while the event is being checkpointed, we
     properly re-poll for the event."""
-    _storage = storage.get_global_storage()
+
+    from ray.internal import storage
+
+    storage_uri = storage._storage_uri
+
     """Ensure that we don't re-call poll_for_event after `event_checkpointed`
        returns, even after a crash."""
 
@@ -175,12 +186,12 @@ def test_crash_during_event_checkpointing(workflow_start_regular_shared):
         async def event_checkpointed(self, event):
             utils.set_global_mark("committed")
 
-    @workflow.step
+    @ray.remote
     def wait_then_finish(arg):
         pass
 
     event_promise = workflow.wait_for_event(MyEventListener)
-    wait_then_finish.step(event_promise).run_async("workflow")
+    workflow.create(wait_then_finish.bind(event_promise)).run_async("workflow")
 
     while not utils.check_global_mark("time_to_die"):
         time.sleep(0.1)
@@ -192,8 +203,8 @@ def test_crash_during_event_checkpointing(workflow_start_regular_shared):
     # Give the workflow some time to kill the cluster.
     # time.sleep(3)
 
-    ray.init(num_cpus=4)
-    workflow.init(storage=_storage)
+    ray.init(num_cpus=4, storage=storage_uri)
+    workflow.init()
     workflow.resume("workflow")
     utils.set_global_mark("resume")
 
@@ -212,13 +223,15 @@ def test_crash_during_event_checkpointing(workflow_start_regular_shared):
     indirect=True,
 )
 def test_crash_after_commit(workflow_start_regular_shared):
-    _storage = storage.get_global_storage()
     """Ensure that we don't re-call poll_for_event after `event_checkpointed`
-       returns, even after a crash. Here we must call `event_checkpointed`
-       twice, because there's no way to know if we called it after
-       checkpointing.
-
+    returns, even after a crash. Here we must call `event_checkpointed`
+    twice, because there's no way to know if we called it after
+    checkpointing.
     """
+
+    from ray.internal import storage
+
+    storage_uri = storage._storage_uri
 
     class MyEventListener(workflow.EventListener):
         async def poll_for_event(self):
@@ -233,7 +246,7 @@ def test_crash_after_commit(workflow_start_regular_shared):
                 await asyncio.sleep(1000000)
 
     event_promise = workflow.wait_for_event(MyEventListener)
-    event_promise.run_async("workflow")
+    workflow.create(event_promise).run_async("workflow")
 
     while not utils.check_global_mark("first"):
         time.sleep(0.1)
@@ -241,8 +254,8 @@ def test_crash_after_commit(workflow_start_regular_shared):
     ray.shutdown()
     subprocess.check_output(["ray", "stop", "--force"])
 
-    ray.init(num_cpus=4)
-    workflow.init(storage=_storage)
+    ray.init(num_cpus=4, storage=storage_uri)
+    workflow.init()
     workflow.resume("workflow")
 
     ray.get(workflow.get_output("workflow"))
@@ -266,7 +279,7 @@ def test_event_as_workflow(workflow_start_regular_shared):
                 await asyncio.sleep(1)
 
     utils.unset_global_mark()
-    promise = workflow.wait_for_event(MyEventListener).run_async("wf")
+    promise = workflow.create(workflow.wait_for_event(MyEventListener)).run_async("wf")
 
     assert workflow.get_status("wf") == workflow.WorkflowStatus.RUNNING
 

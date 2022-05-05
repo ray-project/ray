@@ -8,8 +8,9 @@ with remote checkpoint.
 """
 
 import click
-import time
+import logging
 import requests
+import time
 import uuid
 
 from pathlib import Path
@@ -23,7 +24,8 @@ from serve_test_utils import (
 
 import ray
 from ray import serve
-from ray.serve.utils import logger
+
+logger = logging.getLogger(__file__)
 
 # Deployment configs
 DEFAULT_NUM_REPLICAS = 2
@@ -81,10 +83,10 @@ def main():
     # Kill current cluster, recover from remote checkpoint and ensure endpoint
     # is still available with expected results
 
-    ray.kill(serve.api._global_client._controller, no_restart=True)
+    ray.kill(serve.context._global_client._controller, no_restart=True)
     ray.shutdown()
     cluster.shutdown()
-    serve.api._set_global_client(None)
+    serve.context.set_global_client(None)
 
     # Start another ray cluster with same namespace to resume from previous
     # checkpoints with no new deploy() call.

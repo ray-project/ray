@@ -1,8 +1,9 @@
 import asyncio
 from asyncio.tasks import FIRST_COMPLETED
+import logging
+import pickle
 import socket
 import time
-import pickle
 from typing import Callable, List, Dict, Optional, Tuple
 
 import uvicorn
@@ -10,12 +11,10 @@ import starlette.responses
 import starlette.routing
 
 import ray
-from ray import serve
 from ray.exceptions import RayActorError, RayTaskError
-from ray.serve.common import EndpointInfo, EndpointTag
-from ray.serve.long_poll import LongPollNamespace
 from ray.util import metrics
-from ray.serve.utils import logger
+
+from ray import serve
 from ray.serve.handle import RayServeHandle
 from ray.serve.http_util import (
     HTTPRequestWrapper,
@@ -23,7 +22,13 @@ from ray.serve.http_util import (
     receive_http_body,
     Response,
 )
-from ray.serve.long_poll import LongPollClient
+from ray.serve.common import EndpointInfo, EndpointTag
+from ray.serve.constants import SERVE_LOGGER_NAME
+from ray.serve.long_poll import LongPollClient, LongPollNamespace
+from ray.serve.logging_utils import access_log_msg, configure_component_logger
+from ray.serve.utils import node_id_to_ip_addr
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 MAX_REPLICA_FAILURE_RETRIES = 10
 DISCONNECT_ERROR_CODE = "disconnection"
@@ -185,10 +190,14 @@ class HTTPProxy:
     >>> uvicorn.run(HTTPProxy(controller_name, controller_namespace)) # doctest: +SKIP
     """
 
-    def __init__(self, controller_name: str, controller_namespace: str):
+    def __init__(
+        self,
+        controller_name: str,
+        controller_namespace: str,
+    ):
         # Set the controller name so that serve will connect to the
         # controller instance this proxy is running in.
-        ray.serve.api._set_internal_replica_context(
+        ray.serve.context.set_internal_replica_context(
             None, None, controller_name, controller_namespace, None
         )
 
@@ -196,7 +205,7 @@ class HTTPProxy:
         self.route_info: Dict[str, EndpointTag] = dict()
 
         def get_handle(name):
-            return serve.api.internal_get_global_client().get_handle(
+            return serve.context.get_global_client().get_handle(
                 name,
                 sync=False,
                 missing_ok=True,
@@ -295,7 +304,17 @@ class HTTPProxy:
             scope["path"] = route_path.replace(route_prefix, "", 1)
             scope["root_path"] = root_path + route_prefix
 
+        start_time = time.time()
         status_code = await _send_request_to_handle(handle, scope, receive, send)
+        latency_ms = (time.time() - start_time) * 1000.0
+        logger.info(
+            access_log_msg(
+                method=scope["method"],
+                route=route_prefix,
+                status=str(status_code),
+                latency_ms=latency_ms,
+            )
+        )
         if status_code != "200":
             self.request_error_counter.inc(
                 tags={"route": route_path, "error_code": status_code}
@@ -314,8 +333,13 @@ class HTTPProxyActor:
         root_path: str,
         controller_name: str,
         controller_namespace: str,
+        node_id: str,
         http_middlewares: Optional[List["starlette.middleware.Middleware"]] = None,
     ):  # noqa: F821
+        configure_component_logger(
+            component_name="http_proxy", component_id=node_id_to_ip_addr(node_id)
+        )
+
         if http_middlewares is None:
             http_middlewares = []
 

@@ -19,6 +19,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import (
     apply_grad_clipping,
+    concat_multi_gpu_td_errors,
     convert_to_torch_tensor,
     huber_loss,
 )
@@ -169,19 +170,18 @@ def build_slateq_losses(
     q_clicked = torch.gather(replay_click_q, 0, clicked_indices)
     target_clicked = torch.gather(target, 0, clicked_indices)
 
-    def get_train_op():
-        td_error = q_clicked - target_clicked
-        if policy.config["use_huber"]:
-            loss = huber_loss(td_error, delta=policy.config["huber_threshold"])
-        else:
-            loss = torch.pow(td_error, 2.0)
-        loss = torch.mean(loss)
-        return loss, torch.mean(torch.abs(td_error))
-
-    if torch.sum(clicked) > 0.0:
-        loss, mean_td_error = get_train_op()
+    td_error = torch.where(
+        clicked.bool(),
+        replay_click_q - target,
+        torch.zeros_like(train_batch[SampleBatch.REWARDS]),
+    )
+    if policy.config["use_huber"]:
+        loss = huber_loss(td_error, delta=policy.config["huber_threshold"])
     else:
-        loss, mean_td_error = torch.tensor(0.0), torch.tensor(0.0)
+        loss = torch.pow(td_error, 2.0)
+    loss = torch.mean(loss)
+    td_error = torch.abs(td_error)
+    mean_td_error = torch.mean(td_error)
 
     # Store values for stats function in model (tower), such that for
     # multi-GPU, we do not override them during the parallel loss phase.
@@ -198,7 +198,8 @@ def build_slateq_losses(
     model.tower_stats["next_q_target_max"] = torch.mean(next_q_target_max)
     model.tower_stats["target_clicked"] = torch.mean(target_clicked)
     model.tower_stats["q_loss"] = loss
-    model.tower_stats["mean_td_error"] = torch.mean(mean_td_error)
+    model.tower_stats["td_error"] = td_error
+    model.tower_stats["mean_td_error"] = mean_td_error
     model.tower_stats["mean_actions"] = torch.mean(actions.float())
 
     # selected_doc.shape: [batch_size, slate_size, embedding_size]
@@ -256,9 +257,6 @@ def build_slateq_stats(policy: Policy, batch) -> Dict[str, TensorType]:
             torch.stack(policy.get_tower_stats("target_clicked"))
         ),
         "q_loss": torch.mean(torch.stack(policy.get_tower_stats("q_loss"))),
-        "mean_td_error": torch.mean(
-            torch.stack(policy.get_tower_stats("mean_td_error"))
-        ),
         "mean_actions": torch.mean(torch.stack(policy.get_tower_stats("mean_actions"))),
         "choice_loss": torch.mean(torch.stack(policy.get_tower_stats("choice_loss"))),
         # "choice_beta": torch.mean(torch.stack(policy.get_tower_stats("choice_beta"))),
@@ -436,5 +434,6 @@ SlateQTorchPolicy = build_policy_class(
     # Post processing sampled trajectory data.
     # postprocess_fn=postprocess_fn_add_next_actions_for_sarsa,
     extra_grad_process_fn=apply_grad_clipping,
+    extra_learn_fetches_fn=concat_multi_gpu_td_errors,
     mixins=[TargetNetworkMixin],
 )

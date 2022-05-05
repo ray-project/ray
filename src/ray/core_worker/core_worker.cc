@@ -351,7 +351,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         new raylet::RayletClient(std::move(grpc_client)));
   };
 
-  auto on_excess_queueing = [this](const ActorID &actor_id, int64_t num_queued) {
+  auto on_excess_queueing = [this](const ActorID &actor_id, uint64_t num_queued) {
     auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(
                          std::chrono::system_clock::now().time_since_epoch())
                          .count();
@@ -905,15 +905,21 @@ Status CoreWorker::PutInLocalPlasmaStore(const RayObject &object,
     if (pin_object) {
       // Tell the raylet to pin the object **after** it is created.
       RAY_LOG(DEBUG) << "Pinning put object " << object_id;
-      local_raylet_client_->PinObjectIDs(
+      local_raylet_client_->PinObjectID(
           rpc_address_,
-          {object_id},
-          [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
+          object_id,
+          [this, object_id](const Status &status, const rpc::PinObjectIDReply &reply) {
+            if (!status.ok()) {
+              RAY_LOG(INFO) << "Failed to pin existing copy of the object " << object_id
+                            << ". This object may get evicted while there are still "
+                               "references to it: "
+                            << status;
+            }
             // Only release the object once the raylet has responded to avoid the race
             // condition that the object could be evicted before the raylet pins it.
-            if (!plasma_store_provider_->Release(object_id).ok()) {
+            if (auto s = plasma_store_provider_->Release(object_id); !s.ok()) {
               RAY_LOG(ERROR) << "Failed to release ObjectID (" << object_id
-                             << "), might cause a leak in plasma.";
+                             << "), might cause a leak in plasma: " << s;
             }
           });
     } else {
@@ -1059,15 +1065,21 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
   if (pin_object) {
     // Tell the raylet to pin the object **after** it is created.
     RAY_LOG(DEBUG) << "Pinning sealed object " << object_id;
-    local_raylet_client_->PinObjectIDs(
+    local_raylet_client_->PinObjectID(
         owner_address != nullptr ? *owner_address : rpc_address_,
-        {object_id},
-        [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
+        object_id,
+        [this, object_id](const Status &status, const rpc::PinObjectIDReply &reply) {
+          if (!status.ok()) {
+            RAY_LOG(INFO) << "Failed to pin existing copy of the object " << object_id
+                          << ". This object may get evicted while there are still "
+                             "references to it: "
+                          << status;
+          }
           // Only release the object once the raylet has responded to avoid the race
           // condition that the object could be evicted before the raylet pins it.
-          if (!plasma_store_provider_->Release(object_id).ok()) {
+          if (auto s = plasma_store_provider_->Release(object_id); !s.ok()) {
             RAY_LOG(ERROR) << "Failed to release ObjectID (" << object_id
-                           << "), might cause a leak in plasma.";
+                           << "), might cause a leak in plasma: " << s;
           }
         });
   } else {
@@ -2453,16 +2465,17 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
     // Asynchronously ask the raylet to pin the object. Note that this can fail
     // if the raylet fails. We expect the owner of the object to handle that
     // case (e.g., by detecting the raylet failure and storing an error).
-    local_raylet_client_->PinObjectIDs(
+    local_raylet_client_->PinObjectID(
         owner_address,
-        {return_id},
+        return_id,
         [return_id, pinned_return_object](const Status &status,
-                                          const rpc::PinObjectIDsReply &reply) {
+                                          const rpc::PinObjectIDReply &reply) {
           if (!status.ok()) {
             RAY_LOG(INFO) << "Failed to pin existing copy of the task return object "
                           << return_id
                           << ". This object may get evicted while there are still "
-                             "references to it.";
+                             "references to it: "
+                          << status;
           }
         });
     return true;
@@ -2886,25 +2899,51 @@ void CoreWorker::HandleUpdateObjectLocationBatch(
     return;
   }
   const auto &node_id = NodeID::FromBinary(request.node_id());
-  const auto &object_location_states = request.object_location_states();
+  const auto &object_location_updates = request.object_location_updates();
 
-  for (const auto &object_location_state : object_location_states) {
-    const auto &object_id = ObjectID::FromBinary(object_location_state.object_id());
-    const auto &state = object_location_state.state();
+  for (const auto &object_location_update : object_location_updates) {
+    const auto &object_id = ObjectID::FromBinary(object_location_update.object_id());
 
-    if (state == rpc::ObjectLocationState::ADDED) {
-      AddObjectLocationOwner(object_id, node_id);
-    } else if (state == rpc::ObjectLocationState::REMOVED) {
-      RemoveObjectLocationOwner(object_id, node_id);
-    } else {
-      RAY_LOG(FATAL) << "Invalid object location state " << state
-                     << " has been received.";
+    if (object_location_update.has_spilled_location_update()) {
+      AddSpilledObjectLocationOwner(
+          object_id,
+          object_location_update.spilled_location_update().spilled_url(),
+          object_location_update.spilled_location_update().spilled_to_local_storage()
+              ? node_id
+              : NodeID::Nil());
+    }
+
+    if (object_location_update.has_plasma_location_update()) {
+      if (object_location_update.plasma_location_update() ==
+          rpc::ObjectPlasmaLocationUpdate::ADDED) {
+        AddObjectLocationOwner(object_id, node_id);
+      } else if (object_location_update.plasma_location_update() ==
+                 rpc::ObjectPlasmaLocationUpdate::REMOVED) {
+        RemoveObjectLocationOwner(object_id, node_id);
+      } else {
+        RAY_LOG(FATAL) << "Invalid object plasma location update "
+                       << object_location_update.plasma_location_update()
+                       << " has been received.";
+      }
     }
   }
 
   send_reply_callback(Status::OK(),
                       /*success_callback_on_reply*/ nullptr,
                       /*failure_callback_on_reply*/ nullptr);
+}
+
+void CoreWorker::AddSpilledObjectLocationOwner(const ObjectID &object_id,
+                                               const std::string &spilled_url,
+                                               const NodeID &spilled_node_id) {
+  RAY_LOG(DEBUG) << "Received object spilled location update for object " << object_id
+                 << ", which has been spilled to " << spilled_url << " on node "
+                 << spilled_node_id;
+  auto reference_exists =
+      reference_counter_->HandleObjectSpilled(object_id, spilled_url, spilled_node_id);
+  if (!reference_exists) {
+    RAY_LOG(DEBUG) << "Object " << object_id << " not found";
+  }
 }
 
 void CoreWorker::AddObjectLocationOwner(const ObjectID &object_id,
@@ -3009,7 +3048,7 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
     RAY_LOG(INFO) << "Cancelling a running task " << main_thread_task_id_;
     success = options_.kill_main();
   } else if (!requested_task_running) {
-    RAY_LOG(INFO) << "Cancelling a task " << main_thread_task_id_
+    RAY_LOG(INFO) << "Cancelling a task " << task_id
                   << " that's not running. Tasks will be removed from a queue.";
     // If the task is not currently running, check if it is in the worker's queue of
     // normal tasks, and remove it if found.
@@ -3017,8 +3056,9 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
   }
   if (request.recursive()) {
     auto recursive_cancel = CancelChildren(task_id, request.force_kill());
-    if (recursive_cancel.ok()) {
-      RAY_LOG(INFO) << "Recursive cancel failed for a task " << task_id;
+    if (!recursive_cancel.ok()) {
+      RAY_LOG(ERROR) << "Recursive cancel failed for a task " << task_id
+                     << " due to reason: " << recursive_cancel.ToString();
     }
   }
 
@@ -3026,6 +3066,7 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
   requested_task_running = main_thread_task_id_ == task_id;
 
   reply->set_attempt_succeeded(success);
+  reply->set_requested_task_running(requested_task_running);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 
   // Do force kill after reply callback sent
@@ -3126,6 +3167,10 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
     task_manager_->AddTaskStatusInfo(stats);
   }
 
+  if (request.include_task_info()) {
+    task_manager_->FillTaskInfo(reply);
+  }
+
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -3156,24 +3201,6 @@ void CoreWorker::HandleSpillObjects(const rpc::SpillObjectsRequest &request,
     send_reply_callback(
         Status::NotImplemented("Spill objects callback not defined"), nullptr, nullptr);
   }
-}
-
-void CoreWorker::HandleAddSpilledUrl(const rpc::AddSpilledUrlRequest &request,
-                                     rpc::AddSpilledUrlReply *reply,
-                                     rpc::SendReplyCallback send_reply_callback) {
-  const ObjectID object_id = ObjectID::FromBinary(request.object_id());
-  const std::string &spilled_url = request.spilled_url();
-  const NodeID node_id = NodeID::FromBinary(request.spilled_node_id());
-  RAY_LOG(DEBUG) << "Received AddSpilledUrl request for object " << object_id
-                 << ", which has been spilled to " << spilled_url << " on node "
-                 << node_id;
-  auto reference_exists = reference_counter_->HandleObjectSpilled(
-      object_id, spilled_url, node_id, request.size());
-  Status status =
-      reference_exists
-          ? Status::OK()
-          : Status::ObjectNotFound("Object " + object_id.Hex() + " not found");
-  send_reply_callback(status, nullptr, nullptr);
 }
 
 void CoreWorker::HandleRestoreSpilledObjects(

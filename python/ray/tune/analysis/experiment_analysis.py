@@ -12,7 +12,7 @@ from ray.util.debug import log_once
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils import flatten_dict
 from ray.tune.utils.serialization import TuneFunctionDecoder
-from ray.tune.utils.util import is_nan_or_inf
+from ray.tune.utils.util import is_nan_or_inf, is_nan
 
 try:
     import pandas as pd
@@ -433,6 +433,8 @@ class ExperimentAnalysis:
     ) -> Optional[Checkpoint]:
         """Gets best persistent checkpoint path of provided trial.
 
+        Any checkpoints with an associated metric value of ``nan`` will be filtered out.
+
         Args:
             trial: The log directory of a trial, or a trial instance.
             metric: key of trial info to return, e.g. "mean_accuracy".
@@ -447,6 +449,12 @@ class ExperimentAnalysis:
         mode = self._validate_mode(mode)
 
         checkpoint_paths = self.get_trial_checkpoints_paths(trial, metric)
+
+        # Filter out nan. Sorting nan values leads to undefined behavior.
+        checkpoint_paths = [
+            (path, metric) for path, metric in checkpoint_paths if not is_nan(metric)
+        ]
+
         if not checkpoint_paths:
             logger.error(f"No checkpoints have been found for trial {trial}.")
             return None
@@ -835,12 +843,11 @@ class ExperimentAnalysis:
         return state
 
 
+# Deprecated: Remove in Ray > 1.13
 @Deprecated
 class Analysis(ExperimentAnalysis):
     def __init__(self, *args, **kwargs):
-        if log_once("durable_deprecated"):
-            logger.warning(
-                "DeprecationWarning: The `Analysis` class is being "
-                "deprecated. Please use `ExperimentAnalysis` instead."
-            )
-        super().__init__(*args, **kwargs)
+        raise DeprecationWarning(
+            "The `Analysis` class is being "
+            "deprecated. Please use `ExperimentAnalysis` instead."
+        )

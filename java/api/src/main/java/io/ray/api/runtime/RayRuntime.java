@@ -16,6 +16,7 @@ import io.ray.api.id.PlacementGroupId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
 import io.ray.api.options.PlacementGroupCreationOptions;
+import io.ray.api.parallelactor.ParallelActorContext;
 import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.runtimecontext.ResourceValue;
 import io.ray.api.runtimecontext.RuntimeContext;
@@ -74,6 +75,7 @@ public interface RayRuntime {
    * @param objectRef The reference of the object to get.
    * @param timeoutMs The maximum amount of time in millseconds to wait before returning.
    * @return The Java object.
+   * @throws RayTimeoutException If it's timeout to get the object.
    */
   <T> T get(ObjectRef<T> objectRef, long timeoutMs);
 
@@ -83,6 +85,7 @@ public interface RayRuntime {
    * @param objectRefs The list of object references.
    * @param timeoutMs The maximum amount of time in millseconds to wait before returning.
    * @return A list of Java objects.
+   * @throws RayTimeoutException If it's timeout to get the object.
    */
   <T> List<T> get(List<ObjectRef<T>> objectRefs, long timeoutMs);
 
@@ -284,4 +287,7 @@ public interface RayRuntime {
 
   /** Create runtime env instance at runtime. */
   RuntimeEnv createRuntimeEnv(Map<String, String> envVars);
+
+  /// Get the parallel actor context at runtime.
+  ParallelActorContext getParallelActorContext();
 }

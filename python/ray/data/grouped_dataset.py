@@ -1,6 +1,4 @@
 from typing import Any, Union, Generic, Tuple, List, Callable
-import numpy as np
-import ray
 from ray.util.annotations import PublicAPI
 from ray.data.dataset import Dataset
 from ray.data.dataset import BatchType
@@ -8,11 +6,49 @@ from ray.data.impl import sort
 from ray.data.aggregate import AggregateFn, Count, Sum, Max, Min, Mean, Std
 from ray.data.block import BlockExecStats, KeyFn
 from ray.data.impl.plan import AllToAllStage
-from ray.data.impl.block_list import BlockList
 from ray.data.impl.compute import CallableClass, ComputeStrategy
-from ray.data.impl.remote_fn import cached_remote_fn
-from ray.data.impl.progress_bar import ProgressBar
+from ray.data.impl.shuffle import ShuffleOp, SimpleShufflePlan
 from ray.data.block import Block, BlockAccessor, BlockMetadata, T, U, KeyType
+
+
+class _GroupbyOp(ShuffleOp):
+    @staticmethod
+    def map(
+        idx: int,
+        block: Block,
+        output_num_blocks: int,
+        boundaries: List[KeyType],
+        key: KeyFn,
+        aggs: Tuple[AggregateFn],
+    ) -> List[Union[BlockMetadata, Block]]:
+        """Partition the block and combine rows with the same key."""
+        stats = BlockExecStats.builder()
+        if key is None:
+            partitions = [block]
+        else:
+            partitions = BlockAccessor.for_block(block).sort_and_partition(
+                boundaries,
+                [(key, "ascending")] if isinstance(key, str) else key,
+                descending=False,
+            )
+        parts = [BlockAccessor.for_block(p).combine(key, aggs) for p in partitions]
+        meta = BlockAccessor.for_block(block).get_metadata(
+            input_files=None, exec_stats=stats.build()
+        )
+        return [meta] + parts
+
+    @staticmethod
+    def reduce(
+        key: KeyFn, aggs: Tuple[AggregateFn], *mapper_outputs: List[Block]
+    ) -> (Block, BlockMetadata):
+        """Aggregate sorted and partially combined blocks."""
+        return BlockAccessor.for_block(mapper_outputs[0]).aggregate_combined_blocks(
+            list(mapper_outputs), key, aggs
+        )
+
+
+class SimpleShuffleGroupbyOp(_GroupbyOp, SimpleShufflePlan):
+    pass
 
 
 @PublicAPI
@@ -86,42 +122,14 @@ class GroupedDataset(Generic[T]):
                     else self._key,
                     num_reducers,
                 )
-
-            partition_and_combine_block = cached_remote_fn(
-                _partition_and_combine_block
-            ).options(num_returns=num_reducers + 1)
-            aggregate_combined_blocks = cached_remote_fn(
-                _aggregate_combined_blocks, num_returns=2
+            shuffle_op = SimpleShuffleGroupbyOp(
+                map_args=[boundaries, self._key, aggs], reduce_args=[self._key, aggs]
             )
-
-            map_results = np.empty((num_mappers, num_reducers), dtype=object)
-            map_meta = []
-            for i, block in enumerate(blocks.get_blocks()):
-                results = partition_and_combine_block.remote(
-                    block, boundaries, self._key, aggs
-                )
-                map_results[i, :] = results[:-1]
-                map_meta.append(results[-1])
-            map_bar = ProgressBar("GroupBy Map", len(map_results))
-            map_bar.block_until_complete(map_meta)
-            stage_info["map"] = ray.get(map_meta)
-            map_bar.close()
-
-            blocks = []
-            metadata = []
-            for j in range(num_reducers):
-                block, meta = aggregate_combined_blocks.remote(
-                    num_reducers, self._key, aggs, *map_results[:, j].tolist()
-                )
-                blocks.append(block)
-                metadata.append(meta)
-            reduce_bar = ProgressBar("GroupBy Reduce", len(blocks))
-            reduce_bar.block_until_complete(blocks)
-            reduce_bar.close()
-
-            metadata = ray.get(metadata)
-            stage_info["reduce"] = metadata
-            return BlockList(blocks, metadata), stage_info
+            return shuffle_op.execute(
+                blocks,
+                num_reducers,
+                clear_input_blocks,
+            )
 
         plan = self._dataset._plan.with_stage(AllToAllStage("aggregate", None, do_agg))
         return Dataset(
@@ -603,32 +611,3 @@ class GroupedDataset(Generic[T]):
             If groupby key is ``None`` then the key part of return is omitted.
         """
         return self._aggregate_on(Std, on, ignore_nulls, ddof=ddof)
-
-
-def _partition_and_combine_block(
-    block: Block[T], boundaries: List[KeyType], key: KeyFn, aggs: Tuple[AggregateFn]
-) -> List[Union[Block, BlockMetadata]]:
-    """Partition the block and combine rows with the same key."""
-    stats = BlockExecStats.builder()
-    if key is None:
-        partitions = [block]
-    else:
-        partitions = BlockAccessor.for_block(block).sort_and_partition(
-            boundaries,
-            [(key, "ascending")] if isinstance(key, str) else key,
-            descending=False,
-        )
-    parts = [BlockAccessor.for_block(p).combine(key, aggs) for p in partitions]
-    meta = BlockAccessor.for_block(block).get_metadata(
-        input_files=None, exec_stats=stats.build()
-    )
-    return parts + [meta]
-
-
-def _aggregate_combined_blocks(
-    num_reducers: int, key: KeyFn, aggs: Tuple[AggregateFn], *blocks: Tuple[Block, ...]
-) -> Tuple[Block[U], BlockMetadata]:
-    """Aggregate sorted and partially combined blocks."""
-    return BlockAccessor.for_block(blocks[0]).aggregate_combined_blocks(
-        list(blocks), key, aggs
-    )

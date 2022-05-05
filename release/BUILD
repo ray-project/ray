@@ -57,6 +57,78 @@ py_test(
 )
 
 py_test(
+    name = "deployment_graph_long_chain",
+    size = "medium",
+    srcs = test_srcs,
+    env = {
+        "IS_SMOKE_TEST": "1",
+    },
+    main = "deployment_graph_long_chain.py",
+    tags = [
+        "exclusive",
+        "team:serve",
+    ],
+    deps = [
+        "//:ray_lib",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+py_test(
+    name = "deployment_graph_wide_ensemble",
+    size = "medium",
+    srcs = test_srcs,
+    env = {
+        "IS_SMOKE_TEST": "1",
+    },
+    main = "deployment_graph_wide_ensemble.py",
+    tags = [
+        "exclusive",
+        "team:serve",
+    ],
+    deps = [
+        "//:ray_lib",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+py_test(
+    name = "serve_handle_long_chain",
+    size = "medium",
+    srcs = test_srcs,
+    env = {
+        "IS_SMOKE_TEST": "1",
+    },
+    main = "serve_handle_long_chain.py",
+    tags = [
+        "exclusive",
+        "team:serve",
+    ],
+    deps = [
+        "//:ray_lib",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+py_test(
+    name = "serve_handle_wide_ensemble",
+    size = "medium",
+    srcs = test_srcs,
+    env = {
+        "IS_SMOKE_TEST": "1",
+    },
+    main = "serve_handle_wide_ensemble.py",
+    tags = [
+        "exclusive",
+        "team:serve",
+    ],
+    deps = [
+        "//:ray_lib",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+py_test(
     name = "autoscaling_single_deployment_smoke_test",
     size = "medium",
     srcs = test_srcs,
@@ -82,6 +154,24 @@ py_test(
         "IS_SMOKE_TEST": "1",
     },
     main = "autoscaling_multi_deployment.py",
+    tags = [
+        "exclusive",
+        "team:serve",
+    ],
+    deps = [
+        "//:ray_lib",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+py_test(
+    name = "tune_serve_golden_notebook_client_smoke_test",
+    size = "medium",
+    srcs = test_srcs,
+    env = {
+        "IS_SMOKE_TEST": "1",
+    },
+    main = "golden_notebook_tests/workloads/torch_tune_serve_test.py",
     tags = [
         "exclusive",
         "team:serve",

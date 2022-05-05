@@ -1,6 +1,7 @@
 import os
 import sys
 import logging
+from mock import patch
 import requests
 import time
 
@@ -124,6 +125,14 @@ def test_prometheus_physical_stats_record(enable_test_module, shutdown_only):
                 "ray_node_mem_total" in metric_names,
                 "ray_raylet_cpu" in metric_names,
                 "ray_raylet_mem" in metric_names,
+                "ray_node_disk_io_read" in metric_names,
+                "ray_node_disk_io_write" in metric_names,
+                "ray_node_disk_io_read_count" in metric_names,
+                "ray_node_disk_io_write_count" in metric_names,
+                "ray_node_disk_io_read_speed" in metric_names,
+                "ray_node_disk_io_write_speed" in metric_names,
+                "ray_node_disk_read_iops" in metric_names,
+                "ray_node_disk_write_iops" in metric_names,
                 "ray_node_disk_usage" in metric_names,
                 "ray_node_disk_free" in metric_names,
                 "ray_node_disk_utilization_percentage" in metric_names,
@@ -197,6 +206,8 @@ def test_report_stats():
         },
         "bootTime": 1612934656.0,
         "loadAvg": ((4.4521484375, 3.61083984375, 3.5400390625), (0.56, 0.45, 0.44)),
+        "disk_io": (100, 100, 100, 100),
+        "disk_io_speed": (100, 100, 100, 100),
         "disk": {
             "/": Bunch(
                 total=250790436864, used=11316781056, free=22748921856, percent=33.2
@@ -220,21 +231,40 @@ def test_report_stats():
     }
 
     records = ReporterAgent._record_stats(obj, test_stats, cluster_stats)
-    assert len(records) == 16
+    assert len(records) == 24
     # Test stats without raylets
     test_stats["raylet"] = {}
     records = ReporterAgent._record_stats(obj, test_stats, cluster_stats)
-    assert len(records) == 14
+    assert len(records) == 22
     # Test stats with gpus
     test_stats["gpus"] = [
         {"utilization_gpu": 1, "memory_used": 100, "memory_total": 1000}
     ]
     records = ReporterAgent._record_stats(obj, test_stats, cluster_stats)
-    assert len(records) == 18
+    assert len(records) == 26
     # Test stats without autoscaler report
     cluster_stats = {}
     records = ReporterAgent._record_stats(obj, test_stats, cluster_stats)
-    assert len(records) == 16
+    assert len(records) == 24
+
+
+@pytest.mark.parametrize("enable_k8s_disk_usage", [True, False])
+def test_enable_k8s_disk_usage(enable_k8s_disk_usage: bool):
+    """Test enabling display of K8s node disk usage when in a K8s pod."""
+    with patch.multiple(
+        "ray.dashboard.modules.reporter.reporter_agent",
+        IN_KUBERNETES_POD=True,
+        ENABLE_K8S_DISK_USAGE=enable_k8s_disk_usage,
+    ):
+        root_usage = ReporterAgent._get_disk_usage()["/"]
+        if enable_k8s_disk_usage:
+            # Since K8s disk usage is enabled, we shouuld get non-dummy values.
+            assert root_usage.total != 1
+            assert root_usage.free != 1
+        else:
+            # Unless K8s disk usage display is enabled, we should get dummy values.
+            assert root_usage.total == 1
+            assert root_usage.free == 1
 
 
 if __name__ == "__main__":

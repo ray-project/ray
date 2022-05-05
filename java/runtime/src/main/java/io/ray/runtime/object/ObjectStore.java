@@ -102,6 +102,7 @@ public abstract class ObjectStore {
    * @param objectIds IDs of the objects to get.
    * @param timeoutMs Timeout in milliseconds, wait infinitely if it's negative.
    * @return Result list of objects data.
+   * @throws RayTimeoutException If it's timeout to get the object.
    */
   public abstract List<NativeRayObject> getRaw(List<ObjectId> objectIds, long timeoutMs);
 
@@ -124,6 +125,7 @@ public abstract class ObjectStore {
    * @param <T> Type of these objects.
    * @param timeoutMs The maximum amount of time in seconds to wait before returning.
    * @return A list of GetResult objects.
+   * @throws RayTimeoutException If it's timeout to get the object.
    */
   @SuppressWarnings("unchecked")
   public <T> List<T> get(List<ObjectId> ids, Class<?> elementType, long timeoutMs) {

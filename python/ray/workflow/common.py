@@ -24,6 +24,7 @@ WorkflowOutputType = ObjectRef
 MANAGEMENT_ACTOR_NAMESPACE = "workflow"
 MANAGEMENT_ACTOR_NAME = "WorkflowManagementActor"
 STORAGE_ACTOR_NAME = "StorageManagementActor"
+WORKFLOW_OPTIONS = "workflow.io/options"
 
 
 def asyncio_run(coro):
@@ -41,11 +42,6 @@ def get_module(f):
 
 def get_qualname(f):
     return f.__qualname__ if hasattr(f, "__qualname__") else "__anonymous_func__"
-
-
-def ensure_ray_initialized():
-    if not ray.is_initialized():
-        ray.init()
 
 
 def validate_user_metadata(metadata):
@@ -120,6 +116,15 @@ class WorkflowStaticRef:
     # This tag indicates we should resolve the workflow like an ObjectRef, when
     # included in the arguments of another workflow.
     _resolve_like_object_ref_in_args: bool = False
+
+    @classmethod
+    def from_output(cls, step_id: str, output: Any):
+        """Create static ref from given output."""
+        if not isinstance(output, cls):
+            if not isinstance(output, ray.ObjectRef):
+                output = ray.put(output)
+            output = cls(step_id=step_id, ref=output)
+        return output
 
     def __hash__(self):
         return hash(self.step_id + self.ref.hex())
@@ -312,12 +317,9 @@ class WorkflowExecutionResult:
     """Dataclass for holding workflow execution result."""
 
     # Part of result to persist in a storage and pass to the next step.
-    persisted_output: "ObjectRef"
+    persisted_output: "WorkflowStaticRef"
     # Part of result to return to the user but does not require persistence.
-    volatile_output: "ObjectRef"
-
-    def __reduce__(self):
-        return WorkflowExecutionResult, (self.persisted_output, self.volatile_output)
+    volatile_output: "WorkflowStaticRef"
 
 
 @dataclass
@@ -553,6 +555,9 @@ class Workflow(Generic[T]):
         """
         # TODO(suquark): avoid cyclic importing
         from ray.workflow.execution import run
+        from ray.workflow.api import _ensure_workflow_initialized
+
+        _ensure_workflow_initialized()
 
         self._step_id = None
         return run(self, workflow_id, metadata)

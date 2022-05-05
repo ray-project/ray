@@ -126,23 +126,15 @@ def test_get_throws_quickly_when_found_exception(ray_start_regular):
 
 
 def test_failed_function_to_run(ray_start_2_cpus, error_pubsub):
+    p = error_pubsub
+
     def f(worker):
         if ray.worker.global_worker.mode == ray.WORKER_MODE:
             raise Exception("Function to run failed.")
 
     ray.worker.global_worker.run_function_on_all_workers(f)
-
-    @ray.remote
-    def g():
-        return
-
-    # Start 2 tasks to trigger f() to run.
-    ray.get([g.remote() for _ in range(2)])
-
     # Check that the error message is in the task info.
-    errors = get_error_message(
-        error_pubsub, 2, ray_constants.FUNCTION_TO_RUN_PUSH_ERROR
-    )
+    errors = get_error_message(p, 2, ray_constants.FUNCTION_TO_RUN_PUSH_ERROR)
     assert len(errors) == 2
     assert errors[0].type == ray_constants.FUNCTION_TO_RUN_PUSH_ERROR
     assert "Function to run failed." in errors[0].error_message
@@ -511,17 +503,26 @@ def test_export_large_objects(ray_start_regular, error_pubsub):
     assert errors[0].type == ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR
 
 
-def test_warning_many_actor_tasks_queued(shutdown_only):
+@pytest.mark.parametrize("sync", [True, False])
+def test_warning_many_actor_tasks_queued(shutdown_only, sync: bool):
     ray.init(num_cpus=1)
     p = init_error_pubsub()
 
     @ray.remote(num_cpus=1)
-    class Foo:
+    class SyncFoo:
         def f(self):
             import time
 
             time.sleep(1)
 
+    @ray.remote(num_cpus=1)
+    class AsyncFoo:
+        async def f(self):
+            import asyncio
+
+            await asyncio.sleep(1)
+
+    Foo = SyncFoo if sync else AsyncFoo
     a = Foo.remote()
     [a.f.remote() for _ in range(50000)]
     errors = get_error_message(p, 4, ray_constants.EXCESS_QUEUEING_WARNING)
@@ -530,6 +531,29 @@ def test_warning_many_actor_tasks_queued(shutdown_only):
     assert "Warning: More than 10000 tasks are pending submission to actor" in msgs[1]
     assert "Warning: More than 20000 tasks are pending submission to actor" in msgs[2]
     assert "Warning: More than 40000 tasks are pending submission to actor" in msgs[3]
+
+
+@pytest.mark.parametrize("sync", [True, False])
+def test_no_warning_many_actor_tasks_queued_when_sequential(shutdown_only, sync: bool):
+    ray.init(num_cpus=1)
+    p = init_error_pubsub()
+
+    @ray.remote(num_cpus=1)
+    class SyncFoo:
+        def f(self):
+            return 1
+
+    @ray.remote(num_cpus=1)
+    class AsyncFoo:
+        async def f(self):
+            return 1
+
+    Foo = SyncFoo if sync else AsyncFoo
+    a = Foo.remote()
+    for _ in range(10000):
+        assert ray.get(a.f.remote()) == 1
+    errors = get_error_message(p, 1, ray_constants.EXCESS_QUEUEING_WARNING, timeout=1)
+    assert len(errors) == 0
 
 
 @pytest.mark.parametrize(

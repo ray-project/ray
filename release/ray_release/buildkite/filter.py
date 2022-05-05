@@ -9,12 +9,21 @@ from ray_release.config import Test
 def filter_tests(
     test_collection: List[Test],
     frequency: Frequency,
-    test_name_filter: Optional[str] = None,
+    test_attr_regex_filters: Optional[Dict[str, str]] = None,
+    prefer_smoke_tests: bool = False,
 ) -> List[Tuple[Test, bool]]:
+    if test_attr_regex_filters is None:
+        test_attr_regex_filters = {}
+
     tests_to_run = []
     for test in test_collection:
-        # First, filter by name
-        if test_name_filter and not re.match(test_name_filter, test["name"]):
+        # First, filter by string attributes
+        attr_mismatch = False
+        for attr, regex in test_attr_regex_filters.items():
+            if not re.match(regex, test[attr]):
+                attr_mismatch = True
+                break
+        if attr_mismatch:
             continue
 
         test_frequency = get_frequency(test["frequency"])
@@ -23,7 +32,13 @@ def filter_tests(
             continue
 
         if frequency == Frequency.ANY or frequency == test_frequency:
-            tests_to_run.append((test, False))
+            if prefer_smoke_tests and "smoke_test" in test:
+                # If we prefer smoke tests and a smoke test is available for this test,
+                # then use the smoke test
+                smoke_test = True
+            else:
+                smoke_test = False
+            tests_to_run.append((test, smoke_test))
             continue
 
         elif "smoke_test" in test:

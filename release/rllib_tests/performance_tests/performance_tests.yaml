@@ -59,14 +59,14 @@ apex-breakoutnoframeskip-v4:
         rollout_fragment_length: 20
         train_batch_size: 512
         target_network_update_freq: 50000
-        timesteps_per_iteration: 25000
+        min_sample_timesteps_per_reporting: 25000
 
 appo-pongnoframeskip-v4:
     env: PongNoFrameskip-v4
     run: APPO
     frameworks: [ "tf", "tf2", "torch" ]
     stop:
-        time_total_s: 2000
+        time_total_s: 3600
     config:
         vtrace: True
         use_kl_loss: False
@@ -112,7 +112,7 @@ cql-halfcheetahbulletenv-v0:
         prioritized_replay: false
         train_batch_size: 256
         target_network_update_freq: 0
-        timesteps_per_iteration: 1000
+        min_train_timesteps_per_reporting: 1000
         learning_starts: 256
         optimization:
             actor_learning_rate: 0.0001
@@ -158,7 +158,7 @@ sac-halfcheetahbulletenv-v0:
         prioritized_replay: true
         train_batch_size: 256
         target_network_update_freq: 1
-        timesteps_per_iteration: 1000
+        min_sample_timesteps_per_reporting: 1000
         learning_starts: 10000
         optimization:
             actor_learning_rate: 0.0003

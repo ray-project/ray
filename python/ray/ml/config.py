@@ -1,11 +1,23 @@
 from dataclasses import dataclass
-from typing import Dict, Any, Optional, List
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Mapping,
+    Optional,
+    Union,
+)
 
+from ray.tune.syncer import SyncConfig
+from ray.tune.utils.log import Verbosity
 from ray.util import PublicAPI
 
-from ray.tune.trainable import PlacementGroupFactory
-from ray.tune.callback import Callback
-
+if TYPE_CHECKING:
+    from ray.tune.callback import Callback
+    from ray.tune.stopper import Stopper
+    from ray.tune.trainable import PlacementGroupFactory
 
 ScalingConfig = Dict[str, Any]
 
@@ -81,8 +93,10 @@ class ScalingConfigDataClass:
             if k not in ["CPU", "GPU"]
         }
 
-    def as_placement_group_factory(self) -> PlacementGroupFactory:
+    def as_placement_group_factory(self) -> "PlacementGroupFactory":
         """Returns a PlacementGroupFactory to specify resources for Tune."""
+        from ray.tune.trainable import PlacementGroupFactory
+
         trainer_resources = (
             self.trainer_resources if self.trainer_resources else {"CPU": 1}
         )
@@ -133,16 +147,26 @@ class RunConfig:
             from the Trainable.
         local_dir: Local dir to save training results to.
             Defaults to ``~/ray_results``.
+        stop: Stop conditions to consider. Refer to ray.tune.stopper.Stopper
+            for more info. Stoppers should be serializable.
         callbacks: Callbacks to invoke.
             Refer to ray.tune.callback.Callback for more info.
             Callbacks should be serializable.
             Currently only stateless callbacks are supported for resumed runs.
             (any state of the callback will not be checkpointed by Tune
             and thus will not take effect in resumed runs).
+        failure: The failure mode configuration.
+        sync_config: Configuration object for syncing. See tune.SyncConfig.
+        verbose: 0, 1, 2, or 3. Verbosity mode.
+            0 = silent, 1 = only status updates, 2 = status and brief
+            results, 3 = status and detailed results. Defaults to 2.
     """
 
     # TODO(xwjiang): Add more.
     name: Optional[str] = None
     local_dir: Optional[str] = None
-    callbacks: Optional[List[Callback]] = None
+    callbacks: Optional[List["Callback"]] = None
+    stop: Optional[Union[Mapping, "Stopper", Callable[[str, Mapping], bool]]] = None
     failure: Optional[FailureConfig] = None
+    sync_config: Optional[SyncConfig] = None
+    verbose: Union[int, Verbosity] = Verbosity.V2_TRIAL_NORM

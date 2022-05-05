@@ -4,6 +4,7 @@
 import gym
 import numpy as np
 import tree  # pip install dm_tree
+from typing import Optional
 
 import ray
 import ray.experimental.tf_utils
@@ -18,21 +19,27 @@ from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, unbat
 tf1, tf, tfv = try_import_tf()
 
 
-def rollout(policy, env, timestep_limit=None, add_noise=False, offset=0.0):
+def rollout(
+    policy: Policy,
+    env: gym.Env,
+    timestep_limit: Optional[int] = None,
+    add_noise: bool = False,
+    offset: float = 0.0,
+):
     """Do a rollout.
 
     If add_noise is True, the rollout will take noisy actions with
     noise drawn from that stream. Otherwise, no action noise will be added.
 
     Args:
-        policy (Policy): Rllib Policy from which to draw actions.
-        env (gym.Env): Environment from which to draw rewards, done, and
+        policy: RLlib Policy from which to draw actions.
+        env: Environment from which to draw rewards, done, and
             next state.
-        timestep_limit (Optional[int]): Steps after which to end the rollout.
+        timestep_limit: Steps after which to end the rollout.
             If None, use `env.spec.max_episode_steps` or 999999.
-        add_noise (bool): Indicates whether exploratory action noise should be
+        add_noise: Indicates whether exploratory action noise should be
             added.
-        offset (float): Value to subtract from the reward (e.g. survival bonus
+        offset: Value to subtract from the reward (e.g. survival bonus
             from humanoid).
     """
     max_timestep_limit = 999999

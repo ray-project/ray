@@ -29,6 +29,7 @@ class StorageUnit(Enum):
     TIMESTEPS = "timesteps"
     SEQUENCES = "sequences"
     EPISODES = "episodes"
+    FRAGMENTS = "fragments"
 
 
 @ExperimentalAPI
@@ -53,9 +54,12 @@ class ReplayBuffer:
             self._storage_unit = StorageUnit.SEQUENCES
         elif storage_unit in ["episodes", StorageUnit.EPISODES]:
             self._storage_unit = StorageUnit.EPISODES
+        elif storage_unit in ["fragments", StorageUnit.FRAGMENTS]:
+            self._storage_unit = StorageUnit.FRAGMENTS
         else:
             raise ValueError(
-                "storage_unit must be either 'timesteps', `sequences` or `episodes`."
+                "storage_unit must be either 'timesteps', `sequences` or `episodes` "
+                "or `fragments`."
             )
 
         # The actual storage (list of SampleBatches or MultiAgentBatches).
@@ -95,18 +99,6 @@ class ReplayBuffer:
     def __len__(self) -> int:
         """Returns the number of items currently stored in this buffer."""
         return len(self._storage)
-
-    @ExperimentalAPI
-    @Deprecated(old="add_batch", new="add", error=False)
-    def add_batch(self, batch: SampleBatchType, **kwargs) -> None:
-        """Deprecated in favor of new ReplayBuffer API."""
-        return self.add(batch, **kwargs)
-
-    @ExperimentalAPI
-    @Deprecated(old="replay", new="sample", error=False)
-    def replay(self, num_items: int = 1, **kwargs) -> Optional[SampleBatchType]:
-        """Deprecated in favor of new ReplayBuffer API."""
-        return self.sample(num_items, **kwargs)
 
     @ExperimentalAPI
     def add(self, batch: SampleBatchType, **kwargs) -> None:
@@ -160,6 +152,8 @@ class ReplayBuffer:
                             "to be added to it. Some samples may be "
                             "dropped."
                         )
+        elif self._storage_unit == StorageUnit.FRAGMENTS:
+            self._add_single_batch(batch, **kwargs)
 
     @ExperimentalAPI
     def _add_single_batch(self, item: SampleBatchType, **kwargs) -> None:
@@ -280,10 +274,13 @@ class ReplayBuffer:
 
     def _encode_sample(self, idxes: List[int]) -> SampleBatchType:
         """Fetches concatenated samples at given indeces from the storage."""
-        samples = [self._storage[i] for i in idxes]
+        samples = []
+        for i in idxes:
+            self._hit_count[i] += 1
+            samples.append(self._storage[i])
 
         if samples:
-            # Assume all samples are of same type
+            # We assume all samples are of same type
             sample_type = type(samples[0])
             out = sample_type.concat_samples(samples)
         else:
@@ -299,3 +296,11 @@ class ReplayBuffer:
             name could not be determined.
         """
         return platform.node()
+
+    @Deprecated(old="ReplayBuffer.add_batch()", new="RepayBuffer.add()", error=False)
+    def add_batch(self, *args, **kwargs):
+        return self.add(*args, **kwargs)
+
+    @Deprecated(old="RepayBuffer.replay()", new="RepayBuffer.sample()", error=False)
+    def replay(self, *args, **kwargs):
+        return self.sample(*args, **kwargs)

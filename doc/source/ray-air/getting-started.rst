@@ -60,6 +60,14 @@ Trainer
     :members:
     :show-inheritance:
 
+.. automodule:: ray.ml.train.integrations.huggingface
+    :members:
+    :show-inheritance:
+
+.. automodule:: ray.ml.train.integrations.sklearn
+    :members:
+    :show-inheritance:
+
 .. autoclass:: ray.ml.train.data_parallel_trainer.DataParallelTrainer
     :members:
     :show-inheritance:
@@ -85,6 +93,9 @@ Predictors
 .. autoclass:: ray.ml.predictor.Predictor
     :members:
 
+.. autoclass:: ray.ml.batch_predictor.BatchPredictor
+    :members:
+
 .. automodule:: ray.ml.predictors.integrations.xgboost
     :members:
     :show-inheritance:
@@ -98,6 +109,14 @@ Predictors
     :show-inheritance:
 
 .. automodule:: ray.ml.predictors.integrations.torch
+    :members:
+    :show-inheritance:
+
+.. automodule:: ray.ml.predictors.integrations.sklearn
+    :members:
+    :show-inheritance:
+
+.. automodule:: ray.ml.predictors.integrations.huggingface
     :members:
     :show-inheritance:
 

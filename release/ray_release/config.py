@@ -10,7 +10,7 @@ import jsonschema
 import yaml
 
 from ray_release.anyscale_util import find_cloud_by_name
-from ray_release.exception import ReleaseTestConfigError
+from ray_release.exception import ReleaseTestConfigError, ReleaseTestCLIError
 from ray_release.logger import logger
 from ray_release.util import deep_update
 
@@ -24,6 +24,7 @@ DEFAULT_COMMAND_TIMEOUT = 1800
 DEFAULT_BUILD_TIMEOUT = 1800
 DEFAULT_CLUSTER_TIMEOUT = 1800
 DEFAULT_AUTOSUSPEND_MINS = 120
+DEFAULT_WAIT_FOR_NODES_TIMEOUT = 3000
 
 DEFAULT_CLOUD_ID = "cld_4F7k8814aZzGG8TNUGPKnc"
 
@@ -134,11 +135,10 @@ def find_test(test_collection: List[Test], test_name: str) -> Optional[Test]:
 
 def as_smoke_test(test: Test) -> Test:
     if "smoke_test" not in test:
-        logger.warning(
+        raise ReleaseTestCLIError(
             f"Requested smoke test, but test with name {test['name']} does "
             f"not have any smoke test configuration."
         )
-        return test
 
     smoke_test_config = test.pop("smoke_test")
     new_test = deep_update(test, smoke_test_config)

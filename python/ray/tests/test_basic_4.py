@@ -8,7 +8,6 @@ import numpy as np
 import pytest
 
 import ray.cluster_utils
-from ray._private.gcs_pubsub import GcsFunctionKeySubscriber
 from ray._private.test_utils import wait_for_condition
 from ray.autoscaler._private.constants import RAY_PROCESSES
 from pathlib import Path
@@ -99,39 +98,6 @@ def test_worker_startup_count(ray_start_cluster):
         time.sleep(0.1)
 
 
-def test_function_unique_export(ray_start_regular):
-    @ray.remote
-    def f():
-        pass
-
-    @ray.remote
-    def g():
-        ray.get(f.remote())
-
-    subscriber = GcsFunctionKeySubscriber(
-        address=ray.worker.global_worker.gcs_client.address
-    )
-    subscriber.subscribe()
-
-    ray.get(g.remote())
-
-    # Poll pubsub channel for messages generated from running task g().
-    num_exports = 0
-    while True:
-        key = subscriber.poll(timeout=1)
-        if key is None:
-            break
-        else:
-            num_exports += 1
-    print(f"num_exports after running g(): {num_exports}")
-    assert num_exports > 0, "Function export notification is not received"
-
-    ray.get([g.remote() for _ in range(5)])
-
-    key = subscriber.poll(timeout=1)
-    assert key is None, f"Unexpected function key export: {key}"
-
-
 def test_function_import_without_importer_thread(shutdown_only):
     """Test that without background importer thread, dependencies can still be
     imported in workers."""
@@ -154,19 +120,8 @@ def test_function_import_without_importer_thread(shutdown_only):
     def g():
         ray.get(f.remote())
 
-    @ray.remote
-    class A:
-        def __init__(self, v):
-            self.v = v
-
-        def val(self):
-            return self.v
-
     ray.get(g.remote())
     ray.get([g.remote() for _ in range(5)])
-
-    a = A.remote(5)
-    assert ray.get(a.val.remote()) == 5
 
 
 @pytest.mark.skipif(

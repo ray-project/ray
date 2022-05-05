@@ -42,10 +42,10 @@ enum TablePrefix {
   // WORKER is already used in WorkerType, so use WORKERS here.
   WORKERS = 15;
   INTERNAL_CONFIG = 16;
-  TABLE_PREFIX_MAX = 17;
-  PLACEMENT_GROUP_SCHEDULE = 18;
-  PLACEMENT_GROUP = 19;
-  KV = 20;
+  PLACEMENT_GROUP_SCHEDULE = 17;
+  PLACEMENT_GROUP = 18;
+  KV = 19;
+  ACTOR_TASK_SPEC = 20;
 }
 
 // The channel that Add operations to the Table should be published on, if any.
@@ -126,13 +126,13 @@ message ActorTableData {
   string name = 12;
   // Last timestamp that the actor state was updated.
   double timestamp = 13;
-  // The task specification of this actor's creation task.
-  TaskSpec task_spec = 14;
   // Resource mapping ids acquired by the leased worker. This field is only set when this
   // actor already has a leased worker.
   repeated ResourceMapEntry resource_mapping = 15;
   // The process id of this actor.
   uint32 pid = 16;
+  // The function descriptor of the actor creation task.
+  FunctionDescriptor function_descriptor = 17;
   // The actor's namespace. Named `ray_namespace` to avoid confusions when invoked in c++.
   string ray_namespace = 19;
   // The unix ms timestamp the actor was started at.
@@ -148,6 +148,8 @@ message ActorTableData {
   string class_name = 23;
   // Contains metadata about why the actor is dead.
   ActorDeathCause death_cause = 24;
+  // Quantities of the different resources required by this actor.
+  map<string, double> required_resources = 28;
 }
 
 message ErrorTableData {
@@ -242,6 +244,9 @@ message GcsNodeInfo {
 
   // The total resources of this node.
   map<string, double> resources_total = 11;
+
+  // The user-provided identifier or name for this node.
+  string node_name = 12;
 }
 
 message HeartbeatTableData {

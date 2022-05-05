@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from pathlib import Path
 import sys
 import os
 
@@ -131,7 +132,6 @@ all_toc_libs += [
     "cluster",
     "tune",
     "data",
-    "raysgd",
     "train",
     "rllib",
     "serve",
@@ -293,3 +293,10 @@ def setup(app):
 
     # Custom docstring processor
     app.connect("autodoc-process-docstring", fix_xgb_lgbm_docs)
+
+    base_path = Path(__file__).parent
+    github_docs = DownloadAndPreprocessEcosystemDocs(base_path)
+    # Download docs from ecosystem library repos
+    app.connect("builder-inited", github_docs.write_new_docs)
+    # Restore original file content after build
+    app.connect("build-finished", github_docs.write_original_docs)

@@ -12,7 +12,7 @@ from ray.ml.predictor import DataBatchType, Predictor
 from ray.serve.model_wrappers import ModelWrapperDeployment
 from ray.serve.pipeline.api import build
 from ray.experimental.dag.input_node import InputNode
-from ray.serve.api import RayServeDAGHandle
+from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.http_adapters import json_to_ndarray
 import ray
 from ray import serve
@@ -142,7 +142,7 @@ def test_yaml_compatibility(serve_instance):
                             "checkpoint_cls": checkpoint_cls,
                             "uri": path,
                         },
-                        "input_schema": schema_func,
+                        "http_adapter": schema_func,
                         "batching_params": {"max_batch_size": 1},
                     },
                 }

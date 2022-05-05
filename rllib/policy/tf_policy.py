@@ -199,8 +199,11 @@ class TFPolicy(Policy):
 
         # Disable env-info placeholder.
         if SampleBatch.INFOS in self.view_requirements:
-            self.view_requirements[SampleBatch.INFOS].used_for_training = False
             self.view_requirements[SampleBatch.INFOS].used_for_compute_actions = False
+            self.view_requirements[SampleBatch.INFOS].used_for_training = False
+            # Optionally add `infos` to the output dataset
+            if self.config["output_config"].get("store_infos", False):
+                self.view_requirements[SampleBatch.INFOS].used_for_training = True
 
         assert model is None or isinstance(model, (ModelV2, tf.keras.Model)), (
             "Model classes for TFPolicy other than `ModelV2|tf.keras.Model` "
@@ -1187,11 +1190,12 @@ class TFPolicy(Policy):
         # Build the feed dict from the batch.
         feed_dict = {}
         for key, placeholders in self._loss_input_dict.items():
-            tree.map_structure(
+            a = tree.map_structure(
                 lambda ph, v: feed_dict.__setitem__(ph, v),
                 placeholders,
                 train_batch[key],
             )
+            del a
 
         state_keys = ["state_in_{}".format(i) for i in range(len(self._state_inputs))]
         for key in state_keys:

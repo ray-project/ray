@@ -55,6 +55,7 @@ DECLARE_stats(grpc_server_req_handling);
 DECLARE_stats(grpc_server_req_finished);
 
 /// Object Manager.
+DECLARE_stats(object_manager_bytes);
 DECLARE_stats(object_manager_received_chunks);
 
 /// Pull Manager
@@ -65,6 +66,8 @@ DECLARE_stats(pull_manager_requested_bundles);
 DECLARE_stats(pull_manager_requests);
 DECLARE_stats(pull_manager_active_bundles);
 DECLARE_stats(pull_manager_retries_total);
+DECLARE_stats(pull_manager_num_object_pins);
+DECLARE_stats(pull_manager_object_request_time_ms);
 
 /// Push Manager
 DECLARE_stats(push_manager_in_flight_pushes);

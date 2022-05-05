@@ -177,7 +177,7 @@ class TuneInterruptionTest(unittest.TestCase):
         thread.join()
 
         ray.shutdown()
-        del os.environ["TUNE_DISABLE_SIGINT_HANDLER"]
+        os.environ.pop("TUNE_DISABLE_SIGINT_HANDLER", None)
 
 
 class TuneFailResumeGridTest(unittest.TestCase):
@@ -556,7 +556,7 @@ class ResourceExhaustedTest(unittest.TestCase):
         from sklearn.datasets import fetch_olivetti_faces
 
         a_large_array = []
-        for i in range(10):
+        for i in range(25):
             a_large_array.append(fetch_olivetti_faces())
 
         def training_func(config):

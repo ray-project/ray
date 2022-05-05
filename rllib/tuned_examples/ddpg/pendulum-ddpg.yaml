@@ -28,16 +28,13 @@ pendulum-ddpg:
             ou_theta: 0.15
             ou_sigma: 0.2
 
-        timesteps_per_iteration: 600
+        min_sample_timesteps_per_reporting: 600
         target_network_update_freq: 0
         tau: 0.001
 
         # === Replay buffer ===
-        buffer_size: 10000
-        prioritized_replay: True
-        prioritized_replay_alpha: 0.6
-        prioritized_replay_beta: 0.4
-        prioritized_replay_eps: 0.000001
+        replay_buffer_config:
+          capacity: 10000
         clip_rewards: False
 
         # === Optimization ===

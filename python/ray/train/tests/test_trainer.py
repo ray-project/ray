@@ -517,6 +517,7 @@ def test_persisted_checkpoint_strategy(ray_start_2_cpus):
     )
 
     def train_func():
+        train.save_checkpoint(loss=float("nan"))  # nan, deleted
         train.save_checkpoint(loss=3)  # best
         train.save_checkpoint(loss=7)  # worst, deleted
         train.save_checkpoint(loss=5)
@@ -530,16 +531,16 @@ def test_persisted_checkpoint_strategy(ray_start_2_cpus):
         assert trainer.logdir == Path(logdir).expanduser().resolve()
     assert trainer.latest_checkpoint_dir.is_dir()
     assert trainer.best_checkpoint_path.is_file()
-    assert trainer.best_checkpoint_path.name == f"checkpoint_{1:06d}"
+    assert trainer.best_checkpoint_path.name == f"checkpoint_{2:06d}"
     assert trainer.latest_checkpoint["loss"] == 5
     assert trainer.best_checkpoint["loss"] == 3
 
     checkpoint_dir = trainer.latest_checkpoint_dir
     file_names = [f.name for f in checkpoint_dir.iterdir()]
     assert len(file_names) == 2
-    assert f"checkpoint_{1:06d}" in file_names
-    assert f"checkpoint_{2:06d}" not in file_names
-    assert f"checkpoint_{3:06d}" in file_names
+    assert f"checkpoint_{2:06d}" in file_names
+    assert f"checkpoint_{3:06d}" not in file_names
+    assert f"checkpoint_{4:06d}" in file_names
 
     def validate():
         checkpoint = train.load_checkpoint()
@@ -1162,6 +1163,9 @@ def test_resources(ray_start_4_cpus_4_gpus_4_extra, resource, num_requested):
 
     trainer.shutdown()
     wait_for_condition(lambda: ray.available_resources().get(resource, 0) == original)
+
+    # Check that user input has not been modified
+    assert resources_per_worker == {resource: num_requested}
 
 
 def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra):

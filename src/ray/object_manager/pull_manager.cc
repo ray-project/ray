@@ -16,6 +16,7 @@
 
 #include "ray/common/common_protocol.h"
 #include "ray/stats/metric_defs.h"
+#include "ray/util/container_util.h"
 
 namespace ray {
 
@@ -83,8 +84,7 @@ uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_b
       objects_to_locate->push_back(ref);
       // The first pull request doesn't need to be special case. Instead we can just let
       // the retry timer fire immediately.
-      it = object_pull_requests_
-               .emplace(obj_id, ObjectPullRequest(/*next_pull_time=*/get_time_seconds_()))
+      it = object_pull_requests_.emplace(obj_id, ObjectPullRequest(get_time_seconds_()))
                .first;
     } else {
       if (it->second.object_size_set) {
@@ -172,6 +172,9 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
       active_object_pull_requests_[obj_id].insert(next_request_it->first);
       if (needs_pull) {
         RAY_LOG(DEBUG) << "Activating pull for object " << obj_id;
+        auto &request = map_find_or_die(object_pull_requests_, obj_id);
+        request.activate_time_ms = absl::GetCurrentTimeNanos() / 1e3;
+
         TryPinObject(obj_id);
         objects_to_pull->push_back(obj_id);
         ResetRetryTimer(obj_id);
@@ -340,6 +343,8 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(int64_t num_bytes_available)
 
   // Call the cancellation callbacks outside of the lock.
   for (const auto &obj_id : object_ids_to_cancel) {
+    RAY_LOG(DEBUG) << "Not enough memory to create requested object " << obj_id
+                   << ", aborting.";
     cancel_pull_request_(obj_id);
   }
 
@@ -382,6 +387,8 @@ std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
         *request_queue, bundle_it, highest_req_id_being_pulled, &object_ids_to_cancel);
     for (const auto &obj_id : object_ids_to_cancel) {
       // Call the cancellation callback outside of the lock.
+      RAY_LOG(DEBUG) << "Pull cancellation requested for object " << obj_id
+                     << ", aborting creation.";
       cancel_pull_request_(obj_id);
     }
   }
@@ -395,6 +402,9 @@ std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
       RAY_LOG(DEBUG) << "Removing an object pull request of id: " << obj_id;
       it->second.bundle_request_ids.erase(bundle_it->first);
       if (it->second.bundle_request_ids.empty()) {
+        ray::stats::STATS_pull_manager_object_request_time_ms.Record(
+            absl::GetCurrentTimeNanos() / 1e3 - it->second.request_start_time_ms,
+            "StartToCancel");
         object_pull_requests_.erase(it);
         object_ids_to_cancel_subscription.push_back(obj_id);
       }
@@ -518,13 +528,15 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
   if (!direct_restore_url.empty()) {
     // Select an url from the object directory update
     UpdateRetryTimer(request, object_id);
-    restore_spilled_object_(
-        object_id, direct_restore_url, [object_id](const ray::Status &status) {
-          if (!status.ok()) {
-            RAY_LOG(ERROR) << "Object restore for " << object_id
-                           << " failed, will retry later: " << status;
-          }
-        });
+    restore_spilled_object_(object_id,
+                            it->second.object_size,
+                            direct_restore_url,
+                            [object_id](const ray::Status &status) {
+                              if (!status.ok()) {
+                                RAY_LOG(ERROR) << "Object restore for " << object_id
+                                               << " failed, will retry later: " << status;
+                              }
+                            });
     return;
   }
 
@@ -603,6 +615,7 @@ void PullManager::UpdateRetryTimer(ObjectPullRequest &request,
     max_timeout_object_id_ = object_id;
   }
 
+  num_tries_total_++;
   if (request.num_retries > 0) {
     // We've tried this object before.
     num_retries_total_++;
@@ -638,12 +651,25 @@ bool PullManager::TryPinObject(const ObjectID &object_id) {
   if (pinned_objects_.count(object_id) == 0) {
     auto ref = pin_object_(object_id);
     if (ref != nullptr) {
+      num_succeeded_pins_total_++;
       pinned_objects_size_ += ref->GetSize();
       pinned_objects_[object_id] = std::move(ref);
-      return false;
+
+      auto it = object_pull_requests_.find(object_id);
+      RAY_CHECK(it != object_pull_requests_.end());
+      ray::stats::STATS_pull_manager_object_request_time_ms.Record(
+          absl::GetCurrentTimeNanos() / 1e3 - it->second.request_start_time_ms,
+          "StartToPin");
+      if (it->second.activate_time_ms > 0) {
+        ray::stats::STATS_pull_manager_object_request_time_ms.Record(
+            absl::GetCurrentTimeNanos() / 1e3 - it->second.activate_time_ms,
+            "MemoryAvailableToPin");
+      }
+    } else {
+      num_failed_pins_total_++;
     }
   }
-  return true;
+  return pinned_objects_.count(object_id) > 0;
 }
 
 void PullManager::UnpinObject(const ObjectID &object_id) {
@@ -767,12 +793,20 @@ void PullManager::RecordMetrics() const {
                                                           "Wait");
   ray::stats::STATS_pull_manager_requested_bundles.Record(task_argument_bundles_.size(),
                                                           "TaskArgs");
+  ray::stats::STATS_pull_manager_requested_bundles.Record(next_req_id_,
+                                                          "CumulativeTotal");
   ray::stats::STATS_pull_manager_requests.Record(object_pull_requests_.size(), "Queued");
   ray::stats::STATS_pull_manager_requests.Record(active_object_pull_requests_.size(),
                                                  "Active");
   ray::stats::STATS_pull_manager_requests.Record(pinned_objects_.size(), "Pinned");
   ray::stats::STATS_pull_manager_active_bundles.Record(num_active_bundles_);
   ray::stats::STATS_pull_manager_retries_total.Record(num_retries_total_);
+  ray::stats::STATS_pull_manager_retries_total.Record(num_tries_total_);
+
+  ray::stats::STATS_pull_manager_num_object_pins.Record(num_succeeded_pins_total_,
+                                                        "Success");
+  ray::stats::STATS_pull_manager_num_object_pins.Record(num_failed_pins_total_,
+                                                        "Failure");
 }
 
 std::string PullManager::DebugString() const {

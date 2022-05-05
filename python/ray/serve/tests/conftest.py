@@ -7,7 +7,8 @@ import random
 
 import ray
 from ray import serve
-from ray.serve.pipeline.generate import DeploymentNameGenerator
+
+from ray.tests.conftest import pytest_runtest_makereport  # noqa
 
 # https://tools.ietf.org/html/rfc6335#section-6
 MIN_DYNAMIC_PORT = 49152
@@ -59,8 +60,8 @@ def _shared_serve_instance():
     # This line should be not turned on on master because it leads to very
     # spammy and not useful log in case of a failure in CI.
     # To run locally, please use this instead.
-    # SERVE_LOG_DEBUG=1 pytest -v -s test_api.py
-    # os.environ["SERVE_LOG_DEBUG"] = "1" <- Do not uncomment this.
+    # SERVE_DEBUG_LOG=1 pytest -v -s test_api.py
+    # os.environ["SERVE_DEBUG_LOG"] = "1" <- Do not uncomment this.
 
     # Overriding task_retry_delay_ms to relaunch actors more quickly
     ray.init(
@@ -79,5 +80,3 @@ def serve_instance(_shared_serve_instance):
     _shared_serve_instance.delete_deployments(serve.list_deployments().keys())
     # Clear the ServeHandle cache between tests to avoid them piling up.
     _shared_serve_instance.handle_cache.clear()
-    # Clear deployment generation shared state between tests
-    DeploymentNameGenerator.reset()
