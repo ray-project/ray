@@ -204,7 +204,6 @@ def build_slateq_stats(policy: Policy, batch) -> Dict[str, TensorType]:
         "next_q_target_slate": policy._next_q_target_slate,
         "next_q_target_max": policy._next_q_target_max,
         "target_clicked": policy._target_clicked,
-        "td_error": policy._td_error,
         "mean_td_error": policy._mean_td_error,
         "q_loss": policy._q_loss,
         "mean_actions": policy._mean_actions,
@@ -371,6 +370,7 @@ SlateQTFPolicy = build_tf_policy(
     make_model=build_slateq_model,
     loss_fn=build_slateq_losses,
     stats_fn=build_slateq_stats,
+    extra_learn_fetches_fn=lambda policy: {"td_error": policy._td_error},
     optimizer_fn=rmsprop_optimizer,
     # Define how to act.
     action_distribution_fn=action_distribution_fn,
