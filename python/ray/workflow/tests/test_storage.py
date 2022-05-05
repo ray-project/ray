@@ -238,7 +238,9 @@ f.step().run()
     script1 = script.format("ray.init(address='auto')")
     script2 = script.format(f"ray.init(address='auto', storage='{tmp_path}')")
     another_tmp_path = tempfile.TemporaryDirectory()
-    script3 = script.format(f"ray.init(address='auto', storage='{another_tmp_path.name}')")
+    script3 = script.format(
+        f"ray.init(address='auto', storage='{another_tmp_path.name}')"
+    )
 
     proc1 = run_string_as_driver_nonblocking(script1)
     out_str1 = proc1.stdout.read().decode("ascii") + proc1.stderr.read().decode("ascii")
@@ -256,7 +258,6 @@ f.step().run()
     proc3.kill()
     another_tmp_path.cleanup()
     subprocess.check_call(["ray", "stop"])
-
 
 
 if __name__ == "__main__":

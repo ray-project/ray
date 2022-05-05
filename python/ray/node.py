@@ -207,9 +207,11 @@ class Node:
         else:
             head_storage_uri = ray._private.services.get_storage_uri_from_internal_kv()
             if storage_uri is not None and storage_uri != head_storage_uri:
-                raise ValueError(f"You are using a storage '{storage_uri}' that is "
-                                 f"different from the storage set up in the cluster: "
-                                 f"'{head_storage_uri}'.")
+                raise ValueError(
+                    f"You are using a storage '{storage_uri}' that is "
+                    f"different from the storage set up in the cluster: "
+                    f"'{head_storage_uri}'."
+                )
             storage._init_storage(head_storage_uri, is_head=False)
 
         # If it is a head node, try validating if
