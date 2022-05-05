@@ -241,20 +241,21 @@ f.step().run()
     script3 = script.format(
         f"ray.init(address='auto', storage='{another_tmp_path.name}')"
     )
+    err_str = "ValueError: When connecting to an existing cluster, storage must not be provided."
 
     proc1 = run_string_as_driver_nonblocking(script1)
     out_str1 = proc1.stdout.read().decode("ascii") + proc1.stderr.read().decode("ascii")
-    assert "ValueError" not in out_str1
+    assert err_str not in out_str1
     proc1.kill()
 
     proc2 = run_string_as_driver_nonblocking(script2)
     out_str2 = proc2.stdout.read().decode("ascii") + proc2.stderr.read().decode("ascii")
-    assert "ValueError" not in out_str2
+    assert err_str in out_str2
     proc2.kill()
 
     proc3 = run_string_as_driver_nonblocking(script3)
     out_str3 = proc3.stdout.read().decode("ascii") + proc3.stderr.read().decode("ascii")
-    assert "ValueError" in out_str3
+    assert err_str in out_str3
     proc3.kill()
     another_tmp_path.cleanup()
     subprocess.check_call(["ray", "stop"])

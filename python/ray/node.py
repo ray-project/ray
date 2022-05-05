@@ -201,18 +201,12 @@ class Node:
         self._init_temp()
 
         # Validate and initialize the persistent storage API.
-        storage_uri = ray_params.storage
         if head:
-            storage._init_storage(storage_uri, is_head=True)
+            storage._init_storage(ray_params.storage, is_head=True)
         else:
-            head_storage_uri = ray._private.services.get_storage_uri_from_internal_kv()
-            if storage_uri is not None and storage_uri != head_storage_uri:
-                raise ValueError(
-                    f"You are using a storage '{storage_uri}' that is "
-                    f"different from the storage set up in the cluster: "
-                    f"'{head_storage_uri}'."
-                )
-            storage._init_storage(head_storage_uri, is_head=False)
+            storage._init_storage(
+                ray._private.services.get_storage_uri_from_internal_kv(),
+                is_head=False)
 
         # If it is a head node, try validating if
         # external storage is configurable.
