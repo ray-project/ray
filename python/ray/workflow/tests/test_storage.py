@@ -1,6 +1,7 @@
 import pytest
 import ray
 from ray._private import signature
+from ray._private.test_utils import run_string_as_driver_nonblocking
 from ray.tests.conftest import *  # noqa
 from ray import workflow
 from ray.workflow import workflow_storage
@@ -218,6 +219,44 @@ def test_workflow_storage(workflow_start_regular):
     print(inspect_result)
     assert inspect_result == workflow_storage.StepInspectResult()
     assert not inspect_result.is_recoverable()
+
+
+def test_cluster_storage_init(tmp_path):
+    subprocess.check_call(["ray", "start", "--head", "--storage", str(tmp_path)])
+    script = """
+import ray
+from ray import workflow
+
+{}
+
+@workflow.step
+def f():
+    return 10
+
+f.step().run()
+    """
+    script1 = script.format("ray.init(address='auto')")
+    script2 = script.format(f"ray.init(address='auto', storage='{tmp_path}')")
+    another_tmp_path = tempfile.TemporaryDirectory()
+    script3 = script.format(f"ray.init(address='auto', storage='{another_tmp_path.name}')")
+
+    proc1 = run_string_as_driver_nonblocking(script1)
+    out_str1 = proc1.stdout.read().decode("ascii") + proc1.stderr.read().decode("ascii")
+    assert "ValueError" not in out_str1
+    proc1.kill()
+
+    proc2 = run_string_as_driver_nonblocking(script2)
+    out_str2 = proc2.stdout.read().decode("ascii") + proc2.stderr.read().decode("ascii")
+    assert "ValueError" not in out_str2
+    proc2.kill()
+
+    proc3 = run_string_as_driver_nonblocking(script3)
+    out_str3 = proc3.stdout.read().decode("ascii") + proc3.stderr.read().decode("ascii")
+    assert "ValueError" in out_str3
+    proc3.kill()
+    another_tmp_path.cleanup()
+    subprocess.check_call(["ray", "stop"])
+
 
 
 if __name__ == "__main__":
