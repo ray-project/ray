@@ -77,16 +77,6 @@ class PGTrainer(Trainer):
     def get_default_policy_class(self, config) -> Type[Policy]:
         return PGTorchPolicy if config.get("framework") == "torch" else PGTFPolicy
 
-    @override(Trainer)
-    def validate_config(self, config: TrainerConfigDict) -> None:
-        super().validate_config(config)
-
-        if config["_disable_execution_plan_api"] is False:
-            raise ValueError(
-                f"{type(self).__name__} only supports new `training_iteration` method. "
-                "Set `_disable_execution_plan_api=True`."
-            )
-
 
 # Deprecated: Use ray.rllib.agents.pg.PGConfig instead!
 class _deprecated_default_config(dict):

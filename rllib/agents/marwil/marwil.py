@@ -98,12 +98,6 @@ class MARWILTrainer(Trainer):
         # Call super's validation method.
         super().validate_config(config)
 
-        if config["_disable_execution_plan_api"] is False:
-            raise ValueError(
-                f"{type(self).__name__} only supports new `training_iteration` method. "
-                "Set `_disable_execution_plan_api=True`."
-            )
-
         if config["num_gpus"] > 1:
             raise ValueError("`num_gpus` > 1 not yet supported for MARWIL!")
 

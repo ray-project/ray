@@ -158,12 +158,6 @@ class A3CTrainer(Trainer):
         # Call super's validation method.
         super().validate_config(config)
 
-        if config["_disable_execution_plan_api"] is False:
-            raise ValueError(
-                f"{type(self).__name__} only supports new `training_iteration` method. "
-                "Set `_disable_execution_plan_api=True`."
-            )
-
         if config["entropy_coeff"] < 0:
             raise ValueError("`entropy_coeff` must be >= 0.0!")
         if config["num_workers"] <= 0 and config["sample_async"]:

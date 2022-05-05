@@ -287,12 +287,6 @@ class PPOTrainer(Trainer):
         # Call super's validation method.
         super().validate_config(config)
 
-        if config["_disable_execution_plan_api"] is False:
-            raise ValueError(
-                f"`{type(self).__name__}` only supports new `training_iteration` "
-                "method. Set `_disable_execution_plan_api=True`."
-            )
-
         if isinstance(config["entropy_coeff"], int):
             config["entropy_coeff"] = float(config["entropy_coeff"])
 

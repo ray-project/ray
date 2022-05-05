@@ -164,11 +164,6 @@ class SlateQTrainer(DQNTrainer):
     def validate_config(self, config: TrainerConfigDict) -> None:
         super().validate_config(config)
         validate_buffer_config(config)
-        if config["_disable_execution_plan_api"] is False:
-            raise ValueError(
-                "SlateQTrainer only supports new `training_iteration` method. "
-                "Set `_disable_execution_plan_api=True`."
-            )
 
     @override(DQNTrainer)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:

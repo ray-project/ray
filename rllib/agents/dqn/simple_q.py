@@ -155,12 +155,6 @@ class SimpleQTrainer(Trainer):
         # Call super's validation method.
         super().validate_config(config)
 
-        if config["_disable_execution_plan_api"] is False:
-            raise ValueError(
-                f"`{type(self).__name__}` only supports new `training_iteration` "
-                "method. Set `_disable_execution_plan_api=True`."
-            )
-
         if config["exploration_config"]["type"] == "ParameterNoise":
             if config["batch_mode"] != "complete_episodes":
                 logger.warning(
