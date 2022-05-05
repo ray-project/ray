@@ -29,7 +29,6 @@ from ray.serve.generated.serve_pb2 import (
     AutoscalingConfig as AutoscalingConfigProto,
     ReplicaConfig as ReplicaConfigProto,
 )
-from ray.serve.utils import ServeEncoder
 
 
 class AutoscalingConfig(BaseModel):
@@ -384,9 +383,7 @@ class ReplicaConfig:
         if self.init_kwargs:
             data["init_kwargs"] = cloudpickle.dumps(self.init_kwargs)
         if self.ray_actor_options:
-            data["ray_actor_options"] = json.dumps(
-                self.ray_actor_options, cls=ServeEncoder
-            )
+            data["ray_actor_options"] = json.dumps(self.ray_actor_options)
         return ReplicaConfigProto(**data)
 
     def to_proto_bytes(self):

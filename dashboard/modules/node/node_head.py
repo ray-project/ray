@@ -259,6 +259,9 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 logger.exception(f"Error updating node stats of {node_id}.")
 
     async def _update_log_info(self):
+        if ray_constants.DISABLE_DASHBOARD_LOG_INFO:
+            return
+
         def process_log_batch(log_batch):
             ip = log_batch["ip"]
             pid = str(log_batch["pid"])

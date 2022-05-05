@@ -61,12 +61,12 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         # Timeout to use for `ray.wait()` when waiting for samplers to have placed
         # new data into the buffers. If no samples are ready within the timeout,
         # the buffers used for mixin-sampling will return only older samples.
-        "sample_wait_timeout": 0.0,
+        "sample_wait_timeout": 0.01,
         # Timeout to use for `ray.wait()` when waiting for the policy learner actors
         # to have performed an update and returned learning stats. If no learner
         # actors have produced any learning results in the meantime, their
         # learner-stats in the results will be empty for that iteration.
-        "learn_wait_timeout": 0.0,
+        "learn_wait_timeout": 0.1,
 
         # League-building parameters.
         # The LeagueBuilder class to be used for league building logic.
@@ -116,9 +116,6 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
 
         # Reporting interval.
         "min_time_s_per_reporting": 2,
-
-        # Use the `training_iteration` method instead of an execution plan.
-        "_disable_execution_plan_api": True,
     },
     _allow_unknown_configs=True,
 )
