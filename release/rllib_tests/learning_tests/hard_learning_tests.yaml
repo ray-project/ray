@@ -96,7 +96,7 @@ appo-pongnoframeskip-v4:
         episode_reward_mean: 18.0
         timesteps_total: 5000000
     stop:
-        time_total_s: 2000
+        time_total_s: 3600
     config:
         vtrace: True
         use_kl_loss: False
@@ -456,10 +456,11 @@ sac-halfcheetahbulletenv-v0:
 slateq-interest-evolution-recsim-env:
     env: ray.rllib.examples.env.recommender_system_envs_with_recsim.InterestEvolutionRecSimEnv
     run: SlateQ
-    stop:
+    pass_criteria:
         episode_reward_mean: 162.0
         timesteps_total: 300000
-
+    stop:
+        time_total_s: 7200
     config:
         # increase num sampling workers for faster sampling.
         num_workers: 12
@@ -467,11 +468,6 @@ slateq-interest-evolution-recsim-env:
         env_config:
             # Env class specified above takes one `config` arg in its c'tor:
             config:
-                # GPU support currently does not work for tensorflow. For the learning
-                # test for now, we'll use pytorch, and investigate why tensorflow is not working.
-                # One indication of the issue is that the loss inputs are not flattened from the
-                # original dictionary spaces.
-                framework: tf
                 # Each step, sample `num_candidates` documents using the env-internal
                 # document sampler model (a logic that creates n documents to select
                 # the slate from).

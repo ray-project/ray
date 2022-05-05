@@ -150,7 +150,6 @@ def _trainer_import_failed(trace):
 
     class _TrainerImportFailed(Trainer):
         _name = "TrainerImportFailed"
-        _default_config = with_common_config({})
 
         def setup(self, config):
             raise ImportError(trace)

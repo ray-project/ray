@@ -1,6 +1,7 @@
 import os
 import sys
 import logging
+from mock import patch
 import requests
 import time
 
@@ -245,6 +246,25 @@ def test_report_stats():
     cluster_stats = {}
     records = ReporterAgent._record_stats(obj, test_stats, cluster_stats)
     assert len(records) == 24
+
+
+@pytest.mark.parametrize("enable_k8s_disk_usage", [True, False])
+def test_enable_k8s_disk_usage(enable_k8s_disk_usage: bool):
+    """Test enabling display of K8s node disk usage when in a K8s pod."""
+    with patch.multiple(
+        "ray.dashboard.modules.reporter.reporter_agent",
+        IN_KUBERNETES_POD=True,
+        ENABLE_K8S_DISK_USAGE=enable_k8s_disk_usage,
+    ):
+        root_usage = ReporterAgent._get_disk_usage()["/"]
+        if enable_k8s_disk_usage:
+            # Since K8s disk usage is enabled, we shouuld get non-dummy values.
+            assert root_usage.total != 1
+            assert root_usage.free != 1
+        else:
+            # Unless K8s disk usage display is enabled, we should get dummy values.
+            assert root_usage.total == 1
+            assert root_usage.free == 1
 
 
 if __name__ == "__main__":

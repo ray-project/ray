@@ -104,9 +104,9 @@ class MockNodeManager : public NodeManager {
                rpc::SendReplyCallback send_reply_callback),
               (override));
   MOCK_METHOD(void,
-              HandlePinObjectIDs,
-              (const rpc::PinObjectIDsRequest &request,
-               rpc::PinObjectIDsReply *reply,
+              HandlePinObjectID,
+              (const rpc::PinObjectIDRequest &request,
+               rpc::PinObjectIDReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
   MOCK_METHOD(void,
