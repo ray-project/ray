@@ -50,12 +50,6 @@ try:
 except NameError:
     IS_NOTEBOOK = False
 
-try:
-    from IPython.core.display import display, HTML
-except ImportError:
-    display = None
-    HTML = None
-
 
 @PublicAPI
 class ProgressReporter:
@@ -513,12 +507,6 @@ class JupyterNotebookReporter(TuneReporterBase, RemoteReporterMixin):
             sort_by_metric,
         )
 
-        if not display or not HTML:
-            raise ImportError(
-                "`JupyterNotebookReporter` requires the `IPython` "
-                "library to be installed."
-            )
-
         if not IS_NOTEBOOK:
             logger.warning(
                 "You are using the `JupyterNotebookReporter`, but not "
@@ -546,6 +534,8 @@ class JupyterNotebookReporter(TuneReporterBase, RemoteReporterMixin):
             self.display(progress_str)
 
     def display(self, string: str) -> None:
+        from IPython.core.display import display, HTML
+
         if not self._display_handle:
             self._display_handle = display(
                 HTML(string), display_id=True, clear=self._overwrite
