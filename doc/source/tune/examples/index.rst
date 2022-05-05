@@ -264,21 +264,6 @@ Search Algorithm Examples
         :text: How To Use Tune With HEBO
         :classes: btn-link btn-block stretched-link
 
-API docs:
-
-- :ref:`AxSearch <tune-ax>` [`Ax website <https://ax.dev/>`__]
-- :ref:`DragonflySearch <Dragonfly>` [`Dragonfly website <https://dragonfly-opt.readthedocs.io/>`__]
-- :ref:`SkoptSearch <skopt>` [`Scikit-Optimize website <https://scikit-optimize.github.io>`__]
-- :ref:`HyperOptSearch <tune-hyperopt>` [`HyperOpt website <http://hyperopt.github.io/hyperopt>`__] including a conditional search space.
-- :ref:`BayesOptSearch <bayesopt>` [`BayesianOptimization website <https://github.com/fmfn/BayesianOptimization>`__]
-- :ref:`BlendSearch <BlendSearch>` [`BlendSearch website <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`__] and :ref:`CFO <CFO>` [`CFO website <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`__]
-- :ref:`TuneBOHB <suggest-TuneBOHB>` [`BOHB website <https://github.com/automl/HpBandSter>`__]
-- :ref:`NevergradSearch <nevergrad>` [`Nevergrad website <https://github.com/facebookresearch/nevergrad>`__]
-- :ref:`OptunaSearch <tune-optuna>` [`Optuna website <https://optuna.org/>`__]
-- :ref:`ZOOptSearch <zoopt>` [`ZOOpt website <https://github.com/polixir/ZOOpt>`__]
-- :ref:`SigOptSearch <sigopt>` [`SigOpt website <https://sigopt.com/>`__] including support for prior beliefs and the multi-objective case.
-- :ref:`HEBOSearch <tune-hebo>` [`HEBO website <https://github.com/huawei-noah/HEBO/tree/master/HEBO>`__]
-
 
 .. _tune-general-examples:
 
