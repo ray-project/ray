@@ -85,7 +85,10 @@ class ServeController:
         self.controller_namespace = ray.get_runtime_context().namespace
         self.controller_name = controller_name
 
-        logger.info(f'Controller named "{self.controller_name} starting in "{self.controller_namespace}" namespace.')
+        logger.info(
+            f'Controller named "{self.controller_name} starting in '
+            f'"{self.controller_namespace}" namespace.'
+        )
 
         self.checkpoint_path = checkpoint_path
         kv_store_namespace = f"{self.controller_name}-{self.controller_namespace}"

@@ -446,7 +446,6 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
     init_args and init_kwargs must also be JSON-serializable or this call will
     fail.
     """
-    from ray.serve.pipeline.json_serde import convert_to_json_safe_obj
 
     if d.ray_actor_options is not None:
         ray_actor_options_schema = RayActorOptionsSchema.parse_obj(d.ray_actor_options)
@@ -472,7 +471,6 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
 
 
 def schema_to_deployment(s: DeploymentSchema) -> Deployment:
-    from ray.serve.pipeline.json_serde import convert_from_json_safe_obj
 
     if s.ray_actor_options is None:
         ray_actor_options = None
