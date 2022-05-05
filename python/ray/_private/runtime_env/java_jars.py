@@ -10,7 +10,6 @@ from ray._private.runtime_env.packaging import (
     delete_package,
     get_local_dir_from_uri,
     is_jar_uri,
-    Protocol,
 )
 from ray._private.utils import get_directory_size_bytes
 from ray._private.utils import try_to_create_directory
@@ -48,7 +47,7 @@ class JavaJarsManager:
         self, uri: str, logger: Optional[logging.Logger] = default_logger
     ):
         """Download a jar URI."""
-        jar_file = download_and_unpack_package(
+        _ = download_and_unpack_package(
             uri, self._resources_dir, logger=logger
         )
         logger.debug("Succeeded to download jar file {jar_file} .")
