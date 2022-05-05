@@ -58,7 +58,7 @@ class _NotYetPersistedCheckpoint(_TrackedCheckpoint):
         self.checkpoint_dir_or_data = path
 
     def delete(self):
-        if not self._committed:
+        if not self.committed:
             return
         return super().delete()
 
@@ -70,7 +70,6 @@ class _NotYetPersistedCheckpoint(_TrackedCheckpoint):
             checkpoint_id=checkpoint.checkpoint_id,
             result=checkpoint.result,
             node_ip=checkpoint.node_ip,
-            delete_fn=checkpoint._delete_fn,
         )
         return new_checkpoint
 

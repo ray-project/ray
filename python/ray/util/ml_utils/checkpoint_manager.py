@@ -30,7 +30,6 @@ class _TrackedCheckpoint:
         checkpoint_id: Optional[int] = None,
         result: Optional[Dict] = None,
         node_ip: Optional[str] = None,
-        delete_fn: Optional[Callable[["_TrackedCheckpoint"], None]] = None,
     ):
         self.checkpoint_dir_or_data = checkpoint_dir_or_data
         self.checkpoint_id = checkpoint_id
@@ -40,13 +39,14 @@ class _TrackedCheckpoint:
         self.result = result or {}
         self.node_ip = node_ip or self.result.get(NODE_IP, None)
 
-        self._delete_fn = delete_fn or _default_delete_fn
-
     def commit(self, path: Optional[Path] = None):
         pass
 
-    def delete(self):
-        self._delete_fn(self)
+    def delete(
+        self, delete_fn: Optional[Callable[["_TrackedCheckpoint"], None]] = None
+    ):
+        delete_fn = delete_fn or _default_delete_fn
+        delete_fn(self)
 
     def __repr__(self):
         if self.storage_mode == _TrackedCheckpoint.MEMORY:
@@ -134,7 +134,10 @@ class CheckpointStrategy:
 
 class CheckpointManager:
     def __init__(
-        self, checkpoint_strategy: CheckpointStrategy, latest_checkpoint_id: int = 0
+        self,
+        checkpoint_strategy: CheckpointStrategy,
+        latest_checkpoint_id: int = 0,
+        delete_fn: Optional[Callable[["_TrackedCheckpoint"], None]] = None,
     ):
         self._checkpoint_strategy = checkpoint_strategy
 
@@ -152,6 +155,12 @@ class CheckpointManager:
 
         # Checkpoints that are not immediately removed
         self._checkpoints_to_clean_up = set()
+        self._delete_fn = delete_fn
+
+    def set_delete_fn(
+        self, delete_fn: Optional[Callable[["_TrackedCheckpoint"], None]]
+    ):
+        self._delete_fn = delete_fn
 
     def _replace_latest_memory_checkpoint(self, memory_checkpoint: _TrackedCheckpoint):
         assert memory_checkpoint.storage_mode == _TrackedCheckpoint.MEMORY
@@ -270,7 +279,7 @@ class CheckpointManager:
             self._delete_persisted_checkpoint(persisted_checkpoint=persisted_checkpoint)
 
     def _delete_persisted_checkpoint(self, persisted_checkpoint: _TrackedCheckpoint):
-        persisted_checkpoint.delete()
+        persisted_checkpoint.delete(delete_fn=self._delete_fn)
         self._checkpoints_to_clean_up.discard(persisted_checkpoint)
 
     def _cleanup_checkpoints(self):
@@ -286,6 +295,10 @@ class CheckpointManager:
 
     def __getstate__(self):
         state = self.__dict__.copy()
+
+        # Do not serialize the delete fn
+        state.pop("_delete_fn", None)
+
         # Avoid serializing the memory checkpoint.
         state["_newest_memory_checkpoint"] = _TrackedCheckpoint(
             checkpoint_dir_or_data=None,
@@ -295,4 +308,5 @@ class CheckpointManager:
         return state
 
     def __setstate__(self, state):
+        state["_delete_fn"] = None
         self.__dict__.update(state)

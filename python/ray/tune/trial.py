@@ -571,8 +571,8 @@ class Trial:
             self._default_result_or_future = runner.get_auto_filled_metrics.remote(
                 debug_metrics_only=True
             )
-        self.checkpoint_manager._delete_fn = CheckpointDeleter(
-            self._trainable_name(), runner
+        self.checkpoint_manager.set_delete_fn(
+            CheckpointDeleter(self._trainable_name(), runner)
         )
         # No need to invalidate state cache: runner is not stored in json
         # self.invalidate_json_state()

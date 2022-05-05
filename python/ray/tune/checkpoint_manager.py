@@ -1,6 +1,6 @@
 # coding: utf-8
 import logging
-from typing import Callable
+from typing import Callable, Optional
 
 from ray.util.ml_utils.checkpoint_manager import (
     CheckpointStrategy,
@@ -31,7 +31,7 @@ class CheckpointManager(CommonCheckpointManager):
         self,
         keep_checkpoints_num: int,
         checkpoint_score_attr: str,
-        delete_fn: Callable[[str], None],
+        delete_fn: Optional[Callable[["_TrackedCheckpoint"], None]] = None,
     ):
         if keep_checkpoints_num == 0:
             raise RuntimeError(
@@ -51,9 +51,7 @@ class CheckpointManager(CommonCheckpointManager):
             checkpoint_score_order=MIN if checkpoint_score_desc else MAX,
         )
 
-        self._delete_fn = delete_fn
-
-        super().__init__(checkpoint_strategy=checkpoint_strategy)
+        super().__init__(checkpoint_strategy=checkpoint_strategy, delete_fn=delete_fn)
 
     def on_checkpoint(self, checkpoint: _TrackedCheckpoint):
         # Set checkpoint ID
@@ -61,9 +59,6 @@ class CheckpointManager(CommonCheckpointManager):
             checkpoint.checkpoint_id or self._latest_checkpoint_id
         )
         self._latest_checkpoint_id += 1
-
-        # Set delete fn
-        checkpoint._delete_fn = checkpoint._delete_fn or self._delete_fn
 
         if checkpoint.storage_mode == _TrackedCheckpoint.MEMORY:
             self._replace_latest_memory_checkpoint(checkpoint)
@@ -116,13 +111,3 @@ class CheckpointManager(CommonCheckpointManager):
         """Returns best PERSISTENT checkpoints, sorted by score."""
         checkpoints = sorted(self._top_persisted_checkpoints, key=lambda c: c.priority)
         return [wrapped.tracked_checkpoint for wrapped in checkpoints]
-
-    def __getstate__(self):
-        state = super().__getstate__()
-        # Avoid serializing delete fn as it may contain cyclical dependencies
-        state.pop("_delete_fn", None)
-        return state
-
-    def __setstate__(self, state):
-        state["_delete_fn"] = None
-        super().__setstate__(state)
