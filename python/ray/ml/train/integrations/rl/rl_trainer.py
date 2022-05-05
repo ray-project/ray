@@ -262,12 +262,11 @@ class RLTrainer(Trainer):
         Return the policy and AIR preprocessor contained within.
 
         Args:
-            checkpoint: The checkpoint to load the model and
+            checkpoint: The checkpoint to load the policy and
                 preprocessor from. It is expected to be from the result of a
                 ``RLTrainer`` run.
-            model: A callable that returns a TensorFlow Keras model
-                to use, or an instantiated model.
-                Model weights will be loaded from the checkpoint.
+            env: Optional environment to instantiate the trainer with. If not given,
+                it is parsed from the saved trainer configuration instead.
         """
         with checkpoint.as_directory() as checkpoint_path:
             trainer_class_path = os.path.join(checkpoint_path, RL_TRAINER_CLASS_FILE)

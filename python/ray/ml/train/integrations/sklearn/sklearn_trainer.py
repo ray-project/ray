@@ -445,7 +445,7 @@ class SklearnTrainer(Trainer):
         Return the estimator and AIR preprocessor contained within.
 
         Args:
-            checkpoint: The checkpoint to load the model and
+            checkpoint: The checkpoint to load the estimator and
                 preprocessor from. It is expected to be from the result of a
                 ``SklearnTrainer`` run.
         """

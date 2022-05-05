@@ -66,22 +66,6 @@ class XGBoostTrainer(GBDTTrainer):
     _tune_callback_cls: type = TuneReportCheckpointCallback
     _init_model_arg_name: str = "xgb_model"
 
-    @staticmethod
-    def _load_model_and_preprocessor_from_checkpoint(
-        checkpoint: Checkpoint,
-    ) -> Tuple[xgboost.Booster, Optional[Preprocessor]]:
-        with checkpoint.as_directory() as checkpoint_path:
-            xgb_model = xgboost.Booster()
-            xgb_model.load_model(os.path.join(checkpoint_path, MODEL_KEY))
-            preprocessor_path = os.path.join(checkpoint_path, PREPROCESSOR_KEY)
-            if os.path.exists(preprocessor_path):
-                with open(preprocessor_path, "rb") as f:
-                    preprocessor = cpickle.load(f)
-            else:
-                preprocessor = None
-
-        return xgb_model, preprocessor
-
     def _train(self, **kwargs):
         return xgboost_ray.train(**kwargs)
 
@@ -98,4 +82,14 @@ class XGBoostTrainer(GBDTTrainer):
                 preprocessor from. It is expected to be from the result of a
                 ``XGBoostTrainer`` run.
         """
-        return XGBoostTrainer._load_model_and_preprocessor_from_checkpoint(checkpoint)
+        with checkpoint.as_directory() as checkpoint_path:
+            xgb_model = xgboost.Booster()
+            xgb_model.load_model(os.path.join(checkpoint_path, MODEL_KEY))
+            preprocessor_path = os.path.join(checkpoint_path, PREPROCESSOR_KEY)
+            if os.path.exists(preprocessor_path):
+                with open(preprocessor_path, "rb") as f:
+                    preprocessor = cpickle.load(f)
+            else:
+                preprocessor = None
+
+        return xgb_model, preprocessor

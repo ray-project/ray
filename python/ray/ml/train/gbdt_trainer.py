@@ -133,7 +133,7 @@ class GBDTTrainer(Trainer):
         }
 
     @staticmethod
-    def _load_model_and_preprocessor_from_checkpoint(
+    def load_checkpoint(
         checkpoint: Checkpoint,
     ) -> Tuple[Any, Optional[Preprocessor]]:
         raise NotImplementedError
@@ -177,9 +177,7 @@ class GBDTTrainer(Trainer):
 
         init_model = None
         if self.resume_from_checkpoint:
-            init_model, _ = self._load_model_and_preprocessor_from_checkpoint(
-                self.resume_from_checkpoint
-            )
+            init_model, _ = self.load_checkpoint(self.resume_from_checkpoint)
 
         config.setdefault("verbose_eval", False)
         config.setdefault("callbacks", [])

@@ -76,23 +76,6 @@ class LightGBMTrainer(GBDTTrainer):
     }
     _init_model_arg_name: str = "init_model"
 
-    @staticmethod
-    def _load_model_and_preprocessor_from_checkpoint(
-        checkpoint: Checkpoint,
-    ) -> Tuple[lightgbm.Booster, Optional[Preprocessor]]:
-        with checkpoint.as_directory() as checkpoint_path:
-            lgbm_model = lightgbm.Booster(
-                model_file=os.path.join(checkpoint_path, MODEL_KEY)
-            )
-            preprocessor_path = os.path.join(checkpoint_path, PREPROCESSOR_KEY)
-            if os.path.exists(preprocessor_path):
-                with open(preprocessor_path, "rb") as f:
-                    preprocessor = cpickle.load(f)
-            else:
-                preprocessor = None
-
-        return lgbm_model, preprocessor
-
     def _train(self, **kwargs):
         return lightgbm_ray.train(**kwargs)
 
@@ -109,4 +92,15 @@ class LightGBMTrainer(GBDTTrainer):
                 preprocessor from. It is expected to be from the result of a
                 ``LightGBMTrainer`` run.
         """
-        return LightGBMTrainer._load_model_and_preprocessor_from_checkpoint(checkpoint)
+        with checkpoint.as_directory() as checkpoint_path:
+            lgbm_model = lightgbm.Booster(
+                model_file=os.path.join(checkpoint_path, MODEL_KEY)
+            )
+            preprocessor_path = os.path.join(checkpoint_path, PREPROCESSOR_KEY)
+            if os.path.exists(preprocessor_path):
+                with open(preprocessor_path, "rb") as f:
+                    preprocessor = cpickle.load(f)
+            else:
+                preprocessor = None
+
+        return lgbm_model, preprocessor
