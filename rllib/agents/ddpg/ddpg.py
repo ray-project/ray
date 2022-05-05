@@ -134,6 +134,9 @@ class DDPGConfig(TrainerConfig):
         self.min_time_s_per_reporting = 1
         self.min_sample_timesteps_per_reporting = 1000
 
+        # Deprecated.
+        self.learning_starts = DEPRECATED_VALUE
+
     @override(TrainerConfig)
     def training(
         self,
