@@ -8,6 +8,7 @@ from ray.ml.config import ScalingConfig, RunConfig
 from ray.ml.constants import PREPROCESSOR_KEY
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.trainer import Trainer, GenDataset
+from ray.ml.utils.checkpointing import save_preprocessor_to_dir
 from ray.rllib.agents.trainer import Trainer as RLlibTrainer
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.typing import PartialTrainerConfigDict, EnvType
@@ -231,9 +232,7 @@ class RLTrainer(Trainer):
                     cpickle.dump(self.config, fp)
 
                 if preprocessor:
-                    preprocessor_path = os.path.join(checkpoint_dir, PREPROCESSOR_KEY)
-                    with open(preprocessor_path, "wb") as fp:
-                        cpickle.dump(preprocessor, fp)
+                    save_preprocessor_to_dir(preprocessor, checkpoint_dir)
 
                 return checkpoint_path
 

@@ -1,12 +1,12 @@
 import os
 from typing import Optional, Tuple
 
-import ray.cloudpickle as cpickle
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.train.gbdt_trainer import GBDTTrainer
+from ray.ml.utils.checkpointing import load_preprocessor_from_dir
 from ray.util.annotations import PublicAPI
-from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY
+from ray.ml.constants import MODEL_KEY
 
 import xgboost
 import xgboost_ray
@@ -85,11 +85,6 @@ class XGBoostTrainer(GBDTTrainer):
         with checkpoint.as_directory() as checkpoint_path:
             xgb_model = xgboost.Booster()
             xgb_model.load_model(os.path.join(checkpoint_path, MODEL_KEY))
-            preprocessor_path = os.path.join(checkpoint_path, PREPROCESSOR_KEY)
-            if os.path.exists(preprocessor_path):
-                with open(preprocessor_path, "rb") as f:
-                    preprocessor = cpickle.load(f)
-            else:
-                preprocessor = None
+            preprocessor = load_preprocessor_from_dir(checkpoint_path)
 
         return xgb_model, preprocessor

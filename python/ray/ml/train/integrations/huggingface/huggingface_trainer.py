@@ -6,7 +6,6 @@ from distutils.version import LooseVersion
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple, Type, Union
 import warnings
-from ray.ml.utils.torch_utils import load_torch_model
 
 import torch
 import transformers
@@ -14,9 +13,9 @@ import transformers.modeling_utils
 import transformers.trainer
 from transformers.trainer import WEIGHTS_NAME, TRAINING_ARGS_NAME
 import transformers.training_args
-import ray.cloudpickle as cpickle
 from torch.utils.data import Dataset as TorchDataset
 
+import ray.cloudpickle as cpickle
 from ray import train
 from ray import tune
 from ray.util import PublicAPI, get_node_ip_address
@@ -34,6 +33,8 @@ from ray.ml.train.integrations.huggingface.huggingface_utils import (
     TrainReportCallback,
     wrap_transformers_trainer,
 )
+from ray.ml.utils.checkpointing import load_preprocessor_from_file
+from ray.ml.utils.torch_utils import load_torch_model
 from ray.train.constants import TUNE_CHECKPOINT_ID
 from ray.train.torch import TorchConfig
 from ray.tune.trainable import Trainable
@@ -419,12 +420,7 @@ class HuggingFaceTrainer(TorchTrainer):
         """
         tokenizer_kwargs = tokenizer_kwargs or {}
         with checkpoint.as_directory() as checkpoint_path:
-            preprocessor_path = os.path.join(checkpoint_path, PREPROCESSOR_KEY)
-            if os.path.exists(preprocessor_path):
-                with open(preprocessor_path, "rb") as f:
-                    preprocessor = cpickle.load(f)
-            else:
-                preprocessor = None
+            preprocessor = load_preprocessor_from_file(checkpoint_path)
             if isinstance(model, torch.nn.Module):
                 state_dict = torch.load(
                     os.path.join(checkpoint_path, WEIGHTS_NAME), map_location="cpu"

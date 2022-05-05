@@ -17,6 +17,7 @@ from ray.ml.config import RunConfig, ScalingConfig
 from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY, TRAIN_DATASET_KEY
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.trainer import GenDataset, Trainer
+from ray.ml.utils.checkpointing import load_preprocessor_from_dir
 from ray.ml.utils.sklearn_utils import has_cpu_params, set_cpu_params
 from ray.util import PublicAPI
 from ray.util.joblib import register_ray
@@ -453,11 +454,6 @@ class SklearnTrainer(Trainer):
             estimator_path = os.path.join(checkpoint_path, MODEL_KEY)
             with open(estimator_path, "rb") as f:
                 estimator_path = cpickle.load(f)
-            preprocessor_path = os.path.join(checkpoint_path, PREPROCESSOR_KEY)
-            if os.path.exists(preprocessor_path):
-                with open(preprocessor_path, "rb") as f:
-                    preprocessor = cpickle.load(f)
-            else:
-                preprocessor = None
+            preprocessor = load_preprocessor_from_dir(checkpoint_path)
 
         return estimator_path, preprocessor

@@ -1,19 +1,17 @@
-import os
 from typing import Optional, Type, Union, List
 
 import numpy as np
 import pandas as pd
-from ray.ml.constants import PREPROCESSOR_KEY
 
 from transformers.pipelines import Pipeline, pipeline as pipeline_factory
 from transformers.pipelines.table_question_answering import (
     TableQuestionAnsweringPipeline,
 )
 
-import ray.cloudpickle as cpickle
 from ray.ml.predictor import DataBatchType, Predictor
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
+from ray.ml.utils.checkpointing import load_preprocessor_from_dir
 
 
 class HuggingFacePredictor(Predictor):
@@ -64,12 +62,7 @@ class HuggingFacePredictor(Predictor):
             )
         pipeline = pipeline or pipeline_factory
         with checkpoint.as_directory() as checkpoint_path:
-            preprocessor_path = os.path.join(checkpoint_path, PREPROCESSOR_KEY)
-            if os.path.exists(preprocessor_path):
-                with open(preprocessor_path, "rb") as f:
-                    preprocessor = cpickle.load(f)
-            else:
-                preprocessor = None
+            preprocessor = load_preprocessor_from_dir(checkpoint_path)
             pipeline = pipeline(model=checkpoint_path, **pipeline_kwargs)
         return HuggingFacePredictor(
             pipeline=pipeline,
