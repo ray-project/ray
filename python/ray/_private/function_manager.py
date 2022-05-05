@@ -141,7 +141,6 @@ class FunctionActorManager:
 
     def load_function_or_class_from_local(self, module_name, function_or_class_name):
         """Try to load a function or class in the module from local."""
-
         if module_name == "__main__":
             # If the function come from main module, check whether we have
             # file to this module or not. It could be from atty or stdin.
@@ -328,16 +327,10 @@ class FunctionActorManager:
         function_id = function_descriptor.function_id
         # If the function has already been loaded,
         # There's no need to load again
-        if function_id in self._function_execution_info:
-            return self._function_execution_info[function_id]
-        if self._worker.load_code_from_local:
-            # Load function from local code.
-            if not function_descriptor.is_actor_method():
-                # If the function is not able to be loaded,
-                # try to load it from GCS,
-                # even if load_code_from_local is set True
-                if self._load_function_from_local(function_descriptor) is True:
-                    return self._function_execution_info[function_id]
+        if not function_descriptor.is_actor_method():
+            if function_id in self._function_execution_info or self._load_function_from_local(function_descriptor):
+                return self._function_execution_info[function_id]
+
         # Load function from GCS.
         # Wait until the function to be executed has actually been
         # registered on this worker. We will push warnings to the user if
@@ -412,7 +405,7 @@ class FunctionActorManager:
                             break
                 else:
                     assert not self._worker.actor_id.is_nil()
-                    # Actor loading will happen when execute_task is called.
+                    # Actor loadingwill happen when execute_task is called.
                     assert self._worker.actor_id in self._worker.actors
                     break
 
@@ -441,18 +434,15 @@ class FunctionActorManager:
     def export_actor_class(
         self, Class, actor_creation_function_descriptor, actor_method_names
     ):
-        if self._worker.load_code_from_local:
-            module_name, class_name = (
-                actor_creation_function_descriptor.module_name,
-                actor_creation_function_descriptor.class_name,
-            )
-            # If the class is dynamic, we still export it to GCS
-            # even if load_code_from_local is set True.
-            if (
-                self.load_function_or_class_from_local(module_name, class_name)
-                is not None
-            ):
-                return
+        module_name, class_name = (
+            actor_creation_function_descriptor.module_name,
+            actor_creation_function_descriptor.class_name,
+        )
+
+        # If the class is dynamic, we still export it to GCS
+        # even if load_code_from_local is set True.
+        if self.load_function_or_class_from_local(module_name, class_name) is not None:
+            return
 
         # `current_job_id` shouldn't be NIL, unless:
         # 1) This worker isn't an actor;
@@ -521,13 +511,12 @@ class FunctionActorManager:
                 actor_creation_function_descriptor
             )
             # If the actor is unable to be loaded
-            # from local, try to load it
-            # from GCS even if load_code_from_local is set True
+            # from local, try to load it from GCS.
             if actor_class is None:
                 actor_class = self._load_actor_class_from_gcs(
                     job_id, actor_creation_function_descriptor
                 )
-
+            assert actor_class is not None
             # Save the loaded actor class in cache.
             self._loaded_actor_classes[function_id] = actor_class
 
@@ -563,6 +552,7 @@ class FunctionActorManager:
                 )
                 self._num_task_executions[method_id] = 0
             self._num_task_executions[function_id] = 0
+        assert actor_class is not None
         return actor_class
 
     def _load_actor_class_from_local(self, actor_creation_function_descriptor):
@@ -573,12 +563,11 @@ class FunctionActorManager:
         )
 
         actor_class = self.load_function_or_class_from_local(module_name, class_name)
-
         if actor_class is not None:
             if isinstance(actor_class, ray.actor.ActorClass):
                 return actor_class.__ray_metadata__.modified_class
             else:
-                return actor_class
+                return ray.remote(actor_class).__ray_metadata__.modified_class
         else:
             return None
 

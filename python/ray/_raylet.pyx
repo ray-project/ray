@@ -554,7 +554,6 @@ cdef execute_task(
         execution_info = manager.get_execution_info(
             job_id, function_descriptor)
         execution_infos[function_descriptor] = execution_info
-
     function_name = execution_info.function_name
     extra_data = (b'{"name": ' + function_name.encode("ascii") +
                   b' "task_id": ' + task_id.hex().encode("ascii") + b'}')
