@@ -21,6 +21,10 @@ public interface RuntimeEnv {
       return this;
     }
 
+    /**
+     * Add the jars as runtime environment for the actor or job. We now support both `.jar` files
+     * and `.zip` files.
+     */
     public Builder addJars(List<String> jars) {
       this.jars.addAll(jars);
       return this;
