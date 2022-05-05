@@ -7,6 +7,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.framework import try_import_tf, get_variable
+from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.rllib.utils.tf_utils import make_tf_callable
 from ray.rllib.utils.typing import (
     LocalOptimizer,
@@ -198,6 +199,7 @@ class ValueNetworkMixin:
     the result of the most recent forward pass is being used to return an
     already calculated tensor.
     """
+
     def __init__(self, config):
         # When doing GAE, we need the value function estimate on the
         # observation.
@@ -236,15 +238,17 @@ class ValueNetworkMixin:
         # Return value function outputs. VF estimates will hence be added to the
         # SampleBatches produced by the sampler(s) to generate the train batches
         # going into the loss function.
-        fetches.update({
-            SampleBatch.VF_PREDS: self.model.value_function(),
-        })
+        fetches.update(
+            {
+                SampleBatch.VF_PREDS: self.model.value_function(),
+            }
+        )
         return fetches
 
 
 class ComputeGAEMixIn:
-    """Postprocess SampleBatch to Compute GAE before they get used for training.
-    """
+    """Postprocess SampleBatch to Compute GAE before they get used for training."""
+
     def __init__(self):
         pass
 
@@ -259,16 +263,14 @@ class ComputeGAEMixIn:
 
 
 class ComputeAndClipGradsMixIn:
-    """Compute and maybe clip gradients.
-    """
+    """Compute and maybe clip gradients."""
+
     def __init__(self):
         pass
 
     @DeveloperAPI
     def compute_gradients_fn(
-        self,
-        optimizer: LocalOptimizer,
-        loss: TensorType
+        self, optimizer: LocalOptimizer, loss: TensorType
     ) -> ModelGradients:
         # Compute the gradients.
         variables = self.model.trainable_variables
@@ -284,7 +286,9 @@ class ComputeAndClipGradsMixIn:
             # If the global_norm is inf -> All grads will be NaN. Stabilize this
             # here by setting them to 0.0. This will simply ignore destructive loss
             # calculations.
-            self.grads = [tf.where(tf.math.is_nan(g), tf.zeros_like(g), g) for g in grads]
+            self.grads = [
+                tf.where(tf.math.is_nan(g), tf.zeros_like(g), g) for g in grads
+            ]
             clipped_grads_and_vars = list(zip(self.grads, variables))
             return clipped_grads_and_vars
         else:

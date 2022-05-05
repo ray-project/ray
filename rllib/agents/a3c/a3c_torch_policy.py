@@ -116,6 +116,39 @@ def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
     }
 
 
+# TODO(jungong) : won't need this once we switch to TorchPolicyV2
+# implementation. ValueNetworkMixIn already supplies the right
+# extra_action_out() call.
+def vf_preds_fetches(
+    policy: Policy,
+    input_dict: Dict[str, TensorType],
+    state_batches: List[TensorType],
+    model: ModelV2,
+    action_dist: TorchDistributionWrapper,
+) -> Dict[str, TensorType]:
+    """Defines extra fetches per action computation.
+    Args:
+        policy (Policy): The Policy to perform the extra action fetch on.
+        input_dict (Dict[str, TensorType]): The input dict used for the action
+            computing forward pass.
+        state_batches (List[TensorType]): List of state tensors (empty for
+            non-RNNs).
+        model (ModelV2): The Model object of the Policy.
+        action_dist (TorchDistributionWrapper): The instantiated distribution
+            object, resulting from the model's outputs and the given
+            distribution class.
+    Returns:
+        Dict[str, TensorType]: Dict with extra tf fetches to perform per
+            action computation.
+    """
+    # Return value function outputs. VF estimates will hence be added to the
+    # SampleBatches produced by the sampler(s) to generate the train batches
+    # going into the loss function.
+    return {
+        SampleBatch.VF_PREDS: model.value_function(),
+    }
+
+
 def torch_optimizer(policy: Policy, config: TrainerConfigDict) -> LocalOptimizer:
     return torch.optim.Adam(policy.model.parameters(), lr=config["lr"])
 

@@ -23,7 +23,6 @@ from ray.rllib.evaluation.postprocessing import (
     Postprocessing,
 )
 from ray.rllib.models.tf.tf_action_dist import Categorical
-from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.dynamic_tf_policy_v2 import DynamicTFPolicyV2
 from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
@@ -39,7 +38,7 @@ from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import explained_variance, make_tf_callable
-from ray.rllib.utils.typing import AgentID, TensorType, TrainerConfigDict
+from ray.rllib.utils.typing import TensorType
 
 tf1, tf, tfv = try_import_tf()
 
@@ -63,8 +62,7 @@ class MakeAPPOModel:
         """
         # Get the num_outputs for the following model construction calls.
         _, logit_dim = ModelCatalog.get_action_dist(
-            self.action_space,
-            self.config["model"]
+            self.action_space, self.config["model"]
         )
 
         # Construct the (main) model.
@@ -127,6 +125,7 @@ def get_appo_tf_policy(base: type) -> type:
     Returns:
         A TF Policy to be used with ImpalaTrainer.
     """
+
     class APPOTFPolicy(
         VTraceClipGradients,
         VTraceOptimizer,
@@ -232,11 +231,14 @@ def get_appo_tf_policy(base: type) -> type:
             if self.config["vtrace"]:
                 drop_last = self.config["vtrace_drop_last_ts"]
                 logger.debug(
-                    "Using V-Trace surrogate loss (vtrace=True; " f"drop_last={drop_last})"
+                    "Using V-Trace surrogate loss (vtrace=True; "
+                    f"drop_last={drop_last})"
                 )
 
                 # Prepare actions for loss.
-                loss_actions = actions if is_multidiscrete else tf.expand_dims(actions, axis=1)
+                loss_actions = (
+                    actions if is_multidiscrete else tf.expand_dims(actions, axis=1)
+                )
 
                 old_policy_behaviour_logits = tf.stop_gradient(target_model_out)
                 old_policy_action_dist = dist_class(old_policy_behaviour_logits, model)
@@ -266,12 +268,16 @@ def get_appo_tf_policy(base: type) -> type:
                             make_time_major(loss_actions, drop_last=drop_last), axis=2
                         ),
                         discounts=tf.cast(
-                            ~make_time_major(tf.cast(dones, tf.bool), drop_last=drop_last),
+                            ~make_time_major(
+                                tf.cast(dones, tf.bool), drop_last=drop_last
+                            ),
                             tf.float32,
                         )
-                                  * self.config["gamma"],
+                        * self.config["gamma"],
                         rewards=make_time_major(rewards, drop_last=drop_last),
-                        values=values_time_major[:-1] if drop_last else values_time_major,
+                        values=values_time_major[:-1]
+                        if drop_last
+                        else values_time_major,
                         bootstrap_value=values_time_major[-1],
                         dist_class=Categorical if is_multidiscrete else dist_class,
                         model=model,
@@ -283,7 +289,9 @@ def get_appo_tf_policy(base: type) -> type:
                         ),
                     )
 
-                actions_logp = make_time_major(action_dist.logp(actions), drop_last=drop_last)
+                actions_logp = make_time_major(
+                    action_dist.logp(actions), drop_last=drop_last
+                )
                 prev_actions_logp = make_time_major(
                     prev_action_dist.logp(actions), drop_last=drop_last
                 )
@@ -308,7 +316,9 @@ def get_appo_tf_policy(base: type) -> type:
                     ),
                 )
 
-                action_kl = tf.reduce_mean(mean_kl, axis=0) if is_multidiscrete else mean_kl
+                action_kl = (
+                    tf.reduce_mean(mean_kl, axis=0) if is_multidiscrete else mean_kl
+                )
                 mean_kl_loss = reduce_mean_valid(action_kl)
                 mean_policy_loss = -reduce_mean_valid(surrogate_loss)
 
@@ -321,7 +331,9 @@ def get_appo_tf_policy(base: type) -> type:
                 mean_vf_loss = 0.5 * reduce_mean_valid(tf.math.square(delta))
 
                 # The entropy loss.
-                actions_entropy = make_time_major(action_dist.multi_entropy(), drop_last=True)
+                actions_entropy = make_time_major(
+                    action_dist.multi_entropy(), drop_last=True
+                )
                 mean_entropy = reduce_mean_valid(actions_entropy)
 
             else:
@@ -346,17 +358,23 @@ def get_appo_tf_policy(base: type) -> type:
                     ),
                 )
 
-                action_kl = tf.reduce_mean(mean_kl, axis=0) if is_multidiscrete else mean_kl
+                action_kl = (
+                    tf.reduce_mean(mean_kl, axis=0) if is_multidiscrete else mean_kl
+                )
                 mean_kl_loss = reduce_mean_valid(action_kl)
                 mean_policy_loss = -reduce_mean_valid(surrogate_loss)
 
                 # The value function loss.
-                value_targets = make_time_major(train_batch[Postprocessing.VALUE_TARGETS])
+                value_targets = make_time_major(
+                    train_batch[Postprocessing.VALUE_TARGETS]
+                )
                 delta = values_time_major - value_targets
                 mean_vf_loss = 0.5 * reduce_mean_valid(tf.math.square(delta))
 
                 # The entropy loss.
-                mean_entropy = reduce_mean_valid(make_time_major(action_dist.multi_entropy()))
+                mean_entropy = reduce_mean_valid(
+                    make_time_major(action_dist.multi_entropy())
+                )
 
             # The summed weighted loss.
             total_loss = mean_policy_loss - mean_entropy * self.entropy_coeff
@@ -402,7 +420,8 @@ def get_appo_tf_policy(base: type) -> type:
                 "var_gnorm": tf.linalg.global_norm(self.model.trainable_variables()),
                 "vf_loss": self._mean_vf_loss,
                 "vf_explained_var": explained_variance(
-                    tf.reshape(self._value_targets, [-1]), tf.reshape(values_batched, [-1])
+                    tf.reshape(self._value_targets, [-1]),
+                    tf.reshape(values_batched, [-1]),
                 ),
                 "entropy_coeff": tf.cast(self.entropy_coeff, tf.float64),
             }

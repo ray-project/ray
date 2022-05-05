@@ -1,13 +1,14 @@
-from collections import namedtuple, OrderedDict
+from collections import OrderedDict
 import gym
 import logging
 import re
 import tree  # pip install dm_tree
-from typing import Callable, Dict, List, Optional, Tuple, Type, TYPE_CHECKING, Union
+from typing import Dict, List, Optional, Tuple, Type, TYPE_CHECKING, Union
 
 from ray.util.debug import log_once
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.policy.dynamic_tf_policy import TFMultiGPUTowerStack
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
@@ -144,7 +145,7 @@ class DynamicTFPolicyV2(TFPolicy):
         self,
         obs_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        config: TrainerConfigDict
+        config: TrainerConfigDict,
     ):
         return {}
 
@@ -206,7 +207,9 @@ class DynamicTFPolicyV2(TFPolicy):
             The Model for the Policy to use.
         """
         # Default ModelV2 model.
-        _, logit_dim = ModelCatalog.get_action_dist(self.action_space, self.config["model"])
+        _, logit_dim = ModelCatalog.get_action_dist(
+            self.action_space, self.config["model"]
+        )
         return ModelCatalog.get_model_v2(
             obs_space=self.observation_space,
             action_space=self.action_space,
@@ -218,9 +221,7 @@ class DynamicTFPolicyV2(TFPolicy):
     @DeveloperAPI
     @OverrideToImplementCustomLogic
     def compute_gradients_fn(
-        self,
-        optimizer: LocalOptimizer,
-        loss: TensorType
+        self, optimizer: LocalOptimizer, loss: TensorType
     ) -> ModelGradients:
         """Gradients computing function (from loss tensor, using local optimizer).
 
@@ -244,7 +245,7 @@ class DynamicTFPolicyV2(TFPolicy):
         self,
         policy: Policy,
         optimizer: "tf.keras.optimizers.Optimizer",
-        grads: ModelGradients
+        grads: ModelGradients,
     ) -> "tf.Operation":
         """Gradients computing function (from loss tensor, using local optimizer).
 
@@ -375,8 +376,9 @@ class DynamicTFPolicyV2(TFPolicy):
 
     @override(TFPolicy)
     @OverrideToImplementCustomLogic
-    def optimizer(self) -> Union["tf.keras.optimizers.Optimizer",
-                                 List["tf.keras.optimizers.Optimizer"]]:
+    def optimizer(
+        self,
+    ) -> Union["tf.keras.optimizers.Optimizer", List["tf.keras.optimizers.Optimizer"]]:
         """TF optimizer to use for policy optimization.
 
         Returns:
@@ -432,8 +434,7 @@ class DynamicTFPolicyV2(TFPolicy):
                 )
 
     def _init_input_dict_and_dummy_batch(
-        self,
-        existing_inputs: Dict[str, "tf1.placeholder"]
+        self, existing_inputs: Dict[str, "tf1.placeholder"]
     ) -> Tuple[Union[int, TensorType], Union[bool, TensorType]]:
         """Initialized input_dict and dummy_batch data.
 
@@ -461,7 +462,8 @@ class DynamicTFPolicyV2(TFPolicy):
             # Placeholder for `is_exploring` flag.
             explore = tf1.placeholder_with_default(True, (), name="is_exploring")
             (
-                self._input_dict, self._dummy_batch,
+                self._input_dict,
+                self._dummy_batch,
             ) = self._get_input_dict_and_dummy_batch(self.view_requirements, {})
 
         # Placeholder for `is_training` flag.
@@ -532,12 +534,9 @@ class DynamicTFPolicyV2(TFPolicy):
         return SampleBatch(input_dict, seq_lens=self._seq_lens), dummy_batch
 
     def _init_action_fetches(
-        self,
-        timestep: Union[int, TensorType],
-        explore: Union[bool, TensorType]
+        self, timestep: Union[int, TensorType], explore: Union[bool, TensorType]
     ) -> Tuple[TensorType, TensorType, TensorType, type, Dict[str, TensorType]]:
-        """Create action related fields for base Policy and loss initialization.
-        """
+        """Create action related fields for base Policy and loss initialization."""
         # Multi-GPU towers do not need any action computing/exploration
         # graphs.
         sampled_action = None
@@ -609,7 +608,7 @@ class DynamicTFPolicyV2(TFPolicy):
             sampled_action_logp,
             dist_inputs,
             dist_class,
-            extra_action_fetches
+            extra_action_fetches,
         )
 
     def _init_optimizers(self):
@@ -751,9 +750,7 @@ class DynamicTFPolicyV2(TFPolicy):
 
         # Call the grads stats fn.
         # TODO: (sven) rename to simply stats_fn to match eager and torch.
-        self._stats_fetches.update(
-            self.grad_stats_fn(train_batch, self._grads)
-        )
+        self._stats_fetches.update(self.grad_stats_fn(train_batch, self._grads))
 
         # Add new columns automatically to view-reqs.
         if auto_remove_unneeded_view_reqs:
@@ -1014,4 +1011,4 @@ class DynamicTFPolicyV2(TFPolicy):
             else:
                 return self.compute_gradients_fn(optimizers[0], losses[0])
         else:
-            return base.gradients(self, optimizers, losses)
+            return super().gradients(self, optimizers, losses)

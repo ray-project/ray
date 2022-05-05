@@ -1,14 +1,13 @@
 import gym
 import logging
 import numpy as np
-from typing import Any, Dict, List, Type, Union
+from typing import Dict, List, Type, Union
 
 import ray
 import ray.rllib.agents.impala.vtrace_torch as vtrace
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
-from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_mixins import (
     EntropyCoeffSchedule,
@@ -165,8 +164,8 @@ def make_time_major(policy, seq_lens, tensor, drop_last=False):
 
 
 class VTraceOptimizer:
-    """Optimizer function for VTrace torch policies.
-    """
+    """Optimizer function for VTrace torch policies."""
+
     def __init__(self):
         pass
 
@@ -194,7 +193,7 @@ class VTraceTorchPolicy(
     VTraceOptimizer,
     LearningRateSchedule,
     EntropyCoeffSchedule,
-    TorchPolicyV2
+    TorchPolicyV2,
 ):
     """PyTorch policy class used with PPOTrainer."""
 
@@ -203,7 +202,8 @@ class VTraceTorchPolicy(
 
         GradClippingMixin.__init__(self)
         VTraceOptimizer.__init__(self)
-        # Need to initialize learning rate variable before calling TorchPolicyV2.__init__.
+        # Need to initialize learning rate variable before calling
+        # TorchPolicyV2.__init__.
         LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
         EntropyCoeffSchedule.__init__(
             self, config["entropy_coeff"], config["entropy_coeff_schedule"]
@@ -286,8 +286,12 @@ class VTraceTorchPolicy(
         drop_last = self.config["vtrace_drop_last_ts"]
         loss = VTraceLoss(
             actions=_make_time_major(loss_actions, drop_last=drop_last),
-            actions_logp=_make_time_major(action_dist.logp(actions), drop_last=drop_last),
-            actions_entropy=_make_time_major(action_dist.entropy(), drop_last=drop_last),
+            actions_logp=_make_time_major(
+                action_dist.logp(actions), drop_last=drop_last
+            ),
+            actions_entropy=_make_time_major(
+                action_dist.entropy(), drop_last=drop_last
+            ),
             dones=_make_time_major(dones, drop_last=drop_last),
             behaviour_action_logp=_make_time_major(
                 behaviour_action_logp, drop_last=drop_last
@@ -332,18 +336,24 @@ class VTraceTorchPolicy(
 
     @override(TorchPolicyV2)
     def extra_grad_info(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
-        return convert_to_numpy({
-            "cur_lr": self.cur_lr,
-            "total_loss": torch.mean(torch.stack(self.get_tower_stats("total_loss"))),
-            "policy_loss": torch.mean(torch.stack(self.get_tower_stats("pi_loss"))),
-            "entropy": torch.mean(torch.stack(self.get_tower_stats("mean_entropy"))),
-            "entropy_coeff": self.entropy_coeff,
-            "var_gnorm": global_norm(self.model.trainable_variables()),
-            "vf_loss": torch.mean(torch.stack(self.get_tower_stats("vf_loss"))),
-            "vf_explained_var": torch.mean(
-                torch.stack(self.get_tower_stats("vf_explained_var"))
-            ),
-        })
+        return convert_to_numpy(
+            {
+                "cur_lr": self.cur_lr,
+                "total_loss": torch.mean(
+                    torch.stack(self.get_tower_stats("total_loss"))
+                ),
+                "policy_loss": torch.mean(torch.stack(self.get_tower_stats("pi_loss"))),
+                "entropy": torch.mean(
+                    torch.stack(self.get_tower_stats("mean_entropy"))
+                ),
+                "entropy_coeff": self.entropy_coeff,
+                "var_gnorm": global_norm(self.model.trainable_variables()),
+                "vf_loss": torch.mean(torch.stack(self.get_tower_stats("vf_loss"))),
+                "vf_explained_var": torch.mean(
+                    torch.stack(self.get_tower_stats("vf_explained_var"))
+                ),
+            }
+        )
 
     @override(TorchPolicyV2)
     def get_batch_divisibility_req(self) -> int:

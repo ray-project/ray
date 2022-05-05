@@ -6,12 +6,14 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.rllib.utils.torch_utils import apply_grad_clipping
 from ray.rllib.utils.typing import (
     TensorType,
 )
 
 torch, nn = try_import_torch()
+
 
 # TODO: (sven) Unify hyperparam annealing procedures across RLlib (tf/torch)
 #   and for all possible hyperparams, not just lr.
@@ -123,6 +125,7 @@ class ValueNetworkMixin:
     the result of the most recent forward pass is being used to return an
     already calculated tensor.
     """
+
     def __init__(self, config):
         # When doing GAE, we need the value function estimate on the
         # observation.
@@ -199,8 +202,8 @@ class TargetNetworkMixin:
 
 
 class ComputeGAEMixIn:
-    """Postprocess SampleBatch to Compute GAE before they get used for training.
-    """
+    """Postprocess SampleBatch to Compute GAE before they get used for training."""
+
     def __init__(self):
         pass
 
@@ -219,8 +222,8 @@ class ComputeGAEMixIn:
 
 
 class GradClippingMixin:
-    """Apply gradient clipping.
-    """
+    """Apply gradient clipping."""
+
     def __init__(self):
         pass
 

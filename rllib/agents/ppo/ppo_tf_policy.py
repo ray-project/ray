@@ -2,18 +2,15 @@
 TensorFlow policy class used for PPO.
 """
 
-import gym
 import logging
-from typing import Dict, List, Optional, Type, Union
+from typing import Dict, List, Type, Union
 
 import ray
-from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.policy.dynamic_tf_policy_v2 import DynamicTFPolicyV2
 from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
-from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_mixins import (
     ComputeAndClipGradsMixIn,
@@ -24,12 +21,9 @@ from ray.rllib.policy.tf_mixins import (
     ValueNetworkMixin,
 )
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.framework import try_import_tf, get_variable
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import explained_variance
 from ray.rllib.utils.typing import (
-    AgentID,
-    LocalOptimizer,
-    ModelGradients,
     TensorType,
     TrainerConfigDict,
 )
@@ -63,6 +57,7 @@ def get_ppo_tf_policy(base: type) -> type:
     Returns:
         A TF Policy to be used with PPOTrainer.
     """
+
     class PPOTFPolicy(
         ComputeGAEMixIn,
         ComputeAndClipGradsMixIn,
@@ -70,7 +65,7 @@ def get_ppo_tf_policy(base: type) -> type:
         LearningRateSchedule,
         KLCoeffMixin,
         ValueNetworkMixin,
-        base
+        base,
     ):
         def __init__(
             self,
@@ -142,7 +137,9 @@ def get_ppo_tf_policy(base: type) -> type:
                 mask = None
                 reduce_mean_valid = tf.reduce_mean
 
-            prev_action_dist = dist_class(train_batch[SampleBatch.ACTION_DIST_INPUTS], model)
+            prev_action_dist = dist_class(
+                train_batch[SampleBatch.ACTION_DIST_INPUTS], model
+            )
 
             logp_ratio = tf.exp(
                 curr_action_dist.logp(train_batch[SampleBatch.ACTIONS])
@@ -163,7 +160,9 @@ def get_ppo_tf_policy(base: type) -> type:
                 train_batch[Postprocessing.ADVANTAGES] * logp_ratio,
                 train_batch[Postprocessing.ADVANTAGES]
                 * tf.clip_by_value(
-                    logp_ratio, 1 - self.config["clip_param"], 1 + self.config["clip_param"]
+                    logp_ratio,
+                    1 - self.config["clip_param"],
+                    1 + self.config["clip_param"],
                 ),
             )
             mean_policy_loss = reduce_mean_valid(-surrogate_loss)

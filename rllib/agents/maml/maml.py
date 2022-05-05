@@ -198,12 +198,15 @@ class MAMLTrainer(Trainer):
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             from ray.rllib.agents.maml.maml_torch_policy import MAMLTorchPolicy
+
             return MAMLTorchPolicy
         elif config["framework"] == "tf":
             from ray.rllib.agents.maml.maml_tf_policy import MAMLDynamicTFPolicy
+
             return MAMLDynamicTFPolicy
         else:
             from ray.rllib.agents.maml.maml_tf_policy import MAMLEagerTFPolicy
+
             return MAMLEagerTFPolicy
 
     @staticmethod

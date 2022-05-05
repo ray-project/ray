@@ -117,8 +117,11 @@ class PolicyMap(dict):
         framework = merged_config.get("framework", "tf")
         class_ = get_tf_eager_cls_if_necessary(policy_cls, merged_config)
 
-        logger.info("Creating policy on (worker={})".format(
-            self.worker_index if self.worker_index > 0 else "local"))
+        logger.info(
+            "Creating policy on (worker={})".format(
+                self.worker_index if self.worker_index > 0 else "local"
+            )
+        )
 
         # Tf.
         if framework in ["tf2", "tf", "tfe"]:

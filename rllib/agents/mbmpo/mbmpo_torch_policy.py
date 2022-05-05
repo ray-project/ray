@@ -1,4 +1,3 @@
-import gym
 from gym.spaces import Box, Discrete
 import logging
 from typing import Tuple, Type
@@ -10,7 +9,6 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.typing import TrainerConfigDict
 
 torch, nn = try_import_torch()
 
@@ -24,21 +22,23 @@ class MBMPOTorchPolicy(MAMLTorchPolicy):
         if not isinstance(action_space, (Box, Discrete)):
             raise UnsupportedSpaceException(
                 "Action space ({}) of {} is not supported for "
-                "MB-MPO. Must be [Box|Discrete].".format(action_space, policy)
+                "MB-MPO. Must be [Box|Discrete].".format(action_space, self)
             )
         # If Box, make sure it's a 1D vector space.
         elif isinstance(action_space, Box) and len(action_space.shape) > 1:
             raise UnsupportedSpaceException(
                 "Action space ({}) of {} has multiple dimensions "
-                "{}. ".format(action_space, policy, action_space.shape)
+                "{}. ".format(action_space, self, action_space.shape)
                 + "Consider reshaping this into a single dimension Box space "
-                  "or using the multi-agent API."
+                "or using the multi-agent API."
             )
 
         config = dict(ray.rllib.agents.mbmpo.mbmpo.DEFAULT_CONFIG, **config)
         super().__init__(observation_space, action_space, config)
 
-    def make_model_and_action_dist(self) -> Tuple[ModelV2, Type[TorchDistributionWrapper]]:
+    def make_model_and_action_dist(
+        self,
+    ) -> Tuple[ModelV2, Type[TorchDistributionWrapper]]:
         """Constructs the necessary ModelV2 and action dist class for the Policy.
 
         Args:
@@ -56,13 +56,15 @@ class MBMPOTorchPolicy(MAMLTorchPolicy):
             self.observation_space,
             self.config,
             dist_type="deterministic",
-            framework="torch"
+            framework="torch",
         )
 
         # Build one dynamics model if we are a Worker.
         # If we are the main MAML learner, build n (num_workers) dynamics Models
         # for being able to create checkpoints for the current state of training.
-        device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+        device = (
+            torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+        )
         self.dynamics_model = ModelCatalog.get_model_v2(
             self.observation_space,
             self.action_space,

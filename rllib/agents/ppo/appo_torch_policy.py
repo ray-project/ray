@@ -8,7 +8,7 @@ Keep in sync with changes to VTraceTFPolicy.
 import gym
 import numpy as np
 import logging
-from typing import Any, Dict, List, Optional, Tuple, Type, Union
+from typing import Any, Dict, List, Optional, Type, Union
 
 import ray
 import ray.rllib.agents.impala.vtrace_torch as vtrace
@@ -17,6 +17,7 @@ from ray.rllib.agents.impala.vtrace_torch_policy import (
     VTraceOptimizer,
 )
 from ray.rllib.agents.ppo.appo_tf_policy import MakeAPPOModel
+from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import (
     compute_gae_for_sample_batch,
     Postprocessing,
@@ -46,7 +47,7 @@ from ray.rllib.utils.torch_utils import (
     global_norm,
     sequence_mask,
 )
-from ray.rllib.utils.typing import TensorType, TrainerConfigDict
+from ray.rllib.utils.typing import TensorType
 
 torch, nn = try_import_torch()
 
@@ -192,7 +193,9 @@ class APPOTorchPolicy(
                 )
 
             # Prepare actions for loss.
-            loss_actions = actions if is_multidiscrete else torch.unsqueeze(actions, dim=1)
+            loss_actions = (
+                actions if is_multidiscrete else torch.unsqueeze(actions, dim=1)
+            )
 
             # Prepare KL for loss.
             action_kl = _make_time_major(
@@ -221,7 +224,9 @@ class APPOTorchPolicy(
                 clip_pg_rho_threshold=self.config["vtrace_clip_pg_rho_threshold"],
             )
 
-            actions_logp = _make_time_major(action_dist.logp(actions), drop_last=drop_last)
+            actions_logp = _make_time_major(
+                action_dist.logp(actions), drop_last=drop_last
+            )
             prev_actions_logp = _make_time_major(
                 prev_action_dist.logp(actions), drop_last=drop_last
             )
@@ -314,7 +319,9 @@ class APPOTorchPolicy(
         model.tower_stats["value_targets"] = value_targets
         model.tower_stats["vf_explained_var"] = explained_variance(
             torch.reshape(value_targets, [-1]),
-            torch.reshape(values_time_major[:-1] if drop_last else values_time_major, [-1]),
+            torch.reshape(
+                values_time_major[:-1] if drop_last else values_time_major, [-1]
+            ),
         )
 
         return total_loss

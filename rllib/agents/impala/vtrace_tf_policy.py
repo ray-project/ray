@@ -168,17 +168,14 @@ def _make_time_major(policy, seq_lens, tensor, drop_last=False):
 
 
 class VTraceClipGradients:
-    """VTrace version of gradient computation logic.
-    """
+    """VTrace version of gradient computation logic."""
+
     def __init__(self):
-        """No special initialization required.
-        """
+        """No special initialization required."""
         pass
 
     def compute_gradients_fn(
-        self,
-        optimizer: LocalOptimizer,
-        loss: TensorType
+        self, optimizer: LocalOptimizer, loss: TensorType
     ) -> ModelGradients:
         # Supporting more than one loss/optimizer.
         if self.config["_tf_policy_handles_more_than_one_loss"]:
@@ -215,24 +212,26 @@ class VTraceClipGradients:
 
 
 class VTraceOptimizer:
-    """Optimizer function for VTrace policies.
-    """
+    """Optimizer function for VTrace policies."""
+
     def __init__(self):
         pass
 
-    def optimizer(self) -> Union["tf.keras.optimizers.Optimizer",
-                                 List["tf.keras.optimizers.Optimizer"]]:
-        if self.config["opt_type"] == "adam":
-            if self.config["framework"] in ["tf2", "tfe"]:
+    def optimizer(
+        self,
+    ) -> Union["tf.keras.optimizers.Optimizer", List["tf.keras.optimizers.Optimizer"]]:
+        config = self.config
+        if config["opt_type"] == "adam":
+            if config["framework"] in ["tf2", "tfe"]:
                 optim = tf.keras.optimizers.Adam(self.cur_lr)
-                if self.config["_separate_vf_optimizer"]:
-                    return optim, tf.keras.optimizers.Adam(self.config["_lr_vf"])
+                if config["_separate_vf_optimizer"]:
+                    return optim, tf.keras.optimizers.Adam(config["_lr_vf"])
             else:
                 optim = tf1.train.AdamOptimizer(self.cur_lr)
-                if self.config["_separate_vf_optimizer"]:
-                    return optim, tf1.train.AdamOptimizer(self.config["_lr_vf"])
+                if config["_separate_vf_optimizer"]:
+                    return optim, tf1.train.AdamOptimizer(config["_lr_vf"])
         else:
-            if self.config["_separate_vf_optimizer"]:
+            if config["_separate_vf_optimizer"]:
                 raise ValueError(
                     "RMSProp optimizer not supported for separate"
                     "vf- and policy losses yet! Set `opt_type=adam`"
@@ -269,7 +268,7 @@ def get_vtrace_tf_policy(base: type) -> type:
         VTraceOptimizer,
         LearningRateSchedule,
         EntropyCoeffSchedule,
-        base
+        base,
     ):
         def __init__(
             self,
@@ -332,7 +331,9 @@ def get_vtrace_tf_policy(base: type) -> type:
             rewards = train_batch[SampleBatch.REWARDS]
             behaviour_action_logp = train_batch[SampleBatch.ACTION_LOGP]
             behaviour_logits = train_batch[SampleBatch.ACTION_DIST_INPUTS]
-            unpacked_behaviour_logits = tf.split(behaviour_logits, output_hidden_shape, axis=1)
+            unpacked_behaviour_logits = tf.split(
+                behaviour_logits, output_hidden_shape, axis=1
+            )
             unpacked_outputs = tf.split(model_out, output_hidden_shape, axis=1)
             values = model.value_function()
 
@@ -344,13 +345,17 @@ def get_vtrace_tf_policy(base: type) -> type:
                 mask = tf.ones_like(rewards)
 
             # Prepare actions for loss
-            loss_actions = actions if is_multidiscrete else tf.expand_dims(actions, axis=1)
+            loss_actions = (
+                actions if is_multidiscrete else tf.expand_dims(actions, axis=1)
+            )
 
             # Inputs are reshaped from [B * T] => [(T|T-1), B] for V-trace calc.
             drop_last = self.config["vtrace_drop_last_ts"]
             self.vtrace_loss = VTraceLoss(
                 actions=make_time_major(loss_actions, drop_last=drop_last),
-                actions_logp=make_time_major(action_dist.logp(actions), drop_last=drop_last),
+                actions_logp=make_time_major(
+                    action_dist.logp(actions), drop_last=drop_last
+                ),
                 actions_entropy=make_time_major(
                     action_dist.multi_entropy(), drop_last=drop_last
                 ),

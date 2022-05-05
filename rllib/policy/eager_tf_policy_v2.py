@@ -3,7 +3,6 @@
 It supports both traced and non-traced eager execution modes.
 """
 
-import functools
 import gym
 import logging
 import threading
@@ -24,7 +23,7 @@ from ray.rllib.policy.eager_tf_policy import (
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils import add_mixins, force_list
+from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import (
     DeveloperAPI,
     OverrideToImplementCustomLogic,
@@ -56,11 +55,14 @@ class EagerTFPolicyV2(Policy):
 
     This class is intended to be used and extended by sub-classing.
     """
-    def __init__(self,
-                 observation_space: gym.spaces.Space,
-                 action_space: gym.spaces.Space,
-                 config: TrainerConfigDict,
-                 **kwargs):
+
+    def __init__(
+        self,
+        observation_space: gym.spaces.Space,
+        action_space: gym.spaces.Space,
+        config: TrainerConfigDict,
+        **kwargs,
+    ):
         # If this class runs as a @ray.remote actor, eager mode may not
         # have been activated yet.
         if not tf1.executing_eagerly():
@@ -68,7 +70,11 @@ class EagerTFPolicyV2(Policy):
         self.framework = config.get("framework", "tfe")
 
         # Log device.
-        logger.info("Creating TF-eager policy running on {}.".format("GPU" if get_gpu_devices() else "CPU"))
+        logger.info(
+            "Creating TF-eager policy running on {}.".format(
+                "GPU" if get_gpu_devices() else "CPU"
+            )
+        )
 
         Policy.__init__(self, observation_space, action_space, config)
 
@@ -135,7 +141,7 @@ class EagerTFPolicyV2(Policy):
         self,
         obs_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        config: TrainerConfigDict
+        config: TrainerConfigDict,
     ):
         return {}
 
@@ -211,10 +217,7 @@ class EagerTFPolicyV2(Policy):
     @DeveloperAPI
     @OverrideToImplementCustomLogic
     def compute_gradients_fn(
-        self,
-        policy: Policy,
-        optimizer: LocalOptimizer,
-        loss: TensorType
+        self, policy: Policy, optimizer: LocalOptimizer, loss: TensorType
     ) -> ModelGradients:
         """Gradients computing function (from loss tensor, using local optimizer).
 
@@ -238,7 +241,7 @@ class EagerTFPolicyV2(Policy):
         self,
         policy: Policy,
         optimizer: "tf.keras.optimizers.Optimizer",
-        grads: ModelGradients
+        grads: ModelGradients,
     ) -> "tf.Operation":
         """Gradients computing function (from loss tensor, using local optimizer).
 
@@ -362,8 +365,9 @@ class EagerTFPolicyV2(Policy):
         return Policy.postprocess_trajectory(self, sample_batch)
 
     @OverrideToImplementCustomLogic
-    def optimizer(self) -> Union["tf.keras.optimizers.Optimizer",
-                                 List["tf.keras.optimizers.Optimizer"]]:
+    def optimizer(
+        self,
+    ) -> Union["tf.keras.optimizers.Optimizer", List["tf.keras.optimizers.Optimizer"]]:
         """TF optimizer to use for policy optimization.
 
         Returns:
@@ -394,7 +398,9 @@ class EagerTFPolicyV2(Policy):
         # loss term and optimizer (no lists).
         self._optimizer: LocalOptimizer = optimizers[0] if optimizers else None
 
-        self._initialize_loss_from_dummy_batch(auto_remove_unneeded_view_reqs=True,)
+        self._initialize_loss_from_dummy_batch(
+            auto_remove_unneeded_view_reqs=True,
+        )
         self._loss_initialized = True
 
     @override(Policy)
@@ -495,9 +501,8 @@ class EagerTFPolicyV2(Policy):
         prev_reward_batch=None,
         actions_normalized=True,
     ):
-        if (
-            is_overridden(self.action_sampler_fn) and
-            not is_overridden(self.action_distribution_fn)
+        if is_overridden(self.action_sampler_fn) and not is_overridden(
+            self.action_distribution_fn
         ):
             raise ValueError(
                 "Cannot compute log-prob/likelihood w/o an "
@@ -523,8 +528,8 @@ class EagerTFPolicyV2(Policy):
         self.exploration.before_compute_actions(explore=False)
 
         # Action dist class and inputs are generated via custom function.
-        if action_distribution_fn:
-            dist_inputs, dist_class, _ = action_distribution_fn(
+        if is_overridden(self.action_distribution_fn):
+            dist_inputs, dist_class, _ = self.action_distribution_fn(
                 self, self.model, input_batch, explore=False, is_training=False
             )
         # Default log-likelihood calculation.
@@ -822,8 +827,7 @@ class EagerTFPolicyV2(Policy):
         # Default: Compute gradients using the above tape.
         else:
             grads_and_vars = [
-                list(zip(tape.gradient(loss, variables), variables))
-                for loss in losses
+                list(zip(tape.gradient(loss, variables), variables)) for loss in losses
             ]
 
         if log_once("grad_vars"):
@@ -877,9 +881,7 @@ class EagerTFPolicyV2(Policy):
             fetches[LEARNER_STATS_KEY] = {}
 
         fetches.update({k: v for k, v in self.extra_learn_fetches_fn().items()})
-        fetches.update(
-            {k: v for k, v in self.grad_stats_fn(samples, grads).items()}
-        )
+        fetches.update({k: v for k, v in self.grad_stats_fn(samples, grads).items()})
         return fetches
 
     def _lazy_tensor_dict(self, postprocessed_batch: SampleBatch):

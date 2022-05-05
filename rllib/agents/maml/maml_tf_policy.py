@@ -363,12 +363,9 @@ def get_maml_tf_policy(base: type) -> type:
     Returns:
         A TF Policy to be used with MAMLTrainer.
     """
+
     class MAMLTFPolicy(
-        ComputeGAEMixIn,
-        ComputeAndClipGradsMixIn,
-        KLCoeffMixin,
-        ValueNetworkMixin,
-        base
+        ComputeGAEMixIn, ComputeAndClipGradsMixIn, KLCoeffMixin, ValueNetworkMixin, base
     ):
         def __init__(
             self,
@@ -467,15 +464,20 @@ def get_maml_tf_policy(base: type) -> type:
             return self.loss_obj.loss
 
         @override(base)
-        def optimizer(self) -> Union["tf.keras.optimizers.Optimizer",
-                                     List["tf.keras.optimizers.Optimizer"]]:
+        def optimizer(
+            self,
+        ) -> Union[
+            "tf.keras.optimizers.Optimizer", List["tf.keras.optimizers.Optimizer"]
+        ]:
             """
             Workers use simple SGD for inner adaptation
             Meta-Policy uses Adam optimizer for meta-update
             """
             if not self.config["worker_index"]:
                 return tf1.train.AdamOptimizer(learning_rate=self.config["lr"])
-            return tf1.train.GradientDescentOptimizer(learning_rate=self.config["inner_lr"])
+            return tf1.train.GradientDescentOptimizer(
+                learning_rate=self.config["inner_lr"]
+            )
 
         @override(base)
         def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:

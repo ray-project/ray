@@ -284,12 +284,7 @@ class KLCoeffMixin:
         return self.kl_coeff_val
 
 
-class MAMLTorchPolicy(
-    ComputeGAEMixIn,
-    ValueNetworkMixin,
-    KLCoeffMixin,
-    TorchPolicyV2
-):
+class MAMLTorchPolicy(ComputeGAEMixIn, ValueNetworkMixin, KLCoeffMixin, TorchPolicyV2):
     """PyTorch policy class used with MAMLTrainer."""
 
     def __init__(self, observation_space, action_space, config):
@@ -399,7 +394,9 @@ class MAMLTorchPolicy(
         Meta-Policy uses Adam optimizer for meta-update
         """
         if not self.config["worker_index"]:
-            self.meta_opt = torch.optim.Adam(self.model.parameters(), lr=self.config["lr"])
+            self.meta_opt = torch.optim.Adam(
+                self.model.parameters(), lr=self.config["lr"]
+            )
             return self.meta_opt
         return torch.optim.SGD(self.model.parameters(), lr=self.config["inner_lr"])
 
@@ -408,16 +405,18 @@ class MAMLTorchPolicy(
         if self.config["worker_index"]:
             return convert_to_numpy({"worker_loss": self.loss_obj.loss})
         else:
-            return convert_to_numpy({
-                "cur_kl_coeff": self.kl_coeff_val,
-                "cur_lr": self.cur_lr,
-                "total_loss": self.loss_obj.loss,
-                "policy_loss": self.loss_obj.mean_policy_loss,
-                "vf_loss": self.loss_obj.mean_vf_loss,
-                "kl_loss": self.loss_obj.mean_kl_loss,
-                "inner_kl": self.loss_obj.mean_inner_kl,
-                "entropy": self.loss_obj.mean_entropy,
-            })
+            return convert_to_numpy(
+                {
+                    "cur_kl_coeff": self.kl_coeff_val,
+                    "cur_lr": self.cur_lr,
+                    "total_loss": self.loss_obj.loss,
+                    "policy_loss": self.loss_obj.mean_policy_loss,
+                    "vf_loss": self.loss_obj.mean_vf_loss,
+                    "kl_loss": self.loss_obj.mean_kl_loss,
+                    "inner_kl": self.loss_obj.mean_inner_kl,
+                    "entropy": self.loss_obj.mean_entropy,
+                }
+            )
 
     def extra_grad_process(
         self, optimizer: "torch.optim.Optimizer", loss: TensorType

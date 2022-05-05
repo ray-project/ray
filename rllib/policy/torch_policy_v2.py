@@ -10,7 +10,6 @@ import time
 import tree  # pip install dm_tree
 from typing import (
     Any,
-    Callable,
     Dict,
     List,
     Optional,
@@ -42,7 +41,6 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
@@ -308,7 +306,9 @@ class TorchPolicyV2(Policy):
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
-    def make_model_and_action_dist(self) -> Tuple[ModelV2, Type[TorchDistributionWrapper]]:
+    def make_model_and_action_dist(
+        self,
+    ) -> Tuple[ModelV2, Type[TorchDistributionWrapper]]:
         """Create model and action distribution function.
 
         Returns:
@@ -419,8 +419,7 @@ class TorchPolicyV2(Policy):
         other_agent_batches: Optional[Dict[Any, SampleBatch]] = None,
         episode: Optional["Episode"] = None,
     ):
-        """Additional custom postprocessing of SampleBatch.
-        """
+        """Additional custom postprocessing of SampleBatch."""
         return sample_batch
 
     @DeveloperAPI
@@ -444,9 +443,13 @@ class TorchPolicyV2(Policy):
         return optimizers
 
     def _init_model_and_dist_class(self):
-        if is_overridden(self.make_model) and is_overridden(self.make_model_and_action_dist):
-            raise ValueError("Only one of make_model or make_model_and_action_dist "
-                             "can be overridden.")
+        if is_overridden(self.make_model) and is_overridden(
+            self.make_model_and_action_dist
+        ):
+            raise ValueError(
+                "Only one of make_model or make_model_and_action_dist "
+                "can be overridden."
+            )
 
         if is_overridden(self.make_model):
             model = self.make_model()
@@ -551,9 +554,8 @@ class TorchPolicyV2(Policy):
         actions_normalized: bool = True,
     ) -> TensorType:
 
-        if (
-            not is_overridden(self.action_sampler_fn) and
-            not is_overridden(self.action_distribution_fn)
+        if not is_overridden(self.action_sampler_fn) and not is_overridden(
+            self.action_distribution_fn
         ):
             raise ValueError(
                 "Cannot compute log-prob/likelihood w/o an "

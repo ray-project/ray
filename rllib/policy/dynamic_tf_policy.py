@@ -3,7 +3,7 @@ import gym
 import logging
 import re
 import tree  # pip install dm_tree
-from typing import Callable, Dict, List, Optional, Tuple, Type, TYPE_CHECKING
+from typing import Callable, Dict, List, Optional, Tuple, Type, Union
 
 from ray.util.debug import log_once
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
@@ -26,9 +26,6 @@ from ray.rllib.utils.typing import (
     TensorType,
     TrainerConfigDict,
 )
-
-if TYPE_CHECKING:
-    from ray.rllib.evaluation import Episode
 
 tf1, tf, tfv = try_import_tf()
 

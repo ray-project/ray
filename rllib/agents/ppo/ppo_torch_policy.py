@@ -3,10 +3,7 @@ from typing import Dict, List, Type, Union
 
 import ray
 from ray.rllib.agents.ppo.ppo_tf_policy import validate_config
-from ray.rllib.evaluation.postprocessing import (
-    compute_gae_for_sample_batch,
-    Postprocessing,
-)
+from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -39,7 +36,7 @@ class PPOTorchPolicy(
     LearningRateSchedule,
     EntropyCoeffSchedule,
     KLCoeffMixin,
-    TorchPolicyV2
+    TorchPolicyV2,
 ):
     """PyTorch policy class used with PPOTrainer."""
 
