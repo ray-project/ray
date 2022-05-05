@@ -613,9 +613,7 @@ class Dataset(Generic[T]):
         )
         return Dataset(plan, self._epoch, self._lazy)
 
-    def random_sample(self, number: int,
-                      *,
-                      seed: Optional[int] = None) -> List[Any]:
+    def random_sample(self, number: int, *, seed: Optional[int] = None) -> List[Any]:
         """Randomly samples N elements from the dataset.
 
         Examples:
@@ -635,6 +633,7 @@ class Dataset(Generic[T]):
             N elements from the shuffled dataset.
         """
         import random
+
         idx = random.randint(0, self.num_blocks())
         if idx + number >= self.num_blocks():
             idx = self.num_blocks() - number
@@ -918,8 +917,8 @@ class Dataset(Generic[T]):
             actors_state = ray.state.actors()
             return {
                 actor: actors_state.get(actor._actor_id.hex(), {})
-                    .get("Address", {})
-                    .get("NodeID")
+                .get("Address", {})
+                .get("NodeID")
                 for actor in actors
             }
 
