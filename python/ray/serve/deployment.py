@@ -458,8 +458,6 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
         import_path=get_deployment_import_path(
             d, enforce_importable=True, replace_main=True
         ),
-        init_args=convert_to_json_safe_obj(d.init_args, err_key="init_args"),
-        init_kwargs=convert_to_json_safe_obj(d.init_kwargs, err_key="init_kwargs"),
         num_replicas=d.num_replicas,
         route_prefix=d.route_prefix,
         max_concurrent_queries=d.max_concurrent_queries,
@@ -497,8 +495,6 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         func_or_class=s.import_path,
         name=s.name,
         config=config,
-        init_args=convert_from_json_safe_obj(s.init_args, err_key="init_args"),
-        init_kwargs=convert_from_json_safe_obj(s.init_kwargs, err_key="init_kwargs"),
         route_prefix=s.route_prefix,
         ray_actor_options=ray_actor_options,
         _internal=True,
