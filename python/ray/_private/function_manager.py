@@ -328,7 +328,10 @@ class FunctionActorManager:
         # If the function has already been loaded,
         # There's no need to load again
         if not function_descriptor.is_actor_method():
-            if function_id in self._function_execution_info or self._load_function_from_local(function_descriptor):
+            if (
+                function_id in self._function_execution_info
+                or self._load_function_from_local(function_descriptor)
+            ):
                 return self._function_execution_info[function_id]
 
         # Load function from GCS.
