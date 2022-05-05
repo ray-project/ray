@@ -25,7 +25,7 @@ class JavaJarsManager:
         assert _internal_kv_initialized()
 
     def _get_local_dir_from_uri(self, uri: str):
-        return get_local_dir_from_uri(uri)
+        return get_local_dir_from_uri(uri, self._resources_dir)
 
     def delete_uri(
         self, uri: str, logger: Optional[logging.Logger] = default_logger
