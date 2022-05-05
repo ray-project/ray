@@ -199,6 +199,8 @@ class WorkerSet:
                 If None (default), sync weights to/from all policies.
             from_worker: Optional RolloutWorker instance to sync from.
                 If None (default), sync from this WorkerSet's local worker.
+            global_vars: An optional global vars dict to set this
+                worker to. If None, do not update the global_vars.
         """
         if self.local_worker() is None and from_worker is None:
             raise TypeError(

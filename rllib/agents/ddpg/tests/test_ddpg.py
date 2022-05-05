@@ -7,7 +7,6 @@ import ray
 import ray.rllib.agents.ddpg as ddpg
 from ray.rllib.agents.ddpg.ddpg_torch_policy import ddpg_actor_critic_loss as loss_torch
 from ray.rllib.agents.sac.tests.test_sac import SimpleEnv
-from ray.rllib.execution.buffers.multi_agent_replay_buffer import MultiAgentReplayBuffer
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import fc, huber_loss, l2_loss, relu, sigmoid
@@ -18,6 +17,7 @@ from ray.rllib.utils.test_utils import (
     framework_iterator,
 )
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
+from ray.rllib.utils.replay_buffers.utils import patch_buffer_with_fake_sampling_method
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -152,7 +152,11 @@ class TestDDPG(unittest.TestCase):
         config["gamma"] = 0.99
         # Make this small (seems to introduce errors).
         config["l2_reg"] = 1e-10
-        config["prioritized_replay"] = False
+        config["replay_buffer_config"] = {
+            "_enable_replay_buffer_api": True,
+            "type": "MultiAgentReplayBuffer",
+            "capacity": 50000,
+        }
         # Use very simple nets.
         config["actor_hiddens"] = [10]
         config["critic_hiddens"] = [10]
@@ -376,8 +380,8 @@ class TestDDPG(unittest.TestCase):
                     tf_inputs.append(in_)
                     # Set a fake-batch to use
                     # (instead of sampling from replay buffer).
-                    buf = MultiAgentReplayBuffer.get_instance_for_testing()
-                    buf._fake_batch = in_
+                    buf = trainer.local_replay_buffer
+                    patch_buffer_with_fake_sampling_method(buf, in_)
                     trainer.train()
                     updated_weights = policy.get_weights()
                     # Net must have changed.
@@ -397,8 +401,8 @@ class TestDDPG(unittest.TestCase):
                     in_ = tf_inputs[update_iteration]
                     # Set a fake-batch to use
                     # (instead of sampling from replay buffer).
-                    buf = MultiAgentReplayBuffer.get_instance_for_testing()
-                    buf._fake_batch = in_
+                    buf = trainer.local_replay_buffer
+                    patch_buffer_with_fake_sampling_method(buf, in_)
                     trainer.train()
                     # Compare updated model and target weights.
                     for tf_key in tf_weights.keys():
