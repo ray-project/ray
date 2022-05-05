@@ -5,10 +5,12 @@ from typing import Optional, Dict, Tuple, Type, Union, Callable, Any
 import ray.cloudpickle as cpickle
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.config import ScalingConfig, RunConfig
-from ray.ml.constants import PREPROCESSOR_KEY
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.trainer import Trainer, GenDataset
-from ray.ml.utils.checkpointing import save_preprocessor_to_dir
+from ray.ml.utils.checkpointing import (
+    load_preprocessor_from_dir,
+    save_preprocessor_to_dir,
+)
 from ray.rllib.agents.trainer import Trainer as RLlibTrainer
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.typing import PartialTrainerConfigDict, EnvType
@@ -270,7 +272,6 @@ class RLTrainer(Trainer):
         with checkpoint.as_directory() as checkpoint_path:
             trainer_class_path = os.path.join(checkpoint_path, RL_TRAINER_CLASS_FILE)
             config_path = os.path.join(checkpoint_path, RL_CONFIG_FILE)
-            preprocessor_path = os.path.join(checkpoint_path, PREPROCESSOR_KEY)
 
             if not os.path.exists(trainer_class_path):
                 raise ValueError(
@@ -305,11 +306,7 @@ class RLTrainer(Trainer):
                     f"Found files: {list(os.listdir(checkpoint_path))}"
                 )
 
-            if os.path.exists(preprocessor_path):
-                with open(preprocessor_path, "rb") as fp:
-                    preprocessor = cpickle.load(fp)
-            else:
-                preprocessor = None
+            preprocessor = load_preprocessor_from_dir(checkpoint_path)
 
             config.get("evaluation_config", {}).pop("in_evaluation", None)
             trainer = trainer_cls(config=config, env=env)

@@ -14,10 +14,13 @@ from ray import tune
 import ray.cloudpickle as cpickle
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.config import RunConfig, ScalingConfig
-from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY, TRAIN_DATASET_KEY
+from ray.ml.constants import MODEL_KEY, TRAIN_DATASET_KEY
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.trainer import GenDataset, Trainer
-from ray.ml.utils.checkpointing import load_preprocessor_from_dir
+from ray.ml.utils.checkpointing import (
+    load_preprocessor_from_dir,
+    save_preprocessor_to_dir,
+)
 from ray.ml.utils.sklearn_utils import has_cpu_params, set_cpu_params
 from ray.util import PublicAPI
 from ray.util.joblib import register_ray
@@ -406,10 +409,7 @@ class SklearnTrainer(Trainer):
                     cpickle.dump(self.estimator, f)
 
                 if self.preprocessor:
-                    with open(
-                        os.path.join(checkpoint_dir, PREPROCESSOR_KEY), "wb"
-                    ) as f:
-                        cpickle.dump(self.preprocessor, f)
+                    save_preprocessor_to_dir(self.preprocessor, checkpoint_dir)
 
             if self.label_column:
                 validation_set_scores = self._score_on_validation_sets(

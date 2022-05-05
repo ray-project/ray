@@ -15,13 +15,12 @@ from transformers.trainer import WEIGHTS_NAME, TRAINING_ARGS_NAME
 import transformers.training_args
 from torch.utils.data import Dataset as TorchDataset
 
-import ray.cloudpickle as cpickle
 from ray import train
 from ray import tune
 from ray.util import PublicAPI, get_node_ip_address
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.config import RunConfig, ScalingConfig
-from ray.ml.constants import EVALUATION_DATASET_KEY, PREPROCESSOR_KEY, TRAIN_DATASET_KEY
+from ray.ml.constants import EVALUATION_DATASET_KEY, TRAIN_DATASET_KEY
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.train.integrations.torch import TorchTrainer
 from ray.ml.trainer import GenDataset
@@ -33,7 +32,10 @@ from ray.ml.train.integrations.huggingface.huggingface_utils import (
     TrainReportCallback,
     wrap_transformers_trainer,
 )
-from ray.ml.utils.checkpointing import load_preprocessor_from_file
+from ray.ml.utils.checkpointing import (
+    load_preprocessor_from_dir,
+    save_preprocessor_to_dir,
+)
 from ray.ml.utils.torch_utils import load_torch_model
 from ray.train.constants import TUNE_CHECKPOINT_ID
 from ray.train.torch import TorchConfig
@@ -80,8 +82,7 @@ class _DataParallelSyncingCheckpointManager(_DataParallelCheckpointManager):
                 )
                 delete_on_node(node_ip=source_ip, path=source_path)
             checkpoint_dir = Path(checkpoint_dir)
-            with open(checkpoint_dir.joinpath(PREPROCESSOR_KEY), "wb") as f:
-                cpickle.dump(self.preprocessor, f)
+            save_preprocessor_to_dir(self.preprocessor, checkpoint_dir)
             # add tune checkpoint id
             with open(checkpoint_dir.joinpath(TUNE_CHECKPOINT_ID), "w") as f:
                 f.write(str(self._latest_checkpoint_id))
@@ -420,7 +421,7 @@ class HuggingFaceTrainer(TorchTrainer):
         """
         tokenizer_kwargs = tokenizer_kwargs or {}
         with checkpoint.as_directory() as checkpoint_path:
-            preprocessor = load_preprocessor_from_file(checkpoint_path)
+            preprocessor = load_preprocessor_from_dir(checkpoint_path)
             if isinstance(model, torch.nn.Module):
                 state_dict = torch.load(
                     os.path.join(checkpoint_path, WEIGHTS_NAME), map_location="cpu"

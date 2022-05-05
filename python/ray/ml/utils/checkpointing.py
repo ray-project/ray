@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from typing import Optional
 
 import ray.cloudpickle as cpickle
@@ -11,7 +12,8 @@ def save_preprocessor_to_dir(
     parent_dir: os.PathLike,
 ) -> os.PathLike:
     """Save preprocessor to file. Returns path saved to."""
-    with open(os.path.join(parent_dir, PREPROCESSOR_KEY), "wb") as f:
+    parent_dir = Path(parent_dir)
+    with open(parent_dir.joinpath(PREPROCESSOR_KEY), "wb") as f:
         cpickle.dump(preprocessor, f)
 
 
@@ -19,8 +21,9 @@ def load_preprocessor_from_dir(
     parent_dir: os.PathLike,
 ) -> Optional[Preprocessor]:
     """Loads preprocessor from directory, if file exists."""
-    preprocessor_path = os.path.join(parent_dir, PREPROCESSOR_KEY)
-    if os.path.exists(preprocessor_path):
+    parent_dir = Path(parent_dir)
+    preprocessor_path = parent_dir.joinpath(PREPROCESSOR_KEY)
+    if preprocessor_path.exists():
         with open(preprocessor_path, "rb") as f:
             preprocessor = cpickle.load(f)
     else:
