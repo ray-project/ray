@@ -1,6 +1,6 @@
 import inspect
 import os
-from typing import Optional, Dict, Type, Union, Callable, Any
+from typing import Optional, Dict, Tuple, Type, Union, Callable, Any
 
 import ray.cloudpickle as cpickle
 from ray.ml.checkpoint import Checkpoint
@@ -9,6 +9,7 @@ from ray.ml.constants import PREPROCESSOR_KEY
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.trainer import Trainer, GenDataset
 from ray.rllib.agents.trainer import Trainer as RLlibTrainer
+from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.typing import PartialTrainerConfigDict, EnvType
 from ray.tune import Trainable, PlacementGroupFactory
 from ray.tune.logger import Logger
@@ -250,3 +251,71 @@ class RLTrainer(Trainer):
 
         AIRRLTrainer.__name__ = f"AIR{rllib_trainer.__name__}"
         return AIRRLTrainer
+
+    @staticmethod
+    def load_checkpoint(
+        checkpoint: Checkpoint,
+        env: Optional[EnvType] = None,
+    ) -> Tuple[Policy, Optional[Preprocessor]]:
+        """Load a Checkpoint from ``RLTrainer``.
+
+        Return the policy and AIR preprocessor contained within.
+
+        Args:
+            checkpoint: The checkpoint to load the model and
+                preprocessor from. It is expected to be from the result of a
+                ``RLTrainer`` run.
+            model: A callable that returns a TensorFlow Keras model
+                to use, or an instantiated model.
+                Model weights will be loaded from the checkpoint.
+        """
+        with checkpoint.as_directory() as checkpoint_path:
+            trainer_class_path = os.path.join(checkpoint_path, RL_TRAINER_CLASS_FILE)
+            config_path = os.path.join(checkpoint_path, RL_CONFIG_FILE)
+            preprocessor_path = os.path.join(checkpoint_path, PREPROCESSOR_KEY)
+
+            if not os.path.exists(trainer_class_path):
+                raise ValueError(
+                    f"RLPredictor only works with checkpoints created by "
+                    f"RLTrainer. The checkpoint you specified is missing the "
+                    f"`{RL_TRAINER_CLASS_FILE}` file."
+                )
+
+            if not os.path.exists(config_path):
+                raise ValueError(
+                    f"RLPredictor only works with checkpoints created by "
+                    f"RLTrainer. The checkpoint you specified is missing the "
+                    f"`{RL_CONFIG_FILE}` file."
+                )
+
+            with open(trainer_class_path, "rb") as fp:
+                trainer_cls = cpickle.load(fp)
+
+            with open(config_path, "rb") as fp:
+                config = cpickle.load(fp)
+
+            checkpoint_data_path = None
+            for file in os.listdir(checkpoint_path):
+                if file.startswith("checkpoint") and not file.endswith(
+                    ".tune_metadata"
+                ):
+                    checkpoint_data_path = os.path.join(checkpoint_path, file)
+
+            if not checkpoint_data_path:
+                raise ValueError(
+                    f"Could not find checkpoint data in RLlib checkpoint. "
+                    f"Found files: {list(os.listdir(checkpoint_path))}"
+                )
+
+            if os.path.exists(preprocessor_path):
+                with open(preprocessor_path, "rb") as fp:
+                    preprocessor = cpickle.load(fp)
+            else:
+                preprocessor = None
+
+            config.get("evaluation_config", {}).pop("in_evaluation", None)
+            trainer = trainer_cls(config=config, env=env)
+            trainer.restore(checkpoint_data_path)
+
+            policy = trainer.get_policy()
+            return policy, preprocessor

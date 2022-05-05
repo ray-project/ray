@@ -12,6 +12,7 @@ from joblib import parallel_backend
 
 from ray import tune
 import ray.cloudpickle as cpickle
+from ray.ml.checkpoint import Checkpoint
 from ray.ml.config import RunConfig, ScalingConfig
 from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY, TRAIN_DATASET_KEY
 from ray.ml.preprocessor import Preprocessor
@@ -434,3 +435,29 @@ class SklearnTrainer(Trainer):
             "fit_time": fit_time,
         }
         tune.report(**results)
+
+    @staticmethod
+    def load_checkpoint(
+        checkpoint: Checkpoint,
+    ) -> Tuple[BaseEstimator, Optional[Preprocessor]]:
+        """Load a Checkpoint from ``SklearnTrainer``.
+
+        Return the estimator and AIR preprocessor contained within.
+
+        Args:
+            checkpoint: The checkpoint to load the model and
+                preprocessor from. It is expected to be from the result of a
+                ``SklearnTrainer`` run.
+        """
+        with checkpoint.as_directory() as checkpoint_path:
+            estimator_path = os.path.join(checkpoint_path, MODEL_KEY)
+            with open(estimator_path, "rb") as f:
+                estimator_path = cpickle.load(f)
+            preprocessor_path = os.path.join(checkpoint_path, PREPROCESSOR_KEY)
+            if os.path.exists(preprocessor_path):
+                with open(preprocessor_path, "rb") as f:
+                    preprocessor = cpickle.load(f)
+            else:
+                preprocessor = None
+
+        return estimator_path, preprocessor

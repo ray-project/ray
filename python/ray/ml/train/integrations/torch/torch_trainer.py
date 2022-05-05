@@ -1,4 +1,5 @@
-from typing import Callable, Optional, Dict, Union
+from typing import Callable, Optional, Dict, Tuple, Union
+import torch
 
 from ray.train.torch import TorchConfig
 from ray.ml.trainer import GenDataset
@@ -7,6 +8,8 @@ from ray.ml.config import ScalingConfig, RunConfig
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.util import PublicAPI
+from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY
+from ray.ml.utils.torch_utils import load_torch_model
 
 
 @PublicAPI(stability="alpha")
@@ -188,3 +191,32 @@ class TorchTrainer(DataParallelTrainer):
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
         )
+
+    @staticmethod
+    def load_checkpoint(
+        checkpoint: Checkpoint, model: Optional[torch.nn.Module] = None
+    ) -> Tuple[torch.nn.Module, Optional[Preprocessor]]:
+        """Load a Checkpoint from ``TorchTrainer``.
+
+        Return the model with set weights and AIR preprocessor contained within.
+
+        Args:
+            checkpoint: The checkpoint to load the model and
+                preprocessor from. It is expected to be from the result of a
+                ``TorchTrainer`` run.
+            model: If the checkpoint contains a model state dict, and not
+                the model itself, then the state dict will be loaded to this
+                ``model``.
+        """
+        checkpoint_dict = checkpoint.to_dict()
+        preprocessor = checkpoint_dict.get(PREPROCESSOR_KEY, None)
+        if MODEL_KEY not in checkpoint_dict:
+            raise RuntimeError(
+                f"No item with key: {MODEL_KEY} is found in the "
+                f"Checkpoint. Make sure this key exists when saving the "
+                f"checkpoint in ``TorchTrainer``."
+            )
+        model = load_torch_model(
+            saved_model=checkpoint_dict[MODEL_KEY], model_definition=model
+        )
+        return model, preprocessor

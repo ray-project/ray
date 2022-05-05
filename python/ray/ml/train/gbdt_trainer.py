@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Dict, Type, Any, Optional
+from typing import TYPE_CHECKING, Dict, Tuple, Type, Any, Optional
 import warnings
 import os
 
@@ -132,7 +132,10 @@ class GBDTTrainer(Trainer):
             for k, v in self.datasets.items()
         }
 
-    def _load_model_from_checkpoint(self):
+    @staticmethod
+    def _load_model_and_preprocessor_from_checkpoint(
+        checkpoint: Checkpoint,
+    ) -> Tuple[Any, Optional[Preprocessor]]:
         raise NotImplementedError
 
     def _train(self, **kwargs):
@@ -174,7 +177,9 @@ class GBDTTrainer(Trainer):
 
         init_model = None
         if self.resume_from_checkpoint:
-            init_model = self._load_model_from_checkpoint()
+            init_model, _ = self._load_model_and_preprocessor_from_checkpoint(
+                self.resume_from_checkpoint
+            )
 
         config.setdefault("verbose_eval", False)
         config.setdefault("callbacks", [])

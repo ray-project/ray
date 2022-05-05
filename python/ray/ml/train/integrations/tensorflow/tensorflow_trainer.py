@@ -1,4 +1,6 @@
-from typing import Callable, Optional, Dict, Union
+from typing import Callable, Optional, Dict, Tuple, Type, Union
+from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY
+import tensorflow as tf
 
 from ray.train.tensorflow import TensorflowConfig
 from ray.ml.trainer import GenDataset
@@ -179,3 +181,36 @@ class TensorflowTrainer(DataParallelTrainer):
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
         )
+
+    @staticmethod
+    def load_checkpoint(
+        checkpoint: Checkpoint,
+        model: Union[
+            Callable[[], tf.keras.Model], Type[tf.keras.Model], tf.keras.Model
+        ],
+    ) -> Tuple[tf.keras.Model, Optional[Preprocessor]]:
+        """Load a Checkpoint from ``TensorflowTrainer``.
+
+        Return the model with set weights and AIR preprocessor contained within.
+
+        Args:
+            checkpoint: The checkpoint to load the model and
+                preprocessor from. It is expected to be from the result of a
+                ``TensorflowTrainer`` run.
+            model: A callable that returns a TensorFlow Keras model
+                to use, or an instantiated model.
+                Model weights will be loaded from the checkpoint.
+        """
+        checkpoint_dict = checkpoint.to_dict()
+        preprocessor = checkpoint_dict.get(PREPROCESSOR_KEY, None)
+        if MODEL_KEY not in checkpoint_dict:
+            raise RuntimeError(
+                f"No item with key: {MODEL_KEY} is found in the "
+                f"Checkpoint. Make sure this key exists when saving the "
+                f"checkpoint in ``TensorflowTrainer``."
+            )
+        model_weights = checkpoint_dict[MODEL_KEY]
+        if isinstance(model, type) or callable(model):
+            model = model()
+        model.set_weights(model_weights)
+        return model, preprocessor

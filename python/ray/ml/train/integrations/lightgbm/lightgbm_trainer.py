@@ -1,9 +1,12 @@
-from typing import Dict, Any
+from typing import Dict, Any, Optional, Tuple
 import os
 
+import ray.cloudpickle as cpickle
+from ray.ml.checkpoint import Checkpoint
+from ray.ml.preprocessor import Preprocessor
 from ray.ml.train.gbdt_trainer import GBDTTrainer
 from ray.util.annotations import PublicAPI
-from ray.ml.constants import MODEL_KEY
+from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY
 
 import lightgbm
 import lightgbm_ray
@@ -73,9 +76,37 @@ class LightGBMTrainer(GBDTTrainer):
     }
     _init_model_arg_name: str = "init_model"
 
-    def _load_model_from_checkpoint(self):
-        init_model_path = self.resume_from_checkpoint.to_directory()
-        return lightgbm.Booster(model_file=os.path.join(init_model_path, MODEL_KEY))
+    @staticmethod
+    def _load_model_and_preprocessor_from_checkpoint(
+        checkpoint: Checkpoint,
+    ) -> Tuple[lightgbm.Booster, Optional[Preprocessor]]:
+        with checkpoint.as_directory() as checkpoint_path:
+            lgbm_model = lightgbm.Booster(
+                model_file=os.path.join(checkpoint_path, MODEL_KEY)
+            )
+            preprocessor_path = os.path.join(checkpoint_path, PREPROCESSOR_KEY)
+            if os.path.exists(preprocessor_path):
+                with open(preprocessor_path, "rb") as f:
+                    preprocessor = cpickle.load(f)
+            else:
+                preprocessor = None
+
+        return lgbm_model, preprocessor
 
     def _train(self, **kwargs):
         return lightgbm_ray.train(**kwargs)
+
+    @staticmethod
+    def load_checkpoint(
+        checkpoint: Checkpoint,
+    ) -> Tuple[lightgbm.Booster, Optional[Preprocessor]]:
+        """Load a Checkpoint from ``LightGBMTrainer``.
+
+        Return the model and AIR preprocessor contained within.
+
+        Args:
+            checkpoint: The checkpoint to load the model and
+                preprocessor from. It is expected to be from the result of a
+                ``LightGBMTrainer`` run.
+        """
+        return LightGBMTrainer._load_model_and_preprocessor_from_checkpoint(checkpoint)

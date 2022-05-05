@@ -379,7 +379,7 @@ class HuggingFaceTrainer(TorchTrainer):
         return ret
 
     @staticmethod
-    def load_huggingface_checkpoint(
+    def load_checkpoint(
         checkpoint: Checkpoint,
         model: Union[
             Type[transformers.modeling_utils.PreTrainedModel], torch.nn.Module

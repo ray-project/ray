@@ -1,8 +1,12 @@
 import os
+from typing import Optional, Tuple
 
+import ray.cloudpickle as cpickle
+from ray.ml.checkpoint import Checkpoint
+from ray.ml.preprocessor import Preprocessor
 from ray.ml.train.gbdt_trainer import GBDTTrainer
 from ray.util.annotations import PublicAPI
-from ray.ml.constants import MODEL_KEY
+from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY
 
 import xgboost
 import xgboost_ray
@@ -62,11 +66,36 @@ class XGBoostTrainer(GBDTTrainer):
     _tune_callback_cls: type = TuneReportCheckpointCallback
     _init_model_arg_name: str = "xgb_model"
 
-    def _load_model_from_checkpoint(self):
-        xgb_model_path = self.resume_from_checkpoint.to_directory()
-        xgb_model = xgboost.Booster()
-        xgb_model.load_model(os.path.join(xgb_model_path, MODEL_KEY))
-        return xgb_model
+    @staticmethod
+    def _load_model_and_preprocessor_from_checkpoint(
+        checkpoint: Checkpoint,
+    ) -> Tuple[xgboost.Booster, Optional[Preprocessor]]:
+        with checkpoint.as_directory() as checkpoint_path:
+            xgb_model = xgboost.Booster()
+            xgb_model.load_model(os.path.join(checkpoint_path, MODEL_KEY))
+            preprocessor_path = os.path.join(checkpoint_path, PREPROCESSOR_KEY)
+            if os.path.exists(preprocessor_path):
+                with open(preprocessor_path, "rb") as f:
+                    preprocessor = cpickle.load(f)
+            else:
+                preprocessor = None
+
+        return xgb_model, preprocessor
 
     def _train(self, **kwargs):
         return xgboost_ray.train(**kwargs)
+
+    @staticmethod
+    def load_checkpoint(
+        checkpoint: Checkpoint,
+    ) -> Tuple[xgboost.Booster, Optional[Preprocessor]]:
+        """Load a Checkpoint from ``XGBoostTrainer``.
+
+        Return the model and AIR preprocessor contained within.
+
+        Args:
+            checkpoint: The checkpoint to load the model and
+                preprocessor from. It is expected to be from the result of a
+                ``XGBoostTrainer`` run.
+        """
+        return XGBoostTrainer._load_model_and_preprocessor_from_checkpoint(checkpoint)
