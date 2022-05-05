@@ -320,16 +320,6 @@ class APPOTorchPolicy(
         return total_loss
 
     @override(TorchPolicyV2)
-    def make_model_and_action_dist(
-        self,
-        observation_space: gym.spaces.Space,
-        action_space: gym.spaces.Space,
-        config: TrainerConfigDict
-    ) -> Tuple[ModelV2, Type[TorchDistributionWrapper]]:
-        # Simply call the make_model() provided by MakeAPPOModel mixin.
-        return self.make_model(), None
-
-    @override(TorchPolicyV2)
     def extra_grad_info(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
         """Stats function for APPO. Returns a dict with important loss stats.
 

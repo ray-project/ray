@@ -291,22 +291,21 @@ class TorchPolicyV2(Policy):
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
-    def make_model_and_action_dist(
-        self,
-        observation_space: gym.spaces.Space,
-        action_space: gym.spaces.Space,
-        config: TrainerConfigDict
-    ) -> Tuple[ModelV2, Type[TorchDistributionWrapper]]:
+    def make_model(self) -> ModelV2:
+        """Create model.
+
+        Note: only one of make_model or make_model_and_action_dist
+        can be overridden.
+
+        Returns:
+            ModelV2 model.
+        """
+        return None
+
+    @DeveloperAPI
+    @OverrideToImplementCustomLogic
+    def make_model_and_action_dist(self) -> Tuple[ModelV2, Type[TorchDistributionWrapper]]:
         """Create model and action distribution function.
-
-        Note, if the returned action distribution is None,
-        TorchPolicy will try to figure out the distribution
-        automatically based on ModelCatalog.
-
-        Args:
-            observation_space: Observation space of the policy.
-            action_space: Action space of the policy.
-            config: The Policy's config dict.
 
         Returns:
             ModelV2 model.
@@ -441,14 +440,17 @@ class TorchPolicyV2(Policy):
         return optimizers
 
     def _init_model_and_dist_class(self):
-        if is_overridden(self.make_model_and_action_dist):
-            model, dist_class = self.make_model_and_action_dist(
-                self.observation_space, self.action_space, self.config
+        if is_overridden(self.make_model) and is_overridden(self.make_model_and_action_dist):
+            raise ValueError("Only one of make_model or make_model_and_action_dist "
+                             "can be overridden.")
+
+        if is_overridden(self.make_model):
+            model = self.make_model()
+            dist_class, _ = ModelCatalog.get_action_dist(
+                self.action_space, self.config["model"], framework=self.framework
             )
-            if dist_class is None:
-                dist_class, _ = ModelCatalog.get_action_dist(
-                    self.action_space, self.config["model"], framework=self.framework
-                )
+        elif is_overridden(self.make_model_and_action_dist):
+            model, dist_class = self.make_model_and_action_dist()
         else:
             dist_class, logit_dim = ModelCatalog.get_action_dist(
                 self.action_space, self.config["model"], framework=self.framework

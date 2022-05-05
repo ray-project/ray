@@ -38,12 +38,7 @@ class MBMPOTorchPolicy(MAMLTorchPolicy):
         config = dict(ray.rllib.agents.mbmpo.mbmpo.DEFAULT_CONFIG, **config)
         super().__init__(observation_space, action_space, config)
 
-    def make_model_and_action_dist(
-        self,
-        obs_space: gym.spaces.Space,
-        action_space: gym.spaces.Space,
-        config: TrainerConfigDict,
-    ) -> Tuple[ModelV2, Type[TorchDistributionWrapper]]:
+    def make_model_and_action_dist(self) -> Tuple[ModelV2, Type[TorchDistributionWrapper]]:
         """Constructs the necessary ModelV2 and action dist class for the Policy.
 
         Args:
@@ -58,7 +53,10 @@ class MBMPOTorchPolicy(MAMLTorchPolicy):
         """
         # Get the output distribution class for predicting rewards and next-obs.
         self.distr_cls_next_obs, num_outputs = ModelCatalog.get_action_dist(
-            obs_space, config, dist_type="deterministic", framework="torch"
+            self.observation_space,
+            self.config,
+            dist_type="deterministic",
+            framework="torch"
         )
 
         # Build one dynamics model if we are a Worker.
@@ -66,23 +64,23 @@ class MBMPOTorchPolicy(MAMLTorchPolicy):
         # for being able to create checkpoints for the current state of training.
         device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
         self.dynamics_model = ModelCatalog.get_model_v2(
-            obs_space,
-            action_space,
+            self.observation_space,
+            self.action_space,
             num_outputs=num_outputs,
-            model_config=config["dynamics_model"],
+            model_config=self.config["dynamics_model"],
             framework="torch",
             name="dynamics_ensemble",
         ).to(device)
 
         action_dist, num_outputs = ModelCatalog.get_action_dist(
-            action_space, config, framework="torch"
+            self.action_space, self.config, framework="torch"
         )
         # Create the pi-model and register it with the Policy.
         self.pi = ModelCatalog.get_model_v2(
-            obs_space,
-            action_space,
+            self.observation_space,
+            self.action_space,
             num_outputs=num_outputs,
-            model_config=config["model"],
+            model_config=self.config["model"],
             framework="torch",
             name="policy_model",
         )
