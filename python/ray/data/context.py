@@ -5,6 +5,7 @@ import os
 import ray
 from ray.util.annotations import DeveloperAPI
 
+
 # The context singleton on this process.
 _default_context: "Optional[DatasetContext]" = None
 _context_lock = threading.Lock()
@@ -39,9 +40,10 @@ DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
 
 # Whether to use Polars for tabular dataset groupbys and aggregations.
 try:
-    import polars as pl
+    import polars as pl  # noqa
+
     DEFAULT_USE_POLARS = True
-except ModuleNotFoundError:
+except ImportError:
     DEFAULT_USE_POLARS = False
 
 

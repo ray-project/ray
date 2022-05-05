@@ -14,7 +14,11 @@ from typing import (
 )
 
 import numpy as np
-import polars as pl
+
+try:
+    import polars as pl
+except ImportError:
+    pl = None
 
 try:
     import pyarrow
@@ -267,14 +271,14 @@ class ArrowBlockAccessor(TableBlockAccessor):
             # so calling sort_indices() will raise an error.
             return [self._empty_table() for _ in range(len(boundaries) + 1)]
 
-
         context = DatasetContext.get_current()
         col, _ = key[0]
-        if context.use_polars:
+        if context.use_polars and pl is not None:
             df = pl.from_arrow(self._table)
             table = df.sort(col, reverse=descending).to_arrow()
         else:
             import pyarrow.compute as pac
+
             indices = pac.sort_indices(self._table, sort_keys=key)
             table = self._table.take(indices)
 
@@ -290,7 +294,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
         # *greater than* the boundary value instead.
         if descending:
             num_rows = len(table[col])
-            bounds = num_rows - np.searchsorted(table[col], boundaries, sorter=np.arange(num_rows - 1, -1, -1))
+            bounds = num_rows - np.searchsorted(
+                table[col], boundaries, sorter=np.arange(num_rows - 1, -1, -1)
+            )
         else:
             bounds = np.searchsorted(table[col], boundaries)
         last_idx = 0
@@ -384,15 +390,15 @@ class ArrowBlockAccessor(TableBlockAccessor):
         blocks: List[Block[T]], key: "SortKeyT", _descending: bool
     ) -> Tuple[Block[T], BlockMetadata]:
         stats = BlockExecStats.builder()
-        #blocks = [b for b in blocks if b.num_rows > 0]
+        blocks = [b for b in blocks if b.num_rows > 0]
         if len(blocks) == 0:
             ret = ArrowBlockAccessor._empty_table()
         else:
             context = DatasetContext.get_current()
-            if context.use_polars:
-                key = [k[0] for k in key]
+            if context.use_polars and pl is not None:
+                col, _ = key[0]
                 blocks = [pl.from_arrow(block) for block in blocks]
-                df = pl.concat(blocks).sort(key, reverse=_descending)
+                df = pl.concat(blocks).sort(col, reverse=_descending)
                 ret = df.to_arrow()
             else:
                 ret = pyarrow.concat_tables(blocks, promote=True)

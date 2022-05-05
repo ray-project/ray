@@ -18,6 +18,7 @@ block and becomes part of the new, sorted dataset.
 """
 from typing import List, Any, Callable, TypeVar, Tuple, Union
 
+import logging
 import numpy as np
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockMetadata, BlockAccessor, BlockExecStats
@@ -28,7 +29,8 @@ from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.shuffle import ShuffleOp, SimpleShufflePlan
 from ray.data.impl.push_based_shuffle import PushBasedShufflePlan
 from ray.data.context import DatasetContext
-from ray.data.impl.arrow_block import ArrowBlockAccessor
+
+logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
@@ -120,10 +122,12 @@ def sort_impl(
     context = DatasetContext.get_current()
     if context.use_polars:
         try:
-            import polars as pl
-        except ModuleNotFoundError:
-            logger.info("polars not installed, falling back to pyarrow sort. To use polars-based sort, first install polars (`pip install polars`).")
-            context.use_polars = False
+            import polars as pl  # noqa
+        except ImportError:
+            logger.info(
+                "polars not installed, sort will fall back to pyarrow. To use "
+                "polars-based sort, first install with `pip install polars`."
+            )
 
     stage_info = {}
     blocks_list = blocks.get_blocks()
