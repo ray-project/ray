@@ -78,6 +78,20 @@ class DeploymentSchema(BaseModel, extra=Extra.forbid):
     name: str = Field(
         ..., description=("Globally-unique name identifying this deployment.")
     )
+    import_path: str = Field(
+        default=None,
+        description=(
+            "The application's full import path. Should be of the "
+            'form "module.submodule_1...submodule_n.'
+            'MyClassOrFunction." This is equivalent to '
+            '"from module.submodule_1...submodule_n import '
+            'MyClassOrFunction". Only works with Python '
+            "applications."
+        ),
+        # This regex checks that there is at least one character, followed by
+        # a dot, followed by at least one more character.
+        regex=r".+\..+",
+    )
     num_replicas: int = Field(
         default=None,
         description=(
