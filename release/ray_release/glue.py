@@ -16,6 +16,7 @@ from ray_release.config import (
     DEFAULT_BUILD_TIMEOUT,
     DEFAULT_CLUSTER_TIMEOUT,
     DEFAULT_COMMAND_TIMEOUT,
+    DEFAULT_WAIT_FOR_NODES_TIMEOUT,
     RELEASE_PACKAGE_DIR,
     DEFAULT_AUTOSUSPEND_MINS,
     validate_test,
@@ -221,7 +222,9 @@ def run_release_test(
         if wait_for_nodes:
             buildkite_group(":stopwatch: Waiting for nodes to come up")
             num_nodes = test["run"]["wait_for_nodes"]["num_nodes"]
-            wait_timeout = test["run"]["wait_for_nodes"]["timeout"]
+            wait_timeout = test["run"]["wait_for_nodes"].get(
+                "timeout", DEFAULT_WAIT_FOR_NODES_TIMEOUT
+            )
             command_runner.wait_for_nodes(num_nodes, wait_timeout)
 
         prepare_cmd = test["run"].get("prepare", None)
