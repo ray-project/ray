@@ -234,13 +234,14 @@ class AsyncRequestsManager:
         ray_wait_timeout_s: Optional[float] = 0.03,
         return_object_refs: bool = False,
     ):
+        self._ray_wait_timeout_s = ray_wait_timeout_s
+        self._return_object_refs = return_object_refs
+        self._max_remote_requests_in_flight = max_remote_requests_in_flight
+        self._all_workers = set(workers)
         self._num_workers = len(workers)
         self._available_workers = workers.copy()
         self._available_workers_set = set(self._available_workers)
         self._unavailable_workers = set()
-        self._max_remote_requests_in_flight = max_remote_requests_in_flight
-        self._ray_wait_timeout_s = ray_wait_timeout_s
-        self._return_object_refs = return_object_refs
         self._remote_requests_in_flight = defaultdict(set)
         self._pending_to_actor = {}
         self._call_queue = Queue(maxsize=0)
@@ -344,6 +345,48 @@ class AsyncRequestsManager:
                 self._available_workers.append(available_actor)
                 return available_actor
         return None
+
+    def add_worker(self, new_worker: ActorHandle) -> None:
+        """Add a new worker to the manager
+
+        Args:
+            new_worker: The actor to add
+
+        """
+        if new_worker in self._all_workers:
+            return
+        self._available_workers.append(new_worker)
+        self._available_workers_set.add(new_worker)
+        self._all_workers.add(new_worker)
+        self._num_workers += 1
+        self._run()
+
+    def remove_worker(self, worker: ActorHandle) -> None:
+        """Remove a worker from the manager
+
+        Args:
+            worker: The actor to remove
+        """
+        if worker not in self._all_workers:
+            return
+        self._all_workers.remove(worker)
+        self._num_workers -= 1
+        if worker in self._available_workers_set:
+            self._available_workers_set.remove(worker)
+            self._available_workers.remote(worker)
+        if worker in self._unavailable_workers:
+            self._unavailable_workers.remove(worker)
+            if worker in self._remote_requests_in_flight:
+                for req in self._remote_requests_in_flight[worker]:
+                    # can't cancel inflight actor requests so instead block till
+                    # they are done
+                    ray.get(req)
+                    self._pending_remotes.remove(req)
+                    del self._pending_to_actor[req]
+                    del req
+                del self._remote_requests_in_flight[worker]
+
+
 
     def get_manager_statistics(self) -> Dict[str, Any]:
         """Get statistics about the the manager

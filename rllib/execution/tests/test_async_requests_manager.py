@@ -113,6 +113,67 @@ class TestAsyncRequestsManager(unittest.TestCase):
                 " that have longer tasks"
             )
 
+    def test_add_remove_actors(self):
+        """Tests that the async manager can properly add and remove actors"""
+
+        workers = []
+        manager = AsyncRequestsManager(workers, max_remote_requests_in_flight=2)
+        manager.submit(lambda w: w.task())
+        if not (
+            (
+                len(manager._available_workers)
+                == len(manager._available_workers_set)
+                == manager._num_workers
+                == len(manager._unavailable_workers)
+                == len(manager._remote_requests_in_flight)
+                == len(manager._pending_to_actor)
+                == len(manager._all_workers)
+                == len(manager._pending_remotes)
+                == 0
+            )
+            and manager._call_queue.qsize() == 1
+        ):
+            raise ValueError(
+                "We should have no workers in this case but 1 queued" " request"
+            )
+        worker = RemoteRLlibActor.remote(sleep_time=0.1)
+        manager.add_worker(worker)
+        if not (
+            manager._num_workers
+            == len(manager._remote_requests_in_flight[worker])
+            == len(manager._pending_to_actor)
+            == len(manager._all_workers)
+            == len(manager._pending_remotes)
+            == 1
+            and manager._call_queue.qsize() == 0
+        ):
+            raise ValueError("We should have 1 worker and 1 pending request")
+        time.sleep(1)
+        manager.get_ready_requests()
+        assert manager._call_queue.qsize() == 0
+        # test worker removal
+        for i in range(2):
+            manager.submit(lambda w: w.task())
+            assert len(manager._pending_remotes) == i + 1
+        manager.remove_worker(worker)
+        if not (
+            (
+                len(manager._available_workers)
+                == len(manager._available_workers_set)
+                == manager._num_workers
+                == len(manager._unavailable_workers)
+                == len(manager._remote_requests_in_flight)
+                == len(manager._pending_to_actor)
+                == len(manager._all_workers)
+                == len(manager._pending_remotes)
+                == 0
+            )
+            and manager._call_queue.qsize() == 0
+        ):
+            raise ValueError(
+                "We should have no workers and no queued/pending " "requests"
+            )
+
 
 if __name__ == "__main__":
     import pytest
