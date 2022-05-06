@@ -150,6 +150,18 @@ def test_get_info_basic(shutdown_only, storage_type):
         assert client.get_info("").base_name == "ns"
 
 
+@pytest.mark.parametrize("storage_type", ["s3", "fs"])
+def test_cluster(shutdown_only, storage_type):
+    with simulate_storage(storage_type) as storage_uri:
+        subprocess.check_call(["ray", "start", "--head", "--storage", storage_uri])
+        # make sure driver is using the same storage when
+        # connecting to a cluster
+        ray.init(address="auto")
+        from ray.internal.storage import _storage_uri
+        assert _storage_uri == storage_uri
+        subprocess.check_call(["ray", "stop"])
+
+
 if __name__ == "__main__":
     import sys
 

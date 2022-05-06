@@ -1,7 +1,7 @@
 import pytest
 import ray
 from ray._private import signature
-from ray._private.test_utils import run_string_as_driver_nonblocking
+from ray._private.test_utils import run_string_as_driver_nonblocking, simulate_storage
 from ray.tests.conftest import *  # noqa
 from ray import workflow
 from ray.workflow import workflow_storage
@@ -222,47 +222,27 @@ def test_workflow_storage(workflow_start_regular):
     assert not inspect_result.is_recoverable()
 
 
-def test_cluster_storage_init(tmp_path):
-    subprocess.check_call(["ray", "start", "--head", "--storage", str(tmp_path)])
-    script = """
-import ray
-from ray import workflow
+def test_cluster_storage_init(storage_type, tmp_path):
+    with simulate_storage(storage_type) as storage_uri:
+        subprocess.check_call(["ray", "start", "--head", "--storage", storage_uri])
 
-{}
-
-@workflow.step
-def f():
-    return 10
-
-f.step().run()
-    """
-    script1 = script.format("ray.init(address='auto')")
-    script2 = script.format(f"ray.init(address='auto', storage='{tmp_path}')")
-    another_tmp_path = tempfile.TemporaryDirectory()
-    script3 = script.format(
-        f"ray.init(address='auto', storage='{another_tmp_path.name}')"
-    )
-    err_str = (
-        "ValueError: When connecting to an existing cluster, "
+        err_msg = "When connecting to an existing cluster, "
         "storage must not be provided."
-    )
 
-    proc1 = run_string_as_driver_nonblocking(script1)
-    out_str1 = proc1.stdout.read().decode("ascii") + proc1.stderr.read().decode("ascii")
-    assert err_str not in out_str1
-    proc1.kill()
+        with pytest.raises(ValueError, match=err_msg):
+            ray.init(address="auto", storage=str(tmp_path))
 
-    proc2 = run_string_as_driver_nonblocking(script2)
-    out_str2 = proc2.stdout.read().decode("ascii") + proc2.stderr.read().decode("ascii")
-    assert err_str in out_str2
-    proc2.kill()
+        with pytest.raises(ValueError, match=err_msg):
+            ray.init(address="auto", storage=storage_uri)
 
-    proc3 = run_string_as_driver_nonblocking(script3)
-    out_str3 = proc3.stdout.read().decode("ascii") + proc3.stderr.read().decode("ascii")
-    assert err_str in out_str3
-    proc3.kill()
-    another_tmp_path.cleanup()
-    subprocess.check_call(["ray", "stop"])
+        ray.init(address="auto")
+        @workflow.step
+        def f():
+            return 10
+        assert f.step().run() == 10
+
+        ray.shutdown()
+        subprocess.check_call(["ray", "stop"])
 
 
 if __name__ == "__main__":
