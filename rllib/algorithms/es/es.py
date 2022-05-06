@@ -10,8 +10,8 @@ from typing import Optional
 
 import ray
 from ray.rllib.agents import Trainer, TrainerConfig
-from ray.rllib.agents.es import optimizers, utils
-from ray.rllib.agents.es.es_tf_policy import ESTFPolicy, rollout
+from ray.rllib.algorithms.es import optimizers, utils
+from ray.rllib.algorithms.es.es_tf_policy import ESTFPolicy, rollout
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import FilterManager
@@ -45,7 +45,7 @@ class ESConfig(TrainerConfig):
     """Defines an ESTrainer configuration class from which an ESTrainer can be built.
 
     Example:
-        >>> from ray.rllib.agents.es import ESConfig
+        >>> from ray.rllib.algorithms.es import ESConfig
         >>> config = ESConfig().training(sgd_stepsize=0.02, report_length=20)\
         ...     .resources(num_gpus=0)\
         ...     .rollouts(num_rollout_workers=4)
@@ -55,7 +55,7 @@ class ESConfig(TrainerConfig):
         >>> trainer.train()
 
     Example:
-        >>> from ray.rllib.agents.es import ESConfig
+        >>> from ray.rllib.algorithms.es import ESConfig
         >>> from ray import tune
         >>> config = ESConfig()
         >>> # Print out some default values.
@@ -311,7 +311,7 @@ class Worker:
 
 def get_policy_class(config):
     if config["framework"] == "torch":
-        from ray.rllib.agents.es.es_torch_policy import ESTorchPolicy
+        from ray.rllib.algorithms.es.es_torch_policy import ESTorchPolicy
 
         policy_cls = ESTorchPolicy
     else:
@@ -569,14 +569,14 @@ class ESTrainer(Trainer):
         )
 
 
-# Deprecated: Use ray.rllib.agents.es.ESConfig instead!
+# Deprecated: Use ray.rllib.algorithms.es.ESConfig instead!
 class _deprecated_default_config(dict):
     def __init__(self):
         super().__init__(ESConfig().to_dict())
 
     @Deprecated(
-        old="ray.rllib.agents.es.es.DEFAULT_CONFIG",
-        new="ray.rllib.agents.es.es.ESConfig(...)",
+        old="ray.rllib.algorithms.es.es.DEFAULT_CONFIG",
+        new="ray.rllib.algorithms.es.es.ESConfig(...)",
         error=False,
     )
     def __getitem__(self, item):
