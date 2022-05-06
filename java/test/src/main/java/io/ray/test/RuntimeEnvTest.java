@@ -172,22 +172,26 @@ public class RuntimeEnvTest {
     }
   }
 
-  public void testJarsInActor() {
+  private static void testDownloadAndLoadPackage(String url) {
     try {
       Ray.init();
-      final RuntimeEnv runtimeEnv =
-          new RuntimeEnv.Builder()
-              .addJars(
-                  ImmutableList.of(
-                      "https://ray-mobius-us.oss-us-west-1.aliyuncs.com/ci/linux/actor-observer-tmp.jar"))
-              .build();
+      final RuntimeEnv runtimeEnv = new RuntimeEnv.Builder().addJars(ImmutableList.of(url)).build();
       ActorHandle<A> actor1 = Ray.actor(A::new).setRuntimeEnv(runtimeEnv).remote();
       boolean ret =
           actor1.task(A::findClass, "io.ray.actorobserver.event.ActorStateEvent").remote().get();
       Assert.assertTrue(ret);
-      System.out.println(ret);
     } finally {
       Ray.shutdown();
     }
+  }
+
+  public void testJarPackageInActor() {
+    testDownloadAndLoadPackage(
+        "https://ray-mobius-us.oss-us-west-1.aliyuncs.com/ci/linux/actor-observer-tmp.jar");
+  }
+
+  public void testZipPackageInActor() {
+    testDownloadAndLoadPackage(
+        "https://ray-mobius-us.oss-us-west-1.aliyuncs.com/ci/linux/actor-observer-tmp.zip");
   }
 }

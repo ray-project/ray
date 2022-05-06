@@ -16,9 +16,7 @@ public interface RuntimeEnv {
     private Map<String, String> envVars = new HashMap<>();
     private List<String> jars = new ArrayList<>();
 
-    /**
-     * Add environment variable as runtime environment for the actor or job.
-     */
+    /** Add environment variable as runtime environment for the actor or job. */
     public Builder addEnvVar(String key, String value) {
       envVars.put(key, value);
       return this;
