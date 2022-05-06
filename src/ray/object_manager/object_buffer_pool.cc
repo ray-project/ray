@@ -150,8 +150,6 @@ void ObjectBufferPool::WriteChunk(const ObjectID &object_id,
 
 void ObjectBufferPool::AbortCreate(const ObjectID &object_id) {
   absl::MutexLock lock(&pool_mutex_);
-  RAY_LOG(INFO) << "Not enough memory to create requested object " << object_id
-                << ", aborting";
   AbortCreateInternal(object_id);
 }
 
