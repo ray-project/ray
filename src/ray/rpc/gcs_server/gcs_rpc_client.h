@@ -100,7 +100,10 @@ class Executor {
                 : Status(StatusCode(reply.status().code()), reply.status().message()); \
         callback(status, reply);                                                       \
         delete executor;                                                               \
-      } else if (gcs_is_down_) {                                                       \
+      } else {                                                                         \
+        /* In case of GCS failure, we queue the request and these requets will be */   \
+        /* executed once GCS is back. */                                               \
+        gcs_is_down_ = true;                                                           \
         pending_requests_.emplace_back(executor);                                      \
         if (pending_requests_.size() >                                                 \
             ::RayConfig::instance().gcs_grpc_max_request_queued()) {                   \
@@ -113,8 +116,6 @@ class Executor {
                     .gcs_client_check_connection_status_interval_milliseconds()));     \
           }                                                                            \
         }                                                                              \
-      } else {                                                                         \
-        executor->Retry();                                                             \
       }                                                                                \
     };                                                                                 \
     auto operation =                                                                   \
@@ -145,7 +146,7 @@ class Executor {
 /// Client used for communicating with gcs server.
 class GcsRpcClient {
  public:
-  /// Constructor.
+  /// Constructor. GcsRpcClient is not thread safe.
   ///
   /// \param[in] address Address of gcs server.
   /// \param[in] port Port of the gcs server.
@@ -448,11 +449,12 @@ class GcsRpcClient {
                              /*method_timeout_ms*/ -1, )
 
   void Shutdown() {
-    if (shutdown_) {
+    bool is_shutdown = false;
+    if (shutdown_.compare_exchange_strong(is_shutdown, true)) {
+      periodical_runner_.reset();
+    } else {
       RAY_LOG(DEBUG) << "GCS client has already been shutdown.";
     }
-    shutdown_ = true;
-    periodical_runner_.reset();
   }
 
   std::pair<std::string, int64_t> GetAddress() const {
@@ -519,7 +521,7 @@ class GcsRpcClient {
   bool gcs_is_down_ = false;
   absl::Time gcs_last_alive_time_ = absl::Now();
 
-  bool shutdown_ = false;
+  std::atomic<bool> shutdown_ = false;
   std::unique_ptr<PeriodicalRunner> periodical_runner_;
   std::vector<Executor *> pending_requests_;
 };

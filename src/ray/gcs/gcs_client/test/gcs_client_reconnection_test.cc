@@ -12,13 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/gcs/gcs_client/gcs_client.h"
-
 #include "absl/strings/substitute.h"
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/gcs_client/accessor.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
 #include "ray/gcs/test/gcs_test_util.h"
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
@@ -42,23 +41,23 @@ class GcsClientReconnectionTest : public ::testing::Test {
     }
   }
   void ShutdownGCS() {
-    if(server_io_service_) {
+    if (server_io_service_) {
       server_io_service_->stop();
       server_io_service_.reset();
     }
 
-    if(server_io_service_thread_) {
+    if (server_io_service_thread_) {
       server_io_service_thread_->join();
       server_io_service_thread_.reset();
     }
 
-    if(gcs_server_) {
+    if (gcs_server_) {
       gcs_server_->Stop();
       gcs_server_.reset();
     }
   }
 
-  gcs::GcsClient* CreateGCSClient() {
+  gcs::GcsClient *CreateGCSClient() {
     client_io_service_ = std::make_unique<instrumented_io_context>();
     client_io_service_thread_ = std::make_unique<std::thread>([this] {
       std::unique_ptr<boost::asio::io_service::work> work(
@@ -72,20 +71,21 @@ class GcsClientReconnectionTest : public ::testing::Test {
   }
 
   void CloseGCSClient() {
-    if(client_io_service_) {
+    if (client_io_service_) {
       client_io_service_->stop();
       client_io_service_.reset();
     }
-    if(client_io_service_thread_) {
+    if (client_io_service_thread_) {
       client_io_service_thread_->join();
       client_io_service_thread_.reset();
     }
 
-    if(gcs_client_) {
+    if (gcs_client_) {
       gcs_client_->Disconnect();
       gcs_client_.reset();
     }
   }
+
  protected:
   void SetUp() override {
     config_.redis_address = "127.0.0.1";
@@ -118,6 +118,12 @@ class GcsClientReconnectionTest : public ::testing::Test {
 
   // Timeout waiting for GCS server reply, default is 2s.
   const std::chrono::milliseconds timeout_ms_{2000};
-
 };
-}
+
+TEST_F(GcsClientReconnectionTest, ReconnectionBasic) {}
+
+TEST_F(GcsClientReconnectionTest, QueueingAndBlocking) {}
+
+TEST_F(GcsClientReconnectionTest, QueueingAndBlocking) {}
+
+}  // namespace ray
