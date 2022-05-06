@@ -3,13 +3,26 @@
 Usage Stats Collection
 ======================
 
-Starting in Ray 1.13, Ray collects usage stats data by default (guarded by an opt-out prompt). This data will be used by the Ray team to understand how to improve Ray.
+Starting in Ray 1.13, Ray collects usage stats data by default (guarded by an opt-out prompt).
+This data will be used by the open-source Ray engineering team to better understand how to improve our libraries and core APIs, and how to prioritize bug fixes and enhancements.
 For more context, please refer to this `RFC <https://github.com/ray-project/ray/issues/20857>`_.
 
 What data is collected?
 -----------------------
 We collect non-sensitive data that helps us understand how Ray is used (e.g., which Ray libraries are used).
 Personally identifiable data is never collected. Please check ``UsageStatsToReport`` in `usage_lib.py <https://github.com/ray-project/ray/blob/master/python/ray/_private/usage/usage_lib.py>`_ to see the data we collect.
+
+How to disable it
+-----------------
+There are multiple ways to disable usage stats collection before starting a cluster:
+
+#. Add ``--disable-usage-stats`` option to the command that starts the Ray cluster (e.g., ``ray start --head --disable-usage-stats``).
+
+#. Run ``ray disable-usage-stats`` to disable collection for all future clusters. This won't affect currently running clusters. Under the hood, this command writes ``{"usage_stats": true}`` to the global config file ``~/.ray/config.json``.
+
+#. Set the environment variable ``RAY_USAGE_STATS_ENABLED`` to 0 (e.g., ``RAY_USAGE_STATS_ENABLED=0 ray start --head``).
+
+Currently there is no way to enable or disable collection for a running cluster; you have to stop and restart the cluster.
 
 How does it work?
 -----------------
@@ -29,18 +42,6 @@ and report to ``https://usage-stats.ray.io/`` every hour. The reported usage sta
 ``/tmp/ray/session_xxx/usage_stats.json`` on the head node for inspection. You can check the existence of this file to see if collection is enabled.
 
 Usage stats collection is very lightweight and should have no impact on your workload in any way.
-
-How to disable it
------------------
-There are multiple ways to disable usage stats collection before starting a cluster:
-
-#. Add ``--disable-usage-stats`` option to the command that starts the Ray cluster (e.g., ``ray start --head --disable-usage-stats``).
-
-#. Run ``ray disable-usage-stats`` to disable collection for all future clusters. This won't affect currently running clusters. Under the hood, this command writes ``{"usage_stats": true}`` to the global config file ``~/.ray/config.json``.
-
-#. Set the environment variable ``RAY_USAGE_STATS_ENABLED`` to 0 (e.g., ``RAY_USAGE_STATS_ENABLED=0 ray start --head``).
-
-Currently there is no way to enable or disable collection for a running cluster; you have to stop and restart the cluster.
 
 How to request removal of collected data
 ----------------------------------------
