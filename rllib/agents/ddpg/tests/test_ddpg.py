@@ -46,6 +46,7 @@ class TestDDPG(unittest.TestCase):
 
         # Test against all frameworks.
         for _ in framework_iterator(config, with_eager_tracing=True):
+            ""
             trainer = config.build(env="Pendulum-v1")
             for i in range(num_iterations):
                 results = trainer.train()
@@ -53,30 +54,12 @@ class TestDDPG(unittest.TestCase):
                 print(results)
             check_compute_single_action(trainer)
             # Ensure apply_gradient_fn is being called and updating global_step
+            pol = trainer.get_policy()
             if config.framework == "tf":
-                a = trainer.get_policy().global_step.eval(
-                    trainer.get_policy().get_session()
-                )
+                a = pol.get_session().run(pol.global_step)
             else:
-                a = trainer.get_policy().global_step
+                a = pol.global_step
             check(a, 500)
-            trainer.stop()
-
-    def test_ddpg_checkpoint_save_and_restore(self):
-        """Test whether a DDPGTrainer can save and load checkpoints."""
-        config = ddpg.DDPGConfig()
-        config.num_workers = 1
-        config.num_envs_per_worker = 2
-        config.learning_starts = 0
-        config.exploration_config.update({"random_timesteps": 100})
-
-        # Test against all frameworks.
-        for _ in framework_iterator(config, with_eager_tracing=True):
-            trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v1")
-            trainer.train()
-            with TemporaryDirectory() as temp_dir:
-                checkpoint = trainer.save(temp_dir)
-                trainer.restore(checkpoint)
             trainer.stop()
 
     def test_ddpg_exploration_and_with_random_prerun(self):
