@@ -180,6 +180,7 @@ Let's see an example of using placement group. Note that this example is done wi
       placement_group_table,
       remove_placement_group
   )
+  from ray.util.scheduling_strategy import PlacementGroupSchedulingStrategy
 
   ray.init(num_gpus=2, resources={"extra_resource": 2})
 
@@ -215,7 +216,7 @@ Let's create a placement group. Recall that each bundle is a collection of resou
         f.remote()
 
         # Will be scheduled because 2 cpus are reserved by the placement group.
-        f.options(placement_group=pg).remote()
+        f.options(scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)).remote()
 
   .. tabbed:: Java
 
@@ -393,18 +394,22 @@ Now let's define an actor that uses GPU. We'll also define a task that use ``ext
 
       # Create GPU actors on a gpu bundle.
       gpu_actors = [GPUActor.options(
-          placement_group=pg,
-          # This is the index from the original list.
-          # This index is set to -1 by default, which means any available bundle.
-          placement_group_bundle_index=0) # Index of gpu_bundle is 0.
+          scheduling_strategy=PlacementGroupSchedulingStrategy(
+            placement_group=pg,
+            # This is the index from the original list.
+            # This index is set to -1 by default, which means any available bundle.
+            placement_group_bundle_index=0 # Index of gpu_bundle is 0.
+          )
       .remote() for _ in range(2)]
 
       # Create extra_resource actors on a extra_resource bundle.
       extra_resource_actors = [extra_resource_task.options(
-          placement_group=pg,
-          # This is the index from the original list.
-          # This index is set to -1 by default, which means any available bundle.
-          placement_group_bundle_index=1) # Index of extra_resource_bundle is 1.
+          scheduling_strategy=PlacementGroupSchedulingStrategy(
+            placement_group=pg,
+            # This is the index from the original list.
+            # This index is set to -1 by default, which means any available bundle.
+            placement_group_bundle_index=1) # Index of extra_resource_bundle is 1.
+          )
       .remote() for _ in range(2)]
 
 .. tabbed:: Java
@@ -505,12 +510,14 @@ because they are scheduled on a placement group with the STRICT_PACK strategy.
         @ray.remote
         def parent():
             # The child task is scheduled with the same placement group as its parent
-            # although child.options(placement_group=pg).remote() wasn't called.
+            # although child.options(
+              scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+            ).remote() wasn't called.
             ray.get(child.remote())
 
-        ray.get(parent.options(placement_group=pg).remote())
+        ray.get(parent.options(scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)).remote())
 
-      To avoid it, you should specify `options(placement_group=None)` in a child task/actor remote call.
+      To avoid it, you should specify `options(scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=None))` in a child task/actor remote call.
 
       .. code-block:: python
 
@@ -518,7 +525,7 @@ because they are scheduled on a placement group with the STRICT_PACK strategy.
         def parent():
             # In this case, the child task won't be
             # scheduled with the parent's placement group.
-            ray.get(child.options(placement_group=None).remote())
+            ray.get(child.options(scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=None)).remote())
 
   .. tabbed:: Java
 
