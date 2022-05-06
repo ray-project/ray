@@ -172,7 +172,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Subscribe to the relevant GCS tables and set up handlers.
   ///
   /// \return Status indicating whether this was done successfully or not.
-  ray::Status RegisterGcs();
+  Status RegisterGcs();
 
   /// Get initial node manager configuration.
   const NodeManagerConfig &GetInitialConfig() const;
@@ -218,7 +218,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param include_task_info If true, it requires every task metadata information
   /// from all workers.
   void QueryAllWorkerStates(
-      const std::function<void(const ray::Status &status,
+      const std::function<void(const Status &status,
                                const rpc::GetCoreWorkerStatsReply &r)> &on_replied,
       rpc::SendReplyCallback &send_reply_callback,
       bool include_memory_info,
@@ -543,10 +543,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                                rpc::CancelWorkerLeaseReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a `PinObjectIDs` request.
-  void HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
-                          rpc::PinObjectIDsReply *reply,
-                          rpc::SendReplyCallback send_reply_callback) override;
+  /// Handle a `PinObjectID` request.
+  void HandlePinObjectID(const rpc::PinObjectIDRequest &request,
+                         rpc::PinObjectIDReply *reply,
+                         rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `NodeStats` request.
   void HandleGetNodeStats(const rpc::GetNodeStatsRequest &request,
@@ -624,9 +624,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param[in] object_ids The objects to get.
   /// \param[out] results The pointers to objects stored in
   /// plasma.
-  /// \return Whether the request was successful.
-  bool GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
-                            std::vector<std::unique_ptr<RayObject>> *results);
+  /// \return Status of the request.
+  Status GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
+                              std::vector<std::unique_ptr<RayObject>> *results);
 
   /// Populate the relevant parts of the heartbeat table. This is intended for
   /// sending raylet <-> gcs heartbeats. In particular, this should fill in

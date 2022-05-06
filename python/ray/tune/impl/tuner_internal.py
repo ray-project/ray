@@ -180,6 +180,7 @@ class TunerInternal:
             ),
             _experiment_checkpoint_dir=self._experiment_checkpoint_dir,
             raise_on_failed_trial=False,
+            verbose=self._run_config.verbose,
             **self._tuner_kwargs,
         )
         return analysis
