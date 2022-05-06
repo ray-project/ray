@@ -248,7 +248,7 @@ class ImpalaConfig(TrainerConfig):
         Note:
             Tuning max_requests_in_flight_per_sampler_worker and
             max_requests_in_flight_per_aggregator_worker is important when running
-            experimens with large sample batches. If the sample batches are large in
+            experiments with large sample batches. If the sample batches are large in
             size, then there is the risk that the object store may fill up, causing
             the store to spill sample batches to disk. This can cause any asynchronous
             requests to become very slow, making your experiment run slowly. You can
