@@ -1707,13 +1707,6 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_exec_api",
-    tags = ["team:ml", "tests_dir", "tests_dir_E"],
-    size = "medium",
-    srcs = ["tests/test_exec_api.py"]
-)
-
-py_test(
     name = "tests/test_execution",
     tags = ["team:ml", "tests_dir", "tests_dir_E"],
     size = "medium",
@@ -2855,7 +2848,7 @@ py_test(
 py_test(
     name = "examples/rollout_worker_custom_workflow",
     tags = ["team:ml", "examples", "examples_R"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/rollout_worker_custom_workflow.py"],
     args = ["--num-cpus=4"]
 )
