@@ -6,18 +6,61 @@ import ray
 from ray.rllib.evaluation.postprocessing import compute_advantages, Postprocessing
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.policy.grad_utils import compute_and_clip_gradients
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.tf_policy import ValueNetworkMixin
+from ray.rllib.policy.tf_mixins import ValueNetworkMixin
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.framework import try_import_tf, get_variable
 from ray.rllib.utils.tf_utils import explained_variance
 from ray.rllib.utils.typing import TrainerConfigDict, TensorType, PolicyID
+from ray.rllib.utils.typing import (
+    LocalOptimizer,
+    ModelGradients,
+    TensorType,
+)
 
 tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
+
+
+# TODO(jungong) : Temporarily copied from ppo_tf_policy.
+# Should simply use ComputeAndClipGradsMixIn once we migrate
+# Marwil to extend DynamicTFPolicyV2.
+def compute_and_clip_gradients(
+    policy: Policy, optimizer: LocalOptimizer, loss: TensorType
+) -> ModelGradients:
+    """Gradients computing function (from loss tensor, using local optimizer).
+    Args:
+        policy (Policy): The Policy object that generated the loss tensor and
+            that holds the given local optimizer.
+        optimizer (LocalOptimizer): The tf (local) optimizer object to
+            calculate the gradients with.
+        loss (TensorType): The loss tensor for which gradients should be
+            calculated.
+    Returns:
+        ModelGradients: List of the possibly clipped gradients- and variable
+            tuples.
+    """
+    # Compute the gradients.
+    variables = policy.model.trainable_variables
+    if isinstance(policy.model, ModelV2):
+        variables = variables()
+    grads_and_vars = optimizer.compute_gradients(loss, variables)
+
+    # Clip by global norm, if necessary.
+    if policy.config["grad_clip"] is not None:
+        # Defuse inf gradients (due to super large losses).
+        grads = [g for (g, v) in grads_and_vars]
+        grads, _ = tf.clip_by_global_norm(grads, policy.config["grad_clip"])
+        # If the global_norm is inf -> All grads will be NaN. Stabilize this
+        # here by setting them to 0.0. This will simply ignore destructive loss
+        # calculations.
+        policy.grads = [tf.where(tf.math.is_nan(g), tf.zeros_like(g), g) for g in grads]
+        clipped_grads_and_vars = list(zip(policy.grads, variables))
+        return clipped_grads_and_vars
+    else:
+        return grads_and_vars
 
 
 def postprocess_advantages(
@@ -197,7 +240,7 @@ def setup_mixins(
     config: TrainerConfigDict,
 ) -> None:
     # Setup Value branch of our NN.
-    ValueNetworkMixin.__init__(policy)
+    ValueNetworkMixin.__init__(policy, config)
 
     # Not needed for pure BC.
     if policy.config["beta"] != 0.0:

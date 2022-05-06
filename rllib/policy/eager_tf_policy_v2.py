@@ -101,7 +101,7 @@ class EagerTFPolicyV2(Policy):
 
         # If using default make_model(), dist_class will get updated when
         # the model is created next.
-        self.dist_class = None
+        self.dist_class = self._init_dist_class()
         self.model = self.make_model()
 
         self._init_view_requirements()
@@ -203,7 +203,7 @@ class EagerTFPolicyV2(Policy):
             The Model for the Policy to use.
         """
         # Default ModelV2 model.
-        self.dist_class, logit_dim = ModelCatalog.get_action_dist(
+        _, logit_dim = ModelCatalog.get_action_dist(
             self.action_space, self.config["model"]
         )
         return ModelCatalog.get_model_v2(
@@ -375,6 +375,19 @@ class EagerTFPolicyV2(Policy):
                 Policy's Model.
         """
         return tf.keras.optimizers.Adam(self.config["lr"])
+
+    def _init_dist_class(self):
+        if is_overridden(self.action_sampler_fn) or is_overridden(self.action_distribution_fn):
+            if not is_overridden(self.make_model):
+                raise ValueError(
+                    "`make_model` is required if `action_sampler_fn` OR "
+                    "`action_distribution_fn` is given"
+                )
+        else:
+            dist_class, _ = ModelCatalog.get_action_dist(
+                self.action_space, self.config["model"]
+            )
+        return dist_class
 
     def _init_view_requirements(self):
         # Auto-update model's inference view requirements, if recurrent.

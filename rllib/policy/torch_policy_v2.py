@@ -554,7 +554,7 @@ class TorchPolicyV2(Policy):
         actions_normalized: bool = True,
     ) -> TensorType:
 
-        if not is_overridden(self.action_sampler_fn) and not is_overridden(
+        if is_overridden(self.action_sampler_fn) and not is_overridden(
             self.action_distribution_fn
         ):
             raise ValueError(

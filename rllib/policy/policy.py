@@ -30,6 +30,7 @@ from ray.rllib.utils.annotations import (
     ExperimentalAPI,
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
+    is_overridden,
 )
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.exploration.exploration import Exploration
@@ -748,9 +749,7 @@ class Policy(metaclass=ABCMeta):
         # steps).
         # Make sure, we keep global_timestep as a Tensor for tf-eager
         # (leads to memory leaks if not doing so).
-        from ray.rllib.policy.eager_tf_policy import EagerTFPolicy
-
-        if self.framework in ["tf2", "tfe"] and isinstance(self, EagerTFPolicy):
+        if isinstance(self.global_timestep, tf.Variable):
             self.global_timestep.assign(global_vars["timestep"])
         else:
             self.global_timestep = global_vars["timestep"]
@@ -965,7 +964,7 @@ class Policy(metaclass=ABCMeta):
         # We should simply do self.loss(...) here.
         if self._loss is not None:
             self._loss(self, self.model, self.dist_class, train_batch)
-        elif hasattr(self, "loss"):
+        elif is_overridden(self.loss):
             self.loss(self.model, self.dist_class, train_batch)
         # Call the stats fn, if given.
         # TODO(jungong) : clean up after all agents get migrated.

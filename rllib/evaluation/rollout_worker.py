@@ -43,6 +43,7 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.torch_policy import TorchPolicy
+from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils import force_list, merge_dicts, check_env
 from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI
 from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
@@ -1715,7 +1716,7 @@ class RolloutWorker(ParallelIteratorWorker):
         )
 
         for pid, policy in self.policy_map.items():
-            if not isinstance(policy, TorchPolicy):
+            if not isinstance(policy, (TorchPolicy, TorchPolicyV2)):
                 raise ValueError(
                     "This policy does not support torch distributed", policy
                 )
