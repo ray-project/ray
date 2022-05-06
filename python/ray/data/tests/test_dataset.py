@@ -3569,18 +3569,32 @@ def test_random_shuffle_spread(ray_start_cluster):
 def test_random_sample():
     ds = ray.data.range(10, parallelism=2)
     r1 = ds.random_sample(4)
+    r2 = ds.random_sample(4, sampling_strategy=1)
     assert len(r1) == 4
+    assert len(r2) == 4
 
     # "weird" datasets
     ds1 = ray.data.range(1, parallelism=1)
     ds2 = ray.data.range(2, parallelism=1)
     ds3 = ray.data.range(3, parallelism=1)
+    # noinspection PyTypeChecker
     ds = ds1.union(ds2).union(ds3)
+    r1 = ds.random_sample(4, sampling_strategy=0)
     r2 = ds.random_sample(3)
+    assert len(r1) == 4
     assert len(r2) == 3
 
 
 def test_random_sample_spread():
+    def is_continuous(x):
+        prev = x[0]
+        for e in x:
+            if e == prev + 1:
+                return True
+            prev = e
+        return False
+
+    ds = ray.data.range(50)
     # TODO: Check for non-contiguity
     pass
 
@@ -3594,8 +3608,10 @@ def test_random_sample_checks():
         ray.data.range(0).random_sample(1)
 
         # No sampling more elements than the dataset contains
-
         ray.data.range(2).random_sample(3)
+
+        # Invalid sampling strategy
+        ray.data.range(1).random_sample(1, sampling_strategy=42)
 
 
 def test_parquet_read_spread(ray_start_cluster, tmp_path):

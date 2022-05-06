@@ -613,14 +613,14 @@ class Dataset(Generic[T]):
         )
         return Dataset(plan, self._epoch, self._lazy)
 
-    def random_sample(self, number: int, *, seed: Optional[int] = None) -> List[Any]:
+    def random_sample(
+        self, number: int, *, seed: Optional[int] = None, sampling_strategy=0
+    ) -> List[Any]:
         """Randomly samples N elements from the dataset.
 
         This uniformly samples elements from the dataset.
 
-        From each block, n elements are taken uniformly where n is proportionate
-        to the fraction of the rows in that block as compared to the total number
-         of rows in the dataset. The result is truncated to *number* elements.
+
 
         Examples:
             >>> import ray
@@ -634,6 +634,12 @@ class Dataset(Generic[T]):
             number: The number of elements to sample from the dataset.
 
             seed: Seeds the python random pRNG generator.
+
+            sampling_strategy: The sampling strategy to use
+            0 is the default.  From each block, n elements are taken uniformly where n is proportionate
+            to the fraction of the rows in that block as compared to the total number
+            of rows in the dataset. The result is truncated to *number* elements.
+            1 generates N indices to sample the data from by uniformly sampling the indices from range [0, num_rows-1]
 
         Returns:
             N elements, randomly sampled from the dataset.
@@ -657,38 +663,53 @@ class Dataset(Generic[T]):
         if seed:
             random.seed(seed)
 
-        def process_batch(batch):
-            """
-            Processes a batch of inputs
-            Args:
-                batch: The batch to process
+        if sampling_strategy not in [0, 1]:
+            raise ValueError("Sampling strategy must be 0 or 1")
 
-            Returns:
-                Randomly sampled elements from the batch
-                This algorithm uniformly samples elements from the batch based
-                on how many rows that batch contains with respect to the total
-                number of rows
-            """
+        if sampling_strategy == 0:
+            # Uniform sampling strategy
+            def process_batch(batch):
+                """
+                Processes a batch of inputs
+                Args:
+                    batch: The batch to process
 
-            # Sample size algorithm:
-            # sample_size_for_this_batch = ceiling (
-            #                                          (rows_in_this_batch /
-            #                                          total_rows) * samples_wanted
-            #                                       )
+                Returns:
+                    Randomly sampled elements from the batch
+                    This algorithm uniformly samples elements from the batch based
+                    on how many rows that batch contains with respect to the total
+                    number of rows
+                """
 
-            sample_size = (len(batch) / count) * number
-            sample_size = math.ceil(sample_size)
+                # Sample size algorithm:
+                # sample_size_for_this_batch = ceiling (
+                #                                          (rows_in_this_batch /
+                #                                          total_rows) * samples_wanted
+                #                                       )
 
-            if not isinstance(batch, list):
-                # Provides handling for dataframes and tensors
-                return batch.sample(sample_size)
-            # Prevent sampling more than the batch can handle
-            return random.sample(batch, min(len(batch), sample_size))
+                sample_size = (len(batch) / count) * number
+                sample_size = math.ceil(sample_size)
 
-        sample_population = self.map_batches(process_batch)
-        sample_population.random_shuffle(seed=seed, num_blocks=None)
+                if not isinstance(batch, list):
+                    # Provides handling for dataframes and tensors
+                    return batch.sample(sample_size)
+                # Prevent sampling more than the batch can handle
+                return random.sample(batch, min(len(batch), sample_size))
 
-        return sample_population.take(number)
+            sample_population = self.map_batches(process_batch)
+            sample_population.random_shuffle(seed=seed, num_blocks=None)
+
+            return sample_population.take(number)
+        elif sampling_strategy == 1:
+            # Indices generating strategy
+            # TODO: This strategy may fail if the block size is 0
+            indices = random.sample(range(0, count), number)
+            indices.sort()
+            spliced = self.split_at_indices(indices)[1:]
+            output = []
+            for ds in spliced:
+                output.append(ds.take(1)[0])
+            return output
 
     def split(
         self, n: int, *, equal: bool = False, locality_hints: Optional[List[Any]] = None
