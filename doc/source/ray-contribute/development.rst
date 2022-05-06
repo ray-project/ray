@@ -129,12 +129,12 @@ For RHELv8 (Redhat EL 8.0-64 Minimal), run the following commands:
   sudo yum groupinstall 'Development Tools'
   sudo yum install psmisc
 
-In RedHat, install bazel manually from this link: https://docs.bazel.build/versions/main/install-redhat.html
+In RedHat, install Bazel manually from this link: https://docs.bazel.build/versions/main/install-redhat.html
 
 Preparing to build Ray on MacOS
 -------------------------------
 
-.. tip:: Assuming you already have brew and bazel installed on your mac and you also have grpc and protobuf installed on your mac consider removing those (grpc and protobuf) for smooth build through the commands ``brew uninstall grpc``, ``brew uninstall protobuf``. If you have built the source code earlier and it still fails with errors like ``No such file or directory:``, try cleaning previous builds on your host by running the commands ``brew uninstall binutils`` and ``bazel clean --expunge``.
+.. tip:: Assuming you already have Brew and Bazel installed on your mac and you also have grpc and protobuf installed on your mac consider removing those (grpc and protobuf) for smooth build through the commands ``brew uninstall grpc``, ``brew uninstall protobuf``. If you have built the source code earlier and it still fails with errors like ``No such file or directory:``, try cleaning previous builds on your host by running the commands ``brew uninstall binutils`` and ``bazel clean --expunge``.
 
 To build Ray on MacOS, first install these dependencies:
 
@@ -196,7 +196,7 @@ Building Ray on Windows (full)
 
 The following links were correct during the writing of this section. In case the URLs changed, search at the organizations' sites.
 
-- bazel 4.2 (https://github.com/bazelbuild/bazel/releases/tag/4.2.1)
+- Bazel 4.2 (https://github.com/bazelbuild/bazel/releases/tag/4.2.1)
 - Microsoft Visual Studio 2019 (or Microsoft Build Tools 2019 - https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2019)
 - JDK 15 (https://www.oracle.com/java/technologies/javase-jdk15-downloads.html)
 - Miniconda 3 (https://docs.conda.io/en/latest/miniconda.html)
@@ -228,10 +228,10 @@ You can also use the included script to install Bazel:
 
 3. Define an environment variable ``BAZEL_SH`` to point to ``bash.exe``. If git for Windows was installed for all users, bash's path should be ``C:\Program Files\Git\bin\bash.exe``. If git was installed for a single user, adjust the path accordingly.
 
-4. Bazel 4.2 installation. Go to bazel 4.2 release web page and download
+4. Bazel 4.2 installation. Go to Bazel 4.2 release web page and download
 bazel-4.2.1-windows-x86_64.exe. Copy the exe into the directory of your choice.
 Define an environment variable BAZEL_PATH to full exe path (example:
-``set BAZEL_PATH=C:\bazel\bazel.exe``). Also add the bazel directory to the
+``set BAZEL_PATH=C:\bazel\bazel.exe``). Also add the Bazel directory to the
 ``PATH`` (example: ``set PATH=%PATH%;C:\bazel``)
 
 5. Download ray source code and build it.
@@ -253,15 +253,15 @@ You can tweak the build with the following environment variables (when running `
 - ``RAY_INSTALL_CPP``: If set and equal to ``1``, ``ray-cpp`` will be installed
 - ``RAY_DISABLE_EXTRA_CPP``: If set and equal to ``1``, a regular (non -
   ``cpp``) build will not provide some ``cpp`` interfaces
-- ``SKIP_BAZEL_BUILD``: If set and equal to ``1``, no bazel build steps will be
+- ``SKIP_BAZEL_BUILD``: If set and equal to ``1``, no Bazel build steps will be
   executed
 - ``SKIP_THIRDPARTY_INSTALL``: If set will skip installation of third-party
   python packages
 - ``RAY_DEBUG_BUILD``: Can be set to ``debug``, ``asan``, or ``tsan``. Any
   other value will be ignored
 - ``BAZEL_LIMIT_CPUS``: If set, it must be an integers. This will be fed to the
-  ``--local_cpu_resources`` argument for the call to bazel, which will limit the
-  number of CPUs used during bazel steps.
+  ``--local_cpu_resources`` argument for the call to Bazel, which will limit the
+  number of CPUs used during Bazel steps.
 - ``IS_AUTOMATED_BUILD``: Used in CI to tweak the build for the CI machines
 - ``SRC_DIR``: Can be set to the root of the source checkout, defaults to
   ``None`` which is ``cwd()``
