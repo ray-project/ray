@@ -685,6 +685,7 @@ class Dataset(Generic[T]):
             return random.sample(batch, min(len(batch), sample_size))
 
         sample_population = self.map_batches(process_batch)
+        sample_population.random_shuffle(seed=seed, num_blocks=None)
 
         return sample_population.take(number)
 
