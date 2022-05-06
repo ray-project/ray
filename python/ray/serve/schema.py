@@ -307,7 +307,8 @@ class DeploymentStatusSchema(BaseModel, extra=Extra.forbid):
 
 
 class ServeApplicationStatusSchema(BaseModel, extra=Extra.forbid):
-    statuses: List[DeploymentStatusSchema] = Field(...)
+    config_request_status: str = Field(...)
+    deployment_statuses: List[DeploymentStatusSchema] = Field(...)
 
 
 def status_info_to_schema(
@@ -332,10 +333,15 @@ def status_info_to_schema(
 
 
 def serve_application_status_to_schema(
-    status_infos: Dict[str, Union[DeploymentStatusInfo, Dict]]
+    serve_status: Dict[str, Union[DeploymentStatusInfo, Dict, str]]
 ) -> ServeApplicationStatusSchema:
+    config_request_status = serve_status["serve_config_request"]
+    del serve_status["serve_config_request"]
+
     schemas = [
         status_info_to_schema(deployment_name, status_info)
-        for deployment_name, status_info in status_infos.items()
+        for deployment_name, status_info in serve_status.items()
     ]
-    return ServeApplicationStatusSchema(statuses=schemas)
+    return ServeApplicationStatusSchema(
+        config_request_status=config_request_status, deployment_statuses=schemas
+    )

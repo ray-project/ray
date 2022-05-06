@@ -507,6 +507,35 @@ class ServeController:
             )
         return deployment_status_info_list.SerializeToString()
 
+    def get_serve_status(self) -> Dict:
+        from ray.serve.generated.serve_pb2 import DeploymentStatusInfoList
+        from ray.serve.common import DeploymentStatusInfo
+
+        ref_pending = False
+
+        if self.deploy_config_task_ref:
+            _, pending_refs = ray.wait([self.deploy_config_task_ref], timeout=0)
+            ref_pending = bool(pending_refs)
+
+        if self.deploy_config_task_ref is None:
+            serve_config_request = "NONE"
+        elif ref_pending:
+            serve_config_request = "PENDING"
+        else:
+            serve_config_request = "COMPLETE"
+
+        proto = DeploymentStatusInfoList.FromString(self.get_deployment_statuses())
+
+        return {
+            "serve_config_request": serve_config_request,
+            **{
+                deployment_status_info.name: DeploymentStatusInfo.from_proto(
+                    deployment_status_info
+                )
+                for deployment_status_info in proto.deployment_status_infos
+            },
+        }
+
     def deploy_config(self, config: Dict) -> None:
 
         if self.deploy_config_task_ref is not None:
