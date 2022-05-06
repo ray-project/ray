@@ -206,7 +206,7 @@ TEST_F(GcsClientReconnectionTest, ReconnectionBackoff) {
 
   ShutdownGCS();
 
-  client->InternalKV().AsyncInternalKVPut("", "A", "B", false, nullptr);
+  client->InternalKV().AsyncInternalKVPut("", "A", "B", false, [](auto, auto) {});
 
   ASSERT_TRUE(WaitUntil(
       [channel]() {
@@ -217,13 +217,15 @@ TEST_F(GcsClientReconnectionTest, ReconnectionBackoff) {
 
   StartGCS();
 
+  // For 2s, there is no reconnection
   ASSERT_FALSE(WaitUntil(
       [channel]() {
         auto status = channel->GetState(false);
         return status != GRPC_CHANNEL_TRANSIENT_FAILURE;
       },
-      1s));
+      2s));
 
+  // Then there is reconnection
   ASSERT_TRUE(WaitUntil(
       [channel]() {
         auto status = channel->GetState(false);
@@ -231,6 +233,7 @@ TEST_F(GcsClientReconnectionTest, ReconnectionBackoff) {
       },
       5s));
 
+  // Eventually it should be ready.
   ASSERT_FALSE(WaitUntil(
       [channel]() {
         auto status = channel->GetState(false);
@@ -239,7 +242,48 @@ TEST_F(GcsClientReconnectionTest, ReconnectionBackoff) {
       1s));
 }
 
-TEST_F(GcsClientReconnectionTest, QueueingAndBlocking) {}
+TEST_F(GcsClientReconnectionTest, QueueingAndBlocking) {
+  RayConfig::instance().initialize(
+      R"(
+{
+  "gcs_rpc_server_reconnect_timeout_s": 60,
+  "gcs_storage": "redis",
+  "gcs_grpc_max_request_queued": 1
+}
+  )");
+  StartGCS();
+  auto client = CreateGCSClient();
+  std::promise<void> p1;
+  auto f1 = p1.get_future();
+  client->InternalKV().AsyncInternalKVPut("", "A", "B", false, [&p1](auto status, auto) {
+    ASSERT_TRUE(status.ok()) << status.ToString();
+    p1.set_value();
+  });
+  f1.get();
+
+  ShutdownGCS();
+
+  // Send one request which should fail
+  client->InternalKV().AsyncInternalKVPut("", "A", "B", false, [](auto status, auto) {});
+
+  // Make sure it's not blocking
+  std::promise<void> p2;
+  client_io_service_->post([&p2]() { p2.set_value(); }, "");
+  auto f2 = p2.get_future();
+  ASSERT_EQ(std::future_status::ready, f2.wait_for(1s));
+
+  // Send the second one and it should block the thread
+  client->InternalKV().AsyncInternalKVPut("", "A", "B", false, [](auto status, auto) {});
+  std::this_thread::sleep_for(1s);
+  std::promise<void> p3;
+  client_io_service_->post([&p3]() { p3.set_value(); }, "");
+  auto f3 = p3.get_future();
+  ASSERT_EQ(std::future_status::timeout, f3.wait_for(1s));
+
+  // Resume GCS server and it should unblock
+  StartGCS();
+  ASSERT_EQ(std::future_status::ready, f3.wait_for(2s));
+}
 
 int main(int argc, char **argv) {
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
