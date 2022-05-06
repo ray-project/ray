@@ -158,6 +158,7 @@ def test_cluster(shutdown_only, storage_type):
         # connecting to a cluster
         ray.init(address="auto")
         from ray.internal.storage import _storage_uri
+
         assert _storage_uri == storage_uri
         subprocess.check_call(["ray", "stop"])
 

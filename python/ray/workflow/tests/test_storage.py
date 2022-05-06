@@ -236,9 +236,11 @@ def test_cluster_storage_init(storage_type, tmp_path):
             ray.init(address="auto", storage=storage_uri)
 
         ray.init(address="auto")
+
         @workflow.step
         def f():
             return 10
+
         assert f.step().run() == 10
 
         ray.shutdown()
