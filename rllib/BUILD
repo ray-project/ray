@@ -2967,7 +2967,7 @@ py_test(
     tags = ["team:ml", "examples", "examples_T"],
     size = "medium",
     srcs = ["examples/two_step_game.py"],
-    args = ["--as-test", "--stop-reward=7.1", "--run=contrib/MADDPG"]
+    args = ["--as-test", "--stop-reward=7.1", "--run=MADDPG"]
 )
 
 py_test(
