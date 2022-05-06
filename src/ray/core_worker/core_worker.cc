@@ -1528,7 +1528,6 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
   }
   if (IsRuntimeEnvInfoEmpty(serialized_runtime_env_info)) {
     // Inherit runtime env from job or worker.
-    return parent_serialized_runtime_env;
     runtime_env_info->set_serialized_runtime_env(parent_serialized_runtime_env);
     for (const std::string &uri : GetUrisFromRuntimeEnv(parent_runtime_env.get())) {
       runtime_env_info->add_uris(uri);
