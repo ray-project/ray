@@ -31,6 +31,7 @@ from ray.rllib.models.torch.torch_action_dist import (
     TorchMultiCategorical,
 )
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
+from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.deprecation import (
     Deprecated,
     DEPRECATED_VALUE,
@@ -454,12 +455,18 @@ class ModelCatalog:
                 model_kwargs, **model_config.get("custom_model_config", {})
             )
 
+            # Class provided directly.
             if isinstance(model_config["custom_model"], type):
                 model_cls = model_config["custom_model"]
             else:
-                model_cls = _global_registry.get(
-                    RLLIB_MODEL, model_config["custom_model"]
-                )
+                try:
+                    model_cls = _global_registry.get(
+                        RLLIB_MODEL, model_config["custom_model"]
+                    )
+                except ValueError as e:
+                    if "Registry value for " in e.args[0]:
+                        return from_config(type=model_config["custom_model"], **model_config["custom_model_config"])
+                    raise e
 
             # Only allow ModelV2 or native keras Models.
             if not issubclass(model_cls, ModelV2):

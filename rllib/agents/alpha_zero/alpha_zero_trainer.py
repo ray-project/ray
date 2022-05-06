@@ -41,9 +41,9 @@ from ray.rllib.utils.typing import ResultDict, TrainerConfigDict
 from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.util.iter import LocalIterator
 
-from ray.rllib.contrib.alpha_zero.core.alpha_zero_policy import AlphaZeroPolicy
-from ray.rllib.contrib.alpha_zero.core.mcts import MCTS
-from ray.rllib.contrib.alpha_zero.core.ranked_rewards import get_r2_env_wrapper
+from ray.rllib.agents.alpha_zero.alpha_zero_policy import AlphaZeroPolicy
+from ray.rllib.agents.alpha_zero.mcts import MCTS
+from ray.rllib.agents.alpha_zero.ranked_rewards import get_r2_env_wrapper
 
 torch, nn = try_import_torch()
 

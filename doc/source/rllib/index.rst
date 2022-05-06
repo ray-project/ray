@@ -126,7 +126,7 @@ click on the dropdowns below:
 
     *  Model-based / Meta-learning / Offline
 
-       -  |pytorch| :ref:`Single-Player AlphaZero (contrib/AlphaZero) <alphazero>`
+       -  |pytorch| :ref:`Single-Player AlphaZero (AlphaZero) <alphazero>`
 
        -  |pytorch| |tensorflow| :ref:`Model-Agnostic Meta-Learning (MAML) <maml>`
 
