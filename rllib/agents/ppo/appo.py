@@ -23,7 +23,11 @@ from ray.rllib.execution.common import (
 )
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.typing import PartialTrainerConfigDict, TrainerConfigDict
+from ray.rllib.utils.typing import (
+    PartialTrainerConfigDict,
+    ResultDict,
+    TrainerConfigDict,
+)
 
 
 class APPOConfig(impala.ImpalaConfig):
@@ -172,7 +176,19 @@ class APPOTrainer(impala.ImpalaTrainer):
             lambda p, _: p.update_target()
         )
 
-    def update_target_and_kl(self, train_results):
+    def update_target_and_kl(self, train_results: ResultDict) -> None:
+        """Updates the target network and the KL coefficient for the APPO-loss.
+
+        This method is called from within the `training_iteration` method due to the
+        self.config["after_train_step"]-hook established in the constructor.
+
+        The target network update frequency is calculated automatically by the product
+        of `num_sgd_iter` setting (usually 1 for APPO) and `minibatch_buffer_size`.
+
+        Args:
+            train_results: The results dict collected during the most recent
+                training step.
+        """
         cur_ts = self._counters[STEPS_SAMPLED_COUNTER]
         last_update = self._counters[LAST_TARGET_UPDATE_TS]
         target_update_freq = self.config["num_sgd_iter"] * self.config[
@@ -181,12 +197,12 @@ class APPOTrainer(impala.ImpalaTrainer):
             self._counters[NUM_TARGET_UPDATES] += 1
             self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
 
-            # Update Target Network.
+            # Update our target network.
             self.workers.local_worker().foreach_policy_to_train(
                 lambda p, _: p.update_target()
             )
 
-            # Also update KL Coeff
+            # Also update the KL-coefficient for the APPO loss, if necessary.
             if self.config["use_kl_loss"]:
                 self.update_kl(train_results)
 
