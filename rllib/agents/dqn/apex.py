@@ -16,7 +16,7 @@ from collections import defaultdict
 import copy
 import platform
 import random
-from typing import Tuple, Dict, List, DefaultDict, Set
+from typing import Tuple, Dict, List
 
 import ray
 from ray.actor import ActorHandle
@@ -39,8 +39,6 @@ from ray.rllib.execution.concurrency_ops import Concurrently, Dequeue, Enqueue
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.buffers.multi_agent_replay_buffer import ReplayActor
 from ray.rllib.execution.parallel_requests import (
-    asynchronous_parallel_requests,
-    wait_asynchronous_requests,
     AsyncRequestsManager,
 )
 from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
@@ -66,7 +64,6 @@ from ray.rllib.utils.typing import (
     TrainerConfigDict,
     ResultDict,
     PartialTrainerConfigDict,
-    T,
 )
 from ray.tune.trainable import Trainable
 from ray.tune.utils.placement_groups import PlacementGroupFactory
@@ -251,12 +248,6 @@ class ApexTrainer(DQNTrainer):
         self.steps_since_update = defaultdict(int)
         weights = self.workers.local_worker().get_weights()
         self.curr_learner_weights = ray.put(weights)
-        self.remote_sampling_requests_in_flight: DefaultDict[
-            ActorHandle, Set[ray.ObjectRef]
-        ] = defaultdict(set)
-        self.remote_replay_requests_in_flight: DefaultDict[
-            ActorHandle, Set[ray.ObjectRef]
-        ] = defaultdict(set)
         self.curr_num_samples_collected = 0
         self.replay_sample_batches = []
         self._num_ts_trained_since_last_target_update = 0

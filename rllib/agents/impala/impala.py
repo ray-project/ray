@@ -1,7 +1,6 @@
 import copy
 import logging
 import platform
-import random
 from collections import defaultdict
 
 import queue
@@ -16,8 +15,6 @@ from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentRepla
 from ray.rllib.execution.learner_thread import LearnerThread
 from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
 from ray.rllib.execution.parallel_requests import (
-    asynchronous_parallel_requests,
-    wait_asynchronous_requests,
     AsyncRequestsManager,
 )
 from ray.rllib.execution.tree_agg import gather_experiences_tree_aggregation
@@ -560,9 +557,6 @@ class ImpalaTrainer(Trainer):
                 self._aggregator_workers = [
                     actor for actor_groups in all_co_located for actor in actor_groups
                 ]
-                self.remote_aggregator_requests_in_flight: DefaultDict[
-                    ActorHandle, Set[ray.ObjectRef]
-                ] = defaultdict(set)
                 self._replay_actor_manager = AsyncRequestsManager(
                     self._aggregator_workers,
                     max_remote_requests_in_flight=self.config[
@@ -755,17 +749,6 @@ class ImpalaTrainer(Trainer):
     def get_samples_from_workers(self) -> Dict[ActorHandle, List[SampleBatch]]:
         # Perform asynchronous sampling on all (remote) rollout workers.
         if self.workers.remote_workers():
-            # sample_batches: Dict[
-            #     ActorHandle, List[ObjectRef]
-            # ] = asynchronous_parallel_requests(
-            #     remote_requests_in_flight=self.remote_requests_in_flight,
-            #     actors=self.workers.remote_workers(),
-            #     ray_wait_timeout_s=self.config["sample_wait_timeout"],
-            #     max_remote_requests_in_flight_per_actor=self.config[
-            #         "max_requests_in_flight_per_sampler_worker"
-            #     ],
-            #     return_result_obj_ref_ids=True,
-            # )
             self._sampling_actor_manager.submit(
                 lambda worker: worker.sample(), for_all_workers=True
             )

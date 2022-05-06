@@ -359,5 +359,5 @@ class AsyncRequestsManager:
         return {
             "num_available_workers": len(self._available_workers),
             "num_pending_inflight_requests": len(self._pending_remotes),
-            "num_requests_to_be_scheduled": len(self._call_queue.qsize())
+            "num_requests_to_be_scheduled": len(self._call_queue.qsize()),
         }
