@@ -119,16 +119,6 @@ def sample_boundaries(
 def sort_impl(
     blocks: BlockList, clear_input_blocks: bool, key: SortKeyT, descending: bool = False
 ) -> Tuple[BlockList, dict]:
-    context = DatasetContext.get_current()
-    if context.use_polars:
-        try:
-            import polars as pl  # noqa
-        except ImportError:
-            logger.info(
-                "polars not installed, sort will fall back to pyarrow. To use "
-                "polars-based sort, first install with `pip install polars`."
-            )
-
     stage_info = {}
     blocks_list = blocks.get_blocks()
     if len(blocks_list) == 0:
@@ -148,6 +138,7 @@ def sort_impl(
     if descending:
         boundaries.reverse()
 
+    context = DatasetContext.get_current()
     if context.use_push_based_shuffle:
         sort_op_cls = PushBasedSortOp
     else:

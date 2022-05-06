@@ -16,11 +16,6 @@ from typing import (
 import numpy as np
 
 try:
-    import polars as pl
-except ImportError:
-    pl = None
-
-try:
     import pyarrow
 except ImportError:
     pyarrow = None
@@ -38,12 +33,28 @@ from ray.data.row import TableRow
 from ray.data.impl.table_block import TableBlockAccessor, TableBlockBuilder
 from ray.data.aggregate import AggregateFn
 from ray.data.context import DatasetContext
+from ray.data.impl.arrow_ops import transform_polars, transform_pyarrow
 
 if TYPE_CHECKING:
     import pandas
     from ray.data.impl.sort import SortKeyT
 
 T = TypeVar("T")
+
+
+# We offload some transformations to polars for performance.
+def get_sort_transform(context: DatasetContext) -> Callable:
+    if context.use_polars:
+        return transform_polars.sort
+    else:
+        return transform_pyarrow.sort
+
+
+def get_concat_and_sort_transform(context: DatasetContext) -> Callable:
+    if context.use_polars:
+        return transform_polars.concat_and_sort
+    else:
+        return transform_pyarrow.concat_and_sort
 
 
 class ArrowRow(TableRow):
@@ -272,16 +283,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
             return [self._empty_table() for _ in range(len(boundaries) + 1)]
 
         context = DatasetContext.get_current()
+        sort = get_sort_transform(context)
         col, _ = key[0]
-        if context.use_polars and pl is not None:
-            df = pl.from_arrow(self._table)
-            table = df.sort(col, reverse=descending).to_arrow()
-        else:
-            import pyarrow.compute as pac
-
-            indices = pac.sort_indices(self._table, sort_keys=key)
-            table = self._table.take(indices)
-
+        table = sort(self._table, key, descending)
         if len(boundaries) == 0:
             return [table]
 
@@ -394,16 +398,10 @@ class ArrowBlockAccessor(TableBlockAccessor):
         if len(blocks) == 0:
             ret = ArrowBlockAccessor._empty_table()
         else:
-            context = DatasetContext.get_current()
-            if context.use_polars and pl is not None:
-                col, _ = key[0]
-                blocks = [pl.from_arrow(block) for block in blocks]
-                df = pl.concat(blocks).sort(col, reverse=_descending)
-                ret = df.to_arrow()
-            else:
-                ret = pyarrow.concat_tables(blocks, promote=True)
-                indices = pyarrow.compute.sort_indices(ret, sort_keys=key)
-                ret = ret.take(indices)
+            concat_and_sort = get_concat_and_sort_transform(
+                DatasetContext.get_current()
+            )
+            ret = concat_and_sort(blocks, key, _descending)
         return ret, ArrowBlockAccessor(ret).get_metadata(None, exec_stats=stats.build())
 
     @staticmethod

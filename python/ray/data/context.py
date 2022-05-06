@@ -39,12 +39,7 @@ DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
 )
 
 # Whether to use Polars for tabular dataset groupbys and aggregations.
-try:
-    import polars as pl  # noqa
-
-    DEFAULT_USE_POLARS = True
-except ImportError:
-    DEFAULT_USE_POLARS = False
+DEFAULT_USE_POLARS = False
 
 
 @DeveloperAPI
