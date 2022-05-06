@@ -40,7 +40,11 @@ Every time you want to update your local version you can pull the changes from t
 Prepare the Python environment
 ------------------------------
 
-(Optional) To setup an isolated Anaconda environment, see :ref:`ray_anaconda`. In any case, you will probably want to have some type of Python virtual environment. For example you could use Python's integrated ``venv`` module to create one:
+.. tip::
+
+  To setup an isolated Anaconda environment, see :ref:`ray_anaconda`.
+  
+You will probably want to have some type of Python virtual environment. For example you could use Python's integrated ``venv`` module to create one:
 
 .. code-block:: shell
 
