@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <chrono>
 #include "absl/strings/substitute.h"
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -23,10 +24,21 @@
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
 #include "ray/util/util.h"
 
+using namespace std::chrono_literals;
+
 namespace ray {
 class GcsClientReconnectionTest : public ::testing::Test {
  public:
+  GcsClientReconnectionTest() {
+    TestSetupUtil::StartUpRedisServers(std::vector<int>());
+  }
+
+  ~GcsClientReconnectionTest() {
+    TestSetupUtil::ShutDownRedisServers();
+  }
+
   void StartGCS() {
+    server_io_service_ = std::make_unique<instrumented_io_context>();
     gcs_server_ = std::make_unique<gcs::GcsServer>(config_, *server_io_service_);
     gcs_server_->Start();
     server_io_service_thread_ = std::make_unique<std::thread>([this] {
@@ -71,6 +83,10 @@ class GcsClientReconnectionTest : public ::testing::Test {
   }
 
   void CloseGCSClient() {
+    if (gcs_client_) {
+      gcs_client_->Disconnect();
+    }
+
     if (client_io_service_) {
       client_io_service_->stop();
       client_io_service_.reset();
@@ -80,10 +96,7 @@ class GcsClientReconnectionTest : public ::testing::Test {
       client_io_service_thread_.reset();
     }
 
-    if (gcs_client_) {
-      gcs_client_->Disconnect();
-      gcs_client_.reset();
-    }
+    gcs_client_.reset();
   }
 
  protected:
@@ -96,13 +109,12 @@ class GcsClientReconnectionTest : public ::testing::Test {
     config_.grpc_server_thread_num = 1;
     config_.node_ip_address = "127.0.0.1";
     config_.enable_sharding_conn = false;
-
-    server_io_service_ = std::make_unique<instrumented_io_context>();
   }
 
   void TearDown() override {
     ShutdownGCS();
     CloseGCSClient();
+    TestSetupUtil::FlushAllRedisServers();
   }
 
   // GCS server.
@@ -120,10 +132,79 @@ class GcsClientReconnectionTest : public ::testing::Test {
   const std::chrono::milliseconds timeout_ms_{2000};
 };
 
-TEST_F(GcsClientReconnectionTest, ReconnectionBasic) {}
+TEST_F(GcsClientReconnectionTest, ReconnectionBasic) {
+    RayConfig::instance().initialize(
+        R"(
+{
+  "gcs_rpc_server_reconnect_timeout_s": 60,
+  "gcs_storage": "redis"
+}
+  )");
+
+  // Start GCS server
+  StartGCS();
+
+  // Create client and send KV request
+  auto client = CreateGCSClient();
+
+  std::promise<void> p0;
+  auto f0 = p0.get_future();
+  client->InternalKV().AsyncInternalKVPut(
+      "",
+      "A",
+      "B",
+      false,
+      [&p0](auto, auto) {
+        p0.set_value();
+      });
+  f0.get();
+
+  // Shutdown GCS server
+  ShutdownGCS();
+
+  // Send get request
+  std::promise<std::string> p1;
+  auto f1 = p1.get_future();
+  client->InternalKV().AsyncInternalKVGet(
+      "",
+      "A",
+      [&p1](auto status, auto p) {
+        ASSERT_TRUE(status.ok()) << status.ToString();
+        p1.set_value(*p);
+      });
+  ASSERT_EQ(f1.wait_for(1s), std::future_status::timeout);
+
+  // Make sure io context is not blocked
+  std::promise<void> p2;
+  client_io_service_->post([&p2]() {
+    p2.set_value();
+  }, "");
+  auto f2 = p2.get_future();
+  f2.wait();
+
+  // Resume GCS server
+  StartGCS();
+
+  // Make sure the request is executed
+  ASSERT_EQ(f1.get(), "B");
+}
+
+TEST_F(GcsClientReconnectionTest, ReconnectionBackoff) {}
 
 TEST_F(GcsClientReconnectionTest, QueueingAndBlocking) {}
 
-TEST_F(GcsClientReconnectionTest, QueueingAndBlocking) {}
 
 }  // namespace ray
+
+int main(int argc, char **argv) {
+  InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
+                                         ray::RayLog::ShutDownRayLog,
+                                         argv[0],
+                                         ray::RayLogLevel::INFO,
+                                         /*log_dir=*/"");
+  ::testing::InitGoogleTest(&argc, argv);
+  RAY_CHECK(argc == 3);
+  ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];
+  ray::TEST_REDIS_CLIENT_EXEC_PATH = argv[2];
+  return RUN_ALL_TESTS();
+}
