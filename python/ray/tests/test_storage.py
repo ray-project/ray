@@ -154,8 +154,7 @@ def test_get_info_basic(shutdown_only, storage_type):
 def test_cluster(shutdown_only, storage_type):
     with simulate_storage(storage_type) as storage_uri:
         subprocess.check_call(["ray", "start", "--head", "--storage", storage_uri])
-        # make sure driver is using the same storage when
-        # connecting to a cluster
+        # make sure driver is using the same storage when connecting to a cluster
         ray.init(address="auto")
         from ray.internal.storage import _storage_uri
 
