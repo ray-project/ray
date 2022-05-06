@@ -121,4 +121,4 @@ class RLPredictor(Predictor):
             input_dict={"obs": obs}
         )
 
-        return np.ndarray(actions)
+        return np.array(actions)

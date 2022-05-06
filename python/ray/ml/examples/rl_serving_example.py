@@ -1,3 +1,10 @@
+"""
+In this example, we train a reinforcement learning model and serve it
+using Ray Serve.
+
+We then instantiate an environment and step through it by querying the served model
+for actions via HTTP.
+"""
 import gym
 import numpy as np
 import requests
