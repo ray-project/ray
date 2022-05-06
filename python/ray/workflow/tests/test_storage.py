@@ -1,7 +1,6 @@
 import pytest
 import ray
 from ray._private import signature
-from ray._private.test_utils import simulate_storage
 from ray.tests.conftest import *  # noqa
 from ray import workflow
 from ray.workflow import workflow_storage
