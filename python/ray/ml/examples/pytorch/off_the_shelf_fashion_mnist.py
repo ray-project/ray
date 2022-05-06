@@ -1,29 +1,27 @@
 import numpy as np
-import pandas as pd
+
 from torch import nn, optim
 from torchvision import datasets, transforms
-
 
 import ray
 from ray.ml.train.integrations.torch.torch_ots import TorchOffTheShelfTrainer
 
 
-def get_train_dataset() -> ray.data.Dataset:
+def get_dataset(train: bool = False) -> ray.data.Dataset:
+    """Download FashionMNIST dataset and return as Ray dataset."""
     training_data = datasets.FashionMNIST(
         root="~/data",
-        train=True,
+        train=train,
         download=True,
-        transform=transforms.Lambda(lambda img: np.array(img)),
-        target_transform=transforms.Lambda(lambda target: np.array(target)),
+        transform=transforms.Lambda(lambda img: np.array(img).tolist()),
     )
-    print(list(training_data))
-    raise RuntimeError
-    df = pd.DataFrame({"x": training_data, "y": training_targets})
-    ds = ray.data.from_pandas(df)
+    ds = ray.data.from_items([{"x": x, "y": y} for x, y in training_data])
     return ds
 
 
 class NeuralNetwork(nn.Module):
+    """Simple MLP with three layers."""
+
     def __init__(self):
         super(NeuralNetwork, self).__init__()
         self.flatten = nn.Flatten()
@@ -38,17 +36,21 @@ class NeuralNetwork(nn.Module):
 
     def forward(self, x):
         x = self.flatten(x)
-        logits = self.linear_relu_stack(x)
-        return logits
+        return self.linear_relu_stack(x)
 
 
-train_dataset = get_train_dataset()
+# Initialize the off-the-shelf trainer and fit to the dataset
 
 trainer = TorchOffTheShelfTrainer(
     model_cls=NeuralNetwork,
     optimizer_cls=optim.SGD,
     optimizer_args={"lr": 0.05},
     scaling_config={"num_workers": 2},
-    datasets={"train": train_dataset},
+    feature_columns=["x"],
+    label_column="y",
+    datasets={
+        "train": lambda: get_dataset(train=True),
+        "validate": lambda: get_dataset(train=False),
+    },
 )
 trainer.fit()
