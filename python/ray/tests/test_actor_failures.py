@@ -330,7 +330,7 @@ def test_caller_actor_restart(ray_start_regular):
     """Test tasks from a restarted actor can be correctly processed
     by the receiving actor."""
 
-    @ray.remote(max_restarts=1)
+    @ray.remote(max_restarts=1, max_task_retries=-1)
     class RestartableActor:
         """An actor that will be restarted at most once."""
 
