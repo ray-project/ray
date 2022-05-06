@@ -3,6 +3,7 @@ import socket
 from dataclasses import dataclass
 import inspect
 import json
+import logging
 from typing import Any, Dict, Type
 
 import starlette.responses
@@ -11,7 +12,10 @@ from starlette.types import Send, ASGIApp
 from fastapi.encoders import jsonable_encoder
 
 from ray.serve.exceptions import RayServeException
-from ray.serve.utils import logger
+from ray.serve.constants import SERVE_LOGGER_NAME
+
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 @dataclass
