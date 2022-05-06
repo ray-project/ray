@@ -211,6 +211,7 @@ Runtime Context APIs
 .. _runtime-env-apis:
 
 Runtime Env APIs
+----------------
 
 .. autoclass:: ray.runtime_env.RuntimeEnvConfig
     :members:
