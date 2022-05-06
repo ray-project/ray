@@ -86,8 +86,12 @@ DEFAULT_CONFIG = with_common_config({
     # N-step target updates. If >1, sars' tuples in trajectories will be
     # postprocessed to become sa[discounted sum of R][s t+n] tuples.
     "n_step": 1,
-    # Number of env steps to optimize for before returning.
-    "timesteps_per_iteration": 100,
+    # Minimum env sampling timesteps to accumulate within a single `train()` call. This
+    # value does not affect learning, only the number of times `Trainer.step_attempt()`
+    # is called by `Trauber.train()`. If - after one `step_attempt()`, the env sampling
+    # timestep count has not been reached, will perform n more `step_attempt()` calls
+    # until the minimum timesteps have been executed. Set to 0 for no minimum timesteps.
+    "min_sample_timesteps_per_reporting": 100,
 
     # === Replay buffer ===
     # Size of the replay buffer (in time steps).
@@ -170,11 +174,6 @@ DEFAULT_CONFIG = with_common_config({
     # Use a Beta-distribution instead of a SquashedGaussian for bounded,
     # continuous action spaces (not recommended, for debugging only).
     "_use_beta_distribution": False,
-    # Experimental flag.
-    # If True, the execution plan API will not be used. Instead,
-    # a Trainer's `training_iteration` method will be called as-is each
-    # training iteration.
-    "_disable_execution_plan_api": True,
 })
 # __sphinx_doc_end__
 # fmt: on

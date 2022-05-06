@@ -29,7 +29,7 @@ mspacman-sac-tf:
         rollout_fragment_length: 1
         prioritized_replay: true
         train_batch_size: 64
-        timesteps_per_iteration: 4
+        min_sample_timesteps_per_reporting: 4
         # Paper uses 20k random timesteps, which is not exactly the same, but
         # seems to work nevertheless.
         learning_starts: 20000

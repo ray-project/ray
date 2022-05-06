@@ -199,3 +199,17 @@ message RuntimeEnvInfo {
   /// The serialized runtime env config passed from the user.
   RuntimeEnvConfig runtime_env_config = 4;
 }
+
+message RuntimeEnvState {
+  /// The serialized runtime env.
+  string runtime_env = 1;
+  /// Total reference count (actors/tasks/jobs that use runtime env) of the runtime env.
+  int64 ref_cnt = 2;
+  /// Whether or not the runtime env creation has succeeded.
+  optional bool success = 3;
+  /// Set if success == False. Contains the error message regarding why runtime
+  /// env creation has failed.
+  optional string error = 4;
+  /// The time to create a runtime env in ms.
+  optional int64 creation_time_ms = 5;
+}

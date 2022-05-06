@@ -48,6 +48,7 @@ from ray.rllib.utils.typing import (
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
     NUM_TARGET_UPDATES,
+    NUM_ENV_STEPS_TRAINED,
 )
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
@@ -78,9 +79,12 @@ DEFAULT_CONFIG = with_common_config({
         "explore": False,
     },
 
-    # Minimum env steps to optimize for per train call. This value does
-    # not affect learning, only the length of iterations.
-    "timesteps_per_iteration": 1000,
+    # Minimum env sampling timesteps to accumulate within a single `train()` call. This
+    # value does not affect learning, only the number of times `Trainer.step_attempt()`
+    # is called by `Trauber.train()`. If - after one `step_attempt()`, the env sampling
+    # timestep count has not been reached, will perform n more `step_attempt()` calls
+    # until the minimum timesteps have been executed. Set to 0 for no minimum timesteps.
+    "min_sample_timesteps_per_reporting": 1000,
     # Update the target network every `target_network_update_freq` steps.
     "target_network_update_freq": 500,
 
@@ -143,12 +147,6 @@ DEFAULT_CONFIG = with_common_config({
     "num_workers": 0,
     # Prevent reporting frequency from going lower than this time span.
     "min_time_s_per_reporting": 1,
-
-    # Experimental flag.
-    # If True, the execution plan API will not be used. Instead,
-    # a Trainer's `training_iteration` method will be called as-is each
-    # training iteration.
-    "_disable_execution_plan_api": True,
 })
 # __sphinx_doc_end__
 # fmt: on
@@ -228,10 +226,11 @@ class SimpleQTrainer(Trainer):
             self._counters[NUM_ENV_STEPS_SAMPLED] += batch.env_steps()
             self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
             # Store new samples in the replay buffer
-            self.local_replay_buffer.add(batch)
+            # Use deprecated add_batch() to support old replay buffers for now
+            self.local_replay_buffer.add_batch(batch)
 
-        # Sample one training MultiAgentBatch from replay buffer.
-        train_batch = self.local_replay_buffer.sample(batch_size)
+        # Use deprecated replay() to support old replay buffers for now
+        train_batch = self.local_replay_buffer.replay(batch_size)
 
         # Learn on the training batch.
         # Use simple optimizer (only for multi-agent or tf-eager; all other
@@ -247,7 +246,7 @@ class SimpleQTrainer(Trainer):
         # self._counters[NUM_AGENT_STEPS_TRAINED] += train_batch.agent_steps()
 
         # Update target network every `target_network_update_freq` steps.
-        cur_ts = self._counters[NUM_ENV_STEPS_SAMPLED]
+        cur_ts = self._counters[NUM_ENV_STEPS_TRAINED]
         last_update = self._counters[LAST_TARGET_UPDATE_TS]
         if cur_ts - last_update >= self.config["target_network_update_freq"]:
             with self._timers[TARGET_NET_UPDATE_TIMER]:
@@ -258,10 +257,13 @@ class SimpleQTrainer(Trainer):
             self._counters[NUM_TARGET_UPDATES] += 1
             self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
 
-        # Update remote workers' weights after learning on local worker.
-        if self.workers.remote_workers():
-            with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-                self.workers.sync_weights()
+        # Update weights and global_vars - after learning on the local worker - on all
+        # remote workers.
+        global_vars = {
+            "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
+        }
+        with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+            self.workers.sync_weights(global_vars=global_vars)
 
         # Return all collected metrics for the iteration.
         return train_results

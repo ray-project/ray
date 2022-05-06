@@ -1,2 +1,3 @@
 pickle5; python_version < '3.8'
 python-snappy
+tensorflow-datasets

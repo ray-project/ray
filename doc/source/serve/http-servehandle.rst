@@ -160,12 +160,35 @@ HTTP Adapters
 ^^^^^^^^^^^^^
 
 HTTP adapters are functions that convert raw HTTP request to Python types that you know and recognize. 
-You can use it in three different scenarios:
+Its input arguments should be type annotated. At minimal, it should accept a ``starlette.requests.Request`` type.
+But it can also accept any type that's recognized by the FastAPI's dependency injection framework. 
+
+For example, here is an adapter that extra the json content from request. 
+
+.. code-block:: python
+
+    async def json_resolver(request: starlette.requests.Request):
+        return await request.json()
+
+Here is an adapter that accept two HTTP query parameters.
+
+.. code-block:: python
+
+    def parse_query_args(field_a: int, field_b: str):
+        return YourDataClass(field_a, field_b)
+
+You can specify different type signatures to facilitate HTTP fields extraction
+include 
+`query parameters <https://fastapi.tiangolo.com/tutorial/query-params/>`_,
+`body parameters <https://fastapi.tiangolo.com/tutorial/body/>`_,
+and `many other data types <https://fastapi.tiangolo.com/tutorial/extra-data-types/>`_.
+For more detail, you can take a look at `FastAPI documentation <https://fastapi.tiangolo.com/>`_.
+
+You can use adapters in different scenarios within Serve:
 
 - Ray AIR ``ModelWrapper``
 - Serve Deployment Graph ``DAGDriver``
 - Embedded in Bring Your Own ``FastAPI`` Application
-
 
 Let's go over them one by one.
 
@@ -178,7 +201,7 @@ to one click deploy pre-trained models.
 
 For example, we provide a simple adapter for n-dimensional array.
 
-With :ref:`model wrappers<air-serve-integration>`, you can specify it via the ``input_schema`` field.
+With :ref:`model wrappers<air-serve-integration>`, you can specify it via the ``http_adapter`` field.
 
 .. code-block:: python
 
@@ -189,13 +212,32 @@ With :ref:`model wrappers<air-serve-integration>`, you can specify it via the ``
     ModelWrapperDeployment.options(name="my_model").deploy(
         my_ray_air_predictor,
         my_ray_air_checkpoint,
-        input_schema=json_to_ndarray
+        http_adapter=json_to_ndarray
     )
+
+.. note::
+
+    Serve also supports pydantic models as a short-hand for HTTP adapters in model wrappers. Instead of functions,
+    you can directly pass in a pydantic model class to mean "validate the HTTP body with this schema".
+    Once validated, the model instance will passed to the predictor.
+
+    .. code-block:: python
+
+        from pydantic import BaseModel
+
+        class User(BaseModel):
+            user_id: int
+            user_name: str
+        
+        ...
+        ModelWrapperDeployment.deploy(..., http_adapter=User)
+
 
 Serve Deployment Graph ``DAGDriver``
 """"""""""""""""""""""""""""""""""""
 In :ref:`Serve Deployment Graph <serve-deployment-graph>`, you can configure
-``ray.serve.drivers.DAGDriver`` to accept an http adapter via it's ``input_schema`` field. 
+``ray.serve.drivers.DAGDriver`` to accept an http adapter via it's ``http_adapter`` field. 
+
 
 For example, the json request adapters parse JSON in HTTP body:
 
@@ -207,7 +249,25 @@ For example, the json request adapters parse JSON in HTTP body:
 
     with InputNode() as input_node:
         ...
-        dag = DAGDriver.bind(other_node, input_schema=json_request)
+        dag = DAGDriver.bind(other_node, http_adapter=json_request)
+
+
+.. note::
+
+    Serve also supports pydantic models as a short-hand for HTTP adapters in model wrappers. Instead of functions,
+    you can directly pass in a pydantic model class to mean "validate the HTTP body with this schema".
+    Once validated, the model instance will passed as ``input_node`` variable.
+
+    .. code-block:: python
+
+        from pydantic import BaseModel
+
+        class User(BaseModel):
+            user_id: int
+            user_name: str
+        
+        ...
+        DAGDriver.bind(other_node, http_adapter=User)
 
 
 Embedded in Bring Your Own ``FastAPI`` Application

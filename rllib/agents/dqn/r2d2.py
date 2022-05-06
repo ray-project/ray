@@ -75,12 +75,6 @@ R2D2_DEFAULT_CONFIG = Trainer.merge_trainer_configs(
 
         # Update the target network every `target_network_update_freq` steps.
         "target_network_update_freq": 2500,
-
-        # Experimental flag.
-        # If True, the execution plan API will not be used. Instead,
-        # a Trainer's `training_iteration` method will be called as-is each
-        # training iteration.
-        "_disable_execution_plan_api": False,
     },
     _allow_unknown_configs=True,
 )

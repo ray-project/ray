@@ -199,7 +199,6 @@ class _WandbLoggingProcess(Process):
 
     def run(self):
         # Since we're running in a separate process already, use threads.
-        os.environ["WANDB_START_METHOD"] = "thread"
         wandb.init(*self.args, **self.kwargs)
         while True:
             result = self.queue.get()
@@ -213,7 +212,7 @@ class _WandbLoggingProcess(Process):
                 # Ignore HTTPError. Missing a few data points is not a
                 # big issue, as long as things eventually recover.
                 logger.warn("Failed to log result to w&b: {}".format(str(e)))
-        wandb.join()
+        wandb.finish()
 
     def _handle_result(self, result: Dict) -> Tuple[Dict, Dict]:
         config_update = result.get("config", {}).copy()
@@ -327,6 +326,8 @@ class WandbLoggerCallback(LoggerCallback):
             os.path.expanduser(self.api_key_path) if self.api_key_path else None
         )
         _set_api_key(self.api_key_file, self.api_key)
+        wandb.require("service")
+        wandb.setup()
 
     def log_trial_start(self, trial: "Trial"):
         config = trial.config.copy()

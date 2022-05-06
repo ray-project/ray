@@ -146,6 +146,9 @@ Built-in Datasources
 .. autoclass:: ray.data.datasource.RangeDatasource
     :members:
     
+.. autoclass:: ray.data.datasource.SimpleTensorFlowDatasource
+    :members:
+
 .. autoclass:: ray.data.datasource.SimpleTorchDatasource
     :members:
 

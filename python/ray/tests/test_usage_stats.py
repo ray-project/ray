@@ -43,6 +43,10 @@ schema = {
         "total_num_gpus": {"type": ["null", "integer"]},
         "total_memory_gb": {"type": ["null", "number"]},
         "total_object_store_memory_gb": {"type": ["null", "number"]},
+        "library_usages": {
+            "type": ["null", "array"],
+            "items": {"type": "string"},
+        },
         "total_success": {"type": "integer"},
         "total_failed": {"type": "integer"},
         "seq_number": {"type": "integer"},
@@ -281,6 +285,35 @@ def test_usage_lib_cluster_metadata_generation(monkeypatch, ray_start_cluster):
         )
 
 
+def test_library_usages():
+    if os.environ.get("RAY_MINIMAL") == "1":
+        # Doesn't work with minimal installation
+        # since we import serve.
+        return
+
+    ray_usage_lib._recorded_library_usages.clear()
+    ray_usage_lib.record_library_usage("pre_init")
+    ray.init()
+    ray_usage_lib.record_library_usage("post_init")
+    ray.workflow.init()
+    ray.data.range(10)
+    from ray import serve
+
+    serve.start()
+    library_usages = ray_usage_lib.get_library_usages_to_report(
+        ray.experimental.internal_kv.internal_kv_get_gcs_client(), num_retries=20
+    )
+    assert set(library_usages) == {
+        "pre_init",
+        "post_init",
+        "dataset",
+        "workflow",
+        "serve",
+    }
+    serve.shutdown()
+    ray.shutdown()
+
+
 def test_usage_lib_cluster_metadata_generation_usage_disabled(
     monkeypatch, shutdown_only
 ):
@@ -472,7 +505,7 @@ provider:
         Make sure report usage data works as expected
         """
 
-        @ray.remote(num_cpus=0, runtime_env={"pip": ["ray[serve]"]})
+        @ray.remote(num_cpus=0)
         class ServeInitator:
             def __init__(self):
                 # Start the ray serve server to verify requests are sent
@@ -531,6 +564,12 @@ provider:
         m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
         cluster = ray_start_cluster
         cluster.add_node(num_cpus=3)
+        ray_usage_lib._recorded_library_usages.clear()
+        if os.environ.get("RAY_MINIMAL") != "1":
+            from ray import tune  # noqa: F401
+            from ray.rllib.agents.ppo import PPOTrainer  # noqa: F401
+            from ray import train  # noqa: F401
+
         ray.init(address=cluster.address)
 
         @ray.remote(num_cpus=0)
@@ -556,6 +595,8 @@ provider:
         @ray.remote(num_cpus=0, runtime_env={"pip": ["ray[serve]"]})
         class ServeInitator:
             def __init__(self):
+                # This is used in the worker process
+                # so it won't be tracked as library usage.
                 from ray import serve
 
                 serve.start()
@@ -605,6 +646,10 @@ provider:
         assert payload["total_num_gpus"] is None
         assert payload["total_memory_gb"] > 0
         assert payload["total_object_store_memory_gb"] > 0
+        if os.environ.get("RAY_MINIMAL") == "1":
+            assert set(payload["library_usages"]) == set()
+        else:
+            assert set(payload["library_usages"]) == {"rllib", "train", "tune"}
         validate(instance=payload, schema=schema)
         """
         Verify the usage_stats.json is updated.

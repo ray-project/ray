@@ -1,29 +1,28 @@
 import logging
 import itertools
-from typing import Any, Callable, Dict, Optional, List, Union, Iterator, TYPE_CHECKING
+from typing import Callable, Optional, List, Union, Iterator, TYPE_CHECKING
 
 import numpy as np
-from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     import pyarrow
 
 import ray
 from ray.types import ObjectRef
-from ray.data.block import Block, BlockAccessor
+from ray.data.block import Block
 from ray.data.context import DatasetContext
 from ray.data.datasource.datasource import ReadTask
-from ray.data.datasource.file_based_datasource import (
-    FileBasedDatasource,
-    _resolve_paths_and_filesystem,
-    _resolve_kwargs,
+from ray.data.datasource.file_based_datasource import _resolve_paths_and_filesystem
+from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
+from ray.data.datasource.file_meta_provider import (
+    ParquetMetadataProvider,
+    DefaultParquetMetadataProvider,
 )
-from ray.data.datasource.file_meta_provider import FileMetadataProvider
-from ray.data.impl.block_list import BlockMetadata
 from ray.data.impl.output_buffer import BlockOutputBuffer
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.util import _check_pyarrow_version
+
 
 logger = logging.getLogger(__name__)
 
@@ -56,113 +55,13 @@ def _deregister_parquet_file_fragment_serialization():
     ray.util.deregister_serializer(ParquetFileFragment)
 
 
-@DeveloperAPI
-class ParquetMetadataProvider(FileMetadataProvider):
-    """Abstract callable that provides metadata for Arrow Parquet file fragments.
-
-    Supports optional pre-fetching of ordered metadata for all file fragments in
-    a single batch to help optimize metadata resolution.
-
-    Current subclasses:
-        DefaultParquetMetadataProvider
-    """
-
-    def _get_block_metadata(
-        self,
-        paths: List[str],
-        schema: Optional[Union[type, "pyarrow.lib.Schema"]],
-        *,
-        pieces: List["pyarrow.dataset.ParquetFileFragment"],
-        prefetched_metadata: Optional[List[Any]],
-    ) -> BlockMetadata:
-        """Resolves and returns block metadata for the given file paths.
-
-        Args:
-            paths: The file paths to aggregate block metadata across.
-            schema: The user-provided or inferred schema for the given file
-                paths, if any.
-            pieces: The Parquet file fragments derived from the input file paths.
-            prefetched_metadata: Metadata previously returned from
-                `prefetch_file_metadata()` for each file fragment, where
-                `prefetched_metadata[i]` contains the metadata for `pieces[i]`.
-
-        Returns:
-            BlockMetadata aggregated across the given file paths.
-        """
-        raise NotImplementedError
-
-    def prefetch_file_metadata(
-        self,
-        pieces: List["pyarrow.dataset.ParquetFileFragment"],
-    ) -> Optional[List[Any]]:
-        """Pre-fetches file metadata for all Parquet file fragments in a single batch.
-
-        Subsets of the metadata returned will be provided as input to
-        subsequent calls to _get_block_metadata() together with their
-        corresponding Parquet file fragments.
-
-        Implementations that don't support pre-fetching file metadata shouldn't
-        override this method.
-
-        Args:
-            pieces: The Parquet file fragments to fetch metadata for.
-
-        Returns:
-            Metadata resolved for each input file fragment, or `None`. Metadata
-            must be returned in the same order as all input file fragments, such
-            that `metadata[i]` always contains the metadata for `pieces[i]`.
-        """
-        return None
-
-
-class DefaultParquetMetadataProvider(ParquetMetadataProvider):
-    """The default file metadata provider for ParquetDatasource.
-
-    Aggregates total block bytes and number of rows using the Parquet file metadata
-    associated with a list of Arrow Parquet dataset file fragments.
-    """
-
-    def _get_block_metadata(
-        self,
-        paths: List[str],
-        schema: Optional[Union[type, "pyarrow.lib.Schema"]],
-        *,
-        pieces: List["pyarrow.dataset.ParquetFileFragment"],
-        prefetched_metadata: Optional[List["pyarrow.parquet.FileMetaData"]],
-    ) -> BlockMetadata:
-        if prefetched_metadata is not None and len(prefetched_metadata) == len(pieces):
-            # Piece metadata was available, construct a normal
-            # BlockMetadata.
-            block_metadata = BlockMetadata(
-                num_rows=sum(m.num_rows for m in prefetched_metadata),
-                size_bytes=sum(
-                    sum(m.row_group(i).total_byte_size for i in range(m.num_row_groups))
-                    for m in prefetched_metadata
-                ),
-                schema=schema,
-                input_files=paths,
-                exec_stats=None,
-            )  # Exec stats filled in later.
-        else:
-            # Piece metadata was not available, construct an empty
-            # BlockMetadata.
-            block_metadata = BlockMetadata(
-                num_rows=None, size_bytes=None, schema=schema, input_files=paths
-            )
-        return block_metadata
-
-    def prefetch_file_metadata(
-        self,
-        pieces: List["pyarrow.dataset.ParquetFileFragment"],
-    ) -> Optional[List["pyarrow.parquet.FileMetaData"]]:
-        if len(pieces) > PARALLELIZE_META_FETCH_THRESHOLD:
-            return _fetch_metadata_remotely(pieces)
-        else:
-            return _fetch_metadata(pieces)
-
-
-class ParquetDatasource(FileBasedDatasource):
+class ParquetDatasource(ParquetBaseDatasource):
     """Parquet datasource, for reading and writing Parquet files.
+
+    The primary difference from ParquetBaseDatasource is that this uses
+    PyArrow's `ParquetDataset` abstraction for dataset reads, and thus offers
+    automatic Arrow dataset schema inference and row count collection at the
+    cost of some potential performance and/or compatibility penalties.
 
     Examples:
         >>> import ray
@@ -303,21 +202,6 @@ class ParquetDatasource(FileBasedDatasource):
             _deregister_parquet_file_fragment_serialization()
 
         return read_tasks
-
-    def _write_block(
-        self,
-        f: "pyarrow.NativeFile",
-        block: BlockAccessor,
-        writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
-        **writer_args,
-    ):
-        import pyarrow.parquet as pq
-
-        writer_args = _resolve_kwargs(writer_args_fn, **writer_args)
-        pq.write_table(block.to_arrow(), f, **writer_args)
-
-    def _file_format(self) -> str:
-        return "parquet"
 
 
 def _fetch_metadata_remotely(

@@ -159,7 +159,7 @@ Supported Input Formats
      - ✅
    * - MARS Dataframe
      - :func:`ray.data.from_mars()`
-     - (todo)
+     - ✅
    * - Pandas Dataframe Objects
      - :func:`ray.data.from_pandas()`
      - ✅
@@ -206,7 +206,7 @@ Supported Output Formats
      - ✅
    * - MARS Dataframe
      - :meth:`ds.to_mars() <ray.data.Dataset.to_mars>`
-     - (todo)
+     - ✅
    * - Arrow Table Objects
      - :meth:`ds.to_arrow_refs() <ray.data.Dataset.to_arrow_refs>`
      - ✅

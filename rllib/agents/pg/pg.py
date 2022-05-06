@@ -1,6 +1,6 @@
 from typing import Type
 
-from ray.rllib.agents.trainer import Trainer, with_common_config
+from ray.rllib.agents.trainer import Trainer
 from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
 from ray.rllib.agents.pg.pg_torch_policy import PGTorchPolicy
@@ -21,6 +21,7 @@ class PGConfig(TrainerConfig):
         >>> trainer.train()
 
     Example:
+        >>> from ray import tune
         >>> config = PGConfig()
         >>> # Print out some default values.
         >>> print(config.lr)
@@ -47,37 +48,9 @@ class PGConfig(TrainerConfig):
         # Override some of TrainerConfig's default values with PG-specific values.
         self.num_workers = 0
         self.lr = 0.0004
-        self._disable_execution_plan_api = True
         self._disable_preprocessor_api = True
         # __sphinx_doc_end__
         # fmt: on
-
-
-# Deprecated: Use ray.rllib.agents.ppo.PGConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(
-            with_common_config(
-                {
-                    # TrainerConfig overrides:
-                    "num_workers": 0,
-                    "lr": 0.0004,
-                    "_disable_execution_plan_api": True,
-                    "_disable_preprocessor_api": True,
-                }
-            )
-        )
-
-    @Deprecated(
-        old="ray.rllib.agents.pg.default_config::DEFAULT_CONFIG",
-        new="ray.rllib.agents.pg.pg.PGConfig(...)",
-        error=False,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()
 
 
 class PGTrainer(Trainer):
@@ -98,8 +71,25 @@ class PGTrainer(Trainer):
     @classmethod
     @override(Trainer)
     def get_default_config(cls) -> TrainerConfigDict:
-        return DEFAULT_CONFIG
+        return PGConfig().to_dict()
 
     @override(Trainer)
     def get_default_policy_class(self, config) -> Type[Policy]:
         return PGTorchPolicy if config.get("framework") == "torch" else PGTFPolicy
+
+
+# Deprecated: Use ray.rllib.agents.pg.PGConfig instead!
+class _deprecated_default_config(dict):
+    def __init__(self):
+        super().__init__(PGConfig().to_dict())
+
+    @Deprecated(
+        old="ray.rllib.agents.pg.default_config::DEFAULT_CONFIG",
+        new="ray.rllib.agents.pg.pg.PGConfig(...)",
+        error=False,
+    )
+    def __getitem__(self, item):
+        return super().__getitem__(item)
+
+
+DEFAULT_CONFIG = _deprecated_default_config()

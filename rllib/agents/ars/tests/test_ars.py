@@ -16,21 +16,24 @@ class TestARS(unittest.TestCase):
 
     def test_ars_compilation(self):
         """Test whether an ARSTrainer can be built on all frameworks."""
-        config = ars.DEFAULT_CONFIG.copy()
+        config = ars.ARSConfig()
+
         # Keep it simple.
-        config["model"]["fcnet_hiddens"] = [10]
-        config["model"]["fcnet_activation"] = None
-        config["noise_size"] = 2500000
+        config.training(
+            model={
+                "fcnet_hiddens": [10],
+                "fcnet_activation": None,
+            },
+            noise_size=2500000,
+        )
         # Test eval workers ("normal" WorkerSet, unlike ARS' list of
         # RolloutWorkers used for collecting train batches).
-        config["evaluation_interval"] = 1
-        config["evaluation_num_workers"] = 1
+        config.evaluation(evaluation_interval=1, evaluation_num_workers=1)
 
         num_iterations = 2
 
         for _ in framework_iterator(config):
-            plain_config = config.copy()
-            trainer = ars.ARSTrainer(config=plain_config, env="CartPole-v0")
+            trainer = config.build(env="CartPole-v0")
             for i in range(num_iterations):
                 results = trainer.train()
                 print(results)

@@ -106,7 +106,7 @@ class TestEagerSupportOffPolicy(unittest.TestCase):
                 "learning_starts": 0,
                 "num_gpus": 0,
                 "min_time_s_per_reporting": 1,
-                "timesteps_per_iteration": 100,
+                "min_sample_timesteps_per_reporting": 100,
                 "optimizer": {
                     "num_replay_buffer_shards": 1,
                 },

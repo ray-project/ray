@@ -19,7 +19,7 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
@@ -64,13 +64,10 @@ CQL_DEFAULT_CONFIG = merge_dicts(
             # dataset.
             "capacity": int(1e6),
         },
-        # Reporting: As CQL is offline (no sampling steps), we need to limit an
-        # iteration's reporting by the number of steps trained (not sampled).
+        # Reporting: As CQL is offline (no sampling steps), we need to limit
+        # `self.train()` reporting by the number of steps trained (not sampled).
         "min_sample_timesteps_per_reporting": 0,
         "min_train_timesteps_per_reporting": 100,
-
-        # Use the Trainer's `training_iteration` function instead of `execution_plan`.
-        "_disable_execution_plan_api": True,
 
         # Deprecated keys.
         # Use `replay_buffer_config.capacity` instead.
@@ -133,6 +130,20 @@ class CQLTrainer(SACTrainer):
 
     @override(SACTrainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
+        # First check, whether old `timesteps_per_iteration` is used. If so
+        # convert right away as for CQL, we must measure in training timesteps,
+        # never sampling timesteps (CQL does not sample).
+        if config.get("timesteps_per_iteration", DEPRECATED_VALUE) != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="timesteps_per_iteration",
+                new="min_train_timesteps_per_reporting",
+                error=False,
+            )
+            config["min_train_timesteps_per_reporting"] = config[
+                "timesteps_per_iteration"
+            ]
+            config["timesteps_per_iteration"] = DEPRECATED_VALUE
+
         # Call super's validation method.
         super().validate_config(config)
 

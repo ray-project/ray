@@ -49,8 +49,10 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// Create a GcsResourceManager.
   ///
   /// \param gcs_table_storage GCS table external storage accessor.
-  explicit GcsResourceManager(std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-                              ClusterResourceManager &cluster_resource_manager);
+  explicit GcsResourceManager(
+      std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
+      ClusterResourceManager &cluster_resource_manager,
+      scheduling::NodeID local_node_id_ = scheduling::NodeID::Nil());
 
   virtual ~GcsResourceManager() {}
 
@@ -161,6 +163,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   uint64_t counts_[CountType::CountType_MAX] = {0};
 
   ClusterResourceManager &cluster_resource_manager_;
+  scheduling::NodeID local_node_id_;
 };
 
 }  // namespace gcs
