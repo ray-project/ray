@@ -1,4 +1,4 @@
-.. _ref-usage-stats
+.. _ref-usage-stats:
 
 Usage Stats Collection
 ======================
