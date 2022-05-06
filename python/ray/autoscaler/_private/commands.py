@@ -15,7 +15,6 @@ from types import ModuleType
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import click
-import redis
 import yaml
 
 try:  # py3
@@ -24,6 +23,7 @@ except ImportError:  # py2
     from pipes import quote
 
 import ray
+from ray._private.usage import usage_lib
 from ray.experimental.internal_kv import _internal_kv_put
 import ray._private.services as services
 from ray.autoscaler.node_provider import NodeProvider
@@ -90,7 +90,7 @@ POLL_INTERVAL = 5
 Port_forward = Union[Tuple[int, int], List[Tuple[int, int]]]
 
 
-def _redis() -> redis.StrictRedis:
+def _redis():
     global redis_client
     if redis_client is None:
         redis_client = services.create_redis_client(
@@ -125,18 +125,28 @@ def try_reload_log_state(provider_config: Dict[str, Any], log_state: dict) -> No
 
 def debug_status(status, error) -> str:
     """Return a debug string for the autoscaler."""
-    if not status:
-        status = "No cluster status."
-    else:
+    if status:
         status = status.decode("utf-8")
-        as_dict = json.loads(status)
-        time = datetime.datetime.fromtimestamp(as_dict["time"])
-        lm_summary = LoadMetricsSummary(**as_dict["load_metrics_report"])
-        autoscaler_summary = AutoscalerSummary(**as_dict["autoscaler_report"])
-        status = format_info_string(lm_summary, autoscaler_summary, time=time)
+        status_dict = json.loads(status)
+        lm_summary_dict = status_dict.get("load_metrics_report")
+        autoscaler_summary_dict = status_dict.get("autoscaler_report")
+        timestamp = status_dict.get("time")
+        if lm_summary_dict and autoscaler_summary_dict and timestamp:
+            lm_summary = LoadMetricsSummary(**lm_summary_dict)
+            autoscaler_summary = AutoscalerSummary(**autoscaler_summary_dict)
+            report_time = datetime.datetime.fromtimestamp(timestamp)
+            status = format_info_string(
+                lm_summary, autoscaler_summary, time=report_time
+            )
+        else:
+            status = "No cluster status."
+    else:
+        status = "No cluster status."
+
     if error:
         status += "\n"
         status += error.decode("utf-8")
+
     return status
 
 
@@ -305,7 +315,7 @@ def _bootstrap_config(
 
             if log_once("_printed_cached_config_warning"):
                 cli_logger.verbose_warning(
-                    "Loaded cached provider configuration " "from " + cf.bold("{}"),
+                    "Loaded cached provider configuration from " + cf.bold("{}"),
                     cache_key,
                 )
                 if cli_logger.verbosity == 0:
@@ -637,8 +647,10 @@ def get_or_create_head_node(
 
     if not head_node:
         cli_logger.confirm(
-            yes, "No head node found. " "Launching a new cluster.", _abort=True
+            yes, "No head node found. Launching a new cluster.", _abort=True
         )
+        cli_logger.newline()
+        usage_lib.show_usage_stats_prompt()
 
     if head_node:
         if restart_only:
@@ -650,14 +662,16 @@ def get_or_create_head_node(
                 cf.bold("--restart-only"),
                 _abort=True,
             )
+            cli_logger.newline()
+            usage_lib.show_usage_stats_prompt()
         elif no_restart:
             cli_logger.print(
-                "Cluster Ray runtime will not be restarted due " "to `{}`.",
+                "Cluster Ray runtime will not be restarted due to `{}`.",
                 cf.bold("--no-restart"),
             )
             cli_logger.confirm(
                 yes,
-                "Updating cluster configuration and " "running setup commands.",
+                "Updating cluster configuration and running setup commands.",
                 _abort=True,
             )
         else:
@@ -665,6 +679,8 @@ def get_or_create_head_node(
             cli_logger.confirm(
                 yes, cf.bold("Cluster Ray runtime will be restarted."), _abort=True
             )
+            cli_logger.newline()
+            usage_lib.show_usage_stats_prompt()
 
     cli_logger.newline()
     # TODO(ekl) this logic is duplicated in node_launcher.py (keep in sync)
@@ -711,7 +727,7 @@ def get_or_create_head_node(
                 while True:
                     if time.time() - start > 50:
                         cli_logger.abort(
-                            "Head node fetch timed out. " "Failed to create head node."
+                            "Head node fetch timed out. Failed to create head node."
                         )
                     nodes = provider.non_terminated_nodes(head_node_tags)
                     if len(nodes) == 1:
@@ -871,7 +887,7 @@ def _should_create_new_head(
     # Warn user
     if new_head_required:
         with cli_logger.group(
-            "Currently running head node is out-of-date with cluster " "configuration"
+            "Currently running head node is out-of-date with cluster configuration"
         ):
 
             if hashes_mismatch:

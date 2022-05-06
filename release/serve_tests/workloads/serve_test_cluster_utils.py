@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-import ray
+import logging
 import requests
 
+import ray
 from ray import serve
 from ray.cluster_utils import Cluster
-from ray.serve.utils import logger
 from ray.serve.config import DeploymentMode
 from ray.serve.constants import DEFAULT_CHECKPOINT_PATH
+
+logger = logging.getLogger(__file__)
 
 # Cluster setup configs
 NUM_CPU_PER_NODE = 10
@@ -14,7 +16,10 @@ NUM_CONNECTIONS = 10
 
 
 def setup_local_single_node_cluster(
-    num_nodes: int, checkpoint_path: str = DEFAULT_CHECKPOINT_PATH, namespace="serve"
+    num_nodes: int,
+    num_cpu_per_node=NUM_CPU_PER_NODE,
+    checkpoint_path: str = DEFAULT_CHECKPOINT_PATH,
+    namespace="serve",
 ):
     """Setup ray cluster locally via ray.init() and Cluster()
 
@@ -25,7 +30,7 @@ def setup_local_single_node_cluster(
     for i in range(num_nodes):
         cluster.add_node(
             redis_port=6380 if i == 0 else None,
-            num_cpus=NUM_CPU_PER_NODE,
+            num_cpus=num_cpu_per_node,
             num_gpus=0,
             resources={str(i): 2},
         )
@@ -49,7 +54,8 @@ def setup_anyscale_cluster(checkpoint_path: str = DEFAULT_CHECKPOINT_PATH):
     # we cannot connect to anyscale cluster from its headnode
     # ray.client().env({}).connect()
     ray.init(
-        address="auto", runtime_env={"env_vars": {"SERVE_ENABLE_SCALING_LOG": "1"}}
+        address="auto",
+        runtime_env={"env_vars": {"SERVE_ENABLE_SCALING_LOG": "1"}},
     )
     serve_client = serve.start(
         http_options={"location": DeploymentMode.EveryNode},

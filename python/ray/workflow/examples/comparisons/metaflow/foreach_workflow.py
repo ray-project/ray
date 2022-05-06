@@ -1,27 +1,26 @@
 from typing import List
 
+import ray
 from ray import workflow
 
 
-@workflow.step
+@ray.remote
 def start():
     titles = ["Stranger Things", "House of Cards", "Narcos"]
-    children = []
-    for t in titles:
-        children.append(a.step(t))
-    return end.step(children)
+    children = [a.bind(t) for t in titles]
+    return workflow.continuation(end.bind(children))
 
 
-@workflow.step
+@ray.remote
 def a(title: str) -> str:
-    return "{} processed".format(title)
+    return f"{title} processed"
 
 
-@workflow.step
-def end(results: List[str]) -> str:
-    return "\n".join(results)
+@ray.remote
+def end(results: "List[ray.ObjectRef[str]]") -> str:
+    return "\n".join(ray.get(results))
 
 
 if __name__ == "__main__":
     workflow.init()
-    start.step().run()
+    workflow.create(start.bind()).run()

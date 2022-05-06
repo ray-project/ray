@@ -1,0 +1,4 @@
+# Set up requirements needed to build a binder server to launch into.
+-r ../doc/requirements-doc.txt
+-r ../python/requirements.txt
+ray[rllib, serve, tune]

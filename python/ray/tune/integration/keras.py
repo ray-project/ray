@@ -1,5 +1,5 @@
 from collections import Counter
-from typing import Dict, List, Union
+from typing import Dict, List, Union, Optional
 
 from tensorflow.keras.callbacks import Callback
 from ray import tune
@@ -116,13 +116,13 @@ class TuneReportCallback(TuneCallback):
     Reports metrics to Ray Tune.
 
     Args:
-        metrics (str|list|dict): Metrics to report to Tune. If this is a list,
+        metrics: Metrics to report to Tune. If this is a list,
             each item describes the metric key reported to Keras,
             and it will reported under the same name to Tune. If this is a
             dict, each key will be the name reported to Tune and the respective
             value will be the metric key reported to Keras. If this is None,
             all Keras logs will be reported.
-        on (str|list): When to trigger checkpoint creations. Must be one of
+        on: When to trigger checkpoint creations. Must be one of
             the Keras event hooks (less the ``on_``), e.g.
             "train_start", or "predict_end". Defaults to "epoch_end".
 
@@ -147,7 +147,7 @@ class TuneReportCallback(TuneCallback):
 
     def __init__(
         self,
-        metrics: Union[None, str, List[str], Dict[str, str]] = None,
+        metrics: Optional[Union[str, List[str], Dict[str, str]]] = None,
         on: Union[str, List[str]] = "epoch_end",
     ):
         super(TuneReportCallback, self).__init__(on)
@@ -179,13 +179,13 @@ class _TuneCheckpointCallback(TuneCallback):
     instead.
 
     Args:
-        filename (str): Filename of the checkpoint within the checkpoint
+        filename: Filename of the checkpoint within the checkpoint
             directory. Defaults to "checkpoint".
-        frequency (int|list): Checkpoint frequency. If this is an integer `n`,
+        frequency: Checkpoint frequency. If this is an integer `n`,
             checkpoints are saved every `n` times each hook was called. If
             this is a list, it specifies the checkpoint frequencies for each
             hook individually.
-        on (str|list): When to trigger checkpoint creations. Must be one of
+        on: When to trigger checkpoint creations. Must be one of
             the Keras event hooks (less the ``on_``), e.g.
             "train_start", or "predict_end". Defaults to "epoch_end".
 
@@ -246,19 +246,19 @@ class TuneReportCheckpointCallback(TuneCallback):
     but doesn't register them with Ray Tune.
 
     Args:
-        metrics (str|list|dict): Metrics to report to Tune. If this is a list,
+        metrics: Metrics to report to Tune. If this is a list,
             each item describes the metric key reported to Keras,
             and it will reported under the same name to Tune. If this is a
             dict, each key will be the name reported to Tune and the respective
             value will be the metric key reported to Keras. If this is None,
             all Keras logs will be reported.
-        filename (str): Filename of the checkpoint within the checkpoint
+        filename: Filename of the checkpoint within the checkpoint
             directory. Defaults to "checkpoint".
-        frequency (int|list): Checkpoint frequency. If this is an integer `n`,
+        frequency: Checkpoint frequency. If this is an integer `n`,
             checkpoints are saved every `n` times each hook was called. If
             this is a list, it specifies the checkpoint frequencies for each
             hook individually.
-        on (str|list): When to trigger checkpoint creations. Must be one of
+        on: When to trigger checkpoint creations. Must be one of
             the Keras event hooks (less the ``on_``), e.g.
             "train_start", or "predict_end". Defaults to "epoch_end".
 
@@ -287,7 +287,7 @@ class TuneReportCheckpointCallback(TuneCallback):
 
     def __init__(
         self,
-        metrics: Union[None, str, List[str], Dict[str, str]] = None,
+        metrics: Optional[Union[str, List[str], Dict[str, str]]] = None,
         filename: str = "checkpoint",
         frequency: Union[int, List[int]] = 1,
         on: Union[str, List[str]] = "epoch_end",

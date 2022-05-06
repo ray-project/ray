@@ -7,7 +7,6 @@ import ray
 import ray.rllib.agents.ddpg as ddpg
 from ray.rllib.agents.ddpg.ddpg_torch_policy import ddpg_actor_critic_loss as loss_torch
 from ray.rllib.agents.sac.tests.test_sac import SimpleEnv
-from ray.rllib.execution.buffers.multi_agent_replay_buffer import MultiAgentReplayBuffer
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import fc, huber_loss, l2_loss, relu, sigmoid
@@ -18,6 +17,7 @@ from ray.rllib.utils.test_utils import (
     framework_iterator,
 )
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
+from ray.rllib.utils.replay_buffers.utils import patch_buffer_with_fake_sampling_method
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -92,16 +92,16 @@ class TestDDPG(unittest.TestCase):
             trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v1")
             # Setting explore=False should always return the same action.
             a_ = trainer.compute_single_action(obs, explore=False)
-            self.assertEqual(trainer.get_policy().global_timestep, 1)
+            check(trainer.get_policy().global_timestep, 1)
             for i in range(50):
                 a = trainer.compute_single_action(obs, explore=False)
-                self.assertEqual(trainer.get_policy().global_timestep, i + 2)
+                check(trainer.get_policy().global_timestep, i + 2)
                 check(a, a_)
             # explore=None (default: explore) should return different actions.
             actions = []
             for i in range(50):
                 actions.append(trainer.compute_single_action(obs))
-                self.assertEqual(trainer.get_policy().global_timestep, i + 52)
+                check(trainer.get_policy().global_timestep, i + 52)
             check(np.std(actions), 0.0, false=True)
             trainer.stop()
 
@@ -117,25 +117,25 @@ class TestDDPG(unittest.TestCase):
             trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v1")
             # ts=0 (get a deterministic action as per explore=False).
             deterministic_action = trainer.compute_single_action(obs, explore=False)
-            self.assertEqual(trainer.get_policy().global_timestep, 1)
+            check(trainer.get_policy().global_timestep, 1)
             # ts=1-49 (in random window).
             random_a = []
             for i in range(1, 50):
                 random_a.append(trainer.compute_single_action(obs, explore=True))
-                self.assertEqual(trainer.get_policy().global_timestep, i + 1)
+                check(trainer.get_policy().global_timestep, i + 1)
                 check(random_a[-1], deterministic_action, false=True)
             self.assertTrue(np.std(random_a) > 0.5)
 
             # ts > 50 (a=deterministic_action + scale * N[0,1])
             for i in range(50):
                 a = trainer.compute_single_action(obs, explore=True)
-                self.assertEqual(trainer.get_policy().global_timestep, i + 51)
+                check(trainer.get_policy().global_timestep, i + 51)
                 check(a, deterministic_action, rtol=0.1)
 
             # ts >> 50 (BUT: explore=False -> expect deterministic action).
             for i in range(50):
                 a = trainer.compute_single_action(obs, explore=False)
-                self.assertEqual(trainer.get_policy().global_timestep, i + 101)
+                check(trainer.get_policy().global_timestep, i + 101)
                 check(a, deterministic_action)
             trainer.stop()
 
@@ -152,13 +152,17 @@ class TestDDPG(unittest.TestCase):
         config["gamma"] = 0.99
         # Make this small (seems to introduce errors).
         config["l2_reg"] = 1e-10
-        config["prioritized_replay"] = False
+        config["replay_buffer_config"] = {
+            "_enable_replay_buffer_api": True,
+            "type": "MultiAgentReplayBuffer",
+            "capacity": 50000,
+        }
         # Use very simple nets.
         config["actor_hiddens"] = [10]
         config["critic_hiddens"] = [10]
         # Make sure, timing differences do not affect trainer.train().
         config["min_time_s_per_reporting"] = 0
-        config["timesteps_per_iteration"] = 100
+        config["min_sample_timesteps_per_reporting"] = 100
 
         map_ = {
             # Normal net.
@@ -168,14 +172,14 @@ class TestDDPG(unittest.TestCase):
             "_model.0.bias",
             "default_policy/actor_out/kernel": "policy_model.action_out."
             "_model.0.weight",
-            "default_policy/actor_out/bias": "policy_model.action_out." "_model.0.bias",
+            "default_policy/actor_out/bias": "policy_model.action_out._model.0.bias",
             "default_policy/sequential/q_hidden_0/kernel": "q_model.q_hidden_0"
             "._model.0.weight",
             "default_policy/sequential/q_hidden_0/bias": "q_model.q_hidden_0."
             "_model.0.bias",
             "default_policy/sequential/q_out/kernel": "q_model.q_out._model."
             "0.weight",
-            "default_policy/sequential/q_out/bias": "q_model.q_out._model." "0.bias",
+            "default_policy/sequential/q_out/bias": "q_model.q_out._model.0.bias",
             # -- twin.
             "default_policy/sequential_1/twin_q_hidden_0/kernel": "twin_"
             "q_model.twin_q_hidden_0._model.0.weight",
@@ -200,7 +204,7 @@ class TestDDPG(unittest.TestCase):
             "q_hidden_0._model.0.bias",
             "default_policy/sequential_2/q_out/kernel": "q_model."
             "q_out._model.0.weight",
-            "default_policy/sequential_2/q_out/bias": "q_model." "q_out._model.0.bias",
+            "default_policy/sequential_2/q_out/bias": "q_model.q_out._model.0.bias",
             # -- twin.
             "default_policy/sequential_3/twin_q_hidden_0/kernel": "twin_"
             "q_model.twin_q_hidden_0._model.0.weight",
@@ -376,8 +380,8 @@ class TestDDPG(unittest.TestCase):
                     tf_inputs.append(in_)
                     # Set a fake-batch to use
                     # (instead of sampling from replay buffer).
-                    buf = MultiAgentReplayBuffer.get_instance_for_testing()
-                    buf._fake_batch = in_
+                    buf = trainer.local_replay_buffer
+                    patch_buffer_with_fake_sampling_method(buf, in_)
                     trainer.train()
                     updated_weights = policy.get_weights()
                     # Net must have changed.
@@ -397,15 +401,15 @@ class TestDDPG(unittest.TestCase):
                     in_ = tf_inputs[update_iteration]
                     # Set a fake-batch to use
                     # (instead of sampling from replay buffer).
-                    buf = MultiAgentReplayBuffer.get_instance_for_testing()
-                    buf._fake_batch = in_
+                    buf = trainer.local_replay_buffer
+                    patch_buffer_with_fake_sampling_method(buf, in_)
                     trainer.train()
                     # Compare updated model and target weights.
                     for tf_key in tf_weights.keys():
                         tf_var = tf_weights[tf_key]
                         # Model.
                         if re.search(
-                            "actor_out_1|actor_hidden_0_1|sequential_" "[23]", tf_key
+                            "actor_out_1|actor_hidden_0_1|sequential_[23]", tf_key
                         ):
                             torch_var = policy.target_model.state_dict()[map_[tf_key]]
                         # Target model.

@@ -75,19 +75,25 @@ class CoreWorkerMemoryStore {
   /// finishes. This has no effect if ref counting is enabled.
   /// \param[out] results Result list of objects data.
   /// \return Status.
-  Status Get(const std::vector<ObjectID> &object_ids, int num_objects, int64_t timeout_ms,
-             const WorkerContext &ctx, bool remove_after_get,
+  Status Get(const std::vector<ObjectID> &object_ids,
+             int num_objects,
+             int64_t timeout_ms,
+             const WorkerContext &ctx,
+             bool remove_after_get,
              std::vector<std::shared_ptr<RayObject>> *results);
 
   /// Convenience wrapper around Get() that stores results in a given result map.
-  Status Get(const absl::flat_hash_set<ObjectID> &object_ids, int64_t timeout_ms,
+  Status Get(const absl::flat_hash_set<ObjectID> &object_ids,
+             int64_t timeout_ms,
              const WorkerContext &ctx,
              absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
              bool *got_exception);
 
   /// Convenience wrapper around Get() that stores ready objects in a given result set.
-  Status Wait(const absl::flat_hash_set<ObjectID> &object_ids, int num_objects,
-              int64_t timeout_ms, const WorkerContext &ctx,
+  Status Wait(const absl::flat_hash_set<ObjectID> &object_ids,
+              int num_objects,
+              int64_t timeout_ms,
+              const WorkerContext &ctx,
               absl::flat_hash_set<ObjectID> *ready);
 
   /// Get an object if it exists.
@@ -163,8 +169,11 @@ class CoreWorkerMemoryStore {
   /// See the public version of `Get` for meaning of the other arguments.
   /// \param[in] abort_if_any_object_is_exception Whether we should abort if any object
   /// resources. is an exception.
-  Status GetImpl(const std::vector<ObjectID> &object_ids, int num_objects,
-                 int64_t timeout_ms, const WorkerContext &ctx, bool remove_after_get,
+  Status GetImpl(const std::vector<ObjectID> &object_ids,
+                 int num_objects,
+                 int64_t timeout_ms,
+                 const WorkerContext &ctx,
+                 bool remove_after_get,
                  std::vector<std::shared_ptr<RayObject>> *results,
                  bool abort_if_any_object_is_exception);
 

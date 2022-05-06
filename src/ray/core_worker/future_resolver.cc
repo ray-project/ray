@@ -30,8 +30,9 @@ void FutureResolver::ResolveFutureAsync(const ObjectID &object_id,
   request.set_object_id(object_id.Binary());
   request.set_owner_worker_id(owner_address.worker_id());
   conn->GetObjectStatus(
-      request, [this, object_id, owner_address](const Status &status,
-                                                const rpc::GetObjectStatusReply &reply) {
+      request,
+      [this, object_id, owner_address](const Status &status,
+                                       const rpc::GetObjectStatusReply &reply) {
         ProcessResolvedObject(object_id, owner_address, status, reply);
       });
 }
@@ -97,7 +98,8 @@ void FutureResolver::ProcessResolvedObject(const ObjectID &object_id,
         VectorFromProtobuf<rpc::ObjectReference>(reply.object().nested_inlined_refs());
     for (const auto &inlined_ref : inlined_refs) {
       reference_counter_->AddBorrowedObject(ObjectID::FromBinary(inlined_ref.object_id()),
-                                            object_id, inlined_ref.owner_address());
+                                            object_id,
+                                            inlined_ref.owner_address());
     }
     RAY_UNUSED(in_memory_store_->Put(
         RayObject(data_buffer, metadata_buffer, inlined_refs), object_id));

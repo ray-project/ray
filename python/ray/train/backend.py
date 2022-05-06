@@ -1,7 +1,7 @@
 import logging
 import os
 from collections import defaultdict
-from typing import Callable, TypeVar, List, Optional, Dict, Union, Type, Tuple
+from typing import Callable, TypeVar, List, Optional, Dict, Type, Tuple
 
 import ray
 from ray.exceptions import RayActorError
@@ -12,9 +12,10 @@ from ray.train.constants import (
     TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
 )
+from ray.train.impl.dataset_spec import _RayDatasetSpec
 from ray.train.session import TrainingResult
 from ray.train.session import init_session, get_session, shutdown_session
-from ray.train.utils import RayDataset, check_for_failure, Singleton
+from ray.train.utils import check_for_failure, Singleton
 from ray.train.worker_group import WorkerGroup
 from ray.util.annotations import DeveloperAPI
 from ray.util.placement_group import get_current_placement_group, remove_placement_group
@@ -32,7 +33,7 @@ class BackendConfig:
 
     @property
     def backend_cls(self):
-        raise NotImplementedError
+        return Backend
 
 
 @DeveloperAPI
@@ -56,20 +57,6 @@ class Backend(metaclass=Singleton):
     def on_shutdown(self, worker_group: WorkerGroup, backend_config: BackendConfig):
         """Logic for shutting down the backend."""
         pass
-
-    def handle_failure(
-        self,
-        worker_group: WorkerGroup,
-        failed_worker_indexes: List[int],
-        backend_config: BackendConfig,
-    ):
-        """Logic for handling failures.
-
-        By default, restart all workers.
-        """
-        worker_group.shutdown()
-        worker_group.start()
-        self.on_start(worker_group, backend_config)
 
     @staticmethod
     def encode_data(data_dict: Dict) -> EncodedData:
@@ -184,6 +171,10 @@ class BackendExecutor:
             self._backend.on_start(self.worker_group, self._backend_config)
         except RayActorError as exc:
             logger.exception(str(exc))
+            logger.warning(
+                "Failure occurred during startup. Restarting all workers and "
+                "attempting to startup again."
+            )
             self._increment_failures()
             self._restart()
 
@@ -231,10 +222,13 @@ class BackendExecutor:
                 logger.debug("Placement group has started.")
             else:
                 raise TimeoutError(
-                    "Placement group creation timed out. Make sure "
-                    "your cluster either has enough resources or use "
-                    "an autoscaling cluster. Current resources "
-                    "available: {}, resources requested by the "
+                    "Placement group creation timed out. Make sure your "
+                    "cluster either has enough resources or use an "
+                    "autoscaling cluster. If you are running on a cluster, "
+                    "make sure you specify an address in `ray.init()`, for example, "
+                    '`ray.init("auto")`. You can also increase the timeout by setting '
+                    "the TRAIN_PLACEMENT_GROUP_TIMEOUT_S environment variable. "
+                    "Current resources available: {}, resources requested by the "
                     "placement group: {}".format(
                         ray.available_resources(), placement_group.bundle_specs
                     )
@@ -321,35 +315,10 @@ class BackendExecutor:
             ip_dict[node_ip] += 1
         return rank_mapping
 
-    def _get_dataset_shards(self, dataset_or_dict):
-
-        if dataset_or_dict is None:
-            # Return None for each shard.
-            return [None] * len(self.worker_group)
-
-        def split_dataset(dataset_or_pipeline):
-            actors = [worker.actor for worker in self.worker_group.workers]
-            return dataset_or_pipeline.split(
-                len(self.worker_group), equal=True, locality_hints=actors
-            )
-
-        if isinstance(dataset_or_dict, dict):
-            # Return a smaller dict for each shard.
-            dataset_shards = [{} for _ in range(len(self.worker_group))]
-            for key, dataset in dataset_or_dict.items():
-                split_datasets = split_dataset(dataset)
-                assert len(split_datasets) == len(self.worker_group)
-                for i in range(len(split_datasets)):
-                    dataset_shards[i][key] = split_datasets[i]
-            return dataset_shards
-        else:
-            # return a smaller RayDataset for each shard.
-            return split_dataset(dataset_or_dict)
-
     def start_training(
         self,
         train_func: Callable[[], T],
-        dataset: Optional[Union[RayDataset, Dict[str, RayDataset]]] = None,
+        dataset_spec: _RayDatasetSpec,
         checkpoint: Optional[Dict] = None,
     ) -> None:
         """Executes a training function on all workers in a separate thread.
@@ -357,17 +326,11 @@ class BackendExecutor:
         ``finish_training`` should be called after this.
 
         Args:
-            train_func (Callable): The training function to run on each worker.
-            dataset (Optional[Union[Dataset, DatasetPipeline]])
-                Distributed Ray Dataset or DatasetPipeline to pass into
-                worker, which can be accessed from the training function via
-                ``train.get_dataset_shard()``. Sharding will automatically be
-                handled by the Trainer. Multiple Datasets can be passed in as
-                a ``Dict`` that maps each name key to a Dataset value,
-                and each Dataset can be accessed from the training function
-                by passing in a `dataset_name` argument to
-                ``train.get_dataset_shard()``.
-            checkpoint (Optional[Dict]): The checkpoint data that
+            train_func: The training function to run on each worker.
+            dataset_spec: A specification for the Ray Dataset to be
+                passed to the training workers, and the logic on how to shard the Ray
+                Dataset.
+            checkpoint: The checkpoint data that
                 should be loaded onto each worker and accessed by the
                 training function via ``train.load_checkpoint()``. If this
                 is ``None`` then no checkpoint will be loaded.
@@ -406,7 +369,8 @@ class BackendExecutor:
                 )
 
         if self.dataset_shards is None:
-            self.dataset_shards = self._get_dataset_shards(dataset)
+            actors = [worker.actor for worker in self.worker_group.workers]
+            self.dataset_shards = dataset_spec.get_dataset_shards(actors)
 
         local_rank_map = self._create_local_rank_map()
 
@@ -473,7 +437,7 @@ class BackendExecutor:
                 raise RuntimeError(
                     "Some workers returned results while "
                     "others didn't. Make sure that "
-                    "`train.report()` and `train.checkpoint()` "
+                    "`train.report()` and `train.save_checkpoint()` "
                     "are called the same number of times on all "
                     "workers."
                 )
@@ -550,18 +514,16 @@ class BackendExecutor:
         Returns:
             The resolved objects represented by the passed in ObjectRefs.
         """
-        success, failed_worker_indexes = check_for_failure(remote_values)
+        success = check_for_failure(remote_values)
         if success:
             return ray.get(remote_values)
         else:
             self._increment_failures()
-            try:
-                self._backend.handle_failure(
-                    self.worker_group, failed_worker_indexes, self._backend_config
-                )
-            except RayActorError as exc:
-                logger.exception(str(exc))
-                self._restart()
+            logger.warning(
+                "Failure identified during training. Restarting all workers and "
+                "continuing training from latest checkpoint."
+            )
+            self._restart()
             raise TrainingWorkerError
 
     def shutdown(self):

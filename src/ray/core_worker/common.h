@@ -56,15 +56,16 @@ class RayFunction {
 /// Options for all tasks (actor and non-actor) except for actor creation.
 struct TaskOptions {
   TaskOptions() {}
-  TaskOptions(std::string name, int num_returns,
+  TaskOptions(std::string name,
+              int num_returns,
               std::unordered_map<std::string, double> &resources,
               const std::string &concurrency_group_name = "",
-              const std::string &serialized_runtime_env = "{}")
+              const std::string &serialized_runtime_env_info = "{}")
       : name(name),
         num_returns(num_returns),
         resources(resources),
         concurrency_group_name(concurrency_group_name),
-        serialized_runtime_env(serialized_runtime_env) {}
+        serialized_runtime_env_info(serialized_runtime_env_info) {}
 
   /// The name of this task.
   std::string name;
@@ -74,24 +75,30 @@ struct TaskOptions {
   std::unordered_map<std::string, double> resources;
   /// The name of the concurrency group in which this task will be executed.
   std::string concurrency_group_name;
-  // Runtime Env used by this task. Propagated to child actors and tasks.
-  std::string serialized_runtime_env;
+  /// Runtime Env Info used by this task. It includes Runtime Env and some
+  /// fields which not contained in Runtime Env, such as eager_install.
+  /// Propagated to child actors and tasks.
+  std::string serialized_runtime_env_info;
 };
 
 /// Options for actor creation tasks.
 struct ActorCreationOptions {
   ActorCreationOptions() {}
-  ActorCreationOptions(int64_t max_restarts, int64_t max_task_retries,
+  ActorCreationOptions(int64_t max_restarts,
+                       int64_t max_task_retries,
                        int max_concurrency,
                        const std::unordered_map<std::string, double> &resources,
                        const std::unordered_map<std::string, double> &placement_resources,
                        const std::vector<std::string> &dynamic_worker_options,
-                       std::optional<bool> is_detached, std::string &name,
-                       std::string &ray_namespace, bool is_asyncio,
+                       std::optional<bool> is_detached,
+                       std::string &name,
+                       std::string &ray_namespace,
+                       bool is_asyncio,
                        const rpc::SchedulingStrategy &scheduling_strategy,
-                       const std::string &serialized_runtime_env = "{}",
+                       const std::string &serialized_runtime_env_info = "{}",
                        const std::vector<ConcurrencyGroup> &concurrency_groups = {},
-                       bool execute_out_of_order = false, int32_t max_pending_calls = -1)
+                       bool execute_out_of_order = false,
+                       int32_t max_pending_calls = -1)
       : max_restarts(max_restarts),
         max_task_retries(max_task_retries),
         max_concurrency(max_concurrency),
@@ -102,7 +109,7 @@ struct ActorCreationOptions {
         name(name),
         ray_namespace(ray_namespace),
         is_asyncio(is_asyncio),
-        serialized_runtime_env(serialized_runtime_env),
+        serialized_runtime_env_info(serialized_runtime_env_info),
         concurrency_groups(concurrency_groups.begin(), concurrency_groups.end()),
         execute_out_of_order(execute_out_of_order),
         max_pending_calls(max_pending_calls),
@@ -138,8 +145,10 @@ struct ActorCreationOptions {
   const std::string ray_namespace;
   /// Whether to use async mode of direct actor call.
   const bool is_asyncio = false;
-  // Runtime Env used by this actor.  Propagated to child actors and tasks.
-  std::string serialized_runtime_env;
+  /// Runtime Env Info used by this task. It includes Runtime Env and some
+  /// fields which not contained in Runtime Env, such as eager_install.
+  /// Propagated to child actors and tasks.
+  std::string serialized_runtime_env_info;
   /// The actor concurrency groups to indicate how this actor perform its
   /// methods concurrently.
   const std::vector<ConcurrencyGroup> concurrency_groups;
@@ -155,8 +164,10 @@ using PlacementStrategy = rpc::PlacementStrategy;
 
 struct PlacementGroupCreationOptions {
   PlacementGroupCreationOptions(
-      std::string name, PlacementStrategy strategy,
-      std::vector<std::unordered_map<std::string, double>> bundles, bool is_detached)
+      std::string name,
+      PlacementStrategy strategy,
+      std::vector<std::unordered_map<std::string, double>> bundles,
+      bool is_detached)
       : name(std::move(name)),
         strategy(strategy),
         bundles(std::move(bundles)),
@@ -174,8 +185,11 @@ struct PlacementGroupCreationOptions {
 
 class ObjectLocation {
  public:
-  ObjectLocation(NodeID primary_node_id, uint64_t object_size,
-                 std::vector<NodeID> node_ids, bool is_spilled, std::string spilled_url,
+  ObjectLocation(NodeID primary_node_id,
+                 uint64_t object_size,
+                 std::vector<NodeID> node_ids,
+                 bool is_spilled,
+                 std::string spilled_url,
                  NodeID spilled_node_id)
       : primary_node_id_(primary_node_id),
         object_size_(object_size),

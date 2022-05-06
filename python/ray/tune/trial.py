@@ -8,14 +8,14 @@ import platform
 import re
 import shutil
 import time
-from typing import Dict, Optional, Sequence, Union
+from typing import Dict, Optional, Sequence, Union, Callable, List
 import uuid
 
 import ray
 import ray.cloudpickle as cloudpickle
-from ray.exceptions import RayActorError
+from ray.exceptions import RayActorError, RayTaskError
 from ray.tune import TuneError
-from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
+from ray.tune.checkpoint_manager import _TuneCheckpoint, CheckpointManager
 
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
@@ -99,16 +99,16 @@ class CheckpointDeleter:
         self.trial_id = trial_id
         self.runner = runner
 
-    def __call__(self, checkpoint):
+    def __call__(self, checkpoint: _TuneCheckpoint):
         """Requests checkpoint deletion asynchronously.
 
         Args:
-            checkpoint (Checkpoint): Checkpoint to delete.
+            checkpoint: Checkpoint to delete.
         """
         if not self.runner:
             return
 
-        if checkpoint.storage == Checkpoint.PERSISTENT and checkpoint.value:
+        if checkpoint.storage == _TuneCheckpoint.PERSISTENT and checkpoint.value:
             checkpoint_path = checkpoint.value
 
             logger.debug(
@@ -133,10 +133,9 @@ class TrialInfo:
     """Serializable struct for holding information for a Trial.
 
     Attributes:
-        trial_name (str): String name of the current trial.
-        trial_id (str): trial_id of the trial
-        trial_resources (Resources|PlacementGroupFactory): resources used
-            by trial.
+        trial_name: String name of the current trial.
+        trial_id: trial_id of the trial
+        trial_resources: resources used by trial.
     """
 
     def __init__(self, trial: "Trial"):
@@ -203,20 +202,19 @@ class Trial:
     Trials start in the PENDING state, and transition to RUNNING once started.
     On error it transitions to ERROR, otherwise TERMINATED on success.
 
-    There are resources allocated to each trial. It's preferred that resources
-    are specified using PlacementGroupFactory, rather than through Resources,
-    which is being deprecated.
+    There are resources allocated to each trial. These should be specified
+    using ``PlacementGroupFactory``.
 
     Attributes:
-        trainable_name (str): Name of the trainable object to be executed.
-        config (dict): Provided configuration dictionary with evaluated params.
-        trial_id (str): Unique identifier for the trial.
-        local_dir (str): Local_dir as passed to tune.run.
-        logdir (str): Directory where the trial logs are saved.
-        evaluated_params (dict): Evaluated parameters by search algorithm,
-        experiment_tag (str): Identifying trial name to show in the console
-        status (str): One of PENDING, RUNNING, PAUSED, TERMINATED, ERROR/
-        error_file (str): Path to the errors that this trial has raised.
+        trainable_name: Name of the trainable object to be executed.
+        config: Provided configuration dictionary with evaluated params.
+        trial_id: Unique identifier for the trial.
+        local_dir: Local_dir as passed to tune.run.
+        logdir: Directory where the trial logs are saved.
+        evaluated_params: Evaluated parameters by search algorithm,
+        experiment_tag: Identifying trial name to show in the console
+        status: One of PENDING, RUNNING, PAUSED, TERMINATED, ERROR/
+        error_file: Path to the errors that this trial has raised.
 
     """
 
@@ -236,34 +234,41 @@ class Trial:
 
     def __init__(
         self,
-        trainable_name,
-        config=None,
-        trial_id=None,
-        local_dir=DEFAULT_RESULTS_DIR,
-        evaluated_params=None,
-        experiment_tag="",
-        resources=None,
-        placement_group_factory=None,
-        stopping_criterion=None,
-        remote_checkpoint_dir=None,
-        sync_function_tpl=None,
-        checkpoint_freq=0,
-        checkpoint_at_end=False,
-        sync_on_checkpoint=True,
-        keep_checkpoints_num=None,
-        checkpoint_score_attr=TRAINING_ITERATION,
-        export_formats=None,
-        restore_path=None,
-        trial_name_creator=None,
-        trial_dirname_creator=None,
-        log_to_file=None,
-        max_failures=0,
-        stub=False,
+        trainable_name: str,
+        config: Optional[Dict] = None,
+        trial_id: Optional[str] = None,
+        local_dir: Optional[str] = DEFAULT_RESULTS_DIR,
+        evaluated_params: Optional[Dict] = None,
+        experiment_tag: str = "",
+        resources: Optional[Resources] = None,
+        placement_group_factory: Optional[PlacementGroupFactory] = None,
+        stopping_criterion: Optional[Dict[str, float]] = None,
+        remote_checkpoint_dir: Optional[str] = None,
+        sync_function_tpl: Optional[str] = None,
+        checkpoint_freq: int = 0,
+        checkpoint_at_end: bool = False,
+        sync_on_checkpoint: bool = True,
+        keep_checkpoints_num: Optional[int] = None,
+        checkpoint_score_attr: str = TRAINING_ITERATION,
+        export_formats: Optional[List[str]] = None,
+        restore_path: Optional[str] = None,
+        trial_name_creator: Optional[Callable[["Trial"], str]] = None,
+        trial_dirname_creator: Optional[Callable[["Trial"], str]] = None,
+        log_to_file: Optional[str] = None,
+        max_failures: int = 0,
+        stub: bool = False,
+        _setup_default_resource: bool = True,
     ):
         """Initialize a new trial.
 
         The args here take the same meaning as the command line flags defined
         in ray.tune.config_parser.
+
+        Args:
+            _setup_default_resource: Whether to set up default resources.
+                When initializing trials from checkpoints, this field is set to false,
+                so that setting up default resources can be delayed till after
+                ``trial.config`` is loaded from checkpoints.
         """
         # If this is set, trainables are not validated or looked up.
         # This can be used e.g. to initialize Trial objects from checkpoints
@@ -281,8 +286,9 @@ class Trial:
         # Parameters that Tune varies across searches.
         self.evaluated_params = evaluated_params or {}
         self.experiment_tag = experiment_tag
+        self.location = Location()
         trainable_cls = self.get_trainable_cls()
-        if trainable_cls:
+        if trainable_cls and _setup_default_resource:
             default_resources = trainable_cls.default_resource_request(self.config)
 
             # If Trainable returns resources, do not allow manual override via
@@ -303,7 +309,6 @@ class Trial:
                 else:
                     placement_group_factory = None
                     resources = default_resources
-        self.location = Location()
 
         self.placement_group_factory = _to_pg_factory(
             resources, placement_group_factory
@@ -342,8 +347,9 @@ class Trial:
         self.runner = None
         self.last_debug = 0
         self.error_file = None
-        self.error_msg = None
+        self.pickled_error_file = None
         self.trial_name_creator = trial_name_creator
+        self.trial_dirname_creator = trial_dirname_creator
         self.custom_trial_name = None
         self.custom_dirname = None
 
@@ -373,7 +379,6 @@ class Trial:
         self.restore_path = restore_path
         self.restoring_from = None
         self.num_failures = 0
-        self.has_new_resources = False
 
         # AutoML fields
         self.results = None
@@ -388,7 +393,7 @@ class Trial:
             self.custom_dirname = trial_dirname_creator(self)
             if os.path.sep in self.custom_dirname:
                 raise ValueError(
-                    "Trial dirname must not contain '/'. " "Got {self.custom_dirname}"
+                    f"Trial dirname must not contain '/'. Got {self.custom_dirname}"
                 )
 
         self._state_json = None
@@ -458,7 +463,7 @@ class Trial:
         else:
             checkpoint = self.checkpoint_manager.newest_checkpoint
         if checkpoint.value is None:
-            checkpoint = Checkpoint(Checkpoint.PERSISTENT, self.restore_path)
+            checkpoint = _TuneCheckpoint(_TuneCheckpoint.PERSISTENT, self.restore_path)
         return checkpoint
 
     @classmethod
@@ -514,6 +519,7 @@ class Trial:
             export_formats=self.export_formats,
             restore_path=self.restore_path,
             trial_name_creator=self.trial_name_creator,
+            trial_dirname_creator=self.trial_dirname_creator,
             log_to_file=self.log_to_file,
             max_failures=self.max_failures,
         )
@@ -524,6 +530,7 @@ class Trial:
             self.logdir = create_logdir(self._generate_dirname(), self.local_dir)
         else:
             os.makedirs(self.logdir, exist_ok=True)
+
         self.invalidate_json_state()
 
     def update_resources(self, resources: Union[Dict, PlacementGroupFactory]):
@@ -548,8 +555,6 @@ class Trial:
         )
 
         self.invalidate_json_state()
-
-        self.has_new_resources = True
 
     def set_runner(self, runner):
         self.runner = runner
@@ -587,18 +592,22 @@ class Trial:
         self.experiment_tag = experiment_tag
         self.invalidate_json_state()
 
-    def write_error_log(self, error_msg):
-        if error_msg and self.logdir:
+    def write_error_log(self, exc: Optional[Union[TuneError, RayTaskError]] = None):
+        if exc and self.logdir:
             self.num_failures += 1
             self.error_file = os.path.join(self.logdir, "error.txt")
+            if exc and isinstance(exc, RayTaskError):
+                # Piping through the actual error to result grid.
+                self.pickled_error_file = os.path.join(self.logdir, "error.pkl")
+                with open(self.pickled_error_file, "wb") as f:
+                    cloudpickle.dump(exc, f)
             with open(self.error_file, "a+") as f:
                 f.write(
                     "Failure # {} (occurred at {})\n".format(
                         self.num_failures, date_str()
                     )
                 )
-                f.write(error_msg + "\n")
-            self.error_msg = error_msg
+                f.write(str(exc) + "\n")
         self.invalidate_json_state()
 
     def should_stop(self, result):
@@ -640,11 +649,11 @@ class Trial:
         self.restoring_from = None
         self.invalidate_json_state()
 
-    def on_checkpoint(self, checkpoint):
+    def on_checkpoint(self, checkpoint: _TuneCheckpoint):
         """Hook for handling checkpoints taken by the Trainable.
 
         Args:
-            checkpoint (Checkpoint): Checkpoint taken.
+            checkpoint: Checkpoint taken.
         """
         self.checkpoint_manager.on_checkpoint(checkpoint)
         self.invalidate_json_state()
@@ -761,17 +770,7 @@ class Trial:
         if self.custom_dirname:
             generated_dirname = self.custom_dirname
         else:
-            if "MAX_LEN_IDENTIFIER" in os.environ:
-                logger.error(
-                    "The MAX_LEN_IDENTIFIER environment variable is "
-                    "deprecated and will be removed in the future. "
-                    "Use TUNE_MAX_LEN_IDENTIFIER instead."
-                )
-            MAX_LEN_IDENTIFIER = int(
-                os.environ.get(
-                    "TUNE_MAX_LEN_IDENTIFIER", os.environ.get("MAX_LEN_IDENTIFIER", 130)
-                )
-            )
+            MAX_LEN_IDENTIFIER = int(os.environ.get("TUNE_MAX_LEN_IDENTIFIER", "130"))
             generated_dirname = f"{str(self)}_{self.experiment_tag}"
             generated_dirname = generated_dirname[:MAX_LEN_IDENTIFIER]
             generated_dirname += f"_{date_str()}"
@@ -828,8 +827,10 @@ class Trial:
         if not self.stub:
             validate_trainable(self.trainable_name)
 
+        assert self.placement_group_factory
+
         # Avoid creating logdir in client mode for returned trial results,
-        # since the dir might not be creatable locally. TODO(ekl) thsi is kind
-        # of a hack.
+        # since the dir might not be creatable locally.
+        # TODO(ekl) this is kind of a hack.
         if not ray.util.client.ray.is_connected():
             self.init_logdir()  # Create logdir if it does not exist

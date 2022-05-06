@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from pathlib import Path
 import sys
 import os
 
@@ -38,6 +39,8 @@ extensions = [
     "sphinx.ext.doctest",
     "sphinx.ext.coverage",
     "sphinx_external_toc",
+    "sphinx_thebe",
+    "sphinxcontrib.autodoc_pydantic",
 ]
 
 myst_enable_extensions = [
@@ -50,6 +53,13 @@ myst_enable_extensions = [
     "smartquotes",
     "replacements",
 ]
+
+# Thebe configuration for launching notebook cells within the docs.
+thebe_config = {
+    "selector": "div.highlight",
+    "repository_url": "https://github.com/ray-project/ray",
+    "repository_branch": "master",
+}
 
 # Cache notebook outputs in _build/.jupyter_cache
 # To prevent notebook execution, set this to "off". To force re-execution, set this to "force".
@@ -122,7 +132,6 @@ all_toc_libs += [
     "cluster",
     "tune",
     "data",
-    "raysgd",
     "train",
     "rllib",
     "serve",
@@ -143,6 +152,21 @@ todo_include_todos = False
 # Do not check anchors for links because it produces many false positives
 # and is slow (it needs to download the linked website).
 linkcheck_anchors = False
+
+# Only check external links, i.e. the ones starting with http:// or https://.
+linkcheck_ignore = [
+    r"^((?!http).)*$",  # exclude links not starting with http
+    "http://ala2017.it.nuigalway.ie/papers/ALA2017_Gupta.pdf",  # broken
+    "https://mvnrepository.com/artifact/*",  # working but somehow not with linkcheck
+    # This should be fixed -- is temporal the successor of cadence? Do the examples need to be updated?
+    "https://github.com/serverlessworkflow/specification/blob/main/comparisons/comparison-cadence.md",
+    # TODO(richardliaw): The following probably needs to be fixed in the tune_sklearn package
+    "https://scikit-optimize.github.io/stable/modules/",
+    "https://www.oracle.com/java/technologies/javase-jdk15-downloads.html",  # forbidden for client
+    r"https://huggingface.co/*",  # seems to be flaky
+    r"https://www.meetup.com/*",  # seems to be flaky
+    r"https://www.pettingzoo.ml/*",  # seems to be flaky
+]
 
 # -- Options for HTML output ----------------------------------------------
 
@@ -234,6 +258,23 @@ texinfo_documents = [
 autodoc_member_order = "bysource"
 
 
+# Add a render priority for doctest
+nb_render_priority = {
+    "doctest": (),
+    "html": (
+        "application/vnd.jupyter.widget-view+json",
+        "application/javascript",
+        "text/html",
+        "image/svg+xml",
+        "image/png",
+        "image/jpeg",
+        "text/markdown",
+        "text/latex",
+        "text/plain",
+    ),
+}
+
+
 def setup(app):
     app.connect("html-page-context", update_context)
 
@@ -252,3 +293,10 @@ def setup(app):
 
     # Custom docstring processor
     app.connect("autodoc-process-docstring", fix_xgb_lgbm_docs)
+
+    base_path = Path(__file__).parent
+    github_docs = DownloadAndPreprocessEcosystemDocs(base_path)
+    # Download docs from ecosystem library repos
+    app.connect("builder-inited", github_docs.write_new_docs)
+    # Restore original file content after build
+    app.connect("build-finished", github_docs.write_original_docs)

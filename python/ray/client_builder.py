@@ -327,14 +327,14 @@ def _get_builder_from_address(address: Optional[str]) -> ClientBuilder:
     module_string, inner_address = _split_address(address)
     try:
         module = importlib.import_module(module_string)
-    except Exception:
+    except Exception as e:
         raise RuntimeError(
             f"Module: {module_string} does not exist.\n"
             f"This module was parsed from Address: {address}"
-        ) from None
-    assert "ClientBuilder" in dir(module), (
-        f"Module: {module_string} does " "not have ClientBuilder."
-    )
+        ) from e
+    assert "ClientBuilder" in dir(
+        module
+    ), f"Module: {module_string} does not have ClientBuilder."
     return module.ClientBuilder(inner_address)
 
 

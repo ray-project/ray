@@ -83,7 +83,7 @@ from the above Java class.
   ray.init(address="auto")
 
   # Define a Java class.
-  counter_class = ray.java_actor_class(
+  counter_class = ray.cross_language.java_actor_class(
         "io.ray.demo.Counter")
 
   # Create a Java actor and call actor method.
@@ -94,7 +94,7 @@ from the above Java class.
   assert ray.get(obj_ref2) == 2
 
   # Define a Java function.
-  add_function = ray.java_function(
+  add_function = ray.cross_language.java_function(
         "io.ray.demo.Math", "add")
 
   # Call the Java remote function.
@@ -313,7 +313,7 @@ Then, run the following code:
 
   ray.init(address="auto")
 
-  obj_ref = ray.java_function(
+  obj_ref = ray.cross_language.java_function(
         "io.ray.demo.MyRayClass",
         "raiseExceptionFromPython").remote()
   ray.get(obj_ref)  # <-- raise exception from here.

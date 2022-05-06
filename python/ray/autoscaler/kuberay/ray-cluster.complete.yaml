@@ -8,7 +8,7 @@ metadata:
     # An unique identifier for the head node and workers of this cluster.
   name: raycluster-complete
 spec:
-  rayVersion: '1.9.2'
+  rayVersion: '1.12.0'
   enableInTreeAutoscaling: false
   ######################headGroupSpecs#################################
   # head group template and specs, (perhaps 'group' is not needed in the name)
@@ -20,7 +20,7 @@ spec:
     # logical group name, for this called head-group, also can be functional
     # pod type head or worker
     # rayNodeType: head # Not needed since it is under the headgroup
-    # the following params are used to complete the ray start: ray start --head --block --redis-port=6379 ...
+    # the following params are used to complete the ray start: ray start --head --block --port=6379 ...
     rayStartParams:
       # Flag "no-monitor" must be set when running the autoscaler in
       # a sidecar container.
@@ -29,7 +29,6 @@ spec:
       object-manager-port: '9999'
       node-manager-port: '9998'
       object-store-memory: '100000000'
-      redis-password: '5241590000000000'
       dashboard-host: '0.0.0.0'
       node-ip-address: $MY_POD_IP # auto-completed as the head pod IP
       block: 'true'
@@ -37,6 +36,8 @@ spec:
       # Use `resources` to optionally specify custom resource annotations for the Ray node.
       # The value of `resources` is a string-integer mapping.
       # Currently, `resources` must be provided in the unfortunate format demonstrated below.
+      # Moreover, "CPU" and "GPU" should NOT be included in the `resources` arg.
+      # (Use `num-cpus` and `num-gpus` rayStartParams instead.)
       resources: '"{\"Custom1\": 1, \"Custom2\": 5}"'
     #pod template
     template:
@@ -57,8 +58,18 @@ spec:
         containers:
         # The Ray head pod
         - name: ray-head
-          image: rayproject/ray:latest
+          image: rayproject/ray:1.12.0
           imagePullPolicy: Always
+          # The KubeRay operator uses the ports specified on the ray-head container
+          # to configure a service targeting the ports.
+          # The name of the service is <ray cluster name>-head-svc.
+          ports:
+          - containerPort: 6379
+            name: gcs
+          - containerPort: 8265
+            name: dashboard
+          - containerPort: 10001
+            name: client
           env:
           - name: CPU_REQUEST
             valueFrom:
@@ -84,8 +95,6 @@ spec:
             valueFrom:
               fieldRef:
                 fieldPath: status.podIP
-          ports:
-          - containerPort: 6379
           lifecycle:
             preStop:
               exec:
@@ -102,7 +111,12 @@ spec:
               name: ray-logs
         # The Ray autoscaler sidecar to the head pod
         - name: autoscaler
-          image: rayproject/kuberay-autoscaler
+          # The autoscaler image used carries the latest improvements to KubeRay autoscaling
+          # support.
+          # It is confirmed (via kuberay/test_autoscaling_e2e.py) to be compatible with all
+          # Ray versions since Ray 1.11.0.
+          # TODO: Use released Ray version when autoscaling support is stable.
+          image: rayproject/ray:8c5fe4
           imagePullPolicy: Always
           env:
           - name: RAY_CLUSTER_NAMESPACE
@@ -114,15 +128,13 @@ spec:
             # The autoscaler uses this env variable to determine which Ray CR to interact with.
             # TODO: Match with CR name automatically via operator, Helm, and/or Kustomize.
             value: raycluster-complete
-          command: ["/home/ray/anaconda3/bin/python"]
+          command: ["ray"]
           args:
-          - "/home/ray/run_autoscaler_with_retries.py"
+          - "kuberay-autoscaler"
           - "--cluster-name"
           - "$(RAY_CLUSTER_NAME)"
           - "--cluster-namespace"
           - "$(RAY_CLUSTER_NAMESPACE)"
-          - "--redis-password"
-          - "5241590000000000"
           resources:
             limits:
               cpu: 500m
@@ -131,18 +143,10 @@ spec:
               cpu: 250m
               memory: 512Mi
           volumeMounts:
-            - mountPath: /autoscaler/
-              name: autoscaler-config
             - mountPath: /tmp/ray
               name: ray-logs
         volumes:
         # You set volumes at the Pod level, then mount them into containers inside that Pod
-        - name: autoscaler-config
-          configMap:
-            name: autoscaler-config
-            items:
-            - key: ray_bootstrap_config.yaml
-              path: ray_bootstrap_config.yaml
         - name: ray-logs
           emptyDir: {}
   workerGroupSpecs:
@@ -163,9 +167,14 @@ spec:
     #  - raycluster-complete-worker-small-group-k8tj7 
     # the following params are used to complete the ray start: ray start --block --node-ip-address= ...
     rayStartParams:
-      redis-password: '5241590000000000'
       node-ip-address: $MY_POD_IP
       block: 'true'
+      # Use `resources` to optionally specify custom resource annotations for the Ray node.
+      # The value of `resources` is a string-integer mapping.
+      # Currently, `resources` must be provided in the unfortunate format demonstrated below.
+      # Moreover, "CPU" and "GPU" should NOT be included in the `resources` arg.
+      # (Use `num-cpus` and `num-gpus` rayStartParams instead.)
+      resources: '"{\"Custom2\": 5, \"Custom3\": 1}"'
     #pod template
     template:
       metadata:
@@ -181,8 +190,8 @@ spec:
           image: busybox:1.28
           command: ['sh', '-c', "until nslookup $RAY_IP.$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace).svc.cluster.local; do echo waiting for myservice; sleep 2; done"]   
         containers:
-        - name: machine-learning # must consist of lower case alphanumeric characters or '-', and must start and end with an alphanumeric character (e.g. 'my-name',  or '123-abc'
-          image: rayproject/ray
+        - name: ray-worker # must consist of lower case alphanumeric characters or '-', and must start and end with an alphanumeric character (e.g. 'my-name',  or '123-abc'
+          image: rayproject/ray:1.11.0
           # environment variables to set in the container.Optional.
           # Refer to https://kubernetes.io/docs/tasks/inject-data-application/define-environment-variable-container/
           env:
@@ -193,22 +202,22 @@ spec:
           - name: CPU_REQUEST
             valueFrom:
               resourceFieldRef:
-                containerName: machine-learning
+                containerName: ray-worker
                 resource: requests.cpu
           - name: CPU_LIMITS
             valueFrom:
               resourceFieldRef:
-                containerName: machine-learning
+                containerName: ray-worker
                 resource: limits.cpu
           - name: MEMORY_LIMITS
             valueFrom:
               resourceFieldRef:
-                containerName: machine-learning
+                containerName: ray-worker
                 resource: limits.memory
           - name: MEMORY_REQUESTS
             valueFrom:
               resourceFieldRef:
-                containerName: machine-learning
+                containerName: ray-worker
                 resource: requests.memory
           - name: MY_POD_NAME
             valueFrom:

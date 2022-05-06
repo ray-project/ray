@@ -103,31 +103,9 @@ def report(_metric=None, **kwargs):
         return _session(_metric, **kwargs)
 
 
-def make_checkpoint_dir(step=None):
-    """Gets the next checkpoint dir.
-
-    .. versionadded:: 0.8.6
-
-    .. deprecated:: 0.8.7
-        Use tune.checkpoint_dir instead.
-    """
-    raise DeprecationWarning("Deprecated method. Use `tune.checkpoint_dir` instead.")
-
-
-def save_checkpoint(checkpoint):
-    """Register the given checkpoint.
-
-    .. versionadded:: 0.8.6
-
-    .. deprecated:: 0.8.7
-        Use tune.checkpoint_dir instead.
-    """
-    raise DeprecationWarning("Deprecated method. Use `tune.checkpoint_dir` instead.")
-
-
 @PublicAPI
 @contextmanager
-def checkpoint_dir(step):
+def checkpoint_dir(step: int):
     """Returns a checkpoint dir inside a context.
 
     Store any files related to restoring state within the
@@ -142,7 +120,7 @@ def checkpoint_dir(step):
     inconsistencies.
 
     Args:
-        step (int): Index for the checkpoint. Expected to be a
+        step: Index for the checkpoint. Expected to be a
             monotonically increasing quantity.
 
     .. code-block:: python
@@ -171,7 +149,7 @@ def checkpoint_dir(step):
                 tune.report(hello="world", ray="tune")
 
     Yields:
-        checkpoint_dir (str): Directory for checkpointing.
+        checkpoint_dir: Directory for checkpointing.
 
     .. versionadded:: 0.8.7
     """

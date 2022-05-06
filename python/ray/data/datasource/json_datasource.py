@@ -14,9 +14,12 @@ class JSONDatasource(FileBasedDatasource):
     """JSON datasource, for reading and writing JSON files.
 
     Examples:
-        >>> source = JSONDatasource()
-        >>> ray.data.read_datasource(source, paths="/path/to/dir").take()
-        ... [{"a": 1, "b": "foo"}, ...]
+        >>> import ray
+        >>> from ray.data.datasource import JSONDatasource
+        >>> source = JSONDatasource() # doctest: +SKIP
+        >>> ray.data.read_datasource( # doctest: +SKIP
+        ...     source, paths="/path/to/dir").take()
+        [{"a": 1, "b": "foo"}, ...]
     """
 
     # TODO(ekl) The PyArrow JSON reader doesn't support streaming reads.
@@ -33,7 +36,7 @@ class JSONDatasource(FileBasedDatasource):
         f: "pyarrow.NativeFile",
         block: BlockAccessor,
         writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
-        **writer_args
+        **writer_args,
     ):
         writer_args = _resolve_kwargs(writer_args_fn, **writer_args)
         orient = writer_args.pop("orient", "records")

@@ -40,7 +40,7 @@ public class RayServeWrappedReplica implements RayServeReplica {
     // Parse init args.
     Object[] initArgs = null;
     try {
-      initArgs = parseInitArgs(initArgsbytes, deploymentConfig);
+      initArgs = parseInitArgs(initArgsbytes);
     } catch (IOException e) {
       String errMsg =
           LogUtil.format(
@@ -132,21 +132,13 @@ public class RayServeWrappedReplica implements RayServeReplica {
             });
   }
 
-  private Object[] parseInitArgs(byte[] initArgsbytes, DeploymentConfig deploymentConfig)
-      throws IOException {
+  private Object[] parseInitArgs(byte[] initArgsbytes) throws IOException {
 
     if (initArgsbytes == null || initArgsbytes.length == 0) {
       return new Object[0];
     }
 
-    if (deploymentConfig.isCrossLanguage()) {
-      // For other language like Python API, not support Array type.
-      return new Object[] {MessagePackSerializer.decode(initArgsbytes, Object.class)};
-    } else {
-      // If the construction request is from Java API, deserialize initArgsbytes to Object[]
-      // directly.
-      return MessagePackSerializer.decode(initArgsbytes, Object[].class);
-    }
+    return MessagePackSerializer.decode(initArgsbytes, Object[].class);
   }
 
   /**
@@ -177,6 +169,15 @@ public class RayServeWrappedReplica implements RayServeReplica {
   @Override
   public boolean checkHealth() {
     return replica.checkHealth();
+  }
+
+  /**
+   * Tell the caller this replica is successfully launched.
+   *
+   * @return
+   */
+  public boolean isAllocated() {
+    return true;
   }
 
   /**

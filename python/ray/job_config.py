@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 import uuid
 
 import ray._private.gcs_utils as gcs_utils
@@ -53,7 +53,9 @@ class JobConfig:
         return self.get_proto_job_config().SerializeToString()
 
     def set_runtime_env(
-        self, runtime_env: Optional[Dict[str, Any]], validate: bool = False
+        self,
+        runtime_env: Optional[Union[Dict[str, Any], "RuntimeEnv"]],  # noqa: F821
+        validate: bool = False,
     ) -> None:
         """Modify the runtime_env of the JobConfig.
 
@@ -63,7 +65,7 @@ class JobConfig:
         """
         self.runtime_env = runtime_env if runtime_env is not None else {}
         if validate:
-            self.runtime_env = self._validate_runtime_env()[0]
+            self.runtime_env = self._validate_runtime_env()
         self._cached_pb = None
 
     def set_ray_namespace(self, ray_namespace: str) -> None:
@@ -87,15 +89,19 @@ class JobConfig:
         # TODO(edoakes): this is really unfortunate, but JobConfig is imported
         # all over the place so this causes circular imports. We should remove
         # this dependency and pass in a validated runtime_env instead.
-        from ray._private.runtime_env.validation import ParsedRuntimeEnv
+        from ray.runtime_env import RuntimeEnv
 
-        eager_install = self.runtime_env.get("eager_install", True)
-        if not isinstance(eager_install, bool):
-            raise TypeError("eager_install must be a boolean.")
-        return ParsedRuntimeEnv(self.runtime_env), eager_install
+        if isinstance(self.runtime_env, RuntimeEnv):
+            return self.runtime_env
+        return RuntimeEnv(**self.runtime_env)
 
     def get_proto_job_config(self):
         """Return the protobuf structure of JobConfig."""
+        # TODO(edoakes): this is really unfortunate, but JobConfig is imported
+        # all over the place so this causes circular imports. We should remove
+        # this dependency and pass in a validated runtime_env instead.
+        from ray.utils import get_runtime_env_info
+
         if self._cached_pb is None:
             pb = gcs_utils.JobConfig()
             if self.ray_namespace is None:
@@ -108,10 +114,14 @@ class JobConfig:
             for k, v in self.metadata.items():
                 pb.metadata[k] = v
 
-            parsed_env, eager_install = self._validate_runtime_env()
-            pb.runtime_env_info.uris[:] = parsed_env.get_uris()
-            pb.runtime_env_info.serialized_runtime_env = parsed_env.serialize()
-            pb.runtime_env_info.runtime_env_eager_install = eager_install
+            parsed_env = self._validate_runtime_env()
+            pb.runtime_env_info.CopyFrom(
+                get_runtime_env_info(
+                    parsed_env,
+                    is_job_runtime_env=True,
+                    serialize=False,
+                )
+            )
 
             if self._default_actor_lifetime is not None:
                 pb.default_actor_lifetime = self._default_actor_lifetime
@@ -121,11 +131,15 @@ class JobConfig:
 
     def runtime_env_has_uris(self):
         """Whether there are uris in runtime env or not"""
-        return self._validate_runtime_env()[0].get_proto_runtime_env().has_uris()
+        return self._validate_runtime_env().has_uris()
 
     def get_serialized_runtime_env(self) -> str:
         """Return the JSON-serialized parsed runtime env dict"""
-        return self._validate_runtime_env()[0].serialize()
+        return self._validate_runtime_env().serialize()
+
+    def get_proto_runtime_env_config(self) -> str:
+        """Return the JSON-serialized parsed runtime env info"""
+        return self.get_proto_job_config().runtime_env_info.runtime_env_config
 
     @classmethod
     def from_json(cls, job_config_json):

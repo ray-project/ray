@@ -6,6 +6,7 @@ import com.google.common.collect.ImmutableList;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
+import io.ray.api.options.ActorCreationOptions;
 import io.ray.runtime.exception.RayActorException;
 import io.ray.runtime.task.TaskExecutor;
 import io.ray.runtime.util.SystemUtil;
@@ -49,7 +50,8 @@ public class ExitActorTest extends BaseTest {
   }
 
   public void testExitActor() throws IOException, InterruptedException {
-    ActorHandle<ExitingActor> actor = Ray.actor(ExitingActor::new).setMaxRestarts(10000).remote();
+    ActorHandle<ExitingActor> actor =
+        Ray.actor(ExitingActor::new).setMaxRestarts(ActorCreationOptions.INFINITE_RESTART).remote();
     Assert.assertEquals(1, (int) (actor.task(ExitingActor::incr).remote().get()));
     int pid = actor.task(ExitingActor::getPid).remote().get();
     Runtime.getRuntime().exec("kill -9 " + pid);
@@ -64,14 +66,16 @@ public class ExitActorTest extends BaseTest {
 
   public void testExitActorInMultiWorker() {
     Assert.assertTrue(TestUtils.getNumWorkersPerProcess() > 1);
-    ActorHandle<ExitingActor> actor1 = Ray.actor(ExitingActor::new).setMaxRestarts(10000).remote();
+    ActorHandle<ExitingActor> actor1 =
+        Ray.actor(ExitingActor::new).setMaxRestarts(ActorCreationOptions.INFINITE_RESTART).remote();
     int pid = actor1.task(ExitingActor::getPid).remote().get();
     Assert.assertEquals(
         1, (int) actor1.task(ExitingActor::getSizeOfActorContextMap).remote().get());
     ActorHandle<ExitingActor> actor2;
     while (true) {
       // Create another actor which share the same process of actor 1.
-      actor2 = Ray.actor(ExitingActor::new).setMaxRestarts(0).remote();
+      actor2 =
+          Ray.actor(ExitingActor::new).setMaxRestarts(ActorCreationOptions.NO_RESTART).remote();
       int actor2Pid = actor2.task(ExitingActor::getPid).remote().get();
       if (actor2Pid == pid) {
         break;
@@ -95,7 +99,7 @@ public class ExitActorTest extends BaseTest {
   public void testExitActorWithDynamicOptions() {
     ActorHandle<ExitingActor> actor =
         Ray.actor(ExitingActor::new)
-            .setMaxRestarts(10000)
+            .setMaxRestarts(ActorCreationOptions.INFINITE_RESTART)
             // Set dummy JVM options to start a worker process with only one worker.
             .setJvmOptions(ImmutableList.of("-Ddummy=value"))
             .remote();

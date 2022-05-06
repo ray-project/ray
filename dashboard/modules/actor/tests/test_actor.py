@@ -6,10 +6,7 @@ import time
 import traceback
 import ray
 import pytest
-import redis
 import ray.dashboard.utils as dashboard_utils
-import ray.ray_constants as ray_constants
-import ray._private.gcs_utils as gcs_utils
 import ray._private.gcs_pubsub as gcs_pubsub
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.dashboard.modules.actor import actor_consts
@@ -121,9 +118,8 @@ def test_actors(disable_aiohttp_cache, ray_start_with_dashboard):
             assert len(actors) == 3
             one_entry = list(actors.values())[0]
             assert "jobId" in one_entry
-            assert "taskSpec" in one_entry
-            assert "functionDescriptor" in one_entry["taskSpec"]
-            assert type(one_entry["taskSpec"]["functionDescriptor"]) is dict
+            assert "functionDescriptor" in one_entry
+            assert type(one_entry["functionDescriptor"]) is dict
             assert "address" in one_entry
             assert type(one_entry["address"]) is dict
             assert "state" in one_entry
@@ -216,22 +212,8 @@ def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     address_info = ray_start_with_dashboard
 
-    if gcs_pubsub.gcs_pubsub_enabled():
-        sub = gcs_pubsub.GcsActorSubscriber(address=address_info["gcs_address"])
-        sub.subscribe()
-    else:
-        address = address_info["redis_address"]
-        address = address.split(":")
-        assert len(address) == 2
-
-        client = redis.StrictRedis(
-            host=address[0],
-            port=int(address[1]),
-            password=ray_constants.REDIS_DEFAULT_PASSWORD,
-        )
-
-        sub = client.pubsub(ignore_subscribe_messages=True)
-        sub.psubscribe(gcs_utils.RAY_ACTOR_PUBSUB_PATTERN)
+    sub = gcs_pubsub.GcsActorSubscriber(address=address_info["gcs_address"])
+    sub.subscribe()
 
     @ray.remote
     class DummyActor:
@@ -244,15 +226,7 @@ def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
     def handle_pub_messages(msgs, timeout, expect_num):
         start_time = time.time()
         while time.time() - start_time < timeout and len(msgs) < expect_num:
-            if gcs_pubsub.gcs_pubsub_enabled():
-                _, actor_data = sub.poll(timeout=timeout)
-            else:
-                msg = sub.get_message()
-                if msg is None:
-                    time.sleep(0.01)
-                    continue
-                pubsub_msg = gcs_utils.PubSubMessage.FromString(msg["data"])
-                actor_data = gcs_utils.ActorTableData.FromString(pubsub_msg.data)
+            _, actor_data = sub.poll(timeout=timeout)
             if actor_data is None:
                 continue
             msgs.append(actor_data)
@@ -289,7 +263,7 @@ def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
             including_default_value_fields=False,
         )
 
-    non_state_keys = ("actorId", "jobId", "taskSpec")
+    non_state_keys = ("actorId", "jobId")
 
     for msg in msgs:
         actor_data_dict = actor_table_data_to_dict(msg)
@@ -317,9 +291,9 @@ def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
                 "actorCreationDummyObjectId",
                 "jobId",
                 "ownerAddress",
-                "taskSpec",
                 "className",
                 "serializedRuntimeEnv",
+                "functionDescriptor",
                 "rayNamespace",
             }
         else:

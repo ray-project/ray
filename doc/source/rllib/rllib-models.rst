@@ -1,6 +1,6 @@
-.. include:: /_includes/rllib_announcement.rst
+.. include:: /_includes/rllib/announcement.rst
 
-.. include:: /_includes/rllib_we_are_hiring.rst
+.. include:: /_includes/rllib/we_are_hiring.rst
 
 Models, Preprocessors, and Action Distributions
 ===============================================
@@ -29,8 +29,11 @@ observation space. Thereby, the following simple rules apply:
 
 - Discrete observations are one-hot encoded, e.g. ``Discrete(3) and value=1 -> [0, 1, 0]``.
 
-- MultiDiscrete observations are "multi" one-hot encoded,
-  e.g. ``MultiDiscrete([3, 4]) and value=[1, 0] -> [0 1 0 1 0 0 0]``.
+- MultiDiscrete observations are encoded by one-hot encoding each discrete element
+  and then concatenating the respective one-hot encoded vectors. 
+  e.g. ``MultiDiscrete([3, 4]) and value=[1, 3] -> [0 1 0 0 0 0 1]`` because
+  the first ``1`` is encoded as ``[0 1 0]`` and the second ``3`` is encoded as
+  ``[0 0 0 1]``; these two vectors are then concatenated to ``[0 1 0 0 0 0 1]``.
 
 - Tuple and Dict observations are flattened, thereby, Discrete and MultiDiscrete
   sub-spaces are handled as described above.
@@ -347,7 +350,7 @@ to get a better idea on how to write your own models of this type. These are the
 as wrappers when ``use_attention=True``.
 
 You can run `this example script <https://github.com/ray-project/ray/blob/master/rllib/examples/attention_net.py>`__ to run these nets within some of our algorithms.
-`There is also a test case <https://github.com/ray-project/ray/blob/master/rllib/tests/test_attention_net_learning.py>`__, which confirms their learning capabilities in PPO and IMPALA.
+`There is also a test case <https://github.com/ray-project/ray/blob/master/rllib/models/tests/test_attention_nets.py>`__, which confirms their learning capabilities in PPO and IMPALA.
 
 Batch Normalization
 ```````````````````
@@ -714,4 +717,4 @@ To do this, you need both a custom model that implements the autoregressive patt
 
    Not all algorithms support autoregressive action distributions; see the `algorithm overview table <rllib-algorithms.html#available-algorithms-overview>`__ for more information.
 
-.. include:: /_includes/rllib_announcement_bottom.rst
+.. include:: /_includes/rllib/announcement_bottom.rst

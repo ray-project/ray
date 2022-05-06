@@ -1,10 +1,9 @@
 flake8==3.9.1
 flake8-quotes
-gym
+gym==0.21
 scikit-image
 pandas
 requests
 tabulate
 tensorflow
 black==21.12b0
-yapf==0.23.0

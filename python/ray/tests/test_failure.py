@@ -11,7 +11,7 @@ import ray._private.utils
 import ray._private.gcs_utils as gcs_utils
 import ray.ray_constants as ray_constants
 from ray.exceptions import RayTaskError, RayActorError, GetTimeoutError
-from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsPublisher
+from ray._private.gcs_pubsub import GcsPublisher
 from ray._private.test_utils import (
     wait_for_condition,
     SignalActor,
@@ -69,21 +69,12 @@ def test_unhandled_errors(ray_start_regular):
 
 def test_publish_error_to_driver(ray_start_regular, error_pubsub):
     address_info = ray_start_regular
-    redis_client = None
-    gcs_publisher = None
-    if gcs_pubsub_enabled():
-        gcs_publisher = GcsPublisher(address=address_info["gcs_address"])
-    else:
-        redis_client = ray._private.services.create_redis_client(
-            address_info["redis_address"],
-            password=ray.ray_constants.REDIS_DEFAULT_PASSWORD,
-        )
+    gcs_publisher = GcsPublisher(address=address_info["gcs_address"])
 
     error_message = "Test error message"
     ray._private.utils.publish_error_to_driver(
         ray_constants.DASHBOARD_AGENT_DIED_ERROR,
         error_message,
-        redis_client=redis_client,
         gcs_publisher=gcs_publisher,
     )
     errors = get_error_message(
@@ -334,6 +325,7 @@ def test_actor_worker_dying_nothing_in_progress(ray_start_regular):
         ray.get(task2)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Too flaky on windows")
 def test_actor_scope_or_intentionally_killed_message(ray_start_regular, error_pubsub):
     p = error_pubsub
 
@@ -511,17 +503,26 @@ def test_export_large_objects(ray_start_regular, error_pubsub):
     assert errors[0].type == ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR
 
 
-def test_warning_many_actor_tasks_queued(shutdown_only):
+@pytest.mark.parametrize("sync", [True, False])
+def test_warning_many_actor_tasks_queued(shutdown_only, sync: bool):
     ray.init(num_cpus=1)
     p = init_error_pubsub()
 
     @ray.remote(num_cpus=1)
-    class Foo:
+    class SyncFoo:
         def f(self):
             import time
 
             time.sleep(1)
 
+    @ray.remote(num_cpus=1)
+    class AsyncFoo:
+        async def f(self):
+            import asyncio
+
+            await asyncio.sleep(1)
+
+    Foo = SyncFoo if sync else AsyncFoo
     a = Foo.remote()
     [a.f.remote() for _ in range(50000)]
     errors = get_error_message(p, 4, ray_constants.EXCESS_QUEUEING_WARNING)
@@ -530,6 +531,29 @@ def test_warning_many_actor_tasks_queued(shutdown_only):
     assert "Warning: More than 10000 tasks are pending submission to actor" in msgs[1]
     assert "Warning: More than 20000 tasks are pending submission to actor" in msgs[2]
     assert "Warning: More than 40000 tasks are pending submission to actor" in msgs[3]
+
+
+@pytest.mark.parametrize("sync", [True, False])
+def test_no_warning_many_actor_tasks_queued_when_sequential(shutdown_only, sync: bool):
+    ray.init(num_cpus=1)
+    p = init_error_pubsub()
+
+    @ray.remote(num_cpus=1)
+    class SyncFoo:
+        def f(self):
+            return 1
+
+    @ray.remote(num_cpus=1)
+    class AsyncFoo:
+        async def f(self):
+            return 1
+
+    Foo = SyncFoo if sync else AsyncFoo
+    a = Foo.remote()
+    for _ in range(10000):
+        assert ray.get(a.f.remote()) == 1
+    errors = get_error_message(p, 1, ray_constants.EXCESS_QUEUEING_WARNING, timeout=1)
+    assert len(errors) == 0
 
 
 @pytest.mark.parametrize(

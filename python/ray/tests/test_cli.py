@@ -218,11 +218,28 @@ DOCKER_TEST_CONFIG_PATH = str(
 )
 
 
+def test_enable_usage_stats(monkeypatch, tmp_path):
+    tmp_usage_stats_config_path = tmp_path / "config.json"
+    monkeypatch.setenv("RAY_USAGE_STATS_CONFIG_PATH", str(tmp_usage_stats_config_path))
+    runner = CliRunner()
+    runner.invoke(scripts.enable_usage_stats, [])
+    assert '{"usage_stats": true}' == tmp_usage_stats_config_path.read_text()
+
+
+def test_disable_usage_stats(monkeypatch, tmp_path):
+    tmp_usage_stats_config_path = tmp_path / "config.json"
+    monkeypatch.setenv("RAY_USAGE_STATS_CONFIG_PATH", str(tmp_usage_stats_config_path))
+    runner = CliRunner()
+    runner.invoke(scripts.disable_usage_stats, [])
+    assert '{"usage_stats": false}' == tmp_usage_stats_config_path.read_text()
+
+
 @pytest.mark.skipif(
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"),
 )
-def test_ray_start(configure_lang):
+def test_ray_start(configure_lang, monkeypatch, tmp_path):
+    monkeypatch.setenv("RAY_USAGE_STATS_CONFIG_PATH", str(tmp_path / "config.json"))
     runner = CliRunner()
     temp_dir = os.path.join("/tmp", uuid.uuid4().hex)
     result = runner.invoke(
@@ -248,13 +265,52 @@ def test_ray_start(configure_lang):
     _check_output_via_pattern("test_ray_start.txt", result)
 
 
+def _ray_start_hook(ray_params, head):
+    os.makedirs(ray_params.temp_dir, exist_ok=True)
+    with open(os.path.join(ray_params.temp_dir, "ray_hook_ok"), "w") as f:
+        f.write("HOOK_OK")
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
+    reason=("Mac builds don't provide proper locale support"),
+)
+def test_ray_start_hook(configure_lang, monkeypatch, tmp_path):
+    monkeypatch.setenv("RAY_START_HOOK", "ray.tests.test_cli._ray_start_hook")
+    runner = CliRunner()
+    temp_dir = os.path.join("/tmp", uuid.uuid4().hex)
+    runner.invoke(
+        scripts.start,
+        [
+            "--head",
+            "--log-style=pretty",
+            "--log-color",
+            "False",
+            "--port",
+            "0",
+            "--temp-dir",
+            temp_dir,
+        ],
+    )
+
+    # Check that the hook executed.
+    assert os.path.exists(temp_dir)
+    assert os.path.exists(os.path.join(temp_dir, "ray_hook_ok"))
+
+    _die_on_error(runner.invoke(scripts.stop))
+
+
 @pytest.mark.skipif(
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"),
 )
 @mock_ec2
 @mock_iam
-def test_ray_up(configure_lang, _unlink_test_ssh_key, configure_aws):
+def test_ray_up(
+    configure_lang, _unlink_test_ssh_key, configure_aws, monkeypatch, tmp_path
+):
+    monkeypatch.setenv("RAY_USAGE_STATS_CONFIG_PATH", str(tmp_path / "config.json"))
+
     def commands_mock(command, stdin):
         # if we want to have e.g. some commands fail,
         # we can have overrides happen here.
@@ -291,7 +347,11 @@ def test_ray_up(configure_lang, _unlink_test_ssh_key, configure_aws):
 )
 @mock_ec2
 @mock_iam
-def test_ray_up_docker(configure_lang, _unlink_test_ssh_key, configure_aws):
+def test_ray_up_docker(
+    configure_lang, _unlink_test_ssh_key, configure_aws, monkeypatch, tmp_path
+):
+    monkeypatch.setenv("RAY_USAGE_STATS_CONFIG_PATH", str(tmp_path / "config.json"))
+
     def commands_mock(command, stdin):
         # if we want to have e.g. some commands fail,
         # we can have overrides happen here.
@@ -330,7 +390,11 @@ def test_ray_up_docker(configure_lang, _unlink_test_ssh_key, configure_aws):
 )
 @mock_ec2
 @mock_iam
-def test_ray_up_record(configure_lang, _unlink_test_ssh_key, configure_aws):
+def test_ray_up_record(
+    configure_lang, _unlink_test_ssh_key, configure_aws, monkeypatch, tmp_path
+):
+    monkeypatch.setenv("RAY_USAGE_STATS_CONFIG_PATH", str(tmp_path / "config.json"))
+
     def commands_mock(command, stdin):
         # if we want to have e.g. some commands fail,
         # we can have overrides happen here.

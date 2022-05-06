@@ -43,14 +43,14 @@ def ray_connect_cluster():
 
 
 def test_single_step(ray_start_2_cpus):
-    trainable_cls = DistributedTrainableCreator(_train_simple, num_hosts=1, num_slots=2)
+    trainable_cls = DistributedTrainableCreator(_train_simple, num_workers=2)
     trainer = trainable_cls()
     trainer.train()
     trainer.stop()
 
 
 def test_step_after_completion(ray_start_2_cpus):
-    trainable_cls = DistributedTrainableCreator(_train_simple, num_hosts=1, num_slots=2)
+    trainable_cls = DistributedTrainableCreator(_train_simple, num_workers=2)
     trainer = trainable_cls(config={"epochs": 1})
     with pytest.raises(RuntimeError):
         for i in range(10):
@@ -61,13 +61,13 @@ def test_validation(ray_start_2_cpus):
     def bad_func(a, b, c):
         return 1
 
-    t_cls = DistributedTrainableCreator(bad_func, num_slots=2)
+    t_cls = DistributedTrainableCreator(bad_func, num_workers=2)
     with pytest.raises(ValueError):
         t_cls()
 
 
 def test_set_global(ray_start_2_cpus):
-    trainable_cls = DistributedTrainableCreator(_train_simple, num_slots=2)
+    trainable_cls = DistributedTrainableCreator(_train_simple, num_workers=2)
     trainable = trainable_cls()
     result = trainable.train()
     trainable.stop()
@@ -76,7 +76,7 @@ def test_set_global(ray_start_2_cpus):
 
 @pytest.mark.parametrize("enabled_checkpoint", [True, False])
 def test_simple_tune(ray_start_4_cpus, enabled_checkpoint):
-    trainable_cls = DistributedTrainableCreator(_train_simple, num_slots=2)
+    trainable_cls = DistributedTrainableCreator(_train_simple, num_workers=2)
     analysis = tune.run(
         trainable_cls,
         config={"enable_checkpoint": enabled_checkpoint},
@@ -92,7 +92,7 @@ def test_resource_tune(ray_connect_cluster, use_gpu):
     if use_gpu and ray.cluster_resources().get("GPU", 0) == 0:
         pytest.skip("No GPU available.")
     trainable_cls = DistributedTrainableCreator(
-        _train_simple, num_slots=2, use_gpu=use_gpu
+        _train_simple, num_workers=2, use_gpu=use_gpu
     )
     analysis = tune.run(trainable_cls, num_samples=2, stop={"training_iteration": 2})
     assert analysis.trials[0].last_result["training_iteration"] == 2

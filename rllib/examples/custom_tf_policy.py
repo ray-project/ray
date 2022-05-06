@@ -3,7 +3,7 @@ import os
 
 import ray
 from ray import tune
-from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.agents.trainer import Trainer
 from ray.rllib.evaluation.postprocessing import discount_cumsum
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.framework import try_import_tf
@@ -35,11 +35,12 @@ MyTFPolicy = build_tf_policy(
     postprocess_fn=calculate_advantages,
 )
 
-# <class 'ray.rllib.agents.trainer_template.MyCustomTrainer'>
-MyTrainer = build_trainer(
-    name="MyCustomTrainer",
-    default_policy=MyTFPolicy,
-)
+
+# Create a new Trainer using the Policy defined above.
+class MyTrainer(Trainer):
+    def get_default_policy_class(self, config):
+        return MyTFPolicy
+
 
 if __name__ == "__main__":
     args = parser.parse_args()

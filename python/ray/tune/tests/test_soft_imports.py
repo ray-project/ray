@@ -15,7 +15,7 @@ class TestSoftImports(unittest.TestCase):
 
             # ensure that the dependencies aren't actually installed
             if searcher and name not in ("variant_generator", "random"):
-                with self.assertRaises(AssertionError):
+                with self.assertRaises((AssertionError, ImportError)):
                     searcher()
 
 

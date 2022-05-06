@@ -42,34 +42,32 @@ class SkOptSearch(Searcher):
     results.
 
     Parameters:
-        optimizer (skopt.optimizer.Optimizer): Optimizer provided
+        optimizer: Optimizer provided
             from skopt.
-        space (dict|list): A dict mapping parameter names to valid parameters,
+        space: A dict mapping parameter names to valid parameters,
             i.e. tuples for numerical parameters and lists for categorical
             parameters. If you passed an optimizer instance as the
             `optimizer` argument, this should be a list of parameter names
             instead.
-        metric (str): The training result objective value attribute. If None
+        metric: The training result objective value attribute. If None
             but a mode was passed, the anonymous metric `_metric` will be used
             per default.
-        mode (str): One of {min, max}. Determines whether objective is
+        mode: One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
-        points_to_evaluate (list): Initial parameter suggestions to be run
+        points_to_evaluate: Initial parameter suggestions to be run
             first. This is for when you already have some good parameters
             you want to run first to help the algorithm make better suggestions
             for future parameters. Needs to be a list of dicts containing the
             configurations.
-        evaluated_rewards (list): If you have previously evaluated the
+        evaluated_rewards: If you have previously evaluated the
             parameters passed in as points_to_evaluate you can avoid
             re-running those trials by passing in the reward attributes
             as a list so the optimiser can be told the results without
             needing to re-compute the trial. Must be the same length as
             points_to_evaluate. (See tune/examples/skopt_example.py)
-        convert_to_python (bool): SkOpt outputs numpy primitives (e.g.
+        convert_to_python: SkOpt outputs numpy primitives (e.g.
             ``np.int64``) instead of Python types. If this setting is set
             to ``True``, the values will be converted to Python primitives.
-        max_concurrent: Deprecated.
-        use_early_stopped_trials: Deprecated.
 
     Tune automatically converts search spaces to SkOpt's format:
 
@@ -127,8 +125,6 @@ class SkOptSearch(Searcher):
         points_to_evaluate: Optional[List[Dict]] = None,
         evaluated_rewards: Optional[List] = None,
         convert_to_python: bool = True,
-        max_concurrent: Optional[int] = None,
-        use_early_stopped_trials: Optional[bool] = None,
     ):
         assert sko is not None, (
             "skopt must be installed! "
@@ -138,12 +134,10 @@ class SkOptSearch(Searcher):
 
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
-        self.max_concurrent = max_concurrent
+
         super(SkOptSearch, self).__init__(
             metric=metric,
             mode=mode,
-            max_concurrent=max_concurrent,
-            use_early_stopped_trials=use_early_stopped_trials,
         )
 
         self._initial_points = []
@@ -247,7 +241,7 @@ class SkOptSearch(Searcher):
 
         else:
             logger.warning(
-                "Only non errored and non pruned points" " can be added to SkOpt."
+                "Only non errored and non pruned points can be added to SkOpt."
             )
 
     def set_search_properties(

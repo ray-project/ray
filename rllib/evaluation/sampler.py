@@ -25,7 +25,6 @@ from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
 from ray.rllib.evaluation.collectors.simple_list_collector import SimpleListCollector
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.metrics import RolloutMetrics
-from ray.rllib.evaluation.sample_batch_builder import MultiAgentSampleBatchBuilder
 from ray.rllib.env.base_env import BaseEnv, convert_to_base_env, ASYNC_RESET_RETURN
 from ray.rllib.env.wrappers.atari_wrappers import get_wrapper_by_cls, MonitorEnv
 from ray.rllib.models.preprocessors import Preprocessor
@@ -38,7 +37,7 @@ from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.filter import Filter
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.utils.numpy import convert_to_numpy, make_action_immutable
 from ray.rllib.utils.spaces.space_utils import clip_action, unsquash_action, unbatch
 from ray.rllib.utils.typing import (
     SampleBatchType,
@@ -616,21 +615,14 @@ def _env_runner(
         horizon = float("inf")
         logger.debug("No episode horizon specified, assuming inf.")
 
-    # Pool of batch builders, which can be shared across episodes to pack
-    # trajectory data.
-    batch_builder_pool: List[MultiAgentSampleBatchBuilder] = []
-
-    def get_batch_builder():
-        if batch_builder_pool:
-            return batch_builder_pool.pop()
-        else:
-            return None
-
     def new_episode(env_id):
         episode = Episode(
             worker.policy_map,
             worker.policy_mapping_fn,
-            get_batch_builder,
+            # SimpleListCollector will find or create a
+            # simple_list_collector._PolicyCollector as batch_builder
+            # for this episode later. Here we simply provide a None factory.
+            lambda: None,  # batch_builder_factory
             extra_batch_callback,
             env_id=env_id,
             worker=worker,
@@ -753,7 +745,7 @@ def _env_runner(
                     simple_image_viewer.imshow(rendered)
             elif rendered not in [True, False, None]:
                 raise ValueError(
-                    "The env's ({base_env}) `try_render()` method returned an"
+                    f"The env's ({base_env}) `try_render()` method returned an"
                     " unsupported value! Make sure you either return a "
                     "uint8/w x h x 3 (RGB) image or handle rendering in a "
                     "window and then return `True`."
@@ -1258,6 +1250,9 @@ def _process_policy_eval_results(
                 episode._set_last_action(agent_id, action)
 
             assert agent_id not in actions_to_send[env_id]
+            # Flag actions as immutable to notify the user when trying to change it
+            # and to avoid hardly traceable errors.
+            tree.traverse(make_action_immutable, action_to_send, top_down=False)
             actions_to_send[env_id][agent_id] = action_to_send
 
     return actions_to_send

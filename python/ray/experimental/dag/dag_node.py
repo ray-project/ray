@@ -10,7 +10,6 @@ from typing import (
     Any,
     TypeVar,
     Callable,
-    Set,
 )
 import uuid
 
@@ -70,46 +69,62 @@ class DAGNode:
         return self._bound_options.copy()
 
     def get_other_args_to_resolve(self) -> Dict[str, Any]:
-
+        """Return the dict of other args to resolve arguments for this node."""
         return self._bound_other_args_to_resolve.copy()
 
-    def execute(self, *args) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
-        """Execute this DAG using the Ray default executor."""
-        return self._apply_recursive(lambda node: node._execute_impl(*args))
+    def get_stable_uuid(self) -> str:
+        """Return stable uuid for this node.
+        1) Generated only once at first instance creation
+        2) Stable across pickling, replacement and JSON serialization.
+        """
+        return self._stable_uuid
 
-    def _get_toplevel_child_nodes(self) -> Set["DAGNode"]:
-        """Return the set of nodes specified as top-level args.
+    def execute(self, *args, **kwargs) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
+        """Execute this DAG using the Ray default executor."""
+        return self.apply_recursive(lambda node: node._execute_impl(*args, **kwargs))
+
+    def _get_toplevel_child_nodes(self) -> List["DAGNode"]:
+        """Return the list of nodes specified as top-level args.
 
         For example, in `f.remote(a, [b])`, only `a` is a top-level arg.
 
-        This set of nodes are those that are typically resolved prior to
+        This list of nodes are those that are typically resolved prior to
         task execution in Ray. This does not include nodes nested within args.
         For that, use ``_get_all_child_nodes()``.
         """
 
-        children = set()
+        # we use List instead of Set here because the hash key of the node
+        # object changes each time we create it. So if using Set here, the
+        # order of returned children can be different if we create the same
+        # nodes and dag one more time.
+        children = []
         for a in self.get_args():
             if isinstance(a, DAGNode):
-                children.add(a)
+                if a not in children:
+                    children.append(a)
         for a in self.get_kwargs().values():
             if isinstance(a, DAGNode):
-                children.add(a)
+                if a not in children:
+                    children.append(a)
         for a in self.get_other_args_to_resolve().values():
             if isinstance(a, DAGNode):
-                children.add(a)
+                if a not in children:
+                    children.append(a)
         return children
 
-    def _get_all_child_nodes(self) -> Set["DAGNode"]:
-        """Return the set of nodes referenced by the args, kwargs, and
+    def _get_all_child_nodes(self) -> List["DAGNode"]:
+        """Return the list of nodes referenced by the args, kwargs, and
         args_to_resolve in current node, even they're deeply nested.
 
         Examples:
-            f.remote(a, [b]) -> set(a, b)
-            f.remote(a, [b], key={"nested": [c]}) -> set(a, b, c)
+            f.remote(a, [b]) -> [a, b]
+            f.remote(a, [b], key={"nested": [c]}) -> [a, b, c]
         """
 
         scanner = _PyObjScanner()
-        children = set()
+        # we use List instead of Set here, reason explained
+        # in `_get_toplevel_child_nodes`.
+        children = []
         for n in scanner.find_nodes(
             [
                 self._bound_args,
@@ -117,7 +132,8 @@ class DAGNode:
                 self._bound_other_args_to_resolve,
             ]
         ):
-            children.add(n)
+            if n not in children:
+                children.append(n)
         return children
 
     def _apply_and_replace_all_child_nodes(
@@ -126,7 +142,7 @@ class DAGNode:
         """Apply and replace all immediate child nodes using a given function.
 
         This is a shallow replacement only. To recursively transform nodes in
-        the DAG, use ``_apply_recursive()``.
+        the DAG, use ``apply_recursive()``.
 
         Args:
             fn: Callable that will be applied once to each child of this node.
@@ -159,7 +175,7 @@ class DAGNode:
             new_args, new_kwargs, self.get_options(), new_other_args_to_resolve
         )
 
-    def _apply_recursive(self, fn: "Callable[[DAGNode], T]") -> T:
+    def apply_recursive(self, fn: "Callable[[DAGNode], T]") -> T:
         """Apply callable on each node in this DAG in a bottom-up tree walk.
 
         Args:
@@ -175,10 +191,18 @@ class DAGNode:
             def __init__(self, fn):
                 self.cache = {}
                 self.fn = fn
+                self.input_node_uuid = None
 
             def __call__(self, node):
                 if node._stable_uuid not in self.cache:
                     self.cache[node._stable_uuid] = self.fn(node)
+                if type(node).__name__ == "InputNode":
+                    if not self.input_node_uuid:
+                        self.input_node_uuid = node._stable_uuid
+                    elif self.input_node_uuid != node._stable_uuid:
+                        raise AssertionError(
+                            "Each DAG should only have one unique InputNode."
+                        )
                 return self.cache[node._stable_uuid]
 
         if not type(fn).__name__ == "_CachingFn":
@@ -186,9 +210,44 @@ class DAGNode:
 
         return fn(
             self._apply_and_replace_all_child_nodes(
-                lambda node: node._apply_recursive(fn)
+                lambda node: node.apply_recursive(fn)
             )
         )
+
+    def apply_functional(
+        self,
+        source_input_list: Any,
+        predictate_fn: Callable,
+        apply_fn: Callable,
+    ):
+        """
+        Apply a given function to DAGNodes in source_input_list, and return
+        the replaced inputs without mutating or coping any DAGNode.
+
+        Args:
+            source_input_list: Source inputs to extract and apply function on
+                all children DAGNode instances.
+            predictate_fn: Applied on each DAGNode instance found and determine
+                if we should apply function to it. Can be used to filter node
+                types.
+            apply_fn: Function to appy on the node on bound attributes. Example:
+                apply_fn = lambda node: node._get_serve_deployment_handle(
+                    node._deployment, node._bound_other_args_to_resolve
+                )
+
+        Returns:
+            replaced_inputs: Outputs of apply_fn on DAGNodes in
+                source_input_list that passes predictate_fn.
+        """
+        replace_table = {}
+        scanner = _PyObjScanner()
+        for node in scanner.find_nodes(source_input_list):
+            if predictate_fn(node) and node not in replace_table:
+                replace_table[node] = apply_fn(node)
+
+        replaced_inputs = scanner.replace_nodes(replace_table)
+
+        return replaced_inputs
 
     def _execute_impl(self) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
         """Execute this node, assuming args have been transformed already."""
@@ -225,3 +284,14 @@ class DAGNode:
         serializable form.
         """
         raise ValueError(f"DAGNode cannot be serialized. DAGNode: {str(self)}")
+
+    def __getattr__(self, attr: str):
+        if attr == "bind":
+            raise AttributeError(f".bind() cannot be used again on {type(self)} ")
+        elif attr == "remote":
+            raise AttributeError(
+                f".remote() cannot be used on {type(self)}. To execute the task "
+                "graph for this node, use .execute()."
+            )
+        else:
+            return self.__getattribute__(attr)

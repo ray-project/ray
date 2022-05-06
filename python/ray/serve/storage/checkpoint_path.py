@@ -1,20 +1,20 @@
+import logging
 from urllib.parse import parse_qsl, urlparse
 
-from ray.serve.utils import logger
-from ray.serve.constants import DEFAULT_CHECKPOINT_PATH
+from ray._private.utils import import_attr
+from ray.serve.constants import DEFAULT_CHECKPOINT_PATH, SERVE_LOGGER_NAME
 from ray.serve.storage.kv_store import RayInternalKVStore, RayLocalKVStore, RayS3KVStore
 from ray.serve.storage.kv_store_base import KVStoreBase
 from ray.serve.storage.ray_gcs_kv_store import RayGcsKVStore
-from ray._private.utils import import_attr
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 def make_kv_store(checkpoint_path, namespace):
     """Create KVStore instance based on checkpoint_path configuration"""
 
     if checkpoint_path == DEFAULT_CHECKPOINT_PATH:
-        logger.info(
-            "Using RayInternalKVStore for controller " "checkpoint and recovery."
-        )
+        logger.info("Using RayInternalKVStore for controller checkpoint and recovery.")
         return RayInternalKVStore(namespace)
     else:
         parsed_url = urlparse(checkpoint_path)

@@ -1,13 +1,13 @@
 from contextlib import contextmanager
 import atexit
 import faulthandler
+import functools
 import hashlib
 import inspect
 import io
 import json
 import logging
 import os
-import redis
 import sys
 import threading
 import time
@@ -21,6 +21,8 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 # Ray modules
 import ray.cloudpickle as pickle
 import ray._private.memory_monitor as memory_monitor
+import ray.internal.storage as storage
+from ray.internal.storage import _load_class
 import ray.node
 import ray.job_config
 import ray._private.parameter
@@ -29,9 +31,7 @@ import ray.remote_function
 import ray.serialization as serialization
 import ray._private.gcs_utils as gcs_utils
 import ray._private.services as services
-from ray.util.scheduling_strategies import SchedulingStrategyT
 from ray._private.gcs_pubsub import (
-    gcs_pubsub_enabled,
     GcsPublisher,
     GcsErrorSubscriber,
     GcsLogSubscriber,
@@ -44,6 +44,7 @@ import ray._private.import_thread as import_thread
 from ray.util.tracing.tracing_helper import import_from_string
 from ray.util.annotations import PublicAPI, DeveloperAPI, Deprecated
 from ray.util.debug import log_once
+from ray._private import ray_option_utils
 import ray
 import colorama
 import setproctitle
@@ -82,8 +83,6 @@ LOCAL_MODE = 2
 SPILL_WORKER_MODE = 3
 RESTORE_WORKER_MODE = 4
 
-ERROR_KEY_PREFIX = b"Error:"
-
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
@@ -93,7 +92,7 @@ logger = logging.getLogger(__name__)
 # Visible for testing.
 def _unhandled_error_handler(e: Exception):
     logger.error(
-        "Unhandled error (suppress with " "RAY_IGNORE_UNHANDLED_ERRORS=1): {}".format(e)
+        f"Unhandled error (suppress with 'RAY_IGNORE_UNHANDLED_ERRORS=1'): {e}"
     )
 
 
@@ -143,6 +142,9 @@ class Worker:
         # running on.
         self.ray_debugger_external = False
         self._load_code_from_local = False
+        # Create the lock here because the serializer will use it before
+        # initializing Ray.
+        self.lock = threading.RLock()
 
     @property
     def connected(self):
@@ -207,12 +209,8 @@ class Worker:
         """Get the runtime env in json format"""
         return self.core_worker.get_current_runtime_env()
 
-    def get_serialization_context(self, job_id=None):
+    def get_serialization_context(self):
         """Get the SerializationContext of the job that this worker is processing.
-
-        Args:
-            job_id: The ID of the job that indicates which job to get
-                the serialization context for.
 
         Returns:
             The serialization context of the given job.
@@ -221,14 +219,17 @@ class Worker:
         # called by`register_class_for_serialization`, as well as the import
         # thread, from different threads. Also, this function will recursively
         # call itself, so we use RLock here.
-        if job_id is None:
-            job_id = self.current_job_id
+        job_id = self.current_job_id
+        context_map = self.serialization_context_map
         with self.lock:
-            if job_id not in self.serialization_context_map:
-                self.serialization_context_map[
-                    job_id
-                ] = serialization.SerializationContext(self)
-            return self.serialization_context_map[job_id]
+            if job_id not in context_map:
+                # The job ID is nil before initializing Ray.
+                if JobID.nil() in context_map:
+                    # Transfer the serializer context used before initializing Ray.
+                    context_map[job_id] = context_map.pop(JobID.nil())
+                else:
+                    context_map[job_id] = serialization.SerializationContext(self)
+            return context_map[job_id]
 
     def check_connected(self):
         """Check if the worker is connected.
@@ -238,7 +239,7 @@ class Worker:
         """
         if not self.connected:
             raise RaySystemError(
-                "Ray has not been started yet. You can " "start Ray with 'ray.init()'."
+                "Ray has not been started yet. You can start Ray with 'ray.init()'."
             )
 
     def set_mode(self, mode):
@@ -299,9 +300,9 @@ class Worker:
             )
 
         if self.mode == LOCAL_MODE:
-            assert object_ref is None, (
-                "Local Mode does not support " "inserting with an ObjectRef"
-            )
+            assert (
+                object_ref is None
+            ), "Local Mode does not support inserting with an ObjectRef"
 
         serialized_value = self.get_serialization_context().serialize(value)
         # This *must* be the first place that we construct this python
@@ -452,20 +453,13 @@ class Worker:
 
     def print_logs(self):
         """Prints log messages from workers on all nodes in the same job."""
-        if self.gcs_pubsub_enabled:
-            subscriber = self.gcs_log_subscriber
-            subscriber.subscribe()
-        else:
-            subscriber = self.redis_client.pubsub(ignore_subscribe_messages=True)
-            subscriber.subscribe(gcs_utils.LOG_FILE_CHANNEL)
+        import grpc
+
+        subscriber = self.gcs_log_subscriber
+        subscriber.subscribe()
+        exception_type = grpc.RpcError
         localhost = services.get_node_ip_address()
         try:
-            # Keep track of the number of consecutive log messages that have
-            # been received with no break in between. If this number grows
-            # continually, then the worker is probably not able to process the
-            # log messages as rapidly as they are coming in.
-            # This is meaningful only for Redis subscriber.
-            num_consecutive_messages_received = 0
             # Number of messages received from the last polling. When the batch
             # size exceeds 100 and keeps increasing, the worker and the user
             # probably will not be able to consume the log messages as rapidly
@@ -478,43 +472,21 @@ class Worker:
                 if self.threads_stopped.is_set():
                     return
 
-                if self.gcs_pubsub_enabled:
-                    msg = subscriber.poll()
-                else:
-                    msg = subscriber.get_message()
+                data = subscriber.poll()
                 # GCS subscriber only returns None on unavailability.
-                # Redis subscriber returns None when there is no new message.
-                if msg is None:
-                    num_consecutive_messages_received = 0
+                if data is None:
                     last_polling_batch_size = 0
-                    self.threads_stopped.wait(timeout=0.01)
                     continue
-
-                if self.gcs_pubsub_enabled:
-                    data = msg
-                else:
-                    data = json.loads(ray._private.utils.decode(msg["data"]))
 
                 # Don't show logs from other drivers.
                 if data["job"] and data["job"] != job_id_hex:
-                    num_consecutive_messages_received = 0
                     last_polling_batch_size = 0
                     continue
 
                 data["localhost"] = localhost
                 global_worker_stdstream_dispatcher.emit(data)
 
-                if self.gcs_pubsub_enabled:
-                    lagging = (
-                        100 <= last_polling_batch_size < subscriber.last_batch_size
-                    )
-                    last_polling_batch_size = subscriber.last_batch_size
-                else:
-                    num_consecutive_messages_received += 1
-                    lagging = (
-                        num_consecutive_messages_received % 100 == 0
-                        and num_consecutive_messages_received > 0
-                    )
+                lagging = 100 <= last_polling_batch_size < subscriber.last_batch_size
                 if lagging:
                     logger.warning(
                         "The driver may not be able to keep up with the "
@@ -523,7 +495,9 @@ class Worker:
                         "'ray.init(log_to_driver=False)'."
                     )
 
-        except (OSError, redis.exceptions.ConnectionError) as e:
+                last_polling_batch_size = subscriber.last_batch_size
+
+        except (OSError, exception_type) as e:
             logger.error(f"print_logs: {e}")
         finally:
             # Close the pubsub client to avoid leaking file descriptors.
@@ -597,7 +571,7 @@ def get_resource_ids():
 
     if _mode() == LOCAL_MODE:
         raise RuntimeError(
-            "ray.worker.get_resource_ids() currently does not work in " "local_mode."
+            "ray.worker.get_resource_ids() currently does not work in local_mode."
         )
 
     return global_worker.core_worker.resource_ids()
@@ -655,9 +629,7 @@ class RayContext(BaseContext, Mapping):
 
     def __init__(self, address_info: Dict[str, Optional[str]]):
         self.dashboard_url = get_dashboard_url()
-        self.python_version = "{}.{}.{}".format(
-            sys.version_info[0], sys.version_info[1], sys.version_info[2]
-        )
+        self.python_version = "{}.{}.{}".format(*sys.version_info[:3])
         self.ray_version = ray.__version__
         self.ray_commit = ray.__commit__
         # No client protocol version since this driver was intiialized
@@ -729,7 +701,8 @@ def init(
     logging_format: str = ray_constants.LOGGER_FORMAT,
     log_to_driver: bool = True,
     namespace: Optional[str] = None,
-    runtime_env: Dict[str, Any] = None,
+    runtime_env: Optional[Union[Dict[str, Any], "RuntimeEnv"]] = None,  # noqa: F821
+    storage: Optional[str] = None,
     # The following are unstable parameters and their use is discouraged.
     _enable_object_reconstruction: bool = False,
     _redis_max_memory: Optional[int] = None,
@@ -742,6 +715,7 @@ def init(
     _metrics_export_port: Optional[int] = None,
     _system_config: Optional[Dict[str, str]] = None,
     _tracing_startup_hook: Optional[Callable] = None,
+    _node_name: str = None,
     **kwargs,
 ) -> BaseContext:
     """
@@ -827,11 +801,15 @@ def init(
             timestamp, filename, line number, and message. See the source file
             ray_constants.py for details. Ignored unless "configure_logging"
             is true.
-        log_to_driver (bool): If true, the output from all of the worker
+        log_to_driver: If true, the output from all of the worker
             processes on all nodes will be directed to the driver.
-        namespace (str): Namespace to use
-        runtime_env (dict): The runtime environment to use for this job (see
-                :ref:`runtime-environments` for details).
+        namespace: Namespace to use
+        runtime_env: The runtime environment to use
+            for this job (see :ref:`runtime-environments` for details).
+        storage: [Experimental] Specify a URI for persistent cluster-wide storage.
+            This storage path must be accessible by all nodes of the cluster, otherwise
+            an error will be raised. This option can also be specified as the
+            RAY_STORAGE env var.
         _enable_object_reconstruction (bool): If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that
@@ -859,6 +837,8 @@ def init(
             (optional) additional instruments. See more at
             docs.ray.io/tracing.html. It is currently under active development,
             and the API is subject to change.
+        _node_name (str): User-provided node name or identifier. Defaults to
+            the node IP address.
 
     Returns:
         If the provided address includes a protocol, for example by prepending
@@ -922,8 +902,7 @@ def init(
             # https://github.com/ray-project/ray/issues/12059
             soft = max(soft, min(hard, 65536))
             logger.debug(
-                "Automatically increasing RLIMIT_NOFILE to max "
-                "value of {}".format(hard)
+                f"Automatically increasing RLIMIT_NOFILE to max value of {hard}"
             )
             try:
                 resource.setrlimit(resource.RLIMIT_NOFILE, (soft, hard))
@@ -953,13 +932,26 @@ def init(
         # ray job submission with driver script executed in subprocess
         job_config_json = json.loads(os.environ.get(RAY_JOB_CONFIG_JSON_ENV_VAR))
         job_config = ray.job_config.JobConfig.from_json(job_config_json)
+
+        if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ:
+            runtime_env = _load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
+                job_config.runtime_env
+            )
+            job_config.set_runtime_env(runtime_env)
+
     # RAY_JOB_CONFIG_JSON_ENV_VAR is only set at ray job manager level and has
     # higher priority in case user also provided runtime_env for ray.init()
-    elif runtime_env:
-        # Set runtime_env in job_config if passed in as part of ray.init()
-        if job_config is None:
-            job_config = ray.job_config.JobConfig()
-        job_config.set_runtime_env(runtime_env)
+    else:
+        if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ:
+            runtime_env = _load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
+                runtime_env
+            )
+
+        if runtime_env:
+            # Set runtime_env in job_config if passed in as part of ray.init()
+            if job_config is None:
+                job_config = ray.job_config.JobConfig()
+            job_config.set_runtime_env(runtime_env)
 
     if _node_ip_address is not None:
         node_ip_address = services.resolve_ip_for_localhost(_node_ip_address)
@@ -970,12 +962,9 @@ def init(
         bootstrap_address = services.canonicalize_bootstrap_address(address)
         assert bootstrap_address is not None
         logger.info(
-            "Connecting to existing Ray cluster at address: " f"{bootstrap_address}"
+            f"Connecting to existing Ray cluster at address: {bootstrap_address}"
         )
-        if gcs_utils.use_gcs_for_bootstrap():
-            gcs_address = bootstrap_address
-        else:
-            redis_address = bootstrap_address
+        gcs_address = bootstrap_address
 
     if configure_logging:
         setup_logger(logging_level, logging_format)
@@ -1006,6 +995,12 @@ def init(
 
     if bootstrap_address is None:
         # In this case, we need to start a new cluster.
+
+        # Don't collect usage stats in ray.init().
+        from ray._private.usage import usage_lib
+
+        usage_lib.set_usage_stats_enabled_via_env_var(False)
+
         # Use a random port by not specifying Redis port / GCS server port.
         ray_params = ray._private.parameter.RayParams(
             node_ip_address=node_ip_address,
@@ -1029,6 +1024,7 @@ def init(
             redis_max_memory=_redis_max_memory,
             plasma_store_socket_name=None,
             temp_dir=_temp_dir,
+            storage=storage,
             # We need to disable it if runtime env is not set.
             # Uploading happens after core worker is created. And we should
             # prevent default worker being created before uploading.
@@ -1042,6 +1038,7 @@ def init(
             enable_object_reconstruction=_enable_object_reconstruction,
             metrics_export_port=_metrics_export_port,
             tracing_startup_hook=_tracing_startup_hook,
+            node_name=_node_name,
         )
         # Start the Ray processes. We set shutdown_at_exit=False because we
         # shutdown the node in the ray.shutdown call that happens in the atexit
@@ -1077,6 +1074,11 @@ def init(
                 "When connecting to an existing cluster, "
                 "_enable_object_reconstruction must not be provided."
             )
+        if _node_name is not None:
+            raise ValueError(
+                "_node_name cannot be configured when connecting to "
+                "an existing cluster."
+            )
 
         # In this case, we only need to connect the node.
         ray_params = ray._private.parameter.RayParams(
@@ -1086,6 +1088,7 @@ def init(
             redis_address=redis_address,
             redis_password=_redis_password,
             object_ref_seed=None,
+            storage=storage,
             temp_dir=_temp_dir,
             _system_config=_system_config,
             enable_object_reconstruction=_enable_object_reconstruction,
@@ -1183,6 +1186,7 @@ def shutdown(_exiting_interpreter: bool = False):
             _global_node.destroy_external_storage()
         _global_node.kill_all_processes(check_alive=False, allow_graceful=True)
         _global_node = None
+    storage._reset()
 
     # TODO(rkn): Instead of manually resetting some of the worker fields, we
     # should simply set "global_worker" to equal "None" or something like that.
@@ -1278,10 +1282,10 @@ def time_string() -> str:
         delta -= 60
     output = ""
     if hours:
-        output += "{}h".format(hours)
+        output += f"{hours}h"
     if minutes:
-        output += "{}m".format(minutes)
-    output += "{}s".format(int(delta))
+        output += f"{minutes}m"
+    output += f"{int(delta)}s"
     return output
 
 
@@ -1305,9 +1309,18 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
                 res = data["task_name"] + " " + res
             return res
 
+    def message_for(data: Dict[str, str], line: str) -> str:
+        """The printed message of this log line."""
+        if ray_constants.LOG_PREFIX_INFO_MESSAGE in line:
+            return line.split(ray_constants.LOG_PREFIX_INFO_MESSAGE)[1]
+        return line
+
     def color_for(data: Dict[str, str], line: str) -> str:
         """The color for this log line."""
-        if data.get("pid") == "raylet":
+        if (
+            data.get("pid") == "raylet"
+            and ray_constants.LOG_PREFIX_INFO_MESSAGE not in line
+        ):
             return colorama.Fore.YELLOW
         elif data.get("pid") == "autoscaler":
             if "Error:" in line or "Warning:" in line:
@@ -1333,7 +1346,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
                     prefix_for(data),
                     pid,
                     colorama.Style.RESET_ALL,
-                    line,
+                    message_for(data, line),
                 ),
                 file=print_file,
             )
@@ -1347,76 +1360,13 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
                     pid,
                     data.get("ip"),
                     colorama.Style.RESET_ALL,
-                    line,
+                    message_for(data, line),
                 ),
                 file=print_file,
             )
 
 
-def listen_error_messages_raylet(worker, threads_stopped):
-    """Listen to error messages in the background on the driver.
-
-    This runs in a separate thread on the driver and pushes (error, time)
-    tuples to the output queue.
-
-    Args:
-        worker: The worker class that this thread belongs to.
-        threads_stopped (threading.Event): A threading event used to signal to
-            the thread that it should exit.
-    """
-    worker.error_message_pubsub_client = worker.redis_client.pubsub(
-        ignore_subscribe_messages=True
-    )
-    # Exports that are published after the call to
-    # error_message_pubsub_client.subscribe and before the call to
-    # error_message_pubsub_client.listen will still be processed in the loop.
-
-    # Really we should just subscribe to the errors for this specific job.
-    # However, currently all errors seem to be published on the same channel.
-    error_pubsub_channel = gcs_utils.RAY_ERROR_PUBSUB_PATTERN
-    worker.error_message_pubsub_client.psubscribe(error_pubsub_channel)
-
-    try:
-        if _internal_kv_initialized():
-            # Get any autoscaler errors that occurred before the call to
-            # subscribe.
-            error_message = _internal_kv_get(ray_constants.DEBUG_AUTOSCALING_ERROR)
-            if error_message is not None:
-                logger.warning(error_message.decode())
-
-        while True:
-            # Exit if we received a signal that we should stop.
-            if threads_stopped.is_set():
-                return
-
-            msg = worker.error_message_pubsub_client.get_message()
-            if msg is None:
-                threads_stopped.wait(timeout=0.01)
-                continue
-            pubsub_msg = gcs_utils.PubSubMessage.FromString(msg["data"])
-            error_data = gcs_utils.ErrorTableData.FromString(pubsub_msg.data)
-            job_id = error_data.job_id
-            if job_id not in [
-                worker.current_job_id.binary(),
-                JobID.nil().binary(),
-            ]:
-                continue
-
-            error_message = error_data.error_message
-            if error_data.type == ray_constants.TASK_PUSH_ERROR:
-                # TODO(ekl) remove task push errors entirely now that we have
-                # the separate unhandled exception handler.
-                pass
-            else:
-                logger.warning(error_message)
-    except (OSError, redis.exceptions.ConnectionError) as e:
-        logger.error(f"listen_error_messages_raylet: {e}")
-    finally:
-        # Close the pubsub client to avoid leaking file descriptors.
-        worker.error_message_pubsub_client.close()
-
-
-def listen_error_messages_from_gcs(worker, threads_stopped):
+def listen_error_messages(worker, threads_stopped):
     """Listen to error messages in the background on the driver.
 
     This runs in a separate thread on the driver and pushes (error, time)
@@ -1461,7 +1411,7 @@ def listen_error_messages_from_gcs(worker, threads_stopped):
             else:
                 logger.warning(error_message)
     except (OSError, ConnectionError) as e:
-        logger.error(f"listen_error_messages_from_gcs: {e}")
+        logger.error(f"listen_error_messages: {e}")
 
 
 @PublicAPI
@@ -1488,23 +1438,23 @@ def connect(
     startup_token=0,
     ray_debugger_external=False,
 ):
-    """Connect this worker to the raylet, to Plasma, and to Redis.
+    """Connect this worker to the raylet, to Plasma, and to GCS.
 
     Args:
         node (ray.node.Node): The node to connect.
-        mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE, and
-            LOCAL_MODE.
+        mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE, and LOCAL_MODE.
         log_to_driver (bool): If true, then output from all of the worker
             processes on all nodes will be directed to the driver.
         worker: The ray.Worker instance.
         driver_object_store_memory: Deprecated.
         job_id: The ID of job. If it's None, then we will generate one.
+        namespace (str): Namespace to use.
         job_config (ray.job_config.JobConfig): The job configuration.
         runtime_env_hash (int): The hash of the runtime env for this worker.
         startup_token (int): The startup token of the process assigned to
             it during startup as a command line argument.
-        ray_debugger_host (bool): The host to bind a Ray debugger to on
-            this worker.
+        ray_debugger_external (bool): If True, make the debugger external to the
+            node this worker is running on.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
@@ -1518,36 +1468,18 @@ def connect(
     except io.UnsupportedOperation:
         pass  # ignore
 
-    # Create a Redis client to primary.
-    # The Redis client can safely be shared between threads. However,
-    # that is not true of Redis pubsub clients. See the documentation at
-    # https://github.com/andymccurdy/redis-py#thread-safety.
-    if not gcs_utils.use_gcs_for_bootstrap():
-        worker.redis_client = node.create_redis_client()
     worker.gcs_client = node.get_gcs_client()
     assert worker.gcs_client is not None
     _initialize_internal_kv(worker.gcs_client)
-    if gcs_utils.use_gcs_for_bootstrap():
-        ray.state.state._initialize_global_state(
-            ray._raylet.GcsClientOptions.from_gcs_address(node.gcs_address)
-        )
-    else:
-        ray.state.state._initialize_global_state(
-            ray._raylet.GcsClientOptions.from_redis_address(
-                node.redis_address, redis_password=node.redis_password
-            )
-        )
-    worker.gcs_pubsub_enabled = gcs_pubsub_enabled()
-    worker.gcs_publisher = None
-    if worker.gcs_pubsub_enabled:
-        worker.gcs_publisher = GcsPublisher(address=worker.gcs_client.address)
-        worker.gcs_error_subscriber = GcsErrorSubscriber(
-            address=worker.gcs_client.address
-        )
-        worker.gcs_log_subscriber = GcsLogSubscriber(address=worker.gcs_client.address)
-        worker.gcs_function_key_subscriber = GcsFunctionKeySubscriber(
-            address=worker.gcs_client.address
-        )
+    ray.state.state._initialize_global_state(
+        ray._raylet.GcsClientOptions.from_gcs_address(node.gcs_address)
+    )
+    worker.gcs_publisher = GcsPublisher(address=worker.gcs_client.address)
+    worker.gcs_error_subscriber = GcsErrorSubscriber(address=worker.gcs_client.address)
+    worker.gcs_log_subscriber = GcsLogSubscriber(address=worker.gcs_client.address)
+    worker.gcs_function_key_subscriber = GcsFunctionKeySubscriber(
+        address=worker.gcs_client.address
+    )
 
     # Initialize some fields.
     if mode in (WORKER_MODE, RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
@@ -1587,12 +1519,8 @@ def connect(
             ray._private.utils.publish_error_to_driver(
                 ray_constants.VERSION_MISMATCH_PUSH_ERROR,
                 traceback_str,
-                job_id=None,
-                redis_client=worker.redis_client,
                 gcs_publisher=worker.gcs_publisher,
             )
-
-    worker.lock = threading.RLock()
 
     driver_name = ""
     log_stdout_file_path = ""
@@ -1609,19 +1537,7 @@ def connect(
     elif not LOCAL_MODE:
         raise ValueError("Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")
 
-    if gcs_utils.use_gcs_for_bootstrap():
-        gcs_options = ray._raylet.GcsClientOptions.from_gcs_address(node.gcs_address)
-    else:
-        # As the synchronous and the asynchronous context of redis client is
-        # not used in this gcs client. We would not open connection for it
-        # by setting `enable_sync_conn` and `enable_async_conn` as false.
-        gcs_options = ray._raylet.GcsClientOptions.from_redis_address(
-            node.redis_address,
-            node.redis_password,
-            enable_sync_conn=False,
-            enable_async_conn=False,
-            enable_subscribe_conn=True,
-        )
+    gcs_options = ray._raylet.GcsClientOptions.from_gcs_address(node.gcs_address)
     if job_config is None:
         job_config = ray.job_config.JobConfig()
 
@@ -1699,7 +1615,8 @@ def connect(
         worker.import_thread = import_thread.ImportThread(
             worker, mode, worker.threads_stopped
         )
-        worker.import_thread.start()
+        if ray._raylet.Config.start_python_importer_thread():
+            worker.import_thread.start()
 
     # If this is a driver running in SCRIPT_MODE, start a thread to print error
     # messages asynchronously in the background. Ideally the scheduler would
@@ -1709,9 +1626,7 @@ def connect(
     # scheduler for new error messages.
     if mode == SCRIPT_MODE:
         worker.listener_thread = threading.Thread(
-            target=listen_error_messages_from_gcs
-            if worker.gcs_pubsub_enabled
-            else listen_error_messages_raylet,
+            target=listen_error_messages,
             name="ray_listen_error_messages",
             args=(worker, worker.threads_stopped),
         )
@@ -1783,10 +1698,9 @@ def disconnect(exiting_interpreter=False):
         # should be handled cleanly in the worker object's destructor and not
         # in this disconnect method.
         worker.threads_stopped.set()
-        if worker.gcs_pubsub_enabled:
-            worker.gcs_function_key_subscriber.close()
-            worker.gcs_error_subscriber.close()
-            worker.gcs_log_subscriber.close()
+        worker.gcs_function_key_subscriber.close()
+        worker.gcs_error_subscriber.close()
+        worker.gcs_log_subscriber.close()
         if hasattr(worker, "import_thread"):
             worker.import_thread.join_import_thread()
         if hasattr(worker, "listener_thread"):
@@ -1833,7 +1747,7 @@ def show_in_dashboard(message: str, key: str = "", dtype: str = "text"):
         key (str): The key name for the message. Multiple message under
             different keys will be displayed at the same time. Messages
             under the same key will be overridden.
-        data_type (str): The type of message for rendering. One of the
+        dtype (str): The type of message for rendering. One of the
             following: text, html.
     """
     worker = global_worker
@@ -2064,7 +1978,7 @@ def wait(
 
     if isinstance(object_refs, ObjectRef):
         raise TypeError(
-            "wait() expected a list of ray.ObjectRef, got a single " "ray.ObjectRef"
+            "wait() expected a list of ray.ObjectRef, got a single ray.ObjectRef"
         )
 
     if not isinstance(object_refs, list):
@@ -2172,7 +2086,7 @@ def kill(actor: "ray.actor.ActorHandle", *, no_restart: bool = True):
     worker.check_connected()
     if not isinstance(actor, ray.actor.ActorHandle):
         raise ValueError(
-            "ray.kill() only supported for actors. " "Got: {}.".format(type(actor))
+            "ray.kill() only supported for actors. Got: {}.".format(type(actor))
         )
     worker.core_worker.kill_actor(actor._ray_actor_id, no_restart)
 
@@ -2226,125 +2140,23 @@ def _mode(worker=global_worker):
     return worker.mode
 
 
-def make_decorator(
-    num_returns=None,
-    num_cpus=None,
-    num_gpus=None,
-    memory=None,
-    object_store_memory=None,
-    resources=None,
-    accelerator_type=None,
-    max_calls=None,
-    max_retries=None,
-    max_restarts=None,
-    max_task_retries=None,
-    runtime_env=None,
-    placement_group="default",
-    worker=None,
-    retry_exceptions=None,
-    concurrency_groups=None,
-    scheduling_strategy: SchedulingStrategyT = None,
-):
-    def decorator(function_or_class):
-        if inspect.isfunction(function_or_class) or is_cython(function_or_class):
-            # Set the remote function default resources.
-            if max_restarts is not None:
-                raise ValueError(
-                    "The keyword 'max_restarts' is not " "allowed for remote functions."
-                )
-            if max_task_retries is not None:
-                raise ValueError(
-                    "The keyword 'max_task_retries' is not "
-                    "allowed for remote functions."
-                )
-            if num_returns is not None and (
-                not isinstance(num_returns, int) or num_returns < 0
-            ):
-                raise ValueError(
-                    "The keyword 'num_returns' only accepts 0 or a" " positive integer"
-                )
-            if max_retries is not None and (
-                not isinstance(max_retries, int) or max_retries < -1
-            ):
-                raise ValueError(
-                    "The keyword 'max_retries' only accepts 0, -1 or a"
-                    " positive integer"
-                )
-            if max_calls is not None and (
-                not isinstance(max_calls, int) or max_calls < 0
-            ):
-                raise ValueError(
-                    "The keyword 'max_calls' only accepts 0 or a positive" " integer"
-                )
-            return ray.remote_function.RemoteFunction(
-                Language.PYTHON,
-                function_or_class,
-                None,
-                num_cpus,
-                num_gpus,
-                memory,
-                object_store_memory,
-                resources,
-                accelerator_type,
-                num_returns,
-                max_calls,
-                max_retries,
-                retry_exceptions,
-                runtime_env,
-                placement_group,
-                scheduling_strategy,
-            )
-
-        if inspect.isclass(function_or_class):
-            if num_returns is not None:
-                raise TypeError(
-                    "The keyword 'num_returns' is not " "allowed for actors."
-                )
-            if max_retries is not None:
-                raise TypeError(
-                    "The keyword 'max_retries' is not " "allowed for actors."
-                )
-            if retry_exceptions is not None:
-                raise TypeError(
-                    "The keyword 'retry_exceptions' is not " "allowed for actors."
-                )
-            if max_calls is not None:
-                raise TypeError("The keyword 'max_calls' is not " "allowed for actors.")
-            if max_restarts is not None and (
-                not isinstance(max_restarts, int) or max_restarts < -1
-            ):
-                raise ValueError(
-                    "The keyword 'max_restarts' only accepts -1, 0 or a"
-                    " positive integer"
-                )
-            if max_task_retries is not None and (
-                not isinstance(max_task_retries, int) or max_task_retries < -1
-            ):
-                raise ValueError(
-                    "The keyword 'max_task_retries' only accepts -1, 0 or a"
-                    " positive integer"
-                )
-            return ray.actor.make_actor(
-                function_or_class,
-                num_cpus,
-                num_gpus,
-                memory,
-                object_store_memory,
-                resources,
-                accelerator_type,
-                max_restarts,
-                max_task_retries,
-                runtime_env,
-                concurrency_groups,
-                scheduling_strategy,
-            )
-
-        raise TypeError(
-            "The @ray.remote decorator must be applied to "
-            "either a function or to a class."
+def _make_remote(function_or_class, options):
+    if inspect.isfunction(function_or_class) or is_cython(function_or_class):
+        ray_option_utils.validate_task_options(options, in_options=False)
+        return ray.remote_function.RemoteFunction(
+            Language.PYTHON,
+            function_or_class,
+            None,
+            options,
         )
 
-    return decorator
+    if inspect.isclass(function_or_class):
+        ray_option_utils.validate_actor_options(options, in_options=False)
+        return ray.actor.make_actor(function_or_class, options)
+
+    raise TypeError(
+        "The @ray.remote decorator must be applied to either a function or a class."
+    )
 
 
 @PublicAPI
@@ -2406,7 +2218,7 @@ def remote(*args, **kwargs):
             the remote function invocation.
         num_cpus (float): The quantity of CPU cores to reserve
             for this task or for the lifetime of the actor.
-        num_gpus (int): The quantity of GPUs to reserve
+        num_gpus (float): The quantity of GPUs to reserve
             for this task or for the lifetime of the actor.
         resources (Dict[str, float]): The quantity of various custom resources
             to reserve for this task or for the lifetime of the actor.
@@ -2414,6 +2226,8 @@ def remote(*args, **kwargs):
         accelerator_type: If specified, requires that the task or actor run
             on a node with the specified type of accelerator.
             See `ray.accelerators` for accelerator types.
+        memory (float): The heap memory request for this task/actor.
+        object_store_memory (int): The object store memory request for this task/actor.
         max_calls (int): Only for *remote functions*. This specifies the
             maximum number of times that a given worker can execute
             the given remote function before it must exit
@@ -2460,88 +2274,13 @@ def remote(*args, **kwargs):
             "SPREAD": best effort spread scheduling;
             `PlacementGroupSchedulingStrategy`:
             placement group based scheduling.
+        _metadata: Extended options for Ray libraries. For example,
+            _metadata={"workflows.io/options": <workflow options>} for Ray workflows.
     """
-    worker = global_worker
-
+    # "callable" returns true for both function and class.
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
         # This is the case where the decorator is just @ray.remote.
-        return make_decorator(worker=worker)(args[0])
-
-    # Parse the keyword arguments from the decorator.
-    valid_kwargs = [
-        "num_returns",
-        "num_cpus",
-        "num_gpus",
-        "memory",
-        "object_store_memory",
-        "resources",
-        "accelerator_type",
-        "max_calls",
-        "max_restarts",
-        "max_task_retries",
-        "max_retries",
-        "runtime_env",
-        "retry_exceptions",
-        "placement_group",
-        "concurrency_groups",
-        "scheduling_strategy",
-    ]
-    error_string = (
-        "The @ray.remote decorator must be applied either "
-        "with no arguments and no parentheses, for example "
-        "'@ray.remote', or it must be applied using some of "
-        f"the arguments in the list {valid_kwargs}, for example "
-        "'@ray.remote(num_returns=2, "
-        'resources={"CustomResource": 1})\'.'
-    )
-    assert len(args) == 0 and len(kwargs) > 0, error_string
-    for key in kwargs:
-        assert key in valid_kwargs, error_string
-
-    num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else None
-    num_gpus = kwargs["num_gpus"] if "num_gpus" in kwargs else None
-    resources = kwargs.get("resources")
-    if not isinstance(resources, dict) and resources is not None:
-        raise TypeError(
-            "The 'resources' keyword argument must be a "
-            f"dictionary, but received type {type(resources)}."
-        )
-    if resources is not None:
-        assert "CPU" not in resources, "Use the 'num_cpus' argument."
-        assert "GPU" not in resources, "Use the 'num_gpus' argument."
-
-    accelerator_type = kwargs.get("accelerator_type")
-
-    # Handle other arguments.
-    num_returns = kwargs.get("num_returns")
-    max_calls = kwargs.get("max_calls")
-    max_restarts = kwargs.get("max_restarts")
-    max_task_retries = kwargs.get("max_task_retries")
-    memory = kwargs.get("memory")
-    object_store_memory = kwargs.get("object_store_memory")
-    max_retries = kwargs.get("max_retries")
-    runtime_env = kwargs.get("runtime_env")
-    placement_group = kwargs.get("placement_group", "default")
-    retry_exceptions = kwargs.get("retry_exceptions")
-    concurrency_groups = kwargs.get("concurrency_groups")
-    scheduling_strategy = kwargs.get("scheduling_strategy")
-
-    return make_decorator(
-        num_returns=num_returns,
-        num_cpus=num_cpus,
-        num_gpus=num_gpus,
-        memory=memory,
-        object_store_memory=object_store_memory,
-        resources=resources,
-        accelerator_type=accelerator_type,
-        max_calls=max_calls,
-        max_restarts=max_restarts,
-        max_task_retries=max_task_retries,
-        max_retries=max_retries,
-        runtime_env=runtime_env,
-        placement_group=placement_group,
-        worker=worker,
-        retry_exceptions=retry_exceptions,
-        concurrency_groups=concurrency_groups or [],
-        scheduling_strategy=scheduling_strategy,
-    )
+        # "args[0]" is the class or function under the decorator.
+        return _make_remote(args[0], {})
+    assert len(args) == 0 and len(kwargs) > 0, ray_option_utils.remote_args_error_string
+    return functools.partial(_make_remote, options=kwargs)

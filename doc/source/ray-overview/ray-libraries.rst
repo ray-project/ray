@@ -19,7 +19,7 @@ ClassyVision |classyvision|
 Classy Vision is a new end-to-end, PyTorch-based framework for large-scale training of state-of-the-art image and video classification models. The library features a modular, flexible design that allows anyone to train machine learning models on top of PyTorch using very simple abstractions.
 
 
-[`Link to integration <https://classyvision.ai/tutorials/ray_aws>`__]
+[`Link to integration <https://github.com/facebookresearch/ClassyVision/blob/main/tutorials/ray_aws.ipynb>`__]
 
 Dask |dask|
 -----------

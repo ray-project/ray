@@ -20,7 +20,7 @@
 #include <inttypes.h>
 #include <stddef.h>
 
-#include <unordered_map>
+#include "absl/container/flat_hash_map.h"
 #include "ray/object_manager/plasma/compat.h"
 
 namespace plasma {
@@ -39,11 +39,13 @@ struct MmapRecord {
 /// Hashtable that contains one entry per segment that we got from the OS
 /// via mmap. Associates the address of that segment with its file descriptor
 /// and size.
-extern std::unordered_map<void *, MmapRecord> mmap_records;
+extern absl::flat_hash_map<void *, MmapRecord> mmap_records;
 
 /// private function, only used by PlasmaAllocator
 namespace internal {
-bool GetMallocMapinfo(const void *const addr, MEMFD_TYPE *fd, int64_t *map_length,
+bool GetMallocMapinfo(const void *const addr,
+                      MEMFD_TYPE *fd,
+                      int64_t *map_length,
                       ptrdiff_t *offset);
 }
 }  // namespace plasma

@@ -1,3 +1,4 @@
+import abc
 import distutils
 import distutils.spawn
 import inspect
@@ -7,22 +8,24 @@ import subprocess
 import tempfile
 import time
 import types
-import warnings
 
-from typing import Optional, List
+from typing import Optional, List, Callable, Union, Tuple
 
 from shlex import quote
 
+import ray
 from ray.tune.error import TuneError
+from ray.tune.utils.file_transfer import sync_dir_between_nodes, delete_on_node
 from ray.util.annotations import PublicAPI
-from ray.util.debug import log_once
+from ray.ml.utils.remote_storage import (
+    S3_PREFIX,
+    GS_PREFIX,
+    HDFS_PREFIX,
+    ALLOWED_REMOTE_PREFIXES,
+)
 
 logger = logging.getLogger(__name__)
 
-S3_PREFIX = "s3://"
-GS_PREFIX = "gs://"
-HDFS_PREFIX = "hdfs://"
-ALLOWED_REMOTE_PREFIXES = (S3_PREFIX, GS_PREFIX, HDFS_PREFIX)
 
 noop_template = ": {target}"  # noop in bash
 
@@ -31,12 +34,15 @@ def noop(*args):
     return
 
 
-def get_sync_client(sync_function, delete_function=None) -> Optional["SyncClient"]:
+def get_sync_client(
+    sync_function: Optional[Union[str, Callable]],
+    delete_function: Optional[Union[str, Callable]] = None,
+) -> Optional["SyncClient"]:
     """Returns a sync client.
 
     Args:
-        sync_function (Optional[str|function]): Sync function.
-        delete_function (Optional[str|function]): Delete function. Must be
+        sync_function: Sync function.
+        delete_function: Delete function. Must be
             the same type as sync_function if it is provided.
 
     Raises:
@@ -59,11 +65,11 @@ def get_sync_client(sync_function, delete_function=None) -> Optional["SyncClient
     return client_cls(sync_function, sync_function, delete_function)
 
 
-def get_cloud_sync_client(remote_path) -> "CommandBasedClient":
+def get_cloud_sync_client(remote_path: str) -> "CommandBasedClient":
     """Returns a CommandBasedClient that can sync to/from remote storage.
 
     Args:
-        remote_path (str): Path to remote storage (S3, GS or HDFS).
+        remote_path: Path to remote storage (S3, GS or HDFS).
 
     Raises:
         ValueError if malformed remote_dir.
@@ -75,12 +81,11 @@ def get_cloud_sync_client(remote_path) -> "CommandBasedClient":
                 " to be installed".format(S3_PREFIX)
             )
         sync_up_template = (
-            "aws s3 sync {source} {target} " "--only-show-errors {options}"
+            "aws s3 sync {source} {target} "
+            "--exact-timestamps --only-show-errors {options}"
         )
         sync_down_template = sync_up_template
-        delete_template = (
-            "aws s3 rm {target} --recursive " "--only-show-errors {options}"
-        )
+        delete_template = "aws s3 rm {target} --recursive --only-show-errors {options}"
         exclude_template = "--exclude '{pattern}'"
     elif remote_path.startswith(GS_PREFIX):
         if not distutils.spawn.find_executable("gsutil"):
@@ -113,16 +118,16 @@ def get_cloud_sync_client(remote_path) -> "CommandBasedClient":
 
 
 @PublicAPI(stability="beta")
-class SyncClient:
+class SyncClient(abc.ABC):
     """Client interface for interacting with remote storage options."""
 
-    def sync_up(self, source, target, exclude: Optional[List] = None):
+    def sync_up(self, source: str, target: str, exclude: Optional[List] = None):
         """Syncs up from source to target.
 
         Args:
-            source (str): Source path.
-            target (str): Target path.
-            exclude (List[str]): Pattern of files to exclude, e.g.
+            source: Source path.
+            target: Target path.
+            exclude: Pattern of files to exclude, e.g.
                 ``["*/checkpoint_*]`` to exclude trial checkpoints.
 
         Returns:
@@ -130,13 +135,13 @@ class SyncClient:
         """
         raise NotImplementedError
 
-    def sync_down(self, source, target, exclude: Optional[List] = None):
+    def sync_down(self, source: str, target: str, exclude: Optional[List] = None):
         """Syncs down from source to target.
 
         Args:
-            source (str): Source path.
-            target (str): Target path.
-            exclude (List[str]): Pattern of files to exclude, e.g.
+            source: Source path.
+            target: Target path.
+            exclude: Pattern of files to exclude, e.g.
                 ``["*/checkpoint_*]`` to exclude trial checkpoints.
 
         Returns:
@@ -144,11 +149,11 @@ class SyncClient:
         """
         raise NotImplementedError
 
-    def delete(self, target):
+    def delete(self, target: str):
         """Deletes target.
 
         Args:
-            target (str): Target path.
+            target: Target path.
 
         Returns:
             True if delete initiation successful, False otherwise.
@@ -190,13 +195,12 @@ class FunctionBasedClient(SyncClient):
         self._sync_down_legacy = _is_legacy_sync_fn(sync_up_func)
 
         if self._sync_up_legacy or self._sync_down_legacy:
-            if log_once("func_sync_up_legacy"):
-                warnings.warn(
-                    "Your sync functions currently only accepts two params "
-                    "(a `source` and a `target`). In the future, we will "
-                    "pass an additional `exclude` parameter. Please adjust "
-                    "your sync function accordingly."
-                )
+            raise DeprecationWarning(
+                "Your sync functions currently only accepts two params "
+                "(a `source` and a `target`). In the future, we will "
+                "pass an additional `exclude` parameter. Please adjust "
+                "your sync function accordingly."
+            )
 
         self.delete_func = delete_func or noop
 
@@ -223,6 +227,31 @@ NOOP = FunctionBasedClient(noop, noop)
 
 
 class CommandBasedClient(SyncClient):
+    """Syncs between two directories with the given command.
+
+    If a sync is already in-flight when calling ``sync_down`` or
+    ``sync_up``, a warning will be printed and the new sync command is
+    ignored. To force a new sync, either use ``wait()``
+    (or ``wait_or_retry()``) to wait until the previous sync has finished,
+    or call ``reset()`` to detach from the previous sync. Note that this
+    will not kill the previous sync command, so it may still be executed.
+
+    Arguments:
+        sync_up_template: A runnable string template; needs to
+            include replacement fields ``{source}``, ``{target}``, and
+            ``{options}``.
+        sync_down_template: A runnable string template; needs to
+            include replacement fields ``{source}``, ``{target}``, and
+            ``{options}``.
+        delete_template: A runnable string template; needs
+            to include replacement field ``{target}``. Noop by default.
+        exclude_template: A pattern with possible
+            replacement fields ``{pattern}`` and ``{regex_pattern}``.
+            Will replace ``{options}}`` in the sync up/down templates
+            if files/directories to exclude are passed.
+
+    """
+
     def __init__(
         self,
         sync_up_template: str,
@@ -230,22 +259,6 @@ class CommandBasedClient(SyncClient):
         delete_template: Optional[str] = noop_template,
         exclude_template: Optional[str] = None,
     ):
-        """Syncs between two directories with the given command.
-
-        Arguments:
-            sync_up_template (str): A runnable string template; needs to
-                include replacement fields ``{source}``, ``{target}``, and
-                ``{options}``.
-            sync_down_template (str): A runnable string template; needs to
-                include replacement fields ``{source}``, ``{target}``, and
-                ``{options}``.
-            delete_template (Optional[str]): A runnable string template; needs
-                to include replacement field ``{target}``. Noop by default.
-            exclude_template (Optional[str]): A pattern with possible
-                replacement fields ``{pattern}`` and ``{regex_pattern}``.
-                Will replace ``{options}}`` in the sync up/down templates
-                if files/directories to exclude are passed.
-        """
         self._validate_sync_string(sync_up_template)
         self._validate_sync_string(sync_down_template)
         self._validate_exclude_template(exclude_template)
@@ -259,11 +272,11 @@ class CommandBasedClient(SyncClient):
         # Keep track of last command for retry
         self._last_cmd = None
 
-    def set_logdir(self, logdir):
+    def set_logdir(self, logdir: str):
         """Sets the directory to log sync execution output in.
 
         Args:
-            logdir (str): Log directory.
+            logdir: Log directory.
         """
         self.logfile = tempfile.NamedTemporaryFile(
             prefix="log_sync_out", dir=logdir, suffix=".log", delete=False
@@ -322,7 +335,7 @@ class CommandBasedClient(SyncClient):
 
     def wait_or_retry(self, max_retries: int = 3, backoff_s: int = 5):
         assert max_retries > 0
-        for i in range(max_retries - 1):
+        for _ in range(max_retries - 1):
             try:
                 self.wait()
             except TuneError as e:
@@ -414,3 +427,174 @@ class CommandBasedClient(SyncClient):
                     "Neither `{pattern}` nor `{regex_pattern}` found in "
                     f"exclude string `{exclude_template}`"
                 )
+
+
+class RemoteTaskClient(SyncClient):
+    """Sync client that uses remote tasks to synchronize two directories.
+
+    This client expects tuples of (ip, path) for remote sources/targets
+    in sync_down/sync_up.
+
+    To avoid unnecessary syncing, the sync client will collect the existing
+    files with their respective mtimes and sizes on the (possibly remote)
+    target directory. Only files that are not in the target directory or
+    differ to those in the target directory by size or mtime will be
+    transferred. This is similar to most cloud
+    synchronization implementations (e.g. aws s3 sync).
+
+    If a sync is already in-flight when calling ``sync_down`` or
+    ``sync_up``, a warning will be printed and the new sync command is
+    ignored. To force a new sync, either use ``wait()``
+    (or ``wait_or_retry()``) to wait until the previous sync has finished,
+    or call ``reset()`` to detach from the previous sync. Note that this
+    will not kill the previous sync command, so it may still be executed.
+    """
+
+    def __init__(self, _store_remotes: bool = False):
+        # Used for testing
+        self._store_remotes = _store_remotes
+        self._stored_pack_actor_ref = None
+        self._stored_files_stats_future = None
+
+        self._sync_future = None
+
+        self._last_source_tuple = None
+        self._last_target_tuple = None
+
+        self._max_size_bytes = None  # No file size limit
+
+    def _sync_still_running(self) -> bool:
+        if not self._sync_future:
+            return False
+
+        ready, not_ready = ray.wait([self._sync_future], timeout=0.0)
+        if self._sync_future in ready:
+            self.wait()
+            return False
+        return True
+
+    def sync_down(
+        self, source: Tuple[str, str], target: str, exclude: Optional[List] = None
+    ) -> bool:
+        if self._sync_still_running():
+            logger.warning(
+                f"Last remote task sync still in progress, "
+                f"skipping sync from {source} to {target}."
+            )
+            return False
+
+        source_ip, source_path = source
+        target_ip = ray.util.get_node_ip_address()
+
+        self._last_source_tuple = source_ip, source_path
+        self._last_target_tuple = target_ip, target
+
+        return self._execute_sync(self._last_source_tuple, self._last_target_tuple)
+
+    def sync_up(
+        self, source: str, target: Tuple[str, str], exclude: Optional[List] = None
+    ) -> bool:
+        if self._sync_still_running():
+            logger.warning(
+                f"Last remote task sync still in progress, "
+                f"skipping sync from {source} to {target}."
+            )
+            return False
+
+        source_ip = ray.util.get_node_ip_address()
+        target_ip, target_path = target
+
+        self._last_source_tuple = source_ip, source
+        self._last_target_tuple = target_ip, target_path
+
+        return self._execute_sync(self._last_source_tuple, self._last_target_tuple)
+
+    def _execute_sync(
+        self,
+        source_tuple: Tuple[str, str],
+        target_tuple: Tuple[str, str],
+    ) -> bool:
+        source_ip, source_path = source_tuple
+        target_ip, target_path = target_tuple
+
+        self._sync_future, pack_actor, files_stats = sync_dir_between_nodes(
+            source_ip=source_ip,
+            source_path=source_path,
+            target_ip=target_ip,
+            target_path=target_path,
+            return_futures=True,
+            max_size_bytes=self._max_size_bytes,
+        )
+
+        if self._store_remotes:
+            self._stored_pack_actor_ref = pack_actor
+            self._stored_files_stats = files_stats
+
+        return True
+
+    def delete(self, target: str):
+        if not self._last_target_tuple:
+            logger.warning(
+                f"Could not delete path {target} as the target node is not known."
+            )
+            return
+
+        node_ip = self._last_target_tuple[0]
+
+        try:
+            delete_on_node(node_ip=node_ip, path=target)
+        except Exception as e:
+            logger.warning(
+                f"Could not delete path {target} on remote node {node_ip}: {e}"
+            )
+
+    def wait(self):
+        if self._sync_future:
+            try:
+                ray.get(self._sync_future)
+            except Exception as e:
+                raise TuneError(
+                    f"Remote task sync failed from "
+                    f"{self._last_source_tuple} to "
+                    f"{self._last_target_tuple}: {e}"
+                ) from e
+            self._sync_future = None
+            self._stored_pack_actor_ref = None
+            self._stored_files_stats_future = None
+
+    def wait_or_retry(self, max_retries: int = 3, backoff_s: int = 5):
+        assert max_retries > 0
+
+        for _ in range(max_retries - 1):
+            try:
+                self.wait()
+            except TuneError as e:
+                logger.error(
+                    f"Caught sync error: {e}. "
+                    f"Retrying after sleeping for {backoff_s} seconds..."
+                )
+                time.sleep(backoff_s)
+
+                self._execute_sync(
+                    self._last_source_tuple,
+                    self._last_target_tuple,
+                )
+                continue
+            return
+        self._sync_future = None
+        self._stored_pack_actor_ref = None
+        self._stored_files_stats_future = None
+        raise TuneError(f"Failed sync even after {max_retries} retries.")
+
+    def reset(self):
+        if self._sync_future:
+            logger.warning("Sync process still running but resetting anyways.")
+        self._sync_future = None
+        self._last_source_tuple = None
+        self._last_target_tuple = None
+        self._stored_pack_actor_ref = None
+        self._stored_files_stats_future = None
+
+    def close(self):
+        self._sync_future = None  # Avoid warning
+        self.reset()

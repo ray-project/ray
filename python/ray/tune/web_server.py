@@ -1,6 +1,7 @@
 import json
 import logging
 import threading
+from typing import Tuple, List, TYPE_CHECKING
 
 from urllib.parse import urljoin, urlparse
 from http.server import SimpleHTTPRequestHandler, HTTPServer
@@ -9,6 +10,9 @@ import ray.cloudpickle as cloudpickle
 from ray.tune import TuneError
 from ray.tune.suggest import BasicVariantGenerator
 from ray._private.utils import binary_to_hex, hex_to_binary
+
+if TYPE_CHECKING:
+    from ray.tune.trial_runner import TrialRunner
 
 logger = logging.getLogger(__name__)
 
@@ -28,11 +32,11 @@ class TuneClient:
     Requires a TuneServer to have started running.
 
     Attributes:
-        tune_address (str): Address of running TuneServer
-        port_forward (int): Port number of running TuneServer
+        tune_address: Address of running TuneServer
+        port_forward: Port number of running TuneServer
     """
 
-    def __init__(self, tune_address, port_forward):
+    def __init__(self, tune_address: str, port_forward: int):
         self._tune_address = tune_address
         self._port_forward = port_forward
         self._path = "http://{}:{}".format(tune_address, port_forward)
@@ -97,12 +101,12 @@ def RunnerHandler(runner):
         the TuneServer.
         """
 
-        def _do_header(self, response_code=200, headers=None):
+        def _do_header(self, response_code: int = 200, headers: List[Tuple] = None):
             """Sends the header portion of the HTTP response.
 
             Parameters:
-                response_code (int): Standard HTTP response code
-                headers (list[tuples]): Standard HTTP response headers
+                response_code: Standard HTTP response code
+                headers: Standard HTTP response headers
             """
             if headers is None:
                 headers = [("Content-type", "application/json")]
@@ -226,13 +230,13 @@ class TuneServer(threading.Thread):
     The server handles requests from a TuneClient.
 
     Attributes:
-        runner (TrialRunner): Runner that modifies and accesses trials.
-        port_forward (int): Port number of TuneServer.
+        runner: Runner that modifies and accesses trials.
+        port_forward: Port number of TuneServer.
     """
 
     DEFAULT_PORT = 4321
 
-    def __init__(self, runner, port=None):
+    def __init__(self, runner: "TrialRunner", port: int = None):
         """Initialize HTTPServer and serve forever by invoking self.run()"""
         threading.Thread.__init__(self)
         self._port = port if port else self.DEFAULT_PORT

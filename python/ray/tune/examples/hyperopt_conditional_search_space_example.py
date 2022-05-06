@@ -2,6 +2,8 @@
 
 It also checks that it is usable with a separate scheduler.
 
+Requires the HyperOpt library to be installed (`pip install hyperopt`).
+
 For an example of using a Tune search space, see
 :doc:`/tune/examples/hyperopt_example`.
 """
@@ -102,7 +104,7 @@ if __name__ == "__main__":
         type=str,
         default=None,
         required=False,
-        help="The address of server to connect to if using " "Ray Client.",
+        help="The address of server to connect to if using Ray Client.",
     )
     args, _ = parser.parse_known_args()
     if args.server_address is not None:

@@ -431,8 +431,9 @@ class JobManager:
 
         logger.info(f"Starting job with job_id: {job_id}")
         job_info = JobInfo(
+            entrypoint=entrypoint,
             status=JobStatus.PENDING,
-            start_time=int(time.time()),
+            start_time=int(time.time() * 1000),
             metadata=metadata,
             runtime_env=runtime_env,
         )
@@ -488,6 +489,10 @@ class JobManager:
     def get_job_info(self, job_id: str) -> Optional[JobInfo]:
         """Get latest info of a job."""
         return self._job_info_client.get_info(job_id)
+
+    def list_jobs(self) -> Dict[str, JobInfo]:
+        """Get info for all jobs."""
+        return self._job_info_client.get_all_jobs()
 
     def get_job_logs(self, job_id: str) -> str:
         """Get all logs produced by a job."""

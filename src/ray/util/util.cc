@@ -342,8 +342,8 @@ std::string CreateCommandLine(const std::vector<std::string> &args,
   return result;
 }
 
-std::shared_ptr<std::unordered_map<std::string, std::string>> ParseURL(std::string url) {
-  auto result = std::make_shared<std::unordered_map<std::string, std::string>>();
+std::shared_ptr<absl::flat_hash_map<std::string, std::string>> ParseURL(std::string url) {
+  auto result = std::make_shared<absl::flat_hash_map<std::string, std::string>>();
   std::string delimiter = "?";
   size_t pos = 0;
   pos = url.find(delimiter);

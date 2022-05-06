@@ -20,9 +20,11 @@ default_logger = logging.getLogger(__name__)
 
 # If an individual file is beyond this size, print a warning.
 FILE_SIZE_WARNING = 10 * 1024 * 1024  # 10MiB
-# NOTE(edoakes): we should be able to support up to 512 MiB based on the GCS'
-# limit, but for some reason that causes failures when downloading.
-GCS_STORAGE_MAX_SIZE = 100 * 1024 * 1024  # 100MiB
+# The size is bounded by the max gRPC message size.
+# Keep in sync with max_grpc_message_size in ray_config_def.h.
+GCS_STORAGE_MAX_SIZE = int(
+    os.environ.get("RAY_max_grpc_message_size", 250 * 1024 * 1024)
+)
 RAY_PKG_PREFIX = "_ray_pkg_"
 
 
@@ -45,13 +47,9 @@ class Protocol(Enum):
     GCS = "gcs", "For packages dynamically uploaded and managed by the GCS."
     CONDA = "conda", "For conda environments installed locally on each node."
     PIP = "pip", "For pip environments installed locally on each node."
-    HTTPS = "https", (
-        "Remote https path, " "assumes everything packed in one zip file."
-    )
+    HTTPS = "https", "Remote https path, assumes everything packed in one zip file."
     S3 = "s3", "Remote s3 path, assumes everything packed in one zip file."
-    GS = "gs", (
-        "Remote google storage path, " "assumes everything packed in one zip file."
-    )
+    GS = "gs", "Remote google storage path, assumes everything packed in one zip file."
 
     @classmethod
     def remote_protocols(cls):
@@ -185,6 +183,24 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
         return (protocol, uri.netloc)
 
 
+def is_zip_uri(uri: str) -> bool:
+    try:
+        protocol, path = parse_uri(uri)
+    except ValueError:
+        return False
+
+    return Path(path).suffix == ".zip"
+
+
+def is_whl_uri(uri: str) -> bool:
+    try:
+        protocol, path = parse_uri(uri)
+    except ValueError:
+        return False
+
+    return Path(path).suffix == ".whl"
+
+
 def _get_excludes(path: Path, excludes: List[str]) -> Callable:
     path = path.absolute()
     pathspec = PathSpec.from_lines("gitwildmatch", excludes)
@@ -213,19 +229,43 @@ def _get_gitignore(path: Path) -> Optional[Callable]:
 
 
 def _store_package_in_gcs(
-    pkg_uri: str, data: bytes, logger: Optional[logging.Logger] = default_logger
+    pkg_uri: str,
+    data: bytes,
+    logger: Optional[logging.Logger] = default_logger,
 ) -> int:
+    """Stores package data in the Global Control Store (GCS).
+
+    Args:
+        pkg_uri (str): The GCS key to store the data in.
+        data (bytes): The serialized package's bytes to store in the GCS.
+        logger (Optional[logging.Logger]): The logger used by this function.
+
+    Return:
+        int: Size of data
+
+    Raises:
+        RuntimeError: If the upload to the GCS fails.
+        ValueError: If the data's size exceeds GCS_STORAGE_MAX_SIZE.
+    """
+
     file_size = len(data)
     size_str = _mib_string(file_size)
     if len(data) >= GCS_STORAGE_MAX_SIZE:
-        raise RuntimeError(
+        raise ValueError(
             f"Package size ({size_str}) exceeds the maximum size of "
             f"{_mib_string(GCS_STORAGE_MAX_SIZE)}. You can exclude large "
             "files using the 'excludes' option to the runtime_env."
         )
 
-    logger.info(f"Pushing file package '{pkg_uri}' ({size_str}) to " "Ray cluster...")
-    _internal_kv_put(pkg_uri, data)
+    logger.info(f"Pushing file package '{pkg_uri}' ({size_str}) to Ray cluster...")
+    try:
+        _internal_kv_put(pkg_uri, data)
+    except Exception as e:
+        raise RuntimeError(
+            "Failed to store package in the GCS.\n"
+            f"  - GCS URI: {pkg_uri}\n"
+            f"  - Package data ({size_str}): {data[:15]}...\n"
+        ) from e
     logger.info(f"Successfully pushed file package '{pkg_uri}'.")
     return len(data)
 
@@ -295,10 +335,17 @@ def package_exists(pkg_uri: str) -> bool:
 def get_uri_for_package(package: Path) -> str:
     """Get a content-addressable URI from a package's contents."""
 
-    hash_val = hashlib.md5(package.read_bytes()).hexdigest()
-    return "{protocol}://{pkg_name}.zip".format(
-        protocol=Protocol.GCS.value, pkg_name=RAY_PKG_PREFIX + hash_val
-    )
+    if package.suffix == ".whl":
+        # Wheel file names include the Python package name, version
+        # and tags, so it is already effectively content-addressed.
+        return "{protocol}://{whl_filename}".format(
+            protocol=Protocol.GCS.value, whl_filename=package.name
+        )
+    else:
+        hash_val = hashlib.md5(package.read_bytes()).hexdigest()
+        return "{protocol}://{pkg_name}.zip".format(
+            protocol=Protocol.GCS.value, pkg_name=RAY_PKG_PREFIX + hash_val
+        )
 
 
 def get_uri_for_directory(directory: str, excludes: Optional[List[str]] = None) -> str:
@@ -331,7 +378,7 @@ def get_uri_for_directory(directory: str, excludes: Optional[List[str]] = None) 
 
     directory = Path(directory).absolute()
     if not directory.exists() or not directory.is_dir():
-        raise ValueError(f"directory {directory} must be an existing" " directory")
+        raise ValueError(f"directory {directory} must be an existing directory")
 
     hash_val = _hash_directory(directory, directory, _get_excludes(directory, excludes))
 
@@ -345,7 +392,9 @@ def upload_package_to_gcs(pkg_uri: str, pkg_bytes: bytes):
     if protocol == Protocol.GCS:
         _store_package_in_gcs(pkg_uri, pkg_bytes)
     elif protocol in Protocol.remote_protocols():
-        raise RuntimeError("push_package should not be called with remote path.")
+        raise RuntimeError(
+            "upload_package_to_gcs should not be called with remote path."
+        )
     else:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
 
@@ -434,9 +483,10 @@ def download_and_unpack_package(
     base_directory: str,
     logger: Optional[logging.Logger] = default_logger,
 ) -> str:
-    """Download the package corresponding to this URI and unpack it.
+    """Download the package corresponding to this URI and unpack it if zipped.
 
-    Will be written to a directory named {base_directory}/{uri}.
+    Will be written to a file or directory named {base_directory}/{uri}.
+    Returns the path to this file or directory.
     """
     pkg_file = Path(_get_local_path(base_directory, pkg_uri))
     with FileLock(str(pkg_file) + ".lock"):
@@ -458,13 +508,17 @@ def download_and_unpack_package(
                     raise IOError(f"Failed to fetch URI {pkg_uri} from GCS.")
                 code = code or b""
                 pkg_file.write_bytes(code)
-                unzip_package(
-                    package_path=pkg_file,
-                    target_dir=local_dir,
-                    remove_top_level_directory=False,
-                    unlink_zip=True,
-                    logger=logger,
-                )
+
+                if is_zip_uri(pkg_uri):
+                    unzip_package(
+                        package_path=pkg_file,
+                        target_dir=local_dir,
+                        remove_top_level_directory=False,
+                        unlink_zip=True,
+                        logger=logger,
+                    )
+                else:
+                    return str(pkg_file)
             elif protocol in Protocol.remote_protocols():
                 # Download package from remote URI
                 tp = None

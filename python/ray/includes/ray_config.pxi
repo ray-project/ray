@@ -105,9 +105,5 @@ cdef class Config:
         return RayConfig.instance().record_ref_creation_sites()
 
     @staticmethod
-    def gcs_grpc_based_pubsub():
-        return RayConfig.instance().gcs_grpc_based_pubsub()
-
-    @staticmethod
-    def bootstrap_with_gcs():
-        return RayConfig.instance().bootstrap_with_gcs()
+    def start_python_importer_thread():
+        return RayConfig.instance().start_python_importer_thread()

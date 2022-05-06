@@ -95,5 +95,5 @@ fine-grained control over placement - a must for distributed training
 performance.
 
 .. _Modin: https://github.com/modin-project/modin
-.. _documentation: https://modin.readthedocs.io/en/latest/developer/architecture.html
-.. _yaml file and set of tutorial notebooks: https://github.com/modin-project/modin/tree/master/examples/tutorial/tutorial_notebooks/cluster
+.. _documentation: https://modin.readthedocs.io/en/latest/development/architecture.html
+.. _yaml file and set of tutorial notebooks: https://github.com/modin-project/modin/tree/master/examples/tutorial/jupyter/execution/pandas_on_ray/cluster

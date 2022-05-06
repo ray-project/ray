@@ -19,6 +19,7 @@ from ray.train.examples.train_fashion_mnist_example import (
     train_func as fashion_mnist_train_func,
 )
 from ray.train.examples.train_linear_example import train_func as linear_train_func
+from ray.train.tests.test_trainer import KillCallback
 
 
 @pytest.fixture
@@ -61,6 +62,31 @@ def test_tf_non_distributed(ray_start_2_cpus):
     trainer.shutdown()
 
 
+def test_tensorflow_mnist_fail(ray_start_2_cpus):
+    """Tests if tensorflow example works even with worker failure."""
+    epochs = 3
+
+    trainer = Trainer("tensorflow", num_workers=2)
+    config = {"lr": 1e-3, "batch_size": 64, "epochs": epochs}
+    trainer.start()
+    kill_callback = KillCallback(fail_on=0, trainer=trainer)
+    results = trainer.run(
+        tensorflow_mnist_train_func, config, callbacks=[kill_callback]
+    )
+    trainer.shutdown()
+
+    assert len(results) == 2
+    result = results[0]
+
+    loss = result["loss"]
+    assert len(loss) == epochs
+    assert loss[-1] < loss[0]
+
+    accuracy = result["accuracy"]
+    assert len(accuracy) == epochs
+    assert accuracy[-1] > accuracy[0]
+
+
 @pytest.mark.parametrize("num_workers", [1, 2])
 def test_torch_linear(ray_start_2_cpus, num_workers):
     num_workers = num_workers
@@ -70,6 +96,24 @@ def test_torch_linear(ray_start_2_cpus, num_workers):
     config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": epochs}
     trainer.start()
     results = trainer.run(linear_train_func, config)
+    trainer.shutdown()
+
+    assert len(results) == num_workers
+
+    for result in results:
+        assert len(result) == epochs
+        assert result[-1]["loss"] < result[0]["loss"]
+
+
+def test_torch_linear_failure(ray_start_2_cpus):
+    num_workers = 2
+    epochs = 3
+
+    trainer = Trainer("torch", num_workers=num_workers)
+    config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": epochs}
+    trainer.start()
+    kill_callback = KillCallback(fail_on=1, trainer=trainer)
+    results = trainer.run(linear_train_func, config, callbacks=[kill_callback])
     trainer.shutdown()
 
     assert len(results) == num_workers

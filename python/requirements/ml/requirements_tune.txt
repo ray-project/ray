@@ -1,8 +1,7 @@
 -r requirements_dl.txt
 
-autogluon.core==0.1.0
 ax-platform==0.1.9; python_version < '3.7'
-ax-platform==0.2.1; python_version >= '3.7'
+ax-platform==0.2.4; python_version >= '3.7'
 bayesian-optimization==1.2.0
 comet-ml==3.23.0
 ConfigSpace==0.4.18
@@ -12,7 +11,7 @@ freezegun==1.1.0
 gluoncv==0.10.1.post0
 gpy==1.10.0
 autorom[accept-rom-license]
-gym[atari]>=0.21.0; python_version >= '3.7'
+gym[atari]==0.21.0; python_version >= '3.7'
 gym[atari]==0.19.0; python_version < '3.7'
 h5py==3.1.0
 hpbandster==0.7.4
@@ -26,7 +25,7 @@ matplotlib==3.4.3; python_version >= '3.7'
 mlflow==1.21.0
 mxnet==1.8.0.post0
 nevergrad==0.4.3.post7
-optuna==2.9.1
+optuna==2.10.0
 pytest-remotedata==0.3.2
 lightning-bolts==0.4.0
 pytorch-lightning==1.5.10
@@ -34,9 +33,8 @@ shortuuid==1.0.1
 scikit-learn==0.24.2
 scikit-optimize==0.8.1
 sigopt==7.5.0
-smart_open==5.1.0
 timm==0.4.5
-transformers==4.10.0
-wandb==0.12.5
+transformers==4.18.0
+wandb==0.12.15
 xgboost==1.3.3
 zoopt==0.4.1

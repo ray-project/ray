@@ -29,7 +29,8 @@ using AllObjectReadyCallback =
 struct GetRequest {
   GetRequest(instrumented_io_context &io_context,
              const std::shared_ptr<ClientInterface> &client,
-             const std::vector<ObjectID> &object_ids, bool is_from_worker,
+             const std::vector<ObjectID> &object_ids,
+             bool is_from_worker,
              int64_t num_unique_objects_to_wait_for);
   /// The client that called get.
   std::shared_ptr<ClientInterface> client;
@@ -89,7 +90,8 @@ class GetRequestQueue {
   /// satisfied. \param all_objects_callback the callback function called when all objects
   /// has been satisfied.
   void AddRequest(const std::shared_ptr<ClientInterface> &client,
-                  const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
+                  const std::vector<ObjectID> &object_ids,
+                  int64_t timeout_ms,
                   bool is_from_worker);
 
   /// Remove all of the GetRequests for a given client.

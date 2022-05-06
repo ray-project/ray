@@ -243,16 +243,6 @@ def resource_dict_to_pg_factory(spec: Optional[Dict[str, float]]):
         spec = spec._asdict()
 
     spec = spec.copy()
-    extra_custom = spec.pop("extra_custom_resources", {}) or {}
-
-    if any(k.startswith("extra_") and spec[k] for k in spec) or any(
-        extra_custom[k] for k in extra_custom
-    ):
-        raise ValueError(
-            "Passing `extra_*` resource requirements to `resources_per_trial` "
-            "is deprecated. Please use a `PlacementGroupFactory` object "
-            "to define your resource requirements instead."
-        )
 
     cpus = spec.pop("cpu", 0.0)
     gpus = spec.pop("gpu", 0.0)
@@ -287,7 +277,7 @@ class PlacementGroupManager:
     placement groups with their factory methods.
 
     Args:
-        prefix (str): Prefix for the placement group names that are created.
+        prefix: Prefix for the placement group names that are created.
     """
 
     def __init__(self, prefix: str = "__tune__", max_staging: int = 1000):
@@ -338,7 +328,7 @@ class PlacementGroupManager:
         """Schedule placement group for (delayed) removal.
 
         Args:
-            pg (PlacementGroup): Placement group object.
+            pg: Placement group object.
 
         """
         self._pgs_for_removal[pg] = time.time()
@@ -352,7 +342,7 @@ class PlacementGroupManager:
         groups are removed instead.
 
         Args:
-            force (bool): If True, all placement groups scheduled for removal
+            force: If True, all placement groups scheduled for removal
                 will be removed, disregarding any removal conditions.
 
         """
@@ -382,7 +372,7 @@ class PlacementGroupManager:
         same driver script.
 
         Args:
-            block (bool): If True, will wait until all placement groups are
+            block: If True, will wait until all placement groups are
                 shut down.
         """
         should_cleanup = not int(
@@ -417,7 +407,7 @@ class PlacementGroupManager:
         placement groups is not exhausted.
 
         Args:
-            trial (Trial): Trial whose placement group to stage.
+            trial: Trial whose placement group to stage.
 
         Returns:
             False if placement group has not been staged, True otherwise.
@@ -484,7 +474,7 @@ class PlacementGroupManager:
         `self._ready`.
 
         Args:
-            trial ("Trial"): "Trial" object to start
+            trial: "Trial" object to start
             actor_cls: Ray actor class.
 
         Returns:
@@ -508,6 +498,8 @@ class PlacementGroupManager:
             head_bundle = pg.bundle_specs[0].copy()
             num_cpus = head_bundle.pop("CPU", 0)
             num_gpus = head_bundle.pop("GPU", 0)
+            memory = head_bundle.pop("memory", None)
+            object_store_memory = head_bundle.pop("object_store_memory", None)
 
             # Only custom resources remain in `head_bundle`
             resources = head_bundle
@@ -517,6 +509,8 @@ class PlacementGroupManager:
                 placement_group_capture_child_tasks=True,
                 num_cpus=num_cpus,
                 num_gpus=num_gpus,
+                memory=memory,
+                object_store_memory=object_store_memory,
                 resources=resources,
             )
         else:
@@ -532,8 +526,8 @@ class PlacementGroupManager:
         """Return True if placement group for trial is ready.
 
         Args:
-            trial (Trial): :obj:`Trial` object.
-            update (bool): Update status first.
+            trial: :obj:`Trial` object.
+            update: Update status first.
 
         Returns:
             Boolean.
@@ -563,7 +557,7 @@ class PlacementGroupManager:
         cached and None will be returned.
 
         Args:
-            trial (Trial): Trial object with the (currently in use) placement
+            trial: Trial object with the (currently in use) placement
                 group that should be cached.
 
         Returns:
@@ -614,7 +608,7 @@ class PlacementGroupManager:
         """Return pg back to Core scheduling.
 
         Args:
-            trial (Trial): Return placement group of this trial.
+            trial: Return placement group of this trial.
         """
 
         pg = self._in_use_trials.pop(trial)
@@ -636,7 +630,7 @@ class PlacementGroupManager:
         group directly, but sometimes we would like to enqueue removal.)
 
         Args:
-            pgf (PlacementGroupFactory): Placement group factory object.
+            pgf: Placement group factory object.
                 This method will try to remove a staged PG of this factory
                 first, then settle for a ready but unused. If none exist,
                 no placement group will be removed and None will be returned.
@@ -684,7 +678,7 @@ class PlacementGroupManager:
         (paused+running+pending) should be in staging, use, or the cache.
 
         Args:
-            trials (List[Trial]): List of trials.
+            trials: List of trials.
 
         """
         # Keep track of the currently tracked placement groups

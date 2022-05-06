@@ -6,7 +6,7 @@ ADD ray.tar /ray
 ADD git-rev /ray/git-rev
 # Install dependencies needed to build ray
 RUN sudo apt-get update && sudo apt-get install -y curl unzip cmake gcc g++ && sudo apt-get clean
-RUN sudo chown -R ray:users /ray && cd /ray && git init && ./ci/travis/install-bazel.sh --system
+RUN sudo chown -R ray:users /ray && cd /ray && git init && ./ci/env/install-bazel.sh --system
 ENV PATH=$PATH:/home/ray/bin
 RUN echo 'build --remote_cache="https://storage.googleapis.com/ray-bazel-cache"' >> $HOME/.bazelrc 
 RUN echo 'build --remote_upload_local_results=false' >> $HOME/.bazelrc 

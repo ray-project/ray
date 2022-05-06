@@ -2,17 +2,28 @@ from typing import Type
 
 from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.agents.marwil.marwil_tf_policy import MARWILTFPolicy
-from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.buffers.multi_agent_replay_buffer import MultiAgentReplayBuffer
-from ray.rllib.execution.concurrency_ops import Concurrently
-from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
-from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
-from ray.rllib.execution.train_ops import TrainOneStep
+from ray.rllib.execution.rollout_ops import (
+    synchronous_parallel_sample,
+)
+from ray.rllib.execution.train_ops import (
+    multi_gpu_train_one_step,
+    train_one_step,
+)
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import TrainerConfigDict
-from ray.util.iter import LocalIterator
+from ray.rllib.utils.metrics import (
+    NUM_AGENT_STEPS_SAMPLED,
+    NUM_AGENT_STEPS_TRAINED,
+    NUM_ENV_STEPS_SAMPLED,
+    NUM_ENV_STEPS_TRAINED,
+    WORKER_UPDATE_TIMER,
+)
+from ray.rllib.utils.typing import (
+    PartialTrainerConfigDict,
+    ResultDict,
+    TrainerConfigDict,
+)
 
 # fmt: off
 # __sphinx_doc_begin__
@@ -105,38 +116,50 @@ class MARWILTrainer(Trainer):
         else:
             return MARWILTFPolicy
 
-    @staticmethod
     @override(Trainer)
-    def execution_plan(
-        workers: WorkerSet, config: TrainerConfigDict, **kwargs
-    ) -> LocalIterator[dict]:
-        assert (
-            len(kwargs) == 0
-        ), "Marwill execution_plan does NOT take any additional parameters"
-
-        rollouts = ParallelRollouts(workers, mode="bulk_sync")
-        replay_buffer = MultiAgentReplayBuffer(
-            learning_starts=config["learning_starts"],
-            capacity=config["replay_buffer_size"],
-            replay_batch_size=config["train_batch_size"],
-            replay_sequence_length=1,
-        )
-
-        store_op = rollouts.for_each(StoreToReplayBuffer(local_buffer=replay_buffer))
-
-        replay_op = (
-            Replay(local_buffer=replay_buffer)
-            .combine(
-                ConcatBatches(
-                    min_batch_size=config["train_batch_size"],
-                    count_steps_by=config["multiagent"]["count_steps_by"],
-                )
+    def setup(self, config: PartialTrainerConfigDict):
+        super().setup(config)
+        # `training_iteration` implementation: Setup buffer in `setup`, not
+        # in `execution_plan` (deprecated).
+        if self.config["_disable_execution_plan_api"] is True:
+            self.local_replay_buffer = MultiAgentReplayBuffer(
+                learning_starts=self.config["learning_starts"],
+                capacity=self.config["replay_buffer_size"],
+                replay_batch_size=self.config["train_batch_size"],
+                replay_sequence_length=1,
             )
-            .for_each(TrainOneStep(workers))
-        )
 
-        train_op = Concurrently(
-            [store_op, replay_op], mode="round_robin", output_indexes=[1]
-        )
+    @override(Trainer)
+    def training_iteration(self) -> ResultDict:
+        # Collect SampleBatches from sample workers.
+        batch = synchronous_parallel_sample(worker_set=self.workers)
+        batch = batch.as_multi_agent()
+        self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
+        self._counters[NUM_ENV_STEPS_SAMPLED] += batch.env_steps()
+        # Add batch to replay buffer.
+        self.local_replay_buffer.add_batch(batch)
 
-        return StandardMetricsReporting(train_op, workers, config)
+        # Pull batch from replay buffer and train on it.
+        train_batch = self.local_replay_buffer.replay()
+        # Train.
+        if self.config["simple_optimizer"]:
+            train_results = train_one_step(self, train_batch)
+        else:
+            train_results = multi_gpu_train_one_step(self, train_batch)
+        self._counters[NUM_AGENT_STEPS_TRAINED] += batch.agent_steps()
+        self._counters[NUM_ENV_STEPS_TRAINED] += batch.env_steps()
+
+        global_vars = {
+            "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
+        }
+
+        # Update weights - after learning on the local worker - on all remote
+        # workers.
+        if self.workers.remote_workers():
+            with self._timers[WORKER_UPDATE_TIMER]:
+                self.workers.sync_weights(global_vars=global_vars)
+
+        # Update global vars on local worker as well.
+        self.workers.local_worker().set_global_vars(global_vars)
+
+        return train_results

@@ -67,6 +67,15 @@ DEFAULT_PORT = 6379
 RAY_ADDRESS_ENVIRONMENT_VARIABLE = "RAY_ADDRESS"
 RAY_NAMESPACE_ENVIRONMENT_VARIABLE = "RAY_NAMESPACE"
 RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE = "RAY_RUNTIME_ENV"
+RAY_STORAGE_ENVIRONMENT_VARIABLE = "RAY_STORAGE"
+# Hook for running a user-specified runtime-env hook. This hook will be called
+# unconditionally given the runtime_env dict passed for ray.init. It must return
+# a rewritten runtime_env dict. Example: "your.module.runtime_env_hook".
+RAY_RUNTIME_ENV_HOOK = "RAY_RUNTIME_ENV_HOOK"
+# Hook that is invoked on `ray start`. It will be given the cluster parameters and
+# whether we are the head node as arguments. The function can modify the params class,
+# but otherwise returns void. Example: "your.module.ray_start_hook".
+RAY_START_HOOK = "RAY_START_HOOK"
 
 DEFAULT_DASHBOARD_IP = "127.0.0.1"
 DEFAULT_DASHBOARD_PORT = 8265
@@ -176,7 +185,12 @@ REPORTER_UPDATE_INTERVAL_MS = env_integer("REPORTER_UPDATE_INTERVAL_MS", 2500)
 # Number of attempts to ping the Redis server. See
 # `services.py::wait_for_redis_to_start()` and
 # `services.py::create_redis_client()`
-START_REDIS_WAIT_RETRIES = env_integer("RAY_START_REDIS_WAIT_RETRIES", 16)
+START_REDIS_WAIT_RETRIES = env_integer("RAY_START_REDIS_WAIT_RETRIES", 60)
+
+# Temporary flag to disable log processing in the dashboard.  This is useful
+# if the dashboard is overloaded by logs and failing to process other
+# dashboard API requests (e.g. Job Submission).
+DISABLE_DASHBOARD_LOG_INFO = env_integer("RAY_DISABLE_DASHBOARD_LOG_INFO", 0)
 
 LOGGER_FORMAT = "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s"
 LOGGER_FORMAT_HELP = f"The logging format. default='{LOGGER_FORMAT}'"
@@ -244,6 +258,9 @@ LOG_MONITOR_MAX_OPEN_FILES = 200
 
 # Autoscaler events are denoted by the ":event_summary:" magic token.
 LOG_PREFIX_EVENT_SUMMARY = ":event_summary:"
+# Cluster-level info events are denoted by the ":info_message:" magic token. These may
+# be emitted in the stderr of Ray components.
+LOG_PREFIX_INFO_MESSAGE = ":info_message:"
 # Actor names are recorded in the logs with this magic token as a prefix.
 LOG_PREFIX_ACTOR_NAME = ":actor_name:"
 # Task names are recorded in the logs with this magic token as a prefix.
@@ -303,6 +320,10 @@ SETUP_WORKER_FILENAME = "setup_worker.py"
 # Directory name where runtime_env resources will be created & cached.
 DEFAULT_RUNTIME_ENV_DIR_NAME = "runtime_resources"
 
+# The timeout seconds for the creation of runtime env,
+# dafault timeout is 10 minutes
+DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS = 600
+
 # Used to separate lines when formatting the call stack where an ObjectRef was
 # created.
 CALL_STACK_LINE_DELIMITER = " | "
@@ -325,3 +346,5 @@ KV_NAMESPACE_CLUSTER = b"cluster"
 KV_NAMESPACE_PACKAGE = None
 KV_NAMESPACE_SERVE = b"serve"
 KV_NAMESPACE_FUNCTION_TABLE = b"fun"
+
+LANGUAGE_WORKER_TYPES = ["python", "java", "cpp"]

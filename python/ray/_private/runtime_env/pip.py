@@ -10,7 +10,7 @@ from typing import Optional, List, Dict, Tuple
 from ray._private.async_compat import asynccontextmanager, create_task, get_running_loop
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import Protocol, parse_uri
-from ray._private.runtime_env.utils import RuntimeEnv, check_output_cmd
+from ray._private.runtime_env.utils import check_output_cmd
 from ray._private.utils import (
     get_directory_size_bytes,
     try_to_create_directory,
@@ -18,9 +18,11 @@ from ray._private.utils import (
 
 default_logger = logging.getLogger(__name__)
 
+_WIN32 = os.name == "nt"
 
-def _get_pip_hash(pip_list: List[str]) -> str:
-    serialized_pip_spec = json.dumps(pip_list, sort_keys=True)
+
+def _get_pip_hash(pip_dict: Dict) -> str:
+    serialized_pip_spec = json.dumps(pip_dict, sort_keys=True)
     hash = hashlib.sha1(serialized_pip_spec.encode("utf-8")).hexdigest()
     return hash
 
@@ -29,12 +31,14 @@ def get_uri(runtime_env: Dict) -> Optional[str]:
     """Return `"pip://<hashed_dependencies>"`, or None if no GC required."""
     pip = runtime_env.get("pip")
     if pip is not None:
-        if isinstance(pip, list):
-            uri = "pip://" + _get_pip_hash(pip_list=pip)
+        if isinstance(pip, dict):
+            uri = "pip://" + _get_pip_hash(pip_dict=pip)
+        elif isinstance(pip, list):
+            uri = "pip://" + _get_pip_hash(pip_dict=dict(packages=pip))
         else:
             raise TypeError(
                 "pip field received by RuntimeEnvAgent must be "
-                f"list, not {type(pip).__name__}."
+                f"list or dict, not {type(pip).__name__}."
             )
     else:
         uri = None
@@ -49,7 +53,18 @@ class _PathHelper:
     @classmethod
     def get_virtualenv_python(cls, target_dir: str) -> str:
         virtualenv_path = cls.get_virtualenv_path(target_dir)
-        return os.path.join(virtualenv_path, "bin/python")
+        if _WIN32:
+            return os.path.join(virtualenv_path, "Scripts", "python.exe")
+        else:
+            return os.path.join(virtualenv_path, "bin", "python")
+
+    @classmethod
+    def get_virtualenv_activate_command(cls, target_dir: str) -> str:
+        virtualenv_path = cls.get_virtualenv_path(target_dir)
+        if _WIN32:
+            return "%s 1>&2" % (os.path.join(virtualenv_path, "Scripts", "activate"))
+        else:
+            return "source %s 1>&2" % (os.path.join(virtualenv_path, "bin/activate"))
 
     @staticmethod
     def get_requirements_file(target_dir: str) -> str:
@@ -60,7 +75,7 @@ class PipProcessor:
     def __init__(
         self,
         target_dir: str,
-        runtime_env: RuntimeEnv,
+        runtime_env: "RuntimeEnv",  # noqa: F821
         logger: Optional[logging.Logger] = default_logger,
     ):
         try:
@@ -76,6 +91,10 @@ class PipProcessor:
         self._runtime_env = runtime_env
         self._logger = logger
 
+        self._pip_config = self._runtime_env.pip_config()
+        self._pip_env = os.environ.copy()
+        self._pip_env.update(self._runtime_env.env_vars())
+
     @staticmethod
     def _is_in_virtualenv() -> bool:
         # virtualenv <= 16.7.9 sets the real_prefix,
@@ -85,6 +104,58 @@ class PipProcessor:
         return hasattr(sys, "real_prefix") or (
             hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix
         )
+
+    @classmethod
+    async def _ensure_pip_version(
+        cls,
+        path: str,
+        pip_version: Optional[str],
+        cwd: str,
+        pip_env: Dict,
+        logger: logging.Logger,
+    ):
+        """Run the pip command to reinstall pip to the specified version."""
+        if not pip_version:
+            return
+
+        python = _PathHelper.get_virtualenv_python(path)
+        # Ensure pip version.
+        pip_reinstall_cmd = [
+            python,
+            "-m",
+            "pip",
+            "install",
+            "--disable-pip-version-check",
+            f"pip{pip_version}",
+        ]
+        logger.info("Installing pip with version %s", pip_version)
+
+        await check_output_cmd(pip_reinstall_cmd, logger=logger, cwd=cwd, env=pip_env)
+
+    async def _pip_check(
+        self,
+        path: str,
+        pip_check: bool,
+        cwd: str,
+        pip_env: Dict,
+        logger: logging.Logger,
+    ):
+        """Run the pip check command to check python dependency conflicts.
+        If exists conflicts, the exit code of pip check command will be non-zero.
+        """
+        if not pip_check:
+            logger.info("Skip pip check.")
+            return
+        python = _PathHelper.get_virtualenv_python(path)
+
+        await check_output_cmd(
+            [python, "-m", "pip", "check", "--disable-pip-version-check"],
+            logger=logger,
+            cwd=cwd,
+            env=pip_env,
+        )
+
+        logger.info("Pip check on %s successfully.", path)
 
     @staticmethod
     @asynccontextmanager
@@ -103,8 +174,12 @@ class PipProcessor:
                 "-c",
                 "import ray; print(ray.__version__, ray.__path__[0])",
             ]
+            if _WIN32:
+                env = os.environ.copy()
+            else:
+                env = {}
             output = await check_output_cmd(
-                check_ray_cmd, logger=logger, cwd=cwd, env={}
+                check_ray_cmd, logger=logger, cwd=cwd, env=env
             )
             # print after import ray may have [0m endings, so we strip them by *_
             ray_version, ray_path, *_ = [s.strip() for s in output.split()]
@@ -129,13 +204,18 @@ class PipProcessor:
         cls, path: str, cwd: str, logger: logging.Logger
     ):
         """Create or get a virtualenv from path."""
-
         python = sys.executable
         virtualenv_path = os.path.join(path, "virtualenv")
         virtualenv_app_data_path = os.path.join(path, "virtualenv_app_data")
-        current_python_dir = os.path.abspath(
-            os.path.join(os.path.dirname(python), "..")
-        )
+
+        if _WIN32:
+            current_python_dir = sys.prefix
+            env = os.environ.copy()
+        else:
+            current_python_dir = os.path.abspath(
+                os.path.join(os.path.dirname(python), "..")
+            )
+            env = {}
 
         if cls._is_in_virtualenv():
             # virtualenv-clone homepage:
@@ -188,9 +268,9 @@ class PipProcessor:
             logger.info(
                 "Creating virtualenv at %s, current python dir %s",
                 virtualenv_path,
-                current_python_dir,
+                virtualenv_path,
             )
-        await check_output_cmd(create_venv_cmd, logger=logger, cwd=cwd, env={})
+        await check_output_cmd(create_venv_cmd, logger=logger, cwd=cwd, env=env)
 
     @classmethod
     async def _install_pip_packages(
@@ -198,6 +278,7 @@ class PipProcessor:
         path: str,
         pip_packages: List[str],
         cwd: str,
+        pip_env: Dict,
         logger: logging.Logger,
     ):
         virtualenv_path = _PathHelper.get_virtualenv_path(path)
@@ -234,12 +315,13 @@ class PipProcessor:
             pip_requirements_file,
         ]
         logger.info("Installing python requirements to %s", virtualenv_path)
-        await check_output_cmd(pip_install_cmd, logger=logger, cwd=cwd, env={})
+
+        await check_output_cmd(pip_install_cmd, logger=logger, cwd=cwd, env=pip_env)
 
     async def _run(self):
         path = self._target_dir
         logger = self._logger
-        pip_packages = self._runtime_env.pip_packages()
+        pip_packages = self._pip_config["packages"]
         # We create an empty directory for exec cmd so that the cmd will
         # run more stable. e.g. if cwd has ray, then checking ray will
         # look up ray in cwd instead of site packages.
@@ -249,8 +331,30 @@ class PipProcessor:
             await self._create_or_get_virtualenv(path, exec_cwd, logger)
             python = _PathHelper.get_virtualenv_python(path)
             async with self._check_ray(python, exec_cwd, logger):
-                await self._install_pip_packages(path, pip_packages, exec_cwd, logger)
-            # TODO(fyrestone): pip check.
+                # Ensure pip version.
+                await self._ensure_pip_version(
+                    path,
+                    self._pip_config.get("pip_version", None),
+                    exec_cwd,
+                    self._pip_env,
+                    logger,
+                )
+                # Install pip packages.
+                await self._install_pip_packages(
+                    path,
+                    pip_packages,
+                    exec_cwd,
+                    self._pip_env,
+                    logger,
+                )
+                # Check python environment for conflicts.
+                await self._pip_check(
+                    path,
+                    self._pip_config.get("pip_check", False),
+                    exec_cwd,
+                    self._pip_env,
+                    logger,
+                )
         except Exception:
             logger.info("Delete incomplete virtualenv: %s", path)
             shutil.rmtree(path, ignore_errors=True)
@@ -276,7 +380,7 @@ class PipManager:
         """
         return os.path.join(self._pip_resources_dir, hash)
 
-    def get_uri(self, runtime_env: RuntimeEnv) -> Optional[str]:
+    def get_uri(self, runtime_env: "RuntimeEnv") -> Optional[str]:  # noqa: F821
         """Return the pip URI from the RuntimeEnv if it exists, else None."""
         pip_uri = runtime_env.pip_uri()
         if pip_uri != "":
@@ -313,7 +417,7 @@ class PipManager:
     async def create(
         self,
         uri: str,
-        runtime_env: RuntimeEnv,
+        runtime_env: "RuntimeEnv",  # noqa: F821
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ) -> int:
@@ -338,7 +442,7 @@ class PipManager:
     def modify_context(
         self,
         uri: str,
-        runtime_env: RuntimeEnv,
+        runtime_env: "RuntimeEnv",  # noqa: F821
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ):
@@ -356,3 +460,6 @@ class PipManager:
                 "installing the runtime_env `pip` packages."
             )
         context.py_executable = virtualenv_python
+        context.command_prefix += [
+            _PathHelper.get_virtualenv_activate_command(target_dir)
+        ]

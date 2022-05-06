@@ -1,0 +1,68 @@
+// Copyright 2022 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+option cc_enable_arenas = true;
+package ray.rpc.syncer;
+
+enum RayComponentId {
+  RESOURCE_MANAGER = 0;
+  SCHEDULER = 1;
+}
+
+message RaySyncMessage {
+  // The version of the message. -1 means the version is not set.
+  int64 version = 1;
+  // The component this message is for.
+  RayComponentId component_id = 2;
+  // The actual payload.
+  bytes sync_message = 3;
+  // The node id which initially sent this message.
+  bytes node_id = 4;
+}
+
+message RaySyncMessages {
+  // The bached messages.
+  repeated RaySyncMessage sync_messages = 1;
+}
+
+message StartSyncRequest {
+  bytes node_id = 1;
+}
+
+message StartSyncResponse {
+  bytes node_id = 1;
+}
+
+message DummyRequest {}
+message DummyResponse {}
+
+service RaySyncer {
+  // Ideally these should be a streaming API like this
+  //   rpc StartSync(stream RaySyncMessages) returns (stream RaySyncMessages);
+  // But to make sure it's the same as the current protocol, we still use
+  // unary rpc.
+  // TODO (iycheng): Using grpc streaming for the protocol.
+
+  // This is the first message that should be sent. It will initialize
+  // some structure between nodes.
+  rpc StartSync(StartSyncRequest) returns (StartSyncResponse);
+
+  // These two RPCs are for messages reporting and broadcasting.
+  // Update is used by the client to send update request to the server.
+  rpc Update(RaySyncMessages) returns (DummyResponse);
+
+  // LongPolling is used by the server to send request to the client.
+  rpc LongPolling(DummyRequest) returns (RaySyncMessages);
+}

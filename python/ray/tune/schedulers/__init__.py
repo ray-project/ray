@@ -50,7 +50,9 @@ def create_scheduler(
     Returns:
         ray.tune.schedulers.trial_scheduler.TrialScheduler: The scheduler.
     Example:
-        >>> scheduler = tune.create_scheduler('pbt', **pbt_kwargs)
+        >>> from ray import tune
+        >>> pbt_kwargs = {}
+        >>> scheduler = tune.create_scheduler('pbt', **pbt_kwargs) # doctest: +SKIP
     """
 
     scheduler = scheduler.lower()

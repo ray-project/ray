@@ -1,0 +1,22 @@
+base_image: "anyscale/ray-ml:nightly-py37-gpu"
+env_vars: {}
+debian_packages:
+  - curl
+
+python:
+  pip_packages:
+    - pytest
+    - lightgbm_ray
+    - petastorm
+  conda_packages: []
+
+post_build_cmds:
+  - pip uninstall -y ray || true
+  - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - pip install -U xgboost xgboost_ray petastorm  # Install latest releases
+  - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
+  - sudo mkdir -p /data || true
+  - sudo chown ray:1000 /data || true
+  - rm -rf /data/classification.parquet || true
+  - curl -so create_test_data.py https://raw.githubusercontent.com/ray-project/ray/releases/1.3.0/release/xgboost_tests/create_test_data.py
+  - python create_test_data.py /data/classification.parquet --seed 1234 --num-rows 1000000 --num-cols 40 --num-partitions 100 --num-classes 2

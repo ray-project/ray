@@ -14,18 +14,17 @@ on `Github`_.
     :maxdepth: 2
 
     execution.rst
-    env.rst
     trainable.rst
     search_space.rst
     suggestion.rst
     schedulers.rst
     stoppers.rst
-    reporters.rst
     analysis.rst
-    sklearn.rst
+    reporters.rst
     logging.rst
+    env.rst
+    sklearn.rst
     integration.rst
     internals.rst
     client.rst
     cli.rst
-    scalability.rst

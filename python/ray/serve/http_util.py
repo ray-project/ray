@@ -8,6 +8,7 @@ from typing import Any, Dict, Type
 import starlette.responses
 import starlette.requests
 from starlette.types import Send, ASGIApp
+from fastapi.encoders import jsonable_encoder
 
 from ray.serve.exceptions import RayServeException
 from ray.serve.utils import logger
@@ -52,7 +53,9 @@ class Response:
     It is expected to be called in async context and pass along
     `scope, receive, send` as in ASGI spec.
 
-    >>> await Response({"k": "v"}).send(scope, receive, send)
+    >>> from ray.serve.http_util import Response
+    >>> scope, receive = ... # doctest: +SKIP
+    >>> await Response({"k": "v"}).send(scope, receive, send) # doctest: +SKIP
     """
 
     def __init__(self, content=None, status_code=200):
@@ -76,9 +79,11 @@ class Response:
             self.set_content_type("text-utf8")
         else:
             # Delayed import since utils depends on http_util
-            from ray.serve.utils import ServeEncoder
+            from ray.serve.utils import serve_encoders
 
-            self.body = json.dumps(content, cls=ServeEncoder, indent=2).encode()
+            self.body = json.dumps(
+                jsonable_encoder(content, custom_encoder=serve_encoders)
+            ).encode()
             self.set_content_type("json")
 
     def set_content_type(self, content_type):
@@ -157,13 +162,14 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
     https://github.com/dmontagu/fastapi-utils/blob/master/fastapi_utils/cbv.py
 
     Usage:
-    >>> app = FastAPI()
-    >>> class A:
-            @app.route("/{i}")
-            def func(self, i: int) -> str:
-                return self.dep + i
+    >>> from fastapi import FastAPI
+    >>> app = FastAPI() # doctest: +SKIP
+    >>> class A: # doctest: +SKIP
+    ...     @app.route("/{i}") # doctest: +SKIP
+    ...     def func(self, i: int) -> str: # doctest: +SKIP
+    ...         return self.dep + i # doctest: +SKIP
     >>> # just running the app won't work, here.
-    >>> make_fastapi_class_based_view(app, A)
+    >>> make_fastapi_class_based_view(app, A) # doctest: +SKIP
     >>> # now app can be run properly
     """
     # Delayed import to prevent ciruclar imports in workers.

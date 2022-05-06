@@ -14,7 +14,6 @@
 
 #pragma once
 
-#include "ray/raylet/worker.h"
 #include "ray/rpc/server_call.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
@@ -35,7 +34,7 @@ class ClusterTaskManagerInterface {
   /// fields used.
   virtual void FillResourceUsage(
       rpc::ResourcesData &data,
-      const std::shared_ptr<SchedulingResources> &last_reported_resources = nullptr) = 0;
+      const std::shared_ptr<NodeResources> &last_reported_resources = nullptr) = 0;
 
   /// Populate the list of pending or infeasible actor tasks for node stats.
   ///
@@ -62,7 +61,8 @@ class ClusterTaskManagerInterface {
   ///                         but no spillback.
   /// \param reply: The reply of the lease request.
   /// \param send_reply_callback: The function used during dispatching.
-  virtual void QueueAndScheduleTask(const RayTask &task, bool grant_or_reject,
+  virtual void QueueAndScheduleTask(const RayTask &task,
+                                    bool grant_or_reject,
                                     bool is_selected_based_on_locality,
                                     rpc::RequestWorkerLeaseReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) = 0;
@@ -74,7 +74,8 @@ class ClusterTaskManagerInterface {
   /// \param[in] num_pending_tasks Number of pending tasks.
   /// \param[in] any_pending True if there's any pending exemplar.
   /// \return True if any progress is any tasks are pending.
-  virtual bool AnyPendingTasksForResourceAcquisition(RayTask *exemplar, bool *any_pending,
+  virtual bool AnyPendingTasksForResourceAcquisition(RayTask *exemplar,
+                                                     bool *any_pending,
                                                      int *num_pending_actor_creation,
                                                      int *num_pending_tasks) const = 0;
 
@@ -83,9 +84,6 @@ class ClusterTaskManagerInterface {
 
   /// Record the internal metrics.
   virtual void RecordMetrics() const = 0;
-
-  /// Check if there are enough available resources for the given input.
-  virtual bool IsLocallySchedulable(const RayTask &task) const = 0;
 };
 }  // namespace raylet
 }  // namespace ray

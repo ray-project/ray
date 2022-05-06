@@ -11,7 +11,7 @@
 Ray Collective Communication Lib
 ================================
 
-The Ray collective communication library (\ ``ray.util.collectve``\ ) offers a set of native collective primitives for 
+The Ray collective communication library (\ ``ray.util.collective``\ ) offers a set of native collective primitives for
 communication between distributed CPUs or GPUs.
 
 Ray collective communication library
@@ -272,7 +272,7 @@ and must successfully rendezvous with each other to proceed. See the code exampl
    # let A to send a message to B; a send/recv has to be specified once at each worker
    ray.get([A.do_send.remote(target_rank=1), B.do_recv.remote(src_rank=0)])
 
-   # An anti-pattern: the following code will hang, because it does instantiate the recv side call
+   # An anti-pattern: the following code will hang, because it doesn't instantiate the recv side call
    ray.get([A.do_send.remote(target_rank=1)])
 
 Single-GPU and Multi-GPU Collective Primitives
@@ -318,6 +318,7 @@ An example code utilizing the multi-GPU collective APIs is provided below:
               self.recv2 = cp.ones((4, ), dtype=cp.float32) * 2
 
       def setup(self, world_size, rank):
+          self.rank = rank
           collective.init_collective_group(world_size, rank, "nccl", "177")
           return True
 

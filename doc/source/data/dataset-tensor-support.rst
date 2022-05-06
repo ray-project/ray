@@ -61,7 +61,7 @@ If you already have a Parquet dataset with columns containing serialized tensors
     # Read the Parquet files into a new Dataset, with the serialized tensors
     # automatically cast to our tensor column extension type.
     ds = ray.data.read_parquet(
-        path, _tensor_column_schema={"two": (np.int, (2, 2, 2))})
+        path, tensor_column_schema={"two": (np.int, (2, 2, 2))})
 
     # Internally, this column is represented with our Arrow tensor extension
     # type.
@@ -107,7 +107,7 @@ If your serialized tensors don't fit the above constraints (e.g. they're stored 
     # -> one: int64
     #    two: extension<arrow.py_extension_type<ArrowTensorType>>
 
-Please note that the ``_tensor_column_schema`` and ``_block_udf`` parameters are both experimental developer APIs and may break in future versions.
+Please note that the ``tensor_column_schema`` and ``_block_udf`` parameters are both experimental developer APIs and may break in future versions.
 
 Working with tensor column datasets
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -245,6 +245,6 @@ Limitations
 This feature currently comes with a few known limitations that we are either actively working on addressing or have already implemented workarounds for.
 
  * All tensors in a tensor column currently must be the same shape. Please let us know if you require heterogeneous tensor shape for your tensor column! Tracking issue is `here <https://github.com/ray-project/ray/issues/18316>`__.
- * Automatic casting via specifying an override Arrow schema when reading Parquet is blocked by Arrow supporting custom ExtensionType casting kernels. See `issue <https://issues.apache.org/jira/browse/ARROW-5890>`__. An explicit ``_tensor_column_schema`` parameter has been added for :func:`read_parquet() <ray.data.read_api.read_parquet>` as a stopgap solution.
+ * Automatic casting via specifying an override Arrow schema when reading Parquet is blocked by Arrow supporting custom ExtensionType casting kernels. See `issue <https://issues.apache.org/jira/browse/ARROW-5890>`__. An explicit ``tensor_column_schema`` parameter has been added for :func:`read_parquet() <ray.data.read_api.read_parquet>` as a stopgap solution.
  * Ingesting tables with tensor columns into pytorch via ``ds.to_torch()`` is blocked by pytorch supporting tensor creation from objects that implement the `__array__` interface. See `issue <https://github.com/pytorch/pytorch/issues/51156>`__. Workarounds are being `investigated <https://github.com/ray-project/ray/issues/18314>`__.
  * Ingesting tables with tensor columns into TensorFlow via ``ds.to_tf()`` is blocked by a Pandas fix for properly interpreting extension arrays in ``DataFrame.values`` being released. See `PR <https://github.com/pandas-dev/pandas/pull/43160>`__. Workarounds are being `investigated <https://github.com/ray-project/ray/issues/18315>`__.

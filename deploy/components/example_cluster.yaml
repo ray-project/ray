@@ -68,9 +68,10 @@ spec:
           resources:
             requests:
               cpu: 1000m
-              memory: 512Mi
+              memory: 1Gi
               ephemeral-storage: 1Gi
             limits:
+              cpu: 1000m
               # The maximum memory that this pod is allowed to use. The
               # limit will be detected by ray and split to use 10% for
               # redis, 30% for the shared memory object store, and the
@@ -78,7 +79,7 @@ spec:
               # the object store size is not set manually, ray will
               # allocate a very large object store in each pod that may
               # cause problems for other pods.
-              memory: 512Mi
+              memory: 1Gi
   - name: worker-node
     # Minimum number of Ray workers of this Pod type.
     minWorkers: 2
@@ -114,9 +115,10 @@ spec:
           resources:
             requests:
               cpu: 1000m
-              memory: 512Mi
+              memory: 1Gi
               ephemeral-storage: 1Gi
             limits:
+              cpu: 1000m
               # The maximum memory that this pod is allowed to use. The
               # limit will be detected by ray and split to use 10% for
               # redis, 30% for the shared memory object store, and the
@@ -124,7 +126,7 @@ spec:
               # the object store size is not set manually, ray will
               # allocate a very large object store in each pod that may
               # cause problems for other pods.
-              memory: 512Mi
+              memory: 1Gi
   # Commands to start Ray on the head node. You don't need to change this.
   # Note dashboard-host is set to 0.0.0.0 so that Kubernetes can port forward.
   headStartRayCommands:

@@ -109,25 +109,25 @@ class ZOOptSearch(Searcher):
             stop={"timesteps_total": 10})
 
     Parameters:
-        algo (str): To specify an algorithm in zoopt you want to use.
+        algo: To specify an algorithm in zoopt you want to use.
             Only support ASRacos currently.
-        budget (int): Number of samples.
-        dim_dict (dict): Dimension dictionary.
+        budget: Number of samples.
+        dim_dict: Dimension dictionary.
             For continuous dimensions: (continuous, search_range, precision);
             For discrete dimensions: (discrete, search_range, has_order);
             For grid dimensions: (grid, grid_list).
             More details can be found in zoopt package.
-        metric (str): The training result objective value attribute. If None
+        metric: The training result objective value attribute. If None
             but a mode was passed, the anonymous metric `_metric` will be used
             per default.
-        mode (str): One of {min, max}. Determines whether objective is
+        mode: One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
-        points_to_evaluate (list): Initial parameter suggestions to be run
+        points_to_evaluate: Initial parameter suggestions to be run
             first. This is for when you already have some good parameters
             you want to run first to help the algorithm make better suggestions
             for future parameters. Needs to be a list of dicts containing the
             configurations.
-        parallel_num (int): How many workers to parallel. Note that initial
+        parallel_num: How many workers to parallel. Note that initial
             phase may start less workers than this number. More details can
             be found in zoopt package.
     """
@@ -145,9 +145,9 @@ class ZOOptSearch(Searcher):
         parallel_num: int = 1,
         **kwargs
     ):
-        assert zoopt is not None, (
-            "ZOOpt not found - please install zoopt " "by `pip install -U zoopt`."
-        )
+        assert (
+            zoopt is not None
+        ), "ZOOpt not found - please install zoopt by `pip install -U zoopt`."
         assert budget is not None, "`budget` should not be None!"
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
@@ -207,7 +207,7 @@ class ZOOptSearch(Searcher):
         init_samples = None
         if self._points_to_evaluate:
             logger.warning(
-                "`points_to_evaluate` is ignored by ZOOpt in " "versions <= 0.4.1."
+                "`points_to_evaluate` is ignored by ZOOpt in versions <= 0.4.1."
             )
             init_samples = [
                 Solution(x=tuple(point[dim] for dim in self._dim_keys))

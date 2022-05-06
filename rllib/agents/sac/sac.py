@@ -86,13 +86,18 @@ DEFAULT_CONFIG = with_common_config({
     # N-step target updates. If >1, sars' tuples in trajectories will be
     # postprocessed to become sa[discounted sum of R][s t+n] tuples.
     "n_step": 1,
-    # Number of env steps to optimize for before returning.
-    "timesteps_per_iteration": 100,
+    # Minimum env sampling timesteps to accumulate within a single `train()` call. This
+    # value does not affect learning, only the number of times `Trainer.step_attempt()`
+    # is called by `Trauber.train()`. If - after one `step_attempt()`, the env sampling
+    # timestep count has not been reached, will perform n more `step_attempt()` calls
+    # until the minimum timesteps have been executed. Set to 0 for no minimum timesteps.
+    "min_sample_timesteps_per_reporting": 100,
 
     # === Replay buffer ===
     # Size of the replay buffer (in time steps).
     "buffer_size": DEPRECATED_VALUE,
     "replay_buffer_config": {
+        "_enable_replay_buffer_api": False,
         "type": "MultiAgentReplayBuffer",
         "capacity": int(1e6),
     },
@@ -109,8 +114,6 @@ DEFAULT_CONFIG = with_common_config({
     "prioritized_replay_alpha": 0.6,
     "prioritized_replay_beta": 0.4,
     "prioritized_replay_eps": 1e-6,
-    "prioritized_replay_beta_annealing_timesteps": 20000,
-    "final_prioritized_replay_beta": 0.4,
     # Whether to LZ4 compress observations
     "compress_observations": False,
 

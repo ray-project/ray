@@ -1,12 +1,21 @@
 import asyncio
 import concurrent.futures
 from dataclasses import dataclass
-from typing import Optional, Union, Coroutine
+from typing import Coroutine, Dict, Optional, Union
 import threading
 
-from ray.serve.common import EndpointTag
 from ray.actor import ActorHandle
-from ray.serve.utils import get_random_letters, DEFAULT
+
+from ray import serve
+from ray.serve.common import EndpointTag
+from ray.serve.constants import (
+    SERVE_HANDLE_JSON_KEY,
+    ServeHandleType,
+)
+from ray.serve.utils import (
+    get_random_letters,
+    DEFAULT,
+)
 from ray.serve.router import Router, RequestMetadata
 from ray.util import metrics
 
@@ -39,25 +48,31 @@ class RayServeHandle:
     an HTTP deployment.
 
     Example:
-       >>> handle = serve_client.get_handle("my_deployment")
-       >>> handle
-       RayServeSyncHandle(deployment_name="my_deployment")
-       >>> handle.remote(my_request_content)
-       ObjectRef(...)
-       >>> ray.get(handle.remote(...))
-       # result
-       >>> ray.get(handle.remote(let_it_crash_request))
-       # raises RayTaskError Exception
-
-       >>> async_handle = serve_client.get_handle("my_deployment", sync=False)
-       >>> async_handle
-       RayServeHandle(deployment="my_deployment")
-       >>> await async_handle.remote(my_request_content)
-       ObjectRef(...)
-       >>> ray.get(await async_handle.remote(...))
-       # result
-       >>> ray.get(await async_handle.remote(let_it_crash_request))
-       # raises RayTaskError Exception
+        >>> import ray
+        >>> serve_client = ... # doctest: +SKIP
+        >>> handle = serve_client.get_handle("my_deployment") # doctest: +SKIP
+        >>> handle # doctest: +SKIP
+        RayServeSyncHandle(deployment_name="my_deployment")
+        >>> my_request_content = ... # doctest: +SKIP
+        >>> handle.remote(my_request_content) # doctest: +SKIP
+        ObjectRef(...)
+        >>> ray.get(handle.remote(...)) # doctest: +SKIP
+        # result
+        >>> let_it_crash_request = ... # doctest: +SKIP
+        >>> ray.get(handle.remote(let_it_crash_request)) # doctest: +SKIP
+        # raises RayTaskError Exception
+        >>> async_handle = serve_client.get_handle( # doctest: +SKIP
+        ...     "my_deployment", sync=False)
+        >>> async_handle  # doctest: +SKIP
+        RayServeHandle(deployment="my_deployment")
+        >>> await async_handle.remote(my_request_content) # doctest: +SKIP
+        ObjectRef(...)
+        >>> ray.get(await async_handle.remote(...)) # doctest: +SKIP
+        # result
+        >>> ray.get( # doctest: +SKIP
+        ...     await async_handle.remote(let_it_crash_request)
+        ... )
+        # raises RayTaskError Exception
     """
 
     def __init__(
@@ -234,3 +249,80 @@ class RayServeSyncHandle(RayServeHandle):
             "_internal_pickled_http_request": self._pickled_http_request,
         }
         return RayServeSyncHandle._deserialize, (serialized_data,)
+
+
+class RayServeLazySyncHandle:
+    """Lazily initialized handle that only gets fulfilled upon first execution."""
+
+    def __init__(
+        self,
+        deployment_name: str,
+        handle_options: Optional[HandleOptions] = None,
+    ):
+        self.deployment_name = deployment_name
+        self.handle_options = handle_options or HandleOptions()
+        # For Serve DAG we need placeholder in DAG binding and building without
+        # requirement of serve.start; Thus handle is fulfilled at runtime.
+        self.handle = None
+
+    def options(self, *, method_name: str):
+        return self.__class__(
+            self.deployment_name, HandleOptions(method_name=method_name)
+        )
+
+    def remote(self, *args, **kwargs):
+        if not self.handle:
+            handle = serve.get_deployment(self.deployment_name).get_handle()
+            self.handle = handle.options(method_name=self.handle_options.method_name)
+        # TODO (jiaodong): Polish async handles later for serve pipeline
+        return self.handle.remote(*args, **kwargs)
+
+    @classmethod
+    def _deserialize(cls, kwargs):
+        """Required for this class's __reduce__ method to be picklable."""
+        return cls(**kwargs)
+
+    def __reduce__(self):
+        serialized_data = {
+            "deployment_name": self.deployment_name,
+            "handle_options": self.handle_options,
+        }
+        return RayServeLazySyncHandle._deserialize, (serialized_data,)
+
+    def __getattr__(self, name):
+        return self.options(method_name=name)
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}" f"(deployment='{self.deployment_name}')"
+
+
+def serve_handle_to_json_dict(handle: RayServeHandle) -> Dict[str, str]:
+    """Converts a Serve handle to a JSON-serializable dictionary.
+
+    The dictionary can be converted back to a ServeHandle using
+    serve_handle_from_json_dict.
+    """
+    if isinstance(handle, RayServeSyncHandle):
+        handle_type = ServeHandleType.SYNC
+    else:
+        handle_type = ServeHandleType.ASYNC
+
+    return {
+        SERVE_HANDLE_JSON_KEY: handle_type,
+        "deployment_name": handle.deployment_name,
+    }
+
+
+def serve_handle_from_json_dict(d: Dict[str, str]) -> RayServeHandle:
+    """Converts a JSON-serializable dictionary back to a ServeHandle.
+
+    The dictionary should be constructed using serve_handle_to_json_dict.
+    """
+    if SERVE_HANDLE_JSON_KEY not in d:
+        raise ValueError(f"dict must contain {SERVE_HANDLE_JSON_KEY} key.")
+
+    return serve.context.get_global_client().get_handle(
+        d["deployment_name"],
+        sync=d[SERVE_HANDLE_JSON_KEY] == ServeHandleType.SYNC,
+        missing_ok=True,
+    )

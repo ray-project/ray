@@ -18,6 +18,7 @@ public interface ObjectRef<T> {
    * available.
    *
    * @param timeoutMs The maximum amount of time in miliseconds to wait before returning.
+   * @throws RayTimeoutException If it's timeout to get the object.
    */
   T get(long timeoutMs);
 }

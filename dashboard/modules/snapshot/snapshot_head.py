@@ -15,7 +15,7 @@ from ray.experimental.internal_kv import (
 )
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
-from ray._private.runtime_env.validation import ParsedRuntimeEnv
+from ray.runtime_env import RuntimeEnv
 from ray.job_submission import JobInfo
 from ray.dashboard.modules.job.common import (
     JobInfoStorageClient,
@@ -112,7 +112,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
             config = {
                 "namespace": job_table_entry.config.ray_namespace,
                 "metadata": metadata,
-                "runtime_env": ParsedRuntimeEnv.deserialize(
+                "runtime_env": RuntimeEnv.deserialize(
                     job_table_entry.config.runtime_env_info.serialized_runtime_env
                 ),
             }
@@ -137,6 +137,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         for job_submission_id, job_info in self._job_info_client.get_all_jobs().items():
             if job_info is not None:
                 entry = {
+                    "job_submission_id": job_submission_id,
                     "status": job_info.status,
                     "message": job_info.message,
                     "error_type": job_info.error_type,
@@ -144,6 +145,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                     "end_time": job_info.end_time,
                     "metadata": job_info.metadata,
                     "runtime_env": job_info.runtime_env,
+                    "entrypoint": job_info.entrypoint,
                 }
                 jobs[job_submission_id] = entry
         return jobs
@@ -168,7 +170,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                 "start_time": actor_table_entry.start_time,
                 "end_time": actor_table_entry.end_time,
                 "is_detached": actor_table_entry.is_detached,
-                "resources": dict(actor_table_entry.task_spec.required_resources),
+                "resources": dict(actor_table_entry.required_resources),
                 "actor_class": actor_table_entry.class_name,
                 "current_worker_id": actor_table_entry.address.worker_id.hex(),
                 "current_raylet_id": actor_table_entry.address.raylet_id.hex(),

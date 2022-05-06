@@ -19,7 +19,7 @@ pushd "$DIR" || exit
         # get updated together. It is important to keep this in mind when making
         # changes. The CRD is designed to be stable so one operator can run many
         # different versions of Ray.
-        git checkout 6f87ca64c107cd51d3ab955faf4be198e0094536
+        git checkout a46ba3f2946f9881d0ee9797f1c9d58d1df4eff4
         # Here is where we specify the docker image that is used for the operator.
         # If you want to use your own version of Kuberay, you should change the content
         # of kuberay-autoscaler.patch to point to your operator.

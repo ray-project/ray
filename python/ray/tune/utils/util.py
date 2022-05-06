@@ -1,22 +1,22 @@
-from typing import Dict, List, Union
 import copy
 import glob
+import inspect
 import logging
 import os
-import inspect
 import threading
 import time
 import uuid
 from collections import defaultdict
 from datetime import datetime
 from threading import Thread
+from typing import Dict, List, Union, Type, Callable, Any
 from typing import Optional
 
 import numpy as np
-import ray
 import psutil
-
-from ray.util.ml_utils.json import SafeFallbackEncoder  # noqa
+import ray
+from ray.ml.checkpoint import Checkpoint
+from ray.ml.utils.remote_storage import delete_at_uri
 from ray.util.ml_utils.dict import (  # noqa: F401
     merge_dicts,
     deep_update,
@@ -24,6 +24,11 @@ from ray.util.ml_utils.dict import (  # noqa: F401
     unflatten_dict,
     unflatten_list_dict,
     unflattened_lookup,
+)
+from ray.util.ml_utils.json import SafeFallbackEncoder  # noqa
+from ray.util.ml_utils.util import (  # noqa: F401
+    is_nan,
+    is_nan_or_inf,
 )
 
 logger = logging.getLogger(__name__)
@@ -116,26 +121,64 @@ class UtilMonitor(Thread):
         self.stopped = True
 
 
-def pin_in_object_store(obj):
-    """Deprecated, use ray.put(value) instead."""
+def retry_fn(
+    fn: Callable[[], Any],
+    exception_type: Type[Exception],
+    num_retries: int = 3,
+    sleep_time: int = 1,
+):
+    for i in range(num_retries):
+        try:
+            fn()
+        except exception_type as e:
+            logger.warning(e)
+            time.sleep(sleep_time)
+        else:
+            break
 
-    obj_ref = ray.put(obj)
-    _pinned_objects.append(obj_ref)
-    return obj_ref
+
+@ray.remote
+def _serialize_checkpoint(checkpoint_path) -> bytes:
+    checkpoint = Checkpoint.from_directory(checkpoint_path)
+    return checkpoint.to_bytes()
 
 
-def get_pinned_object(pinned_id):
-    """Deprecated."""
+def get_checkpoint_from_remote_node(
+    checkpoint_path: str, node_ip: str, timeout: float = 300.0
+) -> Optional[Checkpoint]:
+    if not any(node["NodeManagerAddress"] == node_ip for node in ray.nodes()):
+        logger.warning(
+            f"Could not fetch checkpoint with path {checkpoint_path} from "
+            f"node with IP {node_ip} because the node is not available "
+            f"anymore."
+        )
+        return None
+    fut = _serialize_checkpoint.options(
+        resources={f"node:{node_ip}": 0.01}, num_cpus=0
+    ).remote(checkpoint_path)
+    try:
+        checkpoint_data = ray.get(fut, timeout=timeout)
+    except Exception as e:
+        logger.warning(
+            f"Could not fetch checkpoint with path {checkpoint_path} from "
+            f"node with IP {node_ip} because serialization failed: {e}"
+        )
+        return None
+    return Checkpoint.from_bytes(checkpoint_data)
 
-    return ray.get(pinned_id)
+
+def delete_external_checkpoint(checkpoint_uri: str):
+    delete_at_uri(checkpoint_uri)
 
 
 class warn_if_slow:
     """Prints a warning if a given operation is slower than 500ms.
 
     Example:
-        >>> with warn_if_slow("some_operation"):
-        ...    ray.get(something)
+        >>> from ray.tune.utils.util import warn_if_slow
+        >>> something = ... # doctest: +SKIP
+        >>> with warn_if_slow("some_operation"): # doctest: +SKIP
+        ...    ray.get(something) # doctest: +SKIP
     """
 
     DEFAULT_THRESHOLD = float(os.environ.get("TUNE_WARN_THRESHOLD_S", 0.5))
@@ -223,10 +266,6 @@ def date_str():
     return datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
 
 
-def is_nan_or_inf(value):
-    return np.isnan(value) or np.isinf(value)
-
-
 def _to_pinnable(obj):
     """Converts obj to a form that can be pinned in object store memory.
 
@@ -243,11 +282,11 @@ def _from_pinnable(obj):
     return obj[0]
 
 
-def diagnose_serialization(trainable):
+def diagnose_serialization(trainable: Callable):
     """Utility for detecting why your trainable function isn't serializing.
 
     Args:
-        trainable (func): The trainable object passed to
+        trainable: The trainable object passed to
             tune.run(trainable). Currently only supports
             Function API.
 
@@ -344,10 +383,10 @@ def atomic_save(state: Dict, checkpoint_dir: str, file_name: str, tmp_file_name:
     This is automatically used by tune.run during a Tune job.
 
     Args:
-        state (dict): Object state to be serialized.
-        checkpoint_dir (str): Directory location for the checkpoint.
-        file_name (str): Final name of file.
-        tmp_file_name (str): Temporary name of file.
+        state: Object state to be serialized.
+        checkpoint_dir: Directory location for the checkpoint.
+        file_name: Final name of file.
+        tmp_file_name: Temporary name of file.
     """
     import ray.cloudpickle as cloudpickle
 
@@ -365,8 +404,8 @@ def load_newest_checkpoint(dirpath: str, ckpt_pattern: str) -> dict:
     :obj:atomic_save.
 
     Args:
-        dirpath (str): Directory in which to look for the checkpoint file.
-        ckpt_pattern (str): File name pattern to match to find checkpoint
+        dirpath: Directory in which to look for the checkpoint file.
+        ckpt_pattern: File name pattern to match to find checkpoint
             files.
 
     Returns:
@@ -384,22 +423,25 @@ def load_newest_checkpoint(dirpath: str, ckpt_pattern: str) -> dict:
 
 
 def wait_for_gpu(
-    gpu_id=None, target_util=0.01, retry=20, delay_s=5, gpu_memory_limit=None
+    gpu_id: Optional[Union[int, str]] = None,
+    target_util: float = 0.01,
+    retry: int = 20,
+    delay_s: int = 5,
+    gpu_memory_limit: Optional[float] = None,
 ):
     """Checks if a given GPU has freed memory.
 
     Requires ``gputil`` to be installed: ``pip install gputil``.
 
     Args:
-        gpu_id (Optional[Union[int, str]]): GPU id or uuid to check.
+        gpu_id: GPU id or uuid to check.
             Must be found within GPUtil.getGPUs(). If none, resorts to
             the first item returned from `ray.get_gpu_ids()`.
-        target_util (float): The utilization threshold to reach to unblock.
+        target_util: The utilization threshold to reach to unblock.
             Set this to 0 to block until the GPU is completely free.
-        retry (int): Number of times to check GPU limit. Sleeps `delay_s`
+        retry: Number of times to check GPU limit. Sleeps `delay_s`
             seconds between checks.
-        delay_s (int): Seconds to wait before check.
-        gpu_memory_limit (float): Deprecated.
+        delay_s: Seconds to wait before check.
 
     Returns:
         bool: True if free.
@@ -419,10 +461,7 @@ def wait_for_gpu(
         tune.run(tune_func, resources_per_trial={"GPU": 1}, num_samples=10)
     """
     GPUtil = _import_gputil()
-    if gpu_memory_limit:
-        raise ValueError(
-            "'gpu_memory_limit' is deprecated. " "Use 'target_util' instead."
-        )
+
     if GPUtil is None:
         raise RuntimeError("GPUtil must be installed if calling `wait_for_gpu`.")
 
@@ -476,15 +515,18 @@ def wait_for_gpu(
 
 
 def validate_save_restore(
-    trainable_cls, config=None, num_gpus=0, use_object_store=False
+    trainable_cls: Type,
+    config: Optional[Dict] = None,
+    num_gpus: int = 0,
+    use_object_store: bool = False,
 ):
     """Helper method to check if your Trainable class will resume correctly.
 
     Args:
         trainable_cls: Trainable class for evaluation.
-        config (dict): Config to pass to Trainable when testing.
-        num_gpus (int): GPU resources to allocate when testing.
-        use_object_store (bool): Whether to save and restore to Ray's object
+        config: Config to pass to Trainable when testing.
+        num_gpus: GPU resources to allocate when testing.
+        use_object_store: Whether to save and restore to Ray's object
             store. Recommended to set this to True if planning to use
             algorithms that pause training (i.e., PBT, HyperBand).
     """
@@ -574,8 +616,8 @@ def create_logdir(dirname: str, local_dir: str):
     to the dirname.
 
     Args:
-        dirname (str): Dirname to create in `local_dir`
-        local_dir (str): Root directory for the log dir
+        dirname: Dirname to create in `local_dir`
+        local_dir: Root directory for the log dir
 
     Returns:
         full path to the newly created logdir.
@@ -642,11 +684,3 @@ def validate_warmstart(
                 + " and points_to_evaluate {}".format(points_to_evaluate)
                 + " do not match."
             )
-
-
-if __name__ == "__main__":
-    ray.init()
-    X = pin_in_object_store("hello")
-    print(X)
-    result = get_pinned_object(X)
-    print(result)

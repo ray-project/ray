@@ -12,9 +12,7 @@ import ray
 # This package contains a subdirectory called `test_module`.
 # Calling `test_module.one()` should return `2`.
 # If you find that confusing, take it up with @jiaodong...
-HTTPS_PACKAGE_URI = (
-    "https://github.com/shrekris-anyscale/" "test_module/archive/HEAD.zip"
-)
+HTTPS_PACKAGE_URI = "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
 S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
 GS_PACKAGE_URI = "gs://public-runtime-env-test/test_module.zip"
 REMOTE_URIS = [HTTPS_PACKAGE_URI, S3_PACKAGE_URI]

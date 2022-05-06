@@ -1,10 +1,6 @@
+.. include:: /_includes/data/announcement.rst
+
 .. _datasets:
-
-.. note::
-
-    Before you proceed, note that Ray Datasets is available as **beta** in Ray 1.8+.
-    Please file feature requests and bug reports on GitHub Issues or join the discussion
-    on the `Ray Slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`__.
 
 ==================================================
 Ray Datasets: Distributed Data Loading and Compute
@@ -22,6 +18,7 @@ Check our :ref:`compatibility matrix<data-compatibility>` to see if your favorit
 
 ..
   https://docs.google.com/drawings/d/16AwJeBNR46_TsrkOmMbGaBK7u-OPsf_V8fHjU-d2PPQ/edit
+
 
 Ray Datasets simplifies general purpose parallel GPU and CPU compute in Ray; for instance, for `GPU batch inference <dataset.html#transforming-datasets>`__.
 It provides a higher level API for Ray tasks and actors in such embarrassingly parallel compute situations,
@@ -61,7 +58,7 @@ Advanced users can utilize the Ray Datasets API reference for their projects.
     ^^^
 
     Start with our quick start tutorials for :ref:`working with Datasets<ray_datasets_quick_start>`
-    and :ref:`Dataset Pipelines<dataset_pipelines_quick_start>`.
+    and :ref:`Dataset Pipelines<pipelining_datasets>`.
     These concrete examples will give you an idea of how to use Ray Datasets.
 
     +++
@@ -162,7 +159,7 @@ Supported Input Formats
      - ✅
    * - MARS Dataframe
      - :func:`ray.data.from_mars()`
-     - (todo)
+     - ✅
    * - Pandas Dataframe Objects
      - :func:`ray.data.from_pandas()`
      - ✅
@@ -209,7 +206,7 @@ Supported Output Formats
      - ✅
    * - MARS Dataframe
      - :meth:`ds.to_mars() <ray.data.Dataset.to_mars>`
-     - (todo)
+     - ✅
    * - Arrow Table Objects
      - :meth:`ds.to_arrow_refs() <ray.data.Dataset.to_arrow_refs>`
      - ✅
@@ -234,6 +231,9 @@ Supported Output Formats
    * - TensorFlow Iterable Dataset
      - :meth:`ds.to_tf() <ray.data.Dataset.to_tf>`
      - ✅
+   * - Random Access Dataset
+     - :meth:`ds.to_random_access_dataset() <ray.data.Dataset.to_random_access_dataset>`
+     - ✅
    * - Custom Datasource
      - :meth:`ds.write_datasource() <ray.data.Dataset.write_datasource>`
      - ✅
@@ -247,6 +247,7 @@ Learn More
 - [slides] `Talk given at PyData 2021 <https://docs.google.com/presentation/d/1zANPlmrxQkjPU62I-p92oFO3rJrmjVhs73hL4YbM4C4>`_
 - [blog] `Data Ingest in a Third Generation ML Architecture <https://www.anyscale.com/blog/deep-dive-data-ingest-in-a-third-generation-ml-architecture>`_
 - [blog] `Building an end-to-end ML pipeline using Mars and XGBoost on Ray <https://www.anyscale.com/blog/building-an-end-to-end-ml-pipeline-using-mars-and-xgboost-on-ray>`_
+- [blog] `Ray Datasets for large-scale machine learning ingest and scoring <https://www.anyscale.com/blog/ray-datasets-for-machine-learning-training-and-scoring>`_
 
 ----------
 Contribute
@@ -259,3 +260,5 @@ There are many potential improvements, including:
 - Integration with more ecosystem libraries.
 - Adding features that require partitioning such as `groupby()` and `join()`.
 - Performance optimizations.
+
+.. include:: /_includes/data/announcement_bottom.rst

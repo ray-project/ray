@@ -1,12 +1,13 @@
+import ray
 from ray import workflow
 
 
-@workflow.step
+@ray.remote
 def hello(msg: str) -> None:
     print(msg)
 
 
-@workflow.step
+@ray.remote
 def wait_all(*args) -> None:
     pass
 
@@ -15,5 +16,5 @@ if __name__ == "__main__":
     workflow.init()
     children = []
     for msg in ["hello world", "goodbye world"]:
-        children.append(hello.step(msg))
-    wait_all.step(*children).run()
+        children.append(hello.bind(msg))
+    workflow.create(wait_all.bind(*children)).run()

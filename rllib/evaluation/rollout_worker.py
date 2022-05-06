@@ -35,16 +35,18 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.models.preprocessors import Preprocessor
 from ray.rllib.offline import NoopOutput, IOContext, OutputWriter, InputReader
 from ray.rllib.offline.off_policy_estimator import OffPolicyEstimator, OffPolicyEstimate
-from ray.rllib.offline.is_estimator import ImportanceSamplingEstimator
-from ray.rllib.offline.wis_estimator import WeightedImportanceSamplingEstimator
+from ray.rllib.offline.estimators.importance_sampling import ImportanceSampling
+from ray.rllib.offline.estimators.weighted_importance_sampling import (
+    WeightedImportanceSampling,
+)
 from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils import force_list, merge_dicts, check_env
-from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, ExperimentalAPI
+from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI
 from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.error import ERR_MSG_NO_GPUS, HOWTO_CHANGE_CONFIG
 from ray.rllib.utils.filter import get_filter, Filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -133,22 +135,27 @@ class RolloutWorker(ParallelIteratorWorker):
 
     Examples:
         >>> # Create a rollout worker and using it to collect experiences.
-        >>> worker = RolloutWorker(
-        ...   env_creator=lambda _: gym.make("CartPole-v0"),
-        ...   policy_spec=PGTFPolicy)
-        >>> print(worker.sample())
+        >>> import gym
+        >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
+        >>> from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
+        >>> worker = RolloutWorker( # doctest: +SKIP
+        ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
+        ...   policy_spec=PGTFPolicy) # doctest: +SKIP
+        >>> print(worker.sample()) # doctest: +SKIP
         SampleBatch({
             "obs": [[...]], "actions": [[...]], "rewards": [[...]],
             "dones": [[...]], "new_obs": [[...]]})
-
         >>> # Creating a multi-agent rollout worker
-        >>> worker = RolloutWorker(
+        >>> from gym.spaces import Discrete, Box
+        >>> import random
+        >>> MultiAgentTrafficGrid = ... # doctest: +SKIP
+        >>> worker = RolloutWorker( # doctest: +SKIP
         ...   env_creator=lambda _: MultiAgentTrafficGrid(num_cars=25),
-        ...   policy_spec={
+        ...   policy_spec={ # doctest: +SKIP
         ...       # Use an ensemble of two policies for car agents
-        ...       "car_policy1":
+        ...       "car_policy1": # doctest: +SKIP
         ...         (PGTFPolicy, Box(...), Discrete(...), {"gamma": 0.99}),
-        ...       "car_policy2":
+        ...       "car_policy2": # doctest: +SKIP
         ...         (PGTFPolicy, Box(...), Discrete(...), {"gamma": 0.95}),
         ...       # Use a single shared policy for all traffic lights
         ...       "traffic_light_policy":
@@ -157,7 +164,7 @@ class RolloutWorker(ParallelIteratorWorker):
         ...   policy_mapping_fn=lambda agent_id, episode, **kwargs:
         ...     random.choice(["car_policy1", "car_policy2"])
         ...     if agent_id.startswith("car_") else "traffic_light_policy")
-        >>> print(worker.sample())
+        >>> print(worker.sample()) # doctest: +SKIP
         MultiAgentBatch({
             "car_policy1": SampleBatch(...),
             "car_policy2": SampleBatch(...),
@@ -228,6 +235,7 @@ class RolloutWorker(ParallelIteratorWorker):
         policy_config: Optional[PartialTrainerConfigDict] = None,
         worker_index: int = 0,
         num_workers: int = 0,
+        recreated_worker: bool = False,
         record_env: Union[bool, str] = False,
         log_dir: Optional[str] = None,
         log_level: Optional[str] = None,
@@ -322,6 +330,11 @@ class RolloutWorker(ParallelIteratorWorker):
                 through EnvContext so that envs can be configured per worker.
             num_workers: For remote workers, how many workers altogether
                 have been created?
+            recreated_worker: Whether this worker is a recreated one. Workers are
+                recreated by a Trainer (via WorkerSet) in case
+                `recreate_failed_workers=True` and one of the original workers (or an
+                already recreated one) has failed. They don't differ from original
+                workers other than the value of this flag (`self.recreated_worker`).
             record_env: Write out episode stats and videos
                 using gym.wrappers.Monitor to this directory if specified. If
                 True, use the default output dir in ~/ray_results/.... If
@@ -332,13 +345,14 @@ class RolloutWorker(ParallelIteratorWorker):
                 DefaultCallbacks for training/policy/rollout-worker callbacks.
             input_creator: Function that returns an InputReader object for
                 loading previous generated experiences.
-            input_evaluation: How to evaluate the policy
-                performance. This only makes sense to set when the input is
-                reading offline data. The possible values include:
-                - "is": the step-wise importance sampling estimator.
-                - "wis": the weighted step-wise is estimator.
-                - "simulation": run the environment in the background, but
-                use this data for evaluation only and never for learning.
+            input_evaluation: How to evaluate the policy performance. Setting this only
+                makes sense when the input is reading offline data.
+                Available options:
+                - "simulation" (str): Run the environment in the background, but use
+                this data for evaluation only and not for learning.
+                - Any subclass (type) of the OffPolicyEstimator API class, e.g.
+                `ray.rllib.offline.estimators.importance_sampling::ImportanceSampling`
+                or your own custom subclass.
             output_creator: Function that returns an OutputWriter object for
                 saving generated experiences.
             remote_worker_envs: If using num_envs_per_worker > 1,
@@ -429,6 +443,7 @@ class RolloutWorker(ParallelIteratorWorker):
             vector_index=0,
             num_workers=num_workers,
             remote=remote_worker_envs,
+            recreated_worker=recreated_worker,
         )
         self.env_context = env_context
         self.policy_config: PartialTrainerConfigDict = policy_config
@@ -440,6 +455,7 @@ class RolloutWorker(ParallelIteratorWorker):
             self.callbacks: DefaultCallbacks = DefaultCallbacks()
         self.worker_index: int = worker_index
         self.num_workers: int = num_workers
+        self.recreated_worker: bool = recreated_worker
         model_config: ModelConfigDict = (
             model_config or self.policy_config.get("model") or {}
         )
@@ -495,15 +511,6 @@ class RolloutWorker(ParallelIteratorWorker):
         if self.env is not None:
             # Validate environment (general validation function).
             if not self._disable_env_checking:
-                logger.warning(
-                    "We've added a module for checking environments that "
-                    "are used in experiments. It will cause your "
-                    "environment to fail if your environment is not set up"
-                    "correctly. You can disable check env by setting "
-                    "`disable_env_checking` to True in your experiment config "
-                    "dictionary. You can run the environment checking module "
-                    "standalone by calling ray.rllib.utils.check_env(env)."
-                )
                 check_env(self.env)
             # Custom validation function given, typically a function attribute of the
             # algorithm trainer.
@@ -706,24 +713,41 @@ class RolloutWorker(ParallelIteratorWorker):
         )
         self.reward_estimators: List[OffPolicyEstimator] = []
         for method in input_evaluation:
+            if method == "is":
+                method = ImportanceSampling
+                deprecation_warning(
+                    old="config.input_evaluation=[is]",
+                    new="from ray.rllib.offline.is_estimator import "
+                    f"{method.__name__}; config.input_evaluation="
+                    f"[{method.__name__}]",
+                    error=False,
+                )
+            elif method == "wis":
+                method = WeightedImportanceSampling
+                deprecation_warning(
+                    old="config.input_evaluation=[is]",
+                    new="from ray.rllib.offline.wis_estimator import "
+                    f"{method.__name__}; config.input_evaluation="
+                    f"[{method.__name__}]",
+                    error=False,
+                )
+
             if method == "simulation":
                 logger.warning(
                     "Requested 'simulation' input evaluation method: "
                     "will discard all sampler outputs and keep only metrics."
                 )
                 sample_async = True
-            elif method == "is":
-                ise = ImportanceSamplingEstimator.create_from_io_context(
-                    self.io_context
+            elif isinstance(method, type) and issubclass(method, OffPolicyEstimator):
+                self.reward_estimators.append(
+                    method.create_from_io_context(self.io_context)
                 )
-                self.reward_estimators.append(ise)
-            elif method == "wis":
-                wise = WeightedImportanceSamplingEstimator.create_from_io_context(
-                    self.io_context
-                )
-                self.reward_estimators.append(wise)
             else:
-                raise ValueError("Unknown evaluation method: {}".format(method))
+                raise ValueError(
+                    f"Unknown evaluation method: {method}! Must be "
+                    "either `simulation` or a sub-class of ray.rllib.offline."
+                    "off_policy_estimator::OffPolicyEstimator"
+                )
 
         render = False
         if policy_config.get("render_env") is True and (
@@ -792,8 +816,14 @@ class RolloutWorker(ParallelIteratorWorker):
             A columnar batch of experiences (e.g., tensors).
 
         Examples:
-            >>> print(worker.sample())
-            SampleBatch({"obs": [1, 2, 3], "action": [0, 1, 0], ...})
+            >>> import gym
+            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
+            >>> from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
+            >>> worker = RolloutWorker( # doctest: +SKIP
+            ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
+            ...   policy_spec=PGTFPolicy) # doctest: +SKIP
+            >>> print(worker.sample()) # doctest: +SKIP
+            SampleBatch({"obs": [...], "action": [...], ...})
         """
 
         if self.fake_sampler and self.last_batch is not None:
@@ -870,8 +900,14 @@ class RolloutWorker(ParallelIteratorWorker):
                 size of the collected batch.
 
         Examples:
-            >>> print(worker.sample_with_count())
-            (SampleBatch({"obs": [1, 2, 3], "action": [0, 1, 0], ...}), 3)
+            >>> import gym
+            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
+            >>> from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
+            >>> worker = RolloutWorker( # doctest: +SKIP
+            ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
+            ...   policy_spec=PGTFPolicy) # doctest: +SKIP
+            >>> print(worker.sample_with_count()) # doctest: +SKIP
+            (SampleBatch({"obs": [...], "action": [...], ...}), 3)
         """
         batch = self.sample()
         return batch, batch.count
@@ -890,8 +926,14 @@ class RolloutWorker(ParallelIteratorWorker):
             Dictionary of extra metadata from compute_gradients().
 
         Examples:
-            >>> batch = worker.sample()
-            >>> info = worker.learn_on_batch(samples)
+            >>> import gym
+            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
+            >>> from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
+            >>> worker = RolloutWorker( # doctest: +SKIP
+            ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
+            ...   policy_spec=PGTFPolicy) # doctest: +SKIP
+            >>> batch = worker.sample() # doctest: +SKIP
+            >>> info = worker.learn_on_batch(samples) # doctest: +SKIP
         """
         if log_once("learn_on_batch"):
             logger.info(
@@ -899,8 +941,9 @@ class RolloutWorker(ParallelIteratorWorker):
                     summarize(samples)
                 )
             )
+
+        info_out = {}
         if isinstance(samples, MultiAgentBatch):
-            info_out = {}
             builders = {}
             to_fetch = {}
             for pid, batch in samples.policy_batches.items():
@@ -918,11 +961,13 @@ class RolloutWorker(ParallelIteratorWorker):
             info_out.update({pid: builders[pid].get(v) for pid, v in to_fetch.items()})
         else:
             if self.is_policy_to_train(DEFAULT_POLICY_ID, samples):
-                info_out = {
-                    DEFAULT_POLICY_ID: self.policy_map[
-                        DEFAULT_POLICY_ID
-                    ].learn_on_batch(samples)
-                }
+                info_out.update(
+                    {
+                        DEFAULT_POLICY_ID: self.policy_map[
+                            DEFAULT_POLICY_ID
+                        ].learn_on_batch(samples)
+                    }
+                )
         if log_once("learn_out"):
             logger.debug("Training out:\n\n{}\n".format(summarize(info_out)))
         return info_out
@@ -998,8 +1043,14 @@ class RolloutWorker(ParallelIteratorWorker):
             compatible worker using the worker's `apply_gradients()` method.
 
         Examples:
-            >>> batch = worker.sample()
-            >>> grads, info = worker.compute_gradients(samples)
+            >>> import gym
+            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
+            >>> from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
+            >>> worker = RolloutWorker( # doctest: +SKIP
+            ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
+            ...   policy_spec=PGTFPolicy) # doctest: +SKIP
+            >>> batch = worker.sample() # doctest: +SKIP
+            >>> grads, info = worker.compute_gradients(samples) # doctest: +SKIP
         """
         if log_once("compute_gradients"):
             logger.info("Compute gradients on:\n\n{}\n".format(summarize(samples)))
@@ -1061,9 +1112,15 @@ class RolloutWorker(ParallelIteratorWorker):
                 structs.
 
         Examples:
-            >>> samples = worker.sample()
-            >>> grads, info = worker.compute_gradients(samples)
-            >>> worker.apply_gradients(grads)
+            >>> import gym
+            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
+            >>> from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
+            >>> worker = RolloutWorker( # doctest: +SKIP
+            ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
+            ...   policy_spec=PGTFPolicy) # doctest: +SKIP
+            >>> samples = worker.sample() # doctest: +SKIP
+            >>> grads, info = worker.compute_gradients(samples) # doctest: +SKIP
+            >>> worker.apply_gradients(grads) # doctest: +SKIP
         """
         if log_once("apply_gradients"):
             logger.info("Apply gradients:\n\n{}\n".format(summarize(grads)))
@@ -1405,8 +1462,14 @@ class RolloutWorker(ParallelIteratorWorker):
             `func([policy, pid, **kwargs])`.
         """
         return [
-            func(policy, pid, **kwargs)
-            for pid, policy in self.policy_map.items()
+            # Make sure to only iterate over keys() and not items(). Iterating over
+            # items will access policy_map elements even for pids that we do not need,
+            # i.e. those that are not in policy_to_train. Access to policy_map elements
+            # can cause disk access for policies that were offloaded to disk. Since
+            # these policies will be skipped in the for-loop accessing them is
+            # unnecessary, making subsequent disk access unnecessary.
+            func(self.policy_map[pid], pid, **kwargs)
+            for pid in self.policy_map.keys()
             if self.is_policy_to_train(pid, None)
         ]
 
@@ -1468,9 +1531,12 @@ class RolloutWorker(ParallelIteratorWorker):
             objs: The byte sequence to restore this worker's state from.
 
         Examples:
-            >>> state = worker.save()
-            >>> new_worker = RolloutWorker(...)
-            >>> new_worker.restore(state)
+            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
+            >>> # Create a RolloutWorker.
+            >>> worker = ... # doctest: +SKIP
+            >>> state = worker.save() # doctest: +SKIP
+            >>> new_worker = RolloutWorker(...) # doctest: +SKIP
+            >>> new_worker.restore(state) # doctest: +SKIP
         """
         objs = pickle.loads(objs)
         self.sync_filters(objs["filters"])
@@ -1482,7 +1548,7 @@ class RolloutWorker(ParallelIteratorWorker):
                         f"PolicyID '{pid}' was probably added on-the-fly (not"
                         " part of the static `multagent.policies` config) and"
                         " no PolicySpec objects found in the pickled policy "
-                        "state. Will not add `{pid}`, but ignore it for now."
+                        f"state. Will not add `{pid}`, but ignore it for now."
                     )
                 else:
                     self.add_policy(
@@ -1510,8 +1576,11 @@ class RolloutWorker(ParallelIteratorWorker):
             Dict mapping PolicyIDs to ModelWeights.
 
         Examples:
-            >>> weights = worker.get_weights()
-            >>> print(weights)
+            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
+            >>> # Create a RolloutWorker.
+            >>> worker = ... # doctest: +SKIP
+            >>> weights = worker.get_weights() # doctest: +SKIP
+            >>> print(weights) # doctest: +SKIP
             {"default_policy": {"layer1": array(...), "layer2": ...}}
         """
         if policies is None:
@@ -1519,8 +1588,14 @@ class RolloutWorker(ParallelIteratorWorker):
         policies = force_list(policies)
 
         return {
-            pid: policy.get_weights()
-            for pid, policy in self.policy_map.items()
+            # Make sure to only iterate over keys() and not items(). Iterating over
+            # items will access policy_map elements even for pids that we do not need,
+            # i.e. those that are not in policies. Access to policy_map elements can
+            # cause disk access for policies that were offloaded to disk. Since these
+            # policies will be skipped in the for-loop accessing them is unnecessary,
+            # making subsequent disk access unnecessary.
+            pid: self.policy_map[pid].get_weights()
+            for pid in self.policy_map.keys()
             if pid in policies
         }
 
@@ -1536,9 +1611,12 @@ class RolloutWorker(ParallelIteratorWorker):
                 worker to. If None, do not update the global_vars.
 
         Examples:
-            >>> weights = worker.get_weights()
+            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
+            >>> # Create a RolloutWorker.
+            >>> worker = ... # doctest: +SKIP
+            >>> weights = worker.get_weights() # doctest: +SKIP
             >>> # Set `global_vars` (timestep) as well.
-            >>> worker.set_weights(weights, {"timestep": 42})
+            >>> worker.set_weights(weights, {"timestep": 42}) # doctest: +SKIP
         """
         # If per-policy weights are object refs, `ray.get()` them first.
         if weights and isinstance(next(iter(weights.values())), ObjectRef):
@@ -1558,8 +1636,11 @@ class RolloutWorker(ParallelIteratorWorker):
             The current global_vars dict of this worker.
 
         Examples:
-            >>> global_vars = worker.get_global_vars()
-            >>> print(global_vars)
+            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
+            >>> # Create a RolloutWorker.
+            >>> worker = ... # doctest: +SKIP
+            >>> global_vars = worker.get_global_vars() # doctest: +SKIP
+            >>> print(global_vars) # doctest: +SKIP
             {"timestep": 424242}
         """
         return self.global_vars
@@ -1572,9 +1653,14 @@ class RolloutWorker(ParallelIteratorWorker):
             global_vars: The new global_vars dict.
 
         Examples:
-            >>> global_vars = worker.set_global_vars({"timestep": 4242})
+            >>> worker = ... # doctest: +SKIP
+            >>> global_vars = worker.set_global_vars( # doctest: +SKIP
+            ...     {"timestep": 4242})
         """
-        self.foreach_policy(lambda p, _: p.on_global_var_update(global_vars))
+        # Only update policies that are being trained in order to avoid superfluous
+        # access of policies which might have been offloaded to disk. This is important
+        # here since global vars are constantly being updated.
+        self.foreach_policy_to_train(lambda p, _: p.on_global_var_update(global_vars))
         self.global_vars = global_vars
 
     @DeveloperAPI
@@ -1743,16 +1829,18 @@ class RolloutWorker(ParallelIteratorWorker):
             env = env_creator(env_ctx)
             # Validate first.
             if not disable_env_checking:
-                logger.warning(
-                    "We've added a module for checking environments that "
-                    "are used in experiments. It will cause your "
-                    "environment to fail if your environment is not set up"
-                    "correctly. You can disable check env by setting "
-                    "`disable_env_checking` to True in your experiment config "
-                    "dictionary. You can run the environment checking module "
-                    "standalone by calling ray.rllib.utils.check_env(env)."
-                )
-                check_env(env)
+                try:
+                    check_env(env)
+                except Exception as e:
+                    logger.warning(
+                        "We've added a module for checking environments that "
+                        "are used in experiments. Your env may not be set up"
+                        "correctly. You can disable env checking for now by setting "
+                        "`disable_env_checking` to True in your experiment config "
+                        "dictionary. You can run the environment checking module "
+                        "standalone by calling ray.rllib.utils.check_env(env)."
+                    )
+                    raise e
             # Custom validation function given by user.
             if validate_env is not None:
                 validate_env(env, env_ctx)
@@ -1806,7 +1894,7 @@ class RolloutWorker(ParallelIteratorWorker):
         self.policy_map[policy_id].import_model_from_h5(import_file)
 
     @Deprecated(
-        new="Trainer.get_policy().export_checkpoint([export_dir], " "[filename]?)",
+        new="Trainer.get_policy().export_checkpoint([export_dir], [filename]?)",
         error=False,
     )
     def export_policy_checkpoint(

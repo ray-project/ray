@@ -48,7 +48,11 @@ class NodeProvider:
         be called again to refresh results.
 
         Examples:
-            >>> provider.non_terminated_nodes({TAG_RAY_NODE_KIND: "worker"})
+            >>> from ray.autoscaler.node_provider import NodeProvider
+            >>> from ray.autoscaler.tags import TAG_RAY_NODE_KIND
+            >>> provider = NodeProvider(...) # doctest: +SKIP
+            >>> provider.non_terminated_nodes( # doctest: +SKIP
+            ...     {TAG_RAY_NODE_KIND: "worker"})
             ["node-1", "node-2"]
 
         """
@@ -155,7 +159,7 @@ class NodeProvider:
         mapping from deleted node ids to node metadata.
         """
         for node_id in node_ids:
-            logger.info("NodeProvider: " "{}: Terminating node".format(node_id))
+            logger.info("NodeProvider: {}: Terminating node".format(node_id))
             self.terminate_node(node_id)
         return None
 

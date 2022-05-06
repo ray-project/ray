@@ -99,6 +99,50 @@ We can also query the deployment using the :mod:`ServeHandle <ray.serve.handle.R
 
   print(ray.get(handle.remote()))
 
+As noted above, there are two ways to expose deployments. The first is by using the :mod:`ServeHandle <ray.serve.handle.RayServeHandle>`
+interface. This method allows you to access deployments within a Python script or code, making it convenient for a
+Python developer. And the second is by using the HTTP request, allowing access to deployments via a web client application.
+
+Let's look at a simple end-to-end example using both ways to expose and access deployments. Your output may
+vary due to random nature of how the prediction is computed; however, the example illustrates two things:
+1) how to expose and use deployments and 2) how to use replicas, to which requests are sent. Note that each pid
+is a separate replica associated with each deployment name, ``rep-1`` and ``rep-2`` respectively.
+
+.. literalinclude:: _examples/doc_code/create_deployment.py
+    :language: python
+    :start-after: __serve_example_begin__
+    :end-before:  __serve_example_end__
+
+.. code-block:: python
+
+
+    # Output:
+    # {'rep-1': Deployment(name=rep-1,version=None,route_prefix=/rep-1),
+    # 'rep-2': Deployment(name=rep-2,version=None,route_prefix=/rep-2)}
+    #
+    # ServerHandle API responses: ----------
+    # handle name : rep-1
+    # prediction  : (pid: 62636); path: /model/rep-1.pkl; data: 0.600; prediction: 1.292
+    # --
+    # handle name : rep-2
+    # prediction  : (pid: 62635); path: /model/rep-2.pkl; data: 0.075; prediction: 0.075
+    # --
+    # handle name : rep-1
+    # prediction  : (pid: 62634); path: /model/rep-1.pkl; data: 0.186; prediction: 0.186
+    # --
+    # handle name : rep-2
+    # prediction  : (pid: 62637); path: /model/rep-2.pkl; data: 0.751; prediction: 1.444
+    # --
+    # HTTP responses: ----------
+    # handle name : rep-1
+    # prediction  : (pid: 62636); path: /model/rep-1.pkl; data: 0.582; prediction: 1.481
+    # handle name : rep-2
+    # prediction  : (pid: 62637); path: /model/rep-2.pkl; data: 0.778; prediction: 1.678
+    # handle name : rep-1
+    # prediction  : (pid: 62634); path: /model/rep-1.pkl; data: 0.139; prediction: 0.139
+    # handle name : rep-2
+    # prediction  : (pid: 62635); path: /model/rep-2.pkl; data: 0.569; prediction: 1.262
+
 Updating a Deployment
 =====================
 
@@ -204,6 +248,11 @@ code and set this number based on end to end latency objective.
   The ``version`` field is required for autoscaling. We are actively working on removing
   this limitation.
 
+.. note::
+  The Ray Serve Autoscaler is an application-level autoscaler that sits on top of the :ref:`Ray Autoscaler<cluster-index>`.  
+  Concretely, this means that the Ray Serve autoscaler asks Ray to start a number of replica actors based on the request demand.
+  If the Ray Autoscaler determines there aren't enough available CPUs to place these actors, it responds by adding more nodes.
+  Similarly, when Ray Serve scales down and terminates some replica actors, it may result in some nodes being empty, at which point the Ray autoscaler will remove those nodes.
 
 .. _`serve-cpus-gpus`:
 
@@ -303,11 +352,6 @@ Runtime Environments feature is installed.
 Example:
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/conda_env.py
-
-.. note::
-  When using a Ray library (for example, Ray Serve) in a runtime environment, it must
-  explicitly be included in the dependencies, as in the above example.  This is not
-  required when just using Ray Core.
 
 .. tip::
   Avoid dynamically installing packages that install from source: these can be slow and

@@ -111,7 +111,8 @@ std::vector<std::shared_ptr<msgpack::sbuffer>> AbstractRayRuntime::Get(
 }
 
 std::vector<bool> AbstractRayRuntime::Wait(const std::vector<std::string> &ids,
-                                           int num_objects, int timeout_ms) {
+                                           int num_objects,
+                                           int timeout_ms) {
   return object_store_->Wait(StringIDsToObjectIDs(ids), num_objects, timeout_ms);
 }
 
@@ -129,7 +130,8 @@ std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(
         auto meta_str = arg.meta_str;
         metadata = std::make_shared<ray::LocalMemoryBuffer>(
             reinterpret_cast<uint8_t *>(const_cast<char *>(meta_str.data())),
-            meta_str.size(), true);
+            meta_str.size(),
+            true);
       }
       ray_arg = absl::make_unique<ray::TaskArgByValue>(std::make_shared<ray::RayObject>(
           memory_buffer, metadata, std::vector<rpc::ObjectReference>()));
@@ -141,7 +143,8 @@ std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(
         auto &core_worker = CoreWorkerProcess::GetCoreWorker();
         owner_address = core_worker.GetOwnerAddress(id);
       }
-      ray_arg = absl::make_unique<ray::TaskArgByReference>(id, owner_address,
+      ray_arg = absl::make_unique<ray::TaskArgByReference>(id,
+                                                           owner_address,
                                                            /*call_site=*/"");
     }
     ray_args.push_back(std::move(ray_arg));
@@ -181,8 +184,10 @@ std::string AbstractRayRuntime::CreateActor(
 }
 
 std::string AbstractRayRuntime::CallActor(
-    const RemoteFunctionHolder &remote_function_holder, const std::string &actor,
-    std::vector<ray::internal::TaskArg> &args, const CallOptions &call_options) {
+    const RemoteFunctionHolder &remote_function_holder,
+    const std::string &actor,
+    std::vector<ray::internal::TaskArg> &args,
+    const CallOptions &call_options) {
   InvocationSpec invocation_spec{};
   if (remote_function_holder.lang_type == LangType::PYTHON) {
     const auto native_actor_handle = CoreWorkerProcess::GetCoreWorker().GetActorHandle(
@@ -192,11 +197,11 @@ std::string AbstractRayRuntime::CallActor(
     RemoteFunctionHolder func_holder = remote_function_holder;
     func_holder.module_name = typed_descriptor->ModuleName();
     func_holder.class_name = typed_descriptor->ClassName();
-    invocation_spec = BuildInvocationSpec1(TaskType::ACTOR_TASK, func_holder, args,
-                                           ActorID::FromBinary(actor));
+    invocation_spec = BuildInvocationSpec1(
+        TaskType::ACTOR_TASK, func_holder, args, ActorID::FromBinary(actor));
   } else {
-    invocation_spec = BuildInvocationSpec1(TaskType::ACTOR_TASK, remote_function_holder,
-                                           args, ActorID::FromBinary(actor));
+    invocation_spec = BuildInvocationSpec1(
+        TaskType::ACTOR_TASK, remote_function_holder, args, ActorID::FromBinary(actor));
   }
 
   return task_submitter_->SubmitActorTask(invocation_spec, call_options).Binary();
@@ -308,7 +313,8 @@ PlacementGroup AbstractRayRuntime::GeneratePlacementGroup(const std::string &str
     options.bundles.emplace_back(bundle);
   }
   options.strategy = PlacementStrategy(pg_table_data.strategy());
-  PlacementGroup group(pg_table_data.placement_group_id(), std::move(options),
+  PlacementGroup group(pg_table_data.placement_group_id(),
+                       std::move(options),
                        PlacementGroupState(pg_table_data.state()));
   return group;
 }

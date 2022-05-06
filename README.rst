@@ -22,7 +22,7 @@ Ray is packaged with the following libraries for accelerating machine learning w
 - `Tune`_: Scalable Hyperparameter Tuning
 - `RLlib`_: Scalable Reinforcement Learning
 - `Train`_: Distributed Deep Learning (beta)
-- `Datasets`_: Distributed Data Loading and Compute (beta)
+- `Datasets`_: Distributed Data Loading and Compute
 
 As well as libraries for taking ML and distributed apps to production:
 
@@ -338,7 +338,7 @@ This example runs serves a scikit-learn gradient boosting classifier.
             self.label_list = iris_dataset["target_names"].tolist()
 
         async def __call__(self, request):
-            payload = await request.json()["vector"]
+            payload = (await request.json())["vector"]
             print(f"Received flask request with data {payload}")
 
             prediction = self.model.predict([payload])[0]
@@ -368,7 +368,7 @@ More Information
 - `Tutorial`_
 - `Blog`_
 - `Ray 1.0 Architecture whitepaper`_ **(new)**
-- `Ray Design Patterns`_ **(new)**
+- `Exoshuffle: large-scale data shuffle in Ray`_ **(new)**
 - `RLlib paper`_
 - `RLlib flow paper`_
 - `Tune paper`_
@@ -382,7 +382,7 @@ More Information
 .. _`Tutorial`: https://github.com/ray-project/tutorial
 .. _`Blog`: https://medium.com/distributed-computing-with-ray
 .. _`Ray 1.0 Architecture whitepaper`: https://docs.google.com/document/d/1lAy0Owi-vPz2jEqBSaHNQcy2IBSDEHyXNOQZlGuj93c/preview
-.. _`Ray Design Patterns`: https://docs.google.com/document/d/167rnnDFIVRhHhK4mznEIemOtj63IOhtIPvSYaPgI4Fg/edit
+.. _`Exoshuffle: large-scale data shuffle in Ray`: https://arxiv.org/abs/2203.05072
 .. _`Ray paper`: https://arxiv.org/abs/1712.05889
 .. _`Ray HotOS paper`: https://arxiv.org/abs/1703.03924
 .. _`RLlib paper`: https://arxiv.org/abs/1712.09381
@@ -392,14 +392,40 @@ More Information
 Getting Involved
 ----------------
 
-- `Forum`_: For discussions about development, questions about usage, and feature requests.
-- `GitHub Issues`_: For reporting bugs.
-- `Twitter`_: Follow updates on Twitter.
-- `Slack`_: Join our Slack channel.
-- `Meetup Group`_: Join our meetup group.
-- `StackOverflow`_: For questions about how to use Ray.
+.. list-table::
+   :widths: 25 50 25 25
+   :header-rows: 1
 
-.. _`Forum`: https://discuss.ray.io/
+   * - Platform
+     - Purpose
+     - Estimated Response Time
+     - Support Level
+   * - `Discourse Forum`_
+     - For discussions about development and questions about usage.
+     - < 1 day
+     - Community
+   * - `GitHub Issues`_
+     - For reporting bugs and filing feature requests.
+     - < 2 days
+     - Ray OSS Team
+   * - `Slack`_
+     - For collaborating with other Ray users.
+     - < 2 days
+     - Community
+   * - `StackOverflow`_
+     - For asking questions about how to use Ray.
+     - 3-5 days
+     - Community
+   * - `Meetup Group`_
+     - For learning about Ray projects and best practices.
+     - Monthly
+     - Ray DevRel
+   * - `Twitter`_
+     - For staying up-to-date on new features.
+     - Daily
+     - Ray DevRel
+
+.. _`Discourse Forum`: https://discuss.ray.io/
 .. _`GitHub Issues`: https://github.com/ray-project/ray/issues
 .. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
 .. _`Meetup Group`: https://www.meetup.com/Bay-Area-Ray-Meetup/

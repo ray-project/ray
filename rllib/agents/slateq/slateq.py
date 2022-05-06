@@ -15,51 +15,25 @@ environment (https://github.com/google-research/recsim).
 import logging
 from typing import List, Type
 
+from ray.rllib.agents.dqn.dqn import DQNTrainer
 from ray.rllib.agents.slateq.slateq_tf_policy import SlateQTFPolicy
 from ray.rllib.agents.slateq.slateq_torch_policy import SlateQTorchPolicy
-from ray.rllib.agents.trainer import Trainer, with_common_config
-from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.examples.policy.random_policy import RandomPolicy
-from ray.rllib.execution.concurrency_ops import Concurrently
-from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
-from ray.rllib.execution.rollout_ops import ParallelRollouts
-from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
+from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.typing import TrainerConfigDict
-from ray.util.iter import LocalIterator
+from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
 
 logger = logging.getLogger(__name__)
 
-# Defines all SlateQ strategies implemented.
-ALL_SLATEQ_STRATEGIES = [
-    # RANDOM: Randomly select documents for slates.
-    "RANDOM",
-    # MYOP: Select documents that maximize user click probabilities. This is
-    # a myopic strategy and ignores long term rewards. This is equivalent to
-    # setting a zero discount rate for future rewards.
-    "MYOP",
-    # SARSA: Use the SlateQ SARSA learning algorithm.
-    "SARSA",
-    # QL: Use the SlateQ Q-learning algorithm.
-    "QL",
-]
 
 # fmt: off
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # === Model ===
-    # TODO: Unify torch and tf config settings:
     # Dense-layer setup for each the n (document) candidate Q-network stacks.
-    "fcnet_hiddens_per_candidate": [256, 32],  # Only relevant for framework=tf|tf2.
-    # NOTE: The torch default model used does NOT build a separate Q-value stack
-    # per candidate document. Instead, only a single stack is generated. This leads
-    # to SlateQ with framework="torch" not learning as well as its "tf" counterpart.
-    # TODO: Fix the framework="torch" implementation of SlateQ by making it 100%
-    #  analogous to "tf|tf2".
-    "hiddens": [256, 64, 32],  # Only relevant for framework=torch.
+    "fcnet_hiddens_per_candidate": [256, 32],
 
     # === Exploration Settings ===
     "exploration_config": {
@@ -79,9 +53,12 @@ DEFAULT_CONFIG = with_common_config({
         "explore": False,
     },
 
-    # Minimum env steps to optimize for per train call. This value does
-    # not affect learning, only the length of iterations.
-    "timesteps_per_iteration": 1000,
+    # Minimum env sampling timesteps to accumulate within a single `train()` call. This
+    # value does not affect learning, only the number of times `Trainer.step_attempt()`
+    # is called by `Trauber.train()`. If - after one `step_attempt()`, the env sampling
+    # timestep count has not been reached, will perform n more `step_attempt()` calls
+    # until the minimum timesteps have been executed. Set to 0 for no minimum timesteps.
+    "min_sample_timesteps_per_reporting": 1000,
     # Update the target network every `target_network_update_freq` steps.
     "target_network_update_freq": 3200,
     # Update the target by \tau * policy + (1-\tau) * target_policy.
@@ -90,20 +67,24 @@ DEFAULT_CONFIG = with_common_config({
     # If True, use huber loss instead of squared loss for critic network
     # Conventionally, no need to clip gradients if using a huber loss
     "use_huber": False,
-    # Threshold of a huber loss
+    # Threshold of the huber loss.
     "huber_threshold": 1.0,
 
     # === Replay buffer ===
-    # Size of the replay buffer. Note that if async_updates is set, then
-    # each worker will have a replay buffer of this size.
-    "buffer_size": DEPRECATED_VALUE,
     "replay_buffer_config": {
-        "type": "MultiAgentReplayBuffer",
+        # Enable the new ReplayBuffer API.
+        "_enable_replay_buffer_api": True,
+        "type": "MultiAgentPrioritizedReplayBuffer",
         "capacity": 100000,
+        "prioritized_replay_alpha": 0.6,
+        # Beta parameter for sampling from prioritized replay buffer.
+        "prioritized_replay_beta": 0.4,
+        # Epsilon to add to the TD errors when updating priorities.
+        "prioritized_replay_eps": 1e-6,
+        # The number of continuous environment steps to replay at once. This may
+        # be set to greater than 1 to support recurrent models.
+        "replay_sequence_length": 1,
     },
-    # The number of contiguous environment steps to replay at once. This may
-    # be set to greater than 1 to support recurrent models.
-    "replay_sequence_length": 1,
     # Whether to LZ4 compress observations
     "compress_observations": False,
     # If set, this will fix the ratio of replayed from a buffer and learned on
@@ -113,21 +94,17 @@ DEFAULT_CONFIG = with_common_config({
     "training_intensity": None,
 
     # === Optimization ===
-    # TODO: Unify torch and tf config settings:
-    # Learning rate for adam optimizer for the user choice model.
-    "lr_choice_model": 1e-3,  # Only relevant for framework=torch.
-    # Learning rate for adam optimizer for the q model.
-    "lr_q_model": 1e-3,  # Only relevant for framework=torch.
-    # TODO: Unify torch and tf config settings:
-    # Learning rate for adam optimizer for the q model.
-    "lr": 0.00025,  # Only relevant for framework=tf|tf2.
+    # Learning rate for RMSprop optimizer for the q-model.
+    "lr": 0.00025,
     # Learning rate schedule.
     # In the format of [[timestep, value], [timestep, value], ...]
     # A schedule should normally start from timestep 0.
-    "lr_schedule": None,  # Only relevant for framework=tf|tf2.
+    "lr_schedule": None,
+    # Learning rate for adam optimizer for the user choice model.
+    "lr_choice_model": 1e-3,  # Only relevant for framework=torch.
 
-    # Adam epsilon hyper parameter.
-    "adam_epsilon": 1e-8,
+    # RMSProp epsilon hyper parameter.
+    "rmsprop_epsilon": 1e-5,
     # If not None, clip gradients during optimization at this value
     "grad_clip": None,
     # How many steps of the model to sample before learning starts.
@@ -139,6 +116,8 @@ DEFAULT_CONFIG = with_common_config({
     # if async_updates is set, then each worker returns gradients for a
     # batch of this size.
     "train_batch_size": 32,
+    # N-step Q learning
+    "n_step": 1,
 
     # === Parallelism ===
     # Number of workers for collecting samples with. This only makes sense
@@ -150,14 +129,14 @@ DEFAULT_CONFIG = with_common_config({
     # Prevent reporting frequency from going lower than this time span.
     "min_time_s_per_reporting": 1,
 
-    # === SlateQ specific options ===
-    # Learning method used by the slateq policy. Choose from: RANDOM,
-    # MYOP (myopic), SARSA, QL (Q-Learning),
-    "slateq_strategy": "QL",
+    # Switch on no-preprocessors for easier Q-model coding.
+    "_disable_preprocessor_api": True,
 
-    # TODO: Unify torch and tf configs.
-    # Use double_q correction to avoid overestimation of target Q-values.
-    "double_q": True,  # Only relevant for `slateq_strategy="QL"` and framework="torch".
+    # Deprecated keys:
+    # Use `capacity` in `replay_buffer_config` instead.
+    "buffer_size": DEPRECATED_VALUE,
+    # Use `replay_sequence_length` in `replay_buffer_config` instead.
+    "replay_sequence_length": DEPRECATED_VALUE,
 })
 # __sphinx_doc_end__
 # fmt: on
@@ -175,91 +154,20 @@ def calculate_round_robin_weights(config: TrainerConfigDict) -> List[float]:
     return weights
 
 
-class SlateQTrainer(Trainer):
+class SlateQTrainer(DQNTrainer):
     @classmethod
-    @override(Trainer)
+    @override(DQNTrainer)
     def get_default_config(cls) -> TrainerConfigDict:
         return DEFAULT_CONFIG
 
-    @override(Trainer)
+    @override(DQNTrainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
-        # Call super's validation method.
         super().validate_config(config)
+        validate_buffer_config(config)
 
-        if config["num_gpus"] > 1:
-            raise ValueError("`num_gpus` > 1 not yet supported for SlateQ!")
-
-        if config["framework"] == "torch":
-            logger.warning(
-                "SlateQ with framework==torch currently uses a limited Q-model for "
-                "learning Q-values per candidate. This causes it to learn slowly. "
-                "Try framework==tf2 instead."
-            )
-        else:
-            # Switch on no-preprocessors for easier Q-model coding.
-            config["_disable_preprocessor_api"] = True
-
-        if config["slateq_strategy"] not in ALL_SLATEQ_STRATEGIES:
-            raise ValueError(
-                "Unknown slateq_strategy: " f"{config['slateq_strategy']}."
-            )
-
-        if config["slateq_strategy"] == "SARSA":
-            if config["batch_mode"] != "complete_episodes":
-                raise ValueError(
-                    "For SARSA strategy, `batch_mode` must be " "'complete_episodes'"
-                )
-
-    @override(Trainer)
+    @override(DQNTrainer)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
-        if config["slateq_strategy"] == "RANDOM":
-            return RandomPolicy
-        elif config["framework"] == "torch":
+        if config["framework"] == "torch":
             return SlateQTorchPolicy
         else:
             return SlateQTFPolicy
-
-    @staticmethod
-    @override(Trainer)
-    def execution_plan(
-        workers: WorkerSet, config: TrainerConfigDict, **kwargs
-    ) -> LocalIterator[dict]:
-        assert (
-            "local_replay_buffer" in kwargs
-        ), "SlateQ execution plan requires a local replay buffer."
-
-        rollouts = ParallelRollouts(workers, mode="bulk_sync")
-
-        # We execute the following steps concurrently:
-        # (1) Generate rollouts and store them in our local replay buffer.
-        # Calling next() on store_op drives this.
-        store_op = rollouts.for_each(
-            StoreToReplayBuffer(local_buffer=kwargs["local_replay_buffer"])
-        )
-
-        # (2) Read and train on experiences from the replay buffer. Every batch
-        # returned from the LocalReplay() iterator is passed to TrainOneStep to
-        # take a SGD step.
-        replay_op = (
-            Replay(local_buffer=kwargs["local_replay_buffer"])
-            .for_each(TrainOneStep(workers))
-            .for_each(
-                UpdateTargetNetwork(workers, config["target_network_update_freq"])
-            )
-        )
-
-        if config["slateq_strategy"] != "RANDOM":
-            # Alternate deterministically between (1) and (2). Only return the
-            # output of (2) since training metrics are not available until (2)
-            # runs.
-            train_op = Concurrently(
-                [store_op, replay_op],
-                mode="round_robin",
-                output_indexes=[1],
-                round_robin_weights=calculate_round_robin_weights(config),
-            )
-        else:
-            # No training is needed for the RANDOM strategy.
-            train_op = rollouts
-
-        return StandardMetricsReporting(train_op, workers, config)

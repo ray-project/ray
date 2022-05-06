@@ -1,7 +1,6 @@
 import sys
 
 import ray
-import ray._private.gcs_pubsub as gcs_pubsub
 import ray._private.gcs_utils as gcs_utils
 import pytest
 from ray._private.test_utils import (
@@ -63,11 +62,11 @@ def test_gcs_server_restart(ray_start_regular_with_external_redis):
     ],
     indirect=True,
 )
-@pytest.mark.skipif(
-    gcs_pubsub.gcs_pubsub_enabled(),
+@pytest.mark.skip(
     reason="GCS pubsub may lose messages after GCS restarts. Need to "
     "implement re-fetching state in GCS client.",
 )
+# TODO(mwtian): re-enable after fixing https://github.com/ray-project/ray/issues/22340
 def test_gcs_server_restart_during_actor_creation(
     ray_start_regular_with_external_redis,
 ):

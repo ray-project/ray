@@ -105,7 +105,7 @@ class TFModelV2(ModelV2):
     @staticmethod
     def _find_sub_modules(current_key, struct):
         # Keras Model: key=k + "." + var-name (replace '/' by '.').
-        if isinstance(struct, tf.keras.models.Model):
+        if isinstance(struct, tf.keras.models.Model) or isinstance(struct, tf.Module):
             ret = {}
             for var in struct.variables:
                 name = re.sub("/", ".", var.name)

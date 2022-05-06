@@ -52,7 +52,8 @@ JNIEXPORT jbyteArray JNICALL Java_io_ray_runtime_actor_NativeActorHandle_nativeS
  * Signature: ([B)[B
  */
 JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_actor_NativeActorHandle_nativeDeserialize(JNIEnv *, jclass,
+Java_io_ray_runtime_actor_NativeActorHandle_nativeDeserialize(JNIEnv *,
+                                                              jclass,
                                                               jbyteArray);
 
 /*

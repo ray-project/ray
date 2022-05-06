@@ -1,0 +1,16 @@
+deployments:
+
+  - name: Macaw
+    init_args: null
+    init_kwargs: null
+    import_path: "ray.serve.tests.test_cli.Macaw"
+    num_replicas: 1
+    route_prefix: "/Macaw"
+    max_concurrent_queries: null
+    user_config: null
+    autoscaling_config: null
+    graceful_shutdown_wait_loop_s: null
+    graceful_shutdown_timeout_s: null
+    health_check_period_s: null
+    health_check_timeout_s: null
+    ray_actor_options: null

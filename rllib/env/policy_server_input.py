@@ -26,22 +26,30 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
     with `examples/serving/cartpole_client.py --inference-mode=local|remote`.
 
     Examples:
-        >>> pg = PGTrainer(
-        ...     env="CartPole-v0", config={
-        ...         "input": lambda ioctx:
-        ...             PolicyServerInput(ioctx, addr, port),
-        ...         "num_workers": 0,  # Run just 1 server, in the trainer.
-        ...     }
-        >>> while True:
-        >>>     pg.train()
+        >>> import gym
+        >>> from ray.rllib.agents.pg import PGTrainer
+        >>> from ray.rllib.env.policy_client import PolicyClient
+        >>> from ray.rllib.env.policy_server_input import PolicyServerInput
+        >>> addr, port = ... # doctest: +SKIP
+        >>> pg = PGTrainer( # doctest: +SKIP
+        ...     env="CartPole-v0", config={ # doctest: +SKIP
+        ...         "input": lambda io_ctx: # doctest: +SKIP
+        ...             PolicyServerInput(io_ctx, addr, port), # doctest: +SKIP
+        ...         # Run just 1 server, in the trainer.
+        ...         "num_workers": 0,   # doctest: +SKIP
+        ...     } # doctest: +SKIP
+        >>> while True: # doctest: +SKIP
+        >>>     pg.train() # doctest: +SKIP
 
-        >>> client = PolicyClient("localhost:9900", inference_mode="local")
-        >>> eps_id = client.start_episode()
-        >>> action = client.get_action(eps_id, obs)
-        >>> ...
-        >>> client.log_returns(eps_id, reward)
-        >>> ...
-        >>> client.log_returns(eps_id, reward)
+        >>> client = PolicyClient( # doctest: +SKIP
+        ...     "localhost:9900", inference_mode="local")
+        >>> eps_id = client.start_episode()  # doctest: +SKIP
+        >>> env = gym.make("CartPole-v0")
+        >>> obs = env.reset()
+        >>> action = client.get_action(eps_id, obs) # doctest: +SKIP
+        >>> reward = env.step(action)[0] # doctest: +SKIP
+        >>> client.log_returns(eps_id, reward) # doctest: +SKIP
+        >>> client.log_returns(eps_id, reward) # doctest: +SKIP
     """
 
     @PublicAPI

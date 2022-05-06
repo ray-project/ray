@@ -69,6 +69,9 @@ class MockRemoteTrainer(_MockTrainer):
 class MockDurableTrainer(_MockTrainer):
     """Mock DurableTrainable that saves at tmp for simulated clusters."""
 
+    # Evaluate to true to use legacy storage client
+    _sync_function_tpl = True
+
     def __init__(
         self, remote_checkpoint_dir=None, sync_function_tpl=None, *args, **kwargs
     ):

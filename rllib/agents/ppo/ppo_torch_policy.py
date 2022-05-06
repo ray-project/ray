@@ -152,6 +152,7 @@ class PPOTorchPolicy(TorchPolicy, LearningRateSchedule, EntropyCoeffSchedule):
             mean_vf_loss = reduce_mean_valid(vf_loss_clipped)
         # Ignore the value function.
         else:
+            value_fn_out = 0
             vf_loss_clipped = mean_vf_loss = 0.0
 
         total_loss = reduce_mean_valid(
@@ -171,7 +172,7 @@ class PPOTorchPolicy(TorchPolicy, LearningRateSchedule, EntropyCoeffSchedule):
         model.tower_stats["mean_policy_loss"] = mean_policy_loss
         model.tower_stats["mean_vf_loss"] = mean_vf_loss
         model.tower_stats["vf_explained_var"] = explained_variance(
-            train_batch[Postprocessing.VALUE_TARGETS], model.value_function()
+            train_batch[Postprocessing.VALUE_TARGETS], value_fn_out
         )
         model.tower_stats["mean_entropy"] = mean_entropy
         model.tower_stats["mean_kl_loss"] = mean_kl_loss
@@ -261,3 +262,17 @@ class PPOTorchPolicy(TorchPolicy, LearningRateSchedule, EntropyCoeffSchedule):
             self.entropy_coeff = self._entropy_coeff_schedule.value(
                 global_vars["timestep"]
             )
+
+    @override(TorchPolicy)
+    def get_state(self) -> Union[Dict[str, TensorType], List[TensorType]]:
+        state = super().get_state()
+        # Add current kl-coeff value.
+        state["current_kl_coeff"] = self.kl_coeff
+        return state
+
+    @override(TorchPolicy)
+    def set_state(self, state: dict) -> None:
+        # Set current kl-coeff value first.
+        self.kl_coeff = state.pop("current_kl_coeff", self.config["kl_coeff"])
+        # Call super's set_state with rest of the state dict.
+        super().set_state(state)

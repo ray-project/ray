@@ -13,6 +13,7 @@ import inspect
 import logging
 import os
 import sys
+import time
 from typing import Any, Callable, Dict, Tuple, Optional, List
 
 import click
@@ -20,6 +21,11 @@ import click
 # Import ray first to use the bundled colorama
 import ray  # noqa: F401
 import colorama
+
+if sys.platform == "win32":
+    import msvcrt
+else:
+    import select
 
 
 class _ColorfulMock:
@@ -158,9 +164,9 @@ def _external_caller_info():
 def _format_msg(
     msg: str,
     *args: Any,
+    no_format: bool = None,
     _tags: Dict[str, Any] = None,
     _numbered: Tuple[str, int, int] = None,
-    _no_format: bool = None,
     **kwargs: Any
 ):
     """Formats a message for printing.
@@ -170,6 +176,12 @@ def _format_msg(
 
     Args:
         *args (Any): `.format` arguments for `msg`.
+        no_format (bool):
+            If `no_format` is `True`,
+            `.format` will not be called on the message.
+
+            Useful if the output is user-provided or may otherwise
+            contain an unexpected formatting string (e.g. "{}").
         _tags (Dict[str, Any]):
             key-value pairs to display at the end of
             the message in square brackets.
@@ -193,12 +205,6 @@ def _format_msg(
 
             E.g. `_format_msg("hello", _numbered=("[]", 0, 5))`
                  `[0/5] hello`
-        _no_format (bool):
-            If `_no_format` is `True`,
-            `.format` will not be called on the message.
-
-            Useful if the output is user-provided or may otherwise
-            contain an unexpected formatting string (e.g. "{}").
 
     Returns:
         The formatted message.
@@ -224,7 +230,7 @@ def _format_msg(
             chars, i, n = _numbered
             numbering_str = cf.dimmed(chars[0] + str(i) + "/" + str(n) + chars[1]) + " "
 
-        if _no_format:
+        if no_format:
             # todo: throw if given args/kwargs?
             return numbering_str + msg + tags_str
         return numbering_str + msg.format(*args, **kwargs) + tags_str
@@ -578,6 +584,9 @@ class _CliLogger:
         """
         self._print(_format_msg(msg, *args, **kwargs), _level_str=_level_str, end=end)
 
+    def info(self, msg: str, no_format=True, *args, **kwargs):
+        self.print(msg, no_format=no_format, *args, **kwargs)
+
     def abort(
         self, msg: Optional[str] = None, *args: Any, exc: Any = None, **kwargs: Any
     ):
@@ -630,6 +639,7 @@ class _CliLogger:
         *args: Any,
         _abort: bool = False,
         _default: bool = False,
+        _timeout_s: Optional[float] = None,
         **kwargs: Any
     ):
         """Display a confirmation dialog.
@@ -645,6 +655,9 @@ class _CliLogger:
             _default (bool):
                 The default action to take if the user just presses enter
                 with no input.
+            _timeout_s (float):
+                If user has no input within _timeout_s seconds, the default
+                action is taken. None means no timeout.
         """
         should_abort = _abort
         default = _default
@@ -683,7 +696,41 @@ class _CliLogger:
         no_answers = ["n", "no", "false", "0"]
         try:
             while True:
-                ans = sys.stdin.readline()
+                if _timeout_s is None:
+                    ans = sys.stdin.readline()
+                elif sys.platform == "win32":
+                    # Windows doesn't support select
+                    start_time = time.time()
+                    ans = ""
+                    while True:
+                        if (time.time() - start_time) >= _timeout_s:
+                            self.newline()
+                            ans = "\n"
+                            break
+                        elif msvcrt.kbhit():
+                            ch = msvcrt.getwch()
+                            if ch in ("\n", "\r"):
+                                self.newline()
+                                ans = ans + "\n"
+                                break
+                            elif ch == "\b":
+                                if ans:
+                                    ans = ans[:-1]
+                                    # Emulate backspace erasing
+                                    print("\b \b", end="", flush=True)
+                            else:
+                                ans = ans + ch
+                                print(ch, end="", flush=True)
+                        else:
+                            time.sleep(0.1)
+                else:
+                    ready, _, _ = select.select([sys.stdin], [], [], _timeout_s)
+                    if not ready:
+                        self.newline()
+                        ans = "\n"
+                    else:
+                        ans = sys.stdin.readline()
+
                 ans = ans.lower()
 
                 if ans == "\n":
@@ -700,7 +747,7 @@ class _CliLogger:
 
                 indent = " " * msg_len
                 self.error(
-                    "{}Invalid answer: {}. " "Expected {} or {}",
+                    "{}Invalid answer: {}. Expected {} or {}",
                     indent,
                     cf.bold(ans.strip()),
                     self.render_list(yes_answers, "/"),
@@ -789,7 +836,7 @@ CLICK_LOGGING_OPTIONS = [
         required=False,
         type=click.Choice(["auto", "false", "true"], case_sensitive=False),
         default="auto",
-        help=("Use color logging. " "Auto enables color logging if stdout is a TTY."),
+        help=("Use color logging. Auto enables color logging if stdout is a TTY."),
     ),
     click.option("-v", "--verbose", default=None, count=True),
 ]

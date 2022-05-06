@@ -16,15 +16,18 @@ class BlockOutputBuffer(object):
     then check ``has_next()`` one last time.
 
     Examples:
+        >>> from ray.data.impl.output_buffer import BlockOutputBuffer
+        >>> udf = ... # doctest: +SKIP
+        >>> generator = ... # doctest: +SKIP
         >>> # Yield a stream of output blocks.
-        >>> output = BlockOutputBuffer(udf, 500 * 1024 * 1024)
-        >>> for item in generator():
-        ...     output.add(item)
-        ...      if output.has_next():
-        ...         yield output.next()
-        ... output.finalize()
-        ... if output.has_next()
-        ...    yield output.next()
+        >>> output = BlockOutputBuffer(udf, 500 * 1024 * 1024) # doctest: +SKIP
+        >>> for item in generator(): # doctest: +SKIP
+        ...     output.add(item) # doctest: +SKIP
+        ...     if output.has_next(): # doctest: +SKIP
+        ...         yield output.next() # doctest: +SKIP
+        >>> output.finalize() # doctest: +SKIP
+        >>> if output.has_next() # doctest: +SKIP
+        ...     yield output.next() # doctest: +SKIP
     """
 
     def __init__(

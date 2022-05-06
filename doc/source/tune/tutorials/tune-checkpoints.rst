@@ -182,16 +182,15 @@ Your ``my_trainable`` is either a:
 1. **Model with an existing Ray integration**
 
   * XGBoost (:ref:`example <xgboost-ray-tuning>`)
-  * Pytorch (:ref:`example <tune-pytorch-lightning-ref>`)
-  * Pytorch Lightning (:ref:`example <ray-lightning-tuning>`)
-  * Keras (:doc:`example </tune/examples/tune_mnist_keras>`)
-  * Tensorflow (:ref:`example <ray-train-tftrainer-example>`)
+  * Pytorch (:doc:`example </tune/examples/tune-pytorch-cifar>`)
+  * Pytorch Lightning (:ref:`example <pytorch-lightning-tune>`)
+  * Tensorflow/Keras (:doc:`example </tune/examples/tune_mnist_keras>`)
   * LightGBM (:ref:`example <lightgbm-ray-tuning>`)
 
 2. **Custom training function**
 
   * All this means is that your function has to expose a ``checkpoint_dir`` argument in the function signature,
-    and call ``tune.checkpoint_dir``. See :doc:`this example </tune/examples/custom_func_checkpointing>`,
+    and call ``tune.checkpoint_dir``. See :doc:`this example </tune/examples/includes/custom_func_checkpointing>`,
     it's quite simple to do.
 
 Let's assume for this example you're running this script from your laptop, and connecting to your remote Ray cluster
@@ -322,7 +321,7 @@ requires rsync to be installed.
 
 Note that you must use the ``tune.checkpoint_dir`` API to trigger syncing
 (or use a model type with a built-in Ray Tune integration as described here).
-See :doc:`/tune/examples/custom_func_checkpointing` for an example.
+See :doc:`/tune/examples/includes/custom_func_checkpointing` for an example.
 
 If you are running Ray Tune on Kubernetes, you should usually use a
 :ref:`cloud checkpointing <tune-sync-config>` or a shared filesystem for checkpoint sharing.

@@ -29,7 +29,8 @@ namespace worker {
 
 class Profiler {
  public:
-  Profiler(WorkerContext &worker_context, const std::string &node_ip_address,
+  Profiler(WorkerContext &worker_context,
+           const std::string &node_ip_address,
            instrumented_io_context &io_service,
            const std::shared_ptr<gcs::GcsClient> &gcs_client);
 

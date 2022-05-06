@@ -13,6 +13,10 @@ import ray
 from ray._private.test_utils import SignalActor
 from ray.util.multiprocessing import Pool, TimeoutError, JoinableQueue
 
+from ray.util.joblib import register_ray
+
+from joblib import parallel_backend, Parallel, delayed
+
 
 def teardown_function(function):
     # Delete environment variable if set.
@@ -51,6 +55,14 @@ def pool_4_processes_python_multiprocessing_lib():
 @pytest.fixture
 def ray_start_1_cpu():
     address_info = ray.init(num_cpus=1)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
+@pytest.fixture
+def ray_start_4_cpu():
+    address_info = ray.init(num_cpus=4)
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -456,7 +468,8 @@ def callback_test_helper(args):
     return index
 
 
-def test_imap(pool_4_processes):
+@pytest.mark.parametrize("use_iter", [True, False])
+def test_imap(pool_4_processes, use_iter):
     def f(args):
         time.sleep(0.1 * random.random())
         index = args[0]
@@ -466,9 +479,11 @@ def test_imap(pool_4_processes):
         return index
 
     error_indices = [2, 50, 98]
-    result_iter = pool_4_processes.imap(
-        f, [(index, error_indices) for index in range(100)], chunksize=11
-    )
+    if use_iter:
+        imap_iterable = iter([(index, error_indices) for index in range(100)])
+    else:
+        imap_iterable = [(index, error_indices) for index in range(100)]
+    result_iter = pool_4_processes.imap(f, imap_iterable, chunksize=11)
     for i in range(100):
         result = result_iter.next()
         if i in error_indices:
@@ -480,7 +495,8 @@ def test_imap(pool_4_processes):
         result_iter.next()
 
 
-def test_imap_unordered(pool_4_processes):
+@pytest.mark.parametrize("use_iter", [True, False])
+def test_imap_unordered(pool_4_processes, use_iter):
     def f(args):
         time.sleep(0.1 * random.random())
         index = args[0]
@@ -492,9 +508,11 @@ def test_imap_unordered(pool_4_processes):
     error_indices = [2, 50, 98]
     in_order = []
     num_errors = 0
-    result_iter = pool_4_processes.imap_unordered(
-        f, [(index, error_indices) for index in range(100)], chunksize=11
-    )
+    if use_iter:
+        imap_iterable = iter([(index, error_indices) for index in range(100)])
+    else:
+        imap_iterable = [(index, error_indices) for index in range(100)]
+    result_iter = pool_4_processes.imap_unordered(f, imap_iterable, chunksize=11)
     for i in range(100):
         result = result_iter.next()
         if isinstance(result, Exception):
@@ -513,7 +531,8 @@ def test_imap_unordered(pool_4_processes):
         result_iter.next()
 
 
-def test_imap_timeout(pool_4_processes):
+@pytest.mark.parametrize("use_iter", [True, False])
+def test_imap_timeout(pool_4_processes, use_iter):
     def f(args):
         index, wait_index, signal = args
         time.sleep(0.1 * random.random())
@@ -523,9 +542,11 @@ def test_imap_timeout(pool_4_processes):
 
     wait_index = 23
     signal = SignalActor.remote()
-    result_iter = pool_4_processes.imap(
-        f, [(index, wait_index, signal) for index in range(100)]
-    )
+    if use_iter:
+        imap_iterable = iter([(index, wait_index, signal) for index in range(100)])
+    else:
+        imap_iterable = [(index, wait_index, signal) for index in range(100)]
+    result_iter = pool_4_processes.imap(f, imap_iterable)
     for i in range(100):
         if i == wait_index:
             with pytest.raises(TimeoutError):
@@ -540,9 +561,11 @@ def test_imap_timeout(pool_4_processes):
 
     wait_index = 23
     signal = SignalActor.remote()
-    result_iter = pool_4_processes.imap_unordered(
-        f, [(index, wait_index, signal) for index in range(100)], chunksize=11
-    )
+    if use_iter:
+        imap_iterable = iter([(index, wait_index, signal) for index in range(100)])
+    else:
+        imap_iterable = [(index, wait_index, signal) for index in range(100)]
+    result_iter = pool_4_processes.imap_unordered(f, imap_iterable, chunksize=11)
     in_order = []
     for i in range(100):
         try:
@@ -583,6 +606,37 @@ def test_deadlock_avoidance_in_recursive_tasks(ray_start_1_cpu):
 
     result = poolit_b()
     assert result == [[0.0, 1.0], [0.0, 1.0]]
+
+
+def test_task_to_actor_assignment(ray_start_4_cpu):
+
+    register_ray()
+
+    pause_time = 5
+
+    def worker_func(worker_id):
+        launch_time = time.time()
+        time.sleep(pause_time)
+        return worker_id, launch_time
+
+    num_workers = 4
+    output = []
+    with parallel_backend("ray", n_jobs=-1):
+        output = Parallel()(
+            delayed(worker_func)(worker_id) for worker_id in range(num_workers)
+        )
+
+    worker_ids = set()
+    launch_times = []
+    for worker_id, launch_time in output:
+        worker_ids.add(worker_id)
+        launch_times.append(launch_time)
+
+    assert len(worker_ids) == num_workers
+
+    for i in range(num_workers):
+        for j in range(i + 1, num_workers):
+            assert abs(launch_times[i] - launch_times[j]) < 1
 
 
 if __name__ == "__main__":

@@ -564,9 +564,7 @@ def test_nested_fork(setup_queue_actor):
         assert filtered_items == list(range(num_items_per_fork))
 
 
-@pytest.mark.skip(
-    "Garbage collection for distributed actor handles not " "implemented."
-)
+@pytest.mark.skip("Garbage collection for distributed actor handles not implemented.")
 def test_garbage_collection(setup_queue_actor):
     queue = setup_queue_actor
 

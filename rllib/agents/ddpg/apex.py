@@ -19,7 +19,7 @@ APEX_DDPG_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
         "num_workers": 32,
         "buffer_size": 2000000,
         # TODO(jungong) : update once Apex supports replay_buffer_config.
-        "replay_buffer_config": None,
+        "no_local_replay_buffer": True,
         # Whether all shards of the replay buffer must be co-located
         # with the learner process (running the execution plan).
         # This is preferred b/c the learner process should have quick
@@ -33,9 +33,14 @@ APEX_DDPG_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
         "train_batch_size": 512,
         "rollout_fragment_length": 50,
         "target_network_update_freq": 500000,
-        "timesteps_per_iteration": 25000,
+        "min_sample_timesteps_per_reporting": 25000,
         "worker_side_prioritization": True,
         "min_time_s_per_reporting": 30,
+        # Experimental flag.
+        # If True, the execution plan API will not be used. Instead,
+        # a Trainer's `training_iteration` method will be called as-is each
+        # training iteration.
+        "_disable_execution_plan_api": False,
     },
     _allow_unknown_configs=True,
 )

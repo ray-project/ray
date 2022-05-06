@@ -1,4 +1,3 @@
-import logging
 import os
 import signal
 import sys
@@ -14,7 +13,6 @@ from ray.ray_constants import DEBUG_AUTOSCALING_ERROR
 import ray._private.utils
 import ray.ray_constants as ray_constants
 from ray.cluster_utils import cluster_not_supported
-import ray._private.gcs_pubsub as gcs_pubsub
 from ray._private.test_utils import (
     init_error_pubsub,
     get_error_message,
@@ -104,90 +102,6 @@ def test_warning_for_too_many_nested_tasks(shutdown_only):
     assert len(errors) == 1
     assert errors[0].type == ray_constants.WORKER_POOL_LARGE_ERROR
     p.close()
-
-
-def test_warning_for_many_duplicate_remote_functions_and_actors(shutdown_only):
-    ray.init(num_cpus=1)
-
-    @ray.remote
-    def create_remote_function():
-        @ray.remote
-        def g():
-            return 1
-
-        return ray.get(g.remote())
-
-    for _ in range(ray_constants.DUPLICATE_REMOTE_FUNCTION_THRESHOLD - 1):
-        ray.get(create_remote_function.remote())
-
-    import io
-
-    log_capture_string = io.StringIO()
-    ch = logging.StreamHandler(log_capture_string)
-
-    # TODO(rkn): It's terrible to have to rely on this implementation detail,
-    # the fact that the warning comes from ray._private.import_thread.logger.
-    # However, I didn't find a good way to capture the output for all loggers
-    # simultaneously.
-    ray._private.import_thread.logger.addHandler(ch)
-
-    ray.get(create_remote_function.remote())
-
-    start_time = time.time()
-    while time.time() < start_time + 10:
-        log_contents = log_capture_string.getvalue()
-        if len(log_contents) > 0:
-            break
-
-    ray._private.import_thread.logger.removeHandler(ch)
-
-    assert "remote function" in log_contents
-    assert (
-        "has been exported {} times.".format(
-            ray_constants.DUPLICATE_REMOTE_FUNCTION_THRESHOLD
-        )
-        in log_contents
-    )
-
-    # Now test the same thing but for actors.
-
-    @ray.remote
-    def create_actor_class():
-        # Require a GPU so that the actor is never actually created and we
-        # don't spawn an unreasonable number of processes.
-        @ray.remote(num_gpus=1)
-        class Foo:
-            pass
-
-        Foo.remote()
-
-    for _ in range(ray_constants.DUPLICATE_REMOTE_FUNCTION_THRESHOLD - 1):
-        ray.get(create_actor_class.remote())
-
-    log_capture_string = io.StringIO()
-    ch = logging.StreamHandler(log_capture_string)
-
-    # TODO(rkn): As mentioned above, it's terrible to have to rely on this
-    # implementation detail.
-    ray._private.import_thread.logger.addHandler(ch)
-
-    ray.get(create_actor_class.remote())
-
-    start_time = time.time()
-    while time.time() < start_time + 10:
-        log_contents = log_capture_string.getvalue()
-        if len(log_contents) > 0:
-            break
-
-    ray._private.import_thread.logger.removeHandler(ch)
-
-    assert "actor" in log_contents
-    assert (
-        "has been exported {} times.".format(
-            ray_constants.DUPLICATE_REMOTE_FUNCTION_THRESHOLD
-        )
-        in log_contents
-    )
 
 
 # Note that this test will take at least 10 seconds because it must wait for
@@ -425,43 +339,12 @@ def test_fate_sharing(ray_start_cluster, use_actors, node_failure):
         test_process_failure(use_actors)
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular",
-    [{"_system_config": {"gcs_rpc_server_reconnect_timeout_s": 100}}],
-    indirect=True,
-)
-@pytest.mark.skipif(
-    gcs_pubsub.gcs_pubsub_enabled(),
-    reason="Logs are streamed via GCS pubsub when it is enabled, so logs "
-    "cannot be delivered after GCS is killed.",
-)
-def test_gcs_server_failiure_report(ray_start_regular, log_pubsub):
-    # Get gcs server pid to send a signal.
-    all_processes = ray.worker._global_node.all_processes
-    gcs_server_process = all_processes["gcs_server"][0].process
-    gcs_server_pid = gcs_server_process.pid
-
-    # TODO(mwtian): make sure logs are delivered after GCS is restarted.
-    if sys.platform == "win32":
-        sig = 9
-    else:
-        sig = signal.SIGBUS
-    os.kill(gcs_server_pid, sig)
-    # wait for 30 seconds, for the 1st batch of logs.
-    batches = get_log_batch(log_pubsub, 1, timeout=30)
-    assert gcs_server_process.poll() is not None
-    if sys.platform != "win32":
-        # Windows signal handler does not run when process is terminated
-        assert len(batches) == 1
-        assert batches[0]["pid"] == "gcs_server", batches
-
-
 def test_list_named_actors_timeout(monkeypatch, shutdown_only):
     with monkeypatch.context() as m:
         # defer for 3s
         m.setenv(
             "RAY_testing_asio_delay_us",
-            "ActorInfoGcsService.grpc_server.ListNamedActors" "=3000000:3000000",
+            "ActorInfoGcsService.grpc_server.ListNamedActors=3000000:3000000",
         )
         ray.init(_system_config={"gcs_server_request_timeout_seconds": 1})
 

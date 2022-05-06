@@ -148,10 +148,14 @@ class GeneticSearch(AutoMLSearcher):
             candidate: List of candidate genes (encodings).
 
         Examples:
+            >>> import numpy as np
+            >>> from ray.tune.automl.genetic_searcher import GeneticSearch
+            >>> genetic_search = GeneticSearch( # doctest: +SKIP
+            ...     search_space={}, reward_attr="attr")
             >>> # Genes that represent 3 parameters
             >>> gene1 = np.array([[0, 0, 1], [0, 1], [1, 0]])
             >>> gene2 = np.array([[0, 1, 0], [1, 0], [0, 1]])
-            >>> new_gene = _selection([gene1, gene2])
+            >>> new_gene = genetic_search._selection([gene1, gene2]) # doctest: +SKIP
             >>> # new_gene could be gene1 overwritten with the
             >>> # 2nd parameter of gene2
             >>> # in which case:
@@ -190,10 +194,14 @@ class GeneticSearch(AutoMLSearcher):
             candidate: List of candidate genes (encodings).
 
         Examples:
+            >>> import numpy as np
+            >>> from ray.tune.automl.genetic_searcher import GeneticSearch
+            >>> genetic_search = GeneticSearch( # doctest: +SKIP
+            ...     search_space={}, reward_attr="attr")
             >>> # Genes that represent 3 parameters
             >>> gene1 = np.array([[0, 0, 1], [0, 1], [1, 0]])
             >>> gene2 = np.array([[0, 1, 0], [1, 0], [0, 1]])
-            >>> new_gene = _crossover([gene1, gene2])
+            >>> new_gene = genetic_search._crossover([gene1, gene2]) # doctest: +SKIP
             >>> # new_gene could be the first [n=1] parameters of
             >>> # gene1 + the rest of gene2
             >>> # in which case:
@@ -233,9 +241,13 @@ class GeneticSearch(AutoMLSearcher):
             rate: Percentage of mutation bits
 
         Examples:
+            >>> import numpy as np
+            >>> from ray.tune.automl.genetic_searcher import GeneticSearch
+            >>> genetic_search = GeneticSearch( # doctest: +SKIP
+            ...     search_space={}, reward_attr="attr")
             >>> # Genes that represent 3 parameters
             >>> gene1 = np.array([[0, 0, 1], [0, 1], [1, 0]])
-            >>> new_gene = _mutation([gene1])
+            >>> new_gene = genetic_search._mutation([gene1]) # doctest: +SKIP
             >>> # new_gene could be the gene1 with the 3rd parameter changed
             >>> #   new_gene[0] = gene1[0]
             >>> #   new_gene[1] = gene1[1]

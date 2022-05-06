@@ -3,26 +3,25 @@ import logging
 import aiohttp.web
 import ray._private.utils
 from ray.dashboard.modules.actor import actor_utils
-from aioredis.pubsub import Receiver
 
 try:
     from grpc import aio as aiogrpc
 except ImportError:
     from grpc.experimental import aio as aiogrpc
 
-from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsAioActorSubscriber
-import ray._private.gcs_utils as gcs_utils
+from ray._private.gcs_pubsub import GcsAioActorSubscriber
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray.dashboard.optional_utils import rest_response
 from ray.dashboard.modules.actor import actor_consts
-from ray.dashboard.modules.actor.actor_utils import actor_classname_from_task_spec
+from ray.dashboard.modules.actor.actor_utils import actor_classname_from_func_descriptor
 from ray.core.generated import node_manager_pb2_grpc
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated import core_worker_pb2
 from ray.core.generated import core_worker_pb2_grpc
 from ray.dashboard.datacenter import DataSource, DataOrganizer
+
 
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.ClassMethodRouteTable
@@ -58,20 +57,16 @@ def actor_table_data_to_dict(message):
         "state",
         "name",
         "numRestarts",
-        "taskSpec",
+        "functionDescriptor",
         "timestamp",
         "numExecutedTasks",
     }
     light_message = {k: v for (k, v) in orig_message.items() if k in fields}
-    if "taskSpec" in light_message:
-        actor_class = actor_classname_from_task_spec(light_message["taskSpec"])
+    if "functionDescriptor" in light_message:
+        actor_class = actor_classname_from_func_descriptor(
+            light_message["functionDescriptor"]
+        )
         light_message["actorClass"] = actor_class
-        if "functionDescriptor" in light_message["taskSpec"]:
-            light_message["taskSpec"] = {
-                "functionDescriptor": light_message["taskSpec"]["functionDescriptor"]
-            }
-        else:
-            light_message.pop("taskSpec")
     return light_message
 
 
@@ -169,44 +164,19 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             DataSource.job_actors[job_id] = job_actors
 
         # Receive actors from channel.
-        if gcs_pubsub_enabled():
-            gcs_addr = await self._dashboard_head.get_gcs_address()
-            subscriber = GcsAioActorSubscriber(address=gcs_addr)
-            await subscriber.subscribe()
+        gcs_addr = self._dashboard_head.gcs_address
+        subscriber = GcsAioActorSubscriber(address=gcs_addr)
+        await subscriber.subscribe()
 
-            while True:
-                try:
-                    actor_id, actor_table_data = await subscriber.poll()
-                    if actor_id is not None:
-                        # Convert to lower case hex ID.
-                        actor_id = actor_id.hex()
-                        process_actor_data_from_pubsub(actor_id, actor_table_data)
-                except Exception:
-                    logger.exception("Error processing actor info from GCS.")
-
-        else:
-            aioredis_client = self._dashboard_head.aioredis_client
-            receiver = Receiver()
-            key = "{}:*".format(actor_consts.ACTOR_CHANNEL)
-            pattern = receiver.pattern(key)
-            await aioredis_client.psubscribe(pattern)
-            logger.info("Subscribed to %s", key)
-
-            async for sender, msg in receiver.iter():
-                try:
-                    actor_id, actor_table_data = msg
-                    actor_id = actor_id.decode("UTF-8")[
-                        len(gcs_utils.TablePrefix_ACTOR_string + ":") :
-                    ]
-                    pubsub_message = gcs_utils.PubSubMessage.FromString(
-                        actor_table_data
-                    )
-                    actor_table_data = gcs_utils.ActorTableData.FromString(
-                        pubsub_message.data
-                    )
+        while True:
+            try:
+                actor_id, actor_table_data = await subscriber.poll()
+                if actor_id is not None:
+                    # Convert to lower case hex ID.
+                    actor_id = actor_id.hex()
                     process_actor_data_from_pubsub(actor_id, actor_table_data)
-                except Exception:
-                    logger.exception("Error processing actor info from Redis.")
+            except Exception:
+                logger.exception("Error processing actor info from GCS.")
 
     @routes.get("/logical/actor_groups")
     async def get_actor_groups(self, req) -> aiohttp.web.Response:

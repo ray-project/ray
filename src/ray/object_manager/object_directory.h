@@ -42,9 +42,12 @@ struct RemoteConnectionInfo {
 };
 
 /// Callback for object location notifications.
-using OnLocationsFound = std::function<void(
-    const ray::ObjectID &object_id, const std::unordered_set<ray::NodeID> &,
-    const std::string &, const NodeID &, bool pending_creation, size_t object_size)>;
+using OnLocationsFound = std::function<void(const ray::ObjectID &object_id,
+                                            const std::unordered_set<ray::NodeID> &,
+                                            const std::string &,
+                                            const NodeID &,
+                                            bool pending_creation,
+                                            size_t object_size)>;
 
 class IObjectDirectory {
  public:
@@ -63,15 +66,6 @@ class IObjectDirectory {
   ///
   /// \return A vector of information for all connected remote object managers.
   virtual std::vector<RemoteConnectionInfo> LookupAllRemoteConnections() const = 0;
-
-  /// Lookup object locations. Callback may be invoked with empty list of client ids.
-  ///
-  /// \param object_id The object's ObjectID.
-  /// \param callback Invoked with (possibly empty) list of node ids and object_id.
-  /// \return Status of whether async call to backend succeeded.
-  virtual ray::Status LookupLocations(const ObjectID &object_id,
-                                      const rpc::Address &owner_address,
-                                      const OnLocationsFound &callback) = 0;
 
   /// Handle the removal of an object manager node. This updates the
   /// locations of all subscribed objects that have the removed node as a
@@ -113,7 +107,8 @@ class IObjectDirectory {
   /// \param object_id The object id that was put into the store.
   /// \param node_id The node id corresponding to this node.
   /// \param object_info Additional information about the object.
-  virtual void ReportObjectAdded(const ObjectID &object_id, const NodeID &node_id,
+  virtual void ReportObjectAdded(const ObjectID &object_id,
+                                 const NodeID &node_id,
                                  const ObjectInfo &object_info) = 0;
 
   /// Report objects removed from this node's store to the object directory.
@@ -121,8 +116,23 @@ class IObjectDirectory {
   /// \param object_id The object id that was removed from the store.
   /// \param node_id The node id corresponding to this node.
   /// \param object_info Additional information about the object.
-  virtual void ReportObjectRemoved(const ObjectID &object_id, const NodeID &node_id,
+  virtual void ReportObjectRemoved(const ObjectID &object_id,
+                                   const NodeID &node_id,
                                    const ObjectInfo &object_info) = 0;
+
+  /// Report object spilled to external storage.
+  ///
+  /// \param object_id The object id that was spilled.
+  /// \param node_id The node id corresponding to this node.
+  /// \param owner_address The address of the owner of this node.
+  /// \param spilled_url The url of the spilled location.
+  /// \param spilled_to_local_storage Whether the object is spilled to
+  /// local storage or cloud storage.
+  virtual void ReportObjectSpilled(const ObjectID &object_id,
+                                   const NodeID &node_id,
+                                   const rpc::Address &owner_address,
+                                   const std::string &spilled_url,
+                                   const bool spilled_to_local_storage) = 0;
 
   /// Record metrics.
   virtual void RecordMetrics(uint64_t duration_ms) = 0;

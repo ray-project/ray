@@ -4,11 +4,10 @@ from ray's runtime context for job submission API testing.
 """
 
 import ray
-import os
 
 
 def run():
-    ray.init(address=os.environ["RAY_ADDRESS"])
+    ray.init()
 
     @ray.remote
     def foo():

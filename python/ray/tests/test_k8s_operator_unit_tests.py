@@ -188,7 +188,7 @@ class OperatorTest(unittest.TestCase):
         with pytest.raises(ValueError, match=exception_message):
             check_redis_password_not_specified(cluster_config, "name", "namespace")
         start_cmd = (
-            "ulimit -n 65536; ray start --head --no-monitor" " --dashboard-host 0.0.0.0"
+            "ulimit -n 65536; ray start --head --no-monitor --dashboard-host 0.0.0.0"
         )
         cluster_config = {"head_start_ray_commands": [stop_cmd, start_cmd]}
         check_redis_password_not_specified(cluster_config, "name", "namespace")
@@ -210,7 +210,7 @@ class OperatorTest(unittest.TestCase):
         assert infer_head_port(cluster_config) == "1234567"
         # Don't specify port
         start_cmd = (
-            "ulimit -n 65536; ray start --head --no-monitor" " --dashboard-host 0.0.0.0"
+            "ulimit -n 65536; ray start --head --no-monitor --dashboard-host 0.0.0.0"
         )
         cluster_config = {"head_start_ray_commands": [stop_cmd, start_cmd]}
         assert infer_head_port(cluster_config) == str(DEFAULT_PORT)

@@ -2,20 +2,22 @@
 import heapq
 import gc
 import logging
+from typing import Any, Callable, Optional
 
-from ray.tune.utils.util import flatten_dict
+from ray.tune.result import NODE_IP
+from ray.tune.utils.util import flatten_dict, is_nan
 
 logger = logging.getLogger(__name__)
 
 
-class Checkpoint:
+class _TuneCheckpoint:
     """Describes a checkpoint of trial state.
 
     Checkpoint may be saved in different storage.
 
     Attributes:
-        storage (str): Storage type.
-        value (str): If storage==MEMORY, it is a Python object.
+        storage: Storage type.
+        value: If storage==MEMORY, it is a Python object.
             If storage==PERSISTENT, it is a path to persistent storage,
             or a future that will be resolved to such a path.
     """
@@ -23,10 +25,17 @@ class Checkpoint:
     MEMORY = "memory"
     PERSISTENT = "persistent"
 
-    def __init__(self, storage, value, result=None):
+    def __init__(
+        self,
+        storage: str,
+        value: Any,
+        result: Optional[dict] = None,
+        node_ip: Optional[str] = None,
+    ):
         self.storage = storage
         self.value = value
         self.result = result or {}
+        self.node_ip = node_ip or self.result.get(NODE_IP, None)
         # The logical order of checkpoints (both in memory and persistent)
         # The more recent checkpoints have larger order.
         # The most recent checkpoint is used to restore the trial.
@@ -35,7 +44,7 @@ class Checkpoint:
     @staticmethod
     def from_object(value=None):
         """Creates a checkpoint from a Python object."""
-        return Checkpoint(Checkpoint.MEMORY, value)
+        return _TuneCheckpoint(_TuneCheckpoint.MEMORY, value)
 
     @property
     def is_ready(self):
@@ -45,9 +54,9 @@ class Checkpoint:
         to an actual path. MEMORY checkpoints are always considered ready since
         they are transient.
         """
-        if self.storage == Checkpoint.PERSISTENT:
+        if self.storage == _TuneCheckpoint.PERSISTENT:
             return isinstance(self.value, str)
-        return self.storage == Checkpoint.MEMORY
+        return self.storage == _TuneCheckpoint.MEMORY
 
     def __repr__(self):
         return f"Checkpoint({self.storage}, {self.value})"
@@ -68,17 +77,22 @@ class QueueItem:
 class CheckpointManager:
     """Manages checkpoints on the driver for a trial."""
 
-    def __init__(self, keep_checkpoints_num, checkpoint_score_attr, delete_fn):
+    def __init__(
+        self,
+        keep_checkpoints_num: int,
+        checkpoint_score_attr: str,
+        delete_fn: Callable[[str], None],
+    ):
         """Initializes a new CheckpointManager.
 
         `newest_persistent_checkpoint` and `newest_memory_checkpoint` are
         initialized to Checkpoint objects with values of None.
 
         Args:
-            keep_checkpoints_num (int): Keep at least this many checkpoints.
-            checkpoint_score_attr (str): Attribute to use to determine which
+            keep_checkpoints_num: Keep at least this many checkpoints.
+            checkpoint_score_attr: Attribute to use to determine which
                 checkpoints to keep.
-            delete_fn (function): Function that deletes checkpoints. Must be
+            delete_fn: Function that deletes checkpoints. Must be
                 idempotent.
         """
         self.keep_checkpoints_num = keep_checkpoints_num or float("inf")
@@ -92,11 +106,21 @@ class CheckpointManager:
             self._checkpoint_score_attr = checkpoint_score_attr
 
         self.delete = delete_fn
-        self.newest_persistent_checkpoint = Checkpoint(Checkpoint.PERSISTENT, None)
-        self._newest_memory_checkpoint = Checkpoint(Checkpoint.MEMORY, None)
+        self._newest_persistent_checkpoint = None
+        self._newest_memory_checkpoint = _TuneCheckpoint(_TuneCheckpoint.MEMORY, None)
         self._best_checkpoints = []
         self._membership = set()
         self._cur_order = 0
+
+    @property
+    def newest_persistent_checkpoint(self):
+        return self._newest_persistent_checkpoint or _TuneCheckpoint(
+            _TuneCheckpoint.PERSISTENT, None
+        )
+
+    @newest_persistent_checkpoint.setter
+    def newest_persistent_checkpoint(self, value):
+        self._newest_persistent_checkpoint = value
 
     @property
     def newest_checkpoint(self):
@@ -118,7 +142,7 @@ class CheckpointManager:
         gc.collect()
         self._newest_memory_checkpoint = new_checkpoint
 
-    def on_checkpoint(self, checkpoint):
+    def on_checkpoint(self, checkpoint: _TuneCheckpoint):
         """Starts tracking checkpoint metadata on checkpoint.
 
         Checkpoints get assigned with an `order` as they come in.
@@ -129,18 +153,18 @@ class CheckpointManager:
         deletes the worst checkpoint if at capacity.
 
         Args:
-            checkpoint (Checkpoint): Trial state checkpoint.
+            checkpoint: Trial state checkpoint.
         """
         self._cur_order += 1
         checkpoint.order = self._cur_order
 
-        if checkpoint.storage == Checkpoint.MEMORY:
+        if checkpoint.storage == _TuneCheckpoint.MEMORY:
             self.replace_newest_memory_checkpoint(checkpoint)
             return
 
-        old_checkpoint = self.newest_persistent_checkpoint
+        old_checkpoint = self._newest_persistent_checkpoint
 
-        if old_checkpoint.value == checkpoint.value:
+        if old_checkpoint and old_checkpoint.value == checkpoint.value:
             # Overwrite the order of the checkpoint.
             old_checkpoint.order = checkpoint.order
             return
@@ -148,10 +172,18 @@ class CheckpointManager:
         self.newest_persistent_checkpoint = checkpoint
 
         # Remove the old checkpoint if it isn't one of the best ones.
-        if old_checkpoint.value and old_checkpoint not in self._membership:
+        if (
+            old_checkpoint
+            and old_checkpoint.value
+            and old_checkpoint not in self._membership
+        ):
             self.delete(old_checkpoint)
 
         try:
+            # NaN metrics are treated as worst checkpoint
+            # The tuple structure is (not is_nan(), metric), which makes
+            # the nan values to be always considered as the worst
+            # metrics by the heap
             queue_item = QueueItem(self._priority(checkpoint), checkpoint)
         except KeyError:
             logger.error(
@@ -182,12 +214,20 @@ class CheckpointManager:
     def _priority(self, checkpoint):
         result = flatten_dict(checkpoint.result)
         priority = result[self._checkpoint_score_attr]
-        return -priority if self._checkpoint_score_desc else priority
+        if self._checkpoint_score_desc:
+            priority = -priority
+        return (
+            not is_nan(priority),
+            priority if not is_nan(priority) else 0,
+            checkpoint.order,
+        )
 
     def __getstate__(self):
         state = self.__dict__.copy()
         # Avoid serializing the memory checkpoint.
-        state["_newest_memory_checkpoint"] = Checkpoint(Checkpoint.MEMORY, None)
+        state["_newest_memory_checkpoint"] = _TuneCheckpoint(
+            _TuneCheckpoint.MEMORY, None
+        )
         # Avoid serializing lambda since it may capture cyclical dependencies.
         state.pop("delete")
         return state

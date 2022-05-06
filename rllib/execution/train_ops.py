@@ -22,7 +22,7 @@ from ray.rllib.execution.common import (
     _get_shared_metrics,
 )
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
-from ray.rllib.utils.annotations import ExperimentalAPI
+from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import NUM_ENV_STEPS_TRAINED, NUM_AGENT_STEPS_TRAINED
@@ -35,8 +35,22 @@ tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
-@ExperimentalAPI
-def train_one_step(trainer, train_batch) -> Dict:
+@DeveloperAPI
+def train_one_step(trainer, train_batch, policies_to_train=None) -> Dict:
+    """Function that improves the all policies in `train_batch` on the local worker.
+
+    Examples:
+        >>> from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
+        >>> trainer = [...] # doctest: +SKIP
+        >>> train_batch = synchronous_parallel_sample(trainer.workers) # doctest: +SKIP
+        >>> # This trains the policy on one batch.
+        >>> results = train_one_step(trainer, train_batch)) # doctest: +SKIP
+        {"default_policy": ...}
+
+    Updates the NUM_ENV_STEPS_TRAINED and NUM_AGENT_STEPS_TRAINED counters as well as
+    the LEARN_ON_BATCH_TIMER timer of the `trainer` object.
+    """
+
     config = trainer.config
     workers = trainer.workers
     local_worker = workers.local_worker()
@@ -52,7 +66,8 @@ def train_one_step(trainer, train_batch) -> Dict:
                 train_batch,
                 {
                     pid: local_worker.get_policy(pid)
-                    for pid in local_worker.get_policies_to_train(train_batch)
+                    for pid in policies_to_train
+                    or local_worker.get_policies_to_train(train_batch)
                 },
                 local_worker,
                 num_sgd_iter,
@@ -70,12 +85,30 @@ def train_one_step(trainer, train_batch) -> Dict:
     return info
 
 
-@ExperimentalAPI
+@DeveloperAPI
 def multi_gpu_train_one_step(trainer, train_batch) -> Dict:
+    """Multi-GPU version of train_one_step.
+
+    Uses the policies' `load_batch_into_buffer` and `learn_on_loaded_batch` methods
+    to be more efficient wrt CPU/GPU data transfers. For example, when doing multiple
+    passes through a train batch (e.g. for PPO) using `config.num_sgd_iter`, the
+    actual train batch is only split once and loaded once into the GPU(s).
+
+    Examples:
+        >>> from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
+        >>> trainer = [...] # doctest: +SKIP
+        >>> train_batch = synchronous_parallel_sample(trainer.workers) # doctest: +SKIP
+        >>> # This trains the policy on one batch.
+        >>> results = multi_gpu_train_one_step(trainer, train_batch)) # doctest: +SKIP
+        {"default_policy": ...}
+
+    Updates the NUM_ENV_STEPS_TRAINED and NUM_AGENT_STEPS_TRAINED counters as well as
+    the LOAD_BATCH_TIMER and LEARN_ON_BATCH_TIMER timers of the `trainer` object.
+    """
     config = trainer.config
     workers = trainer.workers
     local_worker = workers.local_worker()
-    num_sgd_iter = config.get("sgd_num_iter", 1)
+    num_sgd_iter = config.get("num_sgd_iter", 1)
     sgd_minibatch_size = config.get("sgd_minibatch_size", config["train_batch_size"])
 
     # Determine the number of devices (GPUs or 1 CPU) we use.
@@ -143,40 +176,15 @@ def multi_gpu_train_one_step(trainer, train_batch) -> Dict:
     load_timer.push_units_processed(train_batch.count)
     learn_timer.push_units_processed(train_batch.count)
 
+    # TODO: Move this into Trainer's `training_iteration` method for
+    #  better transparency.
     trainer._counters[NUM_ENV_STEPS_TRAINED] += train_batch.count
     trainer._counters[NUM_AGENT_STEPS_TRAINED] += train_batch.agent_steps()
-
-    # Update weights - after learning on the local worker - on all remote
-    # workers.
-    if workers.remote_workers():
-        with trainer._timers[WORKER_UPDATE_TIMER]:
-            weights = ray.put(
-                local_worker.get_weights(
-                    local_worker.get_policies_to_train(train_batch)
-                )
-            )
-            for e in workers.remote_workers():
-                e.set_weights.remote(weights)
 
     return learner_info
 
 
 class TrainOneStep:
-    """Callable that improves the policy and updates workers.
-
-    This should be used with the .for_each() operator. A tuple of the input
-    and learner stats will be returned.
-
-    Examples:
-        >>> rollouts = ParallelRollouts(...)
-        >>> train_op = rollouts.for_each(TrainOneStep(workers))
-        >>> print(next(train_op))  # This trains the policy on one batch.
-        SampleBatch(...), {"learner_stats": ...}
-
-    Updates the STEPS_TRAINED_COUNTER counter and LEARNER_INFO field in the
-    local iterator context.
-    """
-
     def __init__(
         self,
         workers: WorkerSet,
@@ -235,21 +243,6 @@ class TrainOneStep:
 
 
 class MultiGPUTrainOneStep:
-    """Multi-GPU version of TrainOneStep.
-
-    This should be used with the .for_each() operator. A tuple of the input
-    and learner stats will be returned.
-
-    Examples:
-        >>> rollouts = ParallelRollouts(...)
-        >>> train_op = rollouts.for_each(MultiGPUTrainOneStep(workers, ...))
-        >>> print(next(train_op))  # This trains the policy on one batch.
-        SampleBatch(...), {"learner_stats": ...}
-
-    Updates the STEPS_TRAINED_COUNTER counter and LEARNER_INFO field in the
-    local iterator context.
-    """
-
     def __init__(
         self,
         *,
@@ -264,7 +257,7 @@ class MultiGPUTrainOneStep:
     ):
         if framework != DEPRECATED_VALUE or shuffle_sequences != DEPRECATED_VALUE:
             deprecation_warning(
-                old="MultiGPUTrainOneStep(framework=..., " "shuffle_sequences=...)",
+                old="MultiGPUTrainOneStep(framework=..., shuffle_sequences=...)",
                 error=False,
             )
 
@@ -385,8 +378,10 @@ class ComputeGradients:
     This should be used with the .for_each() operator.
 
     Examples:
-        >>> grads_op = rollouts.for_each(ComputeGradients(workers))
-        >>> print(next(grads_op))
+        >>> from ray.rllib.execution.train_ops import ComputeGradients
+        >>> rollouts, workers = ... # doctest: +SKIP
+        >>> grads_op = rollouts.for_each(ComputeGradients(workers)) # doctest: +SKIP
+        >>> print(next(grads_op)) # doctest: +SKIP
         {"var_0": ..., ...}, 50  # grads, batch count
 
     Updates the LEARNER_INFO info field in the local iterator context.
@@ -413,8 +408,10 @@ class ApplyGradients:
     This should be used with the .for_each() operator.
 
     Examples:
-        >>> apply_op = grads_op.for_each(ApplyGradients(workers))
-        >>> print(next(apply_op))
+        >>> from ray.rllib.execution.train_ops import ApplyGradients
+        >>> grad_op, workers = ... # doctest: +SKIP
+        >>> apply_op = grads_op.for_each(ApplyGradients(workers)) # doctest: +SKIP
+        >>> print(next(apply_op)) # doctest: +SKIP
         None
 
     Updates the STEPS_TRAINED_COUNTER counter in the local iterator context.
@@ -485,9 +482,11 @@ class AverageGradients:
     have been batched with .batch().
 
     Examples:
-        >>> batched_grads = grads_op.batch(32)
-        >>> avg_grads = batched_grads.for_each(AverageGradients())
-        >>> print(next(avg_grads))
+        >>> from ray.rllib.execution.train_ops import AverageGradients
+        >>> grads_op = ... # doctest: +SKIP
+        >>> batched_grads = grads_op.batch(32) # doctest: +SKIP
+        >>> avg_grads = batched_grads.for_each(AverageGradients()) # doctest: +SKIP
+        >>> print(next(avg_grads)) # doctest: +SKIP
         {"var_0": ..., ...}, 1600  # averaged grads, summed batch count
     """
 
@@ -516,10 +515,14 @@ class UpdateTargetNetwork:
     has been taken.
 
     Examples:
-        >>> train_op = ParallelRollouts(...).for_each(TrainOneStep(...))
-        >>> update_op = train_op.for_each(
-        ...     UpdateTargetIfNeeded(workers, target_update_freq=500))
-        >>> print(next(update_op))
+        >>> from ray.rllib.execution.train_ops import UpdateTargetNetwork
+        >>> from ray.rllib.execution import ParallelRollouts, TrainOneStep
+        >>> workers = ... # doctest: +SKIP
+        >>> train_op = ParallelRollouts(...).for_each( # doctest: +SKIP
+        ...     TrainOneStep(...))
+        >>> update_op = train_op.for_each( # doctest: +SKIP
+        ...     UpdateTargetNetwork(workers, target_update_freq=500)) # doctest: +SKIP
+        >>> print(next(update_op)) # doctest: +SKIP
         None
 
     Updates the LAST_TARGET_UPDATE_TS and NUM_TARGET_UPDATES counters in the

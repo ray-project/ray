@@ -32,7 +32,7 @@ parser.add_argument(
     type=str,
     default="libsumo",
     choices=["libsumo", "traci"],
-    help="The SUMO connector to import. " "Requires the env variable SUMO_HOME set.",
+    help="The SUMO connector to import. Requires the env variable SUMO_HOME set.",
 )
 parser.add_argument(
     "--sumo-gui",

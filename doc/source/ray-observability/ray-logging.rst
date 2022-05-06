@@ -4,7 +4,7 @@ This document will explain Ray's logging system and its best practices.
 
 Driver logs
 ~~~~~~~~~~~
-An entry point of Ray applications that calls `ray.init(address='auto')` or `ray.init()` is called a driver.
+An entry point of Ray applications that calls ``ray.init(address='auto')`` or ``ray.init()`` is called a driver.
 All the driver logs are handled in the same way as normal Python programs. 
 
 Worker logs
@@ -35,6 +35,26 @@ When logs are printed, the process id (pid) and an IP address of the node that e
 .. code-block:: bash
 
     (pid=45601) task
+
+Actor log messages look like the following by default.
+
+.. code-block:: bash
+
+    (MyActor pid=480956) actor log message
+
+Customizing Actor logs prefixes
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+It is often useful to distinguish between log messages from different actors. For example, suppose you have a large number of worker actors. In this case, you may want to be able to easily see the index of the actor that logged a particular message. This can be achieved by defining the `__repr__ <https://docs.python.org/3/library/functions.html#repr>`__ method for an actor class. When defined, the actor repr will be used in place of the actor name. For example:
+
+.. literalinclude:: /ray-core/doc_code/actor-repr.py
+
+This produces the following output:
+
+.. code-block:: bash
+
+    (MyActor(index=2) pid=482120) hello there
+    (MyActor(index=1) pid=482119) hello there
 
 How to set up loggers
 ~~~~~~~~~~~~~~~~~~~~~
@@ -127,6 +147,8 @@ Here's a Ray log directory structure. Note that ``.out`` is logs from stdout/std
 - ``redis.[out|err]``: Redis log files.
 - ``worker-[worker_id]-[job_id]-[pid].[out|err]``: Python/Java part of Ray drivers and workers. All of stdout and stderr from tasks/actors are streamed here. Note that job_id is an id of the driver.
 - ``io-worker-[worker_id]-[pid].[out|err]``: Ray creates IO workers to spill/restore objects to external storage by default from Ray 1.3+. This is a log file of IO workers.
+- ``runtime_env_setup-[job_id].log``: Logs from installing :ref:`runtime environments<runtime-environments>` for a task, actor or job.  This file will only be present if a runtime environment is installed.
+- ``runtime_env_setup-ray_client_server_[port].log``: Logs from installing :ref:`runtime environments<runtime-environments>` for a job when connecting via :ref:`Ray Client<ray-client>`.
 
 Log rotation
 ------------

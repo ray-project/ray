@@ -1,17 +1,21 @@
-import sqlite3
+import logging
 import os
+import sqlite3
+from typing import Optional
 
 try:
     import boto3
     from botocore.exceptions import ClientError
 except ImportError:
     boto3 = None
-from typing import Optional
 
-import ray.experimental.internal_kv as ray_kv
-from ray.serve.storage.kv_store_base import KVStoreBase
-from ray.serve.utils import logger
 from ray import ray_constants
+import ray.experimental.internal_kv as ray_kv
+
+from ray.serve.constants import SERVE_LOGGER_NAME
+from ray.serve.storage.kv_store_base import KVStoreBase
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 def get_storage_key(namespace: str, storage_key: str) -> str:

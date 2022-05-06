@@ -53,3 +53,5 @@ To run an example tuning MRPC on AWS with 8 GPUs across multiple nodes:
       --address auto \
       --num_workers 8 \
       --use_gpu
+
+The example can also be run using :ref:`Ray Job Submission <jobs-overview>`, which is in beta starting with Ray 1.12.

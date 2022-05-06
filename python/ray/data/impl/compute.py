@@ -1,6 +1,8 @@
-from typing import TypeVar, Any, Union, Callable, List, Tuple
+import collections
+from typing import TypeVar, Any, Union, Callable, List, Tuple, Optional
 
 import ray
+from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -21,45 +23,15 @@ U = TypeVar("U")
 CallableClass = type
 
 
+@DeveloperAPI
 class ComputeStrategy:
-    def apply(self, fn: Any, blocks: BlockList, clear_input_blocks: bool) -> BlockList:
+    def _apply(self, fn: Any, blocks: BlockList, clear_input_blocks: bool) -> BlockList:
         raise NotImplementedError
 
 
-def _map_block_split(block: Block, fn: Any, input_files: List[str]) -> BlockPartition:
-    output = []
-    stats = BlockExecStats.builder()
-    for new_block in fn(block):
-        accessor = BlockAccessor.for_block(new_block)
-        new_meta = BlockMetadata(
-            num_rows=accessor.num_rows(),
-            size_bytes=accessor.size_bytes(),
-            schema=accessor.schema(),
-            input_files=input_files,
-            exec_stats=stats.build(),
-        )
-        owner = DatasetContext.get_current().block_owner
-        output.append((ray.put(new_block, _owner=owner), new_meta))
-        stats = BlockExecStats.builder()
-    return output
-
-
-def _map_block_nosplit(
-    block: Block, fn: Any, input_files: List[str]
-) -> Tuple[Block, BlockMetadata]:
-    stats = BlockExecStats.builder()
-    builder = DelegatingBlockBuilder()
-    for new_block in fn(block):
-        builder.add_block(new_block)
-    new_block = builder.build()
-    accessor = BlockAccessor.for_block(new_block)
-    return new_block, accessor.get_metadata(
-        input_files=input_files, exec_stats=stats.build()
-    )
-
-
-class TaskPool(ComputeStrategy):
-    def apply(
+@DeveloperAPI
+class TaskPoolStrategy(ComputeStrategy):
+    def _apply(
         self,
         fn: Any,
         remote_args: dict,
@@ -121,21 +93,62 @@ class TaskPool(ComputeStrategy):
         return BlockList(list(new_blocks), list(new_metadata))
 
 
-class ActorPool(ComputeStrategy):
-    def __init__(self):
-        self.workers = []
+@PublicAPI
+class ActorPoolStrategy(ComputeStrategy):
+    """Specify the compute strategy for a Dataset transform.
 
-    def __del__(self):
-        for w in self.workers:
-            w.__ray_terminate__.remote()
+    ActorPoolStrategy specifies that an autoscaling pool of actors should be used
+    for a given Dataset transform. This is useful for stateful setup of callable
+    classes.
 
-    def apply(
+    To autoscale from ``m`` to ``n`` actors, specify
+    ``compute=ActorPoolStrategy(m, n)``.
+    For a fixed-sized pool of size ``n``, specify ``compute=ActorPoolStrategy(n, n)``.
+
+    To increase opportunities for pipelining task dependency prefetching with
+    computation and avoiding actor startup delays, set max_tasks_in_flight_per_actor
+    to 2 or greater; to try to decrease the delay due to queueing of tasks on the worker
+    actors, set max_tasks_in_flight_per_actor to 1.
+    """
+
+    def __init__(
+        self,
+        min_size: int = 1,
+        max_size: Optional[int] = None,
+        max_tasks_in_flight_per_actor: Optional[int] = 2,
+    ):
+        """Construct ActorPoolStrategy for a Dataset transform.
+
+        Args:
+            min_size: The minimize size of the actor pool.
+            max_size: The maximum size of the actor pool.
+            max_tasks_in_flight_per_actor: The maximum number of tasks to concurrently
+                send to a single actor worker. Increasing this will increase
+                opportunities for pipelining task dependency prefetching with
+                computation and avoiding actor startup delays, but will also increase
+                queueing delay.
+        """
+        if min_size < 1:
+            raise ValueError("min_size must be > 1", min_size)
+        if max_size is not None and min_size > max_size:
+            raise ValueError("min_size must be <= max_size", min_size, max_size)
+        if max_tasks_in_flight_per_actor < 1:
+            raise ValueError(
+                "max_tasks_in_flight_per_actor must be >= 1, got: ",
+                max_tasks_in_flight_per_actor,
+            )
+        self.min_size = min_size
+        self.max_size = max_size or float("inf")
+        self.max_tasks_in_flight_per_actor = max_tasks_in_flight_per_actor
+
+    def _apply(
         self,
         fn: Any,
         remote_args: dict,
         block_list: BlockList,
         clear_input_blocks: bool,
     ) -> BlockList:
+        """Note: this is not part of the Dataset public API."""
         context = DatasetContext.get_current()
 
         blocks_in = block_list.get_blocks_with_metadata()
@@ -168,40 +181,53 @@ class ActorPool(ComputeStrategy):
 
         BlockWorker = ray.remote(**remote_args)(BlockWorker)
 
-        self.workers = [BlockWorker.remote()]
-        tasks = {w.ready.remote(): w for w in self.workers}
+        workers = [BlockWorker.remote() for _ in range(self.min_size)]
+        tasks = {w.ready.remote(): w for w in workers}
+        tasks_in_flight = collections.defaultdict(int)
         metadata_mapping = {}
+        block_indices = {}
         ready_workers = set()
 
         while len(results) < orig_num_blocks:
             ready, _ = ray.wait(
-                list(tasks), timeout=0.01, num_returns=1, fetch_local=False
+                list(tasks.keys()), timeout=0.01, num_returns=1, fetch_local=False
             )
             if not ready:
-                if len(ready_workers) / len(self.workers) > 0.8:
+                if (
+                    len(workers) < self.max_size
+                    and len(ready_workers) / len(workers) > 0.8
+                ):
                     w = BlockWorker.remote()
-                    self.workers.append(w)
+                    workers.append(w)
                     tasks[w.ready.remote()] = w
                     map_bar.set_description(
                         "Map Progress ({} actors {} pending)".format(
-                            len(ready_workers), len(self.workers) - len(ready_workers)
+                            len(ready_workers), len(workers) - len(ready_workers)
                         )
                     )
                 continue
 
             [obj_id] = ready
-            worker = tasks[obj_id]
-            del tasks[obj_id]
+            worker = tasks.pop(obj_id)
 
             # Process task result.
             if worker in ready_workers:
                 results.append(obj_id)
+                tasks_in_flight[worker] -= 1
                 map_bar.update(1)
             else:
                 ready_workers.add(worker)
+                map_bar.set_description(
+                    "Map Progress ({} actors {} pending)".format(
+                        len(ready_workers), len(workers) - len(ready_workers)
+                    )
+                )
 
             # Schedule a new task.
-            if blocks_in:
+            while (
+                blocks_in
+                and tasks_in_flight[worker] < self.max_tasks_in_flight_per_actor
+            ):
                 block, meta = blocks_in.pop()
                 if context.block_splitting_enabled:
                     ref = worker.map_block_split.remote(block, meta.input_files)
@@ -211,9 +237,13 @@ class ActorPool(ComputeStrategy):
                     )
                     metadata_mapping[ref] = meta_ref
                 tasks[ref] = worker
+                block_indices[ref] = len(blocks_in)
+                tasks_in_flight[worker] += 1
 
         map_bar.close()
         new_blocks, new_metadata = [], []
+        # Put blocks in input order.
+        results.sort(key=block_indices.get)
         if context.block_splitting_enabled:
             for result in ray.get(results):
                 for block, metadata in result:
@@ -228,7 +258,8 @@ class ActorPool(ComputeStrategy):
 
 
 def cache_wrapper(
-    fn: Union[CallableClass, Callable[[Any], Any]]
+    fn: Union[CallableClass, Callable[[Any], Any]],
+    compute: Optional[Union[str, ComputeStrategy]],
 ) -> Callable[[Any], Any]:
     """Implements caching of stateful callables.
 
@@ -239,6 +270,18 @@ def cache_wrapper(
         A plain function with per-process initialization cached as needed.
     """
     if isinstance(fn, CallableClass):
+
+        if (
+            compute is None
+            or compute == "tasks"
+            or isinstance(compute, TaskPoolStrategy)
+        ):
+            raise ValueError(
+                "``compute`` must be specified when using a callable class, and must "
+                "specify the actor compute strategy. "
+                'For example, use ``compute="actors"`` or '
+                "``compute=ActorPoolStrategy(min, max)``."
+            )
 
         def _fn(item: Any) -> Any:
             if ray.data._cached_fn is None or ray.data._cached_cls != fn:
@@ -253,10 +296,42 @@ def cache_wrapper(
 
 def get_compute(compute_spec: Union[str, ComputeStrategy]) -> ComputeStrategy:
     if not compute_spec or compute_spec == "tasks":
-        return TaskPool()
+        return TaskPoolStrategy()
     elif compute_spec == "actors":
-        return ActorPool()
+        return ActorPoolStrategy()
     elif isinstance(compute_spec, ComputeStrategy):
         return compute_spec
     else:
-        raise ValueError("compute must be one of [`tasks`, `actors`]")
+        raise ValueError("compute must be one of [`tasks`, `actors`, ComputeStrategy]")
+
+
+def _map_block_split(block: Block, fn: Any, input_files: List[str]) -> BlockPartition:
+    output = []
+    stats = BlockExecStats.builder()
+    for new_block in fn(block):
+        accessor = BlockAccessor.for_block(new_block)
+        new_meta = BlockMetadata(
+            num_rows=accessor.num_rows(),
+            size_bytes=accessor.size_bytes(),
+            schema=accessor.schema(),
+            input_files=input_files,
+            exec_stats=stats.build(),
+        )
+        owner = DatasetContext.get_current().block_owner
+        output.append((ray.put(new_block, _owner=owner), new_meta))
+        stats = BlockExecStats.builder()
+    return output
+
+
+def _map_block_nosplit(
+    block: Block, fn: Any, input_files: List[str]
+) -> Tuple[Block, BlockMetadata]:
+    stats = BlockExecStats.builder()
+    builder = DelegatingBlockBuilder()
+    for new_block in fn(block):
+        builder.add_block(new_block)
+    new_block = builder.build()
+    accessor = BlockAccessor.for_block(new_block)
+    return new_block, accessor.get_metadata(
+        input_files=input_files, exec_stats=stats.build()
+    )

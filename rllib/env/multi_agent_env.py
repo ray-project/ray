@@ -17,6 +17,7 @@ from ray.rllib.utils.typing import (
     MultiAgentDict,
     MultiEnvDict,
 )
+from ray.util import log_once
 
 # If the obs space is Dict type, look for the global state under this key.
 ENV_STATE = "state"
@@ -41,7 +42,7 @@ class MultiAgentEnv(gym.Env):
         if not hasattr(self, "_agent_ids"):
             self._agent_ids = set()
 
-        # do the action and observation spaces map from agent ids to spaces
+        # Do the action and observation spaces map from agent ids to spaces
         # for the individual agents?
         if not hasattr(self, "_spaces_in_preferred_format"):
             self._spaces_in_preferred_format = None
@@ -54,9 +55,13 @@ class MultiAgentEnv(gym.Env):
             New observations for each ready agent.
 
         Examples:
-            >>> env = MyMultiAgentEnv()
-            >>> obs = env.reset()
-            >>> print(obs)
+            >>> from ray.rllib.env.multi_agent_env import MultiAgentEnv
+            >>> class MyMultiAgentEnv(MultiAgentEnv): # doctest: +SKIP
+            ...     # Define your env here. # doctest: +SKIP
+            ...     ... # doctest: +SKIP
+            >>> env = MyMultiAgentEnv() # doctest: +SKIP
+            >>> obs = env.reset() # doctest: +SKIP
+            >>> print(obs) # doctest: +SKIP
             {
                 "car_0": [2.4, 1.6],
                 "car_1": [3.4, -3.2],
@@ -83,23 +88,24 @@ class MultiAgentEnv(gym.Env):
             4) Optional info values for each agent id.
 
         Examples:
-            >>> obs, rewards, dones, infos = env.step(
-            ...    action_dict={
-            ...        "car_0": 1, "car_1": 0, "traffic_light_1": 2,
-            ...    })
-            >>> print(rewards)
+            >>> env = ... # doctest: +SKIP
+            >>> obs, rewards, dones, infos = env.step( # doctest: +SKIP
+            ...    action_dict={ # doctest: +SKIP
+            ...        "car_0": 1, "car_1": 0, "traffic_light_1": 2, # doctest: +SKIP
+            ...    }) # doctest: +SKIP
+            >>> print(rewards) # doctest: +SKIP
             {
                 "car_0": 3,
                 "car_1": -1,
                 "traffic_light_1": 0,
             }
-            >>> print(dones)
+            >>> print(dones) # doctest: +SKIP
             {
                 "car_0": False,    # car_0 is still running
                 "car_1": True,     # car_1 is done
                 "__all__": False,  # the env is not done
             }
-            >>> print(infos)
+            >>> print(infos) # doctest: +SKIP
             {
                 "car_0": {},  # info for car_0
                 "car_1": {},  # info for car_1
@@ -151,7 +157,8 @@ class MultiAgentEnv(gym.Env):
         if self._spaces_in_preferred_format:
             return self.action_space.contains(x)
 
-        logger.warning("action_space_contains() has not been implemented")
+        if log_once("action_space_contains"):
+            logger.warning("action_space_contains() has not been implemented")
         return True
 
     @ExperimentalAPI
@@ -184,7 +191,6 @@ class MultiAgentEnv(gym.Env):
                 if agent_id != "__all__"
             }
         logger.warning("action_space_sample() has not been implemented")
-        del agent_ids
         return {}
 
     @ExperimentalAPI
@@ -215,8 +221,8 @@ class MultiAgentEnv(gym.Env):
             samples = self.observation_space.sample()
             samples = {agent_id: samples[agent_id] for agent_id in agent_ids}
             return samples
-        logger.warning("observation_space_sample() has not been implemented")
-        del agent_ids
+        if log_once("observation_space_sample"):
+            logger.warning("observation_space_sample() has not been implemented")
         return {}
 
     @PublicAPI
@@ -271,11 +277,15 @@ class MultiAgentEnv(gym.Env):
                 Must be a tuple space.
 
         Examples:
-            >>> env = YourMultiAgentEnv(...)
-            >>> grouped_env = env.with_agent_groups(env, {
-            ...   "group1": ["agent1", "agent2", "agent3"],
-            ...   "group2": ["agent4", "agent5"],
-            ... })
+            >>> from ray.rllib.env.multi_agent_env import MultiAgentEnv
+            >>> class MyMultiAgentEnv(MultiAgentEnv): # doctest: +SKIP
+            ...     # define your env here
+            ...     ... # doctest: +SKIP
+            >>> env = MyMultiAgentEnv(...) # doctest: +SKIP
+            >>> grouped_env = env.with_agent_groups(env, { # doctest: +SKIP
+            ...   "group1": ["agent1", "agent2", "agent3"], # doctest: +SKIP
+            ...   "group2": ["agent4", "agent5"], # doctest: +SKIP
+            ... }) # doctest: +SKIP
         """
 
         from ray.rllib.env.wrappers.group_agents_wrapper import \
@@ -342,7 +352,7 @@ class MultiAgentEnv(gym.Env):
         obs_space_check = (
             hasattr(self, "observation_space")
             and isinstance(self.observation_space, gym.spaces.Dict)
-            and set(self.observation_space.keys()) == self.get_agent_ids()
+            and set(self.observation_space.spaces.keys()) == self.get_agent_ids()
         )
         action_space_check = (
             hasattr(self, "action_space")
@@ -378,24 +388,24 @@ def make_multi_agent(
         underlying single-agent env's constructor.
 
     Examples:
+         >>> from ray.rllib.env.multi_agent_env import make_multi_agent
          >>> # By gym string:
-         >>> ma_cartpole_cls = make_multi_agent("CartPole-v0")
+         >>> ma_cartpole_cls = make_multi_agent("CartPole-v0") # doctest: +SKIP
          >>> # Create a 2 agent multi-agent cartpole.
-         >>> ma_cartpole = ma_cartpole_cls({"num_agents": 2})
-         >>> obs = ma_cartpole.reset()
-         >>> print(obs)
-         ... {0: [...], 1: [...]}
-
+         >>> ma_cartpole = ma_cartpole_cls({"num_agents": 2}) # doctest: +SKIP
+         >>> obs = ma_cartpole.reset() # doctest: +SKIP
+         >>> print(obs) # doctest: +SKIP
+         {0: [...], 1: [...]}
          >>> # By env-maker callable:
-         >>> from ray.rllib.examples.env.stateless_cartpole import \
-         ...    StatelessCartPole
-         >>> ma_stateless_cartpole_cls = make_multi_agent(
-         ...    lambda config: StatelessCartPole(config))
+         >>> from ray.rllib.examples.env.stateless_cartpole # doctest: +SKIP
+         ...    import StatelessCartPole
+         >>> ma_stateless_cartpole_cls = make_multi_agent( # doctest: +SKIP
+         ...    lambda config: StatelessCartPole(config)) # doctest: +SKIP
          >>> # Create a 3 agent multi-agent stateless cartpole.
-         >>> ma_stateless_cartpole = ma_stateless_cartpole_cls(
-         ...    {"num_agents": 3})
-         >>> print(obs)
-         ... {0: [...], 1: [...], 2: [...]}
+         >>> ma_stateless_cartpole = ma_stateless_cartpole_cls( # doctest: +SKIP
+         ...    {"num_agents": 3}) # doctest: +SKIP
+         >>> print(obs) # doctest: +SKIP
+         {0: [...], 1: [...], 2: [...]}
     """
 
     class MultiEnv(MultiAgentEnv):
@@ -471,18 +481,17 @@ class MultiAgentEnvWrapper(BaseEnv):
     def __init__(
         self,
         make_env: Callable[[int], EnvType],
-        existing_envs: MultiAgentEnv,
+        existing_envs: List["MultiAgentEnv"],
         num_envs: int,
     ):
         """Wraps MultiAgentEnv(s) into the BaseEnv API.
 
         Args:
-            make_env (Callable[[int], EnvType]): Factory that produces a new
-                MultiAgentEnv instance. Must be defined, if the number of
-                existing envs is less than num_envs.
-            existing_envs (List[MultiAgentEnv]): List of already existing
-                multi-agent envs.
-            num_envs (int): Desired num multiagent envs to have at the end in
+            make_env: Factory that produces a new MultiAgentEnv instance taking the
+                vector index as only call argument.
+                Must be defined, if the number of existing envs is less than num_envs.
+            existing_envs: List of already existing multi-agent envs.
+            num_envs: Desired num multiagent envs to have at the end in
                 total. This will include the given (already created)
                 `existing_envs`.
         """
@@ -496,7 +505,6 @@ class MultiAgentEnvWrapper(BaseEnv):
             assert isinstance(env, MultiAgentEnv)
         self.env_states = [_MultiAgentEnvState(env) for env in self.envs]
         self._unwrapped_env = self.envs[0].unwrapped
-        self._agent_ids = self._unwrapped_env.get_agent_ids()
 
     @override(BaseEnv)
     def poll(
@@ -590,7 +598,7 @@ class MultiAgentEnvWrapper(BaseEnv):
 
     @override(BaseEnv)
     def get_agent_ids(self) -> Set[AgentID]:
-        return self._agent_ids
+        return self.envs[0].get_agent_ids()
 
 
 class _MultiAgentEnvState:

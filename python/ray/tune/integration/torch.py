@@ -5,13 +5,15 @@ import os
 import logging
 import shutil
 import tempfile
-from typing import Callable, Dict, Generator, Optional, Type
+from typing import Callable, Dict, Generator, Optional, Type, Any
+import warnings
 
 import torch
 from datetime import timedelta
 
 import ray
 from ray import tune
+from ray.ray_constants import env_integer
 from ray.tune.result import RESULT_DUPLICATE
 from ray.tune.logger import NoopLogger
 from ray.tune.function_runner import wrap_function
@@ -19,13 +21,14 @@ from ray.tune.trainable import DistributedTrainable
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.utils.trainable import PlacementGroupUtil, TrainableUtil
 from ray.tune.utils import detect_checkpoint_function
-from ray.util.sgd.torch.utils import setup_process_group, setup_address
+from ray.util.ml_utils.util import find_free_port
 from ray.util.placement_group import remove_placement_group
-from ray.util.sgd.torch.constants import NCCL_TIMEOUT_S
 
 logger = logging.getLogger(__name__)
 
 _distributed_enabled = False
+
+NCCL_TIMEOUT_S = env_integer("NCCL_TIMEOUT_S", 1800)
 
 
 def is_distributed_trainable():
@@ -42,6 +45,46 @@ def logger_creator(log_config: Dict, logdir: str, rank: int) -> NoopLogger:
     worker_dir = os.path.join(logdir, "worker_{}".format(rank))
     os.makedirs(worker_dir, exist_ok=True)
     return NoopLogger(log_config, worker_dir)
+
+
+def setup_address():
+    ip = ray.util.get_node_ip_address()
+    port = find_free_port()
+    return f"tcp://{ip}:{port}"
+
+
+def setup_process_group(url, world_rank, world_size, timeout, backend="gloo"):
+    """Connects the distributed PyTorch backend.
+
+    Args:
+        url (str): the URL used to connect to distributed PyTorch.
+        world_rank (int): the index of the runner.
+        world_size (int): the total number of runners.
+        timeout (timedelta): Timeout for operations executed against
+            the process group.
+        backend (str): One of gloo or nccl. Depending on
+            build-time configuration
+    """
+    logger.debug(
+        "Connecting to {} world_rank: {} world_size: {}".format(
+            url, world_rank, world_size
+        )
+    )
+    logger.debug(f"using {backend}")
+    if backend == "nccl" and "NCCL_BLOCKING_WAIT" not in os.environ:
+        logger.debug(
+            "Setting NCCL_BLOCKING_WAIT for detecting node failure. "
+            "To override this behavior, you can set NCCL_BLOCKING_WAIT=0."
+        )
+        os.environ["NCCL_BLOCKING_WAIT"] = "1"
+
+    torch.distributed.init_process_group(
+        backend=backend,
+        init_method=url,
+        rank=world_rank,
+        world_size=world_size,
+        timeout=timeout,
+    )
 
 
 class _TorchTrainable(DistributedTrainable):
@@ -149,14 +192,13 @@ class _TorchTrainable(DistributedTrainable):
 
 
 def DistributedTrainableCreator(
-    func: Callable,
+    func: Callable[[Dict, Optional[str]], Any],
     num_workers: int = 1,
     num_cpus_per_worker: int = 1,
     num_gpus_per_worker: int = 0,
     num_workers_per_host: Optional[int] = None,
     backend: str = "gloo",
     timeout_s: int = NCCL_TIMEOUT_S,
-    use_gpu=None,
 ) -> Type[_TorchTrainable]:
     """Creates a class that executes distributed training.
 
@@ -166,20 +208,20 @@ def DistributedTrainableCreator(
     created.
 
     Args:
-        func (callable): This function is a Tune trainable function.
+        func: This function is a Tune trainable function.
             This function must have 2 args in the signature, and the
             latter arg must contain `checkpoint_dir`. For example:
             `func(config, checkpoint_dir=None)`.
-        num_workers (int): Number of training workers to include in
+        num_workers: Number of training workers to include in
             world.
-        num_cpus_per_worker (int): Number of CPU resources to reserve
+        num_cpus_per_worker: Number of CPU resources to reserve
             per training worker.
-        num_gpus_per_worker (int): Number of GPU resources to reserve
+        num_gpus_per_worker: Number of GPU resources to reserve
             per training worker.
         num_workers_per_host: Optional[int]: Number of workers to
             colocate per host.
-        backend (str): One of "gloo", "nccl".
-        timeout_s (float): Seconds before the torch process group
+        backend: One of "gloo", "nccl".
+        timeout_s: Seconds before the torch process group
             times out. Useful when machines are unreliable. Defaults
             to 1800 seconds. This value is also reused for triggering
             placement timeouts if forcing colocation.
@@ -197,15 +239,22 @@ def DistributedTrainableCreator(
             train_func, num_workers=2)
         analysis = tune.run(trainable_cls)
     """
-    if use_gpu:
-        raise DeprecationWarning(
-            "use_gpu is deprecated. Use 'num_gpus_per_worker' instead."
-        )
+
+    warnings.warn(
+        "Ray Tune's `DistributedTrainableCreator` will be deprecated in Ray "
+        "2.0, and will be replaced by Ray AI Runtime (Ray AIR). Ray AIR ("
+        "https://docs.ray.io/en/latest/ray-air/getting-started.html) will "
+        "provide greater functionality than `DistributedTrainableCreator`, "
+        "and with a more flexible and easy-to-use API.",
+        PendingDeprecationWarning,
+        stacklevel=2,
+    )
+
     detect_checkpoint_function(func, abort=True)
     if num_workers_per_host:
         if num_workers % num_workers_per_host:
             raise ValueError(
-                "`num_workers` must be an integer multiple " "of workers_per_node."
+                "`num_workers` must be an integer multiple of workers_per_node."
             )
 
     class WrappedDistributedTorchTrainable(_TorchTrainable):
@@ -241,8 +290,8 @@ def distributed_checkpoint_dir(
     redundant work.
 
     Args:
-        step (int): Used to label the checkpoint
-        disable (bool): Disable for prototyping.
+        step: Used to label the checkpoint
+        disable: Disable for prototyping.
 
     Yields:
         str: A path to a directory. This path will be used

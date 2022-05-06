@@ -89,7 +89,7 @@ class OptunaSearch(Searcher):
     Multi-objective optimization is supported.
 
     Args:
-        space (dict|Callable): Hyperparameter search space definition for
+        space: Hyperparameter search space definition for
             Optuna's sampler. This can be either a :class:`dict` with
             parameter names as keys and ``optuna.distributions`` as values,
             or a Callable - in which case, it should be a define-by-run
@@ -104,20 +104,20 @@ class OptunaSearch(Searcher):
                 function. Instead, put the training logic inside the function
                 or class trainable passed to ``tune.run``.
 
-        metric (str|list): The training result objective value attribute. If
+        metric: The training result objective value attribute. If
             None but a mode was passed, the anonymous metric ``_metric``
             will be used per default. Can be a list of metrics for
             multi-objective optimization.
-        mode (str|list): One of {min, max}. Determines whether objective is
+        mode: One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute. Can be a list of
             modes for multi-objective optimization (corresponding to
             ``metric``).
-        points_to_evaluate (list): Initial parameter suggestions to be run
+        points_to_evaluate: Initial parameter suggestions to be run
             first. This is for when you already have some good parameters
             you want to run first to help the algorithm make better suggestions
             for future parameters. Needs to be a list of dicts containing the
             configurations.
-        sampler (optuna.samplers.BaseSampler): Optuna sampler used to
+        sampler: Optuna sampler used to
             draw hyperparameter configurations. Defaults to ``MOTPESampler``
             for multi-objective optimization with Optuna<2.9.0, and
             ``TPESampler`` in every other case.
@@ -131,10 +131,10 @@ class OptunaSearch(Searcher):
                 This is an Optuna issue and may be fixed in a future
                 Optuna release.
 
-        seed (int): Seed to initialize sampler with. This parameter is only
+        seed: Seed to initialize sampler with. This parameter is only
             used when ``sampler=None``. In all other cases, the sampler
             you pass should be initialized with the seed already.
-        evaluated_rewards (list): If you have previously evaluated the
+        evaluated_rewards: If you have previously evaluated the
             parameters passed in as points_to_evaluate you can avoid
             re-running those trials by passing in the reward attributes
             as a list so the optimiser can be told the results without
@@ -289,9 +289,7 @@ class OptunaSearch(Searcher):
         evaluated_rewards: Optional[List] = None,
     ):
         assert ot is not None, "Optuna must be installed! Run `pip install optuna`."
-        super(OptunaSearch, self).__init__(
-            metric=metric, mode=mode, max_concurrent=None, use_early_stopped_trials=None
-        )
+        super(OptunaSearch, self).__init__(metric=metric, mode=mode)
 
         if isinstance(space, dict) and space:
             resolved_vars, domain_vars, grid_vars = parse_spec_vars(space)
@@ -326,6 +324,8 @@ class OptunaSearch(Searcher):
 
         self._sampler = sampler
         self._seed = seed
+
+        self._completed_trials = set()
 
         self._ot_trials = {}
         self._ot_study = None
@@ -474,6 +474,12 @@ class OptunaSearch(Searcher):
             # Optuna doesn't support incremental results
             # for multi-objective optimization
             return
+        if trial_id in self._completed_trials:
+            logger.warning(
+                f"Received additional result for trial {trial_id}, but "
+                f"it already finished. Result: {result}"
+            )
+            return
         metric = result[self.metric]
         step = result[TRAINING_ITERATION]
         ot_trial = self._ot_trials[trial_id]
@@ -482,6 +488,13 @@ class OptunaSearch(Searcher):
     def on_trial_complete(
         self, trial_id: str, result: Optional[Dict] = None, error: bool = False
     ):
+        if trial_id in self._completed_trials:
+            logger.warning(
+                f"Received additional completion for trial {trial_id}, but "
+                f"it already finished. Result: {result}"
+            )
+            return
+
         ot_trial = self._ot_trials[trial_id]
 
         if result:
@@ -499,8 +512,10 @@ class OptunaSearch(Searcher):
                 ot_trial_state = OptunaTrialState.PRUNED
         try:
             self._ot_study.tell(ot_trial, val, state=ot_trial_state)
-        except ValueError as exc:
+        except Exception as exc:
             logger.warning(exc)  # E.g. if NaN was reported
+
+        self._completed_trials.add(trial_id)
 
     def add_evaluated_point(
         self,

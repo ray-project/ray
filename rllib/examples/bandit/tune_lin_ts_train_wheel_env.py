@@ -2,6 +2,7 @@
     For more information on WheelBandit, see https://arxiv.org/abs/1802.09127 .
 """
 
+import argparse
 from matplotlib import pyplot as plt
 import numpy as np
 import pandas as pd
@@ -31,14 +32,26 @@ def plot_model_weights(means, covs, ax):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--framework",
+        choices=["tf2", "torch"],
+        default="torch",
+        help="The DL framework specifier.",
+    )
+    args = parser.parse_args()
+    print(f"Running with following CLI args: {args}")
+
     ray.init(num_cpus=2)
 
     config = {
         "env": WheelBanditEnv,
+        "framework": args.framework,
+        "eager_tracing": (args.framework == "tf2"),
     }
 
-    # Actual training_iterations will be 10 * timesteps_per_iteration
-    # (100 by default) = 2,000
+    # Actual env steps per `train()` call will be
+    # 10 * `min_sample_timesteps_per_reporting` (100 by default) = 1,000
     training_iterations = 10
 
     print("Running training for %s time steps" % training_iterations)
@@ -48,7 +61,7 @@ if __name__ == "__main__":
         "BanditLinTS",
         config=config,
         stop={"training_iteration": training_iterations},
-        num_samples=2,
+        num_samples=1,
         checkpoint_at_end=True,
     )
 

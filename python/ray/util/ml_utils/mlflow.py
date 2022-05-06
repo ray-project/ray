@@ -1,3 +1,4 @@
+from copy import deepcopy
 import os
 import logging
 from typing import Dict, Optional, TYPE_CHECKING
@@ -21,6 +22,17 @@ class MLflowLoggerUtil:
 
         self._mlflow = mlflow
         self.experiment_id = None
+
+    def __deepcopy__(self, memo=None):
+        # mlflow is a module, and thus cannot be copied
+        _mlflow = self._mlflow
+        self.__dict__.pop("_mlflow")
+        dict_copy = deepcopy(self.__dict__, memo)
+        copied_object = MLflowLoggerUtil()
+        copied_object.__dict__.update(dict_copy)
+        self._mlflow = _mlflow
+        copied_object._mlflow = _mlflow
+        return copied_object
 
     def setup_mlflow(
         self,
@@ -183,6 +195,7 @@ class MLflowLoggerUtil:
         from mlflow.utils.mlflow_tags import MLFLOW_RUN_NAME
 
         client = self._get_client()
+        tags = tags or {}
         tags[MLFLOW_RUN_NAME] = run_name
         run = client.create_run(experiment_id=self.experiment_id, tags=tags)
 
@@ -199,7 +212,9 @@ class MLflowLoggerUtil:
         if active_run:
             return active_run
 
-        return self._mlflow.start_run(run_name=run_name, tags=tags)
+        return self._mlflow.start_run(
+            run_name=run_name, experiment_id=self.experiment_id, tags=tags
+        )
 
     def _run_exists(self, run_id: str) -> bool:
         """Check if run with the provided id exists."""

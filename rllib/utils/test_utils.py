@@ -7,13 +7,16 @@ import random
 import re
 import time
 import tree  # pip install dm_tree
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, TYPE_CHECKING, Union
 import yaml
 
 import ray
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
 from ray.rllib.utils.typing import PartialTrainerConfigDict
 from ray.tune import CLIReporter, run_experiments
+
+if TYPE_CHECKING:
+    from ray.rllib.agents.trainer_config import TrainerConfig
 
 jax, _ = try_import_jax()
 tf1, tf, tfv = try_import_tf()
@@ -30,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 
 def framework_iterator(
-    config: Optional[PartialTrainerConfigDict] = None,
+    config: Optional[Union["TrainerConfig", PartialTrainerConfigDict]] = None,
     frameworks: Sequence[str] = ("tf2", "tf", "tfe", "torch"),
     session: bool = False,
     with_eager_tracing: bool = False,
@@ -42,8 +45,8 @@ def framework_iterator(
     as the correct eager/non-eager contexts for tfe/tf.
 
     Args:
-        config: An optional config dict to alter in place depending on the
-            iteration.
+        config: An optional config dict or TrainerConfig object. This will be modified
+            (value for "framework" changed) depending on the iteration.
         frameworks: A list/tuple of the frameworks to be tested.
             Allowed are: "tf2", "tf", "tfe", "torch", and None.
         session: If True and only in the tf-case: Enter a tf.Session()
@@ -75,7 +78,7 @@ def framework_iterator(
             continue
         if fw != "torch" and not tf:
             logger.warning(
-                "framework_iterator skipping {} (tf not " "installed)!".format(fw)
+                "framework_iterator skipping {} (tf not installed)!".format(fw)
             )
             continue
         elif fw == "tfe" and not eager_mode:
@@ -99,7 +102,10 @@ def framework_iterator(
             sess.__enter__()
             tf1.set_random_seed(42)
 
-        config["framework"] = fw
+        if isinstance(config, dict):
+            config["framework"] = fw
+        else:
+            config.framework(fw)
 
         eager_ctx = None
         # Enable eager mode for tf2 and tfe.
@@ -114,7 +120,10 @@ def framework_iterator(
         # Additionally loop through eager_tracing=True + False, if necessary.
         if fw in ["tf2", "tfe"] and with_eager_tracing:
             for tracing in [True, False]:
-                config["eager_tracing"] = tracing
+                if isinstance(config, dict):
+                    config["eager_tracing"] = tracing
+                else:
+                    config.framework(eager_tracing=tracing)
                 print(f"framework={fw} (eager-tracing={tracing})")
                 time_started = time.time()
                 yield fw if session is False else (fw, sess)
@@ -122,7 +131,10 @@ def framework_iterator(
                     time_total = time.time() - time_started
                     time_iterations[fw + ("+tracing" if tracing else "")] = time_total
                     print(f".. took {time_total}sec")
-                config["eager_tracing"] = False
+                if isinstance(config, dict):
+                    config["eager_tracing"] = False
+                else:
+                    config.framework(eager_tracing=False)
         # Yield current framework + tf-session (if necessary).
         else:
             print(f"framework={fw}")
@@ -165,7 +177,7 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
         assert isinstance(y, dict), "ERROR: If x is dict, y needs to be a dict as well!"
         y_keys = set(x.keys())
         for key, value in x.items():
-            assert key in y, "ERROR: y does not have x's key='{}'! y={}".format(key, y)
+            assert key in y, f"ERROR: y does not have x's key='{key}'! y={y}"
             check(value, y[key], decimals=decimals, atol=atol, rtol=rtol, false=false)
             y_keys.remove(key)
         assert not y_keys, "ERROR: y contains keys ({}) that are not in x! y={}".format(
@@ -186,21 +198,21 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
     # Boolean comparison.
     elif isinstance(x, (np.bool_, bool)):
         if false is True:
-            assert bool(x) is not bool(y), "ERROR: x ({}) is y ({})!".format(x, y)
+            assert bool(x) is not bool(y), f"ERROR: x ({x}) is y ({y})!"
         else:
-            assert bool(x) is bool(y), "ERROR: x ({}) is not y ({})!".format(x, y)
+            assert bool(x) is bool(y), f"ERROR: x ({x}) is not y ({y})!"
     # Nones or primitives.
     elif x is None or y is None or isinstance(x, (str, int)):
         if false is True:
-            assert x != y, "ERROR: x ({}) is the same as y ({})!".format(x, y)
+            assert x != y, f"ERROR: x ({x}) is the same as y ({y})!"
         else:
-            assert x == y, "ERROR: x ({}) is not the same as y ({})!".format(x, y)
+            assert x == y, f"ERROR: x ({x}) is not the same as y ({y})!"
     # String/byte comparisons.
     elif hasattr(x, "dtype") and (x.dtype == object or str(x.dtype).startswith("<U")):
         try:
             np.testing.assert_array_equal(x, y)
             if false is True:
-                assert False, "ERROR: x ({}) is the same as y ({})!".format(x, y)
+                assert False, f"ERROR: x ({x}) is the same as y ({y})!"
         except AssertionError as e:
             if false is False:
                 raise e
@@ -248,7 +260,7 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
             else:
                 # If false is set -> raise error (not expected to be equal).
                 if false is True:
-                    assert False, "ERROR: x ({}) is the same as y ({})!".format(x, y)
+                    assert False, f"ERROR: x ({x}) is the same as y ({y})!"
 
         # Using atol/rtol.
         else:
@@ -264,7 +276,7 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
                     raise e
             else:
                 if false is True:
-                    assert False, "ERROR: x ({}) is the same as y ({})!".format(x, y)
+                    assert False, f"ERROR: x ({x}) is the same as y ({y})!"
 
 
 def check_compute_single_action(
@@ -558,7 +570,9 @@ def check_train_results(train_results):
                     configured_b
                     / (
                         train_results["config"]["model"]["max_seq_len"]
-                        + train_results["config"]["burn_in"]
+                        + train_results["config"]["replay_buffer_config"][
+                            "replay_burn_in"
+                        ]
                     )
                     == actual_b
                 )
@@ -589,6 +603,10 @@ def run_learning_tests_from_yaml(
         smoke_test (bool): Whether this is just a smoke-test. If True,
             set time_total_s to 5min and don't early out due to rewards
             or timesteps reached.
+
+    Returns:
+        A results dict mapping strings (e.g. "time_taken", "stats", "passed") to
+            the respective stats/values.
     """
     print("Will run the following yaml files:")
     for yaml_file in yaml_files:
@@ -820,3 +838,81 @@ def run_learning_tests_from_yaml(
     }
 
     return result
+
+
+def check_same_batch(batch1, batch2) -> None:
+    """Check if both batches are (almost) identical.
+
+    For MultiAgentBatches, the step count and individual policy's
+    SampleBatches are checked for identity. For SampleBatches, identity is
+    checked as the almost numerical key-value-pair identity between batches
+    with ray.rllib.utils.test_utils.check(). unroll_id is compared only if
+    both batches have an unroll_id.
+
+    Args:
+        batch1: Batch to compare against batch2
+        batch2: Batch to compare against batch1
+    """
+    # Avoids circular import
+    from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+
+    assert type(batch1) == type(
+        batch2
+    ), "Input batches are of different types {} and {}".format(
+        str(type(batch1)), str(type(batch2))
+    )
+
+    def check_sample_batches(_batch1, _batch2, _policy_id=None):
+        unroll_id_1 = _batch1.get("unroll_id", None)
+        unroll_id_2 = _batch2.get("unroll_id", None)
+        # unroll IDs only have to fit if both batches have them
+        if unroll_id_1 is not None and unroll_id_2 is not None:
+            assert unroll_id_1 == unroll_id_2
+
+        batch1_keys = set()
+        for k, v in _batch1.items():
+            # unroll_id is compared above already
+            if k == "unroll_id":
+                continue
+            check(v, _batch2[k])
+            batch1_keys.add(k)
+
+        batch2_keys = set(_batch2.keys())
+        # unroll_id is compared above already
+        batch2_keys.discard("unroll_id")
+        _difference = batch1_keys.symmetric_difference(batch2_keys)
+
+        # Cases where one batch has info and the other has not
+        if _policy_id:
+            assert not _difference, (
+                "SampleBatches for policy with ID {} "
+                "don't share information on the "
+                "following information: \n{}"
+                "".format(_policy_id, _difference)
+            )
+        else:
+            assert not _difference, (
+                "SampleBatches don't share information "
+                "on the following information: \n{}"
+                "".format(_difference)
+            )
+
+    if type(batch1) == SampleBatch:
+        check_sample_batches(batch1, batch2)
+    elif type(batch1) == MultiAgentBatch:
+        assert batch1.count == batch2.count
+        batch1_ids = set()
+        for policy_id, policy_batch in batch1.policy_batches.items():
+            check_sample_batches(
+                policy_batch, batch2.policy_batches[policy_id], policy_id
+            )
+            batch1_ids.add(policy_id)
+
+        # Case where one ma batch has info on a policy the other has not
+        batch2_ids = set(batch2.policy_batches.keys())
+        difference = batch1_ids.symmetric_difference(batch2_ids)
+        assert (
+            not difference
+        ), f"MultiAgentBatches don't share the following information: \n{difference}."
+    else:
+        raise ValueError("Unsupported batch type " + str(type(batch1)))

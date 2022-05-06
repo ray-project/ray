@@ -6,24 +6,22 @@
 #
 # setup.py install_requires
 aiohttp>=3.7
-aioredis < 2
 aiosignal
-click >= 7.0
+click >= 7.0, <= 8.0.4
 cloudpickle
 filelock
 frozenlist
 gpustat >= 1.0.0b1
-grpcio >= 1.28.1, <= 1.43.0
+grpcio >= 1.28.1, != 1.44.0
 jsonschema
 msgpack >= 1.0.0, < 2.0.0
 numpy >= 1.16
 opencensus
-prometheus_client >= 0.7.1
+prometheus_client >= 0.7.1, < 0.14.0
 protobuf >= 3.8.0
 py-spy >= 0.2.0
 pydantic >= 1.8
 pyyaml
-redis >= 3.5.0, < 4.0.0
 requests
 smart_open
 virtualenv
@@ -31,7 +29,7 @@ virtualenv
 ## setup.py extras
 dm_tree
 flask
-gym>=0.21.0,<0.22.0; python_version >= '3.7'
+gym==0.21.0; python_version >= '3.7'
 gym==0.19.0; python_version < '3.7'
 lz4
 scikit-image
@@ -46,8 +44,7 @@ starlette
 aiorwlock
 
 # Requirements for running tests
-pyarrow >= 4.0.1, < 7.0.0
-blist; platform_system != "Windows"
+pyarrow >= 6.0.1, < 7.0.0
 azure-cli-core==2.29.1
 azure-identity==1.7.0
 azure-mgmt-compute==23.1.0
@@ -63,10 +60,11 @@ google-cloud-storage
 gym-minigrid
 kubernetes
 lxml
-moto
+moto[s3,server]
 mypy
 networkx
 numba
+asyncmock
 # higher version of llvmlite breaks windows
 llvmlite==0.34.0
 openpyxl
@@ -84,8 +82,8 @@ pytest-sugar
 pytest-lazy-fixture
 pytest-timeout
 pytest-virtualenv
-scikit-learn==0.22.2
-tensorflow==2.5.1
+redis >= 3.5.0, < 4.0.0
+scikit-learn==0.24.2
 testfixtures
 werkzeug
 xlrd

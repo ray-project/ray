@@ -93,7 +93,7 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
             "APEX",
             {
                 "num_workers": 2,
-                "timesteps_per_iteration": 100,
+                "min_sample_timesteps_per_reporting": 100,
                 "num_gpus": 0,
                 "buffer_size": 1000,
                 "min_time_s_per_reporting": 1,
@@ -110,7 +110,7 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
             "APEX_DDPG",
             {
                 "num_workers": 2,
-                "timesteps_per_iteration": 100,
+                "min_sample_timesteps_per_reporting": 100,
                 "buffer_size": 1000,
                 "num_gpus": 0,
                 "min_time_s_per_reporting": 1,
@@ -124,7 +124,7 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
         check_support_multiagent(
             "DDPG",
             {
-                "timesteps_per_iteration": 1,
+                "min_sample_timesteps_per_reporting": 1,
                 "buffer_size": 1000,
                 "use_state_preprocessor": True,
                 "learning_starts": 500,
@@ -135,7 +135,7 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
         check_support_multiagent(
             "DQN",
             {
-                "timesteps_per_iteration": 1,
+                "min_sample_timesteps_per_reporting": 1,
                 "buffer_size": 1000,
             },
         )

@@ -1,3 +1,0 @@
-ray
-atoma
-flask

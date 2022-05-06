@@ -18,7 +18,8 @@ namespace plasma {
 
 GetRequest::GetRequest(instrumented_io_context &io_context,
                        const std::shared_ptr<ClientInterface> &client,
-                       const std::vector<ObjectID> &object_ids, bool is_from_worker,
+                       const std::vector<ObjectID> &object_ids,
+                       bool is_from_worker,
                        int64_t num_unique_objects_to_wait_for)
     : client(client),
       object_ids(object_ids.begin(), object_ids.end()),
@@ -51,11 +52,12 @@ bool GetRequest::IsRemoved() const { return is_removed_; }
 
 void GetRequestQueue::AddRequest(const std::shared_ptr<ClientInterface> &client,
                                  const std::vector<ObjectID> &object_ids,
-                                 int64_t timeout_ms, bool is_from_worker) {
+                                 int64_t timeout_ms,
+                                 bool is_from_worker) {
   const absl::flat_hash_set<ObjectID> unique_ids(object_ids.begin(), object_ids.end());
   // Create a get request for this object.
-  auto get_request = std::make_shared<GetRequest>(io_context_, client, object_ids,
-                                                  is_from_worker, unique_ids.size());
+  auto get_request = std::make_shared<GetRequest>(
+      io_context_, client, object_ids, is_from_worker, unique_ids.size());
   for (const auto &object_id : unique_ids) {
     // Check if this object is already present
     // locally. If so, record that the object is being used and mark it as accounted for.

@@ -12,6 +12,7 @@ if not os.environ.get("CI"):
     os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"] = "1"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on windows")
 @pytest.mark.parametrize("field", ["conda", "pip"])
 @pytest.mark.parametrize("specify_env_in_init", [True, False])
 @pytest.mark.parametrize("spec_format", ["file", "python_object"])

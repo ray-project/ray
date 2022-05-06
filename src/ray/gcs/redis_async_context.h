@@ -71,8 +71,11 @@ class RedisAsyncContext {
   /// \param argv Array with arguments.
   /// \param argvlen Array with each argument's length.
   /// \return Status
-  Status RedisAsyncCommandArgv(redisCallbackFn *fn, void *privdata, int argc,
-                               const char **argv, const size_t *argvlen);
+  Status RedisAsyncCommandArgv(redisCallbackFn *fn,
+                               void *privdata,
+                               int argc,
+                               const char **argv,
+                               const size_t *argvlen);
 
  private:
   /// This mutex is used to protect `redis_async_context`.

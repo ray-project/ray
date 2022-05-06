@@ -14,6 +14,9 @@ from ray.workflow.api import (
     sleep,
     delete,
     wait,
+    create,
+    continuation,
+    options,
 )
 from ray.workflow.workflow_access import WorkflowExecutionError
 from ray.workflow.common import WorkflowStatus
@@ -37,6 +40,9 @@ __all__ = [
     "EventListener",
     "delete",
     "wait",
+    "create",
+    "continuation",
+    "options",
 ]
 
 globals().update(WorkflowStatus.__members__)

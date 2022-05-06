@@ -44,23 +44,21 @@ class NevergradSearch(Searcher):
         $ pip install nevergrad
 
     Parameters:
-        optimizer (nevergrad.optimization.Optimizer|class): Optimizer provided
+        optimizer: Optimizer provided
             from Nevergrad. Alter
-        space (list|nevergrad.parameter.Parameter): Nevergrad parametrization
+        space: Nevergrad parametrization
             to be passed to optimizer on instantiation, or list of parameter
             names if you passed an optimizer object.
-        metric (str): The training result objective value attribute. If None
+        metric: The training result objective value attribute. If None
             but a mode was passed, the anonymous metric `_metric` will be used
             per default.
-        mode (str): One of {min, max}. Determines whether objective is
+        mode: One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
-        points_to_evaluate (list): Initial parameter suggestions to be run
+        points_to_evaluate: Initial parameter suggestions to be run
             first. This is for when you already have some good parameters
             you want to run first to help the algorithm make better suggestions
             for future parameters. Needs to be a list of dicts containing the
             configurations.
-        use_early_stopped_trials: Deprecated.
-        max_concurrent: Deprecated.
 
     Tune automatically converts search spaces to Nevergrad's format:
 
@@ -113,12 +111,13 @@ class NevergradSearch(Searcher):
 
     def __init__(
         self,
-        optimizer: Union[None, Optimizer, Type[Optimizer], ConfiguredOptimizer] = None,
+        optimizer: Optional[
+            Union[Optimizer, Type[Optimizer], ConfiguredOptimizer]
+        ] = None,
         space: Optional[Union[Dict, Parameter]] = None,
         metric: Optional[str] = None,
         mode: Optional[str] = None,
         points_to_evaluate: Optional[List[Dict]] = None,
-        max_concurrent: Optional[int] = None,
         **kwargs,
     ):
         assert (
@@ -129,9 +128,7 @@ class NevergradSearch(Searcher):
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
 
-        super(NevergradSearch, self).__init__(
-            metric=metric, mode=mode, max_concurrent=max_concurrent, **kwargs
-        )
+        super(NevergradSearch, self).__init__(metric=metric, mode=mode, **kwargs)
 
         self._space = None
         self._opt_factory = None
@@ -178,7 +175,6 @@ class NevergradSearch(Searcher):
             )
 
         self._live_trial_mapping = {}
-        self.max_concurrent = max_concurrent
 
         if self._nevergrad_opt or self._space:
             self._setup_nevergrad()
@@ -322,7 +318,7 @@ class NevergradSearch(Searcher):
             sampler = domain.get_sampler()
             if isinstance(sampler, Quantized):
                 logger.warning(
-                    "Nevergrad does not support quantization. " "Dropped quantization."
+                    "Nevergrad does not support quantization. Dropped quantization."
                 )
                 sampler = sampler.get_sampler()
 

@@ -19,18 +19,12 @@
 #include "ray/common/ray_object.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
-#include "ray/raylet/dependency_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/cluster_task_manager_interface.h"
 #include "ray/raylet/scheduling/internal.h"
-#include "ray/raylet/scheduling/local_task_manager.h"
+#include "ray/raylet/scheduling/local_task_manager_interface.h"
 #include "ray/raylet/scheduling/scheduler_resource_reporter.h"
 #include "ray/raylet/scheduling/scheduler_stats.h"
-#include "ray/raylet/worker.h"
-#include "ray/raylet/worker_pool.h"
-#include "ray/rpc/grpc_client.h"
-#include "ray/rpc/node_manager/node_manager_client.h"
-#include "ray/rpc/node_manager/node_manager_server.h"
 
 namespace ray {
 namespace raylet {
@@ -49,41 +43,31 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \param self_node_id: ID of local node.
   /// \param cluster_resource_scheduler: The resource scheduler which contains
   ///                                    the state of the cluster.
-  /// \param task_dependency_manager_ Used to fetch task's dependencies.
-  /// \param is_owner_alive: A callback which returns if the owner process is alive
-  ///                        (according to our ownership model).
   /// \param get_node_info: Function that returns the node info for a node.
   /// \param announce_infeasible_task: Callback that informs the user if a task
   ///                                  is infeasible.
-  /// \param worker_pool: A reference to the worker pool.
-  /// \param leased_workers: A reference to the leased workers map.
-  /// \param get_task_arguments: A callback for getting a tasks' arguments by
-  ///                            their ids.
-  /// \param max_pinned_task_arguments_bytes: The cap on pinned arguments.
+  /// \param local_task_manager: Manages local tasks.
   /// \param get_time_ms: A callback which returns the current time in milliseconds.
-  /// \param sched_cls_cap_interval_ms: The time before we increase the cap
-  ///                                   on the number of tasks that can run per
-  ///                                   scheduling class. If set to 0, there is no
-  ///                                   cap. If it's a large number, the cap is hard.
   ClusterTaskManager(
       const NodeID &self_node_id,
       std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
       internal::NodeInfoGetter get_node_info,
       std::function<void(const RayTask &)> announce_infeasible_task,
-      std::shared_ptr<LocalTaskManager> local_task_manager,
+      std::shared_ptr<ILocalTaskManager> local_task_manager,
       std::function<int64_t(void)> get_time_ms = []() {
         return (int64_t)(absl::GetCurrentTimeNanos() / 1e6);
       });
 
-  /// (Step 1) Queue tasks and schedule.
   /// Queue task and schedule. This hanppens when processing the worker lease request.
   ///
   /// \param task: The incoming task to be queued and scheduled.
   /// \param grant_or_reject: True if we we should either grant or reject the request
   ///                         but no spillback.
+  /// \param is_selected_based_on_locality : should schedule on local node if possible.
   /// \param reply: The reply of the lease request.
   /// \param send_reply_callback: The function used during dispatching.
-  void QueueAndScheduleTask(const RayTask &task, bool grant_or_reject,
+  void QueueAndScheduleTask(const RayTask &task,
+                            bool grant_or_reject,
                             bool is_selected_based_on_locality,
                             rpc::RequestWorkerLeaseReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
@@ -115,18 +99,19 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \param[in] last_reported_resources: The last reported resources. Used to check
   /// whether
   ///                                     resources have been changed.
-  void FillResourceUsage(rpc::ResourcesData &data,
-                         const std::shared_ptr<SchedulingResources>
-                             &last_reported_resources = nullptr) override;
+  void FillResourceUsage(
+      rpc::ResourcesData &data,
+      const std::shared_ptr<NodeResources> &last_reported_resources = nullptr) override;
 
   /// Return if any tasks are pending resource acquisition.
   ///
-  /// \param[out] exemplar: An example task that is deadlocking.
+  /// \param[out] example: An example task that is deadlocking.
+  /// \param[in,out] any_pending: True if there's any pending example.
   /// \param[in,out] num_pending_actor_creation: Number of pending actor creation tasks.
   /// \param[in,out] num_pending_tasks: Number of pending tasks.
-  /// \param[in,out] any_pending: True if there's any pending exemplar.
   /// \return True if any progress is any tasks are pending.
-  bool AnyPendingTasksForResourceAcquisition(RayTask *exemplar, bool *any_pending,
+  bool AnyPendingTasksForResourceAcquisition(RayTask *example,
+                                             bool *any_pending,
                                              int *num_pending_actor_creation,
                                              int *num_pending_tasks) const override;
 
@@ -139,13 +124,14 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// The helper to dump the debug state of the cluster task manater.
   std::string DebugStr() const override;
 
-  /// Check if there are enough available resources for the given input.
-  bool IsLocallySchedulable(const RayTask &task) const override;
+  std::shared_ptr<ClusterResourceScheduler> GetClusterResourceScheduler() const;
+
+  /// Get the count of tasks in `infeasible_tasks_`.
+  size_t GetInfeasibleQueueSize() const;
+  /// Get the count of tasks in `tasks_to_schedule_`.
+  size_t GetPendingQueueSize() const;
 
  private:
-  /// Helper method to get the best node for running the task.
-  std::string GetBestSchedulableNode(const internal::Work &work, bool *is_infeasible);
-
   void TryScheduleInfeasibleTask();
 
   // Schedule the task onto a node (which could be either remote or local).
@@ -167,7 +153,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// Function to announce infeasible task to GCS.
   std::function<void(const RayTask &)> announce_infeasible_task_;
 
-  std::shared_ptr<LocalTaskManager> local_task_manager_;
+  std::shared_ptr<ILocalTaskManager> local_task_manager_;
 
   /// TODO(swang): Add index from TaskID -> Work to avoid having to iterate
   /// through queues to cancel tasks, etc.
@@ -181,8 +167,8 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
       infeasible_tasks_;
 
-  const SchedulerResourceReporter scheduler_resource_reporter_;
-  mutable SchedulerStats internal_stats_;
+  std::unique_ptr<SchedulerResourceReporter> scheduler_resource_reporter_;
+  mutable std::unique_ptr<SchedulerStats> internal_stats_;
 
   /// Returns the current time in milliseconds.
   std::function<int64_t()> get_time_ms_;

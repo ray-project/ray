@@ -20,7 +20,7 @@ when you really expect an incremental (or no-op) build for an option (say `pip i
 
 ### Invocation
 
-The CI system (such as Travis) must _source_ (_not_ execute) `ci/travis/ci.sh` and pass the action(s) to execute.
+The CI system (such as Travis) must _source_ (_not_ execute) `ci/ci.sh` and pass the action(s) to execute.
 The script either handles the work or dispatches it to other script(s) as it deems appropriate.
 This helps ensure any environment setup/teardown is handled appropriately.
 
@@ -43,7 +43,7 @@ The following practices can avoid such pitfalls while maintaining intuitive cont
   (The sheer length of the script is a secondary concern and can be mitigated by keeping functions modular.)
 
 - Avoid adding new scripts if possible. If it's necessary that you do so, call them instead of sourcing them.
-  Note that thies implies new scripts should not modify the environment, or the caller will not see such changes!
+  Note that this implies new scripts should not modify the environment, or the caller will not see such changes!
 
 - Always add code inside a function, not at global scope. Use `local` for variables where it makes sense.
   However, be careful and know the shell rules: for example, e.g. `local x=$(false)` succeeds even under `set -e`.

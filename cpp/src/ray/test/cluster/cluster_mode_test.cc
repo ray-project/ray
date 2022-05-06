@@ -45,8 +45,8 @@ struct Person {
 
 TEST(RayClusterModeTest, FullTest) {
   ray::RayConfig config;
-  config.head_args = {"--num-cpus", "2", "--resources",
-                      "{\"resource1\":1,\"resource2\":2}"};
+  config.head_args = {
+      "--num-cpus", "2", "--resources", "{\"resource1\":1,\"resource2\":2}"};
   if (absl::GetFlag<bool>(FLAGS_external_cluster)) {
     auto port = absl::GetFlag<int32_t>(FLAGS_redis_port);
     std::string password = absl::GetFlag<std::string>(FLAGS_redis_password);
@@ -401,8 +401,8 @@ TEST(RayClusterModeTest, CreateAndRemovePlacementGroup) {
 TEST(RayClusterModeTest, CreatePlacementGroupExceedsClusterResource) {
   std::vector<std::unordered_map<std::string, double>> bundles{{{"CPU", 10000}}};
 
-  ray::PlacementGroupCreationOptions options{"first_placement_group", bundles,
-                                             ray::PlacementStrategy::PACK};
+  ray::PlacementGroupCreationOptions options{
+      "first_placement_group", bundles, ray::PlacementStrategy::PACK};
   auto first_placement_group = ray::CreatePlacementGroup(options);
   EXPECT_FALSE(first_placement_group.Wait(3));
   ray::RemovePlacementGroup(first_placement_group.GetID());

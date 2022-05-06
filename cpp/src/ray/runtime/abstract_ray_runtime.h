@@ -54,7 +54,8 @@ class AbstractRayRuntime : public RayRuntime {
 
   std::vector<std::shared_ptr<msgpack::sbuffer>> Get(const std::vector<std::string> &ids);
 
-  std::vector<bool> Wait(const std::vector<std::string> &ids, int num_objects,
+  std::vector<bool> Wait(const std::vector<std::string> &ids,
+                         int num_objects,
                          int timeout_ms);
 
   std::string Call(const RemoteFunctionHolder &remote_function_holder,

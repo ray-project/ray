@@ -17,7 +17,6 @@
 #include <map>
 #include <set>
 #include <sstream>
-#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -73,10 +72,6 @@ std::string debug_string(const absl::flat_hash_set<Ts...> &c) {
 }
 template <typename... Ts>
 std::string debug_string(const std::map<Ts...> &c) {
-  return _container_debug_string(c);
-}
-template <typename... Ts>
-std::string debug_string(const std::unordered_map<Ts...> &c) {
   return _container_debug_string(c);
 }
 template <typename... Ts>

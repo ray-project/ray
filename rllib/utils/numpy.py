@@ -1,6 +1,8 @@
+from collections import OrderedDict
 from gym.spaces import Discrete, MultiDiscrete
 import numpy as np
 import tree  # pip install dm_tree
+from types import MappingProxyType
 from typing import List, Optional
 
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
@@ -226,23 +228,25 @@ def flatten_inputs_to_1d_tensor(
 
     Examples:
         >>> # B=2
-        >>> out = flatten_inputs_to_1d_tensor(
+        >>> from ray.rllib.utils.tf_utils import flatten_inputs_to_1d_tensor
+        >>> from gym.spaces import Discrete, Box
+        >>> out = flatten_inputs_to_1d_tensor( # doctest: +SKIP
         ...     {"a": [1, 0], "b": [[[0.0], [0.1]], [1.0], [1.1]]},
         ...     spaces_struct=dict(a=Discrete(2), b=Box(shape=(2, 1)))
-        ... )
-        >>> print(out)
-        ... [[0.0, 1.0,  0.0, 0.1], [1.0, 0.0,  1.0, 1.1]]  # B=2 n=4
+        ... ) # doctest: +SKIP
+        >>> print(out) # doctest: +SKIP
+        [[0.0, 1.0,  0.0, 0.1], [1.0, 0.0,  1.0, 1.1]]  # B=2 n=4
 
         >>> # B=2; T=2
-        >>> out = flatten_inputs_to_1d_tensor(
+        >>> out = flatten_inputs_to_1d_tensor( # doctest: +SKIP
         ...     ([[1, 0], [0, 1]],
         ...      [[[0.0, 0.1], [1.0, 1.1]], [[2.0, 2.1], [3.0, 3.1]]]),
         ...     spaces_struct=tuple([Discrete(2), Box(shape=(2, ))]),
         ...     time_axis=True
-        ... )
-        >>> print(out)
-        ... [[[0.0, 1.0, 0.0, 0.1], [1.0, 0.0, 1.0, 1.1]],
-        ...  [[1.0, 0.0, 2.0, 2.1], [0.0, 1.0, 3.0, 3.1]]]  # B=2 T=2 n=4
+        ... ) # doctest: +SKIP
+        >>> print(out) # doctest: +SKIP
+        [[[0.0, 1.0, 0.0, 0.1], [1.0, 0.0, 1.0, 1.1]],\
+        [[1.0, 0.0, 2.0, 2.1], [0.0, 1.0, 3.0, 3.1]]]  # B=2 T=2 n=4
     """
 
     flat_inputs = tree.flatten(inputs)
@@ -296,6 +300,42 @@ def flatten_inputs_to_1d_tensor(
         merged = np.reshape(merged, [B, T, -1])
 
     return merged
+
+
+def make_action_immutable(obj):
+    """Flags actions immutable to notify users when trying to change them.
+
+    Can also be used with any tree-like structure containing either
+    dictionaries, numpy arrays or already immutable objects per se.
+    Note, however that `tree.map_structure()` will in general not
+    include the shallow object containing all others and therefore
+    immutability will hold only for all objects contained in it.
+    Use `tree.traverse(fun, action, top_down=False)` to include
+    also the containing object.
+
+    Args:
+        obj: The object to be made immutable.
+
+    Returns:
+        The immutable object.
+
+    Examples:
+        >>> import tree
+        >>> import numpy as np
+        >>> from ray.rllib.utils.numpy import make_action_immutable
+        >>> arr = np.arange(1,10)
+        >>> d = dict(a = 1, b = (arr, arr))
+        >>> tree.traverse(make_action_immutable, d, top_down=False) # doctest: +SKIP
+    """
+    if isinstance(obj, np.ndarray):
+        obj.setflags(write=False)
+        return obj
+    elif isinstance(obj, OrderedDict):
+        return MappingProxyType(dict(obj))
+    elif isinstance(obj, dict):
+        return MappingProxyType(obj)
+    else:
+        return obj
 
 
 def huber_loss(x: np.ndarray, delta: float = 1.0) -> np.ndarray:

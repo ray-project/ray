@@ -224,12 +224,15 @@ def request_resources(
             call to request_resources() is made to override.
 
     Examples:
+        >>> from ray.autoscaler.sdk import request_resources
         >>> # Request 1000 CPUs.
-        >>> request_resources(num_cpus=1000)
+        >>> request_resources(num_cpus=1000) # doctest: +SKIP
         >>> # Request 64 CPUs and also fit a 1-GPU/4-CPU task.
-        >>> request_resources(num_cpus=64, bundles=[{"GPU": 1, "CPU": 4}])
+        >>> request_resources( # doctest: +SKIP
+        ...     num_cpus=64, bundles=[{"GPU": 1, "CPU": 4}])
         >>> # Same as requesting num_cpus=3.
-        >>> request_resources(bundles=[{"CPU": 1}, {"CPU": 1}, {"CPU": 1}])
+        >>> request_resources( # doctest: +SKIP
+        ...     bundles=[{"CPU": 1}, {"CPU": 1}, {"CPU": 1}])
     """
     return commands.request_resources(num_cpus, bundles)
 

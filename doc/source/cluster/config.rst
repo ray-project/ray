@@ -202,7 +202,7 @@ Node Docker
 
 .. parsed-literal::
 
-    :ref:`image <cluster-configuration-image>`: str
+    :ref:`worker_image <cluster-configuration-image>`: str
     :ref:`pull_before_run <cluster-configuration-pull-before-run>`: bool
     :ref:`worker_run_options <cluster-configuration-worker-run-options>`:
         - str

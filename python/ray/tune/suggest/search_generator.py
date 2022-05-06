@@ -72,7 +72,7 @@ class SearchGenerator(SearchAlgorithm):
         """Registers experiment specifications.
 
         Arguments:
-            experiments (Experiment | list | dict): Experiments to run.
+            experiments: Experiments to run.
         """
         assert not self._experiment
         logger.debug("added configurations")
@@ -168,8 +168,8 @@ class SearchGenerator(SearchAlgorithm):
         The save operation is atomic (write/swap).
 
         Args:
-            dirpath (str): Filepath to experiment dir.
-            session_str (str): Unique identifier of the current run
+            dirpath: Filepath to experiment dir.
+            session_str: Unique identifier of the current run
                 session.
         """
         searcher = self.searcher

@@ -64,6 +64,7 @@ def Deprecated(old=None, *, new=None, help=None, error):
     entirely from the codebase.
 
     Examples:
+        >>> from ray.rllib.utils.deprecation import Deprecated
         >>> # Deprecated class: Patches the constructor to warn if the class is
         ... # used.
         ... @Deprecated(new="NewAndMuchCoolerClass", error=False)

@@ -42,8 +42,10 @@ class WaitManager {
   /// invoking the callback.
   /// \param callback Invoked when either timeout_ms is satisfied OR num_required_objects
   /// is satisfied.
-  void Wait(const std::vector<ray::ObjectID> &object_ids, int64_t timeout_ms,
-            uint64_t num_required_objects, const WaitCallback &callback);
+  void Wait(const std::vector<ray::ObjectID> &object_ids,
+            int64_t timeout_ms,
+            uint64_t num_required_objects,
+            const WaitCallback &callback);
 
   /// This is invoked whenever an object becomes locally available.
   ///
@@ -55,8 +57,10 @@ class WaitManager {
 
  private:
   struct WaitRequest {
-    WaitRequest(int64_t timeout_ms, const WaitCallback &callback,
-                const std::vector<ObjectID> &object_ids, uint64_t num_required_objects)
+    WaitRequest(int64_t timeout_ms,
+                const WaitCallback &callback,
+                const std::vector<ObjectID> &object_ids,
+                uint64_t num_required_objects)
         : timeout_ms(timeout_ms),
           callback(callback),
           object_ids(object_ids),

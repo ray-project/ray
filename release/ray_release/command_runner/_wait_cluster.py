@@ -25,6 +25,7 @@ curr_nodes = 0
 start = time.time()
 next_feedback = start
 max_time = start + args.max_time_s
+
 while not curr_nodes >= args.num_nodes:
     now = time.time()
 

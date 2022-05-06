@@ -81,7 +81,7 @@ def test_readonly_actor(workflow_start_regular):
     start = time.time()
     ray.get([readonly_actor.readonly_workload.run_async() for _ in range(10)])
     end = time.time()
-    assert end - start < 5, f"Took too long, {end-start}"
+    assert end - start < 5, f"Took too long, {end - start}"
 
 
 @workflow.virtual_actor
@@ -332,6 +332,20 @@ def test_default_getset(workflow_start_regular):
     with pytest.raises(ray.exceptions.RaySystemError):
         a2 = ActorHavingComplicatedStructure.get_or_create("a2")
         a2.set.run(10)
+
+
+def test_options_update(workflow_start_regular):
+    actor = Counter.get_or_create("Counter", 0)
+    method = actor.add.options(
+        name="old_name", max_retries=3, num_cpus=1, metadata={"k": "v"}
+    ).options(
+        name="new_name", max_retries=2, num_gpus=1, metadata={"added_k": "added_v"}
+    )
+    assert method._method_helper._name == "new_name"
+    assert method._method_helper._user_metadata == {"k": "v", "added_k": "added_v"}
+    options = method._method_helper._options
+    assert options.max_retries == 2
+    assert options.ray_options == {"num_cpus": 1, "num_gpus": 1}
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@ from typing import Any
 from ray.util.annotations import PublicAPI
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 class TableRow(Mapping):
     """
     A dict-like row of a tabular ``Dataset``.

@@ -6,7 +6,7 @@ from typing import Dict
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray._private.utils import get_ray_temp_dir
 
-unsupported_field_message = "The field {} is not supported " "for on-premise clusters."
+unsupported_field_message = "The field {} is not supported for on-premise clusters."
 
 LOCAL_CLUSTER_NODE_TYPE = "local.cluster.node"
 

@@ -1,9 +1,10 @@
+import copy
 from datetime import datetime
-import inspect
 import logging
 import os
 from pathlib import Path
 from typing import Union, Callable, List, TypeVar, Optional, Any, Dict, Type
+import warnings
 
 import ray
 from ray.actor import ActorHandle
@@ -15,8 +16,12 @@ from ray.train.backend import (
     TrainingWorkerError,
 )
 from ray.train.callbacks.callback import TrainingCallback
+from ray.train.impl.dataset_spec import RayDataset, _RayDatasetSpec
 from ray.train.session import TrainingResultType
-from ray.train.utils import RayDataset
+from ray.train.utils import (
+    construct_train_func,
+    ActorWrapper,
+)
 from ray.train.checkpoint import (
     CheckpointStrategy,
     TuneCheckpointManager,
@@ -136,6 +141,16 @@ class Trainer:
         logdir: Optional[str] = None,
         max_retries: int = 3,
     ):
+        warnings.warn(
+            "The `ray.train.Trainer` API will be deprecated in Ray "
+            "2.0, and will be replaced by Ray AI Runtime (Ray AIR). Ray AIR ("
+            "https://docs.ray.io/en/latest/ray-air/getting-started.html) will "
+            "provide greater functionality than `ray.train.Trainer`, "
+            "and with a more flexible and easy-to-use API.",
+            PendingDeprecationWarning,
+            stacklevel=2,
+        )
+
         if num_workers <= 0:
             raise ValueError("`num_workers` must be a positive integer.")
 
@@ -150,13 +165,16 @@ class Trainer:
                 "when instantiating your Trainer."
             )
 
+        if resources_per_worker is not None:
+            # Copy this parameter to avoid mutating the user input
+            resources_per_worker = copy.deepcopy(resources_per_worker)
+
         self._num_workers = num_workers
         self._use_gpu = use_gpu
         self._resources_per_worker = resources_per_worker
 
         # Incremental unique run ID.
         self._run_id = 0
-
         self.logdir = self.create_logdir(logdir)
 
         # Setup executor.
@@ -193,7 +211,7 @@ class Trainer:
 
         remote_executor = ray.remote(num_cpus=0)(BackendExecutor)
 
-        self._backend_executor_actor = remote_executor.options(
+        backend_executor_actor = remote_executor.options(
             runtime_env=runtime_env
         ).remote(
             backend_config=self._backend_config,
@@ -203,6 +221,8 @@ class Trainer:
             additional_resources_per_worker=resources_per_worker,
             max_retries=max_retries,
         )
+
+        self._backend_executor = ActorWrapper(backend_executor_actor)
 
         if self._is_tune_enabled():
             self.checkpoint_manager = TuneCheckpointManager()
@@ -260,7 +280,7 @@ class Trainer:
             initialization_hook (Optional[Callable]): The function to call on
                 each worker when it is instantiated.
         """
-        ray.get(self._backend_executor_actor.start.remote(initialization_hook))
+        self._backend_executor.start(initialization_hook)
 
     def run(
         self,
@@ -318,14 +338,16 @@ class Trainer:
                 logdir=str(self.latest_run_dir), config=config or {}
             )
 
-        train_func = self._get_train_func(train_func, config)
+        train_func = construct_train_func(train_func, config)
+
+        dataset_spec = _RayDatasetSpec(dataset_or_dict=dataset)
 
         try:
             iterator = TrainingIterator(
-                backend_executor_actor=self._backend_executor_actor,
+                backend_executor=self._backend_executor,
                 backend_config=self._backend_config,
                 train_func=train_func,
-                dataset=dataset,
+                dataset_spec=dataset_spec,
                 checkpoint_manager=self.checkpoint_manager,
                 checkpoint=checkpoint,
                 checkpoint_strategy=checkpoint_strategy,
@@ -395,47 +417,20 @@ class Trainer:
         self._run_id += 1
         self.create_run_dir()
 
-        train_func = self._get_train_func(train_func, config)
+        train_func = construct_train_func(train_func, config)
+
+        dataset_spec = _RayDatasetSpec(dataset_or_dict=dataset)
 
         return TrainingIterator(
-            backend_executor_actor=self._backend_executor_actor,
+            backend_executor=self._backend_executor,
             backend_config=self._backend_config,
             train_func=train_func,
             run_dir=self.latest_run_dir,
-            dataset=dataset,
+            dataset_spec=dataset_spec,
             checkpoint_manager=self.checkpoint_manager,
             checkpoint=checkpoint,
             checkpoint_strategy=checkpoint_strategy,
         )
-
-    def _get_train_func(
-        self,
-        train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
-        config: Optional[Dict[str, Any]],
-    ) -> Callable[[], T]:
-        """Validates and constructs the training function to execute.
-
-        Args:
-            train_func (Callable): The training function to execute.
-                This can either take in no arguments or a ``config`` dict.
-            config (Optional[Dict]): Configurations to pass into
-                ``train_func``. If None then an empty Dict will be created.
-
-        Returns:
-            A valid training function.
-
-        Raises:
-            ValueError: if the input ``train_func`` is invalid.
-        """
-        signature = inspect.signature(train_func)
-        num_params = len(signature.parameters)
-        if num_params > 1:
-            raise ValueError("train_func should take in a 0 or 1 arguments.")
-        elif num_params == 1:
-            config = {} if config is None else config
-            return lambda: train_func(config)
-        else:  # num_params == 0
-            return train_func
 
     @property
     def latest_run_dir(self) -> Optional[Path]:
@@ -516,7 +511,7 @@ class Trainer:
 
     def shutdown(self):
         """Shuts down the training execution service."""
-        ray.get(self._backend_executor_actor.shutdown.remote())
+        self._backend_executor.shutdown()
 
     def to_tune_trainable(
         self,
@@ -526,7 +521,7 @@ class Trainer:
         """Creates a Tune ``Trainable`` from the input training function.
 
         Args:
-            func (Callable): The function that should be executed on each
+            train_func (Callable): The function that should be executed on each
                 training worker.
             dataset (Optional[Union[RayDataset, Dict[str, RayDataset]]]):
                 Distributed Ray p:ref:`Dataset <dataset-api>` or
@@ -548,7 +543,7 @@ class Trainer:
                 "tune] to use the Tune integration."
             )
 
-        if ray.get(self._backend_executor_actor.is_started.remote()):
+        if self._backend_executor.is_started():
             raise RuntimeError(
                 "The Trainer must not be active to use "
                 "`to_tune_trainable`. Either shutdown the "
@@ -595,18 +590,16 @@ class Trainer:
             args, kwargs: Arguments to pass into the ``__init__`` of the
                 provided ``train_cls``.
         """
-        if ray.get(self._backend_executor_actor.is_started.remote()):
+        if self._backend_executor.is_started():
             raise RuntimeError(
                 "The Trainer must not be active to use "
                 "`to_worker_group`. Either shutdown the "
                 "Trainer or don't start it in the first place."
             )
-        ray.get(
-            self._backend_executor_actor.start.remote(
-                train_cls=train_cls, train_cls_args=args, train_cls_kwargs=kwargs
-            )
+        self._backend_executor.start(
+            train_cls=train_cls, train_cls_args=args, train_cls_kwargs=kwargs
         )
-        worker_group = ray.get(self._backend_executor_actor.get_worker_group.remote())
+        worker_group = self._backend_executor.get_worker_group()
         return TrainWorkerGroup(worker_group)
 
 
@@ -662,26 +655,26 @@ class TrainingIterator:
 
     def __init__(
         self,
-        backend_executor_actor: ActorHandle,
+        backend_executor: Union[BackendExecutor, ActorWrapper],
         backend_config: BackendConfig,
         train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
-        run_dir: Path,
-        dataset: Optional[Union[RayDataset, Dict[str, RayDataset]]],
+        dataset_spec: _RayDatasetSpec,
         checkpoint_manager: CheckpointManager,
         checkpoint: Optional[Union[Dict, str, Path]],
         checkpoint_strategy: Optional[CheckpointStrategy],
+        run_dir: Optional[Path] = None,
     ):
-        self._backend_executor_actor = backend_executor_actor
+        self._backend_executor = backend_executor
         self._backend = backend_config.backend_cls()
         self._train_func = train_func
-        self._dataset = dataset
+        self._dataset_spec = dataset_spec
         self._run_dir = run_dir
         self._checkpoint_manager = checkpoint_manager
         self._checkpoint_strategy = checkpoint_strategy
         self._start_training(
             train_func=train_func,
             run_dir=run_dir,
-            dataset=dataset,
+            dataset_spec=self._dataset_spec,
             checkpoint=checkpoint,
             checkpoint_strategy=checkpoint_strategy,
         )
@@ -696,7 +689,7 @@ class TrainingIterator:
         self,
         train_func,
         run_dir,
-        dataset,
+        dataset_spec,
         checkpoint,
         checkpoint_strategy,
         latest_checkpoint_id=None,
@@ -708,10 +701,10 @@ class TrainingIterator:
         )
         checkpoint_dict = self._checkpoint_manager._load_checkpoint(checkpoint)
         self._run_with_error_handling(
-            lambda: ray.get(
-                self._backend_executor_actor.start_training.remote(
-                    train_func=train_func, dataset=dataset, checkpoint=checkpoint_dict
-                )
+            lambda: self._backend_executor.start_training(
+                train_func=train_func,
+                dataset_spec=dataset_spec,
+                checkpoint=checkpoint_dict,
             )
         )
 
@@ -720,10 +713,17 @@ class TrainingIterator:
             return func()
         except TrainingWorkerError:
             # Workers have already been restarted.
+            logger.info(
+                "Workers have been successfully restarted. Resuming "
+                "training from latest checkpoint."
+            )
+            logger.debug(
+                f"Latest checkpoint: {self._checkpoint_manager.latest_checkpoint}"
+            )
             self._start_training(
                 self._train_func,
                 self._run_dir,
-                self._dataset,
+                self._dataset_spec,
                 self._checkpoint_manager.latest_checkpoint,
                 self._checkpoint_strategy,
                 latest_checkpoint_id=self._checkpoint_manager.latest_checkpoint_id,
@@ -772,7 +772,7 @@ class TrainingIterator:
         """
 
         while True:
-            results = ray.get(self._backend_executor_actor.get_next_results.remote())
+            results = self._backend_executor.get_next_results()
             if results is None:
                 return None
             first_result = results[0]
@@ -795,7 +795,7 @@ class TrainingIterator:
 
     def _finish_checkpointing(self):
         while True:
-            results = ray.get(self._backend_executor_actor.get_next_results.remote())
+            results = self._backend_executor.get_next_results()
             if results is None:
                 break
             result_type = results[0].type
@@ -817,11 +817,11 @@ class TrainingIterator:
                 Each item corresponds to the return value from a single worker.
         """
 
-        ray.get(self._backend_executor_actor.pause_reporting.remote())
+        self._backend_executor.pause_reporting()
         # Finish up processing checkpoints. Reporting has been disabled.
         # Results will not be processed.
         self._finish_checkpointing()
-        return ray.get(self._backend_executor_actor.finish_training.remote())
+        return self._backend_executor.finish_training()
 
     def is_finished(self) -> bool:
         return self._finished_training

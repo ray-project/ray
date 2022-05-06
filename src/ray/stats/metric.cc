@@ -122,12 +122,15 @@ void Metric::Record(double value,
                     const std::unordered_map<std::string, std::string> &tags) {
   TagsType tags_pair_vec;
   std::for_each(
-      tags.begin(), tags.end(),
+      tags.begin(),
+      tags.end(),
       [&tags_pair_vec](std::pair<std::string, std::string> tag) {
         return tags_pair_vec.push_back({TagKeyType::Register(tag.first), tag.second});
       });
   Record(value, tags_pair_vec);
 }
+
+Metric::~Metric() { opencensus::stats::StatsExporter::RemoveView(name_); }
 
 void Gauge::RegisterView() {
   opencensus::stats::ViewDescriptor view_descriptor =

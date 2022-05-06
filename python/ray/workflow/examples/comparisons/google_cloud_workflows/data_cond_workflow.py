@@ -1,3 +1,4 @@
+import ray
 from ray import workflow
 
 
@@ -6,36 +7,36 @@ def make_request(url: str) -> str:
     return "42"
 
 
-@workflow.step
+@ray.remote
 def get_size() -> int:
     return int(make_request("https://www.example.com/callA"))
 
 
-@workflow.step
+@ray.remote
 def small(result: int) -> str:
     return make_request("https://www.example.com/SmallFunc")
 
 
-@workflow.step
+@ray.remote
 def medium(result: int) -> str:
     return make_request("https://www.example.com/MediumFunc")
 
 
-@workflow.step
+@ray.remote
 def large(result: int) -> str:
     return make_request("https://www.example.com/LargeFunc")
 
 
-@workflow.step
+@ray.remote
 def decide(result: int) -> str:
     if result < 10:
-        return small.step(result)
+        return workflow.continuation(small.bind(result))
     elif result < 100:
-        return medium.step(result)
+        return workflow.continuation(medium.bind(result))
     else:
-        return large.step(result)
+        return workflow.continuation(large.bind(result))
 
 
 if __name__ == "__main__":
     workflow.init()
-    print(decide.step(get_size.step()).run())
+    print(workflow.create(decide.bind(get_size.bind())).run())

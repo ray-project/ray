@@ -177,6 +177,20 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             text=json.dumps(dataclasses.asdict(data)), content_type="application/json"
         )
 
+    @routes.get("/api/jobs/")
+    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
+    async def list_jobs(self, req: Request) -> Response:
+        data: dict[str, JobInfo] = self._job_manager.list_jobs()
+        return Response(
+            text=json.dumps(
+                {
+                    job_id: dataclasses.asdict(job_info)
+                    for job_id, job_info in data.items()
+                }
+            ),
+            content_type="application/json",
+        )
+
     @routes.get("/api/jobs/{job_id}/logs")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
     async def get_job_logs(self, req: Request) -> Response:

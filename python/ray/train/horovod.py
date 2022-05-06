@@ -8,9 +8,17 @@ from ray.train.backend import BackendConfig, Backend
 from ray.train.utils import update_env_vars
 from ray.train.worker_group import WorkerGroup, Worker
 
-from horovod.ray.runner import Coordinator
-from horovod.ray.utils import detect_nics, nics_to_env_var
-from horovod.runner.common.util import secret, timeout
+try:
+    from horovod.ray.runner import Coordinator
+    from horovod.ray.utils import detect_nics, nics_to_env_var
+    from horovod.runner.common.util import secret, timeout
+except ModuleNotFoundError:
+    raise ModuleNotFoundError(
+        "Horovod isn't installed. To install Horovod with PyTorch support, run 'pip "
+        "install 'horovod[pytorch]''. To install Horovod with TensorFlow support, "
+        "run 'pip install 'horovod[tensorflow]''."
+    )
+
 from ray.util import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -142,7 +150,14 @@ class HorovodBackend(Backend):
         ray.get(setup_futures)
 
         coordinator_envs = self.coordinator.establish_rendezvous()
-        node_workers = [HorovodWorkerWrapper(w) for w in worker_group.workers]
+
+        # Get one worker from each host/node.
+        node_worker_indexes = [node_ids.index(node_id) for node_id in set(node_ids)]
+        node_workers = [
+            HorovodWorkerWrapper(worker_group.workers[worker_index])
+            for worker_index in node_worker_indexes
+        ]
+        assert len(node_workers) == len(self.coordinator.hostnames)
 
         nics = detect_nics(
             backend_config,

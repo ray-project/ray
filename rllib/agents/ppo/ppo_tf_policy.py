@@ -18,6 +18,7 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import LearningRateSchedule, EntropyCoeffSchedule
 from ray.rllib.policy.tf_policy_template import build_tf_policy
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import (
     Deprecated,
     DEPRECATED_VALUE,
@@ -97,7 +98,7 @@ def ppo_surrogate_loss(
         action_kl = prev_action_dist.kl(curr_action_dist)
         mean_kl_loss = reduce_mean_valid(action_kl)
     else:
-        mean_kl_loss = 0.0
+        mean_kl_loss = tf.constant(0.0)
 
     curr_entropy = curr_action_dist.entropy()
     mean_entropy = reduce_mean_valid(curr_entropy)
@@ -237,7 +238,7 @@ def compute_and_clip_gradients(
 
 
 class KLCoeffMixin:
-    """Assigns the `update_kl()` method to the PPOPolicy.
+    """Assigns the `update_kl()` and other KL-related methods to the PPOPolicy.
 
     This is used in PPO's execution plan (see ppo.py) for updating the KL
     coefficient after each learning step based on `config.kl_target` and
@@ -276,7 +277,17 @@ class KLCoeffMixin:
         else:
             return self.kl_coeff_val
 
-        # Update the tf Variable (via session call for tf).
+        # Make sure, new value is also stored in graph/tf variable.
+        self._set_kl_coeff(self.kl_coeff_val)
+
+        # Return the current KL value.
+        return self.kl_coeff_val
+
+    def _set_kl_coeff(self, new_kl_coeff):
+        # Set the (off graph) value.
+        self.kl_coeff_val = new_kl_coeff
+
+        # Update the tf/tf2 Variable (via session call for tf or `assign`).
         if self.framework == "tf":
             self.get_session().run(
                 self._kl_coeff_update,
@@ -284,8 +295,20 @@ class KLCoeffMixin:
             )
         else:
             self.kl_coeff.assign(self.kl_coeff_val, read_value=False)
-        # Return the current KL value.
-        return self.kl_coeff_val
+
+    @override(Policy)
+    def get_state(self) -> Union[Dict[str, TensorType], List[TensorType]]:
+        state = super().get_state()
+        # Add current kl-coeff value.
+        state["current_kl_coeff"] = self.kl_coeff_val
+        return state
+
+    @override(Policy)
+    def set_state(self, state: dict) -> None:
+        # Set current kl-coeff value first.
+        self._set_kl_coeff(state.pop("current_kl_coeff", self.config["kl_coeff"]))
+        # Call super's set_state with rest of the state dict.
+        super().set_state(state)
 
 
 class ValueNetworkMixin:
@@ -346,11 +369,11 @@ def setup_config(
     # It's confusing as some users might (correctly!) set it in their
     # model config and then won't notice that it's silently overwritten
     # here.
-    if config["vf_share_layers"] != DEPRECATED_VALUE:
+    if config.get("vf_share_layers", DEPRECATED_VALUE) != DEPRECATED_VALUE:
         deprecation_warning(
             old="config[vf_share_layers]",
             new="config[model][vf_share_layers]",
-            error=False,
+            error=True,
         )
         config["model"]["vf_share_layers"] = config["vf_share_layers"]
 

@@ -6,12 +6,17 @@ try:
     import pygloo
 except ImportError:
     raise ImportError(
-        "Can not import pygloo." "Please run 'pip install pygloo' to install pygloo."
+        "Can not import pygloo. Please run 'pip install pygloo' to install pygloo."
     )
+
+import time
 
 import ray
 from ray.util.collective.types import ReduceOp, torch_available
 from ray.util.queue import _QueueActor
+
+import ray.experimental.internal_kv as internal_kv
+from ray._private.gcs_utils import GcsClient
 
 GLOO_REDUCE_OP_MAP = {
     ReduceOp.SUM: pygloo.ReduceOp.SUM,
@@ -112,9 +117,9 @@ def get_gloo_tensor_dtype(tensor):
                 return TORCH_GLOO_DTYPE_MAP[tensor.dtype]
             else:
                 raise ValueError(
-                    "Expect torch CPU tensor. " "Got {}.".format(tensor.device)
+                    "Expect torch CPU tensor. Got {}.".format(tensor.device)
                 )
-    raise ValueError("Unsupported tensor type. " "Got: {}.".format(type(tensor)))
+    raise ValueError("Unsupported tensor type. Got: {}.".format(type(tensor)))
 
 
 def get_numpy_tensor_dtype(tensor):
@@ -139,7 +144,7 @@ def get_tensor_ptr(tensor):
         if isinstance(tensor, torch.Tensor):
             if tensor.is_cuda:
                 raise RuntimeError(
-                    "Torch tensor must be on CPU " "when using GLOO collectives."
+                    "Torch tensor must be on CPU when using GLOO collectives."
                 )
             return tensor.data_ptr()
     raise ValueError(
@@ -156,7 +161,7 @@ def get_tensor_n_elements(tensor):
     if torch_available():
         if isinstance(tensor, torch.Tensor):
             return torch.numel(tensor)
-    raise ValueError("Unsupported tensor type. " "Got: {}.".format(type(tensor)))
+    raise ValueError("Unsupported tensor type. Got: {}.".format(type(tensor)))
 
 
 def get_gloo_store_path(store_name):
@@ -175,7 +180,7 @@ def get_tensor_device(tensor):
         else:
             return "cuda"
     else:
-        raise RuntimeError("Unrecognized tensor type: " "'{}'.".format(type(tensor)))
+        raise RuntimeError("Unrecognized tensor type: '{}'.".format(type(tensor)))
 
 
 def get_tensor_shape(tensor):
@@ -258,3 +263,32 @@ class SignalActor:
         if should_wait:
             for i in range(self.world_size):
                 await self.ready_events[i].wait()
+
+
+# The custom store which is implementated in Ray internal kv storage, helping
+# to store the rank meta information when setting up the gloo collective group.
+class RayInternalKvStore:
+    def __init__(self):
+        gcs_address = ray.worker._global_node.gcs_address
+        self._gcs_client = GcsClient(address=gcs_address, nums_reconnect_retry=0)
+        internal_kv._initialize_internal_kv(self._gcs_client)
+
+    def set(self, key: str, data: bytes) -> bool:
+        ret = internal_kv._internal_kv_put(key, data)
+        return ret
+
+    def get(self, key: str) -> bytes:
+        ret = internal_kv._internal_kv_get(key)
+        return ret
+
+    def wait(self, keys: list):
+        while True:
+            all_exist = True
+            for key in keys:
+                result = internal_kv._internal_kv_exists(key)
+                if not result:
+                    all_exist = False
+                    break
+            if all_exist:
+                return True
+            time.sleep(1)

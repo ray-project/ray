@@ -1,3 +1,12 @@
+from enum import Enum
+import re
+
+#: Used for debugging to turn on DEBUG-level logs
+DEBUG_LOG_ENV_VAR = "SERVE_DEBUG_LOG"
+
+#: Logger used by serve components
+SERVE_LOGGER_NAME = "ray.serve"
+
 #: Actor name used to register controller
 SERVE_CONTROLLER_NAME = "SERVE_CONTROLLER_ACTOR"
 
@@ -74,3 +83,20 @@ DEFAULT_HEALTH_CHECK_TIMEOUT_S = 30
 #: Number of times in a row that a replica must fail the health check before
 #: being marked unhealthy.
 REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD = 3
+
+# Key used to idenfity given json represents a serialized RayServeHandle
+SERVE_HANDLE_JSON_KEY = "__SerializedServeHandle__"
+
+# The time in seconds that the Serve client waits before rechecking deployment state
+CLIENT_POLLING_INTERVAL_S: float = 1
+
+# Regex pattern for anonymous namespace. Should match the pattern used in
+# src/ray/gcs/gcs_server/gcs_actor_manager.cc's is_uuid() method.
+ANONYMOUS_NAMESPACE_PATTERN = re.compile(
+    "[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89aAbB][a-f0-9]{3}-[a-f0-9]{12}"
+)
+
+
+class ServeHandleType(str, Enum):
+    SYNC = "SYNC"
+    ASYNC = "ASYNC"

@@ -1,3 +1,5 @@
+load("//bazel:python.bzl", "py_test_module_list")
+
 # --------------------------------------------------------------------
 # Tests from the python/ray/tune/tests directory.
 # Covers all tests starting with `test_`.
@@ -52,14 +54,6 @@ py_test(
     srcs = ["tests/test_client.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "client", "py37", "exclusive", "tests_dir_C"]
-)
-
-py_test(
-    name = "test_cloud",
-    size = "medium",
-    srcs = ["tests/test_cloud.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "tests_dir_C"],
 )
 
 py_test(
@@ -207,8 +201,16 @@ py_test(
 )
 
 py_test(
+    name = "test_resource_updater",
+    size = "large",
+    srcs = ["tests/test_resource_updater.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_R"],
+)
+
+py_test(
     name = "test_ray_trial_executor",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_ray_trial_executor.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "tests_dir_R"],
@@ -226,6 +228,14 @@ py_test(
     name = "test_remote",
     size = "medium",
     srcs = ["tests/test_remote.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_R"],
+)
+
+py_test(
+    name = "test_result_grid",
+    size = "small",
+    srcs = ["tests/test_result_grid.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "tests_dir_R"],
 )
@@ -252,6 +262,14 @@ py_test(
     srcs = ["tests/test_soft_imports.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "soft_imports", "tests_dir_S"],
+)
+
+py_test(
+    name = "test_stopper",
+    size = "small",
+    srcs = ["tests/test_stopper.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_S"],
 )
 
 py_test(
@@ -374,6 +392,32 @@ py_test(
     tags = ["team:ml", "exclusive", "tests_dir_T"],
 )
 
+py_test(
+    name = "test_tuner",
+    size = "medium",
+    srcs = ["tests/test_tuner.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_T"],
+)
+
+py_test(
+    name = "test_utils",
+    size = "small",
+    srcs = ["tests/test_utils.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_U"],
+)
+
+py_test_module_list(
+  files = [
+      "tests/test_trial_executor_inheritance.py",
+  ],
+  size = "large",
+  extra_srcs = [],
+  tags = ["exclusive", "manual", "team:ml"],
+  deps = ["//:tune_lib"],
+)
+
 # --------------------------------------------------------------------
 # Tests from the python/ray/tune/tests directory.
 # Covers all remaining tests that do not start with `test_`.
@@ -446,7 +490,7 @@ py_test(
 
 py_test(
     name = "bohb_example",
-    size = "small",
+    size = "medium",
     srcs = ["examples/bohb_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"]
@@ -600,6 +644,16 @@ py_test(
     srcs = ["examples/lightgbm_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"]
+)
+
+py_test(
+    name = "lightgbm_example_cv",
+    size = "small",
+    main = "examples/lightgbm_example.py",
+    srcs = ["examples/lightgbm_example.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "example"],
+    args = ["--use-cv"]
 )
 
 py_test(
@@ -880,15 +934,6 @@ py_test(
 # )
 
 py_test(
-    name = "tune_comet_example",
-    size = "medium",
-    srcs = ["examples/tune_comet_example.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
-    args = ["--mock-api"]
-)
-
-py_test(
     name = "tune_mnist_keras",
     size = "medium",
     srcs = ["examples/tune_mnist_keras.py"],
@@ -912,6 +957,16 @@ py_test(
     srcs = ["examples/xgboost_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"]
+)
+
+py_test(
+    name = "xgboost_example_cv",
+    size = "small",
+    main = "examples/xgboost_example.py",
+    srcs = ["examples/xgboost_example.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "example"],
+    args = ["--use-cv"]
 )
 
 py_test(

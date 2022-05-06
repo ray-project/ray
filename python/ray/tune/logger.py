@@ -43,7 +43,7 @@ class Logger:
     Arguments:
         config: Configuration passed to all logger creators.
         logdir: Directory for all logger creators to log to.
-        trial (Trial): Trial object for the logger to access.
+        trial: Trial object for the logger to access.
     """
 
     def __init__(self, config: Dict, logdir: str, trial: Optional["Trial"] = None):
@@ -130,13 +130,22 @@ class CSVLogger(Logger):
     """
 
     def _init(self):
+        self._initialized = False
+
+    def _maybe_init(self):
         """CSV outputted with Headers as first set of results."""
-        progress_file = os.path.join(self.logdir, EXPR_PROGRESS_FILE)
-        self._continuing = os.path.exists(progress_file)
-        self._file = open(progress_file, "a")
-        self._csv_out = None
+        if not self._initialized:
+            progress_file = os.path.join(self.logdir, EXPR_PROGRESS_FILE)
+            self._continuing = (
+                os.path.exists(progress_file) and os.path.getsize(progress_file) > 0
+            )
+            self._file = open(progress_file, "a")
+            self._csv_out = None
+            self._initialized = True
 
     def on_result(self, result: Dict):
+        self._maybe_init()
+
         tmp = result.copy()
         if "config" in tmp:
             del tmp["config"]
@@ -151,11 +160,12 @@ class CSVLogger(Logger):
         self._file.flush()
 
     def flush(self):
-        if not self._file.closed:
+        if self._initialized and not self._file.closed:
             self._file.flush()
 
     def close(self):
-        self._file.close()
+        if self._initialized:
+            self._file.close()
 
 
 class TBXLogger(Logger):
@@ -292,7 +302,7 @@ class UnifiedLogger(Logger):
     Arguments:
         config: Configuration passed to all logger creators.
         logdir: Directory for all logger creators to log to.
-        loggers (list): List of logger creators. Defaults to CSV, Tensorboard,
+        loggers: List of logger creators. Defaults to CSV, Tensorboard,
             and JSON loggers.
     """
 
@@ -361,7 +371,7 @@ class LoggerCallback(Callback):
         """Handle logging when a trial starts.
 
         Args:
-            trial (Trial): Trial object.
+            trial: Trial object.
         """
         pass
 
@@ -369,7 +379,7 @@ class LoggerCallback(Callback):
         """Handle logging when a trial restores.
 
         Args:
-            trial (Trial): Trial object.
+            trial: Trial object.
         """
         pass
 
@@ -377,7 +387,7 @@ class LoggerCallback(Callback):
         """Handle logging when a trial saves a checkpoint.
 
         Args:
-            trial (Trial): Trial object.
+            trial: Trial object.
         """
         pass
 
@@ -385,8 +395,8 @@ class LoggerCallback(Callback):
         """Handle logging when a trial reports a result.
 
         Args:
-            trial (Trial): Trial object.
-            result (dict): Result dictionary.
+            trial: Trial object.
+            result: Result dictionary.
         """
         pass
 
@@ -394,8 +404,8 @@ class LoggerCallback(Callback):
         """Handle logging when a trial ends.
 
         Args:
-            trial (Trial): Trial object.
-            failed (bool): True if the Trial finished gracefully, False if
+            trial: Trial object.
+            failed: True if the Trial finished gracefully, False if
                 it failed (e.g. when it raised an exception).
         """
         pass
@@ -445,7 +455,7 @@ class LegacyLoggerCallback(LoggerCallback):
     and logging to them.
 
     Args:
-        logger_classes (Iterable[Type[Logger]]): Logger classes that should
+        logger_classes: Logger classes that should
             be instantiated for each trial.
 
     """
@@ -556,20 +566,22 @@ class CSVLoggerCallback(LoggerCallback):
         self._trial_files: Dict["Trial", TextIO] = {}
         self._trial_csv: Dict["Trial", csv.DictWriter] = {}
 
-    def log_trial_start(self, trial: "Trial"):
+    def _setup_trial(self, trial: "Trial"):
         if trial in self._trial_files:
             self._trial_files[trial].close()
 
         # Make sure logdir exists
         trial.init_logdir()
         local_file = os.path.join(trial.logdir, EXPR_PROGRESS_FILE)
-        self._trial_continue[trial] = os.path.exists(local_file)
+        self._trial_continue[trial] = (
+            os.path.exists(local_file) and os.path.getsize(local_file) > 0
+        )
         self._trial_files[trial] = open(local_file, "at")
         self._trial_csv[trial] = None
 
     def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):
         if trial not in self._trial_files:
-            self.log_trial_start(trial)
+            self._setup_trial(trial)
 
         tmp = result.copy()
         tmp.pop("config", None)
@@ -733,16 +745,6 @@ class TBXLoggerCallback(LoggerCallback):
                 "This may be due to an unsupported type "
                 "in the hyperparameter values."
             )
-
-
-# Maintain backwards compatibility.
-from ray.tune.integration.mlflow import (  # noqa: E402
-    MLflowLogger as _MLflowLogger,
-)
-
-MLflowLogger = _MLflowLogger
-# The capital L is a typo, but needs to remain for backwards compatibility.
-MLFLowLogger = _MLflowLogger
 
 
 def pretty_print(result):

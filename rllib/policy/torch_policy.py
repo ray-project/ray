@@ -76,7 +76,13 @@ class TorchPolicy(Policy):
         ] = None,
         action_distribution_class: Optional[Type[TorchDistributionWrapper]] = None,
         action_sampler_fn: Optional[
-            Callable[[TensorType, List[TensorType]], Tuple[TensorType, TensorType]]
+            Callable[
+                [TensorType, List[TensorType]],
+                Union[
+                    Tuple[TensorType, TensorType, List[TensorType]],
+                    Tuple[TensorType, TensorType, TensorType, List[TensorType]],
+                ],
+            ]
         ] = None,
         action_distribution_fn: Optional[
             Callable[
@@ -99,13 +105,14 @@ class TorchPolicy(Policy):
             loss: Callable that returns one or more (a list of) scalar loss
                 terms.
             action_distribution_class: Class for a torch action distribution.
-            action_sampler_fn: A callable returning a sampled action and its
-                log-likelihood given Policy, ModelV2, input_dict, state batches
-                (optional), explore, and timestep.
-                Provide `action_sampler_fn` if you would like to have full
-                control over the action computation step, including the
-                model forward pass, possible sampling from a distribution,
-                and exploration logic.
+            action_sampler_fn: A callable returning either a sampled action,
+                its log-likelihood and updated state or a sampled action, its
+                log-likelihood, updated state and action distribution inputs
+                given Policy, ModelV2, input_dict, state batches (optional),
+                explore, and timestep. Provide `action_sampler_fn` if you would
+                like to have full control over the action computation step,
+                including the model forward pass, possible sampling from a
+                distribution, and exploration logic.
                 Note: If `action_sampler_fn` is given, `action_distribution_fn`
                 must be None. If both `action_sampler_fn` and
                 `action_distribution_fn` are None, RLlib will simply pass
@@ -317,9 +324,9 @@ class TorchPolicy(Policy):
             # Calculate RNN sequence lengths.
             seq_lens = (
                 torch.tensor(
-                    [1] * len(input_dict["obs"]),
+                    [1] * len(state_batches[0]),
                     dtype=torch.long,
-                    device=input_dict["obs"].device,
+                    device=state_batches[0].device,
                 )
                 if state_batches
                 else None
@@ -935,7 +942,7 @@ class TorchPolicy(Policy):
 
         if self.action_sampler_fn:
             action_dist = dist_inputs = None
-            actions, logp, state_out = self.action_sampler_fn(
+            action_sampler_outputs = self.action_sampler_fn(
                 self,
                 self.model,
                 input_dict,
@@ -943,6 +950,10 @@ class TorchPolicy(Policy):
                 explore=explore,
                 timestep=timestep,
             )
+            if len(action_sampler_outputs) == 4:
+                actions, logp, dist_inputs, state_out = action_sampler_outputs
+            else:
+                actions, logp, state_out = action_sampler_outputs
         else:
             # Call the exploration before_compute_actions hook.
             self.exploration.before_compute_actions(explore=explore, timestep=timestep)

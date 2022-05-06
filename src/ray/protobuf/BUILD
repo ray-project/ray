@@ -37,6 +37,16 @@ proto_library(
     visibility = ["//java:__subpackages__"],
 )
 
+proto_library(
+    name = "ray_syncer_proto",
+    srcs = ["ray_syncer.proto"],
+)
+
+cc_proto_library(
+    name = "ray_syncer_cc_proto",
+    deps = [":ray_syncer_proto"],
+)
+
 cc_proto_library(
     name = "runtime_env_common_cc_proto",
     deps = [":runtime_env_common_proto"],
@@ -283,6 +293,7 @@ proto_library(
     deps = [
         ":common_proto",
         ":agent_manager_proto",
+        ":runtime_env_common_proto",
     ],
 )
 

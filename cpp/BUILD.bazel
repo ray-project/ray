@@ -224,3 +224,21 @@ cc_binary(
         ":ray_api",
     ],
 )
+
+load("//bazel:python.bzl", "py_test_module_list")
+
+py_test_module_list(
+    size = "small",
+    extra_srcs = [],
+    files = [
+        "test_python_call_cpp.py",
+    ],
+    tags = [
+        "exclusive",
+        "small_size_python_tests",
+        "team:core",
+    ],
+    deps = [
+        ":ray_api",
+    ],
+)

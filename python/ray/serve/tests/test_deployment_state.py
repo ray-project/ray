@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import os
 import sys
 import time
@@ -20,11 +21,13 @@ from ray.serve.deployment_state import (
     DeploymentState,
     DeploymentStateManager,
     DeploymentVersion,
+    DeploymentReplica,
     ReplicaStartupStatus,
     ReplicaState,
     ReplicaStateContainer,
     VersionedReplica,
     CHECKPOINT_KEY,
+    rank_replicas_for_stopping,
 )
 from ray.serve.storage.kv_store import RayLocalKVStore
 from ray.serve.utils import get_random_letters
@@ -38,6 +41,7 @@ class MockReplicaActorWrapper:
         controller_name: str,
         replica_tag: ReplicaTag,
         deployment_name: str,
+        _override_controller_namespace: Optional[str] = None,
     ):
         self._actor_name = actor_name
         self._replica_tag = replica_tag
@@ -79,6 +83,12 @@ class MockReplicaActorWrapper:
     @property
     def max_concurrent_queries(self) -> int:
         return 100
+
+    @property
+    def node_id(self) -> Optional[str]:
+        if self.ready == ReplicaStartupStatus.SUCCEEDED or self.started:
+            return "node-id"
+        return None
 
     def set_ready(self):
         self.ready = ReplicaStartupStatus.SUCCEEDED
@@ -2055,6 +2065,42 @@ def test_resume_deployment_state_from_replica_tags(mock_deployment_state_manager
     )
     # Ensure same replica name is used
     assert deployment_state._replicas.get()[0].replica_tag == mocked_replica.replica_tag
+
+
+def test_stopping_replicas_ranking():
+    @dataclass
+    class MockReplica:
+        actor_node_id: str
+
+    def compare(before, after):
+        before_replicas = [MockReplica(item) for item in before]
+        after_replicas = [MockReplica(item) for item in after]
+        result_replicas = rank_replicas_for_stopping(before_replicas)
+        assert result_replicas == after_replicas
+
+    compare(
+        [None, 1, None], [None, None, 1]
+    )  # replicas not allocated should be stopped first
+    compare(
+        [3, 3, 3, 2, 2, 1], [1, 2, 2, 3, 3, 3]
+    )  # prefer to stop dangling replicas first
+    compare([2, 2, 3, 3], [2, 2, 3, 3])  # if equal, ordering should be kept
+
+
+def test_resource_requirements_none(mock_deployment_state):
+    """Ensure resource_requirements doesn't break if a requirement is None"""
+
+    class FakeActor:
+
+        actor_resources = {"num_cpus": 2, "fake": None}
+        available_resources = {}
+
+    # Make a DeploymentReplica just to accesss its resource_requirement function
+    replica = DeploymentReplica(None, None, None, None, None)
+    replica._actor = FakeActor()
+
+    # resource_requirements() should not error
+    replica.resource_requirements()
 
 
 if __name__ == "__main__":

@@ -92,14 +92,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--tracking-uri",
         type=str,
-        help="The tracking URI for the MLflow " "tracking server.",
+        help="The tracking URI for the MLflow tracking server.",
     )
     parser.add_argument(
         "--server-address",
         type=str,
         default=None,
         required=False,
-        help="The address of server to connect to if using " "Ray Client.",
+        help="The address of server to connect to if using Ray Client.",
     )
     args, _ = parser.parse_known_args()
 

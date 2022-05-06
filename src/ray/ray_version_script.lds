@@ -26,17 +26,16 @@ VERSION_1.0 {
         *ray*ObjectReference*;
         # Others
         *ray*metrics*;
-        *opencensus*;
         *ray*rpc*;
         *ray*gcs*;
         *ray*stats*;
         *ray*CoreWorker*;
         *ray*PeriodicalRunner*;
+        *ray*internal*;
         *PyInit*;
         *init_raylet*;
         *Java*;
         *JNI_*;
-        *ray*internal*;
         *aligned_free*;
         *aligned_malloc*;
     local: *;

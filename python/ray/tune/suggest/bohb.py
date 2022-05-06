@@ -57,23 +57,21 @@ class TuneBOHB(Searcher):
     This should be used in conjunction with HyperBandForBOHB.
 
     Args:
-        space (ConfigurationSpace): Continuous ConfigSpace search space.
+        space: Continuous ConfigSpace search space.
             Parameters will be sampled from this space which will be used
             to run trials.
-        bohb_config (dict): configuration for HpBandSter BOHB algorithm
-        max_concurrent (int): Deprecated. Use
-            ``tune.suggest.ConcurrencyLimiter()``.
-        metric (str): The training result objective value attribute. If None
+        bohb_config: configuration for HpBandSter BOHB algorithm
+        metric: The training result objective value attribute. If None
             but a mode was passed, the anonymous metric `_metric` will be used
             per default.
-        mode (str): One of {min, max}. Determines whether objective is
+        mode: One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
-        points_to_evaluate (list): Initial parameter suggestions to be run
+        points_to_evaluate: Initial parameter suggestions to be run
             first. This is for when you already have some good parameters
             you want to run first to help the algorithm make better suggestions
             for future parameters. Needs to be a list of dicts containing the
             configurations.
-        seed (int): Optional random seed to initialize the random number
+        seed: Optional random seed to initialize the random number
             generator. Setting this should lead to identical initial
             configurations at each run.
 
@@ -126,7 +124,6 @@ class TuneBOHB(Searcher):
         self,
         space: Optional[Union[Dict, "ConfigSpace.ConfigurationSpace"]] = None,
         bohb_config: Optional[Dict] = None,
-        max_concurrent: Optional[int] = None,
         metric: Optional[str] = None,
         mode: Optional[str] = None,
         points_to_evaluate: Optional[List[Dict]] = None,
@@ -139,7 +136,6 @@ class TuneBOHB(Searcher):
             `pip install hpbandster ConfigSpace`."""
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
-        self._max_concurrent = max_concurrent
         self.trial_to_params = {}
         self._metric = metric
 
@@ -159,7 +155,8 @@ class TuneBOHB(Searcher):
         self._points_to_evaluate = points_to_evaluate
 
         super(TuneBOHB, self).__init__(
-            metric=self._metric, mode=mode, max_concurrent=max_concurrent
+            metric=self._metric,
+            mode=mode,
         )
 
         if self._space:

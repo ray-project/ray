@@ -8,6 +8,7 @@ python:
     - pytest
     - awscli
     - xgboost_ray
+    - pyarrow>=6.0.1,<7.0.0
   conda_packages: []
 
 post_build_cmds:

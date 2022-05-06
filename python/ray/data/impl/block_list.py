@@ -1,15 +1,11 @@
 import math
-from typing import List, Iterator, Tuple, Any, Union, Optional, TYPE_CHECKING
-
-if TYPE_CHECKING:
-    import pyarrow
+from typing import List, Iterator, Tuple
 
 import numpy as np
 
 import ray
 from ray.types import ObjectRef
-from ray.data.block import Block, BlockMetadata, BlockAccessor
-from ray.data.impl.remote_fn import cached_remote_fn
+from ray.data.block import Block, BlockMetadata
 
 
 class BlockList:
@@ -26,11 +22,7 @@ class BlockList:
         self._num_blocks = len(self._blocks)
         self._metadata: List[BlockMetadata] = metadata
 
-    def set_metadata(self, i: int, metadata: BlockMetadata) -> None:
-        """Set the metadata for a given block."""
-        self._metadata[i] = metadata
-
-    def get_metadata(self) -> List[BlockMetadata]:
+    def get_metadata(self, fetch_if_missing: bool = False) -> List[BlockMetadata]:
         """Get the metadata for all blocks."""
         return self._metadata.copy()
 
@@ -42,9 +34,13 @@ class BlockList:
         """Erase references to the tasks tracked by the BlockList."""
         self._blocks = None
 
+    def is_cleared(self) -> bool:
+        """Whether this BlockList has been cleared."""
+        return self._blocks is None
+
     def _check_if_cleared(self) -> None:
         """Raise an error if this BlockList has been previously cleared."""
-        if self._blocks is None:
+        if self.is_cleared():
             raise ValueError(
                 "This Dataset's blocks have been moved, which means that you "
                 "can no longer use this Dataset."
@@ -64,6 +60,48 @@ class BlockList:
         for b, m in zip(blocks, meta):
             output.append(BlockList(b.tolist(), m.tolist()))
         return output
+
+    def split_by_bytes(self, bytes_per_split: int) -> List["BlockList"]:
+        """Split this BlockList into multiple lists.
+
+        Args:
+            bytes_per_split: The max number of bytes per split.
+        """
+        self._check_if_cleared()
+        output = []
+        cur_blocks = []
+        cur_meta = []
+        cur_size = 0
+        for b, m in zip(self._blocks, self._metadata):
+            if m.size_bytes is None:
+                raise RuntimeError(
+                    "Block has unknown size, cannot use split_by_bytes()"
+                )
+            size = m.size_bytes
+            if cur_blocks and cur_size + size > bytes_per_split:
+                output.append(BlockList(cur_blocks, cur_meta))
+                cur_blocks = []
+                cur_meta = []
+                cur_size = 0
+            cur_blocks.append(b)
+            cur_meta.append(m)
+            cur_size += size
+        if cur_blocks:
+            output.append(BlockList(cur_blocks, cur_meta))
+        return output
+
+    def size_bytes(self) -> int:
+        """Returns the total size in bytes of the blocks, or -1 if not known."""
+        size = 0
+        has_size = False
+        for m in self.get_metadata():
+            if m.size_bytes is not None:
+                has_size = True
+                size += m.size_bytes
+        if not has_size:
+            return -1
+        else:
+            return size
 
     def divide(self, block_idx: int) -> ("BlockList", "BlockList"):
         """Divide into two BlockLists by the given block index.
@@ -140,23 +178,3 @@ class BlockList:
         doesn't know how many blocks will be produced until tasks finish.
         """
         return len(self.get_blocks())
-
-    def ensure_schema_for_first_block(self) -> Optional[Union["pyarrow.Schema", type]]:
-        """Ensure that the schema is set for the first block.
-
-        Returns None if the block list is empty.
-        """
-        get_schema = cached_remote_fn(_get_schema)
-        try:
-            block = next(self.iter_blocks())
-        except (StopIteration, ValueError):
-            # Dataset is empty (no blocks) or was manually cleared.
-            return None
-        schema = ray.get(get_schema.remote(block))
-        # Set the schema.
-        self._metadata[0].schema = schema
-        return schema
-
-
-def _get_schema(block: Block) -> Any:
-    return BlockAccessor.for_block(block).schema()

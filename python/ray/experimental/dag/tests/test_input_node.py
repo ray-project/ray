@@ -5,7 +5,7 @@ request, for all DAGNode types.
 
 import pytest
 from ray.experimental.dag.input_node import InputNode
-from typing import TypeVar
+from typing import Any, TypeVar
 
 import ray
 
@@ -20,11 +20,14 @@ def test_no_args_to_input_node(shared_ray_instance):
     with pytest.raises(
         ValueError, match="InputNode should not take any args or kwargs"
     ):
-        f._bind(InputNode(0))
+        with InputNode(0) as dag_input:
+            f.bind(dag_input)
     with pytest.raises(
-        ValueError, match="InputNode should not take any args or kwargs"
+        ValueError,
+        match="InputNode should not take any args or kwargs",
     ):
-        f._bind(InputNode(key=1))
+        with InputNode(key=1) as dag_input:
+            f.bind(dag_input)
 
 
 def test_simple_func(shared_ray_instance):
@@ -38,8 +41,9 @@ def test_simple_func(shared_ray_instance):
         return f"{a} -> b"
 
     # input -> a - > b -> ouput
-    a_node = a._bind(InputNode())
-    dag = b._bind(a_node)
+    with InputNode() as dag_input:
+        a_node = a.bind(dag_input)
+        dag = b.bind(a_node)
 
     assert ray.get(dag.execute("input")) == "input -> a -> b"
     assert ray.get(dag.execute("test")) == "test -> a -> b"
@@ -62,14 +66,14 @@ def test_func_dag(shared_ray_instance):
     def d(x, y):
         return x + y
 
-    a_ref = a._bind(InputNode())
-    b_ref = b._bind(a_ref)
-    c_ref = c._bind(a_ref)
-    d_ref = d._bind(b_ref, c_ref)
-    d1_ref = d._bind(d_ref, d_ref)
-    d2_ref = d._bind(d1_ref, d_ref)
-    dag = d._bind(d2_ref, d_ref)
-    print(dag)
+    with InputNode() as dag_input:
+        a_ref = a.bind(dag_input)
+        b_ref = b.bind(a_ref)
+        c_ref = c.bind(a_ref)
+        d_ref = d.bind(b_ref, c_ref)
+        d1_ref = d.bind(d_ref, d_ref)
+        d2_ref = d.bind(d1_ref, d_ref)
+        dag = d.bind(d2_ref, d_ref)
 
     # [(2*2 + 2+1) + (2*2 + 2+1)] + [(2*2 + 2+1) + (2*2 + 2+1)]
     assert ray.get(dag.execute(2)) == 28
@@ -90,10 +94,10 @@ def test_multi_input_func_dag(shared_ray_instance):
     def c(x, y):
         return x + y
 
-    a_ref = a._bind(InputNode())
-    b_ref = b._bind(InputNode())
-    dag = c._bind(a_ref, b_ref)
-    print(dag)
+    with InputNode() as dag_input:
+        a_ref = a.bind(dag_input)
+        b_ref = b.bind(dag_input)
+        dag = c.bind(a_ref, b_ref)
 
     # (2*2) + (2*1)
     assert ray.get(dag.execute(2)) == 7
@@ -119,7 +123,8 @@ def test_invalid_input_node_as_class_constructor(shared_ray_instance):
             "class construction or binding time."
         ),
     ):
-        Actor._bind(InputNode())
+        with InputNode() as dag_input:
+            Actor.bind(dag_input)
 
 
 def test_class_method_input(shared_ray_instance):
@@ -139,12 +144,12 @@ def test_class_method_input(shared_ray_instance):
         def process(self, input: int):
             return input * self.scale
 
-    preprocess = FeatureProcessor._bind(0.5)
-    feature = preprocess.process._bind(InputNode())
-    model = Model._bind(4)
-    dag = model.forward._bind(feature)
+    with InputNode() as dag_input:
+        preprocess = FeatureProcessor.bind(0.5)
+        feature = preprocess.process.bind(dag_input)
+        model = Model.bind(4)
+        dag = model.forward.bind(feature)
 
-    print(dag)
     # 2 * 0.5 * 4
     assert ray.get(dag.execute(2)) == 4
     # 6 * 0.5 * 4
@@ -168,14 +173,15 @@ def test_multi_class_method_input(shared_ray_instance):
     def combine(m1: "RayHandleLike", m2: "RayHandleLike"):
         return m1 + m2
 
-    m1 = Model._bind(2)
-    m2 = Model._bind(3)
+    with InputNode() as dag_input:
+        m1 = Model.bind(2)
+        m2 = Model.bind(3)
 
-    m1_output = m1.forward._bind(InputNode())
-    m2_output = m2.forward._bind(InputNode())
+        m1_output = m1.forward.bind(dag_input)
+        m2_output = m2.forward.bind(dag_input)
 
-    dag = combine._bind(m1_output, m2_output)
-    print(dag)
+        dag = combine.bind(m1_output, m2_output)
+
     # 1*2 + 1*3
     assert ray.get(dag.execute(1)) == 5
     # 2*2 + 2*3
@@ -204,16 +210,143 @@ def test_func_class_mixed_input(shared_ray_instance):
     def combine(m1: "RayHandleLike", m2: "RayHandleLike"):
         return m1 + m2
 
-    m1 = Model._bind(3)
-    m1_output = m1.forward._bind(InputNode())
-    m2_output = model_func._bind(InputNode())
+    with InputNode() as dag_input:
+        m1 = Model.bind(3)
+        m1_output = m1.forward.bind(dag_input)
+        m2_output = model_func.bind(dag_input)
 
-    dag = combine._bind(m1_output, m2_output)
-    print(dag)
+    dag = combine.bind(m1_output, m2_output)
     # 2*3 + 2*2
     assert ray.get(dag.execute(2)) == 10
     # 3*3 + 3*2
     assert ray.get(dag.execute(3)) == 15
+
+
+def test_input_attr_partial_access(shared_ray_instance):
+    @ray.remote
+    class Model:
+        def __init__(self, weight: int):
+            self.weight = weight
+
+        def forward(self, input: int):
+            return self.weight * input
+
+    @ray.remote
+    def combine(a, b, c, d=None):
+        if not d:
+            return a + b + c
+        else:
+            return a + b + c + d["deep"]["nested"]
+
+    # 1) Test default wrapping of args and kwargs into internal python object
+    with InputNode() as dag_input:
+        m1 = Model.bind(1)
+        m2 = Model.bind(2)
+        m1_output = m1.forward.bind(dag_input[0])
+        m2_output = m2.forward.bind(dag_input[1])
+        dag = combine.bind(m1_output, m2_output, dag_input.m3, dag_input.m4)
+    # 1*1 + 2*2 + 3 + 4 = 12
+    assert ray.get(dag.execute(1, 2, m3=3, m4={"deep": {"nested": 4}})) == 12
+
+    # 2) Test user passed data object as only input to the dag.execute()
+    class UserDataObj:
+        user_object_field_0: Any
+        user_object_field_1: Any
+        field_3: Any
+
+        def __init__(
+            self, user_object_field_0: Any, user_object_field_1: Any, field_3: Any
+        ) -> None:
+            self.user_object_field_0 = user_object_field_0
+            self.user_object_field_1 = user_object_field_1
+            self.field_3 = field_3
+
+    with InputNode() as dag_input:
+        m1 = Model.bind(1)
+        m2 = Model.bind(2)
+        m1_output = m1.forward.bind(dag_input.user_object_field_0)
+        m2_output = m2.forward.bind(dag_input.user_object_field_1)
+        dag = combine.bind(m1_output, m2_output, dag_input.field_3)
+
+    # 1*1 + 2*2 + 3
+    assert ray.get(dag.execute(UserDataObj(1, 2, 3))) == 8
+
+    # 3) Test user passed only one list object with regular list index accessor
+    with InputNode() as dag_input:
+        m1 = Model.bind(1)
+        m2 = Model.bind(2)
+        m1_output = m1.forward.bind(dag_input[0])
+        m2_output = m2.forward.bind(dag_input[1])
+        dag = combine.bind(m1_output, m2_output, dag_input[2])
+    # 1*1 + 2*2 + 3 + 4 = 12
+    assert ray.get(dag.execute([1, 2, 3])) == 8
+
+    # 4) Test user passed only one dict object with key str accessor
+    with InputNode() as dag_input:
+        m1 = Model.bind(1)
+        m2 = Model.bind(2)
+        m1_output = m1.forward.bind(dag_input["m1"])
+        m2_output = m2.forward.bind(dag_input["m2"])
+        dag = combine.bind(m1_output, m2_output, dag_input["m3"])
+    # 1*1 + 2*2 + 3 + 4 = 12
+    assert ray.get(dag.execute({"m1": 1, "m2": 2, "m3": 3})) == 8
+
+    with pytest.raises(
+        AssertionError,
+        match="Please only use int index or str as first-level key",
+    ):
+        with InputNode() as dag_input:
+            m1 = Model.bind(1)
+            dag = m1.forward.bind(dag_input[(1, 2)])
+
+
+def test_ensure_in_context_manager(shared_ray_instance):
+    # No enforcement on creation given __enter__ executes after __init__
+    input = InputNode()
+    with pytest.raises(
+        AssertionError,
+        match=(
+            "InputNode is a singleton instance that should be only used "
+            "in context manager"
+        ),
+    ):
+        input.execute()
+
+    @ray.remote
+    def f(input):
+        return input
+
+    # No enforcement on creation given __enter__ executes after __init__
+    dag = f.bind(InputNode())
+    with pytest.raises(
+        AssertionError,
+        match=(
+            "InputNode is a singleton instance that should be only used "
+            "in context manager"
+        ),
+    ):
+        dag.execute()
+
+
+def test_ensure_input_node_singleton(shared_ray_instance):
+    @ray.remote
+    def f(input):
+        return input
+
+    @ray.remote
+    def combine(a, b):
+        return a + b
+
+    with InputNode() as input_1:
+        a = f.bind(input_1)
+    with InputNode() as input_2:
+        b = f.bind(input_2)
+        dag = combine.bind(a, b)
+
+    with pytest.raises(
+        AssertionError, match="Each DAG should only have one unique InputNode"
+    ):
+        _ = ray.get(dag.execute(2))
 
 
 if __name__ == "__main__":

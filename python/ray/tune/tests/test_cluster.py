@@ -7,7 +7,7 @@ import shutil
 import sys
 from unittest.mock import MagicMock, patch
 
-from typing import Callable, Union
+from typing import Callable, Union, Optional
 
 import ray
 from ray import tune
@@ -59,7 +59,9 @@ def _start_new_cluster():
 
 
 class _PerTrialSyncerCallback(SyncerCallback):
-    def __init__(self, get_sync_fn: Callable[["Trial"], Union[None, bool, Callable]]):
+    def __init__(
+        self, get_sync_fn: Callable[["Trial"], Optional[Union[bool, Callable]]]
+    ):
         self._get_sync_fn = get_sync_fn
         super(_PerTrialSyncerCallback, self).__init__(None)
 

@@ -20,11 +20,11 @@ def try_import_kubernetes():
 kubernetes = try_import_kubernetes()
 
 
-def NamespacedKubernetesSyncer(namespace):
+def NamespacedKubernetesSyncer(namespace: str):
     """Wrapper to return a ``KubernetesSyncer`` for a Kubernetes namespace.
 
     Args:
-        namespace (str): Kubernetes namespace.
+        namespace: Kubernetes namespace.
 
     Returns:
         A ``KubernetesSyncer`` class to be passed to ``tune.run()``.
@@ -110,7 +110,7 @@ class KubernetesSyncClient(SyncClient):
     KubernetesCommandRunner.
 
     Args:
-        namespace (str): Namespace in which the pods live.
+        namespace: Namespace in which the pods live.
         process_runner: How commands should be called.
             Defaults to ``subprocess``.
 

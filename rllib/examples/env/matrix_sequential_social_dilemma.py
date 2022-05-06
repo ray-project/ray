@@ -33,7 +33,7 @@ class MatrixSequentialSocialDilemma(InfoAccumulationInterface, MultiAgentEnv, AB
 
     max_steps: number of step in one episode
 
-    players_ids: list of the RLLib agent id of each player
+    players_ids: list of the RLlib agent id of each player
 
     output_additional_info: ask the environment to aggregate information
     about the last episode and output them as info at the end of the
@@ -98,7 +98,7 @@ class MatrixSequentialSocialDilemma(InfoAccumulationInterface, MultiAgentEnv, AB
             logger.warning("self.step_count_in_current_episode >= self.max_steps")
         info = self._get_info_for_current_epi(epi_is_done)
 
-        return self._to_RLLib_API(observations, rewards, epi_is_done, info)
+        return self._to_RLlib_API(observations, rewards, epi_is_done, info)
 
     def _produce_observations_invariant_to_the_player_trained(
         self, action_player_0: int, action_player_1: int
@@ -118,7 +118,7 @@ class MatrixSequentialSocialDilemma(InfoAccumulationInterface, MultiAgentEnv, AB
             self.PAYOUT_MATRIX[action_player_0][action_player_1][1],
         ]
 
-    def _to_RLLib_API(
+    def _to_RLlib_API(
         self, observations: list, rewards: list, epi_is_done: bool, info: dict
     ):
 

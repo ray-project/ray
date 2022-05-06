@@ -2,8 +2,8 @@
 
 .. _ray-client:
 
-Ray Client
-==========
+Ray Client: Interactive Development
+===================================
 
 **What is the Ray Client?**
 
@@ -36,7 +36,7 @@ Client arguments
 Ray Client is used when the address passed into ``ray.init`` is prefixed with ``ray://``. Besides the address, Client mode currently accepts two other arguments:
 
 - ``namespace`` (optional): Sets the namespace for the session.
-- ``runtime_env`` (optional): Sets the `runtime environment <../advanced.html?highlight=runtime environment#runtime-environments-experimental>`_ for the session, allowing you to dynamically specify environment variables, packages, local files, and more.
+- ``runtime_env`` (optional): Sets the `runtime environment <../ray-core/handling-dependencies.html#runtime-environments>`_ for the session, allowing you to dynamically specify environment variables, packages, local files, and more.
 
 .. code-block:: python
 
@@ -167,7 +167,7 @@ Then, you can connect to the Ray cluster **from another terminal** using  ``loca
 
    #....
 
-Connect to multiple ray clusters (Experimental)
+Connect to multiple Ray clusters (Experimental)
 -----------------------------------------------
 
 Ray Client allows connecting to multiple Ray clusters in one Python process. To do this, just pass ``allow_multiple=True`` to ``ray.init``:

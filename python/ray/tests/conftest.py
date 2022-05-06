@@ -1,20 +1,25 @@
 """
 This file defines the common pytest fixtures used in current directory.
 """
+import json
 import os
-from contextlib import contextmanager
-import pytest
-import tempfile
+import platform
+import shutil
 import socket
 import subprocess
-import json
+import tempfile
 import time
+from contextlib import contextmanager
 from pathlib import Path
+from tempfile import gettempdir
+from typing import List, Tuple
 from unittest import mock
+
+import pytest
 
 import ray
 import ray.ray_constants as ray_constants
-from ray.cluster_utils import Cluster, AutoscalingCluster, cluster_not_supported
+import ray.util.client.server.server as ray_client_server
 from ray._private.runtime_env.pip import PipProcessor
 from ray._private.services import (
     REDIS_EXECUTABLE,
@@ -28,7 +33,7 @@ from ray._private.test_utils import (
     teardown_tls,
     get_and_run_node_killer,
 )
-import ray.util.client.server.server as ray_client_server
+from ray.cluster_utils import Cluster, AutoscalingCluster, cluster_not_supported
 
 
 @pytest.fixture
@@ -324,10 +329,10 @@ def call_ray_stop_only():
 # Used to test both Ray Client and non-Ray Client codepaths.
 # Usage: In your test, call `ray.init(address)`.
 @pytest.fixture(scope="function", params=["ray_client", "no_ray_client"])
-def start_cluster(ray_start_cluster, request):
+def start_cluster(ray_start_cluster_enabled, request):
     assert request.param in {"ray_client", "no_ray_client"}
     use_ray_client: bool = request.param == "ray_client"
-    cluster = ray_start_cluster
+    cluster = ray_start_cluster_enabled
     cluster.add_node(num_cpus=4)
     if use_ray_client:
         cluster.head_node._ray_params.ray_client_server_port = "10004"
@@ -445,6 +450,11 @@ file_system_object_spilling_config = {
     "params": {"directory_path": spill_local_path},
 }
 
+buffer_object_spilling_config = {
+    "type": "filesystem",
+    "params": {"directory_path": spill_local_path, "buffer_size": 1_000_000},
+}
+
 # Since we have differet protocol for a local external storage (e.g., fs)
 # and distributed external storage (e.g., S3), we need to test both cases.
 # This mocks the distributed fs with cluster utils.
@@ -455,6 +465,20 @@ mock_distributed_fs_object_spilling_config = {
 smart_open_object_spilling_config = {
     "type": "smart_open",
     "params": {"uri": f"s3://{bucket_name}/"},
+}
+ray_storage_object_spilling_config = {
+    "type": "ray_storage",
+    # Force the storage config so we don't need to patch each test to separately
+    # configure the storage param under this.
+    "params": {"_force_storage_for_testing": spill_local_path},
+}
+buffer_open_object_spilling_config = {
+    "type": "smart_open",
+    "params": {"uri": f"s3://{bucket_name}/", "buffer_size": 1000},
+}
+multi_smart_open_object_spilling_config = {
+    "type": "smart_open",
+    "params": {"uri": [f"s3://{bucket_name}/{i}" for i in range(3)]},
 }
 
 unstable_object_spilling_config = {
@@ -486,6 +510,17 @@ def create_object_spilling_config(request, tmp_path):
     scope="function",
     params=[
         file_system_object_spilling_config,
+    ],
+)
+def fs_only_object_spilling_config(request, tmp_path):
+    yield create_object_spilling_config(request, tmp_path)
+
+
+@pytest.fixture(
+    scope="function",
+    params=[
+        file_system_object_spilling_config,
+        ray_storage_object_spilling_config,
         # TODO(sang): Add a mock dependency to test S3.
         # smart_open_object_spilling_config,
     ],
@@ -560,9 +595,9 @@ def _ray_start_chaos_cluster(request):
         killed = ray.get(node_killer.get_total_killed_nodes.remote())
         assert len(killed) > 0
         died = {node["NodeID"] for node in ray.nodes() if not node["Alive"]}
-        assert died.issubset(killed), (
-            f"Raylets {died - killed} that " "we did not kill crashed"
-        )
+        assert died.issubset(
+            killed
+        ), f"Raylets {died - killed} that we did not kill crashed"
 
     ray.shutdown()
     cluster.shutdown()
@@ -584,9 +619,14 @@ def runtime_env_disable_URI_cache():
         {
             "RAY_RUNTIME_ENV_CONDA_CACHE_SIZE_GB": "0",
             "RAY_RUNTIME_ENV_PIP_CACHE_SIZE_GB": "0",
+            "RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB": "0",
+            "RAY_RUNTIME_ENV_PY_MODULES_CACHE_SIZE_GB": "0",
         },
     ):
-        print("URI caching disabled (conda and pip cache size set to 0).")
+        print(
+            "URI caching disabled (conda, pip, working_dir, py_modules cache "
+            "size set to 0)."
+        )
         yield
 
 
@@ -623,3 +663,207 @@ def set_runtime_env_retry_times(request):
         yield runtime_env_retry_times
     finally:
         del os.environ["RUNTIME_ENV_RETRY_TIMES"]
+
+
+@pytest.fixture
+def listen_port(request):
+    port = getattr(request, "param", 0)
+    try:
+        sock = socket.socket()
+        if hasattr(socket, "SO_REUSEPORT"):
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 0)
+        sock.bind(("127.0.0.1", port))
+        yield port
+    finally:
+        sock.close()
+
+
+@pytest.fixture
+def set_bad_runtime_env_cache_ttl_seconds(request):
+    ttl = getattr(request, "param", "0")
+    os.environ["BAD_RUNTIME_ENV_CACHE_TTL_SECONDS"] = ttl
+    yield ttl
+    del os.environ["BAD_RUNTIME_ENV_CACHE_TTL_SECONDS"]
+
+
+@pytest.hookimpl(tryfirst=True, hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    # execute all other hooks to obtain the report object
+    outcome = yield
+    rep = outcome.get_result()
+
+    try:
+        append_short_test_summary(rep)
+    except Exception as e:
+        print(f"+++ Error creating PyTest summary\n{e}")
+    try:
+        create_ray_logs_for_failed_test(rep)
+    except Exception as e:
+        print(f"+++ Error saving Ray logs for failing test\n{e}")
+
+
+def append_short_test_summary(rep):
+    """Writes a short summary txt for failed tests to be printed later."""
+    if rep.when != "call":
+        return
+
+    summary_dir = os.environ.get("RAY_TEST_SUMMARY_DIR")
+
+    if platform.system() != "Linux":
+        summary_dir = os.environ.get("RAY_TEST_SUMMARY_DIR_HOST")
+
+    if not summary_dir:
+        return
+
+    if not os.path.exists(summary_dir):
+        os.makedirs(summary_dir, exist_ok=True)
+
+    test_name = rep.nodeid.replace(os.sep, "::")
+
+    header_file = os.path.join(summary_dir, "000_header.txt")
+    summary_file = os.path.join(summary_dir, test_name + ".txt")
+
+    if rep.passed and os.path.exists(summary_file):
+        # The test succeeded after failing, thus it is flaky.
+        # We do not want to annotate flaky tests just now, so remove report.
+        os.remove(summary_file)
+        return
+
+    # Only consider failed tests from now on
+    if not rep.failed:
+        return
+
+    # No failing test information
+    if rep.longrepr is None:
+        return
+
+    # No failing test information
+    if not hasattr(rep.longrepr, "chain"):
+        return
+
+    if not os.path.exists(header_file):
+        with open(header_file, "wt") as fp:
+            test_label = os.environ.get("BUILDKITE_LABEL", "Unknown")
+            job_id = os.environ.get("BUILDKITE_JOB_ID")
+
+            fp.write(f"### Pytest failures for: [{test_label}](#{job_id})\n\n")
+
+    # Use `wt` here to overwrite so we only have one result per test (exclude retries)
+    with open(summary_file, "wt") as fp:
+        fp.write(_get_markdown_annotation(rep))
+
+
+def _get_markdown_annotation(rep) -> str:
+    # Main traceback is the last in the chain (where the last error is raised)
+    main_tb, main_loc, _ = rep.longrepr.chain[-1]
+    markdown = ""
+
+    # Only keep last line of the message
+    short_message = list(filter(None, main_loc.message.split("\n")))[-1]
+
+    # Header: Main error message
+    markdown += f"#### {rep.nodeid}\n\n"
+    markdown += "<details>\n"
+    markdown += f"<summary>{short_message}</summary>\n\n"
+
+    # Add link to test definition
+    test_file, test_lineno, _test_node = rep.location
+    test_path, test_url = _get_repo_github_path_and_link(
+        os.path.abspath(test_file), test_lineno
+    )
+    markdown += f"Link to test: [{test_path}:{test_lineno}]({test_url})\n\n"
+
+    # Print main traceback
+    markdown += "##### Traceback\n\n"
+    markdown += "```\n"
+    markdown += str(main_tb)
+    markdown += "\n```\n\n"
+
+    # Print link to test definition in github
+    path, url = _get_repo_github_path_and_link(main_loc.path, main_loc.lineno)
+    markdown += f"[{path}:{main_loc.lineno}]({url})\n\n"
+
+    # If this is a longer exception chain, users can expand the full traceback
+    if len(rep.longrepr.chain) > 1:
+        markdown += "<details><summary>Full traceback</summary>\n\n"
+
+        # Here we just print each traceback and the link to the respective
+        # lines in GutHub
+        for tb, loc, _ in rep.longrepr.chain:
+            if loc:
+                path, url = _get_repo_github_path_and_link(loc.path, loc.lineno)
+                github_link = f"[{path}:{loc.lineno}]({url})\n\n"
+            else:
+                github_link = ""
+
+            markdown += "```\n"
+            markdown += str(tb)
+            markdown += "\n```\n\n"
+            markdown += github_link
+
+        markdown += "</details>\n"
+
+    markdown += "<details><summary>PIP packages</summary>\n\n"
+    markdown += "```\n"
+    markdown += "\n".join(_get_pip_packages())
+    markdown += "\n```\n\n"
+    markdown += "</details>\n"
+
+    markdown += "</details>\n\n"
+    return markdown
+
+
+def _get_pip_packages() -> List[str]:
+    try:
+        from pip._internal.operations import freeze
+
+        return list(freeze.freeze())
+    except Exception:
+        return ["invalid"]
+
+
+def _get_repo_github_path_and_link(file: str, lineno: int) -> Tuple[str, str]:
+    base_url = "https://github.com/ray-project/ray/blob/{commit}/{path}#L{lineno}"
+
+    commit = os.environ.get("BUILDKITE_COMMIT")
+
+    if not commit:
+        return file, ""
+
+    path = os.path.relpath(file, "/ray")
+
+    return path, base_url.format(commit=commit, path=path, lineno=lineno)
+
+
+def create_ray_logs_for_failed_test(rep):
+    """Creates artifact zip of /tmp/ray/session_latest/logs for failed tests"""
+
+    # We temporarily restrict to Linux until we have artifact dirs
+    # for Windows and Mac
+    if platform.system() != "Linux":
+        return
+
+    # Only archive failed tests after the "call" phase of the test
+    if rep.when != "call" or not rep.failed:
+        return
+
+    # Get dir to write zipped logs to
+    archive_dir = os.environ.get("RAY_TEST_FAILURE_LOGS_ARCHIVE_DIR")
+
+    if not archive_dir:
+        return
+
+    if not os.path.exists(archive_dir):
+        os.makedirs(archive_dir)
+
+    # Get logs dir from the latest ray session
+    tmp_dir = gettempdir()
+    logs_dir = os.path.join(tmp_dir, "ray", "session_latest", "logs")
+
+    if not os.path.exists(logs_dir):
+        return
+
+    # Write zipped logs to logs archive dir
+    test_name = rep.nodeid.replace(os.sep, "::")
+    output_file = os.path.join(archive_dir, f"{test_name}_{time.time():.4f}")
+    shutil.make_archive(output_file, "zip", logs_dir)

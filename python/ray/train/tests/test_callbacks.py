@@ -234,7 +234,8 @@ def test_mlflow(ray_start_4_cpus, tmp_path):
 
     client = MlflowClient(tracking_uri=callback.mlflow_util._mlflow.get_tracking_uri())
 
-    all_runs = callback.mlflow_util._mlflow.search_runs(experiment_ids=["0"])
+    experiment_id = client.get_experiment_by_name("test_exp").experiment_id
+    all_runs = callback.mlflow_util._mlflow.search_runs(experiment_ids=[experiment_id])
     assert len(all_runs) == 1
     # all_runs is a pandas dataframe.
     all_runs = all_runs.to_dict(orient="records")

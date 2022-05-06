@@ -2,8 +2,9 @@ from typing import Any, Dict, Optional, Tuple, List
 
 from ray.experimental.dag import DAGNode
 from ray.experimental.dag.format_utils import get_dag_node_str
-from ray.serve.api import Deployment
-from ray.serve.handle import RayServeSyncHandle, RayServeHandle
+from ray.experimental.dag.constants import DAGNODE_TYPE_KEY, PARENT_CLASS_NODE_KEY
+from ray.serve.deployment import Deployment
+from ray.serve.config import DeploymentConfig
 
 
 class DeploymentMethodNode(DAGNode):
@@ -12,30 +13,21 @@ class DeploymentMethodNode(DAGNode):
     def __init__(
         self,
         deployment: Deployment,
-        method_name: str,
+        deployment_method_name: str,
         method_args: Tuple[Any],
         method_kwargs: Dict[str, Any],
         method_options: Dict[str, Any],
         other_args_to_resolve: Optional[Dict[str, Any]] = None,
     ):
-        self._body = deployment
-        self._method_name: str = method_name
+        self._deployment = deployment
+        self._deployment_method_name: str = deployment_method_name
+        self._deployment_node = other_args_to_resolve[PARENT_CLASS_NODE_KEY]
         super().__init__(
             method_args,
             method_kwargs,
             method_options,
             other_args_to_resolve=other_args_to_resolve,
         )
-        # Serve handle is sync by default.
-        if (
-            "sync_handle" in self._bound_other_args_to_resolve
-            and self._bound_other_args_to_resolve.get("sync_handle") is True
-        ):
-            self._deployment_handle: RayServeSyncHandle = deployment.get_handle(
-                sync=True
-            )
-        else:
-            self._deployment_handle: RayServeHandle = deployment.get_handle(sync=False)
 
     def _copy_impl(
         self,
@@ -45,25 +37,83 @@ class DeploymentMethodNode(DAGNode):
         new_other_args_to_resolve: Dict[str, Any],
     ):
         return DeploymentMethodNode(
-            self._body,
-            self._method_name,
+            self._deployment,
+            self._deployment_method_name,
             new_args,
             new_kwargs,
             new_options,
             other_args_to_resolve=new_other_args_to_resolve,
         )
 
-    def _execute_impl(self, *args):
+    def _execute_impl(self, *args, **kwargs):
         """Executor of DeploymentMethodNode by ray.remote()"""
         # Execute with bound args.
-        method_body = getattr(self._deployment_handle, self._method_name)
-
-        return method_body.options(**self._bound_options).remote(
+        method_body = getattr(self._deployment_node, self._deployment_method_name)
+        return method_body.remote(
             *self._bound_args,
             **self._bound_kwargs,
         )
 
     def __str__(self) -> str:
         return get_dag_node_str(
-            self, str(self._method_name) + "() @ " + str(self._body)
+            self,
+            str(self._deployment_method_name) + "() @ " + str(self._deployment),
+        )
+
+    def get_deployment_name(self) -> str:
+        return self._deployment.name
+
+    def get_deployment_method_name(self) -> str:
+        return self._deployment_method_name
+
+    def get_import_path(self) -> str:
+        if (
+            "is_from_serve_deployment"
+            in self._bound_other_args_to_resolve[
+                "parent_class_node"
+            ]._bound_other_args_to_resolve
+        ):  # built by serve top level api, this is ignored for serve.run
+            return "dummy"
+        elif isinstance(self._deployment._func_or_class, str):
+            # We're processing a deserilized JSON node where import_path
+            # is dag_node body.
+            return self._deployment._func_or_class
+        else:
+            body = self._deployment._func_or_class.__ray_actor_class__
+            return f"{body.__module__}.{body.__qualname__}"
+
+    def to_json(self) -> Dict[str, Any]:
+        return {
+            DAGNODE_TYPE_KEY: DeploymentMethodNode.__name__,
+            "deployment_name": self.get_deployment_name(),
+            "deployment_method_name": self.get_deployment_method_name(),
+            # Will be overriden by build()
+            "import_path": self.get_import_path(),
+            "args": self.get_args(),
+            "kwargs": self.get_kwargs(),
+            # .options() should not contain any DAGNode type
+            "options": self.get_options(),
+            "other_args_to_resolve": self.get_other_args_to_resolve(),
+            "uuid": self.get_stable_uuid(),
+        }
+
+    @classmethod
+    def from_json(cls, input_json, object_hook=None):
+        assert input_json[DAGNODE_TYPE_KEY] == DeploymentMethodNode.__name__
+        return cls(
+            Deployment(
+                input_json["import_path"],
+                input_json["deployment_name"],
+                # TODO: (jiaodong) Support deployment config from user input
+                DeploymentConfig(),
+                init_args=input_json["args"],
+                init_kwargs=input_json["kwargs"],
+                ray_actor_options=input_json["options"],
+                _internal=True,
+            ),
+            input_json["deployment_method_name"],
+            input_json["args"],
+            input_json["kwargs"],
+            input_json["options"],
+            other_args_to_resolve=input_json["other_args_to_resolve"],
         )

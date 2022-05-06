@@ -215,9 +215,9 @@ def test_delete_objects_multi_node(
     assert_no_thrashing(cluster.address)
 
 
-def test_fusion_objects(object_spilling_config, shutdown_only):
+def test_fusion_objects(fs_only_object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
-    object_spilling_config, temp_folder = object_spilling_config
+    object_spilling_config, temp_folder = fs_only_object_spilling_config
     min_spilling_size = 10 * 1024 * 1024
     address = ray.init(
         object_store_memory=75 * 1024 * 1024,
@@ -360,7 +360,7 @@ def test_spill_objects_on_object_transfer(
 
 
 @pytest.mark.skipif(
-    platform.system() in ["Windows"], reason="Failing on " "Windows and Mac."
+    platform.system() in ["Windows"], reason="Failing on Windows and Mac."
 )
 def test_file_deleted_when_driver_exits(tmp_path, shutdown_only):
     temp_folder = tmp_path / "spill"

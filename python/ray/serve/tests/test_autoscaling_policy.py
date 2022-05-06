@@ -11,14 +11,16 @@ from ray.serve.autoscaling_policy import (
     BasicAutoscalingPolicy,
     calculate_desired_num_replicas,
 )
+from ray.serve.common import DeploymentInfo
 from ray.serve.deployment_state import ReplicaState
 from ray.serve.config import AutoscalingConfig
 from ray.serve.constants import CONTROL_LOOP_PERIOD_S
 from ray.serve.controller import ServeController
-from ray.serve.api import Deployment
+from ray.serve.deployment import Deployment
 
 import ray
 from ray import serve
+from ray.serve.generated.serve_pb2 import DeploymentRouteList
 
 
 class TestCalculateDesiredNumReplicas:
@@ -154,7 +156,16 @@ def test_assert_no_replicas_deprovisioned():
 
 def get_deployment_start_time(controller: ServeController, deployment: Deployment):
     """Return start time for given deployment"""
-    deployments = ray.get(controller.list_deployments.remote())
+    deployment_route_list = DeploymentRouteList.FromString(
+        ray.get(controller.list_deployments.remote())
+    )
+    deployments = {
+        deployment_route.deployment_info.name: (
+            DeploymentInfo.from_proto(deployment_route.deployment_info),
+            deployment_route.route if deployment_route.route != "" else None,
+        )
+        for deployment_route in deployment_route_list.deployment_routes
+    }
     deployment_info, _route_prefix = deployments[deployment.name]
     return deployment_info.start_time_ms
 

@@ -106,6 +106,16 @@ Tune the throughput vs latency of your pipeline with the ``blocks_per_window`` s
 
 .. image:: images/dataset-pipeline-3.svg
 
+You can also specify the size of each window using ``bytes_per_window``. In this mode, Datasets will determine the size of each window based on the target byte size, giving each window at least 1 block but not otherwise exceeding the target bytes per window. This mode can be useful to limit the memory usage of a pipeline. As a rule of thumb, the cluster memory should be at least 2-5x the window size to avoid spilling.
+
+.. code-block:: python
+
+    # Create a DatasetPipeline with up to 10GB of data per window.
+    pipe: DatasetPipeline = ray.data \
+        .read_binary_files("s3://bucket/image-dir") \
+        .window(bytes_per_window=10e9)
+    # -> INFO -- Created DatasetPipeline with 73 windows: 9120MiB min, 9431MiB max, 9287MiB mean
+
 .. _dataset-pipeline-per-epoch-shuffle:
 
 Per-Epoch Shuffle Pipeline
@@ -128,7 +138,7 @@ Pre-repeat vs post-repeat transforms
 
 Transformations made prior to the Dataset prior to the call to ``.repeat()`` are executed once. Transformations made to the DatasetPipeline after the repeat will be executed once for each repetition of the Dataset.
 
-For example, in the following pipeline, the datasource read only occurs once. However, the random shuffle is applied to each repetition in the pipeline.
+For example, in the following pipeline, the ``map(func)`` transformation only occurs once. However, the random shuffle is applied to each repetition in the pipeline.
 
 **Code**:
 
@@ -137,6 +147,7 @@ For example, in the following pipeline, the datasource read only occurs once. Ho
     # Create a pipeline that loops over its source dataset indefinitely.
     pipe: DatasetPipeline = ray.data \
         .read_datasource(...) \
+        .map(func) \
         .repeat() \
         .random_shuffle_each_window()
 
@@ -153,6 +164,10 @@ For example, in the following pipeline, the datasource read only occurs once. Ho
 **Pipeline**:
 
 .. image:: images/dataset-repeat-1.svg
+
+.. important::
+
+    Result caching only applies if there are *transformation* stages prior to the pipelining operation. If you ``repeat()`` or ``window()`` a Dataset right after the read call (e.g., ``ray.data.read_parquet(...).repeat()``), then the read will still be re-executed on each repetition. This optimization saves memory, at the cost of repeated reads from the datasource.
 
 Splitting pipelines for distributed ingest
 ==========================================

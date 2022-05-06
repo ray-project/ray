@@ -90,7 +90,7 @@ def main():
         "--port",
         type=int,
         default=8008,
-        help="What port to serve AutoMLBoard on, " "(default: %(default)s)",
+        help="What port to serve AutoMLBoard on, (default: %(default)s)",
     )
     parser.add_argument(
         "--db",
@@ -104,13 +104,13 @@ def main():
         "--reload_interval",
         type=int,
         default=5,
-        help="How often the backend should load more data, " "(default: %(default)s)",
+        help="How often the backend should load more data, (default: %(default)s)",
     )
     parser.add_argument(
         "--log_level",
         type=str,
         default="INFO",
-        help="Set the logging level, " "(default: %(default)s)",
+        help="Set the logging level, (default: %(default)s)",
     )
     cmd_args = parser.parse_args()
 

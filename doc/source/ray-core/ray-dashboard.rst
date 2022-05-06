@@ -146,7 +146,7 @@ You can view information for Ray objects in the memory tab. It is useful to debu
 
 One common cause of these memory errors is that there are objects which never go out of scope. In order to find these, you can go to the Memory View, then select to "Group By Stack Trace." This groups memory entries by their stack traces up to three frames deep. If you see a group which is growing without bound, you might want to examine that line of code to see if you intend to keep that reference around.
 
-Note that this is the same information as displayed in the `ray memory command <https://docs.ray.io/en/master/memory-management.html#debugging-using-ray-memory>`_. For details about the information contained in the table, please see the `ray memory` documentation.
+Note that this is the same information as displayed in the `ray memory command <https://docs.ray.io/en/master/ray-core/objects/memory-management.html#debugging-using-ray-memory>`_. For details about the information contained in the table, please see the `ray memory` documentation.
 
 Inspect Memory Usage
 ~~~~~~~~~~~~~~~~~~~~
@@ -328,7 +328,7 @@ Memory
 
 **Object Size** Object Size of a Ray object in bytes.
 
-**Reference Type**: Reference types of Ray objects. Checkout the `ray memory command <https://docs.ray.io/en/master/memory-management.html#debugging-using-ray-memory>`_ to learn each reference type.
+**Reference Type**: Reference types of Ray objects. Checkout the `ray memory command <https://docs.ray.io/en/master/ray-core/objects/memory-management.html#debugging-using-ray-memory>`_ to learn each reference type.
 
 **Call Site**: Call site where this Ray object is referenced, up to three stack frames deep.
 

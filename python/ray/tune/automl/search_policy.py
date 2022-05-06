@@ -15,7 +15,9 @@ def deep_insert(path_list, value, config):
     """Inserts value into config by path, generating intermediate dictionaries.
 
     Example:
-        >>> deep_insert(path.split("."), value, {})
+        >>> from os import path
+        >>> from ray.tune.automl.search_policy import deep_insert
+        >>> deep_insert(path.split("."), value, {}) # doctest: +SKIP
     """
     if len(path_list) > 1:
         inside_config = config.setdefault(path_list[0], {})

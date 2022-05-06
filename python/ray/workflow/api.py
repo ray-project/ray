@@ -1,20 +1,21 @@
 import logging
-import os
 import types
-from typing import Dict, Set, List, Tuple, Union, Optional, Any, TYPE_CHECKING
+from typing import Dict, Set, List, Tuple, Union, Optional, Any, Callable, TYPE_CHECKING
 import time
 
 import ray
+from ray.experimental.dag import DAGNode
+from ray.experimental.dag.input_node import DAGInputData
+from ray.remote_function import RemoteFunction
+
 from ray.workflow import execution
 from ray.workflow.step_function import WorkflowStepFunction
 
 # avoid collision with arguments & APIs
 
 from ray.workflow import virtual_actor_class
-from ray.workflow import storage as storage_base
 from ray.workflow.common import (
     WorkflowStatus,
-    ensure_ray_initialized,
     Workflow,
     Event,
     WorkflowRunningError,
@@ -25,10 +26,10 @@ from ray.workflow.common import (
 )
 from ray.workflow import serialization
 from ray.workflow.event_listener import EventListener, EventListenerType, TimerListener
-from ray.workflow.storage import Storage
 from ray.workflow import workflow_access
 from ray.workflow.workflow_storage import get_workflow_storage
 from ray.util.annotations import PublicAPI
+from ray._private.usage import usage_lib
 
 if TYPE_CHECKING:
     from ray.workflow.virtual_actor_class import VirtualActorClass, VirtualActor
@@ -36,45 +37,33 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+_is_workflow_initialized = False
+
+
 @PublicAPI(stability="beta")
-def init(storage: "Optional[Union[str, Storage]]" = None) -> None:
+def init() -> None:
     """Initialize workflow.
 
-    Args:
-        storage: The external storage URL or a custom storage class. If not
-            specified, ``/tmp/ray/workflow_data`` will be used.
+    If Ray is not initialized, we will initialize Ray and
+    use ``/tmp/ray/workflow_data`` as the default storage.
     """
-    if storage is None:
-        storage = os.environ.get("RAY_WORKFLOW_STORAGE")
+    usage_lib.record_library_usage("workflow")
 
-    if storage is None:
+    if not ray.is_initialized():
         # We should use get_temp_dir_path, but for ray client, we don't
         # have this one. We need a flag to tell whether it's a client
         # or a driver to use the right dir.
         # For now, just use /tmp/ray/workflow_data
-        storage = "file:///tmp/ray/workflow_data"
-    if isinstance(storage, str):
-        logger.info(f"Using storage: {storage}")
-        storage = storage_base.create_storage(storage)
-    elif not isinstance(storage, Storage):
-        raise TypeError("'storage' should be None, str, or Storage type.")
-
-    try:
-        _storage = storage_base.get_global_storage()
-    except RuntimeError:
-        pass
-    else:
-        # we have to use the 'else' branch because we would raise a
-        # runtime error, but we do not want to be captured by 'except'
-        if _storage.storage_url == storage.storage_url:
-            logger.warning("Calling 'workflow.init()' again with the same " "storage.")
-        else:
-            raise RuntimeError(
-                "Calling 'workflow.init()' again with a " "different storage"
-            )
-    storage_base.set_global_storage(storage)
+        ray.init(storage="file:///tmp/ray/workflow_data")
     workflow_access.init_management_actor()
     serialization.init_manager()
+    global _is_workflow_initialized
+    _is_workflow_initialized = True
+
+
+def _ensure_workflow_initialized() -> None:
+    if not _is_workflow_initialized or not ray.is_initialized():
+        init()
 
 
 def make_step_decorator(
@@ -95,13 +84,15 @@ def step(*args, **kwargs):
     """A decorator used for creating workflow steps.
 
     Examples:
-        >>> @workflow.step
-        ... def book_flight(origin: str, dest: str) -> Flight:
-        ...    return Flight(...)
+        >>> from ray import workflow
+        >>> Flight, Hotel = ... # doctest: +SKIP
+        >>> @workflow.step # doctest: +SKIP
+        ... def book_flight(origin: str, dest: str) -> Flight: # doctest: +SKIP
+        ...    return Flight(...) # doctest: +SKIP
 
-        >>> @workflow.step(max_retries=3, catch_exceptions=True)
-        ... def book_hotel(dest: str) -> Hotel:
-        ...    return Hotel(...)
+        >>> @workflow.step(max_retries=3, catch_exceptions=True) # doctest: +SKIP
+        ... def book_hotel(dest: str) -> Hotel: # doctest: +SKIP
+        ...    return Hotel(...) # doctest: +SKIP
 
     """
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
@@ -136,30 +127,31 @@ class _VirtualActorDecorator:
      "__setstate__" method.
 
     Examples:
+        >>> from ray import workflow
         >>> @workflow.virtual_actor
         ... class Counter:
-        ... def __init__(self, x: int):
-        ...     self.x = x
+        ...     def __init__(self, x: int):
+        ...         self.x = x
         ...
-        ... # Mark a method as a readonly method. It would not modify the
-        ... # state of the virtual actor.
-        ... @workflow.virtual_actor.readonly
-        ... def get(self):
-        ...     return self.x
+        ...     # Mark a method as a readonly method. It would not modify the
+        ...     # state of the virtual actor.
+        ...     @workflow.virtual_actor.readonly
+        ...     def get(self):
+        ...         return self.x
         ...
-        ... def incr(self):
-        ...     self.x += 1
-        ...     return self.x
+        ...     def incr(self):
+        ...         self.x += 1
+        ...         return self.x
         ...
-        ... def __getstate__(self):
-        ...     return self.x
+        ...     def __getstate__(self):
+        ...         return self.x
         ...
-        ... def __setstate__(self, state):
-        ...     self.x = state
+        ...     def __setstate__(self, state):
+        ...         self.x = state
         ...
         ... # Create and run a virtual actor.
-        ... counter = Counter.get_or_create(actor_id="Counter", x=1)
-        ... assert ray.get(counter.run(incr)) == 2
+        ... counter = Counter.get_or_create(actor_id="Counter", x=1) # doctest: +SKIP
+        ... assert ray.get(counter.run(incr)) == 2 # doctest: +SKIP
     """
 
     @classmethod
@@ -190,8 +182,8 @@ def get_actor(actor_id: str) -> "VirtualActor":
     Returns:
         A virtual actor.
     """
-    ensure_ray_initialized()
-    return virtual_actor_class.get_actor(actor_id, storage_base.get_global_storage())
+    _ensure_workflow_initialized()
+    return virtual_actor_class.get_actor(actor_id)
 
 
 @PublicAPI(stability="beta")
@@ -203,10 +195,12 @@ def resume(workflow_id: str) -> ray.ObjectRef:
     complete, returns the result immediately.
 
     Examples:
-        >>> trip = start_trip.step()
-        >>> res1 = trip.run_async(workflow_id="trip1")
-        >>> res2 = workflow.resume("trip1")
-        >>> assert ray.get(res1) == ray.get(res2)
+        >>> from ray import workflow
+        >>> start_trip = ... # doctest: +SKIP
+        >>> trip = start_trip.step() # doctest: +SKIP
+        >>> res1 = trip.run_async(workflow_id="trip1") # doctest: +SKIP
+        >>> res2 = workflow.resume("trip1") # doctest: +SKIP
+        >>> assert ray.get(res1) == ray.get(res2) # doctest: +SKIP
 
     Args:
         workflow_id: The id of the workflow to resume.
@@ -214,7 +208,7 @@ def resume(workflow_id: str) -> ray.ObjectRef:
     Returns:
         An object reference that can be used to retrieve the workflow result.
     """
-    ensure_ray_initialized()
+    _ensure_workflow_initialized()
     return execution.resume(workflow_id)
 
 
@@ -228,18 +222,20 @@ def get_output(workflow_id: str, *, name: Optional[str] = None) -> ray.ObjectRef
             workflow.
 
     Examples:
-        >>> trip = start_trip.options(name="trip").step()
-        >>> res1 = trip.run_async(workflow_id="trip1")
+        >>> from ray import workflow
+        >>> start_trip = ... # doctest: +SKIP
+        >>> trip = start_trip.options(name="trip").step() # doctest: +SKIP
+        >>> res1 = trip.run_async(workflow_id="trip1") # doctest: +SKIP
         >>> # you could "get_output()" in another machine
-        >>> res2 = workflow.get_output("trip1")
-        >>> assert ray.get(res1) == ray.get(res2)
-        >>> step_output = workflow.get_output("trip1", "trip")
-        >>> assert ray.get(step_output) == ray.get(res1)
+        >>> res2 = workflow.get_output("trip1") # doctest: +SKIP
+        >>> assert ray.get(res1) == ray.get(res2) # doctest: +SKIP
+        >>> step_output = workflow.get_output("trip1", "trip") # doctest: +SKIP
+        >>> assert ray.get(step_output) == ray.get(res1) # doctest: +SKIP
 
     Returns:
         An object reference that can be used to retrieve the workflow result.
     """
-    ensure_ray_initialized()
+    _ensure_workflow_initialized()
     return execution.get_output(workflow_id, name)
 
 
@@ -258,20 +254,24 @@ def list_all(
             "RUNNING"/"FAILED"/"SUCCESSFUL"/"CANCELED"/"RESUMABLE".
 
     Examples:
-        >>> workflow_step = long_running_job.step()
-        >>> wf = workflow_step.run_async(workflow_id="long_running_job")
-        >>> jobs = workflow.list_all()
-        >>> assert jobs == [ ("long_running_job", workflow.RUNNING) ]
-        >>> ray.get(wf)
-        >>> jobs = workflow.list_all({workflow.RUNNING})
-        >>> assert jobs == []
-        >>> jobs = workflow.list_all(workflow.SUCCESSFUL)
-        >>> assert jobs == [ ("long_running_job", workflow.SUCCESSFUL) ]
+        >>> from ray import workflow
+        >>> long_running_job = ... # doctest: +SKIP
+        >>> workflow_step = long_running_job.step() # doctest: +SKIP
+        >>> wf = workflow_step.run_async( # doctest: +SKIP
+        ...     workflow_id="long_running_job")
+        >>> jobs = workflow.list_all() # doctest: +SKIP
+        >>> assert jobs == [ ("long_running_job", workflow.RUNNING) ] # doctest: +SKIP
+        >>> ray.get(wf) # doctest: +SKIP
+        >>> jobs = workflow.list_all({workflow.RUNNING}) # doctest: +SKIP
+        >>> assert jobs == [] # doctest: +SKIP
+        >>> jobs = workflow.list_all(workflow.SUCCESSFUL) # doctest: +SKIP
+        >>> assert jobs == [ # doctest: +SKIP
+        ...     ("long_running_job", workflow.SUCCESSFUL)]
 
     Returns:
         A list of tuple with workflow id and workflow status
     """
-    ensure_ray_initialized()
+    _ensure_workflow_initialized()
     if isinstance(status_filter, str):
         status_filter = set({WorkflowStatus(status_filter)})
     elif isinstance(status_filter, WorkflowStatus):
@@ -304,21 +304,23 @@ def resume_all(include_failed: bool = False) -> Dict[str, ray.ObjectRef]:
         with_failed: Whether to resume FAILED workflows.
 
     Examples:
-        >>> workflow_step = failed_job.step()
-        >>> output = workflow_step.run_async(workflow_id="failed_job")
-        >>> try:
-        >>>     ray.get(output)
-        >>> except Exception:
-        >>>     print("JobFailed")
-        >>> jobs = workflow.list_all()
-        >>> assert jobs == [("failed_job", workflow.FAILED)]
-        >>> assert workflow.resume_all(
-        >>>   include_failed=True).get("failed_job") is not None
+        >>> from ray import workflow
+        >>> failed_job = ... # doctest: +SKIP
+        >>> workflow_step = failed_job.step() # doctest: +SKIP
+        >>> output = workflow_step.run_async(workflow_id="failed_job") # doctest: +SKIP
+        >>> try: # doctest: +SKIP
+        >>>     ray.get(output) # doctest: +SKIP
+        >>> except Exception: # doctest: +SKIP
+        >>>     print("JobFailed") # doctest: +SKIP
+        >>> jobs = workflow.list_all() # doctest: +SKIP
+        >>> assert jobs == [("failed_job", workflow.FAILED)] # doctest: +SKIP
+        >>> assert workflow.resume_all( # doctest: +SKIP
+        ...    include_failed=True).get("failed_job") is not None # doctest: +SKIP
 
     Returns:
         A list of (workflow_id, returned_obj_ref) resumed.
     """
-    ensure_ray_initialized()
+    _ensure_workflow_initialized()
     return execution.resume_all(include_failed)
 
 
@@ -330,14 +332,16 @@ def get_status(workflow_id: str) -> WorkflowStatus:
         workflow_id: The workflow to query.
 
     Examples:
-        >>> workflow_step = trip.step()
-        >>> output = workflow_step.run(workflow_id="trip")
-        >>> assert workflow.SUCCESSFUL == workflow.get_status("trip")
+        >>> from ray import workflow
+        >>> trip = ... # doctest: +SKIP
+        >>> workflow_step = trip.step() # doctest: +SKIP
+        >>> output = workflow_step.run(workflow_id="trip") # doctest: +SKIP
+        >>> assert workflow.SUCCESSFUL == workflow.get_status("trip") # doctest: +SKIP
 
     Returns:
         The status of that workflow
     """
-    ensure_ray_initialized()
+    _ensure_workflow_initialized()
     if not isinstance(workflow_id, str):
         raise TypeError("workflow_id has to be a string type.")
     return execution.get_status(workflow_id)
@@ -346,19 +350,19 @@ def get_status(workflow_id: str) -> WorkflowStatus:
 @PublicAPI(stability="beta")
 def wait_for_event(
     event_listener_type: EventListenerType, *args, **kwargs
-) -> Workflow[Event]:
+) -> "DAGNode[Event]":
     if not issubclass(event_listener_type, EventListener):
         raise TypeError(
             f"Event listener type is {event_listener_type.__name__}"
             ", which is not a subclass of workflow.EventListener"
         )
 
-    @step
+    @ray.remote
     def get_message(event_listener_type: EventListenerType, *args, **kwargs) -> Event:
         event_listener = event_listener_type()
         return asyncio_run(event_listener.poll_for_event(*args, **kwargs))
 
-    @step
+    @ray.remote
     def message_committed(
         event_listener_type: EventListenerType, event: Event
     ) -> Event:
@@ -366,22 +370,22 @@ def wait_for_event(
         asyncio_run(event_listener.event_checkpointed(event))
         return event
 
-    return message_committed.step(
-        event_listener_type, get_message.step(event_listener_type, *args, **kwargs)
+    return message_committed.bind(
+        event_listener_type, get_message.bind(event_listener_type, *args, **kwargs)
     )
 
 
 @PublicAPI(stability="beta")
-def sleep(duration: float) -> Workflow[Event]:
+def sleep(duration: float) -> "DAGNode[Event]":
     """
     A workfow that resolves after sleeping for a given duration.
     """
 
-    @step
+    @ray.remote
     def end_time():
         return time.time() + duration
 
-    return wait_for_event(TimerListener, end_time.step())
+    return wait_for_event(TimerListener, end_time.bind())
 
 
 @PublicAPI(stability="beta")
@@ -410,19 +414,22 @@ def get_metadata(workflow_id: str, name: Optional[str] = None) -> Dict[str, Any]
             the metadata of the workflow.
 
     Examples:
-        >>> workflow_step = trip.options(
+        >>> from ray import workflow
+        >>> trip = ... # doctest: +SKIP
+        >>> workflow_step = trip.options( # doctest: +SKIP
         ...     name="trip", metadata={"k1": "v1"}).step()
-        >>> workflow_step.run(workflow_id="trip1", metadata={"k2": "v2"})
-        >>> workflow_metadata = workflow.get_metadata("trip1")
-        >>> assert workflow_metadata["status"] == "SUCCESSFUL"
-        >>> assert workflow_metadata["user_metadata"] == {"k2": "v2"}
-        >>> assert "start_time" in workflow_metadata["stats"]
-        >>> assert "end_time" in workflow_metadata["stats"]
-        >>> step_metadata = workflow.get_metadata("trip1", "trip")
-        >>> assert step_metadata["step_type"] == "FUNCTION"
-        >>> assert step_metadata["user_metadata"] == {"k1": "v1"}
-        >>> assert "start_time" in step_metadata["stats"]
-        >>> assert "end_time" in step_metadata["stats"]
+        >>> workflow_step.run( # doctest: +SKIP
+        ...     workflow_id="trip1", metadata={"k2": "v2"})
+        >>> workflow_metadata = workflow.get_metadata("trip1") # doctest: +SKIP
+        >>> assert workflow_metadata["status"] == "SUCCESSFUL" # doctest: +SKIP
+        >>> assert workflow_metadata["user_metadata"] == {"k2": "v2"} # doctest: +SKIP
+        >>> assert "start_time" in workflow_metadata["stats"] # doctest: +SKIP
+        >>> assert "end_time" in workflow_metadata["stats"] # doctest: +SKIP
+        >>> step_metadata = workflow.get_metadata("trip1", "trip") # doctest: +SKIP
+        >>> assert step_metadata["step_type"] == "FUNCTION" # doctest: +SKIP
+        >>> assert step_metadata["user_metadata"] == {"k1": "v1"} # doctest: +SKIP
+        >>> assert "start_time" in step_metadata["stats"] # doctest: +SKIP
+        >>> assert "end_time" in step_metadata["stats"] # doctest: +SKIP
 
     Returns:
         A dictionary containing the metadata of the workflow.
@@ -430,7 +437,7 @@ def get_metadata(workflow_id: str, name: Optional[str] = None) -> Dict[str, Any]
     Raises:
         ValueError: if given workflow or workflow step does not exist.
     """
-    ensure_ray_initialized()
+    _ensure_workflow_initialized()
     return execution.get_metadata(workflow_id, name)
 
 
@@ -443,16 +450,19 @@ def cancel(workflow_id: str) -> None:
         workflow_id: The workflow to cancel.
 
     Examples:
-        >>> workflow_step = some_job.step()
-        >>> output = workflow_step.run_async(workflow_id="some_job")
-        >>> workflow.cancel(workflow_id="some_job")
-        >>> assert [("some_job", workflow.CANCELED)] == workflow.list_all()
+        >>> from ray import workflow
+        >>> some_job = ... # doctest: +SKIP
+        >>> workflow_step = some_job.step() # doctest: +SKIP
+        >>> output = workflow_step.run_async(workflow_id="some_job") # doctest: +SKIP
+        >>> workflow.cancel(workflow_id="some_job") # doctest: +SKIP
+        >>> assert [ # doctest: +SKIP
+        ...     ("some_job", workflow.CANCELED)] == workflow.list_all()
 
     Returns:
         None
 
     """
-    ensure_ray_initialized()
+    _ensure_workflow_initialized()
     if not isinstance(workflow_id, str):
         raise TypeError("workflow_id has to be a string type.")
     return execution.cancel(workflow_id)
@@ -471,16 +481,19 @@ def delete(workflow_id: str) -> None:
         workflow_id: The workflow to delete.
 
     Examples:
-        >>> workflow_step = some_job.step()
-        >>> output = workflow_step.run_async(workflow_id="some_job")
-        >>> workflow.delete(workflow_id="some_job")
-        >>> assert [] == workflow.list_all()
+        >>> from ray import workflow
+        >>> some_job = ... # doctest: +SKIP
+        >>> workflow_step = some_job.step() # doctest: +SKIP
+        >>> output = workflow_step.run_async(workflow_id="some_job") # doctest: +SKIP
+        >>> workflow.delete(workflow_id="some_job") # doctest: +SKIP
+        >>> assert [] == workflow.list_all() # doctest: +SKIP
 
     Returns:
         None
 
     """
 
+    _ensure_workflow_initialized()
     try:
         status = get_status(workflow_id)
         if status == WorkflowStatus.RUNNING:
@@ -503,14 +516,16 @@ def wait(
     workflows that are pending.
 
     Examples:
-        >>> tasks = [task.step() for _ in range(3)]
-        >>> wait_step = workflow.wait(tasks, num_returns=1)
-        >>> print(wait_step.run())
+        >>> from ray import workflow
+        >>> task, forever = ... # doctest: +SKIP
+        >>> tasks = [task.step() for _ in range(3)] # doctest: +SKIP
+        >>> wait_step = workflow.wait(tasks, num_returns=1) # doctest: +SKIP
+        >>> print(wait_step.run()) # doctest: +SKIP
         ([result_1], [<Workflow object>, <Workflow object>])
 
-        >>> tasks = [task.step() for _ in range(2)] + [forever.step()]
-        >>> wait_step = workflow.wait(tasks, num_returns=3, timeout=10)
-        >>> print(wait_step.run())
+        >>> tasks = [task.step() for _ in range(2)] + [forever.step()] # doctest: +SKIP
+        >>> wait_step = workflow.wait(tasks, num_returns=3, timeout=10) # doctest: +SKIP
+        >>> print(wait_step.run()) # doctest: +SKIP
         ([result_1, result_2], [<Workflow object>])
 
     If timeout is set, the function returns either when the requested number of
@@ -546,9 +561,7 @@ def wait(
 
     for w in workflows:
         if not isinstance(w, Workflow):
-            raise TypeError(
-                "The input of workflow.wait should be a list " "of workflows."
-            )
+            raise TypeError("The input of workflow.wait should be a list of workflows.")
     wait_inputs = serialization_context.make_workflow_inputs(workflows)
     step_options = WorkflowStepRuntimeOptions.make(
         step_type=StepType.WAIT,
@@ -572,6 +585,78 @@ def wait(
     return Workflow(workflow_data)
 
 
+@PublicAPI(stability="beta")
+def create(dag_node: "DAGNode", *args, **kwargs) -> Workflow:
+    """Converts a DAG into a workflow.
+
+    Args:
+        dag_node: The DAG to be converted.
+        args: Positional arguments of the DAG input node.
+        kwargs: Keyword arguments of the DAG input node.
+    """
+    from ray.workflow.dag_to_workflow import transform_ray_dag_to_workflow
+
+    if not isinstance(dag_node, DAGNode):
+        raise TypeError("Input should be a DAG.")
+    input_context = DAGInputData(*args, **kwargs)
+    return transform_ray_dag_to_workflow(dag_node, input_context)
+
+
+@PublicAPI(stability="beta")
+def continuation(dag_node: "DAGNode") -> Union[Workflow, ray.ObjectRef]:
+    """Converts a DAG into a continuation.
+
+    The result depends on the context. If it is inside a workflow, it
+    returns a workflow; otherwise it executes and get the result of
+    the DAG.
+
+    Args:
+        dag_node: The DAG to be converted.
+    """
+    from ray.workflow.workflow_context import in_workflow_execution
+
+    if not isinstance(dag_node, DAGNode):
+        raise TypeError("Input should be a DAG.")
+
+    if in_workflow_execution():
+        return create(dag_node)
+    return ray.get(dag_node.execute())
+
+
+@PublicAPI(stability="beta")
+def options(
+    **workflow_options: Dict[str, Any]
+) -> Callable[[RemoteFunction], RemoteFunction]:
+    # TODO(suquark): More rigid arguments check like @ray.remote arguments. This is
+    # fairly complex, but we should enable it later.
+    valid_options = {
+        "name",
+        "metadata",
+        "catch_exceptions",
+        "max_retries",
+        "allow_inplace",
+        "checkpoint",
+    }
+    invalid_keywords = set(workflow_options.keys()) - valid_options
+    if invalid_keywords:
+        raise ValueError(
+            f"Invalid option keywords {invalid_keywords} for workflow steps. "
+            f"Valid ones are {valid_options}."
+        )
+
+    def _apply_workflow_options(f: RemoteFunction):
+        if not isinstance(f, RemoteFunction):
+            raise ValueError("Only apply 'workflow.options' to Ray remote functions.")
+        from ray.workflow.common import WORKFLOW_OPTIONS
+
+        if "_metadata" not in f._default_options:
+            f._default_options["_metadata"] = {}
+        f._default_options["_metadata"][WORKFLOW_OPTIONS] = workflow_options
+        return f
+
+    return _apply_workflow_options
+
+
 __all__ = (
     "step",
     "virtual_actor",
@@ -582,4 +667,5 @@ __all__ = (
     "get_status",
     "get_metadata",
     "cancel",
+    "options",
 )

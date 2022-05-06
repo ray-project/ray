@@ -83,11 +83,18 @@ bool Counter::CheckRestartInActorCreationTask() { return is_restared; }
 
 bool Counter::CheckRestartInActorTask() { return ray::WasCurrentActorRestarted(); }
 
-RAY_REMOTE(RAY_FUNC(Counter::FactoryCreate), Counter::FactoryCreateException,
+RAY_REMOTE(RAY_FUNC(Counter::FactoryCreate),
+           Counter::FactoryCreateException,
            RAY_FUNC(Counter::FactoryCreate, int),
-           RAY_FUNC(Counter::FactoryCreate, int, int), &Counter::Plus1, &Counter::Add,
-           &Counter::Exit, &Counter::GetPid, &Counter::ExceptionFunc,
-           &Counter::CheckRestartInActorCreationTask, &Counter::CheckRestartInActorTask,
-           &Counter::GetVal, &Counter::GetIntVal);
+           RAY_FUNC(Counter::FactoryCreate, int, int),
+           &Counter::Plus1,
+           &Counter::Add,
+           &Counter::Exit,
+           &Counter::GetPid,
+           &Counter::ExceptionFunc,
+           &Counter::CheckRestartInActorCreationTask,
+           &Counter::CheckRestartInActorTask,
+           &Counter::GetVal,
+           &Counter::GetIntVal);
 
 RAY_REMOTE(ActorConcurrentCall::FactoryCreate, &ActorConcurrentCall::CountDown);

@@ -21,10 +21,15 @@ class StoreToReplayBuffer:
     The batch that was stored is returned.
 
     Examples:
-        >>> actors = [ReplayActor.remote() for _ in range(4)]
-        >>> rollouts = ParallelRollouts(...)
-        >>> store_op = rollouts.for_each(StoreToReplayActors(actors=actors))
-        >>> next(store_op)
+        >>> from ray.rllib.execution.buffers import multi_agent_replay_buffer
+        >>> from ray.rllib.execution.replay_ops import StoreToReplayBuffer
+        >>> from ray.rllib.execution import ParallelRollouts
+        >>> actors = [ # doctest: +SKIP
+        ...     multi_agent_replay_buffer.ReplayActor.remote() for _ in range(4)]
+        >>> rollouts = ParallelRollouts(...) # doctest: +SKIP
+        >>> store_op = rollouts.for_each( # doctest: +SKIP
+        ...     StoreToReplayBuffer(actors=actors))
+        >>> next(store_op) # doctest: +SKIP
         SampleBatch(...)
     """
 
@@ -42,7 +47,7 @@ class StoreToReplayBuffer:
         """
         if local_buffer is not None and actors is not None:
             raise ValueError(
-                "Either `local_buffer` or `replay_actors` must be given, " "not both!"
+                "Either `local_buffer` or `replay_actors` must be given, not both!"
             )
 
         if local_buffer is not None:
@@ -81,9 +86,11 @@ def Replay(
             per actor.
 
     Examples:
-        >>> actors = [ReplayActor.remote() for _ in range(4)]
-        >>> replay_op = Replay(actors=actors)
-        >>> next(replay_op)
+        >>> from ray.rllib.execution.buffers import multi_agent_replay_buffer
+        >>> actors = [ # doctest: +SKIP
+        ...     multi_agent_replay_buffer.ReplayActor.remote() for _ in range(4)]
+        >>> replay_op = Replay(actors=actors) # doctest: +SKIP
+        >>> next(replay_op) # doctest: +SKIP
         SampleBatch(...)
     """
 
@@ -131,8 +138,6 @@ class SimpleReplayBuffer:
         self.replay_batches = []
         self.replay_index = 0
 
-        self.last_added_batches = []
-
     def add_batch(self, sample_batch: SampleBatchType) -> None:
         warn_replay_capacity(item=sample_batch, num_items=self.num_slots)
         if self.num_slots > 0:
@@ -142,8 +147,6 @@ class SimpleReplayBuffer:
                 self.replay_batches[self.replay_index] = sample_batch
                 self.replay_index += 1
                 self.replay_index %= self.num_slots
-
-            self.last_added_batches.append(sample_batch)
 
     def replay(self) -> SampleBatchType:
         return random.choice(self.replay_batches)
@@ -172,13 +175,16 @@ class MixInReplay:
 
         Examples:
             # replay proportion 2:1
-            >>> replay_op = MixInReplay(rollouts, 100, replay_proportion=2)
-            >>> print(next(replay_op))
+            >>> from ray.rllib.execution.replay_ops import MixInReplay
+            >>> rollouts = ... # doctest: +SKIP
+            >>> replay_op = MixInReplay( # doctest: +SKIP
+            ...     rollouts, 100, replay_proportion=2)
+            >>> print(next(replay_op)) # doctest: +SKIP
             [SampleBatch(<input>), SampleBatch(<replay>), SampleBatch(<rep.>)]
-
             # replay proportion 0:1, replay disabled
-            >>> replay_op = MixInReplay(rollouts, 100, replay_proportion=0)
-            >>> print(next(replay_op))
+            >>> replay_op = MixInReplay( # doctest: +SKIP
+            ...     rollouts, 100, replay_proportion=0)
+            >>> print(next(replay_op)) # doctest: +SKIP
             [SampleBatch(<input>)]
         """
         if replay_proportion > 0 and num_slots == 0:

@@ -2,8 +2,8 @@
 
 .. _deployment-guide:
 
-Ray Deployment Guide
-====================
+Cluster Deployment Guide
+========================
 
 This page provides an overview of how to deploy a multi-node Ray cluster, including how to:
 

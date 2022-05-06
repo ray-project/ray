@@ -8,7 +8,7 @@ import time
 
 
 # This tests the methods are executed in the correct eventloop.
-def test_basic():
+def test_basic(ray_start_regular_shared):
     @ray.remote(concurrency_groups={"io": 2, "compute": 4})
     class AsyncActor:
         def __init__(self):
@@ -78,7 +78,7 @@ def test_basic():
 
 # The case tests that the asyncio count down works well in one concurrency
 # group.
-def test_async_methods_in_concurrency_group():
+def test_async_methods_in_concurrency_group(ray_start_regular_shared):
     @ray.remote(concurrency_groups={"async": 3})
     class AsyncBatcher:
         def __init__(self):
@@ -115,7 +115,7 @@ def test_async_methods_in_concurrency_group():
 # This case tests that if blocking task in default group blocks
 # tasks in other groups.
 # See https://github.com/ray-project/ray/issues/20475
-def test_default_concurrency_group_does_not_block_others():
+def test_default_concurrency_group_does_not_block_others(ray_start_regular_shared):
     @ray.remote(concurrency_groups={"my_group": 1})
     class AsyncActor:
         def __init__(self):

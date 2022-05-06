@@ -55,7 +55,7 @@ class TestSchedules(unittest.TestCase):
         ts = [0, 5, 10, 100, 90, 2, 1, 99, 23, 1000]
         expected = [0.5 + (2.0 - 0.5) * (1.0 - min(t, 100) / 100) ** 2 for t in ts]
         config = dict(
-            type="ray.rllib.utils.schedules.polynomial_schedule." "PolynomialSchedule",
+            type="ray.rllib.utils.schedules.polynomial_schedule.PolynomialSchedule",
             schedule_timesteps=100,
             initial_p=2.0,
             final_p=0.5,

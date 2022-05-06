@@ -7,7 +7,8 @@ debian_packages:
 python:
   # These dependencies should be handled by requirements_rllib.txt and
   # requirements_ml_docker.txt
-  pip_packages: []
+  pip_packages:
+      - gym==0.21.0
   conda_packages: []
 
 post_build_cmds:

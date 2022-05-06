@@ -1,6 +1,7 @@
 package io.ray.api.options;
 
 import io.ray.api.placementgroup.PlacementGroup;
+import io.ray.api.runtimeenv.RuntimeEnv;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -11,18 +12,21 @@ public class CallOptions extends BaseTaskOptions {
   public final PlacementGroup group;
   public final int bundleIndex;
   public final String concurrencyGroupName;
+  private final String serializedRuntimeEnvInfo;
 
   private CallOptions(
       String name,
       Map<String, Double> resources,
       PlacementGroup group,
       int bundleIndex,
-      String concurrencyGroupName) {
+      String concurrencyGroupName,
+      RuntimeEnv runtimeEnv) {
     super(resources);
     this.name = name;
     this.group = group;
     this.bundleIndex = bundleIndex;
     this.concurrencyGroupName = concurrencyGroupName;
+    this.serializedRuntimeEnvInfo = runtimeEnv == null ? "" : runtimeEnv.toJsonBytes();
   }
 
   /** This inner class for building CallOptions. */
@@ -33,6 +37,7 @@ public class CallOptions extends BaseTaskOptions {
     private PlacementGroup group;
     private int bundleIndex;
     private String concurrencyGroupName = "";
+    private RuntimeEnv runtimeEnv = null;
 
     /**
      * Set a name for this task.
@@ -88,8 +93,13 @@ public class CallOptions extends BaseTaskOptions {
       return this;
     }
 
+    public Builder setRuntimeEnv(RuntimeEnv runtimeEnv) {
+      this.runtimeEnv = runtimeEnv;
+      return this;
+    }
+
     public CallOptions build() {
-      return new CallOptions(name, resources, group, bundleIndex, concurrencyGroupName);
+      return new CallOptions(name, resources, group, bundleIndex, concurrencyGroupName, runtimeEnv);
     }
   }
 }

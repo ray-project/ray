@@ -3,10 +3,9 @@ import logging
 
 import ray
 from ray.tune.trainable import Trainable
-from ray.tune.logger import Logger, LoggerCallback
+from ray.tune.logger import LoggerCallback
 from ray.tune.result import TRAINING_ITERATION, TIMESTEPS_TOTAL
 from ray.tune.trial import Trial
-from ray.util.annotations import Deprecated
 from ray.util.ml_utils.mlflow import MLflowLoggerUtil
 
 logger = logging.getLogger(__name__)
@@ -21,20 +20,20 @@ class MLflowLoggerCallback(LoggerCallback):
     and artifacts) to MLflow for automatic experiment tracking.
 
     Args:
-        tracking_uri (str): The tracking URI for where to manage experiments
+        tracking_uri: The tracking URI for where to manage experiments
             and runs. This can either be a local file path or a remote server.
             This arg gets passed directly to mlflow
             initialization. When using Tune in a multi-node setting, make sure
             to set this to a remote server and not a local file path.
-        registry_uri (str): The registry URI that gets passed directly to
+        registry_uri: The registry URI that gets passed directly to
             mlflow initialization.
-        experiment_name (str): The experiment name to use for this Tune run.
+        experiment_name: The experiment name to use for this Tune run.
             If the experiment with the name already exists with MLflow,
             it will be reused. If not, a new experiment will be created with
             that name.
-        tags (Dict):  An optional dictionary of string keys and values to set
+        tags: An optional dictionary of string keys and values to set
             as tags on the run
-        save_artifact (bool): If set to True, automatically save the entire
+        save_artifact: If set to True, automatically save the entire
             contents of the Tune local_dir as an artifact to the
             corresponding run in MlFlow.
 
@@ -134,22 +133,6 @@ class MLflowLoggerCallback(LoggerCallback):
         # Stop the run once trial finishes.
         status = "FINISHED" if not failed else "FAILED"
         self.mlflow_util.end_run(run_id=run_id, status=status)
-
-
-@Deprecated
-class MLflowLogger(Logger):
-    """MLflow logger using the deprecated Logger API.
-
-    Requires the experiment configuration to have a MLflow Experiment ID
-    or manually set the proper environment variables.
-    """
-
-    def _init(self):
-        raise DeprecationWarning(
-            "The legacy MLflowLogger has been "
-            "deprecated. Use the MLflowLoggerCallback "
-            "instead."
-        )
 
 
 def mlflow_mixin(func: Callable):

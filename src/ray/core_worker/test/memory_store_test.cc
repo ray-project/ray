@@ -185,12 +185,14 @@ TEST(TestMemoryStore, TestObjectAllocator) {
       return std::make_shared<TestBuffer>(mock_buffer_manager, data);
     };
 
-    return std::make_shared<ray::RayObject>(object.GetMetadata(), object.GetNestedRefs(),
-                                            std::move(data_factory), /*copy_data=*/true);
+    return std::make_shared<ray::RayObject>(object.GetMetadata(),
+                                            object.GetNestedRefs(),
+                                            std::move(data_factory),
+                                            /*copy_data=*/true);
   };
   std::shared_ptr<CoreWorkerMemoryStore> memory_store =
-      std::make_shared<CoreWorkerMemoryStore>(nullptr, nullptr, nullptr, nullptr,
-                                              std::move(my_object_allocator));
+      std::make_shared<CoreWorkerMemoryStore>(
+          nullptr, nullptr, nullptr, nullptr, std::move(my_object_allocator));
   const int32_t max_rounds = 1000;
   const std::string hello = "hello";
   for (auto i = 0; i < max_rounds; ++i) {

@@ -167,7 +167,8 @@ class ClientCallTag {
 /// \tparam Reply Type of the reply message.
 template <class GrpcService, class Request, class Reply>
 using PrepareAsyncFunction = std::unique_ptr<grpc::ClientAsyncResponseReader<Reply>> (
-    GrpcService::Stub::*)(grpc::ClientContext *context, const Request &request,
+    GrpcService::Stub::*)(grpc::ClientContext *context,
+                          const Request &request,
                           grpc::CompletionQueue *cq);
 
 /// `ClientCallManager` is used to manage outgoing gRPC requests and the lifecycles of
@@ -183,7 +184,8 @@ class ClientCallManager {
   ///
   /// \param[in] main_service The main event loop, to which the callback functions will be
   /// posted.
-  explicit ClientCallManager(instrumented_io_context &main_service, int num_threads = 1,
+  explicit ClientCallManager(instrumented_io_context &main_service,
+                             int num_threads = 1,
                              int64_t call_timeout_ms = -1)
       : main_service_(main_service),
         num_threads_(num_threads),
@@ -194,8 +196,8 @@ class ClientCallManager {
     cqs_.reserve(num_threads_);
     for (int i = 0; i < num_threads_; i++) {
       cqs_.push_back(std::make_unique<grpc::CompletionQueue>());
-      polling_threads_.emplace_back(&ClientCallManager::PollEventsFromCompletionQueue,
-                                    this, i);
+      polling_threads_.emplace_back(
+          &ClientCallManager::PollEventsFromCompletionQueue, this, i);
     }
   }
 
@@ -229,14 +231,16 @@ class ClientCallManager {
   std::shared_ptr<ClientCall> CreateCall(
       typename GrpcService::Stub &stub,
       const PrepareAsyncFunction<GrpcService, Request, Reply> prepare_async_function,
-      const Request &request, const ClientCallback<Reply> &callback,
-      std::string call_name, int64_t method_timeout_ms = -1) {
+      const Request &request,
+      const ClientCallback<Reply> &callback,
+      std::string call_name,
+      int64_t method_timeout_ms = -1) {
     auto stats_handle = main_service_.stats().RecordStart(call_name);
     if (method_timeout_ms == -1) {
       method_timeout_ms = call_timeout_ms_;
     }
-    auto call = std::make_shared<ClientCallImpl<Reply>>(callback, std::move(stats_handle),
-                                                        method_timeout_ms);
+    auto call = std::make_shared<ClientCallImpl<Reply>>(
+        callback, std::move(stats_handle), method_timeout_ms);
     // Send request.
     // Find the next completion queue to wait for response.
     call->response_reader_ = (stub.*prepare_async_function)(

@@ -196,7 +196,7 @@ class CoreWorkerProcessImpl {
   const WorkerID global_worker_id_;
 
   /// Map from worker ID to worker.
-  std::unordered_map<WorkerID, std::shared_ptr<CoreWorker>> workers_ GUARDED_BY(mutex_);
+  absl::flat_hash_map<WorkerID, std::shared_ptr<CoreWorker>> workers_ GUARDED_BY(mutex_);
 
   /// To protect access to workers_ and global_worker_
   mutable absl::Mutex mutex_;

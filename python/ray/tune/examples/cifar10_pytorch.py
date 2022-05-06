@@ -160,7 +160,6 @@ def train_cifar(config, checkpoint_dir=None):
 
 
 # __test_acc_begin__
-
 def test_best_model(best_trial):
     best_trained_model = Net(best_trial.config["l1"], best_trial.config["l2"])
     device = "cuda:0" if torch.cuda.is_available() else "cpu"

@@ -2,7 +2,17 @@ import ray
 
 import uuid
 import io
-import pickle
+import sys
+
+# For python < 3.8 we need to explicitly use pickle5 to support protocol 5
+if sys.version_info < (3, 8):
+    try:
+        import pickle5 as pickle  # noqa: F401
+    except ImportError:
+        import pickle  # noqa: F401
+else:
+    import pickle  # noqa: F401
+
 from typing import List, Dict, Any, TypeVar, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -35,23 +45,26 @@ class _PyObjScanner(ray.cloudpickle.CloudPickler):
         # Register pickler override for DAGNode types.
         from ray.experimental.dag.function_node import FunctionNode
         from ray.experimental.dag.class_node import ClassNode, ClassMethodNode
-        from ray.experimental.dag.input_node import InputNode
+        from ray.experimental.dag.input_node import InputNode, InputAttributeNode
         from ray.serve.pipeline.deployment_node import DeploymentNode
         from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
+        from ray.serve.pipeline.deployment_function_node import DeploymentFunctionNode
 
         self.dispatch_table[FunctionNode] = self._reduce_dag_node
         self.dispatch_table[ClassNode] = self._reduce_dag_node
         self.dispatch_table[ClassMethodNode] = self._reduce_dag_node
         self.dispatch_table[InputNode] = self._reduce_dag_node
+        self.dispatch_table[InputAttributeNode] = self._reduce_dag_node
         self.dispatch_table[DeploymentNode] = self._reduce_dag_node
         self.dispatch_table[DeploymentMethodNode] = self._reduce_dag_node
+        self.dispatch_table[DeploymentFunctionNode] = self._reduce_dag_node
         super().__init__(self._buf)
 
     def find_nodes(self, obj: Any) -> List["DAGNode"]:
         """Find top-level DAGNodes."""
-        assert self._found is None, (
-            "find_nodes cannot be called twice on the same " "PyObjScanner instance."
-        )
+        assert (
+            self._found is None
+        ), "find_nodes cannot be called twice on the same PyObjScanner instance."
         self._found = []
         self.dump(obj)
         return self._found

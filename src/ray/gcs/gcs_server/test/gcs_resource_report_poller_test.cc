@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/gcs/gcs_server/gcs_resource_report_poller.h"
+
 #include <memory>
 
 #include "gtest/gtest.h"
-#include "ray/gcs/gcs_server/gcs_resource_report_poller.h"
 #include "ray/gcs/test/gcs_test_util.h"
 
 namespace ray {
@@ -28,13 +29,14 @@ class GcsResourceReportPollerTest : public ::testing::Test {
   GcsResourceReportPollerTest()
       : current_time_(0),
         gcs_resource_report_poller_(
-            nullptr, [](const rpc::ResourcesData &) {},
+            nullptr,
+            [](const rpc::ResourcesData &) {},
             [this]() { return current_time_; },
-            [this](const rpc::Address &address,
-                   std::shared_ptr<rpc::NodeManagerClientPool> &client_pool,
-                   std::function<void(const Status &,
-                                      const rpc::RequestResourceReportReply &)>
-                       callback) {
+            [this](
+                const rpc::Address &address,
+                std::shared_ptr<rpc::NodeManagerClientPool> &client_pool,
+                std::function<void(const Status &,
+                                   const rpc::RequestResourceReportReply &)> callback) {
               if (request_report_) {
                 request_report_(address, client_pool, callback);
               }
@@ -56,7 +58,8 @@ class GcsResourceReportPollerTest : public ::testing::Test {
 
   int64_t current_time_;
   std::function<void(
-      const rpc::Address &, std::shared_ptr<rpc::NodeManagerClientPool> &,
+      const rpc::Address &,
+      std::shared_ptr<rpc::NodeManagerClientPool> &,
       std::function<void(const Status &, const rpc::RequestResourceReportReply &)>)>
       request_report_;
 
@@ -68,7 +71,8 @@ TEST_F(GcsResourceReportPollerTest, TestBasic) {
   bool rpc_sent = false;
   request_report_ =
       [&rpc_sent](
-          const rpc::Address &, std::shared_ptr<rpc::NodeManagerClientPool> &,
+          const rpc::Address &,
+          std::shared_ptr<rpc::NodeManagerClientPool> &,
           std::function<void(const Status &, const rpc::RequestResourceReportReply &)>
               callback) {
         rpc_sent = true;
@@ -99,7 +103,8 @@ TEST_F(GcsResourceReportPollerTest, TestFailedRpc) {
   bool rpc_sent = false;
   request_report_ =
       [&rpc_sent](
-          const rpc::Address &, std::shared_ptr<rpc::NodeManagerClientPool> &,
+          const rpc::Address &,
+          std::shared_ptr<rpc::NodeManagerClientPool> &,
           std::function<void(const Status &, const rpc::RequestResourceReportReply &)>
               callback) {
         RAY_LOG(ERROR) << "Requesting";
@@ -139,7 +144,8 @@ TEST_F(GcsResourceReportPollerTest, TestMaxInFlight) {
 
   int num_rpcs_sent = 0;
   request_report_ =
-      [&](const rpc::Address &, std::shared_ptr<rpc::NodeManagerClientPool> &,
+      [&](const rpc::Address &,
+          std::shared_ptr<rpc::NodeManagerClientPool> &,
           std::function<void(const Status &, const rpc::RequestResourceReportReply &)>
               callback) {
         num_rpcs_sent++;
@@ -174,7 +180,8 @@ TEST_F(GcsResourceReportPollerTest, TestNodeRemoval) {
 
   int num_rpcs_sent = 0;
   request_report_ =
-      [&](const rpc::Address &, std::shared_ptr<rpc::NodeManagerClientPool> &,
+      [&](const rpc::Address &,
+          std::shared_ptr<rpc::NodeManagerClientPool> &,
           std::function<void(const Status &, const rpc::RequestResourceReportReply &)>
               callback) {
         num_rpcs_sent++;
@@ -220,7 +227,8 @@ TEST_F(GcsResourceReportPollerTest, TestPrioritizeNewNodes) {
 
   int num_rpcs_sent = 0;
   request_report_ =
-      [&](const rpc::Address &address, std::shared_ptr<rpc::NodeManagerClientPool> &,
+      [&](const rpc::Address &address,
+          std::shared_ptr<rpc::NodeManagerClientPool> &,
           std::function<void(const Status &, const rpc::RequestResourceReportReply &)>
               callback) {
         num_rpcs_sent++;

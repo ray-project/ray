@@ -16,7 +16,7 @@ from ray.tune.utils.util import SafeFallbackEncoder
 from ray.tune.sample import Domain, Function
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest.variant_generator import format_vars
-from ray.tune.trial import Trial, Checkpoint
+from ray.tune.trial import Trial, _TuneCheckpoint
 from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
@@ -53,12 +53,12 @@ def explore(
     """Return a config perturbed as specified.
 
     Args:
-        config (dict): Original hyperparameter configuration.
-        mutations (dict): Specification of mutations to perform as documented
+        config: Original hyperparameter configuration.
+        mutations: Specification of mutations to perform as documented
             in the PopulationBasedTraining scheduler.
-        resample_probability (float): Probability of allowing resampling of a
+        resample_probability: Probability of allowing resampling of a
             particular variable.
-        custom_explore_fn (func): Custom explore fn applied after built-in
+        custom_explore_fn: Custom explore fn applied after built-in
             config perturbations are.
     """
     new_config = copy.deepcopy(config)
@@ -128,7 +128,7 @@ def fill_config(
 class PopulationBasedTraining(FIFOScheduler):
     """Implements the Population Based Training (PBT) algorithm.
 
-    https://deepmind.com/blog/population-based-training-neural-networks
+    https://www.deepmind.com/blog/population-based-training-of-neural-networks
 
     PBT trains a group of models (or agents) in parallel. Periodically, poorly
     performing models clone the state of the top performers, and a random
@@ -151,24 +151,24 @@ class PopulationBasedTraining(FIFOScheduler):
     on each perturbation step.
 
     Args:
-        time_attr (str): The training result attr to use for comparing time.
+        time_attr: The training result attr to use for comparing time.
             Note that you can pass in something non-temporal such as
             `training_iteration` as a measure of progress, the only requirement
             is that the attribute should increase monotonically.
-        metric (str): The training result objective value attribute. Stopping
+        metric: The training result objective value attribute. Stopping
             procedures will use this attribute. If None but a mode was passed,
             the `ray.tune.result.DEFAULT_METRIC` will be used per default.
-        mode (str): One of {min, max}. Determines whether objective is
+        mode: One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
-        perturbation_interval (float): Models will be considered for
+        perturbation_interval: Models will be considered for
             perturbation at this interval of `time_attr`. Note that
             perturbation incurs checkpoint overhead, so you shouldn't set this
             to be too frequent.
-        burn_in_period (float): Models will not be considered for
+        burn_in_period: Models will not be considered for
             perturbation before this interval of `time_attr` has passed. This
             guarantees that models are trained for at least a certain amount
             of time or timesteps before being perturbed.
-        hyperparam_mutations (dict): Hyperparams to mutate. The format is
+        hyperparam_mutations: Hyperparams to mutate. The format is
             as follows: for each key, either a list, function,
             or a tune search space object (tune.loguniform, tune.uniform,
             etc.) can be provided. A list specifies an allowed set of
@@ -181,26 +181,26 @@ class PopulationBasedTraining(FIFOScheduler):
             Tune will use the search space provided by
             `hyperparam_mutations` for the initial samples if the
             corresponding attributes are not present in `config`.
-        quantile_fraction (float): Parameters are transferred from the top
+        quantile_fraction: Parameters are transferred from the top
             `quantile_fraction` fraction of trials to the bottom
             `quantile_fraction` fraction. Needs to be between 0 and 0.5.
             Setting it to 0 essentially implies doing no exploitation at all.
-        resample_probability (float): The probability of resampling from the
+        resample_probability: The probability of resampling from the
             original distribution when applying `hyperparam_mutations`. If not
             resampled, the value will be perturbed by a factor of 1.2 or 0.8
             if continuous, or changed to an adjacent value if discrete.
-        custom_explore_fn (func): You can also specify a custom exploration
+        custom_explore_fn: You can also specify a custom exploration
             function. This function is invoked as `f(config)` after built-in
             perturbations from `hyperparam_mutations` are applied, and should
             return `config` updated as needed. You must specify at least one of
             `hyperparam_mutations` or `custom_explore_fn`.
-        log_config (bool): Whether to log the ray config of each model to
+        log_config: Whether to log the ray config of each model to
             local_dir at each exploit. Allows config schedule to be
             reconstructed.
-        require_attrs (bool): Whether to require time_attr and metric to appear
+        require_attrs: Whether to require time_attr and metric to appear
             in result for every iteration. If True, error will be raised
             if these values are not present in trial result.
-        synch (bool): If False, will use asynchronous implementation of
+        synch: If False, will use asynchronous implementation of
             PBT. Trial perturbations occur every perturbation_interval for each
             trial independently. If True, will use synchronous implementation
             of PBT. Perturbations will occur only after all trials are
@@ -308,7 +308,10 @@ class PopulationBasedTraining(FIFOScheduler):
         self._log_config = log_config
         self._require_attrs = require_attrs
         self._synch = synch
-        self._next_perturbation_sync = self._perturbation_interval
+        self._next_perturbation_sync = max(
+            self._perturbation_interval,
+            self._burn_in_period,
+        )
 
         # Metrics
         self._num_checkpoints = 0
@@ -444,7 +447,7 @@ class PopulationBasedTraining(FIFOScheduler):
             if any(
                 self._trial_state[t].last_train_time < self._next_perturbation_sync
                 and t != trial
-                for t in trial_runner.get_trials()
+                for t in trial_runner.get_live_trials()
             ):
                 logger.debug("Pausing trial {}".format(trial))
             else:
@@ -491,10 +494,10 @@ class PopulationBasedTraining(FIFOScheduler):
     ):
         """Saves necessary trial information when result is received.
         Args:
-            state (PBTTrialState): The state object for the trial.
-            time (int): The current timestep of the trial.
-            result (dict): The trial's result dictionary.
-            trial (dict): The trial object.
+            state: The state object for the trial.
+            time: The current timestep of the trial.
+            result: The trial's result dictionary.
+            trial: The trial object.
         """
 
         # This trial has reached its perturbation interval.
@@ -525,7 +528,7 @@ class PopulationBasedTraining(FIFOScheduler):
                 state.last_checkpoint = trial.checkpoint
             else:
                 state.last_checkpoint = trial_executor.save(
-                    trial, Checkpoint.MEMORY, result=state.last_result
+                    trial, _TuneCheckpoint.MEMORY, result=state.last_result
                 )
             self._num_checkpoints += 1
         else:
@@ -743,7 +746,7 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
     config according to the schedule.
 
     Args:
-        policy_file (str): The PBT policy file. Usually this is
+        policy_file: The PBT policy file. Usually this is
             stored in ``~/ray_results/experiment_name/pbt_policy_xxx.txt``
             where ``xxx`` is the trial ID.
 
@@ -869,7 +872,7 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
         )
 
         checkpoint = trial_runner.trial_executor.save(
-            trial, Checkpoint.MEMORY, result=result
+            trial, _TuneCheckpoint.MEMORY, result=result
         )
 
         new_tag = make_experiment_tag(self.experiment_tag, new_config, new_config)

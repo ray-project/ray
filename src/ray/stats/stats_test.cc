@@ -24,13 +24,20 @@
 #include "gtest/gtest.h"
 #include "ray/stats/metric_defs.h"
 
-DEFINE_stats(test_hist, "TestStats", ("method", "method2"), (1.0, 2.0, 3.0, 4.0),
+DEFINE_stats(test_hist,
+             "TestStats",
+             ("method", "method2"),
+             (1.0, 2.0, 3.0, 4.0),
              ray::stats::HISTOGRAM);
-DEFINE_stats(test_2, "TestStats", ("method", "method2"), (1.0), ray::stats::COUNT,
+DEFINE_stats(test_2,
+             "TestStats",
+             ("method", "method2"),
+             (1.0),
+             ray::stats::COUNT,
              ray::stats::SUM);
 DEFINE_stats(test, "TestStats", ("method"), (1.0), ray::stats::COUNT, ray::stats::SUM);
-DEFINE_stats(test_declare, "TestStats2", ("tag1"), (1.0), ray::stats::COUNT,
-             ray::stats::SUM);
+DEFINE_stats(
+    test_declare, "TestStats2", ("tag1"), (1.0), ray::stats::COUNT, ray::stats::SUM);
 DECLARE_stats(test_declare);
 
 namespace ray {
@@ -105,7 +112,8 @@ TEST_F(StatsTest, InitializationTest) {
     std::shared_ptr<stats::MetricExporterClient> exporter(
         new stats::StdoutExporterClient());
     ray::stats::Init({{stats::LanguageKey, test_tag_value_that_shouldnt_be_applied}},
-                     MetricsAgentPort, exporter);
+                     MetricsAgentPort,
+                     exporter);
   }
 
   auto &first_tag = ray::stats::StatsConfig::instance().GetGlobalTags()[0];
@@ -138,15 +146,21 @@ TEST(Metric, MultiThreadMetricRegisterViewTest) {
     threads.emplace_back([tag1, tag2, index]() {
       for (int i = 0; i < 100; i++) {
         stats::Count random_counter(
-            "ray.random.counter" + std::to_string(index) + std::to_string(i), "", "",
+            "ray.random.counter" + std::to_string(index) + std::to_string(i),
+            "",
+            "",
             {tag1, tag2});
         random_counter.Record(i);
         stats::Gauge random_gauge(
-            "ray.random.gauge" + std::to_string(index) + std::to_string(i), "", "",
+            "ray.random.gauge" + std::to_string(index) + std::to_string(i),
+            "",
+            "",
             {tag1, tag2});
         random_gauge.Record(i);
         stats::Sum random_sum(
-            "ray.random.sum" + std::to_string(index) + std::to_string(i), "", "",
+            "ray.random.sum" + std::to_string(index) + std::to_string(i),
+            "",
+            "",
             {tag1, tag2});
         random_sum.Record(i);
       }

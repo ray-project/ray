@@ -14,6 +14,7 @@ from ray.train.backend import (
     TrainingWorkerError,
 )
 from ray.train.backend import BackendConfig, BackendExecutor
+from ray.train.impl.dataset_spec import _RayDatasetSpec
 from ray.train.tensorflow import TensorflowConfig
 from ray.train.torch import TorchConfig
 from ray.train.constants import (
@@ -22,6 +23,9 @@ from ray.train.constants import (
 )
 from ray.train.worker_group import WorkerGroup
 from ray.util.placement_group import get_current_placement_group
+
+# Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
+from ray.tests.conftest import pytest_runtest_makereport  # noqa
 
 
 @pytest.fixture
@@ -99,11 +103,14 @@ class TestBackend(Backend):
         pass
 
 
+EMPTY_RAY_DATASET_SPEC = _RayDatasetSpec(dataset_or_dict=None)
+
+
 def test_start(ray_start_2_cpus):
     config = TestConfig()
     e = BackendExecutor(config, num_workers=2)
     with pytest.raises(InactiveWorkerGroupError):
-        e.start_training(lambda: 1)
+        e.start_training(lambda: 1, dataset_spec=EMPTY_RAY_DATASET_SPEC)
     e.start()
     assert len(e.worker_group) == 2
 
@@ -124,7 +131,7 @@ def test_initialization_hook(ray_start_2_cpus):
 
         return os.getenv("TEST", "0")
 
-    e.start_training(check)
+    e.start_training(check, dataset_spec=EMPTY_RAY_DATASET_SPEC)
     assert e.finish_training() == ["1", "1"]
 
 
@@ -135,7 +142,7 @@ def test_shutdown(ray_start_2_cpus):
     assert len(e.worker_group) == 2
     e.shutdown()
     with pytest.raises(InactiveWorkerGroupError):
-        e.start_training(lambda: 1)
+        e.start_training(lambda: 1, dataset_spec=EMPTY_RAY_DATASET_SPEC)
 
 
 def test_train(ray_start_2_cpus):
@@ -143,7 +150,7 @@ def test_train(ray_start_2_cpus):
     e = BackendExecutor(config, num_workers=2)
     e.start()
 
-    e.start_training(lambda: 1)
+    e.start_training(lambda: 1, dataset_spec=EMPTY_RAY_DATASET_SPEC)
     assert e.finish_training() == [1, 1]
 
 
@@ -155,7 +162,7 @@ def test_local_ranks(ray_start_2_cpus):
     def train_func():
         return train.local_rank()
 
-    e.start_training(train_func)
+    e.start_training(train_func, dataset_spec=EMPTY_RAY_DATASET_SPEC)
     assert set(e.finish_training()) == {0, 1}
 
 
@@ -173,10 +180,10 @@ def test_train_failure(ray_start_2_cpus):
     with pytest.raises(TrainBackendError):
         e.finish_training()
 
-    e.start_training(lambda: 1)
+    e.start_training(lambda: 1, dataset_spec=EMPTY_RAY_DATASET_SPEC)
 
     with pytest.raises(TrainBackendError):
-        e.start_training(lambda: 2)
+        e.start_training(lambda: 2, dataset_spec=EMPTY_RAY_DATASET_SPEC)
 
     assert e.finish_training() == [1, 1]
 
@@ -192,7 +199,7 @@ def test_worker_failure(ray_start_2_cpus):
     new_execute_func = gen_execute_special(train_fail)
     with patch.object(WorkerGroup, "execute_async", new_execute_func):
         with pytest.raises(TrainingWorkerError):
-            e.start_training(lambda: 1)
+            e.start_training(lambda: 1, dataset_spec=EMPTY_RAY_DATASET_SPEC)
             e.finish_training()
 
 
@@ -206,7 +213,7 @@ def test_mismatch_checkpoint_report(ray_start_2_cpus):
     config = TestConfig()
     e = BackendExecutor(config, num_workers=2)
     e.start()
-    e.start_training(train_func)
+    e.start_training(train_func, dataset_spec=EMPTY_RAY_DATASET_SPEC)
     with pytest.raises(RuntimeError):
         e.get_next_results()
 
@@ -223,7 +230,7 @@ def test_tensorflow_start(ray_start_2_cpus):
 
         return json.loads(os.environ["TF_CONFIG"])
 
-    e.start_training(get_tf_config)
+    e.start_training(get_tf_config, dataset_spec=EMPTY_RAY_DATASET_SPEC)
     results = e.finish_training()
     assert len(results) == num_workers
 
@@ -248,12 +255,12 @@ def test_torch_start_shutdown(ray_start_2_cpus, init_method):
             and torch.distributed.get_world_size() == 2
         )
 
-    e.start_training(check_process_group)
+    e.start_training(check_process_group, dataset_spec=EMPTY_RAY_DATASET_SPEC)
     assert all(e.finish_training())
 
     e._backend.on_shutdown(e.worker_group, e._backend_config)
 
-    e.start_training(check_process_group)
+    e.start_training(check_process_group, dataset_spec=EMPTY_RAY_DATASET_SPEC)
     assert not any(e.finish_training())
 
 
@@ -279,7 +286,7 @@ def test_cuda_visible_devices(ray_2_node_2_gpu, worker_results):
         config, num_workers=num_workers, num_cpus_per_worker=0, num_gpus_per_worker=1
     )
     e.start()
-    e.start_training(get_resources)
+    e.start_training(get_resources, dataset_spec=EMPTY_RAY_DATASET_SPEC)
     results = e.finish_training()
     results.sort()
     assert results == expected_results
@@ -311,7 +318,7 @@ def test_cuda_visible_devices_fractional(ray_2_node_2_gpu, worker_results):
         config, num_workers=num_workers, num_cpus_per_worker=0, num_gpus_per_worker=0.5
     )
     e.start()
-    e.start_training(get_resources)
+    e.start_training(get_resources, dataset_spec=EMPTY_RAY_DATASET_SPEC)
     results = e.finish_training()
     results.sort()
     assert results == expected_results
@@ -339,7 +346,7 @@ def test_cuda_visible_devices_multiple(ray_2_node_4_gpu, worker_results):
         config, num_workers=num_workers, num_cpus_per_worker=0, num_gpus_per_worker=2
     )
     e.start()
-    e.start_training(get_resources)
+    e.start_training(get_resources, dataset_spec=EMPTY_RAY_DATASET_SPEC)
     results = e.finish_training()
     results.sort()
     assert results == expected_results
@@ -390,7 +397,7 @@ def test_placement_group_parent(ray_4_node_4_cpu, placement_group_capture_child_
         config = TestConfig()
         e = BackendExecutor(config, num_workers=2)
         e.start()
-        e.start_training(train_func)
+        e.start_training(train_func, dataset_spec=EMPTY_RAY_DATASET_SPEC)
         return e.finish_training()
 
     results_future = test.options(

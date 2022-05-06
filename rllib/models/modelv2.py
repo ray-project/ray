@@ -82,11 +82,15 @@ class ModelV2:
             of an RNN, if applicable.
 
         Examples:
-            >>> def get_initial_state(self):
-            >>>    return [
-            >>>        np.zeros(self.cell_size, np.float32),
-            >>>        np.zeros(self.cell_size, np.float32),
-            >>>    ]
+            >>> import numpy as np
+            >>> from ray.rllib.models.modelv2 import ModelV2
+            >>> class MyModel(ModelV2): # doctest: +SKIP
+            ...     # ...
+            ...     def get_initial_state(self):
+            ...         return [
+            ...             np.zeros(self.cell_size, np.float32),
+            ...             np.zeros(self.cell_size, np.float32),
+            ...         ]
         """
         return []
 
@@ -123,10 +127,14 @@ class ModelV2:
             [BATCH, num_outputs] and the list of new RNN state(s) if any.
 
         Examples:
-            >>> def forward(self, input_dict, state, seq_lens):
-            >>>     model_out, self._value_out = self.base_model(
-            ...         input_dict["obs"])
-            >>>     return model_out, state
+            >>> import numpy as np
+            >>> from ray.rllib.models.modelv2 import ModelV2
+            >>> class MyModel(ModelV2): # doctest: +SKIP
+            ...     # ...
+            >>>     def forward(self, input_dict, state, seq_lens):# doctest: +SKIP
+            >>>         model_out, self._value_out = self.base_model(# doctest: +SKIP
+            ...             input_dict["obs"])# doctest: +SKIP
+            >>>         return model_out, state# doctest: +SKIP
         """
         raise NotImplementedError
 
@@ -275,10 +283,11 @@ class ModelV2:
             h5_file: The h5 file name to import weights from.
 
         Example:
-            >>> trainer = MyTrainer()
-            >>> trainer.import_policy_model_from_h5("/tmp/weights.h5")
-            >>> for _ in range(10):
-            >>>     trainer.train()
+            >>> from ray.rllib.agents.ppo import PPOTrainer
+            >>> trainer = PPOTrainer(...)  # doctest: +SKIP
+            >>> trainer.import_policy_model_from_h5("/tmp/weights.h5") # doctest: +SKIP
+            >>> for _ in range(10): # doctest: +SKIP
+            >>>     trainer.train() # doctest: +SKIP
         """
         raise NotImplementedError
 
@@ -419,6 +428,12 @@ def _unpack_obs(obs: TensorType, space: Space, tensorlib: Any = tf) -> TensorStr
     """
 
     if isinstance(space, (gym.spaces.Dict, gym.spaces.Tuple, Repeated)):
+        # Already unpacked?
+        if (isinstance(space, gym.spaces.Tuple) and isinstance(obs, (list, tuple))) or (
+            isinstance(space, gym.spaces.Dict) and isinstance(obs, dict)
+        ):
+            return obs
+        # Unpack using preprocessor
         if id(space) in _cache:
             prep = _cache[id(space)]
         else:
@@ -426,12 +441,7 @@ def _unpack_obs(obs: TensorType, space: Space, tensorlib: Any = tf) -> TensorStr
             # Make an attempt to cache the result, if enough space left.
             if len(_cache) < 999:
                 _cache[id(space)] = prep
-        # Already unpacked?
-        if (isinstance(space, gym.spaces.Tuple) and isinstance(obs, (list, tuple))) or (
-            isinstance(space, gym.spaces.Dict) and isinstance(obs, dict)
-        ):
-            return obs
-        elif len(obs.shape) < 2 or obs.shape[-1] != prep.shape[0]:
+        if len(obs.shape) < 2 or obs.shape[-1] != prep.shape[0]:
             raise ValueError(
                 "Expected flattened obs shape of [..., {}], got {}".format(
                     prep.shape[0], obs.shape
@@ -439,8 +449,18 @@ def _unpack_obs(obs: TensorType, space: Space, tensorlib: Any = tf) -> TensorStr
             )
         offset = 0
         if tensorlib == tf:
-            batch_dims = [v if isinstance(v, int) else v.value for v in obs.shape[:-1]]
-            batch_dims = [-1 if v is None else v for v in batch_dims]
+
+            def get_value(v):
+                if v is None:
+                    return -1
+                elif isinstance(v, int):
+                    return v
+                elif v.value is None:
+                    return -1
+                else:
+                    return v.value
+
+            batch_dims = [get_value(v) for v in obs.shape[:-1]]
         else:
             batch_dims = list(obs.shape[:-1])
         if isinstance(space, gym.spaces.Tuple):

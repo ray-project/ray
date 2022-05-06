@@ -100,6 +100,9 @@ class TableBlockAccessor(BlockAccessor):
     def _create_table_row(self, row: Any) -> TableRow:
         raise NotImplementedError
 
+    def to_block(self) -> Block:
+        return self._table
+
     def iter_rows(self) -> Iterator[TableRow]:
         outer = self
 

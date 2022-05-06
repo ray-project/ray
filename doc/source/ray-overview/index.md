@@ -1,3 +1,6 @@
+```{include} /_includes/overview/announcement.md
+```
+
 (gentle-intro)=
 
 # Getting Started Guide
@@ -127,7 +130,7 @@ All you have to do is use the ``ray.train.torch.prepare_model`` and
 ``ray.train.torch.prepare_data_loader`` utility functions to
 easily setup your model & data for distributed training.
 This will automatically wrap your model with ``DistributedDataParallel``
-and place it on the right device, and add ``DisributedSampler`` to your DataLoaders.
+and place it on the right device, and add ``DistributedSampler`` to your DataLoaders.
 
 ```{literalinclude} /../../python/ray/train/examples/torch_quick_start.py
 :language: python
@@ -515,4 +518,7 @@ ray submit cluster.yaml example.py --start
 
 
 ```{include} learn-more.md
+```
+
+```{include} /_includes/overview/announcement_bottom.md
 ```

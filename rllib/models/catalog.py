@@ -13,7 +13,6 @@ from ray.tune.registry import (
     _global_registry,
 )
 from ray.rllib.models.action_dist import ActionDistribution
-from ray.rllib.models.jax.jax_action_dist import JAXCategorical
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.preprocessors import get_preprocessor, Preprocessor
 from ray.rllib.models.tf.tf_action_dist import (
@@ -296,13 +295,14 @@ class ModelCatalog:
                     )
         # Discrete Space -> Categorical.
         elif isinstance(action_space, Discrete):
-            dist_cls = (
-                TorchCategorical
-                if framework == "torch"
-                else JAXCategorical
-                if framework == "jax"
-                else Categorical
-            )
+            if framework == "torch":
+                dist_cls = TorchCategorical
+            elif framework == "jax":
+                from ray.rllib.models.jax.jax_action_dist import JAXCategorical
+
+                dist_cls = JAXCategorical
+            else:
+                dist_cls = Categorical
         # Tuple/Dict Spaces -> MultiAction.
         elif (
             dist_type
@@ -515,7 +515,7 @@ class ModelCatalog:
 
                 def track_var_creation(next_creator, **kw):
                     v = next_creator(**kw)
-                    created.add(v)
+                    created.add(v.ref())
                     return v
 
                 with tf.variable_creator_scope(track_var_creation):
@@ -1005,7 +1005,7 @@ class ModelCatalog:
 
         if config.get("use_attention") and config.get("use_lstm"):
             raise ValueError(
-                "Only one of `use_lstm` or `use_attention` may " "be set to True!"
+                "Only one of `use_lstm` or `use_attention` may be set to True!"
             )
 
         # For complex action spaces, only allow prev action inputs to
@@ -1029,9 +1029,7 @@ class ModelCatalog:
         if framework == "jax":
             if config.get("use_attention"):
                 raise ValueError(
-                    "`use_attention` not available for " "framework=jax so far!"
+                    "`use_attention` not available for framework=jax so far!"
                 )
             elif config.get("use_lstm"):
-                raise ValueError(
-                    "`use_lstm` not available for " "framework=jax so far!"
-                )
+                raise ValueError("`use_lstm` not available for framework=jax so far!")

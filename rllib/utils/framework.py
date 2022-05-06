@@ -134,7 +134,7 @@ def try_import_tfp(error: bool = False):
         ImportError: If error=True and tfp is not installed.
     """
     if "RLLIB_TEST_NO_TF_IMPORT" in os.environ:
-        logger.warning("Not importing TensorFlow Probability for test " "purposes.")
+        logger.warning("Not importing TensorFlow Probability for test purposes.")
         return None
 
     try:

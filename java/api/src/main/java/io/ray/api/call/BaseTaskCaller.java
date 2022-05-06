@@ -2,6 +2,7 @@ package io.ray.api.call;
 
 import io.ray.api.options.CallOptions;
 import io.ray.api.placementgroup.PlacementGroup;
+import io.ray.api.runtimeenv.RuntimeEnv;
 import java.util.Map;
 
 /**
@@ -73,6 +74,17 @@ public class BaseTaskCaller<T extends BaseTaskCaller<T>> {
    */
   public T setPlacementGroup(PlacementGroup group) {
     return setPlacementGroup(group, -1);
+  }
+
+  /**
+   * Set the runtime env for this task to run the task in a specific environment.
+   *
+   * @param runtimeEnv The runtime env of this task.
+   * @return self
+   */
+  public T setRuntimeEnv(RuntimeEnv runtimeEnv) {
+    builder.setRuntimeEnv(runtimeEnv);
+    return self();
   }
 
   @SuppressWarnings("unchecked")

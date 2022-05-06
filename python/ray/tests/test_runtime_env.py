@@ -6,6 +6,8 @@ import time
 import requests
 from pathlib import Path
 from unittest import mock
+import json
+import tempfile
 
 import ray
 from ray.exceptions import RuntimeEnvSetupError
@@ -13,6 +15,7 @@ from ray._private.test_utils import (
     wait_for_condition,
     get_error_message,
     get_log_sources,
+    chdir,
 )
 from ray._private.utils import (
     get_wheel_filename,
@@ -26,6 +29,7 @@ from ray._private.runtime_env.utils import (
 from ray._private.runtime_env.uri_cache import URICache
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray.runtime_env import RuntimeEnv
 
 
 def test_get_wheel_filename():
@@ -58,22 +62,28 @@ def test_get_release_wheel_url():
                 assert requests.head(url).status_code == 200, url
 
 
-def test_decorator_task(start_cluster):
+@pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
+def test_decorator_task(start_cluster, runtime_env_class):
     cluster, address = start_cluster
     ray.init(address)
 
-    @ray.remote(runtime_env={"env_vars": {"foo": "bar"}})
+    runtime_env = runtime_env_class(env_vars={"foo": "bar"})
+
+    @ray.remote(runtime_env=runtime_env)
     def f():
         return os.environ.get("foo")
 
     assert ray.get(f.remote()) == "bar"
 
 
-def test_decorator_actor(start_cluster):
+@pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
+def test_decorator_actor(start_cluster, runtime_env_class):
     cluster, address = start_cluster
     ray.init(address)
 
-    @ray.remote(runtime_env={"env_vars": {"foo": "bar"}})
+    runtime_env = runtime_env_class(env_vars={"foo": "bar"})
+
+    @ray.remote(runtime_env=runtime_env)
     class A:
         def g(self):
             return os.environ.get("foo")
@@ -82,9 +92,11 @@ def test_decorator_actor(start_cluster):
     assert ray.get(a.g.remote()) == "bar"
 
 
-def test_decorator_complex(start_cluster):
+@pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
+def test_decorator_complex(start_cluster, runtime_env_class):
     cluster, address = start_cluster
-    ray.init(address, runtime_env={"env_vars": {"foo": "job"}})
+    runtime_env_for_init = runtime_env_class(env_vars={"foo": "job"})
+    ray.init(address, runtime_env=runtime_env_for_init)
 
     @ray.remote
     def env_from_job():
@@ -92,13 +104,17 @@ def test_decorator_complex(start_cluster):
 
     assert ray.get(env_from_job.remote()) == "job"
 
-    @ray.remote(runtime_env={"env_vars": {"foo": "task"}})
+    runtime_env_for_f = runtime_env_class(env_vars={"foo": "task"})
+
+    @ray.remote(runtime_env=runtime_env_for_f)
     def f():
         return os.environ.get("foo")
 
     assert ray.get(f.remote()) == "task"
 
-    @ray.remote(runtime_env={"env_vars": {"foo": "actor"}})
+    runtime_env_for_A = runtime_env_class(env_vars={"foo": "actor"})
+
+    @ray.remote(runtime_env=runtime_env_for_A)
     class A:
         def g(self):
             return os.environ.get("foo")
@@ -107,17 +123,19 @@ def test_decorator_complex(start_cluster):
     assert ray.get(a.g.remote()) == "actor"
 
     # Test that runtime_env can be overridden by specifying .options().
+    runtime_env_for_f_new = runtime_env_class(env_vars={"foo": "new"})
+    assert ray.get(f.options(runtime_env=runtime_env_for_f_new).remote()) == "new"
 
-    assert (
-        ray.get(f.options(runtime_env={"env_vars": {"foo": "new"}}).remote()) == "new"
-    )
-
-    a = A.options(runtime_env={"env_vars": {"foo": "new2"}}).remote()
+    runtime_env_for_A_new = runtime_env_class(env_vars={"foo": "new2"})
+    a = A.options(runtime_env=runtime_env_for_A_new).remote()
     assert ray.get(a.g.remote()) == "new2"
 
 
-def test_container_option_serialize():
-    runtime_env = {"container": {"image": "ray:latest", "run_options": ["--name=test"]}}
+@pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
+def test_container_option_serialize(runtime_env_class):
+    runtime_env = runtime_env_class(
+        container={"image": "ray:latest", "run_options": ["--name=test"]}
+    )
     job_config = ray.job_config.JobConfig(runtime_env=runtime_env)
     job_config_serialized = job_config.serialize()
     # job_config_serialized is JobConfig protobuf serialized string,
@@ -127,52 +145,8 @@ def test_container_option_serialize():
     assert job_config_serialized.count(b"--name=test") == 1
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="conda in runtime_env unsupported on Windows."
-)
-def test_invalid_conda_env(shutdown_only):
-    ray.init()
-
-    @ray.remote
-    def f():
-        pass
-
-    @ray.remote
-    class A:
-        def f(self):
-            pass
-
-    start = time.time()
-    bad_env = {"conda": {"dependencies": ["this_doesnt_exist"]}}
-    with pytest.raises(
-        RuntimeEnvSetupError,
-        # The actual error message should be included in the exception.
-        match="ResolvePackageNotFound",
-    ):
-        ray.get(f.options(runtime_env=bad_env).remote())
-    first_time = time.time() - start
-
-    # Check that another valid task can run.
-    ray.get(f.remote())
-
-    a = A.options(runtime_env=bad_env).remote()
-    with pytest.raises(
-        ray.exceptions.RuntimeEnvSetupError, match="ResolvePackageNotFound"
-    ):
-        ray.get(a.f.remote())
-
-    # The second time this runs it should be faster as the error is cached.
-    start = time.time()
-    with pytest.raises(RuntimeEnvSetupError, match="ResolvePackageNotFound"):
-        ray.get(f.options(runtime_env=bad_env).remote())
-
-    assert (time.time() - start) < (first_time / 2.0)
-
-
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="runtime_env unsupported on Windows."
-)
-def test_no_spurious_worker_startup(shutdown_only):
+@pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
+def test_no_spurious_worker_startup(shutdown_only, runtime_env_class):
     """Test that no extra workers start up during a long env installation."""
 
     # Causes agent to sleep for 15 seconds to simulate creating a runtime env.
@@ -188,7 +162,7 @@ def test_no_spurious_worker_startup(shutdown_only):
             return self.value
 
     # Set a nonempty runtime env so that the runtime env setup hook is called.
-    runtime_env = {"env_vars": {"a": "b"}}
+    runtime_env = runtime_env_class(env_vars={"a": "b"})
 
     # Instantiate an actor that requires the long runtime env installation.
     a = Counter.options(runtime_env=runtime_env).remote()
@@ -239,12 +213,14 @@ def runtime_env_local_dev_env_var():
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="very slow on Windows.")
+@pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
 def test_runtime_env_no_spurious_resource_deadlock_msg(
-    runtime_env_local_dev_env_var, ray_start_regular, error_pubsub
+    runtime_env_local_dev_env_var, ray_start_regular, error_pubsub, runtime_env_class
 ):
     p = error_pubsub
+    runtime_env = runtime_env_class(pip=["tensorflow", "torch"])
 
-    @ray.remote(runtime_env={"pip": ["tensorflow", "torch"]})
+    @ray.remote(runtime_env=runtime_env)
     def f():
         pass
 
@@ -254,10 +230,12 @@ def test_runtime_env_no_spurious_resource_deadlock_msg(
     assert len(errors) == 0
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="pip not supported on Windows.")
-def test_failed_job_env_no_hang(shutdown_only):
+@pytest.mark.skipif(sys.platform == "win32", reason="Hangs on windows.")
+@pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
+def test_failed_job_env_no_hang(shutdown_only, runtime_env_class):
     """Test that after a failed job-level env, tasks can still be run."""
-    ray.init(runtime_env={"pip": ["ray-doesnotexist-123"]})
+    runtime_env_for_init = runtime_env_class(pip=["ray-doesnotexist-123"])
+    ray.init(runtime_env=runtime_env_for_init)
 
     @ray.remote
     def f():
@@ -265,7 +243,8 @@ def test_failed_job_env_no_hang(shutdown_only):
 
         return True
 
-    assert ray.get(f.options(runtime_env={"pip": ["pip-install-test==0.5"]}).remote())
+    runtime_env_for_f = runtime_env_class(pip=["pip-install-test==0.5"])
+    assert ray.get(f.options(runtime_env=runtime_env_for_f).remote())
 
     # Task with no runtime env should inherit the bad job env.
     with pytest.raises(RuntimeEnvSetupError):
@@ -279,19 +258,14 @@ def set_agent_failure_env_var():
     del os.environ["_RAY_AGENT_FAILING"]
 
 
-@pytest.mark.parametrize(
-    "ray_start_cluster_head",
-    [
-        {
-            "_system_config": {
-                "agent_restart_interval_ms": 10,
-                "agent_max_restart_count": 5,
-            }
-        }
-    ],
-    indirect=True,
+# TODO(SongGuyang): Fail the agent which is in different node from driver.
+@pytest.mark.skip(
+    reason="Agent failure will lead to raylet failure and driver failure."
 )
-def test_runtime_env_broken(set_agent_failure_env_var, ray_start_cluster_head):
+@pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
+def test_runtime_env_broken(
+    set_agent_failure_env_var, runtime_env_class, ray_start_cluster_head
+):
     @ray.remote
     class A:
         def ready(self):
@@ -301,17 +275,17 @@ def test_runtime_env_broken(set_agent_failure_env_var, ray_start_cluster_head):
     def f():
         pass
 
-    runtime_env = {"env_vars": {"TF_WARNINGS": "none"}}
+    runtime_env = runtime_env_class(env_vars={"TF_WARNINGS": "none"})
     """
     Test task raises an exception.
     """
-    with pytest.raises(RuntimeEnvSetupError):
+    with pytest.raises(ray.exceptions.LocalRayletDiedError):
         ray.get(f.options(runtime_env=runtime_env).remote())
     """
     Test actor task raises an exception.
     """
     a = A.options(runtime_env=runtime_env).remote()
-    with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
+    with pytest.raises(ray.exceptions.RayActorError):
         ray.get(a.ready.remote())
 
 
@@ -440,8 +414,13 @@ def enable_dev_mode(local_env_var_enabled):
     sys.platform == "win32", reason="conda in runtime_env unsupported on Windows."
 )
 @pytest.mark.parametrize("local_env_var_enabled", [False, True])
+@pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
 def test_runtime_env_log_msg(
-    local_env_var_enabled, enable_dev_mode, ray_start_cluster_head, log_pubsub
+    local_env_var_enabled,
+    enable_dev_mode,
+    ray_start_cluster_head,
+    log_pubsub,
+    runtime_env_class,
 ):
     p = log_pubsub
 
@@ -449,9 +428,9 @@ def test_runtime_env_log_msg(
     def f():
         pass
 
-    good_env = {"pip": ["requests"]}
+    good_env = runtime_env_class(pip=["requests"])
     ray.get(f.options(runtime_env=good_env).remote())
-    sources = get_log_sources(p, 5)
+    sources = get_log_sources(p, timeout=10)
     if local_env_var_enabled:
         assert "runtime_env" in sources
     else:
@@ -536,36 +515,38 @@ async def test_check_output_cmd():
     assert "cmd[5]" in str(e.value)
 
 
-@pytest.mark.parametrize(
-    "call_ray_start",
-    ["ray start --head --ray-client-server-port 25553"],
-    indirect=True,
-)
-@pytest.mark.parametrize("use_client", [False, True])
-def test_get_current_runtime_env(call_ray_start, use_client):
-    job_runtime_env = {"env_vars": {"a": "b"}}
+def test_to_make_ensure_runtime_env_api(start_cluster):
+    # make sure RuntimeEnv can be used in an be used interchangeably with
+    # an unstructured dictionary in the relevant API calls.
+    ENV_KEY = "TEST_RUNTIME_ENV"
 
-    if not use_client:
-        address = call_ray_start
-        ray.init(address, runtime_env=job_runtime_env)
-    else:
-        ray.init("ray://localhost:25553", runtime_env=job_runtime_env)
+    @ray.remote(runtime_env=RuntimeEnv(env_vars={ENV_KEY: "f1"}))
+    def f1():
+        assert os.environ.get(ENV_KEY) == "f1"
 
-    current_runtime_env = ray.runtime_env.get_current_runtime_env()
-    assert type(current_runtime_env) is dict
-    assert current_runtime_env == job_runtime_env
+    ray.get(f1.remote())
 
     @ray.remote
-    def get_runtime_env():
-        return ray.runtime_env.get_current_runtime_env()
+    def f2():
+        assert os.environ.get(ENV_KEY) == "f2"
 
-    assert ray.get(get_runtime_env.remote()) == job_runtime_env
+    ray.get(f2.options(runtime_env=RuntimeEnv(env_vars={ENV_KEY: "f2"})).remote())
 
-    task_runtime_env = {"env_vars": {"a": "c"}}
-    assert (
-        ray.get(get_runtime_env.options(runtime_env=task_runtime_env).remote())
-        == task_runtime_env
-    )
+    @ray.remote(runtime_env=RuntimeEnv(env_vars={ENV_KEY: "a1"}))
+    class A1:
+        def f(self):
+            assert os.environ.get(ENV_KEY) == "a1"
+
+    a1 = A1.remote()
+    ray.get(a1.f.remote())
+
+    @ray.remote
+    class A2:
+        def f(self):
+            assert os.environ.get(ENV_KEY) == "a2"
+
+    a2 = A2.options(runtime_env=RuntimeEnv(env_vars={ENV_KEY: "a2"})).remote()
+    ray.get(a2.f.remote())
 
 
 MY_PLUGIN_CLASS_PATH = "ray.tests.test_runtime_env.MyPlugin"
@@ -623,6 +604,233 @@ def test_runtime_env_retry(set_runtime_env_retry_times, ray_start_regular):
                     runtime_env={"plugins": {MY_PLUGIN_CLASS_PATH: {"key": "value"}}}
                 ).remote()
             )
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="conda in runtime_env unsupported on Windows."
+)
+@pytest.mark.parametrize(
+    "option",
+    ["pip_list", "pip_dict", "conda_name", "conda_dict", "container", "plugins"],
+)
+def test_serialize_deserialize(option):
+    runtime_env = dict()
+    if option == "pip_list":
+        runtime_env["pip"] = ["pkg1", "pkg2"]
+    elif option == "pip_dict":
+        runtime_env["pip"] = {
+            "packages": ["pkg1", "pkg2"],
+            "pip_check": False,
+            "pip_version": "<22,>20",
+        }
+    elif option == "conda_name":
+        runtime_env["conda"] = "env_name"
+    elif option == "conda_dict":
+        runtime_env["conda"] = {"dependencies": ["dep1", "dep2"]}
+    elif option == "container":
+        runtime_env["container"] = {
+            "image": "anyscale/ray-ml:nightly-py38-cpu",
+            "worker_path": "/root/python/ray/workers/default_worker.py",
+            "run_options": ["--cap-drop SYS_ADMIN", "--log-level=debug"],
+        }
+    elif option == "plugins":
+        runtime_env["plugins"] = {
+            "class_path1": {"config1": "val1"},
+            "class_path2": "string_config",
+        }
+    else:
+        raise ValueError("unexpected option " + str(option))
+
+    proto_runtime_env = RuntimeEnv(
+        **runtime_env, _validate=False
+    ).build_proto_runtime_env()
+    cls_runtime_env = RuntimeEnv.from_proto(proto_runtime_env)
+    cls_runtime_env_dict = cls_runtime_env.to_dict()
+
+    if "pip" in runtime_env and isinstance(runtime_env["pip"], list):
+        pip_config_in_cls_runtime_env = cls_runtime_env_dict.pop("pip")
+        pip_config_in_runtime_env = runtime_env.pop("pip")
+        assert {
+            "packages": pip_config_in_runtime_env,
+            "pip_check": False,
+        } == pip_config_in_cls_runtime_env
+
+    assert cls_runtime_env_dict == runtime_env
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="conda in runtime_env unsupported on Windows."
+)
+def test_runtime_env_interface():
+
+    # Test the interface related to working_dir
+    default_working_dir = "s3://bucket/key.zip"
+    modify_working_dir = "s3://bucket/key_A.zip"
+    runtime_env = RuntimeEnv(working_dir=default_working_dir)
+    runtime_env_dict = runtime_env.to_dict()
+    assert runtime_env.working_dir_uri() == default_working_dir
+    runtime_env["working_dir"] = modify_working_dir
+    runtime_env_dict["working_dir"] = modify_working_dir
+    assert runtime_env.working_dir_uri() == modify_working_dir
+    assert runtime_env.to_dict() == runtime_env_dict
+    # Test that the modification of working_dir also works on
+    # proto serialization
+    assert runtime_env_dict == RuntimeEnv.from_proto(
+        runtime_env.build_proto_runtime_env()
+    )
+    runtime_env.pop("working_dir")
+    assert runtime_env.to_dict() == {}
+
+    # Test the interface related to py_modules
+    init_py_modules = ["s3://bucket/key_1.zip", "s3://bucket/key_2.zip"]
+    addition_py_modules = ["s3://bucket/key_3.zip", "s3://bucket/key_4.zip"]
+    runtime_env = RuntimeEnv(py_modules=init_py_modules)
+    runtime_env_dict = runtime_env.to_dict()
+    assert set(runtime_env.py_modules_uris()) == set(init_py_modules)
+    runtime_env["py_modules"].extend(addition_py_modules)
+    runtime_env_dict["py_modules"].extend(addition_py_modules)
+    assert set(runtime_env.py_modules_uris()) == set(
+        init_py_modules + addition_py_modules
+    )
+    assert runtime_env.to_dict() == runtime_env_dict
+    # Test that the modification of py_modules also works on
+    # proto serialization
+    assert runtime_env_dict == RuntimeEnv.from_proto(
+        runtime_env.build_proto_runtime_env()
+    )
+    runtime_env.pop("py_modules")
+    assert runtime_env.to_dict() == {}
+
+    # Test the interface related to env_vars
+    init_env_vars = {"A": "a", "B": "b"}
+    update_env_vars = {"C": "c"}
+    runtime_env = RuntimeEnv(env_vars=init_env_vars)
+    runtime_env_dict = runtime_env.to_dict()
+    runtime_env["env_vars"].update(update_env_vars)
+    runtime_env_dict["env_vars"].update(update_env_vars)
+    init_env_vars_copy = init_env_vars.copy()
+    init_env_vars_copy.update(update_env_vars)
+    assert runtime_env["env_vars"] == init_env_vars_copy
+    assert runtime_env_dict == runtime_env.to_dict()
+    # Test that the modification of env_vars also works on
+    # proto serialization
+    assert runtime_env_dict == RuntimeEnv.from_proto(
+        runtime_env.build_proto_runtime_env()
+    )
+    runtime_env.pop("env_vars")
+    assert runtime_env.to_dict() == {}
+
+    # Test the interface related to conda
+    conda_name = "conda"
+    modify_conda_name = "conda_A"
+    conda_config = {"dependencies": ["dep1", "dep2"]}
+    runtime_env = RuntimeEnv(conda=conda_name)
+    runtime_env_dict = runtime_env.to_dict()
+    assert runtime_env.has_conda()
+    assert runtime_env.conda_env_name() == conda_name
+    assert runtime_env.conda_config() is None
+    runtime_env["conda"] = modify_conda_name
+    runtime_env_dict["conda"] = modify_conda_name
+    assert runtime_env_dict == runtime_env.to_dict()
+    assert runtime_env.has_conda()
+    assert runtime_env.conda_env_name() == modify_conda_name
+    assert runtime_env.conda_config() is None
+    runtime_env["conda"] = conda_config
+    runtime_env_dict["conda"] = conda_config
+    assert runtime_env_dict == runtime_env.to_dict()
+    assert runtime_env.has_conda()
+    assert runtime_env.conda_env_name() is None
+    assert runtime_env.conda_config() == json.dumps(conda_config, sort_keys=True)
+    # Test that the modification of conda also works on
+    # proto serialization
+    assert runtime_env_dict == RuntimeEnv.from_proto(
+        runtime_env.build_proto_runtime_env()
+    )
+    runtime_env.pop("conda")
+    assert runtime_env.to_dict() == {"_ray_commit": "{{RAY_COMMIT_SHA}}"}
+
+    # Test the interface related to pip
+    with tempfile.TemporaryDirectory() as tmpdir, chdir(tmpdir):
+        requirement_file = os.path.join(tmpdir, "requirements.txt")
+        requirement_packages = ["dep5", "dep6"]
+        with open(requirement_file, "wt") as f:
+            for package in requirement_packages:
+                f.write(package)
+                f.write("\n")
+
+        pip_packages = ["dep1", "dep2"]
+        addition_pip_packages = ["dep3", "dep4"]
+        runtime_env = RuntimeEnv(pip=pip_packages)
+        runtime_env_dict = runtime_env.to_dict()
+        assert runtime_env.has_pip()
+        assert set(runtime_env.pip_config()["packages"]) == set(pip_packages)
+        assert runtime_env.virtualenv_name() is None
+        runtime_env["pip"]["packages"].extend(addition_pip_packages)
+        runtime_env_dict["pip"]["packages"].extend(addition_pip_packages)
+        # The default value of pip_check is False
+        runtime_env_dict["pip"]["pip_check"] = False
+        assert runtime_env_dict == runtime_env.to_dict()
+        assert runtime_env.has_pip()
+        assert set(runtime_env.pip_config()["packages"]) == set(
+            pip_packages + addition_pip_packages
+        )
+        assert runtime_env.virtualenv_name() is None
+        runtime_env["pip"] = requirement_file
+        runtime_env_dict["pip"] = requirement_packages
+        assert runtime_env.has_pip()
+        assert set(runtime_env.pip_config()["packages"]) == set(requirement_packages)
+        assert runtime_env.virtualenv_name() is None
+        # The default value of pip_check is False
+        runtime_env_dict["pip"] = dict(
+            packages=runtime_env_dict["pip"], pip_check=False
+        )
+        assert runtime_env_dict == runtime_env.to_dict()
+        # Test that the modification of pip also works on
+        # proto serialization
+        assert runtime_env_dict == RuntimeEnv.from_proto(
+            runtime_env.build_proto_runtime_env()
+        )
+        runtime_env.pop("pip")
+        assert runtime_env.to_dict() == {"_ray_commit": "{{RAY_COMMIT_SHA}}"}
+
+    # Test conflict
+    with pytest.raises(ValueError):
+        RuntimeEnv(pip=pip_packages, conda=conda_name)
+
+    runtime_env = RuntimeEnv(pip=pip_packages)
+    runtime_env["conda"] = conda_name
+    with pytest.raises(ValueError):
+        runtime_env.serialize()
+
+    # Test the interface related to container
+    container_init = {
+        "image": "anyscale/ray-ml:nightly-py38-cpu",
+        "worker_path": "/root/python/ray/workers/default_worker.py",
+        "run_options": ["--cap-drop SYS_ADMIN", "--log-level=debug"],
+    }
+    update_container = {"image": "test_modify"}
+    runtime_env = RuntimeEnv(container=container_init)
+    runtime_env_dict = runtime_env.to_dict()
+    assert runtime_env.has_py_container()
+    assert runtime_env.py_container_image() == container_init["image"]
+    assert runtime_env.py_container_worker_path() == container_init["worker_path"]
+    assert runtime_env.py_container_run_options() == container_init["run_options"]
+    runtime_env["container"].update(update_container)
+    runtime_env_dict["container"].update(update_container)
+    container_copy = container_init
+    container_copy.update(update_container)
+    assert runtime_env_dict == runtime_env.to_dict()
+    assert runtime_env.has_py_container()
+    assert runtime_env.py_container_image() == container_copy["image"]
+    assert runtime_env.py_container_worker_path() == container_copy["worker_path"]
+    assert runtime_env.py_container_run_options() == container_copy["run_options"]
+    # Test that the modification of container also works on
+    # proto serialization
+    assert runtime_env_dict == RuntimeEnv.from_proto(
+        runtime_env.build_proto_runtime_env()
+    )
+    runtime_env.pop("container")
+    assert runtime_env.to_dict() == {}
 
 
 if __name__ == "__main__":

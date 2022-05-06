@@ -14,7 +14,7 @@ from ray._private.parameter import RayParams
 from ray._private.ray_logging import get_worker_log_file_name, configure_log_file
 
 parser = argparse.ArgumentParser(
-    description=("Parse addresses for the worker " "to connect to.")
+    description=("Parse addresses for the worker to connect to.")
 )
 parser.add_argument(
     "--node-ip-address",
@@ -70,6 +70,13 @@ parser.add_argument(
     type=str,
     default=None,
     help="Specify the path of the temporary directory use by Ray process.",
+)
+parser.add_argument(
+    "--storage",
+    required=False,
+    type=str,
+    default=None,
+    help="Specify the persistent storage path.",
 )
 parser.add_argument(
     "--load-code-from-local",
@@ -157,19 +164,6 @@ if __name__ == "__main__":
     else:
         raise ValueError("Unknown worker type: " + args.worker_type)
 
-    # NOTE(suquark): We must initialize the external storage before we
-    # connect to raylet. Otherwise we may receive requests before the
-    # external storage is intialized.
-    if mode == ray.RESTORE_WORKER_MODE or mode == ray.SPILL_WORKER_MODE:
-        from ray import external_storage
-
-        if args.object_spilling_config:
-            object_spilling_config = base64.b64decode(args.object_spilling_config)
-            object_spilling_config = json.loads(object_spilling_config)
-        else:
-            object_spilling_config = {}
-        external_storage.setup_external_storage(object_spilling_config)
-
     raylet_ip_address = args.raylet_ip_address
     if raylet_ip_address is None:
         raylet_ip_address = args.node_ip_address
@@ -183,6 +177,7 @@ if __name__ == "__main__":
         plasma_store_socket_name=args.object_store_name,
         raylet_socket_name=args.raylet_name,
         temp_dir=args.temp_dir,
+        storage=args.storage,
         metrics_agent_port=args.metrics_agent_port,
         gcs_address=args.gcs_address,
     )
@@ -194,6 +189,24 @@ if __name__ == "__main__":
         spawn_reaper=False,
         connect_only=True,
     )
+
+    # NOTE(suquark): We must initialize the external storage before we
+    # connect to raylet. Otherwise we may receive requests before the
+    # external storage is intialized.
+    if mode == ray.RESTORE_WORKER_MODE or mode == ray.SPILL_WORKER_MODE:
+        from ray import external_storage
+        from ray.internal import storage
+
+        storage._init_storage(args.storage, is_head=False)
+        if args.object_spilling_config:
+            object_spilling_config = base64.b64decode(args.object_spilling_config)
+            object_spilling_config = json.loads(object_spilling_config)
+        else:
+            object_spilling_config = {}
+        external_storage.setup_external_storage(
+            object_spilling_config, node.session_name
+        )
+
     ray.worker._global_node = node
     ray.worker.connect(
         node,

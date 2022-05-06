@@ -68,7 +68,7 @@ class CollectorService:
         logger = logging.getLogger("AutoMLBoard")
         handler = logging.StreamHandler()
         formatter = logging.Formatter(
-            "[%(levelname)s %(asctime)s] " "%(filename)s: %(lineno)d  " "%(message)s"
+            "[%(levelname)s %(asctime)s] %(filename)s: %(lineno)d  %(message)s"
         )
         handler.setFormatter(formatter)
         logger.setLevel(log_level)

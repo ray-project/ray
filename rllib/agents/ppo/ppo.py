@@ -10,98 +10,186 @@ Detailed documentation: https://docs.ray.io/en/master/rllib-algorithms.html#ppo
 """
 
 import logging
-from typing import Type
+from typing import List, Optional, Type, Union
 
-from ray.rllib.agents import with_common_config
+from ray.util.debug import log_once
 from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
 from ray.rllib.agents.trainer import Trainer
-from ray.rllib.evaluation.worker_set import WorkerSet
+from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.execution.rollout_ops import (
-    ParallelRollouts,
-    ConcatBatches,
-    StandardizeFields,
-    SelectExperiences,
+    standardize_fields,
 )
-from ray.rllib.execution.train_ops import TrainOneStep, MultiGPUTrainOneStep
-from ray.rllib.execution.metric_ops import StandardMetricsReporting
+from ray.rllib.execution.train_ops import (
+    train_one_step,
+    multi_gpu_train_one_step,
+)
+from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
-from ray.rllib.utils.typing import TrainerConfigDict
-from ray.util.iter import LocalIterator
+from ray.rllib.utils.typing import TrainerConfigDict, ResultDict
+from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
+from ray.rllib.utils.metrics import (
+    NUM_AGENT_STEPS_SAMPLED,
+    NUM_ENV_STEPS_SAMPLED,
+    WORKER_UPDATE_TIMER,
+)
 
 logger = logging.getLogger(__name__)
 
-# fmt: off
-# __sphinx_doc_begin__
 
-# Adds the following updates to the (base) `Trainer` config in
-# rllib/agents/trainer.py (`COMMON_CONFIG` dict).
-DEFAULT_CONFIG = with_common_config({
-    # Should use a critic as a baseline (otherwise don't use value baseline;
-    # required for using GAE).
-    "use_critic": True,
-    # If true, use the Generalized Advantage Estimator (GAE)
-    # with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
-    "use_gae": True,
-    # The GAE (lambda) parameter.
-    "lambda": 1.0,
-    # Initial coefficient for KL divergence.
-    "kl_coeff": 0.2,
-    # Size of batches collected from each worker.
-    "rollout_fragment_length": 200,
-    # Number of timesteps collected for each SGD round. This defines the size
-    # of each SGD epoch.
-    "train_batch_size": 4000,
-    # Total SGD batch size across all devices for SGD. This defines the
-    # minibatch size within each epoch.
-    "sgd_minibatch_size": 128,
-    # Whether to shuffle sequences in the batch when training (recommended).
-    "shuffle_sequences": True,
-    # Number of SGD iterations in each outer loop (i.e., number of epochs to
-    # execute per train batch).
-    "num_sgd_iter": 30,
-    # Stepsize of SGD.
-    "lr": 5e-5,
-    # Learning rate schedule.
-    "lr_schedule": None,
-    # Coefficient of the value function loss. IMPORTANT: you must tune this if
-    # you set vf_share_layers=True inside your model's config.
-    "vf_loss_coeff": 1.0,
-    "model": {
-        # Share layers for value function. If you set this to True, it's
-        # important to tune vf_loss_coeff.
-        "vf_share_layers": False,
-    },
-    # Coefficient of the entropy regularizer.
-    "entropy_coeff": 0.0,
-    # Decay schedule for the entropy regularizer.
-    "entropy_coeff_schedule": None,
-    # PPO clip parameter.
-    "clip_param": 0.3,
-    # Clip param for the value function. Note that this is sensitive to the
-    # scale of the rewards. If your expected V is large, increase this.
-    "vf_clip_param": 10.0,
-    # If specified, clip the global norm of gradients by this amount.
-    "grad_clip": None,
-    # Target value for KL divergence.
-    "kl_target": 0.01,
-    # Whether to rollout "complete_episodes" or "truncate_episodes".
-    "batch_mode": "truncate_episodes",
-    # Which observation filter to apply to the observation.
-    "observation_filter": "NoFilter",
+class PPOConfig(TrainerConfig):
+    """Defines a PPOTrainer configuration class from which a PPOTrainer can be built.
 
-    # Deprecated keys:
-    # Share layers for value function. If you set this to True, it's important
-    # to tune vf_loss_coeff.
-    # Use config.model.vf_share_layers instead.
-    "vf_share_layers": DEPRECATED_VALUE,
-})
+    Example:
+        >>> config = PPOConfig().training(gamma=0.9, lr=0.01)\
+        ...     .resources(num_gpus=0)\
+        ...     .rollouts(num_rollout_workers=4)
+        >>> print(config.to_dict())
+        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> trainer = config.build(env="CartPole-v1")
+        >>> trainer.train()
 
-# __sphinx_doc_end__
-# fmt: on
+    Example:
+        >>> from ray import tune
+        >>> config = PPOConfig()
+        >>> # Print out some default values.
+        >>> print(config.clip_param)
+        >>> # Update the config object.
+        >>> config.training(lr=tune.grid_search([0.001, 0.0001]), clip_param=0.2)
+        >>> # Set the config object's env.
+        >>> config.environment(env="CartPole-v1")
+        >>> # Use to_dict() to get the old-style python config dict
+        >>> # when running with tune.
+        >>> tune.run(
+        ...     "PPO",
+        ...     stop={"episode_reward_mean": 200},
+        ...     config=config.to_dict(),
+        ... )
+    """
+
+    def __init__(self):
+        """Initializes a PPOConfig instance."""
+        super().__init__(trainer_class=PPOTrainer)
+
+        # fmt: off
+        # __sphinx_doc_begin__
+        # PPO specific settings:
+        self.lr_schedule = None
+        self.use_critic = True
+        self.use_gae = True
+        self.lambda_ = 1.0
+        self.kl_coeff = 0.2
+        self.sgd_minibatch_size = 128
+        self.num_sgd_iter = 30
+        self.shuffle_sequences = True
+        self.vf_loss_coeff = 1.0
+        self.entropy_coeff = 0.0
+        self.entropy_coeff_schedule = None
+        self.clip_param = 0.3
+        self.vf_clip_param = 10.0
+        self.grad_clip = None
+        self.kl_target = 0.01
+
+        # Override some of TrainerConfig's default values with PPO-specific values.
+        self.rollout_fragment_length = 200
+        self.train_batch_size = 4000
+        self.lr = 5e-5
+        self.model["vf_share_layers"] = False
+        # __sphinx_doc_end__
+        # fmt: on
+
+    @override(TrainerConfig)
+    def training(
+        self,
+        *,
+        lr_schedule: Optional[List[List[Union[int, float]]]] = None,
+        use_critic: Optional[bool] = None,
+        use_gae: Optional[bool] = None,
+        lambda_: Optional[float] = None,
+        kl_coeff: Optional[float] = None,
+        sgd_minibatch_size: Optional[int] = None,
+        num_sgd_iter: Optional[int] = None,
+        shuffle_sequences: Optional[bool] = None,
+        vf_loss_coeff: Optional[float] = None,
+        entropy_coeff: Optional[float] = None,
+        entropy_coeff_schedule: Optional[List[List[Union[int, float]]]] = None,
+        clip_param: Optional[float] = None,
+        vf_clip_param: Optional[float] = None,
+        grad_clip: Optional[float] = None,
+        kl_target: Optional[float] = None,
+        **kwargs,
+    ) -> "PPOConfig":
+        """Sets the training related configuration.
+
+        Args:
+            lr_schedule: Learning rate schedule. In the format of
+                [[timestep, lr-value], [timestep, lr-value], ...]
+                Intermediary timesteps will be assigned to interpolated learning rate
+                values. A schedule should normally start from timestep 0.
+            use_critic: Should use a critic as a baseline (otherwise don't use value
+                baseline; required for using GAE).
+            use_gae: If true, use the Generalized Advantage Estimator (GAE)
+                with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
+            lambda_: The GAE (lambda) parameter.
+            kl_coeff: Initial coefficient for KL divergence.
+            sgd_minibatch_size: Total SGD batch size across all devices for SGD.
+                This defines the minibatch size within each epoch.
+            num_sgd_iter: Number of SGD iterations in each outer loop (i.e., number of
+                epochs to execute per train batch).
+            shuffle_sequences: Whether to shuffle sequences in the batch when training
+                (recommended).
+            vf_loss_coeff: Coefficient of the value function loss. IMPORTANT: you must
+                tune this if you set vf_share_layers=True inside your model's config.
+            entropy_coeff: Coefficient of the entropy regularizer.
+            entropy_coeff_schedule: Decay schedule for the entropy regularizer.
+            clip_param: PPO clip parameter.
+            vf_clip_param: Clip param for the value function. Note that this is
+                sensitive to the scale of the rewards. If your expected V is large,
+                increase this.
+            grad_clip: If specified, clip the global norm of gradients by this amount.
+            kl_target: Target value for KL divergence.
+
+        Returns:
+            This updated TrainerConfig object.
+        """
+        # Pass kwargs onto super's `training()` method.
+        super().training(**kwargs)
+
+        if lr_schedule is not None:
+            self.lr_schedule = lr_schedule
+        if use_critic is not None:
+            self.use_critic = use_critic
+        if use_gae is not None:
+            self.use_gae = use_gae
+        if lambda_ is not None:
+            self.lambda_ = lambda_
+        if kl_coeff is not None:
+            self.kl_coeff = kl_coeff
+        if sgd_minibatch_size is not None:
+            self.sgd_minibatch_size = sgd_minibatch_size
+        if num_sgd_iter is not None:
+            self.num_sgd_iter = num_sgd_iter
+        if shuffle_sequences is not None:
+            self.shuffle_sequences = shuffle_sequences
+        if vf_loss_coeff is not None:
+            self.vf_loss_coeff = vf_loss_coeff
+        if entropy_coeff is not None:
+            self.entropy_coeff = entropy_coeff
+        if entropy_coeff_schedule is not None:
+            self.entropy_coeff_schedule = entropy_coeff_schedule
+        if clip_param is not None:
+            self.clip_param = clip_param
+        if vf_clip_param is not None:
+            self.vf_clip_param = vf_clip_param
+        if grad_clip is not None:
+            self.grad_clip = grad_clip
+        if kl_target is not None:
+            self.kl_target = kl_target
+
+        return self
 
 
 class UpdateKL:
@@ -179,10 +267,12 @@ def warn_about_bad_reward_scales(config, result):
 
 
 class PPOTrainer(Trainer):
+    # TODO: Change the return value of this method to return a TrainerConfig object
+    #  instead.
     @classmethod
     @override(Trainer)
     def get_default_config(cls) -> TrainerConfigDict:
-        return DEFAULT_CONFIG
+        return PPOConfig().to_dict()
 
     @override(Trainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
@@ -205,7 +295,7 @@ class PPOTrainer(Trainer):
 
         # SGD minibatch size must be smaller than train_batch_size (b/c
         # we subsample a batch of `sgd_minibatch_size` from the train-batch for
-        # each `sgd_num_iter`).
+        # each `num_sgd_iter`).
         # Note: Only check this if `train_batch_size` > 0 (DDPPO sets this
         # to -1 to auto-calculate the actual batch size later).
         if (
@@ -280,55 +370,96 @@ class PPOTrainer(Trainer):
         else:
             return PPOTFPolicy
 
-    @staticmethod
-    @override(Trainer)
-    def execution_plan(
-        workers: WorkerSet, config: TrainerConfigDict, **kwargs
-    ) -> LocalIterator[dict]:
-        assert (
-            len(kwargs) == 0
-        ), "PPO execution_plan does NOT take any additional parameters"
-
-        rollouts = ParallelRollouts(workers, mode="bulk_sync")
-
-        # Collect batches for the trainable policies.
-        rollouts = rollouts.for_each(
-            SelectExperiences(local_worker=workers.local_worker())
-        )
-        # Concatenate the SampleBatches into one.
-        rollouts = rollouts.combine(
-            ConcatBatches(
-                min_batch_size=config["train_batch_size"],
-                count_steps_by=config["multiagent"]["count_steps_by"],
-            )
-        )
-        # Standardize advantages.
-        rollouts = rollouts.for_each(StandardizeFields(["advantages"]))
-
-        # Perform one training step on the combined + standardized batch.
-        if config["simple_optimizer"]:
-            train_op = rollouts.for_each(
-                TrainOneStep(
-                    workers,
-                    num_sgd_iter=config["num_sgd_iter"],
-                    sgd_minibatch_size=config["sgd_minibatch_size"],
-                )
+    @ExperimentalAPI
+    def training_iteration(self) -> ResultDict:
+        # Collect SampleBatches from sample workers until we have a full batch.
+        if self._by_agent_steps:
+            train_batch = synchronous_parallel_sample(
+                worker_set=self.workers, max_agent_steps=self.config["train_batch_size"]
             )
         else:
-            train_op = rollouts.for_each(
-                MultiGPUTrainOneStep(
-                    workers=workers,
-                    sgd_minibatch_size=config["sgd_minibatch_size"],
-                    num_sgd_iter=config["num_sgd_iter"],
-                    num_gpus=config["num_gpus"],
-                    _fake_gpus=config["_fake_gpus"],
-                )
+            train_batch = synchronous_parallel_sample(
+                worker_set=self.workers, max_env_steps=self.config["train_batch_size"]
             )
+        train_batch = train_batch.as_multi_agent()
+        self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
+        self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
 
-        # Update KL after each round of training.
-        train_op = train_op.for_each(lambda t: t[1]).for_each(UpdateKL(workers))
+        # Standardize advantages
+        train_batch = standardize_fields(train_batch, ["advantages"])
+        # Train
+        if self.config["simple_optimizer"]:
+            train_results = train_one_step(self, train_batch)
+        else:
+            train_results = multi_gpu_train_one_step(self, train_batch)
 
-        # Warn about bad reward scales and return training metrics.
-        return StandardMetricsReporting(train_op, workers, config).for_each(
-            lambda result: warn_about_bad_reward_scales(config, result)
-        )
+        global_vars = {
+            "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
+        }
+
+        # Update weights - after learning on the local worker - on all remote
+        # workers.
+        if self.workers.remote_workers():
+            with self._timers[WORKER_UPDATE_TIMER]:
+                self.workers.sync_weights(global_vars=global_vars)
+
+        # For each policy: update KL scale and warn about possible issues
+        for policy_id, policy_info in train_results.items():
+            # Update KL loss with dynamic scaling
+            # for each (possibly multiagent) policy we are training
+            kl_divergence = policy_info[LEARNER_STATS_KEY].get("kl")
+            self.get_policy(policy_id).update_kl(kl_divergence)
+
+            # Warn about excessively high value function loss
+            scaled_vf_loss = (
+                self.config["vf_loss_coeff"] * policy_info[LEARNER_STATS_KEY]["vf_loss"]
+            )
+            policy_loss = policy_info[LEARNER_STATS_KEY]["policy_loss"]
+            if (
+                log_once("ppo_warned_lr_ratio")
+                and self.config.get("model", {}).get("vf_share_layers")
+                and scaled_vf_loss > 100
+            ):
+                logger.warning(
+                    "The magnitude of your value function loss for policy: {} is "
+                    "extremely large ({}) compared to the policy loss ({}). This "
+                    "can prevent the policy from learning. Consider scaling down "
+                    "the VF loss by reducing vf_loss_coeff, or disabling "
+                    "vf_share_layers.".format(policy_id, scaled_vf_loss, policy_loss)
+                )
+            # Warn about bad clipping configs.
+            train_batch.policy_batches[policy_id].set_get_interceptor(None)
+            mean_reward = train_batch.policy_batches[policy_id]["rewards"].mean()
+            if (
+                log_once("ppo_warned_vf_clip")
+                and mean_reward > self.config["vf_clip_param"]
+            ):
+                self.warned_vf_clip = True
+                logger.warning(
+                    f"The mean reward returned from the environment is {mean_reward}"
+                    f" but the vf_clip_param is set to {self.config['vf_clip_param']}."
+                    f" Consider increasing it for policy: {policy_id} to improve"
+                    " value function convergence."
+                )
+
+        # Update global vars on local worker as well.
+        self.workers.local_worker().set_global_vars(global_vars)
+
+        return train_results
+
+
+# Deprecated: Use ray.rllib.agents.ppo.PPOConfig instead!
+class _deprecated_default_config(dict):
+    def __init__(self):
+        super().__init__(PPOConfig().to_dict())
+
+    @Deprecated(
+        old="ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG",
+        new="ray.rllib.agents.ppo.ppo.PPOConfig(...)",
+        error=False,
+    )
+    def __getitem__(self, item):
+        return super().__getitem__(item)
+
+
+DEFAULT_CONFIG = _deprecated_default_config()

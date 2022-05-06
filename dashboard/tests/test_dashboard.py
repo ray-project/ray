@@ -13,7 +13,6 @@ import numpy as np
 import ray
 import psutil
 import pytest
-import redis
 import requests
 
 from ray import ray_constants
@@ -24,13 +23,11 @@ from ray._private.test_utils import (
     run_string_as_driver,
     wait_until_succeeded_without_exception,
 )
-from ray._private.gcs_pubsub import gcs_pubsub_enabled
 from ray.ray_constants import DEBUG_AUTOSCALING_STATUS_LEGACY, DEBUG_AUTOSCALING_ERROR
 from ray.dashboard import dashboard
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.modules
-from ray._private.gcs_utils import use_gcs_for_bootstrap
 
 try:
     import aiohttp.web
@@ -44,19 +41,8 @@ logger = logging.getLogger(__name__)
 
 
 def make_gcs_client(address_info):
-    if not use_gcs_for_bootstrap():
-        address = address_info["redis_address"]
-        address = address.split(":")
-        assert len(address) == 2
-        client = redis.StrictRedis(
-            host=address[0],
-            port=int(address[1]),
-            password=ray_constants.REDIS_DEFAULT_PASSWORD,
-        )
-        gcs_client = ray._private.gcs_utils.GcsClient.create_from_redis(client)
-    else:
-        address = address_info["gcs_address"]
-        gcs_client = ray._private.gcs_utils.GcsClient(address=address)
+    address = address_info["gcs_address"]
+    gcs_client = ray._private.gcs_utils.GcsClient(address=address)
     return gcs_client
 
 
@@ -126,34 +112,6 @@ def test_basic(ray_start_with_dashboard):
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
 
-    # Test for bad imports, the agent should be restarted.
-    logger.info("Test for bad imports.")
-    agent_proc = search_agent(raylet_proc.children())
-    prepare_test_files()
-    agent_pids = set()
-    try:
-        assert agent_proc is not None
-        agent_proc.kill()
-        agent_proc.wait()
-        # The agent will be restarted for imports failure.
-        for _ in range(300):
-            agent_proc = search_agent(raylet_proc.children())
-            if agent_proc:
-                agent_pids.add(agent_proc.pid)
-            # The agent should be restarted,
-            # so we can break if the len(agent_pid) > 1
-            if len(agent_pids) > 1:
-                break
-            time.sleep(0.1)
-    finally:
-        cleanup_test_files()
-    assert len(agent_pids) > 1, agent_pids
-
-    agent_proc = search_agent(raylet_proc.children())
-    if agent_proc:
-        agent_proc.kill()
-        agent_proc.wait()
-
     logger.info("Test agent register is OK.")
     wait_for_condition(lambda: search_agent(raylet_proc.children()))
     assert dashboard_proc.status() in [psutil.STATUS_RUNNING, psutil.STATUS_SLEEPING]
@@ -161,11 +119,6 @@ def test_basic(ray_start_with_dashboard):
     agent_pid = agent_proc.pid
 
     check_agent_register(raylet_proc, agent_pid)
-
-    # The agent should be dead if raylet exits.
-    raylet_proc.kill()
-    raylet_proc.wait()
-    agent_proc.wait(5)
 
     # Check kv keys are set.
     logger.info("Check kv keys are set.")
@@ -188,11 +141,7 @@ def test_basic(ray_start_with_dashboard):
 def test_raylet_and_agent_share_fate(shutdown_only):
     """Test raylet and agent share fate."""
 
-    system_config = {
-        "raylet_shares_fate_with_agent": True,
-        "agent_max_restart_count": 0,
-    }
-    ray.init(include_dashboard=True, _system_config=system_config)
+    ray.init(include_dashboard=True)
 
     all_processes = ray.worker._global_node.all_processes
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
@@ -211,7 +160,7 @@ def test_raylet_and_agent_share_fate(shutdown_only):
 
     ray.shutdown()
 
-    ray.init(include_dashboard=True, _system_config=system_config)
+    ray.init(include_dashboard=True)
     all_processes = ray.worker._global_node.all_processes
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
@@ -700,8 +649,6 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
         f"--port={port}",
         f"--temp-dir={temp_dir}",
         f"--log-dir={log_dir}",
-        f"--redis-address={address_info['redis_address']}",
-        f"--redis-password={ray_constants.REDIS_DEFAULT_PASSWORD}",
         f"--gcs-address={address_info['gcs_address']}",
         f"--session-dir={session_dir}",
     ]
@@ -753,13 +700,33 @@ def test_gcs_check_alive(fast_gcs_failure_detection, ray_start_with_dashboard):
 
     gcs_server_proc.kill()
     gcs_server_proc.wait()
-    if gcs_pubsub_enabled():
-        # When pubsub enabled, the exits comes from pubsub errored.
-        # TODO: Fix this exits logic for pubsub
-        assert dashboard_proc.wait(10) != 0
-    else:
-        # The dashboard exits by os._exit(-1)
-        assert dashboard_proc.wait(10) == 255
+
+    # The dashboard exits by os._exit(-1)
+    assert dashboard_proc.wait(10) == 255
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_DEFAULT") != "1",
+    reason="This test only works for default installation.",
+)
+def test_dashboard_does_not_depend_on_serve():
+    """Check that the dashboard can start without Serve."""
+
+    with pytest.raises(ImportError):
+        from ray import serve  # noqa: F401
+
+    ctx = ray.init(include_dashboard=True)
+
+    # Ensure standard dashboard features, like snapshot, still work
+    response = requests.get(f"http://{ctx.dashboard_url}/api/snapshot")
+    assert response.status_code == 200
+    assert response.json()["result"] is True
+    assert "snapshot" in response.json()["data"]
+
+    # Check that Serve-dependent features fail
+    response = requests.get(f"http://{ctx.dashboard_url}/api/serve/deployments/")
+    assert response.status_code == 500
+    assert "ModuleNotFoundError" in response.text
 
 
 if __name__ == "__main__":
