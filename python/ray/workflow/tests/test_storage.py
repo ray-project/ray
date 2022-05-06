@@ -1,7 +1,7 @@
 import pytest
 import ray
 from ray._private import signature
-from ray._private.test_utils import run_string_as_driver_nonblocking, simulate_storage
+from ray._private.test_utils import simulate_storage
 from ray.tests.conftest import *  # noqa
 from ray import workflow
 from ray.workflow import workflow_storage
@@ -11,7 +11,6 @@ from ray.workflow.common import (
     WorkflowNotFoundError,
 )
 from ray.workflow.tests import utils
-import tempfile
 import subprocess
 import time
 

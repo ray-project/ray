@@ -3,6 +3,7 @@ import urllib
 from pathlib import Path
 import pyarrow.fs
 import pytest
+import subprocess
 
 import ray
 import ray.internal.storage as storage
