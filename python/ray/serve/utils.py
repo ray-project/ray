@@ -59,6 +59,11 @@ class _ServeCustomEncoders:
         return obj.tolist()
 
     @staticmethod
+    def encode_np_scaler(obj):
+        assert isinstance(obj, np.generic)
+        return obj.item()
+
+    @staticmethod
     def encode_exception(obj):
         assert isinstance(obj, Exception)
         return str(obj)
@@ -66,6 +71,7 @@ class _ServeCustomEncoders:
 
 serve_encoders = {
     np.ndarray: _ServeCustomEncoders.encode_np_array,
+    np.generic: _ServeCustomEncoders.encode_np_scaler,
     Exception: _ServeCustomEncoders.encode_exception,
 }
 
