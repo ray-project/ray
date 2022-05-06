@@ -292,6 +292,7 @@ class DDPGTrainer(SimpleQTrainer):
 
     @override(SimpleQTrainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
+
         # Call super's validation method.
         super().validate_config(config)
 
