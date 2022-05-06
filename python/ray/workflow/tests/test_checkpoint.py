@@ -28,7 +28,7 @@ def checkpoint_dag(checkpoint):
         **workflow.options(name="identity", checkpoint=checkpoint)
     ).bind(x)
     return workflow.continuation(
-        average.options(workflow.options(name="average")).bind(y)
+        average.options(**workflow.options(name="average")).bind(y)
     )
 
 
