@@ -61,9 +61,8 @@ public class ExitActorTest extends BaseTest {
       try {
         actor.task(ExitingActor::getPid).remote().get();
         break;
-      }
-      catch (RayActorException e) {
-        continue
+      } catch (RayActorException e) {
+        continue;
       }
     }
 

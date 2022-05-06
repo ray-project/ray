@@ -1299,7 +1299,8 @@ def test_get_actor_after_killed(shutdown_only):
         namespace="namespace",
         lifetime="detached",
         max_restarts=1,
-        max_task_retries=-1).remote()
+        max_task_retries=-1,
+    ).remote()
     ray.kill(actor, no_restart=False)
     assert ray.get(ray.get_actor("actor_2", namespace="namespace").ready.remote())
 
