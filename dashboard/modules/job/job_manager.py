@@ -1,5 +1,6 @@
 import asyncio
 from asyncio.tasks import FIRST_COMPLETED
+import copy
 import os
 import json
 import logging
@@ -409,7 +410,11 @@ class JobManager:
     ) -> Dict[str, Any]:
 
         """Configure and return the runtime_env for the supervisor actor."""
-        runtime_env = user_runtime_env if user_runtime_env is not None else {}
+
+        # Make a copy to avoid mutating passed runtime_env.
+        runtime_env = (
+            copy.deepcopy(user_runtime_env) if user_runtime_env is not None else {}
+        )
         # Don't set CUDA_VISIBLE_DEVICES for the supervisor actor so the
         # driver can use GPUs if it wants to. This will be removed from
         # the driver's runtime_env so it isn't inherited by tasks & actors.
