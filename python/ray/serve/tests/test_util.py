@@ -35,20 +35,15 @@ def test_numpy_encoding():
     floats = np.array(data).astype(np.float32)
     ints = floats.astype(np.int32)
     uints = floats.astype(np.uint32)
+    list_of_uints = [np.int64(1), np.int64(2)]
 
-    assert (
-        json.loads(json.dumps(jsonable_encoder(floats, custom_encoder=serve_encoders)))
-        == data
-    )
-    assert (
-        json.loads(json.dumps(jsonable_encoder(ints, custom_encoder=serve_encoders)))
-        == data
-    )
-    assert (
-        json.loads(json.dumps(jsonable_encoder(uints, custom_encoder=serve_encoders)))
-        == data
-    )
-
+    for np_data in [floats, ints, uints, list_of_uints]:
+        assert (
+            json.loads(
+                json.dumps(jsonable_encoder(np_data, custom_encoder=serve_encoders))
+            )
+            == data
+        )
     nested = {"a": np.array([1, 2])}
     assert json.loads(
         json.dumps(jsonable_encoder(nested, custom_encoder=serve_encoders))

@@ -122,3 +122,49 @@ If you're seeing out of memory errors during map tasks, reducing the max block s
 Note that the number of blocks a Dataset created from ``ray.data.read_*`` contains is not fully known until all read tasks are fully executed.
 The number of blocks printed in the Dataset's string representation is initially set to the number of read tasks generated.
 To view the actual number of blocks created after block splitting, use ``len(ds.get_internal_block_refs())``, which will block until all data has been read.
+
+Improving shuffle performance
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Some Dataset operations require a *shuffle* operation, meaning that data is shuffled from all of the input partitions to all of the output partitions.
+These operations include ``Dataset.random_shuffle``, ``Dataset.sort`` and ``Dataset.groupby``.
+Shuffle can be challenging to scale to large data sizes and clusters, especially when the total dataset size cannot fit into memory.
+
+Starting in Ray v1.13, Datasets provides an alternative shuffle implementation known as push-based shuffle for improving large-scale performance.
+We recommend trying this out if your dataset has more than 1k partitions (input files) or 1TB of data.
+
+To try this out locally or on a cluster, you can start with the `nightly release test <https://github.com/ray-project/ray/blob/master/release/nightly_tests/dataset/sort.py>`_ that Ray runs for ``Dataset.random_shuffle`` and ``Dataset.sort``.
+To get an idea of the performance you can expect, here are some run time results for ``Dataset.random_shuffle`` on 1-10TB of data on 20 machines (m5.4xlarge instances on AWS EC2, each with 16 vCPUs, 64GB RAM).
+
+.. image:: https://docs.google.com/spreadsheets/d/e/2PACX-1vQvBWpdxHsW0-loasJsBpdarAixb7rjoo-lTgikghfCeKPQtjQDDo2fY51Yc1B6k_S4bnYEoChmFrH2/pubchart?oid=598567373&format=image
+   :align: center
+
+To try out push-based shuffle, set the environment variable ``RAY_DATASET_PUSH_BASED_SHUFFLE=1`` when running your application:
+
+.. code-block:: bash
+
+    $ wget https://raw.githubusercontent.com/ray-project/ray/master/release/nightly_tests/dataset/sort.py
+    $ RAY_DATASET_PUSH_BASED_SHUFFLE=1 python sort.py --num-partitions=10 --partition-size=1e7
+    # Dataset size: 10 partitions, 0.01GB partition size, 0.1GB total
+    # [dataset]: Run `pip install tqdm` to enable progress reporting.
+    # 2022-05-04 17:30:28,806	INFO push_based_shuffle.py:118 -- Using experimental push-based shuffle.
+    # Finished in 9.571171760559082
+    # ...
+
+You can also specify the shuffle implementation during program execution by
+setting the ``DatasetContext.use_push_based_shuffle`` flag:
+
+.. code-block:: python
+
+    import ray.data
+
+    ctx = ray.data.context.DatasetContext.get_current()
+    ctx.use_push_based_shuffle = True
+
+    n = 1000
+    parallelism=10
+    ds = ray.data.range(n, parallelism=parallelism)
+    print(ds.random_shuffle().take(10))
+    # [954, 405, 434, 501, 956, 762, 488, 920, 657, 834]
+
+Push-based shuffle is available as **alpha** in Ray 1.13+. Expect some rough edges, and please file any feature requests and bug reports on GitHub Issues.
