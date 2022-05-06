@@ -2427,7 +2427,7 @@ def test_csv_read_with_column_type_specified(shutdown_only, tmp_path):
     )
     expected_df = pd.DataFrame(
             {"one": [1.0, 2.0, 3e+5], "two": ["a", "b", "c"]})
-    assert df.equals(expected_df)
+    assert ds.to_pandas().equals(expected_df)
 
 
 class NodeLoggerOutputDatasource(Datasource[Union[ArrowRow, int]]):
