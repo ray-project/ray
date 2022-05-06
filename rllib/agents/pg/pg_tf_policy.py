@@ -2,7 +2,7 @@
 TensorFlow policy class used for PG.
 """
 
-from typing import List, Type, Union
+from typing import Dict, List, Type, Union
 
 import ray
 from ray.rllib.agents.pg.utils import post_process_advantages
@@ -19,8 +19,11 @@ tf1, tf, tfv = try_import_tf()
 
 
 def pg_tf_loss(
-        policy: Policy, model: ModelV2, dist_class: Type[ActionDistribution],
-        train_batch: SampleBatch) -> Union[TensorType, List[TensorType]]:
+    policy: Policy,
+    model: ModelV2,
+    dist_class: Type[ActionDistribution],
+    train_batch: SampleBatch,
+) -> Union[TensorType, List[TensorType]]:
     """The basic policy gradients loss function.
 
     Args:
@@ -34,16 +37,37 @@ def pg_tf_loss(
             of loss tensors.
     """
     # Pass the training data through our model to get distribution parameters.
-    dist_inputs, _ = model.from_batch(train_batch)
+    dist_inputs, _ = model(train_batch)
 
     # Create an action distribution object.
     action_dist = dist_class(dist_inputs, model)
 
     # Calculate the vanilla PG loss based on:
     # L = -E[ log(pi(a|s)) * A]
-    return -tf.reduce_mean(
-        action_dist.logp(train_batch[SampleBatch.ACTIONS]) * tf.cast(
-            train_batch[Postprocessing.ADVANTAGES], dtype=tf.float32))
+    loss = -tf.reduce_mean(
+        action_dist.logp(train_batch[SampleBatch.ACTIONS])
+        * tf.cast(train_batch[Postprocessing.ADVANTAGES], dtype=tf.float32)
+    )
+
+    policy.policy_loss = loss
+
+    return loss
+
+
+def pg_loss_stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
+    """Returns the calculated loss in a stats dict.
+
+    Args:
+        policy (Policy): The Policy object.
+        train_batch (SampleBatch): The data used for training.
+
+    Returns:
+        Dict[str, TensorType]: The stats dict.
+    """
+
+    return {
+        "policy_loss": policy.policy_loss,
+    }
 
 
 # Build a child class of `DynamicTFPolicy`, given the extra options:
@@ -51,6 +75,8 @@ def pg_tf_loss(
 # - PG loss function
 PGTFPolicy = build_tf_policy(
     name="PGTFPolicy",
-    get_default_config=lambda: ray.rllib.agents.pg.pg.DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.agents.pg.DEFAULT_CONFIG,
     postprocess_fn=post_process_advantages,
-    loss_fn=pg_tf_loss)
+    stats_fn=pg_loss_stats,
+    loss_fn=pg_tf_loss,
+)

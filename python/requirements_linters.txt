@@ -1,5 +1,6 @@
 flake8==3.9.1
 flake8-comprehensions
 flake8-quotes==2.0.0
+flake8-bugbear==21.9.2
 mypy==0.782
-yapf==0.23.0
+black==21.12b0

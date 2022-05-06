@@ -43,8 +43,19 @@ class ObjectStatsCollector {
   // Called after an object's ref count is decreased by 1.
   void OnObjectRefDecreased(const LocalObject &object);
 
-  // Debug dump the stats.
+  /// Record the internal metrics.
+  void RecordMetrics() const;
+
+  /// Debug dump the stats.
   void GetDebugDump(std::stringstream &buffer) const;
+
+  int64_t GetNumBytesInUse() const;
+
+  int64_t GetNumBytesCreatedTotal() const;
+
+  int64_t GetNumBytesUnsealed() const;
+
+  int64_t GetNumObjectsUnsealed() const;
 
  private:
   friend struct ObjectStatsCollectorTest;
@@ -66,6 +77,7 @@ class ObjectStatsCollector {
   int64_t num_bytes_received_ = 0;
   int64_t num_objects_errored_ = 0;
   int64_t num_bytes_errored_ = 0;
+  int64_t num_bytes_created_total_ = 0;
 };
 
 }  // namespace plasma

@@ -7,9 +7,16 @@ if __name__ == "__main__":
     # Do not import torch for testing purposes.
     os.environ["RLLIB_TEST_NO_TORCH_IMPORT"] = "1"
 
+    # Test registering (includes importing) all Trainers.
+    from ray.rllib import _register_all
+
+    # This should surface any dependency on torch, e.g. inside function
+    # signatures/typehints.
+    _register_all()
+
     from ray.rllib.agents.a3c import A2CTrainer
-    assert "torch" not in sys.modules, \
-        "`torch` initially present, when it shouldn't!"
+
+    assert "torch" not in sys.modules, "`torch` initially present, when it shouldn't!"
 
     # Note: No ray.init(), to test it works without Ray
     trainer = A2CTrainer(
@@ -22,12 +29,13 @@ if __name__ == "__main__":
             "logger_config": {
                 "type": "ray.tune.logger.NoopLogger",
             },
-        })
+        },
+    )
     trainer.train()
 
-    assert "torch" not in sys.modules, \
-        "`torch` should not be imported after creating and " \
-        "training A3CTrainer!"
+    assert (
+        "torch" not in sys.modules
+    ), "`torch` should not be imported after creating and training A3CTrainer!"
 
     # Clean up.
     del os.environ["RLLIB_TEST_NO_TORCH_IMPORT"]

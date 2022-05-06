@@ -13,16 +13,16 @@ class CommandRunnerInterface:
     Command runner instances are returned by provider.get_command_runner()."""
 
     def run(
-            self,
-            cmd: str = None,
-            timeout: int = 120,
-            exit_on_fail: bool = False,
-            port_forward: List[Tuple[int, int]] = None,
-            with_output: bool = False,
-            environment_variables: Dict[str, object] = None,
-            run_env: str = "auto",
-            ssh_options_override_ssh_key: str = "",
-            shutdown_after_run: bool = False,
+        self,
+        cmd: str = None,
+        timeout: int = 120,
+        exit_on_fail: bool = False,
+        port_forward: List[Tuple[int, int]] = None,
+        with_output: bool = False,
+        environment_variables: Dict[str, object] = None,
+        run_env: str = "auto",
+        ssh_options_override_ssh_key: str = "",
+        shutdown_after_run: bool = False,
     ) -> str:
         """Run the given command on the cluster node and optionally get output.
 
@@ -47,10 +47,9 @@ class CommandRunnerInterface:
         """
         raise NotImplementedError
 
-    def run_rsync_up(self,
-                     source: str,
-                     target: str,
-                     options: Optional[Dict[str, Any]] = None) -> None:
+    def run_rsync_up(
+        self, source: str, target: str, options: Optional[Dict[str, Any]] = None
+    ) -> None:
         """Rsync files up to the cluster node.
 
         Args:
@@ -59,10 +58,9 @@ class CommandRunnerInterface:
         """
         raise NotImplementedError
 
-    def run_rsync_down(self,
-                       source: str,
-                       target: str,
-                       options: Optional[Dict[str, Any]] = None) -> None:
+    def run_rsync_down(
+        self, source: str, target: str, options: Optional[Dict[str, Any]] = None
+    ) -> None:
         """Rsync files down from the cluster node.
 
         Args:
@@ -75,8 +73,9 @@ class CommandRunnerInterface:
         """Return the command the user can use to open a shell."""
         raise NotImplementedError
 
-    def run_init(self, *, as_head: bool, file_mounts: Dict[str, str],
-                 sync_run_yet: bool) -> Optional[bool]:
+    def run_init(
+        self, *, as_head: bool, file_mounts: Dict[str, str], sync_run_yet: bool
+    ) -> Optional[bool]:
         """Used to run extra initialization commands.
 
         Args:

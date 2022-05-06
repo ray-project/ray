@@ -22,11 +22,14 @@ class MockEnvDictSubclass(gym.Env):
 
 class TestExternalEnv(unittest.TestCase):
     def test_vector_step(self):
-        env = VectorEnv.wrap(lambda _: MockEnvDictSubclass(), num_envs=3)
+        env = VectorEnv.vectorize_gym_envs(
+            make_env=lambda _: MockEnvDictSubclass(), num_envs=3
+        )
         env.vector_step([0] * 3)
 
 
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

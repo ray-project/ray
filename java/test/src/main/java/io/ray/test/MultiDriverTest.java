@@ -3,7 +3,6 @@ package io.ray.test;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
-import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.util.SystemUtil;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -102,18 +101,7 @@ public class MultiDriverTest extends BaseTest {
   }
 
   private Process startDriver() throws IOException {
-    RayConfig rayConfig = TestUtils.getRuntime().getRayConfig();
-
-    ProcessBuilder builder =
-        new ProcessBuilder(
-            "java",
-            "-cp",
-            System.getProperty("java.class.path"),
-            "-Dray.address=" + rayConfig.getRedisAddress(),
-            "-Dray.object-store.socket-name=" + rayConfig.objectStoreSocketName,
-            "-Dray.raylet.socket-name=" + rayConfig.rayletSocketName,
-            "-Dray.raylet.node-manager-port=" + String.valueOf(rayConfig.getNodeManagerPort()),
-            MultiDriverTest.class.getName());
+    ProcessBuilder builder = TestUtils.buildDriver(MultiDriverTest.class, null);
     builder.redirectError(Redirect.INHERIT);
     return builder.start();
   }

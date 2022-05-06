@@ -1,3 +1,5 @@
+.. include:: we_are_hiring.rst
+
 .. _ray-yarn-deploy:
 
 Deploying on YARN
@@ -189,6 +191,6 @@ To clean up a running job, use the following (using the application ID):
 Questions or Issues?
 --------------------
 
-.. include:: /_help.rst
+.. include:: /_includes/_help.rst
 
 .. _`Skein`: https://jcrist.github.io/skein/

@@ -13,6 +13,8 @@
 // limitations under the License.
 #pragma once
 #include <functional>
+
+#include "absl/container/flat_hash_map.h"
 #include "ray/common/id.h"
 #include "src/ray/protobuf/common.pb.h"
 
@@ -22,26 +24,22 @@ namespace ray {
 /// here. There are two places where runtime env need be managed
 ///    1) central storage, like GCS or global KV storage
 ///    2) local node, where runtime env is fetched
-/// We only track the job and detached actor for runtime env. In summary,
-/// runtime env will be cleaned up when there is no job or detached actor is
-/// using it. The resouce is tracked in URI level. User need to provider
+/// We only track references from jobs and actors for runtime env. In summary,
+/// runtime env will be cleaned up when there is no job or actor is
+/// using it. The resource is tracked at the URI level. User needs to provide
 /// a delete handler.
 class RuntimeEnvManager {
  public:
-  using DeleteFunc = std::function<void(const std::string &, std::function<void(bool)>)>;
+  using DeleteFunc =
+      std::function<void(const std::string &uri, std::function<void(bool successful)>)>;
   explicit RuntimeEnvManager(DeleteFunc deleter) : deleter_(deleter) {}
 
   /// Increase the reference of URI by job_id and runtime_env.
   ///
   /// \param[in] hex_id The id of the runtime env. It can be an actor or job id.
-  /// \param[in] runtime_env The runtime env used by the id.
-  void AddURIReference(const std::string &hex_id, const rpc::RuntimeEnv &runtime_env);
-
-  /// Increase the reference of URI by URI and runtime_env.
-  ///
-  /// \param[in] hex_id The id of the runtime env. It can be an actor or job id.
-  /// \param[in] uri The URI referenced by the id.
-  void AddURIReference(const std::string &hex_id, const std::string &uri);
+  /// \param[in] runtime_env_info The runtime env used by the id.
+  void AddURIReference(const std::string &hex_id,
+                       const rpc::RuntimeEnvInfo &runtime_env_info);
 
   /// Get the reference of URIs by id.
   ///
@@ -53,12 +51,16 @@ class RuntimeEnvManager {
   /// \param[in] hex_id The id of the runtime env.
   void RemoveURIReference(const std::string &hex_id);
 
+  std::string DebugString() const;
+
  private:
+  void PrintDebugString() const;
+
   DeleteFunc deleter_;
   /// Reference counting of a URI.
-  std::unordered_map<std::string, int64_t> uri_reference_;
+  absl::flat_hash_map<std::string, int64_t> uri_reference_;
   /// A map between hex_id and URI.
-  std::unordered_map<std::string, std::vector<std::string>> id_to_uris_;
+  absl::flat_hash_map<std::string, std::vector<std::string>> id_to_uris_;
   /// A set of unused URIs
   std::unordered_set<std::string> unused_uris_;
 };

@@ -31,10 +31,27 @@ def cleanup_dirs():
 @pytest.fixture()
 def ray_start_cli_tracing(scope="function"):
     """Start ray with tracing-startup-hook, and clean up at end of test."""
-    check_call_ray(["stop", "--force"], )
     check_call_ray(
-        ["start", "--head", "--tracing-startup-hook", setup_tracing_path], )
+        ["stop", "--force"],
+    )
+    check_call_ray(
+        ["start", "--head", "--tracing-startup-hook", setup_tracing_path],
+    )
     ray.init(address="auto")
+    yield
+    ray.shutdown()
+    check_call_ray(["stop", "--force"])
+
+
+@pytest.fixture()
+def ray_start_cli_predefined_actor_tracing(scope="function"):
+    """Start ray with tracing-startup-hook, and clean up at end of test."""
+    check_call_ray(
+        ["stop", "--force"],
+    )
+    check_call_ray(
+        ["start", "--head", "--tracing-startup-hook", setup_tracing_path],
+    )
     yield
     ray.shutdown()
     check_call_ray(["stop", "--force"])
@@ -92,7 +109,7 @@ def task_helper():
     }
 
 
-def sync_actor_helper():
+def sync_actor_helper(connect_to_cluster: bool = False):
     """Run a Ray sync actor and check the spans produced."""
 
     @ray.remote
@@ -103,6 +120,9 @@ def sync_actor_helper():
         def increment(self):
             self.value += 1
             return self.value
+
+    if connect_to_cluster:
+        ray.init(address="auto")
 
     # Create an actor from this class.
     counter = Counter.remote()
@@ -146,7 +166,7 @@ def async_actor_helper():
         "async_actor_helper.<locals>.AsyncActor.__init__ ray.remote": 1,
         "async_actor_helper.<locals>.AsyncActor.run_concurrent ray.remote": 4,
         "AsyncActor.__init__ ray.remote_worker": 1,
-        "AsyncActor.run_concurrent ray.remote_worker": 4
+        "AsyncActor.run_concurrent ray.remote_worker": 4,
     }
 
 
@@ -158,24 +178,24 @@ def test_tracing_task_start_workflow(cleanup_dirs, ray_start_cli_tracing):
     assert task_helper()
 
 
-def test_tracing_sync_actor_init_workflow(cleanup_dirs,
-                                          ray_start_init_tracing):
+def test_tracing_sync_actor_init_workflow(cleanup_dirs, ray_start_init_tracing):
     assert sync_actor_helper()
 
 
-def test_tracing_sync_actor_start_workflow(cleanup_dirs,
-                                           ray_start_cli_tracing):
+def test_tracing_sync_actor_start_workflow(cleanup_dirs, ray_start_cli_tracing):
     assert sync_actor_helper()
 
 
-def test_tracing_async_actor_init_workflow(cleanup_dirs,
-                                           ray_start_init_tracing):
+def test_tracing_async_actor_init_workflow(cleanup_dirs, ray_start_init_tracing):
     assert async_actor_helper()
 
 
-def test_tracing_async_actor_start_workflow(cleanup_dirs,
-                                            ray_start_cli_tracing):
+def test_tracing_async_actor_start_workflow(cleanup_dirs, ray_start_cli_tracing):
     assert async_actor_helper()
+
+
+def test_tracing_predefined_actor(cleanup_dirs, ray_start_cli_predefined_actor_tracing):
+    assert sync_actor_helper(connect_to_cluster=True)
 
 
 def test_wrapping(ray_start_init_tracing):

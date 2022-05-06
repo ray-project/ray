@@ -119,10 +119,20 @@ const BasicLayout = (
           </ListItem>
           <ListItem
             button
+            className={classnames(
+              classes.menuItem,
+              location.pathname.includes("events") && classes.selected,
+            )}
+            onClick={() => history.push("/events")}
+          >
+            <ListItemText>EVENTS</ListItemText>
+          </ListItem>
+          <ListItem
+            button
             className={classnames(classes.menuItem)}
             onClick={() => history.push("/")}
           >
-            <ListItemText>BACK TO EXISTING DASHBOARD</ListItemText>
+            <ListItemText>BACK TO LEGACY DASHBOARD</ListItemText>
           </ListItem>
           <ListItem>
             <IconButton

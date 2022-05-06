@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/object_manager/plasma/object_lifecycle_manager.h"
+
 #include <limits>
 
 #include "absl/random/random.h"
 #include "absl/strings/str_format.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-
-#include "ray/object_manager/plasma/object_lifecycle_manager.h"
 
 using namespace ray;
 using namespace testing;
@@ -28,25 +28,24 @@ namespace plasma {
 
 class MockEvictionPolicy : public IEvictionPolicy {
  public:
-  MOCK_METHOD2(ObjectCreated, void(const ObjectID &, bool));
-  MOCK_METHOD2(RequireSpace, int64_t(int64_t, std::vector<ObjectID> *));
+  MOCK_METHOD1(ObjectCreated, void(const ObjectID &));
+  MOCK_METHOD2(RequireSpace, int64_t(int64_t, std::vector<ObjectID> &));
   MOCK_METHOD1(BeginObjectAccess, void(const ObjectID &));
   MOCK_METHOD1(EndObjectAccess, void(const ObjectID &));
-  MOCK_METHOD2(ChooseObjectsToEvict, int64_t(int64_t, std::vector<ObjectID> *));
+  MOCK_METHOD2(ChooseObjectsToEvict, int64_t(int64_t, std::vector<ObjectID> &));
   MOCK_METHOD1(RemoveObject, void(const ObjectID &));
   MOCK_CONST_METHOD0(DebugString, std::string());
 };
 
 class MockObjectStore : public IObjectStore {
  public:
-  MOCK_METHOD3(CreateObject, const LocalObject *(const ray::ObjectInfo &,
-                                                 plasma::flatbuf::ObjectSource, bool));
+  MOCK_METHOD3(CreateObject,
+               const LocalObject *(const ray::ObjectInfo &,
+                                   plasma::flatbuf::ObjectSource,
+                                   bool));
   MOCK_CONST_METHOD1(GetObject, const LocalObject *(const ObjectID &));
   MOCK_METHOD1(SealObject, const LocalObject *(const ObjectID &));
   MOCK_METHOD1(DeleteObject, bool(const ObjectID &));
-  MOCK_CONST_METHOD0(GetNumBytesCreatedTotal, int64_t());
-  MOCK_CONST_METHOD0(GetNumBytesUnsealed, int64_t());
-  MOCK_CONST_METHOD0(GetNumObjectsUnsealed, int64_t());
   MOCK_CONST_METHOD1(GetDebugDump, void(std::stringstream &buffer));
 };
 
@@ -57,9 +56,10 @@ struct ObjectLifecycleManagerTest : public Test {
     auto object_store = std::make_unique<MockObjectStore>();
     eviction_policy_ = eviction_policy.get();
     object_store_ = object_store.get();
-    manager_ = std::make_unique<ObjectLifecycleManager>(
-        ObjectLifecycleManager(std::move(object_store), std::move(eviction_policy),
-                               [this](auto &id) { notify_deleted_ids_.push_back(id); }));
+    manager_ = std::make_unique<ObjectLifecycleManager>(ObjectLifecycleManager(
+        std::move(object_store), std::move(eviction_policy), [this](auto &id) {
+          notify_deleted_ids_.push_back(id);
+        }));
     sealed_object_.state = ObjectState::PLASMA_SEALED;
     not_sealed_object_.state = ObjectState::PLASMA_CREATED;
     one_ref_object_.state = ObjectState::PLASMA_SEALED;
@@ -121,7 +121,7 @@ TEST_F(ObjectLifecycleManagerTest, CreateObjectTriggerGC) {
   EXPECT_CALL(*eviction_policy_, RequireSpace(_, _))
       .Times(1)
       .WillOnce(Invoke([&](auto size, auto &to_evict) {
-        to_evict->push_back(id1_);
+        to_evict.push_back(id1_);
         return 0;
       }));
 

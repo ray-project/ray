@@ -3,41 +3,49 @@ from typing import Dict, List
 import gym
 
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
-from ray.rllib.models.torch.misc import normc_initializer, same_padding, \
-    SlimConv2d, SlimFC
+from ray.rllib.models.torch.misc import (
+    normc_initializer,
+    same_padding,
+    SlimConv2d,
+    SlimFC,
+)
 from ray.rllib.models.utils import get_activation_fn, get_filter_config
-from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
 
-_, nn = try_import_torch()
+torch, nn = try_import_torch()
 
 
 class VisionNetwork(TorchModelV2, nn.Module):
     """Generic vision network."""
 
-    def __init__(self, obs_space: gym.spaces.Space,
-                 action_space: gym.spaces.Space, num_outputs: int,
-                 model_config: ModelConfigDict, name: str):
+    def __init__(
+        self,
+        obs_space: gym.spaces.Space,
+        action_space: gym.spaces.Space,
+        num_outputs: int,
+        model_config: ModelConfigDict,
+        name: str,
+    ):
 
         if not model_config.get("conv_filters"):
             model_config["conv_filters"] = get_filter_config(obs_space.shape)
 
-        TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
-                              model_config, name)
+        TorchModelV2.__init__(
+            self, obs_space, action_space, num_outputs, model_config, name
+        )
         nn.Module.__init__(self)
 
         activation = self.model_config.get("conv_activation")
         filters = self.model_config["conv_filters"]
-        assert len(filters) > 0,\
-            "Must provide at least 1 entry in `conv_filters`!"
+        assert len(filters) > 0, "Must provide at least 1 entry in `conv_filters`!"
 
         # Post FC net config.
         post_fcnet_hiddens = model_config.get("post_fcnet_hiddens", [])
         post_fcnet_activation = get_activation_fn(
-            model_config.get("post_fcnet_activation"), framework="torch")
+            model_config.get("post_fcnet_activation"), framework="torch"
+        )
 
         no_final_linear = self.model_config.get("no_final_linear")
         vf_share_layers = self.model_config.get("vf_share_layers")
@@ -46,17 +54,9 @@ class VisionNetwork(TorchModelV2, nn.Module):
         # a n x (1,1) Conv2D).
         self.last_layer_is_flattened = False
         self._logits = None
-        self.traj_view_framestacking = False
 
         layers = []
-        # Perform Atari framestacking via traj. view API.
-        if model_config.get("num_framestacks") != "auto" and \
-                model_config.get("num_framestacks", 0) > 1:
-            (w, h) = obs_space.shape
-            in_channels = model_config["num_framestacks"]
-            self.traj_view_framestacking = True
-        else:
-            (w, h, in_channels) = obs_space.shape
+        (w, h, in_channels) = obs_space.shape
 
         in_size = [w, h]
         for out_channels, kernel, stride in filters[:-1]:
@@ -68,7 +68,9 @@ class VisionNetwork(TorchModelV2, nn.Module):
                     kernel,
                     stride,
                     padding,
-                    activation_fn=activation))
+                    activation_fn=activation,
+                )
+            )
             in_channels = out_channels
             in_size = out_size
 
@@ -86,19 +88,23 @@ class VisionNetwork(TorchModelV2, nn.Module):
                     kernel,
                     stride,
                     None,  # padding=valid
-                    activation_fn=activation))
+                    activation_fn=activation,
+                )
+            )
 
             # Add (optional) post-fc-stack after last Conv2D layer.
-            layer_sizes = post_fcnet_hiddens[:-1] + ([num_outputs]
-                                                     if post_fcnet_hiddens else
-                                                     [])
+            layer_sizes = post_fcnet_hiddens[:-1] + (
+                [num_outputs] if post_fcnet_hiddens else []
+            )
             for i, out_size in enumerate(layer_sizes):
                 layers.append(
                     SlimFC(
                         in_size=out_channels,
                         out_size=out_size,
                         activation_fn=post_fcnet_activation,
-                        initializer=normc_initializer(1.0)))
+                        initializer=normc_initializer(1.0),
+                    )
+                )
                 out_channels = out_size
 
         # Finish network normally (w/o overriding last layer size with
@@ -111,29 +117,33 @@ class VisionNetwork(TorchModelV2, nn.Module):
                     kernel,
                     stride,
                     None,  # padding=valid
-                    activation_fn=activation))
+                    activation_fn=activation,
+                )
+            )
 
             # num_outputs defined. Use that to create an exact
             # `num_output`-sized (1,1)-Conv2D.
             if num_outputs:
                 in_size = [
                     np.ceil((in_size[0] - kernel[0]) / stride),
-                    np.ceil((in_size[1] - kernel[1]) / stride)
+                    np.ceil((in_size[1] - kernel[1]) / stride),
                 ]
                 padding, _ = same_padding(in_size, [1, 1], [1, 1])
                 if post_fcnet_hiddens:
                     layers.append(nn.Flatten())
                     in_size = out_channels
                     # Add (optional) post-fc-stack after last Conv2D layer.
-                    for i, out_size in enumerate(post_fcnet_hiddens +
-                                                 [num_outputs]):
+                    for i, out_size in enumerate(post_fcnet_hiddens + [num_outputs]):
                         layers.append(
                             SlimFC(
                                 in_size=in_size,
                                 out_size=out_size,
                                 activation_fn=post_fcnet_activation
-                                if i < len(post_fcnet_hiddens) - 1 else None,
-                                initializer=normc_initializer(1.0)))
+                                if i < len(post_fcnet_hiddens) - 1
+                                else None,
+                                initializer=normc_initializer(1.0),
+                            )
+                        )
                         in_size = out_size
                     # Last layer is logits layer.
                     self._logits = layers.pop()
@@ -141,35 +151,44 @@ class VisionNetwork(TorchModelV2, nn.Module):
                 else:
                     self._logits = SlimConv2d(
                         out_channels,
-                        num_outputs, [1, 1],
+                        num_outputs,
+                        [1, 1],
                         1,
                         padding,
-                        activation_fn=None)
+                        activation_fn=None,
+                    )
 
             # num_outputs not known -> Flatten, then set self.num_outputs
             # to the resulting number of nodes.
             else:
                 self.last_layer_is_flattened = True
                 layers.append(nn.Flatten())
-                self.num_outputs = out_channels
 
         self._convs = nn.Sequential(*layers)
+
+        # If our num_outputs still unknown, we need to do a test pass to
+        # figure out the output dimensions. This could be the case, if we have
+        # the Flatten layer at the end.
+        if self.num_outputs is None:
+            # Create a B=1 dummy sample and push it through out conv-net.
+            dummy_in = (
+                torch.from_numpy(self.obs_space.sample())
+                .permute(2, 0, 1)
+                .unsqueeze(0)
+                .float()
+            )
+            dummy_out = self._convs(dummy_in)
+            self.num_outputs = dummy_out.shape[1]
 
         # Build the value layers
         self._value_branch_separate = self._value_branch = None
         if vf_share_layers:
             self._value_branch = SlimFC(
-                out_channels,
-                1,
-                initializer=normc_initializer(0.01),
-                activation_fn=None)
+                out_channels, 1, initializer=normc_initializer(0.01), activation_fn=None
+            )
         else:
             vf_layers = []
-            if self.traj_view_framestacking:
-                (w, h) = obs_space.shape
-                in_channels = model_config["num_framestacks"]
-            else:
-                (w, h, in_channels) = obs_space.shape
+            (w, h, in_channels) = obs_space.shape
             in_size = [w, h]
             for out_channels, kernel, stride in filters[:-1]:
                 padding, out_size = same_padding(in_size, kernel, stride)
@@ -180,7 +199,9 @@ class VisionNetwork(TorchModelV2, nn.Module):
                         kernel,
                         stride,
                         padding,
-                        activation_fn=activation))
+                        activation_fn=activation,
+                    )
+                )
                 in_channels = out_channels
                 in_size = out_size
 
@@ -192,7 +213,9 @@ class VisionNetwork(TorchModelV2, nn.Module):
                     kernel,
                     stride,
                     None,
-                    activation_fn=activation))
+                    activation_fn=activation,
+                )
+            )
 
             vf_layers.append(
                 SlimConv2d(
@@ -201,33 +224,24 @@ class VisionNetwork(TorchModelV2, nn.Module):
                     kernel=1,
                     stride=1,
                     padding=None,
-                    activation_fn=None))
+                    activation_fn=None,
+                )
+            )
             self._value_branch_separate = nn.Sequential(*vf_layers)
 
         # Holds the current "base" output (before logits layer).
         self._features = None
 
-        # Optional: framestacking obs/new_obs for Atari.
-        if self.traj_view_framestacking:
-            from_ = model_config["num_framestacks"] - 1
-            self.view_requirements[SampleBatch.OBS].shift = \
-                "-{}:0".format(from_)
-            self.view_requirements[SampleBatch.OBS].shift_from = -from_
-            self.view_requirements[SampleBatch.OBS].shift_to = 0
-            self.view_requirements[SampleBatch.NEXT_OBS] = ViewRequirement(
-                data_col=SampleBatch.OBS,
-                shift="-{}:1".format(from_ - 1),
-                space=self.view_requirements[SampleBatch.OBS].space,
-            )
-
     @override(TorchModelV2)
-    def forward(self, input_dict: Dict[str, TensorType],
-                state: List[TensorType],
-                seq_lens: TensorType) -> (TensorType, List[TensorType]):
+    def forward(
+        self,
+        input_dict: Dict[str, TensorType],
+        state: List[TensorType],
+        seq_lens: TensorType,
+    ) -> (TensorType, List[TensorType]):
         self._features = input_dict["obs"].float()
-        # No framestacking:
-        if not self.traj_view_framestacking:
-            self._features = self._features.permute(0, 3, 1, 2)
+        # Permuate b/c data comes in as [B, dim, dim, channels]:
+        self._features = self._features.permute(0, 3, 1, 2)
         conv_out = self._convs(self._features)
         # Store features to save forward pass when getting value_function out.
         if not self._value_branch_separate:
@@ -242,9 +256,12 @@ class VisionNetwork(TorchModelV2, nn.Module):
                         "Given `conv_filters` ({}) do not result in a [B, {} "
                         "(`num_outputs`), 1, 1] shape (but in {})! Please "
                         "adjust your Conv2D stack such that the last 2 dims "
-                        "are both 1.".format(self.model_config["conv_filters"],
-                                             self.num_outputs,
-                                             list(conv_out.shape)))
+                        "are both 1.".format(
+                            self.model_config["conv_filters"],
+                            self.num_outputs,
+                            list(conv_out.shape),
+                        )
+                    )
                 logits = conv_out.squeeze(3)
                 logits = logits.squeeze(2)
             else:

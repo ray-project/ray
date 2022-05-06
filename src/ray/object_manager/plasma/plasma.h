@@ -16,6 +16,7 @@
 // under the License.
 
 #pragma once
+#include <stddef.h>
 
 #include <memory>
 #include <string>
@@ -23,7 +24,6 @@
 #include <unordered_set>
 #include <vector>
 
-#include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/compat.h"
 
 namespace plasma {

@@ -5,6 +5,7 @@ from multiprocessing import Process, Queue
 from numbers import Number
 from typing import Any, Callable, Dict, List, Optional, Tuple
 import numpy as np
+import urllib
 
 from ray import logger
 from ray.tune import Trainable
@@ -14,6 +15,7 @@ from ray.tune.utils import flatten_dict
 from ray.tune.trial import Trial
 
 import yaml
+from ray.util.annotations import Deprecated
 
 try:
     import wandb
@@ -22,7 +24,7 @@ except ImportError:
     wandb = None
 
 WANDB_ENV_VAR = "WANDB_API_KEY"
-_WANDB_QUEUE_END = (None, )
+_WANDB_QUEUE_END = (None,)
 _VALID_TYPES = (Number, wandb.data_types.Video, wandb.data_types.Image)
 _VALID_ITERABLE_TYPES = (wandb.data_types.Video, wandb.data_types.Image)
 
@@ -53,7 +55,8 @@ def _clean_log(obj: Any):
             Dumper=yaml.SafeDumper,
             default_flow_style=False,
             allow_unicode=True,
-            encoding="utf-8")
+            encoding="utf-8",
+        )
         return obj
     except Exception:
         # give up, similar to _SafeFallBackEncoder
@@ -145,14 +148,13 @@ def wandb_mixin(func: Callable):
 
     """
     if hasattr(func, "__mixins__"):
-        func.__mixins__ = func.__mixins__ + (WandbTrainableMixin, )
+        func.__mixins__ = func.__mixins__ + (WandbTrainableMixin,)
     else:
-        func.__mixins__ = (WandbTrainableMixin, )
+        func.__mixins__ = (WandbTrainableMixin,)
     return func
 
 
-def _set_api_key(api_key_file: Optional[str] = None,
-                 api_key: Optional[str] = None):
+def _set_api_key(api_key_file: Optional[str] = None, api_key: Optional[str] = None):
     """Set WandB API key from `wandb_config`. Will pop the
     `api_key_file` and `api_key` keys from `wandb_config` parameter"""
     if api_key_file:
@@ -175,7 +177,8 @@ def _set_api_key(api_key_file: Optional[str] = None,
             "No WandB API key found. Either set the {} environment "
             "variable, pass `api_key` or `api_key_file` to the"
             "`WandbLoggerCallback` class as arguments, "
-            "or run `wandb login` from the command line".format(WANDB_ENV_VAR))
+            "or run `wandb login` from the command line".format(WANDB_ENV_VAR)
+        )
 
 
 class _WandbLoggingProcess(Process):
@@ -184,8 +187,9 @@ class _WandbLoggingProcess(Process):
     wandb logging instances locally.
     """
 
-    def __init__(self, queue: Queue, exclude: List[str], to_config: List[str],
-                 *args, **kwargs):
+    def __init__(
+        self, queue: Queue, exclude: List[str], to_config: List[str], *args, **kwargs
+    ):
         super(_WandbLoggingProcess, self).__init__()
         self.queue = queue
         self._exclude = set(exclude)
@@ -194,16 +198,21 @@ class _WandbLoggingProcess(Process):
         self.kwargs = kwargs
 
     def run(self):
-        os.environ["WANDB_START_METHOD"] = "fork"
+        # Since we're running in a separate process already, use threads.
         wandb.init(*self.args, **self.kwargs)
         while True:
             result = self.queue.get()
             if result == _WANDB_QUEUE_END:
                 break
             log, config_update = self._handle_result(result)
-            wandb.config.update(config_update, allow_val_change=True)
-            wandb.log(log)
-        wandb.join()
+            try:
+                wandb.config.update(config_update, allow_val_change=True)
+                wandb.log(log)
+            except urllib.error.HTTPError as e:
+                # Ignore HTTPError. Missing a few data points is not a
+                # big issue, as long as things eventually recover.
+                logger.warn("Failed to log result to w&b: {}".format(str(e)))
+        wandb.finish()
 
     def _handle_result(self, result: Dict) -> Tuple[Dict, Dict]:
         config_update = result.get("config", {}).copy()
@@ -211,13 +220,9 @@ class _WandbLoggingProcess(Process):
         flat_result = flatten_dict(result, delimiter="/")
 
         for k, v in flat_result.items():
-            if any(
-                    k.startswith(item + "/") or k == item
-                    for item in self._to_config):
+            if any(k.startswith(item + "/") or k == item for item in self._to_config):
                 config_update[k] = v
-            elif any(
-                    k.startswith(item + "/") or k == item
-                    for item in self._exclude):
+            elif any(k.startswith(item + "/") or k == item for item in self._exclude):
                 continue
             elif not _is_allowed_type(v):
                 continue
@@ -237,16 +242,16 @@ class WandbLoggerCallback(LoggerCallback):
     visualization.
 
     Args:
-        project (str): Name of the Wandb project. Mandatory.
-        group (str): Name of the Wandb group. Defaults to the trainable
+        project: Name of the Wandb project. Mandatory.
+        group: Name of the Wandb group. Defaults to the trainable
             name.
-        api_key_file (str): Path to file containing the Wandb API KEY. This
+        api_key_file: Path to file containing the Wandb API KEY. This
             file only needs to be present on the node running the Tune script
             if using the WandbLogger.
-        api_key (str): Wandb API Key. Alternative to setting ``api_key_file``.
-        excludes (list): List of metrics that should be excluded from
+        api_key: Wandb API Key. Alternative to setting ``api_key_file``.
+        excludes: List of metrics that should be excluded from
             the log.
-        log_config (bool): Boolean indicating if the ``config`` parameter of
+        log_config: Boolean indicating if the ``config`` parameter of
             the ``results`` dict should be logged. This makes sense if
             parameters will change during training, e.g. with
             PopulationBasedTraining. Defaults to False.
@@ -284,20 +289,27 @@ class WandbLoggerCallback(LoggerCallback):
 
     # Use these result keys to update `wandb.config`
     _config_results = [
-        "trial_id", "experiment_tag", "node_ip", "experiment_id", "hostname",
-        "pid", "date"
+        "trial_id",
+        "experiment_tag",
+        "node_ip",
+        "experiment_id",
+        "hostname",
+        "pid",
+        "date",
     ]
 
     _logger_process_cls = _WandbLoggingProcess
 
-    def __init__(self,
-                 project: str,
-                 group: Optional[str] = None,
-                 api_key_file: Optional[str] = None,
-                 api_key: Optional[str] = None,
-                 excludes: Optional[List[str]] = None,
-                 log_config: bool = False,
-                 **kwargs):
+    def __init__(
+        self,
+        project: str,
+        group: Optional[str] = None,
+        api_key_file: Optional[str] = None,
+        api_key: Optional[str] = None,
+        excludes: Optional[List[str]] = None,
+        log_config: bool = False,
+        **kwargs
+    ):
         self.project = project
         self.group = group
         self.api_key_path = api_key_file
@@ -310,9 +322,12 @@ class WandbLoggerCallback(LoggerCallback):
         self._trial_queues: Dict["Trial", Queue] = {}
 
     def setup(self):
-        self.api_key_file = os.path.expanduser(self.api_key_path) if \
-            self.api_key_path else None
+        self.api_key_file = (
+            os.path.expanduser(self.api_key_path) if self.api_key_path else None
+        )
         _set_api_key(self.api_key_file, self.api_key)
+        wandb.require("service")
+        wandb.setup()
 
     def log_trial_start(self, trial: "Trial"):
         config = trial.config.copy()
@@ -344,12 +359,13 @@ class WandbLoggerCallback(LoggerCallback):
         wandb_init_kwargs = dict(
             id=trial_id,
             name=trial_name,
-            resume=True,
+            resume=False,
             reinit=True,
             allow_val_change=True,
             group=wandb_group,
             project=wandb_project,
-            config=config)
+            config=config,
+        )
         wandb_init_kwargs.update(self.kwargs)
 
         self._trial_queues[trial] = Queue()
@@ -357,7 +373,8 @@ class WandbLoggerCallback(LoggerCallback):
             queue=self._trial_queues[trial],
             exclude=exclude_results,
             to_config=self._config_results,
-            **wandb_init_kwargs)
+            **wandb_init_kwargs
+        )
         self._trial_processes[trial].start()
 
     def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):
@@ -383,6 +400,7 @@ class WandbLoggerCallback(LoggerCallback):
             del self._trial_processes[trial]
 
 
+@Deprecated
 class WandbLogger(Logger):
     """WandbLogger
 
@@ -399,7 +417,7 @@ class WandbLogger(Logger):
     the ``config`` parameter of ``tune.run()`` (see example below).
 
     The ``wandb`` config key can be optionally included in the
-    ``logger_config`` subkey of ``config`` to be compatible with RLLib
+    ``logger_config`` subkey of ``config`` to be compatible with RLlib
     trainables (see second example below).
 
     The content of the ``wandb`` config entry is passed to ``wandb.init()``
@@ -429,8 +447,7 @@ class WandbLogger(Logger):
 
     .. code-block:: python
 
-        from ray.tune.logger import DEFAULT_LOGGERS
-        from ray.tune.integration.wandb import WandbLogger
+        from ray.tune.integration.wandb import WandbLoggerCallback
         tune.run(
             train_fn,
             config={
@@ -444,14 +461,14 @@ class WandbLogger(Logger):
                     "log_config": True
                 }
             },
-            loggers=DEFAULT_LOGGERS + (WandbLogger, ))
+            calllbacks=[WandbLoggerCallback])
 
-    Example for RLLib:
+    Example for RLlib:
 
     .. code-block :: python
 
         from ray import tune
-        from ray.tune.integration.wandb import WandbLogger
+        from ray.tune.integration.wandb import WandbLoggerCallback
 
         tune.run(
             "PPO",
@@ -464,39 +481,18 @@ class WandbLogger(Logger):
                     }
                 }
             },
-            loggers=[WandbLogger])
+            callbacks=[WandbLoggerCallback])
 
 
     """
+
     _experiment_logger_cls = WandbLoggerCallback
 
-    def _init(self):
-        config = self.config.copy()
-        config.pop("callbacks", None)  # Remove callbacks
-
-        try:
-            if config.get("logger_config", {}).get("wandb"):
-                logger_config = config.pop("logger_config")
-                wandb_config = logger_config.get("wandb").copy()
-            else:
-                wandb_config = config.pop("wandb").copy()
-        except KeyError:
-            raise ValueError(
-                "Wandb logger specified but no configuration has been passed. "
-                "Make sure to include a `wandb` key in your `config` dict "
-                "containing at least a `project` specification.")
-
-        self._trial_experiment_logger = self._experiment_logger_cls(
-            **wandb_config)
-        self._trial_experiment_logger.setup()
-        self._trial_experiment_logger.log_trial_start(self.trial)
-
-    def on_result(self, result: Dict):
-        self._trial_experiment_logger.log_trial_result(0, self.trial, result)
-
-    def close(self):
-        self._trial_experiment_logger.log_trial_end(self.trial, failed=False)
-        del self._trial_experiment_logger
+    def __init__(self, *args, **kwargs):
+        raise DeprecationWarning(
+            "This `Logger` class is deprecated. "
+            "Use the `WandbLoggerCallback` callback instead."
+        )
 
 
 class WandbTrainableMixin:
@@ -508,9 +504,8 @@ class WandbTrainableMixin:
                 "The `WandbTrainableMixin` can only be used as a mixin "
                 "for `tune.Trainable` classes. Please make sure your "
                 "class inherits from both. For example: "
-                "`class YourTrainable(WandbTrainableMixin)`.")
-
-        super().__init__(config, *args, **kwargs)
+                "`class YourTrainable(WandbTrainableMixin)`."
+            )
 
         _config = config.copy()
 
@@ -520,7 +515,10 @@ class WandbTrainableMixin:
             raise ValueError(
                 "Wandb mixin specified but no configuration has been passed. "
                 "Make sure to include a `wandb` key in your `config` dict "
-                "containing at least a `project` specification.")
+                "containing at least a `project` specification."
+            )
+
+        super().__init__(_config, *args, **kwargs)
 
         api_key_file = wandb_config.pop("api_key_file", None)
         if api_key_file:
@@ -537,7 +535,8 @@ class WandbTrainableMixin:
             wandb_project = wandb_config.pop("project")
         except KeyError:
             raise ValueError(
-                "You need to specify a `project` in your wandb `config` dict.")
+                "You need to specify a `project` in your wandb `config` dict."
+            )
 
         # Grouping
         if isinstance(self, FunctionRunner):
@@ -557,10 +556,16 @@ class WandbTrainableMixin:
             allow_val_change=True,
             group=wandb_group,
             project=wandb_project,
-            config=_config)
+            config=_config,
+        )
         wandb_init_kwargs.update(wandb_config)
 
-        os.environ["WANDB_START_METHOD"] = "fork"
+        # On windows, we can't fork
+        if os.name == "nt":
+            os.environ["WANDB_START_METHOD"] = "thread"
+        else:
+            os.environ["WANDB_START_METHOD"] = "fork"
+
         self.wandb = self._wandb.init(**wandb_init_kwargs)
 
     def stop(self):

@@ -1,3 +1,4 @@
+import importlib.util
 from collections import namedtuple
 import logging
 import os
@@ -8,6 +9,11 @@ import sys
 import ray
 import ray.ray_constants as ray_constants
 
+try:
+    import GPUtil
+except ImportError:
+    pass
+
 logger = logging.getLogger(__name__)
 
 # Prefix for the node id resource that is automatically added to each node.
@@ -16,10 +22,18 @@ NODE_ID_PREFIX = "node:"
 
 
 class ResourceSpec(
-        namedtuple("ResourceSpec", [
-            "num_cpus", "num_gpus", "memory", "object_store_memory",
-            "resources", "redis_max_memory"
-        ])):
+    namedtuple(
+        "ResourceSpec",
+        [
+            "num_cpus",
+            "num_gpus",
+            "memory",
+            "object_store_memory",
+            "resources",
+            "redis_max_memory",
+        ],
+    )
+):
     """Represents the resource configuration passed to a raylet.
 
     All fields can be None. Before starting services, resolve() should be
@@ -41,16 +55,24 @@ class ResourceSpec(
             capped at 10GB but can be set higher.
     """
 
-    def __new__(cls,
-                num_cpus=None,
-                num_gpus=None,
-                memory=None,
-                object_store_memory=None,
-                resources=None,
-                redis_max_memory=None):
-        return super(ResourceSpec, cls).__new__(cls, num_cpus, num_gpus,
-                                                memory, object_store_memory,
-                                                resources, redis_max_memory)
+    def __new__(
+        cls,
+        num_cpus=None,
+        num_gpus=None,
+        memory=None,
+        object_store_memory=None,
+        resources=None,
+        redis_max_memory=None,
+    ):
+        return super(ResourceSpec, cls).__new__(
+            cls,
+            num_cpus,
+            num_gpus,
+            memory,
+            object_store_memory,
+            resources,
+            redis_max_memory,
+        )
 
     def resolved(self):
         """Returns if this ResourceSpec has default values filled out."""
@@ -67,17 +89,18 @@ class ResourceSpec(
         """
         assert self.resolved()
 
-        memory_units = ray_constants.to_memory_units(
-            self.memory, round_up=False)
+        memory_units = ray_constants.to_memory_units(self.memory, round_up=False)
         object_store_memory_units = ray_constants.to_memory_units(
-            self.object_store_memory, round_up=False)
+            self.object_store_memory, round_up=False
+        )
 
         resources = dict(
             self.resources,
             CPU=self.num_cpus,
             GPU=self.num_gpus,
             memory=memory_units,
-            object_store_memory=object_store_memory_units)
+            object_store_memory=object_store_memory_units,
+        )
 
         resources = {
             resource_label: resource_quantity
@@ -87,25 +110,31 @@ class ResourceSpec(
 
         # Check types.
         for resource_label, resource_quantity in resources.items():
-            assert (isinstance(resource_quantity, int)
-                    or isinstance(resource_quantity, float)), (
-                        f"{resource_label} ({type(resource_quantity)}): "
-                        f"{resource_quantity}")
-            if (isinstance(resource_quantity, float)
-                    and not resource_quantity.is_integer()):
+            assert isinstance(resource_quantity, int) or isinstance(
+                resource_quantity, float
+            ), (
+                f"{resource_label} ({type(resource_quantity)}): " f"{resource_quantity}"
+            )
+            if (
+                isinstance(resource_quantity, float)
+                and not resource_quantity.is_integer()
+            ):
                 raise ValueError(
                     "Resource quantities must all be whole numbers. "
-                    "Violated by resource '{}' in {}.".format(
-                        resource_label, resources))
+                    "Violated by resource '{}' in {}.".format(resource_label, resources)
+                )
             if resource_quantity < 0:
-                raise ValueError("Resource quantities must be nonnegative. "
-                                 "Violated by resource '{}' in {}.".format(
-                                     resource_label, resources))
+                raise ValueError(
+                    "Resource quantities must be nonnegative. "
+                    "Violated by resource '{}' in {}.".format(resource_label, resources)
+                )
             if resource_quantity > ray_constants.MAX_RESOURCE_QUANTITY:
-                raise ValueError("Resource quantities must be at most {}. "
-                                 "Violated by resource '{}' in {}.".format(
-                                     ray_constants.MAX_RESOURCE_QUANTITY,
-                                     resource_label, resources))
+                raise ValueError(
+                    "Resource quantities must be at most {}. "
+                    "Violated by resource '{}' in {}.".format(
+                        ray_constants.MAX_RESOURCE_QUANTITY, resource_label, resources
+                    )
+                )
 
         return resources
 
@@ -139,11 +168,11 @@ class ResourceSpec(
         gpu_ids = ray._private.utils.get_cuda_visible_devices()
         # Check that the number of GPUs that the raylet wants doesn't
         # exceed the amount allowed by CUDA_VISIBLE_DEVICES.
-        if (num_gpus is not None and gpu_ids is not None
-                and num_gpus > len(gpu_ids)):
-            raise ValueError("Attempting to start raylet with {} GPUs, "
-                             "but CUDA_VISIBLE_DEVICES contains {}.".format(
-                                 num_gpus, gpu_ids))
+        if num_gpus is not None and gpu_ids is not None and num_gpus > len(gpu_ids):
+            raise ValueError(
+                "Attempting to start raylet with {} GPUs, "
+                "but CUDA_VISIBLE_DEVICES contains {}.".format(num_gpus, gpu_ids)
+            )
         if num_gpus is None:
             # Try to automatically detect the number of GPUs.
             num_gpus = _autodetect_num_gpus()
@@ -152,8 +181,14 @@ class ResourceSpec(
                 num_gpus = min(num_gpus, len(gpu_ids))
 
         try:
-            info_string = _get_gpu_info_string()
-            gpu_types = _constraints_from_gpu_info(info_string)
+            if (
+                sys.platform.startswith("linux")
+                and importlib.util.find_spec("GPUtil") is not None
+            ):
+                gpu_types = _get_gpu_types_gputil()
+            else:
+                info_string = _get_gpu_info_string()
+                gpu_types = _constraints_from_gpu_info(info_string)
             resources.update(gpu_types)
         except Exception:
             logger.exception("Could not parse gpu information.")
@@ -164,43 +199,59 @@ class ResourceSpec(
         object_store_memory = self.object_store_memory
         if object_store_memory is None:
             object_store_memory = int(
-                avail_memory *
-                ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION)
+                avail_memory * ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
+            )
+
+            # Set the object_store_memory size to 2GB on Mac
+            # to avoid degraded performance.
+            # (https://github.com/ray-project/ray/issues/20388)
+            if sys.platform == "darwin":
+                object_store_memory = min(
+                    object_store_memory, ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT
+                )
+
             max_cap = ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES
             # Cap by shm size by default to avoid low performance, but don't
             # go lower than REQUIRE_SHM_SIZE_THRESHOLD.
             if sys.platform == "linux" or sys.platform == "linux2":
-                shm_avail = ray._private.utils.get_shared_memory_bytes()
+                # Multiple by 0.95 to give a bit of wiggle-room.
+                # https://github.com/ray-project/ray/pull/23034/files
+                shm_avail = ray._private.utils.get_shared_memory_bytes() * 0.95
                 max_cap = min(
-                    max(ray_constants.REQUIRE_SHM_SIZE_THRESHOLD, shm_avail),
-                    max_cap)
+                    max(ray_constants.REQUIRE_SHM_SIZE_THRESHOLD, shm_avail), max_cap
+                )
             # Cap memory to avoid memory waste and perf issues on large nodes
             if object_store_memory > max_cap:
                 logger.debug(
                     "Warning: Capping object memory store to {}GB. ".format(
-                        max_cap // 1e9) +
-                    "To increase this further, specify `object_store_memory` "
-                    "when calling ray.init() or ray start.")
+                        max_cap // 1e9
+                    )
+                    + "To increase this further, specify `object_store_memory` "
+                    "when calling ray.init() or ray start."
+                )
                 object_store_memory = max_cap
 
         redis_max_memory = self.redis_max_memory
         if redis_max_memory is None:
             redis_max_memory = min(
                 ray_constants.DEFAULT_REDIS_MAX_MEMORY_BYTES,
-                max(
-                    int(avail_memory * 0.1),
-                    ray_constants.REDIS_MINIMUM_MEMORY_BYTES))
+                max(int(avail_memory * 0.1), ray_constants.REDIS_MINIMUM_MEMORY_BYTES),
+            )
         if redis_max_memory < ray_constants.REDIS_MINIMUM_MEMORY_BYTES:
             raise ValueError(
                 "Attempting to cap Redis memory usage at {} bytes, "
                 "but the minimum allowed is {} bytes.".format(
-                    redis_max_memory,
-                    ray_constants.REDIS_MINIMUM_MEMORY_BYTES))
+                    redis_max_memory, ray_constants.REDIS_MINIMUM_MEMORY_BYTES
+                )
+            )
 
         memory = self.memory
         if memory is None:
-            memory = (avail_memory - object_store_memory - (redis_max_memory
-                                                            if is_head else 0))
+            memory = (
+                avail_memory
+                - object_store_memory
+                - (redis_max_memory if is_head else 0)
+            )
             if memory < 100e6 and memory < 0.05 * system_memory:
                 raise ValueError(
                     "After taking into account object store and redis memory "
@@ -209,11 +260,13 @@ class ResourceSpec(
                     "You can adjust these settings with "
                     "ray.init(memory=<bytes>, "
                     "object_store_memory=<bytes>).".format(
-                        round(memory / 1e9, 2),
-                        int(100 * (memory / system_memory))))
+                        round(memory / 1e9, 2), int(100 * (memory / system_memory))
+                    )
+                )
 
-        spec = ResourceSpec(num_cpus, num_gpus, memory, object_store_memory,
-                            resources, redis_max_memory)
+        spec = ResourceSpec(
+            num_cpus, num_gpus, memory, object_store_memory, resources, redis_max_memory
+        )
         assert spec.resolved()
         return spec
 
@@ -222,19 +275,20 @@ def _autodetect_num_gpus():
     """Attempt to detect the number of GPUs on this machine.
 
     TODO(rkn): This currently assumes NVIDIA GPUs on Linux.
-    TODO(mehrdadn): This currently does not work on macOS.
     TODO(mehrdadn): Use a better mechanism for Windows.
-
-    Possibly useful: tensorflow.config.list_physical_devices()
 
     Returns:
         The number of GPUs if any were detected, otherwise 0.
     """
     result = 0
     if sys.platform.startswith("linux"):
-        proc_gpus_path = "/proc/driver/nvidia/gpus"
-        if os.path.isdir(proc_gpus_path):
-            result = len(os.listdir(proc_gpus_path))
+        if importlib.util.find_spec("GPUtil"):
+            gpu_list = GPUtil.getGPUs()
+            result = len(gpu_list)
+        else:
+            proc_gpus_path = "/proc/driver/nvidia/gpus"
+            if os.path.isdir(proc_gpus_path):
+                result = len(os.listdir(proc_gpus_path))
     elif sys.platform == "win32":
         props = "AdapterCompatibility"
         cmdargs = ["WMIC", "PATH", "Win32_VideoController", "GET", props]
@@ -243,15 +297,29 @@ def _autodetect_num_gpus():
     return result
 
 
+def _get_gpu_types_gputil():
+    gpu_list = GPUtil.getGPUs()
+    if len(gpu_list) > 0:
+        gpu_list_names = [gpu.name for gpu in gpu_list]
+        info_str = gpu_list_names.pop()
+        pretty_name = _pretty_gpu_name(info_str)
+        if pretty_name:
+            constraint_name = (
+                f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}" f"{pretty_name}"
+            )
+            return {constraint_name: 1}
+    return {}
+
+
 def _constraints_from_gpu_info(info_str):
     """Parse the contents of a /proc/driver/nvidia/gpus/*/information to get the
-gpu model type.
+    gpu model type.
 
-    Args:
-        info_str (str): The contents of the file.
+        Args:
+            info_str (str): The contents of the file.
 
-    Returns:
-        (str) The full model name.
+        Returns:
+            (str) The full model name.
     """
     if info_str is None:
         return {}
@@ -267,8 +335,7 @@ gpu model type.
             break
     pretty_name = _pretty_gpu_name(full_model_name)
     if pretty_name:
-        constraint_name = (f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}"
-                           f"{pretty_name}")
+        constraint_name = f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}" f"{pretty_name}"
         return {constraint_name: 1}
     return {}
 

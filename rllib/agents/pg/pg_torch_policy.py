@@ -19,9 +19,11 @@ torch, _ = try_import_torch()
 
 
 def pg_torch_loss(
-        policy: Policy, model: ModelV2,
-        dist_class: Type[TorchDistributionWrapper],
-        train_batch: SampleBatch) -> Union[TensorType, List[TensorType]]:
+    policy: Policy,
+    model: ModelV2,
+    dist_class: Type[TorchDistributionWrapper],
+    train_batch: SampleBatch,
+) -> Union[TensorType, List[TensorType]]:
     """The basic policy gradients loss function.
 
     Args:
@@ -35,7 +37,7 @@ def pg_torch_loss(
             of loss tensors.
     """
     # Pass the training data through our model to get distribution parameters.
-    dist_inputs, _ = model.from_batch(train_batch)
+    dist_inputs, _ = model(train_batch)
 
     # Create an action distribution object.
     action_dist = dist_class(dist_inputs, model)
@@ -44,15 +46,17 @@ def pg_torch_loss(
     # L = -E[ log(pi(a|s)) * A]
     log_probs = action_dist.logp(train_batch[SampleBatch.ACTIONS])
 
-    # Save the loss in the policy object for the stats_fn below.
-    policy.pi_err = -torch.mean(
-        log_probs * train_batch[Postprocessing.ADVANTAGES])
+    # Final policy loss.
+    policy_loss = -torch.mean(log_probs * train_batch[Postprocessing.ADVANTAGES])
 
-    return policy.pi_err
+    # Store values for stats function in model (tower), such that for
+    # multi-GPU, we do not override them during the parallel loss phase.
+    model.tower_stats["policy_loss"] = policy_loss
+
+    return policy_loss
 
 
-def pg_loss_stats(policy: Policy,
-                  train_batch: SampleBatch) -> Dict[str, TensorType]:
+def pg_loss_stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
     """Returns the calculated loss in a stats dict.
 
     Args:
@@ -64,18 +68,17 @@ def pg_loss_stats(policy: Policy,
     """
 
     return {
-        # `pi_err` (the loss) is stored inside `pg_torch_loss()`.
-        "policy_loss": policy.pi_err.item(),
+        "policy_loss": torch.mean(torch.stack(policy.get_tower_stats("policy_loss"))),
     }
 
 
-# Build a child class of `TFPolicy`, given the extra options:
+# Build a child class of `TorchPolicy`, given the extra options:
 # - trajectory post-processing function (to calculate advantages)
 # - PG loss function
 PGTorchPolicy = build_policy_class(
     name="PGTorchPolicy",
     framework="torch",
-    get_default_config=lambda: ray.rllib.agents.pg.pg.DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.agents.pg.DEFAULT_CONFIG,
     loss_fn=pg_torch_loss,
     stats_fn=pg_loss_stats,
     postprocess_fn=post_process_advantages,

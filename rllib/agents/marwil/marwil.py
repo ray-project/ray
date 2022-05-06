@@ -1,20 +1,39 @@
-from typing import Optional, Type
+from typing import Type
 
-from ray.rllib.agents.trainer import with_common_config
-from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.agents.marwil.marwil_tf_policy import MARWILTFPolicy
-from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
-from ray.rllib.execution.replay_buffer import LocalReplayBuffer
-from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
-from ray.rllib.execution.concurrency_ops import Concurrently
-from ray.rllib.execution.train_ops import TrainOneStep
-from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.utils.typing import TrainerConfigDict
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.util.iter import LocalIterator
+from ray.rllib.execution.buffers.multi_agent_replay_buffer import MultiAgentReplayBuffer
+from ray.rllib.execution.concurrency_ops import Concurrently
+from ray.rllib.execution.metric_ops import StandardMetricsReporting
+from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
+from ray.rllib.execution.rollout_ops import (
+    ConcatBatches,
+    ParallelRollouts,
+    synchronous_parallel_sample,
+)
+from ray.rllib.execution.train_ops import (
+    multi_gpu_train_one_step,
+    TrainOneStep,
+    train_one_step,
+)
 from ray.rllib.policy.policy import Policy
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.metrics import (
+    NUM_AGENT_STEPS_SAMPLED,
+    NUM_AGENT_STEPS_TRAINED,
+    NUM_ENV_STEPS_SAMPLED,
+    NUM_ENV_STEPS_TRAINED,
+    WORKER_UPDATE_TIMER,
+)
+from ray.rllib.utils.typing import (
+    PartialTrainerConfigDict,
+    ResultDict,
+    TrainerConfigDict,
+)
+from ray.util.iter import LocalIterator
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # === Input settings ===
@@ -66,82 +85,125 @@ DEFAULT_CONFIG = with_common_config({
     # Number of steps to read before learning starts.
     "learning_starts": 0,
 
+    # A coeff to encourage higher action distribution entropy for exploration.
+    "bc_logstd_coeff": 0.0,
+
     # === Parallelism ===
     "num_workers": 0,
 })
 # __sphinx_doc_end__
-# yapf: enable
+# fmt: on
 
 
-def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
-    """Policy class picker function. Class is chosen based on DL-framework.
-    MARWIL/BC have both TF and Torch policy support.
+class MARWILTrainer(Trainer):
+    @classmethod
+    @override(Trainer)
+    def get_default_config(cls) -> TrainerConfigDict:
+        return DEFAULT_CONFIG
 
-    Args:
-        config (TrainerConfigDict): The trainer's configuration dict.
+    @override(Trainer)
+    def validate_config(self, config: TrainerConfigDict) -> None:
+        # Call super's validation method.
+        super().validate_config(config)
 
-    Returns:
-        Optional[Type[Policy]]: The Policy class to use with DQNTrainer.
-            If None, use `default_policy` provided in build_trainer().
-    """
-    if config["framework"] == "torch":
-        from ray.rllib.agents.marwil.marwil_torch_policy import \
-            MARWILTorchPolicy
-        return MARWILTorchPolicy
+        if config["num_gpus"] > 1:
+            raise ValueError("`num_gpus` > 1 not yet supported for MARWIL!")
 
+        if config["postprocess_inputs"] is False and config["beta"] > 0.0:
+            raise ValueError(
+                "`postprocess_inputs` must be True for MARWIL (to "
+                "calculate accum., discounted returns)!"
+            )
 
-def execution_plan(workers: WorkerSet,
-                   config: TrainerConfigDict) -> LocalIterator[dict]:
-    """Execution plan of the MARWIL/BC algorithm. Defines the distributed
-    dataflow.
+    @override(Trainer)
+    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
+        if config["framework"] == "torch":
+            from ray.rllib.agents.marwil.marwil_torch_policy import MARWILTorchPolicy
 
-    Args:
-        workers (WorkerSet): The WorkerSet for training the Polic(y/ies)
-            of the Trainer.
-        config (TrainerConfigDict): The trainer's configuration dict.
+            return MARWILTorchPolicy
+        else:
+            return MARWILTFPolicy
 
-    Returns:
-        LocalIterator[dict]: A local iterator over training metrics.
-    """
-    rollouts = ParallelRollouts(workers, mode="bulk_sync")
-    replay_buffer = LocalReplayBuffer(
-        learning_starts=config["learning_starts"],
-        buffer_size=config["replay_buffer_size"],
-        replay_batch_size=config["train_batch_size"],
-        replay_sequence_length=1,
-    )
+    @override(Trainer)
+    def setup(self, config: PartialTrainerConfigDict):
+        super().setup(config)
+        # `training_iteration` implementation: Setup buffer in `setup`, not
+        # in `execution_plan` (deprecated).
+        if self.config["_disable_execution_plan_api"] is True:
+            self.local_replay_buffer = MultiAgentReplayBuffer(
+                learning_starts=self.config["learning_starts"],
+                capacity=self.config["replay_buffer_size"],
+                replay_batch_size=self.config["train_batch_size"],
+                replay_sequence_length=1,
+            )
 
-    store_op = rollouts \
-        .for_each(StoreToReplayBuffer(local_buffer=replay_buffer))
+    @override(Trainer)
+    def training_iteration(self) -> ResultDict:
+        # Collect SampleBatches from sample workers.
+        batch = synchronous_parallel_sample(worker_set=self.workers)
+        batch = batch.as_multi_agent()
+        self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
+        self._counters[NUM_ENV_STEPS_SAMPLED] += batch.env_steps()
+        # Add batch to replay buffer.
+        self.local_replay_buffer.add_batch(batch)
 
-    replay_op = Replay(local_buffer=replay_buffer) \
-        .combine(
-            ConcatBatches(
-                min_batch_size=config["train_batch_size"],
-                count_steps_by=config["multiagent"]["count_steps_by"],
-            )) \
-        .for_each(TrainOneStep(workers))
+        # Pull batch from replay buffer and train on it.
+        train_batch = self.local_replay_buffer.replay()
+        # Train.
+        if self.config["simple_optimizer"]:
+            train_results = train_one_step(self, train_batch)
+        else:
+            train_results = multi_gpu_train_one_step(self, train_batch)
+        self._counters[NUM_AGENT_STEPS_TRAINED] += batch.agent_steps()
+        self._counters[NUM_ENV_STEPS_TRAINED] += batch.env_steps()
 
-    train_op = Concurrently(
-        [store_op, replay_op], mode="round_robin", output_indexes=[1])
+        global_vars = {
+            "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
+        }
 
-    return StandardMetricsReporting(train_op, workers, config)
+        # Update weights - after learning on the local worker - on all remote
+        # workers.
+        if self.workers.remote_workers():
+            with self._timers[WORKER_UPDATE_TIMER]:
+                self.workers.sync_weights(global_vars=global_vars)
 
+        # Update global vars on local worker as well.
+        self.workers.local_worker().set_global_vars(global_vars)
 
-def validate_config(config: TrainerConfigDict) -> None:
-    """Checks and updates the config based on settings."""
-    if config["num_gpus"] > 1:
-        raise ValueError("`num_gpus` > 1 not yet supported for MARWIL!")
+        return train_results
 
-    if config["postprocess_inputs"] is False and config["beta"] > 0.0:
-        raise ValueError("`postprocess_inputs` must be True for MARWIL (to "
-                         "calculate accum., discounted returns)!")
+    @staticmethod
+    @override(Trainer)
+    def execution_plan(
+        workers: WorkerSet, config: TrainerConfigDict, **kwargs
+    ) -> LocalIterator[dict]:
+        assert (
+            len(kwargs) == 0
+        ), "Marwill execution_plan does NOT take any additional parameters"
 
+        rollouts = ParallelRollouts(workers, mode="bulk_sync")
+        replay_buffer = MultiAgentReplayBuffer(
+            learning_starts=config["learning_starts"],
+            capacity=config["replay_buffer_size"],
+            replay_batch_size=config["train_batch_size"],
+            replay_sequence_length=1,
+        )
 
-MARWILTrainer = build_trainer(
-    name="MARWIL",
-    default_config=DEFAULT_CONFIG,
-    default_policy=MARWILTFPolicy,
-    get_policy_class=get_policy_class,
-    validate_config=validate_config,
-    execution_plan=execution_plan)
+        store_op = rollouts.for_each(StoreToReplayBuffer(local_buffer=replay_buffer))
+
+        replay_op = (
+            Replay(local_buffer=replay_buffer)
+            .combine(
+                ConcatBatches(
+                    min_batch_size=config["train_batch_size"],
+                    count_steps_by=config["multiagent"]["count_steps_by"],
+                )
+            )
+            .for_each(TrainOneStep(workers))
+        )
+
+        train_op = Concurrently(
+            [store_op, replay_op], mode="round_robin", output_indexes=[1]
+        )
+
+        return StandardMetricsReporting(train_op, workers, config)

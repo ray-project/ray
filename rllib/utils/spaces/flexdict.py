@@ -45,5 +45,8 @@ class FlexDict(gym.spaces.Dict):
         self.spaces[key] = space
 
     def __repr__(self):
-        return "FlexDict(" + ", ".join(
-            [str(k) + ":" + str(s) for k, s in self.spaces.items()]) + ")"
+        return (
+            "FlexDict("
+            + ", ".join([str(k) + ":" + str(s) for k, s in self.spaces.items()])
+            + ")"
+        )

@@ -13,10 +13,7 @@ class SkipConnection(tf.keras.layers.Layer if tf else object):
     input as hidden state input to a given fan_in_layer.
     """
 
-    def __init__(self,
-                 layer: Any,
-                 fan_in_layer: Optional[Any] = None,
-                 **kwargs):
+    def __init__(self, layer: Any, fan_in_layer: Optional[Any] = None, **kwargs):
         """Initializes a SkipConnection keras layer object.
 
         Args:

@@ -14,83 +14,33 @@
 
 #include "ray/raylet/scheduling/fixed_point.h"
 
-#include <cmath>
+#include <sstream>
 
-FixedPoint::FixedPoint(double d) { i_ = (uint64_t)(d * RESOURCE_UNIT_SCALING); }
-
-FixedPoint::FixedPoint(int i) { i_ = (i * RESOURCE_UNIT_SCALING); }
-
-FixedPoint::FixedPoint(uint32_t i) { i_ = (i * RESOURCE_UNIT_SCALING); }
-
-FixedPoint::FixedPoint(int64_t i) : FixedPoint((double)i) {}
-
-FixedPoint::FixedPoint(uint64_t i) : FixedPoint((double)i) {}
-
-FixedPoint FixedPoint::operator+(FixedPoint const &ru) const {
-  FixedPoint res;
-  res.i_ = i_ + ru.i_;
-  return res;
+std::vector<FixedPoint> FixedPointVectorFromDouble(const std::vector<double> &vector) {
+  std::vector<FixedPoint> vector_fp(vector.size());
+  for (size_t i = 0; i < vector.size(); i++) {
+    vector_fp[i] = vector[i];
+  }
+  return vector_fp;
 }
 
-FixedPoint FixedPoint::operator+=(FixedPoint const &ru) {
-  i_ += ru.i_;
-  return *this;
+std::vector<double> FixedPointVectorToDouble(const std::vector<FixedPoint> &vector_fp) {
+  std::vector<double> vector(vector_fp.size());
+  for (size_t i = 0; i < vector_fp.size(); i++) {
+    vector[i] = FixedPoint(vector_fp[i]).Double();
+  }
+  return vector;
 }
 
-FixedPoint FixedPoint::operator-(FixedPoint const &ru) const {
-  FixedPoint res;
-  res.i_ = i_ - ru.i_;
-  return res;
+std::string FixedPointVectorToString(const std::vector<FixedPoint> &vector) {
+  std::stringstream buffer;
+  buffer << "[";
+  for (size_t i = 0; i < vector.size(); i++) {
+    buffer << vector[i];
+    if (i < vector.size() - 1) {
+      buffer << ", ";
+    }
+  }
+  buffer << "]";
+  return buffer.str();
 }
-
-FixedPoint FixedPoint::operator-=(FixedPoint const &ru) {
-  i_ -= ru.i_;
-  return *this;
-}
-
-FixedPoint FixedPoint::operator-() const {
-  FixedPoint res;
-  res.i_ = -i_;
-  return res;
-}
-
-FixedPoint FixedPoint::operator+(double const d) const {
-  FixedPoint res;
-  res.i_ = i_ + (int64_t)(d * RESOURCE_UNIT_SCALING);
-  return res;
-}
-
-FixedPoint FixedPoint::operator-(double const d) const {
-  FixedPoint res;
-  res.i_ = i_ - (int64_t)(d * RESOURCE_UNIT_SCALING);
-  return res;
-}
-
-FixedPoint FixedPoint::operator=(double const d) {
-  i_ = (int64_t)(d * RESOURCE_UNIT_SCALING);
-  return *this;
-}
-
-FixedPoint FixedPoint::operator+=(double const d) {
-  i_ += (int64_t)(d * RESOURCE_UNIT_SCALING);
-  return *this;
-}
-
-FixedPoint FixedPoint::operator+=(int64_t const ru) {
-  *this += (double)ru;
-  return *this;
-}
-
-bool FixedPoint::operator<(FixedPoint const &ru1) const { return (i_ < ru1.i_); };
-bool FixedPoint::operator>(FixedPoint const &ru1) const { return (i_ > ru1.i_); };
-bool FixedPoint::operator<=(FixedPoint const &ru1) const { return (i_ <= ru1.i_); };
-bool FixedPoint::operator>=(FixedPoint const &ru1) const { return (i_ >= ru1.i_); };
-bool FixedPoint::operator==(FixedPoint const &ru1) const { return (i_ == ru1.i_); };
-bool FixedPoint::operator!=(FixedPoint const &ru1) const { return (i_ != ru1.i_); };
-
-std::ostream &operator<<(std::ostream &out, FixedPoint const &ru1) {
-  out << ru1.i_;
-  return out;
-}
-
-double FixedPoint::Double() const { return round(i_) / RESOURCE_UNIT_SCALING; };

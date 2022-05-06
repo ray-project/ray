@@ -19,6 +19,7 @@
 #include "./object/native_object_store.h"
 #include "./object/object_store.h"
 #include "./task/native_task_submitter.h"
+#include "ray/common/ray_config.h"
 
 namespace ray {
 namespace internal {
@@ -26,7 +27,20 @@ namespace internal {
 NativeRayRuntime::NativeRayRuntime() {
   object_store_ = std::unique_ptr<ObjectStore>(new NativeObjectStore());
   task_submitter_ = std::unique_ptr<TaskSubmitter>(new NativeTaskSubmitter());
-  task_executor_ = std::make_unique<TaskExecutor>(*this);
+  task_executor_ = std::make_unique<TaskExecutor>();
+
+  auto bootstrap_address = ConfigInternal::Instance().bootstrap_ip;
+  if (bootstrap_address.empty()) {
+    bootstrap_address = GetNodeIpAddress();
+  }
+  bootstrap_address =
+      bootstrap_address + ":" + std::to_string(ConfigInternal::Instance().bootstrap_port);
+  global_state_accessor_ =
+      ProcessHelper::GetInstance().CreateGlobalStateAccessor(bootstrap_address);
+}
+
+ActorID NativeRayRuntime::GetCurrentActorID() {
+  return core::CoreWorkerProcess::GetCoreWorker().GetWorkerContext().GetCurrentActorID();
 }
 
 }  // namespace internal

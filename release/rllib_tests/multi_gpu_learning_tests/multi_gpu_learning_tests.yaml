@@ -10,11 +10,8 @@ a2c-cartpole-v0:
         time_total_s: 600
     config:
         num_gpus: 2
-        num_workers: 31
+        num_workers: 23
         lr: 0.001
-        # TODO: Test w/ LSTMs.
-        model:
-            use_lstm: false
 
 appo-cartpole-v0-no-vtrace:
     env: CartPole-v0
@@ -37,8 +34,6 @@ appo-cartpole-v0-no-vtrace:
             fcnet_hiddens: [32]
             fcnet_activation: linear
             vf_share_layers: true
-            # TODO: Test w/ LSTMs.
-            use_lstm: false
         # Double batch size (2 GPUs).
         train_batch_size: 1000
 
@@ -62,8 +57,6 @@ appo-cartpole-v0-vtrace:
             fcnet_hiddens: [32]
             fcnet_activation: linear
             vf_share_layers: true
-            # TODO: Test w/ LSTMs.
-            use_lstm: false
         # Double batch size (2 GPUs).
         train_batch_size: 1000
 
@@ -93,7 +86,7 @@ dqn-cartpole-v0:
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
         episode_reward_mean: 150.0
-        timesteps_total: 60000
+        timesteps_total: 50000
     stop:
         time_total_s: 600
     config:
@@ -118,13 +111,9 @@ impala-cartpole-v0:
         time_total_s: 600
     config:
         num_gpus: 2
-        num_workers: 31
+        num_workers: 23
         # Double batch size (2 GPUs).
         train_batch_size: 1000
-
-        # TODO: Test w/ LSTMs.
-        model:
-            use_lstm: false
 
 pg-cartpole-v0:
     env: CartPole-v0
@@ -137,14 +126,12 @@ pg-cartpole-v0:
         time_total_s: 600
     config:
         num_gpus: 2
-        num_workers: 31
+        num_workers: 23
         # Double batch size (2 GPUs).
         train_batch_size: 400
         model:
             fcnet_hiddens: [64]
             fcnet_activation: linear
-            # TODO: Test w/ LSTMs.
-            use_lstm: false
 
 ppo-cartpole-v0:
     env: CartPole-v0
@@ -152,12 +139,12 @@ ppo-cartpole-v0:
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
         episode_reward_mean: 150.0
-        timesteps_total: 500000
+        timesteps_total: 300000
     stop:
         time_total_s: 600
     config:
         num_gpus: 2
-        num_workers: 31
+        num_workers: 23
         lr: 0.0003
         observation_filter: MeanStdFilter
         num_sgd_iter: 6
@@ -166,8 +153,6 @@ ppo-cartpole-v0:
             fcnet_hiddens: [32]
             fcnet_activation: linear
             vf_share_layers: true
-            # TODO: Test w/ LSTMs.
-            use_lstm: false
         # Double batch size (2 GPUs).
         train_batch_size: 8000
 
@@ -220,7 +205,7 @@ simpleq-cartpole-v0:
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
         episode_reward_mean: 150.0
-        timesteps_total: 120000
+        timesteps_total: 85000
     stop:
         time_total_s: 600
     config:
@@ -233,7 +218,7 @@ td3-repeat-after-me-env:
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
         episode_reward_mean: -50.0
-        timesteps_total: 30000
+        timesteps_total: 25000
     stop:
         time_total_s: 600
     config:

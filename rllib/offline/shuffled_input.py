@@ -18,11 +18,11 @@ class ShuffledInput(InputReader):
 
     @DeveloperAPI
     def __init__(self, child: InputReader, n: int = 0):
-        """Initialize a MixedInput.
+        """Initializes a ShuffledInput instance.
 
         Args:
-            child (InputReader): child input reader to shuffle.
-            n (int): if positive, shuffle input over this many batches.
+            child: child input reader to shuffle.
+            n: If positive, shuffle input over this many batches.
         """
         self.n = n
         self.child = child

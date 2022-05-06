@@ -21,9 +21,12 @@ void BundleSpecification::ComputeResources() {
 
   if (unit_resource.empty()) {
     // A static nil object is used here to avoid allocating the empty object every time.
-    unit_resource_ = ResourceSet::Nil();
+    static std::shared_ptr<ResourceRequest> nil_unit_resource =
+        std::make_shared<ResourceRequest>();
+    unit_resource_ = nil_unit_resource;
   } else {
-    unit_resource_.reset(new ResourceSet(unit_resource));
+    unit_resource_ = std::make_shared<ResourceRequest>(ResourceMapToResourceRequest(
+        unit_resource, /*requires_object_store_memory=*/false));
   }
 
   // Generate placement group bundle labels.
@@ -33,18 +36,19 @@ void BundleSpecification::ComputeResources() {
 void BundleSpecification::ComputeBundleResourceLabels() {
   RAY_CHECK(unit_resource_);
 
-  for (const auto &resource_pair : unit_resource_->GetResourceMap()) {
-    double resource_value = resource_pair.second;
+  for (auto &resource_id : unit_resource_->ResourceIds()) {
+    auto resource_name = resource_id.Binary();
+    auto resource_value = unit_resource_->Get(resource_id);
 
     /// With bundle index (e.g., CPU_group_i_zzz).
     const std::string &resource_label =
-        FormatPlacementGroupResource(resource_pair.first, PlacementGroupId(), Index());
-    bundle_resource_labels_[resource_label] = resource_value;
+        FormatPlacementGroupResource(resource_name, PlacementGroupId(), Index());
+    bundle_resource_labels_[resource_label] = resource_value.Double();
 
     /// Without bundle index (e.g., CPU_group_zzz).
     const std::string &wildcard_label =
-        FormatPlacementGroupResource(resource_pair.first, PlacementGroupId(), -1);
-    bundle_resource_labels_[wildcard_label] = resource_value;
+        FormatPlacementGroupResource(resource_name, PlacementGroupId(), -1);
+    bundle_resource_labels_[wildcard_label] = resource_value.Double();
   }
   auto bundle_label =
       FormatPlacementGroupResource(kBundle_ResourceLabel, PlacementGroupId(), -1);
@@ -54,7 +58,7 @@ void BundleSpecification::ComputeBundleResourceLabels() {
       1000;
 }
 
-const ResourceSet &BundleSpecification::GetRequiredResources() const {
+const ResourceRequest &BundleSpecification::GetRequiredResources() const {
   return *unit_resource_;
 }
 
@@ -74,6 +78,10 @@ PlacementGroupID BundleSpecification::PlacementGroupId() const {
   return PlacementGroupID::FromBinary(message_->bundle_id().placement_group_id());
 }
 
+NodeID BundleSpecification::NodeId() const {
+  return NodeID::FromBinary(message_->node_id());
+}
+
 int64_t BundleSpecification::Index() const {
   return message_->bundle_id().bundle_index();
 }
@@ -89,16 +97,19 @@ std::string BundleSpecification::DebugString() const {
 std::string FormatPlacementGroupResource(const std::string &original_resource_name,
                                          const PlacementGroupID &group_id,
                                          int64_t bundle_index) {
-  std::string str;
+  std::stringstream os;
   if (bundle_index >= 0) {
-    str = original_resource_name + "_group_" + std::to_string(bundle_index) + "_" +
-          group_id.Hex();
+    os << original_resource_name << kGroupKeyword << std::to_string(bundle_index) << "_"
+       << group_id.Hex();
   } else {
     RAY_CHECK(bundle_index == -1) << "Invalid index " << bundle_index;
-    str = original_resource_name + "_group_" + group_id.Hex();
+    os << original_resource_name << kGroupKeyword << group_id.Hex();
   }
-  RAY_CHECK(GetOriginalResourceName(str) == original_resource_name) << str;
-  return str;
+  std::string result = os.str();
+  RAY_DCHECK(GetOriginalResourceName(result) == original_resource_name)
+      << "Generated: " << GetOriginalResourceName(result)
+      << " Original: " << original_resource_name;
+  return result;
 }
 
 std::string FormatPlacementGroupResource(const std::string &original_resource_name,
@@ -107,16 +118,26 @@ std::string FormatPlacementGroupResource(const std::string &original_resource_na
       original_resource_name, bundle_spec.PlacementGroupId(), bundle_spec.Index());
 }
 
-bool IsBundleIndex(const std::string &resource, const PlacementGroupID &group_id,
+bool IsBundleIndex(const std::string &resource,
+                   const PlacementGroupID &group_id,
                    const int bundle_index) {
-  return resource.find("_group_" + std::to_string(bundle_index) + "_" + group_id.Hex()) !=
-         std::string::npos;
+  return resource.find(kGroupKeyword + std::to_string(bundle_index) + "_" +
+                       group_id.Hex()) != std::string::npos;
 }
 
 std::string GetOriginalResourceName(const std::string &resource) {
-  auto idx = resource.find("_group_");
+  auto idx = resource.find(kGroupKeyword);
   RAY_CHECK(idx >= 0) << "This isn't a placement group resource " << resource;
   return resource.substr(0, idx);
 }
+
+std::string GetDebugStringForBundles(
+    const std::vector<std::shared_ptr<const BundleSpecification>> &bundles) {
+  std::ostringstream debug_info;
+  for (const auto &bundle : bundles) {
+    debug_info << "{" << bundle->DebugString() << "},";
+  }
+  return debug_info.str();
+};
 
 }  // namespace ray

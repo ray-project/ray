@@ -4,15 +4,18 @@ import time
 
 import ray
 from ray import ray_constants
-from ray._private.test_utils import get_error_message, init_error_pubsub, \
-    run_string_as_driver
+from ray._private.test_utils import (
+    get_error_message,
+    init_error_pubsub,
+    run_string_as_driver,
+)
 from ray.cluster_utils import Cluster
 
 
 def test_isolation(shutdown_only):
     info = ray.init(namespace="namespace")
 
-    address = info["redis_address"]
+    address = info["address"]
 
     # First param of template is the namespace. Second is the redis address.
     driver_template = """
@@ -73,7 +76,7 @@ ray.get(actor.ping.remote())
 def test_placement_groups(shutdown_only):
     info = ray.init(namespace="namespace")
 
-    address = info["redis_address"]
+    address = info["address"]
 
     # First param of template is the namespace. Second is the redis address.
     driver_template = """
@@ -115,7 +118,7 @@ ray.get(pg.ready())
 def test_default_namespace(shutdown_only):
     info = ray.init(namespace="namespace")
 
-    address = info["redis_address"]
+    address = info["address"]
 
     # First param of template is the namespace. Second is the redis address.
     driver_template = """
@@ -145,7 +148,7 @@ def test_namespace_in_job_config(shutdown_only):
     job_config = ray.job_config.JobConfig(ray_namespace="namespace")
     info = ray.init(job_config=job_config)
 
-    address = info["redis_address"]
+    address = info["address"]
 
     # First param of template is the namespace. Second is the redis address.
     driver_template = """
@@ -178,7 +181,8 @@ def test_detached_warning(shutdown_only):
 
     error_pubsub = init_error_pubsub()
     actor = DetachedActor.options(  # noqa: F841
-        name="Pinger", lifetime="detached").remote()
+        name="Pinger", lifetime="detached"
+    ).remote()
     errors = get_error_message(error_pubsub, 1, None)
     error = errors.pop()
     assert error.type == ray_constants.DETACHED_ACTOR_ANONYMOUS_NAMESPACE_ERROR
@@ -205,9 +209,11 @@ print("Done!!!")
 
     print(
         run_string_as_driver(
-            template.format(address="localhost:8080", namespace="")))
+            template.format(address="localhost:8080", namespace="test")
+        )
+    )
 
-    ray.util.connect("localhost:8080", namespace="")
+    ray.util.connect("localhost:8080", namespace="test")
 
     pinger = ray.get_actor("Pinger")
     assert ray.get(pinger.ping.remote()) == "pong from other job"
@@ -223,6 +229,40 @@ def test_runtime_context(shutdown_only):
     namespace = ray.get_runtime_context().namespace
     assert namespace == "abc"
     assert namespace == ray.get_runtime_context().get()["namespace"]
+
+
+def test_namespace_validation(shutdown_only):
+    with pytest.raises(TypeError):
+        ray.init(namespace=123)
+
+    ray.shutdown()
+
+    with pytest.raises(ValueError):
+        ray.init(namespace="")
+
+    ray.shutdown()
+
+    ray.init(namespace="abc")
+
+    @ray.remote
+    class A:
+        pass
+
+    with pytest.raises(TypeError):
+        A.options(namespace=123).remote()
+
+    with pytest.raises(ValueError):
+        A.options(namespace="").remote()
+
+    A.options(name="a", namespace="test", lifetime="detached").remote()
+
+    with pytest.raises(TypeError):
+        ray.get_actor("a", namespace=123)
+
+    with pytest.raises(ValueError):
+        ray.get_actor("a", namespace="")
+
+    ray.get_actor("a", namespace="test")
 
 
 if __name__ == "__main__":

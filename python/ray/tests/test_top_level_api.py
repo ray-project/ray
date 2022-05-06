@@ -44,8 +44,7 @@ def test_api_functions():
 def test_non_ray_modules():
     modules = getmembers(ray, ismodule)
     for name, mod in modules:
-        assert "ray" in str(
-            mod), f"Module {mod} should not be reachable via ray.{name}"
+        assert "ray" in str(mod), f"Module {mod} should not be reachable via ray.{name}"
 
 
 def test_for_strings():
@@ -58,4 +57,5 @@ def test_for_strings():
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

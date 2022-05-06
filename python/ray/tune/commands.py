@@ -1,16 +1,23 @@
+from typing import Optional, List
+
 import click
 import logging
-import os
-import subprocess
 import operator
+import os
+import shutil
+import subprocess
 from datetime import datetime
 
 import pandas as pd
 from pandas.api.types import is_string_dtype, is_numeric_dtype
-from ray.tune.result import (DEFAULT_EXPERIMENT_INFO_KEYS, DEFAULT_RESULT_KEYS,
-                             CONFIG_PREFIX)
-from ray.tune.analysis import Analysis
+from ray.tune.result import (
+    DEFAULT_EXPERIMENT_INFO_KEYS,
+    DEFAULT_RESULT_KEYS,
+    CONFIG_PREFIX,
+)
+from ray.tune.analysis import ExperimentAnalysis
 from ray.tune import TuneError
+
 try:
     from tabulate import tabulate
 except ImportError:
@@ -30,11 +37,7 @@ DEFAULT_PROJECT_INFO_KEYS = (
     "last_updated",
 )
 
-try:
-    TERM_HEIGHT, TERM_WIDTH = subprocess.check_output(["stty", "size"]).split()
-    TERM_HEIGHT, TERM_WIDTH = int(TERM_HEIGHT), int(TERM_WIDTH)
-except subprocess.CalledProcessError:
-    TERM_HEIGHT, TERM_WIDTH = 100, 100
+TERM_WIDTH, TERM_HEIGHT = shutil.get_terminal_size(fallback=(100, 100))
 
 OPERATORS = {
     "<": operator.lt,
@@ -49,17 +52,16 @@ OPERATORS = {
 def _check_tabulate():
     """Checks whether tabulate is installed."""
     if tabulate is None:
-        raise ImportError(
-            "Tabulate not installed. Please run `pip install tabulate`.")
+        raise ImportError("Tabulate not installed. Please run `pip install tabulate`.")
 
 
 def print_format_output(dataframe):
     """Prints output of given dataframe to fit into terminal.
 
     Returns:
-        table (pd.DataFrame): Final outputted dataframe.
-        dropped_cols (list): Columns dropped due to terminal size.
-        empty_cols (list): Empty columns (dropped on default).
+        table: Final outputted dataframe.
+        dropped_cols: Columns dropped due to terminal size.
+        empty_cols: Empty columns (dropped on default).
     """
     print_df = pd.DataFrame()
     dropped_cols = []
@@ -79,47 +81,46 @@ def print_format_output(dataframe):
             dropped_cols += list(dataframe.columns)[i:]
             break
 
-    table = tabulate(
-        print_df, headers="keys", tablefmt="psql", showindex="never")
+    table = tabulate(print_df, headers="keys", tablefmt="psql", showindex="never")
 
     print(table)
     if dropped_cols:
         click.secho("Dropped columns: {}".format(dropped_cols), fg="yellow")
-        click.secho("Please increase your terminal size "
-                    "to view remaining columns.")
+        click.secho("Please increase your terminal size to view remaining columns.")
     if empty_cols:
         click.secho("Empty columns: {}".format(empty_cols), fg="yellow")
 
     return table, dropped_cols, empty_cols
 
 
-def list_trials(experiment_path,
-                sort=None,
-                output=None,
-                filter_op=None,
-                info_keys=None,
-                limit=None,
-                desc=False):
+def list_trials(
+    experiment_path: str,
+    sort: Optional[List[str]] = None,
+    output: Optional[str] = None,
+    filter_op: Optional[str] = None,
+    info_keys: Optional[List[str]] = None,
+    limit: int = None,
+    desc: bool = False,
+):
     """Lists trials in the directory subtree starting at the given path.
 
     Args:
-        experiment_path (str): Directory where trials are located.
+        experiment_path: Directory where trials are located.
             Like Experiment.local_dir/Experiment.name/experiment*.json.
-        sort (list): Keys to sort by.
-        output (str): Name of file where output is saved.
-        filter_op (str): Filter operation in the format
+        sort: Keys to sort by.
+        output: Name of file where output is saved.
+        filter_op: Filter operation in the format
             "<column> <operator> <value>".
-        info_keys (list): Keys that are displayed.
-        limit (int): Number of rows to display.
-        desc (bool): Sort ascending vs. descending.
+        info_keys: Keys that are displayed.
+        limit: Number of rows to display.
+        desc: Sort ascending vs. descending.
     """
     _check_tabulate()
 
     try:
-        checkpoints_df = Analysis(experiment_path).dataframe(
-            metric="episode_reward_mean", mode="max")
-    except TuneError:
-        raise click.ClickException("No trial data found!")
+        checkpoints_df = ExperimentAnalysis(experiment_path).dataframe()  # last result
+    except TuneError as e:
+        raise click.ClickException("No trial data found!") from e
 
     def key_filter(k):
         return k in DEFAULT_CLI_KEYS or k.startswith(CONFIG_PREFIX)
@@ -129,9 +130,10 @@ def list_trials(experiment_path,
     if info_keys:
         for k in info_keys:
             if k not in checkpoints_df.columns:
-                raise click.ClickException("Provided key invalid: {}. "
-                                           "Available keys: {}.".format(
-                                               k, checkpoints_df.columns))
+                raise click.ClickException(
+                    "Provided key invalid: {}. "
+                    "Available keys: {}.".format(k, checkpoints_df.columns)
+                )
         col_keys = [k for k in checkpoints_df.columns if k in info_keys]
 
     if not col_keys:
@@ -143,13 +145,15 @@ def list_trials(experiment_path,
             datetime_series = checkpoints_df["last_update_time"].dropna()
 
         datetime_series = datetime_series.apply(
-            lambda t: datetime.fromtimestamp(t).strftime(TIMESTAMP_FORMAT))
+            lambda t: datetime.fromtimestamp(t).strftime(TIMESTAMP_FORMAT)
+        )
         checkpoints_df["last_update_time"] = datetime_series
 
     if "logdir" in checkpoints_df:
         # logdir often too long to view in table, so drop experiment_path
         checkpoints_df["logdir"] = checkpoints_df["logdir"].str.replace(
-            experiment_path, "")
+            experiment_path, ""
+        )
 
     if filter_op:
         col, op, val = filter_op.split(" ")
@@ -160,8 +164,9 @@ def list_trials(experiment_path,
             val = str(val)
         # TODO(Andrew): add support for datetime and boolean
         else:
-            raise click.ClickException("Unsupported dtype for {}: {}".format(
-                val, col_type))
+            raise click.ClickException(
+                "Unsupported dtype for {}: {}".format(val, col_type)
+            )
         op = OPERATORS[op]
         filtered_index = op(checkpoints_df[col], val)
         checkpoints_df = checkpoints_df[filtered_index]
@@ -169,11 +174,11 @@ def list_trials(experiment_path,
     if sort:
         for key in sort:
             if key not in checkpoints_df:
-                raise click.ClickException("{} not in: {}".format(
-                    key, list(checkpoints_df)))
+                raise click.ClickException(
+                    "{} not in: {}".format(key, list(checkpoints_df))
+                )
         ascending = not desc
-        checkpoints_df = checkpoints_df.sort_values(
-            by=sort, ascending=ascending)
+        checkpoints_df = checkpoints_df.sort_values(by=sort, ascending=ascending)
 
     if limit:
         checkpoints_df = checkpoints_df[:limit]
@@ -187,30 +192,31 @@ def list_trials(experiment_path,
         elif file_extension == ".csv":
             checkpoints_df.to_csv(output, index=False)
         else:
-            raise click.ClickException(
-                "Unsupported filetype: {}".format(output))
+            raise click.ClickException("Unsupported filetype: {}".format(output))
         click.secho("Output saved at {}".format(output), fg="green")
 
 
-def list_experiments(project_path,
-                     sort=None,
-                     output=None,
-                     filter_op=None,
-                     info_keys=None,
-                     limit=None,
-                     desc=False):
+def list_experiments(
+    project_path: str,
+    sort: Optional[List[str]] = None,
+    output: str = None,
+    filter_op: str = None,
+    info_keys: Optional[List[str]] = None,
+    limit: int = None,
+    desc: bool = False,
+):
     """Lists experiments in the directory subtree.
 
     Args:
-        project_path (str): Directory where experiments are located.
+        project_path: Directory where experiments are located.
             Corresponds to Experiment.local_dir.
-        sort (list): Keys to sort by.
-        output (str): Name of file where output is saved.
-        filter_op (str): Filter operation in the format
+        sort: Keys to sort by.
+        output: Name of file where output is saved.
+        filter_op: Filter operation in the format
             "<column> <operator> <value>".
-        info_keys (list): Keys that are displayed.
-        limit (int): Number of rows to display.
-        desc (bool): Sort ascending vs. descending.
+        info_keys: Keys that are displayed.
+        limit: Number of rows to display.
+        desc: Sort ascending vs. descending.
     """
     _check_tabulate()
     base, experiment_folders, _ = next(os.walk(project_path))
@@ -220,7 +226,8 @@ def list_experiments(project_path,
     for experiment_dir in experiment_folders:
         num_trials = sum(
             "result.json" in files
-            for _, _, files in os.walk(os.path.join(base, experiment_dir)))
+            for _, _, files in os.walk(os.path.join(base, experiment_dir))
+        )
 
         experiment_data = {"name": experiment_dir, "total_trials": num_trials}
         experiment_data_collection.append(experiment_data)
@@ -234,7 +241,8 @@ def list_experiments(project_path,
     col_keys = [k for k in list(info_keys) if k in info_df]
     if not col_keys:
         raise click.ClickException(
-            "None of keys {} in experiment data!".format(info_keys))
+            "None of keys {} in experiment data!".format(info_keys)
+        )
     info_df = info_df[col_keys]
 
     if filter_op:
@@ -246,8 +254,9 @@ def list_experiments(project_path,
             val = str(val)
         # TODO(Andrew): add support for datetime and boolean
         else:
-            raise click.ClickException("Unsupported dtype for {}: {}".format(
-                val, col_type))
+            raise click.ClickException(
+                "Unsupported dtype for {}: {}".format(val, col_type)
+            )
         op = OPERATORS[op]
         filtered_index = op(info_df[col], val)
         info_df = info_df[filtered_index]
@@ -255,8 +264,7 @@ def list_experiments(project_path,
     if sort:
         for key in sort:
             if key not in info_df:
-                raise click.ClickException("{} not in: {}".format(
-                    key, list(info_df)))
+                raise click.ClickException("{} not in: {}".format(key, list(info_df)))
         ascending = not desc
         info_df = info_df.sort_values(by=sort, ascending=ascending)
 
@@ -272,17 +280,16 @@ def list_experiments(project_path,
         elif file_extension == ".csv":
             info_df.to_csv(output, index=False)
         else:
-            raise click.ClickException(
-                "Unsupported filetype: {}".format(output))
+            raise click.ClickException("Unsupported filetype: {}".format(output))
         click.secho("Output saved at {}".format(output), fg="green")
 
 
-def add_note(path, filename="note.txt"):
+def add_note(path: str, filename: str = "note.txt"):
     """Opens a txt file at the given path where user can add and save notes.
 
     Args:
-        path (str): Directory where note will be saved.
-        filename (str): Name of note. Defaults to "note.txt"
+        path: Directory where note will be saved.
+        filename: Name of note. Defaults to "note.txt"
     """
     path = os.path.expanduser(path)
     assert os.path.isdir(path), "{} is not a valid directory.".format(path)

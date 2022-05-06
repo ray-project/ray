@@ -2,8 +2,8 @@ import unittest
 
 import ray
 from ray.rllib.agents.a3c import A2CTrainer
-from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
-    STEPS_TRAINED_COUNTER
+from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, STEPS_TRAINED_COUNTER
+from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.test_utils import framework_iterator
 
 
@@ -23,13 +23,15 @@ class TestDistributedExecution(unittest.TestCase):
             trainer = A2CTrainer(
                 env="CartPole-v0",
                 config={
-                    "min_iter_time_s": 0,
+                    "min_time_s_per_reporting": 0,
                     "framework": fw,
-                })
+                    "_disable_execution_plan_api": False,
+                },
+            )
             result = trainer.train()
             assert isinstance(result, dict)
             assert "info" in result
-            assert "learner" in result["info"]
+            assert LEARNER_INFO in result["info"]
             assert STEPS_SAMPLED_COUNTER in result["info"]
             assert STEPS_TRAINED_COUNTER in result["info"]
             assert "timers" in result
@@ -44,24 +46,25 @@ class TestDistributedExecution(unittest.TestCase):
             trainer = A2CTrainer(
                 env="CartPole-v0",
                 config={
-                    "min_iter_time_s": 0,
+                    "min_time_s_per_reporting": 0,
                     "framework": fw,
-                })
+                    "_disable_execution_plan_api": False,
+                },
+            )
             res1 = trainer.train()
             checkpoint = trainer.save()
             for _ in range(2):
                 res2 = trainer.train()
-            assert res2["timesteps_total"] > res1["timesteps_total"], \
-                (res1, res2)
+            assert res2["timesteps_total"] > res1["timesteps_total"], (res1, res2)
             trainer.restore(checkpoint)
 
             # Should restore the timesteps counter to the same as res2.
             res3 = trainer.train()
-            assert res3["timesteps_total"] < res2["timesteps_total"], \
-                (res2, res3)
+            assert res3["timesteps_total"] < res2["timesteps_total"], (res2, res3)
 
 
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

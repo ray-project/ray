@@ -16,8 +16,10 @@ import os
 
 from ray import tune
 from ray.rllib.agents.callbacks import DefaultCallbacks
-from ray.rllib.examples.models.centralized_critic_models import \
-    YetAnotherCentralizedCriticModel, YetAnotherTorchCentralizedCriticModel
+from ray.rllib.examples.models.centralized_critic_models import (
+    YetAnotherCentralizedCriticModel,
+    YetAnotherTorchCentralizedCriticModel,
+)
 from ray.rllib.examples.env.two_step_game import TwoStepGame
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -28,45 +30,48 @@ parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "tfe", "torch"],
     default="tf",
-    help="The DL framework specifier.")
+    help="The DL framework specifier.",
+)
 parser.add_argument(
     "--as-test",
     action="store_true",
     help="Whether this script should be run as a test: --stop-reward must "
-    "be achieved within --stop-timesteps AND --stop-iters.")
+    "be achieved within --stop-timesteps AND --stop-iters.",
+)
 parser.add_argument(
-    "--stop-iters",
-    type=int,
-    default=100,
-    help="Number of iterations to train.")
+    "--stop-iters", type=int, default=100, help="Number of iterations to train."
+)
 parser.add_argument(
-    "--stop-timesteps",
-    type=int,
-    default=100000,
-    help="Number of timesteps to train.")
+    "--stop-timesteps", type=int, default=100000, help="Number of timesteps to train."
+)
 parser.add_argument(
-    "--stop-reward",
-    type=float,
-    default=7.99,
-    help="Reward at which we stop training.")
+    "--stop-reward", type=float, default=7.99, help="Reward at which we stop training."
+)
 
 
 class FillInActions(DefaultCallbacks):
     """Fills in the opponent actions info in the training batches."""
 
-    def on_postprocess_trajectory(self, worker, episode, agent_id, policy_id,
-                                  policies, postprocessed_batch,
-                                  original_batches, **kwargs):
+    def on_postprocess_trajectory(
+        self,
+        worker,
+        episode,
+        agent_id,
+        policy_id,
+        policies,
+        postprocessed_batch,
+        original_batches,
+        **kwargs
+    ):
         to_update = postprocessed_batch[SampleBatch.CUR_OBS]
         other_id = 1 if agent_id == 0 else 0
         action_encoder = ModelCatalog.get_preprocessor_for_space(Discrete(2))
 
         # set the opponent actions into the observation
         _, opponent_batch = original_batches[other_id]
-        opponent_actions = np.array([
-            action_encoder.transform(a)
-            for a in opponent_batch[SampleBatch.ACTIONS]
-        ])
+        opponent_actions = np.array(
+            [action_encoder.transform(a) for a in opponent_batch[SampleBatch.ACTIONS]]
+        )
         to_update[:, -2:] = opponent_actions
 
 
@@ -92,17 +97,22 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     ModelCatalog.register_custom_model(
-        "cc_model", YetAnotherTorchCentralizedCriticModel
-        if args.framework == "torch" else YetAnotherCentralizedCriticModel)
+        "cc_model",
+        YetAnotherTorchCentralizedCriticModel
+        if args.framework == "torch"
+        else YetAnotherCentralizedCriticModel,
+    )
 
     action_space = Discrete(2)
-    observer_space = Dict({
-        "own_obs": Discrete(6),
-        # These two fields are filled in by the CentralCriticObserver, and are
-        # not used for inference, only for training.
-        "opponent_obs": Discrete(6),
-        "opponent_action": Discrete(2),
-    })
+    observer_space = Dict(
+        {
+            "own_obs": Discrete(6),
+            # These two fields are filled in by the CentralCriticObserver, and are
+            # not used for inference, only for training.
+            "opponent_obs": Discrete(6),
+            "opponent_action": Discrete(2),
+        }
+    )
 
     config = {
         "env": TwoStepGame,
@@ -116,8 +126,7 @@ if __name__ == "__main__":
                 "pol1": (None, observer_space, action_space, {}),
                 "pol2": (None, observer_space, action_space, {}),
             },
-            "policy_mapping_fn": (
-                lambda aid, **kwargs: "pol1" if aid == 0 else "pol2"),
+            "policy_mapping_fn": (lambda aid, **kwargs: "pol1" if aid == 0 else "pol2"),
             "observation_fn": central_critic_observer,
         },
         "model": {

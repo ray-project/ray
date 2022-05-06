@@ -1,16 +1,15 @@
 import logging
-import ray
+
 from ray import serve
 import requests
 
-ray.init()
 serve.start()
 
 logger = logging.getLogger("ray")
 
 
 @serve.deployment
-def f(*args):
+def f(*_args):
     logger.info("Some info!")
 
 

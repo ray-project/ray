@@ -2,7 +2,10 @@ import abc
 from abc import abstractmethod
 from typing import Optional
 
+from ray.util.annotations import DeveloperAPI
 
+
+@DeveloperAPI
 class KVStoreBase(metaclass=abc.ABCMeta):
     """Abstract class for KVStore defining APIs needed for ray serve
     use cases, currently (8/6/2021) controller state checkpointing.

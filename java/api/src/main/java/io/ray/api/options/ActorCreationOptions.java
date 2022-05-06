@@ -3,48 +3,57 @@ package io.ray.api.options;
 import io.ray.api.Ray;
 import io.ray.api.concurrencygroup.ConcurrencyGroup;
 import io.ray.api.placementgroup.PlacementGroup;
+import io.ray.api.runtimeenv.RuntimeEnv;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 /** The options for creating actor. */
 public class ActorCreationOptions extends BaseTaskOptions {
-  public final boolean global;
+  public static final int NO_RESTART = 0;
+  public static final int INFINITE_RESTART = -1;
+
   public final String name;
+  public ActorLifetime lifetime;
   public final int maxRestarts;
   public final List<String> jvmOptions;
   public final int maxConcurrency;
   public final PlacementGroup group;
   public final int bundleIndex;
   public final List<ConcurrencyGroup> concurrencyGroups;
+  public final String serializedRuntimeEnv;
+  public final int maxPendingCalls;
 
   private ActorCreationOptions(
-      boolean global,
       String name,
+      ActorLifetime lifetime,
       Map<String, Double> resources,
       int maxRestarts,
       List<String> jvmOptions,
       int maxConcurrency,
       PlacementGroup group,
       int bundleIndex,
-      List<ConcurrencyGroup> concurrencyGroups) {
+      List<ConcurrencyGroup> concurrencyGroups,
+      String serializedRuntimeEnv,
+      int maxPendingCalls) {
     super(resources);
-    this.global = global;
     this.name = name;
+    this.lifetime = lifetime;
     this.maxRestarts = maxRestarts;
     this.jvmOptions = jvmOptions;
     this.maxConcurrency = maxConcurrency;
     this.group = group;
     this.bundleIndex = bundleIndex;
     this.concurrencyGroups = concurrencyGroups;
+    this.serializedRuntimeEnv = serializedRuntimeEnv;
+    this.maxPendingCalls = maxPendingCalls;
   }
 
   /** The inner class for building ActorCreationOptions. */
   public static class Builder {
-    private boolean global;
     private String name;
+    private ActorLifetime lifetime = null;
     private Map<String, Double> resources = new HashMap<>();
     private int maxRestarts = 0;
     private List<String> jvmOptions = new ArrayList<>();
@@ -52,32 +61,25 @@ public class ActorCreationOptions extends BaseTaskOptions {
     private PlacementGroup group;
     private int bundleIndex;
     private List<ConcurrencyGroup> concurrencyGroups = new ArrayList<>();
+    private RuntimeEnv runtimeEnv = null;
+    private int maxPendingCalls = -1;
 
     /**
-     * Set the actor name of a named actor. This named actor is only accessible from this job by
-     * this name via {@link Ray#getActor(java.lang.String)}. If you want create a named actor that
-     * is accessible from all jobs, use {@link Builder#setGlobalName(java.lang.String)} instead.
+     * Set the actor name of a named actor. This named actor is accessible in this namespace by this
+     * name via {@link Ray#getActor(java.lang.String)} and in other namespaces via {@link
+     * Ray#getActor(java.lang.String, java.lang.String)}.
      *
      * @param name The name of the named actor.
      * @return self
      */
     public Builder setName(String name) {
       this.name = name;
-      this.global = false;
       return this;
     }
 
-    /**
-     * Set the name of this actor. This actor will be accessible from all jobs by this name via
-     * {@link Ray#getGlobalActor(java.lang.String)}. If you want to create a named actor that is
-     * only accessible from this job, use {@link Builder#setName(java.lang.String)} instead.
-     *
-     * @param name The name of the named actor.
-     * @return self
-     */
-    public Builder setGlobalName(String name) {
-      this.name = name;
-      this.global = true;
+    /** Declare the lifetime of this actor. */
+    public Builder setLifetime(ActorLifetime lifetime) {
+      this.lifetime = lifetime;
       return this;
     }
 
@@ -128,20 +130,6 @@ public class ActorCreationOptions extends BaseTaskOptions {
      *
      * @param jvmOptions JVM options for the Java worker that this actor is running in.
      * @return self
-     * @deprecated Use {@link #setJvmOptions(List)} instead.
-     */
-    public Builder setJvmOptions(String jvmOptions) {
-      this.jvmOptions = Arrays.asList(jvmOptions.split(" +"));
-      return this;
-    }
-
-    /**
-     * Set the JVM options for the Java worker that this actor is running in.
-     *
-     * <p>Note, if this is set, this actor won't share Java worker with other actors or tasks.
-     *
-     * @param jvmOptions JVM options for the Java worker that this actor is running in.
-     * @return self
      */
     public Builder setJvmOptions(List<String> jvmOptions) {
       this.jvmOptions = jvmOptions;
@@ -167,6 +155,24 @@ public class ActorCreationOptions extends BaseTaskOptions {
     }
 
     /**
+     * Set the max number of pending calls allowed on the actor handle. When this value is exceeded,
+     * ray.exceptions.PendingCallsLimitExceededException will be thrown for further tasks. Note that
+     * this limit is counted per handle. -1 means that the number of pending calls is unlimited.
+     *
+     * @param maxPendingCalls The maximum number of pending calls for this actor.
+     * @return self
+     */
+    public Builder setMaxPendingCalls(int maxPendingCalls) {
+      if (maxPendingCalls < -1 || maxPendingCalls == 0) {
+        throw new IllegalArgumentException(
+            "maxPendingCalls must be greater than 0, or -1 to disable.");
+      }
+
+      this.maxPendingCalls = maxPendingCalls;
+      return this;
+    }
+
+    /**
      * Set the placement group to place this actor in.
      *
      * @param group The placement group of the actor.
@@ -181,20 +187,27 @@ public class ActorCreationOptions extends BaseTaskOptions {
 
     public ActorCreationOptions build() {
       return new ActorCreationOptions(
-          global,
           name,
+          lifetime,
           resources,
           maxRestarts,
           jvmOptions,
           maxConcurrency,
           group,
           bundleIndex,
-          concurrencyGroups);
+          concurrencyGroups,
+          runtimeEnv != null ? runtimeEnv.toJsonBytes() : "",
+          maxPendingCalls);
     }
 
     /** Set the concurrency groups for this actor. */
     public Builder setConcurrencyGroups(List<ConcurrencyGroup> concurrencyGroups) {
       this.concurrencyGroups = concurrencyGroups;
+      return this;
+    }
+
+    public Builder setRuntimeEnv(RuntimeEnv runtimeEnv) {
+      this.runtimeEnv = runtimeEnv;
       return this;
     }
   }

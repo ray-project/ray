@@ -15,10 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include "absl/time/clock.h"
-
-#include "ray/common/ray_config.h"
 #include "ray/object_manager/plasma/object_lifecycle_manager.h"
+
+#include "absl/time/clock.h"
+#include "ray/common/ray_config.h"
 
 namespace plasma {
 using namespace flatbuf;
@@ -29,11 +29,11 @@ ObjectLifecycleManager::ObjectLifecycleManager(
       eviction_policy_(std::make_unique<EvictionPolicy>(*object_store_, allocator)),
       delete_object_callback_(delete_object_callback),
       earger_deletion_objects_(),
-      num_bytes_in_use_(0),
       stats_collector_() {}
 
 std::pair<const LocalObject *, flatbuf::PlasmaError> ObjectLifecycleManager::CreateObject(
-    const ray::ObjectInfo &object_info, plasma::flatbuf::ObjectSource source,
+    const ray::ObjectInfo &object_info,
+    plasma::flatbuf::ObjectSource source,
     bool fallback_allocator) {
   RAY_LOG(DEBUG) << "attempting to create object " << object_info.object_id << " size "
                  << object_info.data_size;
@@ -45,7 +45,7 @@ std::pair<const LocalObject *, flatbuf::PlasmaError> ObjectLifecycleManager::Cre
   if (entry == nullptr) {
     return {nullptr, PlasmaError::OutOfMemory};
   }
-  eviction_policy_->ObjectCreated(object_info.object_id, /*is_create=*/true);
+  eviction_policy_->ObjectCreated(object_info.object_id);
   stats_collector_.OnObjectCreated(*entry);
   return {entry, PlasmaError::OK};
 }
@@ -73,14 +73,14 @@ flatbuf::PlasmaError ObjectLifecycleManager::AbortObject(const ObjectID &object_
     RAY_LOG(ERROR) << "To abort an object it must not have been sealed.";
     return PlasmaError::ObjectSealed;
   }
-  if (entry->ref_count > 0) {
-    // A client was using this object.
-    num_bytes_in_use_ -= entry->GetObjectSize();
-    RAY_LOG(DEBUG) << "Erasing object " << object_id << " with nonzero ref count"
-                   << object_id << ", num bytes in use is now " << num_bytes_in_use_;
-  }
 
+  bool abort_while_using = entry->ref_count > 0;
   DeleteObjectInternal(object_id);
+
+  if (abort_while_using) {
+    RAY_LOG(DEBUG) << "Erasing object " << object_id << " with nonzero ref count"
+                   << object_id << ", num bytes in use is now " << GetNumBytesInUse();
+  }
   return PlasmaError::OK;
 }
 
@@ -113,7 +113,7 @@ PlasmaError ObjectLifecycleManager::DeleteObject(const ObjectID &object_id) {
 int64_t ObjectLifecycleManager::RequireSpace(int64_t size) {
   std::vector<ObjectID> objects_to_evict;
   int64_t num_bytes_evicted =
-      eviction_policy_->ChooseObjectsToEvict(size, &objects_to_evict);
+      eviction_policy_->ChooseObjectsToEvict(size, objects_to_evict);
   EvictObjects(objects_to_evict);
   return num_bytes_evicted;
 }
@@ -129,13 +129,12 @@ bool ObjectLifecycleManager::AddReference(const ObjectID &object_id) {
   if (entry->ref_count == 0) {
     // Tell the eviction policy that this object is being used.
     eviction_policy_->BeginObjectAccess(object_id);
-    num_bytes_in_use_ += entry->GetObjectSize();
   }
   // Increase reference count.
   entry->ref_count++;
-  RAY_LOG(DEBUG) << "Object " << object_id << " reference has incremented"
-                 << ", num bytes in use is now " << num_bytes_in_use_;
   stats_collector_.OnObjectRefIncreased(*entry);
+  RAY_LOG(DEBUG) << "Object " << object_id << " reference has incremented"
+                 << ", num bytes in use is now " << GetNumBytesInUse();
   return true;
 }
 
@@ -155,9 +154,8 @@ bool ObjectLifecycleManager::RemoveReference(const ObjectID &object_id) {
     return true;
   }
 
-  num_bytes_in_use_ -= entry->GetObjectSize();
   RAY_LOG(DEBUG) << "Releasing object no longer in use " << object_id
-                 << ", num bytes in use is now " << num_bytes_in_use_;
+                 << ", num bytes in use is now " << GetNumBytesInUse();
 
   eviction_policy_->EndObjectAccess(object_id);
 
@@ -174,7 +172,8 @@ std::string ObjectLifecycleManager::EvictionPolicyDebugString() const {
 }
 
 const LocalObject *ObjectLifecycleManager::CreateObjectInternal(
-    const ray::ObjectInfo &object_info, plasma::flatbuf::ObjectSource source,
+    const ray::ObjectInfo &object_info,
+    plasma::flatbuf::ObjectSource source,
     bool allow_fallback_allocation) {
   // Try to evict objects until there is enough space.
   // NOTE(ekl) if we can't achieve this after a number of retries, it's
@@ -189,7 +188,7 @@ const LocalObject *ObjectLifecycleManager::CreateObjectInternal(
     // Tell the eviction policy how much space we need to create this object.
     std::vector<ObjectID> objects_to_evict;
     int64_t space_needed =
-        eviction_policy_->RequireSpace(object_info.GetObjectSize(), &objects_to_evict);
+        eviction_policy_->RequireSpace(object_info.GetObjectSize(), objects_to_evict);
     EvictObjects(objects_to_evict);
     // More space is still needed.
     if (space_needed > 0) {
@@ -251,7 +250,9 @@ void ObjectLifecycleManager::DeleteObjectInternal(const ObjectID &object_id) {
   }
 }
 
-int64_t ObjectLifecycleManager::GetNumBytesInUse() const { return num_bytes_in_use_; }
+int64_t ObjectLifecycleManager::GetNumBytesInUse() const {
+  return stats_collector_.GetNumBytesInUse();
+}
 
 bool ObjectLifecycleManager::IsObjectSealed(const ObjectID &object_id) const {
   auto entry = GetObject(object_id);
@@ -259,16 +260,18 @@ bool ObjectLifecycleManager::IsObjectSealed(const ObjectID &object_id) const {
 }
 
 int64_t ObjectLifecycleManager::GetNumBytesCreatedTotal() const {
-  return object_store_->GetNumBytesCreatedTotal();
+  return stats_collector_.GetNumBytesCreatedTotal();
 }
 
 int64_t ObjectLifecycleManager::GetNumBytesUnsealed() const {
-  return object_store_->GetNumBytesUnsealed();
+  return stats_collector_.GetNumBytesUnsealed();
 }
 
 int64_t ObjectLifecycleManager::GetNumObjectsUnsealed() const {
-  return object_store_->GetNumObjectsUnsealed();
+  return stats_collector_.GetNumObjectsUnsealed();
 }
+
+void ObjectLifecycleManager::RecordMetrics() const { stats_collector_.RecordMetrics(); }
 
 void ObjectLifecycleManager::GetDebugDump(std::stringstream &buffer) const {
   return stats_collector_.GetDebugDump(buffer);
@@ -276,13 +279,13 @@ void ObjectLifecycleManager::GetDebugDump(std::stringstream &buffer) const {
 
 // For test only.
 ObjectLifecycleManager::ObjectLifecycleManager(
-    std::unique_ptr<IObjectStore> store, std::unique_ptr<IEvictionPolicy> eviction_policy,
+    std::unique_ptr<IObjectStore> store,
+    std::unique_ptr<IEvictionPolicy> eviction_policy,
     ray::DeleteObjectCallback delete_object_callback)
     : object_store_(std::move(store)),
       eviction_policy_(std::move(eviction_policy)),
       delete_object_callback_(delete_object_callback),
       earger_deletion_objects_(),
-      num_bytes_in_use_(0),
       stats_collector_() {}
 
 }  // namespace plasma

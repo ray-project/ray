@@ -24,6 +24,7 @@ namespace internal {
 class NativeRayRuntime : public AbstractRayRuntime {
  public:
   NativeRayRuntime();
+  ActorID GetCurrentActorID();
 };
 
 }  // namespace internal

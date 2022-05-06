@@ -1,10 +1,14 @@
-import copy
 import unittest
 
 import ray
 import ray.rllib.agents.ppo as ppo
-from ray.rllib.utils.test_utils import check_compute_single_action, \
-    framework_iterator
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
+from ray.rllib.utils.test_utils import (
+    check_compute_single_action,
+    check_train_results,
+    framework_iterator,
+)
 
 
 class TestAPPO(unittest.TestCase):
@@ -18,67 +22,125 @@ class TestAPPO(unittest.TestCase):
 
     def test_appo_compilation(self):
         """Test whether an APPOTrainer can be built with both frameworks."""
-        config = ppo.appo.DEFAULT_CONFIG.copy()
-        config["num_workers"] = 1
+        config = ppo.appo.APPOConfig().rollouts(num_rollout_workers=1)
         num_iterations = 2
 
-        for _ in framework_iterator(config):
+        for _ in framework_iterator(config, with_eager_tracing=True):
             print("w/o v-trace")
-            _config = config.copy()
-            _config["vtrace"] = False
-            trainer = ppo.APPOTrainer(config=_config, env="CartPole-v0")
+            config.vtrace = False
+            trainer = config.build(env="CartPole-v0")
             for i in range(num_iterations):
-                print(trainer.train())
+                results = trainer.train()
+                check_train_results(results)
+                print(results)
             check_compute_single_action(trainer)
             trainer.stop()
 
             print("w/ v-trace")
-            _config = config.copy()
-            _config["vtrace"] = True
-            trainer = ppo.APPOTrainer(config=_config, env="CartPole-v0")
+            config.vtrace = True
+            trainer = config.build(env="CartPole-v0")
             for i in range(num_iterations):
-                print(trainer.train())
+                results = trainer.train()
+                check_train_results(results)
+                print(results)
             check_compute_single_action(trainer)
             trainer.stop()
 
-    def test_appo_fake_multi_gpu_learning(self):
-        """Test whether APPOTrainer can learn CartPole w/ faked multi-GPU."""
-        config = copy.deepcopy(ppo.appo.DEFAULT_CONFIG)
-        # Fake GPU setup.
-        config["num_gpus"] = 2
-        config["_fake_gpus"] = True
-        # Mimic tuned_example for PPO CartPole.
-        config["num_workers"] = 1
-        config["lr"] = 0.0003
-        config["observation_filter"] = "MeanStdFilter"
-        config["num_sgd_iter"] = 6
-        config["vf_loss_coeff"] = 0.01
-        config["model"]["fcnet_hiddens"] = [32]
-        config["model"]["fcnet_activation"] = "linear"
-        config["model"]["vf_share_layers"] = True
+    def test_appo_compilation_use_kl_loss(self):
+        """Test whether an APPOTrainer can be built with kl_loss enabled."""
+        config = (
+            ppo.appo.APPOConfig()
+            .rollouts(num_rollout_workers=1)
+            .training(use_kl_loss=True)
+        )
+        num_iterations = 2
 
-        # Test w/ LSTMs.
-        config["model"]["use_lstm"] = True
-
-        # Double batch size (2 GPUs).
-        config["train_batch_size"] = 1000
-
-        for _ in framework_iterator(config, frameworks=("torch", "tf")):
-            trainer = ppo.appo.APPOTrainer(config=config, env="CartPole-v0")
-            num_iterations = 200
-            learnt = False
+        for _ in framework_iterator(config, with_eager_tracing=True):
+            trainer = config.build(env="CartPole-v0")
             for i in range(num_iterations):
                 results = trainer.train()
+                check_train_results(results)
                 print(results)
-                if results["episode_reward_mean"] > 65.0:
-                    learnt = True
-                    break
-            assert learnt, \
-                "APPO multi-GPU (with fake-GPUs) did not learn CartPole!"
+            check_compute_single_action(trainer)
+            trainer.stop()
+
+    def test_appo_two_tf_optimizers(self):
+        # Not explicitly setting this should cause a warning, but not fail.
+        # config["_tf_policy_handles_more_than_one_loss"] = True
+        config = (
+            ppo.appo.APPOConfig()
+            .rollouts(num_rollout_workers=1)
+            .training(_separate_vf_optimizer=True, _lr_vf=0.002)
+        )
+        # Make sure we have two completely separate models for policy and
+        # value function.
+        config.model["vf_share_layers"] = False
+
+        num_iterations = 2
+
+        # Only supported for tf so far.
+        for _ in framework_iterator(config, frameworks=("tf2", "tf")):
+            trainer = config.build(env="CartPole-v0")
+            for i in range(num_iterations):
+                results = trainer.train()
+                check_train_results(results)
+                print(results)
+            check_compute_single_action(trainer)
+            trainer.stop()
+
+    def test_appo_entropy_coeff_schedule(self):
+        # Initial lr, doesn't really matter because of the schedule below.
+        config = (
+            ppo.appo.APPOConfig()
+            .rollouts(
+                num_rollout_workers=1,
+                batch_mode="truncate_episodes",
+                rollout_fragment_length=10,
+            )
+            .resources(num_gpus=0)
+            .training(
+                train_batch_size=20,
+                entropy_coeff=0.01,
+                entropy_coeff_schedule=[
+                    [0, 0.01],
+                    [120, 0.0001],
+                ],
+            )
+        )
+
+        config.min_sample_timesteps_per_reporting = 20
+        # 0 metrics reporting delay, this makes sure timestep,
+        # which entropy coeff depends on, is updated after each worker rollout.
+        config.min_time_s_per_reporting = 0
+
+        def _step_n_times(trainer, n: int):
+            """Step trainer n times.
+
+            Returns:
+                learning rate at the end of the execution.
+            """
+            for _ in range(n):
+                results = trainer.train()
+            return results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][LEARNER_STATS_KEY][
+                "entropy_coeff"
+            ]
+
+        for _ in framework_iterator(config):
+            trainer = config.build(env="CartPole-v0")
+
+            coeff = _step_n_times(trainer, 1)  # 20 timesteps
+            # Should be close to the starting coeff of 0.01.
+            self.assertGreaterEqual(coeff, 0.005)
+
+            coeff = _step_n_times(trainer, 10)  # 200 timesteps
+            # Should have annealed to the final coeff of 0.0001.
+            self.assertLessEqual(coeff, 0.00011)
+
             trainer.stop()
 
 
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

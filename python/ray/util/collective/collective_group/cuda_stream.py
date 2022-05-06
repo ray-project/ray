@@ -65,8 +65,7 @@ class StreamPool:
                 # this is the only place where self._pool will be written.
                 if ENV.NCCL_USE_MULTISTREAM.val:
                     logger.debug("NCCL multistream enabled.")
-                    self._pool[i] = cupy.cuda.Stream(
-                        null=False, non_blocking=False)
+                    self._pool[i] = cupy.cuda.Stream(null=False, non_blocking=False)
                 else:
                     logger.debug("NCCL multistream disabled.")
                     self._pool[i] = cupy.cuda.Stream.null

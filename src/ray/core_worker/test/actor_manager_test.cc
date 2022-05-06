@@ -20,18 +20,17 @@
 #include "ray/common/test_util.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
-#include "ray/gcs/gcs_client/service_based_accessor.h"
-#include "ray/gcs/gcs_client/service_based_gcs_client.h"
+#include "ray/gcs/gcs_client/accessor.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 
 namespace ray {
 namespace core {
 
 using ::testing::_;
 
-class MockActorInfoAccessor : public gcs::ServiceBasedActorInfoAccessor {
+class MockActorInfoAccessor : public gcs::ActorInfoAccessor {
  public:
-  MockActorInfoAccessor(gcs::ServiceBasedGcsClient *client)
-      : gcs::ServiceBasedActorInfoAccessor(client) {}
+  MockActorInfoAccessor(gcs::GcsClient *client) : gcs::ActorInfoAccessor(client) {}
 
   ~MockActorInfoAccessor() {}
 
@@ -61,9 +60,9 @@ class MockActorInfoAccessor : public gcs::ServiceBasedActorInfoAccessor {
       callback_map_;
 };
 
-class MockGcsClient : public gcs::ServiceBasedGcsClient {
+class MockGcsClient : public gcs::GcsClient {
  public:
-  MockGcsClient(gcs::GcsClientOptions options) : gcs::ServiceBasedGcsClient(options) {}
+  MockGcsClient(gcs::GcsClientOptions options) : gcs::GcsClient(options) {}
 
   void Init(MockActorInfoAccessor *actor_info_accessor) {
     actor_accessor_.reset(actor_info_accessor);
@@ -73,13 +72,24 @@ class MockGcsClient : public gcs::ServiceBasedGcsClient {
 class MockDirectActorSubmitter : public CoreWorkerDirectActorTaskSubmitterInterface {
  public:
   MockDirectActorSubmitter() : CoreWorkerDirectActorTaskSubmitterInterface() {}
-
-  MOCK_METHOD1(AddActorQueueIfNotExists, void(const ActorID &actor_id));
-  MOCK_METHOD3(ConnectActor, void(const ActorID &actor_id, const rpc::Address &address,
-                                  int64_t num_restarts));
+  void AddActorQueueIfNotExists(const ActorID &actor_id,
+                                int32_t max_pending_calls,
+                                bool execute_out_of_order = false) override {
+    AddActorQueueIfNotExists_(actor_id, max_pending_calls, execute_out_of_order);
+  }
+  MOCK_METHOD3(AddActorQueueIfNotExists_,
+               void(const ActorID &actor_id,
+                    int32_t max_pending_calls,
+                    bool execute_out_of_order));
+  MOCK_METHOD3(ConnectActor,
+               void(const ActorID &actor_id,
+                    const rpc::Address &address,
+                    int64_t num_restarts));
   MOCK_METHOD4(DisconnectActor,
-               void(const ActorID &actor_id, int64_t num_restarts, bool dead,
-                    const std::shared_ptr<rpc::RayException> &creation_task_exception));
+               void(const ActorID &actor_id,
+                    int64_t num_restarts,
+                    bool dead,
+                    const rpc::ActorDeathCause &death_cause));
   MOCK_METHOD3(KillActor,
                void(const ActorID &actor_id, bool force_kill, bool no_restart));
 
@@ -95,14 +105,20 @@ class MockReferenceCounter : public ReferenceCounterInterface {
   MOCK_METHOD2(AddLocalReference,
                void(const ObjectID &object_id, const std::string &call_sit));
 
-  MOCK_METHOD3(AddBorrowedObject,
-               bool(const ObjectID &object_id, const ObjectID &outer_id,
-                    const rpc::Address &owner_address));
+  MOCK_METHOD4(AddBorrowedObject,
+               bool(const ObjectID &object_id,
+                    const ObjectID &outer_id,
+                    const rpc::Address &owner_address,
+                    bool foreign_owner_already_monitoring));
 
-  MOCK_METHOD7(AddOwnedObject,
-               void(const ObjectID &object_id, const std::vector<ObjectID> &contained_ids,
-                    const rpc::Address &owner_address, const std::string &call_site,
-                    const int64_t object_size, bool is_reconstructable,
+  MOCK_METHOD8(AddOwnedObject,
+               void(const ObjectID &object_id,
+                    const std::vector<ObjectID> &contained_ids,
+                    const rpc::Address &owner_address,
+                    const std::string &call_site,
+                    const int64_t object_size,
+                    bool is_reconstructable,
+                    bool add_local_ref,
                     const absl::optional<NodeID> &pinned_at_raylet_id));
 
   MOCK_METHOD2(SetDeleteCallback,
@@ -115,7 +131,7 @@ class MockReferenceCounter : public ReferenceCounterInterface {
 class ActorManagerTest : public ::testing::Test {
  public:
   ActorManagerTest()
-      : options_("", 1, ""),
+      : options_("localhost:6793"),
         gcs_client_mock_(new MockGcsClient(options_)),
         actor_info_accessor_(new MockActorInfoAccessor(gcs_client_mock_.get())),
         direct_actor_submitter_(new MockDirectActorSubmitter()),
@@ -141,12 +157,24 @@ class ActorManagerTest : public ::testing::Test {
     RayFunction function(Language::PYTHON,
                          FunctionDescriptorBuilder::BuildPython("", "", "", ""));
 
-    auto actor_handle = absl::make_unique<ActorHandle>(
-        actor_id, TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
-        function.GetLanguage(), function.GetFunctionDescriptor(), "", 0);
+    auto actor_handle = absl::make_unique<ActorHandle>(actor_id,
+                                                       TaskID::Nil(),
+                                                       rpc::Address(),
+                                                       job_id,
+                                                       ObjectID::FromRandom(),
+                                                       function.GetLanguage(),
+                                                       function.GetFunctionDescriptor(),
+                                                       "",
+                                                       0,
+                                                       "",
+                                                       "",
+                                                       -1,
+                                                       false);
     EXPECT_CALL(*reference_counter_, SetDeleteCallback(_, _))
         .WillRepeatedly(testing::Return(true));
-    actor_manager_->AddNewActorHandle(move(actor_handle), call_site, caller_address,
+    actor_manager_->AddNewActorHandle(move(actor_handle),
+                                      call_site,
+                                      caller_address,
                                       /*is_detached*/ false);
     return actor_id;
   }
@@ -167,25 +195,45 @@ TEST_F(ActorManagerTest, TestAddAndGetActorHandleEndToEnd) {
   const auto call_site = "";
   RayFunction function(Language::PYTHON,
                        FunctionDescriptorBuilder::BuildPython("", "", "", ""));
-  auto actor_handle = absl::make_unique<ActorHandle>(
-      actor_id, TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
-      function.GetLanguage(), function.GetFunctionDescriptor(), "", 0);
+  auto actor_handle = absl::make_unique<ActorHandle>(actor_id,
+                                                     TaskID::Nil(),
+                                                     rpc::Address(),
+                                                     job_id,
+                                                     ObjectID::FromRandom(),
+                                                     function.GetLanguage(),
+                                                     function.GetFunctionDescriptor(),
+                                                     "",
+                                                     0,
+                                                     "",
+                                                     "",
+                                                     -1,
+                                                     false);
   EXPECT_CALL(*reference_counter_, SetDeleteCallback(_, _))
       .WillRepeatedly(testing::Return(true));
 
   // Add an actor handle.
-  ASSERT_TRUE(actor_manager_->AddNewActorHandle(move(actor_handle), call_site,
-                                                caller_address, false));
+  ASSERT_TRUE(actor_manager_->AddNewActorHandle(
+      move(actor_handle), call_site, caller_address, false));
   // Make sure the subscription request is sent to GCS.
   ASSERT_TRUE(actor_info_accessor_->CheckSubscriptionRequested(actor_id));
   ASSERT_TRUE(actor_manager_->CheckActorHandleExists(actor_id));
 
-  auto actor_handle2 = absl::make_unique<ActorHandle>(
-      actor_id, TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
-      function.GetLanguage(), function.GetFunctionDescriptor(), "", 0);
+  auto actor_handle2 = absl::make_unique<ActorHandle>(actor_id,
+                                                      TaskID::Nil(),
+                                                      rpc::Address(),
+                                                      job_id,
+                                                      ObjectID::FromRandom(),
+                                                      function.GetLanguage(),
+                                                      function.GetFunctionDescriptor(),
+                                                      "",
+                                                      0,
+                                                      "",
+                                                      "",
+                                                      -1,
+                                                      false);
   // Make sure the same actor id adding will return false.
-  ASSERT_FALSE(actor_manager_->AddNewActorHandle(move(actor_handle2), call_site,
-                                                 caller_address, false));
+  ASSERT_FALSE(actor_manager_->AddNewActorHandle(
+      move(actor_handle2), call_site, caller_address, false));
   // Make sure we can get an actor handle correctly.
   const std::shared_ptr<ActorHandle> actor_handle_to_get =
       actor_manager_->GetActorHandle(actor_id);
@@ -198,7 +246,7 @@ TEST_F(ActorManagerTest, TestAddAndGetActorHandleEndToEnd) {
   actor_table_data.set_state(rpc::ActorTableData::ALIVE);
   actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data);
 
-  // Now actor state is updated to DEAD. Make sure it is diconnected.
+  // Now actor state is updated to DEAD. Make sure it is disconnected.
   EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _, _, _)).Times(1);
   actor_table_data.set_actor_id(actor_id.Binary());
   actor_table_data.set_state(rpc::ActorTableData::DEAD);
@@ -220,16 +268,26 @@ TEST_F(ActorManagerTest, RegisterActorHandles) {
   const auto call_site = "";
   RayFunction function(Language::PYTHON,
                        FunctionDescriptorBuilder::BuildPython("", "", "", ""));
-  auto actor_handle = absl::make_unique<ActorHandle>(
-      actor_id, TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
-      function.GetLanguage(), function.GetFunctionDescriptor(), "", 0);
+  auto actor_handle = absl::make_unique<ActorHandle>(actor_id,
+                                                     TaskID::Nil(),
+                                                     rpc::Address(),
+                                                     job_id,
+                                                     ObjectID::FromRandom(),
+                                                     function.GetLanguage(),
+                                                     function.GetFunctionDescriptor(),
+                                                     "",
+                                                     0,
+                                                     "",
+                                                     "",
+                                                     -1,
+                                                     false);
   EXPECT_CALL(*reference_counter_, SetDeleteCallback(_, _))
       .WillRepeatedly(testing::Return(true));
   ObjectID outer_object_id = ObjectID::Nil();
 
   // Sinece RegisterActor happens in a non-owner worker, we should
   // make sure it borrows an object.
-  EXPECT_CALL(*reference_counter_, AddBorrowedObject(_, _, _));
+  EXPECT_CALL(*reference_counter_, AddBorrowedObject(_, _, _, _));
   ActorID returned_actor_id = actor_manager_->RegisterActorHandle(
       std::move(actor_handle), outer_object_id, call_site, caller_address);
   ASSERT_TRUE(returned_actor_id == actor_id);

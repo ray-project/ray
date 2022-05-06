@@ -1,6 +1,6 @@
 # This configuration can expect to reach -160 reward in 10k-20k timesteps
 pendulum-td3:
-    env: Pendulum-v0
+    env: Pendulum-v1
     run: TD3
     stop:
         episode_reward_mean: -900
@@ -15,6 +15,3 @@ pendulum-td3:
         learning_starts: 5000
         exploration_config:
             random_timesteps: 5000
-        # === Evaluation ===
-        evaluation_interval: 1
-        evaluation_num_episodes: 5

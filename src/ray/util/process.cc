@@ -51,6 +51,9 @@ extern char **environ;
 int execvpe(const char *program, char *const argv[], char *const envp[]) {
   char **saved = environ;
   int rc;
+  // Mutating environ is generally unsafe, but this logic only runs on the
+  // start of a worker process. There should be no concurrent access to the
+  // environment.
   environ = const_cast<char **>(envp);
   rc = execvp(program, argv);
   environ = saved;
@@ -95,7 +98,9 @@ class ProcessFD {
   pid_t GetId() const;
 
   // Fork + exec combo. Returns -1 for the PID on failure.
-  static ProcessFD spawnvpe(const char *argv[], std::error_code &ec, bool decouple,
+  static ProcessFD spawnvpe(const char *argv[],
+                            std::error_code &ec,
+                            bool decouple,
                             const ProcessEnvironment &env) {
     ec = std::error_code();
     intptr_t fd;
@@ -188,8 +193,8 @@ class ProcessFD {
       // This is the spawned process. Any intermediate parent is now dead.
       pid_t my_pid = getpid();
       if (write(pipefds[1], &my_pid, sizeof(my_pid)) == sizeof(my_pid)) {
-        execvpe(argv[0], const_cast<char *const *>(argv),
-                const_cast<char *const *>(envp));
+        execvpe(
+            argv[0], const_cast<char *const *>(argv), const_cast<char *const *>(envp));
       }
       _exit(errno);  // fork() succeeded and exec() failed, so abort the child
     }
@@ -300,8 +305,12 @@ intptr_t ProcessFD::CloneFD() const {
 #ifdef _WIN32
     HANDLE handle;
     BOOL inheritable = FALSE;
-    fd = DuplicateHandle(GetCurrentProcess(), reinterpret_cast<HANDLE>(fd_),
-                         GetCurrentProcess(), &handle, 0, inheritable,
+    fd = DuplicateHandle(GetCurrentProcess(),
+                         reinterpret_cast<HANDLE>(fd_),
+                         GetCurrentProcess(),
+                         &handle,
+                         0,
+                         inheritable,
                          DUPLICATE_SAME_ACCESS)
              ? reinterpret_cast<intptr_t>(handle)
              : -1;
@@ -336,7 +345,10 @@ Process &Process::operator=(Process other) {
 
 Process::Process(pid_t pid) { p_ = std::make_shared<ProcessFD>(pid); }
 
-Process::Process(const char *argv[], void *io_service, std::error_code &ec, bool decouple,
+Process::Process(const char *argv[],
+                 void *io_service,
+                 std::error_code &ec,
+                 bool decouple,
                  const ProcessEnvironment &env) {
   (void)io_service;
   ProcessFD procfd = ProcessFD::spawnvpe(argv, ec, decouple, env);
@@ -459,6 +471,13 @@ int Process::Wait() const {
   return status;
 }
 
+bool Process::IsAlive() const {
+  if (p_) {
+    return IsProcessAlive(p_->GetId());
+  }
+  return false;
+}
+
 void Process::Kill() {
   if (p_) {
     pid_t pid = p_->GetId();
@@ -545,10 +564,16 @@ pid_t GetParentPID() {
     if (HANDLE parent = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, ppid)) {
       long long me_created, parent_created;
       FILETIME unused;
-      if (GetProcessTimes(GetCurrentProcess(), reinterpret_cast<FILETIME *>(&me_created),
-                          &unused, &unused, &unused) &&
-          GetProcessTimes(parent, reinterpret_cast<FILETIME *>(&parent_created), &unused,
-                          &unused, &unused)) {
+      if (GetProcessTimes(GetCurrentProcess(),
+                          reinterpret_cast<FILETIME *>(&me_created),
+                          &unused,
+                          &unused,
+                          &unused) &&
+          GetProcessTimes(parent,
+                          reinterpret_cast<FILETIME *>(&parent_created),
+                          &unused,
+                          &unused,
+                          &unused)) {
         if (me_created >= parent_created) {
           // We verified the child is younger than the parent, so we know the parent
           // is still alive.
@@ -566,11 +591,26 @@ pid_t GetParentPID() {
 pid_t GetParentPID() { return getppid(); }
 #endif  // #ifdef _WIN32
 
+pid_t GetPID() {
+#ifdef _WIN32
+  return GetCurrentProcessId();
+#else
+  return getpid();
+#endif
+}
+
 bool IsParentProcessAlive() { return GetParentPID() != 1; }
 
 bool IsProcessAlive(pid_t pid) {
 #ifdef _WIN32
-  RAY_LOG(FATAL) << "IsProcessAlive not implement on windows";
+  if (HANDLE handle =
+          OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, static_cast<DWORD>(pid))) {
+    DWORD exit_code;
+    if (GetExitCodeProcess(handle, &exit_code) && exit_code == STILL_ACTIVE) {
+      return true;
+    }
+    CloseHandle(handle);
+  }
   return false;
 #else
   if (kill(pid, 0) == -1 && errno == ESRCH) {
@@ -591,8 +631,8 @@ bool equal_to<ray::Process>::operator()(const ray::Process &x,
              ? !y.IsNull()
                    ? x.IsValid()
                          ? y.IsValid() ? equal_to<pid_t>()(x.GetId(), y.GetId()) : false
-                         : y.IsValid() ? false
-                                       : equal_to<void const *>()(x.Get(), y.Get())
+                     : y.IsValid() ? false
+                                   : equal_to<void const *>()(x.Get(), y.Get())
                    : false
              : y.IsNull();
 }
