@@ -240,7 +240,6 @@ def test_actor_workloads(ray_start_regular_with_external_redis):
 
     c = Counter.remote()
     r = ray.get(c.r.remote(10))
-    print("c.r.remote(10)", r)
     assert r == 10
 
     print("GCS is killed")
@@ -251,11 +250,11 @@ def test_actor_workloads(ray_start_regular_with_external_redis):
     with pytest.raises(ray.exceptions.GetTimeoutError):
         ray.get(cc.r.remote(10), timeout=5)
 
+    assert ray.get(c.r.remote(10)) == 10
     ray.worker._global_node.start_gcs_server()
 
     r = ray.get(cc.r.remote(10))
     assert r == 10
-    print("cc.r.remote(10)", r)
 
     c = Counter.options(lifetime="detached", name="C").remote()
 
