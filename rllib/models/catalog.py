@@ -458,6 +458,7 @@ class ModelCatalog:
             # Class provided directly.
             if isinstance(model_config["custom_model"], type):
                 model_cls = model_config["custom_model"]
+            #
             else:
                 try:
                     model_cls = _global_registry.get(
@@ -465,7 +466,14 @@ class ModelCatalog:
                     )
                 except ValueError as e:
                     if "Registry value for " in e.args[0]:
-                        return from_config(type=model_config["custom_model"], **model_config["custom_model_config"])
+                        return from_config(
+                            cls=model_config["custom_model"],
+                            obs_space=obs_space,
+                            action_space=action_space,
+                            num_outputs=num_outputs,
+                            model_config=customized_model_kwargs,
+                            name=name,
+                        )
                     raise e
 
             # Only allow ModelV2 or native keras Models.

@@ -24,4 +24,4 @@ cartpole-sparse-rewards-alpha-zero:
         ranked_rewards:
            enable: true
         model:
-           custom_model: ray.rllib.contrib.alpha_zero.models.custom_torch_models.DenseModel
+           custom_model: ray.rllib.agents.alpha_zero.models.custom_torch_models.DenseModel
