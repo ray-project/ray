@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <gtest/gtest_prod.h>
+
 #include <chrono>
 #include <thread>
 
@@ -461,6 +463,8 @@ class GcsRpcClient {
     return std::make_pair(gcs_address_, gcs_port_);
   }
 
+  std::shared_ptr<grpc::Channel> GetChannel() const { return channel_; }
+
  private:
   void CheckChannelStatus() {
     if (shutdown_) {
@@ -524,6 +528,9 @@ class GcsRpcClient {
   std::atomic<bool> shutdown_ = false;
   std::unique_ptr<PeriodicalRunner> periodical_runner_;
   std::vector<Executor *> pending_requests_;
+
+  friend class GcsClientReconnectionTest;
+  FRIEND_TEST(GcsClientReconnectionTest, ReconnectionBackoff);
 };
 
 }  // namespace rpc

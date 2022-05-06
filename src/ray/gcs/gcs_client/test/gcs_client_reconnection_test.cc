@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include <chrono>
+
 #include "absl/strings/substitute.h"
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -25,19 +26,16 @@
 #include "ray/util/util.h"
 
 using namespace std::chrono_literals;
+using namespace ray;
 
-namespace ray {
 class GcsClientReconnectionTest : public ::testing::Test {
  public:
-  GcsClientReconnectionTest() {
-    TestSetupUtil::StartUpRedisServers(std::vector<int>());
-  }
+  GcsClientReconnectionTest() { TestSetupUtil::StartUpRedisServers(std::vector<int>()); }
 
-  ~GcsClientReconnectionTest() {
-    TestSetupUtil::ShutDownRedisServers();
-  }
+  ~GcsClientReconnectionTest() { TestSetupUtil::ShutDownRedisServers(); }
 
   void StartGCS() {
+    RAY_CHECK(gcs_server_ == nullptr);
     server_io_service_ = std::make_unique<instrumented_io_context>();
     gcs_server_ = std::make_unique<gcs::GcsServer>(config_, *server_io_service_);
     gcs_server_->Start();
@@ -52,24 +50,20 @@ class GcsClientReconnectionTest : public ::testing::Test {
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
   }
+
   void ShutdownGCS() {
-    if (server_io_service_) {
-      server_io_service_->stop();
-      server_io_service_.reset();
+    if (!gcs_server_) {
+      return;
     }
 
-    if (server_io_service_thread_) {
-      server_io_service_thread_->join();
-      server_io_service_thread_.reset();
-    }
-
-    if (gcs_server_) {
-      gcs_server_->Stop();
-      gcs_server_.reset();
-    }
+    server_io_service_->stop();
+    server_io_service_thread_->join();
+    gcs_server_->Stop();
+    gcs_server_.reset();
   }
 
   gcs::GcsClient *CreateGCSClient() {
+    RAY_CHECK(gcs_client_ == nullptr);
     client_io_service_ = std::make_unique<instrumented_io_context>();
     client_io_service_thread_ = std::make_unique<std::thread>([this] {
       std::unique_ptr<boost::asio::io_service::work> work(
@@ -83,20 +77,26 @@ class GcsClientReconnectionTest : public ::testing::Test {
   }
 
   void CloseGCSClient() {
-    if (gcs_client_) {
-      gcs_client_->Disconnect();
+    if (!gcs_client_) {
+      return;
     }
 
-    if (client_io_service_) {
-      client_io_service_->stop();
-      client_io_service_.reset();
-    }
-    if (client_io_service_thread_) {
-      client_io_service_thread_->join();
-      client_io_service_thread_.reset();
-    }
-
+    client_io_service_->stop();
+    client_io_service_thread_->join();
+    gcs_client_->Disconnect();
     gcs_client_.reset();
+  }
+
+  bool WaitUntil(std::function<bool()> predicate, std::chrono::duration<int64_t> time_s) {
+    using namespace std::chrono;
+    auto start = steady_clock::now();
+    while (steady_clock::now() - start <= time_s) {
+      if (predicate()) {
+        return true;
+      }
+      std::this_thread::sleep_for(10ms);
+    }
+    return false;
   }
 
  protected:
@@ -133,8 +133,8 @@ class GcsClientReconnectionTest : public ::testing::Test {
 };
 
 TEST_F(GcsClientReconnectionTest, ReconnectionBasic) {
-    RayConfig::instance().initialize(
-        R"(
+  RayConfig::instance().initialize(
+      R"(
 {
   "gcs_rpc_server_reconnect_timeout_s": 60,
   "gcs_storage": "redis"
@@ -149,14 +149,10 @@ TEST_F(GcsClientReconnectionTest, ReconnectionBasic) {
 
   std::promise<void> p0;
   auto f0 = p0.get_future();
-  client->InternalKV().AsyncInternalKVPut(
-      "",
-      "A",
-      "B",
-      false,
-      [&p0](auto, auto) {
-        p0.set_value();
-      });
+  client->InternalKV().AsyncInternalKVPut("", "A", "B", false, [&p0](auto status, auto) {
+    ASSERT_TRUE(status.ok()) << status.ToString();
+    p0.set_value();
+  });
   f0.get();
 
   // Shutdown GCS server
@@ -165,20 +161,15 @@ TEST_F(GcsClientReconnectionTest, ReconnectionBasic) {
   // Send get request
   std::promise<std::string> p1;
   auto f1 = p1.get_future();
-  client->InternalKV().AsyncInternalKVGet(
-      "",
-      "A",
-      [&p1](auto status, auto p) {
-        ASSERT_TRUE(status.ok()) << status.ToString();
-        p1.set_value(*p);
-      });
+  client->InternalKV().AsyncInternalKVGet("", "A", [&p1](auto status, auto p) {
+    ASSERT_TRUE(status.ok()) << status.ToString();
+    p1.set_value(*p);
+  });
   ASSERT_EQ(f1.wait_for(1s), std::future_status::timeout);
 
   // Make sure io context is not blocked
   std::promise<void> p2;
-  client_io_service_->post([&p2]() {
-    p2.set_value();
-  }, "");
+  client_io_service_->post([&p2]() { p2.set_value(); }, "");
   auto f2 = p2.get_future();
   f2.wait();
 
@@ -189,12 +180,66 @@ TEST_F(GcsClientReconnectionTest, ReconnectionBasic) {
   ASSERT_EQ(f1.get(), "B");
 }
 
-TEST_F(GcsClientReconnectionTest, ReconnectionBackoff) {}
+TEST_F(GcsClientReconnectionTest, ReconnectionBackoff) {
+  // This test is to ensure that during reconnection, we got the right status
+  // of the channel and also very basic test to verify gRPC's backoff is working.
+  RayConfig::instance().initialize(
+      R"(
+{
+  "gcs_rpc_server_reconnect_timeout_s": 60,
+  "gcs_storage": "redis",
+  "gcs_grpc_initial_reconnect_backoff_ms": 5000
+}
+  )");
+  StartGCS();
+  auto client = CreateGCSClient();
+  std::promise<void> p1;
+  auto f1 = p1.get_future();
+  client->InternalKV().AsyncInternalKVPut("", "A", "B", false, [&p1](auto status, auto) {
+    ASSERT_TRUE(status.ok()) << status.ToString();
+    p1.set_value();
+  });
+  ASSERT_NE(f1.wait_for(1s), std::future_status::timeout);
+
+  auto channel = client->GetGcsRpcClient().GetChannel();
+  ASSERT_EQ(GRPC_CHANNEL_READY, channel->GetState(false));
+
+  ShutdownGCS();
+
+  client->InternalKV().AsyncInternalKVPut("", "A", "B", false, nullptr);
+
+  ASSERT_TRUE(WaitUntil(
+      [channel]() {
+        auto status = channel->GetState(false);
+        return status == GRPC_CHANNEL_TRANSIENT_FAILURE;
+      },
+      1s));
+
+  StartGCS();
+
+  ASSERT_FALSE(WaitUntil(
+      [channel]() {
+        auto status = channel->GetState(false);
+        return status != GRPC_CHANNEL_TRANSIENT_FAILURE;
+      },
+      1s));
+
+  ASSERT_TRUE(WaitUntil(
+      [channel]() {
+        auto status = channel->GetState(false);
+        return status != GRPC_CHANNEL_TRANSIENT_FAILURE;
+      },
+      5s));
+
+  ASSERT_FALSE(WaitUntil(
+      [channel]() {
+        auto status = channel->GetState(false);
+        return status != GRPC_CHANNEL_READY;
+      },
+      1s));
+}
 
 TEST_F(GcsClientReconnectionTest, QueueingAndBlocking) {}
-
-
-}  // namespace ray
 
 int main(int argc, char **argv) {
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,

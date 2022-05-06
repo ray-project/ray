@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <gtest/gtest_prod.h>
+
 #include <boost/asio.hpp>
 #include <memory>
 #include <string>
@@ -31,7 +33,6 @@
 #include "ray/util/logging.h"
 
 namespace ray {
-
 namespace gcs {
 
 /// \class GcsClientOptions
