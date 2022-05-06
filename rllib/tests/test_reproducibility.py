@@ -36,7 +36,7 @@ class TestReproducibility(unittest.TestCase):
                 config = {
                     "seed": 666 if trial in [0, 1] else 999,
                     "min_time_s_per_reporting": 0,
-                    "timesteps_per_iteration": 100,
+                    "min_sample_timesteps_per_reporting": 100,
                     "framework": fw,
                 }
                 agent = DQNTrainer(config=config, env="PickLargest")

@@ -652,7 +652,7 @@ class Dataset(Generic[T]):
         if locality_hints and len(locality_hints) != n:
             raise ValueError(
                 f"The length of locality_hints {len(locality_hints)} "
-                "doesn't equal the number of splits {n}."
+                f"doesn't equal the number of splits {n}."
             )
             # TODO: this is unreachable code.
             if len(set(locality_hints)) != len(locality_hints):

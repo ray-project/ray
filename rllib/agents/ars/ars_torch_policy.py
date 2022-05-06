@@ -2,7 +2,7 @@
 # https://github.com/openai/evolution-strategies-starter.
 
 import ray
-from ray.rllib.agents.es.es_torch_policy import (
+from ray.rllib.algorithms.es.es_torch_policy import (
     after_init,
     before_init,
     make_model_and_action_dist,

@@ -85,7 +85,7 @@ of what the event stats look like:
     CoreWorkerService.grpc_client.GetObjectLocationsOwner - 51333 total (0 active), CPU time: mean = 25.166 us, total = 1.292 s
     ObjectManager.ObjectDeleted - 43188 total (0 active), CPU time: mean = 26.017 us, total = 1.124 s
     CoreWorkerService.grpc_client.RemoveObjectLocationOwner - 43177 total (0 active), CPU time: mean = 2.368 us, total = 102.252 ms
-    NodeManagerService.grpc_server.PinObjectIDs - 40000 total (0 active), CPU time: mean = 194.860 us, total = 7.794 s
+    NodeManagerService.grpc_server.PinObjectID - 40000 total (0 active), CPU time: mean = 194.860 us, total = 7.794 s
 
 Callback latency injection
 --------------------------

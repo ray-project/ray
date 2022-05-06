@@ -1,8 +1,6 @@
 """
 Test that focuses on long chain of deployment graph
-
 INPUT -> Node_1 -> Node_2 -> ... -> Node_10 -> OUTPUT
-
  1) Intermediate blob size can be large / small
  2) Compute time each node can be long / short
  3) Init time can be long / short
@@ -34,18 +32,14 @@ DEFAULT_THROUGHPUT_TRIAL_DURATION_SECS = 10
 
 @serve.deployment
 class Node:
-    def __init__(self, id: int, prev_node=None, init_delay_secs=0):
+    def __init__(self, id: int, init_delay_secs=0):
         time.sleep(init_delay_secs)
         self.id = id
-        self.prev_node = prev_node
 
-    async def compute(self, input_data, compute_delay_secs=0):
+    async def compute(self, prev_val, compute_delay_secs=0):
         await asyncio.sleep(compute_delay_secs)
 
-        if self.prev_node:
-            return await self.prev_node.compute.remote(input_data) + 1
-        else:
-            return input_data + 1
+        return prev_val + 1
 
 
 def test_long_chain_deployment_graph(
@@ -53,26 +47,27 @@ def test_long_chain_deployment_graph(
 ):
     """
     Test that focuses on long chain of deployment graph
-
     INPUT -> Node_1 -> Node_2 -> ... -> Node_10 -> OUTPUT
-
     1) Intermediate blob size can be large / small
     2) Compute time each node can be long / short
     3) Init time can be long / short
     """
+
+    nodes = [Node.bind(i, init_delay_secs=init_delay_secs) for i in range(chain_length)]
+    prev_outputs = [None for _ in range(chain_length)]
+
     with InputNode() as user_input:
-        prev_output = user_input
-        prev_node = None
         for i in range(chain_length):
-            node = Node.bind(i, prev_node=prev_node, init_delay_secs=init_delay_secs)
-            node_output = node.compute.bind(
-                prev_output, compute_delay_secs=compute_delay_secs
-            )
+            if i == 0:
+                prev_outputs[i] = nodes[i].compute.bind(
+                    user_input, compute_delay_secs=compute_delay_secs
+                )
+            else:
+                prev_outputs[i] = nodes[i].compute.bind(
+                    prev_outputs[i - 1], compute_delay_secs=compute_delay_secs
+                )
 
-            prev_output = node_output
-            prev_node = node
-
-        serve_dag = DAGDriver.bind(prev_output)
+        serve_dag = DAGDriver.bind(prev_outputs[-1])
 
     return serve_dag
 
@@ -113,16 +108,13 @@ def main(
         compute_delay_secs=compute_delay_secs,
     )
     dag_handle = serve.run(serve_dag)
-
-    # 1 + 2 + 3 + 4 + ... + chain_length
-    expected = ((1 + chain_length) * chain_length) / 2
-    assert ray.get(dag_handle.predict.remote(0)) == expected
+    assert ray.get(dag_handle.predict.remote(0)) == chain_length
     loop = asyncio.get_event_loop()
 
     throughput_mean_tps, throughput_std_tps = loop.run_until_complete(
         benchmark_throughput_tps(
             dag_handle,
-            expected,
+            chain_length,
             duration_secs=throughput_trial_duration_secs,
             num_clients=num_clients,
         )
@@ -130,7 +122,7 @@ def main(
     latency_mean_ms, latency_std_ms = loop.run_until_complete(
         benchmark_latency_ms(
             dag_handle,
-            expected,
+            chain_length,
             num_requests=num_requests_per_client,
             num_clients=num_clients,
         )

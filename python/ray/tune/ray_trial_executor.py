@@ -484,7 +484,7 @@ class RayTrialExecutor(TrialExecutor):
                         # only be the case if there are no more trials with
                         # this placement group factory to run
                         logger.debug(
-                            "Could not cache of trial {trial} actor for "
+                            f"Could not cache actor of trial {trial} for "
                             "reuse, as there are no pending trials "
                             "requiring its resources."
                         )

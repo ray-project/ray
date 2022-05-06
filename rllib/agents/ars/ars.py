@@ -7,18 +7,26 @@ import logging
 import numpy as np
 import random
 import time
+from typing import Optional
 
 import ray
-from ray.rllib.agents import Trainer, with_common_config
+from ray.rllib.agents import Trainer, TrainerConfig
 from ray.rllib.agents.ars.ars_tf_policy import ARSTFPolicy
-from ray.rllib.agents.es import optimizers, utils
-from ray.rllib.agents.es.es_tf_policy import rollout
+from ray.rllib.algorithms.es import optimizers, utils
+from ray.rllib.algorithms.es.es_tf_policy import rollout
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.utils import FilterManager
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.metrics import (
+    NUM_AGENT_STEPS_SAMPLED,
+    NUM_AGENT_STEPS_TRAINED,
+    NUM_ENV_STEPS_SAMPLED,
+    NUM_ENV_STEPS_TRAINED,
+)
 from ray.rllib.utils.torch_utils import set_torch_seed
 from ray.rllib.utils.typing import TrainerConfigDict
-from ray.rllib.utils import FilterManager
 
 logger = logging.getLogger(__name__)
 
@@ -34,31 +42,128 @@ Result = namedtuple(
     ],
 )
 
-# fmt: off
-# __sphinx_doc_begin__
-DEFAULT_CONFIG = with_common_config({
-    "action_noise_std": 0.0,
-    "noise_stdev": 0.02,  # std deviation of parameter noise
-    "num_rollouts": 32,  # number of perturbs to try
-    "rollouts_used": 32,  # number of perturbs to keep in gradient estimate
-    "num_workers": 2,
-    "sgd_stepsize": 0.01,  # sgd step-size
-    "observation_filter": "MeanStdFilter",
-    "noise_size": 250000000,
-    "eval_prob": 0.03,  # probability of evaluating the parameter rewards
-    "report_length": 10,  # how many of the last rewards we average over
-    "offset": 0,
-    # ARS will use Trainer's evaluation WorkerSet (if evaluation_interval > 0).
-    # Therefore, we must be careful not to use more than 1 env per eval worker
-    # (would break ARSPolicy's compute_single_action method) and to not do
-    # obs-filtering.
-    "evaluation_config": {
-        "num_envs_per_worker": 1,
-        "observation_filter": "NoFilter"
-    },
-})
-# __sphinx_doc_end__
-# fmt: on
+
+class ARSConfig(TrainerConfig):
+    """Defines an ARSTrainer configuration class from which an ARSTrainer can be built.
+
+    Example:
+        >>> from ray.rllib.agents.ars import ARSConfig
+        >>> config = ARSConfig().training(sgd_stepsize=0.02, report_length=20)\
+        ...     .resources(num_gpus=0)\
+        ...     .rollouts(num_rollout_workers=4)
+        >>> print(config.to_dict())
+        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> trainer = config.build(env="CartPole-v1")
+        >>> trainer.train()
+
+    Example:
+        >>> from ray.rllib.agents.ars import ARSConfig
+        >>> from ray import tune
+        >>> config = ARSConfig()
+        >>> # Print out some default values.
+        >>> print(config.action_noise_std)
+        >>> # Update the config object.
+        >>> config.training(rollouts_used=tune.grid_search([32, 64]), eval_prob=0.5)
+        >>> # Set the config object's env.
+        >>> config.environment(env="CartPole-v1")
+        >>> # Use to_dict() to get the old-style python config dict
+        >>> # when running with tune.
+        >>> tune.run(
+        ...     "ARS",
+        ...     stop={"episode_reward_mean": 200},
+        ...     config=config.to_dict(),
+        ... )
+    """
+
+    def __init__(self):
+        """Initializes a ARSConfig instance."""
+        super().__init__(trainer_class=ARSTrainer)
+
+        # fmt: off
+        # __sphinx_doc_begin__
+
+        # ARS specific settings:
+        self.action_noise_std = 0.0
+        self.noise_stdev = 0.02
+        self.num_rollouts = 32
+        self.rollouts_used = 32
+        self.sgd_stepsize = 0.01
+        self.noise_size = 250000000
+        self.eval_prob = 0.03
+        self.report_length = 10
+        self.offset = 0
+
+        # Override some of TrainerConfig's default values with ARS-specific values.
+        self.num_workers = 2
+        self.observation_filter = "MeanStdFilter"
+        # ARS will use Trainer's evaluation WorkerSet (if evaluation_interval > 0).
+        # Therefore, we must be careful not to use more than 1 env per eval worker
+        # (would break ARSPolicy's compute_single_action method) and to not do
+        # obs-filtering.
+        self.evaluation_config["num_envs_per_worker"] = 1
+        self.evaluation_config["observation_filter"] = "NoFilter"
+
+        # __sphinx_doc_end__
+        # fmt: on
+
+    @override(TrainerConfig)
+    def training(
+        self,
+        *,
+        action_noise_std: Optional[float] = None,
+        noise_stdev: Optional[float] = None,
+        num_rollouts: Optional[int] = None,
+        rollouts_used: Optional[int] = None,
+        sgd_stepsize: Optional[float] = None,
+        noise_size: Optional[int] = None,
+        eval_prob: Optional[float] = None,
+        report_length: Optional[int] = None,
+        offset: Optional[int] = None,
+        **kwargs,
+    ) -> "ARSConfig":
+        """Sets the training related configuration.
+
+        Args:
+            action_noise_std: Std. deviation to be used when adding (standard normal)
+                noise to computed actions. Action noise is only added, if
+                `compute_actions` is called with the `add_noise` arg set to True.
+            noise_stdev: Std. deviation of parameter noise.
+            num_rollouts: Number of perturbs to try.
+            rollouts_used: Number of perturbs to keep in gradient estimate.
+            sgd_stepsize: SGD step-size used for the Adam optimizer.
+            noise_size: Number of rows in the noise table (shared across workers).
+                Each row contains a gaussian noise value for each model parameter.
+            eval_prob: Probability of evaluating the parameter rewards.
+            report_length: How many of the last rewards we average over.
+            offset: Value to subtract from the reward (e.g. survival bonus
+                from humanoid) during rollouts.
+
+        Returns:
+            This updated TrainerConfig object.
+        """
+        # Pass kwargs onto super's `training()` method.
+        super().training(**kwargs)
+
+        if action_noise_std is not None:
+            self.action_noise_std = action_noise_std
+        if noise_stdev is not None:
+            self.noise_stdev = noise_stdev
+        if num_rollouts is not None:
+            self.num_rollouts = num_rollouts
+        if rollouts_used is not None:
+            self.rollouts_used = rollouts_used
+        if sgd_stepsize is not None:
+            self.sgd_stepsize = sgd_stepsize
+        if noise_size is not None:
+            self.noise_size = noise_size
+        if eval_prob is not None:
+            self.eval_prob = eval_prob
+        if report_length is not None:
+            self.report_length = report_length
+        if offset is not None:
+            self.offset = offset
+
+        return self
 
 
 @ray.remote
@@ -213,7 +318,7 @@ class ARSTrainer(Trainer):
     @classmethod
     @override(Trainer)
     def get_default_config(cls) -> TrainerConfigDict:
-        return DEFAULT_CONFIG
+        return ARSConfig().to_dict()
 
     @override(Trainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
@@ -240,9 +345,12 @@ class ARSTrainer(Trainer):
     def setup(self, config):
         # Setup our config: Merge the user-supplied config (which could
         # be a partial config dict with the class' default).
-        self.config = self.merge_trainer_configs(
-            self.get_default_config(), config, self._allow_unknown_configs
-        )
+        if isinstance(config, dict):
+            self.config = self.merge_trainer_configs(
+                self.get_default_config(), config, self._allow_unknown_configs
+            )
+        else:
+            self.config = config.to_dict()
 
         # Validate our config dict.
         self.validate_config(self.config)
@@ -305,6 +413,9 @@ class ARSTrainer(Trainer):
         results, num_episodes, num_timesteps = self._collect_results(
             theta_id, config["num_rollouts"]
         )
+        # Update our sample steps counters.
+        self._counters[NUM_AGENT_STEPS_SAMPLED] += num_timesteps
+        self._counters[NUM_ENV_STEPS_SAMPLED] += num_timesteps
 
         all_noise_indices = []
         all_training_returns = []
@@ -363,6 +474,11 @@ class ARSTrainer(Trainer):
         assert g.shape == (self.policy.num_params,) and g.dtype == np.float32
         # Compute the new weights theta.
         theta, update_ratio = self.optimizer.update(-g)
+
+        # Update our train steps counters.
+        self._counters[NUM_AGENT_STEPS_TRAINED] += num_timesteps
+        self._counters[NUM_ENV_STEPS_TRAINED] += num_timesteps
+
         # Set the new weights in the local copy of the policy.
         self.policy.set_flat_weights(theta)
         # update the reward list
@@ -449,3 +565,20 @@ class ARSTrainer(Trainer):
         FilterManager.synchronize(
             {DEFAULT_POLICY_ID: self.policy.observation_filter}, self.workers
         )
+
+
+# Deprecated: Use ray.rllib.agents.ars.ARSConfig instead!
+class _deprecated_default_config(dict):
+    def __init__(self):
+        super().__init__(ARSConfig().to_dict())
+
+    @Deprecated(
+        old="ray.rllib.agents.ars.ars.DEFAULT_CONFIG",
+        new="ray.rllib.agents.ars.ars.ARSConfig(...)",
+        error=False,
+    )
+    def __getitem__(self, item):
+        return super().__getitem__(item)
+
+
+DEFAULT_CONFIG = _deprecated_default_config()

@@ -1,3 +1,4 @@
+import gym
 import logging
 import time
 from typing import Dict
@@ -13,11 +14,13 @@ from ray.rllib.agents.bandit.bandit_tf_model import (
 )
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import restore_original_dimensions
-from ray.rllib.policy.tf_policy_template import build_tf_policy
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.tf_policy_template import build_tf_policy
+from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.tf_utils import make_tf_callable
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
@@ -62,6 +65,41 @@ class BanditPolicyOverrides:
             return {LEARNER_STATS_KEY: info}
 
         self.learn_on_batch = learn_on_batch
+
+
+def validate_spaces(
+    policy: Policy,
+    observation_space: gym.spaces.Space,
+    action_space: gym.spaces.Space,
+    config: TrainerConfigDict,
+) -> None:
+    """Validates the observation- and action spaces used for the Policy.
+
+    Args:
+        policy: The policy, whose spaces are being validated.
+        observation_space: The observation space to validate.
+        action_space: The action space to validate.
+        config: The Policy's config dict.
+
+    Raises:
+        UnsupportedSpaceException: If one of the spaces is not supported.
+    """
+    # Only support single Box or single Discrete spaces.
+    if not isinstance(action_space, gym.spaces.Discrete):
+        msg = (
+            f"Action space ({action_space}) of {policy} is not supported for "
+            f"Bandit algorithms. Must be `Discrete`."
+        )
+        # Hint at using the MultiDiscrete to Discrete wrapper for Bandits.
+        if isinstance(action_space, gym.spaces.MultiDiscrete):
+            msg += (
+                " Try to wrap your environment with the "
+                "`ray.rllib.env.wrappers.recsim::"
+                "MultiDiscreteToDiscreteActionWrapper` class: `tune.register_env("
+                "[some str], lambda ctx: MultiDiscreteToDiscreteActionWrapper("
+                "[your gym env])); config = {'env': [some str]}`"
+            )
+        raise UnsupportedSpaceException(msg)
 
 
 def make_model(policy, obs_space, action_space, config):
@@ -112,6 +150,7 @@ def after_init(policy, *args):
 BanditTFPolicy = build_tf_policy(
     name="BanditTFPolicy",
     get_default_config=lambda: ray.rllib.agents.bandit.bandit.DEFAULT_CONFIG,
+    validate_spaces=validate_spaces,
     make_model=make_model,
     loss_fn=None,
     mixins=[BanditPolicyOverrides],

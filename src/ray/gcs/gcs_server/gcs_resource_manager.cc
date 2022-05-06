@@ -22,9 +22,11 @@ namespace gcs {
 
 GcsResourceManager::GcsResourceManager(
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-    ClusterResourceManager &cluster_resource_manager)
+    ClusterResourceManager &cluster_resource_manager,
+    scheduling::NodeID local_node_id)
     : gcs_table_storage_(gcs_table_storage),
-      cluster_resource_manager_(cluster_resource_manager) {}
+      cluster_resource_manager_(cluster_resource_manager),
+      local_node_id_(local_node_id) {}
 
 void GcsResourceManager::HandleGetResources(const rpc::GetResourcesRequest &request,
                                             rpc::GetResourcesReply *reply,
@@ -130,14 +132,30 @@ void GcsResourceManager::HandleGetAllAvailableResources(
     rpc::GetAllAvailableResourcesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   for (const auto &node_resources_entry : cluster_resource_manager_.GetResourceView()) {
-    const auto &node_id = node_resources_entry.first;
-    const auto &node_resources = node_resources_entry.second.GetLocalView();
+    if (node_resources_entry.first == local_node_id_) {
+      continue;
+    }
     rpc::AvailableResources resource;
-    resource.set_node_id(node_id.Binary());
-
+    resource.set_node_id(node_resources_entry.first.Binary());
+    const auto &node_resources = node_resources_entry.second.GetLocalView();
+    const auto node_id = NodeID::FromBinary(node_resources_entry.first.Binary());
+    bool using_resource_reports = RayConfig::instance().gcs_actor_scheduling_enabled() &&
+                                  node_resource_usages_.contains(node_id);
     for (const auto &resource_id : node_resources.available.ResourceIds()) {
-      const auto &resource_value = node_resources.available.Get(resource_id);
       const auto &resource_name = resource_id.Binary();
+      // Because gcs scheduler does not directly update the available resources of
+      // `cluster_resource_manager_`, use the record from resource reports (stored in
+      // `node_resource_usages_`) instead.
+      if (using_resource_reports) {
+        auto resource_iter =
+            node_resource_usages_[node_id].resources_available().find(resource_name);
+        if (resource_iter != node_resource_usages_[node_id].resources_available().end()) {
+          resource.mutable_resources_available()->insert(
+              {resource_name, resource_iter->second});
+          continue;
+        }
+      }
+      const auto &resource_value = node_resources.available.Get(resource_id);
       resource.mutable_resources_available()->insert(
           {resource_name, resource_value.Double()});
     }

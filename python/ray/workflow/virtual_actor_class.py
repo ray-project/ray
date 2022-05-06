@@ -141,8 +141,9 @@ class ActorMethod(ActorMethodBase):
                 "actor.method.run()' instead."
             )
         try:
+            job_id = ray.get_runtime_context().job_id.hex()
             return actor._actor_method_call(
-                self._method_helper, args=args, kwargs=kwargs
+                job_id, self._method_helper, args=args, kwargs=kwargs
             )
         except TypeError as exc:  # capture a friendlier stacktrace
             raise TypeError(
@@ -518,7 +519,8 @@ class VirtualActor:
         workflow_storage = WorkflowStorage(self._actor_id)
         workflow_storage.save_actor_class_body(self._metadata.cls)
         method_helper = self._metadata.methods["__init__"]
-        ref = self._actor_method_call(method_helper, args, kwargs)
+        job_id = ray.get_runtime_context().job_id.hex()
+        ref = self._actor_method_call(job_id, method_helper, args, kwargs)
         workflow_manager = get_or_create_management_actor()
         # keep the ref in a list to prevent dereference
         ray.get(workflow_manager.init_actor.remote(self._actor_id, [ref]))
@@ -541,12 +543,12 @@ class VirtualActor:
         raise AttributeError(f"No method with name '{method_name}'")
 
     def _actor_method_call(
-        self, method_helper: _VirtualActorMethodHelper, args, kwargs
+        self, job_id, method_helper: _VirtualActorMethodHelper, args, kwargs
     ) -> "ObjectRef":
         with workflow_context.workflow_step_context(self._actor_id):
             wf = method_helper.step(*args, **kwargs)
             if method_helper.readonly:
-                return execute_workflow(wf).volatile_output.ref
+                return execute_workflow(job_id, wf).volatile_output.ref
             else:
                 return wf.run_async(self._actor_id)
 
