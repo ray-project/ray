@@ -26,17 +26,17 @@ class _TrackedCheckpoint:
 
     def __init__(
         self,
-        checkpoint_dir_or_data: Optional[Union[str, Path, Dict, ray.ObjectRef]],
+        dir_or_data: Optional[Union[str, Path, Dict, ray.ObjectRef]],
         storage_mode: str,
         checkpoint_id: Optional[int] = None,
         result: Optional[Dict] = None,
         node_ip: Optional[str] = None,
     ):
-        self.checkpoint_dir_or_data = checkpoint_dir_or_data
-        self.checkpoint_id = checkpoint_id
+        self.dir_or_data = dir_or_data
+        self.id = checkpoint_id
         self.storage_mode = storage_mode
 
-        # Todo: What to do if result is a subset of checkpoint_dir_or_data (dict)
+        # Todo: What to do if result is a subset of dir_or_data (dict)
         self.result = result or {}
         self.node_ip = node_ip or self.result.get(NODE_IP, None)
 
@@ -57,7 +57,7 @@ class _TrackedCheckpoint:
 
         return (
             f"<_TrackedCheckpoint storage='PERSISTENT' "
-            f"checkpoint_dir_or_data={self.checkpoint_dir_or_data}>"
+            f"dir_or_data={self.dir_or_data}>"
         )
 
 
@@ -65,16 +65,16 @@ def _default_delete_fn(checkpoint: _TrackedCheckpoint):
     if checkpoint.storage_mode != _TrackedCheckpoint.PERSISTENT:
         return
 
-    if isinstance(checkpoint.checkpoint_dir_or_data, (str, bytes, os.PathLike)):
-        if os.path.isfile(checkpoint.checkpoint_dir_or_data):
-            os.remove(checkpoint.checkpoint_dir_or_data)
+    if isinstance(checkpoint.dir_or_data, (str, bytes, os.PathLike)):
+        if os.path.isfile(checkpoint.dir_or_data):
+            os.remove(checkpoint.dir_or_data)
             return
-        elif os.path.isdir(checkpoint.checkpoint_dir_or_data):
-            shutil.rmtree(checkpoint.checkpoint_dir_or_data)
+        elif os.path.isdir(checkpoint.dir_or_data):
+            shutil.rmtree(checkpoint.dir_or_data)
             return
     logger.warning(
         f"Could not delete checkpoint {checkpoint} from disk as it is "
-        f"neither file not directory. Path: {checkpoint.checkpoint_dir_or_data}."
+        f"neither file not directory. Path: {checkpoint.dir_or_data}."
     )
 
 
@@ -136,6 +136,18 @@ class CheckpointStrategy:
 
 
 class CheckpointManager:
+    """Common checkpoint management and bookkeeping class for Ray Train and Tune.
+
+    This class acts as the common core for checkpoint bookkeeping in Ray ML libraries.
+    On a high level, this manager keeps a reference to all stored checkpoints
+    (both in-memory and on-disk checkpoints). For on-disk checkpoints, it
+    keeps a configured number of checkpoints according to specified metrics.
+
+    The manager supports lazy data writing by utilizing the
+    ``_TrackedCheckpoint.commit()`` API, which is only invoked if the checkpoint
+    should be persisted to disk.
+    """
+
     def __init__(
         self,
         checkpoint_strategy: CheckpointStrategy,
@@ -229,7 +241,7 @@ class CheckpointManager:
         return (
             not is_nan(checkpoint_score),
             checkpoint_score if not is_nan(checkpoint_score) else 0,
-            checkpoint.checkpoint_id,
+            checkpoint.id,
         )
 
     def _decide_what_to_do_with_checkpoint(self, checkpoint: _TrackedCheckpoint):
@@ -258,10 +270,7 @@ class CheckpointManager:
             ).tracked_checkpoint
 
             # Only remove if checkpoint data is different
-            if (
-                worst_checkpoint.checkpoint_dir_or_data
-                != checkpoint.checkpoint_dir_or_data
-            ):
+            if worst_checkpoint.dir_or_data != checkpoint.dir_or_data:
                 self._maybe_delete_persisted_checkpoint(worst_checkpoint)
                 logger.debug(f"Removed worst checkpoint from " f"{worst_checkpoint}.")
 
@@ -296,6 +305,9 @@ class CheckpointManager:
     def _get_next_checkpoint_path(self) -> Optional[Path]:
         return None
 
+    def __del__(self):
+        self._cleanup_checkpoints()
+
     def __getstate__(self):
         state = self.__dict__.copy()
 
@@ -304,7 +316,7 @@ class CheckpointManager:
 
         # Avoid serializing the memory checkpoint.
         state["_newest_memory_checkpoint"] = _TrackedCheckpoint(
-            checkpoint_dir_or_data=None,
+            dir_or_data=None,
             checkpoint_id=0,
             storage_mode=_TrackedCheckpoint.MEMORY,
         )

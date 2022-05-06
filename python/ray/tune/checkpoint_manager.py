@@ -55,9 +55,7 @@ class CheckpointManager(CommonCheckpointManager):
 
     def on_checkpoint(self, checkpoint: _TrackedCheckpoint):
         # Set checkpoint ID
-        checkpoint.checkpoint_id = (
-            checkpoint.checkpoint_id or self._latest_checkpoint_id
-        )
+        checkpoint.id = checkpoint.id or self._latest_checkpoint_id
         self._latest_checkpoint_id += 1
 
         if checkpoint.storage_mode == _TrackedCheckpoint.MEMORY:
@@ -85,7 +83,7 @@ class CheckpointManager(CommonCheckpointManager):
     @property
     def newest_persistent_checkpoint(self):
         return self._latest_persisted_checkpoint or _TrackedCheckpoint(
-            checkpoint_dir_or_data=None,
+            dir_or_data=None,
             checkpoint_id=-1,
             storage_mode=_TrackedCheckpoint.PERSISTENT,
         )
@@ -95,14 +93,14 @@ class CheckpointManager(CommonCheckpointManager):
         """Returns the newest checkpoint (based on training iteration)."""
         newest_checkpoint = max(
             [self.newest_persistent_checkpoint, self.newest_memory_checkpoint],
-            key=lambda c: c.checkpoint_id,
+            key=lambda c: c.id,
         )
         return newest_checkpoint
 
     @property
     def newest_memory_checkpoint(self):
         return self._latest_memory_checkpoint or _TrackedCheckpoint(
-            checkpoint_dir_or_data=None,
+            dir_or_data=None,
             checkpoint_id=-1,
             storage_mode=_TrackedCheckpoint.MEMORY,
         )

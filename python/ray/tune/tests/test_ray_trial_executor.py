@@ -122,7 +122,7 @@ class RayTrialExecutorTest(unittest.TestCase):
     def _simulate_saving(self, trial):
         checkpoint = self.trial_executor.save(trial, _TrackedCheckpoint.PERSISTENT)
         self.assertEqual(checkpoint, trial.saving_to)
-        self.assertEqual(trial.checkpoint.checkpoint_dir_or_data, None)
+        self.assertEqual(trial.checkpoint.dir_or_data, None)
         event = self.trial_executor.get_next_executor_event(
             live_trials={trial}, next_trial_exists=False
         )
@@ -376,7 +376,7 @@ class RayTrialExecutorTest(unittest.TestCase):
     def process_trial_save(self, trial, checkpoint_value):
         """Simulates trial runner save."""
         checkpoint = trial.saving_to
-        checkpoint.checkpoint_dir_or_data = checkpoint_value
+        checkpoint.dir_or_data = checkpoint_value
         trial.on_checkpoint(checkpoint)
 
 

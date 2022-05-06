@@ -50,7 +50,7 @@ class MockTrial(Trial):
     @property
     def checkpoint(self):
         return _TrackedCheckpoint(
-            checkpoint_dir_or_data="None",
+            dir_or_data="None",
             storage_mode=_TrackedCheckpoint.MEMORY,
             result={},
         )

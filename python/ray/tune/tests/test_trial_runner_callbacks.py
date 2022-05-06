@@ -151,7 +151,7 @@ class TrialRunnerCallbacks(unittest.TestCase):
 
         # Just a placeholder object ref for cp.value.
         cp = _TrackedCheckpoint(
-            checkpoint_dir_or_data=ray.put(1),
+            dir_or_data=ray.put(1),
             storage_mode=_TrackedCheckpoint.PERSISTENT,
             result={TRAINING_ITERATION: 0},
         )

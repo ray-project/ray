@@ -423,7 +423,7 @@ class ExperimentAnalysis:
             # Support metrics given as paths, e.g.
             # "info/learner/default_policy/policy_loss".
             return [
-                (c.checkpoint_dir_or_data, unflattened_lookup(metric, c.result))
+                (c.dir_or_data, unflattened_lookup(metric, c.result))
                 for c in checkpoints
             ]
         else:

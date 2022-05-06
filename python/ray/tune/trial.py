@@ -111,9 +111,9 @@ class CheckpointDeleter:
 
         if (
             checkpoint.storage_mode == _TrackedCheckpoint.PERSISTENT
-            and checkpoint.checkpoint_dir_or_data
+            and checkpoint.dir_or_data
         ):
-            checkpoint_path = checkpoint.checkpoint_dir_or_data
+            checkpoint_path = checkpoint.dir_or_data
 
             logger.debug(
                 "Trial %s: Deleting checkpoint %s", self.trial_id, checkpoint_path
@@ -466,9 +466,9 @@ class Trial:
             checkpoint = self.checkpoint_manager.newest_persistent_checkpoint
         else:
             checkpoint = self.checkpoint_manager.newest_checkpoint
-        if checkpoint.checkpoint_dir_or_data is None:
+        if checkpoint.dir_or_data is None:
             checkpoint = _TrackedCheckpoint(
-                checkpoint_dir_or_data=self.restore_path,
+                dir_or_data=self.restore_path,
                 storage_mode=_TrackedCheckpoint.PERSISTENT,
             )
         return checkpoint
@@ -648,10 +648,10 @@ class Trial:
         )
 
     def has_checkpoint(self):
-        return self.checkpoint.checkpoint_dir_or_data is not None
+        return self.checkpoint.dir_or_data is not None
 
     def clear_checkpoint(self):
-        self.checkpoint.checkpoint_dir_or_data = None
+        self.checkpoint.dir_or_data = None
         self.restoring_from = None
         self.invalidate_json_state()
 

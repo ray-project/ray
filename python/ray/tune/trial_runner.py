@@ -1109,7 +1109,7 @@ class TrialRunner:
         logger.debug("Trial %s: Processing trial save.", trial)
 
         try:
-            trial.saving_to.checkpoint_dir_or_data = checkpoint_value
+            trial.saving_to.dir_or_data = checkpoint_value
             self._callbacks.on_checkpoint(
                 iteration=self._iteration,
                 trials=self._trials,

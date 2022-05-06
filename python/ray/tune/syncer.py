@@ -565,7 +565,7 @@ class SyncerCallback(Callback):
                     # shouldn't track it with the checkpoint_manager.
                     raise e
             if not trial.uses_cloud_checkpointing:
-                if not os.path.exists(checkpoint.checkpoint_dir_or_data):
+                if not os.path.exists(checkpoint.dir_or_data):
                     raise TuneError(
                         "Trial {}: Checkpoint path {} not "
                         "found after successful sync down. "
@@ -576,7 +576,7 @@ class SyncerCallback(Callback):
                         "if that's the case, see instructions "
                         "here: {} .".format(
                             trial,
-                            checkpoint.checkpoint_dir_or_data,
+                            checkpoint.dir_or_data,
                             CLOUD_CHECKPOINTING_URL,
                         )
                     )

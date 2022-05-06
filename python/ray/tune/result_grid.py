@@ -165,9 +165,9 @@ class ResultGrid:
         return None
 
     def _trial_to_result(self, trial: Trial) -> Result:
-        if trial.checkpoint.checkpoint_dir_or_data:
+        if trial.checkpoint.dir_or_data:
             checkpoint_dir = TrainableUtil.find_checkpoint_dir(
-                trial.checkpoint.checkpoint_dir_or_data
+                trial.checkpoint.dir_or_data
             )
             checkpoint = Checkpoint.from_directory(checkpoint_dir)
         else:

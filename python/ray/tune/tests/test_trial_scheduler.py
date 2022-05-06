@@ -251,7 +251,7 @@ class _MockTrialExecutor(TrialExecutor):
 
     def save(self, trial, type=_TrackedCheckpoint.PERSISTENT, result=None):
         return _TrackedCheckpoint(
-            checkpoint_dir_or_data=trial.trainable_name,
+            dir_or_data=trial.trainable_name,
             storage_mode=_TrackedCheckpoint.PERSISTENT,
             result=result,
         )
@@ -843,12 +843,12 @@ class _MockTrial(Trial):
         self._default_result_or_future = None
 
     def on_checkpoint(self, checkpoint):
-        self.restored_checkpoint = checkpoint.checkpoint_dir_or_data
+        self.restored_checkpoint = checkpoint.dir_or_data
 
     @property
     def checkpoint(self):
         return _TrackedCheckpoint(
-            checkpoint_dir_or_data=self.trainable_name,
+            dir_or_data=self.trainable_name,
             storage_mode=_TrackedCheckpoint.MEMORY,
             result=None,
         )

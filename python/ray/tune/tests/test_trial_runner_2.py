@@ -211,7 +211,7 @@ class TrialRunnerTest2(unittest.TestCase):
         self.assertEqual(ray.get(trials[0].runner.set_info.remote(1)), 1)
         runner.step()  # Process result, dispatch save
         runner.step()  # Process save, stop trial
-        kwargs["restore_path"] = trials[0].checkpoint.checkpoint_dir_or_data
+        kwargs["restore_path"] = trials[0].checkpoint.dir_or_data
         self.assertEqual(trials[0].status, Trial.TERMINATED)
 
         runner.add_trial(Trial("__fake", **kwargs))
@@ -224,7 +224,7 @@ class TrialRunnerTest2(unittest.TestCase):
         self.assertEqual(trials[0].status, Trial.TERMINATED)
         self.assertEqual(trials[1].status, Trial.RUNNING)
         self.assertEqual(ray.get(trials[1].runner.get_info.remote()), 1)
-        self.addCleanup(os.remove, trials[0].checkpoint.checkpoint_dir_or_data)
+        self.addCleanup(os.remove, trials[0].checkpoint.dir_or_data)
 
     def testRestoreMetricsAfterCheckpointing(self):
         ray.init(num_cpus=1, num_gpus=1)
@@ -244,7 +244,7 @@ class TrialRunnerTest2(unittest.TestCase):
 
         self.assertEqual(trials[0].status, Trial.TERMINATED)
 
-        kwargs["restore_path"] = trials[0].checkpoint.checkpoint_dir_or_data
+        kwargs["restore_path"] = trials[0].checkpoint.dir_or_data
         kwargs.pop("stopping_criterion")
         kwargs.pop("checkpoint_freq")  # No checkpointing for next trial
         runner.add_trial(Trial("__fake", **kwargs))
@@ -263,7 +263,7 @@ class TrialRunnerTest2(unittest.TestCase):
         self.assertEqual(trials[1].last_result["timesteps_since_restore"], 20)
         self.assertEqual(trials[1].last_result["iterations_since_restore"], 2)
         self.assertGreater(trials[1].last_result["time_since_restore"], 0)
-        self.addCleanup(os.remove, trials[0].checkpoint.checkpoint_dir_or_data)
+        self.addCleanup(os.remove, trials[0].checkpoint.dir_or_data)
 
     def testCheckpointingAtEnd(self):
         ray.init(num_cpus=1, num_gpus=1)
@@ -323,9 +323,7 @@ class TrialRunnerTest2(unittest.TestCase):
 
         trial = Trial("__fake", keep_checkpoints_num=2)
         trial.init_logdir()
-        trial.checkpoint_manager.set_delete_fn(
-            lambda cp: shutil.rmtree(cp.checkpoint_dir_or_data)
-        )
+        trial.checkpoint_manager.set_delete_fn(lambda cp: shutil.rmtree(cp.dir_or_data))
 
         def write_checkpoint(trial: Trial, index: int):
             checkpoint_dir = TrainableUtil.make_checkpoint_dir(
@@ -336,7 +334,7 @@ class TrialRunnerTest2(unittest.TestCase):
                 json.dump(result, f)
 
             tune_cp = _TrackedCheckpoint(
-                checkpoint_dir_or_data=checkpoint_dir,
+                dir_or_data=checkpoint_dir,
                 storage_mode=_TrackedCheckpoint.PERSISTENT,
                 result=result,
             )
@@ -380,9 +378,7 @@ class TrialRunnerTest2(unittest.TestCase):
         runner.resume()
 
         trial = runner.get_trials()[0]
-        trial.checkpoint_manager.set_delete_fn(
-            lambda cp: shutil.rmtree(cp.checkpoint_dir_or_data)
-        )
+        trial.checkpoint_manager.set_delete_fn(lambda cp: shutil.rmtree(cp.dir_or_data))
 
         # Write fourth checkpoint
         result = write_checkpoint(trial, 4)
