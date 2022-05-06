@@ -661,6 +661,14 @@ py_test(
     srcs = ["agents/alpha_star/tests/test_alpha_star.py"]
 )
 
+# AlphaZero
+py_test(
+    name = "test_alpha_zero",
+    tags = ["team:ml", "trainers_dir"],
+    size = "medium",
+    srcs = ["agents/alpha_zero/tests/test_alpha_zero.py"]
+)
+
 # APEXTrainer (DQN)
 py_test(
     name = "test_apex_dqn",
@@ -765,6 +773,14 @@ py_test(
     # Include the json data file.
     data = ["tests/data/cartpole/large.json"],
     srcs = ["agents/marwil/tests/test_bc.py"]
+)
+
+# MADDPGTrainer
+py_test(
+    name = "test_maddpg",
+    tags = ["team:ml", "trainers_dir"],
+    size = "medium",
+    srcs = ["agents/maddpg/tests/test_maddpg.py"]
 )
 
 # MAMLTrainer

@@ -171,7 +171,7 @@ class AlphaZeroPolicyWrapperClass(AlphaZeroPolicy):
         model = ModelCatalog.get_model_v2(
             obs_space, action_space, action_space.n, config["model"], "torch"
         )
-        env_creator = _global_registry.get(ENV_CREATOR, config["env"])
+        env_creator = Trainer._get_env_creator_from_env_id(None, config["env"])
         if config["ranked_rewards"]["enable"]:
             # if r2 is enabled, tne env is wrapped to include a rewards buffer
             # used to normalize rewards
@@ -250,6 +250,7 @@ class AlphaZeroTrainer(Trainer):
         # Learn on the training batch.
         # Use simple optimizer (only for multi-agent or tf-eager; all other
         # cases should use the multi-GPU optimizer, even if only using 1 GPU)
+        train_results = {}
         if train_batch is not None:
             if self.config.get("simple_optimizer") is True:
                 train_results = train_one_step(self, train_batch)
