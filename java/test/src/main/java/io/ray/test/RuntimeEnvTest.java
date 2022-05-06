@@ -178,7 +178,7 @@ public class RuntimeEnvTest {
       final RuntimeEnv runtimeEnv = new RuntimeEnv.Builder().addJars(ImmutableList.of(url)).build();
       ActorHandle<A> actor1 = Ray.actor(A::new).setRuntimeEnv(runtimeEnv).remote();
       boolean ret =
-          actor1.task(A::findClass, "io.ray.actorobserver.event.ActorStateEvent").remote().get();
+          actor1.task(A::findClass, "io.testpackages.Foo").remote().get();
       Assert.assertTrue(ret);
     } finally {
       Ray.shutdown();
@@ -187,11 +187,11 @@ public class RuntimeEnvTest {
 
   public void testJarPackageInActor() {
     testDownloadAndLoadPackage(
-        "https://ray-mobius-us.oss-us-west-1.aliyuncs.com/ci/linux/actor-observer-tmp.jar");
+        "https://github.com/ray-project/test_packages/raw/main/raw_resources/java-1.0-SNAPSHOT.jar");
   }
 
   public void testZipPackageInActor() {
     testDownloadAndLoadPackage(
-        "https://ray-mobius-us.oss-us-west-1.aliyuncs.com/ci/linux/actor-observer-tmp.zip");
+        "https://github.com/ray-project/test_packages/raw/main/raw_resources/java-1.0-SNAPSHOT.zip");
   }
 }
