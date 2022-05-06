@@ -169,6 +169,9 @@ Supported Input Formats
    * - Arrow Table Objects
      - :func:`ray.data.from_arrow()`
      - ✅
+   * - 🤗 (Hugging Face) Dataset
+     - :func:`ray.data.from_huggingface()`
+     - ✅
    * - Custom Datasource
      - :func:`ray.data.read_datasource()`
      - ✅
