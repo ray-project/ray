@@ -69,7 +69,6 @@ def chunk_put(req: ray_client_pb2.DataRequest):
         )
         print(f'chunk_id:{chunk_id} start:{start} end:{end}')
         yield ray_client_pb2.DataRequest(req_id=req.req_id, put=chunk)
-        print(f'yield chunk_id:{chunk_id} start:{start} end:{end}')
 
 
 class ChunkCollector:
@@ -216,8 +215,6 @@ class DataClient:
                 return
             if req.WhichOneof("type") == "put":
                 yield from chunk_put(req)
-            elif req.WhichOneof("type") == "task":
-                yield req
             else:
                 yield req
 
@@ -543,13 +540,13 @@ class DataClient:
 
     def Schedule(self, request: ray_client_pb2.ClientTask, callback: ResponseCallable):
         datareq = ray_client_pb2.DataRequest(task=request)
-        if request.ByteSize() < 2 * 2:
+        if request.ByteSize() < (2 * 2 ** 30 - 100000):
             self._async_send(datareq, callback)
             return
         def int_to_bytes(x: int) -> bytes:
             return x.to_bytes((x.bit_length() + 7) // 8, 'big')
-        def int_from_bytes(xbytes: bytes) -> int:
-            return int.from_bytes(xbytes, 'big')
+        # def int_from_bytes(xbytes: bytes) -> int:
+        #     return int.from_bytes(xbytes, 'big')
         # total_size = 0
         # for arg in datareq.task.args:
         #     total_size += len(arg.data)
