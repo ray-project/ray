@@ -42,6 +42,239 @@ from ray.rllib.utils.typing import (
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.util.timer import _Timer
 
+
+class AlphaStarConfig(appo.APPOConfig):
+    """Defines a configuration class from which an AlphaStarTrainer can be built.
+
+    Example:
+        >>> from ray.rllib.agents.alpha_star import AlphaStarConfig
+        >>> config = AlphaStarConfig().training(lr=0.0003, train_batch_size=512)\
+        ...     .resources(num_gpus=4)\
+        ...     .rollouts(num_rollout_workers=64)
+        >>> print(config.to_dict())
+        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> trainer = config.build(env="CartPole-v1")
+        >>> trainer.train()
+
+    Example:
+        >>> from ray.rllib.agents.alpha_star import AlphaStarConfig
+        >>> from ray import tune
+        >>> config = AlphaStarConfig()
+        >>> # Print out some default values.
+        >>> print(config.vtrace)
+        >>> # Update the config object.
+        >>> config.training(lr=tune.grid_search([0.0001, 0.0003]), grad_clip=20.0)
+        >>> # Set the config object's env.
+        >>> config.environment(env="CartPole-v1")
+        >>> # Use to_dict() to get the old-style python config dict
+        >>> # when running with tune.
+        >>> tune.run(
+        ...     "AlphaStar",
+        ...     stop={"episode_reward_mean": 200},
+        ...     config=config.to_dict(),
+        ... )
+    """
+
+    def __init__(self, trainer_class=None):
+        """Initializes a ImpalaConfig instance."""
+        super().__init__(trainer_class=trainer_class or AlphaStarTrainer)
+
+        # fmt: off
+        # __sphinx_doc_begin__
+
+        # AlphaStar specific settings:
+
+
+
+        # Override some of TrainerConfig's default values with AlphaStar-specific
+        # values.
+        self.vtrace_drop_last_ts = False
+        self.min_time_s_per_reporting = 2
+
+
+        # __sphinx_doc_end__
+        # fmt: on
+
+        # Deprecated value.
+        self._disable_execution_plan_api = True
+        self.num_data_loader_buffers = DEPRECATED_VALUE
+
+    @override(TrainerConfig)
+    def training(
+        self,
+        *,
+        vtrace: Optional[bool] = None,
+        vtrace_clip_rho_threshold: Optional[float] = None,
+        vtrace_clip_pg_rho_threshold: Optional[float] = None,
+        vtrace_drop_last_ts: Optional[bool] = None,
+        num_multi_gpu_tower_stacks: Optional[int] = None,
+        minibatch_buffer_size: Optional[int] = None,
+        num_sgd_iter: Optional[int] = None,
+        replay_proportion: Optional[float] = None,
+        replay_buffer_num_slots: Optional[int] = None,
+        learner_queue_size: Optional[int] = None,
+        learner_queue_timeout: Optional[float] = None,
+        max_sample_requests_in_flight_per_worker: Optional[int] = None,
+        aggregator_wait_timeout: Optional[float] = None,
+        sample_wait_timeout: Optional[float] = None,
+        broadcast_interval: Optional[int] = None,
+        num_aggregation_workers: Optional[int] = None,
+        grad_clip: Optional[float] = None,
+        opt_type: Optional[str] = None,
+        lr_schedule: Optional[List[List[Union[int, float]]]] = None,
+        decay: Optional[float] = None,
+        momentum: Optional[float] = None,
+        epsilon: Optional[float] = None,
+        vf_loss_coeff: Optional[float] = None,
+        entropy_coeff: Optional[float] = None,
+        entropy_coeff_schedule: Optional[List[List[Union[int, float]]]] = None,
+        _separate_vf_optimizer: Optional[bool] = None,
+        _lr_vf: Optional[float] = None,
+        after_train_step: Optional[Callable[[dict], None]] = None,
+        **kwargs,
+    ) -> "ImpalaConfig":
+        """Sets the training related configuration.
+
+        Args:
+            vtrace: V-trace params (see vtrace_tf/torch.py).
+            vtrace_clip_rho_threshold:
+            vtrace_clip_pg_rho_threshold:
+            vtrace_drop_last_ts: If True, drop the last timestep for the vtrace
+                calculations, such that all data goes into the calculations as [B x T-1]
+                (+ the bootstrap value). This is the default and legacy RLlib behavior,
+                however, could potentially have a destabilizing effect on learning,
+                especially in sparse reward or reward-at-goal environments.
+                False for not dropping the last timestep.
+                System params.
+            num_multi_gpu_tower_stacks: For each stack of multi-GPU towers, how many
+                slots should we reserve for parallel data loading? Set this to >1 to
+                load data into GPUs in parallel. This will increase GPU memory usage
+                proportionally with the number of stacks.
+                Example:
+                2 GPUs and `num_multi_gpu_tower_stacks=3`:
+                - One tower stack consists of 2 GPUs, each with a copy of the
+                model/graph.
+                - Each of the stacks will create 3 slots for batch data on each of its
+                GPUs, increasing memory requirements on each GPU by 3x.
+                - This enables us to preload data into these stacks while another stack
+                is performing gradient calculations.
+            minibatch_buffer_size: How many train batches should be retained for
+                minibatching. This conf only has an effect if `num_sgd_iter > 1`.
+            num_sgd_iter: Number of passes to make over each train batch.
+            replay_proportion: Set >0 to enable experience replay. Saved samples will
+                be replayed with a p:1 proportion to new data samples. Used in the
+                execution plan API.
+            replay_buffer_num_slots: Number of sample batches to store for replay.
+                The number of transitions saved total will be
+                (replay_buffer_num_slots * rollout_fragment_length).
+            learner_queue_size: Max queue size for train batches feeding into the
+                learner.
+            learner_queue_timeout: Wait for train batches to be available in minibatch
+                buffer queue this many seconds. This may need to be increased e.g. when
+                training with a slow environment.
+            max_sample_requests_in_flight_per_worker: Level of queuing for sampling
+                and replay aggregator operations (if using aggregator workers).
+            aggregator_wait_timeout: Amount of time to block and wait on pending calls
+                to replay aggregator workers.
+            sample_wait_timeout: Amount of time to block and wait on pending calls to
+                sampling workers.
+            broadcast_interval: Max number of workers to broadcast one set of
+                weights to.
+            num_aggregation_workers: Use n (`num_aggregation_workers`) extra Actors for
+                multi-level aggregation of the data produced by the m RolloutWorkers
+                (`num_workers`). Note that n should be much smaller than m.
+                This can make sense if ingesting >2GB/s of samples, or if
+                the data requires decompression.
+            grad_clip: If specified, clip the global norm of gradients by this amount.
+            opt_type: Either "adam" or "rmsprop".
+            lr_schedule: Learning rate schedule. In the format of
+                [[timestep, lr-value], [timestep, lr-value], ...]
+                Intermediary timesteps will be assigned to interpolated learning rate
+                values. A schedule should normally start from timestep 0.
+            decay: Decay setting for the RMSProp optimizer, in case `opt_type=rmsprop`.
+            momentum: Momentum setting for the RMSProp optimizer, in case
+                `opt_type=rmsprop`.
+            epsilon: Epsilon setting for the RMSProp optimizer, in case
+                `opt_type=rmsprop`.
+            vf_loss_coeff: Coefficient for the value function term in the loss function.
+            entropy_coeff: Coefficient for the entropy regularizer term in the loss
+                function.
+            entropy_coeff_schedule: Decay schedule for the entropy regularizer.
+            _separate_vf_optimizer: Set this to true to have two separate optimizers
+                optimize the policy-and value networks.
+            _lr_vf: If _separate_vf_optimizer is True, define separate learning rate
+                for the value network.
+            after_train_step: Callback for APPO to use to update KL, target network
+                periodically. The input to the callback is the learner fetches dict.
+
+        Returns:
+            This updated TrainerConfig object.
+        """
+        # Pass kwargs onto super's `training()` method.
+        super().training(**kwargs)
+
+        if vtrace is not None:
+            self.vtrace = vtrace
+        if vtrace_clip_rho_threshold is not None:
+            self.vtrace_clip_rho_threshold = vtrace_clip_rho_threshold
+        if vtrace_clip_pg_rho_threshold is not None:
+            self.vtrace_clip_pg_rho_threshold = vtrace_clip_pg_rho_threshold
+        if vtrace_drop_last_ts is not None:
+            self.vtrace_drop_last_ts = vtrace_drop_last_ts
+        if num_multi_gpu_tower_stacks is not None:
+            self.num_multi_gpu_tower_stacks = num_multi_gpu_tower_stacks
+        if minibatch_buffer_size is not None:
+            self.minibatch_buffer_size = minibatch_buffer_size
+        if num_sgd_iter is not None:
+            self.num_sgd_iter = num_sgd_iter
+        if replay_proportion is not None:
+            self.replay_proportion = replay_proportion
+        if replay_buffer_num_slots is not None:
+            self.replay_buffer_num_slots = replay_buffer_num_slots
+        if learner_queue_size is not None:
+            self.learner_queue_size = learner_queue_size
+        if learner_queue_timeout is not None:
+            self.learner_queue_timeout = learner_queue_timeout
+        if max_sample_requests_in_flight_per_worker is not None:
+            self.max_sample_requests_in_flight_per_worker = (
+                max_sample_requests_in_flight_per_worker
+            )
+        if aggregator_wait_timeout is not None:
+            self.aggregator_wait_timeout = aggregator_wait_timeout
+        if sample_wait_timeout is not None:
+            self.sample_wait_timeout = sample_wait_timeout
+        if broadcast_interval is not None:
+            self.broadcast_interval = broadcast_interval
+        if num_aggregation_workers is not None:
+            self.num_aggregation_workers = num_aggregation_workers
+        if grad_clip is not None:
+            self.grad_clip = grad_clip
+        if opt_type is not None:
+            self.opt_type = opt_type
+        if lr_schedule is not None:
+            self.lr_schedule = lr_schedule
+        if decay is not None:
+            self.decay = decay
+        if momentum is not None:
+            self.momentum = momentum
+        if epsilon is not None:
+            self.epsilon = epsilon
+        if vf_loss_coeff is not None:
+            self.vf_loss_coeff = vf_loss_coeff
+        if entropy_coeff is not None:
+            self.entropy_coeff = entropy_coeff
+        if entropy_coeff_schedule is not None:
+            self.entropy_coeff_schedule = entropy_coeff_schedule
+        if _separate_vf_optimizer is not None:
+            self._separate_vf_optimizer = _separate_vf_optimizer
+        if _lr_vf is not None:
+            self._lr_vf = _lr_vf
+        if after_train_step is not None:
+            self.after_train_step = after_train_step
+
+        return self
+
+
 # fmt: off
 # __sphinx_doc_begin__
 
