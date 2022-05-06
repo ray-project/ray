@@ -139,7 +139,7 @@ class SimpleQConfig(TrainerConfig):
 
         # Overrides of TrainerConfig defaults
         # `rollouts()`
-        self.num_rollout_workers = 0
+        self.num_workers = 0
         self.rollout_fragment_length = 4
 
         # `training()`
