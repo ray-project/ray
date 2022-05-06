@@ -2848,7 +2848,7 @@ py_test(
 py_test(
     name = "examples/rollout_worker_custom_workflow",
     tags = ["team:ml", "examples", "examples_R"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/rollout_worker_custom_workflow.py"],
     args = ["--num-cpus=4"]
 )
