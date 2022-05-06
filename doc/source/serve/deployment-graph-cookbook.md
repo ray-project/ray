@@ -16,7 +16,12 @@ kernelspec:
 
 # Deployment Graph Cookbook
 
-### Chain Nodes
+This doc is to provide more common use cases for using the deployment graph.
+
+# Catalog
+[Chain nodes with same class and different args](#chain_nodes_same_class_different_args)
+
+## Chain nodes with same class and different args <a name="chain_nodes_same_class_different_args"></a>
 
 The example shows how to chain nodes using the same class and having different args passed in
 
@@ -28,7 +33,9 @@ from ray import serve
 from ray.experimental.dag.input_node import InputNode
 from ray.serve.drivers import DAGDriver
 
-ray.init(num_cpus=16)
+
+#Adjust the num_cpus based on your device 
+ray.init(num_cpus=4)
 serve.start()
 
 @serve.deployment
@@ -39,22 +46,27 @@ class Model:
       return input +  self.weight
 
 
-# 10 nodes chain
+# 10 nodes chain in a line
 num_nodes = 10
 nodes = [Model.bind(w) for w in range(num_nodes)]
-prev_outputs = [None] * num_nodes
+outputs = [None] * num_nodes
 with InputNode() as dag_input:
    for i in range(num_nodes):
       if i == 0:
          # first node
-         prev_outputs[i] = nodes[i].forward.bind(dag_input)
+         outputs[i] = nodes[i].forward.bind(dag_input)
       else:
-         prev_outputs[i] = nodes[i].forward.bind(prev_outputs[i - 1])
-   
-   serve_dag = DAGDriver.options(route_prefix="/my-dag").bind(prev_outputs[-1])
+         outputs[i] = nodes[i].forward.bind(outputs[i - 1])
 
-dag_handle = serve.run(serve_dag)
-print(ray.get(dag_handle.predict.remote(0)))
+print(ray.get(outputs[-1].execute(0)))
+```
+
+### Outputs
+
+The graph will add all nodes weights plus the input (which is 0 in this case)
+
+```
+45
 ```
 
 +++
