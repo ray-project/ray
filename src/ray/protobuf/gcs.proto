@@ -318,6 +318,8 @@ message WorkerTableData {
   optional WorkerExitType exit_type = 19;
   // The detailed message about worker exit.
   optional string exit_detail = 20;
+  // pid of the worker process.
+  uint32 pid = 21;
 }
 
 // Fields to publish when worker fails.

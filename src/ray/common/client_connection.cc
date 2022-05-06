@@ -423,6 +423,7 @@ void ClientConnection::ProcessMessages() {
 
 void ClientConnection::ProcessMessageHeader(const boost::system::error_code &error) {
   if (error) {
+    read_length_ = 0;
     ProcessMessage(error);
     return;
   }
@@ -497,18 +498,21 @@ void ClientConnection::ProcessMessage(const boost::system::error_code &error) {
     flatbuffers::FlatBufferBuilder fbb;
     protocol::DisconnectClientBuilder builder(fbb);
     builder.add_disconnect_type(
-        static_cast<int>(ray::rpc::WorkerExitType::SYSTEM_ERROR_EXIT));
-    builder.add_disconnect_detail(
-        fbb.CreateString(absl::StrCat("Worker has unexpectedly crashed. Error name: ",
-                                      error.value(),
-                                      " Error message: ",
-                                      error.message())));
+        static_cast<int>(ray::rpc::WorkerExitType::UNEXPECTED_SYSTEM_EXIT));
+    builder.add_disconnect_detail(fbb.CreateString(absl::StrCat(
+        "Worker unexpectedly exits with a connection error code ",
+        error.value(),
+        ". ",
+        error.message(),
+        ". There are some potential root causes. (1) The process is killed by "
+        "SIGKILL by OOM killer due to high memory usage. (2) ray stop --force is "
+        "called. (3) The worker is crashed unexpectedly due to SIGSEGV or other "
+        "unexpected errors.")));
     fbb.Finish(builder.Finish());
     std::vector<uint8_t> error_data(fbb.GetBufferPointer(),
                                     fbb.GetBufferPointer() + fbb.GetSize());
     read_type_ = error_message_type_;
     read_message_ = error_data;
-    read_length_ = 0;
   }
 
   int64_t start_ms = current_time_ms();

@@ -24,6 +24,7 @@
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/gcs/pb_util.h"
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
 #include "ray/util/util.h"
@@ -740,6 +741,7 @@ void CoreWorker::RegisterToGcs() {
   worker_data->set_worker_type(options_.worker_type);
   worker_data->mutable_worker_info()->insert(worker_info.begin(), worker_info.end());
   worker_data->set_is_alive(true);
+  worker_data->set_pid(getpid());
 
   RAY_CHECK_OK(gcs_client_->Workers().AsyncAdd(worker_data, nullptr));
 }
@@ -2421,19 +2423,19 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   if (status.IsCreationTaskError()) {
     stream << "Worker exits because there was an exception in the initialization method "
               "(e.g., __init__). Fix the exceptions from the initialization to resolve "
-              "the issue. Detail: "
+              "the issue. "
            << status.message();
-    Exit(rpc::WorkerExitType::CREATION_TASK_ERROR,
+    Exit(rpc::WorkerExitType::ACTOR_INIT_FAILURE_EXIT,
          stream.str(),
          creation_task_exception_pb_bytes);
   } else if (status.IsIntentionalSystemExit()) {
-    stream << "Worker exits because it is requested. Details: " << status.message();
-    Exit(rpc::WorkerExitType::INTENDED_EXIT,
+    stream << "Worker exits by an user request. " << status.message();
+    Exit(rpc::WorkerExitType::INTENTIONAL_USER_EXIT,
          stream.str(),
          creation_task_exception_pb_bytes);
   } else if (status.IsUnexpectedSystemExit()) {
-    stream << "Worker exits unexpectedly. Details: " << status.message();
-    Exit(rpc::WorkerExitType::SYSTEM_ERROR_EXIT,
+    stream << "Worker exits unexpectedly. " << status.message();
+    Exit(rpc::WorkerExitType::UNEXPECTED_SYSTEM_EXIT,
          stream.str(),
          creation_task_exception_pb_bytes);
   } else if (!status.ok()) {
@@ -3104,7 +3106,7 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
            << " has received a force kill request after the cancellation. Killing "
               "a worker... thread id: "
            << main_thread_task_id_;
-    ForceExit(rpc::WorkerExitType::INTENDED_EXIT, stream.str());
+    ForceExit(rpc::WorkerExitType::INTENTIONAL_USER_EXIT, stream.str());
   }
 }
 
@@ -3123,8 +3125,16 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
     return;
   }
 
+  const auto &kill_actor_reason =
+      gcs::GenErrorMessageFromDeathCause(request.death_cause());
+  // If the RPC is invoked by ray.kill, user_initiated is set to true.
+  const auto exit_type = request.user_initiated()
+                             ? rpc::WorkerExitType::INTENTIONAL_USER_EXIT
+                             : rpc::WorkerExitType::INTENTIONAL_SYSTEM_EXIT;
+
   if (request.force_kill()) {
-    RAY_LOG(INFO) << "Force kill actor request has received. exiting immediately...";
+    RAY_LOG(INFO) << "Force kill actor request has received. exiting immediately... "
+                  << kill_actor_reason;
     if (options_.num_workers > 1) {
       // TODO (kfstorm): Should we add some kind of check before sending the killing
       // request?
@@ -3135,11 +3145,12 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
              "hosted in a dedicated worker process.";
     }
     // If we don't need to restart this actor, we notify raylet before force killing it.
-    ForceExit(rpc::WorkerExitType::INTENDED_EXIT,
-              "Worker exits due to forceful actor kill request.");
+    ForceExit(
+        exit_type,
+        absl::StrCat("Worker exits because the actor is killed. ", kill_actor_reason));
   } else {
-    Exit(rpc::WorkerExitType::INTENDED_EXIT,
-         "Worker exits due to graceful actor kill request.");
+    Exit(exit_type,
+         absl::StrCat("Worker exits because the actor is killed. ", kill_actor_reason));
   }
 }
 
@@ -3291,15 +3302,16 @@ void CoreWorker::HandleExit(const rpc::ExitRequest &request,
       [this, is_idle]() {
         // If the worker is idle, we exit.
         if (is_idle) {
-          Exit(rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
+          Exit(rpc::WorkerExitType::INTENTIONAL_SYSTEM_EXIT,
                "Worker exits because it was idle (it doesn't have objects it owns while "
                "no task or actor has been scheduled) for a long time.");
         }
       },
       // We need to kill it regardless if the RPC failed.
       [this]() {
-        Exit(rpc::WorkerExitType::INTENDED_EXIT,
-             "Worker exits because it was idle for a long time.");
+        Exit(rpc::WorkerExitType::INTENTIONAL_SYSTEM_EXIT,
+             "Worker exits because it was idle (it doesn't have objects it owns while "
+             "no task or actor has been scheduled) for a long time.");
       });
 }
 

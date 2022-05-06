@@ -359,7 +359,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// We will disconnect the worker connection first and then kill the worker.
   ///
   /// \param worker The worker to destroy.
-  /// SANG-TODO
+  /// \param disconnect_type The reason why this worker process is disconnected.
+  /// \param disconnect_detail The detailed reason for a given exit.
   /// \return Void.
   void DestroyWorker(std::shared_ptr<WorkerInterface> worker,
                      rpc::WorkerExitType disconnect_type,

@@ -630,15 +630,19 @@ message MetricPoint {
 // Type of a worker exit.
 enum WorkerExitType {
   // Worker exit due to system level failures (i.e. worker crash).
-  SYSTEM_ERROR_EXIT = 0;
+  UNEXPECTED_SYSTEM_EXIT = 0;
   // Intended exit from users (e.g., users exit workers with exit code 0
   // or exit initated by Ray API such as ray.kill).
-  INTENDED_EXIT = 1;
+  INTENTIONAL_USER_EXIT = 1;
   // Worker exit due to exceptions in creation task.
-  CREATION_TASK_ERROR = 4;
+  ACTOR_INIT_FAILURE_EXIT = 4;
   // System-level exit that is intended. E.g.,
   // Workers that are killed because they are idle for a long time.
-  INTENDED_SYSTEM_EXIT = 7;
+  // NOTE: It is necessary to distinguish it from `INTENTIONAL_USER_EXIT`
+  // because there's a different failure semantic. E.g., we sometimes would
+  // like to reconstruct an actor for intentional user exit, but we never
+  // want that from intentional system exit.
+  INTENTIONAL_SYSTEM_EXIT = 7;
 }
 
 ///////////////////////////////////////////////////////////////////////////////

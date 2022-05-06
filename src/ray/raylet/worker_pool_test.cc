@@ -637,7 +637,7 @@ TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
   ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 0);
   for (const auto &worker : workers) {
     worker_pool_->DisconnectWorker(
-        worker, /*disconnect_type=*/rpc::WorkerExitType::INTENDED_EXIT);
+        worker, /*disconnect_type=*/rpc::WorkerExitType::INTENTIONAL_USER_EXIT);
     // Check that we cannot lookup the worker after it's disconnected.
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), nullptr);
   }
@@ -653,7 +653,7 @@ TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
         worker, proc.GetId(), worker_pool_->GetStartupToken(proc), [](Status, int) {}));
     worker->SetStartupToken(worker_pool_->GetStartupToken(proc));
     worker_pool_->DisconnectWorker(
-        worker, /*disconnect_type=*/rpc::WorkerExitType::INTENDED_EXIT);
+        worker, /*disconnect_type=*/rpc::WorkerExitType::INTENTIONAL_USER_EXIT);
     ASSERT_EQ(worker_pool_->NumWorkersStarting(), 0);
   }
 }
@@ -1184,7 +1184,7 @@ TEST_F(WorkerPoolTest, NoPopOnCrashedWorkerProcess) {
   // 3. kill the worker process. Now let's assume that Raylet found that the connection
   // with worker 1 disconnected first.
   worker_pool_->DisconnectWorker(
-      worker1, /*disconnect_type=*/rpc::WorkerExitType::SYSTEM_ERROR_EXIT);
+      worker1, /*disconnect_type=*/rpc::WorkerExitType::UNEXPECTED_SYSTEM_EXIT);
 
   // 4. but the RPC for announcing worker port for worker 2 is already in Raylet input
   // buffer. So now Raylet needs to handle worker 2.
@@ -1198,7 +1198,7 @@ TEST_F(WorkerPoolTest, NoPopOnCrashedWorkerProcess) {
 
   // 6. Now Raylet disconnects with worker 2.
   worker_pool_->DisconnectWorker(
-      worker2, /*disconnect_type=*/rpc::WorkerExitType::SYSTEM_ERROR_EXIT);
+      worker2, /*disconnect_type=*/rpc::WorkerExitType::UNEXPECTED_SYSTEM_EXIT);
 }
 
 TEST_F(WorkerPoolTest, TestWorkerCapping) {
@@ -1594,12 +1594,10 @@ TEST_F(WorkerPoolTest, RuntimeEnvUriReferenceWorkerLevel) {
     auto popped_normal_worker = worker_pool_->PopWorkerSync(actor_creation_task_spec);
     ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 3);
     // Disconnect actor worker.
-    worker_pool_->DisconnectWorker(popped_actor_worker,
-                                   rpc::WorkerExitType::INTENDED_SYSTEM_EXIT);
+    worker_pool_->DisconnectWorker(popped_actor_worker, rpc::WorkerExitType::IDLE_EXIT);
     ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 2);
     // Disconnect task worker.
-    worker_pool_->DisconnectWorker(popped_normal_worker,
-                                   rpc::WorkerExitType::INTENDED_SYSTEM_EXIT);
+    worker_pool_->DisconnectWorker(popped_normal_worker, rpc::WorkerExitType::IDLE_EXIT);
     ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 1);
     // Finish the job.
     worker_pool_->HandleJobFinished(job_id);
@@ -1634,12 +1632,10 @@ TEST_F(WorkerPoolTest, RuntimeEnvUriReferenceWorkerLevel) {
     auto popped_normal_worker = worker_pool_->PopWorkerSync(actor_creation_task_spec);
     ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 2);
     // Disconnect actor worker.
-    worker_pool_->DisconnectWorker(popped_actor_worker,
-                                   rpc::WorkerExitType::INTENDED_SYSTEM_EXIT);
+    worker_pool_->DisconnectWorker(popped_actor_worker, rpc::WorkerExitType::IDLE_EXIT);
     ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 1);
     // Disconnect task worker.
-    worker_pool_->DisconnectWorker(popped_normal_worker,
-                                   rpc::WorkerExitType::INTENDED_SYSTEM_EXIT);
+    worker_pool_->DisconnectWorker(popped_normal_worker, rpc::WorkerExitType::IDLE_EXIT);
     ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 0);
     // Finish the job.
     worker_pool_->HandleJobFinished(job_id);
@@ -1681,7 +1677,7 @@ TEST_F(WorkerPoolTest, RuntimeEnvUriReferenceWithMultipleWorkers) {
     ASSERT_EQ(worker_pool_->GetProcessSize(), 1);
     // Disconnect all actor workers.
     for (auto &worker : workers) {
-      worker_pool_->DisconnectWorker(worker, rpc::WorkerExitType::INTENDED_SYSTEM_EXIT);
+      worker_pool_->DisconnectWorker(worker, rpc::WorkerExitType::IDLE_EXIT);
     }
     ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 0);
   }
@@ -1705,8 +1701,7 @@ TEST_F(WorkerPoolTest, RuntimeEnvUriReferenceWithMultipleWorkers) {
         actor_creation_task_spec, true, &status, NUM_WORKERS_PER_PROCESS_JAVA - 1);
     ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 1);
     // Disconnect actor worker.
-    worker_pool_->DisconnectWorker(popped_actor_worker,
-                                   rpc::WorkerExitType::INTENDED_SYSTEM_EXIT);
+    worker_pool_->DisconnectWorker(popped_actor_worker, rpc::WorkerExitType::IDLE_EXIT);
     ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 1);
     // Sleep for a while to wait worker registration timeout.
     std::this_thread::sleep_for(
@@ -1962,7 +1957,7 @@ TEST_F(WorkerPoolTest, TestIOWorkerFailureAndSpawn) {
         worker_pool_->RegisterWorker(worker, proc.GetId(), token, [](Status, int) {}));
     // The worker failed before announcing the worker port (i.e. OnworkerStarted)
     worker_pool_->DisconnectWorker(
-        worker, /*disconnect_type=*/rpc::WorkerExitType::SYSTEM_ERROR_EXIT);
+        worker, /*disconnect_type=*/rpc::WorkerExitType::UNEXPECTED_SYSTEM_EXIT);
   }
 
   ASSERT_EQ(worker_pool_->NumSpillWorkerStarting(), 0);
@@ -1985,7 +1980,7 @@ TEST_F(WorkerPoolTest, TestIOWorkerFailureAndSpawn) {
   for (const auto &worker : spill_worker_set) {
     worker_pool_->PushSpillWorker(worker);
     worker_pool_->DisconnectWorker(
-        worker, /*disconnect_type=*/rpc::WorkerExitType::SYSTEM_ERROR_EXIT);
+        worker, /*disconnect_type=*/rpc::WorkerExitType::UNEXPECTED_SYSTEM_EXIT);
   }
   spill_worker_set.clear();
 
@@ -2012,7 +2007,7 @@ TEST_F(WorkerPoolTest, TestIOWorkerFailureAndSpawn) {
   // This time, we mock worker failure before it's returning to worker pool.
 
   worker_pool_->DisconnectWorker(
-      worker2, /*disconnect_type=*/rpc::WorkerExitType::SYSTEM_ERROR_EXIT);
+      worker2, /*disconnect_type=*/rpc::WorkerExitType::UNEXPECTED_SYSTEM_EXIT);
   worker_pool_->PushSpillWorker(worker2);
   spill_worker_set.clear();
 

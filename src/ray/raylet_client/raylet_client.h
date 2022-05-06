@@ -328,7 +328,9 @@ class RayletClient : public RayletClientInterface {
   /// propagate an error message to the driver.
   ///
   /// It's a blocking call.
-  /// SANG-TODO
+  ///
+  /// \param disconnect_type The reason why this worker process is disconnected.
+  /// \param disconnect_detail The detailed reason for a given exit.
   /// \return ray::Status.
   ray::Status Disconnect(
       const rpc::WorkerExitType &exit_type,

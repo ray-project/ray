@@ -38,8 +38,10 @@ void GcsWorkerManager::HandleReportWorkerFailure(
                    ", exit_detail = ",
                    request.worker_failure().exit_detail(),
                    request.worker_failure().has_creation_task_exception());
-  if (request.worker_failure().exit_type() == rpc::WorkerExitType::INTENDED_EXIT ||
-      request.worker_failure().exit_type() == rpc::WorkerExitType::INTENDED_SYSTEM_EXIT) {
+  if (request.worker_failure().exit_type() ==
+          rpc::WorkerExitType::INTENTIONAL_USER_EXIT ||
+      request.worker_failure().exit_type() ==
+          rpc::WorkerExitType::INTENTIONAL_SYSTEM_EXIT) {
     RAY_LOG(DEBUG) << message;
   } else {
     RAY_LOG(WARNING) << message
