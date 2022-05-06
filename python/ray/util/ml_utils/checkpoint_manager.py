@@ -125,7 +125,7 @@ class CheckpointStrategy:
     def __post_init__(self):
         if self.num_to_keep is not None and self.num_to_keep < 0:
             raise ValueError(
-                f"Received invalidate num_to_keep: "
+                f"Received invalid num_to_keep: "
                 f"{self.num_to_keep}. "
                 f"Must be None or non-negative integer."
             )
