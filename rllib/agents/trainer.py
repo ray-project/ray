@@ -40,20 +40,15 @@ from ray.rllib.evaluation.metrics import (
 )
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.buffers.multi_agent_replay_buffer import (
     MultiAgentReplayBuffer as Legacy_MultiAgentReplayBuffer,
 )
 from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer
 from ray.rllib.execution.common import WORKER_UPDATE_TIMER
 from ray.rllib.execution.rollout_ops import (
-    ConcatBatches,
-    ParallelRollouts,
     synchronous_parallel_sample,
 )
 from ray.rllib.execution.train_ops import (
-    TrainOneStep,
-    MultiGPUTrainOneStep,
     train_one_step,
     multi_gpu_train_one_step,
 )
@@ -909,41 +904,14 @@ class Trainer(Trainable):
 
         return train_results
 
-    @DeveloperAPI
     @staticmethod
     def execution_plan(workers, config, **kwargs):
-
-        # Collects experiences in parallel from multiple RolloutWorker actors.
-        rollouts = ParallelRollouts(workers, mode="bulk_sync")
-
-        # Combine experiences batches until we hit `train_batch_size` in size.
-        # Then, train the policy on those experiences and update the workers.
-        train_op = rollouts.combine(
-            ConcatBatches(
-                min_batch_size=config["train_batch_size"],
-                count_steps_by=config["multiagent"]["count_steps_by"],
-            )
+        raise NotImplementedError(
+            "It is not longer recommended to use Trainer's `execution_plan` method/API."
+            " Set `_disable_execution_plan_api=True` in your config and override the "
+            "`Trainer.training_iteration()` method with your algo's custom "
+            "execution logic."
         )
-
-        if config.get("simple_optimizer") is True:
-            train_op = train_op.for_each(TrainOneStep(workers))
-        else:
-            train_op = train_op.for_each(
-                MultiGPUTrainOneStep(
-                    workers=workers,
-                    sgd_minibatch_size=config.get(
-                        "sgd_minibatch_size", config["train_batch_size"]
-                    ),
-                    num_sgd_iter=config.get("num_sgd_iter", 1),
-                    num_gpus=config["num_gpus"],
-                    _fake_gpus=config["_fake_gpus"],
-                )
-            )
-
-        # Add on the standard episode reward, etc. metrics reporting. This
-        # returns a LocalIterator[metrics_dict] representing metrics for each
-        # train step.
-        return StandardMetricsReporting(train_op, workers, config)
 
     @PublicAPI
     def compute_single_action(
