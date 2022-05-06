@@ -457,13 +457,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param death_cause Context about why this actor is dead.
   /// \param force_kill Whether to force kill an actor by killing the worker.
   /// \param no_restart If set to true, the killed actor will not be restarted anymore.
-  /// \param user_initiated Set to true if the API is used by ray.kill request. It is
-  /// used to accurately specify worker failure type.
   void NotifyCoreWorkerToKillActor(const std::shared_ptr<GcsActor> &actor,
                                    const rpc::ActorDeathCause &death_cause,
                                    bool force_kill = true,
-                                   bool no_restart = true,
-                                   bool user_initiated = false);
+                                   bool no_restart = true);
 
   /// Add the destroyed actor to the cache. If the cache is full, one actor is randomly
   /// evicted.

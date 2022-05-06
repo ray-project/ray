@@ -3127,10 +3127,6 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
 
   const auto &kill_actor_reason =
       gcs::GenErrorMessageFromDeathCause(request.death_cause());
-  // If the RPC is invoked by ray.kill, user_initiated is set to true.
-  const auto exit_type = request.user_initiated()
-                             ? rpc::WorkerExitType::INTENTIONAL_USER_EXIT
-                             : rpc::WorkerExitType::INTENTIONAL_SYSTEM_EXIT;
 
   if (request.force_kill()) {
     RAY_LOG(INFO) << "Force kill actor request has received. exiting immediately... "
@@ -3146,10 +3142,10 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
     }
     // If we don't need to restart this actor, we notify raylet before force killing it.
     ForceExit(
-        exit_type,
+        rpc::WorkerExitType::INTENTIONAL_SYSTEM_EXIT,
         absl::StrCat("Worker exits because the actor is killed. ", kill_actor_reason));
   } else {
-    Exit(exit_type,
+    Exit(rpc::WorkerExitType::INTENTIONAL_SYSTEM_EXIT,
          absl::StrCat("Worker exits because the actor is killed. ", kill_actor_reason));
   }
 }

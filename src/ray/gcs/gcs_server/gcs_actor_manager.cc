@@ -1343,14 +1343,12 @@ void GcsActorManager::RemoveActorFromOwner(const std::shared_ptr<GcsActor> &acto
 void GcsActorManager::NotifyCoreWorkerToKillActor(const std::shared_ptr<GcsActor> &actor,
                                                   const rpc::ActorDeathCause &death_cause,
                                                   bool force_kill,
-                                                  bool no_restart,
-                                                  bool user_initiated) {
+                                                  bool no_restart) {
   rpc::KillActorRequest request;
   request.set_intended_actor_id(actor->GetActorID().Binary());
   request.mutable_death_cause()->CopyFrom(death_cause);
   request.set_force_kill(force_kill);
   request.set_no_restart(no_restart);
-  request.set_user_initiated(user_initiated);
   auto actor_client = worker_client_factory_(actor->GetAddress());
   RAY_LOG(DEBUG) << "Send request to kill actor " << actor->GetActorID() << " to worker "
                  << actor->GetWorkerID() << " at node " << actor->GetNodeID();
@@ -1386,8 +1384,7 @@ void GcsActorManager::KillActor(const ActorID &actor_id,
     NotifyCoreWorkerToKillActor(actor,
                                 GenKilledByApplicationCause(GetActor(actor_id)),
                                 force_kill,
-                                no_restart,
-                                /*user_initiated*/ true);
+                                no_restart);
   } else {
     const auto &task_id = actor->GetCreationTaskSpecification().TaskId();
     RAY_LOG(DEBUG) << "The actor " << actor->GetActorID()

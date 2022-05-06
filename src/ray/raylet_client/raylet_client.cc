@@ -176,13 +176,14 @@ Status RayletClient::Disconnect(
         fbb.CreateVector(creation_task_exception_pb_bytes->Data(),
                          creation_task_exception_pb_bytes->Size());
   }
+  const auto &fb_exit_detail = fbb.CreateString(exit_detail);
   protocol::DisconnectClientBuilder builder(fbb);
   // Add to table builder here to avoid nested construction of flatbuffers
   if (creation_task_exception_pb_bytes != nullptr) {
     builder.add_creation_task_exception_pb(creation_task_exception_pb_bytes_fb_vector);
   }
   builder.add_disconnect_type(static_cast<int>(exit_type));
-  builder.add_disconnect_detail(fbb.CreateString(exit_detail));
+  builder.add_disconnect_detail(fb_exit_detail);
   fbb.Finish(builder.Finish());
   auto status = conn_->WriteMessage(MessageType::DisconnectClient, &fbb);
   // Don't be too strict for disconnection errors.

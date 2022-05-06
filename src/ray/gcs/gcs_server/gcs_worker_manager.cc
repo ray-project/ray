@@ -36,8 +36,7 @@ void GcsWorkerManager::HandleReportWorkerFailure(
                    ", exit_type = ",
                    rpc::WorkerExitType_Name(request.worker_failure().exit_type()),
                    ", exit_detail = ",
-                   request.worker_failure().exit_detail(),
-                   request.worker_failure().has_creation_task_exception());
+                   request.worker_failure().exit_detail());
   if (request.worker_failure().exit_type() ==
           rpc::WorkerExitType::INTENTIONAL_USER_EXIT ||
       request.worker_failure().exit_type() ==

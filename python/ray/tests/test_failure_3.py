@@ -8,7 +8,10 @@ import numpy as np
 import pytest
 import time
 
-from ray._private.test_utils import SignalActor, wait_for_pid_to_exit
+from ray.experimental.state.api import list_workers
+from ray._private.test_utils import (
+    SignalActor, wait_for_pid_to_exit, wait_for_condition
+)
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
@@ -136,6 +139,91 @@ def test_async_actor_task_retries(ray_start_regular):
     ray.get(signal.send.remote())
     assert ray.get(ref_1) == 1
     assert ray.get(ref_3) == 3
+
+
+def test_worker_failure_information(ray_start_cluster):
+    """
+    UNEXPECTED_SYSTEM_ERROR_EXIT
+    - (tested) Failure from the connection E.g., core worker dead.
+    - (tested) Unexpected exception or exit with exit_code !=0 on core worker.
+    - (tested for owner node death) Node died. Currently worker failure detection
+        upon node death is not detected by Ray. TODO(sang): Fix it.
+    - (Cannot test) Direct call failure.
+
+    INTENDED_USER_EXIT
+    - (tested) Shutdown driver
+    - (tested) exit_actor
+    - (tested) exit(0)
+    - (tested) Actor kill request
+    - (tested) Task cancel request
+
+    INTENDED_SYSTEM_EXIT
+    - (not tested, hard to test) Unused resource removed
+    - (tested) Pg removed
+    - (tested) Idle
+    ACTOR_INIT_FAILURE_EXIT
+    - (tested) Actor init failed
+
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=4)
+    ray.init(address=cluster.address)
+    cluster.add_node(num_cpus=1, resources={"worker": 1})
+
+    @ray.remote
+    class Actor:
+        def pid(self):
+            import os
+
+            return os.getpid()
+
+        def exit(self, exit_code):
+            sys.exit(exit_code)
+
+    def get_worker_by_pid(pid):
+        for w in list_workers().values():
+            if w["pid"] == pid:
+                return w
+        assert False
+
+    """
+    Failure from the connection
+    """
+    a = Actor.remote()
+    pid = ray.get(a.pid.remote())
+    print(pid)
+    os.kill(pid, signal.SIGKILL)
+
+    def verify_connection_failure():
+        worker = get_worker_by_pid(pid)
+        print(worker)
+        type = worker["exit_type"]
+        detail = worker["exit_detail"]
+        # If the worker is killed by SIGKILL, it is highly likely by OOM, so
+        # the error message should contain information.
+        return type == "UNEXPECTED_SYSTEM_EXIT" and "OOM" in detail
+
+    # print(list_workers())
+    # ray.get(a.pid.remote())
+    wait_for_condition(verify_connection_failure)
+
+    """
+    Unexpected exception or exit with exit_code !=0 on core worker.
+    """
+    a = Actor.remote()
+    pid = ray.get(a.pid.remote())
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(a.exit.remote(4))
+
+    def verify_exit_failure():
+        worker = get_worker_by_pid(pid)
+        type = worker["exit_type"]
+        detail = worker["exit_detail"]
+        # If the worker is killed by SIGKILL, it is highly likely by OOM, so
+        # the error message should contain information.
+        return type == "UNEXPECTED_SYSTEM_EXIT" and "exit code 4" in detail
+
+    wait_for_condition(verify_exit_failure)
 
 
 if __name__ == "__main__":
