@@ -158,6 +158,7 @@ def test_connecting_to_cluster(shutdown_only, storage_type):
             subprocess.check_call(["ray", "start", "--head", "--storage", storage_uri])
             ray.init(address="auto")
             from ray.internal.storage import _storage_uri
+
             # make sure driver is using the same storage when connecting to a cluster
             assert _storage_uri == storage_uri
         finally:
