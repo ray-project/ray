@@ -314,19 +314,27 @@ class SimpleQTrainer(Trainer):
             self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
             # Store new samples in the replay buffer
             # Use deprecated add_batch() to support old replay buffers for now
-            self.local_replay_buffer.add_batch(batch)
+            self.local_replay_buffer.add(batch)
+
+        global_vars = {
+            "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
+        }
 
         # Use deprecated replay() to support old replay buffers for now
-        train_batch = self.local_replay_buffer.replay(batch_size)
+        train_batch = self.local_replay_buffer.sample(batch_size)
+        # If not yet learning, early-out here and do not perform learning, weight-
+        # synching, or target net updating.
+        if train_batch is None or len(train_batch) == 0:
+            self.workers.local_worker().set_global_vars(global_vars)
+            return {}
 
         # Learn on the training batch.
         # Use simple optimizer (only for multi-agent or tf-eager; all other
         # cases should use the multi-GPU optimizer, even if only using 1 GPU)
-        if train_batch is not None:
-            if self.config.get("simple_optimizer") is True:
-                train_results = train_one_step(self, train_batch)
-            else:
-                train_results = multi_gpu_train_one_step(self, train_batch)
+        if self.config.get("simple_optimizer") is True:
+            train_results = train_one_step(self, train_batch)
+        else:
+            train_results = multi_gpu_train_one_step(self, train_batch)
 
         # TODO: Move training steps counter update outside of `train_one_step()` method.
         # # Update train step counters.
@@ -347,9 +355,6 @@ class SimpleQTrainer(Trainer):
 
         # Update weights and global_vars - after learning on the local worker - on all
         # remote workers.
-        global_vars = {
-            "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
-        }
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
             self.workers.sync_weights(global_vars=global_vars)
 

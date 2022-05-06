@@ -36,9 +36,9 @@ class TestDDPG(unittest.TestCase):
         """Test whether a DDPGTrainer can be built with both frameworks."""
         config = ddpg.DDPGConfig()
         config.seed = 42
-        config.num_workers = 1
+        config.num_workers = 0
         config.num_envs_per_worker = 2
-        config.learning_starts = 0
+        config.replay_buffer_config["learning_starts"] = 0
         explore = config.exploration_config.update({"random_timesteps": 100})
         config.exploration(exploration_config=explore)
 
