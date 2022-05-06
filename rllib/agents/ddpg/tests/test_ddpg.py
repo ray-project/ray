@@ -55,7 +55,7 @@ class TestDDPG(unittest.TestCase):
             check_compute_single_action(trainer)
             # Ensure apply_gradient_fn is being called and updating global_step
             pol = trainer.get_policy()
-            if config.framework == "tf":
+            if config.framework_str == "tf":
                 a = pol.get_session().run(pol.global_step)
             else:
                 a = pol.global_step
