@@ -154,9 +154,12 @@ class DataParallelTrainer(Trainer):
         from ray.ml.train.data_parallel_trainer import DataParallelTrainer
 
         class MyDataParallelTrainer(DataParallelTrainer):
-            def __init__(self, *args, **kwargs):
+            def __init__(self, *, **kwargs):
                 predefined_train_loop_per_worker = lambda: 1
-                super().__init__(predefined_train_loop_per_worker, *args, **kwargs)
+                super().__init__(
+                    train_loop_per_worker=predefined_train_loop_per_worker,
+                    **kwargs
+                )
 
 
     For 2, you can implement the ``ray.train.Backend`` and ``ray.train.BackendConfig``

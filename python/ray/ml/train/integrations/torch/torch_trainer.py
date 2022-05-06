@@ -109,7 +109,7 @@ class TorchTrainer(DataParallelTrainer):
                     super(NeuralNetwork, self).__init__()
                     self.layer1 = nn.Linear(input_size, layer_size)
                     self.relu = nn.ReLU()
-                    self.layer2 = nn.Linear(layer_size, output_size)
+                    self.layer2 = nn.Linear(layer_size, output_size)tr
 
                 def forward(self, input):
                     return self.layer2(self.relu(self.layer1(input)))
