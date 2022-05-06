@@ -3566,6 +3566,38 @@ def test_random_shuffle_spread(ray_start_cluster):
     assert set(locations) == {node1_id, node2_id}
 
 
+def test_random_sample():
+    ds = ray.data.range(10, parallelism=2)
+    r1 = ds.random_sample(4)
+    assert len(r1) == 4
+
+    # "weird" datasets
+    ds1 = ray.data.range(1, parallelism=1)
+    ds2 = ray.data.range(2, parallelism=1)
+    ds3 = ray.data.range(3, parallelism=1)
+    ds = ds1.union(ds2).union(ds3)
+    r2 = ds.random_sample(3)
+    assert len(r2) == 3
+
+
+def test_random_sample_spread():
+    # TODO: Check for non-contiguity
+    pass
+
+
+def test_random_sample_checks():
+    with pytest.raises(ValueError) as e_info:
+        # Obviously, you cannot sample -1 elements
+        ray.data.range(1).random_sample(-1)
+
+        # Neither should you be able to sample an empty dataset
+        ray.data.range(0).random_sample(1)
+
+        # No sampling more elements than the dataset contains
+
+        ray.data.range(2).random_sample(3)
+
+
 def test_parquet_read_spread(ray_start_cluster, tmp_path):
     cluster = ray_start_cluster
     cluster.add_node(
