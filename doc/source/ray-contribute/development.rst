@@ -13,9 +13,7 @@ For a majority of Ray users, installing Ray via the latest wheels or pip package
 Clone the repository
 --------------------
 
-To build Ray locally you will need to have the Git repository, so first, fork it on GitHub.
-
-Then you can clone it to your machine:
+To build Ray locally you will need to have the Git repository, so first, fork it on GitHub. Then you can clone it to your machine:
 
 .. code-block:: shell
 
@@ -42,11 +40,7 @@ Every time you want to update your local version you can pull the changes from t
 Prepare the Python environment
 ------------------------------
 
-(Optional) To setup an isolated Anaconda environment, see :ref:`ray_anaconda`.
-
-In any case, you will probably want to have some type of Python virtual environment.
-
-For example you could use Python's integrated ``venv`` module to create one:
+(Optional) To setup an isolated Anaconda environment, see :ref:`ray_anaconda`. In any case, you will probably want to have some type of Python virtual environment. For example you could use Python's integrated ``venv`` module to create one:
 
 .. code-block:: shell
 
@@ -114,9 +108,7 @@ Preparing to build Ray on Linux
 
 .. tip:: If you are only editing Tune/RLlib/Autoscaler files, follow instructions for :ref:`python-develop` to avoid long build times.
 
-To build Ray on Linux, first install these dependencies.
-
-For Ubuntu, run the following commands:
+To build Ray on Linux, first install these dependencies. For Ubuntu, run the following commands:
 
 .. code-block:: bash
 
@@ -153,9 +145,7 @@ To build Ray on MacOS, first install these dependencies:
 Building Ray on Linux & MacOS (full)
 ------------------------------------
 
-Make sure you have a local clone of the git repository as explained above.
-
-You will also need to install NodeJS to build the dashboard: https://nodejs.org
+Make sure you have a local clone of the git repository as explained above. You will also need to install NodeJS to build the dashboard: https://nodejs.org
 
 Enter into the project directory, for example:
 
@@ -172,9 +162,7 @@ Now you can build the dashboard. From inside of your local Ray project directory
   npm run build
   popd
 
-Now let's build Ray for Python.
-
-Make sure you activate any Python virtual (or conda) environment you could be using as described above.
+Now let's build Ray for Python. Make sure you activate any Python virtual (or conda) environment you could be using as described above.
 
 Enter into the directory for Python inside of the Ray project directory and install the project with ``pip``:
 
@@ -348,9 +336,7 @@ To do that, make sure you create and/or activate the conda environment, and then
 Install Dependencies to Build the Docs
 --------------------------------------
 
-Start from the Ray git project directory cloned with the instructions above from above.
-
-Make sure you activate the Python (virtual) environment that you are using.
+Start from the Ray git project directory cloned with the instructions above from above. Make sure you activate the Python (virtual) environment that you are using.
 
 Next go to the subdirectory ``doc``:
 
