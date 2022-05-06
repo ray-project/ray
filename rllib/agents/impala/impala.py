@@ -18,6 +18,7 @@ from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
 from ray.rllib.execution.parallel_requests import (
     asynchronous_parallel_requests,
     wait_asynchronous_requests,
+    AsyncRequestsManager,
 )
 from ray.rllib.execution.tree_agg import gather_experiences_tree_aggregation
 from ray.rllib.execution.common import (
@@ -111,9 +112,8 @@ class ImpalaConfig(TrainerConfig):
         self.replay_buffer_num_slots = 0
         self.learner_queue_size = 16
         self.learner_queue_timeout = 300
-        self.max_sample_requests_in_flight_per_worker = 2
-        self.aggregator_wait_timeout = 0.03
-        self.sample_wait_timeout = 0.03
+        self.max_requests_in_flight_per_sampler_worker = 2
+        self.max_requests_in_flight_per_aggregator_worker = 2
         self.broadcast_interval = 1
         self.num_aggregation_workers = 0
         self.grad_clip = 40.0
@@ -136,8 +136,6 @@ class ImpalaConfig(TrainerConfig):
         self.num_gpus = 1
         self.lr = 0.0005
         self.min_time_s_per_reporting = 10
-        # IMPALA and APPO are not on the new training_iteration API yet.
-        self._disable_execution_plan_api = False
         # __sphinx_doc_end__
         # fmt: on
 
@@ -160,9 +158,8 @@ class ImpalaConfig(TrainerConfig):
         replay_buffer_num_slots: Optional[int] = None,
         learner_queue_size: Optional[int] = None,
         learner_queue_timeout: Optional[float] = None,
-        max_sample_requests_in_flight_per_worker: Optional[int] = None,
-        aggregator_wait_timeout: Optional[float] = None,
-        sample_wait_timeout: Optional[float] = None,
+        max_requests_in_flight_per_sampler_worker: Optional[int] = None,
+        max_requests_in_flight_per_aggregator_worker: Optional[int] = None,
         broadcast_interval: Optional[int] = None,
         num_aggregation_workers: Optional[int] = None,
         grad_clip: Optional[float] = None,
@@ -218,12 +215,10 @@ class ImpalaConfig(TrainerConfig):
             learner_queue_timeout: Wait for train batches to be available in minibatch
                 buffer queue this many seconds. This may need to be increased e.g. when
                 training with a slow environment.
-            max_sample_requests_in_flight_per_worker: Level of queuing for sampling
-                and replay aggregator operations (if using aggregator workers).
-            aggregator_wait_timeout: Amount of time to block and wait on pending calls
-                to replay aggregator workers.
-            sample_wait_timeout: Amount of time to block and wait on pending calls to
-                sampling workers.
+            max_requests_in_flight_per_sampler_worker: Level of queuing for sampling
+                operations.
+            max_requests_in_flight_per_aggregator_worker: Level of queuing for replay
+                aggregator operations (if using aggregator workers).
             broadcast_interval: Max number of workers to broadcast one set of
                 weights to.
             num_aggregation_workers: Use n (`num_aggregation_workers`) extra Actors for
@@ -253,6 +248,18 @@ class ImpalaConfig(TrainerConfig):
             after_train_step: Callback for APPO to use to update KL, target network
                 periodically. The input to the callback is the learner fetches dict.
 
+        Note:
+            Tuning max_requests_in_flight_per_sampler_worker and
+            max_requests_in_flight_per_aggregator_worker is important when running
+            experimens with large sample batches. If the sample batches are large in
+            size, then there is the risk that the object store may fill up, causing
+            the store to spill sample batches to disk. This can cause any asynchronous
+            requests to become very slow, making your experiment run slowly. You can
+            inspect the object store during your experiment via a call to ray memory
+            on your headnode, and by using the ray dashboard. If you're seeing that
+            the object store is filling up, turn down the number of remote requests
+            in flight, or enable compression in your experiment of timesteps.
+
         Returns:
             This updated TrainerConfig object.
         """
@@ -281,18 +288,18 @@ class ImpalaConfig(TrainerConfig):
             self.learner_queue_size = learner_queue_size
         if learner_queue_timeout is not None:
             self.learner_queue_timeout = learner_queue_timeout
-        if max_sample_requests_in_flight_per_worker is not None:
-            self.max_sample_requests_in_flight_per_worker = (
-                max_sample_requests_in_flight_per_worker
-            )
-        if aggregator_wait_timeout is not None:
-            self.aggregator_wait_timeout = aggregator_wait_timeout
-        if sample_wait_timeout is not None:
-            self.sample_wait_timeout = sample_wait_timeout
         if broadcast_interval is not None:
             self.broadcast_interval = broadcast_interval
         if num_aggregation_workers is not None:
             self.num_aggregation_workers = num_aggregation_workers
+        if max_requests_in_flight_per_sampler_worker is not None:
+            self.max_requests_in_flight_per_sampler_worker = (
+                max_requests_in_flight_per_sampler_worker
+            )
+        if max_requests_in_flight_per_aggregator_worker is not None:
+            self.max_requests_in_flight_per_aggregator_worker = (
+                max_requests_in_flight_per_aggregator_worker
+            )
         if grad_clip is not None:
             self.grad_clip = grad_clip
         if opt_type is not None:
@@ -366,7 +373,7 @@ def gather_experiences_directly(workers, config):
     rollouts = ParallelRollouts(
         workers,
         mode="async",
-        num_async=config["max_sample_requests_in_flight_per_worker"],
+        num_async=config["max_requests_in_flight_per_sampler_worker"],
     )
 
     # Augment with replay and concat to desired train batch size.
@@ -550,12 +557,18 @@ class ImpalaTrainer(Trainer):
                     ],
                     node=localhost,
                 )
-                self.aggregator_workers = [
+                self._aggregator_workers = [
                     actor for actor_groups in all_co_located for actor in actor_groups
                 ]
                 self.remote_aggregator_requests_in_flight: DefaultDict[
                     ActorHandle, Set[ray.ObjectRef]
                 ] = defaultdict(set)
+                self._replay_actor_manager = AsyncRequestsManager(
+                    self._aggregator_workers,
+                    max_remote_requests_in_flight=self.config[
+                        "max_requests_in_flight_per_aggregator_worker"
+                    ],
+                )
 
             else:
                 # Create our local mixin buffer if the num of aggregation workers is 0.
@@ -567,6 +580,14 @@ class ImpalaTrainer(Trainer):
                     ),
                     replay_ratio=self.config["replay_ratio"],
                 )
+
+            self._sampling_actor_manager = AsyncRequestsManager(
+                self.workers.remote_workers(),
+                max_remote_requests_in_flight=self.config[
+                    "max_requests_in_flight_per_sampler_worker"
+                ],
+                return_object_refs=True,
+            )
 
             # Create and start the learner thread.
             self._learner_thread = make_learner_thread(
@@ -734,17 +755,23 @@ class ImpalaTrainer(Trainer):
     def get_samples_from_workers(self) -> Dict[ActorHandle, List[SampleBatch]]:
         # Perform asynchronous sampling on all (remote) rollout workers.
         if self.workers.remote_workers():
+            # sample_batches: Dict[
+            #     ActorHandle, List[ObjectRef]
+            # ] = asynchronous_parallel_requests(
+            #     remote_requests_in_flight=self.remote_requests_in_flight,
+            #     actors=self.workers.remote_workers(),
+            #     ray_wait_timeout_s=self.config["sample_wait_timeout"],
+            #     max_remote_requests_in_flight_per_actor=self.config[
+            #         "max_requests_in_flight_per_sampler_worker"
+            #     ],
+            #     return_result_obj_ref_ids=True,
+            # )
+            self._sampling_actor_manager.submit(
+                lambda worker: worker.sample(), for_all_workers=True
+            )
             sample_batches: Dict[
                 ActorHandle, List[ObjectRef]
-            ] = asynchronous_parallel_requests(
-                remote_requests_in_flight=self.remote_requests_in_flight,
-                actors=self.workers.remote_workers(),
-                ray_wait_timeout_s=self.config["sample_wait_timeout"],
-                max_remote_requests_in_flight_per_actor=self.config[
-                    "max_sample_requests_in_flight_per_worker"
-                ],
-                return_result_obj_ref_ids=True,
-            )
+            ] = self._sampling_actor_manager.get_ready_requests()
         else:
             # only sampling on the local worker
             sample_batches = {
@@ -821,26 +848,13 @@ class ImpalaTrainer(Trainer):
         ]
         ready_processed_batches = []
         for batch in batches:
-            aggregator = random.choice(self.aggregator_workers)
-            processed_sample_batches: Dict[
-                ActorHandle, List[ObjectRef]
-            ] = asynchronous_parallel_requests(
-                remote_requests_in_flight=self.remote_aggregator_requests_in_flight,
-                actors=[aggregator],
-                remote_fn=lambda actor, b: actor.process_episodes(b),
-                remote_kwargs=[{"b": batch}],
-                ray_wait_timeout_s=self.config["aggregator_wait_timeout"],
-                max_remote_requests_in_flight_per_actor=float("inf"),
+            self._replay_actor_manager.submit(
+                lambda actor, b: actor.process_episodes(b), fn_kwargs={"b": batch}
             )
-            for ready_sub_batches in processed_sample_batches.values():
-                ready_processed_batches.extend(ready_sub_batches)
 
         waiting_processed_sample_batches: Dict[
             ActorHandle, List[ObjectRef]
-        ] = wait_asynchronous_requests(
-            remote_requests_in_flight=self.remote_aggregator_requests_in_flight,
-            ray_wait_timeout_s=self.config["aggregator_wait_timeout"],
-        )
+        ] = self._replay_actor_manager.get_ready_requests()
         for ready_sub_batches in waiting_processed_sample_batches.values():
             ready_processed_batches.extend(ready_sub_batches)
 

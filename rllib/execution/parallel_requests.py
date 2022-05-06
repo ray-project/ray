@@ -301,14 +301,11 @@ class AsyncRequestsManager:
 
         """
         ready_requests_dict = defaultdict(list)
-        read_requests_to_collect = True
-        ready_requests = []
-        while read_requests_to_collect:
-            ready, self._pending_remotes = ray.wait(
-                self._pending_remotes, timeout=self._ray_wait_timeout_s, num_returns=1
-            )
-            ready_requests.extend(ready)
-            read_requests_to_collect = len(ready) != 0
+        ready_requests, self._pending_remotes = ray.wait(
+            self._pending_remotes,
+            timeout=self._ray_wait_timeout_s,
+            num_returns=len(self._pending_remotes),
+        )
         if not self._return_object_refs:
             objs = ray.get(ready_requests)
         else:
@@ -322,7 +319,6 @@ class AsyncRequestsManager:
                 self._available_workers_set.add(actor)
                 self._unavailable_workers.remove(actor)
             del self._pending_to_actor[req]
-        del ready
         del ready_requests
         self._run()
         return dict(ready_requests_dict)
@@ -348,3 +344,20 @@ class AsyncRequestsManager:
                 self._available_workers.append(available_actor)
                 return available_actor
         return None
+
+    def get_manager_statistics(self) -> Dict[str, Any]:
+        """Get statistics about the the manager
+
+        Some of the statistics include the number of actors that are available,
+        the number of pending inflight requests, and the number of pending requests
+        to be scheduled on the available actors.
+
+        Returns:
+            A dictionary of statistics about the manager.
+        """
+
+        return {
+            "num_available_workers": len(self._available_workers),
+            "num_pending_inflight_requests": len(self._pending_remotes),
+            "num_requests_to_be_scheduled": len(self._call_queue.qsize())
+        }
