@@ -26,7 +26,6 @@ public class DefaultRayRuntimeFactory implements RayRuntimeFactory {
           });
     }
 
-    // TODO(qwang): No need too complex, it's for multiple core worker instance feature.
     try {
       logger.debug("Initializing runtime with config: {}", rayConfig);
       AbstractRayRuntime innerRuntime =
