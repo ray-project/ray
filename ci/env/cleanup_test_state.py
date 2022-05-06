@@ -3,7 +3,9 @@ import sys
 
 def clear_wandb_project():
     import wandb
-    from ray.ml.examples.upload_to_wandb import wandb_project
+
+    # This is hardcoded in the `ray/ml/examples/upload_to_wandb.py` example
+    wandb_project = "ray_air_example"
 
     api = wandb.Api()
     for run in api.runs(wandb_project):

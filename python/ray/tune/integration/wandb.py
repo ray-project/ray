@@ -1,3 +1,4 @@
+import enum
 import os
 import pickle
 from collections.abc import Sequence
@@ -9,7 +10,6 @@ import urllib
 
 from ray import logger
 from ray.tune import Trainable
-from ray.tune.checkpoint_manager import _TuneCheckpoint
 from ray.tune.function_runner import FunctionRunner
 from ray.tune.logger import LoggerCallback, Logger
 from ray.tune.utils import flatten_dict
@@ -25,7 +25,6 @@ except ImportError:
     wandb = None
 
 WANDB_ENV_VAR = "WANDB_API_KEY"
-_WANDB_QUEUE_END = (None,)
 _VALID_TYPES = (Number, wandb.data_types.Video, wandb.data_types.Image)
 _VALID_ITERABLE_TYPES = (wandb.data_types.Video, wandb.data_types.Image)
 
@@ -182,6 +181,12 @@ def _set_api_key(api_key_file: Optional[str] = None, api_key: Optional[str] = No
         )
 
 
+class _QueueItem(enum.Enum):
+    END = enum.auto()
+    RESULT = enum.auto()
+    CHECKPOINT = enum.auto()
+
+
 class _WandbLoggingProcess(Process):
     """
     We need a `multiprocessing.Process` to allow multiple concurrent
@@ -206,19 +211,23 @@ class _WandbLoggingProcess(Process):
         self.args = args
         self.kwargs = kwargs
 
+        self._trial_name = self.kwargs.get("name", "unknown")
+
     def run(self):
         wandb.require("service")
         wandb.init(*self.args, **self.kwargs)
+        wandb.setup()
         while True:
-            result = self.queue.get()
-            if result == _WANDB_QUEUE_END:
+            item_type, item_content = self.queue.get()
+            if item_type == _QueueItem.END:
                 break
 
-            if isinstance(result, _TuneCheckpoint):
-                self._handle_checkpoint(result.value)
+            if item_type == _QueueItem.CHECKPOINT:
+                self._handle_checkpoint(item_content)
                 continue
 
-            log, config_update = self._handle_result(result)
+            assert item_type == _QueueItem.RESULT
+            log, config_update = self._handle_result(item_content)
             try:
                 wandb.config.update(config_update, allow_val_change=True)
                 wandb.log(log)
@@ -229,7 +238,7 @@ class _WandbLoggingProcess(Process):
         wandb.finish()
 
     def _handle_checkpoint(self, checkpoint_path: str):
-        artifact = wandb.Artifact(name="checkpoint", type="model")
+        artifact = wandb.Artifact(name=f"checkpoint_{self._trial_name}", type="model")
         artifact.add_dir(checkpoint_path)
         wandb.log_artifact(artifact)
 
@@ -330,7 +339,7 @@ class WandbLoggerCallback(LoggerCallback):
         excludes: Optional[List[str]] = None,
         log_config: bool = False,
         save_checkpoints: bool = False,
-        **kwargs
+        **kwargs,
     ):
         self.project = project
         self.group = group
@@ -394,7 +403,7 @@ class WandbLoggerCallback(LoggerCallback):
             queue=self._trial_queues[trial],
             exclude=exclude_results,
             to_config=self._config_results,
-            **wandb_init_kwargs
+            **wandb_init_kwargs,
         )
         self._trial_processes[trial].start()
 
@@ -403,14 +412,16 @@ class WandbLoggerCallback(LoggerCallback):
             self.log_trial_start(trial)
 
         result = _clean_log(result)
-        self._trial_queues[trial].put(result)
+        self._trial_queues[trial].put((_QueueItem.RESULT, result))
 
     def log_trial_save(self, trial: "Trial"):
         if self.save_checkpoints and trial.checkpoint:
-            self._trial_queues[trial].put(trial.checkpoint)
+            self._trial_queues[trial].put(
+                (_QueueItem.CHECKPOINT, trial.checkpoint.value)
+            )
 
     def log_trial_end(self, trial: "Trial", failed: bool = False):
-        self._trial_queues[trial].put(_WANDB_QUEUE_END)
+        self._trial_queues[trial].put((_QueueItem.END, None))
         self._trial_processes[trial].join(timeout=10)
 
         del self._trial_queues[trial]
@@ -419,7 +430,7 @@ class WandbLoggerCallback(LoggerCallback):
     def __del__(self):
         for trial in self._trial_processes:
             if trial in self._trial_queues:
-                self._trial_queues[trial].put(_WANDB_QUEUE_END)
+                self._trial_queues[trial].put((_QueueItem.END, None))
                 del self._trial_queues[trial]
             self._trial_processes[trial].join(timeout=2)
             del self._trial_processes[trial]
