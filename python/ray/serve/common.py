@@ -46,6 +46,12 @@ class DeploymentStatusInfo:
         )
 
 
+HEALTH_CHECK_CONCURRENCY_GROUP = "health_check"
+REPLICA_DEFAULT_ACTOR_OPTIONS = {
+    "concurrency_groups": {HEALTH_CHECK_CONCURRENCY_GROUP: 1}
+}
+
+
 class DeploymentInfo:
     def __init__(
         self,
@@ -95,14 +101,14 @@ class DeploymentInfo:
                 or self.serialized_deployment_def is not None
             )
             if self.replica_config.import_path is not None:
-                self._cached_actor_def = ray.remote(
+                self._cached_actor_def = ray.remote(**REPLICA_DEFAULT_ACTOR_OPTIONS)(
                     create_replica_wrapper(
                         self.actor_name,
                         import_path=self.replica_config.import_path,
                     )
                 )
             else:
-                self._cached_actor_def = ray.remote(
+                self._cached_actor_def = ray.remote(**REPLICA_DEFAULT_ACTOR_OPTIONS)(
                     create_replica_wrapper(
                         self.actor_name,
                         serialized_deployment_def=self.serialized_deployment_def,

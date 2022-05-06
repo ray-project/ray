@@ -1,5 +1,6 @@
 import gc
 import asyncio
+import time
 
 import numpy as np
 import requests
@@ -233,6 +234,27 @@ def test_uvicorn_duplicate_headers(serve_instance):
     resp = requests.get("http://127.0.0.1:8000/A")
     # If the header duplicated, it will be "9, 9"
     assert resp.headers["content-length"] == "9"
+
+
+def test_healthcheck_timeout(serve_instance):
+    # https://github.com/ray-project/ray/issues/24554
+    @serve.deployment(
+        _health_check_timeout_s=2,
+        _health_check_period_s=1,
+        _graceful_shutdown_timeout_s=0,
+    )
+    class A:
+        def check_health(self):
+            return True
+
+        def __call__(self):
+            time.sleep(100)
+
+    A.deploy()
+    handle = A.get_handle()
+    ref = handle.remote()
+    with pytest.raises(GetTimeoutError):
+        ray.get(ref, timeout=10)
 
 
 if __name__ == "__main__":
