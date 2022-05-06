@@ -134,7 +134,6 @@ class SimpleQConfig(TrainerConfig):
         self.lr = 5e-4
         self.adam_epsilon = 1e-8
         self.grad_clip = 40
-        self.learning_starts = 1000
         # __sphinx_doc_end__
         # fmt: on
 
@@ -323,10 +322,11 @@ class SimpleQTrainer(Trainer):
         # Learn on the training batch.
         # Use simple optimizer (only for multi-agent or tf-eager; all other
         # cases should use the multi-GPU optimizer, even if only using 1 GPU)
-        if self.config.get("simple_optimizer") is True:
-            train_results = train_one_step(self, train_batch)
-        else:
-            train_results = multi_gpu_train_one_step(self, train_batch)
+        if train_batch is not None:
+            if self.config.get("simple_optimizer") is True:
+                train_results = train_one_step(self, train_batch)
+            else:
+                train_results = multi_gpu_train_one_step(self, train_batch)
 
         # TODO: Move training steps counter update outside of `train_one_step()` method.
         # # Update train step counters.
