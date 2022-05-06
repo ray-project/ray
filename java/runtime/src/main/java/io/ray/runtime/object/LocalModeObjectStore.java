@@ -5,7 +5,7 @@ import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
 import io.ray.api.id.UniqueId;
 import io.ray.runtime.context.WorkerContext;
-import io.ray.runtime.exception.RayTimeoutException;
+import io.ray.api.exception.RayTimeoutException;
 import io.ray.runtime.generated.Common.Address;
 import java.util.ArrayList;
 import java.util.List;

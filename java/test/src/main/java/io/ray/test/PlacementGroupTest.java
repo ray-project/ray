@@ -10,7 +10,7 @@ import io.ray.api.id.ActorId;
 import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.placementgroup.PlacementGroupState;
 import io.ray.api.placementgroup.PlacementStrategy;
-import io.ray.runtime.exception.RayException;
+import io.ray.api.exception.RayException;
 import java.util.List;
 import org.testng.Assert;
 import org.testng.annotations.Test;

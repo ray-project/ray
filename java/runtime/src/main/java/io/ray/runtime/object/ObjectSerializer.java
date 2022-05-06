@@ -6,11 +6,11 @@ import com.google.protobuf.InvalidProtocolBufferException;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
 import io.ray.runtime.actor.NativeActorHandle;
-import io.ray.runtime.exception.RayActorException;
-import io.ray.runtime.exception.RayException;
-import io.ray.runtime.exception.RayTaskException;
-import io.ray.runtime.exception.RayWorkerException;
-import io.ray.runtime.exception.UnreconstructableException;
+import io.ray.api.exception.RayActorException;
+import io.ray.api.exception.RayException;
+import io.ray.api.exception.RayTaskException;
+import io.ray.api.exception.RayWorkerException;
+import io.ray.api.exception.UnreconstructableException;
 import io.ray.runtime.generated.Common.ErrorType;
 import io.ray.runtime.serializer.Serializer;
 import io.ray.runtime.util.IdUtil;
@@ -207,7 +207,7 @@ public class ObjectSerializer {
 
   private static RayException deserializeRayException(byte[] msgPackData, ObjectId objectId) {
     // Serialization logic of task execution exception: an instance of
-    // `io.ray.runtime.exception.RayTaskException`
+    // `io.ray.api.exception.RayTaskException`
     //    -> a `RayException` protobuf message
     //    -> protobuf-serialized bytes
     //    -> MessagePack-serialized bytes.
@@ -230,7 +230,7 @@ public class ObjectSerializer {
   private static RayException deserializeActorException(
       byte[] msgPackData, ActorId actorId, ObjectId objectId) {
     // Serialization logic of task execution exception: an instance of
-    // `io.ray.runtime.exception.RayTaskException`
+    // `io.ray.api.exception.RayTaskException`
     //    -> a `RayException` protobuf message
     //    -> protobuf-serialized bytes
     //    -> MessagePack-serialized bytes.

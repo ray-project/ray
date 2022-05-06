@@ -7,7 +7,7 @@ import io.ray.api.PyActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.UniqueId;
-import io.ray.runtime.exception.UnreconstructableException;
+import io.ray.api.exception.UnreconstructableException;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;

@@ -1,4 +1,4 @@
-package io.ray.runtime.exception;
+package io.ray.api.exception;
 
 import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;

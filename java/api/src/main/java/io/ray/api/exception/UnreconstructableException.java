@@ -1,4 +1,4 @@
-package io.ray.runtime.exception;
+package io.ray.api.exception;
 
 import io.ray.api.id.ObjectId;
 

@@ -13,7 +13,7 @@ import io.ray.api.options.ActorLifetime;
 import io.ray.api.runtimecontext.ResourceValue;
 import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.context.NativeWorkerContext;
-import io.ray.runtime.exception.RayIntentionalSystemExitException;
+import io.ray.api.exception.RayIntentionalSystemExitException;
 import io.ray.runtime.gcs.GcsClient;
 import io.ray.runtime.gcs.GcsClientOptions;
 import io.ray.runtime.generated.Common.WorkerType;

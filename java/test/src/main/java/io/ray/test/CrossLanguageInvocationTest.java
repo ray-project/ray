@@ -9,8 +9,8 @@ import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.PyFunction;
 import io.ray.runtime.actor.NativeActorHandle;
-import io.ray.runtime.exception.CrossLanguageException;
-import io.ray.runtime.exception.RayException;
+import io.ray.api.exception.CrossLanguageException;
+import io.ray.api.exception.RayException;
 import io.ray.runtime.generated.Common.Language;
 import java.io.File;
 import java.io.IOException;
@@ -278,7 +278,7 @@ public class CrossLanguageInvocationTest extends BaseTest {
       Assert.assertTrue(message.contains("py_func_nest_java_throw_exception"), message);
       Assert.assertEquals(
           org.apache.commons.lang3.StringUtils.countMatches(
-              message, "io.ray.runtime.exception.RayTaskException"),
+              message, "io.ray.api.exception.RayTaskException"),
           2);
       Assert.assertTrue(message.contains("py_func_java_throw_exception"), message);
       Assert.assertTrue(message.contains("java.lang.ArithmeticException: / by zero"), message);

@@ -7,7 +7,7 @@ import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.api.options.ActorCreationOptions;
-import io.ray.runtime.exception.RayActorException;
+import io.ray.api.exception.RayActorException;
 import io.ray.runtime.task.TaskExecutor;
 import io.ray.runtime.util.SystemUtil;
 import java.io.IOException;
