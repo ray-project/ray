@@ -466,7 +466,7 @@ class GcsRpcClient {
     if (shutdown_) {
       return;
     }
-    auto status = channel_->GetState(/* try_to_connect = */ true);
+    auto status = channel_->GetState();
     // https://grpc.github.io/grpc/core/md_doc_connectivity-semantics-and-api.html
     // https://grpc.github.io/grpc/core/connectivity__state_8h_source.html
     RAY_LOG(DEBUG) << "GCS channel status: " << status;
