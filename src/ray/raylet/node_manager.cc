@@ -544,27 +544,6 @@ ray::Status NodeManager::RegisterGcs() {
   return ray::Status::OK();
 }
 
-void NodeManager::HandleJobSubmitted(const JobID &job_id, const JobTableData &job_data) {
-  RAY_LOG(INFO) << "HandleJobSubmitted " << job_id;
-  RAY_CHECK(!job_data.is_dead());
-  // Notify job manager that the job is submitted.
-  if (!job_manager_->OnJobSubmitted(std::make_shared<JobTableData>(job_data))) {
-    auto local_job_data = job_manager_->GetJobData(job_id);
-    RAY_CHECK(local_job_data != nullptr);
-    RAY_LOG(WARNING) << "Failed to handle job submitted event, local state is "
-                     << rpc::JobTableData_JobState_Name(local_job_data->state())
-                     << ", received state is "
-                     << rpc::JobTableData_JobState_Name(job_data.state());
-    return;
-  }
-
-  if (namespace_ids_.contains(job_data.namespace_id())) {
-    // If the namespace of the node is match with the job's namespace then int the job
-    // env.
-    InitializeJobEnv(job_data);
-  }
-}
-
 void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
                                 rpc::WorkerExitType disconnect_type) {
   // We should disconnect the client first. Otherwise, we'll remove bundle resources
