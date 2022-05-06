@@ -14,7 +14,7 @@ from ray.rllib.utils.test_utils import (
 class TestMADDPG(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(local_mode=True)#TODO
+        ray.init()
 
     @classmethod
     def tearDownClass(cls) -> None:
