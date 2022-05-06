@@ -147,11 +147,11 @@ const Dashboard: React.FC = () => {
             run the following command: `ray disable-usage-stats` before starting
             the cluster. See{" "}
             <a
-              href="https://github.com/ray-project/ray/issues/20857"
+              href="https://docs.ray.io/en/master/cluster/usage-stats.html"
               target="_blank"
               rel="noreferrer"
             >
-              https://github.com/ray-project/ray/issues/20857
+              https://docs.ray.io/en/master/cluster/usage-stats.html
             </a>{" "}
             for more details.
           </span>
