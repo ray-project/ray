@@ -2406,9 +2406,9 @@ def test_csv_read_no_header(shutdown_only, tmp_path):
 def test_csv_read_with_column_type_specified(shutdown_only, tmp_path):
     from pyarrow import csv
 
-    file_path = os.path.join(str(tmp_path), "test.csv")
+    file_path = os.path.join(tmp_path, "test.csv")
     df = pd.DataFrame({"one": [1, 2, 3e+5], "two": ["a", "b", "c"]})
-    df.to_csv(file_path)
+    df.to_csv(file_path, index=False)
 
     # Incorrect to parse scientific notation in int64 as PyArrow represents
     # it as double.
@@ -2426,7 +2426,7 @@ def test_csv_read_with_column_type_specified(shutdown_only, tmp_path):
             column_types={"one": "float64", "two": "string"}),
     )
     expected_df = pd.DataFrame(
-            {"one": [1.0, 2.0, 3e+5], "two": ["a", "b", "c"]})
+            {"one": [1.0, 2.0, 300000.0], "two": ["a", "b", "c"]})
     assert ds.to_pandas().equals(expected_df)
 
 
