@@ -42,11 +42,10 @@ enum TablePrefix {
   // WORKER is already used in WorkerType, so use WORKERS here.
   WORKERS = 15;
   INTERNAL_CONFIG = 16;
-  TABLE_PREFIX_MAX = 17;
-  PLACEMENT_GROUP_SCHEDULE = 18;
-  PLACEMENT_GROUP = 19;
-  KV = 20;
-  ACTOR_TASK_SPEC = 21;
+  PLACEMENT_GROUP_SCHEDULE = 17;
+  PLACEMENT_GROUP = 18;
+  KV = 19;
+  ACTOR_TASK_SPEC = 20;
 }
 
 // The channel that Add operations to the Table should be published on, if any.

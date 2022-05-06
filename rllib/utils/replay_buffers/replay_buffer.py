@@ -29,6 +29,7 @@ class StorageUnit(Enum):
     TIMESTEPS = "timesteps"
     SEQUENCES = "sequences"
     EPISODES = "episodes"
+    FRAGMENTS = "fragments"
 
 
 @ExperimentalAPI
@@ -53,9 +54,12 @@ class ReplayBuffer:
             self._storage_unit = StorageUnit.SEQUENCES
         elif storage_unit in ["episodes", StorageUnit.EPISODES]:
             self._storage_unit = StorageUnit.EPISODES
+        elif storage_unit in ["fragments", StorageUnit.FRAGMENTS]:
+            self._storage_unit = StorageUnit.FRAGMENTS
         else:
             raise ValueError(
-                "storage_unit must be either 'timesteps', `sequences` or `episodes`."
+                "storage_unit must be either 'timesteps', `sequences` or `episodes` "
+                "or `fragments`."
             )
 
         # The actual storage (list of SampleBatches or MultiAgentBatches).
@@ -148,6 +152,8 @@ class ReplayBuffer:
                             "to be added to it. Some samples may be "
                             "dropped."
                         )
+        elif self._storage_unit == StorageUnit.FRAGMENTS:
+            self._add_single_batch(batch, **kwargs)
 
     @ExperimentalAPI
     def _add_single_batch(self, item: SampleBatchType, **kwargs) -> None:
