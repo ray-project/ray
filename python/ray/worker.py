@@ -2218,7 +2218,7 @@ def remote(*args, **kwargs):
             the remote function invocation.
         num_cpus (float): The quantity of CPU cores to reserve
             for this task or for the lifetime of the actor.
-        num_gpus (int): The quantity of GPUs to reserve
+        num_gpus (float): The quantity of GPUs to reserve
             for this task or for the lifetime of the actor.
         resources (Dict[str, float]): The quantity of various custom resources
             to reserve for this task or for the lifetime of the actor.
