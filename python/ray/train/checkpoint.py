@@ -51,7 +51,7 @@ class _NotYetPersistedCheckpoint(_TrackedCheckpoint):
         self.dir_or_data = None
 
     @property
-    def committed(self):
+    def committed(self) -> bool:
         return not self._data_to_commit
 
     def commit(self, path: Optional[Path] = None):
