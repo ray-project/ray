@@ -17,9 +17,9 @@ Ray Workflows provides high-performance, *durable* application workflows using R
 Why Workflows?
 --------------
 
-**Flexibility:** Combine the flexibility of Ray's dynamic task graphs with strong durability guarantees. Branch or loop conditionally based on runtime data. Use Ray distributed libraries seamlessly within workflow steps.
+**Flexibility:** Combine the flexibility of Ray's dynamic task graphs with strong durability guarantees. Branch or loop conditionally based on runtime data. Use Ray distributed libraries seamlessly within workflow tasks.
 
-**Performance:** Workflows offers sub-second overheads for task launch and supports workflows with hundreds of thousands of steps. Take advantage of the Ray object store to pass distributed datasets between steps with zero-copy overhead.
+**Performance:** Workflows offers sub-second overheads for task launch and supports workflows with hundreds of thousands of tasks. Take advantage of the Ray object store to pass distributed datasets between tasks with zero-copy overhead.
 
 **Dependency management:** Workflows leverages Ray's runtime environment feature to snapshot the code dependencies of a workflow. This enables management of workflows and virtual actors as code is upgraded over time.
 
@@ -27,42 +27,66 @@ You might find that workflows is *lower level* compared to engines such as `AirF
 
 Concepts
 --------
-Workflows provides the *step* and *virtual actor* durable primitives, which are analogous to Ray's non-durable tasks and actors.
+Workflows provides the *task* and *virtual actor* durable primitives, which are analogous to Ray's non-durable tasks and actors.
 
-Steps
-~~~~~
-Steps are functions annotated with the ``@workflow.step`` decorator. Steps are retried on failure, but once a step finishes successfully it will never be run again. Similar to Ray tasks, steps can take other step futures as arguments. Unlike Ray tasks, you are not allowed to call ``ray.get()`` or ``ray.wait()`` on step futures, which ensures recoverability.
+Ray DAG
+~~~~~~~
+
+If you’re brand new to Ray, we recommend starting with the :ref:`walkthrough <core-walkthrough>`.
+
+Normally, Ray tasks are executed eagerly.
+Ray DAG provides a way to build the DAG without execution, and Ray Workflow is based on Ray DAGs.
+
+It is simple to build a Ray DAG: you just replace all ``.remote(...)`` with ``.bind(...)`` in a Ray application.
+Ray DAGs can be composed in arbitrarily like normal Ray tasks.
+
+Unlike Ray tasks, you are not allowed to call ``ray.get()`` or ``ray.wait()`` on DAGs.
 
 .. code-block:: python
-    :caption: Composing steps together into a workflow:
+    :caption: Composing functions together into a DAG:
 
-    from ray import workflow
+    import ray
 
-    @workflow.step
+    @ray.remote
     def one() -> int:
         return 1
 
-    @workflow.step
+    @ray.remote
     def add(a: int, b: int) -> int:
         return a + b
 
-    output: "Workflow[int]" = add.step(100, one.step())
+    dag = add.bind(100, one.bind())
+
 
 Workflows
 ~~~~~~~~~
-A workflow is an execution graph of steps created with ``Workflow.run()`` or ``Workflow.run_async()``. Once started, a workflow's execution is durably logged to storage. On system failure, workflows can be resumed on any Ray cluster with access to the storage.
+
+It takes a single line of code to turn a DAG into a workflow DAG:
 
 .. code-block:: python
-    :caption: Creating a new workflow run:
+    :caption: Turning the DAG into a workflow DAG:
 
-    workflow.init(storage="/tmp/data")
+    from ray import workflow
+
+    output: "Workflow[int]" = workflow.create(dag)
+
+Execute the workflow DAG by ``<workflow>.run()`` or ``<workflow>.run_async()``. Once started, a workflow's execution is durably logged to storage. On system failure, workflows can be resumed on any Ray cluster with access to the storage.
+
+When executing the workflow DAG, remote functions are retried on failure, but once they finish successfully and the results are persisted by the workflow engine, they will never be run again.
+
+.. code-block:: python
+    :caption: Run the workflow:
+
+    # configure the storage with "ray.init". A default temporary storage is used by
+    # by the workflow if starting without Ray init.
+    ray.init(storage="/tmp/data")
     assert output.run(workflow_id="run_1") == 101
     assert workflow.get_status("run_1") == workflow.WorkflowStatus.SUCCESSFUL
     assert workflow.get_output("run_1") == 101
 
 Objects
-~~~~~~~~~
-Large data objects can be stored in the Ray object store. References to these objects can be passed into and returned from steps. Objects are checkpointed when initially returned from a step. After checkpointing, the object can be shared among any number of workflow steps at memory-speed via the Ray object store.
+~~~~~~~
+Large data objects can be stored in the Ray object store. References to these objects can be passed into and returned from tasks. Objects are checkpointed when initially returned from a task. After checkpointing, the object can be shared among any number of workflow tasks at memory-speed via the Ray object store.
 
 .. code-block:: python
     :caption: Using Ray objects in a workflow:
@@ -74,35 +98,39 @@ Large data objects can be stored in the Ray object store. References to these ob
     def hello():
         return "hello"
 
-    @workflow.step
+    @ray.remote
     def words() -> List[ray.ObjectRef]:
+        # NOTE: Here it is ".remote()" instead of ".bind()", so
+        # it creates an ObjectRef instead of a DAG.
         return [hello.remote(), ray.put("world")]
 
-    @workflow.step
+    @ray.remote
     def concat(words: List[ray.ObjectRef]) -> str:
         return " ".join([ray.get(w) for w in words])
 
-    workflow.init()
-    assert concat.step(words.step()).run() == "hello world"
+    assert workflow.create(concat.bind(words.bind())).run() == "hello world"
 
 Dynamic Workflows
 ~~~~~~~~~~~~~~~~~
-Workflows can generate new steps at runtime. When a step returns a step future as its output, that DAG of steps is dynamically inserted into the workflow DAG following the original step. This feature enables nesting, looping, and recursion within workflows.
+Workflows can generate new tasks at runtime. This is achieved by returning a continuation of a DAG.
+A continuation is something returned by a function and executed after it returns.
+The continuation feature enables nesting, looping, and recursion within workflows.
 
 .. code-block:: python
     :caption: The Fibonacci recursive workflow:
 
-    @workflow.step
+    @ray.remote
     def add(a: int, b: int) -> int:
         return a + b
 
-    @workflow.step
+    @ray.remote
     def fib(n: int) -> int:
         if n <= 1:
             return n
-        return add.step(fib.step(n - 1), fib.step(n - 2))
+        # return a continuation of a DAG
+        return workflow.continuation(add.bind(fib.bind(n - 1), fib.bind(n - 2)))
 
-    assert fib.step(10).run() == 55
+    assert workflow.create(fib.bind(10)).run() == 55
 
 Virtual Actors
 ~~~~~~~~~~~~~~
@@ -120,7 +148,7 @@ Virtual actors have their state durably logged to workflow storage. This enables
             self.count += 1
             return self.count
 
-    workflow.init(storage="/tmp/data")
+    ray.init(storage="/tmp/data")
     c1 = Counter.get_or_create("counter_1")
     assert c1.incr.run() == 1
     assert c1.incr.run() == 2
@@ -133,11 +161,14 @@ Workflows can be efficiently triggered by timers or external events using the ev
     :caption: Using events.
 
     # Sleep is a special type of event.
-    sleep_step = workflow.sleep(100)
+    sleep_task = workflow.sleep(100)
 
     # `wait_for_events` allows for pluggable event listeners.
-    event_step = workflow.wait_for_event(MyEventListener)
+    event_task = workflow.wait_for_event(MyEventListener)
 
+    @ray.remote
+    def gather(*args):
+        return args
 
-    # If a step's arguments include events, the step function won't be executed until all of the events have occured.
-    gather.step(sleep_step, event_step, "hello world").run()
+    # If a task's arguments include events, the task won't be executed until all of the events have occured.
+    workflow.create(gather.bind(sleep_task, event_task, "hello world")).run()

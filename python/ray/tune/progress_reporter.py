@@ -416,12 +416,36 @@ class TuneReporterBase(ProgressReporter):
         return best_trial, metric
 
 
+@DeveloperAPI
+class RemoteReporterMixin:
+    """Remote reporter abstract mixin class.
+
+    Subclasses of this class will use a Ray Queue to display output
+    on the driver side when running Ray Client."""
+
+    @property
+    def output_queue(self) -> Queue:
+        return getattr(self, "_output_queue", None)
+
+    @output_queue.setter
+    def output_queue(self, value: Queue):
+        self._output_queue = value
+
+    def display(self, string: str) -> None:
+        """Display the progress string.
+
+        Args:
+            string: String to display.
+        """
+        raise NotImplementedError
+
+
 @PublicAPI
-class JupyterNotebookReporter(TuneReporterBase):
+class JupyterNotebookReporter(TuneReporterBase, RemoteReporterMixin):
     """Jupyter notebook-friendly Reporter that can update display in-place.
 
     Args:
-        overwrite: Flag for overwriting the last reported progress.
+        overwrite: Flag for overwriting the cell contents before initialization.
         metric_columns: Names of metrics to
             include in progress table. If this is a dict, the keys should
             be metric names and the values should be the displayed names.
@@ -456,7 +480,7 @@ class JupyterNotebookReporter(TuneReporterBase):
 
     def __init__(
         self,
-        overwrite: bool,
+        overwrite: bool = True,
         metric_columns: Optional[Union[List[str], Dict[str, str]]] = None,
         parameter_columns: Optional[Union[List[str], Dict[str, str]]] = None,
         total_samples: Optional[int] = None,
@@ -494,33 +518,30 @@ class JupyterNotebookReporter(TuneReporterBase):
             )
 
         self._overwrite = overwrite
-        self._output_queue = None
-
-    def set_output_queue(self, queue: Queue):
-        self._output_queue = queue
+        self._display_handle = None
+        self.display("")  # initialize empty display to update later
 
     def report(self, trials: List[Trial], done: bool, *sys_info: Dict):
-        overwrite = self._overwrite
         progress_str = self._progress_str(
             trials, done, *sys_info, fmt="html", delim="<br>"
         )
 
-        def update_output():
-            from IPython.display import clear_output
-            from IPython.core.display import display, HTML
-
-            if overwrite:
-                clear_output(wait=True)
-
-            display(HTML(progress_str))
-
-        if self._output_queue is not None:
-            # If an output queue is set, send callable (e.g. when using
-            # Ray client)
-            self._output_queue.put(update_output)
+        if self.output_queue is not None:
+            # If an output queue is set, send string
+            self.output_queue.put(progress_str)
         else:
             # Else, output directly
-            update_output()
+            self.display(progress_str)
+
+    def display(self, string: str) -> None:
+        from IPython.core.display import display, HTML
+
+        if not self._display_handle:
+            self._display_handle = display(
+                HTML(string), display_id=True, clear=self._overwrite
+            )
+        else:
+            self._display_handle.update(HTML(string))
 
 
 @PublicAPI

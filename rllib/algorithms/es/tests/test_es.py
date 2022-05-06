@@ -1,7 +1,7 @@
 import unittest
 
 import ray
-import ray.rllib.agents.es as es
+import ray.rllib.algorithms.es as es
 from ray.rllib.utils.test_utils import check_compute_single_action, framework_iterator
 
 
