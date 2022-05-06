@@ -106,10 +106,7 @@ class JobSupervisor:
         self._job_id = job_id
         self._job_info_client = JobInfoStorageClient()
         self._log_client = JobLogStorageClient()
-        self._driver_runtime_env = ray.get_runtime_context().runtime_env
-        # Allow CUDA_VISIBLE_DEVICES to be set normally for the driver's tasks
-        # & actors.
-        self._driver_runtime_env.pop(ray_constants.NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR)
+        self._driver_runtime_env = self._get_driver_runtime_env()
         self._entrypoint = entrypoint
 
         # Default metadata if not passed by the user.
@@ -118,6 +115,16 @@ class JobSupervisor:
 
         # fire and forget call from outer job manager to this actor
         self._stop_event = asyncio.Event()
+
+    def _get_driver_runtime_env(self) -> Dict[str, Any]:
+        # Get the runtime_env set for the supervisor actor.
+        curr_runtime_env = dict(ray.get_runtime_context().runtime_env)
+        # Allow CUDA_VISIBLE_DEVICES to be set normally for the driver's tasks
+        # & actors.
+        env_vars = curr_runtime_env.get("env_vars", {})
+        env_vars.pop(ray_constants.NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR)
+        curr_runtime_env["env_vars"] = env_vars
+        return curr_runtime_env
 
     def ping(self):
         """Used to check the health of the actor."""
@@ -397,6 +404,20 @@ class JobManager:
         if result is None:
             return
 
+    def _get_supervisor_runtime_env(
+        self, user_runtime_env: Dict[str, Any]
+    ) -> Dict[str, Any]:
+
+        """Configure and return the runtime_env for the supervisor actor."""
+        runtime_env = user_runtime_env if user_runtime_env is not None else {}
+        # Don't set CUDA_VISIBLE_DEVICES for the supervisor actor so the
+        # driver can use GPUs if it wants to. This will be removed from
+        # the driver's runtime_env so it isn't inherited by tasks & actors.
+        env_vars = runtime_env.get("env_vars", {})
+        env_vars[ray_constants.NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR] = "1"
+        runtime_env["env_vars"] = env_vars
+        return runtime_env
+
     def submit_job(
         self,
         *,
@@ -453,10 +474,6 @@ class JobManager:
         # returns immediately and we can catch errors with the actor starting
         # up.
         try:
-            # Don't set CUDA_VISIBLE_DEVICES for the supervisor actor so the
-            # driver can use GPUs if it wants to. This will be removed from
-            # the driver's runtime_env so it isn't inherited by tasks & actors.
-            runtime_env[ray_constants.NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR] = "1"
             supervisor = self._supervisor_actor_cls.options(
                 lifetime="detached",
                 name=self.JOB_ACTOR_NAME.format(job_id=job_id),
@@ -466,7 +483,7 @@ class JobManager:
                 resources={
                     self._get_current_node_resource_key(): 0.001,
                 },
-                runtime_env=runtime_env,
+                runtime_env=self._get_supervisor_runtime_env(runtime_env),
             ).remote(job_id, entrypoint, metadata or {})
             supervisor.run.remote(_start_signal_actor=_start_signal_actor)
 
