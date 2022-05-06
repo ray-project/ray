@@ -115,6 +115,12 @@ def _import_impala():
     return impala.ImpalaTrainer, impala.DEFAULT_CONFIG
 
 
+def _import_maddpg():
+    from ray.rllib.agents import maddpg
+
+    return maddpg.MADDPGTrainer, maddpg.DEFAULT_CONFIG
+
+
 def _import_maml():
     from ray.rllib.agents import maml
 
@@ -206,6 +212,7 @@ ALGORITHMS = {
     "DQN": _import_dqn,
     "DREAMER": _import_dreamer,
     "IMPALA": _import_impala,
+    "MADDPG": _import_maddpg,
     "MAML": _import_maml,
     "MARWIL": _import_marwil,
     "MBMPO": _import_mbmpo,
