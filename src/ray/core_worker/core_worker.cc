@@ -1510,7 +1510,6 @@ static std::vector<std::string> GetUrisFromRuntimeEnv(
   return result;
 }
 
-
 std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvInfo(
     const std::string &serialized_runtime_env_info) {
   // TODO(Catch-Bull,SongGuyang): task runtime env not support the field eager_install
