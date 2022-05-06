@@ -616,6 +616,10 @@ class Dataset(Generic[T]):
     def random_sample(self, number: int, *, seed: Optional[int] = None) -> List[Any]:
         """Randomly samples N elements from the dataset.
 
+        This uniformly samples elements from the dataset.
+        From each block, n elements are taken uniformly where n is proportionate to the fraction of the rows in that block
+        as compared to the total number of rows in the dataset
+
         Examples:
             >>> import ray
             >>> ds = ray.data.range(100) # doctest: +SKIP
@@ -633,6 +637,7 @@ class Dataset(Generic[T]):
             N elements, randomly sampled from the dataset.
         """
         import random
+        import math
 
         if self.num_blocks() == 0:
             raise ValueError("Cannot from an empty dataset")
@@ -650,15 +655,32 @@ class Dataset(Generic[T]):
         if seed:
             random.seed(seed)
 
-        n_required = number // self.num_blocks()
-        n_required += 1 if number % self.num_blocks() else 0
-
         def process_batch(batch):
+            """
+            Processes a batch of inputs
+            Args:
+                batch: The batch to process
+
+            Returns:
+                Randomly sampled elements from the batch
+                This algorithm uniformly samples elements from the batch based on how many rows that
+                batch contains with respect to the total number of rows
+            """
+
+            # Sample size algorithm:
+            # sample_size_for_this_batch = ceiling (
+            #                                          (rows_in_this_batch /
+            #                                          total_rows) * samples_wanted
+            #                                       )
+
+            sample_size = (len(batch) / count) * number
+            sample_size = math.ceil(sample_size)
+
             if not isinstance(batch, list):
-                # Should handle dataframes and tensors
-                return batch.sample(n_required)
+                # Provides handling for dataframes and tensors
+                return batch.sample(sample_size)
             # Prevent sampling more than the batch can handle
-            return random.sample(batch, min(len(batch), n_required))
+            return random.sample(batch, min(len(batch), sample_size))
 
         sample_population = self.map_batches(process_batch)
 
@@ -940,8 +962,8 @@ class Dataset(Generic[T]):
             actors_state = ray.state.actors()
             return {
                 actor: actors_state.get(actor._actor_id.hex(), {})
-                .get("Address", {})
-                .get("NodeID")
+                    .get("Address", {})
+                    .get("NodeID")
                 for actor in actors
             }
 
