@@ -617,8 +617,10 @@ class Dataset(Generic[T]):
         """Randomly samples N elements from the dataset.
 
         This uniformly samples elements from the dataset.
-        From each block, n elements are taken uniformly where n is proportionate to the fraction of the rows in that block
-        as compared to the total number of rows in the dataset
+
+        From each block, n elements are taken uniformly where n is proportionate
+        to the fraction of the rows in that block as compared to the total number
+         of rows in the dataset. The result is truncated to *number* elements.
 
         Examples:
             >>> import ray
@@ -962,8 +964,8 @@ class Dataset(Generic[T]):
             actors_state = ray.state.actors()
             return {
                 actor: actors_state.get(actor._actor_id.hex(), {})
-                    .get("Address", {})
-                    .get("NodeID")
+                .get("Address", {})
+                .get("NodeID")
                 for actor in actors
             }
 
