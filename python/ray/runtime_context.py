@@ -187,7 +187,7 @@ class RuntimeContext(object):
             {"env_vars": {"A": "a", "B": "b"}}))
         """
 
-        return RuntimeEnv.deserialize(self.get_runtime_env_string())
+        return RuntimeEnv.deserialize(self._get_runtime_env_string())
 
     @property
     def current_actor(self):
