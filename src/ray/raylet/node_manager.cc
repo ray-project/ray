@@ -569,7 +569,6 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
   RAY_LOG(DEBUG) << "HandleJobFinished " << job_id;
   RAY_CHECK(job_data.is_dead());
   worker_pool_.HandleJobFinished(job_id);
-  worker_pool_.KillWorker(worker);
 }
 
 void NodeManager::FillNormalTaskResourceUsage(rpc::ResourcesData &resources_data) {
