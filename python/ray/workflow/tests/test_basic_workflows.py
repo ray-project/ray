@@ -358,7 +358,7 @@ def test_workflow_error_message():
     assert str(e.value) == expected_error_msg
 
 
-def test_options_update(workflow_start_regular_shared):
+def test_options_update():
     from ray.workflow.common import WORKFLOW_OPTIONS
 
     # Options are given in decorator first, then in the first .options()
@@ -373,19 +373,18 @@ def test_options_update(workflow_start_regular_shared):
     # metadata and ray_options are "updated"
     # max_retries only defined in the decorator and it got preserved all the way
     new_f = f.options(
-        **workflow.options(
-            name="new_name", num_returns=2, metadata={"extra_k2": "extra_v2"}
-        )
+        num_returns=2,
+        **workflow.options(name="new_name", metadata={"extra_k2": "extra_v2"}),
     )
     options = new_f.bind().get_options()
     assert options == {
         "num_cpus": 2,
+        "num_returns": 2,
         "_metadata": {
             WORKFLOW_OPTIONS: {
                 "name": "new_name",
                 "metadata": {"extra_k2": "extra_v2"},
                 "max_retries": 1,
-                "num_returns": 2,
             }
         },
     }
