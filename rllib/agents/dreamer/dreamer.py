@@ -84,9 +84,6 @@ DEFAULT_CONFIG = with_common_config({
         # Repeats action send by policy for frame_skip times in env
         "frame_skip": 2,
     },
-
-    # Use `training_iteration` instead of `execution_plan`.
-    "_disable_execution_plan_api": True,
 })
 # __sphinx_doc_end__
 # fmt: on
@@ -307,14 +304,8 @@ class DREAMERTrainer(Trainer):
                 gif = policy_fetches["log_gif"]
                 policy_fetches["log_gif"] = self._postprocess_gif(gif)
 
-        self._counters[STEPS_SAMPLED_COUNTER] = self.local_replay_buffer.timesteps
-        self._counters[STEPS_SAMPLED_COUNTER] *= action_repeat
-
-        # TODO: Need to update res somewhere?
-        # res = collect_metrics(local_worker=self.worker)
-        # res["info"] = metrics.info
-        # res["info"].update(metrics.counters)
-        # res["timesteps_total"] = metrics.counters[STEPS_SAMPLED_COUNTER]
+        self._counters[STEPS_SAMPLED_COUNTER] = self.local_replay_buffer.timesteps * \
+                                                action_repeat
 
         self.local_replay_buffer.add(batch)
 
