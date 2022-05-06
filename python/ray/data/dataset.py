@@ -665,8 +665,9 @@ class Dataset(Generic[T]):
 
             Returns:
                 Randomly sampled elements from the batch
-                This algorithm uniformly samples elements from the batch based on how many rows that
-                batch contains with respect to the total number of rows
+                This algorithm uniformly samples elements from the batch based
+                on how many rows that batch contains with respect to the total
+                number of rows
             """
 
             # Sample size algorithm:
