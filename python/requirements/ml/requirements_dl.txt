@@ -1,7 +1,7 @@
 # These requirements are used for the CI and CPU-only Docker images so we install CPU only versions of torch.
 # For GPU Docker images, you should install requirements_ml_docker.txt afterwards.
 
-tensorflow==2.6.2
+tensorflow==2.8.0
 tensorflow-probability==0.14.1
 
 # If you make changes to the torch versions below, please also make the corresponding changes to `requirements_ml_docker.txt`!
