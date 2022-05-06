@@ -719,7 +719,7 @@ py_test(
     name = "test_es",
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
-    srcs = ["agents/es/tests/test_es.py"]
+    srcs = ["algorithms/es/tests/test_es.py"]
 )
 
 # IMPALA
