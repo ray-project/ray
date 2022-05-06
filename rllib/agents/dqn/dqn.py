@@ -15,8 +15,8 @@ from typing import List, Optional, Type
 from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
 from ray.rllib.agents.dqn.simple_q import (
+    SimpleQConfig,
     SimpleQTrainer,
-    DEFAULT_CONFIG as SIMPLEQ_DEFAULT_CONFIG,
 )
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.evaluation.worker_set import WorkerSet
@@ -67,7 +67,7 @@ logger = logging.getLogger(__name__)
 # fmt: off
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = Trainer.merge_trainer_configs(
-    SIMPLEQ_DEFAULT_CONFIG,
+    SimpleQConfig().to_dict(),
     {
         # === Model ===
         # Number of atoms for representing the distribution of return. When
