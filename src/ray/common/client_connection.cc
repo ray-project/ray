@@ -497,14 +497,14 @@ void ClientConnection::ProcessMessage(const boost::system::error_code &error) {
   if (error) {
     flatbuffers::FlatBufferBuilder fbb;
     const auto &disconnect_detail = fbb.CreateString(absl::StrCat(
-            "Worker unexpectedly exits with a connection error code ",
-            error.value(),
-            ". ",
-            error.message(),
-            ". There are some potential root causes. (1) The process is killed by "
-            "SIGKILL by OOM killer due to high memory usage. (2) ray stop --force is "
-            "called. (3) The worker is crashed unexpectedly due to SIGSEGV or other "
-            "unexpected errors."));
+        "Worker unexpectedly exits with a connection error code ",
+        error.value(),
+        ". ",
+        error.message(),
+        ". There are some potential root causes. (1) The process is killed by "
+        "SIGKILL by OOM killer due to high memory usage. (2) ray stop --force is "
+        "called. (3) The worker is crashed unexpectedly due to SIGSEGV or other "
+        "unexpected errors."));
     protocol::DisconnectClientBuilder builder(fbb);
     builder.add_disconnect_type(
         static_cast<int>(ray::rpc::WorkerExitType::UNEXPECTED_SYSTEM_EXIT));

@@ -10,7 +10,9 @@ import time
 
 from ray.experimental.state.api import list_workers
 from ray._private.test_utils import (
-    SignalActor, wait_for_pid_to_exit, wait_for_condition
+    SignalActor,
+    wait_for_pid_to_exit,
+    wait_for_condition,
 )
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM

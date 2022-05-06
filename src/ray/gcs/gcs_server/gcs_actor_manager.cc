@@ -1381,10 +1381,8 @@ void GcsActorManager::KillActor(const ActorID &actor_id,
   if (node_it != created_actors_.end() && node_it->second.count(worker_id)) {
     // The actor has already been created. Destroy the process by force-killing
     // it.
-    NotifyCoreWorkerToKillActor(actor,
-                                GenKilledByApplicationCause(GetActor(actor_id)),
-                                force_kill,
-                                no_restart);
+    NotifyCoreWorkerToKillActor(
+        actor, GenKilledByApplicationCause(GetActor(actor_id)), force_kill, no_restart);
   } else {
     const auto &task_id = actor->GetCreationTaskSpecification().TaskId();
     RAY_LOG(DEBUG) << "The actor " << actor->GetActorID()

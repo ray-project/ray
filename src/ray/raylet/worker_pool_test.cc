@@ -1594,10 +1594,12 @@ TEST_F(WorkerPoolTest, RuntimeEnvUriReferenceWorkerLevel) {
     auto popped_normal_worker = worker_pool_->PopWorkerSync(actor_creation_task_spec);
     ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 3);
     // Disconnect actor worker.
-    worker_pool_->DisconnectWorker(popped_actor_worker, rpc::WorkerExitType::INTENTIONAL_USER_EXIT);
+    worker_pool_->DisconnectWorker(popped_actor_worker,
+                                   rpc::WorkerExitType::INTENTIONAL_USER_EXIT);
     ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 2);
     // Disconnect task worker.
-    worker_pool_->DisconnectWorker(popped_normal_worker, rpc::WorkerExitType::INTENTIONAL_USER_EXIT);
+    worker_pool_->DisconnectWorker(popped_normal_worker,
+                                   rpc::WorkerExitType::INTENTIONAL_USER_EXIT);
     ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 1);
     // Finish the job.
     worker_pool_->HandleJobFinished(job_id);
@@ -1632,10 +1634,12 @@ TEST_F(WorkerPoolTest, RuntimeEnvUriReferenceWorkerLevel) {
     auto popped_normal_worker = worker_pool_->PopWorkerSync(actor_creation_task_spec);
     ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 2);
     // Disconnect actor worker.
-    worker_pool_->DisconnectWorker(popped_actor_worker, rpc::WorkerExitType::INTENTIONAL_USER_EXIT);
+    worker_pool_->DisconnectWorker(popped_actor_worker,
+                                   rpc::WorkerExitType::INTENTIONAL_USER_EXIT);
     ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 1);
     // Disconnect task worker.
-    worker_pool_->DisconnectWorker(popped_normal_worker, rpc::WorkerExitType::INTENTIONAL_USER_EXIT);
+    worker_pool_->DisconnectWorker(popped_normal_worker,
+                                   rpc::WorkerExitType::INTENTIONAL_USER_EXIT);
     ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 0);
     // Finish the job.
     worker_pool_->HandleJobFinished(job_id);
@@ -1701,7 +1705,8 @@ TEST_F(WorkerPoolTest, RuntimeEnvUriReferenceWithMultipleWorkers) {
         actor_creation_task_spec, true, &status, NUM_WORKERS_PER_PROCESS_JAVA - 1);
     ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 1);
     // Disconnect actor worker.
-    worker_pool_->DisconnectWorker(popped_actor_worker, rpc::WorkerExitType::INTENTIONAL_USER_EXIT);
+    worker_pool_->DisconnectWorker(popped_actor_worker,
+                                   rpc::WorkerExitType::INTENTIONAL_USER_EXIT);
     ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 1);
     // Sleep for a while to wait worker registration timeout.
     std::this_thread::sleep_for(
