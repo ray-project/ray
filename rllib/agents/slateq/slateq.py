@@ -13,7 +13,7 @@ environment (https://github.com/google-research/recsim).
 """
 
 import logging
-from typing import List, Optional, Type, Union
+from typing import Any, Dict, List, Optional, Type, Union
 
 from ray.rllib.agents.dqn.dqn import DQNTrainer
 from ray.rllib.agents.slateq.slateq_tf_policy import SlateQTFPolicy
@@ -21,7 +21,7 @@ from ray.rllib.agents.slateq.slateq_torch_policy import SlateQTorchPolicy
 from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
 
@@ -75,9 +75,24 @@ class SlateQConfig(TrainerConfig):
         self.lr_choice_model = 1e-3
         self.rmsprop_epsilon = 1e-5
         self.grad_clip = None
-        self.learning_starts = 20000
         self.n_step = 1
         self.worker_side_prioritization = False
+        self.replay_buffer_config = {
+            # Enable the new ReplayBuffer API.
+            "_enable_replay_buffer_api": True,
+            "type": "MultiAgentPrioritizedReplayBuffer",
+            "capacity": 100000,
+            "prioritized_replay_alpha": 0.6,
+            # Beta parameter for sampling from prioritized replay buffer.
+            "prioritized_replay_beta": 0.4,
+            # Epsilon to add to the TD errors when updating priorities.
+            "prioritized_replay_eps": 1e-6,
+            # The number of continuous environment steps to replay at once. This may
+            # be set to greater than 1 to support recurrent models.
+            "replay_sequence_length": 1,
+            # How many steps of the model to sample before learning starts.
+            "learning_starts": 20000,
+        }
 
         # Override some of TrainerConfig's default values with SlateQ-specific values.
         self.exploration_config = {
@@ -92,6 +107,8 @@ class SlateQConfig(TrainerConfig):
             "epsilon_timesteps": 250000,
             "final_epsilon": 0.01,
         }
+        # Switch to greedy actions in evaluation workers.
+        self.evaluation_config = {"explore": False}
         self.num_workers = 0
         self.rollout_fragment_length = 4
         self.train_batch_size = 32
@@ -107,6 +124,7 @@ class SlateQConfig(TrainerConfig):
     def training(
         self,
         *,
+        replay_buffer_config: Optional[Dict[str, Any]] = None,
         fcnet_hiddens_per_candidate: Optional[List[int]] = None,
         target_network_update_freq: Optional[int] = None,
         tau: Optional[float] = None,
@@ -117,7 +135,6 @@ class SlateQConfig(TrainerConfig):
         lr_choice_model: Optional[bool] = None,
         rmsprop_epsilon: Optional[float] = None,
         grad_clip: Optional[float] = None,
-        learning_starts: Optional[int] = None,
         n_step: Optional[int] = None,
         worker_side_prioritization: Optional[bool] = None,
         **kwargs,
@@ -125,6 +142,10 @@ class SlateQConfig(TrainerConfig):
         """Sets the training related configuration.
 
         Args:
+            replay_buffer_config: The config dict to specify the replay buffer used.
+                May contain a `type` key (default: `MultiAgentPrioritizedReplayBuffer`)
+                indicating the class being used. All other keys specify the names
+                and values of kwargs passed to to this class' constructor.
             fcnet_hiddens_per_candidate: Dense-layer setup for each the n (document)
                 candidate Q-network stacks.
             target_network_update_freq: Update the target network every
@@ -147,12 +168,9 @@ class SlateQConfig(TrainerConfig):
                 So far, only relevant/supported for framework=torch.
             rmsprop_epsilon: RMSProp epsilon hyperparameter.
             grad_clip: If not None, clip gradients during optimization at this value.
-            learning_starts: How many steps of the model to sample before learning
-                starts.
             n_step: N-step parameter for Q-learning.
             worker_side_prioritization: Whether to compute priorities for the replay
                 buffer on the workers.
-            **kwargs:
 
         Returns:
             This updated TrainerConfig object.
@@ -160,62 +178,34 @@ class SlateQConfig(TrainerConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        if fcnet_hiddens_per_candidate is None:
+        if replay_buffer_config is not None:
+            self.replay_buffer_config = replay_buffer_config
+        if fcnet_hiddens_per_candidate is not None:
             self.fcnet_hiddens_per_candidate = fcnet_hiddens_per_candidate
-        if target_network_update_freq is None:
+        if target_network_update_freq is not None:
             self.target_network_update_freq = target_network_update_freq
-        if tau is None:
+        if tau is not None:
             self.tau = tau
-        if use_huber is None:
+        if use_huber is not None:
             self.use_huber = use_huber
-        if huber_threshold is None:
+        if huber_threshold is not None:
             self.huber_threshold = huber_threshold
-        if training_intensity is None:
+        if training_intensity is not None:
             self.training_intensity = training_intensity
-        if lr_schedule is None:
+        if lr_schedule is not None:
             self.lr_schedule = lr_schedule
-        if lr_choice_model is None:
+        if lr_choice_model is not None:
             self.lr_choice_model = lr_choice_model
-        if rmsprop_epsilon is None:
+        if rmsprop_epsilon is not None:
             self.rmsprop_epsilon = rmsprop_epsilon
-        if grad_clip is None:
+        if grad_clip is not None:
             self.grad_clip = grad_clip
-        if learning_starts is None:
-            self.learning_starts = learning_starts
-        if n_step is None:
+        if n_step is not None:
             self.n_step = n_step
-        if worker_side_prioritization is None:
+        if worker_side_prioritization is not None:
             self.worker_side_prioritization = worker_side_prioritization
 
         return self
-
-
-# TODO: Wait for MAx's PR on how we solve Buffer configs.
-DEFAULT_CONFIG = with_common_config({
-    # === Exploration Settings ===
-    # Switch to greedy actions in evaluation workers.
-    # TODO: How do we do this?
-    "evaluation_config": {
-        "explore": False,
-    },
-
-    # === Replay buffer ===
-    "replay_buffer_config": {
-        # Enable the new ReplayBuffer API.
-        "_enable_replay_buffer_api": True,
-        "type": "MultiAgentPrioritizedReplayBuffer",
-        "capacity": 100000,
-        "prioritized_replay_alpha": 0.6,
-        # Beta parameter for sampling from prioritized replay buffer.
-        "prioritized_replay_beta": 0.4,
-        # Epsilon to add to the TD errors when updating priorities.
-        "prioritized_replay_eps": 1e-6,
-        # The number of continuous environment steps to replay at once. This may
-        # be set to greater than 1 to support recurrent models.
-        "replay_sequence_length": 1,
-    },
-
-})
 
 
 def calculate_round_robin_weights(config: TrainerConfigDict) -> List[float]:
@@ -234,7 +224,7 @@ class SlateQTrainer(DQNTrainer):
     @classmethod
     @override(DQNTrainer)
     def get_default_config(cls) -> TrainerConfigDict:
-        return DEFAULT_CONFIG
+        return SlateQConfig().to_dict()
 
     @override(DQNTrainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
@@ -247,3 +237,20 @@ class SlateQTrainer(DQNTrainer):
             return SlateQTorchPolicy
         else:
             return SlateQTFPolicy
+
+
+# Deprecated: Use ray.rllib.agents.ppo.PPOConfig instead!
+class _deprecated_default_config(dict):
+    def __init__(self):
+        super().__init__(SlateQConfig().to_dict())
+
+    @Deprecated(
+        old="ray.rllib.agents.slateq.slateq.DEFAULT_CONFIG",
+        new="ray.rllib.agents.slateq.slateq.SlateQConfig(...)",
+        error=False,
+    )
+    def __getitem__(self, item):
+        return super().__getitem__(item)
+
+
+DEFAULT_CONFIG = _deprecated_default_config()
