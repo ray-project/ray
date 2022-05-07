@@ -1,3 +1,4 @@
+import asyncio
 import os
 import sys
 import json
@@ -369,6 +370,7 @@ class PipManager:
     def __init__(self, resources_dir: str):
         self._pip_resources_dir = os.path.join(resources_dir, "pip")
         self._creating_task = {}
+        self._create_lock = asyncio.Lock()
         try_to_create_directory(self._pip_resources_dir)
 
     def _get_path_from_hash(self, hash: str) -> str:
@@ -428,6 +430,7 @@ class PipManager:
         target_dir = self._get_path_from_hash(hash)
 
         async def _create_for_hash():
+            # with FileLock(os.path.join(self._pip_resources_dir, "pip_create.lock")):
             await PipProcessor(target_dir, runtime_env, logger)
 
             loop = get_running_loop()
@@ -435,9 +438,10 @@ class PipManager:
                 None, get_directory_size_bytes, target_dir
             )
 
-        self._creating_task[hash] = task = create_task(_create_for_hash())
-        task.add_done_callback(lambda _: self._creating_task.pop(hash, None))
-        return await task
+        async with self._create_lock:
+            self._creating_task[hash] = task = create_task(_create_for_hash())
+            task.add_done_callback(lambda _: self._creating_task.pop(hash, None))
+            return await task
 
     def modify_context(
         self,
