@@ -158,7 +158,13 @@ class AlphaStarConfig(appo.APPOConfig):
                 stats. If no learner actors have produced any learning results in the
                 meantime, their learner-stats in the results will be empty for that
                 iteration.
-            league_builder_config:
+            league_builder_config: League-building config dict.
+                The dict Must contain a `type` key indicating the LeagueBuilder class
+                to be used for league building logic. All other keys (that are not
+                `type`) will be used as constructor kwargs on the given class to
+                construct the LeagueBuilder instance. See the
+                `ray.rllib.agents.alpha_star.league_builder::AlphaStarLeagueBuilder`
+                (used by default by this algo) as an example.
             max_num_policies_to_train:
             **kwargs:
 
@@ -170,19 +176,11 @@ class AlphaStarConfig(appo.APPOConfig):
 
         # TODO: Unify the buffer API, then clean up our existing
         #  implementations of different buffers.
-        #
-        "replay_buffer_capacity": 20,
-        #
-        "replay_buffer_replay_ratio": 0.5,
-
-        #
-        "sample_wait_timeout": 0.01,
-        # T
-        "learn_wait_timeout": 0.1,
-
-        # League-building parameters.
-        # The LeagueBuilder class to be used for league building logic.
-        "league_builder_config": {
+        replay_buffer_capacity
+        replay_buffer_replay_ratio
+        sample_wait_timeout
+        learn_wait_timeout
+        league_builder_config
             "type": AlphaStarLeagueBuilder,
             # The number of random policies to add to the league. This must be an
             # even number (including 0) as these will be evenly distributed
