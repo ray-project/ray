@@ -541,7 +541,7 @@ class ServeController:
         if self.deploy_config_task_ref is not None:
             ray.cancel(self.deploy_config_task_ref)
 
-        @ray.remote(runtime_env=config.get("graph_runtime_env", {}))
+        @ray.remote(runtime_env=config.get("graph_runtime_env", {}), max_calls=1)
         def run_graph(graph_import_path: str, config_options: Dict):
             from ray import serve
             from ray.serve.api import build
