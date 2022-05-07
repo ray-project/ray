@@ -24,7 +24,6 @@ import io.ray.api.runtimeenv.RuntimeEnv;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.Callable;
 
 /** Base interface of a Ray runtime. */
 public interface RayRuntime {
@@ -206,26 +205,6 @@ public interface RayRuntime {
   PlacementGroup createPlacementGroup(PlacementGroupCreationOptions creationOptions);
 
   RuntimeContext getRuntimeContext();
-
-  Object getAsyncContext();
-
-  void setAsyncContext(Object asyncContext);
-
-  /**
-   * Wrap a {@link Runnable} with necessary context capture.
-   *
-   * @param runnable The runnable to wrap.
-   * @return The wrapped runnable.
-   */
-  Runnable wrapRunnable(Runnable runnable);
-
-  /**
-   * Wrap a {@link Callable} with necessary context capture.
-   *
-   * @param callable The callable to wrap.
-   * @return The wrapped callable.
-   */
-  <T> Callable<T> wrapCallable(Callable<T> callable);
 
   /** Intentionally exit the current actor. */
   void exitActor();

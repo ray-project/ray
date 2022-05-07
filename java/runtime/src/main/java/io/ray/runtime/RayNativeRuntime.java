@@ -213,19 +213,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   }
 
   @Override
-  public Object getAsyncContext() {
-    return new AsyncContext(
-        workerContext.getCurrentWorkerId(), workerContext.getCurrentClassLoader());
-  }
-
-  @Override
-  public void setAsyncContext(Object asyncContext) {
-    nativeSetCoreWorker(((AsyncContext) asyncContext).workerId.getBytes());
-    workerContext.setCurrentClassLoader(((AsyncContext) asyncContext).currentClassLoader);
-    super.setAsyncContext(asyncContext);
-  }
-
-  @Override
   List<ObjectId> getCurrentReturnIds(int numReturns, ActorId actorId) {
     List<byte[]> ret = nativeGetCurrentReturnIds(numReturns, actorId.getBytes());
     return ret.stream().map(ObjectId::new).collect(Collectors.toList());

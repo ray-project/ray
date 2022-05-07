@@ -46,6 +46,7 @@ public final class MethodUtils {
       } catch (ClassNotFoundException e) {
         /// This code path indicates that here might be in another thread of a worker.
         /// So try to load the class from URLClassLoader of this worker.
+        /// TODO(qwang): Classloader and ClassLoaderTest
         ClassLoader cl =
             ((RayRuntimeInternal) Ray.internal()).getWorkerContext().getCurrentClassLoader();
         actorClz = Class.forName(className, true, cl);

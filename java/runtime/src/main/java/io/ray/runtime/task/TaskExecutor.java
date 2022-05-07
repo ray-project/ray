@@ -32,6 +32,7 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
 
   protected final RayRuntimeInternal runtime;
 
+  // TODO(qwang): Use actorContext instead later.
   private final ConcurrentHashMap<UniqueId, T> actorContextMap = new ConcurrentHashMap<>();
 
   private final ThreadLocal<RayFunction> localRayFunction = new ThreadLocal<>();
@@ -93,7 +94,6 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
   }
 
   protected List<NativeRayObject> execute(List<String> rayFunctionInfo, List<Object> argsBytes) {
-    runtime.setIsContextSet(true);
     TaskType taskType = runtime.getWorkerContext().getCurrentTaskType();
     TaskId taskId = runtime.getWorkerContext().getCurrentTaskId();
     LOGGER.debug("Executing task {} {}", taskId, rayFunctionInfo);
@@ -218,7 +218,6 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
     } finally {
       Thread.currentThread().setContextClassLoader(oldLoader);
       runtime.getWorkerContext().setCurrentClassLoader(null);
-      runtime.setIsContextSet(false);
     }
     return returnObjects;
   }
