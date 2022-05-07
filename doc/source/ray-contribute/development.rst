@@ -25,7 +25,7 @@ RLlib, Tune, Autoscaler, and most Python files do not require you to build and c
 
 .. code-block:: shell
 
-    pip install -U LINK_TO_WHEEL.whl # check :ref:`install-nightlies` for LINK_TO_WHEEL
+    pip install -U LINK_TO_WHEEL.whl # replace LINK_TO_WHEEL with actual wheel link (see above install-nightlies).
 
 2. Fork and clone the project to your machine. Connect your repository to the upstream (main project) ray repository.
 
