@@ -767,6 +767,7 @@ TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
       expected_command.end(), actor_jvm_options.begin(), actor_jvm_options.end());
   // Entry point
   expected_command.push_back("MainClass");
+  expected_command.push_back("--language=JAVA");
   ASSERT_EQ(real_command, expected_command);
   worker_pool_->HandleJobFinished(job_id);
 }
