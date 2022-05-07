@@ -749,7 +749,7 @@ class Policy(metaclass=ABCMeta):
         # steps).
         # Make sure, we keep global_timestep as a Tensor for tf-eager
         # (leads to memory leaks if not doing so).
-        if not isinstance(self.global_timestep, int):
+        if self.framework in ["tfe", "tf2"]:
             self.global_timestep.assign(global_vars["timestep"])
         else:
             self.global_timestep = global_vars["timestep"]
