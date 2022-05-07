@@ -198,15 +198,17 @@ void WorkerPool::update_worker_startup_token_counter() {
 
 void WorkerPool::AddWorkerProcess(
     State &state,
-    const bool is_pending_registration,
     const rpc::WorkerType worker_type,
     const Process &proc,
     const std::chrono::high_resolution_clock::time_point &start,
     const rpc::RuntimeEnvInfo &runtime_env_info) {
-  state.worker_processes.emplace(
-      worker_startup_token_counter_,
-      WorkerProcessInfo{
-          is_pending_registration, {}, worker_type, proc, start, runtime_env_info});
+  state.worker_processes.emplace(worker_startup_token_counter_,
+                                 WorkerProcessInfo{/*is_pending_registration=*/true,
+                                                   {},
+                                                   worker_type,
+                                                   proc,
+                                                   start,
+                                                   runtime_env_info});
 }
 
 void WorkerPool::RemoveWorkerProcess(State &state,
@@ -454,12 +456,7 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
                 << worker_startup_token_counter_;
   MonitorStartingWorkerProcess(
       proc, worker_startup_token_counter_, language, worker_type);
-  AddWorkerProcess(state,
-                   /*is_pending_registration=*/true,
-                   worker_type,
-                   proc,
-                   start,
-                   runtime_env_info);
+  AddWorkerProcess(state, worker_type, proc, start, runtime_env_info);
   StartupToken worker_startup_token = worker_startup_token_counter_;
   update_worker_startup_token_counter();
   if (IsIOWorkerType(worker_type)) {

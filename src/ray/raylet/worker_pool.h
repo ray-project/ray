@@ -682,7 +682,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env);
 
   void AddWorkerProcess(State &state,
-                        const bool is_pending_registration,
                         const rpc::WorkerType worker_type,
                         const Process &proc,
                         const std::chrono::high_resolution_clock::time_point &start,
