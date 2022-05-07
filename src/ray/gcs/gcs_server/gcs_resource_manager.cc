@@ -303,7 +303,6 @@ void GcsResourceManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
   }
   rpc::ResourcesData data;
   data.set_node_id(node.node_id());
-  data.set_node_manager_address(node.node_manager_address());
   node_resource_usages_.emplace(NodeID::FromBinary(node.node_id()), std::move(data));
 }
 

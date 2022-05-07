@@ -608,7 +608,6 @@ void NodeManager::FillNormalTaskResourceUsage(rpc::ResourcesData &resources_data
 
 void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
   resources_data.set_node_id(self_node_id_.Binary());
-  resources_data.set_node_manager_address(initial_config_.node_manager_address);
   // Update local cache from gcs remote cache, this is needed when gcs restart.
   // We should always keep the cache view consistent.
   cluster_resource_scheduler_->GetLocalResourceManager().ResetLastReportResourceUsage(
@@ -1686,7 +1685,6 @@ void NodeManager::HandleGetResourceLoad(const rpc::GetResourceLoadRequest &reque
                                         rpc::SendReplyCallback send_reply_callback) {
   auto resources_data = reply->mutable_resources();
   resources_data->set_node_id(self_node_id_.Binary());
-  resources_data->set_node_manager_address(initial_config_.node_manager_address);
   cluster_task_manager_->FillResourceUsage(*resources_data, nullptr);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
