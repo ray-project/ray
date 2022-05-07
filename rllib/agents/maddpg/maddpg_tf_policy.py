@@ -69,11 +69,11 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
                 )
 
         obs_space_n = [
-            _make_continuous_space(space)
+            _make_continuous_space(space or obs_space)
             for _, (_, space, _, _) in config["multiagent"]["policies"].items()
         ]
         act_space_n = [
-            _make_continuous_space(space)
+            _make_continuous_space(space or act_space)
             for _, (_, _, space, _) in config["multiagent"]["policies"].items()
         ]
 
