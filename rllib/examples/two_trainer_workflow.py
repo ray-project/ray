@@ -16,7 +16,7 @@ from ray.rllib.agents.dqn.dqn import DEFAULT_CONFIG as DQN_CONFIG
 from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
 from ray.rllib.agents.ppo.ppo import DEFAULT_CONFIG as PPO_CONFIG
-from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
+from ray.rllib.agents.ppo.ppo_tf_policy import PPOEagerTFPolicy
 from ray.rllib.agents.ppo.ppo_torch_policy import PPOTorchPolicy
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
@@ -170,7 +170,7 @@ if __name__ == "__main__":
     # policy configs, we have to explicitly set it in the multiagent config:
     policies = {
         "ppo_policy": (
-            PPOTorchPolicy if args.torch or args.mixed_torch_tf else PPOTFPolicy,
+            PPOTorchPolicy if args.torch or args.mixed_torch_tf else PPOEagerTFPolicy,
             None,
             None,
             PPO_CONFIG,

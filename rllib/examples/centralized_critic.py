@@ -20,7 +20,6 @@ import os
 
 import ray
 from ray import tune
-from ray.rllib.policy.tf_mixins import KLCoeffMixin
 from ray.rllib.agents.ppo.ppo import PPOTrainer
 from ray.rllib.agents.ppo.ppo_tf_policy import (
     PPODynamicTFPolicy,
