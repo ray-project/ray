@@ -12,11 +12,12 @@ from ray.rllib.policy.tf_mixins import ValueNetworkMixin
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.framework import try_import_tf, get_variable
 from ray.rllib.utils.tf_utils import explained_variance
-from ray.rllib.utils.typing import TrainerConfigDict, TensorType, PolicyID
 from ray.rllib.utils.typing import (
     LocalOptimizer,
     ModelGradients,
+    PolicyID,
     TensorType,
+    TrainerConfigDict,
 )
 
 tf1, tf, tfv = try_import_tf()

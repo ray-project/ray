@@ -388,7 +388,9 @@ class DynamicTFPolicyV2(TFPolicy):
         return super().optimizer()
 
     def _init_dist_class(self):
-        if is_overridden(self.action_sampler_fn) or is_overridden(self.action_distribution_fn):
+        if is_overridden(self.action_sampler_fn) or is_overridden(
+            self.action_distribution_fn
+        ):
             if not is_overridden(self.make_model):
                 raise ValueError(
                     "`make_model` is required if `action_sampler_fn` OR "

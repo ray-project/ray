@@ -374,6 +374,7 @@ class MBMPOTrainer(Trainer):
     @override(Trainer)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         from ray.rllib.agents.mbmpo.mbmpo_torch_policy import MBMPOTorchPolicy
+
         return MBMPOTorchPolicy
 
     @staticmethod
