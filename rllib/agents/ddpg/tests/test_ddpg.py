@@ -1,7 +1,6 @@
 import numpy as np
 import re
 import unittest
-from tempfile import TemporaryDirectory
 
 import ray
 import ray.rllib.agents.ddpg as ddpg
@@ -46,7 +45,7 @@ class TestDDPG(unittest.TestCase):
 
         # Test against all frameworks.
         for _ in framework_iterator(config, with_eager_tracing=True):
-            ""
+            """"""
             trainer = config.build(env="Pendulum-v1")
             for i in range(num_iterations):
                 results = trainer.train()

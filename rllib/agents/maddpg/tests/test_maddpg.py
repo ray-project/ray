@@ -5,7 +5,6 @@ import ray.rllib.agents.maddpg as maddpg
 from ray.rllib.examples.env.two_step_game import TwoStepGame
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.test_utils import (
-    check_compute_single_action,
     check_train_results,
     framework_iterator,
 )
@@ -14,7 +13,7 @@ from ray.rllib.utils.test_utils import (
 class TestMADDPG(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(local_mode=True)#TODO
+        ray.init()
 
     @classmethod
     def tearDownClass(cls) -> None:

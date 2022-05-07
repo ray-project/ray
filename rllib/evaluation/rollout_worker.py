@@ -578,9 +578,12 @@ class RolloutWorker(ParallelIteratorWorker):
         # If spaces unknown,
         if self.spaces is None:
             self.spaces = {
-                pid: (getattr(
-                    pol.observation_space, "original_space", pol.observation_space
-                ), getattr(pol.action_space, "original_space", pol.action_space))
+                pid: (
+                    getattr(
+                        pol.observation_space, "original_space", pol.observation_space
+                    ),
+                    getattr(pol.action_space, "original_space", pol.action_space),
+                )
                 for pid, pol in self.policy_dict.items()
             }
 
