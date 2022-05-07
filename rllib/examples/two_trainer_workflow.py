@@ -166,6 +166,12 @@ if __name__ == "__main__":
         "multi_agent_cartpole", lambda _: MultiAgentCartPole({"num_agents": 4})
     )
 
+    # framework can be changed, so removed the hardcoded framework key from policy configs.
+    ppo_config = PPO_CONFIG
+    del ppo_config["framework"]
+    dqn_config = DQN_CONFIG
+    del dqn_config["framework"]
+
     # Note that since the trainer below does not include a default policy or
     # policy configs, we have to explicitly set it in the multiagent config:
     policies = {
@@ -173,13 +179,13 @@ if __name__ == "__main__":
             PPOTorchPolicy if args.torch or args.mixed_torch_tf else PPOEagerTFPolicy,
             None,
             None,
-            PPO_CONFIG,
+            ppo_config,
         ),
         "dqn_policy": (
             DQNTorchPolicy if args.torch else DQNTFPolicy,
             None,
             None,
-            DQN_CONFIG,
+            dqn_config,
         ),
     }
 
@@ -200,7 +206,7 @@ if __name__ == "__main__":
         },
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "framework": "torch" if args.torch else "tf",
+        "framework": "torch" if args.torch else "tf2",
     }
 
     stop = {
