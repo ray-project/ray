@@ -162,15 +162,14 @@ message CancelWorkerLeaseReply {
   bool success = 1;
 }
 
-message PinObjectIDsRequest {
+message PinObjectIDRequest {
   // Address of the owner to ask when to unpin the objects.
   Address owner_address = 1;
   // ObjectIDs to pin.
   repeated bytes object_ids = 2;
 }
 
-message PinObjectIDsReply {
-}
+message PinObjectIDReply {}
 
 message GetNodeStatsRequest {
   // Whether to include memory stats. This could be large since it includes
@@ -354,7 +353,7 @@ service NodeManagerService {
   // lease request was not yet granted.
   rpc CancelWorkerLease(CancelWorkerLeaseRequest) returns (CancelWorkerLeaseReply);
   // Pin the provided object IDs.
-  rpc PinObjectIDs(PinObjectIDsRequest) returns (PinObjectIDsReply);
+  rpc PinObjectID(PinObjectIDRequest) returns (PinObjectIDReply);
   // Get the current node stats.
   rpc GetNodeStats(GetNodeStatsRequest) returns (GetNodeStatsReply);
   // Trigger garbage collection in all workers across the cluster.
