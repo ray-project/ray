@@ -7,19 +7,12 @@ import yaml
 
 import ray
 from ray.tune.config_parser import make_parser
-from ray.tune.progress_reporter import CLIReporter, JupyterNotebookReporter
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.resources import resources_to_json
 from ray.tune.tune import run_experiments
 from ray.tune.schedulers import create_scheduler
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-
-try:
-    class_name = get_ipython().__class__.__name__
-    IS_NOTEBOOK = True if "Terminal" not in class_name else False
-except NameError:
-    IS_NOTEBOOK = False
 
 # Try to import both backends for flag checking/warnings.
 tf1, tf, tfv = try_import_tf()
@@ -273,19 +266,11 @@ def run(args, parser):
             local_mode=args.local_mode,
         )
 
-    if IS_NOTEBOOK:
-        progress_reporter = JupyterNotebookReporter(
-            overwrite=verbose >= 3, print_intermediate_tables=verbose >= 1
-        )
-    else:
-        progress_reporter = CLIReporter(print_intermediate_tables=verbose >= 1)
-
     run_experiments(
         experiments,
         scheduler=create_scheduler(args.scheduler, **args.scheduler_config),
         resume=args.resume,
         verbose=verbose,
-        progress_reporter=progress_reporter,
         concurrent=True,
     )
 
