@@ -24,5 +24,6 @@ __all__ = [
     "SIMPLE_Q_DEFAULT_CONFIG",
     "SimpleQTFPolicy",
     "SimpleQTorchPolicy",
+    "SimpleQConfig",
     "SimpleQTrainer",
 ]
