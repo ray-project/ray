@@ -1,0 +1,1 @@
+../ci/env/check_minimal_install.py

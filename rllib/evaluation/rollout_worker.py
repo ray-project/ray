@@ -575,17 +575,6 @@ class RolloutWorker(ParallelIteratorWorker):
         self.policy_dict = _determine_spaces_for_multi_agent_dict(
             policy_spec, self.env, spaces=self.spaces, policy_config=policy_config
         )
-        # If spaces unknown,
-        if self.spaces is None:
-            self.spaces = {
-                pid: (
-                    getattr(
-                        pol.observation_space, "original_space", pol.observation_space
-                    ),
-                    getattr(pol.action_space, "original_space", pol.action_space),
-                )
-                for pid, pol in self.policy_dict.items()
-            }
 
         # Set of IDs of those policies, which should be trained. This property
         # is optional and mainly used for backward compatibility.
