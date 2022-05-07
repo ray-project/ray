@@ -366,7 +366,7 @@ def chop_into_sequences(
 
 def timeslice_along_seq_lens_with_overlap(
     sample_batch: SampleBatchType,
-    seq_lens: List[int] = None,
+    seq_lens: Optional[List[int]] = None,
     zero_pad_max_seq_len: int = 0,
     pre_overlap: int = 0,
     zero_init_states: bool = True,
@@ -409,16 +409,17 @@ def timeslice_along_seq_lens_with_overlap(
     if seq_lens is None:
         seq_lens = sample_batch.get(SampleBatch.SEQ_LENS)
     if seq_lens is None:
+        max_seq_len = zero_pad_max_seq_len - pre_overlap
         if log_once("no_sequence_lengths_available_for_time_slicing"):
             logger.warning(
                 "Trying to slice a batch along sequences without "
                 "sequence lengths being provided in the batch. Batch will "
-                "be sliced into slices of size"
-                "zero_pad_max_seq_len - pre_overlap."
+                "be sliced into slices of size "
+                "{} = {} - {} = zero_pad_max_seq_len - pre_overlap.".format(
+                    max_seq_len, zero_pad_max_seq_len, pre_overlap
+                )
             )
-        num_seq_lens, last_seq_len = divmod(
-            len(sample_batch), zero_pad_max_seq_len - pre_overlap
-        )
+        num_seq_lens, last_seq_len = divmod(len(sample_batch), max_seq_len)
         seq_lens = [zero_pad_max_seq_len] * num_seq_lens + (
             [last_seq_len] if last_seq_len else []
         )
