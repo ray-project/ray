@@ -3,8 +3,8 @@ A multi-agent, distributed multi-GPU, league-capable asynch. PPO
 ================================================================
 """
 import gym
-from typing import Optional, Type
 import tree
+from typing import Any, Dict, Optional, Type
 
 
 import ray
@@ -139,12 +139,12 @@ class AlphaStarConfig(appo.APPOConfig):
     def training(
         self,
         *,
-        replay_buffer_capacity,
-        replay_buffer_replay_ratio,
-        sample_wait_timeout,
-        learn_wait_timeout,
-        league_builder_config,
-        max_num_policies_to_train,
+        replay_buffer_capacity: Optional[int] = None,
+        replay_buffer_replay_ratio: Optional[float] = None,
+        sample_wait_timeout: Optional[float] = None,
+        learn_wait_timeout: Optional[float] = None,
+        league_builder_config: Optional[Dict[str, Any]] = None,
+        max_num_policies_to_train: Optional[int] = None,
         **kwargs,
     ) -> "AlphaStarConfig":
         """Sets the training related configuration.
