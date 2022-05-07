@@ -28,7 +28,7 @@ nevergrad==0.4.3.post7
 optuna==2.10.0
 pytest-remotedata==0.3.2
 lightning-bolts==0.4.0
-pytorch-lightning==1.5.10
+pytorch-lightning==1.6.3
 shortuuid==1.0.1
 scikit-learn==0.24.2
 scikit-optimize==0.8.1
