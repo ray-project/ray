@@ -69,6 +69,7 @@ class DynamicTFPolicyV2(TFPolicy):
 
         self.validate_spaces(obs_space, action_space, config)
 
+        self.dist_class = self._init_dist_class()
         # Setup self.model.
         if existing_model and isinstance(existing_model, list):
             self.model = existing_model[0]
@@ -87,7 +88,6 @@ class DynamicTFPolicyV2(TFPolicy):
             sampled_action,
             sampled_action_logp,
             dist_inputs,
-            dist_class,
             self._policy_extra_action_fetches,
         ) = self._init_action_fetches(timestep, explore)
 
@@ -119,7 +119,7 @@ class DynamicTFPolicyV2(TFPolicy):
             sampled_action=sampled_action,
             sampled_action_logp=sampled_action_logp,
             dist_inputs=dist_inputs,
-            dist_class=dist_class,
+            dist_class=self.dist_class,
             loss=None,  # dynamically initialized on run
             loss_inputs=[],
             model=self.model,
@@ -387,6 +387,19 @@ class DynamicTFPolicyV2(TFPolicy):
         """
         return super().optimizer()
 
+    def _init_dist_class(self):
+        if is_overridden(self.action_sampler_fn) or is_overridden(self.action_distribution_fn):
+            if not is_overridden(self.make_model):
+                raise ValueError(
+                    "`make_model` is required if `action_sampler_fn` OR "
+                    "`action_distribution_fn` is given"
+                )
+        else:
+            dist_class, _ = ModelCatalog.get_action_dist(
+                self.action_space, self.config["model"]
+            )
+        return dist_class
+
     def _init_view_requirements(self):
         # If ViewRequirements are explicitly specified.
         if getattr(self, "view_requirements", None):
@@ -541,7 +554,6 @@ class DynamicTFPolicyV2(TFPolicy):
         # graphs.
         sampled_action = None
         sampled_action_logp = None
-        dist_class = None
         dist_inputs = None
         extra_action_fetches = {}
         self._state_out = None
@@ -569,7 +581,7 @@ class DynamicTFPolicyV2(TFPolicy):
                     in_dict = self._input_dict
                     (
                         dist_inputs,
-                        dist_class,
+                        self.dist_class,
                         self._state_out,
                     ) = self.action_distribution_fn(
                         self.model,
@@ -583,9 +595,6 @@ class DynamicTFPolicyV2(TFPolicy):
                 # Default distribution generation behavior:
                 # Pass through model. E.g., PG, PPO.
                 else:
-                    dist_class, _ = ModelCatalog.get_action_dist(
-                        self.action_space, self.config["model"]
-                    )
                     if isinstance(self.model, tf.keras.Model):
                         dist_inputs, self._state_out, extra_action_fetches = self.model(
                             self._input_dict
@@ -593,7 +602,7 @@ class DynamicTFPolicyV2(TFPolicy):
                     else:
                         dist_inputs, self._state_out = self.model(self._input_dict)
 
-                action_dist = dist_class(dist_inputs, self.model)
+                action_dist = self.dist_class(dist_inputs, self.model)
 
                 # Using exploration to get final action (e.g. via sampling).
                 (
@@ -607,7 +616,6 @@ class DynamicTFPolicyV2(TFPolicy):
             sampled_action,
             sampled_action_logp,
             dist_inputs,
-            dist_class,
             extra_action_fetches,
         )
 

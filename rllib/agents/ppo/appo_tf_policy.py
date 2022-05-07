@@ -153,9 +153,6 @@ def get_appo_tf_policy(base: type) -> type:
             VTraceClipGradients.__init__(self)
             VTraceOptimizer.__init__(self)
             LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
-            EntropyCoeffSchedule.__init__(
-                self, config["entropy_coeff"], config["entropy_coeff_schedule"]
-            )
 
             # Initialize base class.
             base.__init__(
@@ -167,6 +164,9 @@ def get_appo_tf_policy(base: type) -> type:
                 existing_model=existing_model,
             )
 
+            EntropyCoeffSchedule.__init__(
+                self, config["entropy_coeff"], config["entropy_coeff_schedule"]
+            )
             ValueNetworkMixin.__init__(self, config)
             KLCoeffMixin.__init__(self, config)
 

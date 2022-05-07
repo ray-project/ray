@@ -78,9 +78,6 @@ class APPOTorchPolicy(
         GradClippingMixin.__init__(self)
         VTraceOptimizer.__init__(self)
         LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
-        EntropyCoeffSchedule.__init__(
-            self, config["entropy_coeff"], config["entropy_coeff_schedule"]
-        )
 
         TorchPolicyV2.__init__(
             self,
@@ -90,6 +87,9 @@ class APPOTorchPolicy(
             max_seq_len=config["model"]["max_seq_len"],
         )
 
+        EntropyCoeffSchedule.__init__(
+            self, config["entropy_coeff"], config["entropy_coeff_schedule"]
+        )
         ValueNetworkMixin.__init__(self, config)
         KLCoeffMixin.__init__(self, config)
 
