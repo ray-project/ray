@@ -177,8 +177,7 @@ public class RuntimeEnvTest {
       Ray.init();
       final RuntimeEnv runtimeEnv = new RuntimeEnv.Builder().addJars(ImmutableList.of(url)).build();
       ActorHandle<A> actor1 = Ray.actor(A::new).setRuntimeEnv(runtimeEnv).remote();
-      boolean ret =
-          actor1.task(A::findClass, "io.testpackages.Foo").remote().get();
+      boolean ret = actor1.task(A::findClass, "io.testpackages.Foo").remote().get();
       Assert.assertTrue(ret);
     } finally {
       Ray.shutdown();

@@ -349,7 +349,7 @@ class RuntimeEnv(dict):
             runtime_env["config"] = config
 
         if runtime_env.get("java_jars"):
-            runtime_env["java_jars"] = runtime_env.get("java_jars") 
+            runtime_env["java_jars"] = runtime_env.get("java_jars")
 
         # Blindly trust that the runtime_env has already been validated.
         # This is dangerous and should only be used internally (e.g., on the
@@ -529,9 +529,9 @@ class RuntimeEnv(dict):
                 proto_runtime_env.python_runtime_env.py_modules
             )
         if proto_runtime_env.java_runtime_env.dependent_jars:
-           initialize_dict["java_jars"] = list(
+            initialize_dict["java_jars"] = list(
                 proto_runtime_env.java_runtime_env.dependent_jars
-            ) 
+            )
         if proto_runtime_env.working_dir:
             initialize_dict["working_dir"] = proto_runtime_env.working_dir
         if proto_runtime_env.env_vars:
@@ -589,6 +589,7 @@ class RuntimeEnv(dict):
         if "java_jars" in self:
             return list(self["java_jars"])
         return []
+ 
  
     def env_vars(self) -> Dict:
         return self.get("env_vars", {})

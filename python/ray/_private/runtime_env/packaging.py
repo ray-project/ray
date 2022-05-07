@@ -198,6 +198,7 @@ def is_whl_uri(uri: str) -> bool:
 
     return Path(path).suffix == ".whl"
 
+
 def is_jar_uri(uri: str) -> bool:
     try:
         _, path = parse_uri(uri)
@@ -205,6 +206,7 @@ def is_jar_uri(uri: str) -> bool:
         return False
 
     return Path(path).suffix == ".jar"
+
 
 def _get_excludes(path: Path, excludes: List[str]) -> Callable:
     path = path.absolute()

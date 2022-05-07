@@ -327,15 +327,11 @@ class RuntimeEnvAgent(
                             size_bytes = await manager.create(
                                 uri, runtime_env, context, logger=per_job_logger
                             )
-                            uri_cache.add(
-                                uri, size_bytes, logger=per_job_logger
-                            )
+                            uri_cache.add(uri, size_bytes, logger=per_job_logger)
                         else:
                             per_job_logger.debug(f"Cache hit for URI {uri}.")
                             uri_cache.mark_used(uri, logger=per_job_logger)
-                manager.modify_context(
-                    uris, runtime_env, context
-                )
+                manager.modify_context(uris, runtime_env, context)
 
             def setup_plugins():
                 # Run setup function from all the plugins
