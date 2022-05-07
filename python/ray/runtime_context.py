@@ -183,8 +183,10 @@ class RuntimeContext(object):
 
         Example:
         >>> # Inherit current runtime env, except `env_vars`
-        >>> Actor.options(runtime_env=ray.get_runtime_context().runtime_env.update(
-            {"env_vars": {"A": "a", "B": "b"}}))
+        >>> Actor.options( # doctest: +SKIP
+        ...     runtime_env=ray.get_runtime_context().runtime_env.update(
+        ...     {"env_vars": {"A": "a", "B": "b"}})
+        ... ) # doctest: +SKIP
         """
 
         return RuntimeEnv.deserialize(self._get_runtime_env_string())
