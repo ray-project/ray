@@ -194,10 +194,11 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         """
         if batch is None:
             if log_once("empty_batch_added_to_buffer"):
-                logger.info("A batch that is `None` was added to {}. This can be "
-                            "normal at the beginning of execution but might "
-                            "indicate an issue.".format(type(
-                    self).__name__))
+                logger.info(
+                    "A batch that is `None` was added to {}. This can be "
+                    "normal at the beginning of execution but might "
+                    "indicate an issue.".format(type(self).__name__)
+                )
             return
         # Make a copy so the replay buffer doesn't pin plasma memory.
         batch = batch.copy()

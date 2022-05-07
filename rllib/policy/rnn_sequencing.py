@@ -410,13 +410,18 @@ def timeslice_along_seq_lens_with_overlap(
         seq_lens = sample_batch.get(SampleBatch.SEQ_LENS)
     if seq_lens is None:
         if log_once("no_sequence_lengths_available_for_time_slicing"):
-            logger.warning("Trying to slice a batch along sequences without "
-                           "sequence lengths being provided in the batch. Batch will "
-                           "be sliced into slices of size"
-                           "zero_pad_max_seq_len - pre_overlap.")
-        num_seq_lens, last_seq_len = divmod(len(sample_batch), zero_pad_max_seq_len - pre_overlap)
-        seq_lens = [zero_pad_max_seq_len] * num_seq_lens + ([last_seq_len] if
-                                                            last_seq_len else [])
+            logger.warning(
+                "Trying to slice a batch along sequences without "
+                "sequence lengths being provided in the batch. Batch will "
+                "be sliced into slices of size"
+                "zero_pad_max_seq_len - pre_overlap."
+            )
+        num_seq_lens, last_seq_len = divmod(
+            len(sample_batch), zero_pad_max_seq_len - pre_overlap
+        )
+        seq_lens = [zero_pad_max_seq_len] * num_seq_lens + (
+            [last_seq_len] if last_seq_len else []
+        )
     assert (
         seq_lens is not None and len(seq_lens) > 0
     ), "Cannot timeslice along `seq_lens` when `seq_lens` is empty or None!"
