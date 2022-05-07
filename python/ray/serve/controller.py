@@ -567,7 +567,7 @@ class ServeController:
 
             # Run DAG locally on cluster
             serve.start(_override_controller_namespace="serve")
-            serve.run(graph)
+            serve.run(app)
 
         self.deploy_config_task_ref = run_graph.remote(
             config["graph_import_path"], config["deployments"]
