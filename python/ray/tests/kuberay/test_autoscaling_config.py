@@ -206,6 +206,21 @@ def test_autoscaling_config(
                 mock_logger.warning.assert_not_called()
 
 
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
+def test_cr_image_consistency():
+    """Verify that the example config uses the same Ray image for all Ray pods."""
+    cr = _get_basic_ray_cr()
+
+    group_specs = [cr["spec"]["headGroupSpec"]] + cr["spec"]["workerGroupSpecs"]
+    assert len(group_specs) == 2
+
+    ray_images = set(
+        group_spec["template"]["spec"]["containers"][0]["image"]
+        for group_spec in group_specs
+    )
+    assert len(ray_images) == 1
+
+
 if __name__ == "__main__":
     import pytest
     import sys
