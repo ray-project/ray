@@ -26,38 +26,33 @@ class TestAlphaStar(unittest.TestCase):
 
     def test_alpha_star_compilation(self):
         """Test whether a AlphaStarTrainer can be built with all frameworks."""
-
-        config = {
-            "env": "connect_four",
-            "gamma": 1.0,
-            "num_workers": 4,
-            "num_envs_per_worker": 5,
-            "model": {
-                "fcnet_hiddens": [256, 256, 256],
-            },
-            "vf_loss_coeff": 0.01,
-            "entropy_coeff": 0.004,
-            "league_builder_config": {
-                "win_rate_threshold_for_new_snapshot": 0.8,
-                "num_random_policies": 2,
-                "num_learning_league_exploiters": 1,
-                "num_learning_main_exploiters": 1,
-            },
-            "grad_clip": 10.0,
-            "replay_buffer_capacity": 10,
-            "replay_buffer_replay_ratio": 0.0,
-            # Two GPUs -> 2 policies per GPU.
-            "num_gpus": 4,
-            "_fake_gpus": True,
-            # Test with KL loss, just to cover that extra code.
-            "use_kl_loss": True,
-        }
+        config = (
+            alpha_star.AlphaStarConfig()
+            .environment(env="connect_four")
+            .training(
+                gamma=1.0,
+                model={"fcnet_hiddens": [256, 256, 256]},
+                vf_loss_coeff=0.01,
+                entropy_coeff=0.004,
+                league_builder_config={
+                    "win_rate_threshold_for_new_snapshot": 0.8,
+                    "num_random_policies": 2,
+                    "num_learning_league_exploiters": 1,
+                    "num_learning_main_exploiters": 1,
+                },
+                grad_clip=10.0,
+                replay_buffer_capacity=10,
+                replay_buffer_replay_ratio=0.0,
+                use_kl_loss=True,
+            )
+            .rollouts(num_rollout_workers=4, num_envs_per_worker=5)
+            .resources(num_gpus=4, _fake_gpus=True)
+        )
 
         num_iterations = 2
 
         for _ in framework_iterator(config, with_eager_tracing=True):
-            _config = config.copy()
-            trainer = alpha_star.AlphaStarTrainer(config=_config)
+            trainer = config.build()
             for i in range(num_iterations):
                 results = trainer.train()
                 print(results)

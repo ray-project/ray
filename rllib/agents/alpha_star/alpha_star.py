@@ -19,6 +19,7 @@ from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentRepla
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
@@ -91,7 +92,11 @@ class AlphaStarConfig(appo.APPOConfig):
         # League-building parameters.
         # The LeagueBuilder class to be used for league building logic.
         self.league_builder_config = {
+            # Specify the sub-class of the `LeagueBuilder` API to use.
             "type": AlphaStarLeagueBuilder,
+
+            # Any any number of constructor kwargs to pass to this class:
+
             # The number of random policies to add to the league. This must be an
             # even number (including 0) as these will be evenly distributed
             # amongst league- and main- exploiters.
@@ -165,8 +170,12 @@ class AlphaStarConfig(appo.APPOConfig):
                 construct the LeagueBuilder instance. See the
                 `ray.rllib.agents.alpha_star.league_builder::AlphaStarLeagueBuilder`
                 (used by default by this algo) as an example.
-            max_num_policies_to_train:
-            **kwargs:
+            max_num_policies_to_train: The maximum number of trainable policies for this
+                Trainer. Each trainable policy will exist as a independent remote actor,
+                co-located with a replay buffer. This is besides its existence inside
+                the RolloutWorkers for training and evaluation. Set to None for
+                automatically inferring this value from the number of trainable
+                policies found in the `multiagent` config.
 
         Returns:
             This updated TrainerConfig object.
@@ -176,58 +185,18 @@ class AlphaStarConfig(appo.APPOConfig):
 
         # TODO: Unify the buffer API, then clean up our existing
         #  implementations of different buffers.
-        replay_buffer_capacity
-        replay_buffer_replay_ratio
-        sample_wait_timeout
-        learn_wait_timeout
-        league_builder_config
-            "type": AlphaStarLeagueBuilder,
-            # The number of random policies to add to the league. This must be an
-            # even number (including 0) as these will be evenly distributed
-            # amongst league- and main- exploiters.
-            "num_random_policies": 2,
-            # The number of initially learning league-exploiters to create.
-            "num_learning_league_exploiters": 4,
-            # The number of initially learning main-exploiters to create.
-            "num_learning_main_exploiters": 4,
-            # Minimum win-rate (between 0.0 = 0% and 1.0 = 100%) of any policy to
-            # be considered for snapshotting (cloning). The cloned copy may then
-            # be frozen (no further learning) or keep learning (independent of
-            # its ancestor policy).
-            # Set this to lower values to speed up league growth.
-            "win_rate_threshold_for_new_snapshot": 0.9,
-            # If we took a new snapshot of any given policy, what's the probability
-            # that this snapshot will continue to be trainable (rather than become
-            # frozen/non-trainable)? By default, only keep those policies trainable
-            # that have been trainable from the very beginning.
-            "keep_new_snapshot_training_prob": 0.0,
-            # Probabilities of different match-types:
-            # LE: Learning league_exploiter vs any.
-            # ME: Learning main exploiter vs any main.
-            # M: Main self-play (p=1.0 - LE - ME).
-            "prob_league_exploiter_match": 0.33,
-            "prob_main_exploiter_match": 0.33,
-            # Only for ME matches: Prob to play against learning
-            # main (vs a snapshot main).
-            "prob_main_exploiter_playing_against_learning_main": 0.5,
-        },
-
-        # The maximum number of trainable policies for this Trainer.
-        # Each trainable policy will exist as a independent remote actor, co-located
-        # with a replay buffer. This is besides its existence inside
-        # the RolloutWorkers for training and evaluation.
-        # Set to None for automatically inferring this value from the number of
-        # trainable policies found in the `multiagent` config.
-        "max_num_policies_to_train": None,
-
-        # By default, don't drop last timestep.
-        # TODO: We should do the same for IMPALA and APPO at some point.
-        "vtrace_drop_last_ts": False,
-
-        # Reporting interval.
-        "min_time_s_per_reporting": 2,
-
-
+        if replay_buffer_capacity is not None:
+            self.replay_buffer_capacity = replay_buffer_capacity
+        if replay_buffer_replay_ratio is not None:
+            self.replay_buffer_replay_ratio = replay_buffer_replay_ratio
+        if sample_wait_timeout is not None:
+            self.sample_wait_timeout = sample_wait_timeout
+        if learn_wait_timeout is not None:
+            self.learn_wait_timeout = learn_wait_timeout
+        if league_builder_config is not None:
+            self.league_builder_config = league_builder_config
+        if max_num_policies_to_train is not None:
+            self.max_num_policies_to_train = max_num_policies_to_train
 
         return self
 
@@ -607,3 +576,20 @@ class AlphaStarTrainer(appo.APPOTrainer):
         state_copy = state.copy()
         self.league_builder.__setstate__(state.pop("league_builder", {}))
         super().__setstate__(state_copy)
+
+
+# Deprecated: Use ray.rllib.agents.ppo.PPOConfig instead!
+class _deprecated_default_config(dict):
+    def __init__(self):
+        super().__init__(AlphaStarConfig().to_dict())
+
+    @Deprecated(
+        old="ray.rllib.agents.alpha_star.alpha_star.DEFAULT_CONFIG",
+        new="ray.rllib.agents.alpha_star.alpha_star.AlphaStarConfig(...)",
+        error=False,
+    )
+    def __getitem__(self, item):
+        return super().__getitem__(item)
+
+
+DEFAULT_CONFIG = _deprecated_default_config()
