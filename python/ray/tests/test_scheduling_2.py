@@ -443,7 +443,7 @@ def test_spread_scheduling_strategy(ray_start_cluster, connect_to_client):
 
         @ray.remote
         def get_node_id():
-            return ray.worker.global_worker.current_node_id
+            return ray.get_runtime_context().node_id.hex()
 
         worker_node_ids = {
             ray.get(get_node_id.options(resources={f"foo:{i}": 1}).remote())
@@ -457,12 +457,12 @@ def test_spread_scheduling_strategy(ray_start_cluster, connect_to_client):
             internal_kv._internal_kv_put("test_task1", "task1")
             while internal_kv._internal_kv_exists("test_task1"):
                 time.sleep(0.1)
-            return ray.worker.global_worker.current_node_id
+            return ray.get_runtime_context().node_id.hex()
 
         @ray.remote
         def task2():
             internal_kv._internal_kv_put("test_task2", "task2")
-            return ray.worker.global_worker.current_node_id
+            return ray.get_runtime_context().node_id.hex()
 
         locations = []
         locations.append(task1.remote())
@@ -476,6 +476,25 @@ def test_spread_scheduling_strategy(ray_start_cluster, connect_to_client):
         internal_kv._internal_kv_del("test_task1")
         internal_kv._internal_kv_del("test_task2")
         assert set(ray.get(locations)) == worker_node_ids
+
+        # Wait for updating driver raylet's resource view.
+        time.sleep(5)
+
+        # Make sure actors can be spreaded as well.
+        @ray.remote(num_cpus=1)
+        class Actor:
+            def ping(self):
+                return ray.get_runtime_context().node_id.hex()
+
+        actors = []
+        locations = []
+        for i in range(8):
+            actors.append(Actor.options(scheduling_strategy="SPREAD").remote())
+            locations.append(ray.get(actors[-1].ping.remote()))
+        locations.sort()
+        expected_locations = list(worker_node_ids) * 4
+        expected_locations.sort()
+        assert locations == expected_locations
 
 
 @pytest.mark.skipif(
