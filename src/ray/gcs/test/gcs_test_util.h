@@ -239,8 +239,7 @@ struct Mocker {
   }
 
   static std::shared_ptr<rpc::AddJobRequest> GenAddJobRequest(
-      const JobID &job_id,
-      const std::string &ray_namespace) {
+      const JobID &job_id, const std::string &ray_namespace) {
     auto job_config_data = std::make_shared<rpc::JobConfig>();
     job_config_data->set_ray_namespace(ray_namespace);
 

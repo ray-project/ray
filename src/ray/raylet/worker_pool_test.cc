@@ -36,10 +36,6 @@ const std::string BAD_RUNTIME_ENV_ERROR_MSG = "bad runtime env";
 
 std::vector<Language> LANGUAGES = {Language::PYTHON, Language::JAVA};
 
-static inline std::string GetNumJavaWorkersPerProcessSystemProperty(int num) {
-  return std::string("-Dray.job.num-java-workers-per-process=") + std::to_string(num);
-}
-
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
   MockWorkerClient(instrumented_io_context &io_service) : io_service_(io_service) {}
@@ -491,13 +487,6 @@ class WorkerPoolTest : public ::testing::Test {
         last_started_worker_process = prev;
         const auto &real_command =
             worker_pool_->GetWorkerCommand(last_started_worker_process);
-        if (language == Language::JAVA) {
-          auto it = std::find(
-              real_command.begin(),
-              real_command.end(),
-              GetNumJavaWorkersPerProcessSystemProperty(num_workers_per_process));
-          ASSERT_NE(it, real_command.end());
-        }
       } else {
         ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(),
                   expected_worker_process_count);
@@ -776,7 +765,6 @@ TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
       expected_command.end(),
       {"-Xmx1g", "-Xms500m", "-Dmy-job.hello=world", "-Dmy-job.foo=bar"});
   // Ray-defined per-process options
-  expected_command.push_back(GetNumJavaWorkersPerProcessSystemProperty(1));
   expected_command.push_back("-Dray.raylet.startup-token=0");
   expected_command.push_back("-Dray.internal.runtime-env-hash=1");
   // User-defined per-process options

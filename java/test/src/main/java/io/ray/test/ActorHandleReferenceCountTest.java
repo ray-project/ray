@@ -65,7 +65,6 @@ public class ActorHandleReferenceCountTest {
 
   public void testActorHandleReferenceCount() {
     try {
-      System.setProperty("ray.job.num-java-workers-per-process", "1");
       Ray.init();
       ActorHandle<SignalActor> signal = Ray.actor(SignalActor::new).remote();
       ActorHandle<MyActor> myActor = Ray.actor(MyActor::new).remote();
@@ -85,7 +84,6 @@ public class ActorHandleReferenceCountTest {
   }
 
   public void testRemoveActorHandleReferenceInMultipleThreadedActor() throws InterruptedException {
-    System.setProperty("ray.job.num-java-workers-per-process", "5");
     try {
       Ray.init();
       ActorHandle<MyActor> myActor1 = Ray.actor(MyActor::new).remote();

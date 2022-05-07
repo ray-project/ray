@@ -203,13 +203,10 @@ void WorkerPool::AddWorkerProcess(
     const Process &proc,
     const std::chrono::high_resolution_clock::time_point &start,
     const rpc::RuntimeEnvInfo &runtime_env_info) {
-  state.worker_processes.emplace(worker_startup_token_counter_,
-                                 WorkerProcessInfo{is_pending_registration,
-                                                   {},
-                                                   worker_type,
-                                                   proc,
-                                                   start,
-                                                   runtime_env_info});
+  state.worker_processes.emplace(
+      worker_startup_token_counter_,
+      WorkerProcessInfo{
+          is_pending_registration, {}, worker_type, proc, start, runtime_env_info});
 }
 
 void WorkerPool::RemoveWorkerProcess(State &state,
@@ -457,7 +454,12 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
                 << worker_startup_token_counter_;
   MonitorStartingWorkerProcess(
       proc, worker_startup_token_counter_, language, worker_type);
-  AddWorkerProcess(state, /*is_pending_registration=*/true, worker_type, proc, start, runtime_env_info);
+  AddWorkerProcess(state,
+                   /*is_pending_registration=*/true,
+                   worker_type,
+                   proc,
+                   start,
+                   runtime_env_info);
   StartupToken worker_startup_token = worker_startup_token_counter_;
   update_worker_startup_token_counter();
   if (IsIOWorkerType(worker_type)) {
@@ -1012,8 +1014,7 @@ void WorkerPool::TryKillingIdleWorkers() {
     auto &worker_state = GetStateForLanguage(idle_worker->GetLanguage());
 
     auto it = worker_state.worker_processes.find(worker_startup_token);
-    if (it != worker_state.worker_processes.end() &&
-        it->second.is_pending_registration) {
+    if (it != worker_state.worker_processes.end() && it->second.is_pending_registration) {
       // A Java worker process may hold multiple workers.
       // Some workers of this process are pending registration. Skip killing this worker.
       continue;
@@ -1476,7 +1477,8 @@ void WorkerPool::WarnAboutSize() {
     num_workers_started_or_registered +=
         static_cast<int64_t>(state.registered_workers.size());
     for (const auto &starting_process : state.worker_processes) {
-      num_workers_started_or_registered += starting_process.second.is_pending_registration ? 0 : 1;
+      num_workers_started_or_registered +=
+          starting_process.second.is_pending_registration ? 0 : 1;
     }
     // Don't count IO workers towards the warning message threshold.
     num_workers_started_or_registered -= RayConfig::instance().max_io_workers() * 2;

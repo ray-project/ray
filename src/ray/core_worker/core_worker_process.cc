@@ -82,9 +82,9 @@ thread_local std::weak_ptr<CoreWorker> CoreWorkerProcessImpl::thread_local_core_
 
 CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
     : options_(options),
-      global_worker_id_(
-          options.worker_type == WorkerType::DRIVER
-              ? ComputeDriverIdFromJob(options_.job_id) : WorkerID::FromRandom()) {
+      global_worker_id_(options.worker_type == WorkerType::DRIVER
+                            ? ComputeDriverIdFromJob(options_.job_id)
+                            : WorkerID::FromRandom()) {
   if (options_.enable_logging) {
     std::stringstream app_name;
     app_name << LanguageString(options_.language) << "-core-"
@@ -244,7 +244,7 @@ bool CoreWorkerProcessImpl::ShouldCreateGlobalWorkerOnConstruction() const {
   // to create the worker instance here. One example of invocations is
   // https://github.com/ray-project/ray/blob/45ce40e5d44801193220d2c546be8de0feeef988/python/ray/worker.py#L1281.
   return (options_.worker_type == WorkerType::DRIVER ||
-                                       options_.language == Language::PYTHON);
+          options_.language == Language::PYTHON);
 }
 
 std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::GetWorker(
@@ -286,15 +286,15 @@ void CoreWorkerProcessImpl::RemoveWorker(std::shared_ptr<CoreWorker> worker) {
 
 void CoreWorkerProcessImpl::RunWorkerTaskExecutionLoop() {
   RAY_CHECK(options_.worker_type == WorkerType::WORKER);
-    // Run the task loop in the current thread only if the number of workers is 1.
-    auto worker = GetGlobalWorker();
-    if (!worker) {
-      worker = CreateWorker();
-    }
-    worker->RunTaskExecutionLoop();
-    RAY_LOG(INFO) << "Task execution loop terminated. Removing the global worker.";
-    RemoveWorker(worker);
+  // Run the task loop in the current thread only if the number of workers is 1.
+  auto worker = GetGlobalWorker();
+  if (!worker) {
+    worker = CreateWorker();
   }
+  worker->RunTaskExecutionLoop();
+  RAY_LOG(INFO) << "Task execution loop terminated. Removing the global worker.";
+  RemoveWorker(worker);
+}
 
 void CoreWorkerProcessImpl::ShutdownDriver() {
   RAY_CHECK(options_.worker_type == WorkerType::DRIVER)
@@ -307,31 +307,30 @@ void CoreWorkerProcessImpl::ShutdownDriver() {
 }
 
 CoreWorker &CoreWorkerProcessImpl::GetCoreWorkerForCurrentThread() {
-    auto global_worker = GetGlobalWorker();
-    if (ShouldCreateGlobalWorkerOnConstruction() && !global_worker) {
-      // This could only happen when the worker has already been shutdown.
-      // In this case, we should exit without crashing.
-      // TODO (scv119): A better solution could be returning error code
-      // and handling it at language frontend.
-      if (options_.worker_type == WorkerType::DRIVER) {
-        RAY_LOG(ERROR)
-            << "The global worker has already been shutdown. This happens when "
-               "the language frontend accesses the Ray's worker after it is "
-               "shutdown. The process will exit";
-      } else {
-        RAY_LOG(INFO) << "The global worker has already been shutdown. This happens when "
-                         "the language frontend accesses the Ray's worker after it is "
-                         "shutdown. The process will exit";
-      }
-      QuickExit();
+  auto global_worker = GetGlobalWorker();
+  if (ShouldCreateGlobalWorkerOnConstruction() && !global_worker) {
+    // This could only happen when the worker has already been shutdown.
+    // In this case, we should exit without crashing.
+    // TODO (scv119): A better solution could be returning error code
+    // and handling it at language frontend.
+    if (options_.worker_type == WorkerType::DRIVER) {
+      RAY_LOG(ERROR) << "The global worker has already been shutdown. This happens when "
+                        "the language frontend accesses the Ray's worker after it is "
+                        "shutdown. The process will exit";
+    } else {
+      RAY_LOG(INFO) << "The global worker has already been shutdown. This happens when "
+                       "the language frontend accesses the Ray's worker after it is "
+                       "shutdown. The process will exit";
     }
-    RAY_CHECK(global_worker) << "global_worker_ must not be NULL";
-    return *global_worker;
+    QuickExit();
+  }
+  RAY_CHECK(global_worker) << "global_worker_ must not be NULL";
+  return *global_worker;
 }
 
 void CoreWorkerProcessImpl::SetThreadLocalWorkerById(const WorkerID &worker_id) {
-    RAY_CHECK(GetGlobalWorker()->GetWorkerID() == worker_id);
-    return;
+  RAY_CHECK(GetGlobalWorker()->GetWorkerID() == worker_id);
+  return;
 }
 
 }  // namespace core

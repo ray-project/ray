@@ -3102,6 +3102,9 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
     if (request.no_restart()) {
       Disconnect();
     }
+    // NOTE(hchen): Use `QuickExit()` to force-exit this process without doing cleanup.
+    // `exit()` will destruct static objects in an incorrect order, which will lead to
+    // core dumps.
     QuickExit();
   } else {
     Exit(rpc::WorkerExitType::INTENDED_EXIT);

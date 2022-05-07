@@ -22,7 +22,6 @@ public class RuntimeEnvTest {
   }
 
   public void testPerJobEnvVars() {
-    System.setProperty("ray.job.num-java-workers-per-process", "1");
     System.setProperty("ray.job.runtime-env.env-vars.KEY1", "A");
     System.setProperty("ray.job.runtime-env.env-vars.KEY2", "B");
 
@@ -40,7 +39,6 @@ public class RuntimeEnvTest {
 
   public void testPerActorEnvVars() {
     /// This is used to test that actors with runtime envs will not reuse worker process.
-    System.setProperty("ray.job.num-java-workers-per-process", "2");
     try {
       Ray.init();
       int pid1 = 0;
@@ -81,7 +79,6 @@ public class RuntimeEnvTest {
   }
 
   public void testPerActorEnvVarsOverwritePerJobEnvVars() {
-    System.setProperty("ray.job.num-java-workers-per-process", "2");
     System.setProperty("ray.job.runtime-env.env-vars.KEY1", "A");
     System.setProperty("ray.job.runtime-env.env-vars.KEY2", "B");
 
