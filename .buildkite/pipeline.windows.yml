@@ -37,10 +37,11 @@ steps:
     # The next command will be sharded into $parallelism shards.
     - . ./ci/ci.sh test_python
 
-- label: ":windows: Wheels"
+- label: ":windows: Wheels&runtime_env"
   commands:
     - *prelude_commands
     - export WINDOWS_WHEELS="1"
     - . ./ci/ci.sh init
     - . ./ci/ci.sh build
     - *upload_wheels_if_needed
+    - . ./ci/ci.sh test_windows_runtime_env 

@@ -162,6 +162,25 @@ test_python() {
       -python/ray/tests:test_k8s_operator_unit_tests
       -python/ray/tests:test_tracing  # tracing not enabled on windows
       -python/ray/tests:kuberay/test_autoscaling_e2e # irrelevant on windows
+      -python/ray/tests:test_runtime_env.py  # see test_windows_runtime_env
+      -python/ray/tests:test_runtime_env_2.py  # see test_windows_runtime_env
+      -python/ray/tests:test_runtime_env_working_dir.py  # see test_windows_runtime_env
+      -python/ray/tests:test_runtime_env_working_dir_2.py  # see test_windows_runtime_env
+      -python/ray/tests:test_runtime_env_working_dir_3.py  # see test_windows_runtime_env
+      -python/ray/tests:test_runtime_env_working_dir_remote_uri.py  # see test_windows_runtime_env
+      -python/ray/tests:test_runtime_env_conda_and_pip.py  # see test_windows_runtime_env
+      -python/ray/tests:test_runtime_env_conda_and_pip_2.py  # see test_windows_runtime_env
+      -python/ray/tests:test_runtime_env_conda_and_pip_3.py  # see test_windows_runtime_env
+      -python/ray/tests:test_runtime_env_conda_and_pip_4.py  # see test_windows_runtime_env
+      -python/ray/tests:test_runtime_env_conda_and_pip_5.py  # see test_windows_runtime_env
+      -python/ray/tests:test_runtime_env_complicated.py  # see test_windows_runtime_env
+      -python/ray/tests:test_runtime_env_validation.py  # see test_windows_runtime_env
+      -python/ray/tests:test_runtime_env_ray_minimal.py  # see test_windows_runtime_env
+      -python/ray/tests:test_runtime_env_env_vars.py  # see test_windows_runtime_env
+      -python/ray/tests:test_runtime_env_packaging.py  # see test_windows_runtime_env
+      -python/ray/tests:test_runtime_env_plugin.py  # see test_windows_runtime_env
+      -python/ray/tests:test_runtime_env_fork_process.py  # see test_windows_runtime_env
+      
     )
   fi
   if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
@@ -176,17 +195,27 @@ test_python() {
     # It's unclear to me if this should be necessary, but this is to make tests run for now.
     # Check why this issue doesn't arise on Linux/Mac.
     # Ideally importing ray.cloudpickle should import pickle5 automatically.
-    # shellcheck disable=SC2046,SC2086
-    bazel test --config=ci \
-      --build_tests_only $(./ci/run/bazel_export_options) \
-      --test_env=PYTHONPATH="${PYTHONPATH-}${pathsep}${WORKSPACE_DIR}/python/ray/pickle5_files" \
-      --test_env=USERPROFILE="${USERPROFILE}" \
-      --test_env=CI=1 \
-      --test_env=RAY_CI_POST_WHEEL_TESTS=1 \
-      --test_output=streamed \
-      -- \
-      ${test_shard_selection};
+    test_windows  ${test_shard_selection};
   fi
+}
+
+test_windows_runtime_env() {
+  # These tests need to use WINDOWS_WHEELS=1. Maybe eventually move all
+  # the tests to use WINDOWS_WHEELS=1 like on linux?
+  test_windows $(ls python/ray/tests/test_runtime*.py | sed -e"s,^,python/ray/tests:,")
+}
+
+test_windows() {
+  # shellcheck disable=SC2046,SC2086
+  if [ -z "${args}" ]; then echo "test_windows called without tests" 1>&2; return 1; fi
+  bazel test --config=ci \
+    --build_tests_only $(./ci/run/bazel_export_options) \
+    --test_env=PYTHONPATH="${PYTHONPATH-}${pathsep}${WORKSPACE_DIR}/python/ray/pickle5_files" \
+    --test_env=USERPROFILE="${USERPROFILE}" \
+    --test_env=CI=1 \
+    --test_env=RAY_CI_POST_WHEEL_TESTS=1 \
+    --test_output=streamed \
+    -- $@;
 }
 
 # For running large Python tests on Linux and MacOS.
