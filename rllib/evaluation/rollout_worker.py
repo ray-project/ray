@@ -572,6 +572,7 @@ class RolloutWorker(ParallelIteratorWorker):
             )
 
         self.spaces = spaces
+
         self.policy_dict = _determine_spaces_for_multi_agent_dict(
             policy_spec, self.env, spaces=self.spaces, policy_config=policy_config
         )

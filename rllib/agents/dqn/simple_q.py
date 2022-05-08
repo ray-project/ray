@@ -175,7 +175,6 @@ class SimpleQConfig(TrainerConfig):
         lr_schedule: Optional[List[List[Union[int, float]]]] = None,
         adam_epsilon: Optional[float] = None,
         grad_clip: Optional[int] = None,
-        learning_starts: Optional[int] = None,
         **kwargs,
     ) -> "SimpleQConfig":
         """Sets the training related configuration.
@@ -198,8 +197,6 @@ class SimpleQConfig(TrainerConfig):
                 A schedule should normally start from timestep 0.
             adam_epsilon: Adam epsilon hyper parameter
             grad_clip: If not None, clip gradients during optimization at this value
-            learning_starts: How many steps of the model to sample before learning
-                starts.
 
         Returns:
             This updated TrainerConfig object.
@@ -219,8 +216,6 @@ class SimpleQConfig(TrainerConfig):
             self.adam_epsilon = adam_epsilon
         if grad_clip is not None:
             self.grad_clip = grad_clip
-        if learning_starts is not None:
-            self.learning_starts = learning_starts
 
         return self
 

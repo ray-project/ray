@@ -222,7 +222,7 @@ class DQNTrainer(SimpleQTrainer):
 
         for _ in range(sample_and_train_weight):
             # Sample training batch (MultiAgentBatch) from replay buffer.
-            train_batch = self.local_replay_buffer.replay(
+            train_batch = self.local_replay_buffer.sample(
                 self.config["train_batch_size"]
             )
 
