@@ -28,7 +28,7 @@ from ray.rllib.execution.train_ops import (
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
@@ -107,6 +107,9 @@ class SimpleQConfig(TrainerConfig):
         #
         self.timesteps_per_iteration = 1000
         self.target_network_update_freq = 500
+        # TODO(smorad): Remove deprecated fields after Artur plugs 
+        # the new replay buffer api into APEX
+        self.prioritized_replay = DEPRECATED_VALUE
         self.replay_buffer_config = {
             "_enable_replay_buffer_api": True,
             "learning_starts": 1000,
