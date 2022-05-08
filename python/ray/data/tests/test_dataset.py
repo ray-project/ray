@@ -3570,9 +3570,7 @@ def test_random_sample():
 
     def test(dataset, sample_size=4):
         r1 = ds.random_sample(sample_size)
-        r2 = ds.random_sample(sample_size, sampling_strategy=1)
-        assert len(r1) == 4
-        assert len(r2) == 4
+        assert len(r1) == sample_size
 
     ds = ray.data.range(10, parallelism=2)
     test(ds)
