@@ -545,3 +545,78 @@ class RE3UpdateCallbacks(DefaultCallbacks):
         # trainer._iteration as a parameter to on_learn_on_batch() call.
         RE3UpdateCallbacks._step = result["training_iteration"]
         super().on_train_result(trainer=trainer, result=result, **kwargs)
+        
+    
+class NovelDMetricsCallbacks(DefaultCallbacks):
+    
+    def __init__(self):
+        super().__init__()
+        
+    def on_episode_start(
+        self,
+        *,
+        worker: RolloutWorker,
+        base_env: BaseEnv,
+        policies: Dict[str, Policy],
+        episode: Episode,
+        env_index: int,
+        **kwargs,
+    ):
+        assert episode.length == 0, (
+            "ERROR: `on_pisode_start()` callback should be called right "
+            "after `env.reset()`."
+        )
+        
+        episode.user_data["intrinsic_reward"] = []
+        episode.user_data["novelty"] = []
+        episode.user_data["novelty_next"] = []
+        episode.user_data["state_counts_total"] = []
+        episode.user_data["state_counts_avg"] = []
+        
+    def on_episode_step(
+        self,
+        *,
+        worker: RolloutWorker,
+        base_env: BaseEnv,
+        policies: Dict[str, Policy],
+        episode: Episode,
+        env_index: int,
+        **kwargs,        
+    ):
+        assert episode.length > 0, (
+            "ERROR: `on_episode_step()` callback should not be called right "
+            "after `env.reset()`."
+        )
+        
+        (
+            intrinsic_reward,
+            novelty,
+            novelty_next,
+            state_counts_total,
+            state_counts_avg,
+        ) = policies["default_policy"].get_exploration_state()
+        
+        # Average over batch.
+        episode.user_data["intrinsic_reward"].append(np.mean(intrinsic_reward))
+        episode.user_data["novelty"].append(np.mean(novelty))
+        episode.user_data["novelty_next"].append(np.mean(novelty_next))
+        episode.user_data["state_counts_total"].append(np.mean(state_counts_total))
+        episode.user_data["state_counts_avg"].append(np.mean(state_counts_avg))
+        
+    def on_episode_end(
+        self,
+        *,
+        worker: RolloutWorker,
+        base_env: BaseEnv,
+        policies: Dict[str, Policy],
+        episode: Episode,
+        env_index: int,
+        **kwargs,
+    ):
+        # Average over episode.
+        episode.custom_metrics["intrinsic_reward"] = np.mean(episode.user_data["intrinsic_reward"])
+        episode.custom_metrics["novelty"] = np.mean(episode.user_data["novelty"])
+        episode.custom_metrics["novelty_next"] = np.mean(episode.user_data["novelty_next"])
+        episode.custom_metrics["state_counts_total"] = np.mean(episode.user_data["state_counts_total"])
+        episode.custom_metrics["state_counts_avg"] = np.mean(episode.user_data["state_counts_avg"])
+        
