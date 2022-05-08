@@ -71,6 +71,7 @@ class SimpleQConfig(TrainerConfig):
         >>>     stop={"episode_reward_mean": 200},
         >>>     config=config.to_dict()
         >>> )
+
     Example:
         >>> config = SimpleQConfig()
         >>> print(config.exploration_config)
@@ -83,6 +84,7 @@ class SimpleQConfig(TrainerConfig):
         >>> config = SimpleQConfig().rollouts(rollout_fragment_length=32)\
         >>>                         .exploration(exploration_config=explore_config)\
         >>>                         .training(learning_starts=200)
+
     Example:
         >>> config = SimpleQConfig()
         >>> print(config.exploration_config)
@@ -99,7 +101,7 @@ class SimpleQConfig(TrainerConfig):
         """Initializes a SimpleQConfig instance."""
         super().__init__(trainer_class=SimpleQTrainer)
 
-        # Simple Q specific
+        # Simple Q specific config settings.
         # fmt: off
         # __sphinx_doc_begin__
         #
@@ -123,7 +125,7 @@ class SimpleQConfig(TrainerConfig):
 
         # Overrides of TrainerConfig defaults
         # `rollouts()`
-        self.num_rollout_workers = 0
+        self.num_workers = 0
         self.rollout_fragment_length = 4
 
         # `training()`
@@ -143,9 +145,6 @@ class SimpleQConfig(TrainerConfig):
 
         # `reporting()`
         self.min_time_s_per_reporting = 1
-
-        # `experimental()`
-        self._disable_execution_plan_api = True
 
     @override(TrainerConfig)
     def training(
@@ -197,6 +196,7 @@ class SimpleQConfig(TrainerConfig):
             adam_epsilon: Adam epsilon hyper parameter
             grad_clip: If not None, clip gradients during optimization at this value
             learning_starts: How many steps of the model to sample before learning starts.
+
         Returns:
             This updated TrainerConfig object.
         """
