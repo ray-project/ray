@@ -166,7 +166,8 @@ if __name__ == "__main__":
         "multi_agent_cartpole", lambda _: MultiAgentCartPole({"num_agents": 4})
     )
 
-    # framework can be changed, so removed the hardcoded framework key from policy configs.
+    # framework can be changed, so removed the hardcoded framework key
+    # from policy configs.
     ppo_config = PPO_CONFIG
     del ppo_config["framework"]
     dqn_config = DQN_CONFIG
