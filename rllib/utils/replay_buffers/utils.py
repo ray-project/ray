@@ -89,7 +89,7 @@ def update_priorities_in_replay_buffer(
                     )
                 continue
 
-            #  Try to transform batch indices to td_error dimensions
+            #  Try to transform batch_indices to td_error dimensions
             if len(batch_indices) != len(td_error):
                 T = replay_buffer.replay_sequence_length
                 assert (
