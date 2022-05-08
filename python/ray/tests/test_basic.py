@@ -348,6 +348,23 @@ def test_options():
         "num_gpus": 1,
     }
 
+    class mock_options2(mock_options):
+        def __init__(self, **options):
+            self.options = {"_metadata": {namespace + "2": options}}
+
+    f3 = foo.options(num_cpus=1, num_gpus=1, **mock_options2(a=11, c=3))
+
+    assert f3.remote.__closure__[1].cell_contents == {
+        "_metadata": {"namespace": {"a": 1, "b": 2}, "namespace2": {"a": 11, "c": 3}},
+        "num_cpus": 1,
+        "num_gpus": 1,
+    }
+
+    # TODO(suquark): Currently, we **intended** not to support
+    # "foo.options(**mock_options(a=11, c=3), **mock_options2(a=11, c=3))" because
+    # both Serve pipeline and Workflows are alpha, and we would not add more complexity
+    # to Ray Core until these libraries become mature.
+
 
 # https://github.com/ray-project/ray/issues/17842
 def test_disable_cuda_devices():
