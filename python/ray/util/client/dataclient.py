@@ -539,8 +539,9 @@ class DataClient:
         self._async_send(datareq)
 
     def Schedule(self, request: ray_client_pb2.ClientTask, callback: ResponseCallable):
-        datareq = ray_client_pb2.DataRequest(task=request)
+        print(f'request.name{request.name} request.ByteSize{request.ByteSize()} request.type{request.type} request.payload_id:{request.payload_id}')
         if request.ByteSize() < (2 * 2 ** 30 - 100000):
+            datareq = ray_client_pb2.DataRequest(task=request)
             self._async_send(datareq, callback)
             return
         def int_to_bytes(x: int) -> bytes:
@@ -554,8 +555,7 @@ class DataClient:
         #     print(f'a_item:{a_item} v:{v} v.data:{v.data}')
         #     total_size += len(v.data)
         # print(f'inn Schedule type_datareq:{type(datareq)} type_datareq.task.kwargs:{type(datareq.task.kwargs)} request.ByteSize():{request.ByteSize()}')
-        print(f'type_datareq.task.args{type(datareq.task.args)} dir_datareq.task:{dir(datareq.task)}')
-        client_task = datareq.task
+        client_task = request
         empty_client_task = ray_client_pb2.ClientTask(
             type=client_task.type,
             name=client_task.name,
@@ -565,6 +565,7 @@ class DataClient:
             baseline_options=client_task.baseline_options,
             namespace=client_task.namespace,
         )
+        print(f'empty_client_task.name{empty_client_task.name} empty_client_task.ByteSize{empty_client_task.ByteSize()} empty_client_task.type{empty_client_task.type} empty_client_task.payload_id:{empty_client_task.payload_id}')
         args = client_task.args
         kwargs =client_task.kwargs
         ser_client_task = b'TASK_WRAPED_IN_PUT_' + empty_client_task.SerializeToString()
@@ -575,6 +576,15 @@ class DataClient:
                 b'ARG_FieLD_' + arg.reference_id +
                 b'ARG_FieLD_' + arg.data +
                 b'ARG_FieLD_' + int_to_bytes(arg.type)
+            )
+        for k, arg_v in kwargs.items():
+            print(f'k:{k} len_v.data:{len(arg_v.data)}')
+            ser_client_task += (
+                b'TAASK_ARG_' + int_to_bytes(arg_v.local) + 
+                b'ARG_FieLD_' + arg_v.reference_id +
+                b'ARG_FieLD_' + arg_v.data +
+                b'ARG_FieLD_' + int_to_bytes(arg_v.type) +
+                b'ARG_FieLD_' + str.encode(k)
             )
         # print(f'ser_datareq:{ser_client_task}')
         # ser_client_task = ser_client_task.replace(b'TASK_WRAPED_IN_PUT_', b'')

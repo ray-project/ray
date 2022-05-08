@@ -216,7 +216,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                     if not self.chunk_collector.add_chunk(req):
                         # Put request still in progress
                         continue
-                    logger.exception(f'this is a put  data0_20:{self.chunk_collector.data[0:20]} data0_20!= TASK_WRAPED_IN_PUT_:{self.chunk_collector.data[0:19] != b"TASK_WRAPED_IN_PUT_"}')
+                    logger.exception(f'this is a put  data0_200:{self.chunk_collector.data[0:200]} data0_20!= TASK_WRAPED_IN_PUT_:{self.chunk_collector.data[0:19] != b"TASK_WRAPED_IN_PUT_"}')
                     if self.chunk_collector.data[0:19] != b'TASK_WRAPED_IN_PUT_':
                         put_resp = self.basic_service._put_object(
                             self.chunk_collector.data, req.put.client_ref_id, client_id
@@ -241,7 +241,15 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                                 data=bytes(rag_parts[2]),
                                 type=int_from_bytes(bytes(rag_parts[3])) if rag_parts[3] else 0,
                             )
-                            des_client_task.args.append(arg_)
+                            if len(rag_parts) == 5:
+                                k_kwarg = bytes(rag_parts[4]).decode()
+                                des_client_task.kwargs.get_or_create(k_kwarg)
+                                des_client_task.kwargs[k_kwarg].local = arg_.local
+                                des_client_task.kwargs[k_kwarg].reference_id = arg_.reference_id
+                                des_client_task.kwargs[k_kwarg].data = arg_.data
+                                des_client_task.kwargs[k_kwarg].type = arg_.type
+                            else:
+                                des_client_task.args.append(arg_)
                         # print(f'des_client_task:{des_client_task} \n request:{request}')
                         # des_datareq = ray_client_pb2.DataRequest.FromString(des_client_task)
                         with self.clients_lock:
