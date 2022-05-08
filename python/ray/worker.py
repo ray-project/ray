@@ -1064,6 +1064,11 @@ def init(
                 "When connecting to an existing cluster, "
                 "object_store_memory must not be provided."
             )
+        if storage is not None:
+            raise ValueError(
+                "When connecting to an existing cluster, "
+                "storage must not be provided."
+            )
         if _system_config is not None and len(_system_config) != 0:
             raise ValueError(
                 "When connecting to an existing cluster, "
@@ -1088,7 +1093,6 @@ def init(
             redis_address=redis_address,
             redis_password=_redis_password,
             object_ref_seed=None,
-            storage=storage,
             temp_dir=_temp_dir,
             _system_config=_system_config,
             enable_object_reconstruction=_enable_object_reconstruction,
