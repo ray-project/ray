@@ -360,10 +360,15 @@ def test_options():
         "num_gpus": 1,
     }
 
-    # TODO(suquark): Currently, we **intended** not to support
-    # "foo.options(**mock_options(a=11, c=3), **mock_options2(a=11, c=3))" because
-    # both Serve pipeline and Workflows are alpha, and we would not add more complexity
-    # to Ray Core until these libraries become mature.
+    with pytest.raises(TypeError):
+        # Ensure only a single "**option" per ".options()".
+        # Otherwise it would be confusing.
+        foo.options(
+            num_cpus=1,
+            num_gpus=1,
+            **mock_options(a=11, c=3),
+            **mock_options2(a=11, c=3),
+        )
 
 
 # https://github.com/ray-project/ray/issues/17842
