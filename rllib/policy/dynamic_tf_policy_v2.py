@@ -135,6 +135,13 @@ class DynamicTFPolicyV2(TFPolicy):
         )
 
     @DeveloperAPI
+    @staticmethod
+    def enable_eager_execution_if_necessary():
+        # This is static graph TF policy.
+        # Simply do nothing.
+        pass
+
+    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def get_default_config(self) -> TrainerConfigDict:
         return {}

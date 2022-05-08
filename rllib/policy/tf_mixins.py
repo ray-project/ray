@@ -57,7 +57,10 @@ class LearningRateSchedule:
 
     @override(TFPolicy)
     def optimizer(self):
-        return tf1.train.AdamOptimizer(learning_rate=self.cur_lr)
+        if self.framework == "tf":
+            return tf1.train.AdamOptimizer(learning_rate=self.cur_lr)
+        else:
+            return tf.keras.optimizers.Adam(self.cur_lr)
 
 
 @DeveloperAPI

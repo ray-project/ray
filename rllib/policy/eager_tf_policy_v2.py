@@ -63,10 +63,6 @@ class EagerTFPolicyV2(Policy):
         config: TrainerConfigDict,
         **kwargs,
     ):
-        # If this class runs as a @ray.remote actor, eager mode may not
-        # have been activated yet.
-        if not tf1.executing_eagerly():
-            tf1.enable_eager_execution()
         self.framework = config.get("framework", "tf2")
 
         # Log device.
@@ -129,6 +125,14 @@ class EagerTFPolicyV2(Policy):
         # tf.function trace operations, never when calling the already
         # traced function after that.
         self._re_trace_counter = 0
+
+    @DeveloperAPI
+    @staticmethod
+    def enable_eager_execution_if_necessary():
+        # If this class runs as a @ray.remote actor, eager mode may not
+        # have been activated yet.
+        if tf1 and not tf1.executing_eagerly():
+            tf1.enable_eager_execution()
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
@@ -427,10 +431,6 @@ class EagerTFPolicyV2(Policy):
         episodes: Optional[List[Episode]] = None,
         **kwargs,
     ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
-
-        if not self.config.get("eager_tracing") and not tf1.executing_eagerly():
-            tf1.enable_eager_execution()
-
         self._is_training = False
 
         explore = explore if explore is not None else self.explore

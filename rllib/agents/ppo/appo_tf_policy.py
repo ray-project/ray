@@ -145,6 +145,9 @@ def get_appo_tf_policy(base: type) -> type:
             existing_model=None,
             existing_inputs=None,
         ):
+            # First thing first, enable eager execution if necessary.
+            base.enable_eager_execution_if_necessary()
+
             config = dict(ray.rllib.agents.ppo.appo.DEFAULT_CONFIG, **config)
 
             # Although this is a no-op, we call __init__ here to make it clear
