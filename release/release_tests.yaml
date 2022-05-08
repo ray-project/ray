@@ -3281,6 +3281,26 @@
     type: sdk_command
     file_manager: sdk
 
+- name: dataset_prefetch
+  group: core-dataset-tests
+  working_dir: nightly_tests/dataset
+  stable: false
+
+  frequency: multi
+  team: core
+  cluster:
+    cluster_env: pipelined_training_app.yaml
+    cluster_compute: pipelined_training_compute.yaml
+
+  run:
+    timeout: 1200
+    script: python dataset_prefetch.py
+    wait_for_nodes:
+      num_nodes: 15
+
+    type: sdk_command
+    file_manager: sdk
+
 - name: pipelined_training_50_gb
   group: core-dataset-tests
   working_dir: nightly_tests/dataset
