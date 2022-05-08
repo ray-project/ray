@@ -214,11 +214,20 @@ def test_cr_image_consistency():
     group_specs = [cr["spec"]["headGroupSpec"]] + cr["spec"]["workerGroupSpecs"]
     assert len(group_specs) == 2
 
-    ray_images = set(
-        group_spec["template"]["spec"]["containers"][0]["image"]
-        for group_spec in group_specs
+    ray_containers = [
+        group_spec["template"]["spec"]["containers"][0] for group_spec in group_specs
+    ]
+
+    # All Ray containers in the example config have "ray-" in their name.
+    assert all("ray-" in ray_container["name"] for ray_container in ray_containers)
+
+    # All Ray images are from the Ray repo.
+    assert all(
+        "rayproject/ray" in ray_container["image"] for ray_container in ray_containers
     )
-    assert len(ray_images) == 1
+
+    # All Ray images are the same.
+    assert len({ray_container["image"] for ray_container in ray_containers}) == 1
 
 
 if __name__ == "__main__":
