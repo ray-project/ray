@@ -64,8 +64,32 @@ def update_priorities_in_replay_buffer(
             train_batch.policy_batches[policy_id].set_get_interceptor(None)
             # Get the replay buffer row indices that make up the `train_batch`.
             batch_indices = train_batch.policy_batches[policy_id].get("batch_indexes")
-            # In case the buffer stores sequences, TD-error could
-            # already be calculated per sequence chunk.
+
+            if td_error is None:
+                if log_once(
+                    "no_td_error_in_train_results_from_policy_{}".format(policy_id)
+                ):
+                    logger.warning(
+                        "Trying to update priorities for policy with id `{}` in "
+                        "prioritized replay buffer without providing td_errors in "
+                        "train_results. Priority update for this policy is being "
+                        "skipped.".format(policy_id)
+                    )
+                continue
+
+            if batch_indices is None:
+                if log_once(
+                    "no_batch_indices_in_train_result_for_policy_{}".format(policy_id)
+                ):
+                    logger.warning(
+                        "Trying to update priorities for policy with id `{}` in "
+                        "prioritized replay buffer without providing batch_indices in "
+                        "train_batch. Priority update for this policy is being "
+                        "skipped.".format(policy_id)
+                    )
+                continue
+
+            #  Try to transform batch indices to td_error dimensions
             if len(batch_indices) != len(td_error):
                 T = replay_buffer.replay_sequence_length
                 assert (
@@ -191,6 +215,16 @@ def validate_buffer_config(config: dict):
         "type" in replay_buffer_config
     ), "Can not instantiate ReplayBuffer from config without 'type' key."
 
+    replay_burn_in = config.get("burn_in", DEPRECATED_VALUE)
+    if replay_burn_in != DEPRECATED_VALUE:
+        config["replay_buffer_config"]["replay_burn_in"] = replay_burn_in
+        deprecation_warning(
+            old="config['burn_in']",
+            help="Burn in specified at new location config["
+            "'replay_buffer_config']["
+            "'replay_burn_in'] will be overwritten.",
+        )
+
     # Check if old replay buffer should be instantiated
     buffer_type = config["replay_buffer_config"]["type"]
     if not config["replay_buffer_config"].get("_enable_replay_buffer_api", False):
@@ -257,16 +291,6 @@ def validate_buffer_config(config: dict):
                 "location config['replay_buffer_config']["
                 "'replay_sequence_length'] will be overwritten.",
                 error=False,
-            )
-
-        replay_burn_in = config.get("burn_in", DEPRECATED_VALUE)
-        if replay_burn_in != DEPRECATED_VALUE:
-            config["replay_buffer_config"]["replay_burn_in"] = replay_burn_in
-            deprecation_warning(
-                old="config['burn_in']",
-                help="Burn in specified at new location config["
-                "'replay_buffer_config']["
-                "'replay_burn_in'] will be overwritten.",
             )
 
         replay_zero_init_states = config.get(
