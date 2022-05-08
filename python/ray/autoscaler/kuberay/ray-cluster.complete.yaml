@@ -58,6 +58,7 @@ spec:
         containers:
         # The Ray head pod
         - name: ray-head
+          # All Ray pods in the RayCluster should use the same version of Ray.
           image: rayproject/ray:1.12.0
           imagePullPolicy: Always
           # The KubeRay operator uses the ports specified on the ray-head container
