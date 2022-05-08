@@ -8,7 +8,7 @@ def _import_random_agent():
 
 
 def _import_maddpg():
-    from ray.rllib.contrib import maddpg
+    from ray.rllib.agents.maddpg import maddpg
 
     return maddpg.MADDPGTrainer, maddpg.DEFAULT_CONFIG
 
@@ -22,23 +22,9 @@ def _import_alphazero():
     return AlphaZeroTrainer, DEFAULT_CONFIG
 
 
-def _import_bandit_lints():
-    from ray.rllib.agents.bandit.bandit import BanditLinTSTrainer
-
-    return BanditLinTSTrainer, BanditLinTSTrainer.get_default_config()
-
-
-def _import_bandit_linucb():
-    from ray.rllib.agents.bandit.bandit import BanditLinUCBTrainer
-
-    return BanditLinUCBTrainer, BanditLinUCBTrainer.get_default_config()
-
-
 CONTRIBUTED_ALGORITHMS = {
     "contrib/RandomAgent": _import_random_agent,
-    "contrib/MADDPG": _import_maddpg,
     "contrib/AlphaZero": _import_alphazero,
-    # Deprecated: Use BanditLin[TS|UCB], instead.
-    "contrib/LinTS": _import_bandit_lints,
-    "contrib/LinUCB": _import_bandit_linucb,
+    # Deprecated: Use `MADDPG`, instead.
+    "contrib/MADDPG": _import_maddpg,
 }

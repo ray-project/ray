@@ -171,9 +171,9 @@ class HuggingFaceTrainer(TorchTrainer):
                 batch_size=1000,
                 num_proc=1,
             )
-            ray_train_ds = ray.data.from_arrow(lm_datasets["train"]._data.table)
-            ray_evaluation_ds = ray.data.from_arrow(
-                lm_datasets["evaluation"]._data.table
+            ray_train_ds = ray.data.from_huggingface(lm_datasets["train"])
+            ray_evaluation_ds = ray.data.from_huggingface(
+                lm_datasets["evaluation"]
             )
 
             def trainer_init_per_worker(train_dataset, eval_dataset, **config):
