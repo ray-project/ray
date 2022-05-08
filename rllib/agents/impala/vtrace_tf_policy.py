@@ -278,6 +278,9 @@ def get_vtrace_tf_policy(base: type) -> type:
             existing_model=None,
             existing_inputs=None,
         ):
+            # First thing first, enable eager execution if necessary.
+            base.enable_eager_execution_if_necessary()
+
             config = dict(ray.rllib.agents.impala.impala.DEFAULT_CONFIG, **config)
 
             # Initialize base class.
