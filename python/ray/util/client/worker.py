@@ -648,6 +648,8 @@ class Worker:
         task.type = ray_client_pb2.ClientTask.NAMED_ACTOR
         task.name = name
         task.namespace = namespace or ""
+        # Populate task.data with empty args and kwargs
+        task.data = dumps_from_client(([], {}), self._client_id)
         futures = self._call_schedule_for_task(task, 1)
         assert len(futures) == 1
         handle = ClientActorHandle(ClientActorRef(futures[0]))
