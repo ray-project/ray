@@ -122,7 +122,6 @@ class SimpleQConfig(TrainerConfig):
         }
         self.store_buffer_in_checkpoints = False
         self.lr_schedule = None
-        self.lr = 5e-4
         self.adam_epsilon = 1e-8
         self.grad_clip = 40
         # __sphinx_doc_end__
@@ -151,9 +150,6 @@ class SimpleQConfig(TrainerConfig):
         # `reporting()`
         self.min_time_s_per_reporting = 1
         self.min_sample_timesteps_per_reporting = 1000
-
-        # `experimental()`
-        self._disable_execution_plan_api = True
 
         # Deprecated.
         self.buffer_size = DEPRECATED_VALUE
