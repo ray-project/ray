@@ -25,6 +25,7 @@ class JobConfig:
         num_java_workers_per_process=1,
         jvm_options=None,
         code_search_path=None,
+        py_code_search_path=None,
         runtime_env=None,
         client_job=False,
         metadata=None,
@@ -34,6 +35,7 @@ class JobConfig:
         self.num_java_workers_per_process = num_java_workers_per_process
         self.jvm_options = jvm_options or []
         self.code_search_path = code_search_path or []
+        self.py_code_search_path = py_code_search_path or []
         # It's difficult to find the error that caused by the
         # code_search_path is a string. So we assert here.
         assert isinstance(self.code_search_path, (list, tuple)), (
@@ -111,6 +113,7 @@ class JobConfig:
             pb.num_java_workers_per_process = self.num_java_workers_per_process
             pb.jvm_options.extend(self.jvm_options)
             pb.code_search_path.extend(self.code_search_path)
+            pb.py_code_search_path.extend(self.py_code_search_path)
             for k, v in self.metadata.items():
                 pb.metadata[k] = v
 
@@ -152,6 +155,7 @@ class JobConfig:
             ),
             jvm_options=job_config_json.get("jvm_options", None),
             code_search_path=job_config_json.get("code_search_path", None),
+            py_code_search_path=job_config_json.get("py_code_search_path", None),
             runtime_env=job_config_json.get("runtime_env", None),
             client_job=job_config_json.get("client_job", False),
             metadata=job_config_json.get("metadata", None),

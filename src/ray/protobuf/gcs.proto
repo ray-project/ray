@@ -269,6 +269,7 @@ message JobConfig {
   // search path for user code. This will be used as `CLASSPATH` in Java, and `PYTHONPATH`
   // in Python. In C++, libraries under these paths will be loaded by 'dlopen'.
   repeated string code_search_path = 3;
+  repeated string py_code_search_path = 8;
   // Runtime environment to run the code
   RuntimeEnvInfo runtime_env_info = 4;
   // The job's namespace. Named `ray_namespace` to avoid confusions when invoked in c++.
