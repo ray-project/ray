@@ -304,9 +304,15 @@ class DREAMERTrainer(Trainer):
                 gif = policy_fetches["log_gif"]
                 policy_fetches["log_gif"] = self._postprocess_gif(gif)
 
-        self._counters[STEPS_SAMPLED_COUNTER] = self.local_replay_buffer.timesteps * \
-                                                action_repeat
+        self._counters[STEPS_SAMPLED_COUNTER] = (
+            self.local_replay_buffer.timesteps * action_repeat
+        )
 
         self.local_replay_buffer.add(batch)
 
         return fetches
+
+    def _compile_step_results(self, *args, **kwargs):
+        results = super()._compile_step_results(*args, **kwargs)
+        results["timesteps_total"] = self._counters[STEPS_SAMPLED_COUNTER]
+        return results
