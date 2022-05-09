@@ -7,6 +7,7 @@ import hashlib
 import shutil
 
 from typing import Optional, List, Dict, Tuple
+from filelock import FileLock
 
 from ray._private.async_compat import asynccontextmanager, create_task, get_running_loop
 from ray._private.runtime_env.context import RuntimeEnvContext
@@ -77,6 +78,7 @@ class PipProcessor:
         self,
         target_dir: str,
         runtime_env: "RuntimeEnv",  # noqa: F821
+        create_venv_filelock: str,
         logger: Optional[logging.Logger] = default_logger,
     ):
         try:
@@ -90,6 +92,8 @@ class PipProcessor:
         logger.debug("Setting up pip for runtime_env: %s", runtime_env)
         self._target_dir = target_dir
         self._runtime_env = runtime_env
+        self._create_venv_filelock = create_venv_filelock
+
         self._logger = logger
 
         self._pip_config = self._runtime_env.pip_config()
@@ -202,7 +206,7 @@ class PipProcessor:
 
     @classmethod
     async def _create_or_get_virtualenv(
-        cls, path: str, cwd: str, logger: logging.Logger
+        cls, path: str, cwd: str, filelock: str, logger: logging.Logger
     ):
         """Create or get a virtualenv from path."""
         python = sys.executable
@@ -271,7 +275,10 @@ class PipProcessor:
                 virtualenv_path,
                 virtualenv_path,
             )
-        await check_output_cmd(create_venv_cmd, logger=logger, cwd=cwd, env=env)
+
+        # Concurrent virtualenv creation causes issues, see #24513
+        with FileLock(filelock):
+            await check_output_cmd(create_venv_cmd, logger=logger, cwd=cwd, env=env)
 
     @classmethod
     async def _install_pip_packages(
@@ -329,7 +336,9 @@ class PipProcessor:
         exec_cwd = os.path.join(path, "exec_cwd")
         os.makedirs(exec_cwd, exist_ok=True)
         try:
-            await self._create_or_get_virtualenv(path, exec_cwd, logger)
+            await self._create_or_get_virtualenv(
+                path, exec_cwd, self._create_venv_filelock, logger
+            )
             python = _PathHelper.get_virtualenv_python(path)
             async with self._check_ray(python, exec_cwd, logger):
                 # Ensure pip version.
@@ -430,8 +439,12 @@ class PipManager:
         target_dir = self._get_path_from_hash(hash)
 
         async def _create_for_hash():
-            # with FileLock(os.path.join(self._pip_resources_dir, "pip_create.lock")):
-            await PipProcessor(target_dir, runtime_env, logger)
+            await PipProcessor(
+                target_dir,
+                runtime_env,
+                os.path.join(self._pip_resources_dir, "create_virtualenv.lock"),
+                logger,
+            )
 
             loop = get_running_loop()
             return await loop.run_in_executor(
