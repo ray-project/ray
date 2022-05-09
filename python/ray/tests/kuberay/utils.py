@@ -367,12 +367,12 @@ def ray_job_submit(
         # It takes a bit of time to establish the connection.
         # Try a few times to instantiate the JobSubmissionClient, as the client's
         # instantiation does not retry on connection errors.
-        for trie in range(1, 7):
+        for trie in range(1, 13):
             time.sleep(5)
             try:
                 client = JobSubmissionClient(f"http://127.0.0.1:{local_port}")
             except ConnectionError as e:
-                if trie < 6:
+                if trie < 12:
                     logger.info("Job client connection failed. Retrying in 5 seconds.")
                 else:
                     raise e from None
@@ -401,8 +401,8 @@ def ray_job_submit(
 
 
 def kubectl_patch(
-    resource_kind: str,
-    resource_name: str,
+    kind: str,
+    name: str,
     namespace: str,
     patch: Dict[str, Any],
     patch_type: str = "strategic",
@@ -410,8 +410,8 @@ def kubectl_patch(
     """Wrapper for kubectl patch.
 
     Args:
-        resource_kind: Kind of the K8s (e.g. pod)
-        resource_name: Name of the K8s resource.
+        kind: Kind of the K8s resource (e.g. pod)
+        name: Name of the K8s resource.
         namespace: Namespace of the K8s resource.
         patch: The patch to apply, as a dict.
         patch_type: json, merge, or strategic
@@ -425,11 +425,26 @@ def kubectl_patch(
                 "-n",
                 f"{namespace}",
                 "patch",
-                f"{resource_kind}",
-                f"{resource_name}",
+                f"{kind}",
+                f"{name}",
                 "--patch-file",
                 f"{patch_file.name}",
                 "--type",
                 f"{patch_type}",
             ]
         )
+
+
+def kubectl_delete(kind: str, name: str, namespace: str):
+    """Wrapper for kubectl delete.
+
+    Args:
+        kind: Kind of the K8s resource (e.g. pod)
+        name: Name of the K8s resource.
+        namespace: Namespace of the K8s resource.
+    """
+    subprocess.check_call(
+        [
+            "kubectl", "-n", f"{namespace}", "delete", f"{kind}", f"{name}"
+        ]
+    )

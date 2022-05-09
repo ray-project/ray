@@ -17,6 +17,8 @@ from ray.tests.kuberay.utils import (
     ray_client_port_forward,
     ray_job_submit,
     kubectl_exec_python_script,
+    kubectl_patch,
+    kubectl_delete,
     wait_for_pods,
     wait_for_pod_to_start,
     wait_for_ray_health,
@@ -55,6 +57,7 @@ EXAMPLE_CLUSTER_PATH = "ray/python/ray/autoscaler/kuberay/ray-cluster.complete.y
 
 HEAD_SERVICE = "raycluster-complete-head-svc"
 HEAD_POD_PREFIX = "raycluster-complete-head"
+CPU_WORKER_PREFIX = "raycluster-complete-worker-small-group"
 RAY_CLUSTER_NAME = "raycluster-complete"
 RAY_CLUSTER_NAMESPACE = "default"
 
@@ -197,9 +200,11 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         """Test the following behaviors:
 
         1. Spinning up a Ray cluster
-        2. Scaling up a Ray worker via autoscaler.sdk.request_resources()
+        2. Scaling up Ray workers via autoscaler.sdk.request_resources()
         3. Scaling up by updating the CRD's minReplicas
         4. Scaling down by removing the resource request and reducing maxReplicas
+        5. Autoscaler recognizes GPU annotations and Ray custom resources.
+        6. Autoscaler and operator ignore pods marked for deletion.
 
         Items 1. and 2. protect the example in the documentation.
         Items 3. and 4. protect the autoscaler's ability to respond to Ray CR update.
@@ -257,6 +262,30 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             namespace="default",
         )
         logger.info("Confirming number of workers.")
+        wait_for_pods(goal_num_pods=2, namespace=RAY_CLUSTER_NAMESPACE)
+
+        # Test that pods marked for deletion are ignored
+        logger.info("Confirming that operator and autoscaler ignore pods marked for termination.")
+        worker_pod = get_pod(
+            pod_name_filter=CPU_WORKER_PREFIX, namespace=RAY_CLUSTER_NAMESPACE
+        )
+        logger.info("Patching finalizer onto worker pod to block termination.")
+        add_finalizer = {"metadata": {"finalizers": ["ray.io/test"]}}
+        kubectl_patch(kind="pod", name=worker_pod, namespace=RAY_CLUSTER_NAMESPACE, patch=add_finalizer)
+        logger.info("Marking worker for deletion.")
+        kubectl_delete(kind="pod", name=worker_pod, namespace=RAY_CLUSTER_NAMESPACE)
+        # Deletion of the worker hangs forever because of the finalizer.
+        # We expect another pod to come up to replace it.
+        logger.info("Confirming another worker is up to replace the one marked for deletion.")
+        wait_for_pods(goal_num_pods=3, namespace=RAY_CLUSTER_NAMESPACE)
+        logger.info("Confirming NodeProvider ignores terminating nodes.")
+        # 3 pods, 2 of which are not marked for deletion.
+        assert self._non_terminated_nodes_count() == 2
+        remove_finalizer = {"metadata": {"finalizers": []}}
+        logger.info("Removing finalizer to allow deletion.")
+        kubectl_patch(kind="pod", name=worker_pod, namespace="default", patch=remove_finalizer,
+                      patch_type="merge")
+        logger.info("Confirming worker deletion.")
         wait_for_pods(goal_num_pods=2, namespace=RAY_CLUSTER_NAMESPACE)
 
         logger.info("Scaling up to two workers by editing minReplicas.")
