@@ -33,13 +33,42 @@ _is_workflow_initialized = False
 
 
 @PublicAPI(stability="beta")
-def init() -> None:
+def init(
+    *,
+    max_running_workflows: Optional[int] = None,
+    max_pending_workflows: Optional[int] = None,
+) -> None:
     """Initialize workflow.
 
     If Ray is not initialized, we will initialize Ray and
     use ``/tmp/ray/workflow_data`` as the default storage.
+
+    Args:
+        max_running_workflows: The maximum number of concurrently running workflows.
+            Use -1 as infinity. 'None' means preserving previous setting or initialize
+            the setting with infinity.
+        max_pending_workflows: The maximum number of queued workflows.
+            Use -1 as infinity. 'None' means preserving previous setting or initialize
+            the setting with infinity.
     """
     usage_lib.record_library_usage("workflow")
+
+    if max_running_workflows is not None:
+        if not isinstance(max_running_workflows, int):
+            raise TypeError("'max_running_workflows' must be None or an integer.")
+        if max_running_workflows < -1 or max_running_workflows == 0:
+            raise ValueError(
+                "'max_running_workflows' must be a positive integer "
+                "or use -1 as infinity."
+            )
+    if max_pending_workflows is not None:
+        if not isinstance(max_pending_workflows, int):
+            raise TypeError("'max_pending_workflows' must be None or an integer.")
+        if max_pending_workflows < -1:
+            raise ValueError(
+                "'max_pending_workflows' must be a non-negative integer "
+                "or use -1 as infinity."
+            )
 
     if not ray.is_initialized():
         # We should use get_temp_dir_path, but for ray client, we don't
@@ -47,7 +76,7 @@ def init() -> None:
         # or a driver to use the right dir.
         # For now, just use /tmp/ray/workflow_data
         ray.init(storage="file:///tmp/ray/workflow_data")
-    workflow_access.init_management_actor()
+    workflow_access.init_management_actor(max_running_workflows, max_pending_workflows)
     serialization.init_manager()
     global _is_workflow_initialized
     _is_workflow_initialized = True
@@ -192,14 +221,15 @@ def list_all(
         Union[Union[WorkflowStatus, str], Set[Union[WorkflowStatus, str]]]
     ] = None
 ) -> List[Tuple[str, WorkflowStatus]]:
-    """List all workflows matching a given status filter.
+    """List all workflows matching a given status filter. When returning "RESUMEABLE"
+    workflows, the workflows that was running ranks before the workflow that was pending
+    in the result list.
 
     Args:
-        status: If given, only returns workflow with that status. This can
+        status_filter: If given, only returns workflow with that status. This can
             be a single status or set of statuses. The string form of the
             status is also acceptable, i.e.,
-            "RUNNING"/"FAILED"/"SUCCESSFUL"/"CANCELED"/"RESUMABLE".
-
+            "RUNNING"/"FAILED"/"SUCCESSFUL"/"CANCELED"/"RESUMABLE"/"PENDING".
     Examples:
         >>> from ray import workflow
         >>> long_running_job = ... # doctest: +SKIP
@@ -243,7 +273,7 @@ def list_all(
 
 
 @PublicAPI(stability="beta")
-def resume_all(include_failed: bool = False) -> Dict[str, ray.ObjectRef]:
+def resume_all(include_failed: bool = False) -> List[Tuple[str, ray.ObjectRef]]:
     """Resume all resumable workflow jobs.
 
     This can be used after cluster restart to resume all tasks.

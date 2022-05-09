@@ -172,15 +172,26 @@ def list_all(status_filter: Set[WorkflowStatus]) -> List[Tuple[str, WorkflowStat
         workflow_manager = None
 
     if workflow_manager is None:
-        runnings = []
+        non_terminating_workflows = {}
     else:
-        runnings = ray.get(workflow_manager.list_running_workflow.remote())
-    if WorkflowStatus.RUNNING in status_filter and len(status_filter) == 1:
-        return [(r, WorkflowStatus.RUNNING) for r in runnings]
+        non_terminating_workflows = ray.get(
+            workflow_manager.list_non_terminating_workflow.remote()
+        )
 
-    runnings = set(runnings)
+    ret = []
+    if set(non_terminating_workflows.keys()).issuperset(status_filter):
+        for status, workflows in non_terminating_workflows.items():
+            if status in status_filter:
+                for w in workflows:
+                    ret.append((w, status))
+        return ret
+
+    ret = []
     # Here we don't have workflow id, so use empty one instead
     store = workflow_storage.get_workflow_storage("")
+    modified_status_filter = status_filter.copy()
+    # Here we have to add non-terminating status to the status filter, because some
+    # "RESUMABLE" workflows are converted from non-terminating workflows below.
 
     # This is the tricky part: the status "RESUMABLE" neither come from
     # the workflow management actor nor the storage. It is the status where
@@ -189,20 +200,30 @@ def list_all(status_filter: Set[WorkflowStatus]) -> List[Tuple[str, WorkflowStat
     # of the whole Ray runtime or the workflow management actor
     # (due to cluster etc.). So we includes 'RUNNING' status in the storage
     # filter to get "RESUMABLE" candidates.
-    storage_status_filter = status_filter.copy()
-    storage_status_filter.add(WorkflowStatus.RUNNING)
-    status_from_storage = store.list_workflow(storage_status_filter)
-    ret = []
+    modified_status_filter.update(WorkflowStatus.non_terminating_status())
+    status_from_storage = store.list_workflow(modified_status_filter)
+    non_terminating_workflows = {
+        k: set(v) for k, v in non_terminating_workflows.items()
+    }
+    resume_running = []
+    resume_pending = []
     for (k, s) in status_from_storage:
-        if s == WorkflowStatus.RUNNING:
-            if k not in runnings:
-                s = WorkflowStatus.RESUMABLE
+        if s in non_terminating_workflows and k not in non_terminating_workflows[s]:
+            if s == WorkflowStatus.RUNNING:
+                resume_running.append(k)
+            elif s == WorkflowStatus.PENDING:
+                resume_pending.append(k)
             else:
-                continue
+                assert False, "This line of code should not be reachable."
+            continue
         if s in status_filter:
             ret.append((k, s))
-    if WorkflowStatus.RUNNING in status_filter:
-        ret.extend((k, WorkflowStatus.RUNNING) for k in runnings)
+    if WorkflowStatus.RESUMABLE in status_filter:
+        # The running workflows ranks before the pending workflows.
+        for w in resume_running:
+            ret.append((w, WorkflowStatus.RESUMABLE))
+        for w in resume_pending:
+            ret.append((w, WorkflowStatus.RESUMABLE))
     return ret
 
 
