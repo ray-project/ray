@@ -26,7 +26,7 @@ namespace ray {
 
 namespace raylet {
 
-int MAXIMUM_STARTUP_CONCURRENCY = 5;
+int MAXIMUM_STARTUP_CONCURRENCY = 15;
 int MAX_IO_WORKER_SIZE = 2;
 int POOL_SIZE_SOFT_LIMIT = 5;
 int WORKER_REGISTER_TIMEOUT_SECONDS = 3;
@@ -185,11 +185,13 @@ class WorkerPoolMock : public WorkerPool {
     return worker_commands_by_proc_[proc];
   }
 
+  void RemoveProc(const Process &proc) { worker_commands_by_proc_.erase(proc); }
+
   int NumWorkersStarting() const {
     int total = 0;
     for (auto &state_entry : states_by_lang_) {
       for (auto &process_entry : state_entry.second.worker_processes) {
-        total += process_entry.second.num_starting_workers;
+        total += process_entry.second.is_pending_registration ? 1 : 0;
       }
     }
     return total;
@@ -199,7 +201,7 @@ class WorkerPoolMock : public WorkerPool {
     int total = 0;
     for (auto &entry : states_by_lang_) {
       for (auto process : entry.second.worker_processes) {
-        if (process.second.num_starting_workers != 0) {
+        if (process.second.is_pending_registration) {
           total += 1;
         }
       }
@@ -327,8 +329,7 @@ class WorkerPoolMock : public WorkerPool {
           }
         }
         // TODO(SongGuyang): support C++ language workers.
-        int num_workers =
-            (is_java && !has_dynamic_options) ? NUM_WORKERS_PER_PROCESS_JAVA : 1;
+        int num_workers = 1;
         RAY_CHECK(timeout_worker_number <= num_workers)
             << "The timeout worker number cannot exceed the total number of workers";
         auto register_workers = num_workers - timeout_worker_number;
@@ -484,9 +485,7 @@ class WorkerPoolTest : public ::testing::Test {
                   expected_worker_process_count);
       Process prev = worker_pool_->LastStartedWorkerProcess();
       if (!std::equal_to<Process>()(last_started_worker_process, prev)) {
-        last_started_worker_process = prev;
-        const auto &real_command =
-            worker_pool_->GetWorkerCommand(last_started_worker_process);
+        //
       } else {
         ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(),
                   expected_worker_process_count);
@@ -605,9 +604,7 @@ TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
   auto [proc, token] = worker_pool_->StartWorkerProcess(
       Language::JAVA, rpc::WorkerType::WORKER, JOB_ID, &status);
   std::vector<std::shared_ptr<WorkerInterface>> workers;
-  for (int i = 0; i < NUM_WORKERS_PER_PROCESS_JAVA; i++) {
-    workers.push_back(worker_pool_->CreateWorker(Process(), Language::JAVA));
-  }
+  workers.push_back(worker_pool_->CreateWorker(Process(), Language::JAVA));
   for (const auto &worker : workers) {
     // Check that there's still a starting worker process
     // before all workers have been registered
@@ -657,7 +654,7 @@ TEST_F(WorkerPoolTest, StartupPythonWorkerProcessCount) {
 }
 
 TEST_F(WorkerPoolTest, StartupJavaWorkerProcessCount) {
-  TestStartupWorkerProcessCount(Language::JAVA, NUM_WORKERS_PER_PROCESS_JAVA);
+  TestStartupWorkerProcessCount(Language::JAVA, 1);
 }
 
 TEST_F(WorkerPoolTest, InitialWorkerProcessCount) {
@@ -767,6 +764,7 @@ TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
   // Ray-defined per-process options
   expected_command.push_back("-Dray.raylet.startup-token=0");
   expected_command.push_back("-Dray.internal.runtime-env-hash=1");
+  expected_command.push_back("-Dray.job.id=" + job_id.Hex());
   // User-defined per-process options
   expected_command.insert(
       expected_command.end(), actor_jvm_options.begin(), actor_jvm_options.end());
@@ -1149,7 +1147,9 @@ TEST_F(WorkerPoolTest, DeleteWorkerPushPop) {
 TEST_F(WorkerPoolTest, NoPopOnCrashedWorkerProcess) {
   // Start a Java worker process.
   PopWorkerStatus status;
-  auto [proc, token] = worker_pool_->StartWorkerProcess(
+  auto [proc1, token1] = worker_pool_->StartWorkerProcess(
+      Language::JAVA, rpc::WorkerType::WORKER, JOB_ID, &status);
+  auto [proc2, token2] = worker_pool_->StartWorkerProcess(
       Language::JAVA, rpc::WorkerType::WORKER, JOB_ID, &status);
   auto worker1 = worker_pool_->CreateWorker(Process(), Language::JAVA);
   auto worker2 = worker_pool_->CreateWorker(Process(), Language::JAVA);
@@ -1158,9 +1158,9 @@ TEST_F(WorkerPoolTest, NoPopOnCrashedWorkerProcess) {
 
   // 1. we register both workers.
   RAY_CHECK_OK(worker_pool_->RegisterWorker(
-      worker1, proc.GetId(), worker_pool_->GetStartupToken(proc), [](Status, int) {}));
+      worker1, proc1.GetId(), worker_pool_->GetStartupToken(proc1), [](Status, int) {}));
   RAY_CHECK_OK(worker_pool_->RegisterWorker(
-      worker2, proc.GetId(), worker_pool_->GetStartupToken(proc), [](Status, int) {}));
+      worker2, proc2.GetId(), worker_pool_->GetStartupToken(proc2), [](Status, int) {}));
 
   // 2. announce worker port for worker 1. When interacting with worker pool, it's
   // PushWorker.
@@ -1170,6 +1170,7 @@ TEST_F(WorkerPoolTest, NoPopOnCrashedWorkerProcess) {
   // with worker 1 disconnected first.
   worker_pool_->DisconnectWorker(
       worker1, /*disconnect_type=*/rpc::WorkerExitType::SYSTEM_ERROR_EXIT);
+  worker_pool_->RemoveProc(proc1);
 
   // 4. but the RPC for announcing worker port for worker 2 is already in Raylet input
   // buffer. So now Raylet needs to handle worker 2.
@@ -1407,8 +1408,7 @@ TEST_F(WorkerPoolTest, TestWorkerCappingWithExitDelay) {
       PopWorkerStatus status;
       auto [proc, token] = worker_pool_->StartWorkerProcess(
           language, rpc::WorkerType::WORKER, JOB_ID, &status);
-      int workers_to_start =
-          language == Language::JAVA ? NUM_WORKERS_PER_PROCESS_JAVA : 1;
+      int workers_to_start = 1;
       for (int j = 0; j < workers_to_start; j++) {
         auto worker = worker_pool_->CreateWorker(Process(), language);
         worker->SetStartupToken(worker_pool_->GetStartupToken(proc));
@@ -1626,76 +1626,6 @@ TEST_F(WorkerPoolTest, RuntimeEnvUriReferenceWorkerLevel) {
     worker_pool_->HandleJobFinished(job_id);
     ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 0);
   }
-}
-
-TEST_F(WorkerPoolTest, RuntimeEnvUriReferenceWithMultipleWorkers) {
-  auto job_id = JOB_ID;
-  std::string uri = "s3://567";
-  auto runtime_env_info = ExampleRuntimeEnvInfo({uri}, false);
-  rpc::JobConfig job_config;
-  job_config.mutable_runtime_env_info()->CopyFrom(runtime_env_info);
-  // Start job without eager installed runtime env.
-  worker_pool_->HandleJobStarted(job_id, job_config);
-  ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 0);
-
-  // First part, test normal case with all worker registered.
-  {
-    // Start actors with runtime env. The Java actors will trigger a multi-worker process.
-    std::vector<std::shared_ptr<WorkerInterface>> workers;
-    for (int i = 0; i < NUM_WORKERS_PER_PROCESS_JAVA; i++) {
-      auto actor_creation_id = ActorID::Of(job_id, TaskID::ForDriverTask(job_id), i + 1);
-      const auto actor_creation_task_spec =
-          ExampleTaskSpec(ActorID::Nil(),
-                          Language::JAVA,
-                          job_id,
-                          actor_creation_id,
-                          {},
-                          TaskID::FromRandom(JobID::Nil()),
-                          runtime_env_info);
-      auto popped_actor_worker = worker_pool_->PopWorkerSync(actor_creation_task_spec);
-      ASSERT_NE(popped_actor_worker, nullptr);
-      workers.push_back(popped_actor_worker);
-      ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 1);
-    }
-    // Make sure only one worker process has been started.
-    ASSERT_EQ(worker_pool_->GetProcessSize(), 1);
-    // Disconnect all actor workers.
-    for (auto &worker : workers) {
-      worker_pool_->DisconnectWorker(worker, rpc::WorkerExitType::IDLE_EXIT);
-    }
-    ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 0);
-  }
-
-  // Second part, test corner case with some worker registration timeout.
-  {
-    // Start one actor with runtime env. The Java actor will trigger a multi-worker
-    // process.
-    auto actor_creation_id = ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1);
-    const auto actor_creation_task_spec =
-        ExampleTaskSpec(ActorID::Nil(),
-                        Language::JAVA,
-                        job_id,
-                        actor_creation_id,
-                        {},
-                        TaskID::FromRandom(JobID::Nil()),
-                        runtime_env_info);
-    PopWorkerStatus status;
-    // Only one worker registration. All the other worker registration times out.
-    auto popped_actor_worker = worker_pool_->PopWorkerSync(
-        actor_creation_task_spec, true, &status, NUM_WORKERS_PER_PROCESS_JAVA - 1);
-    ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 1);
-    // Disconnect actor worker.
-    worker_pool_->DisconnectWorker(popped_actor_worker, rpc::WorkerExitType::IDLE_EXIT);
-    ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 1);
-    // Sleep for a while to wait worker registration timeout.
-    std::this_thread::sleep_for(
-        std::chrono::seconds(WORKER_REGISTER_TIMEOUT_SECONDS + 1));
-    ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 0);
-  }
-
-  // Finish the job.
-  worker_pool_->HandleJobFinished(job_id);
-  ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 0);
 }
 
 TEST_F(WorkerPoolTest, CacheWorkersByRuntimeEnvHash) {
