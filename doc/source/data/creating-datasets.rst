@@ -131,7 +131,7 @@ converts it into a Ray Dataset directly.
 .. warning::
     :py:class:`~ray.data.from_huggingface` doesn't support parallel
     reads. This will not usually be an issue with in-memory 🤗 Datasets,
-    but may fail with large memory-mapped 🤗 Datasets. 🤗 `IterableDataset`
+    but may fail with large memory-mapped 🤗 Datasets. 🤗 ``IterableDataset``
     objects are not supported.
 
 .. code-block:: python
