@@ -108,7 +108,6 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
     }
 
     List<NativeRayObject> returnObjects = new ArrayList<>();
-    ClassLoader oldLoader = Thread.currentThread().getContextClassLoader();
     // Find the executable object.
 
     RayFunction rayFunction = localRayFunction.get();
@@ -214,8 +213,6 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
       } else {
         throw new RayActorException(e);
       }
-    } finally {
-      /// TODO(qwang): Remove this final.
     }
     return returnObjects;
   }
