@@ -55,7 +55,7 @@ def test_best_result_no_report():
 
     analysis = tune.run(f, config={"x": tune.grid_search([1, 2])})
     result_grid = ResultGrid(analysis)
-    with pytest.raises(RuntimeError):
+    with pytest.raises(RuntimeError, match="No best trial found*"):
         result_grid.get_best_result(metric="x", mode="max")
 
 
@@ -67,7 +67,11 @@ def test_no_metric_mode():
     result_grid = ResultGrid(analysis)
     with pytest.raises(ValueError):
         result_grid.get_best_result()
+
+    with pytest.raises(ValueError):
         result_grid.get_best_result(metric="x")
+
+    with pytest.raises(ValueError):
         result_grid.get_best_result(mode="max")
 
 
