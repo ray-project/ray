@@ -108,11 +108,6 @@ class LocalResourceManager : public syncer::ReporterInterface {
 
   void ReleaseWorkerResources(std::shared_ptr<TaskResourceInstances> task_allocation);
 
-  int64_t Version() {
-    UpdateAvailableObjectStoreMemResource();
-    return version_;
-  }
-
   /// Populate the relevant parts of the heartbeat table. This is intended for
   /// sending resource usage of raylet to gcs. In particular, this should fill in
   /// resources_available and resources_total.
@@ -260,7 +255,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
   // Specify custom resources that consists of unit-size instances.
   std::unordered_set<int64_t> custom_unit_instance_resources_{};
 
-  // Version of this resource. It will incr by one whenever when the state changed.
+  // Version of this resource. It will incr by one whenever the state changed.
   int64_t version_ = 0;
 
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest);
