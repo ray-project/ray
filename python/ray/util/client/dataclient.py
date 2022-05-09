@@ -55,6 +55,7 @@ def chunk_put(req: ray_client_pb2.DataRequest):
             UserWarning,
         )
     total_chunks = math.ceil(total_size / OBJECT_TRANSFER_CHUNK_SIZE)
+    print(f'total_size:{total_size} total_chunks:{total_chunks} OBJECT_TRANSFER_CHUNK_SIZE:{OBJECT_TRANSFER_CHUNK_SIZE} type_req:{type(req)}')
     for chunk_id in range(0, total_chunks):
         start = chunk_id * OBJECT_TRANSFER_CHUNK_SIZE
         end = min(total_size, (chunk_id + 1) * OBJECT_TRANSFER_CHUNK_SIZE)
@@ -65,6 +66,7 @@ def chunk_put(req: ray_client_pb2.DataRequest):
             total_chunks=total_chunks,
             total_size=total_size,
         )
+        print(f'chunk_id:{chunk_id} start:{start} end:{end}')
         yield ray_client_pb2.DataRequest(req_id=req.req_id, put=chunk)
 
 
@@ -531,8 +533,79 @@ class DataClient:
         self._async_send(datareq)
 
     def Schedule(self, request: ray_client_pb2.ClientTask, callback: ResponseCallable):
-        datareq = ray_client_pb2.DataRequest(task=request)
-        self._async_send(datareq, callback)
+        print(f'request.name{request.name} request.ByteSize{request.ByteSize()} request.type{request.type} request.payload_id:{request.payload_id}')
+        if request.ByteSize() < (2 * 2 ** 30 - 100000):
+            datareq = ray_client_pb2.DataRequest(task=request)
+            self._async_send(datareq, callback)
+            return
+        def int_to_bytes(x: int) -> bytes:
+            return x.to_bytes((x.bit_length() + 7) // 8, 'big')
+        # def int_from_bytes(xbytes: bytes) -> int:
+        #     return int.from_bytes(xbytes, 'big')
+        # total_size = 0
+        # for arg in datareq.task.args:
+        #     total_size += len(arg.data)
+        # for a_item, v in datareq.task.kwargs.items():
+        #     print(f'a_item:{a_item} v:{v} v.data:{v.data}')
+        #     total_size += len(v.data)
+        # print(f'inn Schedule type_datareq:{type(datareq)} type_datareq.task.kwargs:{type(datareq.task.kwargs)} request.ByteSize():{request.ByteSize()}')
+        client_task = request
+        empty_client_task = ray_client_pb2.ClientTask(
+            type=client_task.type,
+            name=client_task.name,
+            payload_id=client_task.payload_id,
+            client_id=client_task.client_id,
+            options=client_task.options,
+            baseline_options=client_task.baseline_options,
+            namespace=client_task.namespace,
+        )
+        print(f'empty_client_task.name{empty_client_task.name} empty_client_task.ByteSize{empty_client_task.ByteSize()} empty_client_task.type{empty_client_task.type} empty_client_task.payload_id:{empty_client_task.payload_id}')
+        args = client_task.args
+        kwargs =client_task.kwargs
+        ser_client_task = b'TASK_WRAPED_IN_PUT_' + empty_client_task.SerializeToString()
+        for arg in args:
+            # print(f'arg:{arg}')
+            ser_client_task += (
+                b'TAASK_ARG_' + int_to_bytes(arg.local) + 
+                b'ARG_FieLD_' + arg.reference_id +
+                b'ARG_FieLD_' + arg.data +
+                b'ARG_FieLD_' + int_to_bytes(arg.type)
+            )
+        for k, arg_v in kwargs.items():
+            print(f'k:{k} len_v.data:{len(arg_v.data)}')
+            ser_client_task += (
+                b'TAASK_ARG_' + int_to_bytes(arg_v.local) + 
+                b'ARG_FieLD_' + arg_v.reference_id +
+                b'ARG_FieLD_' + arg_v.data +
+                b'ARG_FieLD_' + int_to_bytes(arg_v.type) +
+                b'ARG_FieLD_' + str.encode(k)
+            )
+        # print(f'ser_datareq:{ser_client_task}')
+        # ser_client_task = ser_client_task.replace(b'TASK_WRAPED_IN_PUT_', b'')
+        # ser_client_task_parts = ser_client_task.split(b'TAASK_ARG_')
+        # des_client_task = ray_client_pb2.ClientTask.FromString(ser_client_task_parts[0])
+        # for ser_rag_parts in ser_client_task_parts[1:]:
+        #     rag_parts = ser_rag_parts.split(b'ARG_FieLD_')
+        #     arg_ = ray_client_pb2.Arg(
+        #         local=int_from_bytes(rag_parts[0]) if rag_parts[0] else 0,
+        #         reference_id=rag_parts[1],
+        #         data=rag_parts[2],
+        #         type=int_from_bytes(rag_parts[3]) if rag_parts[3] else 0,
+        #     )
+        #     des_client_task.args.append(arg_)
+        # print(f'des_client_task:{des_client_task} \n request:{request}')
+        # ser_datareq_strip = ser_datareq[19:]
+        # des_datareq = ray_client_pb2.DataRequest.FromString(ser_datareq_strip)
+        # print(f'des_datareq:{des_datareq} type_des_datareq:{type(des_datareq)}')
+        task_wrap_in_put = ray_client_pb2.PutRequest(
+            data=ser_client_task,
+        )
+        datareq_task_in_put = ray_client_pb2.DataRequest(
+            put=task_wrap_in_put,
+        )
+        resp = self._blocking_send(datareq_task_in_put)
+        print(f'resp:{resp}')
+        callback(resp)
 
     def Terminate(
         self, request: ray_client_pb2.TerminateRequest
