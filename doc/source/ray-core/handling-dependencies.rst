@@ -416,7 +416,7 @@ When is the environment installed?
 """"""""""""""""""""""""""""""""""
 
 When specified per-job, the environment is installed when you call ``ray.init()``.  
-When specified per-task or per-actor, the environment is called when the task is invoked or the actor is instantiated (i.e. when you call ``my_task.remote()`` or `my_actor.remote()`.)
+When specified per-task or per-actor, the environment is called when the task is invoked or the actor is instantiated (i.e. when you call ``my_task.remote()`` or ``my_actor.remote()``.)
 See :ref:`Per-Job <rte-per-job>` :ref:`Per-Task/Actor, within a job <rte-per-task-actor>` for more details.
 
 Where are the environments cached?
