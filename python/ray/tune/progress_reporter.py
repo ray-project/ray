@@ -1,7 +1,7 @@
 from __future__ import print_function
 
 import datetime
-from typing import Dict, List, Optional, Union, Any
+from typing import Any, Dict, List, Optional, Union
 
 import collections
 import os
