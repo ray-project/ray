@@ -78,7 +78,6 @@ class PipProcessor:
         self,
         target_dir: str,
         runtime_env: "RuntimeEnv",  # noqa: F821
-        create_venv_filelock: str,
         logger: Optional[logging.Logger] = default_logger,
     ):
         try:
@@ -92,7 +91,6 @@ class PipProcessor:
         logger.debug("Setting up pip for runtime_env: %s", runtime_env)
         self._target_dir = target_dir
         self._runtime_env = runtime_env
-        self._create_venv_filelock = create_venv_filelock
 
         self._logger = logger
 
@@ -206,7 +204,7 @@ class PipProcessor:
 
     @classmethod
     async def _create_or_get_virtualenv(
-        cls, path: str, cwd: str, filelock: str, logger: logging.Logger
+        cls, path: str, cwd: str, logger: logging.Logger
     ):
         """Create or get a virtualenv from path."""
         python = sys.executable
@@ -276,9 +274,7 @@ class PipProcessor:
                 virtualenv_path,
             )
 
-        # Concurrent virtualenv creation causes issues, see #24513
-        with FileLock(filelock):
-            await check_output_cmd(create_venv_cmd, logger=logger, cwd=cwd, env=env)
+        await check_output_cmd(create_venv_cmd, logger=logger, cwd=cwd, env=env)
 
     @classmethod
     async def _install_pip_packages(
@@ -379,7 +375,9 @@ class PipManager:
     def __init__(self, resources_dir: str):
         self._pip_resources_dir = os.path.join(resources_dir, "pip")
         self._creating_task = {}
-        self._create_lock = asyncio.Lock()
+        # Maps a URI to a lock that is used to prevent multiple concurrent
+        # installs of the same virtualenv, see #24513 
+        self._uris_to_create_locks: Dict[str, asyncio.Lock] = {}
         try_to_create_directory(self._pip_resources_dir)
 
     def _get_path_from_hash(self, hash: str) -> str:
@@ -417,6 +415,7 @@ class PipManager:
 
         pip_env_path = self._get_path_from_hash(hash)
         local_dir_size = get_directory_size_bytes(pip_env_path)
+        del self._env_locks[uri]
         try:
             shutil.rmtree(pip_env_path)
         except OSError as e:
@@ -442,7 +441,6 @@ class PipManager:
             await PipProcessor(
                 target_dir,
                 runtime_env,
-                os.path.join(self._pip_resources_dir, "create_virtualenv.lock"),
                 logger,
             )
 
@@ -451,7 +449,11 @@ class PipManager:
                 None, get_directory_size_bytes, target_dir
             )
 
-        async with self._create_lock:
+        if uri not in self._env_locks:
+            # async lock to prevent the same virtualenv being concurrently installed
+            self._env_locks[uri] = asyncio.Lock()
+
+        async with self._env_locks[uri]:
             self._creating_task[hash] = task = create_task(_create_for_hash())
             task.add_done_callback(lambda _: self._creating_task.pop(hash, None))
             return await task
