@@ -141,4 +141,5 @@ converts it into a Ray Dataset directly.
 
     hf_datasets = load_dataset("wikitext", "wikitext-2-raw-v1")
     ray_datasets = ray.data.from_huggingface(hf_datasets)
-    ray_datasets["train"]
+    ray_datasets["train"].take(2)
+    # [{'text': ''}, {'text': ' = Valkyria Chronicles III = \n'}]
