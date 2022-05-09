@@ -116,7 +116,6 @@ class SlateQConfig(TrainerConfig):
         self.min_sample_timesteps_per_reporting = 1000
         self.min_time_s_per_reporting = 1
         self.compress_observations = False
-        self._disable_preprocessor_api = True
         # __sphinx_doc_end__
         # fmt: on
 
