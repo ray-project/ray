@@ -16,7 +16,7 @@ from ray.rllib.agents.dqn.dqn import DEFAULT_CONFIG as DQN_CONFIG
 from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
 from ray.rllib.agents.ppo.ppo import DEFAULT_CONFIG as PPO_CONFIG
-from ray.rllib.agents.ppo.ppo_tf_policy import PPOEagerTFPolicy
+from ray.rllib.agents.ppo.ppo_tf_policy import PPODynamicTFPolicy
 from ray.rllib.agents.ppo.ppo_torch_policy import PPOTorchPolicy
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
@@ -177,7 +177,7 @@ if __name__ == "__main__":
     # policy configs, we have to explicitly set it in the multiagent config:
     policies = {
         "ppo_policy": (
-            PPOTorchPolicy if args.torch or args.mixed_torch_tf else PPOEagerTFPolicy,
+            PPOTorchPolicy if args.torch or args.mixed_torch_tf else PPODynamciTFPolicy,
             None,
             None,
             ppo_config,
@@ -207,7 +207,7 @@ if __name__ == "__main__":
         },
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "framework": "torch" if args.torch else "tf2",
+        "framework": "torch" if args.torch else "tf",
     }
 
     stop = {
