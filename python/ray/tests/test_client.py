@@ -791,5 +791,30 @@ def test_empty_objects(ray_start_regular_shared):
                 assert ray.get(ref) == obj
 
 
+def test_large_remote_call(ray_start_regular_shared):
+    """
+    Test remote calls with large (multiple chunk) arguments
+    """
+    with ray_start_client_server() as ray:
+
+        @ray.remote
+        def f(large_obj):
+            return large_obj.shape
+
+        @ray.remote
+        def f2(*args):
+            return args[1].shape
+
+        @ray.remote
+        def f3(*args, **kwargs):
+            return kwargs["large_obj"].shape
+
+        # 1024x1024x32 f64's =~ 256 MiB
+        large_obj = np.random.random((1024, 1024, 32))
+        assert ray.get(f.remote(large_obj)) == (1024, 1024, 32)
+        assert ray.get(f2.remote(123, large_obj)) == (1024, 1024, 32)
+        assert ray.get(f3.remote("a", "b", large_obj=large_obj)) == (1024, 1024, 32)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
