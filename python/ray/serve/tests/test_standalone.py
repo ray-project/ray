@@ -280,9 +280,6 @@ def test_multiple_routers(ray_cluster):
     wait_for_condition(third_actor_removed)
     ray.get(block_until_http_ready.remote("http://127.0.0.1:8005/-/routes"))
 
-    # TODO: remove before merge
-    assert False, "intentionally failing this to check linux CI"
-
 
 def test_middleware(ray_shutdown):
     from starlette.middleware import Middleware
