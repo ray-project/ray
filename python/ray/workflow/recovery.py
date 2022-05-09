@@ -87,7 +87,7 @@ def _construct_resume_workflow_from_step(
             if num_in_edges[m] == 0:
                 start_nodes.append(m)
 
-    # Step 3: recover steps in the reversed order in the stack
+    # Step 3: recover the workflow by the order of the execution queue
     with serialization.objectref_cache():
         # "input_map" is a context storing the input which has been loaded.
         # This context is important for deduplicate step inputs.
