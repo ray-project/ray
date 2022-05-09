@@ -205,5 +205,31 @@ void SchedulerResourceReporter::FillPendingActorInfo(
   }
 }
 
+void SchedulerResourceReporter::FillPendingActorInfo(rpc::ResourcesData &data) const {
+  absl::flat_hash_map<SchedulingClass, std::pair<int, int>> pending_count_by_shape;
+  for (const auto &shape_entry : infeasible_tasks_) {
+    pending_count_by_shape[shape_entry.first].first = shape_entry.second.size();
+  }
+  for (const auto &shape_entry : tasks_to_schedule_) {
+    pending_count_by_shape[shape_entry.first].second = shape_entry.second.size();
+  }
+
+  if (!pending_count_by_shape.empty()) {
+    data.set_cluster_full_of_actors_detected(true);
+    auto resource_load_by_shape =
+        data.mutable_resource_load_by_shape()->mutable_resource_demands();
+    for (const auto &shape_entry : pending_count_by_shape) {
+      auto by_shape_entry = resource_load_by_shape->Add();
+      for (const auto &resource_entry :
+           TaskSpecification::GetSchedulingClassDescriptor(shape_entry.first)
+               .resource_set.GetResourceMap()) {
+        (*by_shape_entry->mutable_shape())[resource_entry.first] = resource_entry.second;
+      }
+      by_shape_entry->set_num_infeasible_requests_queued(shape_entry.second.first);
+      by_shape_entry->set_num_ready_requests_queued(shape_entry.second.second);
+    }
+  }
+}
+
 }  // namespace raylet
 }  // namespace ray

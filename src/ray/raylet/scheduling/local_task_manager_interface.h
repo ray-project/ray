@@ -71,5 +71,65 @@ class ILocalTaskManager {
   virtual size_t GetNumWaitingTaskSpilled() const = 0;
   virtual size_t GetNumUnschedulableTaskSpilled() const = 0;
 };
+
+class EmptyLocalTaskManager : public ILocalTaskManager {
+ public:
+  /// Construct an empty local task manager. This is used by gcs node only.
+  EmptyLocalTaskManager() {}
+
+  /// Queue task and schedule.
+  void QueueAndScheduleTask(std::shared_ptr<internal::Work> work) override {}
+
+  // Schedule and dispatch tasks.
+  void ScheduleAndDispatchTasks() override {}
+
+  /// Attempt to cancel an already queued task.
+  ///
+  /// \param task_id: The id of the task to remove.
+  /// \param failure_type: The failure type.
+  ///
+  /// \return True if task was successfully removed. This function will return
+  /// false if the task is already running.
+  bool CancelTask(const TaskID &task_id,
+                  rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
+                      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
+                  const std::string &scheduling_failure_message = "") override {
+    return true;
+  }
+
+  const absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
+      &GetTaskToDispatch() const override {
+    return tasks_to_dispatch_;
+  }
+
+  const absl::flat_hash_map<SchedulingClass, absl::flat_hash_map<WorkerID, int64_t>>
+      &GetBackLogTracker() const override {
+    return backlog_tracker_;
+  }
+
+  bool AnyPendingTasksForResourceAcquisition(RayTask *example,
+                                             bool *any_pending,
+                                             int *num_pending_actor_creation,
+                                             int *num_pending_tasks) const override {
+    return false;
+  }
+
+  void RecordMetrics() const override{};
+
+  void DebugStr(std::stringstream &buffer) const override {}
+
+  size_t GetNumTaskSpilled() const override { return 0; }
+  size_t GetNumWaitingTaskSpilled() const override { return 0; }
+  size_t GetNumUnschedulableTaskSpilled() const override { return 0; }
+
+ private:
+  /// Queue of lease requests that should be scheduled onto workers.
+  absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
+      tasks_to_dispatch_;
+  /// Track the backlog of all workers belonging to this raylet.
+  absl::flat_hash_map<SchedulingClass, absl::flat_hash_map<WorkerID, int64_t>>
+      backlog_tracker_;
+};
+
 }  // namespace raylet
 }  // namespace ray

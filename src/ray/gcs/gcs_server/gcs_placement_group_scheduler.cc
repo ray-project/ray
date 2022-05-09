@@ -295,7 +295,18 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
       for (const auto &bundle : bundles_per_node) {
         lease_status_tracker->MarkCommitRequestReturned(node_id, bundle, status);
         // Update the resource in gcs resource manager
-        auto &resources = bundle->GetFormattedResources();
+        auto resources = bundle->GetFormattedResources();
+        for (auto &[name, capacity] : resources) {
+          auto idx = name.find("_group_");
+          // Placement group's wildcard resources have to be updated incrementally.
+          if (idx != std::string::npos &&
+              name.find("_", idx + std::string("_group_").size()) == std::string::npos) {
+            auto cur_capcity = gcs_resource_manager_
+                                   .GetNodeResources(scheduling::NodeID(node_id.Binary()))
+                                   .total.Get(scheduling::ResourceID(name));
+            capacity += cur_capcity.Double();
+          }
+        }
         gcs_resource_manager_.UpdateResources(node_id, resources);
 
         // Push the message to syncer so that it can be broadcasted to all other nodes

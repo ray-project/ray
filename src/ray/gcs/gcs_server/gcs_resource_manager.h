@@ -52,7 +52,9 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   explicit GcsResourceManager(
       std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
       ClusterResourceManager &cluster_resource_manager,
-      scheduling::NodeID local_node_id_ = scheduling::NodeID::Nil());
+      scheduling::NodeID local_node_id = scheduling::NodeID::Nil(),
+      std::function<void(rpc::ResourcesData &data)> get_gcs_node_resource_usage =
+          [](auto) { return; });
 
   virtual ~GcsResourceManager() {}
 
@@ -139,6 +141,11 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// \param data The resource loads reported by raylet.
   void UpdateResourceLoads(const rpc::ResourcesData &data);
 
+  /// Get the resources of a specified node.
+  ///
+  /// \param node_id ID of the specified node.
+  const NodeResources &GetNodeResources(scheduling::NodeID node_id) const;
+
  private:
   /// Newest resource usage of all nodes.
   absl::flat_hash_map<NodeID, rpc::ResourcesData> node_resource_usages_;
@@ -164,6 +171,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
 
   ClusterResourceManager &cluster_resource_manager_;
   scheduling::NodeID local_node_id_;
+  std::function<void(rpc::ResourcesData &data)> get_gcs_node_resource_usage_;
 };
 
 }  // namespace gcs

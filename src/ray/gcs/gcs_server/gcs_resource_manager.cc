@@ -23,10 +23,12 @@ namespace gcs {
 GcsResourceManager::GcsResourceManager(
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
     ClusterResourceManager &cluster_resource_manager,
-    scheduling::NodeID local_node_id)
+    scheduling::NodeID local_node_id,
+    std::function<void(rpc::ResourcesData &data)> get_gcs_node_resource_usage)
     : gcs_table_storage_(gcs_table_storage),
       cluster_resource_manager_(cluster_resource_manager),
-      local_node_id_(local_node_id) {}
+      local_node_id_(local_node_id),
+      get_gcs_node_resource_usage_(std::move(get_gcs_node_resource_usage)) {}
 
 void GcsResourceManager::HandleGetResources(const rpc::GetResourcesRequest &request,
                                             rpc::GetResourcesReply *reply,
@@ -208,6 +210,11 @@ void GcsResourceManager::HandleGetAllResourceUsage(
     const rpc::GetAllResourceUsageRequest &request,
     rpc::GetAllResourceUsageReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  rpc::ResourcesData resources_data;
+  get_gcs_node_resource_usage_(resources_data);
+  if (resources_data.cluster_full_of_actors_detected()) {
+    UpdateNodeResourceUsage(NodeID::FromBinary(local_node_id_.Binary()), resources_data);
+  }
   if (!node_resource_usages_.empty()) {
     auto batch = std::make_shared<rpc::ResourceUsageBatchData>();
     std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
@@ -362,6 +369,11 @@ std::string GcsResourceManager::ToString() const {
   }
   ostr << indent_0 << "}\n";
   return ostr.str();
+}
+
+const NodeResources &GcsResourceManager::GetNodeResources(
+    scheduling::NodeID node_id) const {
+  return cluster_resource_manager_.GetNodeResources(node_id);
 }
 
 }  // namespace gcs

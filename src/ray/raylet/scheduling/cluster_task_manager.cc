@@ -36,13 +36,10 @@ ClusterTaskManager::ClusterTaskManager(
       get_node_info_(get_node_info),
       announce_infeasible_task_(announce_infeasible_task),
       local_task_manager_(std::move(local_task_manager)),
-      get_time_ms_(get_time_ms) {
-  if (local_task_manager_) {
-    scheduler_resource_reporter_ = std::make_unique<SchedulerResourceReporter>(
-        tasks_to_schedule_, infeasible_tasks_, *local_task_manager_);
-    internal_stats_ = std::make_unique<SchedulerStats>(*this, *local_task_manager_);
-  }
-}
+      scheduler_resource_reporter_(
+          tasks_to_schedule_, infeasible_tasks_, *local_task_manager_),
+      internal_stats_(*this, *local_task_manager_),
+      get_time_ms_(get_time_ms) {}
 
 void ClusterTaskManager::QueueAndScheduleTask(
     const RayTask &task,
@@ -244,17 +241,13 @@ bool ClusterTaskManager::CancelTask(
 }
 
 void ClusterTaskManager::FillPendingActorInfo(rpc::GetNodeStatsReply *reply) const {
-  if (scheduler_resource_reporter_) {
-    scheduler_resource_reporter_->FillPendingActorInfo(reply);
-  }
+  scheduler_resource_reporter_.FillPendingActorInfo(reply);
 }
 
 void ClusterTaskManager::FillResourceUsage(
     rpc::ResourcesData &data,
     const std::shared_ptr<NodeResources> &last_reported_resources) {
-  if (scheduler_resource_reporter_) {
-    scheduler_resource_reporter_->FillResourceUsage(data, last_reported_resources);
-  }
+  scheduler_resource_reporter_.FillResourceUsage(data, last_reported_resources);
 }
 
 bool ClusterTaskManager::AnyPendingTasksForResourceAcquisition(
@@ -308,18 +301,10 @@ bool ClusterTaskManager::AnyPendingTasksForResourceAcquisition(
   return *any_pending;
 }
 
-void ClusterTaskManager::RecordMetrics() const {
-  if (internal_stats_) {
-    internal_stats_->RecordMetrics();
-  }
-}
+void ClusterTaskManager::RecordMetrics() const { internal_stats_.RecordMetrics(); }
 
 std::string ClusterTaskManager::DebugStr() const {
-  if (internal_stats_) {
-    return internal_stats_->ComputeAndReportDebugStr();
-  } else {
-    return std::string("");
-  }
+  return internal_stats_.ComputeAndReportDebugStr();
 }
 
 void ClusterTaskManager::ScheduleOnNode(const NodeID &spillback_to,
@@ -336,9 +321,9 @@ void ClusterTaskManager::ScheduleOnNode(const NodeID &spillback_to,
     send_reply_callback();
     return;
   }
-  if (internal_stats_) {
-    internal_stats_->TaskSpilled();
-  }
+
+  internal_stats_.TaskSpilled();
+
   const auto &task = work->task;
   const auto &task_spec = task.GetTaskSpecification();
   RAY_LOG(DEBUG) << "Spilling task " << task_spec.TaskId() << " to node " << spillback_to;
@@ -382,6 +367,10 @@ size_t ClusterTaskManager::GetPendingQueueSize() const {
     count += cls_entry.second.size();
   }
   return count;
+}
+
+void ClusterTaskManager::FillPendingActorInfo(rpc::ResourcesData &data) const {
+  scheduler_resource_reporter_.FillPendingActorInfo(data);
 }
 
 }  // namespace raylet
