@@ -1062,6 +1062,13 @@ void NodeManager::ResourceDeleted(const NodeID &node_id,
   return;
 }
 
+void NodeManager::HandleGCSRestart(
+    const rpc::GCSRestartRequest &request,
+    rpc::GCSRestartReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+
+}
+
 void NodeManager::UpdateResourceUsage(const NodeID &node_id,
                                       const rpc::ResourcesData &resource_data) {
   if (!cluster_resource_scheduler_->GetClusterResourceManager().UpdateNode(
