@@ -69,22 +69,29 @@ class XGBoostTrainer(GBDTTrainer):
     def _train(self, **kwargs):
         return xgboost_ray.train(**kwargs)
 
-    @staticmethod
-    def load_checkpoint(
-        checkpoint: Checkpoint,
+    def _load_checkpoint(
+        self, checkpoint: Checkpoint
     ) -> Tuple[xgboost.Booster, Optional[Preprocessor]]:
-        """Load a Checkpoint from ``XGBoostTrainer``.
+        return load_checkpoint(checkpoint)
 
-        Return the model and AIR preprocessor contained within.
 
-        Args:
-            checkpoint: The checkpoint to load the model and
-                preprocessor from. It is expected to be from the result of a
-                ``XGBoostTrainer`` run.
-        """
-        with checkpoint.as_directory() as checkpoint_path:
-            xgb_model = xgboost.Booster()
-            xgb_model.load_model(os.path.join(checkpoint_path, MODEL_KEY))
-            preprocessor = load_preprocessor_from_dir(checkpoint_path)
+@staticmethod
+def load_checkpoint(
+    checkpoint: Checkpoint,
+) -> Tuple[xgboost.Booster, Optional[Preprocessor]]:
+    """Load a Checkpoint from ``XGBoostTrainer``.
 
-        return xgb_model, preprocessor
+    Args:
+        checkpoint: The checkpoint to load the model and
+            preprocessor from. It is expected to be from the result of a
+            ``XGBoostTrainer`` run.
+
+    Returns:
+        The model and AIR preprocessor contained within.
+    """
+    with checkpoint.as_directory() as checkpoint_path:
+        xgb_model = xgboost.Booster()
+        xgb_model.load_model(os.path.join(checkpoint_path, MODEL_KEY))
+        preprocessor = load_preprocessor_from_dir(checkpoint_path)
+
+    return xgb_model, preprocessor

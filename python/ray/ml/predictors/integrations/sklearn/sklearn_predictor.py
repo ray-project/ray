@@ -7,7 +7,7 @@ from joblib import parallel_backend
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.predictor import Predictor, DataBatchType
 from ray.ml.preprocessor import Preprocessor
-from ray.ml.train.integrations.sklearn import SklearnTrainer
+from ray.ml.train.integrations.sklearn import load_checkpoint
 from ray.ml.utils.sklearn_utils import set_cpu_params
 from ray.util.joblib import register_ray
 
@@ -42,7 +42,7 @@ class SklearnPredictor(Predictor):
                 ``SklearnTrainer`` run.
 
         """
-        estimator, preprocessor = SklearnTrainer.load_checkpoint(checkpoint)
+        estimator, preprocessor = load_checkpoint(checkpoint)
         return SklearnPredictor(estimator=estimator, preprocessor=preprocessor)
 
     def predict(

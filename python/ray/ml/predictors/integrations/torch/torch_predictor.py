@@ -7,7 +7,7 @@ import torch
 from ray.ml.predictor import Predictor, DataBatchType
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
-from ray.ml.train.integrations.torch import TorchTrainer
+from ray.ml.train.integrations.torch import load_checkpoint
 from ray.ml.utils.torch_utils import convert_pandas_to_torch_tensor
 
 
@@ -42,7 +42,7 @@ class TorchPredictor(Predictor):
                 the model itself, then the state dict will be loaded to this
                 ``model``.
         """
-        model, preprocessor = TorchTrainer.load_checkpoint(checkpoint, model)
+        model, preprocessor = load_checkpoint(checkpoint, model)
         return TorchPredictor(model=model, preprocessor=preprocessor)
 
     # parity with Datset.to_torch

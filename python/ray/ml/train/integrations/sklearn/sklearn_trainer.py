@@ -437,23 +437,24 @@ class SklearnTrainer(Trainer):
         }
         tune.report(**results)
 
-    @staticmethod
-    def load_checkpoint(
-        checkpoint: Checkpoint,
-    ) -> Tuple[BaseEstimator, Optional[Preprocessor]]:
-        """Load a Checkpoint from ``SklearnTrainer``.
 
-        Return the estimator and AIR preprocessor contained within.
+def load_checkpoint(
+    checkpoint: Checkpoint,
+) -> Tuple[BaseEstimator, Optional[Preprocessor]]:
+    """Load a Checkpoint from ``SklearnTrainer``.
 
-        Args:
-            checkpoint: The checkpoint to load the estimator and
-                preprocessor from. It is expected to be from the result of a
-                ``SklearnTrainer`` run.
-        """
-        with checkpoint.as_directory() as checkpoint_path:
-            estimator_path = os.path.join(checkpoint_path, MODEL_KEY)
-            with open(estimator_path, "rb") as f:
-                estimator_path = cpickle.load(f)
-            preprocessor = load_preprocessor_from_dir(checkpoint_path)
+    Args:
+        checkpoint: The checkpoint to load the estimator and
+            preprocessor from. It is expected to be from the result of a
+            ``SklearnTrainer`` run.
 
-        return estimator_path, preprocessor
+    Returns:
+        The estimator and AIR preprocessor contained within.
+    """
+    with checkpoint.as_directory() as checkpoint_path:
+        estimator_path = os.path.join(checkpoint_path, MODEL_KEY)
+        with open(estimator_path, "rb") as f:
+            estimator_path = cpickle.load(f)
+        preprocessor = load_preprocessor_from_dir(checkpoint_path)
+
+    return estimator_path, preprocessor

@@ -7,7 +7,7 @@ import xgboost
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.predictor import Predictor, DataBatchType
 from ray.ml.preprocessor import Preprocessor
-from ray.ml.train.integrations.xgboost import XGBoostTrainer
+from ray.ml.train.integrations.xgboost import load_checkpoint
 
 
 class XGBoostPredictor(Predictor):
@@ -37,7 +37,7 @@ class XGBoostPredictor(Predictor):
                 ``XGBoostTrainer`` run.
 
         """
-        bst, preprocessor = XGBoostTrainer.load_checkpoint(checkpoint)
+        bst, preprocessor = load_checkpoint(checkpoint)
         return XGBoostPredictor(model=bst, preprocessor=preprocessor)
 
     def predict(

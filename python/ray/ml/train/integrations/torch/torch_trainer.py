@@ -3,7 +3,7 @@ import torch
 
 from ray.train.torch import TorchConfig
 from ray.ml.trainer import GenDataset
-from ray.ml.train.data_parallel_trainer import DataParallelTrainer
+from ray.ml.train.data_parallel_trainer import DataParallelTrainer, _load_checkpoint
 from ray.ml.config import ScalingConfig, RunConfig
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
@@ -191,24 +191,23 @@ class TorchTrainer(DataParallelTrainer):
             resume_from_checkpoint=resume_from_checkpoint,
         )
 
-    @staticmethod
-    def load_checkpoint(
-        checkpoint: Checkpoint, model: Optional[torch.nn.Module] = None
-    ) -> Tuple[torch.nn.Module, Optional[Preprocessor]]:
-        """Load a Checkpoint from ``TorchTrainer``.
 
-        Return the model with set weights and AIR preprocessor contained within.
+def load_checkpoint(
+    checkpoint: Checkpoint, model: Optional[torch.nn.Module] = None
+) -> Tuple[torch.nn.Module, Optional[Preprocessor]]:
+    """Load a Checkpoint from ``TorchTrainer``.
 
-        Args:
-            checkpoint: The checkpoint to load the model and
-                preprocessor from. It is expected to be from the result of a
-                ``TorchTrainer`` run.
-            model: If the checkpoint contains a model state dict, and not
-                the model itself, then the state dict will be loaded to this
-                ``model``.
-        """
-        saved_model, preprocessor = DataParallelTrainer._load_checkpoint(
-            checkpoint, "TorchTrainer"
-        )
-        model = load_torch_model(saved_model=saved_model, model_definition=model)
-        return model, preprocessor
+    Args:
+        checkpoint: The checkpoint to load the model and
+            preprocessor from. It is expected to be from the result of a
+            ``TorchTrainer`` run.
+        model: If the checkpoint contains a model state dict, and not
+            the model itself, then the state dict will be loaded to this
+            ``model``.
+
+    Returns:
+        The model with set weights and AIR preprocessor contained within.
+    """
+    saved_model, preprocessor = _load_checkpoint(checkpoint, "TorchTrainer")
+    model = load_torch_model(saved_model=saved_model, model_definition=model)
+    return model, preprocessor

@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from ray.ml import Preprocessor, Checkpoint
 from ray.ml.predictor import Predictor, DataBatchType
-from ray.ml.train.integrations.rl.rl_trainer import RLTrainer
+from ray.ml.train.integrations.rl.rl_trainer import load_checkpoint
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.typing import EnvType
 
@@ -42,7 +42,7 @@ class RLPredictor(Predictor):
                 it is parsed from the saved trainer configuration instead.
 
         """
-        policy, preprocessor = RLTrainer.load_checkpoint(checkpoint, env)
+        policy, preprocessor = load_checkpoint(checkpoint, env)
         return RLPredictor(policy=policy, preprocessor=preprocessor)
 
     def predict(self, data: DataBatchType, **kwargs) -> DataBatchType:

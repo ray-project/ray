@@ -6,7 +6,7 @@ from ray import tune
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.constants import TRAIN_DATASET_KEY
 
-from ray.ml.train.integrations.sklearn import SklearnTrainer
+from ray.ml.train.integrations.sklearn import SklearnTrainer, load_checkpoint
 from ray.ml.preprocessor import Preprocessor
 
 from sklearn.datasets import load_breast_cancer
@@ -91,7 +91,7 @@ def test_no_auto_cpu_params(ray_start_4_cpus, tmpdir):
     )
     result = trainer.fit()
 
-    model, _ = SklearnTrainer.load_checkpoint(result.checkpoint)
+    model, _ = load_checkpoint(result.checkpoint)
     assert model.n_jobs == 1
 
 
@@ -125,7 +125,7 @@ def test_preprocessor_in_checkpoint(ray_start_4_cpus, tmpdir):
     checkpoint_path = checkpoint.to_directory(tmpdir)
     resume_from = Checkpoint.from_directory(checkpoint_path)
 
-    model, preprocessor = SklearnTrainer.load_checkpoint(resume_from)
+    model, preprocessor = load_checkpoint(resume_from)
     assert hasattr(model, "feature_importances_")
     assert preprocessor.is_same
     assert preprocessor.fitted_

@@ -6,7 +6,7 @@ import tensorflow as tf
 from ray.ml.predictor import Predictor, DataBatchType
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
-from ray.ml.train.data_parallel_trainer import DataParallelTrainer
+from ray.ml.train.data_parallel_trainer import _load_checkpoint
 
 
 class TensorflowPredictor(Predictor):
@@ -47,11 +47,9 @@ class TensorflowPredictor(Predictor):
             model_definition: A callable that returns a TensorFlow Keras model
                 to use. Model weights will be loaded from the checkpoint.
         """
-        # Cannot use TensorflowTrainer.load_checkpoint here
+        # Cannot use TensorFlow load_checkpoint here
         # due to instantiated models not being pickleable
-        model_weights, preprocessor = DataParallelTrainer._load_checkpoint(
-            checkpoint, "TensorflowTrainer"
-        )
+        model_weights, preprocessor = _load_checkpoint(checkpoint, "TensorflowTrainer")
         return TensorflowPredictor(
             model_definition=model_definition,
             model_weights=model_weights,

@@ -79,23 +79,29 @@ class LightGBMTrainer(GBDTTrainer):
     def _train(self, **kwargs):
         return lightgbm_ray.train(**kwargs)
 
-    @staticmethod
-    def load_checkpoint(
-        checkpoint: Checkpoint,
+    def _load_checkpoint(
+        self, checkpoint: Checkpoint
     ) -> Tuple[lightgbm.Booster, Optional[Preprocessor]]:
-        """Load a Checkpoint from ``LightGBMTrainer``.
+        return load_checkpoint(checkpoint)
 
-        Return the model and AIR preprocessor contained within.
 
-        Args:
-            checkpoint: The checkpoint to load the model and
-                preprocessor from. It is expected to be from the result of a
-                ``LightGBMTrainer`` run.
-        """
-        with checkpoint.as_directory() as checkpoint_path:
-            lgbm_model = lightgbm.Booster(
-                model_file=os.path.join(checkpoint_path, MODEL_KEY)
-            )
-            preprocessor = load_preprocessor_from_dir(checkpoint_path)
+def load_checkpoint(
+    checkpoint: Checkpoint,
+) -> Tuple[lightgbm.Booster, Optional[Preprocessor]]:
+    """Load a Checkpoint from ``LightGBMTrainer``.
 
-        return lgbm_model, preprocessor
+    Args:
+        checkpoint: The checkpoint to load the model and
+            preprocessor from. It is expected to be from the result of a
+            ``LightGBMTrainer`` run.
+
+    Returns:
+        The model and AIR preprocessor contained within.
+    """
+    with checkpoint.as_directory() as checkpoint_path:
+        lgbm_model = lightgbm.Booster(
+            model_file=os.path.join(checkpoint_path, MODEL_KEY)
+        )
+        preprocessor = load_preprocessor_from_dir(checkpoint_path)
+
+    return lgbm_model, preprocessor

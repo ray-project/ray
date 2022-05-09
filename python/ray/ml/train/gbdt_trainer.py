@@ -131,8 +131,8 @@ class GBDTTrainer(Trainer):
             for k, v in self.datasets.items()
         }
 
-    @staticmethod
-    def load_checkpoint(
+    def _load_checkpoint(
+        self,
         checkpoint: Checkpoint,
     ) -> Tuple[Any, Optional[Preprocessor]]:
         raise NotImplementedError
@@ -176,7 +176,7 @@ class GBDTTrainer(Trainer):
 
         init_model = None
         if self.resume_from_checkpoint:
-            init_model, _ = self.load_checkpoint(self.resume_from_checkpoint)
+            init_model, _ = self._load_checkpoint(self.resume_from_checkpoint)
 
         config.setdefault("verbose_eval", False)
         config.setdefault("callbacks", [])

@@ -7,7 +7,7 @@ import lightgbm
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.predictor import Predictor, DataBatchType
 from ray.ml.preprocessor import Preprocessor
-from ray.ml.train.integrations.lightgbm import LightGBMTrainer
+from ray.ml.train.integrations.lightgbm import load_checkpoint
 
 
 class LightGBMPredictor(Predictor):
@@ -37,7 +37,7 @@ class LightGBMPredictor(Predictor):
                 ``LightGBMTrainer`` run.
 
         """
-        bst, preprocessor = LightGBMTrainer.load_checkpoint(checkpoint)
+        bst, preprocessor = load_checkpoint(checkpoint)
         return LightGBMPredictor(model=bst, preprocessor=preprocessor)
 
     def predict(
