@@ -216,8 +216,7 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
         throw new RayActorException(e);
       }
     } finally {
-      Thread.currentThread().setContextClassLoader(oldLoader);
-      runtime.getWorkerContext().setCurrentClassLoader(null);
+      /// TODO(qwang): Remove this final.
     }
     return returnObjects;
   }
