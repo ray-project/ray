@@ -62,8 +62,10 @@ def _should_cache(req: ray_client_pb2.DataRequest) -> bool:
     req_type = req.WhichOneof("type")
     if req_type == "get" and req.get.asynchronous:
         return False
-    if req_type == "put" or req_type == "task":
+    if req_type == "put":
         return req.put.chunk_id == req.put.total_chunks - 1
+    if req_type == "task":
+        return req.task.chunk_id == req.task.total_chunks - 1
     return req_type not in ("acknowledge", "connection_cleanup")
 
 
