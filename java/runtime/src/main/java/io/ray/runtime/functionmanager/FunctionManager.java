@@ -72,6 +72,10 @@ public class FunctionManager {
     jobFunctionTable = createJobFunctionTable(this.jobId);
   }
 
+  public ClassLoader getClassLoader() {
+    return jobFunctionTable.classLoader;
+  }
+
   /**
    * Get the RayFunction from a RayFunc instance (a lambda).
    *
@@ -149,7 +153,6 @@ public class FunctionManager {
   }
 
   /** Manages all functions that belong to one job. */
-  // TODO(qwang): Rename this to FunctionTable.
   static class JobFunctionTable {
 
     /** The job's corresponding class loader. */

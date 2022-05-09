@@ -44,6 +44,8 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
 
   TaskExecutor(RayRuntimeInternal runtime) {
     this.runtime = runtime;
+    // TODO(qwang): Remove classloader from worker context in the next PR.
+    this.runtime.getWorkerContext().setCurrentClassLoader(this.runtime.getFunctionManager().getClassLoader());
   }
 
   protected abstract T createActorContext();
@@ -121,7 +123,6 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
         rayFunction = getRayFunction(rayFunctionInfo);
       }
       Thread.currentThread().setContextClassLoader(rayFunction.classLoader);
-      runtime.getWorkerContext().setCurrentClassLoader(rayFunction.classLoader);
 
       // Get local actor object and arguments.
       Object actor = null;
