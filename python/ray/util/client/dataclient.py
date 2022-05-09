@@ -533,7 +533,7 @@ class DataClient:
         self._async_send(datareq)
 
     def Schedule(self, request: ray_client_pb2.ClientTask, callback: ResponseCallable):
-        print(f'request.name{request.name} request.ByteSize{request.ByteSize()} request.type{request.type} request.payload_id:{request.payload_id}')
+        print(f'in Dataclient.Schedule request.name{request.name} request.ByteSize{request.ByteSize()} request.type{request.type} request.payload_id:{request.payload_id}')
         if request.ByteSize() < (2 * 2 ** 30 - 100 * 1024 * 1024):
             datareq = ray_client_pb2.DataRequest(task=request)
             self._async_send(datareq, callback)
