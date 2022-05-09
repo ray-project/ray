@@ -127,9 +127,7 @@ class ActorManager {
 
   /// Subscribe to the state of actor.
   /// \param actor_id ID of the actor to be subscribed.
-  /// \param actor_name Name of the actor to be subscribed. The <actor_name, actor_id>
-  /// will be cached when finished subscribing if actor_name is not empty.
-  void SubscribeActorState(const ActorID &actor_id, const std::string &actor_name = "");
+  void SubscribeActorState(const ActorID &actor_id);
 
  private:
   bool AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
