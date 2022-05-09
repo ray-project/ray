@@ -1,6 +1,7 @@
 from __future__ import print_function
 
 import datetime
+import numbers
 from typing import Any, Dict, List, Optional, Union
 
 import collections
@@ -779,17 +780,22 @@ def trial_progress_str(
     return delim.join(messages)
 
 
-def _max_len(value: Any, max_len: int = 20, add_addr: bool = False) -> str:
+def _max_len(value: Any, max_len: int = 20, add_addr: bool = False) -> Any:
     """Abbreviate a string representation of an object to `max_len` characters.
+
+    For numbers, booleans and None, the original value will be returned for
+    correct rendering in the table formatting tool.
 
     Args:
         value: Object to be represented as a string.
         max_len: Maximum return string length.
         add_addr: If True, will add part of the object address to the end of the
             string, e.g. to identify different instances of the same class. If
-            False or if the value is an int, float, or bool, three dots
-            (``...``) will be used instead.
+            False, three dots (``...``) will be used instead.
     """
+    if value is None or isinstance(value, (int, float, numbers.Number, bool)):
+        return value
+
     string = str(value)
     if len(string) <= max_len:
         return string
