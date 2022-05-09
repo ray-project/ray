@@ -1,36 +1,9 @@
-import os
 import pytest
 import ray
-import re
 from filelock import FileLock
-from ray._private.test_utils import run_string_as_driver, SignalActor
+from ray._private.test_utils import SignalActor
 from ray import workflow
-from ray.workflow.tests.utils import update_workflow_options
 from ray.tests.conftest import *  # noqa
-from unittest.mock import patch
-
-
-def test_init_twice(call_ray_start, reset_workflow, tmp_path):
-    workflow.init()
-    with pytest.raises(RuntimeError):
-        workflow.init(str(tmp_path))
-
-
-driver_script = """
-from ray import workflow
-
-if __name__ == "__main__":
-    workflow.init()
-"""
-
-
-def test_init_twice_2(call_ray_start, reset_workflow, tmp_path):
-    with patch.dict(os.environ, {"RAY_ADDRESS": call_ray_start}):
-        run_string_as_driver(driver_script)
-        with pytest.raises(
-            RuntimeError, match=".*different from the workflow manager.*"
-        ):
-            workflow.init(str(tmp_path))
 
 
 @pytest.mark.parametrize(
@@ -110,7 +83,9 @@ def test_get_output_3(workflow_start_regular, tmp_path):
         return 10
 
     with pytest.raises(ray.exceptions.RaySystemError):
-        workflow.create(update_workflow_options(incr, max_retries=0).bind()).run("incr")
+        workflow.create(incr.options(**workflow.options(max_retries=0)).bind()).run(
+            "incr"
+        )
 
     assert cnt_file.read_text() == "1"
 
@@ -131,8 +106,8 @@ def test_get_named_step_output_finished(workflow_start_regular, tmp_path):
 
     # Get the result from named step after workflow finished
     assert 4 == workflow.create(
-        update_workflow_options(double, name="outer").bind(
-            update_workflow_options(double, name="inner").bind(1)
+        double.options(**workflow.options(name="outer")).bind(
+            double.options(**workflow.options(name="inner")).bind(1)
         )
     ).run("double")
     assert ray.get(workflow.get_output("double", name="inner")) == 2
@@ -153,8 +128,9 @@ def test_get_named_step_output_running(workflow_start_regular, tmp_path):
     lock = FileLock(lock_path)
     lock.acquire()
     output = workflow.create(
-        update_workflow_options(double, name="outer").bind(
-            update_workflow_options(double, name="inner").bind(1, lock_path), lock_path
+        double.options(**workflow.options(name="outer")).bind(
+            double.options(**workflow.options(name="inner")).bind(1, lock_path),
+            lock_path,
         )
     ).run_async("double-2")
 
@@ -202,8 +178,8 @@ def test_get_named_step_output_error(workflow_start_regular, tmp_path):
     # Force it to fail for the outer step
     with pytest.raises(Exception):
         workflow.create(
-            update_workflow_options(double, name="outer").bind(
-                update_workflow_options(double, name="inner").bind(1, False), True
+            double.options(**workflow.options(name="outer")).bind(
+                double.options(**workflow.options(name="inner")).bind(1, False), True
             )
         ).run("double")
 
@@ -252,25 +228,16 @@ def test_get_named_step_duplicate(workflow_start_regular):
     assert ray.get(workflow.get_output("duplicate", name="f_1")) == 10
 
 
-def test_no_init(shutdown_only):
+def test_no_init_run(shutdown_only):
     @ray.remote
     def f():
         pass
 
-    fail_wf_init_error_msg = re.escape(
-        "`workflow.init()` must be called prior to using the workflows API."
-    )
+    workflow.create(f.bind()).run()
 
-    with pytest.raises(RuntimeError, match=fail_wf_init_error_msg):
-        workflow.create(f.bind()).run()
-    with pytest.raises(RuntimeError, match=fail_wf_init_error_msg):
-        workflow.list_all()
-    with pytest.raises(RuntimeError, match=fail_wf_init_error_msg):
-        workflow.resume_all()
-    with pytest.raises(RuntimeError, match=fail_wf_init_error_msg):
-        workflow.cancel("wf")
-    with pytest.raises(RuntimeError, match=fail_wf_init_error_msg):
-        workflow.get_actor("wf")
+
+def test_no_init_api(shutdown_only):
+    workflow.list_all()
 
 
 if __name__ == "__main__":

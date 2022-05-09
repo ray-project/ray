@@ -60,6 +60,10 @@ Trainer
     :members:
     :show-inheritance:
 
+.. automodule:: ray.ml.train.integrations.huggingface
+    :members:
+    :show-inheritance:
+
 .. automodule:: ray.ml.train.integrations.sklearn
     :members:
     :show-inheritance:
@@ -109,6 +113,10 @@ Predictors
     :show-inheritance:
 
 .. automodule:: ray.ml.predictors.integrations.sklearn
+    :members:
+    :show-inheritance:
+
+.. automodule:: ray.ml.predictors.integrations.huggingface
     :members:
     :show-inheritance:
 

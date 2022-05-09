@@ -129,3 +129,11 @@ def list_objects(
         ListApiOptions(limit=limit, timeout=timeout),
         api_server_url=api_server_url,
     )
+
+
+def list_runtime_envs(api_server_url: str = None, limit: int = 1000, timeout: int = 30):
+    return _list(
+        "runtime_envs",
+        ListApiOptions(limit=limit, timeout=timeout),
+        api_server_url=api_server_url,
+    )

@@ -72,6 +72,10 @@ RAY_STORAGE_ENVIRONMENT_VARIABLE = "RAY_STORAGE"
 # unconditionally given the runtime_env dict passed for ray.init. It must return
 # a rewritten runtime_env dict. Example: "your.module.runtime_env_hook".
 RAY_RUNTIME_ENV_HOOK = "RAY_RUNTIME_ENV_HOOK"
+# Hook that is invoked on `ray start`. It will be given the cluster parameters and
+# whether we are the head node as arguments. The function can modify the params class,
+# but otherwise returns void. Example: "your.module.ray_start_hook".
+RAY_START_HOOK = "RAY_START_HOOK"
 
 DEFAULT_DASHBOARD_IP = "127.0.0.1"
 DEFAULT_DASHBOARD_PORT = 8265

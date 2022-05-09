@@ -1,3 +1,4 @@
+import math
 import os
 from typing import Optional, Tuple
 import pytest
@@ -58,16 +59,28 @@ def load_from_checkpoint(
     return lgbm_model, preprocessor
 
 
-def test_fit(ray_start_4_cpus):
-    train_dataset = ray.data.from_pandas(train_df)
-    valid_dataset = ray.data.from_pandas(test_df)
+def test_fit_with_categoricals(ray_start_4_cpus):
+    train_df_with_cat = train_df.copy()
+    test_df_with_cat = test_df.copy()
+    train_df_with_cat["categorical_column"] = pd.Series(
+        (["A", "B"] * math.ceil(len(train_df_with_cat) / 2))[: len(train_df_with_cat)]
+    ).astype("category")
+    test_df_with_cat["categorical_column"] = pd.Series(
+        (["A", "B"] * math.ceil(len(test_df_with_cat) / 2))[: len(test_df_with_cat)]
+    ).astype("category")
+
+    train_dataset = ray.data.from_pandas(train_df_with_cat)
+    valid_dataset = ray.data.from_pandas(test_df_with_cat)
     trainer = LightGBMTrainer(
         scaling_config=scale_config,
         label_column="target",
         params=params,
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
     )
-    trainer.fit()
+    result = trainer.fit()
+    checkpoint = result.checkpoint
+    model, _ = load_from_checkpoint(checkpoint)
+    assert model.pandas_categorical == [["A", "B"]]
 
 
 def test_resume_from_checkpoint(ray_start_4_cpus, tmpdir):

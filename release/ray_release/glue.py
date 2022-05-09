@@ -16,6 +16,7 @@ from ray_release.config import (
     DEFAULT_BUILD_TIMEOUT,
     DEFAULT_CLUSTER_TIMEOUT,
     DEFAULT_COMMAND_TIMEOUT,
+    DEFAULT_WAIT_FOR_NODES_TIMEOUT,
     RELEASE_PACKAGE_DIR,
     DEFAULT_AUTOSUSPEND_MINS,
     validate_test,
@@ -38,7 +39,11 @@ from ray_release.file_manager.session_controller import SessionControllerFileMan
 from ray_release.logger import logger
 from ray_release.reporter.reporter import Reporter
 from ray_release.result import Result, handle_exception
-from ray_release.util import run_bash_script
+from ray_release.util import (
+    run_bash_script,
+    get_pip_packages,
+    reinstall_anyscale_dependencies,
+)
 
 type_str_to_command_runner = {
     "command": SDKRunner,
@@ -167,6 +172,16 @@ def run_release_test(
         command_runner.prepare_local_env(ray_wheels_url)
         command_timeout = test["run"].get("timeout", DEFAULT_COMMAND_TIMEOUT)
 
+        # Re-install anyscale package as local dependencies might have changed
+        # from local env setup
+        reinstall_anyscale_dependencies()
+
+        # Print installed pip packages
+        buildkite_group(":bulb: Local environment information")
+        pip_packages = get_pip_packages()
+        pip_package_string = "\n".join(pip_packages)
+        logger.info(f"Installed python packages:\n{pip_package_string}")
+
         # Start cluster
         if cluster_id:
             buildkite_group(":rocket: Using existing cluster")
@@ -207,7 +222,9 @@ def run_release_test(
         if wait_for_nodes:
             buildkite_group(":stopwatch: Waiting for nodes to come up")
             num_nodes = test["run"]["wait_for_nodes"]["num_nodes"]
-            wait_timeout = test["run"]["wait_for_nodes"]["timeout"]
+            wait_timeout = test["run"]["wait_for_nodes"].get(
+                "timeout", DEFAULT_WAIT_FOR_NODES_TIMEOUT
+            )
             command_runner.wait_for_nodes(num_nodes, wait_timeout)
 
         prepare_cmd = test["run"].get("prepare", None)

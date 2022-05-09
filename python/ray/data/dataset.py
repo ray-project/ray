@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     import pyspark
     import torch
     import tensorflow as tf
+    import torch.utils.data
     from ray.data.dataset_pipeline import DatasetPipeline
     from ray.data.grouped_dataset import GroupedDataset
 
@@ -83,6 +84,7 @@ from ray.data.impl.sort import sort_impl
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList
 from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
+from ray._private.usage import usage_lib
 
 logger = logging.getLogger(__name__)
 
@@ -127,14 +129,15 @@ class Dataset(Generic[T]):
         read methods to construct a dataset.
         """
         assert isinstance(plan, ExecutionPlan)
+        usage_lib.record_library_usage("dataset")
+
         self._plan = plan
         self._uuid = uuid4().hex
         self._epoch = epoch
         self._lazy = lazy
 
         if not lazy:
-            # TODO(ekl) we should clear inputs once we have full lineage recorded.
-            self._plan.execute(clear_input_blocks=False)
+            self._plan.execute(allow_clear_input_blocks=False)
 
     @staticmethod
     def copy(dataset: "Dataset[T]") -> "Dataset[T]":
@@ -310,7 +313,8 @@ class Dataset(Generic[T]):
                 ):
                     raise ValueError(
                         "The map batches UDF returned the value "
-                        f"{applied}, which is not allowed. "
+                        f"{applied} of type {type(applied)}, "
+                        "which is not allowed. "
                         "The return type must be either list, "
                         "pandas.DataFrame, or pyarrow.Table"
                     )
@@ -648,7 +652,7 @@ class Dataset(Generic[T]):
         if locality_hints and len(locality_hints) != n:
             raise ValueError(
                 f"The length of locality_hints {len(locality_hints)} "
-                "doesn't equal the number of splits {n}."
+                f"doesn't equal the number of splits {n}."
             )
             # TODO: this is unreachable code.
             if len(set(locality_hints)) != len(locality_hints):
@@ -2124,6 +2128,7 @@ class Dataset(Generic[T]):
         prefetch_blocks: int = 0,
         drop_last: bool = False,
         unsqueeze_label_tensor: bool = True,
+        unsqueeze_feature_tensors: bool = True,
     ) -> "torch.utils.data.IterableDataset":
         """Return a Torch IterableDataset over this dataset.
 
@@ -2197,6 +2202,10 @@ Dict[str, List[str]]]): The names of the columns
                 be left as is, that is (N, ). In general, regression loss
                 functions expect an unsqueezed tensor, while classification
                 loss functions expect a squeezed one. Defaults to True.
+            unsqueeze_feature_tensors (bool): If set to True, the features tensors
+                will be unsqueezed (reshaped to (N, 1)) before being concatenated into
+                the final features tensor. Otherwise, they will be left as is, that is
+                (N, ). Defaults to True.
 
         Returns:
             A torch IterableDataset.
@@ -2248,10 +2257,13 @@ Dict[str, List[str]]]): The names of the columns
                 drop_last=drop_last,
             ):
                 if label_column:
-                    label_vals = batch.pop(label_column).values
-                    label_tensor = torch.as_tensor(label_vals, dtype=label_column_dtype)
-                    if unsqueeze_label_tensor:
-                        label_tensor = label_tensor.view(-1, 1)
+                    label_tensor = convert_pandas_to_torch_tensor(
+                        batch,
+                        [label_column],
+                        label_column_dtype,
+                        unsqueeze=unsqueeze_label_tensor,
+                    )
+                    batch.pop(label_column)
                 else:
                     label_tensor = None
 
@@ -2263,6 +2275,7 @@ Dict[str, List[str]]]): The names of the columns
                             feature_column_dtypes[key]
                             if isinstance(feature_column_dtypes, dict)
                             else feature_column_dtypes,
+                            unsqueeze=unsqueeze_feature_tensors,
                         )
                         for key in feature_columns
                     }
@@ -2271,6 +2284,7 @@ Dict[str, List[str]]]): The names of the columns
                         batch,
                         columns=feature_columns,
                         column_dtypes=feature_column_dtypes,
+                        unsqueeze=unsqueeze_feature_tensors,
                     )
 
                 yield (features_tensor, label_tensor)
@@ -2455,7 +2469,25 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
         Returns:
             A MARS dataframe created from this dataset.
         """
-        raise NotImplementedError  # P1
+        import pandas as pd
+        import pyarrow as pa
+        from mars.dataframe.datasource.read_raydataset import DataFrameReadRayDataset
+        from mars.dataframe.utils import parse_index
+        from ray.data.impl.pandas_block import PandasBlockSchema
+
+        refs = self.to_pandas_refs()
+        # remove this when https://github.com/mars-project/mars/issues/2945 got fixed
+        schema = self.schema()
+        if isinstance(schema, PandasBlockSchema):
+            dtypes = pd.Series(schema.types, index=schema.names)
+        elif isinstance(schema, pa.Schema):
+            dtypes = schema.empty_table().to_pandas().dtypes
+        else:
+            raise NotImplementedError(f"Unsupported format of schema {schema}")
+        index_value = parse_index(pd.RangeIndex(-1))
+        columns_value = parse_index(dtypes.index, store_data=True)
+        op = DataFrameReadRayDataset(refs=refs)
+        return op(index_value=index_value, columns_value=columns_value, dtypes=dtypes)
 
     def to_modin(self) -> "modin.DataFrame":
         """Convert this dataset into a Modin dataframe.
@@ -2649,7 +2681,7 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
 
         ctx = DatasetContext.get_current()
         if self._plan.is_read_stage() and ctx.optimize_fuse_read_stages:
-            blocks, _ = self._plan._get_source_blocks()
+            blocks, _, _ = self._plan._get_source_blocks_and_stages()
             blocks.clear()
             blocks, outer_stats, read_stage = _rewrite_read_stage(blocks)
         else:
@@ -2768,7 +2800,7 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
 
         ctx = DatasetContext.get_current()
         if self._plan.is_read_stage() and ctx.optimize_fuse_read_stages:
-            blocks, _ = self._plan._get_source_blocks()
+            blocks, _, _ = self._plan._get_source_blocks_and_stages()
             blocks.clear()
             blocks, outer_stats, read_stage = _rewrite_read_stage(blocks)
         else:
@@ -2789,7 +2821,7 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
 
                 def gen():
                     ds = Dataset(
-                        ExecutionPlan(blocks, outer_stats), self._epoch, lazy=False
+                        ExecutionPlan(blocks, outer_stats), self._epoch, lazy=True
                     )
                     return ds
 
@@ -2843,19 +2875,27 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
             )
         return pipe
 
-    def fully_executed(self) -> "Dataset[T]":
+    def fully_executed(self, preserve_original: bool = True) -> "Dataset[T]":
         """Force full evaluation of the blocks of this dataset.
 
         This can be used to read all blocks into memory. By default, Datasets
         doesn't read blocks from the datasource until the first transform.
 
+        Args:
+            preserve_original: Whether the original unexecuted dataset should be
+                preserved. If False, this function will mutate the original dataset,
+                which can more efficiently reclaim memory.
+
         Returns:
             A Dataset with all blocks fully materialized in memory.
         """
-        plan = self._plan.deep_copy(preserve_uuid=True)
-        plan.execute(force_read=True)
-        ds = Dataset(plan, self._epoch, lazy=False)
-        ds._set_uuid(self._get_uuid())
+        if preserve_original:
+            plan = self._plan.deep_copy(preserve_uuid=True)
+            ds = Dataset(plan, self._epoch, self._lazy)
+            ds._set_uuid(self._get_uuid())
+        else:
+            ds = self
+        ds._plan.execute(force_read=True)
         return ds
 
     def is_fully_executed(self) -> bool:

@@ -105,6 +105,28 @@ def test_deploy_with_overriden_namespace(shutdown_ray, detached):
 
 
 @pytest.mark.parametrize("detached", [True, False])
+def test_update_num_replicas_anonymous_namespace(shutdown_ray, detached):
+    """Test updating num_replicas with anonymous namespace."""
+
+    ray.init()
+    serve.start(detached=detached)
+
+    @serve.deployment(num_replicas=1)
+    def f(*args):
+        return "got f"
+
+    f.deploy()
+
+    num_actors = len(ray.util.list_named_actors(all_namespaces=True))
+
+    for _ in range(5):
+        f.deploy()
+        assert num_actors == len(ray.util.list_named_actors(all_namespaces=True))
+
+    serve.shutdown()
+
+
+@pytest.mark.parametrize("detached", [True, False])
 def test_update_num_replicas_with_overriden_namespace(shutdown_ray, detached):
     """Test updating num_replicas with overriden namespace."""
 

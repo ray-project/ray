@@ -4,9 +4,6 @@ from ray._private import signature
 from ray.tests.conftest import *  # noqa
 from ray import workflow
 from ray.workflow import workflow_storage
-from ray.workflow import storage
-from ray.workflow.storage.s3 import S3StorageImpl
-from ray.workflow.workflow_storage import asyncio_run
 from ray.workflow.common import (
     StepType,
     WorkflowStepRuntimeOptions,
@@ -25,28 +22,8 @@ def some_func2(x):
     return x - 1
 
 
-@pytest.mark.asyncio
-async def test_kv_storage(workflow_start_regular):
-    kv_store = storage.get_global_storage()
-    json_data = {"hello": "world"}
-    bin_data = (31416).to_bytes(8, "big")
-    key_1 = kv_store.make_key("aaa", "bbb", "ccc")
-    key_2 = kv_store.make_key("aaa", "ddd")
-    key_3 = kv_store.make_key("aaa", "eee")
-    await kv_store.put(key_1, json_data, is_json=True)
-    await kv_store.put(key_2, bin_data, is_json=False)
-    assert json_data == await kv_store.get(key_1, is_json=True)
-    assert bin_data == await kv_store.get(key_2, is_json=False)
-    with pytest.raises(storage.KeyNotFoundError):
-        await kv_store.get(key_3)
-    prefix = kv_store.make_key("aaa")
-    assert set(await kv_store.scan_prefix(prefix)) == {"bbb", "ddd"}
-    assert set(await kv_store.scan_prefix(kv_store.make_key(""))) == {"aaa"}
-    # TODO(suquark): Test "delete" once fully implemented.
-
-
 def test_delete(workflow_start_regular):
-    _storage = storage.get_global_storage()
+    from ray.internal.storage import _storage_uri
 
     # Try deleting a random workflow that never existed.
     with pytest.raises(WorkflowNotFoundError):
@@ -68,7 +45,8 @@ def test_delete(workflow_start_regular):
     # Restart
     ray.shutdown()
     subprocess.check_output("ray stop --force", shell=True)
-    workflow.init(storage=_storage)
+    ray.init(storage=_storage_uri)
+    workflow.init()
 
     with pytest.raises(ray.exceptions.RaySystemError):
         result = workflow.get_output("never_finishes")
@@ -132,9 +110,7 @@ def test_delete(workflow_start_regular):
 
 def test_workflow_storage(workflow_start_regular):
     workflow_id = test_workflow_storage.__name__
-    wf_storage = workflow_storage.WorkflowStorage(
-        workflow_id, storage.get_global_storage()
-    )
+    wf_storage = workflow_storage.WorkflowStorage(workflow_id)
     step_id = "some_step"
     step_options = WorkflowStepRuntimeOptions.make(step_type=StepType.FUNCTION)
     input_metadata = {
@@ -152,28 +128,19 @@ def test_workflow_storage(workflow_start_regular):
     obj_ref = ray.put(object_resolved)
 
     # test basics
-    asyncio_run(
-        wf_storage._put(
-            wf_storage._key_step_input_metadata(step_id), input_metadata, True
-        )
-    )
-    asyncio_run(wf_storage._put(wf_storage._key_step_function_body(step_id), some_func))
-    asyncio_run(wf_storage._put(wf_storage._key_step_args(step_id), flattened_args))
+    wf_storage._put(wf_storage._key_step_input_metadata(step_id), input_metadata, True)
 
-    asyncio_run(
-        wf_storage._put(wf_storage._key_obj_id(obj_ref.hex()), ray.get(obj_ref))
+    wf_storage._put(wf_storage._key_step_function_body(step_id), some_func)
+    wf_storage._put(wf_storage._key_step_args(step_id), flattened_args)
+
+    wf_storage._put(wf_storage._key_obj_id(obj_ref.hex()), ray.get(obj_ref))
+    wf_storage._put(
+        wf_storage._key_step_output_metadata(step_id), output_metadata, True
     )
-    asyncio_run(
-        wf_storage._put(
-            wf_storage._key_step_output_metadata(step_id), output_metadata, True
-        )
+    wf_storage._put(
+        wf_storage._key_step_output_metadata(""), root_output_metadata, True
     )
-    asyncio_run(
-        wf_storage._put(
-            wf_storage._key_step_output_metadata(""), root_output_metadata, True
-        )
-    )
-    asyncio_run(wf_storage._put(wf_storage._key_step_output(step_id), output))
+    wf_storage._put(wf_storage._key_step_output(step_id), output)
 
     assert wf_storage.load_step_output(step_id) == output
     assert wf_storage.load_step_args(step_id, [], []) == args
@@ -182,15 +149,10 @@ def test_workflow_storage(workflow_start_regular):
 
     # test s3 path
     # here we hardcode the path to make sure s3 path is parsed correctly
-    if isinstance(wf_storage._storage, S3StorageImpl):
-        assert (
-            asyncio_run(
-                wf_storage._storage.get(
-                    "workflow/test_workflow_storage/steps/outputs.json", True
-                )
-            )
-            == root_output_metadata
-        )
+    from ray.internal.storage import _storage_uri
+
+    if _storage_uri.startswith("s3://"):
+        assert wf_storage._get("steps/outputs.json", True) == root_output_metadata
 
     # test "inspect_step"
     inspect_result = wf_storage.inspect_step(step_id)
@@ -200,17 +162,11 @@ def test_workflow_storage(workflow_start_regular):
     assert inspect_result.is_recoverable()
 
     step_id = "some_step2"
-    asyncio_run(
-        wf_storage._put(
-            wf_storage._key_step_input_metadata(step_id), input_metadata, True
-        )
-    )
-    asyncio_run(wf_storage._put(wf_storage._key_step_function_body(step_id), some_func))
-    asyncio_run(wf_storage._put(wf_storage._key_step_args(step_id), args))
-    asyncio_run(
-        wf_storage._put(
-            wf_storage._key_step_output_metadata(step_id), output_metadata, True
-        )
+    wf_storage._put(wf_storage._key_step_input_metadata(step_id), input_metadata, True)
+    wf_storage._put(wf_storage._key_step_function_body(step_id), some_func)
+    wf_storage._put(wf_storage._key_step_args(step_id), args)
+    wf_storage._put(
+        wf_storage._key_step_output_metadata(step_id), output_metadata, True
     )
 
     inspect_result = wf_storage.inspect_step(step_id)
@@ -220,13 +176,9 @@ def test_workflow_storage(workflow_start_regular):
     assert inspect_result.is_recoverable()
 
     step_id = "some_step3"
-    asyncio_run(
-        wf_storage._put(
-            wf_storage._key_step_input_metadata(step_id), input_metadata, True
-        )
-    )
-    asyncio_run(wf_storage._put(wf_storage._key_step_function_body(step_id), some_func))
-    asyncio_run(wf_storage._put(wf_storage._key_step_args(step_id), args))
+    wf_storage._put(wf_storage._key_step_input_metadata(step_id), input_metadata, True)
+    wf_storage._put(wf_storage._key_step_function_body(step_id), some_func)
+    wf_storage._put(wf_storage._key_step_args(step_id), args)
     inspect_result = wf_storage.inspect_step(step_id)
     assert inspect_result == workflow_storage.StepInspectResult(
         args_valid=True,
@@ -238,12 +190,9 @@ def test_workflow_storage(workflow_start_regular):
     assert inspect_result.is_recoverable()
 
     step_id = "some_step4"
-    asyncio_run(
-        wf_storage._put(
-            wf_storage._key_step_input_metadata(step_id), input_metadata, True
-        )
-    )
-    asyncio_run(wf_storage._put(wf_storage._key_step_function_body(step_id), some_func))
+    wf_storage._put(wf_storage._key_step_input_metadata(step_id), input_metadata, True)
+
+    wf_storage._put(wf_storage._key_step_function_body(step_id), some_func)
     inspect_result = wf_storage.inspect_step(step_id)
     assert inspect_result == workflow_storage.StepInspectResult(
         func_body_valid=True,
@@ -254,11 +203,8 @@ def test_workflow_storage(workflow_start_regular):
     assert not inspect_result.is_recoverable()
 
     step_id = "some_step5"
-    asyncio_run(
-        wf_storage._put(
-            wf_storage._key_step_input_metadata(step_id), input_metadata, True
-        )
-    )
+    wf_storage._put(wf_storage._key_step_input_metadata(step_id), input_metadata, True)
+
     inspect_result = wf_storage.inspect_step(step_id)
     assert inspect_result == workflow_storage.StepInspectResult(
         workflows=input_metadata["workflows"],
@@ -272,6 +218,27 @@ def test_workflow_storage(workflow_start_regular):
     print(inspect_result)
     assert inspect_result == workflow_storage.StepInspectResult()
     assert not inspect_result.is_recoverable()
+
+
+def test_cluster_storage_init(workflow_start_cluster, tmp_path):
+    address, storage_uri = workflow_start_cluster
+
+    err_msg = "When connecting to an existing cluster, "
+    "storage must not be provided."
+
+    with pytest.raises(ValueError, match=err_msg):
+        ray.init(address=address, storage=str(tmp_path))
+
+    with pytest.raises(ValueError, match=err_msg):
+        ray.init(address=address, storage=storage_uri)
+
+    ray.init(address=address)
+
+    @workflow.step
+    def f():
+        return 10
+
+    assert f.step().run() == 10
 
 
 if __name__ == "__main__":

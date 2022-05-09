@@ -44,11 +44,6 @@ def get_qualname(f):
     return f.__qualname__ if hasattr(f, "__qualname__") else "__anonymous_func__"
 
 
-def ensure_ray_initialized():
-    if not ray.is_initialized():
-        ray.init()
-
-
 def validate_user_metadata(metadata):
     if metadata is not None:
         if not isinstance(metadata, dict):
@@ -560,6 +555,9 @@ class Workflow(Generic[T]):
         """
         # TODO(suquark): avoid cyclic importing
         from ray.workflow.execution import run
+        from ray.workflow.api import _ensure_workflow_initialized
+
+        _ensure_workflow_initialized()
 
         self._step_id = None
         return run(self, workflow_id, metadata)

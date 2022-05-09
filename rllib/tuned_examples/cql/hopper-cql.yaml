@@ -29,7 +29,7 @@ hopper_cql:
         prioritized_replay: false
         train_batch_size: 256
         target_network_update_freq: 0
-        timesteps_per_iteration: 1000
+        min_train_timesteps_per_reporting: 1000
         learning_starts: 10
         optimization:
           actor_learning_rate: 0.0001

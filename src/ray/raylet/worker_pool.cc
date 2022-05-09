@@ -735,7 +735,7 @@ void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker)
   const auto &worker_type = worker->GetWorkerType();
   if (IsIOWorkerType(worker_type)) {
     auto &io_worker_state = GetIOWorkerStateFromWorkerType(worker_type, state);
-    io_worker_state.registered_io_workers.insert(worker);
+    io_worker_state.started_io_workers.insert(worker);
     io_worker_state.num_starting_io_workers--;
   }
 
@@ -847,7 +847,7 @@ void WorkerPool::PushIOWorkerInternal(const std::shared_ptr<WorkerInterface> &wo
   auto &state = GetStateForLanguage(Language::PYTHON);
   auto &io_worker_state = GetIOWorkerStateFromWorkerType(worker_type, state);
 
-  if (!io_worker_state.registered_io_workers.count(worker)) {
+  if (!io_worker_state.started_io_workers.count(worker)) {
     RAY_LOG(DEBUG)
         << "The IO worker has failed. Skip pushing it to the worker pool. Worker type: "
         << rpc::WorkerType_Name(worker_type) << ", worker id: " << worker->WorkerId();
@@ -1345,13 +1345,17 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
   }
 }
 
-bool WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker,
+void WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker,
                                   rpc::WorkerExitType disconnect_type) {
   MarkPortAsFree(worker->AssignedPort());
   auto &state = GetStateForLanguage(worker->GetLanguage());
   auto it = state.worker_processes.find(worker->GetStartupToken());
   if (it != state.worker_processes.end()) {
-    it->second.alive_started_workers.erase(worker);
+    if (!RemoveWorker(it->second.alive_started_workers, worker)) {
+      // Worker is either starting or started,
+      // if it's not started, we should remove it from starting.
+      it->second.num_starting_workers--;
+    }
     if (it->second.alive_started_workers.size() == 0 &&
         it->second.num_starting_workers == 0) {
       DeleteRuntimeEnvIfPossible(it->second.runtime_env_info.serialized_runtime_env());
@@ -1363,8 +1367,13 @@ bool WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
   if (IsIOWorkerType(worker->GetWorkerType())) {
     auto &io_worker_state =
         GetIOWorkerStateFromWorkerType(worker->GetWorkerType(), state);
-    RAY_CHECK(RemoveWorker(io_worker_state.registered_io_workers, worker));
-    return RemoveWorker(io_worker_state.idle_io_workers, worker);
+    if (!RemoveWorker(io_worker_state.started_io_workers, worker)) {
+      // IO worker is either starting or started,
+      // if it's not started, we should remove it from starting.
+      io_worker_state.num_starting_io_workers--;
+    }
+    RemoveWorker(io_worker_state.idle_io_workers, worker);
+    return;
   }
 
   RAY_UNUSED(RemoveWorker(state.pending_disconnection_workers, worker));
@@ -1377,7 +1386,7 @@ bool WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
       break;
     }
   }
-  auto status = RemoveWorker(state.idle, worker);
+  RemoveWorker(state.idle, worker);
   if (disconnect_type != rpc::WorkerExitType::INTENDED_EXIT) {
     // A Java worker process may have multiple workers. If one of them disconnects
     // unintentionally (which means that the worker process has died), we remove the
@@ -1395,7 +1404,6 @@ bool WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
       }
     }
   }
-  return status;
 }
 
 void WorkerPool::DisconnectDriver(const std::shared_ptr<WorkerInterface> &driver) {
@@ -1519,8 +1527,8 @@ void WorkerPool::TryStartIOWorkers(const Language &language,
   auto &state = GetStateForLanguage(language);
   auto &io_worker_state = GetIOWorkerStateFromWorkerType(worker_type, state);
 
-  int available_io_workers_num = io_worker_state.num_starting_io_workers +
-                                 io_worker_state.registered_io_workers.size();
+  int available_io_workers_num =
+      io_worker_state.num_starting_io_workers + io_worker_state.started_io_workers.size();
   int max_workers_to_start =
       RayConfig::instance().max_io_workers() - available_io_workers_num;
   // Compare first to prevent unsigned underflow.

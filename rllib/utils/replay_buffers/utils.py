@@ -1,6 +1,6 @@
 import logging
 import psutil
-from typing import Optional
+from typing import Optional, Any
 
 from ray.rllib.execution import MultiAgentReplayBuffer as Legacy_MultiAgentReplayBuffer
 from ray.rllib.execution.buffers.multi_agent_replay_buffer import (
@@ -15,7 +15,9 @@ from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.replay_buffers import (
     MultiAgentPrioritizedReplayBuffer,
     ReplayBuffer,
+    MultiAgentReplayBuffer,
 )
+from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.typing import ResultDict, SampleBatchType, TrainerConfigDict
 from ray.util import log_once
 
@@ -361,3 +363,39 @@ def warn_replay_buffer_capacity(*, item: SampleBatchType, capacity: int) -> None
             logger.warning(msg)
         else:
             logger.info(msg)
+
+
+def patch_buffer_with_fake_sampling_method(
+    buffer: ReplayBuffer, fake_sample_output: SampleBatchType
+) -> None:
+    """Patch a ReplayBuffer such that we always sample fake_sample_output.
+
+    Transforms fake_sample_output into a MultiAgentBatch if it is not a
+    MultiAgentBatch and the buffer is a MultiAgentBuffer. This is useful for testing
+    purposes if we need deterministic sampling.
+
+    Args:
+        buffer: The buffer to be patched
+        fake_sample_output: The output to be sampled
+
+    """
+    if isinstance(buffer, MultiAgentReplayBuffer) and not isinstance(
+        fake_sample_output, MultiAgentBatch
+    ):
+        fake_sample_output = SampleBatch(fake_sample_output).as_multi_agent()
+
+    def fake_sample(_: Any, __: Any = None, **kwargs) -> Optional[SampleBatchType]:
+        """Always returns a predefined batch.
+
+        Args:
+            _: dummy arg to match signature of sample() method
+            __: dummy arg to match signature of sample() method
+            **kwargs: dummy args to match signature of sample() method
+
+        Returns:
+            Predefined MultiAgentBatch fake_sample_output
+        """
+
+        return fake_sample_output
+
+    buffer.sample = fake_sample

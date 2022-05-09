@@ -7,6 +7,7 @@ from typing import Any, Dict, Type
 import starlette.responses
 import starlette.requests
 from starlette.types import Send, ASGIApp
+from fastapi.encoders import jsonable_encoder
 
 from ray.serve.exceptions import RayServeException
 
@@ -76,9 +77,11 @@ class Response:
             self.set_content_type("text-utf8")
         else:
             # Delayed import since utils depends on http_util
-            from ray.serve.utils import ServeEncoder
+            from ray.serve.utils import serve_encoders
 
-            self.body = json.dumps(content, cls=ServeEncoder, indent=2).encode()
+            self.body = json.dumps(
+                jsonable_encoder(content, custom_encoder=serve_encoders)
+            ).encode()
             self.set_content_type("json")
 
     def set_content_type(self, content_type):

@@ -9,13 +9,17 @@ if TYPE_CHECKING:
 import numpy as np
 
 import ray
+from ray.actor import ActorHandle
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockAccessor
+from ray.data.context import DatasetContext
 from ray.data.impl.batcher import Batcher
 from ray.data.impl.stats import DatasetStats, DatasetPipelineStats
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 # An output type of iter_batches() determined by the batch_format parameter.
 BatchType = Union["pandas.DataFrame", "pyarrow.Table", np.ndarray, list]
+PREFETCHER_ACTOR_NAMESPACE = "ray.dataset"
 
 
 def batch_blocks(
@@ -61,10 +65,19 @@ def batch_blocks(
                 yield result
 
     block_window = []  # Handle empty sliding window gracefully.
+    context = DatasetContext.get_current()
+    if (
+        prefetch_blocks > 0
+        and context.actor_prefetcher_enabled
+        and not ray.util.client.ray.is_connected()
+    ):
+        prefetcher = ActorBlockPrefetcher()
+    else:
+        prefetcher = WaitBlockPrefetcher()
     for block_window in _sliding_window(blocks, prefetch_blocks + 1):
         block_window = list(block_window)
         with stats.iter_wait_s.timer():
-            ray.wait(block_window, num_returns=1, fetch_local=True)
+            prefetcher.prefetch_blocks(block_window)
         yield from batch_block(block_window[0])
 
     # Consume remainder of final block window.
@@ -128,3 +141,50 @@ def _sliding_window(iterable: Iterable, n: int):
     for elem in it:
         window.append(elem)
         yield tuple(window)
+
+
+class BlockPrefetcher:
+    """Interface for prefetching blocks."""
+
+    def prefetch_blocks(self, blocks: ObjectRef[Block]):
+        """Prefetch the provided blocks to this node."""
+        raise NotImplementedError
+
+
+class WaitBlockPrefetcher(BlockPrefetcher):
+    """Block prefetcher using ray.wait."""
+
+    def prefetch_blocks(self, blocks: ObjectRef[Block]):
+        ray.wait(blocks, num_returns=1, fetch_local=True)
+
+
+# ray.wait doesn't work as expected, so we have an
+# actor-based prefetcher as a work around. See
+# https://github.com/ray-project/ray/issues/23983 for details.
+class ActorBlockPrefetcher(BlockPrefetcher):
+    """Block prefetcher using a local actor."""
+
+    def __init__(self):
+        self.prefetch_actor = self._get_or_create_actor_prefetcher()
+
+    @staticmethod
+    def _get_or_create_actor_prefetcher() -> "ActorHandle":
+        node_id = ray.get_runtime_context().node_id
+        actor_name = f"dataset-block-prefetcher-{node_id}"
+        return _BlockPretcher.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),
+            name=actor_name,
+            namespace=PREFETCHER_ACTOR_NAMESPACE,
+            get_if_exists=True,
+        ).remote()
+
+    def prefetch_blocks(self, blocks: ObjectRef[Block]):
+        self.prefetch_actor.prefetch.remote(*blocks)
+
+
+@ray.remote(num_cpus=0, placement_group=None)
+class _BlockPretcher:
+    """Helper actor that prefetches blocks asynchronously."""
+
+    def prefetch(self, *blocks) -> None:
+        pass

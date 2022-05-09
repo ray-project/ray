@@ -106,13 +106,21 @@ class CheckpointManager:
             self._checkpoint_score_attr = checkpoint_score_attr
 
         self.delete = delete_fn
-        self.newest_persistent_checkpoint = _TuneCheckpoint(
-            _TuneCheckpoint.PERSISTENT, None
-        )
+        self._newest_persistent_checkpoint = None
         self._newest_memory_checkpoint = _TuneCheckpoint(_TuneCheckpoint.MEMORY, None)
         self._best_checkpoints = []
         self._membership = set()
         self._cur_order = 0
+
+    @property
+    def newest_persistent_checkpoint(self):
+        return self._newest_persistent_checkpoint or _TuneCheckpoint(
+            _TuneCheckpoint.PERSISTENT, None
+        )
+
+    @newest_persistent_checkpoint.setter
+    def newest_persistent_checkpoint(self, value):
+        self._newest_persistent_checkpoint = value
 
     @property
     def newest_checkpoint(self):
@@ -154,9 +162,9 @@ class CheckpointManager:
             self.replace_newest_memory_checkpoint(checkpoint)
             return
 
-        old_checkpoint = self.newest_persistent_checkpoint
+        old_checkpoint = self._newest_persistent_checkpoint
 
-        if old_checkpoint.value == checkpoint.value:
+        if old_checkpoint and old_checkpoint.value == checkpoint.value:
             # Overwrite the order of the checkpoint.
             old_checkpoint.order = checkpoint.order
             return
@@ -164,7 +172,11 @@ class CheckpointManager:
         self.newest_persistent_checkpoint = checkpoint
 
         # Remove the old checkpoint if it isn't one of the best ones.
-        if old_checkpoint.value and old_checkpoint not in self._membership:
+        if (
+            old_checkpoint
+            and old_checkpoint.value
+            and old_checkpoint not in self._membership
+        ):
             self.delete(old_checkpoint)
 
         try:

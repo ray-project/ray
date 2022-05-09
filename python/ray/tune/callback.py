@@ -1,5 +1,5 @@
-from typing import TYPE_CHECKING, Dict, List, Optional
-from abc import ABC
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from abc import ABCMeta
 import warnings
 
 from ray.tune.checkpoint_manager import _TuneCheckpoint
@@ -10,8 +10,57 @@ if TYPE_CHECKING:
     from ray.tune.stopper import Stopper
 
 
+class CallbackMeta(ABCMeta):
+    """A helper metaclass to ensure container classes (e.g. CallbackList) have
+    implemented all the callback methods (e.g. `on_*`).
+    """
+
+    def __new__(mcs, name: str, bases: Tuple[type], attrs: Dict[str, Any]) -> type:
+        cls = super().__new__(mcs, name, bases, attrs)
+
+        if mcs.need_check(cls, name, bases, attrs):
+            mcs.check(cls, name, bases, attrs)
+
+        return cls
+
+    @classmethod
+    def need_check(
+        mcs, cls: type, name: str, bases: Tuple[type], attrs: Dict[str, Any]
+    ) -> bool:
+
+        return attrs.get("IS_CALLBACK_CONTAINER", False)
+
+    @classmethod
+    def check(
+        mcs, cls: type, name: str, bases: Tuple[type], attrs: Dict[str, Any]
+    ) -> None:
+
+        methods = set()
+        for base in bases:
+            methods.update(
+                attr_name
+                for attr_name, attr in vars(base).items()
+                if mcs.need_override_by_subclass(attr_name, attr)
+            )
+        overridden = {
+            attr_name
+            for attr_name, attr in attrs.items()
+            if mcs.need_override_by_subclass(attr_name, attr)
+        }
+        missing = methods.difference(overridden)
+        if missing:
+            raise TypeError(
+                f"Found missing callback method: {missing} "
+                f"in class {cls.__module__}.{cls.__qualname__}."
+            )
+
+    @classmethod
+    def need_override_by_subclass(mcs, attr_name: str, attr: Any) -> bool:
+        return (attr_name.startswith("on_") or attr_name == "setup") and callable(attr)
+
+
 @PublicAPI(stability="beta")
-class Callback(ABC):
+class Callback(metaclass=CallbackMeta):
     """Tune base callback that can be extended and passed to a ``TrialRunner``
 
     Tune callbacks are called from within the ``TrialRunner`` class. There are
@@ -221,8 +270,10 @@ class Callback(ABC):
         pass
 
 
-class CallbackList:
+class CallbackList(Callback):
     """Call multiple callbacks at once."""
+
+    IS_CALLBACK_CONTAINER = True
 
     def __init__(self, callbacks: List[Callback]):
         self._callbacks = callbacks

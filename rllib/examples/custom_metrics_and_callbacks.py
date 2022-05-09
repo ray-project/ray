@@ -4,7 +4,7 @@ Here we use callbacks to track the average CartPole pole angle magnitude as a
 custom metric.
 """
 
-from typing import Dict
+from typing import Dict, Tuple
 import argparse
 import numpy as np
 import os
@@ -129,7 +129,7 @@ class MyCallbacks(DefaultCallbacks):
         policy_id: str,
         policies: Dict[str, Policy],
         postprocessed_batch: SampleBatch,
-        original_batches: Dict[str, SampleBatch],
+        original_batches: Dict[str, Tuple[Policy, SampleBatch]],
         **kwargs
     ):
         print("postprocessed {} steps".format(postprocessed_batch.count))
