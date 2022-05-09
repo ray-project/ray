@@ -795,12 +795,10 @@ def _max_len(value: Any, max_len: int = 20, add_addr: bool = False) -> str:
         return string
 
     if add_addr and not isinstance(value, (int, float, bool)):
-        result = string[: (max_len - 5)]
-        result += "_" + hex(id(value))[-4:]
+        result = f"{string[: (max_len - 5)]}_{hex(id(value))[-4:]}"
         return result
 
-    result = string[: (max_len - 3)]
-    result += "..."
+    result = f"{string[: (max_len - 3)]}..."
     return result
 
 
