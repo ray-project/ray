@@ -89,7 +89,7 @@ TEST_F(GcsJobManagerTest, TestGetJobConfig) {
   auto job_id2 = JobID::FromInt(2);
   gcs::GcsInitData gcs_init_data(gcs_table_storage_);
   gcs_job_manager.Initialize(/*init_data=*/gcs_init_data);
-  auto add_job_request1 = Mocker::GenAddJobRequest(job_id1, "namespace_1", 4);
+  auto add_job_request1 = Mocker::GenAddJobRequest(job_id1, "namespace_1");
 
   rpc::AddJobReply empty_reply;
 
@@ -97,7 +97,7 @@ TEST_F(GcsJobManagerTest, TestGetJobConfig) {
       *add_job_request1,
       &empty_reply,
       [](Status, std::function<void()>, std::function<void()>) {});
-  auto add_job_request2 = Mocker::GenAddJobRequest(job_id2, "namespace_2", 8);
+  auto add_job_request2 = Mocker::GenAddJobRequest(job_id2, "namespace_2");
   gcs_job_manager.HandleAddJob(
       *add_job_request2,
       &empty_reply,
