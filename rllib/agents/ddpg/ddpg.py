@@ -50,7 +50,6 @@ class DDPGConfig(TrainerConfig):
 
         # fmt: off
         # __sphinx_doc_begin__
-
         # DDPG-specific settings.
         self.twin_q = False
         self.policy_delay = 1
@@ -105,7 +104,7 @@ class DDPGConfig(TrainerConfig):
         self.evaluation_duration = 10
         self.evaluation_config = {"explore": False}
 
-        # Common SimpleQ buffer parameters
+        # Common SimpleQ buffer parameters.
         self.buffer_size = DEPRECATED_VALUE
         self.replay_buffer_config = {
             "_enable_replay_buffer_api": True,
@@ -117,6 +116,7 @@ class DDPGConfig(TrainerConfig):
             "prioritized_replay_beta": 0.4,
             # Epsilon to add to the TD errors when updating priorities.
             "prioritized_replay_eps": 1e-6,
+            # How many steps of the model to sample before learning starts.
             "learning_starts": 1500,
         }
         self.store_buffer_in_checkpoints = False
