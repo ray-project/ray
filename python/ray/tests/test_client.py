@@ -812,11 +812,22 @@ def test_large_remote_call(ray_start_regular_shared):
             assert args[1] == "b"
             return kwargs["large_obj"].shape
 
-        # 1024x1024x32 f64's =~ 256 MiB
-        large_obj = np.random.random((1024, 1024, 32))
-        assert ray.get(f.remote(large_obj)) == (1024, 1024, 32)
-        assert ray.get(f2.remote(123, large_obj)) == (1024, 1024, 32)
-        assert ray.get(f3.remote("a", "b", large_obj=large_obj)) == (1024, 1024, 32)
+        # 1024x1024x16 f64's =~ 128 MiB
+        large_obj = np.random.random((1024, 1024, 16))
+        assert ray.get(f.remote(large_obj)) == (1024, 1024, 16)
+        assert ray.get(f2.remote(123, large_obj)) == (1024, 1024, 16)
+        assert ray.get(f3.remote("a", "b", large_obj=large_obj)) == (1024, 1024, 16)
+
+        @ray.remote
+        class SomeActor:
+            def __init__(self, large_obj):
+                self.inner = large_obj
+
+            def some_method(self, large_obj):
+                return large_obj.shape == self.inner.shape
+
+        a = SomeActor.remote(large_obj)
+        assert ray.get(a.some_method.remote(large_obj))
 
 
 if __name__ == "__main__":
