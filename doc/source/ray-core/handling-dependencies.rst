@@ -410,7 +410,7 @@ Frequently Asked Questions
 Are environments installed on every node?
 """""""""""""""""""""""""""""""""""""""""
 
-If specifying your runtime environment for the job, in ``ray.init(runtime_env=...)``, then the environment will be installed on every node.  See :ref:`Per-Job <rte-per-job>` for more details.
+If a runtime environment is specified in ``ray.init(runtime_env=...)``, then the environment will be installed on every node.  See :ref:`Per-Job <rte-per-job>` for more details.
 
 When is the environment installed?
 """"""""""""""""""""""""""""""""""
