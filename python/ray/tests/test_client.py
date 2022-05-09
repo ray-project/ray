@@ -803,10 +803,13 @@ def test_large_remote_call(ray_start_regular_shared):
 
         @ray.remote
         def f2(*args):
+            assert args[0] == 123
             return args[1].shape
 
         @ray.remote
         def f3(*args, **kwargs):
+            assert args[0] == "a"
+            assert args[1] == "b"
             return kwargs["large_obj"].shape
 
         # 1024x1024x32 f64's =~ 256 MiB
