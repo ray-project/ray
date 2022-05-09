@@ -48,7 +48,7 @@ class CSVDatasource(FileBasedDatasource):
         f: "pyarrow.NativeFile",
         block: BlockAccessor,
         writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
-        **writer_args
+        **writer_args,
     ):
         from pyarrow import csv
 

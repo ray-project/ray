@@ -16,6 +16,7 @@ from ray.workflow.api import (
     wait,
     create,
     continuation,
+    options,
 )
 from ray.workflow.workflow_access import WorkflowExecutionError
 from ray.workflow.common import WorkflowStatus
@@ -41,6 +42,7 @@ __all__ = [
     "wait",
     "create",
     "continuation",
+    "options",
 ]
 
 globals().update(WorkflowStatus.__members__)

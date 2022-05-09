@@ -694,8 +694,6 @@ Status NodeResourceInfoAccessor::AsyncReportResourceUsage(
   last_resource_usage_ = std::make_shared<NodeResources>(
       ResourceMapToNodeResources(MapFromProtobuf(data_ptr->resources_total()),
                                  MapFromProtobuf(data_ptr->resources_available())));
-  last_resource_usage_->load =
-      ResourceMapToResourceRequest(MapFromProtobuf(data_ptr->resource_load()), false);
   cached_resource_usage_.mutable_resources()->CopyFrom(*data_ptr);
   client_impl_->GetGcsRpcClient().ReportResourceUsage(
       cached_resource_usage_,

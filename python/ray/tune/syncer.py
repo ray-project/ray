@@ -522,6 +522,9 @@ class SyncerCallback(Callback):
             trial.logdir, remote_dir=trial.logdir, sync_function=self._sync_function
         )
 
+    def _remove_trial_syncer(self, trial: "Trial"):
+        self._syncers.pop(trial, None)
+
     def _sync_trial_checkpoint(self, trial: "Trial", checkpoint: _TuneCheckpoint):
         if checkpoint.storage == _TuneCheckpoint.MEMORY:
             return
@@ -602,8 +605,10 @@ class SyncerCallback(Callback):
         else:
             trainable_ip = ray.get(trial.runner.get_current_ip.remote())
         trial_syncer.set_worker_ip(trainable_ip)
-        trial_syncer.sync_down_if_needed()
+        # Always sync down when trial completed
+        trial_syncer.sync_down()
         trial_syncer.close()
+        self._remove_trial_syncer(trial)
 
     def on_checkpoint(
         self,

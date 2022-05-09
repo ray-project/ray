@@ -12,6 +12,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.tune.registry import register_trainable
+from ray._private.usage import usage_lib
 
 
 def _setup_logger():
@@ -47,14 +48,17 @@ def _register_all():
 
         return _SeeContrib
 
-    # also register the aliases minus contrib/ to give a good error message
+    # Also register the aliases minus contrib/ to give a good error message.
     for key in list(CONTRIBUTED_ALGORITHMS.keys()):
         assert key.startswith("contrib/")
         alias = key.split("/", 1)[1]
-        register_trainable(alias, _see_contrib(alias))
+        if alias not in ALGORITHMS:
+            register_trainable(alias, _see_contrib(alias))
 
 
 _setup_logger()
+
+usage_lib.record_library_usage("rllib")
 
 __all__ = [
     "Policy",

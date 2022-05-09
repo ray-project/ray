@@ -19,6 +19,7 @@ Creating Datasets
 .. autofunction:: ray.data.from_items
 .. autofunction:: ray.data.from_arrow
 .. autofunction:: ray.data.from_arrow_refs
+.. autofunction:: ray.data.from_huggingface
 .. autofunction:: ray.data.from_spark
 .. autofunction:: ray.data.from_dask
 .. autofunction:: ray.data.from_modin
@@ -120,6 +121,36 @@ Custom Datasource API
     :members:
 
 .. autoclass:: ray.data.ReadTask
+    :members:
+
+Built-in Datasources
+--------------------
+
+.. autoclass:: ray.data.datasource.BinaryDatasource
+    :members:
+
+.. autoclass:: ray.data.datasource.CSVDatasource
+    :members:
+
+.. autoclass:: ray.data.datasource.FileBasedDatasource
+    :members:
+
+.. autoclass:: ray.data.datasource.JSONDatasource
+    :members:
+
+.. autoclass:: ray.data.datasource.NumpyDatasource
+    :members:
+
+.. autoclass:: ray.data.datasource.ParquetDatasource
+    :members:
+
+.. autoclass:: ray.data.datasource.RangeDatasource
+    :members:
+    
+.. autoclass:: ray.data.datasource.SimpleTensorFlowDatasource
+    :members:
+
+.. autoclass:: ray.data.datasource.SimpleTorchDatasource
     :members:
 
 Table Row API

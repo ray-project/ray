@@ -1,10 +1,8 @@
-from typing import Any, Dict, Optional, Tuple, List, Union
+from typing import Any, Dict, Optional, Tuple, List
 
 from ray.experimental.dag import DAGNode
 from ray.experimental.dag.format_utils import get_dag_node_str
-from ray.serve.handle import RayServeLazySyncHandle, RayServeSyncHandle, RayServeHandle
-from ray.serve.pipeline.constants import USE_SYNC_HANDLE_KEY
-from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
+from ray.experimental.dag.constants import DAGNODE_TYPE_KEY, PARENT_CLASS_NODE_KEY
 from ray.serve.deployment import Deployment
 from ray.serve.config import DeploymentConfig
 
@@ -23,15 +21,13 @@ class DeploymentMethodNode(DAGNode):
     ):
         self._deployment = deployment
         self._deployment_method_name: str = deployment_method_name
+        self._deployment_node = other_args_to_resolve[PARENT_CLASS_NODE_KEY]
         super().__init__(
             method_args,
             method_kwargs,
             method_options,
             other_args_to_resolve=other_args_to_resolve,
         )
-        self._deployment_handle: Union[
-            RayServeLazySyncHandle, RayServeHandle, RayServeSyncHandle
-        ] = self._get_serve_deployment_handle(deployment, other_args_to_resolve)
 
     def _copy_impl(
         self,
@@ -52,45 +48,11 @@ class DeploymentMethodNode(DAGNode):
     def _execute_impl(self, *args, **kwargs):
         """Executor of DeploymentMethodNode by ray.remote()"""
         # Execute with bound args.
-        method_body = getattr(self._deployment_handle, self._deployment_method_name)
+        method_body = getattr(self._deployment_node, self._deployment_method_name)
         return method_body.remote(
             *self._bound_args,
             **self._bound_kwargs,
         )
-
-    def _get_serve_deployment_handle(
-        self,
-        deployment: Deployment,
-        bound_other_args_to_resolve: Dict[str, Any],
-    ) -> Union[RayServeHandle, RayServeSyncHandle]:
-        """
-        Return a sync or async handle of the encapsulated Deployment based on
-        config.
-
-        Args:
-            deployment (Deployment): Deployment instance wrapped in the DAGNode.
-            bound_other_args_to_resolve (Dict[str, Any]): Contains args used
-                to configure DeploymentNode.
-
-        Returns:
-            RayServeHandle: Default and catch-all is to return sync handle.
-                return async handle only if user explicitly set
-                USE_SYNC_HANDLE_KEY with value of False.
-        """
-        # TODO (jiaodong): Support configurable async handle
-        if USE_SYNC_HANDLE_KEY not in bound_other_args_to_resolve:
-            # Return sync RayServeLazySyncHandle
-            return RayServeLazySyncHandle(deployment.name)
-        elif bound_other_args_to_resolve.get(USE_SYNC_HANDLE_KEY) is True:
-            # Return sync RayServeSyncHandle
-            return deployment.get_handle(sync=True)
-        elif bound_other_args_to_resolve.get(USE_SYNC_HANDLE_KEY) is False:
-            # Return async RayServeHandle
-            return deployment.get_handle(sync=False)
-        else:
-            raise ValueError(
-                f"{USE_SYNC_HANDLE_KEY} should only be set with a boolean value."
-            )
 
     def __str__(self) -> str:
         return get_dag_node_str(

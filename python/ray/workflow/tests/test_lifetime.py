@@ -26,29 +26,31 @@ def foo(x):
 
 
 if __name__ == "__main__":
-    workflow.init()
+    ray.init()
     output = workflow.create(foo.bind(0)).run_async(workflow_id="driver_terminated")
     time.sleep({})
 """
 
 
-def test_workflow_lifetime_1(call_ray_start, reset_workflow):
+def test_workflow_lifetime_1(workflow_start_cluster):
     # Case 1: driver exits normally
-    with patch.dict(os.environ, {"RAY_ADDRESS": call_ray_start}):
+    address, storage_uri = workflow_start_cluster
+    with patch.dict(os.environ, {"RAY_ADDRESS": address}):
+        ray.init()
         run_string_as_driver(driver_script.format(5))
-        workflow.init()
         output = workflow.get_output("driver_terminated")
         assert ray.get(output) == 20
 
 
-def test_workflow_lifetime_2(call_ray_start, reset_workflow):
+def test_workflow_lifetime_2(workflow_start_cluster):
     # Case 2: driver terminated
-    with patch.dict(os.environ, {"RAY_ADDRESS": call_ray_start}):
+    address, storage_uri = workflow_start_cluster
+    with patch.dict(os.environ, {"RAY_ADDRESS": address}):
+        ray.init()
         proc = run_string_as_driver_nonblocking(driver_script.format(100))
         time.sleep(10)
         proc.kill()
         time.sleep(1)
-        workflow.init()
         output = workflow.get_output("driver_terminated")
         assert ray.get(output) == 20
 

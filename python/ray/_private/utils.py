@@ -1191,6 +1191,42 @@ def check_dashboard_dependencies_installed() -> bool:
         return False
 
 
+def internal_kv_list_with_retry(gcs_client, prefix, namespace, num_retries=20):
+    result = None
+    if isinstance(prefix, str):
+        prefix = prefix.encode()
+    if isinstance(namespace, str):
+        namespace = namespace.encode()
+    for _ in range(num_retries):
+        try:
+            result = gcs_client.internal_kv_keys(prefix, namespace)
+        except Exception as e:
+            if isinstance(e, grpc.RpcError) and e.code() in (
+                grpc.StatusCode.UNAVAILABLE,
+                grpc.StatusCode.UNKNOWN,
+            ):
+                logger.warning(
+                    f"Unable to connect to GCS at {gcs_client.address}. "
+                    "Check that (1) Ray GCS with matching version started "
+                    "successfully at the specified address, and (2) there is "
+                    "no firewall setting preventing access."
+                )
+            else:
+                logger.exception("Internal KV List failed")
+            result = None
+
+        if result is not None:
+            break
+        else:
+            logger.debug(f"Fetched {prefix}=None from KV. Retrying.")
+            time.sleep(2)
+    if result is None:
+        raise RuntimeError(
+            f"Could not list '{prefix}' from GCS. Did GCS start successfully?"
+        )
+    return result
+
+
 def internal_kv_get_with_retry(gcs_client, key, namespace, num_retries=20):
     result = None
     if isinstance(key, str):
@@ -1228,6 +1264,10 @@ def internal_kv_get_with_retry(gcs_client, key, namespace, num_retries=20):
 def internal_kv_put_with_retry(gcs_client, key, value, namespace, num_retries=20):
     if isinstance(key, str):
         key = key.encode()
+    if isinstance(value, str):
+        value = value.encode()
+    if isinstance(namespace, str):
+        namespace = namespace.encode()
     error = None
     for _ in range(num_retries):
         try:

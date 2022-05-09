@@ -472,6 +472,8 @@ class HyperOptSearch(Searcher):
                                 dict(enumerate(category)), prefix=f"{par}/{i}"
                             )
                             if isinstance(category, list)
+                            and len(category) > 0
+                            and isinstance(category[0], Domain)
                             else resolve_value(f"{par}/{i}", category)
                             if isinstance(category, Domain)
                             else category

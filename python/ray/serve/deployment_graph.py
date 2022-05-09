@@ -15,9 +15,6 @@ class RayServeDAGHandle:
     """
 
     def __init__(self, dag_node_json: str) -> None:
-        from ray.serve.pipeline.json_serde import dagnode_from_json
-
-        self.dagnode_from_json = dagnode_from_json
         self.dag_node_json = dag_node_json
 
         # NOTE(simon): Making this lazy to avoid deserialization in controller for now
@@ -35,7 +32,9 @@ class RayServeDAGHandle:
 
     def remote(self, *args, **kwargs):
         if self.dag_node is None:
+            from ray.serve.pipeline.json_serde import dagnode_from_json
+
             self.dag_node = json.loads(
-                self.dag_node_json, object_hook=self.dagnode_from_json
+                self.dag_node_json, object_hook=dagnode_from_json
             )
         return self.dag_node.execute(*args, **kwargs)

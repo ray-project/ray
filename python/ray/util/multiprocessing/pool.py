@@ -9,6 +9,7 @@ import queue
 import copy
 import gc
 import sys
+import itertools
 
 try:
     from joblib.parallel import BatchedCalls, parallel_backend
@@ -156,6 +157,44 @@ class PoolTaskError(Exception):
 
 
 class ResultThread(threading.Thread):
+    """Thread that collects results from distributed actors.
+
+    It winds down when either:
+        - A pre-specified number of objects has been processed
+        - When the END_SENTINEL (submitted through self.add_object_ref())
+            has been received and all objects received before that have been
+            processed.
+
+    Initialize the thread with total_object_refs = float('inf') to wait for the
+    END_SENTINEL.
+
+    Args:
+        object_refs (List[RayActorObjectRefs]): ObjectRefs to Ray Actor calls.
+            Thread tracks whether they are ready. More ObjectRefs may be added
+            with add_object_ref (or _add_object_ref internally) until the object
+            count reaches total_object_refs.
+        single_result (bool): Should be True if the thread is managing function
+            with a single result (like apply_async). False if the thread is managing
+            a function with a List of results.
+        callback (Callable): called only once at the end of the thread
+            if no results were errors. If single_result=True, and result is
+            not an error, callback is invoked with the result as the only
+            argument. If single_result=False, callback is invoked with
+            a list of all the results as the only argument.
+        error_callback (Callable): called only once on the first result
+            that errors. Should take an Exception as the only argument.
+            If no result errors, this callback is not called.
+        total_object_refs (int): Number of ObjectRefs that this thread
+            expects to be ready. May be more than len(object_refs) since
+            more ObjectRefs can be submitted after the thread starts.
+            If None, defaults to len(object_refs). If float("inf"), thread runs
+            until END_SENTINEL (submitted through self.add_object_ref())
+            has been received and all objects received before that have
+            been processed.
+    """
+
+    END_SENTINEL = None
+
     def __init__(
         self,
         object_refs,
@@ -192,6 +231,10 @@ class ResultThread(threading.Thread):
     def run(self):
         unready = copy.copy(self._object_refs)
         aggregated_batch_results = []
+
+        # Run for a specific number of objects if self._total_object_refs is finite.
+        # Otherwise, process all objects received prior to the stop signal, given by
+        # self.add_object(END_SENTINEL).
         while self._num_ready < self._total_object_refs:
             # Get as many new IDs from the queue as possible without blocking,
             # unless we have no IDs to wait on, in which case we block.
@@ -199,8 +242,13 @@ class ResultThread(threading.Thread):
                 try:
                     block = len(unready) == 0
                     new_object_ref = self._new_object_refs.get(block=block)
-                    self._add_object_ref(new_object_ref)
-                    unready.append(new_object_ref)
+                    if new_object_ref is self.END_SENTINEL:
+                        # Receiving the END_SENTINEL object is the signal to stop.
+                        # Store the total number of objects.
+                        self._total_object_refs = len(self._object_refs)
+                    else:
+                        self._add_object_ref(new_object_ref)
+                        unready.append(new_object_ref)
                 except queue.Empty:
                     # queue.Empty means no result was retrieved if block=False.
                     break
@@ -334,32 +382,61 @@ class IMapIterator:
         self._pool = pool
         self._func = func
         self._next_chunk_index = 0
+        self._finished_iterating = False
         # List of bools indicating if the given chunk is ready or not for all
         # submitted chunks. Ordering mirrors that in the in the ResultThread.
         self._submitted_chunks = []
         self._ready_objects = collections.deque()
-        if not hasattr(iterable, "__len__"):
+        try:
+            self._iterator = iter(iterable)
+        except TypeError:
+            # for compatibility with prior releases, encapsulate non-iterable in a list
             iterable = [iterable]
-        self._iterator = iter(iterable)
-        self._chunksize = chunksize or pool._calculate_chunksize(iterable)
-        self._total_chunks = div_round_up(len(iterable), chunksize)
-        self._result_thread = ResultThread([], total_object_refs=self._total_chunks)
+            self._iterator = iter(iterable)
+        if isinstance(iterable, collections.abc.Iterator):
+            # Got iterator (which has no len() function).
+            # Make default chunksize 1 instead of using _calculate_chunksize().
+            # Indicate unknown queue length, requiring explicit stopping.
+            self._chunksize = chunksize or 1
+            result_list_size = float("inf")
+        else:
+            self._chunksize = chunksize or pool._calculate_chunksize(iterable)
+            result_list_size = div_round_up(len(iterable), chunksize)
+
+        self._result_thread = ResultThread([], total_object_refs=result_list_size)
         self._result_thread.start()
 
         for _ in range(len(self._pool._actor_pool)):
             self._submit_next_chunk()
 
     def _submit_next_chunk(self):
-        # The full iterable has been submitted, so no-op.
-        if len(self._submitted_chunks) >= self._total_chunks:
+        # The full iterable has already been submitted, so no-op.
+        if self._finished_iterating:
             return
 
         actor_index = len(self._submitted_chunks) % len(self._pool._actor_pool)
+        chunk_iterator = itertools.islice(self._iterator, self._chunksize)
+
+        # Check whether we have run out of samples.
+        # This consumes the original iterator, so we convert to a list and back
+        chunk_list = list(chunk_iterator)
+        if len(chunk_list) < self._chunksize:
+            # Reached end of self._iterator
+            self._finished_iterating = True
+            if len(chunk_list) == 0:
+                # Nothing to do, return.
+                return
+        chunk_iterator = iter(chunk_list)
+
         new_chunk_id = self._pool._submit_chunk(
-            self._func, self._iterator, self._chunksize, actor_index
+            self._func, chunk_iterator, self._chunksize, actor_index
         )
         self._submitted_chunks.append(False)
+        # Wait for the result
         self._result_thread.add_object_ref(new_chunk_id)
+        # If we submitted the final chunk, notify the result thread
+        if self._finished_iterating:
+            self._result_thread.add_object_ref(ResultThread.END_SENTINEL)
 
     def __iter__(self):
         return self
@@ -384,7 +461,11 @@ class OrderedIMapIterator(IMapIterator):
 
     def next(self, timeout=None):
         if len(self._ready_objects) == 0:
-            if self._next_chunk_index == self._total_chunks:
+            if self._finished_iterating and (
+                self._next_chunk_index == len(self._submitted_chunks)
+            ):
+                # Finish when all chunks have been dispatched and processed
+                # Notify the calling process that the work is done.
                 raise StopIteration
 
             # This loop will break when the next index in order is ready or
@@ -421,7 +502,11 @@ class UnorderedIMapIterator(IMapIterator):
 
     def next(self, timeout=None):
         if len(self._ready_objects) == 0:
-            if self._next_chunk_index == self._total_chunks:
+            if self._finished_iterating and (
+                self._next_chunk_index == len(self._submitted_chunks)
+            ):
+                # Finish when all chunks have been dispatched and processed
+                # Notify the calling process that the work is done.
                 raise StopIteration
 
             index = self._result_thread.next_ready_index(timeout=timeout)

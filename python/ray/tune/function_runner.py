@@ -440,9 +440,9 @@ class FunctionRunner(Trainable):
     def execute(self, fn):
         return fn(self)
 
-    def save(self, checkpoint_path=None) -> str:
-        if checkpoint_path:
-            raise ValueError("Checkpoint path should not be used with function API.")
+    def save_checkpoint(self, tmp_checkpoint_dir: str = ""):
+        if tmp_checkpoint_dir:
+            raise ValueError("Checkpoint dir should not be used with function API.")
 
         checkpoint = self._status_reporter.get_checkpoint()
         state = self.get_state()
@@ -479,9 +479,15 @@ class FunctionRunner(Trainable):
         checkpoint_path = TrainableUtil.process_checkpoint(
             checkpoint, parent_dir, state
         )
+        return checkpoint_path
 
-        self._postprocess_checkpoint(checkpoint_path)
+    def save(self, checkpoint_path=None) -> str:
+        if checkpoint_path:
+            raise ValueError("Checkpoint path should not be used with function API.")
 
+        checkpoint_path = self.save_checkpoint()
+
+        parent_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
         self._maybe_save_to_cloud(parent_dir)
 
         return checkpoint_path

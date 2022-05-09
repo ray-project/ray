@@ -83,8 +83,6 @@ DEFAULT_CONFIG = with_common_config({
         # Timesteps over which to anneal scale (from initial to final values).
         "scale_timesteps": 10000,
     },
-    # Number of env steps to optimize for before returning
-    "timesteps_per_iteration": 1000,
     # Extra configuration that disables exploration.
     "evaluation_config": {
         "explore": False
@@ -94,8 +92,15 @@ DEFAULT_CONFIG = with_common_config({
     # each worker will have a replay buffer of this size.
     "buffer_size": DEPRECATED_VALUE,
     "replay_buffer_config": {
-        "type": "MultiAgentReplayBuffer",
+        "_enable_replay_buffer_api": True,
+        "type": "MultiAgentPrioritizedReplayBuffer",
         "capacity": 50000,
+        # Alpha parameter for prioritized replay buffer.
+        "prioritized_replay_alpha": 0.6,
+        # Beta parameter for sampling from prioritized replay buffer.
+        "prioritized_replay_beta": 0.4,
+        # Epsilon to add to the TD errors when updating priorities.
+        "prioritized_replay_eps": 1e-6,
     },
     # Set this to True, if you want the contents of your buffer(s) to be
     # stored in any saved checkpoints as well.
@@ -105,14 +110,6 @@ DEFAULT_CONFIG = with_common_config({
     # - This is False AND restoring from a checkpoint that does contain
     #   buffer data.
     "store_buffer_in_checkpoints": False,
-    # If True prioritized replay buffer will be used.
-    "prioritized_replay": True,
-    # Alpha parameter for prioritized replay buffer.
-    "prioritized_replay_alpha": 0.6,
-    # Beta parameter for sampling from prioritized replay buffer.
-    "prioritized_replay_beta": 0.4,
-    # Epsilon to add to the TD errors when updating priorities.
-    "prioritized_replay_eps": 1e-6,
     # Whether to LZ4 compress observations
     "compress_observations": False,
 
@@ -169,11 +166,12 @@ DEFAULT_CONFIG = with_common_config({
     "worker_side_prioritization": False,
     # Prevent reporting frequency from going lower than this time span.
     "min_time_s_per_reporting": 1,
-    # Experimental flag.
-    # If True, the execution plan API will not be used. Instead,
-    # a Trainer's `training_iteration` method will be called as-is each
-    # training iteration.
-    "_disable_execution_plan_api": False,
+    # Minimum env sampling timesteps to accumulate within a single `train()` call. This
+    # value does not affect learning, only the number of times `Trainer.step_attempt()`
+    # is called by `Trauber.train()`. If - after one `step_attempt()`, the env sampling
+    # timestep count has not been reached, will perform n more `step_attempt()` calls
+    # until the minimum timesteps have been executed. Set to 0 for no minimum timesteps.
+    "min_sample_timesteps_per_reporting": 1000,
 })
 # __sphinx_doc_end__
 # fmt: on
@@ -196,6 +194,7 @@ class DDPGTrainer(SimpleQTrainer):
 
     @override(SimpleQTrainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
+
         # Call super's validation method.
         super().validate_config(config)
 
@@ -217,15 +216,3 @@ class DDPGTrainer(SimpleQTrainer):
                     "batch_mode=complete_episodes."
                 )
                 config["batch_mode"] = "complete_episodes"
-
-        if config.get("prioritized_replay"):
-            if config["multiagent"]["replay_mode"] == "lockstep":
-                raise ValueError(
-                    "Prioritized replay is not supported when replay_mode=lockstep."
-                )
-        else:
-            if config.get("worker_side_prioritization"):
-                raise ValueError(
-                    "Worker side prioritization is not supported when "
-                    "prioritized_replay=False."
-                )
