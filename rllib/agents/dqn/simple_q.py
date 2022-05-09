@@ -80,10 +80,8 @@ DEFAULT_CONFIG = with_common_config({
     "target_network_update_freq": 500,
 
     # === Replay buffer ===
-    # Size of the replay buffer. Note that if async_updates is set, then
-    # each worker will have a replay buffer of this size.
-    "buffer_size": DEPRECATED_VALUE,
     # The following values have moved because of the new ReplayBuffer API
+    "buffer_size": DEPRECATED_VALUE,
     "prioritized_replay": DEPRECATED_VALUE,
     "learning_starts": DEPRECATED_VALUE,
     "replay_batch_size": DEPRECATED_VALUE,
