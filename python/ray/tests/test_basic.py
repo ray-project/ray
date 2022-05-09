@@ -284,6 +284,32 @@ def test_options():
         with pytest.raises(TypeError):
             v.validate(k, unique_object)
 
+    # test updating each namespace of "_metadata" independently
+    assert ray_option_utils.update_options(
+        {
+            "_metadata": {"ns1": {"a1": 1, "b1": 2, "c1": 3}, "ns2": {"a2": 1}},
+            "num_cpus": 1,
+            "xxx": {"x": 2},
+            "zzz": 42,
+        },
+        {
+            "_metadata": {"ns1": {"b1": 22}, "ns3": {"b3": 2}},
+            "num_cpus": 2,
+            "xxx": {"y": 2},
+            "yyy": 3,
+        },
+    ) == {
+        "_metadata": {
+            "ns1": {"a1": 1, "b1": 22, "c1": 3},
+            "ns2": {"a2": 1},
+            "ns3": {"b3": 2},
+        },
+        "num_cpus": 2,
+        "xxx": {"y": 2},
+        "yyy": 3,
+        "zzz": 42,
+    }
+
 
 # https://github.com/ray-project/ray/issues/17842
 def test_disable_cuda_devices():

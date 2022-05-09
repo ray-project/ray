@@ -6,16 +6,16 @@ Introduction
 
 In order to allow an event to trigger a workflow, workflows support pluggable event systems. Using the event framework provides a few properties.
 
-1. Waits for events efficiently (without requiring a running workflow step while waiting).
+1. Waits for events efficiently (without requiring a running workflow task while waiting).
 2. Supports exactly-once event delivery semantics while providing fault tolerance.
 
-Like other workflow steps, events support fault tolerance via checkpointing. When an event occurs, the event is checkpointed, then optionally committed.
+Like other workflow tasks, events support fault tolerance via checkpointing. When an event occurs, the event is checkpointed, then optionally committed.
 
 
 Using events
 ------------
 
-Workflow events are a special type of workflow step. They "finish" when the event occurs. `workflow.wait_for_event(EventListenerType` can be used to create an event step.
+Workflow events are a special type of workflow task. They "finish" when the event occurs. `workflow.wait_for_event(EventListenerType` can be used to create an event task.
 
 
 .. code-block:: python
@@ -24,17 +24,17 @@ Workflow events are a special type of workflow step. They "finish" when the even
     import time
 
     # Create an event which finishes after 60 seconds.
-    event1_step = workflow.wait_for_event(workflow.event_listener.TimerListener, time.time() + 60)
+    event1_task = workflow.wait_for_event(workflow.event_listener.TimerListener, time.time() + 60)
 
     # Create another event which finishes after 30 seconds.
-    event2_step = workflow.wait_for_event(workflow.event_listener.TimerListener, time.time() + 30)
+    event2_task = workflow.wait_for_event(workflow.event_listener.TimerListener, time.time() + 30)
 
-    @workflow.step
+    @ray.remote
     def gather(*args):
-        return args;
+        return args
 
     # Gather will run after 60 seconds, when both event1 and event2 are done.
-    gather.step(event1_step, event_2.step).run()
+    workflow.create(gather.bind(event1_task, event_2_task)).run()
 
 
 Custom event listeners
