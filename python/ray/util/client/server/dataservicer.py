@@ -216,11 +216,48 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                     if not self.chunk_collector.add_chunk(req):
                         # Put request still in progress
                         continue
-                    put_resp = self.basic_service._put_object(
-                        self.chunk_collector.data, req.put.client_ref_id, client_id
-                    )
-                    self.chunk_collector.reset()
-                    resp = ray_client_pb2.DataResponse(put=put_resp)
+                    logger.exception(f'this is a put  data0_200:{self.chunk_collector.data[0:200]} data0_20!= TASK_WRAPED_IN_PUT_:{self.chunk_collector.data[0:19] != b"TASK_WRAPED_IN_PUT_"}')
+                    if self.chunk_collector.data[0:19] != b'TASK_WRAPED_IN_PUT_':
+                        put_resp = self.basic_service._put_object(
+                            self.chunk_collector.data, req.put.client_ref_id, client_id
+                        )
+                        self.chunk_collector.reset()
+                        resp = ray_client_pb2.DataResponse(put=put_resp)
+                    else:
+                        def int_from_bytes(xbytes: bytes) -> int:
+                            return int.from_bytes(xbytes, 'big')
+                        ser_client_task = self.chunk_collector.data.replace(b'TASK_WRAPED_IN_PUT_', b'')
+                        self.chunk_collector.reset()
+                        ser_client_task_parts = ser_client_task.split(b'TAASK_ARG_')
+                        # logger.exception(f'ser_client_task_parts:{ser_client_task_parts}')
+                        des_client_task = ray_client_pb2.ClientTask.FromString(ser_client_task_parts[0])
+                        for ser_rag_parts in ser_client_task_parts[1:]:
+                            rag_parts = ser_rag_parts.split(b'ARG_FieLD_')
+                            # logger.exception(f'rag_parts:{rag_parts}')
+                            local_ = int_from_bytes(bytes(rag_parts[0])) if rag_parts[0] else 0
+                            reference_id_ = bytes(rag_parts[1])
+                            data_ = bytes(rag_parts[2])
+                            type_ = int_from_bytes(bytes(rag_parts[3])) if rag_parts[3] else 0
+                            if len(rag_parts) == 5:
+                                k_kwarg = bytes(rag_parts[4]).decode()
+                                des_client_task.kwargs.get_or_create(k_kwarg)
+                                des_client_task.kwargs[k_kwarg].local = local_ 
+                                des_client_task.kwargs[k_kwarg].reference_id = reference_id_
+                                des_client_task.kwargs[k_kwarg].data = data_
+                                des_client_task.kwargs[k_kwarg].type = type_
+                            else:
+                                arg_ = ray_client_pb2.Arg(
+                                    local=local_,
+                                    reference_id=reference_id_,
+                                    data=data_,
+                                    type=type_,
+                                )
+                                des_client_task.args.append(arg_)
+                        # print(f'des_client_task:{des_client_task} \n request:{request}')
+                        # des_datareq = ray_client_pb2.DataRequest.FromString(des_client_task)
+                        with self.clients_lock:
+                            resp_ticket = self.basic_service.Schedule(des_client_task, context)
+                            resp = ray_client_pb2.DataResponse(task_ticket=resp_ticket)
                 elif req_type == "release":
                     released = []
                     for rel_id in req.release.ids:
