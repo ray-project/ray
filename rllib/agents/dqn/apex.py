@@ -116,7 +116,13 @@ APEX_DEFAULT_CONFIG = merge_dicts(
         "train_batch_size": 512,
         "rollout_fragment_length": 50,
         "target_network_update_freq": 500000,
-        "timesteps_per_iteration": 25000,
+        # Minimum env sampling timesteps to accumulate within a single `train()` call.
+        # This value does not affect learning, only the number of times
+        # `Trainer.step_attempt()` is called by `Trainer.train()`. If - after one
+        # `step_attempt()`, the env sampling timestep count has not been reached, will
+        # perform n more `step_attempt()` calls until the minimum timesteps have been
+        # executed. Set to 0 for no minimum timesteps.
+        "min_sample_timesteps_per_reporting": 25000,
         "exploration_config": {"type": "PerWorkerEpsilonGreedy"},
         "worker_side_prioritization": True,
         "min_time_s_per_reporting": 30,
@@ -126,8 +132,6 @@ APEX_DEFAULT_CONFIG = merge_dicts(
         # TODO: Find a way to support None again as a means to replay
         #  proceeding as fast as possible.
         "training_intensity": 1,
-        # Use `training_iteration` instead of `execution_plan` by default.
-        "_disable_execution_plan_api": True,
     },
 )
 # __sphinx_doc_end__
@@ -318,7 +322,7 @@ class ApexTrainer(DQNTrainer):
         # Update experience priorities post learning.
         def update_prio_and_stats(item: Tuple[ActorHandle, dict, int, int]) -> None:
             actor, prio_dict, env_count, agent_count = item
-            if config.get("prioritized_replay"):
+            if config["replay_buffer_config"].get("prioritized_replay_alpha") > 0:
                 actor.update_priorities.remote(prio_dict)
             metrics = _get_shared_metrics()
             # Manually update the steps trained counter since the learner
@@ -584,7 +588,10 @@ class ApexTrainer(DQNTrainer):
                     env_steps,
                     agent_steps,
                 ) = self.learner_thread.outqueue.get(timeout=0.001)
-                if self.config["prioritized_replay"]:
+                if (
+                    self.config["replay_buffer_config"].get("prioritized_replay_alpha")
+                    > 0
+                ):
                     replay_actor.update_priorities.remote(priority_dict)
                 num_samples_trained_this_itr += env_steps
                 self.update_target_networks(env_steps)

@@ -3,7 +3,7 @@ import gym
 import logging
 import re
 import tree  # pip install dm_tree
-from typing import Callable, Dict, List, Optional, Tuple, Type
+from typing import Callable, Dict, List, Optional, Tuple, Type, Union
 
 from ray.util.debug import log_once
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
@@ -71,7 +71,13 @@ class DynamicTFPolicy(TFPolicy):
             ]
         ] = None,
         action_sampler_fn: Optional[
-            Callable[[TensorType, List[TensorType]], Tuple[TensorType, TensorType]]
+            Callable[
+                [TensorType, List[TensorType]],
+                Union[
+                    Tuple[TensorType, TensorType],
+                    Tuple[TensorType, TensorType, TensorType, List[TensorType]],
+                ],
+            ]
         ] = None,
         action_distribution_fn: Optional[
             Callable[
@@ -120,9 +126,10 @@ class DynamicTFPolicy(TFPolicy):
                 given policy, obs_space, action_space, and policy config.
                 All policy variables should be created in this function. If not
                 specified, a default model will be created.
-            action_sampler_fn: A callable returning a sampled action and its
-                log-likelihood given Policy, ModelV2, observation inputs,
-                explore, and is_training.
+            action_sampler_fn: A callable returning either a sampled action and
+                its log-likelihood or a sampled action, its log-likelihood,
+                action distribution inputs and updated state given Policy,
+                ModelV2, observation inputs, explore, and is_training.
                 Provide `action_sampler_fn` if you would like to have full
                 control over the action computation step, including the
                 model forward pass, possible sampling from a distribution,
@@ -292,7 +299,7 @@ class DynamicTFPolicy(TFPolicy):
 
             # Fully customized action generation (e.g., custom policy).
             if action_sampler_fn:
-                sampled_action, sampled_action_logp = action_sampler_fn(
+                action_sampler_outputs = action_sampler_fn(
                     self,
                     self.model,
                     obs_batch=self._input_dict[SampleBatch.CUR_OBS],
@@ -303,6 +310,17 @@ class DynamicTFPolicy(TFPolicy):
                     explore=explore,
                     is_training=self._input_dict.is_training,
                 )
+                if len(action_sampler_outputs) == 4:
+                    (
+                        sampled_action,
+                        sampled_action_logp,
+                        dist_inputs,
+                        self._state_out,
+                    ) = action_sampler_outputs
+                else:
+                    dist_inputs = None
+                    self._state_out = []
+                    sampled_action, sampled_action_logp = action_sampler_outputs
             # Distribution generation is customized, e.g., DQN, DDPG.
             else:
                 if action_distribution_fn:

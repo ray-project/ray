@@ -413,6 +413,10 @@ def test_locality_aware_leasing_borrowed_objects(ray_start_cluster):
 
     # f will run on worker, f_obj will be pinned on worker.
     f_obj = f.options(resources={"pin_worker": 1}).remote()
+    # Make sure owner has the location information for f_obj,
+    # before we launch g so g worker can get the locality information
+    # from the owner.
+    ray.wait([f_obj], fetch_local=False)
     # g will run on head, f_obj will be borrowed by head, and we confirm that
     # h(f_obj) is scheduled onto worker, the node that has f_obj.
     assert (

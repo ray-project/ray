@@ -19,6 +19,7 @@ Creating Datasets
 .. autofunction:: ray.data.from_items
 .. autofunction:: ray.data.from_arrow
 .. autofunction:: ray.data.from_arrow_refs
+.. autofunction:: ray.data.from_huggingface
 .. autofunction:: ray.data.from_spark
 .. autofunction:: ray.data.from_dask
 .. autofunction:: ray.data.from_modin
@@ -146,6 +147,9 @@ Built-in Datasources
 .. autoclass:: ray.data.datasource.RangeDatasource
     :members:
     
+.. autoclass:: ray.data.datasource.SimpleTensorFlowDatasource
+    :members:
+
 .. autoclass:: ray.data.datasource.SimpleTorchDatasource
     :members:
 

@@ -11,10 +11,11 @@ limit = int(15784 * 0.9)
 
 
 CONCURRENY_GROUPS = {
-    "tiny": 32,
-    "small": 16,
-    "medium": 4,
-    "large": 2,
+    "tiny": 32,  # <= 1k vCPU
+    "small": 16,  # <= 2k vCPU
+    "medium": 6,  # <= 3k vCPU
+    "large": 8,  # <= 8k vCPU
+    "enormous": 1,  # <= 4k vCPU (?)
     "small-gpu": 8,
     "large-gpu": 4,
 }
@@ -27,9 +28,11 @@ Condition = namedtuple(
 gpu_cpu_to_concurrency_groups = [
     Condition(min_gpu=9, max_gpu=-1, min_cpu=0, max_cpu=-1, group="large-gpu"),
     Condition(min_gpu=1, max_gpu=9, min_cpu=0, max_cpu=-128, group="small-gpu"),
-    Condition(min_gpu=0, max_gpu=0, min_cpu=513, max_cpu=-1, group="large"),
+    Condition(min_gpu=0, max_gpu=0, min_cpu=1025, max_cpu=-1, group="enormous"),
+    Condition(min_gpu=0, max_gpu=0, min_cpu=513, max_cpu=1024, group="large"),
     Condition(min_gpu=0, max_gpu=0, min_cpu=129, max_cpu=512, group="medium"),
     Condition(min_gpu=0, max_gpu=0, min_cpu=0, max_cpu=32, group="tiny"),
+    # Make sure "small" is the last in the list, because it is the fallback.
     Condition(min_gpu=0, max_gpu=0, min_cpu=0, max_cpu=128, group="small"),
 ]
 

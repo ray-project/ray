@@ -22,7 +22,6 @@
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/gcs_client/accessor.h"
-#include "ray/gcs/gcs_server/gcs_actor_distribution.h"
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
@@ -255,10 +254,9 @@ struct GcsServerMocker {
     }
 
     /// PinObjectsInterface
-    void PinObjectIDs(
-        const rpc::Address &caller_address,
-        const std::vector<ObjectID> &object_ids,
-        const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override {}
+    void PinObjectID(const rpc::Address &caller_address,
+                     const ObjectID &object_id,
+                     rpc::ClientCallback<rpc::PinObjectIDReply> callback) override {}
 
     /// DependencyWaiterInterface
     ray::Status WaitForDirectActorCallArgs(
@@ -313,38 +311,9 @@ struct GcsServerMocker {
     std::list<rpc::ClientCallback<rpc::CancelResourceReserveReply>> return_callbacks = {};
   };
 
-  class MockedRayletBasedActorScheduler : public gcs::RayletBasedActorScheduler {
+  class MockedGcsActorScheduler : public gcs::GcsActorScheduler {
    public:
-    using gcs::RayletBasedActorScheduler::RayletBasedActorScheduler;
-
-    void TryLeaseWorkerFromNodeAgain(std::shared_ptr<gcs::GcsActor> actor,
-                                     std::shared_ptr<rpc::GcsNodeInfo> node) {
-      DoRetryLeasingWorkerFromNode(std::move(actor), std::move(node));
-    }
-
-   protected:
-    void RetryLeasingWorkerFromNode(std::shared_ptr<gcs::GcsActor> actor,
-                                    std::shared_ptr<rpc::GcsNodeInfo> node) override {
-      ++num_retry_leasing_count_;
-      if (num_retry_leasing_count_ <= 1) {
-        DoRetryLeasingWorkerFromNode(actor, node);
-      }
-    }
-
-    void RetryCreatingActorOnWorker(std::shared_ptr<gcs::GcsActor> actor,
-                                    std::shared_ptr<GcsLeasedWorker> worker) override {
-      ++num_retry_creating_count_;
-      DoRetryCreatingActorOnWorker(actor, worker);
-    }
-
-   public:
-    int num_retry_leasing_count_ = 0;
-    int num_retry_creating_count_ = 0;
-  };
-
-  class MockedGcsBasedActorScheduler : public gcs::GcsBasedActorScheduler {
-   public:
-    using gcs::GcsBasedActorScheduler::GcsBasedActorScheduler;
+    using gcs::GcsActorScheduler::GcsActorScheduler;
 
     void TryLeaseWorkerFromNodeAgain(std::shared_ptr<gcs::GcsActor> actor,
                                      std::shared_ptr<rpc::GcsNodeInfo> node) {

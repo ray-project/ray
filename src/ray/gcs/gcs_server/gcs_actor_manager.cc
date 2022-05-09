@@ -179,19 +179,20 @@ rpc::ActorTableData *GcsActor::GetMutableActorTableData() { return &actor_table_
 
 rpc::TaskSpec *GcsActor::GetMutableTaskSpec() { return task_spec_.get(); }
 
-std::shared_ptr<const GcsActorWorkerAssignment> GcsActor::GetActorWorkerAssignment()
-    const {
-  return assignment_ptr_;
+const ResourceRequest &GcsActor::GetAcquiredResources() const {
+  return acquired_resources_;
+}
+void GcsActor::SetAcquiredResources(ResourceRequest &&resource_request) {
+  acquired_resources_ = std::move(resource_request);
 }
 
-void GcsActor::SetActorWorkerAssignment(
-    std::shared_ptr<GcsActorWorkerAssignment> assignment_ptr) {
-  assignment_ptr_ = std::move(assignment_ptr);
+bool GcsActor::GetGrantOrReject() const { return grant_or_reject_; }
+void GcsActor::SetGrantOrReject(bool grant_or_reject) {
+  grant_or_reject_ = grant_or_reject;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
 GcsActorManager::GcsActorManager(
-    boost::asio::io_context &io_context,
     std::shared_ptr<GcsActorSchedulerInterface> scheduler,
     std::shared_ptr<GcsTableStorage> gcs_table_storage,
     std::shared_ptr<GcsPublisher> gcs_publisher,
@@ -202,8 +203,7 @@ GcsActorManager::GcsActorManager(
     std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
         run_delayed,
     const rpc::ClientFactoryFn &worker_client_factory)
-    : io_context_(io_context),
-      gcs_actor_scheduler_(std::move(scheduler)),
+    : gcs_actor_scheduler_(std::move(scheduler)),
       gcs_table_storage_(std::move(gcs_table_storage)),
       gcs_publisher_(std::move(gcs_publisher)),
       worker_client_factory_(worker_client_factory),
@@ -215,19 +215,6 @@ GcsActorManager::GcsActorManager(
       actor_gc_delay_(RayConfig::instance().gcs_actor_table_min_duration_ms()) {
   RAY_CHECK(worker_client_factory_);
   RAY_CHECK(destroy_owned_placement_group_if_needed_);
-  if (RayConfig::instance().gcs_actor_scheduling_enabled() &&
-      std::dynamic_pointer_cast<GcsBasedActorScheduler>(gcs_actor_scheduler_) !=
-          nullptr) {
-    auto gcs_actor_scheduler =
-        std::dynamic_pointer_cast<GcsBasedActorScheduler>(gcs_actor_scheduler_);
-    gcs_actor_scheduler->AddResourcesChangedListener([this] {
-      bool posted = GetSchedulePendingActorsPosted();
-      if (!posted) {
-        SetSchedulePendingActorsPosted(true);
-        io_context_.post([this] { SchedulePendingActors(); });
-      }
-    });
-  }
 }
 
 void GcsActorManager::HandleRegisterActor(const rpc::RegisterActorRequest &request,
@@ -722,9 +709,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
     return;
   }
 
-  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
-    gcs_actor_scheduler_->OnActorDestruction(it->second);
-  }
+  gcs_actor_scheduler_->OnActorDestruction(it->second);
 
   it->second->GetMutableActorTableData()->set_timestamp(current_sys_time_ms());
   AddDestroyedActorToCache(it->second);
@@ -893,11 +878,9 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
     }
   }
 
-  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
-    auto iter = registered_actors_.find(actor_id);
-    if (iter != registered_actors_.end()) {
-      gcs_actor_scheduler_->OnActorDestruction(iter->second);
-    }
+  auto actor_iter = registered_actors_.find(actor_id);
+  if (actor_iter != registered_actors_.end()) {
+    gcs_actor_scheduler_->OnActorDestruction(actor_iter->second);
   }
 
   rpc::ActorDeathCause death_cause;
@@ -1158,7 +1141,6 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
 }
 
 void GcsActorManager::SchedulePendingActors() {
-  schedule_pending_actors_posted_ = false;
   if (pending_actors_.empty()) {
     return;
   }
@@ -1168,14 +1150,6 @@ void GcsActorManager::SchedulePendingActors() {
   for (auto &actor : actors) {
     gcs_actor_scheduler_->Schedule(std::move(actor));
   }
-}
-
-bool GcsActorManager::GetSchedulePendingActorsPosted() const {
-  return schedule_pending_actors_posted_;
-}
-
-void GcsActorManager::SetSchedulePendingActorsPosted(bool posted) {
-  schedule_pending_actors_posted_ = posted;
 }
 
 void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
@@ -1425,23 +1399,12 @@ void GcsActorManager::CancelActorInScheduling(const std::shared_ptr<GcsActor> &a
   if (!canceled_actor_id.IsNil()) {
     // The actor was being scheduled and has now been canceled.
     RAY_CHECK(canceled_actor_id == actor_id);
-  } else {
-    auto pending_it = std::find_if(pending_actors_.begin(),
-                                   pending_actors_.end(),
-                                   [actor_id](const std::shared_ptr<GcsActor> &actor) {
-                                     return actor->GetActorID() == actor_id;
-                                   });
-
-    // The actor was pending scheduling. Remove it from the queue.
-    if (pending_it != pending_actors_.end()) {
-      pending_actors_.erase(pending_it);
-    } else {
-      // When actor creation request of this actor id is pending in raylet,
-      // it doesn't responds, and the actor should be still in leasing state.
-      // NOTE: We will cancel outstanding lease request by calling
-      // `raylet_client->CancelWorkerLease`.
-      gcs_actor_scheduler_->CancelOnLeasing(node_id, actor_id, task_id);
-    }
+  } else if (!RemovePendingActor(actor)) {
+    // When actor creation request of this actor id is pending in raylet,
+    // it doesn't responds, and the actor should be still in leasing state.
+    // NOTE: We will cancel outstanding lease request by calling
+    // `raylet_client->CancelWorkerLease`.
+    gcs_actor_scheduler_->CancelOnLeasing(node_id, actor_id, task_id);
   }
 }
 
@@ -1457,6 +1420,26 @@ const GcsActor *GcsActorManager::GetActor(const ActorID &actor_id) const {
   }
 
   return nullptr;
+}
+
+bool GcsActorManager::RemovePendingActor(std::shared_ptr<GcsActor> actor) {
+  const auto &actor_id = actor->GetActorID();
+  auto pending_it = std::find_if(pending_actors_.begin(),
+                                 pending_actors_.end(),
+                                 [actor_id](const std::shared_ptr<GcsActor> &actor) {
+                                   return actor->GetActorID() == actor_id;
+                                 });
+
+  // The actor was pending scheduling. Remove it from the queue.
+  if (pending_it != pending_actors_.end()) {
+    pending_actors_.erase(pending_it);
+    return true;
+  }
+  return gcs_actor_scheduler_->CancelInFlightActorScheduling(actor);
+}
+
+size_t GcsActorManager::GetPendingActorsCount() const {
+  return gcs_actor_scheduler_->GetPendingActorsCount() + pending_actors_.size();
 }
 
 std::string GcsActorManager::DebugString() const {
@@ -1483,7 +1466,7 @@ std::string GcsActorManager::DebugString() const {
          << "\n- Destroyed actors count: " << destroyed_actors_.size()
          << "\n- Named actors count: " << num_named_actors
          << "\n- Unresolved actors count: " << unresolved_actors_.size()
-         << "\n- Pending actors count: " << pending_actors_.size()
+         << "\n- Pending actors count: " << GetPendingActorsCount()
          << "\n- Created actors count: " << created_actors_.size()
          << "\n- owners_: " << owners_.size()
          << "\n- actor_to_register_callbacks_: " << actor_to_register_callbacks_.size()
@@ -1497,7 +1480,7 @@ void GcsActorManager::RecordMetrics() const {
   ray::stats::STATS_gcs_actors_count.Record(created_actors_.size(), "Created");
   ray::stats::STATS_gcs_actors_count.Record(destroyed_actors_.size(), "Destroyed");
   ray::stats::STATS_gcs_actors_count.Record(unresolved_actors_.size(), "Unresolved");
-  ray::stats::STATS_gcs_actors_count.Record(pending_actors_.size(), "Pending");
+  ray::stats::STATS_gcs_actors_count.Record(GetPendingActorsCount(), "Pending");
 }
 
 }  // namespace gcs

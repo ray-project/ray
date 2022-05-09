@@ -22,6 +22,15 @@ py_test(
 )
 
 py_test (
+    name = "huggingface_basic_language_modeling_example",
+    size = "medium",
+    srcs = ["examples/huggingface/huggingface_basic_language_modeling_example.py"],
+    args = ["--smoke-test", "--num-epochs 3"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test (
     name = "lightgbm_example",
     size = "medium",
     srcs = ["examples/lightgbm_example.py"],
@@ -44,6 +53,15 @@ py_test (
     main = "examples/rl_example.py",
     size = "medium",
     srcs = ["examples/rl_example.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test (
+    name = "rl_serving_example",
+    main = "examples/rl_serving_example.py",
+    size = "medium",
+    srcs = ["examples/rl_serving_example.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
@@ -137,6 +155,14 @@ py_test(
 )
 
 py_test(
+    name = "upload_to_wandb",
+    size = "medium",
+    srcs = ["examples/upload_to_wandb.py"],
+    tags = ["team:ml", "exclusive", "needs_credentials"],
+    deps = [":ml_lib"]
+)
+
+py_test(
     name = "xgboost_example",
     size = "medium",
     srcs = ["examples/xgboost_example.py"],
@@ -178,6 +204,22 @@ py_test(
     name = "test_horovod_trainer",
     size = "large",
     srcs = ["tests/test_horovod_trainer.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_huggingface_predictor",
+    size = "small",
+    srcs = ["tests/test_huggingface_predictor.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_huggingface_trainer",
+    size = "medium",
+    srcs = ["tests/test_huggingface_trainer.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )

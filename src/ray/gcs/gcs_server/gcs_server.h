@@ -29,11 +29,13 @@
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
+#include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
 
 namespace ray {
+using raylet::ClusterTaskManager;
 namespace gcs {
 
 struct GcsServerConfig {
@@ -104,6 +106,9 @@ class GcsServer {
 
   /// Initialize cluster resource scheduler.
   void InitClusterResourceScheduler();
+
+  /// Initialize cluster task manager.
+  void InitClusterTaskManager();
 
   /// Initialize gcs job manager.
   void InitGcsJobManager(const GcsInitData &gcs_init_data);
@@ -180,8 +185,13 @@ class GcsServer {
   std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
   /// The gcs resource manager.
   std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
+  /// The gcs server's node id, for the creation of `cluster_resource_scheduler_` and
+  /// `cluster_task_manager_`.
+  NodeID local_node_id_;
   /// The cluster resource scheduler.
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
+  /// The cluster task manager.
+  std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
   /// The gcs node manager.
   std::shared_ptr<GcsNodeManager> gcs_node_manager_;
   /// The heartbeat manager.

@@ -11,11 +11,11 @@ from ray.tune.function_runner import wrap_function
 from ray.tune.integration.wandb import (
     WandbLoggerCallback,
     _WandbLoggingProcess,
-    _WANDB_QUEUE_END,
     WandbLogger,
     WANDB_ENV_VAR,
     WandbTrainableMixin,
     wandb_mixin,
+    _QueueItem,
 )
 from ray.tune.result import TRIAL_INFO
 from ray.tune.trial import TrialInfo
@@ -52,10 +52,10 @@ class _MockWandbLoggingProcess(_WandbLoggingProcess):
 
     def run(self):
         while True:
-            result = self.queue.get()
-            if result == _WANDB_QUEUE_END:
+            result_type, result_content = self.queue.get()
+            if result_type == _QueueItem.END:
                 break
-            log, config_update = self._handle_result(result)
+            log, config_update = self._handle_result(result_content)
             self.config_updates.put(config_update)
             self.logs.put(log)
 

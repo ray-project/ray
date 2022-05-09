@@ -1,6 +1,8 @@
+from collections import OrderedDict
 from gym.spaces import Discrete, MultiDiscrete
 import numpy as np
 import tree  # pip install dm_tree
+from types import MappingProxyType
 from typing import List, Optional
 
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
@@ -298,6 +300,42 @@ def flatten_inputs_to_1d_tensor(
         merged = np.reshape(merged, [B, T, -1])
 
     return merged
+
+
+def make_action_immutable(obj):
+    """Flags actions immutable to notify users when trying to change them.
+
+    Can also be used with any tree-like structure containing either
+    dictionaries, numpy arrays or already immutable objects per se.
+    Note, however that `tree.map_structure()` will in general not
+    include the shallow object containing all others and therefore
+    immutability will hold only for all objects contained in it.
+    Use `tree.traverse(fun, action, top_down=False)` to include
+    also the containing object.
+
+    Args:
+        obj: The object to be made immutable.
+
+    Returns:
+        The immutable object.
+
+    Examples:
+        >>> import tree
+        >>> import numpy as np
+        >>> from ray.rllib.utils.numpy import make_action_immutable
+        >>> arr = np.arange(1,10)
+        >>> d = dict(a = 1, b = (arr, arr))
+        >>> tree.traverse(make_action_immutable, d, top_down=False) # doctest: +SKIP
+    """
+    if isinstance(obj, np.ndarray):
+        obj.setflags(write=False)
+        return obj
+    elif isinstance(obj, OrderedDict):
+        return MappingProxyType(dict(obj))
+    elif isinstance(obj, dict):
+        return MappingProxyType(obj)
+    else:
+        return obj
 
 
 def huber_loss(x: np.ndarray, delta: float = 1.0) -> np.ndarray:

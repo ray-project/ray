@@ -36,7 +36,7 @@ class JSONDatasource(FileBasedDatasource):
         f: "pyarrow.NativeFile",
         block: BlockAccessor,
         writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
-        **writer_args
+        **writer_args,
     ):
         writer_args = _resolve_kwargs(writer_args_fn, **writer_args)
         orient = writer_args.pop("orient", "records")

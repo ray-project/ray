@@ -122,6 +122,9 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init cluster resource scheduler.
   InitClusterResourceScheduler();
 
+  // Init cluster task manager.
+  InitClusterTaskManager();
+
   // Init gcs resource manager.
   InitGcsResourceManager(gcs_init_data);
 
@@ -254,6 +257,8 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
       main_service_,
       gcs_table_storage_,
       cluster_resource_scheduler_->GetClusterResourceManager());
+      scheduling::NodeID(local_node_id_.Binary()));
+
 
   // Initialize by gcs tables data.
   gcs_resource_manager_->Initialize(gcs_init_data);
@@ -298,7 +303,29 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
 }
 
 void GcsServer::InitClusterResourceScheduler() {
-  cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>();
+  local_node_id_ = NodeID::FromRandom();
+  cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
+      scheduling::NodeID(local_node_id_.Binary()),
+      NodeResources(),
+      /*is_node_available_fn=*/
+      [](auto) { return true; },
+      /*is_local_node_with_raylet=*/false);
+}
+
+void GcsServer::InitClusterTaskManager() {
+  RAY_CHECK(cluster_resource_scheduler_);
+  cluster_task_manager_ = std::make_shared<ClusterTaskManager>(
+      local_node_id_,
+      cluster_resource_scheduler_,
+      /*get_node_info=*/
+      [this](const NodeID &node_id) {
+        auto node = gcs_node_manager_->GetAliveNode(node_id);
+        return node.has_value() ? node.value().get() : nullptr;
+      },
+      /*announce_infeasible_task=*/
+      nullptr,
+      /*local_task_manager=*/
+      nullptr);
 }
 
 void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
@@ -335,33 +362,21 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
     return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
   };
 
-  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
-    RAY_CHECK(gcs_resource_manager_ && cluster_resource_scheduler_);
-    scheduler = std::make_unique<GcsBasedActorScheduler>(
-        main_service_,
-        gcs_table_storage_->ActorTable(),
-        *gcs_node_manager_,
-        cluster_resource_scheduler_,
-        schedule_failure_handler,
-        schedule_success_handler,
-        raylet_client_pool_,
-        client_factory,
-        /*normal_task_resources_changed_callback=*/
-        [this](const NodeID &node_id, const rpc::ResourcesData &resources) {
-          gcs_resource_manager_->UpdateNodeNormalTaskResources(node_id, resources);
-        });
-  } else {
-    scheduler =
-        std::make_unique<RayletBasedActorScheduler>(main_service_,
-                                                    gcs_table_storage_->ActorTable(),
-                                                    *gcs_node_manager_,
-                                                    schedule_failure_handler,
-                                                    schedule_success_handler,
-                                                    raylet_client_pool_,
-                                                    client_factory);
-  }
-  gcs_actor_manager_ = std::make_shared<GcsActorManager>(
+  RAY_CHECK(gcs_resource_manager_ && cluster_task_manager_);
+  scheduler = std::make_unique<GcsActorScheduler>(
       main_service_,
+      gcs_table_storage_->ActorTable(),
+      *gcs_node_manager_,
+      cluster_task_manager_,
+      schedule_failure_handler,
+      schedule_success_handler,
+      raylet_client_pool_,
+      client_factory,
+      /*normal_task_resources_changed_callback=*/
+      [this](const NodeID &node_id, const rpc::ResourcesData &resources) {
+        gcs_resource_manager_->UpdateNodeNormalTaskResources(node_id, resources);
+      });
+  gcs_actor_manager_ = std::make_shared<GcsActorManager>(
       std::move(scheduler),
       gcs_table_storage_,
       gcs_publisher_,
@@ -582,7 +597,8 @@ void GcsServer::InstallEventListeners() {
     gcs_resource_manager_->OnNodeAdd(*node);
     gcs_placement_group_manager_->OnNodeAdd(node_id);
     gcs_actor_manager_->SchedulePendingActors();
-    gcs_heartbeat_manager_->AddNode(node_id);
+    gcs_heartbeat_manager_->AddNode(NodeID::FromBinary(node->node_id()));
+    cluster_task_manager_->ScheduleAndDispatchTasks();
     if (RayConfig::instance().use_ray_syncer()) {
       rpc::Address address;
       address.set_raylet_id(node->node_id());
@@ -643,7 +659,7 @@ void GcsServer::InstallEventListeners() {
           [this] {
             // Because resources have been changed, we need to try to schedule the
             // pending actors.
-            gcs_actor_manager_->SchedulePendingActors();
+            cluster_task_manager_->ScheduleAndDispatchTasks();
           },
           "GcsServer.SchedulePendingActors");
     });
