@@ -177,7 +177,7 @@ if __name__ == "__main__":
     # policy configs, we have to explicitly set it in the multiagent config:
     policies = {
         "ppo_policy": (
-            PPOTorchPolicy if args.torch or args.mixed_torch_tf else PPODynamciTFPolicy,
+            PPOTorchPolicy if args.torch or args.mixed_torch_tf else PPODynamicTFPolicy,
             None,
             None,
             ppo_config,
