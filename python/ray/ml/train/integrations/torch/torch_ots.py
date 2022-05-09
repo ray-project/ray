@@ -90,7 +90,8 @@ class TorchOffTheShelfTrainer(TorchTrainer):
             from torch import nn, optim
 
             import ray
-            from ray.ml.train.integrations.torch.torch_ots import TorchOffTheShelfTrainer
+            from ray.ml.train.integrations.torch.torch_ots import \
+                TorchOffTheShelfTrainer
 
 
             def get_dataset() -> ray.data.Dataset:
