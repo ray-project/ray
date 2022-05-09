@@ -1,6 +1,7 @@
 import os
 from typing import Optional, Union
 
+import pandas as pd
 from ray.cloudpickle import cloudpickle
 from ray.exceptions import RayTaskError
 from ray.ml.checkpoint import Checkpoint
@@ -78,6 +79,36 @@ class ResultGrid:
                 scope=scope,
                 filter_nan_and_inf=filter_nan_and_inf,
             )
+        )
+
+    def get_dataframe(
+        self,
+        filter_metric: Optional[str] = None,
+        filter_mode: Optional[str] = None,
+    ) -> pd.DataFrame:
+        """Return dataframe of all trials with their configs and reported results.
+
+        Per default, this returns the last reported results for each trial.
+
+        If ``filter_metric`` and ``filter_mode`` are set, the results from each
+        trial are filtered for this metric and mode. For example, if
+        ``filter_metric="some_metric"`` and ``filter_mode="max"``, for each trial,
+        every received result is checked, and the one where ``some_metric`` is
+        maximal is returned.
+
+
+        Example:
+
+            result_grid = Tuner.fit(...)
+
+            # Get last reported results per trial
+            df = result_grid.get_dataframe()
+
+            # Get best ever reported accuracy per trial
+            df = result_grid.get_dataframe(metric="accuracy", mode="max")
+        """
+        return self._experiment_analysis.dataframe(
+            metric=filter_metric, mode=filter_mode
         )
 
     def __len__(self) -> int:
