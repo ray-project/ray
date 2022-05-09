@@ -367,12 +367,12 @@ def ray_job_submit(
         # It takes a bit of time to establish the connection.
         # Try a few times to instantiate the JobSubmissionClient, as the client's
         # instantiation does not retry on connection errors.
-        for trie in range(1, 13):
+        for trie in range(1, 7):
             time.sleep(5)
             try:
                 client = JobSubmissionClient(f"http://127.0.0.1:{local_port}")
             except ConnectionError as e:
-                if trie < 12:
+                if trie < 6:
                     logger.info("Job client connection failed. Retrying in 5 seconds.")
                 else:
                     raise e from None
