@@ -343,7 +343,7 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
-    - pip install "grpcio >= 1.28.1, <= 1.43.0"
+    - pip install "grpcio >= 1.28.1, != 1.44.0"
     - bazel test --config=ci --config=asan $(./ci/run/bazel_export_options)
       --config=asan-buildkite
       --test_tag_filters=-kubernetes,asan_tests
@@ -391,6 +391,13 @@
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - echo "--- Setting up Python 3.7 environment."
+    - PYTHON=3.7 ./ci/env/install-dependencies.sh
+    # Specifying PYTHON=3.7 above somehow messes up the Ray install.
+    # Uninstall and re-install Ray so that we can use Ray Client.
+    # (Remove thirdparty_files to sidestep an issue with psutil.)
+    - pip uninstall -y ray && rm -rf /ray/python/ray/thirdparty_files
+    - pip install -e /ray/python
     - echo "--- Setting up local kind cluster."
     - ./ci/k8s/prep-k8s-environment.sh
     - echo "--- Building py37-cpu Ray image for the test."

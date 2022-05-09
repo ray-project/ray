@@ -15,25 +15,15 @@ environment (https://github.com/google-research/recsim).
 import logging
 from typing import List, Type
 
+from ray.rllib.agents.dqn.dqn import DQNTrainer
 from ray.rllib.agents.slateq.slateq_tf_policy import SlateQTFPolicy
 from ray.rllib.agents.slateq.slateq_torch_policy import SlateQTorchPolicy
-from ray.rllib.agents.trainer import Trainer, with_common_config
-from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.execution.concurrency_ops import Concurrently
-from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
-from ray.rllib.execution.rollout_ops import ParallelRollouts
-from ray.rllib.execution.train_ops import (
-    MultiGPUTrainOneStep,
-    TrainOneStep,
-    UpdateTargetNetwork,
-)
+from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.typing import TrainerConfigDict
-from ray.util.iter import LocalIterator
-from ray.rllib.utils.replay_buffers.replay_buffer import validate_buffer_config
+from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
 
 logger = logging.getLogger(__name__)
 
@@ -63,9 +53,12 @@ DEFAULT_CONFIG = with_common_config({
         "explore": False,
     },
 
-    # Minimum env steps to optimize for per train call. This value does
-    # not affect learning, only the length of iterations.
-    "timesteps_per_iteration": 1000,
+    # Minimum env sampling timesteps to accumulate within a single `train()` call. This
+    # value does not affect learning, only the number of times `Trainer.step_attempt()`
+    # is called by `Trauber.train()`. If - after one `step_attempt()`, the env sampling
+    # timestep count has not been reached, will perform n more `step_attempt()` calls
+    # until the minimum timesteps have been executed. Set to 0 for no minimum timesteps.
+    "min_sample_timesteps_per_reporting": 1000,
     # Update the target network every `target_network_update_freq` steps.
     "target_network_update_freq": 3200,
     # Update the target by \tau * policy + (1-\tau) * target_policy.
@@ -78,16 +71,20 @@ DEFAULT_CONFIG = with_common_config({
     "huber_threshold": 1.0,
 
     # === Replay buffer ===
-    # Size of the replay buffer. Note that if async_updates is set, then
-    # each worker will have a replay buffer of this size.
-    "buffer_size": DEPRECATED_VALUE,
     "replay_buffer_config": {
-        "type": "MultiAgentReplayBuffer",
+        # Enable the new ReplayBuffer API.
+        "_enable_replay_buffer_api": True,
+        "type": "MultiAgentPrioritizedReplayBuffer",
         "capacity": 100000,
+        "prioritized_replay_alpha": 0.6,
+        # Beta parameter for sampling from prioritized replay buffer.
+        "prioritized_replay_beta": 0.4,
+        # Epsilon to add to the TD errors when updating priorities.
+        "prioritized_replay_eps": 1e-6,
+        # The number of continuous environment steps to replay at once. This may
+        # be set to greater than 1 to support recurrent models.
+        "replay_sequence_length": 1,
     },
-    # The number of contiguous environment steps to replay at once. This may
-    # be set to greater than 1 to support recurrent models.
-    "replay_sequence_length": 1,
     # Whether to LZ4 compress observations
     "compress_observations": False,
     # If set, this will fix the ratio of replayed from a buffer and learned on
@@ -119,6 +116,8 @@ DEFAULT_CONFIG = with_common_config({
     # if async_updates is set, then each worker returns gradients for a
     # batch of this size.
     "train_batch_size": 32,
+    # N-step Q learning
+    "n_step": 1,
 
     # === Parallelism ===
     # Number of workers for collecting samples with. This only makes sense
@@ -132,6 +131,12 @@ DEFAULT_CONFIG = with_common_config({
 
     # Switch on no-preprocessors for easier Q-model coding.
     "_disable_preprocessor_api": True,
+
+    # Deprecated keys:
+    # Use `capacity` in `replay_buffer_config` instead.
+    "buffer_size": DEPRECATED_VALUE,
+    # Use `replay_sequence_length` in `replay_buffer_config` instead.
+    "replay_sequence_length": DEPRECATED_VALUE,
 })
 # __sphinx_doc_end__
 # fmt: on
@@ -149,72 +154,20 @@ def calculate_round_robin_weights(config: TrainerConfigDict) -> List[float]:
     return weights
 
 
-class SlateQTrainer(Trainer):
+class SlateQTrainer(DQNTrainer):
     @classmethod
-    @override(Trainer)
+    @override(DQNTrainer)
     def get_default_config(cls) -> TrainerConfigDict:
         return DEFAULT_CONFIG
 
-    @override(Trainer)
+    @override(DQNTrainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
         super().validate_config(config)
         validate_buffer_config(config)
 
-    @override(Trainer)
+    @override(DQNTrainer)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             return SlateQTorchPolicy
         else:
             return SlateQTFPolicy
-
-    @staticmethod
-    @override(Trainer)
-    def execution_plan(
-        workers: WorkerSet, config: TrainerConfigDict, **kwargs
-    ) -> LocalIterator[dict]:
-        assert (
-            "local_replay_buffer" in kwargs
-        ), "SlateQ execution plan requires a local replay buffer."
-
-        rollouts = ParallelRollouts(workers, mode="bulk_sync")
-
-        # We execute the following steps concurrently:
-        # (1) Generate rollouts and store them in our local replay buffer.
-        # Calling next() on store_op drives this.
-        store_op = rollouts.for_each(
-            StoreToReplayBuffer(local_buffer=kwargs["local_replay_buffer"])
-        )
-
-        if config["simple_optimizer"]:
-            train_step_op = TrainOneStep(workers)
-        else:
-            train_step_op = MultiGPUTrainOneStep(
-                workers=workers,
-                sgd_minibatch_size=config["train_batch_size"],
-                num_sgd_iter=1,
-                num_gpus=config["num_gpus"],
-                _fake_gpus=config["_fake_gpus"],
-            )
-
-        # (2) Read and train on experiences from the replay buffer. Every batch
-        # returned from the LocalReplay() iterator is passed to TrainOneStep to
-        # take a SGD step.
-        replay_op = (
-            Replay(local_buffer=kwargs["local_replay_buffer"])
-            .for_each(train_step_op)
-            .for_each(
-                UpdateTargetNetwork(workers, config["target_network_update_freq"])
-            )
-        )
-
-        # Alternate deterministically between (1) and (2). Only return the
-        # output of (2) since training metrics are not available until (2)
-        # runs.
-        train_op = Concurrently(
-            [store_op, replay_op],
-            mode="round_robin",
-            output_indexes=[1],
-            round_robin_weights=calculate_round_robin_weights(config),
-        )
-
-        return StandardMetricsReporting(train_op, workers, config)

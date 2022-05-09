@@ -3,10 +3,12 @@ import urllib
 from pathlib import Path
 import pyarrow.fs
 import pytest
+import subprocess
 
 import ray
 import ray.internal.storage as storage
 from ray.tests.conftest import *  # noqa
+from ray._private.test_utils import simulate_storage
 
 
 def _custom_fs(uri):
@@ -15,6 +17,10 @@ def _custom_fs(uri):
 
 
 def path_eq(a, b):
+    # NOTE: ".resolve()" does not work properly for paths other than
+    # local filesystem paths. For example, for S3, it turns "<s3_bucket>/foo"
+    # into "<workdir>/<s3_bucket>/foo". But for the purpose of this function,
+    # it works fine as well as both paths are resolved in the same way.
     return Path(a).resolve() == Path(b).resolve()
 
 
@@ -36,15 +42,12 @@ def test_get_custom_filesystem(shutdown_only, tmp_path):
 
 
 def test_get_filesystem_s3(shutdown_only):
-    # TODO(ekl) we could use moto to test the API directly against S3 APIs. For now,
-    # hook a little into the internals to test the S3 path.
-    ray.init(storage=None)
-    storage._init_storage("s3://bucket/foo/bar", False)
-    fs, prefix = storage._init_filesystem(
-        create_valid_file=False, check_valid_file=False
-    )
-    assert path_eq(prefix, "bucket/foo/bar"), prefix
-    assert isinstance(fs, pyarrow.fs.S3FileSystem), fs
+    root = "bucket/foo/bar"
+    with simulate_storage("s3", root) as s3_uri:
+        ray.init(storage=s3_uri)
+        fs, prefix = storage.get_filesystem()
+        assert path_eq(prefix, root), prefix
+        assert isinstance(fs, pyarrow.fs.S3FileSystem), fs
 
 
 def test_get_filesystem_invalid(shutdown_only, tmp_path):
@@ -73,59 +76,93 @@ def test_get_filesystem_remote_workers(shutdown_only, tmp_path):
         ray.get(check.remote())
 
 
-def test_put_get(shutdown_only, tmp_path):
-    path = str(tmp_path)
-    ray.init(storage=path, num_gpus=1)
-    client = storage.get_client("ns")
-    client2 = storage.get_client("ns2")
-    client.put("foo/bar", b"hello")
-    client.put("baz", b"goodbye")
-    client2.put("baz", b"goodbye!")
-    assert client.get("foo/bar") == b"hello"
-    assert client.get("baz") == b"goodbye"
-    assert client2.get("baz") == b"goodbye!"
+@pytest.mark.parametrize("storage_type", ["s3", "fs"])
+def test_put_get(shutdown_only, tmp_path, storage_type):
+    with simulate_storage(storage_type) as storage_uri:
+        ray.init(storage=storage_uri, num_gpus=1)
+        client = storage.get_client("ns")
+        client2 = storage.get_client("ns2")
+        assert client.get("foo/bar") is None
+        client.put("foo/bar", b"hello")
+        client.put("baz", b"goodbye")
+        client2.put("baz", b"goodbye!")
+        assert client.get("foo/bar") == b"hello"
+        assert client.get("baz") == b"goodbye"
+        assert client2.get("baz") == b"goodbye!"
 
-    client.delete("baz")
-    assert client.get("baz") is None
+        # delete file
+        assert client.delete("baz")
+        assert client.get("baz") is None
+        assert not client.delete("non_existing")
 
-
-def test_directory_traversal_attack(shutdown_only, tmp_path):
-    path = str(tmp_path)
-    ray.init(storage=path, num_gpus=1)
-    client = storage.get_client("foo")
-    client.put("data", b"hello")
-    client2 = storage.get_client("foo/bar")
-    # Should not be able to access '../data'.
-    with pytest.raises(ValueError):
-        client2.get("../data")
-
-
-def test_list_basic(shutdown_only, tmp_path):
-    path = str(tmp_path)
-    ray.init(storage=path, num_gpus=1)
-    client = storage.get_client("ns")
-    client.put("foo/bar1", b"hello")
-    client.put("foo/bar2", b"hello")
-    client.put("baz/baz1", b"goodbye!")
-    d1 = client.list("")
-    assert sorted([f.base_name for f in d1]) == ["baz", "foo"], d1
-    d2 = client.list("foo")
-    assert sorted([f.base_name for f in d2]) == ["bar1", "bar2"], d2
-    with pytest.raises(FileNotFoundError):
-        client.list("invalid")
-    with pytest.raises(NotADirectoryError):
-        client.list("foo/bar1")
+        # delete dir
+        n_files = 3
+        for i in range(n_files):
+            assert client2.get(f"foo/bar{i}") is None
+        for i in range(n_files):
+            client2.put(f"foo/bar{i}", f"hello{i}".encode())
+        for i in range(n_files):
+            assert client2.get(f"foo/bar{i}") == f"hello{i}".encode()
+        assert client2.delete_dir("foo")
+        for i in range(n_files):
+            assert client2.get(f"foo/bar{i}") is None
+        assert not client2.delete_dir("non_existing")
 
 
-def test_get_info_basic(shutdown_only, tmp_path):
-    path = str(tmp_path)
-    ray.init(storage=path, num_gpus=1)
-    client = storage.get_client("ns")
-    client.put("foo/bar1", b"hello")
-    assert client.get_info("foo/bar1").base_name == "bar1"
-    assert client.get_info("foo/bar2") is None
-    assert client.get_info("foo").base_name == "foo"
-    assert client.get_info("").base_name == "ns"
+@pytest.mark.parametrize("storage_type", ["s3", "fs"])
+def test_directory_traversal_attack(shutdown_only, storage_type):
+    with simulate_storage(storage_type) as storage_uri:
+        ray.init(storage=storage_uri, num_gpus=1)
+        client = storage.get_client("foo")
+        client.put("data", b"hello")
+        client2 = storage.get_client("foo/bar")
+        # Should not be able to access '../data'.
+        with pytest.raises(ValueError):
+            client2.get("../data")
+
+
+@pytest.mark.parametrize("storage_type", ["s3", "fs"])
+def test_list_basic(shutdown_only, storage_type):
+    with simulate_storage(storage_type) as storage_uri:
+        ray.init(storage=storage_uri, num_gpus=1)
+        client = storage.get_client("ns")
+        client.put("foo/bar1", b"hello")
+        client.put("foo/bar2", b"hello")
+        client.put("baz/baz1", b"goodbye!")
+        d1 = client.list("")
+        assert sorted([f.base_name for f in d1]) == ["baz", "foo"], d1
+        d2 = client.list("foo")
+        assert sorted([f.base_name for f in d2]) == ["bar1", "bar2"], d2
+        with pytest.raises(FileNotFoundError):
+            client.list("invalid")
+        with pytest.raises(NotADirectoryError):
+            client.list("foo/bar1")
+
+
+@pytest.mark.parametrize("storage_type", ["s3", "fs"])
+def test_get_info_basic(shutdown_only, storage_type):
+    with simulate_storage(storage_type) as storage_uri:
+        ray.init(storage=storage_uri, num_gpus=1)
+        client = storage.get_client("ns")
+        client.put("foo/bar1", b"hello")
+        assert client.get_info("foo/bar1").base_name == "bar1"
+        assert client.get_info("foo/bar2") is None
+        assert client.get_info("foo").base_name == "foo"
+        assert client.get_info("").base_name == "ns"
+
+
+@pytest.mark.parametrize("storage_type", ["s3", "fs"])
+def test_connecting_to_cluster(shutdown_only, storage_type):
+    with simulate_storage(storage_type) as storage_uri:
+        try:
+            subprocess.check_call(["ray", "start", "--head", "--storage", storage_uri])
+            ray.init(address="auto")
+            from ray.internal.storage import _storage_uri
+
+            # make sure driver is using the same storage when connecting to a cluster
+            assert _storage_uri == storage_uri
+        finally:
+            subprocess.check_call(["ray", "stop"])
 
 
 if __name__ == "__main__":

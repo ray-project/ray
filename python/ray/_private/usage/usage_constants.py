@@ -30,3 +30,7 @@ USAGE_STATS_CONFIRMATION_MESSAGE = (
     "Enable usage stats collection? "
     "This prompt will auto-proceed in 10 seconds to avoid blocking cluster startup."
 )
+
+LIBRARY_USAGE_PREFIX = "library_usage_"
+
+USAGE_STATS_NAMESPACE = "usage_stats"

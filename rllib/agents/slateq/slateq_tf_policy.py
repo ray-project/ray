@@ -157,21 +157,18 @@ def build_slateq_losses(
     q_clicked = tf.gather(replay_click_q, clicked_indices)
     target_clicked = tf.gather(target, clicked_indices)
 
-    def get_train_op():
-        td_error = q_clicked - target_clicked
-        if policy.config["use_huber"]:
-            loss = huber_loss(td_error, delta=policy.config["huber_threshold"])
-        else:
-            loss = tf.math.square(td_error)
-        loss = tf.reduce_mean(loss)
-        return loss, tf.reduce_mean(tf.abs(td_error))
-
-    loss, mean_td_error = tf.cond(
-        pred=tf.greater(tf.reduce_sum(input_tensor=clicked), 0),
-        true_fn=get_train_op,
-        false_fn=lambda: (tf.constant(0.0), tf.constant(0.0)),
-        name="",
+    td_error = tf.where(
+        tf.cast(clicked, tf.bool),
+        replay_click_q - target,
+        tf.zeros_like(train_batch[SampleBatch.REWARDS]),
     )
+    if policy.config["use_huber"]:
+        loss = huber_loss(td_error, delta=policy.config["huber_threshold"])
+    else:
+        loss = tf.math.square(td_error)
+    loss = tf.reduce_mean(loss)
+    td_error = tf.abs(td_error)
+    mean_td_error = tf.reduce_mean(td_error)
 
     policy._q_values = tf.reduce_mean(q_values)
     policy._q_clicked = tf.reduce_mean(q_clicked)
@@ -186,6 +183,7 @@ def build_slateq_losses(
     policy._next_q_target_max = tf.reduce_mean(next_q_target_max)
     policy._target_clicked = tf.reduce_mean(target_clicked)
     policy._q_loss = loss
+    policy._td_error = td_error
     policy._mean_td_error = mean_td_error
     policy._mean_actions = tf.reduce_mean(actions)
 
@@ -206,7 +204,7 @@ def build_slateq_stats(policy: Policy, batch) -> Dict[str, TensorType]:
         "next_q_target_slate": policy._next_q_target_slate,
         "next_q_target_max": policy._next_q_target_max,
         "target_clicked": policy._target_clicked,
-        "td_error": policy._mean_td_error,
+        "mean_td_error": policy._mean_td_error,
         "q_loss": policy._q_loss,
         "mean_actions": policy._mean_actions,
     }
@@ -372,6 +370,7 @@ SlateQTFPolicy = build_tf_policy(
     make_model=build_slateq_model,
     loss_fn=build_slateq_losses,
     stats_fn=build_slateq_stats,
+    extra_learn_fetches_fn=lambda policy: {"td_error": policy._td_error},
     optimizer_fn=rmsprop_optimizer,
     # Define how to act.
     action_distribution_fn=action_distribution_fn,

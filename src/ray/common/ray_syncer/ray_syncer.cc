@@ -249,7 +249,6 @@ RaySyncer::RaySyncer(instrumented_io_context &io_context,
       node_state_(std::make_unique<NodeState>()),
       timer_(io_context) {
   stopped_ = std::make_shared<bool>(false);
-  upward_only_.fill(false);
   timer_.RunFnPeriodically(
       [this]() {
         for (auto &[_, sync_connection] : sync_connections_) {
@@ -300,21 +299,13 @@ void RaySyncer::Connect(std::unique_ptr<NodeSyncConnection> connection) {
         RAY_CHECK(connection != nullptr);
         RAY_CHECK(sync_connections_[connection->GetRemoteNodeID()] == nullptr);
         auto &conn = *connection;
-        bool is_upward_conn = false;
-        if (dynamic_cast<ClientSyncConnection *>(connection) == nullptr) {
-          upward_connections_.insert(connection);
-          is_upward_conn = true;
-        }
         sync_connections_[connection->GetRemoteNodeID()].reset(connection);
         for (const auto &[_, messages] : node_state_->GetClusterView()) {
           for (auto &message : messages) {
             if (!message) {
               continue;
             }
-            if (upward_only_[message->component_id()] && !is_upward_conn) {
-              continue;
-            }
-            RAY_CHECK(conn.PushToSendingQueue(message));
+            conn.PushToSendingQueue(message);
           }
         }
       },
@@ -326,7 +317,6 @@ void RaySyncer::Disconnect(const std::string &node_id) {
       [this, node_id]() {
         auto iter = sync_connections_.find(node_id);
         if (iter != sync_connections_.end()) {
-          upward_connections_.erase(iter->second.get());
           sync_connections_.erase(iter);
         }
       },
@@ -336,51 +326,47 @@ void RaySyncer::Disconnect(const std::string &node_id) {
 bool RaySyncer::Register(RayComponentId component_id,
                          const ReporterInterface *reporter,
                          ReceiverInterface *receiver,
-                         bool upward_only,
                          int64_t pull_from_reporter_interval_ms) {
   if (!node_state_->SetComponent(component_id, reporter, receiver)) {
     return false;
   }
 
-  upward_only_[component_id] = upward_only;
-
   // Set job to pull from reporter periodically
-  if (reporter != nullptr) {
-    RAY_CHECK(pull_from_reporter_interval_ms > 0);
+  if (reporter != nullptr && pull_from_reporter_interval_ms > 0) {
     timer_.RunFnPeriodically(
-        [this, component_id]() {
-          auto msg = node_state_->CreateSyncMessage(component_id);
-          if (msg) {
-            RAY_CHECK(msg->node_id() == GetLocalNodeID());
-            BroadcastMessage(std::make_shared<RaySyncMessage>(std::move(*msg)));
-          }
-        },
+        [this, component_id]() { OnDemandBroadcasting(component_id); },
         pull_from_reporter_interval_ms);
   }
 
   RAY_LOG(DEBUG) << "Registered components: "
                  << "component_id:" << component_id << ", reporter:" << reporter
                  << ", receiver:" << receiver
-                 << ", pull_from_reporter_interval_ms:" << pull_from_reporter_interval_ms
-                 << ", upward_only:" << upward_only_[component_id];
+                 << ", pull_from_reporter_interval_ms:" << pull_from_reporter_interval_ms;
   return true;
 }
 
-void RaySyncer::BroadcastMessage(std::shared_ptr<const RaySyncMessage> message) {
-  // The message is stale. Just skip this one.
-  if (!node_state_->ConsumeSyncMessage(message)) {
-    return;
+bool RaySyncer::OnDemandBroadcasting(RayComponentId component_id) {
+  auto msg = node_state_->CreateSyncMessage(component_id);
+  if (msg) {
+    RAY_CHECK(msg->node_id() == GetLocalNodeID());
+    BroadcastMessage(std::make_shared<RaySyncMessage>(std::move(*msg)));
+    return true;
   }
+  return false;
+}
 
-  if (upward_only_[message->component_id()]) {
-    for (auto &connection : upward_connections_) {
-      connection->PushToSendingQueue(message);
-    }
-  } else {
-    for (auto &connection : sync_connections_) {
-      connection.second->PushToSendingQueue(message);
-    }
-  }
+void RaySyncer::BroadcastMessage(std::shared_ptr<const RaySyncMessage> message) {
+  io_context_.dispatch(
+      [this, message] {
+        // The message is stale. Just skip this one.
+        if (!node_state_->ConsumeSyncMessage(message)) {
+          return;
+        }
+        for (auto &connection : sync_connections_) {
+          connection.second->PushToSendingQueue(message);
+        }
+      },
+      "RaySyncer.BroadcastMessage");
 }
 
 grpc::ServerUnaryReactor *RaySyncerService::StartSync(

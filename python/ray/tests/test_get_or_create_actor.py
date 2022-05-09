@@ -26,8 +26,32 @@ def test_simple(shutdown_only):
         assert ray.get(b.ping.remote()) == "ok"
         assert ray.get(b.pid.remote()) == ray.get(a.pid.remote())
 
+    with pytest.raises(TypeError):
+        Actor.options(name=object(), get_if_exists=True).remote()
+
+    with pytest.raises(TypeError):
+        Actor.options(name="x", namespace=object(), get_if_exists=True).remote()
+
     with pytest.raises(ValueError):
         Actor.options(num_cpus=1, get_if_exists=True).remote()
+
+
+def test_shared_actor(shutdown_only):
+    ray.init(num_cpus=1)
+
+    @ray.remote(name="x", namespace="test", get_if_exists=True)
+    class SharedActor:
+        def ping(self):
+            return "ok"
+
+        def pid(self):
+            return os.getpid()
+
+    a = SharedActor.remote()
+    b = SharedActor.remote()
+    assert ray.get(a.ping.remote()) == "ok"
+    assert ray.get(b.ping.remote()) == "ok"
+    assert ray.get(b.pid.remote()) == ray.get(a.pid.remote())
 
 
 def test_no_verbose_output():

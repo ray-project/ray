@@ -26,26 +26,31 @@ class TestIMPALA(unittest.TestCase):
 
     def test_impala_compilation(self):
         """Test whether an ImpalaTrainer can be built with both frameworks."""
-        config = impala.DEFAULT_CONFIG.copy()
-        config["num_gpus"] = 0
-        config["model"]["lstm_use_prev_action"] = True
-        config["model"]["lstm_use_prev_reward"] = True
-        num_iterations = 1
+        config = (
+            impala.ImpalaConfig()
+            .resources(num_gpus=0)
+            .training(
+                model={
+                    "lstm_use_prev_action": True,
+                    "lstm_use_prev_reward": True,
+                }
+            )
+        )
         env = "CartPole-v0"
+        num_iterations = 2
 
         for _ in framework_iterator(config, with_eager_tracing=True):
-            local_cfg = config.copy()
             for lstm in [False, True]:
-                local_cfg["num_aggregation_workers"] = 0 if not lstm else 1
-                local_cfg["model"]["use_lstm"] = lstm
+                config.num_aggregation_workers = 0 if not lstm else 1
+                config.model["use_lstm"] = lstm
                 print(
                     "lstm={} aggregation-workers={}".format(
-                        lstm, local_cfg["num_aggregation_workers"]
+                        lstm, config.num_aggregation_workers
                     )
                 )
                 # Test with and w/o aggregation workers (this has nothing
                 # to do with LSTMs, though).
-                trainer = impala.ImpalaTrainer(config=local_cfg, env=env)
+                trainer = config.build(env=env)
                 for i in range(num_iterations):
                     results = trainer.train()
                     check_train_results(results)
@@ -59,17 +64,22 @@ class TestIMPALA(unittest.TestCase):
                 trainer.stop()
 
     def test_impala_lr_schedule(self):
-        config = impala.DEFAULT_CONFIG.copy()
-        config["num_gpus"] = 0
         # Test whether we correctly ignore the "lr" setting.
         # The first lr should be 0.05.
-        config["lr"] = 0.1
-        config["lr_schedule"] = [
-            [0, 0.05],
-            [10000, 0.000001],
-        ]
-        config["num_gpus"] = 0  # Do not use any (fake) GPUs.
-        config["env"] = "CartPole-v0"
+        config = (
+            impala.ImpalaConfig()
+            .resources(num_gpus=0)
+            .training(
+                lr=0.1,
+                lr_schedule=[
+                    [0, 0.05],
+                    [100000, 0.000001],
+                ],
+                train_batch_size=100,
+            )
+            .rollouts(num_envs_per_worker=2)
+            .environment(env="CartPole-v0")
+        )
 
         def get_lr(result):
             return result["info"][LEARNER_INFO][DEFAULT_POLICY_ID][LEARNER_STATS_KEY][
@@ -77,7 +87,7 @@ class TestIMPALA(unittest.TestCase):
             ]
 
         for fw in framework_iterator(config):
-            trainer = impala.ImpalaTrainer(config=config)
+            trainer = config.build()
             policy = trainer.get_policy()
 
             try:
@@ -85,9 +95,12 @@ class TestIMPALA(unittest.TestCase):
                     check(policy.get_session().run(policy.cur_lr), 0.05)
                 else:
                     check(policy.cur_lr, 0.05)
-                r1 = trainer.train()
-                r2 = trainer.train()
-                r3 = trainer.train()
+                for _ in range(1):
+                    r1 = trainer.train()
+                for _ in range(2):
+                    r2 = trainer.train()
+                for _ in range(2):
+                    r3 = trainer.train()
                 # Due to the asynch'ness of IMPALA, learner-stats metrics
                 # could be delayed by one iteration. Do 3 train() calls here
                 # and measure guaranteed decrease in lr between 1st and 3rd.

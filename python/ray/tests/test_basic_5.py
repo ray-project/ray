@@ -124,34 +124,37 @@ def test_internal_kv(ray_start_regular):
         kv._internal_kv_list("@namespace_abc", namespace="n")
 
 
-def test_run_on_all_workers(ray_start_regular):
+def test_run_on_all_workers(ray_start_regular, tmp_path):
     # This test is to ensure run_function_on_all_workers are executed
     # on all workers.
-    @ray.remote
-    class Actor:
-        def __init__(self):
-            self.jobs = []
-
-        def record(self, job_id=None):
-            if job_id is not None:
-                self.jobs.append(job_id)
-            return self.jobs
-
-    a = Actor.options(name="recorder", namespace="n").remote()  # noqa: F841
-    driver_script = """
+    lock_file = tmp_path / "lock"
+    data_file = tmp_path / "data"
+    driver_script = f"""
 import ray
+from filelock import FileLock
 from pathlib import Path
+import pickle
+
+lock_file = r"{str(lock_file)}"
+data_file = Path(r"{str(data_file)}")
 
 def init_func(worker_info):
-    a = ray.get_actor("recorder", namespace="n")
-    a.record.remote(worker_info['worker'].worker_id)
+    with FileLock(lock_file):
+        if data_file.exists():
+            old = pickle.loads(data_file.read_bytes())
+        else:
+            old = []
+        old.append(worker_info['worker'].worker_id)
+        data_file.write_bytes(pickle.dumps(old))
 
 ray.worker.global_worker.run_function_on_all_workers(init_func)
 ray.init(address='auto')
+
 @ray.remote
 def ready():
-    a = ray.get_actor("recorder", namespace="n")
-    assert ray.worker.global_worker.worker_id in ray.get(a.record.remote())
+    with FileLock(lock_file):
+        worker_ids = pickle.loads(data_file.read_bytes())
+        assert ray.worker.global_worker.worker_id in worker_ids
 
 ray.get(ready.remote())
 """

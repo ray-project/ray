@@ -86,7 +86,7 @@ apex-breakoutnoframeskip-v4:
         rollout_fragment_length: 20
         train_batch_size: 512
         target_network_update_freq: 50000
-        timesteps_per_iteration: 25000
+        min_sample_timesteps_per_reporting: 25000
 
 appo-pongnoframeskip-v4:
     env: PongNoFrameskip-v4
@@ -96,7 +96,7 @@ appo-pongnoframeskip-v4:
         episode_reward_mean: 18.0
         timesteps_total: 5000000
     stop:
-        time_total_s: 2000
+        time_total_s: 3600
     config:
         vtrace: True
         use_kl_loss: False
@@ -191,7 +191,7 @@ cql-halfcheetahbulletenv-v0:
         prioritized_replay: false
         train_batch_size: 256
         target_network_update_freq: 0
-        timesteps_per_iteration: 1000
+        min_train_timesteps_per_reporting: 1000
         learning_starts: 256
         optimization:
             actor_learning_rate: 0.0001
@@ -237,7 +237,7 @@ ddpg-hopperbulletenv-v0:
             ou_base_scale: 0.1
             ou_theta: 0.15
             ou_sigma: 0.2
-        timesteps_per_iteration: 1000
+        min_sample_timesteps_per_reporting: 1000
         target_network_update_freq: 0
         tau: 0.001
         buffer_size: 10000
@@ -326,7 +326,7 @@ dqn-breakoutnoframeskip-v4:
             final_epsilon: 0.01
         prioritized_replay_alpha: 0.5
         num_gpus: 0.5
-        timesteps_per_iteration: 10000
+        min_sample_timesteps_per_reporting: 10000
 
 es-humanoidbulletenv-v0:
     env: HumanoidBulletEnv-v0
@@ -443,7 +443,7 @@ sac-halfcheetahbulletenv-v0:
         prioritized_replay: true
         train_batch_size: 256
         target_network_update_freq: 1
-        timesteps_per_iteration: 1000
+        min_sample_timesteps_per_reporting: 1000
         learning_starts: 10000
         optimization:
             actor_learning_rate: 0.0003
@@ -456,10 +456,11 @@ sac-halfcheetahbulletenv-v0:
 slateq-interest-evolution-recsim-env:
     env: ray.rllib.examples.env.recommender_system_envs_with_recsim.InterestEvolutionRecSimEnv
     run: SlateQ
-    stop:
+    pass_criteria:
         episode_reward_mean: 162.0
         timesteps_total: 300000
-
+    stop:
+        time_total_s: 7200
     config:
         # increase num sampling workers for faster sampling.
         num_workers: 12
@@ -467,11 +468,6 @@ slateq-interest-evolution-recsim-env:
         env_config:
             # Env class specified above takes one `config` arg in its c'tor:
             config:
-                # GPU support currently does not work for tensorflow. For the learning
-                # test for now, we'll use pytorch, and investigate why tensorflow is not working.
-                # One indication of the issue is that the loss inputs are not flattened from the
-                # original dictionary spaces.
-                framework: tf
                 # Each step, sample `num_candidates` documents using the env-internal
                 # document sampler model (a logic that creates n documents to select
                 # the slate from).

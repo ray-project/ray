@@ -10,12 +10,13 @@ Ray Serve functionality and how to integrate different modeling frameworks.
    :name: serve-tutorials
    :maxdepth: -1
 
-   tensorflow.rst
-   pytorch.rst
-   sklearn.rst
-   batch.rst
-   web-server-integration.rst
+   tensorflow
+   pytorch
+   sklearn
+   batch
+   web-server-integration
    rllib
+   gradio
 
 Other Topics:
 

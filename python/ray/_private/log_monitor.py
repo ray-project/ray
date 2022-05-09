@@ -125,7 +125,7 @@ class LogMonitor:
                 ):
                     assert not isinstance(file_info.worker_pid, str), (
                         "PID should be an int type. "
-                        "Given PID: {file_info.worker_pid}."
+                        f"Given PID: {file_info.worker_pid}."
                     )
                     os.kill(file_info.worker_pid, 0)
             except OSError:

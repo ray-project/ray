@@ -35,14 +35,12 @@ class GcsKVManagerTest : public ::testing::TestWithParam<std::string> {
         "127.0.0.1", ray::TEST_REDIS_SERVER_PORTS.front(), "", false);
     if (GetParam() == "redis") {
       kv_instance = std::make_unique<ray::gcs::RedisInternalKV>(redis_client_options);
-    } else if (GetParam() == "memory") {
-      kv_instance = std::make_unique<ray::gcs::MemoryInternalKV>(io_service);
     } else if (GetParam() == "redis_client") {
       auto client = std::make_shared<ray::gcs::RedisClient>(redis_client_options);
       RAY_CHECK_OK(client->Connect(io_service));
       kv_instance = std::make_unique<ray::gcs::StoreClientInternalKV>(
           std::make_unique<ray::gcs::RedisStoreClient>(client));
-    } else if (GetParam() == "memory_client") {
+    } else if (GetParam() == "memory") {
       kv_instance = std::make_unique<ray::gcs::StoreClientInternalKV>(
           std::make_unique<ray::gcs::InMemoryStoreClient>(io_service));
     }
@@ -107,10 +105,9 @@ TEST_P(GcsKVManagerTest, TestInternalKV) {
   }
 }
 
-INSTANTIATE_TEST_SUITE_P(
-    GcsKVManagerTestFixture,
-    GcsKVManagerTest,
-    ::testing::Values("redis", "memory", "redis_client", "memory_client"));
+INSTANTIATE_TEST_SUITE_P(GcsKVManagerTestFixture,
+                         GcsKVManagerTest,
+                         ::testing::Values("redis", "redis_client", "memory"));
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);

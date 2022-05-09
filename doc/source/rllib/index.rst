@@ -139,7 +139,7 @@ click on the dropdowns below:
     *  Multi-agent
 
        -  |pytorch| :ref:`QMIX Monotonic Value Factorisation (QMIX, VDN, IQN) <qmix>`
-       -  |tensorflow| :ref:`Multi-Agent Deep Deterministic Policy Gradient (contrib/MADDPG) <maddpg>`
+       -  |tensorflow| :ref:`Multi-Agent Deep Deterministic Policy Gradient (MADDPG) <maddpg>`
 
     *  Offline
 
@@ -147,7 +147,7 @@ click on the dropdowns below:
 
     *  Contextual bandits
 
-       -  |pytorch| :ref:`Linear Upper Confidence Bound (contrib/LinUCB) <linucb>`
+       -  |pytorch| :ref:`Linear Upper Confidence Bound (contrib/LinUCB) <lin-ucb>`
        -  |pytorch| :ref:`Linear Thompson Sampling (contrib/LinTS) <lints>`
 
     *  Exploration-based plug-ins (can be combined with any algo)
