@@ -9,8 +9,9 @@ def count_non_terminated_nodes() -> int:
     in namespace default.
     """
     provider_config = _generate_provider_config(ray_cluster_namespace="default")
-    kuberay_node_provider = _get_node_provider(provider_config=provider_config,
-                                               cluster_name="raycluster-complete")
+    kuberay_node_provider = _get_node_provider(
+        provider_config=provider_config, cluster_name="raycluster-complete"
+    )
     nodes = kuberay_node_provider.non_terminated_nodes({})
     return len(nodes)
 

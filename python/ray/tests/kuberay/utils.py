@@ -435,7 +435,7 @@ def kubectl_patch(
         )
 
 
-def kubectl_delete(kind: str, name: str, namespace: str):
+def kubectl_delete(kind: str, name: str, namespace: str, wait: bool = True):
     """Wrapper for kubectl delete.
 
     Args:
@@ -443,8 +443,15 @@ def kubectl_delete(kind: str, name: str, namespace: str):
         name: Name of the K8s resource.
         namespace: Namespace of the K8s resource.
     """
-    subprocess.check_call(
+    wait_str = "true" if wait else "false"
+    subprocess.check_output(
         [
-            "kubectl", "-n", f"{namespace}", "delete", f"{kind}", f"{name}"
+            "kubectl",
+            "-n",
+            f"{namespace}",
+            "delete",
+            f"{kind}",
+            f"{name}",
+            f"--wait={wait_str}",
         ]
     )
