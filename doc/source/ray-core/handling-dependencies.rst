@@ -422,7 +422,7 @@ See :ref:`Per-Job <rte-per-job>` :ref:`Per-Task/Actor, within a job <rte-per-tas
 Where are the environments cached?
 """"""""""""""""""""""""""""""""""
 
-Any local files downloaded by the envs are cached at ``/tmp/ray/session_latest/runtime_resources``.
+Any local files downloaded by the environments are cached at ``/tmp/ray/session_latest/runtime_resources``.
 
 
 
