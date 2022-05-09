@@ -1,4 +1,5 @@
 import sys
+import numpy as np
 from pydantic import BaseModel
 
 import pytest
@@ -154,6 +155,19 @@ def test_dag_driver_partial_input(serve_instance):
     print(resp.text)
     resp.raise_for_status()
     assert resp.json() == [1, 2, [3, 4]]
+
+
+@serve.deployment
+def return_np_int(_):
+    return [np.int64(42)]
+
+
+def test_driver_np_serializer(serve_instance):
+    # https://github.com/ray-project/ray/pull/24215#issuecomment-1115237058
+    with InputNode() as inp:
+        dag = DAGDriver.bind(return_np_int.bind(inp))
+    serve.run(dag)
+    assert requests.get("http://127.0.0.1:8000/").json() == [42]
 
 
 if __name__ == "__main__":
