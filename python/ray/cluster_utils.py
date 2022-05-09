@@ -91,7 +91,7 @@ class AutoscalingCluster:
         self._process = subprocess.Popen(cmd, env=env)
         # Make sure ray.init("auto") can succeed after this returns.
         wait_for_condition(
-            lambda: ray.init(address="auto"), timeout=20, retry_internval_ms=500
+            (lambda: ray.init(address="auto")), timeout=20, retry_interval_ms=500
         )
         ray.shutdown()
 
