@@ -67,7 +67,7 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
   private RayFunction getRayFunction(List<String> rayFunctionInfo) {
     JobId jobId = runtime.getWorkerContext().getCurrentJobId();
     JavaFunctionDescriptor functionDescriptor = parseFunctionDescriptor(rayFunctionInfo);
-    return runtime.getFunctionManager().getFunction(jobId, functionDescriptor);
+    return runtime.getFunctionManager().getFunction(functionDescriptor);
   }
 
   /** The return value indicates which parameters are ByteBuffer. */

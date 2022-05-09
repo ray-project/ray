@@ -67,7 +67,6 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
 
   public AbstractRayRuntime(RayConfig rayConfig) {
     this.rayConfig = rayConfig;
-    functionManager = new FunctionManager(rayConfig.codeSearchPath);
     runtimeContext = new RuntimeContextImpl(this);
   }
 
@@ -152,7 +151,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
 
   @Override
   public ObjectRef call(RayFunc func, Object[] args, CallOptions options) {
-    RayFunction rayFunction = functionManager.getFunction(workerContext.getCurrentJobId(), func);
+    RayFunction rayFunction = functionManager.getFunction(func);
     FunctionDescriptor functionDescriptor = rayFunction.functionDescriptor;
     Optional<Class<?>> returnType = rayFunction.getReturnType();
     return callNormalFunction(functionDescriptor, args, returnType, options);
@@ -170,7 +169,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   @Override
   public ObjectRef callActor(
       ActorHandle<?> actor, RayFunc func, Object[] args, CallOptions options) {
-    RayFunction rayFunction = functionManager.getFunction(workerContext.getCurrentJobId(), func);
+    RayFunction rayFunction = functionManager.getFunction(func);
     FunctionDescriptor functionDescriptor = rayFunction.functionDescriptor;
     Optional<Class<?>> returnType = rayFunction.getReturnType();
     return callActorFunction(actor, functionDescriptor, args, returnType, options);
@@ -195,8 +194,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   public <T> ActorHandle<T> createActor(
       RayFunc actorFactoryFunc, Object[] args, ActorCreationOptions options) {
     FunctionDescriptor functionDescriptor =
-        functionManager.getFunction(workerContext.getCurrentJobId(), actorFactoryFunc)
-            .functionDescriptor;
+        functionManager.getFunction(actorFactoryFunc).functionDescriptor;
     return (ActorHandle<T>) createActorImpl(functionDescriptor, args, options);
   }
 

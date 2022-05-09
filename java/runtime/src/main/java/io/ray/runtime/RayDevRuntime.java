@@ -9,6 +9,7 @@ import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.runtimecontext.ResourceValue;
 import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.context.LocalModeWorkerContext;
+import io.ray.runtime.functionmanager.FunctionManager;
 import io.ray.runtime.gcs.GcsClient;
 import io.ray.runtime.generated.Common.TaskSpec;
 import io.ray.runtime.object.LocalModeObjectStore;
@@ -44,6 +45,7 @@ public class RayDevRuntime extends AbstractRayRuntime {
     taskExecutor = new LocalModeTaskExecutor(this);
     workerContext = new LocalModeWorkerContext(rayConfig.getJobId());
     objectStore = new LocalModeObjectStore(workerContext);
+    functionManager = new FunctionManager(rayConfig.getJobId(), rayConfig.codeSearchPath);
     taskSubmitter =
         new LocalModeTaskSubmitter(this, taskExecutor, (LocalModeObjectStore) objectStore);
     ((LocalModeObjectStore) objectStore)

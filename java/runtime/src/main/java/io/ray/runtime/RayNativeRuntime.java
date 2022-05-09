@@ -14,6 +14,7 @@ import io.ray.api.runtimecontext.ResourceValue;
 import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.context.NativeWorkerContext;
 import io.ray.runtime.exception.RayIntentionalSystemExitException;
+import io.ray.runtime.functionmanager.FunctionManager;
 import io.ray.runtime.gcs.GcsClient;
 import io.ray.runtime.gcs.GcsClientOptions;
 import io.ray.runtime.generated.Common.WorkerType;
@@ -102,6 +103,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       if (rayConfig.workerMode == WorkerType.DRIVER && rayConfig.getJobId() == JobId.NIL) {
         rayConfig.setJobId(getGcsClient().nextJobId());
       }
+      // Make sure the job id has been set already.
+      functionManager = new FunctionManager(rayConfig.getJobId(), rayConfig.codeSearchPath);
 
       byte[] serializedJobConfig = null;
       if (rayConfig.workerMode == WorkerType.DRIVER) {
