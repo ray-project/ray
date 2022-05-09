@@ -61,7 +61,6 @@ TD3_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
             "type": "MultiAgentReplayBuffer",
             "capacity": 1000000,
         },
-        "_disable_execution_plan_api": True,
     },
 )
 
