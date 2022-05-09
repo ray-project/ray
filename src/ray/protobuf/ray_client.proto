@@ -77,7 +77,8 @@ message ClientTask {
   TaskOptions baseline_options = 8;
   // A namespace parameter.
   string namespace = 9;
-  // Serialized args and kwargs
+  // Serialized args and kwargs. Under the hood this should just be a pickled
+  // tuple containing (args, kwargs).
   bytes data = 10;
   // Identifies which chunk the serialized args and kwargs belong to
   int32 chunk_id = 11;

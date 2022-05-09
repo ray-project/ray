@@ -8,6 +8,7 @@ import threading
 import _thread
 from unittest.mock import patch
 import numpy as np
+from python.ray.util.client.common import OBJECT_TRANSFER_CHUNK_SIZE
 
 import ray.util.client.server.server as ray_client_server
 from ray.tests.client_test_utils import create_remote_signal_actor
@@ -812,7 +813,9 @@ def test_large_remote_call(ray_start_regular_shared):
             assert args[1] == "b"
             return kwargs["large_obj"].shape
 
-        # 1024x1024x16 f64's =~ 128 MiB
+        # 1024x1024x16 f64's =~ 128 MiB. Chunking size is 64 MiB, so guarantees
+        # that transferring argument requires multiple chunks.
+        assert OBJECT_TRANSFER_CHUNK_SIZE < 2 ** 20 * 128
         large_obj = np.random.random((1024, 1024, 16))
         assert ray.get(f.remote(large_obj)) == (1024, 1024, 16)
         assert ray.get(f2.remote(123, large_obj)) == (1024, 1024, 16)

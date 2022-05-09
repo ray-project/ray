@@ -546,6 +546,7 @@ class Worker:
 
     def call_remote(self, instance, *args, **kwargs) -> List[Future]:
         task = instance._prepare_client_task()
+        # data is serialized tuple of (args, kwargs)
         task.data = dumps_from_client((args, kwargs), self._client_id)
         return self._call_schedule_for_task(task, instance._num_returns())
 
