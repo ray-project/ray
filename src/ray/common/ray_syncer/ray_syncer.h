@@ -49,7 +49,7 @@ struct ReporterInterface {
   ///
   /// \param version_after Request message with version after `version_after`. If the
   /// reporter doesn't have the qualified one, just return std::nullopt
-  /// \param message_type The component id asked for.
+  /// \param message_type The message type asked for.
   ///
   /// \return std::nullopt if the reporter doesn't have such component or the current
   /// snapshot of the component is not newer the asked one. Otherwise, return the

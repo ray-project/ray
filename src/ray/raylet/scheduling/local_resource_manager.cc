@@ -371,8 +371,9 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
   // We check the memory inside version, so version is not a const function.
   // Ideally, we need to move the memory check somewhere else.
   // TODO(iycheng): Make version as a const function.
-  auto curr_version = const_cast<LocalResourceManager *>(this)->Version();
-  if (curr_version <= after_version) {
+  const_cast<LocalResourceManager *>(this)->UpdateAvailableObjectStoreMemResource();
+
+  if (version_ <= after_version) {
     return std::nullopt;
   }
 
