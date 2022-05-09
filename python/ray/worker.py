@@ -1550,7 +1550,6 @@ def connect(
     driver_name = ""
     log_stdout_file_path = ""
     log_stderr_file_path = ""
-    interactive_mode = False
     if mode == SCRIPT_MODE:
         import __main__ as main
 
