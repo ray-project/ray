@@ -3,6 +3,7 @@ import os
 from typing import Any, Dict, Optional
 from pathlib import Path
 import asyncio
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 
 from ray.experimental.internal_kv import _internal_kv_initialized
 from ray._private.runtime_env.context import RuntimeEnvContext
@@ -103,7 +104,10 @@ def set_pythonpath_in_context(python_path: str, context: RuntimeEnvContext):
     context.env_vars["PYTHONPATH"] = python_path
 
 
-class WorkingDirManager:
+class WorkingDirManager(RuntimeEnvPlugin):
+
+    name = "working_dir"
+
     def __init__(self, resources_dir: str):
         self._resources_dir = os.path.join(resources_dir, "working_dir_files")
         try_to_create_directory(self._resources_dir)

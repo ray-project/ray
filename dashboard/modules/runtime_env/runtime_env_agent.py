@@ -8,6 +8,7 @@ import time
 from typing import Dict, Set, List, Tuple, Callable
 from enum import Enum
 from collections import defaultdict
+from ray._private.runtime_env.plugin import PluginCacheManager
 
 from ray._private.utils import import_attr
 from ray.core.generated import runtime_env_agent_pb2
@@ -28,7 +29,6 @@ from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.py_modules import PyModulesManager
 from ray._private.runtime_env.working_dir import WorkingDirManager
 from ray._private.runtime_env.container import ContainerManager
-from ray._private.runtime_env.uri_cache import URICache
 from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvState as ProtoRuntimeEnvState,
@@ -39,20 +39,6 @@ default_logger = logging.getLogger(__name__)
 # TODO(edoakes): this is used for unit tests. We should replace it with a
 # better pluggability mechanism once available.
 SLEEP_FOR_TESTING_S = os.environ.get("RAY_RUNTIME_ENV_SLEEP_FOR_TESTING_S")
-
-# Sizes for the URI cache for each runtime_env field.  Defaults to 10 GB.
-WORKING_DIR_CACHE_SIZE_BYTES = int(
-    (1024 ** 3) * float(os.environ.get("RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB", 10))
-)
-PY_MODULES_CACHE_SIZE_BYTES = int(
-    (1024 ** 3) * float(os.environ.get("RAY_RUNTIME_ENV_PY_MODULES_CACHE_SIZE_GB", 10))
-)
-CONDA_CACHE_SIZE_BYTES = int(
-    (1024 ** 3) * float(os.environ.get("RAY_RUNTIME_ENV_CONDA_CACHE_SIZE_GB", 10))
-)
-PIP_CACHE_SIZE_BYTES = int(
-    (1024 ** 3) * float(os.environ.get("RAY_RUNTIME_ENV_PIP_CACHE_SIZE_GB", 10))
-)
 
 
 @dataclass
@@ -195,10 +181,15 @@ class RuntimeEnvAgent(
         _initialize_internal_kv(self._dashboard_agent.gcs_client)
         assert _internal_kv_initialized()
 
-        self._pip_manager = PipManager(self._runtime_env_dir)
-        self._conda_manager = CondaManager(self._runtime_env_dir)
-        self._py_modules_manager = PyModulesManager(self._runtime_env_dir)
-        self._working_dir_manager = WorkingDirManager(self._runtime_env_dir)
+        self._base_plugins = [
+            WorkingDirManager,
+            PyModulesManager,
+            CondaManager,
+            PipManager,
+        ]
+        self._base_plugin_cache_managers = [
+            PluginCacheManager(plugin) for plugin in self._base_plugins
+        ]
         self._container_manager = ContainerManager(dashboard_agent.temp_dir)
 
         self._reference_table = ReferenceTable(
@@ -207,18 +198,6 @@ class RuntimeEnvAgent(
             self.unused_runtime_env_processor,
         )
 
-        self._working_dir_uri_cache = URICache(
-            self._working_dir_manager.delete_uri, WORKING_DIR_CACHE_SIZE_BYTES
-        )
-        self._py_modules_uri_cache = URICache(
-            self._py_modules_manager.delete_uri, PY_MODULES_CACHE_SIZE_BYTES
-        )
-        self._conda_uri_cache = URICache(
-            self._conda_manager.delete_uri, CONDA_CACHE_SIZE_BYTES
-        )
-        self._pip_uri_cache = URICache(
-            self._pip_manager.delete_uri, PIP_CACHE_SIZE_BYTES
-        )
         self._logger = default_logger
 
     def uris_parser(self, runtime_env):
@@ -298,44 +277,10 @@ class RuntimeEnvAgent(
                 runtime_env, context, logger=per_job_logger
             )
 
-            for (manager, uri_cache) in [
-                (self._working_dir_manager, self._working_dir_uri_cache),
-                (self._conda_manager, self._conda_uri_cache),
-                (self._pip_manager, self._pip_uri_cache),
-            ]:
-                uri = manager.get_uri(runtime_env)
-                if uri is not None:
-                    if uri not in uri_cache:
-                        per_job_logger.debug(f"Cache miss for URI {uri}.")
-                        size_bytes = await manager.create(
-                            uri, runtime_env, context, logger=per_job_logger
-                        )
-                        uri_cache.add(uri, size_bytes, logger=per_job_logger)
-                    else:
-                        per_job_logger.debug(f"Cache hit for URI {uri}.")
-                        uri_cache.mark_used(uri, logger=per_job_logger)
-                manager.modify_context(uri, runtime_env, context)
-
-            # Set up py_modules. For now, py_modules uses multiple URIs so
-            # the logic is slightly different from working_dir, conda, and
-            # pip above.
-            py_modules_uris = self._py_modules_manager.get_uris(runtime_env)
-            if py_modules_uris is not None:
-                for uri in py_modules_uris:
-                    if uri not in self._py_modules_uri_cache:
-                        per_job_logger.debug(f"Cache miss for URI {uri}.")
-                        size_bytes = await self._py_modules_manager.create(
-                            uri, runtime_env, context, logger=per_job_logger
-                        )
-                        self._py_modules_uri_cache.add(
-                            uri, size_bytes, logger=per_job_logger
-                        )
-                    else:
-                        per_job_logger.debug(f"Cache hit for URI {uri}.")
-                        self._py_modules_uri_cache.mark_used(uri, logger=per_job_logger)
-            self._py_modules_manager.modify_context(
-                py_modules_uris, runtime_env, context
-            )
+            for manager in self._base_plugin_cache_managers:
+                await manager.create_if_needed(
+                    runtime_env, context, logger=per_job_logger
+                )
 
             def setup_plugins():
                 # Run setup function from all the plugins
@@ -344,7 +289,7 @@ class RuntimeEnvAgent(
                         f"Setting up runtime env plugin {plugin_class_path}"
                     )
                     plugin_class = import_attr(plugin_class_path)
-                    # TODO(simon): implement uri support
+                    # TODO(architkulkarni): implement uri support
                     plugin_class.create(
                         "uri not implemented", json.loads(config), context
                     )
@@ -354,7 +299,7 @@ class RuntimeEnvAgent(
 
             loop = asyncio.get_event_loop()
             # Plugins setup method is sync process, running in other threads
-            # is to avoid  blocks asyncio loop
+            # is to avoid blocking asyncio loop
             await loop.run_in_executor(None, setup_plugins)
 
             return context
