@@ -114,7 +114,7 @@ class RaySyncer {
   /// it'll have a global view of the cluster.
   ///
   ///
-  /// \param message_type The component to sync.
+  /// \param message_type The message type of the component.
   /// \param reporter The local component to be broadcasted.
   /// \param receiver The consumer of the sync message sent by the other nodes in the
   /// cluster.

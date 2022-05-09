@@ -114,30 +114,29 @@ class RaySyncerTest : public ::testing::Test {
 
 TEST_F(RaySyncerTest, NodeStateCreateSyncMessage) {
   auto node_status = std::make_unique<NodeState>();
-  node_status->SetComponent(MessageType::RESOURCE_MANAGER, nullptr, nullptr);
-  ASSERT_EQ(std::nullopt, node_status->CreateSyncMessage(MessageType::RESOURCE_MANAGER));
+  node_status->SetComponent(MessageType::RESOURCE_VIEW, nullptr, nullptr);
+  ASSERT_EQ(std::nullopt, node_status->CreateSyncMessage(MessageType::RESOURCE_VIEW));
 
   auto reporter = std::make_unique<MockReporterInterface>();
-  ASSERT_TRUE(node_status->SetComponent(MessageType::RESOURCE_MANAGER,
-                                        GetReporter(MessageType::RESOURCE_MANAGER),
-                                        nullptr));
+  ASSERT_TRUE(node_status->SetComponent(
+      MessageType::RESOURCE_VIEW, GetReporter(MessageType::RESOURCE_VIEW), nullptr));
 
   // Take a snapshot
-  auto msg = node_status->CreateSyncMessage(MessageType::RESOURCE_MANAGER);
-  ASSERT_EQ(LocalVersion(MessageType::RESOURCE_MANAGER), msg->version());
+  auto msg = node_status->CreateSyncMessage(MessageType::RESOURCE_VIEW);
+  ASSERT_EQ(LocalVersion(MessageType::RESOURCE_VIEW), msg->version());
   // Revert one version back.
-  LocalVersion(MessageType::RESOURCE_MANAGER) -= 1;
-  msg = node_status->CreateSyncMessage(MessageType::RESOURCE_MANAGER);
+  LocalVersion(MessageType::RESOURCE_VIEW) -= 1;
+  msg = node_status->CreateSyncMessage(MessageType::RESOURCE_VIEW);
   ASSERT_EQ(std::nullopt, msg);
 }
 
 TEST_F(RaySyncerTest, NodeStateConsume) {
   auto node_status = std::make_unique<NodeState>();
   node_status->SetComponent(
-      MessageType::RESOURCE_MANAGER, nullptr, GetReceiver(MessageType::RESOURCE_MANAGER));
+      MessageType::RESOURCE_VIEW, nullptr, GetReceiver(MessageType::RESOURCE_VIEW));
   auto from_node_id = NodeID::FromRandom();
   // The first time receiver the message
-  auto msg = MakeMessage(MessageType::RESOURCE_MANAGER, 0, from_node_id);
+  auto msg = MakeMessage(MessageType::RESOURCE_VIEW, 0, from_node_id);
   ASSERT_TRUE(node_status->ConsumeSyncMessage(std::make_shared<RaySyncMessage>(msg)));
   ASSERT_FALSE(node_status->ConsumeSyncMessage(std::make_shared<RaySyncMessage>(msg)));
 
@@ -154,7 +153,7 @@ TEST_F(RaySyncerTest, NodeSyncConnection) {
       node_id.Binary(),
       [](std::shared_ptr<ray::rpc::syncer::RaySyncMessage>) {});
   auto from_node_id = NodeID::FromRandom();
-  auto msg = MakeMessage(MessageType::RESOURCE_MANAGER, 0, from_node_id);
+  auto msg = MakeMessage(MessageType::RESOURCE_VIEW, 0, from_node_id);
 
   // First push will succeed and the second one will be deduplicated.
   ASSERT_TRUE(sync_connection.PushToSendingQueue(std::make_shared<RaySyncMessage>(msg)));
@@ -162,9 +161,9 @@ TEST_F(RaySyncerTest, NodeSyncConnection) {
   ASSERT_EQ(1, sync_connection.sending_buffer_.size());
   ASSERT_EQ(0, sync_connection.sending_buffer_.begin()->second->version());
   ASSERT_EQ(1, sync_connection.node_versions_.size());
-  ASSERT_EQ(0,
-            sync_connection
-                .node_versions_[from_node_id.Binary()][MessageType::RESOURCE_MANAGER]);
+  ASSERT_EQ(
+      0,
+      sync_connection.node_versions_[from_node_id.Binary()][MessageType::RESOURCE_VIEW]);
 
   msg.set_version(2);
   ASSERT_TRUE(sync_connection.PushToSendingQueue(std::make_shared<RaySyncMessage>(msg)));
@@ -173,9 +172,9 @@ TEST_F(RaySyncerTest, NodeSyncConnection) {
   ASSERT_EQ(1, sync_connection.sending_buffer_.size());
   ASSERT_EQ(1, sync_connection.node_versions_.size());
   ASSERT_EQ(2, sync_connection.sending_buffer_.begin()->second->version());
-  ASSERT_EQ(2,
-            sync_connection
-                .node_versions_[from_node_id.Binary()][MessageType::RESOURCE_MANAGER]);
+  ASSERT_EQ(
+      2,
+      sync_connection.node_versions_[from_node_id.Binary()][MessageType::RESOURCE_VIEW]);
 }
 
 struct SyncerServerTest {
@@ -375,10 +374,10 @@ TEST(SyncerTest, Test1To1) {
   auto s2 = SyncerServerTest("19991");
 
   // Make sure the setup is correct
-  ASSERT_NE(nullptr, s1.receivers[MessageType::RESOURCE_MANAGER]);
-  ASSERT_NE(nullptr, s2.receivers[MessageType::RESOURCE_MANAGER]);
-  ASSERT_NE(nullptr, s1.reporters[MessageType::RESOURCE_MANAGER]);
-  ASSERT_NE(nullptr, s2.reporters[MessageType::RESOURCE_MANAGER]);
+  ASSERT_NE(nullptr, s1.receivers[MessageType::RESOURCE_VIEW]);
+  ASSERT_NE(nullptr, s2.receivers[MessageType::RESOURCE_VIEW]);
+  ASSERT_NE(nullptr, s1.reporters[MessageType::RESOURCE_VIEW]);
+  ASSERT_NE(nullptr, s2.reporters[MessageType::RESOURCE_VIEW]);
 
   auto channel_to_s2 = MakeChannel("19991");
 
@@ -419,7 +418,7 @@ TEST(SyncerTest, Test1To1) {
   // Make sure s2 send the new message to s1.
   ASSERT_TRUE(s1.WaitUntil(
       [&s1, node_id = s2.syncer->GetLocalNodeID()]() {
-        return s1.GetReceivedVersions(node_id)[MessageType::RESOURCE_MANAGER] == 1 &&
+        return s1.GetReceivedVersions(node_id)[MessageType::RESOURCE_VIEW] == 1 &&
                s1.GetNumConsumedMessages(node_id) == 2;
       },
       5));

@@ -550,7 +550,7 @@ ray::Status NodeManager::RegisterGcs() {
   if (RayConfig::instance().use_ray_syncer()) {
     // Register resource manager and scheduler
     ray_syncer_.Register(
-        /* message_type */ syncer::MessageType::RESOURCE_MANAGER,
+        /* message_type */ syncer::MessageType::RESOURCE_VIEW,
         /* reporter */ &cluster_resource_scheduler_->GetLocalResourceManager(),
         /* receiver */ this,
         /* pull_from_reporter_interval_ms */
@@ -1814,7 +1814,7 @@ void NodeManager::HandleCommitBundleResources(
   placement_group_resource_manager_->CommitBundles(bundle_specs);
   if (RayConfig::instance().use_ray_syncer()) {
     // To reduce the lag, we trigger a broadcasting immediately.
-    RAY_CHECK(ray_syncer_.OnDemandBroadcasting(syncer::MessageType::RESOURCE_MANAGER));
+    RAY_CHECK(ray_syncer_.OnDemandBroadcasting(syncer::MessageType::RESOURCE_VIEW));
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 
@@ -1855,7 +1855,7 @@ void NodeManager::HandleCancelResourceReserve(
   placement_group_resource_manager_->ReturnBundle(bundle_spec);
   if (RayConfig::instance().use_ray_syncer()) {
     // To reduce the lag, we trigger a broadcasting immediately.
-    RAY_CHECK(ray_syncer_.OnDemandBroadcasting(syncer::MessageType::RESOURCE_MANAGER));
+    RAY_CHECK(ray_syncer_.OnDemandBroadcasting(syncer::MessageType::RESOURCE_VIEW));
   }
   cluster_task_manager_->ScheduleAndDispatchTasks();
   send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -2694,7 +2694,7 @@ void NodeManager::RecordMetrics() {
 
 void NodeManager::ConsumeSyncMessage(
     std::shared_ptr<const syncer::RaySyncMessage> message) {
-  if (message->message_type() == syncer::MessageType::RESOURCE_MANAGER) {
+  if (message->message_type() == syncer::MessageType::RESOURCE_VIEW) {
     rpc::ResourcesData data;
     data.ParseFromString(message->sync_message());
     NodeID node_id = NodeID::FromBinary(data.node_id());
