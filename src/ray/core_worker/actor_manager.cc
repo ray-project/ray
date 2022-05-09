@@ -294,6 +294,9 @@ void ActorManager::SubscribeActorState(const ActorID &actor_id) {
   }
 
   absl::MutexLock lock(&subscribe_mutex_);
+  if (actor_handle->IsActorStateSubscribed()) {
+    return;
+  }
 
   // Register a callback to handle actor notifications.
   auto actor_notification_callback =
