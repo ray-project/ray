@@ -15,17 +15,6 @@ tfp = try_import_tfp()
 
 logger = logging.getLogger(__name__)
 
-OPTIMIZER_SHARED_CONFIGS = [
-    "buffer_size",
-    "prioritized_replay",
-    "prioritized_replay_alpha",
-    "prioritized_replay_beta",
-    "prioritized_replay_eps",
-    "rollout_fragment_length",
-    "train_batch_size",
-    "learning_starts",
-]
-
 # fmt: off
 # __sphinx_doc_begin__
 
@@ -98,19 +87,19 @@ DEFAULT_CONFIG = with_common_config({
         # Enable the new ReplayBuffer API.
         "_enable_replay_buffer_api": True,
         "type": "MultiAgentPrioritizedReplayBuffer",
-        # Size of the replay buffer. Note that if async_updates is set,
-        # then each worker will have a replay buffer of this size.
         "capacity": int(1e6),
+        # How many steps of the model to sample before learning starts.
+        "learning_starts": 1500,
+        # The number of continuous environment steps to replay at once. This may
+        # be set to greater than 1 to support recurrent models.
+        "replay_sequence_length": 1,
+        # If True prioritized replay buffer will be used.
+        "prioritized_replay": False,
         "prioritized_replay_alpha": 0.6,
         # Beta parameter for sampling from prioritized replay buffer.
         "prioritized_replay_beta": 0.4,
         # Epsilon to add to the TD errors when updating priorities.
         "prioritized_replay_eps": 1e-6,
-        # The number of continuous environment steps to replay at once. This may
-        # be set to greater than 1 to support recurrent models.
-        "replay_sequence_length": 1,
-        # How many steps of the model to sample before learning starts.
-        "learning_starts": 1500,
     },
     # Set this to True, if you want the contents of your buffer(s) to be
     # stored in any saved checkpoints as well.
@@ -180,6 +169,7 @@ DEFAULT_CONFIG = with_common_config({
     "_use_beta_distribution": False,
 
     # Deprecated.
+    # The following values have moved because of the new ReplayBuffer API.
     "prioritized_replay": DEPRECATED_VALUE,
     "prioritized_replay_alpha": DEPRECATED_VALUE,
     "prioritized_replay_beta": DEPRECATED_VALUE,
