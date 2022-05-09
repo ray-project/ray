@@ -415,6 +415,14 @@ def get_webui_url_from_internal_kv():
     return ray._private.utils.decode(webui_url) if webui_url is not None else None
 
 
+def get_storage_uri_from_internal_kv():
+    assert ray.experimental.internal_kv._internal_kv_initialized()
+    storage_uri = ray.experimental.internal_kv._internal_kv_get(
+        "storage", namespace=ray_constants.KV_NAMESPACE_SESSION
+    )
+    return ray._private.utils.decode(storage_uri) if storage_uri is not None else None
+
+
 def remaining_processes_alive():
     """See if the remaining processes are alive or not.
 

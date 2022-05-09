@@ -96,7 +96,7 @@ appo-pongnoframeskip-v4:
         episode_reward_mean: 18.0
         timesteps_total: 5000000
     stop:
-        time_total_s: 2000
+        time_total_s: 3600
     config:
         vtrace: True
         use_kl_loss: False

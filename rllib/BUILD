@@ -228,25 +228,25 @@ py_test(
 )
 
 # DDPG
-# py_test(
-#    name = "learning_tests_pendulum_ddpg",
-#    main = "tests/run_regression_tests.py",
-#    tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
-#    size = "large",
-#    srcs = ["tests/run_regression_tests.py"],
-#    data = glob(["tuned_examples/ddpg/pendulum-ddpg.yaml"]),
-#    args = ["--yaml-dir=tuned_examples/ddpg"]
-# )
+py_test(
+   name = "learning_tests_pendulum_ddpg",
+   main = "tests/run_regression_tests.py",
+   tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+   size = "large",
+   srcs = ["tests/run_regression_tests.py"],
+   data = glob(["tuned_examples/ddpg/pendulum-ddpg.yaml"]),
+   args = ["--yaml-dir=tuned_examples/ddpg"]
+)
 
-# py_test(
-#    name = "learning_tests_pendulum_ddpg_fake_gpus",
-#    main = "tests/run_regression_tests.py",
-#    tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "fake_gpus"],
-#    size = "large",
-#    srcs = ["tests/run_regression_tests.py"],
-#    data = ["tuned_examples/ddpg/pendulum-ddpg-fake-gpus.yaml"],
-#    args = ["--yaml-dir=tuned_examples/ddpg"]
-# )
+py_test(
+   name = "learning_tests_pendulum_ddpg_fake_gpus",
+   main = "tests/run_regression_tests.py",
+   tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "fake_gpus"],
+   size = "large",
+   srcs = ["tests/run_regression_tests.py"],
+   data = ["tuned_examples/ddpg/pendulum-ddpg-fake-gpus.yaml"],
+   args = ["--yaml-dir=tuned_examples/ddpg"]
+)
 
 # DDPPO
 py_test(
@@ -671,7 +671,7 @@ py_test(
     name = "test_ars",
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
-    srcs = ["agents/ars/tests/test_ars.py"]
+    srcs = ["algorithms/ars/tests/test_ars.py"]
 )
 
 # Bandits
@@ -719,7 +719,7 @@ py_test(
     name = "test_es",
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
-    srcs = ["agents/es/tests/test_es.py"]
+    srcs = ["algorithms/es/tests/test_es.py"]
 )
 
 # IMPALA
@@ -1704,13 +1704,6 @@ py_test(
     tags = ["team:ml", "tests_dir", "tests_dir_E"],
     size = "medium",
     srcs = ["tests/test_env_with_subprocess.py"]
-)
-
-py_test(
-    name = "tests/test_exec_api",
-    tags = ["team:ml", "tests_dir", "tests_dir_E"],
-    size = "medium",
-    srcs = ["tests/test_exec_api.py"]
 )
 
 py_test(
@@ -2855,7 +2848,7 @@ py_test(
 py_test(
     name = "examples/rollout_worker_custom_workflow",
     tags = ["team:ml", "examples", "examples_R"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/rollout_worker_custom_workflow.py"],
     args = ["--num-cpus=4"]
 )
@@ -2974,7 +2967,7 @@ py_test(
     tags = ["team:ml", "examples", "examples_T"],
     size = "medium",
     srcs = ["examples/two_step_game.py"],
-    args = ["--as-test", "--stop-reward=7.1", "--run=contrib/MADDPG"]
+    args = ["--as-test", "--stop-reward=7.1", "--run=MADDPG"]
 )
 
 py_test(
