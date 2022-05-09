@@ -30,18 +30,6 @@ public class NativeWorkerContext implements WorkerContext {
   }
 
   @Override
-  public ClassLoader getCurrentClassLoader() {
-    return currentClassLoader;
-  }
-
-  @Override
-  public void setCurrentClassLoader(ClassLoader currentClassLoader) {
-    if (this.currentClassLoader == null) {
-      this.currentClassLoader = currentClassLoader;
-    }
-  }
-
-  @Override
   public TaskType getCurrentTaskType() {
     return TaskType.forNumber(nativeGetCurrentTaskType());
   }

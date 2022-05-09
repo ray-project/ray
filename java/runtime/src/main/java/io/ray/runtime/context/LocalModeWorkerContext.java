@@ -55,14 +55,6 @@ public class LocalModeWorkerContext implements WorkerContext {
   }
 
   @Override
-  public ClassLoader getCurrentClassLoader() {
-    return null;
-  }
-
-  @Override
-  public void setCurrentClassLoader(ClassLoader currentClassLoader) {}
-
-  @Override
   public TaskType getCurrentTaskType() {
     TaskSpec taskSpec = currentTask.get();
     Preconditions.checkNotNull(taskSpec, "Current task is not set.");
