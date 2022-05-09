@@ -1,9 +1,11 @@
 import inspect
 from abc import abstractmethod
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional, Type, Union
+from pydantic import BaseModel
+from ray.serve.utils import install_serve_encoders_to_fastapi
 
 import starlette
-from fastapi import Depends, FastAPI
+from fastapi import Body, Depends, FastAPI
 
 from ray._private.utils import import_attr
 from ray.serve.deployment_graph import RayServeDAGHandle
@@ -15,7 +17,7 @@ HTTPAdapterFn = Callable[[Any], Any]
 
 
 def load_http_adapter(
-    http_adapter: Optional[Union[str, HTTPAdapterFn]]
+    http_adapter: Optional[Union[str, HTTPAdapterFn, Type[BaseModel]]]
 ) -> HTTPAdapterFn:
     if http_adapter is None:
         http_adapter = DEFAULT_HTTP_ADAPTER
@@ -23,8 +25,15 @@ def load_http_adapter(
     if isinstance(http_adapter, str):
         http_adapter = import_attr(http_adapter)
 
+    if inspect.isclass(http_adapter) and issubclass(http_adapter, BaseModel):
+
+        def http_adapter(inp: http_adapter = Body(...)):
+            return inp
+
     if not inspect.isfunction(http_adapter):
-        raise ValueError("input schema must be a callable function.")
+        raise ValueError(
+            "input schema must be a callable function or pydantic model class."
+        )
 
     if any(
         param.annotation == inspect.Parameter.empty
@@ -35,16 +44,20 @@ def load_http_adapter(
 
 
 class SimpleSchemaIngress:
-    def __init__(self, http_adapter: Optional[Union[str, HTTPAdapterFn]] = None):
+    def __init__(
+        self, http_adapter: Optional[Union[str, HTTPAdapterFn, Type[BaseModel]]] = None
+    ):
         """Create a FastAPI endpoint annotated with http_adapter dependency.
 
         Args:
-            http_adapter(str, HTTPAdapterFn, None): The FastAPI input conversion
-              function. By default, Serve will directly pass in the request object
+            http_adapter(str, HTTPAdapterFn, None, Type[pydantic.BaseModel]):
+              The FastAPI input conversion function or a pydantic model class.
+              By default, Serve will directly pass in the request object
               starlette.requests.Request. You can pass in any FastAPI dependency
               resolver. When you pass in a string, Serve will import it.
               Please refer to Serve HTTP adatper documentation to learn more.
         """
+        install_serve_encoders_to_fastapi()
         http_adapter = load_http_adapter(http_adapter)
         self.app = FastAPI()
 

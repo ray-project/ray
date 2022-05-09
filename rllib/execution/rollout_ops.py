@@ -248,7 +248,7 @@ def AsyncGradients(workers: WorkerSet) -> LocalIterator[Tuple[ModelGradients, in
 class ConcatBatches:
     """Callable used to merge batches into larger batches for training.
 
-    This should be used with the .combine() operator.
+    This should be used with the .combine() operator if using_iterators=True.
 
     Examples:
         >>> from ray.rllib.execution import ParallelRollouts
@@ -259,14 +259,22 @@ class ConcatBatches:
         10000
     """
 
-    def __init__(self, min_batch_size: int, count_steps_by: str = "env_steps"):
+    def __init__(
+        self,
+        min_batch_size: int,
+        count_steps_by: str = "env_steps",
+        using_iterators=True,
+    ):
         self.min_batch_size = min_batch_size
         self.count_steps_by = count_steps_by
         self.buffer = []
         self.count = 0
         self.last_batch_time = time.perf_counter()
+        self.using_iterators = using_iterators
 
     def __call__(self, batch: SampleBatchType) -> List[SampleBatchType]:
+        if not batch:
+            return []
         _check_sample_batch_type(batch)
 
         if self.count_steps_by == "env_steps":
@@ -299,9 +307,10 @@ class ConcatBatches:
             out = SampleBatch.concat_samples(self.buffer)
 
             perf_counter = time.perf_counter()
-            timer = _get_shared_metrics().timers[SAMPLE_TIMER]
-            timer.push(perf_counter - self.last_batch_time)
-            timer.push_units_processed(self.count)
+            if self.using_iterators:
+                timer = _get_shared_metrics().timers[SAMPLE_TIMER]
+                timer.push(perf_counter - self.last_batch_time)
+                timer.push_units_processed(self.count)
 
             self.last_batch_time = perf_counter
             self.buffer = []
