@@ -30,7 +30,6 @@ GcsResourceManager::GcsResourceManager(
       cluster_resource_manager_(cluster_resource_manager),
       local_node_id_(local_node_id) {}
 
-
 void GcsResourceManager::ConsumeSyncMessage(
     std::shared_ptr<const syncer::RaySyncMessage> message) {
   // ConsumeSyncMessage is called by ray_syncer which might not run

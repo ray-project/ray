@@ -89,7 +89,8 @@ class GrpcClient {
              ClientCallManager &call_manager,
              bool use_tls = false)
       : client_call_manager_(call_manager), use_tls_(use_tls) {
-    stub_ = GrpcService::NewStub(std::move(channel));
+    channel_ = std::move(channel);
+    stub_ = GrpcService::NewStub(channel_);
   }
 
   GrpcClient(const std::string &address,
@@ -98,9 +99,7 @@ class GrpcClient {
              bool use_tls = false)
       : client_call_manager_(call_manager), use_tls_(use_tls) {
     std::shared_ptr<grpc::Channel> channel = BuildChannel(address, port);
-
-    channel_ = BuildChannel(argument, address, port);
-
+    channel_ = BuildChannel(address, port);
     stub_ = GrpcService::NewStub(channel_);
   }
 
@@ -118,8 +117,8 @@ class GrpcClient {
     argument.SetMaxSendMessageSize(::RayConfig::instance().max_grpc_message_size());
     argument.SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
 
-    channel_ = BuildChannel(argument, address, port);
-    stub_ = GrpcService::NewStub(std::move(channel));
+    channel_ = BuildChannel(address, port, argument);
+    stub_ = GrpcService::NewStub(channel_);
   }
 
   /// Create a new `ClientCall` and send request.
@@ -161,6 +160,8 @@ class GrpcClient {
   std::unique_ptr<typename GrpcService::Stub> stub_;
   /// Whether to use TLS.
   bool use_tls_;
+  /// The channel of the stub.
+  std::shared_ptr<grpc::Channel> channel_;
 };
 
 }  // namespace rpc
