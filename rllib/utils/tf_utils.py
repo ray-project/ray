@@ -257,9 +257,8 @@ def get_tf_eager_cls_if_necessary(
             )
 
         # Now that we know, policy is an eager one, add tracing, if necessary.
-        if (
-            config.get("eager_tracing") and
-            issubclass(cls, (EagerTFPolicy, EagerTFPolicyV2))
+        if config.get("eager_tracing") and issubclass(
+            cls, (EagerTFPolicy, EagerTFPolicyV2)
         ):
             cls = cls.with_tracing()
     return cls
