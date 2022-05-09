@@ -135,7 +135,7 @@ def _construct_resume_workflow_from_step(
 
             input_map[_step_id] = recovery_workflow
 
-    # Step 3: return the output of the requested step
+    # Step 4: return the output of the requested step
     return input_map[step_id]
 
 
