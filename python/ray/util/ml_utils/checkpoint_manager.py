@@ -153,7 +153,7 @@ class CheckpointManager:
         latest_checkpoint_id: int = 0,
         delete_fn: Optional[Callable[["TrackedCheckpoint"], None]] = None,
     ):
-        self._checkpoint_strategy = checkpoint_strategy
+        self._checkpoint_strategy = checkpoint_strategy or CheckpointStrategy()
 
         # Incremental unique checkpoint ID of this run.
         self._latest_checkpoint_id = latest_checkpoint_id
