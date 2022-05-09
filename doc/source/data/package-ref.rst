@@ -128,6 +128,9 @@ Datasource Partitioning API
 .. autoclass:: ray.data.datasource.PartitionStyle
     :members:
 
+.. autoclass:: ray.data.datasource.PathPartitionScheme
+    :members:
+
 .. autoclass:: ray.data.datasource.PathPartitionEncoder
     :members:
 
