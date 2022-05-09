@@ -796,5 +796,44 @@ def test_empty_objects(ray_start_regular_shared):
                 assert ray.get(ref) == obj
 
 
+def test_large_remote_call(ray_start_regular_shared):
+    """
+    Test remote calls with large (multiple chunk) arguments
+    """
+    with ray_start_client_server() as ray:
+
+        @ray.remote
+        def f(large_obj):
+            return large_obj.shape
+
+        @ray.remote
+        def f2(*args):
+            assert args[0] == 123
+            return args[1].shape
+
+        @ray.remote
+        def f3(*args, **kwargs):
+            assert args[0] == "a"
+            assert args[1] == "b"
+            return kwargs["large_obj"].shape
+
+        # 1024x1024x16 f64's =~ 128 MiB
+        large_obj = np.random.random((1024, 1024, 16))
+        assert ray.get(f.remote(large_obj)) == (1024, 1024, 16)
+        assert ray.get(f2.remote(123, large_obj)) == (1024, 1024, 16)
+        assert ray.get(f3.remote("a", "b", large_obj=large_obj)) == (1024, 1024, 16)
+
+        @ray.remote
+        class SomeActor:
+            def __init__(self, large_obj):
+                self.inner = large_obj
+
+            def some_method(self, large_obj):
+                return large_obj.shape == self.inner.shape
+
+        a = SomeActor.remote(large_obj)
+        assert ray.get(a.some_method.remote(large_obj))
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
