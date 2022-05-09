@@ -1,4 +1,5 @@
 from typing import List, Any, Union, Dict, Callable, Tuple, Optional
+from collections import deque, defaultdict
 
 import ray
 from ray.workflow import workflow_context
@@ -43,47 +44,57 @@ def _construct_resume_workflow_from_step(
         step_id: The ID of the step we want to recover.
 
     Returns:
-        A workflow that recovers the step, or a ID of a step
-        that contains the output checkpoint file.
+        A workflow that recovers the step, or the output of the step
+            if it has been checkpointed.
     """
     reader = workflow_storage.WorkflowStorage(workflow_id)
 
-    # Step 1: collect all workflow steps to be recovered
-    result: workflow_storage.StepInspectResult = reader.inspect_step(step_id)
-    if not result.is_recoverable():
-        raise WorkflowStepNotRecoverableError(step_id)
-    stack: List[Tuple(StepID, workflow_storage.StepInspectResult)] = [(step_id, result)]
-    inspected_steps = {step_id}
-    pointer = 0
-    while pointer < len(stack):
-        _, result = stack[pointer]
-        pointer += 1
-        if result.output_object_valid:
-            # The step is already checkpointed. Skip.
-            continue
-        if isinstance(result.output_step_id, str):
-            # The output of this step is held by another
-            # step.
-            steps_to_inspect = [result.output_step_id]
-        else:
-            steps_to_inspect = result.workflows
-        for _step_id in steps_to_inspect:
-            if _step_id in inspected_steps:
-                continue
-            inspected_steps.add(_step_id)
-            r = reader.inspect_step(_step_id)
-            if not r.is_recoverable():
-                raise WorkflowStepNotRecoverableError(_step_id)
-            stack.append((_step_id, r))
+    # Step 1: construct dependency of the DAG (BFS)
+    inpsect_results = {}
+    dependency_map = defaultdict(list)
+    num_in_edges = {}
 
-    # Step 2: recover steps in the reversed order in the stack
+    dag_visit_queue = deque([step_id])
+    while dag_visit_queue:
+        s: StepID = dag_visit_queue.popleft()
+        if s in inpsect_results:
+            continue
+        r = reader.inspect_step(s)
+        inpsect_results[s] = r
+        if not r.is_recoverable():
+            raise WorkflowStepNotRecoverableError(s)
+        if r.output_object_valid:
+            deps = []
+        elif isinstance(r.output_step_id, str):
+            deps = [r.output_step_id]
+        else:
+            deps = r.workflows
+        for w in deps:
+            dependency_map[w].append(s)
+        num_in_edges[s] = len(deps)
+        dag_visit_queue.extend(deps)
+
+    # Step 2: topological sort to determine the execution order (Kahn's algorithm)
+    execution_queue: List[StepID] = []
+
+    start_nodes = deque(k for k, v in num_in_edges.items() if v == 0)
+    while start_nodes:
+        n = start_nodes.popleft()
+        execution_queue.append(n)
+        for m in dependency_map[n]:
+            num_in_edges[m] -= 1
+            assert num_in_edges[m] >= 0, (m, n)
+            if num_in_edges[m] == 0:
+                start_nodes.append(m)
+
+    # Step 3: recover steps in the reversed order in the stack
     with serialization.objectref_cache():
         # "input_map" is a context storing the input which has been loaded.
         # This context is important for deduplicate step inputs.
         input_map: Dict[StepID, Any] = {}
 
-        while stack:
-            _step_id, result = stack.pop()
+        for _step_id in execution_queue:
+            result = inpsect_results[_step_id]
             if result.output_object_valid:
                 input_map[_step_id] = reader.load_step_output(_step_id)
                 continue
