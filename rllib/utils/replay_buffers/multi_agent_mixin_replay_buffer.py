@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
     """This buffer adds replayed samples to a stream of new experiences.
 
-    - Any newly added batch (`add_batch()`) is immediately returned upon
+    - Any newly added batch (`add()`) is immediately returned upon
     the next `sample` call (close to on-policy) as well as being moved
     into the buffer.
     - Additionally, a certain number of old samples is mixed into the
@@ -57,6 +57,8 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
         >>> buffer.add(<D>)
         >>> buffer.sample()
         ... [<D>, <A>, <C>]
+        >>> # or: [<D>, <A>, <A>], [<D>, <B>, <A>] or [<D>, <B>, <C>], etc..
+        >>> # but always <D> as it is the newest sample
 
         # replay proportion 0.0 -> replay disabled:
         >>> buffer = MixInReplay(capacity=100, replay_ratio=0.0)
@@ -235,6 +237,10 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
                                     "to be added to it. Some samples may be "
                                     "dropped."
                                 )
+            elif self._storage_unit == StorageUnit.FRAGMENTS:
+                for policy_id, sample_batch in batch.policy_batches.items():
+                    self.replay_buffers[policy_id].add(sample_batch, **kwargs)
+                    self.last_added_batches[policy_id].append(sample_batch)
 
         self._num_added += batch.count
 
@@ -251,7 +257,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
         an empty batch if there are no items in the buffer.
 
         Args:
-            num_items: Number of items to sample fromM this buffer.
+            num_items: Number of items to sample from this buffer.
             policy_id: ID of the policy that produced the experiences to be
             sampled.
             **kwargs: Forward compatibility kwargs.

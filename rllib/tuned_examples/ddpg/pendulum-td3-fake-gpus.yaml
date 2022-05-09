@@ -12,7 +12,7 @@ pendulum-td3-fake-gpus:
         learning_starts: 5000
         exploration_config:
             random_timesteps: 5000
-        evaluation_interval: 1
+        evaluation_interval: 10
         evaluation_num_episodes: 5
 
         # Fake 2 GPUs.

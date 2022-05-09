@@ -280,8 +280,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   ///
   /// \param worker The worker to disconnect. The worker must be registered.
   /// \param disconnect_type Type of a worker exit.
-  /// \return Whether the given worker was in the pool of idle workers.
-  bool DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker,
+  void DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker,
                         rpc::WorkerExitType disconnect_type);
 
   /// Disconnect a registered driver.
@@ -467,7 +466,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     std::queue<std::function<void(std::shared_ptr<WorkerInterface>)>> pending_io_tasks;
     /// All I/O workers that have registered and are still connected, including both
     /// idle and executing.
-    std::unordered_set<std::shared_ptr<WorkerInterface>> registered_io_workers;
+    std::unordered_set<std::shared_ptr<WorkerInterface>> started_io_workers;
     /// Number of starting I/O workers.
     int num_starting_io_workers = 0;
   };
