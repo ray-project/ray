@@ -94,9 +94,6 @@ DEFAULT_CONFIG = with_common_config({
     "min_sample_timesteps_per_reporting": 100,
 
     # === Replay buffer ===
-    # Size of the replay buffer (in time steps).
-    "buffer_size": DEPRECATED_VALUE,
-    "learning_starts": DEPRECATED_VALUE,
     "replay_buffer_config": {
         # Enable the new ReplayBuffer API.
         "_enable_replay_buffer_api": True,
@@ -181,6 +178,17 @@ DEFAULT_CONFIG = with_common_config({
     # Use a Beta-distribution instead of a SquashedGaussian for bounded,
     # continuous action spaces (not recommended, for debugging only).
     "_use_beta_distribution": False,
+
+    # Deprecated.
+    "prioritized_replay": DEPRECATED_VALUE,
+    "prioritized_replay_alpha": DEPRECATED_VALUE,
+    "prioritized_replay_beta": DEPRECATED_VALUE,
+    "prioritized_replay_eps": DEPRECATED_VALUE,
+    "learning_starts": DEPRECATED_VALUE,
+    "buffer_size": DEPRECATED_VALUE,
+    "replay_batch_size": DEPRECATED_VALUE,
+    "replay_sequence_length": DEPRECATED_VALUE,
+
 })
 # __sphinx_doc_end__
 # fmt: on
