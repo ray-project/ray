@@ -134,25 +134,36 @@ if __name__ == "__main__":
         "pbt",
         perturbation_interval=2,
         hyperparam_mutations={
-            "lr": tune.uniform(0.001, 0.1),
+            "train_loop_config": {"lr": tune.uniform(0.001, 0.1)},
         },
     )
 
     tuner = Tuner(
         horovod_trainer,
         param_space={
-            "lr": 0.1
-            if args.smoke_test
-            else tune.grid_search([0.1 * i for i in range(1, 10)])
+            "train_loop_config": {
+                "lr": 0.1
+                if args.smoke_test
+                else tune.grid_search([0.1 * i for i in range(1, 10)])
+            }
         },
-        tune_config=TuneConfig(num_samples=1, metric="loss", mode="min", scheduler=pbt),
+        tune_config=TuneConfig(
+            num_samples=2 if args.smoke_test else 1,
+            metric="loss",
+            mode="min",
+            scheduler=pbt,
+        ),
         run_config=RunConfig(
             stop={"training_iteration": 1} if args.smoke_test else None,
             callbacks=[ProgressCallback()],
         ),
-        _tuner_kwargs={"fail_fast": True, "keep_checkpoints_num": 1},
+        _tuner_kwargs={"fail_fast": False, "keep_checkpoints_num": 1},
     )
 
     result_grid = tuner.fit()
+
+    # Make sure trials do not fail.
+    for result in result_grid:
+        assert not result.error
 
     print("Best hyperparameters found were: ", result_grid.get_best_result().config)
