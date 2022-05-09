@@ -75,7 +75,6 @@ class XGBoostTrainer(GBDTTrainer):
         return load_checkpoint(checkpoint)
 
 
-@staticmethod
 def load_checkpoint(
     checkpoint: Checkpoint,
 ) -> Tuple[xgboost.Booster, Optional[Preprocessor]]:
