@@ -14,7 +14,10 @@ from ray.rllib.agents.alpha_star.league_builder import AlphaStarLeagueBuilder
 from ray.rllib.agents.trainer import Trainer
 import ray.rllib.agents.ppo.appo as appo
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.execution.parallel_requests import asynchronous_parallel_requests
+from ray.rllib.execution.parallel_requests import (
+    asynchronous_parallel_requests,
+    AsyncRequestsManager,
+)
 from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch
@@ -58,6 +61,12 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         # old (replayed) ones.
         "replay_buffer_replay_ratio": 0.5,
 
+        # Tuning max_requests_in_flight_per_sampler_worker and
+        # max_requests_in_flight_per_learner_worker is important so backpressure is
+        # created on the remote workers and the object store doesn't fill up
+        # unexpectedly. If the workers spend time idle, consider increasing these.
+        "max_requests_in_flight_per_sampler_worker": 2,
+        "max_requests_in_flight_per_learner_worker": 2,
         # Timeout to use for `ray.wait()` when waiting for samplers to have placed
         # new data into the buffers. If no samples are ready within the timeout,
         # the buffers used for mixin-sampling will return only older samples.
@@ -279,6 +288,13 @@ class AlphaStarTrainer(appo.APPOTrainer):
         )
 
         self.distributed_learners = distributed_learners
+        self._sampling_actor_manager = AsyncRequestsManager(
+            self.workers.remote_workers(),
+            max_remote_requests_in_flight=self.config[
+                "max_requests_in_flight_per_sampler_worker"
+            ],
+            ray_wait_timeout_s=self.config["sample_wait_timeout"]
+        )
 
     @override(Trainer)
     def step(self) -> ResultDict:
@@ -297,13 +313,15 @@ class AlphaStarTrainer(appo.APPOTrainer):
         # - Rollout results are sent directly to correct replay buffer
         #   shards, instead of here (to the driver).
         with self._timers[SAMPLE_TIMER]:
-            sample_results = asynchronous_parallel_requests(
-                remote_requests_in_flight=self.remote_requests_in_flight,
-                actors=self.workers.remote_workers() or [self.workers.local_worker()],
-                ray_wait_timeout_s=self.config["sample_wait_timeout"],
-                max_remote_requests_in_flight_per_actor=2,
-                remote_fn=self._sample_and_send_to_buffer,
-            )
+            # if there are no remote workers (e.g. num_workers=0)
+            if not self.workers.remote_workers():
+                worker = self.workers.local_worker()
+                statistics = worker.apply(self._sample_and_send_to_buffer())
+                sample_results = {worker: [statistics]}
+            else:
+                self._sampling_actor_manager.submit(self._sample_and_send_to_buffer,
+                                                    for_all_workers=True)
+                sample_results = self._sampling_actor_manager.get_ready_requests()
         # Update sample counters.
         for sample_result in sample_results.values():
             for (env_steps, agent_steps) in sample_result:
