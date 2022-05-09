@@ -125,6 +125,12 @@ class ActorManager {
   /// \param actor_id The actor id of the handle that will be invalidated.
   void OnActorKilled(const ActorID &actor_id);
 
+  /// Subscribe to the state of actor.
+  /// \param actor_id ID of the actor to be subscribed.
+  /// \param actor_name Name of the actor to be subscribed. The <actor_name, actor_id>
+  /// will be cached when finished subscribing if actor_name is not empty.
+  void SubscribeActorState(const ActorID &actor_id, const std::string &actor_name = "");
+
  private:
   bool AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                          const std::string &cached_actor_name,
@@ -196,6 +202,9 @@ class ActorManager {
   /// getting them from GCS frequently.
   absl::flat_hash_map<std::string, ActorID> cached_actor_name_to_ids_
       GUARDED_BY(cache_mutex_);
+
+  /// Mutex of actor's state subscription.
+  mutable absl::Mutex subscribe_mutex_;
 };
 
 }  // namespace core

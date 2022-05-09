@@ -179,23 +179,14 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
   }
 
   if (inserted) {
-    // Register a callback to handle actor notifications.
-    auto actor_notification_callback =
-        std::bind(&ActorManager::HandleActorStateNotification,
-                  this,
-                  std::placeholders::_1,
-                  std::placeholders::_2);
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
-        actor_id,
-        actor_notification_callback,
-        [this, actor_id, cached_actor_name](Status status) {
-          if (status.ok() && !cached_actor_name.empty()) {
-            {
-              absl::MutexLock lock(&cache_mutex_);
-              cached_actor_name_to_ids_.emplace(cached_actor_name, actor_id);
-            }
-          }
-        }));
+    if (!cached_actor_name.empty()) {
+      // When the `cached_actor_name` is not empty, the subscription of actor's state
+      // should be eager mode, because the actor name need te be cached when finished
+      // subscribing.
+      // TODO(Shanly): This logic should be deleted once the emplace of
+      // `cached_actor_name` is removed from `SubscribeActorState`.
+      SubscribeActorState(actor_id, cached_actor_name);
+    }
   }
 
   return inserted;
@@ -297,6 +288,33 @@ ActorID ActorManager::GetCachedNamedActorID(const std::string &actor_name) {
     }
   }
   return ActorID::Nil();
+}
+
+void ActorManager::SubscribeActorState(const ActorID &actor_id,
+                                       const std::string &actor_name /* = ""*/) {
+  auto actor_handle = GetActorHandle(actor_id);
+  RAY_CHECK(actor_handle != nullptr);
+  if (actor_handle->IsActorStateSubscribed()) {
+    return;
+  }
+
+  absl::MutexLock lock(&subscribe_mutex_);
+
+  // Register a callback to handle actor notifications.
+  auto actor_notification_callback =
+      std::bind(&ActorManager::HandleActorStateNotification,
+                this,
+                std::placeholders::_1,
+                std::placeholders::_2);
+  RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
+      actor_id, actor_notification_callback, [this, actor_id, actor_name](Status status) {
+        if (status.ok() && !actor_name.empty()) {
+          absl::MutexLock lock(&cache_mutex_);
+          cached_actor_name_to_ids_.emplace(actor_name, actor_id);
+        }
+      }));
+
+  actor_handle->SetActorStateSubscribed();
 }
 
 }  // namespace core

@@ -1963,6 +1963,10 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
   }
 
   auto actor_handle = actor_manager_->GetActorHandle(actor_id);
+  if (!actor_handle->IsActorStateSubscribed()) {
+    // Lazy subscribe.
+    actor_manager_->SubscribeActorState(actor_id);
+  }
 
   // Add one for actor cursor object id for tasks.
   const int num_returns = task_options.num_returns + 1;

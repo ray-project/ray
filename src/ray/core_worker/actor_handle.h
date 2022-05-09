@@ -100,6 +100,10 @@ class ActorHandle {
 
   bool ExecuteOutOfOrder() const { return inner_.execute_out_of_order(); }
 
+  bool IsActorStateSubscribed() const { return is_actor_state_subscribed_; }
+
+  void SetActorStateSubscribed() { is_actor_state_subscribed_ = true; }
+
  private:
   // Protobuf-defined persistent state of the actor handle.
   const rpc::ActorHandle inner_;
@@ -114,6 +118,9 @@ class ActorHandle {
 
   /// Mutex to protect fields in the actor handle.
   mutable absl::Mutex mutex_;
+
+  /// Is actor state is subscribed.
+  std::atomic_bool is_actor_state_subscribed_{false};
 
   FRIEND_TEST(ZeroNodeTest, TestActorHandle);
 };
