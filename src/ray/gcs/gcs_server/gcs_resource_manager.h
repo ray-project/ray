@@ -171,6 +171,12 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
 
   ClusterResourceManager &cluster_resource_manager_;
   scheduling::NodeID local_node_id_;
+
+  /// Get the resource usage of the gcs node. Note, different from worker nodes,
+  /// gcs node only provides pending and infeasible actor info.
+  ///
+  /// \param[out] data: Output parameter. `resource_load_by_shape` is the only field
+  /// filled.
   std::function<void(rpc::ResourcesData &data)> get_gcs_node_resource_usage_;
 };
 

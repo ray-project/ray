@@ -26,7 +26,7 @@
 using namespace ::testing;
 
 namespace ray {
-using raylet::EmptyLocalTaskManager;
+using raylet::DummyLocalTaskManager;
 namespace gcs {
 struct MockCallback {
   MOCK_METHOD(void, Call, ((std::shared_ptr<GcsActor>)));
@@ -61,7 +61,7 @@ class GcsActorSchedulerMockTest : public Test {
         /*announce_infeasible_task=*/
         nullptr,
         /*local_task_manager=*/
-        std::make_shared<EmptyLocalTaskManager>());
+        std::make_shared<DummyLocalTaskManager>());
     actor_scheduler = std::make_unique<GcsActorScheduler>(
         io_context,
         *actor_table,

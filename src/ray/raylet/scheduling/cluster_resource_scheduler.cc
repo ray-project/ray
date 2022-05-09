@@ -251,7 +251,6 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
     // If the task is being scheduled by gcs, return nil to make it stay in the
     // `cluster_task_manager`'s queue.
     if (!is_local_node_with_raylet_) {
-      *is_infeasible = false;
       return scheduling::NodeID::Nil();
     }
   }

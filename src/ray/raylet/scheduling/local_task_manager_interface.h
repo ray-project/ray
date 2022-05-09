@@ -72,10 +72,10 @@ class ILocalTaskManager {
   virtual size_t GetNumUnschedulableTaskSpilled() const = 0;
 };
 
-class EmptyLocalTaskManager : public ILocalTaskManager {
+/// Dummy local task manager, which is used by gcs node only.
+class DummyLocalTaskManager : public ILocalTaskManager {
  public:
-  /// Construct an empty local task manager. This is used by gcs node only.
-  EmptyLocalTaskManager() {}
+  DummyLocalTaskManager() {}
 
   /// Queue task and schedule.
   void QueueAndScheduleTask(std::shared_ptr<internal::Work> work) override {}
@@ -94,7 +94,7 @@ class EmptyLocalTaskManager : public ILocalTaskManager {
                   rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
                       rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
                   const std::string &scheduling_failure_message = "") override {
-    return true;
+    return false;
   }
 
   const absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>

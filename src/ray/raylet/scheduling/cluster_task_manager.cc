@@ -151,9 +151,7 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
       shapes_it++;
     }
   }
-  if (local_task_manager_) {
-    local_task_manager_->ScheduleAndDispatchTasks();
-  }
+  local_task_manager_->ScheduleAndDispatchTasks();
 }
 
 void ClusterTaskManager::TryScheduleInfeasibleTask() {
@@ -232,12 +230,8 @@ bool ClusterTaskManager::CancelTask(
     }
   }
 
-  if (local_task_manager_) {
-    return local_task_manager_->CancelTask(
-        task_id, failure_type, scheduling_failure_message);
-  } else {
-    return false;
-  }
+  return local_task_manager_->CancelTask(
+      task_id, failure_type, scheduling_failure_message);
 }
 
 void ClusterTaskManager::FillPendingActorInfo(rpc::GetNodeStatsReply *reply) const {
