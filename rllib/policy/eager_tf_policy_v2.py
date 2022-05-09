@@ -708,9 +708,19 @@ class EagerTFPolicyV2(Policy):
     def loss_initialized(self):
         return self._loss_initialized
 
+    # TODO: Figure out, why _ray_trace_ctx=None helps to prevent a crash in
+    #  AlphaStar w/ framework=tf2; eager_tracing=True on the policy learner actors.
+    #  It seems there may be a clash between the traced-by-tf function and the
+    #  traced-by-ray functions (for making the policy class a ray actor).
     @with_lock
     def _compute_actions_helper(
-        self, input_dict, state_batches, episodes, explore, timestep
+        self,
+        input_dict,
+        state_batches,
+        episodes,
+        explore,
+        timestep,
+        _ray_trace_ctx=None,
     ):
         # Increase the tracing counter to make sure we don't re-trace too
         # often. If eager_tracing=True, this counter should only get
@@ -788,7 +798,11 @@ class EagerTFPolicyV2(Policy):
 
         return actions, state_out, extra_fetches
 
-    def _learn_on_batch_helper(self, samples):
+    # TODO: Figure out, why _ray_trace_ctx=None helps to prevent a crash in
+    #  AlphaStar w/ framework=tf2; eager_tracing=True on the policy learner actors.
+    #  It seems there may be a clash between the traced-by-tf function and the
+    #  traced-by-ray functions (for making the policy class a ray actor).
+    def _learn_on_batch_helper(self, samples, _ray_trace_ctx=None):
         # Increase the tracing counter to make sure we don't re-trace too
         # often. If eager_tracing=True, this counter should only get
         # incremented during the @tf.function trace operations, never when
