@@ -107,8 +107,9 @@ class Executor {
         /* executed once GCS is back. */                                               \
         gcs_is_down_ = true;                                                           \
         pending_requests_.emplace_back(executor);                                      \
-        if (pending_requests_.size() >                                                 \
-            ::RayConfig::instance().gcs_grpc_max_request_queued()) {                   \
+        pending_requests_bytes_ += request.ByteSizeLong();              \
+        if (pending_requests_bytes_.size() >                                                 \
+            ::RayConfig::instance().gcs_grpc_max_request_bytes()) {                   \
           RAY_LOG(WARNING) << "Pending queue for failed GCS request has reached the "  \
                            << "limit. Blocking the current thread until GCS is back";  \
           while (gcs_is_down_ && !shutdown_) {                                         \
@@ -498,6 +499,7 @@ class GcsRpcClient {
         pending_requests_.back()->Retry();
         pending_requests_.pop_back();
       }
+      pending_requests_bytes_ = 0;
       break;
     default:
       RAY_CHECK(false) << "Not covered status: " << status;
@@ -528,6 +530,7 @@ class GcsRpcClient {
   std::atomic<bool> shutdown_ = false;
   std::unique_ptr<PeriodicalRunner> periodical_runner_;
   std::vector<Executor *> pending_requests_;
+  size_t pending_requests_bytes_ = 0;
 
   friend class GcsClientReconnectionTest;
   FRIEND_TEST(GcsClientReconnectionTest, ReconnectionBackoff);
