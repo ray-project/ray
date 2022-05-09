@@ -404,7 +404,7 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
   resources_data.set_resources_available_changed(true);
 
   msg.set_node_id(local_node_id_.Binary());
-  msg.set_version(curr_version);
+  msg.set_version(version_);
   msg.set_message_type(message_type);
   std::string serialized_msg;
   RAY_CHECK(resources_data.SerializeToString(&serialized_msg));
