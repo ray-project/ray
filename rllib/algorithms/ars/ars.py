@@ -11,14 +11,20 @@ from typing import Optional
 
 import ray
 from ray.rllib.agents import Trainer, TrainerConfig
-from ray.rllib.agents.ars.ars_tf_policy import ARSTFPolicy
-from ray.rllib.agents.es import optimizers, utils
-from ray.rllib.agents.es.es_tf_policy import rollout
+from ray.rllib.algorithms.ars.ars_tf_policy import ARSTFPolicy
+from ray.rllib.algorithms.es import optimizers, utils
+from ray.rllib.algorithms.es.es_tf_policy import rollout
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import FilterManager
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.metrics import (
+    NUM_AGENT_STEPS_SAMPLED,
+    NUM_AGENT_STEPS_TRAINED,
+    NUM_ENV_STEPS_SAMPLED,
+    NUM_ENV_STEPS_TRAINED,
+)
 from ray.rllib.utils.torch_utils import set_torch_seed
 from ray.rllib.utils.typing import TrainerConfigDict
 
@@ -41,7 +47,7 @@ class ARSConfig(TrainerConfig):
     """Defines an ARSTrainer configuration class from which an ARSTrainer can be built.
 
     Example:
-        >>> from ray.rllib.agents.ars import ARSConfig
+        >>> from ray.rllib.algorithms.ars import ARSConfig
         >>> config = ARSConfig().training(sgd_stepsize=0.02, report_length=20)\
         ...     .resources(num_gpus=0)\
         ...     .rollouts(num_rollout_workers=4)
@@ -51,7 +57,7 @@ class ARSConfig(TrainerConfig):
         >>> trainer.train()
 
     Example:
-        >>> from ray.rllib.agents.ars import ARSConfig
+        >>> from ray.rllib.algorithms.ars import ARSConfig
         >>> from ray import tune
         >>> config = ARSConfig()
         >>> # Print out some default values.
@@ -298,7 +304,7 @@ class Worker:
 
 def get_policy_class(config):
     if config["framework"] == "torch":
-        from ray.rllib.agents.ars.ars_torch_policy import ARSTorchPolicy
+        from ray.rllib.algorithms.ars.ars_torch_policy import ARSTorchPolicy
 
         policy_cls = ARSTorchPolicy
     else:
@@ -407,6 +413,9 @@ class ARSTrainer(Trainer):
         results, num_episodes, num_timesteps = self._collect_results(
             theta_id, config["num_rollouts"]
         )
+        # Update our sample steps counters.
+        self._counters[NUM_AGENT_STEPS_SAMPLED] += num_timesteps
+        self._counters[NUM_ENV_STEPS_SAMPLED] += num_timesteps
 
         all_noise_indices = []
         all_training_returns = []
@@ -465,6 +474,11 @@ class ARSTrainer(Trainer):
         assert g.shape == (self.policy.num_params,) and g.dtype == np.float32
         # Compute the new weights theta.
         theta, update_ratio = self.optimizer.update(-g)
+
+        # Update our train steps counters.
+        self._counters[NUM_AGENT_STEPS_TRAINED] += num_timesteps
+        self._counters[NUM_ENV_STEPS_TRAINED] += num_timesteps
+
         # Set the new weights in the local copy of the policy.
         self.policy.set_flat_weights(theta)
         # update the reward list
@@ -553,14 +567,14 @@ class ARSTrainer(Trainer):
         )
 
 
-# Deprecated: Use ray.rllib.agents.ars.ARSConfig instead!
+# Deprecated: Use ray.rllib.algorithms.ars.ARSConfig instead!
 class _deprecated_default_config(dict):
     def __init__(self):
         super().__init__(ARSConfig().to_dict())
 
     @Deprecated(
-        old="ray.rllib.agents.ars.ars.DEFAULT_CONFIG",
-        new="ray.rllib.agents.ars.ars.ARSConfig(...)",
+        old="ray.rllib.algorithms.ars.ars.DEFAULT_CONFIG",
+        new="ray.rllib.algorithms.ars.ars.ARSConfig(...)",
         error=False,
     )
     def __getitem__(self, item):

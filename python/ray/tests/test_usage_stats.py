@@ -505,7 +505,7 @@ provider:
         Make sure report usage data works as expected
         """
 
-        @ray.remote(num_cpus=0, runtime_env={"pip": ["ray[serve]"]})
+        @ray.remote(num_cpus=0)
         class ServeInitator:
             def __init__(self):
                 # Start the ray serve server to verify requests are sent
