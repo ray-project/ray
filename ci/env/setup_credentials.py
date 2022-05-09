@@ -6,6 +6,9 @@ import boto3
 AWS_WANDB_SECRET_ARN = (
     "arn:aws:secretsmanager:us-west-2:029272617770:secret:oss-ci/wandb-key-V8UeE5"
 )
+AWS_COMET_SECRET_ARN = (
+    "arn:aws:secretsmanager:us-west-2:029272617770:secret:oss-ci/comet-ml-token-vw81C3"
+)
 
 
 def get_and_write_wandb_api_key(client):
@@ -14,7 +17,16 @@ def get_and_write_wandb_api_key(client):
         fp.write(f"machine api.wandb.ai\n" f"  login user\n" f"  password {api_key}\n")
 
 
-SERVICES = {"wandb": get_and_write_wandb_api_key}
+def get_and_write_comet_ml_api_key(client):
+    api_key = client.get_secret_value(SecretId=AWS_COMET_SECRET_ARN)["SecretString"]
+    with open(os.path.expanduser("~/.comet.config"), "w") as fp:
+        fp.write(f"[comet]\napi_key={api_key}\n")
+
+
+SERVICES = {
+    "wandb": get_and_write_wandb_api_key,
+    "comet_ml": get_and_write_comet_ml_api_key,
+}
 
 
 if __name__ == "__main__":

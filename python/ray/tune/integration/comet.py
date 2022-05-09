@@ -1,5 +1,7 @@
+import os
 from typing import Dict, List
 
+import comet_ml
 from ray.tune.logger import LoggerCallback
 from ray.tune.trial import Trial
 from ray.tune.utils import flatten_dict
@@ -43,6 +45,8 @@ class CometLoggerCallback(LoggerCallback):
                 Offline Experiment. Defaults to True.
             tags: Tags to add to the logged Experiment.
                 Defaults to None.
+            save_checkpoints: If ``True``, model checkpoints will be saved to
+                Comet ML as artifacts. Defaults to ``False``.
             **experiment_kwargs: Other keyword arguments will be passed to the
                 constructor for comet_ml.Experiment (or OfflineExperiment if
                 online=False).
@@ -89,12 +93,18 @@ class CometLoggerCallback(LoggerCallback):
     _episode_results = ["hist_stats/episode_reward", "hist_stats/episode_lengths"]
 
     def __init__(
-        self, online: bool = True, tags: List[str] = None, **experiment_kwargs
+        self,
+        online: bool = True,
+        tags: List[str] = None,
+        save_checkpoints: bool = False,
+        **experiment_kwargs,
     ):
         _import_comet()
         self.online = online
         self.tags = tags
+        self.save_checkpoints = save_checkpoints
         self.experiment_kwargs = experiment_kwargs
+
         # Disable the specific autologging features that cause throttling.
         self._configure_experiment_defaults()
 
@@ -198,6 +208,33 @@ class CometLoggerCallback(LoggerCallback):
 
         for k, v in episode_logs.items():
             experiment.log_curve(k, x=range(len(v)), y=v, step=step)
+
+    def log_trial_save(self, trial: "Trial"):
+        if self.save_checkpoints and trial.checkpoint:
+            if trial not in self._trial_experiments:
+                self.log_trial_start(trial)
+
+            experiment = self._trial_experiments[trial]
+
+            artifact = comet_ml.Artifact(
+                name=f"checkpoint_{(str(trial))}", artifact_type="model"
+            )
+
+            # Walk through checkpoint directory and add all files to artifact
+            checkpoint_root = trial.checkpoint.value
+            for root, dirs, files in os.walk(checkpoint_root):
+                rel_root = os.path.relpath(root, checkpoint_root)
+                for file in files:
+                    local_file = os.path.join(checkpoint_root, rel_root, file)
+                    logical_path = os.path.join(rel_root, file)
+
+                    # Strp leading `./`
+                    if logical_path.startswith("./"):
+                        logical_path = logical_path[2:]
+
+                    artifact.add(local_file, logical_path=logical_path)
+
+            experiment.log_artifact(artifact)
 
     def log_trial_end(self, trial: "Trial", failed: bool = False):
         self._trial_experiments[trial].end()
