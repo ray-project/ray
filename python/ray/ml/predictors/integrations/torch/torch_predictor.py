@@ -92,7 +92,9 @@ class TorchPredictor(Predictor):
     def _predict(self, tensor: torch.Tensor) -> pd.DataFrame:
         """Handle actual prediction."""
         prediction = self.model(tensor).cpu().detach().numpy()
-        return pd.DataFrame(prediction, columns=["predictions"])
+        return pd.DataFrame(
+            {"predictions": prediction.tolist()}, columns=["predictions"]
+        )
 
     def predict(
         self,
