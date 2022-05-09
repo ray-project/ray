@@ -24,13 +24,13 @@ Code example
 
     # Antipattern: no parallelism due to calling ray.get inside of the loop.
     returns = []
-    for i in range(100):
-        returns.append(ray.get(f.remote(i)))
+    for _ in range(100):
+        returns.append(ray.get(f.remote()))
 
     # Better approach: parallelism because the tasks are spawned in parallel.
     refs = []
-    for i in range(100):
-        refs.append(f.remote(i))
+    for _ in range(100):
+        refs.append(f.remote())
 
     returns = ray.get(refs)
 
