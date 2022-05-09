@@ -2,6 +2,7 @@
 import logging
 from typing import Callable, Optional
 
+from ray.tune.result import TRAINING_ITERATION
 from ray.util.ml_utils.checkpoint_manager import (
     CheckpointStrategy,
     MIN,
@@ -30,7 +31,7 @@ class CheckpointManager(CommonCheckpointManager):
     def __init__(
         self,
         keep_checkpoints_num: int,
-        checkpoint_score_attr: str,
+        checkpoint_score_attr: Optional[str],
         delete_fn: Optional[Callable[["_TrackedCheckpoint"], None]] = None,
     ):
         if keep_checkpoints_num == 0:
@@ -38,6 +39,8 @@ class CheckpointManager(CommonCheckpointManager):
                 "If checkpointing is enabled, Ray Tune requires `keep_checkpoints_num` "
                 "to be None or a number greater than 0"
             )
+
+        checkpoint_score_attr = checkpoint_score_attr or TRAINING_ITERATION
 
         checkpoint_score_desc = checkpoint_score_attr.startswith("min-")
         if checkpoint_score_desc:

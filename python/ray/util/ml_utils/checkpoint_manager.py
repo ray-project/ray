@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Optional, Dict, Union, Callable, Tuple, List, Any
 
 import ray
-from ray.tune.result import NODE_IP, TRAINING_ITERATION
+from ray.tune.result import NODE_IP
 from ray.util import PublicAPI
 from ray.util.ml_utils.util import is_nan
 
@@ -110,7 +110,8 @@ class CheckpointStrategy:
             score checkpoints to determine which checkpoints should be kept
             on disk when there are greater than ``num_to_keep`` checkpoints.
             This attribute must be a key from the checkpoint
-            dictionary which has a numerical value.
+            dictionary which has a numerical value. Per default, the last
+            checkpoints will be kept.
         checkpoint_score_order (str). Either "max" or "min".
             If "max", then checkpoints with highest values of
             ``checkpoint_score_attribute`` will be kept.
@@ -119,7 +120,7 @@ class CheckpointStrategy:
     """
 
     num_to_keep: Optional[int] = None
-    checkpoint_score_attribute: str = TRAINING_ITERATION
+    checkpoint_score_attribute: Optional[str] = None
     checkpoint_score_order: str = MAX
 
     def __post_init__(self):

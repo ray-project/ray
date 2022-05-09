@@ -12,7 +12,6 @@ from ray.train.constants import (
 )
 from ray.train.session import TrainingResult
 from ray.train.utils import construct_path
-from ray.tune.result import TRAINING_ITERATION as TUNE_TRAINING_ITERATION
 from ray.util.ml_utils.checkpoint_manager import (
     CheckpointManager as CommonCheckpointManager,
     _TrackedCheckpoint,
@@ -122,6 +121,12 @@ class CheckpointManager(CommonCheckpointManager):
 
         super().__init__(checkpoint_strategy=checkpoint_strategy)
 
+        self._validate_checkpoint_strategy()
+
+    def _validate_checkpoint_strategy(self):
+        if self._checkpoint_strategy.checkpoint_score_attribute is None:
+            self._checkpoint_strategy.checkpoint_score_attribute = TIMESTAMP
+
     def _load_checkpoint(
         self, checkpoint_to_load: Optional[Union[Dict, str, Path]]
     ) -> Optional[Dict]:
@@ -191,13 +196,10 @@ class CheckpointManager(CommonCheckpointManager):
         latest_checkpoint_id: Optional[int] = 0,
     ):
         checkpoint_strategy = checkpoint_strategy or CheckpointStrategy()
-
-        # We only want to support one CheckpointStrategy object. Thus,
-        # for Ray Train we update the default score attribute for Ray Train
-        if checkpoint_strategy.checkpoint_score_attribute == TUNE_TRAINING_ITERATION:
-            checkpoint_strategy.checkpoint_score_attribute = TIMESTAMP
-
         self._checkpoint_strategy = checkpoint_strategy
+
+        self._validate_checkpoint_strategy()
+
         self.run_dir = run_dir
         self._latest_checkpoint_id = latest_checkpoint_id or 0
 
