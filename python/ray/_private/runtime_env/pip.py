@@ -90,7 +90,6 @@ class PipProcessor:
         logger.debug("Setting up pip for runtime_env: %s", runtime_env)
         self._target_dir = target_dir
         self._runtime_env = runtime_env
-
         self._logger = logger
 
         self._pip_config = self._runtime_env.pip_config()
@@ -272,7 +271,6 @@ class PipProcessor:
                 virtualenv_path,
                 virtualenv_path,
             )
-
         await check_output_cmd(create_venv_cmd, logger=logger, cwd=cwd, env=env)
 
     @classmethod
