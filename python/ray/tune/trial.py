@@ -40,7 +40,7 @@ from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils import date_str, flatten_dict
 from ray.util.annotations import DeveloperAPI
 from ray._private.utils import binary_to_hex, hex_to_binary
-from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint
+from ray.util.ml_utils.checkpoint_manager import TrackedCheckpoint
 
 DEBUG_PRINT_INTERVAL = 5
 logger = logging.getLogger(__name__)
@@ -100,7 +100,7 @@ class CheckpointDeleter:
         self.trial_id = trial_id
         self.runner = runner
 
-    def __call__(self, checkpoint: _TrackedCheckpoint):
+    def __call__(self, checkpoint: TrackedCheckpoint):
         """Requests checkpoint deletion asynchronously.
 
         Args:
@@ -110,7 +110,7 @@ class CheckpointDeleter:
             return
 
         if (
-            checkpoint.storage_mode == _TrackedCheckpoint.PERSISTENT
+            checkpoint.storage_mode == TrackedCheckpoint.PERSISTENT
             and checkpoint.dir_or_data
         ):
             checkpoint_path = checkpoint.dir_or_data
@@ -467,9 +467,9 @@ class Trial:
         else:
             checkpoint = self.checkpoint_manager.newest_checkpoint
         if checkpoint.dir_or_data is None:
-            checkpoint = _TrackedCheckpoint(
+            checkpoint = TrackedCheckpoint(
                 dir_or_data=self.restore_path,
-                storage_mode=_TrackedCheckpoint.PERSISTENT,
+                storage_mode=TrackedCheckpoint.PERSISTENT,
             )
         return checkpoint
 
@@ -655,7 +655,7 @@ class Trial:
         self.restoring_from = None
         self.invalidate_json_state()
 
-    def on_checkpoint(self, checkpoint: _TrackedCheckpoint):
+    def on_checkpoint(self, checkpoint: TrackedCheckpoint):
         """Hook for handling checkpoints taken by the Trainable.
 
         Args:

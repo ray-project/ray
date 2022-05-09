@@ -14,7 +14,7 @@ from ray.train.session import TrainingResult
 from ray.train.utils import construct_path
 from ray.util.ml_utils.checkpoint_manager import (
     CheckpointManager as CommonCheckpointManager,
-    _TrackedCheckpoint,
+    TrackedCheckpoint,
     CheckpointStrategy,
 )
 
@@ -35,7 +35,7 @@ def load_checkpoint_from_path(checkpoint_to_load: Union[str, Path]) -> Dict:
         return cloudpickle.load(f)
 
 
-class _NotYetPersistedCheckpoint(_TrackedCheckpoint):
+class _NotYetPersistedCheckpoint(TrackedCheckpoint):
     """Tracked checkpoint that is not yet persisted to disk.
 
     This checkpoint class supports lazy writing. The checkpoint manager will
@@ -69,18 +69,16 @@ class _NotYetPersistedCheckpoint(_TrackedCheckpoint):
         self.dir_or_data = path
         self._data_to_commit = None
 
-    def delete(
-        self, delete_fn: Optional[Callable[["_TrackedCheckpoint"], None]] = None
-    ):
+    def delete(self, delete_fn: Optional[Callable[["TrackedCheckpoint"], None]] = None):
         if not self.committed:
             return
         return super().delete(delete_fn=delete_fn)
 
     @classmethod
-    def from_tracked_checkpoint(cls, checkpoint: _TrackedCheckpoint):
+    def from_tracked_checkpoint(cls, checkpoint: TrackedCheckpoint):
         new_checkpoint = cls(
             dir_or_data=checkpoint.dir_or_data,
-            storage_mode=_TrackedCheckpoint.PERSISTENT,
+            storage_mode=TrackedCheckpoint.PERSISTENT,
             checkpoint_id=checkpoint.id,
             result=checkpoint.result,
             node_ip=checkpoint.node_ip,
@@ -165,10 +163,10 @@ class CheckpointManager(CommonCheckpointManager):
                 f"train.save_checkpoint."
             )
 
-        tracked_checkpoint = _TrackedCheckpoint(
+        tracked_checkpoint = TrackedCheckpoint(
             dir_or_data=checkpoint_data,
             checkpoint_id=self._latest_checkpoint_id,
-            storage_mode=_TrackedCheckpoint.MEMORY,
+            storage_mode=TrackedCheckpoint.MEMORY,
             result={score_attr: checkpoint_data.get(score_attr, 0.0)},
         )
 

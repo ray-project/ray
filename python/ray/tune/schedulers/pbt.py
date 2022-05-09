@@ -18,7 +18,7 @@ from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest.variant_generator import format_vars
 from ray.tune.trial import Trial
 from ray.util.debug import log_once
-from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint
+from ray.util.ml_utils.checkpoint_manager import TrackedCheckpoint
 
 logger = logging.getLogger(__name__)
 
@@ -529,7 +529,7 @@ class PopulationBasedTraining(FIFOScheduler):
                 state.last_checkpoint = trial.checkpoint
             else:
                 state.last_checkpoint = trial_executor.save(
-                    trial, _TrackedCheckpoint.MEMORY, result=state.last_result
+                    trial, TrackedCheckpoint.MEMORY, result=state.last_result
                 )
             self._num_checkpoints += 1
         else:
@@ -873,7 +873,7 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
         )
 
         checkpoint = trial_runner.trial_executor.save(
-            trial, _TrackedCheckpoint.MEMORY, result=result
+            trial, TrackedCheckpoint.MEMORY, result=result
         )
 
         new_tag = make_experiment_tag(self.experiment_tag, new_config, new_config)

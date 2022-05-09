@@ -42,7 +42,7 @@ from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncoder
 from ray.tune.web_server import TuneServer
 from ray.util.debug import log_once
-from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint
+from ray.util.ml_utils.checkpoint_manager import TrackedCheckpoint
 
 MAX_DEBUG_TRIALS = 20
 
@@ -1117,7 +1117,7 @@ class TrialRunner:
                 checkpoint=trial.saving_to,
             )
             trial.on_checkpoint(trial.saving_to)
-            if trial.checkpoint.storage_mode != _TrackedCheckpoint.MEMORY:
+            if trial.checkpoint.storage_mode != TrackedCheckpoint.MEMORY:
                 self.trial_executor.mark_trial_to_checkpoint(trial)
         except Exception:
             logger.exception(
@@ -1204,7 +1204,7 @@ class TrialRunner:
         if trial.should_checkpoint() or force:
             # Save trial runtime if possible.
             if trial.runner:
-                self.trial_executor.save(trial, storage=_TrackedCheckpoint.PERSISTENT)
+                self.trial_executor.save(trial, storage=TrackedCheckpoint.PERSISTENT)
 
     def _try_recover(self, trial: Trial, exc: Union[TuneError, RayTaskError]):
         """Tries to recover trial.

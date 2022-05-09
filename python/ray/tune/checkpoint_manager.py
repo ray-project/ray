@@ -8,7 +8,7 @@ from ray.util.ml_utils.checkpoint_manager import (
     MIN,
     MAX,
     CheckpointManager as CommonCheckpointManager,
-    _TrackedCheckpoint,
+    TrackedCheckpoint,
 )
 
 logger = logging.getLogger(__name__)
@@ -32,7 +32,7 @@ class CheckpointManager(CommonCheckpointManager):
         self,
         keep_checkpoints_num: int,
         checkpoint_score_attr: Optional[str],
-        delete_fn: Optional[Callable[["_TrackedCheckpoint"], None]] = None,
+        delete_fn: Optional[Callable[["TrackedCheckpoint"], None]] = None,
     ):
         if keep_checkpoints_num == 0:
             raise RuntimeError(
@@ -56,23 +56,23 @@ class CheckpointManager(CommonCheckpointManager):
 
         super().__init__(checkpoint_strategy=checkpoint_strategy, delete_fn=delete_fn)
 
-    def on_checkpoint(self, checkpoint: _TrackedCheckpoint):
+    def on_checkpoint(self, checkpoint: TrackedCheckpoint):
         # Set checkpoint ID
         checkpoint.id = checkpoint.id or self._latest_checkpoint_id
         self._latest_checkpoint_id += 1
 
-        if checkpoint.storage_mode == _TrackedCheckpoint.MEMORY:
+        if checkpoint.storage_mode == TrackedCheckpoint.MEMORY:
             self._replace_latest_memory_checkpoint(checkpoint)
         else:
-            assert checkpoint.storage_mode == _TrackedCheckpoint.PERSISTENT
+            assert checkpoint.storage_mode == TrackedCheckpoint.PERSISTENT
             assert (
                 self._checkpoint_strategy.num_to_keep is None
                 or self._checkpoint_strategy.num_to_keep > 0
             )
             self._decide_what_to_do_with_checkpoint(checkpoint)
 
-    def _skip_persisted_checkpoint(self, persisted_checkpoint: _TrackedCheckpoint):
-        assert persisted_checkpoint.storage_mode == _TrackedCheckpoint.PERSISTENT
+    def _skip_persisted_checkpoint(self, persisted_checkpoint: TrackedCheckpoint):
+        assert persisted_checkpoint.storage_mode == TrackedCheckpoint.PERSISTENT
         super()._skip_persisted_checkpoint(persisted_checkpoint=persisted_checkpoint)
         # Ray Tune always keeps track of the latest persisted checkpoint.
         # Note that this checkpoint will be deleted once it is not the
@@ -85,10 +85,10 @@ class CheckpointManager(CommonCheckpointManager):
 
     @property
     def newest_persistent_checkpoint(self):
-        return self._latest_persisted_checkpoint or _TrackedCheckpoint(
+        return self._latest_persisted_checkpoint or TrackedCheckpoint(
             dir_or_data=None,
             checkpoint_id=-1,
-            storage_mode=_TrackedCheckpoint.PERSISTENT,
+            storage_mode=TrackedCheckpoint.PERSISTENT,
         )
 
     @property
@@ -102,10 +102,10 @@ class CheckpointManager(CommonCheckpointManager):
 
     @property
     def newest_memory_checkpoint(self):
-        return self._latest_memory_checkpoint or _TrackedCheckpoint(
+        return self._latest_memory_checkpoint or TrackedCheckpoint(
             dir_or_data=None,
             checkpoint_id=-1,
-            storage_mode=_TrackedCheckpoint.MEMORY,
+            storage_mode=TrackedCheckpoint.MEMORY,
         )
 
     def best_checkpoints(self):

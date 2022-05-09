@@ -3,7 +3,7 @@ from abc import ABCMeta
 import warnings
 
 from ray.util.annotations import PublicAPI
-from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint
+from ray.util.ml_utils.checkpoint_manager import TrackedCheckpoint
 
 if TYPE_CHECKING:
     from ray.tune.trial import Trial
@@ -245,7 +245,7 @@ class Callback(metaclass=CallbackMeta):
         iteration: int,
         trials: List["Trial"],
         trial: "Trial",
-        checkpoint: _TrackedCheckpoint,
+        checkpoint: TrackedCheckpoint,
         **info,
     ):
         """Called after a trial saved a checkpoint with Tune.
