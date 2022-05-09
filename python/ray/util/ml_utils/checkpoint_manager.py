@@ -212,7 +212,7 @@ class CheckpointManager:
             logger.error(
                 f"Result dict has no key: {checkpoint_score_attribute}. "
                 f"checkpoint_score_attr must be set to a key in the "
-                f"result dict."
+                f"result dict. Valid keys are: {list(checkpoint.result.keys())}"
             )
             checkpoint_result = float("-inf")
         else:
