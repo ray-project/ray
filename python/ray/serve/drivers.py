@@ -2,6 +2,7 @@ import inspect
 from abc import abstractmethod
 from typing import Any, Callable, Optional, Type, Union
 from pydantic import BaseModel
+from ray.serve.utils import install_serve_encoders_to_fastapi
 
 import starlette
 from fastapi import Body, Depends, FastAPI
@@ -56,6 +57,7 @@ class SimpleSchemaIngress:
               resolver. When you pass in a string, Serve will import it.
               Please refer to Serve HTTP adatper documentation to learn more.
         """
+        install_serve_encoders_to_fastapi()
         http_adapter = load_http_adapter(http_adapter)
         self.app = FastAPI()
 

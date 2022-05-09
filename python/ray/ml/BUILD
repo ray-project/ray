@@ -57,6 +57,15 @@ py_test (
     deps = [":ml_lib"]
 )
 
+py_test (
+    name = "rl_serving_example",
+    main = "examples/rl_serving_example.py",
+    size = "medium",
+    srcs = ["examples/rl_serving_example.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
 py_test(
     name = "tensorflow_linear_dataset_example",
     size = "medium",
@@ -142,6 +151,14 @@ py_test(
     size = "medium",
     srcs = ["examples/sklearn_example.py"],
     tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "upload_to_wandb",
+    size = "medium",
+    srcs = ["examples/upload_to_wandb.py"],
+    tags = ["team:ml", "exclusive", "needs_credentials"],
     deps = [":ml_lib"]
 )
 

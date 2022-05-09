@@ -255,25 +255,6 @@ class A3CTrainer(Trainer):
 
         return learner_info_builder.finalize()
 
-    @staticmethod
-    @override(Trainer)
-    def execution_plan(
-        workers: WorkerSet, config: TrainerConfigDict, **kwargs
-    ) -> LocalIterator[dict]:
-        assert (
-            len(kwargs) == 0
-        ), "A3C execution_plan does NOT take any additional parameters"
-
-        # For A3C, compute policy gradients remotely on the rollout workers.
-        grads = AsyncGradients(workers)
-
-        # Apply the gradients as they arrive. We set update_all to False so
-        # that only the worker sending the gradient is updated with new
-        # weights.
-        train_op = grads.for_each(ApplyGradients(workers, update_all=False))
-
-        return StandardMetricsReporting(train_op, workers, config)
-
 
 # Deprecated: Use ray.rllib.agents.a3c.A3CConfig instead!
 class _deprecated_default_config(dict):

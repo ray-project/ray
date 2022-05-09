@@ -341,7 +341,7 @@ class ApexTrainer(DQNTrainer):
         # Update experience priorities post learning.
         def update_prio_and_stats(item: Tuple[ActorHandle, dict, int, int]) -> None:
             actor, prio_dict, env_count, agent_count = item
-            if config.get("prioritized_replay"):
+            if config["replay_buffer_config"].get("prioritized_replay_alpha") > 0:
                 actor.update_priorities.remote(prio_dict)
             metrics = _get_shared_metrics()
             # Manually update the steps trained counter since the learner
@@ -584,7 +584,10 @@ class ApexTrainer(DQNTrainer):
                     env_steps,
                     agent_steps,
                 ) = self.learner_thread.outqueue.get(timeout=0.001)
-                if self.config["prioritized_replay"]:
+                if (
+                    self.config["replay_buffer_config"].get("prioritized_replay_alpha")
+                    > 0
+                ):
                     replay_actor.update_priorities.remote(priority_dict)
                 num_samples_trained_this_itr += env_steps
                 self.update_target_networks(env_steps)
