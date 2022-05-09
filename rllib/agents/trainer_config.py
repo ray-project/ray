@@ -231,7 +231,8 @@ class TrainerConfig:
         self.prioritized_replay = DEPRECATED_VALUE
         self.learning_starts = DEPRECATED_VALUE
         self.replay_batch_size = DEPRECATED_VALUE
-        self.replay_sequence_length = DEPRECATED_VALUE
+        # -1 = DEPRECATED_VALUE is a valid value for replay_sequence_length
+        self.replay_sequence_length = None
         self.prioritized_replay_alpha = DEPRECATED_VALUE
         self.prioritized_replay_beta = DEPRECATED_VALUE
         self.prioritized_replay_eps = DEPRECATED_VALUE
