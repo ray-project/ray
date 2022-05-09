@@ -347,7 +347,7 @@ RAY_CONFIG(int32_t, gcs_grpc_initial_reconnect_backoff_ms, 100)
 /// Maximum bytes of request queued when RPC failed due to GCS is down.
 /// If reach the limit, the core worker will hang until GCS is reconnected.
 /// By default, the value if 5GB.
-RAY_CONFIG(uint64_t, gcs_grpc_max_request_bytes, 1024 * 1024 * 1024 * 5)
+RAY_CONFIG(uint64_t, gcs_grpc_max_request_queued_max_bytes, 1024UL * 1024 * 1024 * 5)
 
 /// The duration between two checks for grpc status.
 RAY_CONFIG(int32_t, gcs_client_check_connection_status_interval_milliseconds, 1000)

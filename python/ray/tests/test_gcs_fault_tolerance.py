@@ -253,8 +253,14 @@ def test_actor_workloads(ray_start_regular_with_external_redis):
     assert ray.get(c.r.remote(10)) == 10
     ray.worker._global_node.start_gcs_server()
 
-    r = ray.get(cc.r.remote(10))
-    assert r == 10
+    import threading
+
+    def f():
+        assert ray.get(cc.r.remote(10)) == 10
+
+    t = threading.Thread(target=f)
+    t.start()
+    t.join()
 
     c = Counter.options(lifetime="detached", name="C").remote()
 
