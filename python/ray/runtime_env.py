@@ -589,7 +589,7 @@ class RuntimeEnv(dict):
         if "java_jars" in self:
             return list(self["java_jars"])
         return []
- 
+
     def env_vars(self) -> Dict:
         return self.get("env_vars", {})
 
