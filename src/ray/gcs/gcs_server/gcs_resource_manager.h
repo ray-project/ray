@@ -56,7 +56,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
                               ClusterResourceManager &cluster_resource_manager,
                               scheduling::NodeID local_node_id_ = scheduling::NodeID::Nil());
 
-
   virtual ~GcsResourceManager() {}
 
   /// Handle the resource update.
