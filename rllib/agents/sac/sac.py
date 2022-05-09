@@ -83,23 +83,12 @@ DEFAULT_CONFIG = with_common_config({
     "min_sample_timesteps_per_reporting": 100,
 
     # === Replay buffer ===
-    # The following values have moved because of the new ReplayBuffer API
-    "buffer_size": DEPRECATED_VALUE,
-    "prioritized_replay": DEPRECATED_VALUE,
-    "learning_starts": DEPRECATED_VALUE,
-    "replay_batch_size": DEPRECATED_VALUE,
-    "replay_sequence_length": DEPRECATED_VALUE,
-    "prioritized_replay_alpha": DEPRECATED_VALUE,
-    "prioritized_replay_beta": DEPRECATED_VALUE,
-    "prioritized_replay_eps": DEPRECATED_VALUE,
     "replay_buffer_config": {
         "_enable_replay_buffer_api": True,
         "type": "MultiAgentPrioritizedReplayBuffer",
         "capacity": int(1e6),
         # How many steps of the model to sample before learning starts.
         "learning_starts": 1500,
-        # If True prioritized replay buffer will be used.
-        "prioritized_replay": False,
         "prioritized_replay_alpha": 0.6,
         "prioritized_replay_beta": 0.4,
         "prioritized_replay_eps": 1e-6,

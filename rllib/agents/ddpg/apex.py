@@ -4,6 +4,8 @@ from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.iter import LocalIterator
+from ray.rllib.utils.typing import PartialTrainerConfigDict
+from ray.rllib.utils.typing import ResultDict
 
 APEX_DDPG_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
     DDPG_CONFIG,  # see also the options in ddpg.py, which are also supported
@@ -17,19 +19,21 @@ APEX_DDPG_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
         "n_step": 3,
         "num_gpus": 0,
         "num_workers": 32,
-        "buffer_size": 2000000,
-        # TODO(jungong) : update once Apex supports replay_buffer_config.
-        "no_local_replay_buffer": True,
-        # Whether all shards of the replay buffer must be co-located
-        # with the learner process (running the execution plan).
-        # This is preferred b/c the learner process should have quick
-        # access to the data from the buffer shards, avoiding network
-        # traffic each time samples from the buffer(s) are drawn.
-        # Set this to False for relaxing this constraint and allowing
-        # replay shards to be created on node(s) other than the one
-        # on which the learner is located.
-        "replay_buffer_shards_colocated_with_driver": True,
-        "learning_starts": 50000,
+        "replay_buffer_config":
+            {
+                "capcity": 2000000,
+                "no_local_replay_buffer": True,
+                "learning_starts": 50000,
+                # Whether all shards of the replay buffer must be co-located
+                # with the learner process (running the execution plan).
+                # This is preferred b/c the learner process should have quick
+                # access to the data from the buffer shards, avoiding network
+                # traffic each time samples from the buffer(s) are drawn.
+                # Set this to False for relaxing this constraint and allowing
+                # replay shards to be created on node(s) other than the one
+                # on which the learner is located.
+                "replay_buffer_shards_colocated_with_driver": True,
+            },
         "train_batch_size": 512,
         "rollout_fragment_length": 50,
         "target_network_update_freq": 500000,
@@ -46,11 +50,21 @@ APEX_DDPG_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
 )
 
 
-class ApexDDPGTrainer(DDPGTrainer):
+class ApexDDPGTrainer(DDPGTrainer, ApexTrainer):
     @classmethod
     @override(DDPGTrainer)
     def get_default_config(cls) -> TrainerConfigDict:
         return APEX_DDPG_DEFAULT_CONFIG
+
+    @override(DDPGTrainer)
+    def setup(self, config: PartialTrainerConfigDict):
+        ApexTrainer.setup(self, config)
+
+    @staticmethod
+    @override(DDPGTrainer)
+    def training_iteration(self) -> ResultDict:
+        """Use APEX-DQN's training iteration function."""
+        return ApexTrainer.training_iteration()
 
     @staticmethod
     @override(DDPGTrainer)

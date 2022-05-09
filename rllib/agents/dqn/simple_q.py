@@ -80,15 +80,6 @@ DEFAULT_CONFIG = with_common_config({
     "target_network_update_freq": 500,
 
     # === Replay buffer ===
-    # The following values have moved because of the new ReplayBuffer API
-    "buffer_size": DEPRECATED_VALUE,
-    "prioritized_replay": DEPRECATED_VALUE,
-    "learning_starts": DEPRECATED_VALUE,
-    "replay_batch_size": DEPRECATED_VALUE,
-    "replay_sequence_length": DEPRECATED_VALUE,
-    "prioritized_replay_alpha": DEPRECATED_VALUE,
-    "prioritized_replay_beta": DEPRECATED_VALUE,
-    "prioritized_replay_eps": DEPRECATED_VALUE,
     "replay_buffer_config": {
         # Use the new ReplayBuffer API here
         "_enable_replay_buffer_api": True,

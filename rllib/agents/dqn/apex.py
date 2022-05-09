@@ -82,7 +82,6 @@ APEX_DEFAULT_CONFIG = merge_dicts(
         # TODO(jungong) : add proper replay_buffer_config after
         #     DistributedReplayBuffer type is supported.
         "replay_buffer_config": {
-            "_enable_replay_buffer_api": True,
             "no_local_replay_buffer": True,
             "type": "MultiAgentPrioritizedReplayBuffer",
             "capacity": 2000000,
@@ -92,6 +91,7 @@ APEX_DEFAULT_CONFIG = merge_dicts(
             "prioritized_replay_beta": 0.4,
             # Epsilon to add to the TD errors when updating priorities.
             "prioritized_replay_eps": 1e-6,
+            "learning_starts": 50000,
         },
         # Whether all shards of the replay buffer must be co-located
         # with the learner process (running the execution plan).
@@ -103,7 +103,6 @@ APEX_DEFAULT_CONFIG = merge_dicts(
         # on which the learner is located.
         "replay_buffer_shards_colocated_with_driver": True,
 
-        "learning_starts": 50000,
         "train_batch_size": 512,
         "rollout_fragment_length": 50,
         "target_network_update_freq": 500000,

@@ -226,6 +226,15 @@ class TrainerConfig:
         self.timesteps_per_iteration = DEPRECATED_VALUE
         self.min_iter_time_s = DEPRECATED_VALUE
         self.collect_metrics_timeout = DEPRECATED_VALUE
+        # The following values have moved because of the new ReplayBuffer API
+        self.buffer_size = DEPRECATED_VALUE
+        self.prioritized_replay = DEPRECATED_VALUE
+        self.learning_starts = DEPRECATED_VALUE
+        self.replay_batch_size = DEPRECATED_VALUE
+        self.replay_sequence_length = DEPRECATED_VALUE
+        self.prioritized_replay_alpha = DEPRECATED_VALUE
+        self.prioritized_replay_beta = DEPRECATED_VALUE
+        self.prioritized_replay_eps = DEPRECATED_VALUE
 
     def to_dict(self) -> TrainerConfigDict:
         """Converts all settings into a legacy config dict for backward compatibility.
