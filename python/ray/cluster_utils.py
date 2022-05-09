@@ -12,6 +12,7 @@ import ray._private.services
 from ray._private.client_mode_hook import disable_client_hook
 from ray import ray_constants
 from ray._raylet import GcsClientOptions
+from ray._private.test_utils import wait_for_condition
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +89,11 @@ class AutoscalingCluster:
         env = os.environ.copy()
         env.update({"AUTOSCALER_UPDATE_INTERVAL_S": "1", "RAY_FAKE_CLUSTER": "1"})
         self._process = subprocess.Popen(cmd, env=env)
-        time.sleep(5)  # TODO(ekl) wait for it properly
+        # Make sure ray.init("auto") can succeed after this returns.
+        wait_for_condition(
+            lambda: ray.init(address="auto"), timeout=20, retry_internval_ms=500
+        )
+        ray.shutdown()
 
     def shutdown(self):
         """Terminate the cluster."""
