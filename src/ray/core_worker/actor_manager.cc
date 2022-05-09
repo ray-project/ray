@@ -164,6 +164,7 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
   reference_counter_->AddLocalReference(actor_creation_return_id, call_site);
   direct_actor_submitter_->AddActorQueueIfNotExists(
       actor_id, actor_handle->MaxPendingCalls(), actor_handle->ExecuteOutOfOrder());
+  bool is_actor_state_subscribed = actor_handle->IsActorStateSubscribed();
   bool inserted;
   {
     absl::MutexLock lock(&mutex_);
@@ -179,7 +180,8 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
   }
 
   if (inserted) {
-    if (!cached_actor_name.empty()) {
+    // NOTE: The named actor can only be cached after a successful subscription.
+    if (!cached_actor_name.empty() && is_actor_state_subscribed) {
       absl::MutexLock lock(&cache_mutex_);
       cached_actor_name_to_ids_.emplace(cached_actor_name, actor_id);
     }
@@ -289,12 +291,12 @@ ActorID ActorManager::GetCachedNamedActorID(const std::string &actor_name) {
 void ActorManager::SubscribeActorState(const ActorID &actor_id) {
   auto actor_handle = GetActorHandle(actor_id);
   RAY_CHECK(actor_handle != nullptr);
-  if (actor_handle->IsActorStateSubscribed()) {
+  if (!actor_handle->IsActorStateUnsubscribed()) {
     return;
   }
 
   absl::MutexLock lock(&subscribe_mutex_);
-  if (actor_handle->IsActorStateSubscribed()) {
+  if (!actor_handle->IsActorStateUnsubscribed()) {
     return;
   }
 
@@ -305,9 +307,14 @@ void ActorManager::SubscribeActorState(const ActorID &actor_id) {
                 std::placeholders::_1,
                 std::placeholders::_2);
   RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
-      actor_id, actor_notification_callback, nullptr));
+      actor_id, actor_notification_callback, [actor_handle](const Status &status) {
+        if (status.ok()) {
+          actor_handle->SetActorStateSubscribeStatus(
+              ActorStateSubscribeStatus::SUBSCRIBED);
+        }
+      }));
 
-  actor_handle->SetActorStateSubscribed();
+  actor_handle->SetActorStateSubscribeStatus(ActorStateSubscribeStatus::SUBSCRIBING);
 }
 
 }  // namespace core

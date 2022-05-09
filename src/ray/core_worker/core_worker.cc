@@ -1963,7 +1963,7 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
   }
 
   auto actor_handle = actor_manager_->GetActorHandle(actor_id);
-  if (!actor_handle->IsActorStateSubscribed()) {
+  if (actor_handle->IsActorStateUnsubscribed()) {
     // Lazy subscribe.
     actor_manager_->SubscribeActorState(actor_id);
   }
