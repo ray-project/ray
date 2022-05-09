@@ -276,9 +276,13 @@ def call_ray_start(request):
         "--max-worker-port=0 --port 0",
     )
     command_args = parameter.split(" ")
-    out = ray._private.utils.decode(
-        subprocess.check_output(command_args, stderr=subprocess.STDOUT)
-    )
+    try:
+        out = ray._private.utils.decode(
+            subprocess.check_output(command_args, stderr=subprocess.STDOUT)
+        )
+    except Exception as e:
+        print(type(e), e)
+        raise
     # Get the redis address from the output.
     redis_substring_prefix = "--address='"
     address_location = out.find(redis_substring_prefix) + len(redis_substring_prefix)
