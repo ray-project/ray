@@ -3567,10 +3567,11 @@ def test_random_shuffle_spread(ray_start_cluster):
 
 
 def test_random_sample():
+    import math
 
-    def test(dataset, sample_size=4):
-        r1 = ds.random_sample(sample_size)
-        assert len(r1) == sample_size
+    def test(dataset, sample_percent=0.5):
+        r1 = ds.random_sample(sample_percent)
+        assert math.isclose(r1.count(), int(ds.count() * sample_percent), rel_tol=2, abs_tol=2)
 
     ds = ray.data.range(10, parallelism=2)
     test(ds)
@@ -3590,33 +3591,11 @@ def test_random_sample():
     test(ds)
 
 
-def test_random_sample_spread():
-    def is_continuous(x):
-        prev = x[0]
-        for e in x:
-            if e == prev + 1:
-                return True
-            prev = e
-        return False
-
-    ds = ray.data.range(50)
-    # TODO: Check for non-contiguity
-    pass
-
-
 def test_random_sample_checks():
     with pytest.raises(ValueError) as e_info:
-        # Obviously, you cannot sample -1 elements
         ray.data.range(1).random_sample(-1)
-
-        # Neither should you be able to sample an empty dataset
-        ray.data.range(0).random_sample(1)
-
-        # No sampling more elements than the dataset contains
-        ray.data.range(2).random_sample(3)
-
-        # Invalid sampling strategy
-        ray.data.range(1).random_sample(1, sampling_strategy=42)
+        ray.data.range(0).random_sample(0.2)
+        ray.data.range(1).random_sample(10)
 
 
 def test_parquet_read_spread(ray_start_cluster, tmp_path):
