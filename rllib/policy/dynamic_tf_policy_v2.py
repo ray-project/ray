@@ -572,7 +572,12 @@ class DynamicTFPolicyV2(TFPolicy):
 
             # Fully customized action generation (e.g., custom policy).
             if is_overridden(self.action_sampler_fn):
-                sampled_action, sampled_action_logp = self.action_sampler_fn(
+                (
+                    sampled_action,
+                    sampled_action_logp,
+                    dist_inputs,
+                    self._state_out
+                ) = self.action_sampler_fn(
                     self.model,
                     obs_batch=self._input_dict[SampleBatch.CUR_OBS],
                     state_batches=self._state_inputs,

@@ -740,7 +740,7 @@ class EagerTFPolicyV2(Policy):
             if is_overridden(self.action_sampler_fn):
                 dist_inputs = None
                 state_out = []
-                actions, logp = self.action_sampler_fn(
+                actions, logp, dist_inputs, state_out = self.action_sampler_fn(
                     self.model,
                     input_dict[SampleBatch.CUR_OBS],
                     explore=explore,
