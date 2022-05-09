@@ -7,7 +7,6 @@ import hashlib
 import shutil
 
 from typing import Optional, List, Dict, Tuple
-from filelock import FileLock
 
 from ray._private.async_compat import asynccontextmanager, create_task, get_running_loop
 from ray._private.runtime_env.context import RuntimeEnvContext
@@ -376,7 +375,7 @@ class PipManager:
         self._pip_resources_dir = os.path.join(resources_dir, "pip")
         self._creating_task = {}
         # Maps a URI to a lock that is used to prevent multiple concurrent
-        # installs of the same virtualenv, see #24513 
+        # installs of the same virtualenv, see #24513
         self._uris_to_create_locks: Dict[str, asyncio.Lock] = {}
         try_to_create_directory(self._pip_resources_dir)
 
