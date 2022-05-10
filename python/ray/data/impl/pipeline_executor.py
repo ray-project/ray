@@ -53,7 +53,7 @@ class PipelineExecutor:
         for f in self._stages:
             if f is not None:
                 f.cancel()
-        self._pool.shutdown(wait=False)
+#        self._pool.shutdown(wait=False)
 
         # Signal to all remaining threads to shut down.
         with progress_bar._canceled_threads_lock:

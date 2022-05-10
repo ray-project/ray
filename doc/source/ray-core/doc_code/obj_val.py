@@ -1,18 +1,18 @@
 import ray
 
 @ray.remote
-def echo(x: int):
-    """This function prints its input value to stdout."""
-    print(x)
+def echo(a: int, b: int, c: int):
+    """This function prints its input values to stdout."""
+    print(a, b, c)
 
-# Passing the literal value `1` to `echo`.
-echo.remote(1)
-# -> prints "1"
+# Passing the literal values (1, 2, 3) to `echo`.
+echo.remote(1, 2, 3)
+# -> prints "1 2 3"
 
 # Put the value `1` into Ray's object store.
-object_ref = ray.put(1)
+a, b, c = ray.put(1), ray.put(2), ray.put(3)
 
 # Passing an object as a top-level argument to `echo`. Ray will de-reference top-level
-# arguments, so `echo` will see the literal value `1` in this case as well.
-echo.remote(object_ref)
-# -> prints "1"
+# arguments, so `echo` will see the literal values (1, 2, 3) in this case as well.
+echo.remote(a, b, c)
+# -> prints "1 2 3"

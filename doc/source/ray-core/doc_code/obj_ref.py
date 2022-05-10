@@ -1,10 +1,10 @@
 import ray
 
 @ray.remote
-def echo_and_get(x):  # List[ObjectRef]
+def echo_and_get(x_list):  # List[ObjectRef]
     """This function prints its input values to stdout."""
-    print("args:", x)
-    print("values:", ray.get(x))
+    print("args:", x_list)
+    print("values:", ray.get(x_list))
 
 # Put three values into Ray's object store.
 a, b, c = ray.put(1), ray.put(2), ray.put(3)

@@ -143,6 +143,8 @@ There are two different ways one can pass an object to a Ray task or method. Dep
 
 .. literalinclude:: doc_code/obj_ref.py
 
+We recommend passing objects as top-level arguments where possible, but nested arguments can be useful for passing objects on to other tasks without needing to see the data.
+
 The top-level vs not top-level passing convention also applies to actor constructors and actor method calls:
 
 .. code-block:: python
@@ -155,7 +157,7 @@ The top-level vs not top-level passing convention also applies to actor construc
     actor_handle.method.remote(obj)  # by-value
     actor_handle.method.remote([obj])  # by-reference
 
-Ray also supports nested object references. This allows you to build composite objects that itself hold references to further sub-objects.
+Ray also supports nested object references. This allows you to build composite objects that themselves hold references to further sub-objects.
 
 .. code-block:: python
 
