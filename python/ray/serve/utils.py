@@ -16,6 +16,7 @@ import requests
 import numpy as np
 import pydantic
 import pydantic.json
+import fastapi.encoders
 
 import ray
 import ray.serialization_addons
@@ -59,6 +60,11 @@ class _ServeCustomEncoders:
         return obj.tolist()
 
     @staticmethod
+    def encode_np_scaler(obj):
+        assert isinstance(obj, np.generic)
+        return obj.item()
+
+    @staticmethod
     def encode_exception(obj):
         assert isinstance(obj, Exception)
         return str(obj)
@@ -66,6 +72,7 @@ class _ServeCustomEncoders:
 
 serve_encoders = {
     np.ndarray: _ServeCustomEncoders.encode_np_array,
+    np.generic: _ServeCustomEncoders.encode_np_scaler,
     Exception: _ServeCustomEncoders.encode_exception,
 }
 
@@ -74,6 +81,12 @@ def install_serve_encoders_to_fastapi():
     """Inject Serve's encoders so FastAPI's jsonable_encoder can pick it up."""
     # https://stackoverflow.com/questions/62311401/override-default-encoders-for-jsonable-encoder-in-fastapi # noqa
     pydantic.json.ENCODERS_BY_TYPE.update(serve_encoders)
+    # FastAPI cache these encoders at import time, so we also needs to refresh it.
+    fastapi.encoders.encoders_by_class_tuples = (
+        fastapi.encoders.generate_encoders_by_class_tuples(
+            pydantic.json.ENCODERS_BY_TYPE
+        )
+    )
 
 
 @ray.remote(num_cpus=0)

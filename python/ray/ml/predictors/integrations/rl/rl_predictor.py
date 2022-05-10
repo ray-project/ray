@@ -1,5 +1,6 @@
 from typing import Optional
 
+import numpy
 import numpy as np
 import pandas as pd
 from ray.ml import Preprocessor, Checkpoint
@@ -28,7 +29,10 @@ class RLPredictor(Predictor):
 
     @classmethod
     def from_checkpoint(
-        cls, checkpoint: Checkpoint, env: Optional[EnvType] = None, **kwargs
+        cls,
+        checkpoint: Checkpoint,
+        env: Optional[EnvType] = None,
+        **kwargs,
     ) -> "Predictor":
         """Create RLPredictor from checkpoint.
 
@@ -62,4 +66,4 @@ class RLPredictor(Predictor):
             input_dict={"obs": obs}
         )
 
-        return actions
+        return np.array(actions)

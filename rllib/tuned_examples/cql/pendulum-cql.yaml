@@ -21,7 +21,8 @@ pendulum-cql:
 
         twin_q: true
         train_batch_size: 2000
-        learning_starts: 0
+        replay_buffer_config:
+          learning_starts: 0
         bc_iters: 100
 
         metrics_smoothing_episodes: 5
