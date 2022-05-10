@@ -5,12 +5,28 @@ Usage Stats Collection
 
 Starting in Ray 1.13, Ray collects usage stats data by default (guarded by an opt-out prompt).
 This data will be used by the open-source Ray engineering team to better understand how to improve our libraries and core APIs, and how to prioritize bug fixes and enhancements.
+
+Here are the guiding principles of our collection policy:
+
+- **No surprises** — you will be notified before we begin collecting data. You will be notified of any changes to the data being collected or how it is used.
+- Data collection will not be enabled in headless/non-interactive environments (like CI) by default.
+- **Easy opt-out:** You will be able to easily opt-out of data collection
+- **Transparency** — you will be able to review all data that is sent to us
+- **Control** — you will have control over your data, and we will honor requests to delete your data.
+- We will **not** collect any personally identifiable data or proprietary code/data
+- We will **not** sell data or buy data about you.
+
+You will always be able to :ref:`disable the usage stats collection<usage-disable>`.
+
 For more context, please refer to this `RFC <https://github.com/ray-project/ray/issues/20857>`_.
 
 What data is collected?
 -----------------------
+
 We collect non-sensitive data that helps us understand how Ray is used (e.g., which Ray libraries are used).
-Personally identifiable data is never collected. Please check ``UsageStatsToReport`` in `usage_lib.py <https://github.com/ray-project/ray/blob/master/python/ray/_private/usage/usage_lib.py>`_ to see the data we collect.
+**Personally identifiable data will never be collected.** Please check ``UsageStatsToReport`` in `usage_lib.py <https://github.com/ray-project/ray/blob/master/python/ray/_private/usage/usage_lib.py>`_ to see the data we collect.
+
+.. _usage-disable:
 
 How to disable it
 -----------------
@@ -24,8 +40,10 @@ There are multiple ways to disable usage stats collection before starting a clus
 
 Currently there is no way to enable or disable collection for a running cluster; you have to stop and restart the cluster.
 
+
 How does it work?
 -----------------
+
 When a Ray cluster is started via ``ray start --head``, ``ray up``, ``ray submit --start`` or ``ray exec --start``,
 Ray will decide whether usage stats collection should be enabled or not by considering the following factors in order:
 
@@ -43,9 +61,24 @@ and report to ``https://usage-stats.ray.io/`` every hour. The reported usage sta
 
 Usage stats collection is very lightweight and should have no impact on your workload in any way.
 
-How to request removal of collected data
-----------------------------------------
+Requesting removal of collected data
+------------------------------------
+
 To request removal of collected data, please email us at ``usage_stats@ray.io`` with the ``session_id`` that you can find in ``/tmp/ray/session_xxx/usage_stats.json``.
+
+Frequently Asked Questions (FAQ)
+--------------------------------
+
+**Does the Session ID map to personal data?**
+
+No, the uuid will be a Ray session/job-specific random ID that cannot be used to identify a specific person nor machine. It will not live beyond the lifetime of your Ray session; and is primarily captured to enable us to honor deletion requests.
+
+The session ID is logged so that deletion requests can be honored.
+
+**Could an enterprise easily configure an additional endpoint or substitute a different endpoint?**
+
+We definitely see this use case and would love to chat with you to make this work -- email ``usage_stats@ray.io``.
+
 
 Contact us
 ----------
