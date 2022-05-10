@@ -1,9 +1,11 @@
 import ray
 
+
 @ray.remote
 def echo(a: int, b: int, c: int):
     """This function prints its input values to stdout."""
     print(a, b, c)
+
 
 # Passing the literal values (1, 2, 3) to `echo`.
 echo.remote(1, 2, 3)
