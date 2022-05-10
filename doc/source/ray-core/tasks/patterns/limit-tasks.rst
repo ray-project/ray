@@ -46,7 +46,9 @@ Code example
         # 4000 of the object_refs in result_refs are ready
         # and available.
           if len(result_refs) > 1000:
-            num_ready = i-1000
-            ray.wait(result_refs, num_returns=num_ready)
+            num_ready = min(i-1000, len(result_refs))
+            # update result_refs to only
+            # track the remaining tasks.
+            _, result_refs = ray.wait(result_refs, num_returns=num_ready)
 
         result_refs.append(actor.heavy_compute.remote(large_array))
