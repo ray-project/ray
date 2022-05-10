@@ -110,7 +110,7 @@ class PluginCacheManager(ABC):
         self,
         runtime_env: "RuntimeEnv",  # noqa: F821
         context: RuntimeEnvContext,
-        logger: Optional[logging.Logger] = default_logger,
+        logger: logging.Logger = default_logger,
     ):
         multiple_uris = hasattr(self._plugin, "get_uris")
 
