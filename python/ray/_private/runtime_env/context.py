@@ -52,7 +52,13 @@ class RuntimeEnvContext:
         elif language == Language.JAVA:
             executable = "java"
             ray_jars = os.path.join(get_ray_jars_dir(), "*")
-            class_path_args = ["-cp", ray_jars + ":" + str(":".join(self.java_jars))]
+
+            local_java_jars = []
+            for java_jar in self.java_jars:
+                local_java_jars.append(f"{java_jar}/*")
+                local_java_jars.append(java_jar)
+
+            class_path_args = ["-cp", ray_jars + ":" + str(":".join(local_java_jars))]
             passthrough_args = class_path_args + passthrough_args
         elif sys.platform == "win32":
             executable = ""

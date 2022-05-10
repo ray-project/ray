@@ -47,9 +47,9 @@ class JavaJarsManager:
         self, uri: str, logger: Optional[logging.Logger] = default_logger
     ):
         """Download a jar URI."""
-        _ = download_and_unpack_package(uri, self._resources_dir, logger=logger)
-        logger.debug("Succeeded to download jar file {jar_file} .")
+        jar_file = download_and_unpack_package(uri, self._resources_dir, logger=logger)
         module_dir = self._get_local_dir_from_uri(uri)
+        logger.debug(f"Succeeded to download jar file {jar_file} .")
         return module_dir
 
     async def create(
