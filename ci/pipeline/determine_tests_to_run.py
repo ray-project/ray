@@ -100,32 +100,27 @@ if __name__ == "__main__":
         print(pformat(commit_range), file=sys.stderr)
         print(pformat(files), file=sys.stderr)
 
-        should_dry_run_pda = True
-        if os.environ.get("BUILDKITE") and platform.system().lower() == "darwin":
-            should_dry_run_pda = False
+        # Dry run py_dep_analysis.py to see which tests we would have run.
+        try:
+            import py_dep_analysis as pda
 
-        if should_dry_run_pda:
-            # Dry run py_dep_analysis.py to see which tests we would have run.
-            try:
-                import py_dep_analysis as pda
+            graph = pda.build_dep_graph()
+            rllib_tests = pda.list_rllib_tests()
+            print("Total # of RLlib tests: ", len(rllib_tests), file=sys.stderr)
 
-                graph = pda.build_dep_graph()
-                rllib_tests = pda.list_rllib_tests()
-                print("Total # of RLlib tests: ", len(rllib_tests), file=sys.stderr)
+            impacted = {}
+            for test in rllib_tests:
+                for file in files:
+                    if pda.test_depends_on_file(graph, test, file):
+                        impacted[test[0]] = True
 
-                impacted = {}
-                for test in rllib_tests:
-                    for file in files:
-                        if pda.test_depends_on_file(graph, test, file):
-                            impacted[test[0]] = True
-
-                print("RLlib tests impacted: ", len(impacted), file=sys.stderr)
-                for test in impacted.keys():
-                    print("    ", test, file=sys.stderr)
-            except Exception as e:
-                print("Failed to dry run py_dep_analysis.py", file=sys.stderr)
-                print(e, file=sys.stderr)
-            # End of dry run.
+            print("RLlib tests impacted: ", len(impacted), file=sys.stderr)
+            for test in impacted.keys():
+                print("    ", test, file=sys.stderr)
+        except Exception as e:
+            print("Failed to dry run py_dep_analysis.py", file=sys.stderr)
+            print(e, file=sys.stderr)
+        # End of dry run.
 
         skip_prefix_list = ["doc/", "examples/", "dev/", "kubernetes/", "site/"]
 
