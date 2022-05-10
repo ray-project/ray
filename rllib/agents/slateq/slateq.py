@@ -21,9 +21,8 @@ from ray.rllib.agents.slateq.slateq_torch_policy import SlateQTorchPolicy
 from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE
 from ray.rllib.utils.typing import TrainerConfigDict
-from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
 
 logger = logging.getLogger(__name__)
 
@@ -118,8 +117,12 @@ class SlateQConfig(TrainerConfig):
         self.min_sample_timesteps_per_reporting = 1000
         self.min_time_s_per_reporting = 1
         self.compress_observations = False
+        self._disable_preprocessor_api = True
         # __sphinx_doc_end__
         # fmt: on
+
+        # Deprecated config keys.
+        self.learning_starts = DEPRECATED_VALUE
 
     @override(TrainerConfig)
     def training(
@@ -228,11 +231,6 @@ class SlateQTrainer(DQNTrainer):
         return SlateQConfig().to_dict()
 
     @override(DQNTrainer)
-    def validate_config(self, config: TrainerConfigDict) -> None:
-        super().validate_config(config)
-        validate_buffer_config(config)
-
-    @override(DQNTrainer)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             return SlateQTorchPolicy
@@ -240,7 +238,7 @@ class SlateQTrainer(DQNTrainer):
             return SlateQTFPolicy
 
 
-# Deprecated: Use ray.rllib.agents.ppo.PPOConfig instead!
+# Deprecated: Use ray.rllib.agents.slateq.SlateQConfig instead!
 class _deprecated_default_config(dict):
     def __init__(self):
         super().__init__(SlateQConfig().to_dict())
