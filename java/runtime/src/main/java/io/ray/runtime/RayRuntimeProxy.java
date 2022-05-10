@@ -1,8 +1,8 @@
 package io.ray.runtime;
 
+import io.ray.api.exception.RayException;
 import io.ray.api.runtime.RayRuntime;
 import io.ray.runtime.config.RunMode;
-import io.ray.api.exception.RayException;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;

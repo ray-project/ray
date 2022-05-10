@@ -1,19 +1,21 @@
 package io.ray.runtime.task;
 
 import com.google.common.base.Preconditions;
-import io.ray.api.id.JobId;
-import io.ray.api.id.TaskId;
-import io.ray.api.id.UniqueId;
-import io.ray.runtime.RayRuntimeInternal;
 import io.ray.api.exception.RayActorException;
 import io.ray.api.exception.RayException;
 import io.ray.api.exception.RayIntentionalSystemExitException;
 import io.ray.api.exception.RayTaskException;
+import io.ray.api.id.JobId;
+import io.ray.api.id.TaskId;
+import io.ray.api.id.UniqueId;
+import io.ray.runtime.RayRuntimeInternal;
 import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import io.ray.runtime.functionmanager.RayFunction;
 import io.ray.runtime.generated.Common.TaskType;
 import io.ray.runtime.object.NativeRayObject;
 import io.ray.runtime.object.ObjectSerializer;
+import io.ray.runtime.util.NetworkUtil;
+import io.ray.runtime.util.SystemUtil;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -21,8 +23,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
-import io.ray.runtime.util.NetworkUtil;
-import io.ray.runtime.util.SystemUtil;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -189,7 +189,11 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
           try {
             serializedException =
                 ObjectSerializer.serialize(
-                    new RayTaskException(SystemUtil.pid(), NetworkUtil.getIpAddress(null), "Error executing task " + taskId, e));
+                    new RayTaskException(
+                        SystemUtil.pid(),
+                        NetworkUtil.getIpAddress(null),
+                        "Error executing task " + taskId,
+                        e));
           } catch (Exception unserializable) {
             // We should try-catch `ObjectSerializer.serialize` here. Because otherwise if the
             // application-level exception is not serializable. `ObjectSerializer.serialize`
@@ -208,14 +212,16 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
         } else {
           returnObjects.add(
               ObjectSerializer.serialize(
-                  new RayTaskException(SystemUtil.pid(), NetworkUtil.getIpAddress(null),
+                  new RayTaskException(
+                      SystemUtil.pid(),
+                      NetworkUtil.getIpAddress(null),
                       String.format(
                           "Function %s of task %s doesn't exist",
                           String.join(".", rayFunctionInfo), taskId),
                       e)));
         }
       } else {
-        throw new RayActorException(e);
+        throw new RayActorException(SystemUtil.pid(), NetworkUtil.getIpAddress(null), e);
       }
     } finally {
       Thread.currentThread().setContextClassLoader(oldLoader);
