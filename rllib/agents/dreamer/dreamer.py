@@ -42,6 +42,7 @@ class DREAMERConfig(TrainerConfig):
 
     Example:
         >>> from ray import tune
+        >>> from ray.rllib.agents.dreamer import DREAMERConfig
         >>> config = DREAMERConfig()
         >>> # Print out some default values.
         >>> print(config.clip_param)
