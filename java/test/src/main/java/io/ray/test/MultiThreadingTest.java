@@ -139,6 +139,8 @@ public class MultiThreadingTest extends BaseTest {
     Assert.assertEquals("ok", obj.get());
   }
 
+  /// SINGLE_PROCESS mode doesn't support this API.
+  @Test(groups = {"cluster"})
   public void testGetCurrentActorId() {
     ActorHandle<ActorIdTester> actorIdTester = Ray.actor(ActorIdTester::new).remote();
     ActorId actorId = actorIdTester.task(ActorIdTester::getCurrentActorId).remote().get();

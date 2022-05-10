@@ -34,6 +34,10 @@ public class RuntimeContextImpl implements RuntimeContext {
 
   @Override
   public ActorId getCurrentActorId() {
+    if (runtime.getRayConfig().runMode.equals(RunMode.SINGLE_PROCESS)) {
+      throw new UnsupportedOperationException("This API is not allowed in SINGLE_PROCESS mode.");
+    }
+
     ActorId actorId = runtime.getWorkerContext().getCurrentActorId();
     Preconditions.checkState(
         actorId != null && !actorId.isNil(), "This method should only be called from an actor.");
@@ -42,6 +46,10 @@ public class RuntimeContextImpl implements RuntimeContext {
 
   @Override
   public TaskId getCurrentTaskId() {
+    if (runtime.getRayConfig().runMode.equals(RunMode.SINGLE_PROCESS)) {
+      throw new UnsupportedOperationException("This API is not allowed in SINGLE_PROCESS mode.");
+    }
+
     return runtime.getWorkerContext().getCurrentTaskId();
   }
 
