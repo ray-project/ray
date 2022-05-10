@@ -3,7 +3,7 @@
 AIR Deployment Guide
 ====================
 
-Here, we describe how you might use or deploy AIR in your infrastructure. There are two main deployment patterns -- a la carte and integration with existing platform.
+Here, we describe how you might use or deploy AIR in your infrastructure. There are two main deployment patterns -- a la carte and within existing platforms.
 
 The core idea is that AIR can be **complementary** to your existing infrastructure and integration tools.
 
@@ -13,16 +13,16 @@ Design Principles
 * Ray AIR handles the heavyweight compute aspects of AI apps and services.
 * Ray AIR relies on external integrations (e.g., Tecton, MLFlow, W&B) for Storage and Tracking.
 * Workflow Orchestrators (e.g., AirFlow) are an optional component that can be used for scheduling recurring jobs, launching new Ray clusters for jobs, and running non-Ray compute steps.
-* Lightweight orchestration of task graphs within a single Ray AIR app can be handled with Ray Workflows.
+* Lightweight orchestration of task graphs within a single Ray AIR app can be handled using Ray tasks.
 * Ray AIR libraries can be used independently, within an existing ML platform, or to build a Ray-native ML platform.
 
 
 Pick and choose your own libraries
 ----------------------------------
 
-You can pick and choose which Ray AIR libraries you want to use without replacing all of your ML infrastructure to use Ray AIR.
+You can pick and choose which Ray AIR libraries you want to use.
 
-This is applicable to you if you are an ML engineer wants to independently use a Ray AIR library for a specific AI app or service use case and do not need to integrate with an existing ML platform.
+This is applicable if you are an ML engineer who wants to independently use a Ray AIR library for a specific AI app or service use case and do not need to integrate with existing ML platforms.
 
 For example, Alice wants to use RLlib to train models for her work project. Bob wants to use Ray Serve to deploy his model pipeline. In both cases, Alice and Bob can leverage these libraries independently without any coordination.
 
