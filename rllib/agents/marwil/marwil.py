@@ -68,14 +68,17 @@ DEFAULT_CONFIG = with_common_config({
     # Number of (independent) timesteps pushed through the loss
     # each SGD round.
     "train_batch_size": 2000,
-    # Size of the replay buffer in (single and independent) timesteps.
-    # The buffer gets filled by reading from the input files line-by-line
-    # and adding all timesteps on one line at once. We then sample
-    # uniformly from the buffer (`train_batch_size` samples) for
-    # each training step.
-    "replay_buffer_size": 10000,
-    # Number of steps to read before learning starts.
-    "learning_starts": 0,
+
+    "replay_buffer_config": {
+        # Size of the replay buffer in (single and independent) timesteps.
+        # The buffer gets filled by reading from the input files line-by-line
+        # and adding all timesteps on one line at once. We then sample
+        # uniformly from the buffer (`train_batch_size` samples) for
+        # each training step.
+        "capacity": 10000,
+        # Number of steps to read before learning starts.
+        "learning_starts": 0,
+    },
 
     # A coeff to encourage higher action distribution entropy for exploration.
     "bc_logstd_coeff": 0.0,
@@ -123,9 +126,11 @@ class MARWILTrainer(Trainer):
         # in `execution_plan` (deprecated).
         if self.config["_disable_execution_plan_api"] is True:
             self.local_replay_buffer = MultiAgentReplayBuffer(
-                learning_starts=self.config["learning_starts"],
-                capacity=self.config["replay_buffer_size"],
-                replay_batch_size=self.config["train_batch_size"],
+                learning_starts=self.config["replay_buffer_config"]["learning_starts"],
+                capacity=self.config["replay_buffer_config"]["capacity"],
+                replay_batch_size=self.config["replay_buffer_config"][
+                    "replay_batch_size"
+                ],
                 replay_sequence_length=1,
             )
 

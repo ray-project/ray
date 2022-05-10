@@ -19,7 +19,6 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.typing import TrainerConfigDict
 
 logger = logging.getLogger(__name__)
@@ -69,12 +68,11 @@ DEFAULT_CONFIG = with_common_config({
     "adv_policy": "maddpg",
 
     # === Replay buffer ===
-    # Size of the replay buffer. Note that if async_updates is set, then
-    # each worker will have a replay buffer of this size.
-    "buffer_size": DEPRECATED_VALUE,
     "replay_buffer_config": {
         "type": "MultiAgentReplayBuffer",
         "capacity": int(1e6),
+        # How many steps of the model to sample before learning starts.
+        "learning_starts": 1024 * 25,
     },
     # Observation compression. Note that compression makes simulation slow in
     # MPE.
@@ -102,8 +100,6 @@ DEFAULT_CONFIG = with_common_config({
     "actor_feature_reg": 0.001,
     # If not None, clip gradients during optimization at this value
     "grad_norm_clipping": 0.5,
-    # How many steps of the model to sample before learning starts.
-    "learning_starts": 1024 * 25,
     # Update the replay buffer with this many samples at once. Note that this
     # setting applies per-worker if num_workers > 1.
     "rollout_fragment_length": 100,

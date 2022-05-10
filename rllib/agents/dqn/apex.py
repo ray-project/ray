@@ -61,7 +61,6 @@ from ray.rllib.utils.typing import (
 )
 from ray.tune.trainable import Trainable
 from ray.tune.utils.placement_groups import PlacementGroupFactory
-from ray.rllib.utils.from_config import from_config
 
 # fmt: off
 # __sphinx_doc_begin__
@@ -182,7 +181,7 @@ class ApexTrainer(DQNTrainer):
         )
         replay_actor_args = [
             num_replay_buffer_shards,
-            self.config["learning_starts"],
+            self.config["replay_buffer_config"]["learning_starts"],
             capacity,
             self.config["replay_buffer_config"]["replay_batch_size"],
             self.config["replay_buffer_config"]["prioritized_replay_alpha"],
@@ -192,12 +191,9 @@ class ApexTrainer(DQNTrainer):
             self.config["replay_buffer_config"].get("replay_sequence_length", 1),
         ]
 
-        buffer_constructor = from_config(
-            cls=self.config["replay_buffer_config"]["type"],
-            config=self.config["replay_buffer_config"],
+        ReplayActor = ray.remote(num_cpus=0)(
+            self.config["replay_buffer_config"]["type"]
         )
-
-        ReplayActor = ray.remote(num_cpus=0)(buffer_constructor)
 
         # Place all replay buffer shards on the same node as the learner
         # (driver process that runs this execution plan).

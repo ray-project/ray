@@ -19,21 +19,20 @@ APEX_DDPG_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
         "n_step": 3,
         "num_gpus": 0,
         "num_workers": 32,
-        "replay_buffer_config":
-            {
-                "capcity": 2000000,
-                "no_local_replay_buffer": True,
-                "learning_starts": 50000,
-                # Whether all shards of the replay buffer must be co-located
-                # with the learner process (running the execution plan).
-                # This is preferred b/c the learner process should have quick
-                # access to the data from the buffer shards, avoiding network
-                # traffic each time samples from the buffer(s) are drawn.
-                # Set this to False for relaxing this constraint and allowing
-                # replay shards to be created on node(s) other than the one
-                # on which the learner is located.
-                "replay_buffer_shards_colocated_with_driver": True,
-            },
+        "replay_buffer_config": {
+            "capcity": 2000000,
+            "no_local_replay_buffer": True,
+            "learning_starts": 50000,
+            # Whether all shards of the replay buffer must be co-located
+            # with the learner process (running the execution plan).
+            # This is preferred b/c the learner process should have quick
+            # access to the data from the buffer shards, avoiding network
+            # traffic each time samples from the buffer(s) are drawn.
+            # Set this to False for relaxing this constraint and allowing
+            # replay shards to be created on node(s) other than the one
+            # on which the learner is located.
+            "replay_buffer_shards_colocated_with_driver": True,
+        },
         "train_batch_size": 512,
         "rollout_fragment_length": 50,
         "target_network_update_freq": 500000,

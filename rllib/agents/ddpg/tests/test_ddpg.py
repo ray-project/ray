@@ -38,7 +38,7 @@ class TestDDPG(unittest.TestCase):
         config["seed"] = 42
         config["num_workers"] = 1
         config["num_envs_per_worker"] = 2
-        config["learning_starts"] = 0
+        config["replay_buffer_config"]["learning_starts"] = 0
         config["exploration_config"]["random_timesteps"] = 100
 
         num_iterations = 1
@@ -66,7 +66,7 @@ class TestDDPG(unittest.TestCase):
         config = ddpg.DEFAULT_CONFIG.copy()
         config["num_workers"] = 1
         config["num_envs_per_worker"] = 2
-        config["learning_starts"] = 0
+        config["replay_buffer_config"]["learning_starts"] = 0
         config["exploration_config"]["random_timesteps"] = 100
 
         # Test against all frameworks.
@@ -145,7 +145,7 @@ class TestDDPG(unittest.TestCase):
         # Run locally.
         config["seed"] = 42
         config["num_workers"] = 0
-        config["learning_starts"] = 0
+        config["replay_buffer_config"]["learning_starts"] = 0
         config["twin_q"] = True
         config["use_huber"] = True
         config["huber_threshold"] = 1.0

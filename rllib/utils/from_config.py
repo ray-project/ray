@@ -9,7 +9,7 @@ import yaml
 from ray.rllib.utils import force_list, merge_dicts
 
 
-def from_config(cls, config=None, return_constructor=False, **kwargs):
+def from_config(cls, config=None, **kwargs):
     """Uses the given config to create an object.
 
     If `config` is a dict, an optional "type" key can be used as a
@@ -39,8 +39,6 @@ def from_config(cls, config=None, return_constructor=False, **kwargs):
         cls (class): The class to build an instance for (from `config`).
         config (Optional[dict, str]): The config dict or type-string or
             filename.
-        return_constructor (bool): If True, return the inferred return_constructor
-        instead of creating an object from it.
 
     Keyword Args:
         kwargs (any): Optional possibility to pass the constructor arguments in
@@ -191,9 +189,6 @@ def from_config(cls, config=None, return_constructor=False, **kwargs):
 
     if not constructor:
         raise TypeError("Invalid type '{}'. Cannot create `from_config`.".format(type_))
-
-    if return_constructor:
-        return constructor
 
     # Create object with inferred constructor.
     try:

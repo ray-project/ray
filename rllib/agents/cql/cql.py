@@ -64,8 +64,6 @@ CQL_DEFAULT_CONFIG = merge_dicts(
         "min_train_timesteps_per_reporting": 100,
 
         # Deprecated keys.
-        # Use `replay_buffer_config.capacity` instead.
-        "buffer_size": DEPRECATED_VALUE,
         # Use `min_sample_timesteps_per_reporting` and
         # `min_train_timesteps_per_reporting` instead.
         "timesteps_per_iteration": DEPRECATED_VALUE,

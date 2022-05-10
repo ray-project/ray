@@ -6,7 +6,6 @@ from ray.rllib.agents.dqn.simple_q import SimpleQTrainer
 from ray.rllib.agents.ddpg.ddpg_tf_policy import DDPGTFPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.typing import TrainerConfigDict
 
 logger = logging.getLogger(__name__)
@@ -88,9 +87,6 @@ DEFAULT_CONFIG = with_common_config({
         "explore": False
     },
     # === Replay buffer ===
-    # Size of the replay buffer. Note that if async_updates is set, then
-    # each worker will have a replay buffer of this size.
-    "buffer_size": DEPRECATED_VALUE,
     "replay_buffer_config": {
         "_enable_replay_buffer_api": True,
         "type": "MultiAgentPrioritizedReplayBuffer",
@@ -101,6 +97,8 @@ DEFAULT_CONFIG = with_common_config({
         "prioritized_replay_beta": 0.4,
         # Epsilon to add to the TD errors when updating priorities.
         "prioritized_replay_eps": 1e-6,
+        # How many steps of the model to sample before learning starts.
+        "learning_starts": 1500,
     },
     # Set this to True, if you want the contents of your buffer(s) to be
     # stored in any saved checkpoints as well.
@@ -147,8 +145,6 @@ DEFAULT_CONFIG = with_common_config({
     "l2_reg": 1e-6,
     # If not None, clip gradients during optimization at this value
     "grad_clip": None,
-    # How many steps of the model to sample before learning starts.
-    "learning_starts": 1500,
     # Update the replay buffer with this many samples at once. Note that this
     # setting applies per-worker if num_workers > 1.
     "rollout_fragment_length": 1,

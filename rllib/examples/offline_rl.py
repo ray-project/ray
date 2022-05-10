@@ -40,7 +40,9 @@ if __name__ == "__main__":
     config["normalize_actions"] = True
     config["learning_starts"] = 256
     config["rollout_fragment_length"] = 1
-    config["prioritized_replay"] = False
+    # Test without prioritized replay
+    config["replay_buffer_config"]["type"] = "MultiAgentReplayBuffer"
+    config["replay_buffer_config"]["capacity"] = int(1e6)
     config["tau"] = 0.005
     config["target_entropy"] = "auto"
     config["Q_model"] = {

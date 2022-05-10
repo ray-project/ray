@@ -12,7 +12,6 @@ from ray.rllib.execution.train_ops import (
 )
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
     NUM_AGENT_STEPS_SAMPLED,
@@ -119,12 +118,6 @@ DEFAULT_CONFIG = with_common_config({
     },
     # Only torch supported so far.
     "framework": "torch",
-
-    # Deprecated keys:
-    # Use `replay_buffer_config.learning_starts` instead.
-    "learning_starts": DEPRECATED_VALUE,
-    # Use `replay_buffer_config.capacity` instead.
-    "buffer_size": DEPRECATED_VALUE,
 })
 # __sphinx_doc_end__
 # fmt: on

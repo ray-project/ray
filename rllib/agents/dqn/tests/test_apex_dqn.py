@@ -80,12 +80,12 @@ class TestApexDQN(unittest.TestCase):
         config = apex.APEX_DEFAULT_CONFIG.copy()
         config["num_workers"] = 1
         config["num_gpus"] = 0
-        config["learning_starts"] = 10
         config["train_batch_size"] = 10
         config["rollout_fragment_length"] = 5
         config["replay_buffer_config"] = {
             "no_local_replay_buffer": True,
             "type": "MultiAgentPrioritizedReplayBuffer",
+            "learning_starts": 10,
             "capacity": 100,
             "replay_batch_size": 10,
             "prioritized_replay_alpha": 0.6,

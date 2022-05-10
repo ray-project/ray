@@ -169,19 +169,6 @@ def validate_buffer_config(config: dict):
             error=True,
         )
 
-    learning_starts = config.get("learning_starts", DEPRECATED_VALUE)
-    if learning_starts == DEPRECATED_VALUE:
-        learning_starts = config["replay_buffer_config"].get(
-            "learning_starts", DEPRECATED_VALUE
-        )
-    if learning_starts != DEPRECATED_VALUE:
-        deprecation_warning(
-            old="config['learning_starts'] or config['replay_buffer_config']["
-            "'learning_starts']",
-            new="config['replay_buffer_config']['capacity']",
-            error=True,
-        )
-
     replay_burn_in = config.get("burn_in", DEPRECATED_VALUE)
     if replay_burn_in != DEPRECATED_VALUE:
         config["replay_buffer_config"]["replay_burn_in"] = replay_burn_in
@@ -200,6 +187,7 @@ def validate_buffer_config(config: dict):
         "no_local_replay_buffer",
         "replay_batch_size",
         "replay_zero_init_states",
+        "learning_starts",
     ]
     for k in keys_with_deprecated_positions:
         if config.get(k, DEPRECATED_VALUE) != DEPRECATED_VALUE:
@@ -238,10 +226,6 @@ def validate_buffer_config(config: dict):
             error=False,
         )
 
-    # TODO (Artur):
-    if config["replay_buffer_config"].get("no_local_replay_buffer", False):
-        return
-
     replay_buffer_config = config["replay_buffer_config"]
     assert (
         "type" in replay_buffer_config
@@ -255,8 +239,23 @@ def validate_buffer_config(config: dict):
         config["replay_buffer_config"]["type"] = (
             "ray.rllib.utils.replay_buffers." + buffer_type
         )
-    test_buffer = from_config(buffer_type, config["replay_buffer_config"])
-    if hasattr(test_buffer, "update_priorities"):
+
+    if config["replay_buffer_config"].get("replay_batch_size", None) is None:
+        # Fall back to train batch size if no replay batch size was provided
+        logger.info(
+            "No value for key `replay_batch_size` in replay_buffer_config. "
+            "config['replay_buffer_config']['replay_batch_size'] will be "
+            "automatically set to config['train_batch_size']"
+        )
+        config["replay_buffer_config"]["replay_batch_size"] = config["train_batch_size"]
+
+    # Instantiate a dummy buffer to fail early on misconfiguration and find out about
+    # inferred buffer class
+    dummy_buffer = from_config(buffer_type, config["replay_buffer_config"])
+
+    config["replay_buffer_config"]["type"] = type(dummy_buffer)
+
+    if hasattr(dummy_buffer, "update_priorities"):
         if config["multiagent"]["replay_mode"] == "lockstep":
             raise ValueError(
                 "Prioritized replay is not supported when replay_mode=lockstep."
@@ -272,13 +271,6 @@ def validate_buffer_config(config: dict):
                 "Worker side prioritization is not supported when "
                 "prioritized_replay=False."
             )
-
-    if config["replay_buffer_config"].get("replay_batch_size", None) is None:
-        # Fall back to train batch size if no replay batch size was provided
-        logger.warning("No value for key `replay_batch_size` in replay_buffer_config."
-                       "config['replay_buffer_config']['replay_batch_size'] will be "
-                       "automatically set to config['train_batch_size']")
-        config["replay_buffer_config"]["replay_batch_size"] = config["train_batch_size"]
 
 
 def warn_replay_buffer_capacity(*, item: SampleBatchType, capacity: int) -> None:

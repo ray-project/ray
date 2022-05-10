@@ -21,7 +21,6 @@ from ray.rllib.agents.slateq.slateq_torch_policy import SlateQTorchPolicy
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
 
@@ -131,12 +130,6 @@ DEFAULT_CONFIG = with_common_config({
 
     # Switch on no-preprocessors for easier Q-model coding.
     "_disable_preprocessor_api": True,
-
-    # Deprecated keys:
-    # Use `capacity` in `replay_buffer_config` instead.
-    "buffer_size": DEPRECATED_VALUE,
-    # Use `replay_sequence_length` in `replay_buffer_config` instead.
-    "replay_sequence_length": DEPRECATED_VALUE,
 })
 # __sphinx_doc_end__
 # fmt: on

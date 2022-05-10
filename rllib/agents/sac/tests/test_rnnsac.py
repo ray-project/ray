@@ -46,7 +46,7 @@ class TestRNNSAC(unittest.TestCase):
         config["replay_buffer_config"] = {
             "type": "MultiAgentReplayBuffer",
             "replay_burn_in": 20,
-            "zero_init_states": True
+            "zero_init_states": True,
         }
 
         config["lr"] = 5e-4

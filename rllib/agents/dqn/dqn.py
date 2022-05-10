@@ -39,7 +39,6 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.deprecation import (
     Deprecated,
-    DEPRECATED_VALUE,
 )
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.metrics import SYNCH_WORKER_WEIGHTS_TIMER
@@ -77,8 +76,6 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         "n_step": 1,
 
         # === Replay buffer ===
-        # Deprecated, use capacity in replay_buffer_config instead.
-        "buffer_size": DEPRECATED_VALUE,
         "replay_buffer_config": {
             # Enable the new ReplayBuffer API.
             "_enable_replay_buffer_api": True,
