@@ -2,9 +2,6 @@ import logging
 import psutil
 from typing import Optional, Any
 
-from ray.rllib.execution.buffers.multi_agent_replay_buffer import (
-    MultiAgentReplayBuffer as LegacyMultiAgentReplayBuffer,
-)
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import deprecation_warning
 from ray.rllib.utils.annotations import ExperimentalAPI
@@ -46,10 +43,7 @@ def update_priorities_in_replay_buffer(
             utility.
     """
     # Only update priorities if buffer supports them.
-    if (
-        type(replay_buffer) is LegacyMultiAgentReplayBuffer
-        and config["replay_buffer_config"].get("prioritized_replay_alpha", 0.0) > 0.0
-    ) or isinstance(replay_buffer, MultiAgentPrioritizedReplayBuffer):
+    if  isinstance(replay_buffer, MultiAgentPrioritizedReplayBuffer):
         # Go through training results for the different policies (maybe multi-agent).
         prio_dict = {}
         for policy_id, info in train_results.items():

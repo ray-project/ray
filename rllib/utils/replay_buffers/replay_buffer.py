@@ -15,7 +15,6 @@ from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics.window_stat import WindowStat
 from ray.rllib.utils.typing import SampleBatchType, T
-from ray.rllib.execution.buffers.replay_buffer import warn_replay_capacity
 from ray.util.annotations import DeveloperAPI
 
 # Constant that represents all policies in lockstep replay mode.
@@ -30,6 +29,29 @@ class StorageUnit(Enum):
     SEQUENCES = "sequences"
     EPISODES = "episodes"
     FRAGMENTS = "fragments"
+
+
+@DeveloperAPI
+def warn_replay_capacity(*, item: SampleBatchType, num_items: int) -> None:
+    """Warn if the configured replay buffer capacity is too large."""
+    if log_once("replay_capacity"):
+        item_size = item.size_bytes()
+        psutil_mem = psutil.virtual_memory()
+        total_gb = psutil_mem.total / 1e9
+        mem_size = num_items * item_size / 1e9
+        msg = (
+            "Estimated max memory usage for replay buffer is {} GB "
+            "({} batches of size {}, {} bytes each), "
+            "available system memory is {} GB".format(
+                mem_size, num_items, item.count, item_size, total_gb
+            )
+        )
+        if mem_size > total_gb:
+            raise ValueError(msg)
+        elif mem_size > 0.2 * total_gb:
+            logger.warning(msg)
+        else:
+            logger.info(msg)
 
 
 @DeveloperAPI

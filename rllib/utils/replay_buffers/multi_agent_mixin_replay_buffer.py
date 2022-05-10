@@ -21,7 +21,7 @@ from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import (
     ReplayMode,
 )
 from ray.rllib.utils.typing import PolicyID, SampleBatchType
-from ray.rllib.execution.buffers.replay_buffer import _ALL_POLICIES
+from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES
 from ray.util.debug import log_once
 from ray.util.annotations import DeveloperAPI
 
