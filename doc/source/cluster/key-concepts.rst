@@ -64,7 +64,11 @@ Autoscaler
 
 The autoscaler is a process that runs on the :ref:`head node<cluster-head-node>`
 and is responsible for adding or removing :ref:`worker nodes<cluster-worker-node>`
-to match the specification in the :ref:`cluster config file<cluster-config>`.
+to meet the needs of the Ray workload while matching the specification in the
+:ref:`cluster config file<cluster-config>`. In particular, if the resource
+demands of the Ray workload exceed the current capacity of the cluster, the
+autoscaler will try to add nodes. Conversely, if a node is idle for long enough,
+the autoscaler will remove it from the cluster.
 
 Ray Client
 ----------
@@ -97,5 +101,6 @@ Kubernetes (K8s) operator
 -------------------------
 
 Deployments of Ray on Kubernetes are managed by the Ray Kubernetes Operator. The
-Ray Operator follows the standard Kubernetes Operator pattern. To learn more about
-Ray jobs, refer to the :ref:`documentation<ray-operator>`.
+Ray Operator makes it easy to deploy clusters of Ray pods within a Kubernetes
+cluster. To learn more about the K8s operator, refer to
+the :ref:`documentation<ray-operator>`.
