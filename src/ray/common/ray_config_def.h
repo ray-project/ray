@@ -64,6 +64,10 @@ RAY_CONFIG(uint64_t, num_heartbeats_warning, 5)
 
 /// The duration between reporting resources sent by the raylets.
 RAY_CONFIG(uint64_t, raylet_report_resources_period_milliseconds, 100)
+
+/// The duration between raylet check memory pressure and send gc request
+RAY_CONFIG(uint64_t, raylet_check_gc_period_milliseconds, 100)
+
 /// For a raylet, if the last resource report was sent more than this many
 /// report periods ago, then a warning will be logged that the report
 /// handler is drifting.
@@ -342,6 +346,9 @@ RAY_CONFIG(int32_t, gcs_rpc_server_reconnect_timeout_s, 60)
 
 /// Minimum interval between reconnecting gcs rpc server when gcs server restarts.
 RAY_CONFIG(int32_t, minimum_gcs_reconnect_interval_milliseconds, 5000)
+
+/// Feature flag to use the ray syncer for resource synchronization
+RAY_CONFIG(bool, use_ray_syncer, false)
 
 /// The interval at which the gcs client will check if the address of gcs service has
 /// changed. When the address changed, we will resubscribe again.
