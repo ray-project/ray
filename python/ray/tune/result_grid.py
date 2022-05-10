@@ -96,7 +96,7 @@ class ResultGrid:
                 "This means that no trial has reported this metric"
             )
             error_msg += (
-                ", or all values reported for this metric is NaN. To not ignore NaN "
+                ", or all values reported for this metric are NaN. To not ignore NaN "
                 "values, you can set the `filter_nan_and_inf` arg to False."
                 if filter_nan_and_inf
                 else "."
