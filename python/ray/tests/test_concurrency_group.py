@@ -137,7 +137,7 @@ def test_default_concurrency_group_does_not_block_others(ray_start_regular_share
 # This case tests that a blocking group doesn't blocks
 # tasks in other groups.
 # See https://github.com/ray-project/ray/issues/19593
-def test_blocking_group_does_not_block_others(ray_start_regular_shard):
+def test_blocking_group_does_not_block_others(ray_start_regular_shared):
     @ray.remote(concurrency_groups={"group1": 1, "group2": 1})
     class AsyncActor:
         def __init__(self):
