@@ -473,7 +473,7 @@ class DynamicTFPolicyV2(TFPolicy):
             assert existing_inputs is not None
             timestep = existing_inputs["timestep"]
             explore = False
-            self._input_dict, self._dummy_batch = self._get_input_dict_and_dummy_batch(
+            self._input_dict, self._dummy_batch = self._create_input_dict_and_dummy_batch(
                 self.view_requirements, existing_inputs
             )
         else:
@@ -486,14 +486,14 @@ class DynamicTFPolicyV2(TFPolicy):
             (
                 self._input_dict,
                 self._dummy_batch,
-            ) = self._get_input_dict_and_dummy_batch(self.view_requirements, {})
+            ) = self._create_input_dict_and_dummy_batch(self.view_requirements, {})
 
         # Placeholder for `is_training` flag.
         self._input_dict.set_training(self._get_is_training_placeholder())
 
         return timestep, explore
 
-    def _get_input_dict_and_dummy_batch(self, view_requirements, existing_inputs):
+    def _create_input_dict_and_dummy_batch(self, view_requirements, existing_inputs):
         """Creates input_dict and dummy_batch for loss initialization.
 
         Used for managing the Policy's input placeholders and for loss
@@ -576,7 +576,7 @@ class DynamicTFPolicyV2(TFPolicy):
                     sampled_action,
                     sampled_action_logp,
                     dist_inputs,
-                    self._state_out
+                    self._state_out,
                 ) = self.action_sampler_fn(
                     self.model,
                     obs_batch=self._input_dict[SampleBatch.CUR_OBS],
@@ -626,6 +626,15 @@ class DynamicTFPolicyV2(TFPolicy):
                     action_distribution=action_dist, timestep=timestep, explore=explore
                 )
 
+        if dist_inputs is not None:
+            extra_action_fetches[SampleBatch.ACTION_DIST_INPUTS] = dist_inputs
+
+        if sampled_action_logp is not None:
+            extra_action_fetches[SampleBatch.ACTION_LOGP] = sampled_action_logp
+            extra_action_fetches[SampleBatch.ACTION_PROB] = tf.exp(
+                tf.cast(sampled_action_logp, tf.float32)
+            )
+
         return (
             sampled_action,
             sampled_action_logp,
@@ -668,7 +677,7 @@ class DynamicTFPolicyV2(TFPolicy):
             with tf1.variable_scope("", reuse=tf1.AUTO_REUSE):
                 self.multi_gpu_tower_stacks = [
                     TFMultiGPUTowerStack(policy=self)
-                    for i in range(self.config.get("num_multi_gpu_tower_stacks", 1))
+                    for _ in range(self.config.get("num_multi_gpu_tower_stacks", 1))
                 ]
 
         # Initialize again after loss and tower init.

@@ -1131,6 +1131,8 @@ class TrainerConfig:
         *,
         _tf_policy_handles_more_than_one_loss=None,
         _disable_preprocessor_api=None,
+        # TODO(jungong) : retire this flag and siable action_flattening by
+        # default because of action connectors.
         _disable_action_flattening=None,
         _disable_execution_plan_api=None,
     ) -> "TrainerConfig":
