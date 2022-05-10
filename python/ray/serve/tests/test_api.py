@@ -13,7 +13,7 @@ from ray.serve.application import Application
 
 @serve.deployment()
 def sync_d():
-    return "sync!"
+    return "sync!!!"
 
 
 @serve.deployment()
