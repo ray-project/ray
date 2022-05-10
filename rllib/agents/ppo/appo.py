@@ -11,7 +11,6 @@ https://docs.ray.io/en/master/rllib-algorithms.html#appo
 """
 from typing import Optional, Type
 
-from ray.rllib.agents.trainer import Trainer
 from ray.rllib.agents.ppo.appo_tf_policy import AsyncPPOTFPolicy
 from ray.rllib.agents.ppo.ppo import UpdateKL
 from ray.rllib.agents import impala
@@ -168,7 +167,6 @@ class APPOTrainer(impala.ImpalaTrainer):
     def __init__(self, config, *args, **kwargs):
         super().__init__(config, *args, **kwargs)
 
-        self.config["after_train_step"] = self.update_target_and_kl
         self.update_kl = UpdateKL(self.workers)
 
         # After init: Initialize target net.
@@ -176,11 +174,12 @@ class APPOTrainer(impala.ImpalaTrainer):
             lambda p, _: p.update_target()
         )
 
-    def update_target_and_kl(self, train_results: ResultDict) -> None:
+    @override(impala.ImpalaTrainer)
+    def after_train_step(self, train_results: ResultDict) -> None:
         """Updates the target network and the KL coefficient for the APPO-loss.
 
-        This method is called from within the `training_iteration` method due to the
-        self.config["after_train_step"]-hook established in the constructor.
+        This method is called from within the `training_iteration` method after each
+        train update.
 
         The target network update frequency is calculated automatically by the product
         of `num_sgd_iter` setting (usually 1 for APPO) and `minibatch_buffer_size`.
@@ -207,11 +206,11 @@ class APPOTrainer(impala.ImpalaTrainer):
                 self.update_kl(train_results)
 
     @classmethod
-    @override(Trainer)
+    @override(impala.ImpalaTrainer)
     def get_default_config(cls) -> TrainerConfigDict:
         return APPOConfig().to_dict()
 
-    @override(Trainer)
+    @override(impala.ImpalaTrainer)
     def get_default_policy_class(
         self, config: PartialTrainerConfigDict
     ) -> Optional[Type[Policy]]:

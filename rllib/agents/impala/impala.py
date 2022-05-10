@@ -515,13 +515,6 @@ class ImpalaTrainer(Trainer):
         ] = defaultdict(set)
 
         if self.config["_disable_execution_plan_api"]:
-            # Setup after_train_step callback.
-            self._after_train_step = lambda *a, **k: None
-            if self.config["after_train_step"]:
-                self._after_train_step = self.config["after_train_step"](
-                    self.workers, self.config
-                )
-
             # Create extra aggregation workers and assign each rollout worker to
             # one of them.
             self.batches_to_place_on_learner = []
@@ -590,15 +583,24 @@ class ImpalaTrainer(Trainer):
 
         self.concatenate_batches_and_pre_queue(batch)
         self.place_processed_samples_on_learner_queue()
-        learner_results = self.process_trained_results()
+        train_results = self.process_trained_results()
 
         self.update_workers_if_necessary()
 
         # Callback for APPO to use to update KL, target network periodically.
         # The input to the callback is the learner fetches dict.
-        self._after_train_step(learner_results)
+        self.after_train_step(train_results)
 
-        return learner_results
+        return train_results
+
+    def after_train_step(self, train_results: ResultDict) -> None:
+        """Called by the training_iteration method after each train step.
+
+        Args:
+            train_results: The train results dict.
+        """
+        # By default, do nothing.
+        pass
 
     @staticmethod
     @override(Trainer)
