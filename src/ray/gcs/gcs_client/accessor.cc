@@ -780,7 +780,7 @@ StatsInfoAccessor::StatsInfoAccessor(GcsClient *client_impl)
 Status StatsInfoAccessor::AsyncAddProfileData(
     const std::shared_ptr<rpc::ProfileTableData> &data_ptr,
     const StatusCallback &callback) {
-  NodeID node_id = NodeID::FromBinary(data_ptr->message_type());
+  NodeID node_id = NodeID::FromBinary(data_ptr->component_id());
   RAY_LOG(DEBUG) << "Adding profile data, component type = " << data_ptr->component_type()
                  << ", node id = " << node_id;
   rpc::AddProfileDataRequest request;

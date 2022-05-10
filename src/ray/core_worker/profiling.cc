@@ -37,7 +37,7 @@ Profiler::Profiler(WorkerContext &worker_context,
       rpc_profile_data_(new rpc::ProfileTableData()),
       gcs_client_(gcs_client) {
   rpc_profile_data_->set_component_type(WorkerTypeString(worker_context.GetWorkerType()));
-  rpc_profile_data_->set_message_type(worker_context.GetWorkerID().Binary());
+  rpc_profile_data_->set_component_id(worker_context.GetWorkerID().Binary());
   rpc_profile_data_->set_node_ip_address(node_ip_address);
   periodical_runner_.RunFnPeriodically(
       [this] { FlushEvents(); },
@@ -56,7 +56,7 @@ void Profiler::FlushEvents() {
     absl::MutexLock lock(&mutex_);
     if (rpc_profile_data_->profile_events_size() != 0) {
       cur_profile_data->set_component_type(rpc_profile_data_->component_type());
-      cur_profile_data->set_message_type(rpc_profile_data_->message_type());
+      cur_profile_data->set_component_id(rpc_profile_data_->component_id());
       cur_profile_data->set_node_ip_address(rpc_profile_data_->node_ip_address());
       rpc_profile_data_.swap(cur_profile_data);
     }
