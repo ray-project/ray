@@ -163,6 +163,10 @@ def test_node_failure_detector_when_gcs_server_restart(
     ],
     indirect=True,
 )
+@pytest.mark.skip(
+    reason="GCS pubsub may lose messages after GCS restarts. Need to "
+    "implement re-fetching state in GCS client.",
+)
 def test_del_actor_after_gcs_server_restart(ray_start_regular_with_external_redis):
     actor = Increase.options(name="abc").remote()
     result = ray.get(actor.method.remote(1))
