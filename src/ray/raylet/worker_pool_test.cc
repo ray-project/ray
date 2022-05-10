@@ -185,8 +185,6 @@ class WorkerPoolMock : public WorkerPool {
     return worker_commands_by_proc_[proc];
   }
 
-  void RemoveProc(const Process &proc) { worker_commands_by_proc_.erase(proc); }
-
   int NumWorkersStarting() const {
     int total = 0;
     for (auto &state_entry : states_by_lang_) {
@@ -484,9 +482,7 @@ class WorkerPoolTest : public ::testing::Test {
       ASSERT_TRUE(worker_pool_->NumWorkerProcessesStarting() <=
                   expected_worker_process_count);
       Process prev = worker_pool_->LastStartedWorkerProcess();
-      if (!std::equal_to<Process>()(last_started_worker_process, prev)) {
-        //
-      } else {
+      if (std::equal_to<Process>()(last_started_worker_process, prev)) {
         ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(),
                   expected_worker_process_count);
         ASSERT_TRUE(i >= expected_worker_process_count);
@@ -1142,49 +1138,6 @@ TEST_F(WorkerPoolTest, DeleteWorkerPushPop) {
     ASSERT_EQ(worker->GetWorkerType(), rpc::WorkerType::RESTORE_WORKER);
     worker_pool_->PushDeleteWorker(worker);
   });
-}
-
-TEST_F(WorkerPoolTest, NoPopOnCrashedWorkerProcess) {
-  // Start a Java worker process.
-  PopWorkerStatus status;
-  auto [proc1, token1] = worker_pool_->StartWorkerProcess(
-      Language::JAVA, rpc::WorkerType::WORKER, JOB_ID, &status);
-  auto [proc2, token2] = worker_pool_->StartWorkerProcess(
-      Language::JAVA, rpc::WorkerType::WORKER, JOB_ID, &status);
-  auto worker1 = worker_pool_->CreateWorker(Process(), Language::JAVA);
-  auto worker2 = worker_pool_->CreateWorker(Process(), Language::JAVA);
-
-  // We now imitate worker process crashing while core worker initializing.
-
-  // 1. we register both workers.
-  RAY_CHECK_OK(worker_pool_->RegisterWorker(
-      worker1, proc1.GetId(), worker_pool_->GetStartupToken(proc1), [](Status, int) {}));
-  RAY_CHECK_OK(worker_pool_->RegisterWorker(
-      worker2, proc2.GetId(), worker_pool_->GetStartupToken(proc2), [](Status, int) {}));
-
-  // 2. announce worker port for worker 1. When interacting with worker pool, it's
-  // PushWorker.
-  worker_pool_->PushWorker(worker1);
-
-  // 3. kill the worker process. Now let's assume that Raylet found that the connection
-  // with worker 1 disconnected first.
-  worker_pool_->DisconnectWorker(
-      worker1, /*disconnect_type=*/rpc::WorkerExitType::SYSTEM_ERROR_EXIT);
-  worker_pool_->RemoveProc(proc1);
-
-  // 4. but the RPC for announcing worker port for worker 2 is already in Raylet input
-  // buffer. So now Raylet needs to handle worker 2.
-  worker_pool_->PushWorker(worker2);
-
-  // 5. Let's try to pop a worker to execute a task. Worker 2 shouldn't be popped because
-  // the process has crashed.
-  const auto task_spec = ExampleTaskSpec();
-  ASSERT_NE(worker_pool_->PopWorkerSync(task_spec), worker1);
-  ASSERT_NE(worker_pool_->PopWorkerSync(task_spec), worker2);
-
-  // 6. Now Raylet disconnects with worker 2.
-  worker_pool_->DisconnectWorker(
-      worker2, /*disconnect_type=*/rpc::WorkerExitType::SYSTEM_ERROR_EXIT);
 }
 
 TEST_F(WorkerPoolTest, TestWorkerCapping) {

@@ -95,7 +95,7 @@ public class FunctionManagerTest {
 
   @Test
   public void testGetFunctionFromRayFunc() {
-    final FunctionManager functionManager = new FunctionManager(JOB_ID, null);
+    final FunctionManager functionManager = new FunctionManager(null);
     // Test normal function.
     RayFunction func = functionManager.getFunction(fooFunc);
     Assert.assertFalse(func.isConstructor());
@@ -114,7 +114,7 @@ public class FunctionManagerTest {
 
   @Test
   public void testGetFunctionFromFunctionDescriptor() {
-    final FunctionManager functionManager = new FunctionManager(JOB_ID, null);
+    final FunctionManager functionManager = new FunctionManager(null);
     // Test normal function.
     RayFunction func = functionManager.getFunction(fooDescriptor);
     Assert.assertFalse(func.isConstructor());
@@ -142,7 +142,7 @@ public class FunctionManagerTest {
 
   @Test
   public void testInheritance() {
-    final FunctionManager functionManager = new FunctionManager(JOB_ID, null);
+    final FunctionManager functionManager = new FunctionManager(null);
     // Check inheritance can work and FunctionManager can find method in parent class.
     fooDescriptor =
         new JavaFunctionDescriptor(ParentClass.class.getName(), "foo", "()Ljava/lang/Object;");
@@ -243,7 +243,7 @@ public class FunctionManagerTest {
     JavaFunctionDescriptor descriptor =
         new JavaFunctionDescriptor("DemoApp", "hello", "()Ljava/lang/String;");
     final FunctionManager functionManager =
-        new FunctionManager(JOB_ID, Collections.singletonList(codeSearchPath));
+        new FunctionManager(Collections.singletonList(codeSearchPath));
     RayFunction func = functionManager.getFunction(descriptor);
     Assert.assertEquals(func.getFunctionDescriptor(), descriptor);
   }

@@ -45,7 +45,7 @@ public class RayDevRuntime extends AbstractRayRuntime {
     taskExecutor = new LocalModeTaskExecutor(this);
     workerContext = new LocalModeWorkerContext(rayConfig.getJobId());
     objectStore = new LocalModeObjectStore(workerContext);
-    functionManager = new FunctionManager(rayConfig.getJobId(), rayConfig.codeSearchPath);
+    functionManager = new FunctionManager(rayConfig.codeSearchPath);
     taskSubmitter =
         new LocalModeTaskSubmitter(this, taskExecutor, (LocalModeObjectStore) objectStore);
     ((LocalModeObjectStore) objectStore)

@@ -309,7 +309,6 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
                       std::to_string(worker_startup_token_counter_));
     options.push_back("-Dray.internal.runtime-env-hash=" +
                       std::to_string(runtime_env_hash));
-    options.push_back("-Dray.job.id=" + job_id.Hex());
   }
 
   // Append user-defined per-process options here

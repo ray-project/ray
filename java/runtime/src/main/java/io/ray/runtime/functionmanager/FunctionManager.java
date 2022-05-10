@@ -1,9 +1,7 @@
 package io.ray.runtime.functionmanager;
 
-import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import io.ray.api.function.RayFunc;
-import io.ray.api.id.JobId;
 import io.ray.runtime.util.LambdaUtils;
 import java.io.File;
 import java.lang.invoke.SerializedLambda;
@@ -52,10 +50,7 @@ public class FunctionManager {
       RAY_FUNC_CACHE = ThreadLocal.withInitial(WeakHashMap::new);
 
   /** The table that manages functions. */
-  private JobFunctionTable jobFunctionTable = null;
-
-  /** The job id of this worker or driver. */
-  private final JobId jobId;
+  private final JobFunctionTable jobFunctionTable;
 
   /** The resource path which we can load the job's jar resources. */
   private final List<String> codeSearchPath;
@@ -65,11 +60,9 @@ public class FunctionManager {
    *
    * @param codeSearchPath The specified job resource that can store the job's resources.
    */
-  public FunctionManager(JobId jobId, List<String> codeSearchPath) {
-    Preconditions.checkState(jobId != null && !jobId.isNil());
-    this.jobId = jobId;
+  public FunctionManager(List<String> codeSearchPath) {
     this.codeSearchPath = codeSearchPath;
-    jobFunctionTable = createJobFunctionTable(this.jobId);
+    jobFunctionTable = createJobFunctionTable();
   }
 
   public ClassLoader getClassLoader() {
@@ -104,12 +97,11 @@ public class FunctionManager {
    * @return A RayFunction object.
    */
   public RayFunction getFunction(JavaFunctionDescriptor functionDescriptor) {
-    Preconditions.checkNotNull(jobFunctionTable);
     return jobFunctionTable.getFunction(functionDescriptor);
   }
 
-  /** A helper that creates function table for the job. */
-  private JobFunctionTable createJobFunctionTable(JobId jobId) {
+  /** A helper that creates function table. */
+  private JobFunctionTable createJobFunctionTable() {
     ClassLoader classLoader;
     if (codeSearchPath == null || codeSearchPath.isEmpty()) {
       classLoader = getClass().getClassLoader();
@@ -146,7 +138,7 @@ public class FunctionManager {
                   })
               .toArray(URL[]::new);
       classLoader = new URLClassLoader(urls);
-      LOGGER.debug("Resource loaded for job {} from path {}.", jobId, urls);
+      LOGGER.debug("Resource loaded from path {}.", urls);
     }
 
     return new JobFunctionTable(classLoader);

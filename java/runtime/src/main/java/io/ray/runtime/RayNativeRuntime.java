@@ -104,7 +104,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
         rayConfig.setJobId(getGcsClient().nextJobId());
       }
       // Make sure the job id has been set already.
-      functionManager = new FunctionManager(rayConfig.getJobId(), rayConfig.codeSearchPath);
+      functionManager = new FunctionManager(rayConfig.codeSearchPath);
 
       byte[] serializedJobConfig = null;
       if (rayConfig.workerMode == WorkerType.DRIVER) {
