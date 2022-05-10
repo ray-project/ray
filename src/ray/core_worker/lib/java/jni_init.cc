@@ -68,7 +68,8 @@ jclass java_ray_timeout_exception_class;
 jclass java_ray_pending_calls_limit_exceeded_exception_class;
 
 jclass java_ray_actor_exception_class;
-jmethodID java_ray_exception_to_bytes;
+jclass java_ray_exception_serializer_class;
+jmethodID java_ray_exception_serializer_to_bytes;
 
 jclass java_jni_exception_util_class;
 jmethodID java_jni_exception_util_get_stack_trace;
@@ -257,8 +258,12 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_ray_pending_calls_limit_exceeded_exception_class =
       LoadClass(env, "io/ray/api/exception/PendingCallsLimitExceededException");
 
-  java_ray_exception_to_bytes =
-      env->GetMethodID(java_ray_exception_class, "toBytes", "()[B");
+  java_ray_exception_serializer_class =
+      LoadClass(env, "io/ray/runtime/serializer/RayExceptionSerializer");
+  java_ray_exception_serializer_to_bytes =
+      env->GetStaticMethodID(java_ray_exception_serializer_class,
+                             "toBytes",
+                             "(Lio/ray/api/exception/RayException;)[B");
 
   java_jni_exception_util_class = LoadClass(env, "io/ray/runtime/util/JniExceptionUtil");
   java_jni_exception_util_get_stack_trace = env->GetStaticMethodID(
@@ -437,6 +442,7 @@ void JNI_OnUnload(JavaVM *vm, void *reserved) {
   env->DeleteGlobalRef(java_ray_intentional_system_exit_exception_class);
   env->DeleteGlobalRef(java_ray_timeout_exception_class);
   env->DeleteGlobalRef(java_ray_actor_exception_class);
+  env->DeleteGlobalRef(java_ray_exception_serializer_class);
   env->DeleteGlobalRef(java_jni_exception_util_class);
   env->DeleteGlobalRef(java_base_id_class);
   env->DeleteGlobalRef(java_abstract_message_lite_class);
