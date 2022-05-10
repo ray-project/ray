@@ -317,12 +317,12 @@ The Ray Command Line API
 
 .. _ray-disable-usage-stats-doc:
 
-.. click:: ray.scripts.scripts:disable-usage-stats
+.. click:: ray.scripts.scripts:disable_usage_stats
    :prog: ray disable-usage-stats
    :show-nested:
 
 .. _ray-enable-usage-stats-doc:
 
-.. click:: ray.scripts.scripts:enable-usage-stats
+.. click:: ray.scripts.scripts:enable_usage_stats
    :prog: ray enable-usage-stats
    :show-nested:
