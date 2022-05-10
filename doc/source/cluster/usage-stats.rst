@@ -9,7 +9,6 @@ This data will be used by the open-source Ray engineering team to better underst
 Here are the guiding principles of our collection policy:
 
 - **No surprises** — you will be notified before we begin collecting data. You will be notified of any changes to the data being collected or how it is used.
-- Data collection will not be enabled in headless/non-interactive environments (like CI) by default.
 - **Easy opt-out:** You will be able to easily opt-out of data collection
 - **Transparency** — you will be able to review all data that is sent to us
 - **Control** — you will have control over your data, and we will honor requests to delete your data.
