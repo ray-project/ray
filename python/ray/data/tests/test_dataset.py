@@ -442,8 +442,8 @@ def test_tensors(ray_start_regular_shared):
     # Pandas conversion.
     res = (
         ray.data.range_tensor(10)
-            .map_batches(lambda t: t + 2, batch_format="pandas")
-            .take(2)
+        .map_batches(lambda t: t + 2, batch_format="pandas")
+        .take(2)
     )
     assert str(res) == "[{'value': array([2])}, {'value': array([3])}]"
 
@@ -1287,7 +1287,7 @@ def test_sliding_window():
         assert len(windows) == len(arr) - window_size + 1
         assert all(len(window) == window_size for window in windows)
         assert all(
-            list(window) == arr[i: i + window_size] for i, window in enumerate(windows)
+            list(window) == arr[i : i + window_size] for i, window in enumerate(windows)
         )
 
     # Test window size larger than iterable length.
@@ -2021,9 +2021,9 @@ def test_groupby_arrow(ray_start_regular_shared):
     # Test empty dataset.
     agg_ds = (
         ray.data.range_arrow(10)
-            .filter(lambda r: r["value"] > 10)
-            .groupby("value")
-            .count()
+        .filter(lambda r: r["value"] > 10)
+        .groupby("value")
+        .count()
     )
     assert agg_ds.count() == 0
 
@@ -2067,8 +2067,8 @@ def test_groupby_agg_name_conflict(ray_start_regular_shared, num_parts):
     xs = list(range(100))
     grouped_ds = (
         ray.data.from_items([{"A": (x % 3), "B": x} for x in xs])
-            .repartition(num_parts)
-            .groupby("A")
+        .repartition(num_parts)
+        .groupby("A")
     )
     agg_ds = grouped_ds.aggregate(
         AggregateFn(
@@ -2737,9 +2737,9 @@ def test_groupby_arrow_multi_agg(ray_start_regular_shared, num_parts):
     df = pd.DataFrame({"A": [x % 3 for x in xs], "B": xs})
     agg_ds = (
         ray.data.from_pandas(df)
-            .repartition(num_parts)
-            .groupby("A")
-            .aggregate(
+        .repartition(num_parts)
+        .groupby("A")
+        .aggregate(
             Count(),
             Sum("B"),
             Min("B"),
@@ -2764,8 +2764,8 @@ def test_groupby_arrow_multi_agg(ray_start_regular_shared, num_parts):
 
     result_row = (
         ray.data.from_pandas(df)
-            .repartition(num_parts)
-            .aggregate(
+        .repartition(num_parts)
+        .aggregate(
             Sum("A"),
             Min("A"),
             Max("A"),
@@ -2881,8 +2881,8 @@ def test_groupby_simple_sum(ray_start_regular_shared, num_parts):
     # Test built-in sum aggregation with nans
     nan_grouped_ds = (
         ray.data.from_items(xs + [None])
-            .repartition(num_parts)
-            .groupby(lambda x: int(x or 0) % 3)
+        .repartition(num_parts)
+        .groupby(lambda x: int(x or 0) % 3)
     )
     nan_agg_ds = nan_grouped_ds.sum()
     assert nan_agg_ds.count() == 3
@@ -2902,9 +2902,9 @@ def test_groupby_simple_sum(ray_start_regular_shared, num_parts):
     # Test all nans
     nan_agg_ds = (
         ray.data.from_items([None] * len(xs))
-            .repartition(num_parts)
-            .groupby(lambda x: 0)
-            .sum()
+        .repartition(num_parts)
+        .groupby(lambda x: 0)
+        .sum()
     )
     assert nan_agg_ds.count() == 1
     assert nan_agg_ds.sort(key=lambda r: r[0]).take(1) == [(0, None)]
@@ -2983,9 +2983,9 @@ def test_groupby_map_groups_returning_empty_result(ray_start_regular_shared, num
     xs = list(range(100))
     mapped = (
         ray.data.from_items(xs)
-            .repartition(num_parts)
-            .groupby(lambda x: x % 3)
-            .map_groups(lambda x: [])
+        .repartition(num_parts)
+        .groupby(lambda x: x % 3)
+        .map_groups(lambda x: [])
     )
     assert mapped.count() == 0
     assert mapped.take_all() == []
@@ -3000,9 +3000,9 @@ def test_groupby_map_groups_for_list(ray_start_regular_shared, num_parts):
     random.shuffle(xs)
     mapped = (
         ray.data.from_items(xs)
-            .repartition(num_parts)
-            .groupby(lambda x: x % 3)
-            .map_groups(lambda x: [min(x) * min(x)])
+        .repartition(num_parts)
+        .groupby(lambda x: x % 3)
+        .map_groups(lambda x: [min(x) * min(x)])
     )
     assert mapped.count() == 3
     assert mapped.take_all() == [0, 1, 4]
@@ -3072,8 +3072,8 @@ def test_groupby_simple_min(ray_start_regular_shared, num_parts):
     # Test built-in min aggregation with nans
     nan_grouped_ds = (
         ray.data.from_items(xs + [None])
-            .repartition(num_parts)
-            .groupby(lambda x: int(x or 0) % 3)
+        .repartition(num_parts)
+        .groupby(lambda x: int(x or 0) % 3)
     )
     nan_agg_ds = nan_grouped_ds.min()
     assert nan_agg_ds.count() == 3
@@ -3085,9 +3085,9 @@ def test_groupby_simple_min(ray_start_regular_shared, num_parts):
     # Test all nans
     nan_agg_ds = (
         ray.data.from_items([None] * len(xs))
-            .repartition(num_parts)
-            .groupby(lambda x: 0)
-            .min()
+        .repartition(num_parts)
+        .groupby(lambda x: 0)
+        .min()
     )
     assert nan_agg_ds.count() == 1
     assert nan_agg_ds.sort(key=lambda r: r[0]).take(1) == [(0, None)]
@@ -3123,8 +3123,8 @@ def test_groupby_simple_max(ray_start_regular_shared, num_parts):
     # Test built-in max aggregation with nans
     nan_grouped_ds = (
         ray.data.from_items(xs + [None])
-            .repartition(num_parts)
-            .groupby(lambda x: int(x or 0) % 3)
+        .repartition(num_parts)
+        .groupby(lambda x: int(x or 0) % 3)
     )
     nan_agg_ds = nan_grouped_ds.max()
     assert nan_agg_ds.count() == 3
@@ -3136,9 +3136,9 @@ def test_groupby_simple_max(ray_start_regular_shared, num_parts):
     # Test all nans
     nan_agg_ds = (
         ray.data.from_items([None] * len(xs))
-            .repartition(num_parts)
-            .groupby(lambda x: 0)
-            .max()
+        .repartition(num_parts)
+        .groupby(lambda x: 0)
+        .max()
     )
     assert nan_agg_ds.count() == 1
     assert nan_agg_ds.sort(key=lambda r: r[0]).take(1) == [(0, None)]
@@ -3174,8 +3174,8 @@ def test_groupby_simple_mean(ray_start_regular_shared, num_parts):
     # Test built-in mean aggregation with nans
     nan_grouped_ds = (
         ray.data.from_items(xs + [None])
-            .repartition(num_parts)
-            .groupby(lambda x: int(x or 0) % 3)
+        .repartition(num_parts)
+        .groupby(lambda x: int(x or 0) % 3)
     )
     nan_agg_ds = nan_grouped_ds.mean()
     assert nan_agg_ds.count() == 3
@@ -3195,9 +3195,9 @@ def test_groupby_simple_mean(ray_start_regular_shared, num_parts):
     # Test all nans
     nan_agg_ds = (
         ray.data.from_items([None] * len(xs))
-            .repartition(num_parts)
-            .groupby(lambda x: 0)
-            .mean()
+        .repartition(num_parts)
+        .groupby(lambda x: 0)
+        .mean()
     )
     assert nan_agg_ds.count() == 1
     assert nan_agg_ds.sort(key=lambda r: r[0]).take(1) == [(0, None)]
@@ -3239,9 +3239,9 @@ def test_groupby_simple_std(ray_start_regular_shared, num_parts):
     # ddof of 0
     agg_ds = (
         ray.data.from_items(xs)
-            .repartition(num_parts)
-            .groupby(lambda x: x % 3)
-            .std(ddof=0)
+        .repartition(num_parts)
+        .groupby(lambda x: x % 3)
+        .std(ddof=0)
     )
     assert agg_ds.count() == 3
     df = pd.DataFrame({"A": [x % 3 for x in xs], "B": xs})
@@ -3255,8 +3255,8 @@ def test_groupby_simple_std(ray_start_regular_shared, num_parts):
     # Test built-in std aggregation with nans
     nan_grouped_ds = (
         ray.data.from_items(xs + [None])
-            .repartition(num_parts)
-            .groupby(lambda x: int(x or 0) % 3)
+        .repartition(num_parts)
+        .groupby(lambda x: int(x or 0) % 3)
     )
     nan_agg_ds = nan_grouped_ds.std()
     assert nan_agg_ds.count() == 3
@@ -3280,9 +3280,9 @@ def test_groupby_simple_std(ray_start_regular_shared, num_parts):
     # Test all nans
     nan_agg_ds = (
         ray.data.from_items([None] * len(xs))
-            .repartition(num_parts)
-            .groupby(lambda x: 0)
-            .std(ignore_nulls=False)
+        .repartition(num_parts)
+        .groupby(lambda x: 0)
+        .std(ignore_nulls=False)
     )
     assert nan_agg_ds.count() == 1
     expected = pd.Series([None], name="B")
@@ -3328,9 +3328,9 @@ def test_groupby_simple_multilambda(ray_start_regular_shared, num_parts):
     random.shuffle(xs)
     agg_ds = (
         ray.data.from_items([[x, 2 * x] for x in xs])
-            .repartition(num_parts)
-            .groupby(lambda x: x[0] % 3)
-            .mean([lambda x: x[0], lambda x: x[1]])
+        .repartition(num_parts)
+        .groupby(lambda x: x[0] % 3)
+        .mean([lambda x: x[0], lambda x: x[1]])
     )
     assert agg_ds.count() == 3
     assert agg_ds.sort(key=lambda r: r[0]).take(3) == [
@@ -3357,9 +3357,9 @@ def test_groupby_simple_multi_agg(ray_start_regular_shared, num_parts):
     df = pd.DataFrame({"A": [x % 3 for x in xs], "B": xs})
     agg_ds = (
         ray.data.from_items(xs)
-            .repartition(num_parts)
-            .groupby(lambda x: x % 3)
-            .aggregate(
+        .repartition(num_parts)
+        .groupby(lambda x: x % 3)
+        .aggregate(
             Count(),
             Sum(),
             Min(),
@@ -3396,8 +3396,8 @@ def test_groupby_simple_multi_agg(ray_start_regular_shared, num_parts):
     # Test built-in global multi-aggregation
     result_row = (
         ray.data.from_items(xs)
-            .repartition(num_parts)
-            .aggregate(
+        .repartition(num_parts)
+        .aggregate(
             Sum(),
             Min(),
             Max(),
@@ -3497,7 +3497,7 @@ def test_random_shuffle_check_random(shutdown_only):
     ds = ray.data.from_items(items, parallelism=num_files)
     out = ds.random_shuffle().take(num_files * num_rows)
     for i in range(num_files):
-        part = out[i * num_rows: (i + 1) * num_rows]
+        part = out[i * num_rows : (i + 1) * num_rows]
         seen = set()
         num_contiguous = 1
         prev = -1
@@ -3523,7 +3523,7 @@ def test_random_shuffle_check_random(shutdown_only):
     ds = ray.data.from_items(items, parallelism=num_files)
     out = ds.random_shuffle().take(num_files * num_rows)
     for i in range(num_files):
-        part = out[i * num_rows: (i + 1) * num_rows]
+        part = out[i * num_rows : (i + 1) * num_rows]
         num_increasing = 0
         prev = -1
         for x in part:
@@ -3571,7 +3571,9 @@ def test_random_sample():
 
     def test(dataset, sample_percent=0.5):
         r1 = ds.random_sample(sample_percent)
-        assert math.isclose(r1.count(), int(ds.count() * sample_percent), rel_tol=2, abs_tol=2)
+        assert math.isclose(
+            r1.count(), int(ds.count() * sample_percent), rel_tol=2, abs_tol=2
+        )
 
     ds = ray.data.range(10, parallelism=2)
     test(ds)
