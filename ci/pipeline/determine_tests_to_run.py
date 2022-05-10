@@ -216,19 +216,21 @@ if __name__ == "__main__":
                 RAY_CI_DASHBOARD_AFFECTED = 1
                 RAY_CI_DOC_AFFECTED = 1
             else:
-                RAY_CI_ML_AFFECTED = 1
-                RAY_CI_TUNE_AFFECTED = 1
-                RAY_CI_TRAIN_AFFECTED = 1
-                RAY_CI_RLLIB_AFFECTED = 1
-                RAY_CI_SERVE_AFFECTED = 1
-                RAY_CI_CORE_CPP_AFFECTED = 1
-                RAY_CI_CPP_AFFECTED = 1
-                RAY_CI_JAVA_AFFECTED = 1
-                RAY_CI_PYTHON_AFFECTED = 1
-                RAY_CI_DOC_AFFECTED = 1
-                RAY_CI_LINUX_WHEELS_AFFECTED = 1
-                RAY_CI_MACOS_WHEELS_AFFECTED = 1
-                RAY_CI_DASHBOARD_AFFECTED = 1
+                # TODO(simon): remove me, this is for testing
+                pass
+                # RAY_CI_ML_AFFECTED = 1
+                # RAY_CI_TUNE_AFFECTED = 1
+                # RAY_CI_TRAIN_AFFECTED = 1
+                # RAY_CI_RLLIB_AFFECTED = 1
+                # RAY_CI_SERVE_AFFECTED = 1
+                # RAY_CI_CORE_CPP_AFFECTED = 1
+                # RAY_CI_CPP_AFFECTED = 1
+                # RAY_CI_JAVA_AFFECTED = 1
+                # RAY_CI_PYTHON_AFFECTED = 1
+                # RAY_CI_DOC_AFFECTED = 1
+                # RAY_CI_LINUX_WHEELS_AFFECTED = 1
+                # RAY_CI_MACOS_WHEELS_AFFECTED = 1
+                # RAY_CI_DASHBOARD_AFFECTED = 1
     else:
         RAY_CI_ML_AFFECTED = 1
         RAY_CI_TUNE_AFFECTED = 1
