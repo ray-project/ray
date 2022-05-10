@@ -36,13 +36,6 @@ from ray._private.test_utils import (
 from ray.cluster_utils import Cluster, AutoscalingCluster, cluster_not_supported
 
 
-@pytest.fixture
-def shutdown_only():
-    yield None
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
 def get_default_fixure_system_config():
     system_config = {
         "object_timeout_milliseconds": 200,
@@ -101,6 +94,7 @@ def maybe_external_redis(request, monkeypatch):
     else:
         yield
 
+
 @pytest.fixture
 def external_redis(request, monkeypatch):
     # Setup external Redis and env var for initialization.
@@ -109,6 +103,14 @@ def external_redis(request, monkeypatch):
     next(g)
     yield
     next(g)
+
+
+@pytest.fixture
+def shutdown_only(maybe_external_redis):
+    yield None
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
 
 @contextmanager
 def _ray_start(**kwargs):
