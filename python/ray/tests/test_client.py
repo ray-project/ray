@@ -8,7 +8,7 @@ import threading
 import _thread
 from unittest.mock import patch
 import numpy as np
-from python.ray.util.client.common import OBJECT_TRANSFER_CHUNK_SIZE
+from ray.util.client.common import OBJECT_TRANSFER_CHUNK_SIZE
 
 import ray.util.client.server.server as ray_client_server
 from ray.tests.client_test_utils import create_remote_signal_actor
