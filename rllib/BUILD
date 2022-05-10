@@ -671,7 +671,7 @@ py_test(
     name = "test_ars",
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
-    srcs = ["agents/ars/tests/test_ars.py"]
+    srcs = ["algorithms/ars/tests/test_ars.py"]
 )
 
 # Bandits
@@ -719,7 +719,7 @@ py_test(
     name = "test_es",
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
-    srcs = ["agents/es/tests/test_es.py"]
+    srcs = ["algorithms/es/tests/test_es.py"]
 )
 
 # IMPALA

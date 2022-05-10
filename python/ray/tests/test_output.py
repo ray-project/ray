@@ -472,6 +472,10 @@ run_experiments(
     # Make sure the script is running before sending a sigterm.
     with pytest.raises(subprocess.TimeoutExpired):
         print(proc.wait(timeout=10))
+        std_str = proc.stdout.read().decode("ascii")
+        err_str = proc.stderr.read().decode("ascii")
+        print(f"STDOUT:\n{std_str}")
+        print(f"STDERR:\n{err_str}")
     print(f"Script is running... pid: {proc.pid}")
     # Send multiple signals to terminate it like real world scenario.
     for _ in range(10):
