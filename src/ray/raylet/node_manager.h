@@ -596,7 +596,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Handle a `HandleGCSRestart` request
   void HandleGCSRestart(const rpc::GCSRestartRequest &request,
                         rpc::GCSRestartReply *reply,
-                        rpc::SendReplyCallback send_reply_callback);
+                        rpc::SendReplyCallback send_reply_callback) override;
 
   /// Trigger local GC on each worker of this raylet.
   void DoLocalGC(bool triggered_by_global_gc = false);
