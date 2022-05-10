@@ -7,6 +7,7 @@ import grpc
 import ray
 
 from typing import Dict, List
+from ray import ray_constants
 
 from ray.core.generated.gcs_service_pb2 import (
     GetAllActorInfoRequest,
@@ -106,7 +107,7 @@ class StateDataSourceClient:
 
     def register_raylet_client(self, node_id: str, address: str, port: int):
         full_addr = f"{address}:{port}"
-        options = (("grpc.enable_http_proxy", 0),)
+        options = ray_constants.GLOBAL_GRPC_OPTIONS
         channel = ray._private.utils.init_grpc_channel(
             full_addr, options, asynchronous=True
         )
@@ -116,7 +117,7 @@ class StateDataSourceClient:
         self._raylet_stubs.pop(node_id)
 
     def register_agent_client(self, node_id, address: str, port: int):
-        options = (("grpc.enable_http_proxy", 0),)
+        options = ray_constants.GLOBAL_GRPC_OPTIONS
         channel = ray._private.utils.init_grpc_channel(
             f"{address}:{port}", options=options, asynchronous=True
         )

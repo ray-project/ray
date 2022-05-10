@@ -7,12 +7,13 @@ import ray
 from ray.rllib.agents.dreamer.utils import FreezeParameters
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models.catalog import ModelCatalog
+from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import apply_grad_clipping
-from ray.rllib.utils.typing import AgentID
+from ray.rllib.utils.typing import AgentID, TensorType
 
 torch, nn = try_import_torch()
 if torch:
@@ -23,30 +24,30 @@ logger = logging.getLogger(__name__)
 
 # This is the computation graph for workers (inner adaptation steps)
 def compute_dreamer_loss(
-    obs,
-    action,
-    reward,
-    model,
-    imagine_horizon,
-    discount=0.99,
-    lambda_=0.95,
-    kl_coeff=1.0,
-    free_nats=3.0,
-    log=False,
+    obs: TensorType,
+    action: TensorType,
+    reward: TensorType,
+    model: TorchModelV2,
+    imagine_horizon: int,
+    gamma: float = 0.99,
+    lambda_: float = 0.95,
+    kl_coeff: float = 1.0,
+    free_nats: float = 3.0,
+    log: bool = False,
 ):
-    """Constructs loss for the Dreamer objective
+    """Constructs loss for the Dreamer objective.
 
     Args:
-        obs (TensorType): Observations (o_t)
-        action (TensorType): Actions (a_(t-1))
-        reward (TensorType): Rewards (r_(t-1))
-        model (TorchModelV2): DreamerModel, encompassing all other models
-        imagine_horizon (int): Imagine horizon for actor and critic loss
-        discount (float): Discount
-        lambda_ (float): Lambda, like in GAE
-        kl_coeff (float): KL Coefficient for Divergence loss in model loss
-        free_nats (float): Threshold for minimum divergence in model loss
-        log (bool): If log, generate gifs
+        obs: Observations (o_t).
+        action: Actions (a_(t-1)).
+        reward: Rewards (r_(t-1)).
+        model: DreamerModel, encompassing all other models.
+        imagine_horizon: Imagine horizon for actor and critic loss.
+        gamma: Discount factor gamma.
+        lambda_: Lambda, like in GAE.
+        kl_coeff: KL Coefficient for Divergence loss in model loss.
+        free_nats: Threshold for minimum divergence in model loss.
+        log: If log, generate gifs.
     """
     encoder_weights = list(model.encoder.parameters())
     decoder_weights = list(model.decoder.parameters())
@@ -84,7 +85,7 @@ def compute_dreamer_loss(
     with FreezeParameters(model_weights + critic_weights):
         reward = model.reward(imag_feat).mean
         value = model.value(imag_feat).mean
-    pcont = discount * torch.ones_like(reward)
+    pcont = gamma * torch.ones_like(reward)
     returns = lambda_return(reward[:-1], value[:-1], pcont[:-1], value[-1], lambda_)
     discount_shape = pcont[:1].size()
     discount = torch.cumprod(
@@ -168,7 +169,7 @@ def dreamer_loss(policy, model, dist_class, train_batch):
         train_batch["rewards"],
         policy.model,
         policy.config["imagine_horizon"],
-        policy.config["discount"],
+        policy.config["gamma"],
         policy.config["lambda"],
         policy.config["kl_coeff"],
         policy.config["free_nats"],

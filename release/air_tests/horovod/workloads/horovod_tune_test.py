@@ -1,19 +1,20 @@
 import torch
 import torch.nn as nn
-import os
 import numpy as np
 import torchvision
+from ray.ml import RunConfig
+from ray.ml.train.integrations.horovod import HorovodTrainer
+from ray.tune.tune_config import TuneConfig
+from ray.tune.tuner import Tuner
 from torch.utils.data import DataLoader
 
 import torchvision.transforms as transforms
 
 import ray
 from ray import tune
+from ray import train
 from ray.tune.schedulers import create_scheduler
-from ray.tune.integration.horovod import (
-    DistributedTrainableCreator,
-    distributed_checkpoint_dir,
-)
+
 from ray.util.ml_utils.resnet import ResNet18
 
 from ray.tune.utils.release_test_util import ProgressCallback
@@ -24,7 +25,7 @@ CIFAR10_STATS = {
 }
 
 
-def train(config, checkpoint_dir=None):
+def train_loop_per_worker(config):
     import horovod.torch as hvd
 
     hvd.init()
@@ -36,9 +37,11 @@ def train(config, checkpoint_dir=None):
     )
     epoch = 0
 
-    if checkpoint_dir:
-        with open(os.path.join(checkpoint_dir, "checkpoint")) as f:
-            model_state, optimizer_state, epoch = torch.load(f)
+    checkpoint = train.load_checkpoint()
+    if checkpoint:
+        model_state = checkpoint["model_state"]
+        optimizer_state = checkpoint["optimizer_state"]
+        epoch = checkpoint["epoch"]
 
         net.load_state_dict(model_state)
         optimizer.load_state_dict(optimizer_state)
@@ -76,17 +79,18 @@ def train(config, checkpoint_dir=None):
             # print statistics
             running_loss += loss.item()
             epoch_steps += 1
-            tune.report(loss=running_loss / epoch_steps)
+            train.report(loss=running_loss / epoch_steps)
             if i % 2000 == 1999:  # print every 2000 mini-batches
                 print(
                     "[%d, %5d] loss: %.3f"
                     % (epoch + 1, i + 1, running_loss / epoch_steps)
                 )
 
-        with distributed_checkpoint_dir(step=epoch) as checkpoint_dir:
-            print("this checkpoint dir: ", checkpoint_dir)
-            path = os.path.join(checkpoint_dir, "checkpoint")
-            torch.save((net.state_dict(), optimizer.state_dict(), epoch), path)
+        train.save_checkpoint(
+            model_state=net.state_dict(),
+            optimizer_state=optimizer.state_dict(),
+            epoch=epoch,
+        )
 
 
 if __name__ == "__main__":
@@ -103,15 +107,6 @@ if __name__ == "__main__":
     else:
         ray.init(address="auto")  # assumes ray is started with ray up
 
-    horovod_trainable = DistributedTrainableCreator(
-        train,
-        use_gpu=False if args.smoke_test else True,
-        num_hosts=1 if args.smoke_test else 2,
-        num_workers=2 if args.smoke_test else 2,
-        replicate_pem=False,
-        timeout_s=300,
-    )
-
     transform_train = transforms.Compose(
         [
             transforms.RandomCrop(32, padding=4),
@@ -125,31 +120,50 @@ if __name__ == "__main__":
         root="/tmp/data_cifar", train=True, download=True, transform=transform_train
     )
 
+    horovod_trainer = HorovodTrainer(
+        train_loop_per_worker=train_loop_per_worker,
+        scaling_config={
+            "use_gpu": False if args.smoke_test else True,
+            "num_workers": 2 if args.smoke_test else 4,
+        },
+        train_loop_config={"batch_size": 64, "data": ray.put(dataset)},
+    )
+
     # ensure that checkpointing works.
     pbt = create_scheduler(
         "pbt",
         perturbation_interval=2,
         hyperparam_mutations={
-            "lr": tune.uniform(0.001, 0.1),
+            "train_loop_config": {"lr": tune.uniform(0.001, 0.1)},
         },
     )
 
-    analysis = tune.run(
-        horovod_trainable,
-        metric="loss",
-        mode="min",
-        keep_checkpoints_num=1,
-        scheduler=pbt,
-        config={
-            "lr": 0.1
-            if args.smoke_test
-            else tune.grid_search([0.1 * i for i in range(1, 10)]),
-            "batch_size": 64,
-            "data": ray.put(dataset),
+    tuner = Tuner(
+        horovod_trainer,
+        param_space={
+            "train_loop_config": {
+                "lr": 0.1
+                if args.smoke_test
+                else tune.grid_search([0.1 * i for i in range(1, 10)])
+            }
         },
-        num_samples=1,
-        stop={"training_iteration": 1} if args.smoke_test else None,
-        callbacks=[ProgressCallback()],  # FailureInjectorCallback()
-        fail_fast=True,
+        tune_config=TuneConfig(
+            num_samples=2 if args.smoke_test else 1,
+            metric="loss",
+            mode="min",
+            scheduler=pbt,
+        ),
+        run_config=RunConfig(
+            stop={"training_iteration": 1} if args.smoke_test else None,
+            callbacks=[ProgressCallback()],
+        ),
+        _tuner_kwargs={"fail_fast": False, "keep_checkpoints_num": 1},
     )
-    print("Best hyperparameters found were: ", analysis.best_config)
+
+    result_grid = tuner.fit()
+
+    # Make sure trials do not fail.
+    for result in result_grid:
+        assert not result.error
+
+    print("Best hyperparameters found were: ", result_grid.get_best_result().config)
