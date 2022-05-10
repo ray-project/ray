@@ -22,17 +22,29 @@ logger = logging.getLogger(__name__)
 
 
 # https://github.com/ray-project/ray/issues/6662
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
 @pytest.mark.skipif(client_test_enabled(), reason="interferes with grpc")
-def test_ignore_http_proxy(shutdown_only):
-    ray.init(num_cpus=1)
-    os.environ["http_proxy"] = "http://example.com"
-    os.environ["https_proxy"] = "http://example.com"
+def test_http_proxy(start_http_proxy, shutdown_only):
+    # C++ config `grpc_enable_http_proxy` only initializes once, so we have to
+    # run driver as a separate process to make sure the correct config value
+    # is initialized.
+    script = """
+import ray
 
-    @ray.remote
-    def f():
-        return 1
+ray.init(num_cpus=1)
 
-    assert ray.get(f.remote()) == 1
+@ray.remote
+def f():
+    return 1
+
+assert ray.get(f.remote()) == 1
+"""
+
+    env = start_http_proxy
+    run_string_as_driver(script, dict(os.environ, **env))
 
 
 # https://github.com/ray-project/ray/issues/16025
