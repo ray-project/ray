@@ -125,7 +125,9 @@ class ActorManager {
   /// \param actor_id The actor id of the handle that will be invalidated.
   void OnActorKilled(const ActorID &actor_id);
 
-  /// Subscribe to the state of actor.
+  /// Subscribe to the state of actor. This method is idempotent and will ensure the actor
+  /// only be subscribed once.
+  ///
   /// \param actor_id ID of the actor to be subscribed.
   void SubscribeActorState(const ActorID &actor_id);
 
@@ -176,6 +178,14 @@ class ActorManager {
   void HandleActorStateNotification(const ActorID &actor_id,
                                     const rpc::ActorTableData &actor_data);
 
+  /// Function that's invoked when the actor is out of scope.
+  ///
+  /// \param actor_handle The actor handle that will be marked as invalidate.
+  void MakeActorInvalid(std::shared_ptr<ActorHandle> actor_handle);
+
+  /// Check if actor is valid.
+  bool IsValidActor(const ActorID &actor_id) const;
+
   /// GCS client.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
 
@@ -201,8 +211,9 @@ class ActorManager {
   absl::flat_hash_map<std::string, ActorID> cached_actor_name_to_ids_
       GUARDED_BY(cache_mutex_);
 
-  /// Set of subscribed actors.
-  absl::flat_hash_set<ActorID> subscribed_actors_;
+  /// Map from actor id to it's state(true: valid, false: invalid).
+  /// The state of actor is true When the actor is out of scope or is killed
+  absl::flat_hash_map<ActorID, bool> subscribed_actors_;
   /// Protects access `subscribed_actors_`.
   mutable absl::Mutex subscription_mutex_;
 };

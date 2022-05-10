@@ -182,17 +182,7 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
 }
 
 void ActorManager::OnActorKilled(const ActorID &actor_id) {
-  const auto &actor_handle = GetActorHandle(actor_id);
-  const auto &actor_name = actor_handle->GetName();
-  const auto &ray_namespace = actor_handle->GetNamespace();
-
-  /// Invalidate named actor cache.
-  if (!actor_name.empty()) {
-    RAY_LOG(DEBUG) << "Actor name cache is invalided for the actor of name " << actor_name
-                   << " namespace " << ray_namespace << " id " << actor_id;
-    absl::MutexLock lock(&cache_mutex_);
-    cached_actor_name_to_ids_.erase(GenerateCachedActorName(ray_namespace, actor_name));
-  }
+  MakeActorInvalid(GetActorHandle(actor_id));
 }
 
 void ActorManager::WaitForActorOutOfScope(
@@ -203,9 +193,12 @@ void ActorManager::WaitForActorOutOfScope(
   if (it == actor_handles_.end()) {
     actor_out_of_scope_callback(actor_id);
   } else {
+    auto actor_handle = it->second;
     // GCS actor manager will wait until the actor has been created before polling the
     // owner. This should avoid any asynchronous problems.
-    auto callback = [actor_id, actor_out_of_scope_callback](const ObjectID &object_id) {
+    auto callback = [this, actor_id, actor_handle, actor_out_of_scope_callback](
+                        const ObjectID &object_id) {
+      MakeActorInvalid(actor_handle);
       actor_out_of_scope_callback(actor_id);
     };
 
@@ -215,6 +208,7 @@ void ActorManager::WaitForActorOutOfScope(
     const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
     if (!reference_counter_->SetDeleteCallback(actor_creation_return_id, callback)) {
       RAY_LOG(DEBUG) << "ActorID reference already gone for " << actor_id;
+      MakeActorInvalid(actor_handle);
       actor_out_of_scope_callback(actor_id);
     }
   }
@@ -281,8 +275,9 @@ ActorID ActorManager::GetCachedNamedActorID(const std::string &actor_name) {
 
 void ActorManager::SubscribeActorState(const ActorID &actor_id) {
   {
+    // Make sure this method only be executed once.
     absl::MutexLock lock(&subscription_mutex_);
-    if (!subscribed_actors_.emplace(actor_id).second) {
+    if (!subscribed_actors_.emplace(actor_id, /*valid*/ true).second) {
       return;
     }
   }
@@ -303,12 +298,43 @@ void ActorManager::SubscribeActorState(const ActorID &actor_id) {
       actor_notification_callback,
       [this, actor_id, cached_actor_name](Status status) {
         if (status.ok() && !cached_actor_name.empty()) {
-          {
+          // It should be ignored if the finished callback of the subscription comes
+          // after the actor died, otherwise the stale named actor will be cached.
+          // NOTE: We can not guarantee the order of arrival of `on_done` callback and
+          // subscribe callback for the time being.
+          if (IsValidActor(actor_id)) {
             absl::MutexLock lock(&cache_mutex_);
             cached_actor_name_to_ids_.emplace(cached_actor_name, actor_id);
           }
         }
       }));
+}
+
+void ActorManager::MakeActorInvalid(std::shared_ptr<ActorHandle> actor_handle) {
+  RAY_CHECK(actor_handle != nullptr);
+  auto actor_id = actor_handle->GetActorID();
+  const auto &actor_name = actor_handle->GetName();
+  const auto &ray_namespace = actor_handle->GetNamespace();
+
+  /// Invalidate named actor cache.
+  if (!actor_name.empty()) {
+    RAY_LOG(DEBUG) << "Actor name cache is invalided for the actor of name " << actor_name
+                   << " namespace " << ray_namespace << " id " << actor_id;
+    absl::MutexLock lock(&cache_mutex_);
+    cached_actor_name_to_ids_.erase(GenerateCachedActorName(ray_namespace, actor_name));
+  }
+
+  absl::MutexLock lock(&subscription_mutex_);
+  auto iter = subscribed_actors_.find(actor_id);
+  if (iter != subscribed_actors_.end()) {
+    iter->second = false;
+  }
+}
+
+bool ActorManager::IsValidActor(const ActorID &actor_id) const {
+  absl::MutexLock lock(&subscription_mutex_);
+  auto iter = subscribed_actors_.find(actor_id);
+  return iter != subscribed_actors_.end() && iter->second;
 }
 
 }  // namespace core
