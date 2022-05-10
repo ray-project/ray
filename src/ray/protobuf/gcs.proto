@@ -186,7 +186,7 @@ message ProfileTableData {
   // object_manager, or node_manager.
   string component_type = 1;
   // An identifier for the component that generated the event.
-  bytes message_type = 2;
+  bytes component_id = 2;
   // An identifier for the node that generated the event.
   string node_ip_address = 3;
   // This is a batch of profiling events. We batch these together for

@@ -222,7 +222,7 @@ struct Mocker {
   static std::shared_ptr<rpc::ProfileTableData> GenProfileTableData(
       const NodeID &node_id) {
     auto profile_table_data = std::make_shared<rpc::ProfileTableData>();
-    profile_table_data->set_message_type(node_id.Binary());
+    profile_table_data->set_component_id(node_id.Binary());
     return profile_table_data;
   }
 
