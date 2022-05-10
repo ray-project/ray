@@ -8,7 +8,7 @@ def echo_and_get(x_list):  # List[ObjectRef]
     print("values:", ray.get(x_list))
 
 
-# Put three values into Ray's object store.
+# Put the values (1, 2, 3) into Ray's object store.
 a, b, c = ray.put(1), ray.put(2), ray.put(3)
 
 # Passing an object as a nested argument to `echo_and_get`. Ray does not

@@ -11,7 +11,7 @@ def echo(a: int, b: int, c: int):
 echo.remote(1, 2, 3)
 # -> prints "1 2 3"
 
-# Put the value `1` into Ray's object store.
+# Put the values (1, 2, 3) into Ray's object store.
 a, b, c = ray.put(1), ray.put(2), ray.put(3)
 
 # Passing an object as a top-level argument to `echo`. Ray will de-reference top-level
