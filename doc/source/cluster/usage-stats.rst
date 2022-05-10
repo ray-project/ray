@@ -24,7 +24,7 @@ What data is collected?
 -----------------------
 
 We collect non-sensitive data that helps us understand how Ray is used (e.g., which Ray libraries are used).
-**Personally identifiable data will never be collected.** Please check ``UsageStatsToReport`` in `usage_lib.py <https://github.com/ray-project/ray/blob/master/python/ray/_private/usage/usage_lib.py>`_ to see the data we collect.
+**Personally identifiable data will never be collected.** Please check :ref:`UsageStatsToReport <ray-usage-stats-data-ref>` to see the data we collect.
 
 .. _usage-disable:
 
