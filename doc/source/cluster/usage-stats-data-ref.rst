@@ -1,5 +1,5 @@
-Usage Stats Data
-================
+Usage Stats Data API
+====================
 
 .. _ray-usage-stats-data-ref:
 
