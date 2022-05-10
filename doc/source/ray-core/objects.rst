@@ -139,11 +139,9 @@ There are two different ways one can pass an object to a Ray task or method. Dep
 
 .. literalinclude:: doc_code/obj_val.py
 
-**Passing an object as a nested argument**: When an object is passed within a nested object, for example, within a Python list, Ray will *not* de-reference it. This means that the task will need to call ``ray.get()`` on the reference to fetch the concrete value. However, if the task never calls ``ray.get()``, then the object value never needs to be transferred to the machine the task is running on.
+**Passing an object as a nested argument**: When an object is passed within a nested object, for example, within a Python list, Ray will *not* de-reference it. This means that the task will need to call ``ray.get()`` on the reference to fetch the concrete value. However, if the task never calls ``ray.get()``, then the object value never needs to be transferred to the machine the task is running on. We recommend passing objects as top-level arguments where possible, but nested arguments can be useful for passing objects on to other tasks without needing to see the data.
 
 .. literalinclude:: doc_code/obj_ref.py
-
-We recommend passing objects as top-level arguments where possible, but nested arguments can be useful for passing objects on to other tasks without needing to see the data.
 
 The top-level vs not top-level passing convention also applies to actor constructors and actor method calls:
 
