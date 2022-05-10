@@ -21,6 +21,7 @@ SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 WAITING_FOR_DEPENDENCIES = "WAITING_FOR_DEPENDENCIES"
 SCHEDULED = "SCHEDULED"
 FINISHED = "FINISHED"
+RUNNING = "RUNNING"
 
 
 def test_cached_object(ray_start_cluster):
@@ -1063,7 +1064,7 @@ def test_memory_util(ray_start_cluster):
             if "Attempt #2" in line and WAITING_FOR_DEPENDENCIES in line
         ]
         reconstructing_scheduled = [
-            line for line in info if "Attempt #2" in line and SCHEDULED in line
+            line for line in info if "Attempt #2" in line and RUNNING in line
         ]
         reconstructing_finished = [
             line for line in info if "Attempt #2" in line and FINISHED in line

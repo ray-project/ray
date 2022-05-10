@@ -528,6 +528,10 @@ enum TaskStatus {
   SCHEDULED = 2;
   // The task finished successfully.
   FINISHED = 3;
+  // The task is delivered to the worker process and running.
+  RUNNING = 4;
+  // The task has failed to be scheduled and being rescheduled.
+  RESCHEDULED = 5;
 }
 
 // Debug info for a referenced object.

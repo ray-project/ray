@@ -47,6 +47,8 @@ class TaskFinisherInterface {
                                       const rpc::RayErrorInfo *ray_error_info = nullptr,
                                       bool mark_task_object_failed = true) = 0;
 
+  virtual void MarkTaskRunning(const TaskID &task_id) = 0;
+
   virtual void OnTaskDependenciesInlined(
       const std::vector<ObjectID> &inlined_dependency_ids,
       const std::vector<ObjectID> &contained_ids) = 0;
@@ -230,6 +232,18 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \return Whether the task is pending.
   bool IsTaskPending(const TaskID &task_id) const;
 
+  /// Return whether the task is running.
+  ///
+  /// \param[in] task_id ID of the task to query.
+  /// \return Whether the task is running.
+  bool IsTaskRunning(const TaskID &task_id) const;
+
+  /// Return whether the task is rescheduling.
+  ///
+  /// \param[in] task_id ID of the task to query.
+  /// \return Whether the task is running.
+  bool IsTaskRescheduling(const TaskID &task_id) const;
+
   /// Return the number of submissible tasks. This includes both tasks that are
   /// pending execution and tasks that have finished but that may be
   /// re-executed to recover from a failure.
@@ -248,6 +262,11 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   ///
   /// \param[in] task_id The task that is now scheduled.
   void MarkDependenciesResolved(const TaskID &task_id) override;
+
+  /// Record that the given task is submitted to the worker and will be executing.
+  ///
+  /// \param[in] task_id The task that is will be running.
+  void MarkTaskRunning(const TaskID &task_id) override;
 
   /// Add debug information about the current task status for the ObjectRefs
   /// included in the given stats.
@@ -271,6 +290,10 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     }
 
     bool IsPending() const { return status != rpc::TaskStatus::FINISHED; }
+
+    bool IsRunning() const { return status == rpc::TaskStatus::RUNNING; }
+
+    bool IsRescheduling() const { return status == rpc::TaskStatus::RESCHEDULED; }
 
     /// The task spec. This is pinned as long as the following are true:
     /// - The task is still pending execution. This means that the task may

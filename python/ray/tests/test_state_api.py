@@ -722,12 +722,20 @@ def test_list_tasks(shutdown_only):
 
         time.sleep(30)
 
+    @ray.remote(num_gpus=1)
+    def impossible():
+        pass
+
     out = [f.remote() for _ in range(2)]  # noqa
     g_out = g.remote(f.remote())  # noqa
+    im = impossible.remote()  # noqa
 
     def verify():
         tasks = list(list_tasks().values())
-        correct_num_tasks = len(tasks) == 4
+        correct_num_tasks = len(tasks) == 5
+        running = len(
+            list(filter(lambda task: task["scheduling_state"] == "RUNNING", tasks))
+        )
         scheduled = len(
             list(filter(lambda task: task["scheduling_state"] == "SCHEDULED", tasks))
         )
@@ -740,7 +748,12 @@ def test_list_tasks(shutdown_only):
             )
         )
 
-        return correct_num_tasks and scheduled == 3 and waiting_for_dep == 1
+        return (
+            correct_num_tasks
+            and running == 2
+            and waiting_for_dep == 1
+            and scheduled == 2
+        )
 
     wait_for_condition(verify)
     print(list_tasks())
