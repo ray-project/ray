@@ -509,14 +509,6 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
     return;
   }
 
-  // Try to pull the object from a remote node. If the object is spilled on the local
-  // disk of the remote node, it will be restored by PushManager prior to pushing.
-  bool did_pull = PullFromRandomLocation(object_id);
-  if (did_pull) {
-    UpdateRetryTimer(request, object_id);
-    return;
-  }
-
   // check if we can restore the object directly in the current raylet.
   // first check local spilled objects
   std::string direct_restore_url = get_locally_spilled_object_url_(object_id);
@@ -537,6 +529,14 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
                                                << " failed, will retry later: " << status;
                               }
                             });
+    return;
+  }
+
+  // Try to pull the object from a remote node. If the object is spilled on the local
+  // disk of the remote node, it will be restored by PushManager prior to pushing.
+  bool did_pull = PullFromRandomLocation(object_id);
+  if (did_pull) {
+    UpdateRetryTimer(request, object_id);
     return;
   }
 
