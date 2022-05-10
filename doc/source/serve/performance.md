@@ -7,7 +7,7 @@ This section should help you:
 
 :::{note}
 While this section offers some tips and tricks to improve the performance of your Serve deployment,
-the {ref}`architecture doc <serve-architecture>` is helpful to gain a deeper understanding of these contexts and parameters.
+the [architecture doc](serve-architecture) is helpful to gain a deeper understanding of these contexts and parameters.
 :::
 
 ```{contents}
@@ -30,7 +30,7 @@ to benchmark on your hardware.
 
 The performance issue you're most likely to encounter is high latency and/or low throughput for requests.
 
-If you have set up {ref}`monitoring <serve-monitoring>` with Ray and Ray Serve, you will likely observe that
+If you have set up [monitoring](serve-monitoring) with Ray and Ray Serve, you will likely observe that
 `serve_num_router_requests` is constant while your load increases
 `serve_deployment_queuing_latency_ms` is spiking up as queries queue up in the background
 
@@ -53,7 +53,7 @@ proper backpressure. You can increase the value in the Deployment decorator.
 
 If your deployment can process a batch at a time at a sublinear latency
 (for example, if it takes 1ms to process 1 query and 5ms to process 10 of them)
-then batching is your best approach. Check out the {ref}`batching guide <serve-batching>` to
+then batching is your best approach. Check out the [batching guide](serve-batching) to
 make your deployment accept batches (especially for GPU-based ML inference). You might want to tune your `max_batch_size` and `batch_wait_timeout` in the `@serve.batch` decorator to maximize the benefits:
 
 - `max_batch_size` specifies how big the batch should be. Generally,

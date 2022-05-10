@@ -244,7 +244,7 @@ this limitation.
 :::
 
 :::{note}
-The Ray Serve Autoscaler is an application-level autoscaler that sits on top of the {ref}`Ray Autoscaler<cluster-index>`.
+The Ray Serve Autoscaler is an application-level autoscaler that sits on top of the [Ray Autoscaler](cluster-index).
 Concretely, this means that the Ray Serve autoscaler asks Ray to start a number of replica actors based on the request demand.
 If the Ray Autoscaler determines there aren't enough available CPUs to place these actors, it responds by adding more nodes.
 Similarly, when Ray Serve scales down and terminates some replica actors, it may result in some nodes being empty, at which point the Ray autoscaler will remove those nodes.
@@ -257,7 +257,7 @@ Similarly, when Ray Serve scales down and terminates some replica actors, it may
 To assign hardware resources per replica, you can pass resource requirements to
 `ray_actor_options`.
 By default, each replica requires one CPU.
-To learn about options to pass in, take a look at {ref}`Resources with Actor<actor-resource-guide>` guide.
+To learn about options to pass in, take a look at [Resources with Actor](actor-resource-guide) guide.
 
 For example, to create a deployment where each replica uses a single GPU, you can do the
 following:
@@ -289,7 +289,7 @@ def func(*args):
 
 Deep learning models like PyTorch and Tensorflow often use multithreading when performing inference.
 The number of CPUs they use is controlled by the OMP_NUM_THREADS environment variable.
-To {ref}`avoid contention<omp-num-thread-note>`, Ray sets `OMP_NUM_THREADS=1` by default because Ray workers and actors use a single CPU by default.
+To [avoid contention](omp-num-thread-note), Ray sets `OMP_NUM_THREADS=1` by default because Ray workers and actors use a single CPU by default.
 If you *do* want to enable this parallelism in your Serve deployment, just set OMP_NUM_THREADS to the desired value either when starting Ray or in your function/class definition:
 
 ```bash

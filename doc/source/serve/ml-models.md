@@ -38,7 +38,7 @@ class BatchingExample:
 BatchingExample.deploy()
 ```
 
-Please take a look at {ref}`Batching Tutorial<serve-batch-tutorial>` for a deep
+Please take a look at [Batching Tutorial](serve-batch-tutorial) for a deep
 dive.
 
 (serve-model-composition)=
@@ -47,7 +47,7 @@ dive.
 
 :::{note}
 Serve recently added an experimental API for building deployment graphs of multiple models.
-Please take a look at the {ref}`Deployment Graph API <serve-deployment-graph>` and try it out!
+Please take a look at the [Deployment Graph API](serve-deployment-graph) and try it out!
 :::
 
 Ray Serve supports composing individually scalable models into a single model
@@ -294,7 +294,7 @@ tutorial is available [here](https://github.com/mlflow/mlflow/tree/master/exampl
 Ray Serve seamlessly integrates with popular Python ML libraries.
 Below are tutorials with some of these frameworks to help get you started.
 
-- {ref}`PyTorch Tutorial<serve-pytorch-tutorial>`
-- {ref}`Scikit-Learn Tutorial<serve-sklearn-tutorial>`
-- {ref}`Keras and Tensorflow Tutorial<serve-tensorflow-tutorial>`
-- {ref}`RLlib Tutorial<serve-rllib-tutorial>`
+- [PyTorch Tutorial](serve-pytorch-tutorial)
+- [Scikit-Learn Tutorial](serve-sklearn-tutorial)
+- [Keras and Tensorflow Tutorial](serve-tensorflow-tutorial)
+- [RLlib Tutorial](serve-rllib-tutorial)

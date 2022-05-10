@@ -7,7 +7,7 @@ This section should help you understand how to debug and monitor your Serve appl
 ## Ray Dashboard
 
 A high-level way to monitor your Ray Serve application is via the Ray Dashboard.
-See the {ref}`Ray Dashboard documentation <ray-dashboard>` for a detailed overview, including instructions on how to view the dashboard.
+See the [Ray Dashboard documentation](ray-dashboard) for a detailed overview, including instructions on how to view the dashboard.
 
 Below is an example of what the Ray Dashboard might look like for a Serve deployment:
 
@@ -16,13 +16,13 @@ Below is an example of what the Ray Dashboard might look like for a Serve deploy
 ```
 
 Here you can see the Serve controller actor, an HTTP proxy actor, and all of the replicas for each Serve deployment.
-To learn about the function of the controller and proxy actors, see the {ref}`Serve Architecture page <serve-architecture>`.
+To learn about the function of the controller and proxy actors, see the [Serve Architecture page](serve-architecture).
 In this example pictured above, we have a single-node cluster with a deployment named Counter with `num_replicas=2`.
 
 ## Logging
 
 :::{note}
-For an overview of logging in Ray, see {ref}`Ray Logging <ray-logging>`.
+For an overview of logging in Ray, see [Ray Logging](ray-logging).
 :::
 
 Ray Serve uses Python's standard `logging` facility with the `"ray.serve"` named logger.
@@ -197,7 +197,7 @@ You should see something similar to the following:
 ## Metrics
 
 Ray Serve exposes important system metrics like the number of successful and
-errored requests through the {ref}`Ray metrics monitoring infrastructure <ray-metrics>`. By default,
+errored requests through the [Ray metrics monitoring infrastructure](ray-metrics). By default,
 the metrics are exposed in Prometheus format on each node.
 
 The following metrics are exposed by Ray Serve:
@@ -254,7 +254,7 @@ ray_serve_deployment_processing_latency_ms_sum{...,deployment="f",...} 99279.304
 
 which indicates that the average processing latency is just over one second, as expected.
 
-You can even define a {ref}`custom metric <application-level-metrics>` to use in your deployment, and tag it with the current deployment or replica.
+You can even define a [custom metric](application-level-metrics) to use in your deployment, and tag it with the current deployment or replica.
 Here's an example:
 
 ```{literalinclude} ../../../python/ray/serve/examples/doc/snippet_custom_metric.py
@@ -263,4 +263,4 @@ Here's an example:
 ```
 
 See the
-{ref}`Ray Metrics documentation <ray-metrics>` for more details, including instructions for scraping these metrics using Prometheus.
+[Ray Metrics documentation](ray-metrics) for more details, including instructions for scraping these metrics using Prometheus.

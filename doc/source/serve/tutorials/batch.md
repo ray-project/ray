@@ -79,7 +79,7 @@ the maximum possible batch size that will be executed at once.
 :start-after: __doc_deploy_begin__
 ```
 
-Let's define a {ref}`Ray remote task<ray-remote-functions>` to send queries in
+Let's define a [Ray remote task](ray-remote-functions) to send queries in
 parallel. As you can see, the first batch has a batch size of 1, and the subsequent
 queries have a batch size of 4. Even though each query is issued independently,
 Ray Serve was able to evaluate them in batches.
@@ -91,12 +91,12 @@ Ray Serve was able to evaluate them in batches.
 
 What if you want to evaluate a whole batch in Python? Ray Serve allows you to send
 queries via the Python API. A batch of queries can either come from the web server
-or the Python API. Learn more {ref}`here<serve-handle-explainer>`.
+or the Python API. Learn more [here](serve-handle-explainer).
 
 To query the deployment via the Python API, we can use `Deployment.get_handle` to receive
 a handle to the corresponding deployment. To enqueue a query, you can call
 `handle.method.remote(data)`. This call returns immediately
-with a {ref}`Ray ObjectRef<ray-object-refs>`. You can call `ray.get` to retrieve
+with a [Ray ObjectRef](ray-object-refs). You can call `ray.get` to retrieve
 the result.
 
 ```{literalinclude} ../../../../python/ray/serve/examples/doc/tutorial_batch.py

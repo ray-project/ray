@@ -21,22 +21,22 @@ Get in touch with us if you're using or considering using [Ray Serve](https://do
 Ray Serve is an easy-to-use scalable model serving library built on Ray.  Ray Serve is:
 
 - **Framework-agnostic**: Use a single toolkit to serve everything from deep learning models
-  built with frameworks like {ref}`PyTorch <serve-pytorch-tutorial>`,
-  {ref}`Tensorflow, and Keras <serve-tensorflow-tutorial>`, to {ref}`Scikit-Learn <serve-sklearn-tutorial>` models, to arbitrary Python business logic.
+  built with frameworks like [PyTorch](serve-pytorch-tutorial),
+  [Tensorflow, and Keras](serve-tensorflow-tutorial), to [Scikit-Learn](serve-sklearn-tutorial) models, to arbitrary Python business logic.
 - **Python-first**: Configure your model serving declaratively in pure Python, without needing YAML or JSON configs.
 
-Ray Serve enables composing multiple ML models into a {ref}`deployment graph <serve-deployment-graph>`. This allows you to write a complex inference service consisting of multiple ML models and business logic all in Python code.
+Ray Serve enables composing multiple ML models into a [deployment graph](serve-deployment-graph). This allows you to write a complex inference service consisting of multiple ML models and business logic all in Python code.
 
 Since Ray Serve is built on Ray, it allows you to easily scale to many machines, both in your datacenter and in the cloud.
 
 Ray Serve can be used in two primary ways to deploy your models at scale:
 
 1. Have Python functions and classes automatically placed behind HTTP endpoints.
-2. Alternatively, call them from {ref}`within your existing Python web server <serve-web-server-integration-tutorial>` using the Python-native {ref}`servehandle-api`.
+2. Alternatively, call them from [within your existing Python web server](serve-web-server-integration-tutorial) using the Python-native {ref}`servehandle-api`.
 
 :::{note}
 Serve recently added an experimental API for building deployment graphs of multiple models.
-Please take a look at the {ref}`Deployment Graph API <serve-deployment-graph>` and try it out!
+Please take a look at the [Deployment Graph API](serve-deployment-graph) and try it out!
 :::
 
 :::{tip}
@@ -190,7 +190,7 @@ The first approach is easy to get started with, but it's hard to scale each comp
 requires vendor lock-in (SageMaker), framework-specific tooling (TFServing), and a general
 lack of flexibility.
 
-Ray Serve solves these problems by giving you a simple web server (and the ability to {ref}`use your own <serve-web-server-integration-tutorial>`) while still handling the complex routing, scaling, and testing logic
+Ray Serve solves these problems by giving you a simple web server (and the ability to [use your own](serve-web-server-integration-tutorial)) while still handling the complex routing, scaling, and testing logic
 necessary for production deployments.
 
 Beyond scaling up your deployments with multiple replicas, Ray Serve also enables:

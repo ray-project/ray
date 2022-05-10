@@ -190,12 +190,12 @@ Let's go over them one by one.
 #### Ray AIR `ModelWrapper`
 
 Ray Serve provides a suite of adapters to convert HTTP requests to ML inputs like `numpy` arrays.
-You can just use it with {ref}`Ray AI Runtime (AIR) model wrapper<air-serve-integration>` feature
+You can just use it with [Ray AI Runtime (AIR) model wrapper](air-serve-integration) feature
 to one click deploy pre-trained models.
 
 For example, we provide a simple adapter for n-dimensional array.
 
-With {ref}`model wrappers<air-serve-integration>`, you can specify it via the `http_adapter` field.
+With [model wrappers](air-serve-integration), you can specify it via the `http_adapter` field.
 
 ```python
 from ray import serve
@@ -228,7 +228,7 @@ ModelWrapperDeployment.deploy(..., http_adapter=User)
 
 #### Serve Deployment Graph `DAGDriver`
 
-In {ref}`Serve Deployment Graph <serve-deployment-graph>`, you can configure
+In [Serve Deployment Graph](serve-deployment-graph), you can configure
 `ray.serve.drivers.DAGDriver` to accept an http adapter via it's `http_adapter` field.
 
 For example, the json request adapters parse JSON in HTTP body:
@@ -337,7 +337,7 @@ client = serve.start(
 ## ServeHandle: Calling Deployments from Python
 
 Ray Serve enables you to query models both from HTTP and Python. This feature
-enables seamless {ref}`model composition<serve-model-composition>`. You can
+enables seamless [model composition](serve-model-composition). You can
 get a `ServeHandle` corresponding to deployment, similar how you can
 reach a deployment through HTTP via a specific route. When you issue a request
 to a deployment through `ServeHandle`, the request is load balanced across
@@ -406,7 +406,7 @@ flag to toggle between them.
 
 The async handle has performance advantage because it uses asyncio directly; as compared
 to the sync handle, which talks to an asyncio event loop in a thread. To learn more about
-the reasoning behind these, checkout our {ref}`architecture documentation <serve-architecture>`.
+the reasoning behind these, checkout our [architecture documentation](serve-architecture).
 
 ## Integrating with existing web servers
 

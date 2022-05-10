@@ -50,7 +50,7 @@ and run them in Ray Serve: for example, you can run a model compiled by
 ## How does Serve compare to AWS SageMaker, Azure ML, Google AI Platform?
 
 Ray Serve brings the scalability and parallelism of these hosted offering to
-your own infrastructure. You can use our {ref}`cluster launcher <cluster-cloud>`
+your own infrastructure. You can use our [cluster launcher](cluster-cloud)
 to deploy Ray Serve to all major public clouds, K8s, as well as on bare-metal, on-premise machines.
 
 Compared to these offerings, Ray Serve lacks a unified user interface and functionality
@@ -63,7 +63,7 @@ build your own ML platform on top.
 You can develop Ray Serve on your laptop, deploy it on a dev box, and scale it out
 to multiple machines or K8s cluster without changing one lines of code. It's a lot
 easier to get started with when you don't need to provision and manage K8s cluster.
-When it's time to deploy, you can use Ray {ref}`cluster launcher <cluster-cloud>`
+When it's time to deploy, you can use Ray [cluster launcher](cluster-cloud)
 to transparently put your Ray Serve application in K8s.
 
 Compare to these frameworks letting you deploy ML models on K8s, Ray Serve lacks
