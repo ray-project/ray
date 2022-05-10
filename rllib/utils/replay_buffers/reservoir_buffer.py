@@ -6,7 +6,10 @@ import ray  # noqa F401
 import psutil  # noqa E402
 
 from ray.rllib.utils.annotations import ExperimentalAPI, override
-from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer, warn_replay_capacity
+from ray.rllib.utils.replay_buffers.replay_buffer import (
+    ReplayBuffer,
+    warn_replay_capacity,
+)
 from ray.rllib.utils.typing import SampleBatchType
 
 
