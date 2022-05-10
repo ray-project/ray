@@ -68,7 +68,7 @@ Finally, you can create a ``Dataset`` from existing data in the Ray object store
     ds = ray.data.from_dask(dask_df)
 
 From Torch/TensorFlow
----------------------------------------
+---------------------
 
 .. tabbed:: PyTorch
 
@@ -119,3 +119,27 @@ From Torch/TensorFlow
         features, label = dataset.take(1)[0]
         features.shape  # TensorShape([32, 32, 3])
         label  # <tf.Tensor: shape=(), dtype=int64, numpy=7>
+
+
+From 🤗 (Hugging Face) Datasets
+-------------------------------
+
+You can convert 🤗 Datasets into Ray Datasets by using
+:py:class:`~ray.data.from_huggingface`. This function accesses the underlying Arrow table and
+converts it into a Ray Dataset directly.
+
+.. warning::
+    :py:class:`~ray.data.from_huggingface` doesn't support parallel
+    reads. This will not usually be an issue with in-memory 🤗 Datasets,
+    but may fail with large memory-mapped 🤗 Datasets. 🤗 ``IterableDataset``
+    objects are not supported.
+
+.. code-block:: python
+
+    import ray.data
+    from datasets import load_dataset
+
+    hf_datasets = load_dataset("wikitext", "wikitext-2-raw-v1")
+    ray_datasets = ray.data.from_huggingface(hf_datasets)
+    ray_datasets["train"].take(2)
+    # [{'text': ''}, {'text': ' = Valkyria Chronicles III = \n'}]
