@@ -201,8 +201,10 @@ class ActorManager {
   absl::flat_hash_map<std::string, ActorID> cached_actor_name_to_ids_
       GUARDED_BY(cache_mutex_);
 
-  /// Mutex of actor's state subscription.
-  mutable absl::Mutex subscribe_mutex_;
+  /// Set of subscribed actors.
+  absl::flat_hash_set<ActorID> subscribed_actors_;
+  /// Protects access `subscribed_actors_`.
+  mutable absl::Mutex subscription_mutex_;
 };
 
 }  // namespace core

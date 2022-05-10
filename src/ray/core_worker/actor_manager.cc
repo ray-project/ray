@@ -164,7 +164,6 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
   reference_counter_->AddLocalReference(actor_creation_return_id, call_site);
   direct_actor_submitter_->AddActorQueueIfNotExists(
       actor_id, actor_handle->MaxPendingCalls(), actor_handle->ExecuteOutOfOrder());
-  bool is_actor_state_subscribed = actor_handle->IsActorStateSubscribed();
   bool inserted;
   {
     absl::MutexLock lock(&mutex_);
@@ -177,14 +176,6 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
     // subscribe any messages, we can set any value bigger than -1(we use 0 here).
     direct_actor_submitter_->ConnectActor(actor_id, caller_address, /*num_restarts=*/0);
     return inserted;
-  }
-
-  if (inserted) {
-    // NOTE: The named actor can only be cached after a successful subscription.
-    if (!cached_actor_name.empty() && is_actor_state_subscribed) {
-      absl::MutexLock lock(&cache_mutex_);
-      cached_actor_name_to_ids_.emplace(cached_actor_name, actor_id);
-    }
   }
 
   return inserted;
@@ -289,16 +280,17 @@ ActorID ActorManager::GetCachedNamedActorID(const std::string &actor_name) {
 }
 
 void ActorManager::SubscribeActorState(const ActorID &actor_id) {
-  auto actor_handle = GetActorHandle(actor_id);
-  RAY_CHECK(actor_handle != nullptr);
-  if (!actor_handle->IsActorStateUnsubscribed()) {
-    return;
+  {
+    absl::MutexLock lock(&subscription_mutex_);
+    if (!subscribed_actors_.emplace(actor_id).second) {
+      return;
+    }
   }
 
-  absl::MutexLock lock(&subscribe_mutex_);
-  if (!actor_handle->IsActorStateUnsubscribed()) {
-    return;
-  }
+  auto actor_handle = GetActorHandle(actor_id);
+  RAY_CHECK(actor_handle != nullptr);
+  auto cached_actor_name =
+      GenerateCachedActorName(actor_handle->GetNamespace(), actor_handle->GetName());
 
   // Register a callback to handle actor notifications.
   auto actor_notification_callback =
@@ -307,14 +299,16 @@ void ActorManager::SubscribeActorState(const ActorID &actor_id) {
                 std::placeholders::_1,
                 std::placeholders::_2);
   RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
-      actor_id, actor_notification_callback, [actor_handle](const Status &status) {
-        if (status.ok()) {
-          actor_handle->SetActorStateSubscribeStatus(
-              ActorStateSubscribeStatus::SUBSCRIBED);
+      actor_id,
+      actor_notification_callback,
+      [this, actor_id, cached_actor_name](Status status) {
+        if (status.ok() && !cached_actor_name.empty()) {
+          {
+            absl::MutexLock lock(&cache_mutex_);
+            cached_actor_name_to_ids_.emplace(cached_actor_name, actor_id);
+          }
         }
       }));
-
-  actor_handle->SetActorStateSubscribeStatus(ActorStateSubscribeStatus::SUBSCRIBING);
 }
 
 }  // namespace core

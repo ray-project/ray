@@ -26,7 +26,6 @@
 namespace ray {
 namespace core {
 
-enum ActorStateSubscribeStatus { UNSUBSCRIBED, SUBSCRIBING, SUBSCRIBED };
 class ActorHandle {
  public:
   ActorHandle(rpc::ActorHandle inner)
@@ -101,18 +100,6 @@ class ActorHandle {
 
   bool ExecuteOutOfOrder() const { return inner_.execute_out_of_order(); }
 
-  bool IsActorStateUnsubscribed() const {
-    return actor_state_subscribe_status_ == ActorStateSubscribeStatus::UNSUBSCRIBED;
-  }
-
-  bool IsActorStateSubscribed() const {
-    return actor_state_subscribe_status_ == ActorStateSubscribeStatus::SUBSCRIBED;
-  }
-
-  void SetActorStateSubscribeStatus(ActorStateSubscribeStatus status) {
-    actor_state_subscribe_status_ = status;
-  }
-
  private:
   // Protobuf-defined persistent state of the actor handle.
   const rpc::ActorHandle inner_;
@@ -127,10 +114,6 @@ class ActorHandle {
 
   /// Mutex to protect fields in the actor handle.
   mutable absl::Mutex mutex_;
-
-  /// The status of actor's state subscription.
-  std::atomic<ActorStateSubscribeStatus> actor_state_subscribe_status_{
-      ActorStateSubscribeStatus::UNSUBSCRIBED};
 
   FRIEND_TEST(ZeroNodeTest, TestActorHandle);
 };
