@@ -453,9 +453,7 @@ class GcsRpcClient {
 
   void Shutdown() {
     bool is_shutdown = false;
-    if (shutdown_.compare_exchange_strong(is_shutdown, true)) {
-      periodical_runner_.reset();
-    } else {
+    if (!shutdown_.compare_exchange_strong(is_shutdown, true)) {
       RAY_LOG(DEBUG) << "GCS client has already been shutdown.";
     }
   }
