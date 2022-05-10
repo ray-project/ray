@@ -232,11 +232,11 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \return Whether the task is pending.
   bool IsTaskPending(const TaskID &task_id) const;
 
-  /// Return whether the task is running.
+  /// Return whether the task is submitted to a worker.
   ///
   /// \param[in] task_id ID of the task to query.
-  /// \return Whether the task is running.
-  bool IsTaskRunning(const TaskID &task_id) const;
+  /// \return Whether the task is submitted to a worker.
+  bool IsTaskSubmittedToWorker(const TaskID &task_id) const;
 
   /// Return whether the task is rescheduling.
   ///
@@ -291,7 +291,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
     bool IsPending() const { return status != rpc::TaskStatus::FINISHED; }
 
-    bool IsRunning() const { return status == rpc::TaskStatus::RUNNING; }
+    bool IsSubmittedToWorker() const {
+      return status == rpc::TaskStatus::SUBMITTED_TO_WORKER;
+    }
 
     bool IsRescheduling() const { return status == rpc::TaskStatus::RESCHEDULED; }
 

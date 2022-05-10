@@ -537,7 +537,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
   request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
   request->mutable_resource_mapping()->CopyFrom(assigned_resources);
   request->set_intended_worker_id(addr.worker_id.Binary());
-  task_finisher_->MarkTaskRunning(task_id);
+  task_finisher_->MarkTaskSubmitted(task_id);
   client.PushNormalTask(
       std::move(request),
       [this,

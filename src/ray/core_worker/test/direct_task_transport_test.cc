@@ -142,7 +142,7 @@ class MockTaskFinisher : public TaskFinisherInterface {
 
   void MarkDependenciesResolved(const TaskID &task_id) override {}
 
-  void MarkTaskRunning(const TaskID &task_id) override {}
+  void MarkTaskSubmitted(const TaskID &task_id) override {}
 
   int num_tasks_complete = 0;
   int num_tasks_failed = 0;

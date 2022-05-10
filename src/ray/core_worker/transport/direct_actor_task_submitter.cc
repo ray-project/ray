@@ -484,7 +484,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
         reply_callback(status, reply);
       };
 
-  task_finisher_.MarkTaskRunning(task_id);
+  task_finisher_.MarkTaskSubmitted(task_id);
   queue.rpc_client->PushActorTask(std::move(request), skip_queue, wrapped_callback);
 }
 

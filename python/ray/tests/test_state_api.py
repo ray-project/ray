@@ -734,7 +734,12 @@ def test_list_tasks(shutdown_only):
         tasks = list(list_tasks().values())
         correct_num_tasks = len(tasks) == 5
         running = len(
-            list(filter(lambda task: task["scheduling_state"] == "RUNNING", tasks))
+            list(
+                filter(
+                    lambda task: task["scheduling_state"] == "SUBMITTED_TO_WORKER",
+                    tasks,
+                )
+            )
         )
         scheduled = len(
             list(filter(lambda task: task["scheduling_state"] == "SCHEDULED", tasks))

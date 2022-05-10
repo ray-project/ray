@@ -201,13 +201,13 @@ bool TaskManager::IsTaskPending(const TaskID &task_id) const {
   return it->second.IsPending();
 }
 
-bool TaskManager::IsTaskRunning(const TaskID &task_id) const {
+bool TaskManager::IsTaskSubmittedToWorker(const TaskID &task_id) const {
   absl::MutexLock lock(&mu_);
   const auto it = submissible_tasks_.find(task_id);
   if (it == submissible_tasks_.end()) {
     return false;
   }
-  return it->second.IsRunning();
+  return it->second.IsSubmittedToWorker();
 }
 
 bool TaskManager::IsTaskRescheduling(const TaskID &task_id) const {
@@ -659,14 +659,14 @@ void TaskManager::MarkDependenciesResolved(const TaskID &task_id) {
   }
 }
 
-void TaskManager::MarkTaskRunning(const TaskID &task_id) {
+void TaskManager::MarkTaskSubmitted(const TaskID &task_id) {
   absl::MutexLock lock(&mu_);
   auto it = submissible_tasks_.find(task_id);
   RAY_CHECK(it != submissible_tasks_.end())
       << "Tried to run a task that was not pending " << task_id;
   RAY_CHECK(it->second.status == rpc::TaskStatus::SCHEDULED ||
             it->second.status == rpc::TaskStatus::RESCHEDULED);
-  it->second.status = rpc::TaskStatus::RUNNING;
+  it->second.status = rpc::TaskStatus::SUBMITTED_TO_WORKER;
 }
 
 void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply) const {
