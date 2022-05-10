@@ -1062,11 +1062,11 @@ void NodeManager::ResourceDeleted(const NodeID &node_id,
   return;
 }
 
-void NodeManager::HandleGCSRestart(
-    const rpc::GCSRestartRequest &request,
-    rpc::GCSRestartReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-
+void NodeManager::HandleGCSRestart(const rpc::GCSRestartRequest &request,
+                                   rpc::GCSRestartReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) {
+  gcs_client_->AsyncResubscribe();
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::UpdateResourceUsage(const NodeID &node_id,
