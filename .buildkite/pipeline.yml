@@ -254,7 +254,7 @@
     - ./ci/env/install-minimal.sh
     - ./ci/env/env_info.sh
     - python ./ci/env/check_minimal_install.py
-    - bazel test --test_output=streamed --config=ci $(./ci/run/bazel_export_options)
+    - bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 $(./ci/run/bazel_export_options)
       python/ray/tests/test_basic
     - bazel test --test_output=streamed --config=ci $(./ci/run/bazel_export_options)
       python/ray/tests/test_basic_2

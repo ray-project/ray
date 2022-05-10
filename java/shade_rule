@@ -1,3 +1,6 @@
 rule com.google.common.** io.ray.shaded.com.google.common.@1
 rule com.google.protobuf.** io.ray.shaded.com.google.protobuf.@1
 rule com.google.thirdparty.** io.ray.shaded.com.google.thirdparty.@1
+# jackson jar is introduced in `de.ruedigermoeller:fst`. It's easy to be
+# conflict with users'.
+rule com.fasterxml.jackson.** io.ray.shaded.com.fasterxml.jackson.@1

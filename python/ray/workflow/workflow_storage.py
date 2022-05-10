@@ -91,12 +91,12 @@ class WorkflowStorage:
     which does not care about the underlining storage implementation."""
 
     def __init__(self, workflow_id: str):
-        self._storage = storage.get_client(os.path.join(WORKFLOW_ROOT, workflow_id))
-        self._workflow_id = workflow_id
-
         from ray.workflow.api import _ensure_workflow_initialized
 
         _ensure_workflow_initialized()
+
+        self._storage = storage.get_client(os.path.join(WORKFLOW_ROOT, workflow_id))
+        self._workflow_id = workflow_id
 
     def load_step_output(self, step_id: StepID) -> Any:
         """Load the output of the workflow step from checkpoint.

@@ -404,7 +404,7 @@ async def test_state_data_source_client(ray_start_cluster):
     worker = cluster.add_node(num_cpus=2)
 
     GRPC_CHANNEL_OPTIONS = (
-        ("grpc.enable_http_proxy", 0),
+        *ray_constants.GLOBAL_GRPC_OPTIONS,
         ("grpc.max_send_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
         ("grpc.max_receive_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
     )

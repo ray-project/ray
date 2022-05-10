@@ -15,8 +15,8 @@ A workflow can be in one of several states:
 Status              Description
 =================== =======================================================================================
 RUNNING             The workflow is currently running in the cluster.
-FAILED              This workflow failed with an application error. It can be resumed from the failed step.
-RESUMABLE           This workflow failed with a system error. It can be resumed from the failed step.
+FAILED              This workflow failed with an application error. It can be resumed from the failed task.
+RESUMABLE           This workflow failed with a system error. It can be resumed from the failed task.
 CANCELED            The workflow was canceled. Its result is unavailable, and it cannot be resumed.
 SUCCESSFUL          The workflow has been executed successfully.
 =================== =======================================================================================
@@ -81,24 +81,10 @@ Storage Configuration
 ---------------------
 Workflows supports two types of storage backends out of the box:
 
-*  Local file system: the data is stored locally. This is only for single node testing. It needs to be a NFS to work with multi-node clusters. To use local storage, specify ``workflow.init(storage="/path/to/storage_dir")``.
-*  S3: Production users should use S3 as the storage backend. Enable S3 storage with ``workflow.init(storage="s3://bucket/path")``.
+*  Local file system: the data is stored locally. This is only for single node testing. It needs to be a NFS to work with multi-node clusters. To use local storage, specify ``ray.init(storage="/path/to/storage_dir")``.
+*  S3: Production users should use S3 as the storage backend. Enable S3 storage with ``r.init(storage="s3://bucket/path")``.
 
-Additional storage backends can be written by subclassing the ``Storage`` class and passing a storage instance to ``workflow.init()`` [TODO: note that the Storage API is not currently stable].
-
-Besides ``workflow.init()``, the storage URI can also be set via environment variable:
-
-.. code-block:: python
-
-    import os
-    from ray import workflow
-
-    # Option 1: pass the url through ``workflow.init``
-    workflow.init("/local/path")
-
-    # Option 2: set os environment variable RAY_WORKFLOW_STORAGE
-    os.environ["RAY_WORKFLOW_STORAGE"] = "s3://bucket/path"
-    workflow.init()
+Additional storage backends can be written by subclassing the ``Storage`` class and passing a storage instance to ``ray.init()`` [TODO: note that the Storage API is not currently stable].
 
 If left unspecified, ``/tmp/ray/workflow_data`` will be used for temporary storage. This default setting *will only work for single-node Ray clusters*.
 
@@ -110,6 +96,6 @@ Handling Dependencies
 
 Ray logs the runtime environment (code and dependencies) of the workflow to storage at submission time. This ensures that the workflow can be resumed at a future time on a different Ray cluster.
 
-You can also explicitly set the runtime environment for a particular step (e.g., specify conda environment, container image, etc.).
+You can also explicitly set the runtime environment for a particular task (e.g., specify conda environment, container image, etc.).
 
 For virtual actors, the runtime environment of the actor can be upgraded via the virtual actor management API.
