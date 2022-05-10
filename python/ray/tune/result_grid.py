@@ -92,7 +92,7 @@ class ResultGrid:
         if not best_trial:
             error_msg = (
                 "No best trial found for the given metric: "
-                f"{metric if metric else self._experiment_analysis.default_metric}. "
+                f"{metric or self._experiment_analysis.default_metric}. "
                 "This means that no trial has reported this metric"
             )
             error_msg += (
