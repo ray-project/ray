@@ -254,7 +254,7 @@
     - ./ci/env/install-minimal.sh
     - ./ci/env/env_info.sh
     - python ./ci/env/check_minimal_install.py
-    - bazel test --test_output=streamed --config=ci $(./ci/run/bazel_export_options)
+    - bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 $(./ci/run/bazel_export_options)
       python/ray/tests/test_basic
     - bazel test --test_output=streamed --config=ci $(./ci/run/bazel_export_options)
       python/ray/tests/test_basic_2
@@ -343,7 +343,7 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
-    - pip install "grpcio >= 1.28.1, <= 1.43.0"
+    - pip install "grpcio >= 1.28.1, != 1.44.0"
     - bazel test --config=ci --config=asan $(./ci/run/bazel_export_options)
       --config=asan-buildkite
       --test_tag_filters=-kubernetes,asan_tests

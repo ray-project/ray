@@ -24,8 +24,6 @@ Workflows also provides a *virtual actors* abstraction, which can be thought of 
         def value(self):
             return self._val
 
-    workflow.init()
-
     # Initialize a Counter actor with id="my_counter".
     counter = Counter.get_or_create("my_counter", 0)
 

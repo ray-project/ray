@@ -101,6 +101,8 @@ class APPOConfig(impala.ImpalaConfig):
         self.vf_loss_coeff = 0.5
         self.entropy_coeff = 0.01
         self.entropy_coeff_schedule = None
+
+        self._disable_execution_plan_api = False
         # __sphinx_doc_end__
         # fmt: on
 
