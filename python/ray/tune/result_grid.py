@@ -79,8 +79,8 @@ class ResultGrid:
             )
         if not mode and not self._experiment_analysis.default_mode:
             raise ValueError(
-                "No mode is provided. Either pass in a `metric` arg to "
-                "`get_best_result` or specify a metric in the "
+                "No mode is provided. Either pass in a `mode` arg to "
+                "`get_best_result` or specify a mode in the "
                 "`TuneConfig` of your `Tuner`."
             )
         best_trial = self._experiment_analysis.get_best_trial(
