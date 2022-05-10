@@ -98,7 +98,6 @@ def maybe_external_redis(request, monkeypatch):
 @pytest.fixture
 def external_redis(request, monkeypatch):
     # Setup external Redis and env var for initialization.
-    param = getattr(request, "param", {})
     g = setup_redis(getattr(request, "param", {}), monkeypatch)
     next(g)
     yield
