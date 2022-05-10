@@ -68,11 +68,11 @@ To request removal of collected data, please email us at ``usage_stats@ray.io`` 
 Frequently Asked Questions (FAQ)
 --------------------------------
 
-**Does the Session ID map to personal data?**
+**Does the session_id map to personal data?**
 
 No, the uuid will be a Ray session/job-specific random ID that cannot be used to identify a specific person nor machine. It will not live beyond the lifetime of your Ray session; and is primarily captured to enable us to honor deletion requests.
 
-The session ID is logged so that deletion requests can be honored.
+The session_id is logged so that deletion requests can be honored.
 
 **Could an enterprise easily configure an additional endpoint or substitute a different endpoint?**
 
