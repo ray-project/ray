@@ -330,52 +330,9 @@ which can make it easier to debug with a debugger like ``gdb``.
 Building the Docs
 -----------------
 
-If you make changes that require documentation changes, don't forget to
-update the documentation!
+To learn more about building the docs refer to `Contributing to the Ray Documentation`_.
 
-When you make documentation changes, build them locally to verify they render
-correctly. `Sphinx <http://sphinx-doc.org/>`_ is used to generate the documentation.
-
-Building Docs for Apple Silicon (M1)
-------------------------------------
-
-If you are using an Apple Silicon (M1) some of the dependencies required for building the docs don't have binary packages available by default (not available in PyPI).
-
-The simplest way to install those dependencies is with ``conda`` (https://docs.conda.io/en/latest/miniconda.html) first, that way ``pip`` won't try to install them by building them from scratch.
-
-To do that, make sure you create and/or activate the conda environment, and then install the dependencies with:
-
-.. code-block:: shell
-
-  conda install -c conda-forge xgboost lightgbm
-
-Install Dependencies to Build the Docs
---------------------------------------
-
-Start from the Ray git project directory cloned with the instructions above. Make sure you activate the Python (virtual) environment that you are using.
-
-Next go to the subdirectory ``doc``:
-
-.. code-block:: shell
-
-    cd doc
-
-From there, you can install the dependencies for building the docs with:
-
-.. code-block:: shell
-
-  pip install -r requirements-doc.txt
-
-After that you can use the ``make`` command to build the docs:
-
-.. code-block:: shell
-
-  make html
-
-Once done, the docs will be in ``doc/_build/html``. For example, on Mac
-OSX, you can open the docs (assuming you are still in the ``doc``
-directory) using ``open _build/html/index.html``.
-
+.. _Contributing to the Ray Documentation: https://docs.ray.io/en/master/ray-contribute/docs.html
 
 Using a local repository for dependencies
 -----------------------------------------
