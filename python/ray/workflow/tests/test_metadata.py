@@ -5,7 +5,6 @@ from ray.tests.conftest import *  # noqa
 import pytest
 import ray
 from ray import workflow
-from ray.workflow.tests.utils import update_workflow_options
 
 
 def test_user_metadata(workflow_start_regular):
@@ -51,7 +50,7 @@ def test_user_metadata_not_dict(workflow_start_regular):
         return 0
 
     with pytest.raises(ValueError):
-        workflow.create(update_workflow_options(simple, metadata="x").bind())
+        workflow.create(simple.options(**workflow.options(metadata="x")).bind())
 
     with pytest.raises(ValueError):
         workflow.create(simple.bind()).run(metadata="x")
@@ -66,7 +65,7 @@ def test_user_metadata_not_json_serializable(workflow_start_regular):
         pass
 
     with pytest.raises(ValueError):
-        workflow.create(update_workflow_options(simple, metadata={"x": X()}).bind())
+        workflow.create(simple.options(**workflow.options(metadata={"x": X()})).bind())
 
     with pytest.raises(ValueError):
         workflow.create(simple.bind()).run(metadata={"x": X()})

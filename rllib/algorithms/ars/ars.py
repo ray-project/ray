@@ -11,7 +11,7 @@ from typing import Optional
 
 import ray
 from ray.rllib.agents import Trainer, TrainerConfig
-from ray.rllib.agents.ars.ars_tf_policy import ARSTFPolicy
+from ray.rllib.algorithms.ars.ars_tf_policy import ARSTFPolicy
 from ray.rllib.algorithms.es import optimizers, utils
 from ray.rllib.algorithms.es.es_tf_policy import rollout
 from ray.rllib.env.env_context import EnvContext
@@ -47,7 +47,7 @@ class ARSConfig(TrainerConfig):
     """Defines an ARSTrainer configuration class from which an ARSTrainer can be built.
 
     Example:
-        >>> from ray.rllib.agents.ars import ARSConfig
+        >>> from ray.rllib.algorithms.ars import ARSConfig
         >>> config = ARSConfig().training(sgd_stepsize=0.02, report_length=20)\
         ...     .resources(num_gpus=0)\
         ...     .rollouts(num_rollout_workers=4)
@@ -57,7 +57,7 @@ class ARSConfig(TrainerConfig):
         >>> trainer.train()
 
     Example:
-        >>> from ray.rllib.agents.ars import ARSConfig
+        >>> from ray.rllib.algorithms.ars import ARSConfig
         >>> from ray import tune
         >>> config = ARSConfig()
         >>> # Print out some default values.
@@ -304,7 +304,7 @@ class Worker:
 
 def get_policy_class(config):
     if config["framework"] == "torch":
-        from ray.rllib.agents.ars.ars_torch_policy import ARSTorchPolicy
+        from ray.rllib.algorithms.ars.ars_torch_policy import ARSTorchPolicy
 
         policy_cls = ARSTorchPolicy
     else:
@@ -567,14 +567,14 @@ class ARSTrainer(Trainer):
         )
 
 
-# Deprecated: Use ray.rllib.agents.ars.ARSConfig instead!
+# Deprecated: Use ray.rllib.algorithms.ars.ARSConfig instead!
 class _deprecated_default_config(dict):
     def __init__(self):
         super().__init__(ARSConfig().to_dict())
 
     @Deprecated(
-        old="ray.rllib.agents.ars.ars.DEFAULT_CONFIG",
-        new="ray.rllib.agents.ars.ars.ARSConfig(...)",
+        old="ray.rllib.algorithms.ars.ars.DEFAULT_CONFIG",
+        new="ray.rllib.algorithms.ars.ars.ARSConfig(...)",
         error=False,
     )
     def __getitem__(self, item):
