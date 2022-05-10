@@ -1911,12 +1911,29 @@ class RolloutWorker(ParallelIteratorWorker):
 
 
 def _determine_spaces_for_multi_agent_dict(
-    multi_agent_dict: MultiAgentPolicyConfigDict,
+    multi_agent_policies_dict: MultiAgentPolicyConfigDict,
     env: Optional[EnvType] = None,
     spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
     policy_config: Optional[PartialTrainerConfigDict] = None,
 ) -> MultiAgentPolicyConfigDict:
+    """Infers the observation- and action spaces in a multi-agent policy dict.
 
+    Args:
+        multi_agent_policies_dict: The multi-agent `policies` dict mapping policy IDs
+            to PolicySpec objects. Note that the `observation_space` and `action_space`
+            properties in these PolicySpecs may be None and must therefor be inferred
+            here.
+        env: An optional env instance, from which to infer the different spaces for
+            the different policies.
+        spaces: Optional dict mapping policy IDs to tuples of 1) observation space
+            and 2) action space that should be used for the respective policy.
+            These spaces were usually provided by an already instantiated remote worker.
+        policy_config: Optional partial config dict of the Trainer.
+
+    Returns:
+        The updated MultiAgentPolicyConfigDict (changed in-place from the incoming
+        `multi_agent_policies_dict` arg).
+    """
     policy_config = policy_config or {}
 
     # Try extracting spaces from env or from given spaces dict.
@@ -1945,12 +1962,40 @@ def _determine_spaces_for_multi_agent_dict(
         if env_act_space is None:
             env_act_space = spaces.get("__env__", [None, None])[1]
 
-    for pid, policy_spec in multi_agent_dict.copy().items():
+
+    for pid, policy_spec in multi_agent_policies_dict.copy().items():
         if policy_spec.observation_space is None:
             if spaces is not None and pid in spaces:
                 obs_space = spaces[pid][0]
             elif env_obs_space is not None:
-                obs_space = env_obs_space
+                # Multi-agent case AND different agents have different spaces:
+                # Need to reverse map spaces (for the different agents) to certain
+                # policy IDs.
+                if isinstance(env, MultiAgentEnv) and env._spaces_in_preferred_format:
+                    obs_space = None
+                    mapping_fn = policy_config.get("multiagent", {})\
+                        .get("policy_mapping_fn", None)
+                    if mapping_fn:
+                        for aid in env.get_agent_ids():
+                            # Match: Assign spaces for this agentID to the policy ID.
+                            if mapping_fn(aid, None, None) == pid:
+                                # Make sure, different agents that map to the same
+                                # policy don't have different spaces.
+                                if (
+                                    obs_space is not None
+                                    and env_obs_space[aid] != obs_space
+                                ):
+                                    raise ValueError(
+                                        "Two agents in your environment map to the same"
+                                        " policyID (as per your `policy_mapping_fn`), "
+                                        "however, these agents also have different "
+                                        "observation spaces!"
+                                    )
+                                obs_space = env_obs_space[aid]
+                # Otherwise, just use env's obs space as-is.
+                else:
+                    obs_space = env_obs_space
+            # Space given directly in config.
             elif policy_config.get("observation_space"):
                 obs_space = policy_config["observation_space"]
             else:
@@ -1961,7 +2006,7 @@ def _determine_spaces_for_multi_agent_dict(
                     "`observation_space` specified in config!"
                 )
 
-            multi_agent_dict[pid] = multi_agent_dict[pid]._replace(
+            multi_agent_policies_dict[pid] = multi_agent_policies_dict[pid]._replace(
                 observation_space=obs_space
             )
 
@@ -1969,7 +2014,33 @@ def _determine_spaces_for_multi_agent_dict(
             if spaces is not None and pid in spaces:
                 act_space = spaces[pid][1]
             elif env_act_space is not None:
-                act_space = env_act_space
+                # Multi-agent case AND different agents have different spaces:
+                # Need to reverse map spaces (for the different agents) to certain
+                # policy IDs.
+                if isinstance(env, MultiAgentEnv) and env._spaces_in_preferred_format:
+                    act_space = None
+                    mapping_fn = policy_config.get("multiagent", {})\
+                        .get("policy_mapping_fn", None)
+                    if mapping_fn:
+                        for aid in env.get_agent_ids():
+                            # Match: Assign spaces for this agentID to the policy ID.
+                            if mapping_fn(aid, None, None) == pid:
+                                # Make sure, different agents that map to the same
+                                # policy don't have different spaces.
+                                if (
+                                    act_space is not None
+                                    and env_act_space[aid] != act_space
+                                ):
+                                    raise ValueError(
+                                        "Two agents in your environment map to the same"
+                                        " policyID (as per your `policy_mapping_fn`), "
+                                        "however, these agents also have different "
+                                        "action spaces!"
+                                    )
+                                act_space = env_act_space[aid]
+                # Otherwise, just use env's action space as-is.
+                else:
+                    act_space = env_act_space
             elif policy_config.get("action_space"):
                 act_space = policy_config["action_space"]
             else:
@@ -1979,7 +2050,7 @@ def _determine_spaces_for_multi_agent_dict(
                     "no spaces received from other workers' env(s) OR no "
                     "`action_space` specified in config!"
                 )
-            multi_agent_dict[pid] = multi_agent_dict[pid]._replace(
+            multi_agent_policies_dict[pid] = multi_agent_policies_dict[pid]._replace(
                 action_space=act_space
             )
-    return multi_agent_dict
+    return multi_agent_policies_dict
