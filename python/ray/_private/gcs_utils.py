@@ -7,6 +7,7 @@ import time
 import grpc
 
 import ray
+from ray import ray_constants
 from ray.core.generated.common_pb2 import ErrorType
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated import gcs_service_pb2
@@ -74,7 +75,7 @@ _GRPC_KEEPALIVE_TIMEOUT_MS = 60 * 1000
 # grpc.keepalive_permit_without_calls=0: No keepalive without inflight calls.
 # grpc.use_local_subchannel_pool=0: Subchannels are shared.
 _GRPC_OPTIONS = [
-    ("grpc.enable_http_proxy", 0),
+    *ray_constants.GLOBAL_GRPC_OPTIONS,
     ("grpc.max_send_message_length", _MAX_MESSAGE_LENGTH),
     ("grpc.max_receive_message_length", _MAX_MESSAGE_LENGTH),
     ("grpc.keepalive_time_ms", _GRPC_KEEPALIVE_TIME_MS),

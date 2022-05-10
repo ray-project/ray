@@ -159,6 +159,14 @@ RAY_CONFIG(int64_t, max_grpc_message_size, 250 * 1024 * 1024)
 // of retries is non zero.
 RAY_CONFIG(int64_t, grpc_server_retry_timeout_milliseconds, 1000)
 
+// Whether to allow HTTP proxy on GRPC clients. Disable HTTP proxy by default since it
+// disrupts local connections. Note that this config item only controls GrpcClient in
+// `src/ray/rpc/grpc_client.h`. Python GRPC clients are not directly controlled by this.
+// NOTE (kfstorm): DO NOT set this config item via `_system_config`, use
+// `RAY_grpc_enable_http_proxy` environment variable instead so that it can be passed to
+// non-C++ children processes such as dashboard agent.
+RAY_CONFIG(bool, grpc_enable_http_proxy, false)
+
 // The min number of retries for direct actor creation tasks. The actual number
 // of creation retries will be MAX(actor_creation_min_retries, max_restarts).
 RAY_CONFIG(uint64_t, actor_creation_min_retries, 3)

@@ -49,7 +49,7 @@ class TestCQL(unittest.TestCase):
             "clip_actions": True,
             "train_batch_size": 2000,
             "twin_q": True,
-            "learning_starts": 0,
+            "replay_buffer_config": {"learning_starts": 0},
             "bc_iters": 2,  # 2 BC iters, 2 CQL iters.
             "rollout_fragment_length": 1,
             # Switch on off-policy evaluation.
