@@ -32,11 +32,11 @@ How to disable it
 -----------------
 There are multiple ways to disable usage stats collection before starting a cluster:
 
-#. Add ``--disable-usage-stats`` option to the command that starts the Ray cluster (e.g., ``ray start --head --disable-usage-stats``).
+#. Add ``--disable-usage-stats`` option to the command that starts the Ray cluster (e.g., ``ray start --head --disable-usage-stats`` :ref:`command <ray-start-doc>`).
 
-#. Run ``ray disable-usage-stats`` to disable collection for all future clusters. This won't affect currently running clusters. Under the hood, this command writes ``{"usage_stats": true}`` to the global config file ``~/.ray/config.json``.
+#. Run :ref:`ray disable-usage-stats <ray-disable-usage-stats-doc>` to disable collection for all future clusters. This won't affect currently running clusters. Under the hood, this command writes ``{"usage_stats": true}`` to the global config file ``~/.ray/config.json``.
 
-#. Set the environment variable ``RAY_USAGE_STATS_ENABLED`` to 0 (e.g., ``RAY_USAGE_STATS_ENABLED=0 ray start --head``).
+#. Set the environment variable ``RAY_USAGE_STATS_ENABLED`` to 0 (e.g., ``RAY_USAGE_STATS_ENABLED=0 ray start --head`` :ref:`command <ray-start-doc>`).
 
 Currently there is no way to enable or disable collection for a running cluster; you have to stop and restart the cluster.
 
@@ -44,7 +44,7 @@ Currently there is no way to enable or disable collection for a running cluster;
 How does it work?
 -----------------
 
-When a Ray cluster is started via ``ray start --head``, ``ray up``, ``ray submit --start`` or ``ray exec --start``,
+When a Ray cluster is started via :ref:`ray start --head <ray-start-doc>`, :ref:`ray up <ray-up-doc>`, :ref:`ray submit --start <ray-submit-doc>` or :ref:`ray exec --start <ray-exec-doc>`,
 Ray will decide whether usage stats collection should be enabled or not by considering the following factors in order:
 
 #. It checks whether the environment variable ``RAY_USAGE_STATS_ENABLED`` is set: 1 means enabled and 0 means disabled.
