@@ -66,8 +66,12 @@ parts:
           - file: serve/core-apis
           - file: serve/http-servehandle
           - file: serve/ml-models
-          - file: serve/deployment-graph
-          - file: serve/deployment-graph-cookbook
+          - file: serve/deployment-graph/deployment-graph
+            sections:
+              - file: serve/deployment-graph/deployment-graph-e2e-tutorial
+              - file: serve/deployment-graph/deployment-graph-user-guides
+                sections:
+                   - file: serve/deployment-graph/chain_nodes_same_class_different_args
           - file: serve/deployment
           - file: serve/monitoring
           - file: serve/performance

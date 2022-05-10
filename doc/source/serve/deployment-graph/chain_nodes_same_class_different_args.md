@@ -1,29 +1,10 @@
----
-jupytext:
-  formats: ipynb,md:myst
-  text_representation:
-    extension: .md
-    format_name: myst
-    format_version: 0.13
-    jupytext_version: 1.13.6
-kernelspec:
-  display_name: Python 3
-  language: python
-  name: python3
----
-
-(serve-deployment-graph-cookbook)=
-
-# Deployment Graph Cookbook
-
-This doc is to provide more common use cases for using the deployment graph.
-
-# Catalog
-[Chain nodes with same class and different args](#chain_nodes_same_class_different_args)
-
-## Chain nodes with same class and different args <a name="chain_nodes_same_class_different_args"></a>
+# Pattern: Chain nodes with same class and different args
 
 The example shows how to chain nodes using the same class and having different args passed in
+
+![pic](chain_nodes_same_class_different_args.svg)
+
+## Code
 
 +++
 
@@ -46,8 +27,8 @@ class Model:
       return input +  self.weight
 
 
-# 10 nodes chain in a line
-num_nodes = 10
+# 3 nodes chain in a line
+num_nodes = 3
 nodes = [Model.bind(w) for w in range(num_nodes)]
 outputs = [None] * num_nodes
 with InputNode() as dag_input:
@@ -61,12 +42,13 @@ with InputNode() as dag_input:
 print(ray.get(outputs[-1].execute(0)))
 ```
 
-### Outputs
+## Outputs
 
-The graph will add all nodes weights plus the input (which is 0 in this case)
+The graph will add all nodes weights plus the input (which is 0 in this case).
+0(input) + 0(weight) + 1(weight) + 2(weight) = 3
 
 ```
-45
+3
 ```
 
 +++

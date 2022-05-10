@@ -12,9 +12,9 @@ kernelspec:
   name: python3
 ---
 
-(serve-deployment-graph)=
+(deployment-graph-e2e-tutorial)=
 
-# Deployment Graph
+# Deployment Graph E2E Tutorial
 
 ```{note}
 Note: This feature is in Alpha, so APIs are subject to change.
@@ -556,7 +556,7 @@ Total of `0.45` secs.
 
 ## More Examples using deployment graph api
 
-We provide more examples in using the deployment graph api in [here](./deployment-graph-cookbook.md)
+We provide more examples in using the deployment graph api in [here](./deployment-graph-user-guides.md)
 
 ## Conclusion
 
