@@ -2303,7 +2303,7 @@ Dict[str, List[str]]]): The names of the columns
         ] = None,
         prefetch_blocks: int = 0,
         batch_size: int = 1,
-        unsqueeze_label_tensor: bool = True,
+        unsqueeze_label_tensor=True
     ) -> "tf.data.Dataset":
         """Return a TF Dataset over this dataset.
 
@@ -2383,16 +2383,16 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
                 batch_format="pandas",
             ):
                 if label_column:
-                    targets = tf.stack(batch.pop(label_column).values)
+                    targets = batch.pop(label_column).values
                     if unsqueeze_label_tensor:
-                        targets = tf.expand_dims(targets, axis=1)
+                        targets = np.expand_dims(targets, axis=1)
 
                 features = None
                 if feature_columns is None:
                     features = batch.values
                 elif isinstance(feature_columns, list):
                     if all(isinstance(column, str) for column in feature_columns):
-                        features = tf.stack(batch[feature_columns].values[0])
+                        features = tf.squeeze(tf.stack(batch[feature_columns].values.tolist()))
                     elif all(isinstance(columns, list) for columns in feature_columns):
                         features = tuple(
                             batch[columns].values for columns in feature_columns
