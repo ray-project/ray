@@ -79,7 +79,7 @@ Building Ray (Python Only)
 
 RLlib, Tune, Autoscaler, and most Python files do not require you to build and compile Ray. Follow these instructions to develop Ray's Python files locally without building Ray.
 
-1. Make sure you have a clone of the git repository as explained above.
+1. Make sure you have a clone of Ray's git repository as explained above.
 
 2. Make sure you activate the Python (virtual) environment as described above.
 
@@ -91,7 +91,7 @@ RLlib, Tune, Autoscaler, and most Python files do not require you to build and c
     pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
 
 4. Replace Python files in the installed package with your local editable copy. We provide a simple script to help you do this: ``python python/ray/setup-dev.py``.
-Running the script will remove the  ``ray/tune``, ``ray/rllib``, ``ray/autoscaler`` dir (among other directories) bundled with the ``ray`` pip package, and replace them with links to your local code. This way, changing files in your git clone will directly affect the behavior of your installed ray.
+Running the script will remove the  ``ray/tune``, ``ray/rllib``, ``ray/autoscaler`` dir (among other directories) bundled with the ``ray`` pip package, and replace them with links to your local code. This way, changing files in your git clone will directly affect the behavior of your installed Ray.
 
 .. code-block:: shell
 
@@ -112,7 +112,7 @@ Preparing to build Ray on Linux
 
 .. tip:: If you are only editing Tune/RLlib/Autoscaler files, follow instructions for :ref:`python-develop` to avoid long build times.
 
-To build Ray on Linux, first install these dependencies. For Ubuntu, run the following commands:
+To build Ray on Ubuntu, run the following commands:
 
 .. code-block:: bash
 
@@ -149,7 +149,7 @@ To build Ray on MacOS, first install these dependencies:
 Building Ray on Linux & MacOS (full)
 ------------------------------------
 
-Make sure you have a local clone of the git repository as explained above. You will also need to install NodeJS to build the dashboard: https://nodejs.org
+Make sure you have a local clone of Ray's git repository as explained above. You will also need to install NodeJS_ to build the dashboard.
 
 Enter into the project directory, for example:
 
@@ -157,18 +157,29 @@ Enter into the project directory, for example:
 
     cd ray
 
-Now you can build the dashboard. From inside of your local Ray project directory run:
+Now you can build the dashboard. From inside of your local Ray project directory enter into the dashboard client directory:
 
 .. code-block:: bash
 
-  pushd dashboard/client
+  cd dashboard/client
+
+Then you can install the dependencies and build the dashboard:
+
+.. code-block:: bash
+
   npm install
   npm run build
-  popd
+
+After that, you can now move back to the top level Ray directory:
+
+.. code-block:: shell
+
+  cd ../..
+
 
 Now let's build Ray for Python. Make sure you activate any Python virtual (or conda) environment you could be using as described above.
 
-Enter into the directory for Python inside of the Ray project directory and install the project with ``pip``:
+Enter into the ``python/`` directory inside of the Ray project directory and install the project with ``pip``:
 
 .. code-block:: bash
 
@@ -188,6 +199,8 @@ directory will take effect without reinstalling the package.
   ``build --local_ram_resources=HOST_RAM*.5 --local_cpu_resources=4``
 
   The ``build --disk_cache=~/bazel-cache`` option can be useful to speed up repeated builds too.
+
+.. _NodeJS: https://nodejs.org
 
 Building Ray on Windows (full)
 ------------------------------
@@ -246,7 +259,7 @@ Define an environment variable BAZEL_PATH to full exe path (example:
 Environment variables that influence builds
 --------------------------------------------
 
-You can tweak the build with the following environment variables (when running ``setup.py`` or ``pip install -e .``):
+You can tweak the build with the following environment variables (when running ``pip install -e .`` or ``python setup.py install``):
 
 - ``BUILD_JAVA``: If set and equal to ``1``, extra build steps will be executed
   to build java portions of the codebase
@@ -335,12 +348,12 @@ To do that, make sure you create and/or activate the conda environment, and then
 
 .. code-block:: shell
 
-  conda install -c conda-forge xboost lightgbm
+  conda install -c conda-forge xgboost lightgbm
 
 Install Dependencies to Build the Docs
 --------------------------------------
 
-Start from the Ray git project directory cloned with the instructions above from above. Make sure you activate the Python (virtual) environment that you are using.
+Start from the Ray git project directory cloned with the instructions above. Make sure you activate the Python (virtual) environment that you are using.
 
 Next go to the subdirectory ``doc``:
 
