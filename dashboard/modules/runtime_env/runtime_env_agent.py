@@ -60,32 +60,6 @@ class UriType(Enum):
     CONDA = 4
 
 
-def plugin_name_to_uri_type(plugin_name):
-    if plugin_name == "working_dir":
-        return UriType.WORKING_DIR
-    elif plugin_name == "py_modules":
-        return UriType.PY_MODULES
-    elif plugin_name == "pip":
-        return UriType.PIP
-    elif plugin_name == "conda":
-        return UriType.CONDA
-    else:
-        raise ValueError(f"Unknown plugin name: {plugin_name}")
-
-
-def uri_type_to_plugin_name(uri_type):
-    if uri_type == UriType.WORKING_DIR:
-        return "working_dir"
-    elif uri_type == UriType.PY_MODULES:
-        return "py_modules"
-    elif uri_type == UriType.PIP:
-        return "pip"
-    elif uri_type == UriType.CONDA:
-        return "conda"
-    else:
-        raise ValueError(f"Unknown uri type: {uri_type}")
-
-
 class ReferenceTable:
     """
     The URI reference table which is used for GC.
