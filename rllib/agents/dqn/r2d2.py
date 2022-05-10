@@ -8,6 +8,7 @@ from ray.rllib.agents.trainer import Trainer
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +59,6 @@ R2D2_DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         # state outputs of the immediately preceding sequence).
         "zero_init_states": True,
 
-
         # Whether to use the h-function from the paper [1] to scale target
         # values in the R2D2-loss function:
         # h(x) = sign(x)(􏰅|x| + 1 − 1) + εx
@@ -69,6 +69,10 @@ R2D2_DEFAULT_CONFIG = Trainer.merge_trainer_configs(
 
         # Update the target network every `target_network_update_freq` steps.
         "target_network_update_freq": 2500,
+
+        # Deprecated keys:
+        # Use config["replay_buffer_config"]["replay_burn_in"] instead
+        "burn_in": DEPRECATED_VALUE
     },
     _allow_unknown_configs=True,
 )
