@@ -356,3 +356,6 @@ KV_NAMESPACE_SERVE = b"serve"
 KV_NAMESPACE_FUNCTION_TABLE = b"fun"
 
 LANGUAGE_WORKER_TYPES = ["python", "java", "cpp"]
+
+# ray whitelist config file absolute path.
+RAY_WHITELIST_PATH = os.environ.get("RAY_WHITELIST_PATH", None)
