@@ -220,6 +220,27 @@ def test_workflow_storage(workflow_start_regular):
     assert not inspect_result.is_recoverable()
 
 
+def test_cluster_storage_init(workflow_start_cluster, tmp_path):
+    address, storage_uri = workflow_start_cluster
+
+    err_msg = "When connecting to an existing cluster, "
+    "storage must not be provided."
+
+    with pytest.raises(ValueError, match=err_msg):
+        ray.init(address=address, storage=str(tmp_path))
+
+    with pytest.raises(ValueError, match=err_msg):
+        ray.init(address=address, storage=storage_uri)
+
+    ray.init(address=address)
+
+    @workflow.step
+    def f():
+        return 10
+
+    assert f.step().run() == 10
+
+
 if __name__ == "__main__":
     import sys
 
