@@ -58,7 +58,7 @@ def _register_all():
 
 _setup_logger()
 
-#usage_lib.record_library_usage("rllib")
+usage_lib.record_library_usage("rllib")
 
 __all__ = [
     "Policy",
