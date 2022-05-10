@@ -1,6 +1,6 @@
 import logging
 import platform
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Callable
 
 import numpy as np
 import random
@@ -12,11 +12,11 @@ import psutil  # noqa E402
 
 from ray.util.debug import log_once
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
-from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics.window_stat import WindowStat
-from ray.rllib.utils.typing import SampleBatchType
+from ray.rllib.utils.typing import SampleBatchType, T
 from ray.rllib.execution.buffers.replay_buffer import warn_replay_capacity
+from ray.util.annotations import DeveloperAPI
 
 # Constant that represents all policies in lockstep replay mode.
 _ALL_POLICIES = "__all__"
@@ -24,7 +24,7 @@ _ALL_POLICIES = "__all__"
 logger = logging.getLogger(__name__)
 
 
-@ExperimentalAPI
+@DeveloperAPI
 class StorageUnit(Enum):
     TIMESTEPS = "timesteps"
     SEQUENCES = "sequences"
@@ -32,7 +32,7 @@ class StorageUnit(Enum):
     FRAGMENTS = "fragments"
 
 
-@ExperimentalAPI
+@DeveloperAPI
 class ReplayBuffer:
     def __init__(
         self, capacity: int = 10000, storage_unit: str = "timesteps", **kwargs
@@ -100,7 +100,7 @@ class ReplayBuffer:
         """Returns the number of items currently stored in this buffer."""
         return len(self._storage)
 
-    @ExperimentalAPI
+    @DeveloperAPI
     def add(self, batch: SampleBatchType, **kwargs) -> None:
         """Adds a batch of experiences to this buffer.
 
@@ -155,7 +155,7 @@ class ReplayBuffer:
         elif self._storage_unit == StorageUnit.FRAGMENTS:
             self._add_single_batch(batch, **kwargs)
 
-    @ExperimentalAPI
+    @DeveloperAPI
     def _add_single_batch(self, item: SampleBatchType, **kwargs) -> None:
         """Add a SampleBatch of experiences to self._storage.
 
@@ -189,7 +189,7 @@ class ReplayBuffer:
         else:
             self._next_idx += 1
 
-    @ExperimentalAPI
+    @DeveloperAPI
     def sample(self, num_items: int, **kwargs) -> Optional[SampleBatchType]:
         """Samples `num_items` items from this buffer.
 
@@ -220,7 +220,7 @@ class ReplayBuffer:
         self._num_timesteps_sampled += sample.count
         return sample
 
-    @ExperimentalAPI
+    @DeveloperAPI
     def stats(self, debug: bool = False) -> dict:
         """Returns the stats of this buffer.
 
@@ -243,7 +243,7 @@ class ReplayBuffer:
             data.update(self._evicted_hit_stats.stats())
         return data
 
-    @ExperimentalAPI
+    @DeveloperAPI
     def get_state(self) -> Dict[str, Any]:
         """Returns all local state.
 
@@ -254,7 +254,7 @@ class ReplayBuffer:
         state.update(self.stats(debug=False))
         return state
 
-    @ExperimentalAPI
+    @DeveloperAPI
     def set_state(self, state: Dict[str, Any]) -> None:
         """Restores all local state to the provided `state`.
 
@@ -272,6 +272,7 @@ class ReplayBuffer:
         self._num_timesteps_sampled = state["sampled_count"]
         self._est_size_bytes = state["est_size_bytes"]
 
+    @DeveloperAPI
     def _encode_sample(self, idxes: List[int]) -> SampleBatchType:
         """Fetches concatenated samples at given indeces from the storage."""
         samples = []
@@ -288,6 +289,7 @@ class ReplayBuffer:
         out.decompress_if_needed()
         return out
 
+    @DeveloperAPI
     def get_host(self) -> str:
         """Returns the computer's network name.
 
@@ -296,6 +298,27 @@ class ReplayBuffer:
             name could not be determined.
         """
         return platform.node()
+
+    @DeveloperAPI
+    def apply(
+        self,
+        func: Callable[["ReplayBuffer", Optional[Any], Optional[Any]], T],
+        *_args,
+        **kwargs,
+    ) -> T:
+        """Calls the given function with this ReplayBuffer instance.
+
+        This is useful if we want to apply a function to a set of remote actors.
+
+        Args:
+            func: A callable that accepts the replay buffer itself, args and kwargs
+            *_arkgs: Any args to pass to func
+            **kwargs: Any kwargs to pass to func
+
+        Returns:
+            Return value of the induced function call
+        """
+        return func(self, *_args, **kwargs)
 
     @Deprecated(old="ReplayBuffer.add_batch()", new="RepayBuffer.add()", error=False)
     def add_batch(self, *args, **kwargs):

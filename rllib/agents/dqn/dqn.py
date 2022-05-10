@@ -89,6 +89,8 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
             # The number of continuous environment steps to replay at once. This may
             # be set to greater than 1 to support recurrent models.
             "replay_sequence_length": 1,
+            # Whether to compute priorities on workers.
+            "worker_side_prioritization": False,
         },
         # Set this to True, if you want the contents of your buffer(s) to be
         # stored in any saved checkpoints as well.
@@ -120,10 +122,6 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         # See: rllib/agents/dqn/dqn.py::calculate_rr_weights for further
         # details.
         "training_intensity": None,
-
-        # === Parallelism ===
-        # Whether to compute priorities on workers.
-        "worker_side_prioritization": False,
     },
     _allow_unknown_configs=True,
 )

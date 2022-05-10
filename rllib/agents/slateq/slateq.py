@@ -81,6 +81,8 @@ DEFAULT_CONFIG = with_common_config({
         # The number of continuous environment steps to replay at once. This may
         # be set to greater than 1 to support recurrent models.
         "replay_sequence_length": 1,
+        # Whether to compute priorities on workers.
+        "worker_side_prioritization": False,
     },
     # Whether to LZ4 compress observations
     "compress_observations": False,
@@ -121,8 +123,6 @@ DEFAULT_CONFIG = with_common_config({
     # to increase if your environment is particularly slow to sample, or if
     # you"re using the Async or Ape-X optimizers.
     "num_workers": 0,
-    # Whether to compute priorities on workers.
-    "worker_side_prioritization": False,
     # Prevent reporting frequency from going lower than this time span.
     "min_time_s_per_reporting": 1,
 

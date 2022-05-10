@@ -22,7 +22,6 @@ APEX_DDPG_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
         "replay_buffer_config": {
             "capcity": 2000000,
             "no_local_replay_buffer": True,
-
             "learning_starts": 50000,
             # Whether all shards of the replay buffer must be co-located
             # with the learner process (running the execution plan).
@@ -33,18 +32,13 @@ APEX_DDPG_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
             # replay shards to be created on node(s) other than the one
             # on which the learner is located.
             "replay_buffer_shards_colocated_with_driver": True,
+            "worker_side_prioritization": True,
         },
         "train_batch_size": 512,
         "rollout_fragment_length": 50,
         "target_network_update_freq": 500000,
         "min_sample_timesteps_per_reporting": 25000,
-        "worker_side_prioritization": True,
         "min_time_s_per_reporting": 30,
-        # Experimental flag.
-        # If True, the execution plan API will not be used. Instead,
-        # a Trainer's `training_iteration` method will be called as-is each
-        # training iteration.
-        "_disable_execution_plan_api": False,
     },
     _allow_unknown_configs=True,
 )
@@ -58,13 +52,12 @@ class ApexDDPGTrainer(DDPGTrainer, ApexTrainer):
 
     @override(DDPGTrainer)
     def setup(self, config: PartialTrainerConfigDict):
-        ApexTrainer.setup(self, config)
+        return ApexTrainer.setup(self, config)
 
-    @staticmethod
     @override(DDPGTrainer)
     def training_iteration(self) -> ResultDict:
         """Use APEX-DQN's training iteration function."""
-        return ApexTrainer.training_iteration()
+        return ApexTrainer.training_iteration(self)
 
     @staticmethod
     @override(DDPGTrainer)

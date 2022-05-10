@@ -188,6 +188,7 @@ def validate_buffer_config(config: dict):
         "replay_batch_size",
         "replay_zero_init_states",
         "learning_starts",
+        "replay_buffer_shards_colocated_with_driver",
     ]
     for k in keys_with_deprecated_positions:
         if config.get(k, DEPRECATED_VALUE) != DEPRECATED_VALUE:
@@ -266,7 +267,7 @@ def validate_buffer_config(config: dict):
                 "replay_sequence_length > 1."
             )
     else:
-        if config.get("worker_side_prioritization"):
+        if config["replay_buffer_config"].get("worker_side_prioritization"):
             raise ValueError(
                 "Worker side prioritization is not supported when "
                 "prioritized_replay=False."

@@ -91,6 +91,8 @@ DEFAULT_CONFIG = with_common_config({
         "prioritized_replay_alpha": 0.6,
         "prioritized_replay_beta": 0.4,
         "prioritized_replay_eps": 1e-6,
+        # Whether to compute priorities on workers.
+        "worker_side_prioritization": False,
     },
     # Set this to True, if you want the contents of your buffer(s) to be
     # stored in any saved checkpoints as well.
@@ -146,8 +148,6 @@ DEFAULT_CONFIG = with_common_config({
     "num_gpus_per_worker": 0,
     # Whether to allocate CPUs for workers (if > 0).
     "num_cpus_per_worker": 1,
-    # Whether to compute priorities on workers.
-    "worker_side_prioritization": False,
     # Prevent reporting frequency from going lower than this time span.
     "min_time_s_per_reporting": 1,
 

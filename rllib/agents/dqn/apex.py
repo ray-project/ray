@@ -91,16 +91,17 @@ APEX_DEFAULT_CONFIG = merge_dicts(
             # Epsilon to add to the TD errors when updating priorities.
             "prioritized_replay_eps": 1e-6,
             "learning_starts": 50000,
+            # Whether all shards of the replay buffer must be co-located
+            # with the learner process (running the execution plan).
+            # This is preferred b/c the learner process should have quick
+            # access to the data from the buffer shards, avoiding network
+            # traffic each time samples from the buffer(s) are drawn.
+            # Set this to False for relaxing this constraint and allowing
+            # replay shards to be created on node(s) other than the one
+            # on which the learner is located.
+            "replay_buffer_shards_colocated_with_driver": True,
+            "worker_side_prioritization": True,
         },
-        # Whether all shards of the replay buffer must be co-located
-        # with the learner process (running the execution plan).
-        # This is preferred b/c the learner process should have quick
-        # access to the data from the buffer shards, avoiding network
-        # traffic each time samples from the buffer(s) are drawn.
-        # Set this to False for relaxing this constraint and allowing
-        # replay shards to be created on node(s) other than the one
-        # on which the learner is located.
-        "replay_buffer_shards_colocated_with_driver": True,
 
         "train_batch_size": 512,
         "rollout_fragment_length": 50,
@@ -113,7 +114,6 @@ APEX_DEFAULT_CONFIG = merge_dicts(
         # executed. Set to 0 for no minimum timesteps.
         "min_sample_timesteps_per_reporting": 25000,
         "exploration_config": {"type": "PerWorkerEpsilonGreedy"},
-        "worker_side_prioritization": True,
         "min_time_s_per_reporting": 30,
         # This will set the ratio of replayed from a buffer and learned
         # on timesteps to sampled from an environment and stored in the replay
@@ -176,20 +176,9 @@ class ApexTrainer(DQNTrainer):
             ]
 
         num_replay_buffer_shards = self.config["optimizer"]["num_replay_buffer_shards"]
-        capacity = (
+        self.config["replay_buffer_config"]["capacity"] = (
             self.config["replay_buffer_config"]["capacity"] // num_replay_buffer_shards
         )
-        replay_actor_args = [
-            num_replay_buffer_shards,
-            self.config["replay_buffer_config"]["learning_starts"],
-            capacity,
-            self.config["replay_buffer_config"]["replay_batch_size"],
-            self.config["replay_buffer_config"]["prioritized_replay_alpha"],
-            self.config["replay_buffer_config"]["prioritized_replay_beta"],
-            self.config["replay_buffer_config"]["prioritized_replay_eps"],
-            self.config["multiagent"]["replay_mode"],
-            self.config["replay_buffer_config"].get("replay_sequence_length", 1),
-        ]
 
         ReplayActor = ray.remote(num_cpus=0)(
             self.config["replay_buffer_config"]["type"]
@@ -197,10 +186,17 @@ class ApexTrainer(DQNTrainer):
 
         # Place all replay buffer shards on the same node as the learner
         # (driver process that runs this execution plan).
-        if self.config["replay_buffer_shards_colocated_with_driver"]:
+        if self.config["replay_buffer_config"][
+            "replay_buffer_shards_colocated_with_driver"
+        ]:
             self.replay_actors = create_colocated_actors(
                 actor_specs=[  # (class, args, kwargs={}, count)
-                    (ReplayActor, replay_actor_args, {}, num_replay_buffer_shards)
+                    (
+                        ReplayActor,
+                        None,
+                        self.config["replay_buffer_config"],
+                        num_replay_buffer_shards,
+                    )
                 ],
                 node=platform.node(),  # localhost
             )[
@@ -209,7 +205,7 @@ class ApexTrainer(DQNTrainer):
         # Place replay buffer shards on any node(s).
         else:
             self.replay_actors = [
-                ReplayActor.remote(*replay_actor_args)
+                ReplayActor.remote(*self.config["replay_buffer_config"])
                 for _ in range(num_replay_buffer_shards)
             ]
         self.learner_thread = LearnerThread(self.workers.local_worker())
@@ -295,7 +291,7 @@ class ApexTrainer(DQNTrainer):
             # operation on there.
             _batch = worker.sample()
             _actor = random.choice(replay_actors)
-            _actor.add_batch.remote(_batch)
+            _actor.add.remote(_batch)
             _batch_statistics = {
                 "agent_steps": _batch.agent_steps(),
                 "env_steps": _batch.env_steps(),

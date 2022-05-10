@@ -33,6 +33,7 @@ TD3_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
             "initial_scale": 1.0,
             "final_scale": 1.0,
             "scale_timesteps": 1,
+            "worker_side_prioritization": False,
         },
         # other changes & things we want to keep fixed:
         # larger actor learning rate, no l2 regularisation, no Huber loss, etc.
@@ -49,7 +50,6 @@ TD3_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
         "target_network_update_freq": 0,
         "num_workers": 0,
         "num_gpus_per_worker": 0,
-        "worker_side_prioritization": False,
         "clip_rewards": False,
         "use_state_preprocessor": False,
         "replay_buffer_config": {

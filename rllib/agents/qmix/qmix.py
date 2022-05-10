@@ -80,6 +80,8 @@ DEFAULT_CONFIG = with_common_config({
         # Size of the replay buffer in batches (not timesteps!).
         "capacity": 1000,
         "learning_starts": 1000,
+        # Whether to compute priorities on workers.
+        "worker_side_prioritization": False,
     },
 
     # === Optimization ===
@@ -104,8 +106,6 @@ DEFAULT_CONFIG = with_common_config({
     # to increase if your environment is particularly slow to sample, or if
     # you"re using the Async or Ape-X optimizers.
     "num_workers": 0,
-    # Whether to compute priorities on workers.
-    "worker_side_prioritization": False,
     # Prevent reporting frequency from going lower than this time span.
     "min_time_s_per_reporting": 1,
 
