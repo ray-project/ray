@@ -32,6 +32,7 @@ class SlateQConfig(TrainerConfig):
     """Defines a configuration class from which a SlateQTrainer can be built.
 
     Example:
+        >>> from ray.rllib.agents.slateq import SlateQConfig
         >>> config = SlateQConfig().training(lr=0.01).resources(num_gpus=1)
         >>> print(config.to_dict())
         >>> # Build a Trainer object from the config and run 1 training iteration.
@@ -39,6 +40,7 @@ class SlateQConfig(TrainerConfig):
         >>> trainer.train()
 
     Example:
+        >>> from ray.rllib.agents.slateq import SlateQConfig
         >>> from ray import tune
         >>> config = SlateQConfig()
         >>> # Print out some default values.
