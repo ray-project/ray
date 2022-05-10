@@ -52,7 +52,6 @@ CQL_DEFAULT_CONFIG = merge_dicts(
         # Min Q weight multiplier.
         "min_q_weight": 5.0,
         "replay_buffer_config": {
-            "_enable_replay_buffer_api": True,
             "type": "MultiAgentPrioritizedReplayBuffer",
             # Replay buffer should be larger or equal the size of the offline
             # dataset.

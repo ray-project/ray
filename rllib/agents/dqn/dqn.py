@@ -77,8 +77,6 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
 
         # === Replay buffer ===
         "replay_buffer_config": {
-            # Enable the new ReplayBuffer API.
-            "_enable_replay_buffer_api": True,
             "type": "MultiAgentPrioritizedReplayBuffer",
             # Size of the replay buffer. Note that if async_updates is set,
             # then each worker will have a replay buffer of this size.

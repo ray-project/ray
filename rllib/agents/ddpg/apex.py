@@ -22,6 +22,7 @@ APEX_DDPG_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
         "replay_buffer_config": {
             "capcity": 2000000,
             "no_local_replay_buffer": True,
+
             "learning_starts": 50000,
             # Whether all shards of the replay buffer must be co-located
             # with the learner process (running the execution plan).

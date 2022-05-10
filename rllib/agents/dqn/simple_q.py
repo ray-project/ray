@@ -78,8 +78,6 @@ DEFAULT_CONFIG = with_common_config({
 
     # === Replay buffer ===
     "replay_buffer_config": {
-        # Use the new ReplayBuffer API here
-        "_enable_replay_buffer_api": True,
         # How many steps of the model to sample before learning starts.
         "learning_starts": 1000,
         "type": "MultiAgentReplayBuffer",

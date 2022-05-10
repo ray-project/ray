@@ -31,8 +31,7 @@ atari-sac-tf-and-torch:
         n_step: 1
         rollout_fragment_length: 1
         replay_buffer_config:
-          _enable_replay_buffer_api: False
-          type: MultiAgentReplayBuffer
+          type: MultiAgentPrioritizedReplayBuffer
           capacity: 1000000
           # How many steps of the model to sample before learning starts.
           learning_starts: 1500

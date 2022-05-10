@@ -153,7 +153,6 @@ class TestDDPG(unittest.TestCase):
         # Make this small (seems to introduce errors).
         config["l2_reg"] = 1e-10
         config["replay_buffer_config"] = {
-            "_enable_replay_buffer_api": True,
             "type": "MultiAgentReplayBuffer",
             "capacity": 50000,
         }

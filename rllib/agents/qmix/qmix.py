@@ -76,8 +76,6 @@ DEFAULT_CONFIG = with_common_config({
 
     # === Replay buffer ===
     "replay_buffer_config": {
-        # Use the new ReplayBuffer API here
-        "_enable_replay_buffer_api": True,
         "type": "SimpleReplayBuffer",
         # Size of the replay buffer in batches (not timesteps!).
         "capacity": 1000,
