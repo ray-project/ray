@@ -473,7 +473,10 @@ class DynamicTFPolicyV2(TFPolicy):
             assert existing_inputs is not None
             timestep = existing_inputs["timestep"]
             explore = False
-            self._input_dict, self._dummy_batch = self._create_input_dict_and_dummy_batch(
+            (
+                self._input_dict,
+                self._dummy_batch,
+            ) = self._create_input_dict_and_dummy_batch(
                 self.view_requirements, existing_inputs
             )
         else:
