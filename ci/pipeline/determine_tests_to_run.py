@@ -7,7 +7,6 @@ import argparse
 import json
 import os
 from pprint import pformat
-import platform
 import re
 import subprocess
 import sys
