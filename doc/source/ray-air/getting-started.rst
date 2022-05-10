@@ -3,7 +3,7 @@ Ray AI Runtime (alpha)
 
 Ray AI Runtime (AIR) is an open-source toolkit for building end-to-end ML applications. By leveraging Ray and its library ecosystem, it brings scalability and programmability to ML platforms.
 
-.. image:: /images/ai_runtime.jpg
+.. image:: images/ai_runtime.jpg
 
 
 The main focuses of the Ray AI Runtime:
