@@ -616,12 +616,9 @@ class Dataset(Generic[T]):
     def random_sample(
         self, fraction: float, *, seed: Optional[int] = None
     ) -> "Dataset[T]":
-        """Randomly samples a fraction of the elements of this dataset.
+        """Randomly samples a fraction of the elements of this dataset by uniform sampling.
 
-        Note that the fraction sampled is only approximate, and may not be
-        exactly the fraction specified.
-
-
+        Note that the exact fraction of elements to sample is not guaranteed.
 
         Examples:
             >>> import ray
@@ -637,10 +634,12 @@ class Dataset(Generic[T]):
             seed: Seeds the python random pRNG generator.
 
         Returns:
-            Returns a dataset with approximately (fraction) of the elements of the original dataset
+            Returns a dataset with *fraction* of the elements of the original dataset
         """
         import random
         import math
+        import pyarrow as pa
+        import pandas as pd
 
         if self.num_blocks() == 0:
             raise ValueError("Cannot from an empty dataset")
@@ -662,14 +661,16 @@ class Dataset(Generic[T]):
             """
 
             if isinstance(batch, list):
-                s_batch = sorted(batch)
-                weights = [random.random() for _ in range(len(s_batch))]
-                _result = []
-                for i, w in enumerate(weights):
-                    if w <= fraction:
-                        _result.append(s_batch[i])
-                return _result
-            return batch.sample(frac=fraction)
+                return random.sample(batch, math.ceil(len(batch) * fraction))
+            if isinstance(batch, pa.Table):
+                # Generate a mask to select random indices
+                indices = random.sample(range(len(batch)), math.ceil(len(batch) * fraction))
+                mask = [True if i in indices else False for i in range(len(batch))]
+                return batch.filter(mask)
+            if isinstance(batch, pd.DataFrame):
+                return batch.sample(frac=fraction)
+
+            raise ValueError("Unsupported batch type")
 
         return self.map_batches(process_batch)
 
