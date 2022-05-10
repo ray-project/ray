@@ -8,7 +8,8 @@ import time
 from typing import Dict, Set, List, Tuple, Callable
 from enum import Enum
 from collections import defaultdict
-from ray._private.runtime_env.plugin import PluginCacheManager
+from ray._private.runtime_env.plugin import PluginCacheManager, RuntimeEnvPlugin
+from ray._private.runtime_env.uri_cache import URICache
 
 from ray._private.utils import import_attr
 from ray.core.generated import runtime_env_agent_pb2
@@ -57,6 +58,32 @@ class UriType(Enum):
     PY_MODULES = 2
     PIP = 3
     CONDA = 4
+
+
+def plugin_name_to_uri_type(plugin_name):
+    if plugin_name == "working_dir":
+        return UriType.WORKING_DIR
+    elif plugin_name == "py_modules":
+        return UriType.PY_MODULES
+    elif plugin_name == "pip":
+        return UriType.PIP
+    elif plugin_name == "conda":
+        return UriType.CONDA
+    else:
+        raise ValueError(f"Unknown plugin name: {plugin_name}")
+
+
+def uri_type_to_plugin_name(uri_type):
+    if uri_type == UriType.WORKING_DIR:
+        return "working_dir"
+    elif uri_type == UriType.PY_MODULES:
+        return "py_modules"
+    elif uri_type == UriType.PIP:
+        return "pip"
+    elif uri_type == UriType.CONDA:
+        return "conda"
+    else:
+        raise ValueError(f"Unknown uri type: {uri_type}")
 
 
 class ReferenceTable:
@@ -180,17 +207,32 @@ class RuntimeEnvAgent(
         self._env_locks: Dict[str, asyncio.Lock] = dict()
         _initialize_internal_kv(self._dashboard_agent.gcs_client)
         assert _internal_kv_initialized()
-
-        self._base_plugins = [
-            WorkingDirManager,
-            PyModulesManager,
-            CondaManager,
-            PipManager,
-        ]
-        self._base_plugin_cache_managers = [
-            PluginCacheManager(plugin) for plugin in self._base_plugins
-        ]
+        self._pip_manager = PipManager(self._runtime_env_dir)
+        self._conda_manager = CondaManager(self._runtime_env_dir)
+        self._py_modules_manager = PyModulesManager(self._runtime_env_dir)
+        self._working_dir_manager = WorkingDirManager(self._runtime_env_dir)
         self._container_manager = ContainerManager(dashboard_agent.temp_dir)
+
+        self._base_plugins: Dict[str, RuntimeEnvPlugin] = {
+            "working_dir": self._working_dir_manager,
+            "pip": self._pip_manager,
+            "conda": self._conda_manager,
+            "py_modules": self._py_modules_manager,
+        }
+        self._uri_caches = {}
+        self._base_plugin_cache_managers = {}
+        for plugin_name, plugin in self._base_plugins.items():
+            # Set the max size for the cache.  Defaults to 10 GB.
+            cache_size_env_var = f"RAY_RUNTIME_ENV_{plugin_name}_CACHE_SIZE_GB".upper()
+            cache_size_bytes = int(
+                (1024 ** 3) * float(os.environ.get(cache_size_env_var, 10))
+            )
+            self._uri_caches[plugin_name] = URICache(
+                plugin.delete_uri, cache_size_bytes
+            )
+            self._base_plugin_cache_managers[plugin_name] = PluginCacheManager(
+                plugin, self._uri_caches[plugin_name]
+            )
 
         self._reference_table = ReferenceTable(
             self.uris_parser,
@@ -219,13 +261,13 @@ class RuntimeEnvAgent(
     def unused_uris_processor(self, unused_uris: List[Tuple[str, UriType]]) -> None:
         for uri, uri_type in unused_uris:
             if uri_type == UriType.WORKING_DIR:
-                self._working_dir_uri_cache.mark_unused(uri)
+                self._uri_caches["working_dir"].mark_unused(uri)
             elif uri_type == UriType.PY_MODULES:
-                self._py_modules_uri_cache.mark_unused(uri)
+                self._uri_caches["py_modules"].mark_unused(uri)
             elif uri_type == UriType.CONDA:
-                self._conda_uri_cache.mark_unused(uri)
+                self._uri_caches["conda"].mark_unused(uri)
             elif uri_type == UriType.PIP:
-                self._pip_uri_cache.mark_unused(uri)
+                self._uri_caches["pip"].mark_unused(uri)
 
     def unused_runtime_env_processor(self, unused_runtime_env: str) -> None:
         def delete_runtime_env():
@@ -277,7 +319,7 @@ class RuntimeEnvAgent(
                 runtime_env, context, logger=per_job_logger
             )
 
-            for manager in self._base_plugin_cache_managers:
+            for manager in self._base_plugin_cache_managers.values():
                 await manager.create_if_needed(
                     runtime_env, context, logger=per_job_logger
                 )

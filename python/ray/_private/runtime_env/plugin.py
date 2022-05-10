@@ -1,6 +1,5 @@
-from abc import ABC, abstractstaticmethod
+from abc import ABC
 import logging
-import os
 from typing import Optional, List, Union
 from ray._private.runtime_env.uri_cache import URICache
 
@@ -23,7 +22,7 @@ class RuntimeEnvPlugin(ABC):
 
     name: str = ""
 
-    @abstractstaticmethod
+    @staticmethod
     def validate(runtime_env_dict: dict) -> str:
         """Validate user entry and returns a URI uniquely describing resource.
 
@@ -97,21 +96,15 @@ class RuntimeEnvPlugin(ABC):
 
 
 @DeveloperAPI
-class PluginCacheManager:
+class PluginCacheManager(ABC):
     """A manager for plugins.
 
     This class is used to manage plugins along with a cache for plugin URIs.
     """
 
-    def __init__(self, plugin: RuntimeEnvPlugin):
+    def __init__(self, plugin: RuntimeEnvPlugin, uri_cache: URICache):
         self._plugin = plugin
-
-        # Set the max size for the cache.  Defaults to 10 GB.
-        cache_size_env_var = f"RAY_RUNTIME_ENV_{plugin.name}_CACHE_SIZE_GB".upper()
-        cache_size_bytes = int(
-            (1024 ** 3) * float(os.environ.get(cache_size_env_var, 10))
-        )
-        self._uri_cache = URICache(plugin.delete_uri, cache_size_bytes)
+        self._uri_cache = uri_cache
 
     async def create_if_needed(
         self,
@@ -119,22 +112,27 @@ class PluginCacheManager:
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ):
+        multiple_uris = hasattr(self._plugin, "get_uris")
 
-        uris = self._plugin.get_uri(
-            runtime_env
-        )  # XXX double check uri vs uris everywhere
-        if uris is None:
-            return
+        if multiple_uris:
+            uris = self._plugin.get_uris(runtime_env)
+        else:
+            uri = self._plugin.get_uri(runtime_env)
+            uris = [uri] if uri else None
 
-        for uri in uris if isinstance(uris, list) else [uris]:
-            if uri not in self.uri_cache:
-                logger.debug(f"Cache miss for URI {uri}.")
-                size_bytes = await self.plugin.create(
-                    uri, runtime_env, context, logger=logger
-                )
-                self.uri_cache.add(uri, size_bytes, logger=logger)
-            else:
-                logger.debug(f"Cache hit for URI {uri}.")
-                self.uri_cache.mark_used(uri, logger=logger)
+        if uris is not None:
+            for uri in uris:
+                if uri not in self._uri_cache:
+                    logger.debug(f"Cache miss for URI {uri}.")
+                    size_bytes = await self._plugin.create(
+                        uri, runtime_env, context, logger=logger
+                    )
+                    self._uri_cache.add(uri, size_bytes, logger=logger)
+                else:
+                    logger.debug(f"Cache hit for URI {uri}.")
+                    self._uri_cache.mark_used(uri, logger=logger)
 
-        self.plugin.modify_context(uris, runtime_env, context)
+        if multiple_uris:
+            self._plugin.modify_context(uris, runtime_env, context)
+        else:
+            self._plugin.modify_context(uri, runtime_env, context)
