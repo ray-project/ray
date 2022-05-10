@@ -357,9 +357,8 @@ struct SyncerServerTest {
 
 std::shared_ptr<grpc::Channel> MakeChannel(std::string port) {
   grpc::ChannelArguments argument;
-  // Disable http proxy since it disrupts local connections. TODO(ekl) we should make
-  // this configurable, or selectively set it for known local connections only.
-  argument.SetInt(GRPC_ARG_ENABLE_HTTP_PROXY, 0);
+  argument.SetInt(GRPC_ARG_ENABLE_HTTP_PROXY,
+                  ::RayConfig::instance().grpc_enable_http_proxy() ? 1 : 0);
   argument.SetMaxSendMessageSize(::RayConfig::instance().max_grpc_message_size());
   argument.SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
 
