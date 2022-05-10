@@ -48,6 +48,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                            RayConfig::instance().gcs_server_rpc_client_thread_num()),
       raylet_client_pool_(
           std::make_shared<rpc::NodeManagerClientPool>(client_call_manager_)),
+      local_node_id_(NodeID::FromRandom()),
       pubsub_periodical_runner_(pubsub_io_service_),
       periodical_runner_(main_service),
       is_started_(false),
@@ -302,7 +303,6 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
 }
 
 void GcsServer::InitClusterResourceScheduler() {
-  local_node_id_ = NodeID::FromRandom();
   cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
       scheduling::NodeID(local_node_id_.Binary()),
       NodeResources(),
@@ -473,9 +473,8 @@ void GcsServer::StoreGcsServerAddressInRedis() {
 
 void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
   if (RayConfig::instance().use_ray_syncer()) {
-    gcs_node_id_ = NodeID::FromRandom();
     ray_syncer_ = std::make_unique<syncer::RaySyncer>(ray_syncer_io_context_,
-                                                      gcs_node_id_.Binary());
+                                                      local_node_id_.Binary());
     ray_syncer_->Register(
         syncer::MessageType::RESOURCE_VIEW, nullptr, gcs_resource_manager_.get());
     ray_syncer_thread_ = std::make_unique<std::thread>([this]() {
