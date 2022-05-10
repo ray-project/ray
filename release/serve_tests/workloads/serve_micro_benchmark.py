@@ -1,8 +1,7 @@
 import asyncio
-
+import logging
 
 from ray.serve.benchmarks.microbenchmark import main as benchmark_main
-from ray.serve.utils import logger
 from serve_test_cluster_utils import (
     setup_local_single_node_cluster,
     setup_anyscale_cluster,
@@ -11,6 +10,8 @@ from serve_test_utils import (
     save_test_results,
     is_smoke_test,
 )
+
+logger = logging.getLogger(__file__)
 
 
 async def main():

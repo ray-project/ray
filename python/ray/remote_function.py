@@ -4,10 +4,7 @@ import logging
 import uuid
 
 from ray import cloudpickle as pickle
-from ray.util.scheduling_strategies import (
-    PlacementGroupSchedulingStrategy,
-    SchedulingStrategyT,
-)
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray._raylet import PythonFunctionDescriptor
 from ray import cross_language, Language
 from ray._private.client_mode_hook import client_mode_convert_function
@@ -19,16 +16,7 @@ from ray.util.tracing.tracing_helper import (
     _tracing_task_invocation,
     _inject_tracing_into_function,
 )
-
-
-# Default parameters for remote functions.
-DEFAULT_REMOTE_FUNCTION_CPUS = 1
-DEFAULT_REMOTE_FUNCTION_NUM_RETURN_VALS = 1
-DEFAULT_REMOTE_FUNCTION_MAX_CALLS = 0
-# Normal tasks may be retried on failure this many times.
-# TODO(swang): Allow this to be set globally for an application.
-DEFAULT_REMOTE_FUNCTION_NUM_TASK_RETRIES = 3
-DEFAULT_REMOTE_FUNCTION_RETRY_EXCEPTIONS = False
+from ray._private import ray_option_utils
 
 logger = logging.getLogger(__name__)
 
@@ -85,19 +73,7 @@ class RemoteFunction:
         language,
         function,
         function_descriptor,
-        num_cpus,
-        num_gpus,
-        memory,
-        object_store_memory,
-        resources,
-        accelerator_type,
-        num_returns,
-        max_calls,
-        max_retries,
-        retry_exceptions,
-        runtime_env,
-        placement_group,
-        scheduling_strategy: SchedulingStrategyT,
+        task_options,
     ):
         if inspect.iscoroutinefunction(function):
             raise ValueError(
@@ -105,56 +81,34 @@ class RemoteFunction:
                 "async function with `asyncio.get_event_loop.run_until(f())`. "
                 "See more at https://docs.ray.io/en/latest/ray-core/async_api.html#asyncio-for-remote-tasks"  # noqa
             )
+        self._default_options = task_options
+
+        # TODO(suquark): This is a workaround for class attributes of options.
+        # They are being used in some other places, mostly tests. Need cleanup later.
+        # E.g., actors uses "__ray_metadata__" to collect options, we can so something
+        # similar for remote functions.
+        for k, v in ray_option_utils.task_options.items():
+            setattr(self, "_" + k, task_options.get(k, v.default_value))
+        self._runtime_env = parse_runtime_env(self._runtime_env)
+        if "runtime_env" in self._default_options:
+            self._default_options["runtime_env"] = self._runtime_env
+
         self._language = language
         self._function = _inject_tracing_into_function(function)
         self._function_name = function.__module__ + "." + function.__name__
         self._function_descriptor = function_descriptor
         self._is_cross_language = language != Language.PYTHON
-        self._num_cpus = DEFAULT_REMOTE_FUNCTION_CPUS if num_cpus is None else num_cpus
-        self._num_gpus = num_gpus
-        self._memory = memory
-        if object_store_memory is not None:
-            raise NotImplementedError(
-                "setting object_store_memory is not implemented for tasks"
-            )
-        self._object_store_memory = None
-        self._resources = resources
-        self._accelerator_type = accelerator_type
-        self._num_returns = (
-            DEFAULT_REMOTE_FUNCTION_NUM_RETURN_VALS
-            if num_returns is None
-            else num_returns
-        )
-        self._max_calls = (
-            DEFAULT_REMOTE_FUNCTION_MAX_CALLS if max_calls is None else max_calls
-        )
-        self._max_retries = (
-            DEFAULT_REMOTE_FUNCTION_NUM_TASK_RETRIES
-            if max_retries is None
-            else max_retries
-        )
-        self._retry_exceptions = (
-            DEFAULT_REMOTE_FUNCTION_RETRY_EXCEPTIONS
-            if retry_exceptions is None
-            else retry_exceptions
-        )
-
-        self._runtime_env = parse_runtime_env(runtime_env)
-
-        self._placement_group = placement_group
         self._decorator = getattr(function, "__ray_invocation_decorator__", None)
         self._function_signature = ray._private.signature.extract_signature(
             self._function
         )
-        self._scheduling_strategy = scheduling_strategy
-
         self._last_export_session_and_job = None
         self._uuid = uuid.uuid4()
 
         # Override task.remote's signature and docstring
         @wraps(function)
         def _remote_proxy(*args, **kwargs):
-            return self._remote(args=args, kwargs=kwargs)
+            return self._remote(args=args, kwargs=kwargs, **self._default_options)
 
         self.remote = _remote_proxy
 
@@ -165,26 +119,7 @@ class RemoteFunction:
             f"try '{self._function_name}.remote()'."
         )
 
-    def options(
-        self,
-        args=None,
-        kwargs=None,
-        num_returns=None,
-        num_cpus=None,
-        num_gpus=None,
-        memory=None,
-        object_store_memory=None,
-        accelerator_type=None,
-        resources=None,
-        max_retries=None,
-        retry_exceptions=None,
-        placement_group="default",
-        placement_group_bundle_index=-1,
-        placement_group_capture_child_tasks=None,
-        runtime_env=None,
-        name="",
-        scheduling_strategy: SchedulingStrategyT = None,
-    ):
+    def options(self, **task_options):
         """Configures and overrides the task invocation parameters.
 
         The arguments are the same as those that can be passed to :obj:`ray.remote`.
@@ -202,29 +137,24 @@ class RemoteFunction:
         """
 
         func_cls = self
-        new_runtime_env = parse_runtime_env(runtime_env)
 
-        options = dict(
-            num_returns=num_returns,
-            num_cpus=num_cpus,
-            num_gpus=num_gpus,
-            memory=memory,
-            object_store_memory=object_store_memory,
-            accelerator_type=accelerator_type,
-            resources=resources,
-            max_retries=max_retries,
-            retry_exceptions=retry_exceptions,
-            placement_group=placement_group,
-            placement_group_bundle_index=placement_group_bundle_index,
-            placement_group_capture_child_tasks=(placement_group_capture_child_tasks),
-            runtime_env=new_runtime_env,
-            name=name,
-            scheduling_strategy=scheduling_strategy,
-        )
+        # override original options
+        default_options = self._default_options.copy()
+        # max_calls could not be used in ".options()", we should remove it before
+        # merging options from '@ray.remote'.
+        default_options.pop("max_calls", None)
+        updated_options = ray_option_utils.update_options(default_options, task_options)
+        ray_option_utils.validate_task_options(updated_options, in_options=True)
+
+        # only update runtime_env when ".options()" specifies new runtime_env
+        if "runtime_env" in task_options:
+            updated_options["runtime_env"] = parse_runtime_env(
+                updated_options["runtime_env"]
+            )
 
         class FuncWrapper:
             def remote(self, *args, **kwargs):
-                return func_cls._remote(args=args, kwargs=kwargs, **options)
+                return func_cls._remote(args=args, kwargs=kwargs, **updated_options)
 
             def bind(self, *args, **kwargs):
                 """
@@ -234,61 +164,18 @@ class RemoteFunction:
                 """
                 from ray.experimental.dag.function_node import FunctionNode
 
-                return FunctionNode(
-                    func_cls._function,
-                    args,
-                    kwargs,
-                    options,
-                )
+                return FunctionNode(func_cls._function, args, kwargs, updated_options)
 
         return FuncWrapper()
 
     @_tracing_task_invocation
-    def _remote(
-        self,
-        args=None,
-        kwargs=None,
-        num_returns=None,
-        num_cpus=None,
-        num_gpus=None,
-        memory=None,
-        object_store_memory=None,
-        accelerator_type=None,
-        resources=None,
-        max_retries=None,
-        retry_exceptions=None,
-        placement_group="default",
-        placement_group_bundle_index=-1,
-        placement_group_capture_child_tasks=None,
-        runtime_env=None,
-        name="",
-        scheduling_strategy: SchedulingStrategyT = None,
-    ):
+    def _remote(self, args=None, kwargs=None, **task_options):
         """Submit the remote function for execution."""
-
+        # We pop the "max_calls" coming from "@ray.remote" here. We no longer need
+        # it in "_remote()".
+        task_options.pop("max_calls", None)
         if client_mode_should_convert(auto_init=True):
-            return client_mode_convert_function(
-                self,
-                args,
-                kwargs,
-                num_returns=num_returns,
-                num_cpus=num_cpus,
-                num_gpus=num_gpus,
-                memory=memory,
-                object_store_memory=object_store_memory,
-                accelerator_type=accelerator_type,
-                resources=resources,
-                max_retries=max_retries,
-                retry_exceptions=retry_exceptions,
-                placement_group=placement_group,
-                placement_group_bundle_index=placement_group_bundle_index,
-                placement_group_capture_child_tasks=(
-                    placement_group_capture_child_tasks
-                ),
-                runtime_env=runtime_env,
-                name=name,
-                scheduling_strategy=scheduling_strategy,
-            )
+            return client_mode_convert_function(self, args, kwargs, **task_options)
 
         worker = ray.worker.global_worker
         worker.check_connected()
@@ -317,7 +204,7 @@ class RemoteFunction:
                 msg = (
                     "Could not serialize the function "
                     f"{self._function_descriptor.repr}. Check "
-                    "https://docs.ray.io/en/master/serialization.html#troubleshooting "
+                    "https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting "  # noqa
                     "for more information."
                 )
                 raise TypeError(msg) from e
@@ -328,36 +215,27 @@ class RemoteFunction:
         kwargs = {} if kwargs is None else kwargs
         args = [] if args is None else args
 
-        if num_returns is None:
-            num_returns = self._num_returns
-        if max_retries is None:
-            max_retries = self._max_retries
-        if retry_exceptions is None:
-            retry_exceptions = self._retry_exceptions
-        if scheduling_strategy is None:
-            scheduling_strategy = self._scheduling_strategy
+        # fill task required options
+        for k, v in ray_option_utils.task_options.items():
+            task_options[k] = task_options.get(k, v.default_value)
+        # "max_calls" already takes effects and should not apply again.
+        # Remove the default value here.
+        task_options.pop("max_calls", None)
 
-        resources = ray._private.utils.resources_from_resource_arguments(
-            self._num_cpus,
-            self._num_gpus,
-            self._memory,
-            self._object_store_memory,
-            self._resources,
-            self._accelerator_type,
-            num_cpus,
-            num_gpus,
-            memory,
-            object_store_memory,
-            resources,
-            accelerator_type,
-        )
+        # TODO(suquark): cleanup these fields
+        name = task_options["name"]
+        runtime_env = parse_runtime_env(task_options["runtime_env"])
+        placement_group = task_options["placement_group"]
+        placement_group_bundle_index = task_options["placement_group_bundle_index"]
+        placement_group_capture_child_tasks = task_options[
+            "placement_group_capture_child_tasks"
+        ]
+        scheduling_strategy = task_options["scheduling_strategy"]
+        num_returns = task_options["num_returns"]
+        max_retries = task_options["max_retries"]
+        retry_exceptions = task_options["retry_exceptions"]
 
-        if (placement_group != "default") and (scheduling_strategy is not None):
-            raise ValueError(
-                "Placement groups should be specified via the "
-                "scheduling_strategy option. "
-                "The placement_group option is deprecated."
-            )
+        resources = ray._private.utils.resources_from_ray_options(task_options)
 
         if scheduling_strategy is None or isinstance(
             scheduling_strategy, PlacementGroupSchedulingStrategy
@@ -375,8 +253,6 @@ class RemoteFunction:
                 placement_group_capture_child_tasks = (
                     worker.should_capture_child_tasks_in_placement_group
                 )
-            if placement_group == "default":
-                placement_group = self._placement_group
             placement_group = configure_placement_group_based_on_context(
                 placement_group_capture_child_tasks,
                 placement_group_bundle_index,
@@ -394,8 +270,6 @@ class RemoteFunction:
             else:
                 scheduling_strategy = "DEFAULT"
 
-        if not runtime_env or runtime_env == "{}":
-            runtime_env = self._runtime_env
         serialized_runtime_env_info = None
         if runtime_env is not None:
             serialized_runtime_env_info = get_runtime_env_info(
@@ -422,7 +296,7 @@ class RemoteFunction:
                 self._language,
                 self._function_descriptor,
                 list_args,
-                name,
+                name if name is not None else "",
                 num_returns,
                 resources,
                 max_retries,
@@ -453,4 +327,4 @@ class RemoteFunction:
 
         from ray.experimental.dag.function_node import FunctionNode
 
-        return FunctionNode(self._function, args, kwargs, {})
+        return FunctionNode(self._function, args, kwargs, self._default_options)

@@ -24,10 +24,8 @@ parts:
         sections:
           - file: train/user_guide
           - file: train/examples
+          - file: train/faq
           - file: train/architecture
-          - file: train/migration-guide
-          - file: raysgd/raysgd
-            title: "RaySGD v1: Distributed Training Wrappers"
           - file: train/api
 
       - file: tune/index
@@ -67,9 +65,10 @@ parts:
           - file: serve/end_to_end_tutorial
           - file: serve/core-apis
           - file: serve/http-servehandle
-          - file: serve/deployment
           - file: serve/ml-models
-          - file: serve/pipeline
+          - file: serve/deployment-graph
+          - file: serve/deployment
+          - file: serve/monitoring
           - file: serve/performance
           - file: serve/architecture
           - file: serve/tutorials/index

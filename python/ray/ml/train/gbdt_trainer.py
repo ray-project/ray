@@ -1,4 +1,4 @@
-from typing import Dict, Type, Any, Optional
+from typing import TYPE_CHECKING, Dict, Type, Any, Optional
 import warnings
 import os
 
@@ -6,20 +6,22 @@ import ray.cloudpickle as cpickle
 from ray.ml.trainer import GenDataset
 from ray.ml.config import ScalingConfig, RunConfig, ScalingConfigDataClass
 from ray.ml.preprocessor import Preprocessor
+from ray.tune.utils.trainable import TrainableUtil
 from ray.util.annotations import DeveloperAPI
 from ray.ml.trainer import Trainer
 from ray.ml.checkpoint import Checkpoint
 from ray.tune import Trainable
 from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY, TRAIN_DATASET_KEY
 
-import xgboost_ray
+if TYPE_CHECKING:
+    import xgboost_ray
 
 
 def _convert_scaling_config_to_ray_params(
     scaling_config: ScalingConfig,
-    ray_params_cls: Type[xgboost_ray.RayParams],
+    ray_params_cls: Type["xgboost_ray.RayParams"],
     default_ray_params: Optional[Dict[str, Any]] = None,
-) -> xgboost_ray.RayParams:
+) -> "xgboost_ray.RayParams":
     default_ray_params = default_ray_params or {}
     scaling_config_dataclass = ScalingConfigDataClass(**scaling_config)
     resources_per_worker = scaling_config_dataclass.additional_resources_per_worker
@@ -64,6 +66,13 @@ class GBDTTrainer(Trainer):
         **train_kwargs: Additional kwargs passed to framework ``train()`` function.
     """
 
+    _scaling_config_allowed_keys = [
+        "num_workers",
+        "num_cpus_per_worker",
+        "num_gpus_per_worker",
+        "additional_resources_per_worker",
+        "use_gpu",
+    ]
     _dmatrix_cls: type
     _ray_params_cls: type
     _tune_callback_cls: type
@@ -72,6 +81,7 @@ class GBDTTrainer(Trainer):
 
     def __init__(
         self,
+        *,
         datasets: Dict[str, GenDataset],
         label_column: str,
         params: Dict[str, Any],
@@ -87,8 +97,15 @@ class GBDTTrainer(Trainer):
         self.dmatrix_params = dmatrix_params or {}
         self.train_kwargs = train_kwargs
         super().__init__(
-            scaling_config, run_config, datasets, preprocessor, resume_from_checkpoint
+            scaling_config=scaling_config,
+            run_config=run_config,
+            datasets=datasets,
+            preprocessor=preprocessor,
+            resume_from_checkpoint=resume_from_checkpoint,
         )
+
+    def _validate_attributes(self):
+        super()._validate_attributes()
         self._validate_config_and_datasets()
 
     def _validate_config_and_datasets(self) -> None:
@@ -107,7 +124,7 @@ class GBDTTrainer(Trainer):
 
     def _get_dmatrices(
         self, dmatrix_params: Dict[str, Any]
-    ) -> Dict[str, xgboost_ray.RayDMatrix]:
+    ) -> Dict[str, "xgboost_ray.RayDMatrix"]:
         return {
             k: self._dmatrix_cls(
                 v, label=self.label_column, **dmatrix_params.get(k, {})
@@ -122,7 +139,7 @@ class GBDTTrainer(Trainer):
         raise NotImplementedError
 
     @property
-    def _ray_params(self) -> xgboost_ray.RayParams:
+    def _ray_params(self) -> "xgboost_ray.RayParams":
         return _convert_scaling_config_to_ray_params(
             self.scaling_config, self._ray_params_cls, self._default_ray_params
         )
@@ -182,18 +199,21 @@ class GBDTTrainer(Trainer):
         default_ray_params = self._default_ray_params
 
         class GBDTTrainable(trainable_cls):
+            def save_checkpoint(self, tmp_checkpoint_dir: str = ""):
+                checkpoint_path = super().save_checkpoint()
+                parent_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
+
+                preprocessor = self._merged_config.get("preprocessor", None)
+                if parent_dir and preprocessor:
+                    with open(os.path.join(parent_dir, PREPROCESSOR_KEY), "wb") as f:
+                        cpickle.dump(preprocessor, f)
+                return checkpoint_path
+
             @classmethod
             def default_resource_request(cls, config):
                 updated_scaling_config = config.get("scaling_config", scaling_config)
                 return _convert_scaling_config_to_ray_params(
                     updated_scaling_config, ray_params_cls, default_ray_params
                 ).get_tune_resources()
-
-            def _postprocess_checkpoint(self, checkpoint_path: str):
-                preprocessor = self._merged_config.get("preprocessor", None)
-                if not checkpoint_path or preprocessor is None:
-                    return
-                with open(os.path.join(checkpoint_path, PREPROCESSOR_KEY), "wb") as f:
-                    cpickle.dump(preprocessor, f)
 
         return GBDTTrainable

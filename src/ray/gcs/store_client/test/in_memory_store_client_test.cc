@@ -31,20 +31,9 @@ class InMemoryStoreClientTest : public StoreClientTestBase {
 
 TEST_F(InMemoryStoreClientTest, AsyncPutAndAsyncGetTest) { TestAsyncPutAndAsyncGet(); }
 
-TEST_F(InMemoryStoreClientTest, AsyncPutAndDeleteWithIndexTest) {
-  TestAsyncPutAndDeleteWithIndex();
-}
-
 TEST_F(InMemoryStoreClientTest, AsyncGetAllAndBatchDeleteTest) {
   TestAsyncGetAllAndBatchDelete();
 }
-
-TEST_F(InMemoryStoreClientTest, TestAsyncDeleteWithIndex) { TestAsyncDeleteWithIndex(); }
-
-TEST_F(InMemoryStoreClientTest, TestAsyncBatchDeleteWithIndex) {
-  TestAsyncBatchDeleteWithIndex();
-}
-
 }  // namespace gcs
 
 }  // namespace ray

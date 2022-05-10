@@ -13,9 +13,9 @@ import uuid
 
 import ray
 import ray.cloudpickle as cloudpickle
-from ray.exceptions import RayActorError
+from ray.exceptions import RayActorError, RayTaskError
 from ray.tune import TuneError
-from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
+from ray.tune.checkpoint_manager import _TuneCheckpoint, CheckpointManager
 
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
@@ -99,7 +99,7 @@ class CheckpointDeleter:
         self.trial_id = trial_id
         self.runner = runner
 
-    def __call__(self, checkpoint: Checkpoint):
+    def __call__(self, checkpoint: _TuneCheckpoint):
         """Requests checkpoint deletion asynchronously.
 
         Args:
@@ -108,7 +108,7 @@ class CheckpointDeleter:
         if not self.runner:
             return
 
-        if checkpoint.storage == Checkpoint.PERSISTENT and checkpoint.value:
+        if checkpoint.storage == _TuneCheckpoint.PERSISTENT and checkpoint.value:
             checkpoint_path = checkpoint.value
 
             logger.debug(
@@ -202,9 +202,8 @@ class Trial:
     Trials start in the PENDING state, and transition to RUNNING once started.
     On error it transitions to ERROR, otherwise TERMINATED on success.
 
-    There are resources allocated to each trial. It's preferred that resources
-    are specified using PlacementGroupFactory, rather than through Resources,
-    which is being deprecated.
+    There are resources allocated to each trial. These should be specified
+    using ``PlacementGroupFactory``.
 
     Attributes:
         trainable_name: Name of the trainable object to be executed.
@@ -348,7 +347,7 @@ class Trial:
         self.runner = None
         self.last_debug = 0
         self.error_file = None
-        self.error_msg = None
+        self.pickled_error_file = None
         self.trial_name_creator = trial_name_creator
         self.trial_dirname_creator = trial_dirname_creator
         self.custom_trial_name = None
@@ -394,7 +393,7 @@ class Trial:
             self.custom_dirname = trial_dirname_creator(self)
             if os.path.sep in self.custom_dirname:
                 raise ValueError(
-                    "Trial dirname must not contain '/'. Got {self.custom_dirname}"
+                    f"Trial dirname must not contain '/'. Got {self.custom_dirname}"
                 )
 
         self._state_json = None
@@ -464,7 +463,7 @@ class Trial:
         else:
             checkpoint = self.checkpoint_manager.newest_checkpoint
         if checkpoint.value is None:
-            checkpoint = Checkpoint(Checkpoint.PERSISTENT, self.restore_path)
+            checkpoint = _TuneCheckpoint(_TuneCheckpoint.PERSISTENT, self.restore_path)
         return checkpoint
 
     @classmethod
@@ -531,6 +530,7 @@ class Trial:
             self.logdir = create_logdir(self._generate_dirname(), self.local_dir)
         else:
             os.makedirs(self.logdir, exist_ok=True)
+
         self.invalidate_json_state()
 
     def update_resources(self, resources: Union[Dict, PlacementGroupFactory]):
@@ -592,18 +592,22 @@ class Trial:
         self.experiment_tag = experiment_tag
         self.invalidate_json_state()
 
-    def write_error_log(self, error_msg):
-        if error_msg and self.logdir:
+    def write_error_log(self, exc: Optional[Union[TuneError, RayTaskError]] = None):
+        if exc and self.logdir:
             self.num_failures += 1
             self.error_file = os.path.join(self.logdir, "error.txt")
+            if exc and isinstance(exc, RayTaskError):
+                # Piping through the actual error to result grid.
+                self.pickled_error_file = os.path.join(self.logdir, "error.pkl")
+                with open(self.pickled_error_file, "wb") as f:
+                    cloudpickle.dump(exc, f)
             with open(self.error_file, "a+") as f:
                 f.write(
                     "Failure # {} (occurred at {})\n".format(
                         self.num_failures, date_str()
                     )
                 )
-                f.write(error_msg + "\n")
-            self.error_msg = error_msg
+                f.write(str(exc) + "\n")
         self.invalidate_json_state()
 
     def should_stop(self, result):
@@ -614,9 +618,8 @@ class Trial:
         for criteria, stop_value in self.stopping_criterion.items():
             if criteria not in result:
                 raise TuneError(
-                    "Stopping criteria {} not provided in result {}.".format(
-                        criteria, result
-                    )
+                    "Stopping criteria {} not provided in result dict. Keys "
+                    "are {}.".format(criteria, list(result.keys()))
                 )
             elif isinstance(criteria, dict):
                 raise ValueError(
@@ -645,7 +648,7 @@ class Trial:
         self.restoring_from = None
         self.invalidate_json_state()
 
-    def on_checkpoint(self, checkpoint: Checkpoint):
+    def on_checkpoint(self, checkpoint: _TuneCheckpoint):
         """Hook for handling checkpoints taken by the Trainable.
 
         Args:
@@ -766,17 +769,7 @@ class Trial:
         if self.custom_dirname:
             generated_dirname = self.custom_dirname
         else:
-            if "MAX_LEN_IDENTIFIER" in os.environ:
-                logger.error(
-                    "The MAX_LEN_IDENTIFIER environment variable is "
-                    "deprecated and will be removed in the future. "
-                    "Use TUNE_MAX_LEN_IDENTIFIER instead."
-                )
-            MAX_LEN_IDENTIFIER = int(
-                os.environ.get(
-                    "TUNE_MAX_LEN_IDENTIFIER", os.environ.get("MAX_LEN_IDENTIFIER", 130)
-                )
-            )
+            MAX_LEN_IDENTIFIER = int(os.environ.get("TUNE_MAX_LEN_IDENTIFIER", "130"))
             generated_dirname = f"{str(self)}_{self.experiment_tag}"
             generated_dirname = generated_dirname[:MAX_LEN_IDENTIFIER]
             generated_dirname += f"_{date_str()}"

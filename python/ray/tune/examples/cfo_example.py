@@ -1,6 +1,8 @@
 """This example demonstrates the usage of CFO with Ray Tune.
 
 It also checks that it is usable with a separate scheduler.
+
+Requires the FLAML library to be installed (`pip install flaml`).
 """
 import time
 

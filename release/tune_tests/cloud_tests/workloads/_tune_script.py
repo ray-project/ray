@@ -33,7 +33,7 @@ def fn_trainable(config, checkpoint_dir=None):
         )
 
 
-class RLLibCallback(DefaultCallbacks):
+class RLlibCallback(DefaultCallbacks):
     def on_train_result(self, *, trainer, result: dict, **kwargs) -> None:
         result["internal_iter"] = result["training_iteration"]
 
@@ -74,7 +74,7 @@ def run_tune(
             "env": "CartPole-v1",
             "num_workers": 1,
             "num_envs_per_worker": 1,
-            "callbacks": RLLibCallback,
+            "callbacks": RLlibCallback,
         }
         kwargs = {
             "stop": {"training_iteration": 100},

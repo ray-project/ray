@@ -5,6 +5,7 @@ from ray.rllib.agents.sac.rnnsac_torch_policy import RNNSACTorchPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 DEFAULT_CONFIG = SACTrainer.merge_trainer_configs(
     SAC_DEFAULT_CONFIG,
@@ -18,19 +19,22 @@ DEFAULT_CONFIG = SACTrainer.merge_trainer_configs(
         # and update that initial state during training (from the internal
         # state outputs of the immediately preceding sequence).
         "zero_init_states": True,
-        # If > 0, use the `burn_in` first steps of each replay-sampled sequence
-        # (starting either from all 0.0-values if `zero_init_state=True` or
-        # from the already stored values) to calculate an even more accurate
-        # initial states for the actual sequence (starting after this burn-in
-        # window). In the burn-in case, the actual length of the sequence
-        # used for loss calculation is `n - burn_in` time steps
-        # (n=LSTM’s/attention net’s max_seq_len).
-        "burn_in": 0,
-        # Set automatically: The number of contiguous environment steps to
-        # replay at once. Will be calculated via
-        # model->max_seq_len + burn_in.
-        # Do not set this to any valid value!
-        "replay_sequence_length": -1,
+        "replay_buffer_config": {
+            # If > 0, use the `burn_in` first steps of each replay-sampled sequence
+            # (starting either from all 0.0-values if `zero_init_state=True` or
+            # from the already stored values) to calculate an even more accurate
+            # initial states for the actual sequence (starting after this burn-in
+            # window). In the burn-in case, the actual length of the sequence
+            # used for loss calculation is `n - burn_in` time steps
+            # (n=LSTM’s/attention net’s max_seq_len).
+            "replay_burn_in": 0,
+            # Set automatically: The number of contiguous environment steps to
+            # replay at once. Will be calculated via
+            # model->max_seq_len + burn_in.
+            # Do not set this to any valid value!
+            "replay_sequence_length": -1,
+        },
+        "burn_in": DEPRECATED_VALUE,
     },
     _allow_unknown_configs=True,
 )
@@ -47,16 +51,26 @@ class RNNSACTrainer(SACTrainer):
         # Call super's validation method.
         super().validate_config(config)
 
-        if config["replay_sequence_length"] != -1:
+        # Add the `burn_in` to the Model's max_seq_len.
+        replay_sequence_length = (
+            config["replay_buffer_config"]["replay_burn_in"]
+            + config["model"]["max_seq_len"]
+        )
+        # Check if user tries to set replay_sequence_length (to anything
+        # other than the proper value)
+        if config["replay_buffer_config"]["replay_sequence_length"] not in [
+            -1,
+            replay_sequence_length,
+        ]:
             raise ValueError(
                 "`replay_sequence_length` is calculated automatically to be "
-                "model->max_seq_len + burn_in!"
+                "config['model']['max_seq_len'] + config['burn_in']. Leave "
+                "config['replay_sequence_length'] blank to avoid this error."
             )
-        # Add the `burn_in` to the Model's max_seq_len.
         # Set the replay sequence length to the max_seq_len of the model.
-        config["replay_sequence_length"] = (
-            config["burn_in"] + config["model"]["max_seq_len"]
-        )
+        config["replay_buffer_config"][
+            "replay_sequence_length"
+        ] = replay_sequence_length
 
         if config["framework"] != "torch":
             raise ValueError(

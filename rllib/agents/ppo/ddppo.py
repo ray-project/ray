@@ -17,31 +17,36 @@ Note that unlike the paper, we currently do not implement straggler mitigation.
 """
 
 import logging
-import sys
 import time
 from typing import Callable, Optional, Union
 
 import ray
 from ray.rllib.agents.ppo.ppo import DEFAULT_CONFIG as PPO_DEFAULT_CONFIG, PPOTrainer
 from ray.rllib.agents.trainer import Trainer
-from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.execution.rollout_ops import ParallelRollouts
-from ray.rllib.execution.metric_ops import StandardMetricsReporting
+from ray.rllib.evaluation.postprocessing import Postprocessing
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.common import (
-    STEPS_SAMPLED_COUNTER,
-    STEPS_TRAINED_COUNTER,
     STEPS_TRAINED_THIS_ITER_COUNTER,
-    LEARN_ON_BATCH_TIMER,
-    _get_shared_metrics,
-    _get_global_vars,
 )
-from ray.rllib.evaluation.rollout_worker import get_global_worker
+from ray.rllib.execution.parallel_requests import asynchronous_parallel_requests
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
+from ray.rllib.utils.metrics import (
+    LEARN_ON_BATCH_TIMER,
+    NUM_AGENT_STEPS_SAMPLED,
+    NUM_AGENT_STEPS_TRAINED,
+    NUM_ENV_STEPS_SAMPLED,
+    NUM_ENV_STEPS_TRAINED,
+    SAMPLE_TIMER,
+)
+from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.sgd import do_minibatch_sgd
-from ray.rllib.utils.typing import EnvType, PartialTrainerConfigDict, TrainerConfigDict
+from ray.rllib.utils.typing import (
+    EnvType,
+    PartialTrainerConfigDict,
+    ResultDict,
+    TrainerConfigDict,
+)
 from ray.tune.logger import Logger
-from ray.util.iter import LocalIterator
 
 logger = logging.getLogger(__name__)
 
@@ -80,16 +85,13 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         "num_gpus": 0,
         # Each rollout worker gets a GPU.
         "num_gpus_per_worker": 1,
-        # Require evenly sized batches. Otherwise,
-        # collective allreduce could fail.
-        "truncate_episodes": True,
         # This is auto set based on sample batch size.
         "train_batch_size": -1,
         # Kl divergence penalty should be fixed to 0 in DDPPO because in order
         # for it to be used as a penalty, we would have to un-decentralize
         # DDPPO
         "kl_coeff": 0.0,
-        "kl_target": 0.0
+        "kl_target": 0.0,
     },
     _allow_unknown_configs=True,
 )
@@ -155,10 +157,11 @@ class DDPPOTrainer(PPOTrainer):
         # setting.
         super().validate_config(config)
 
-        # Error if run on Win.
-        if sys.platform in ["win32", "cygwin"]:
+        # Must have `num_workers` >= 1.
+        if config["num_workers"] < 1:
             raise ValueError(
-                "DD-PPO not supported on Win yet! Due to usage of torch.distributed."
+                "Due to its distributed, decentralized nature, "
+                "DD-PPO requires `num_workers` to be >= 1!"
             )
 
         # Only supported for PyTorch so far.
@@ -190,141 +193,122 @@ class DDPPOTrainer(PPOTrainer):
         if config["kl_coeff"] != 0.0 or config["kl_target"] != 0.0:
             raise ValueError("DDPPO doesn't support KL penalties like PPO-1")
 
-    @staticmethod
     @override(PPOTrainer)
-    def execution_plan(
-        workers: WorkerSet, config: TrainerConfigDict, **kwargs
-    ) -> LocalIterator[dict]:
-        """Execution plan of the DD-PPO algorithm. Defines the distributed dataflow.
+    def setup(self, config: PartialTrainerConfigDict):
+        super().setup(config)
 
-        Args:
-            workers (WorkerSet): The WorkerSet for training the Polic(y/ies)
-                of the Trainer.
-            config (TrainerConfigDict): The trainer's configuration dict.
+        # Initialize torch process group for
+        if self.config["_disable_execution_plan_api"] is True:
+            self._curr_learner_info = {}
+            ip = ray.get(self.workers.remote_workers()[0].get_node_ip.remote())
+            port = ray.get(self.workers.remote_workers()[0].find_free_port.remote())
+            address = "tcp://{ip}:{port}".format(ip=ip, port=port)
+            logger.info("Creating torch process group with leader {}".format(address))
 
-        Returns:
-            LocalIterator[dict]: The Policy class to use with PGTrainer.
-                If None, use `get_default_policy_class()` provided by Trainer.
-        """
-        assert (
-            len(kwargs) == 0
-        ), "DDPPO execution_plan does NOT take any additional parameters"
+            # Get setup tasks in order to throw errors on failure.
+            ray.get(
+                [
+                    worker.setup_torch_data_parallel.remote(
+                        url=address,
+                        world_rank=i,
+                        world_size=len(self.workers.remote_workers()),
+                        backend=self.config["torch_distributed_backend"],
+                    )
+                    for i, worker in enumerate(self.workers.remote_workers())
+                ]
+            )
+            logger.info("Torch process group init completed")
 
-        rollouts = ParallelRollouts(workers, mode="raw")
+    @override(PPOTrainer)
+    def training_iteration(self) -> ResultDict:
+        # Shortcut.
+        first_worker = self.workers.remote_workers()[0]
 
-        # Setup the distributed processes.
-        if not workers.remote_workers():
-            raise ValueError("This optimizer requires >0 remote workers.")
-        ip = ray.get(workers.remote_workers()[0].get_node_ip.remote())
-        port = ray.get(workers.remote_workers()[0].find_free_port.remote())
-        address = "tcp://{ip}:{port}".format(ip=ip, port=port)
-        logger.info("Creating torch process group with leader {}".format(address))
-
-        # Get setup tasks in order to throw errors on failure.
-        ray.get(
-            [
-                worker.setup_torch_data_parallel.remote(
-                    url=address,
-                    world_rank=i,
-                    world_size=len(workers.remote_workers()),
-                    backend=config["torch_distributed_backend"],
-                )
-                for i, worker in enumerate(workers.remote_workers())
-            ]
+        # Run sampling and update steps on each worker in asynchronous fashion.
+        sample_and_update_results = asynchronous_parallel_requests(
+            remote_requests_in_flight=self.remote_requests_in_flight,
+            actors=self.workers.remote_workers(),
+            ray_wait_timeout_s=0.0,
+            max_remote_requests_in_flight_per_actor=1,  # 2
+            remote_fn=self._sample_and_train_torch_distributed,
         )
-        logger.info("Torch process group init completed")
 
+        # For all results collected:
+        # - Update our counters and timers.
+        # - Update the worker's global_vars.
+        # - Build info dict using a LearnerInfoBuilder object.
+        learner_info_builder = LearnerInfoBuilder(num_devices=1)
+        steps_this_iter = 0
+        for worker, results in sample_and_update_results.items():
+            for result in results:
+                steps_this_iter += result["env_steps"]
+                self._counters[NUM_AGENT_STEPS_SAMPLED] += result["agent_steps"]
+                self._counters[NUM_AGENT_STEPS_TRAINED] += result["agent_steps"]
+                self._counters[NUM_ENV_STEPS_SAMPLED] += result["env_steps"]
+                self._counters[NUM_ENV_STEPS_TRAINED] += result["env_steps"]
+                self._timers[LEARN_ON_BATCH_TIMER].push(result["learn_on_batch_time"])
+                self._timers[SAMPLE_TIMER].push(result["sample_time"])
+            # Add partial learner info to builder object.
+            learner_info_builder.add_learn_on_batch_results_multi_agent(result["info"])
+
+            # Broadcast the local set of global vars.
+            global_vars = {"timestep": self._counters[NUM_AGENT_STEPS_SAMPLED]}
+            for worker in self.workers.remote_workers():
+                worker.set_global_vars.remote(global_vars)
+
+        self._counters[STEPS_TRAINED_THIS_ITER_COUNTER] = steps_this_iter
+
+        # Sync down the weights from 1st remote worker (only if we have received
+        # some results from it).
+        # As with the sync up, this is not really needed unless the user is
+        # reading the local weights.
+        if (
+            self.config["keep_local_weights_in_sync"]
+            and first_worker in sample_and_update_results
+        ):
+            self.workers.local_worker().set_weights(
+                ray.get(first_worker.get_weights.remote())
+            )
+        # Return merged laarner into results.
+        new_learner_info = learner_info_builder.finalize()
+        if new_learner_info:
+            self._curr_learner_info = new_learner_info
+        return self._curr_learner_info
+
+    @staticmethod
+    def _sample_and_train_torch_distributed(worker: RolloutWorker):
         # This function is applied remotely on each rollout worker.
-        def train_torch_distributed_allreduce(batch):
-            expected_batch_size = (
-                config["rollout_fragment_length"] * config["num_envs_per_worker"]
-            )
-            this_worker = get_global_worker()
-            assert batch.count == expected_batch_size, (
-                "Batch size possibly out of sync between workers, expected:",
-                expected_batch_size,
-                "got:",
-                batch.count,
-            )
-            logger.info(
-                "Executing distributed minibatch SGD "
-                "with epoch size {}, minibatch size {}".format(
-                    batch.count, config["sgd_minibatch_size"]
-                )
-            )
-            info = do_minibatch_sgd(
-                batch,
-                this_worker.policy_map,
-                this_worker,
-                config["num_sgd_iter"],
-                config["sgd_minibatch_size"],
-                ["advantages"],
-            )
-            return info, batch.count
+        config = worker.policy_config
 
-        # Broadcast the local set of global vars.
-        def update_worker_global_vars(item):
-            global_vars = _get_global_vars()
-            for w in workers.remote_workers():
-                w.set_global_vars.remote(global_vars)
-            return item
-
-        # Have to manually record stats since we are using "raw" rollouts mode.
-        class RecordStats:
-            def _on_fetch_start(self):
-                self.fetch_start_time = time.perf_counter()
-
-            def __call__(self, items):
-                for item in items:
-                    info, count = item
-                    metrics = _get_shared_metrics()
-                    metrics.counters[STEPS_TRAINED_THIS_ITER_COUNTER] = count
-                    metrics.counters[STEPS_SAMPLED_COUNTER] += count
-                    metrics.counters[STEPS_TRAINED_COUNTER] += count
-                    metrics.info[LEARNER_INFO] = info
-                # Since SGD happens remotely, the time delay between fetch and
-                # completion is approximately the SGD step time.
-                metrics.timers[LEARN_ON_BATCH_TIMER].push(
-                    time.perf_counter() - self.fetch_start_time
-                )
-
-        train_op = (
-            rollouts.for_each(train_torch_distributed_allreduce)  # allreduce
-            .batch_across_shards()  # List[(grad_info, count)]
-            .for_each(RecordStats())
+        # Generate a sample.
+        start = time.perf_counter()
+        batch = worker.sample()
+        sample_time = time.perf_counter() - start
+        expected_batch_size = (
+            config["rollout_fragment_length"] * config["num_envs_per_worker"]
+        )
+        assert batch.count == expected_batch_size, (
+            "Batch size possibly out of sync between workers, expected:",
+            expected_batch_size,
+            "got:",
+            batch.count,
         )
 
-        train_op = train_op.for_each(update_worker_global_vars)
-
-        # Sync down the weights. As with the sync up, this is not really
-        # needed unless the user is reading the local weights.
-        if config["keep_local_weights_in_sync"]:
-
-            def download_weights(item):
-                workers.local_worker().set_weights(
-                    ray.get(workers.remote_workers()[0].get_weights.remote())
-                )
-                return item
-
-            train_op = train_op.for_each(download_weights)
-
-        # In debug mode, check the allreduce successfully synced the weights.
-        if logger.isEnabledFor(logging.DEBUG):
-
-            def check_sync(item):
-                weights = ray.get(
-                    [w.get_weights.remote() for w in workers.remote_workers()]
-                )
-                sums = []
-                for w in weights:
-                    acc = 0
-                    for p in w.values():
-                        for k, v in p.items():
-                            acc += v.sum()
-                    sums.append(float(acc))
-                logger.debug("The worker weight sums are {}".format(sums))
-                assert len(set(sums)) == 1, sums
-
-            train_op = train_op.for_each(check_sync)
-
-        return StandardMetricsReporting(train_op, workers, config)
+        # Perform n minibatch SGD update(s) on the worker itself.
+        start = time.perf_counter()
+        info = do_minibatch_sgd(
+            batch,
+            worker.policy_map,
+            worker,
+            config["num_sgd_iter"],
+            config["sgd_minibatch_size"],
+            [Postprocessing.ADVANTAGES],
+        )
+        learn_on_batch_time = time.perf_counter() - start
+        return {
+            "info": info,
+            "env_steps": batch.env_steps(),
+            "agent_steps": batch.agent_steps(),
+            "sample_time": sample_time,
+            "learn_on_batch_time": learn_on_batch_time,
+        }

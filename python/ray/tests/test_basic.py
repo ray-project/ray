@@ -22,17 +22,29 @@ logger = logging.getLogger(__name__)
 
 
 # https://github.com/ray-project/ray/issues/6662
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
 @pytest.mark.skipif(client_test_enabled(), reason="interferes with grpc")
-def test_ignore_http_proxy(shutdown_only):
-    ray.init(num_cpus=1)
-    os.environ["http_proxy"] = "http://example.com"
-    os.environ["https_proxy"] = "http://example.com"
+def test_http_proxy(start_http_proxy, shutdown_only):
+    # C++ config `grpc_enable_http_proxy` only initializes once, so we have to
+    # run driver as a separate process to make sure the correct config value
+    # is initialized.
+    script = """
+import ray
 
-    @ray.remote
-    def f():
-        return 1
+ray.init(num_cpus=1)
 
-    assert ray.get(f.remote()) == 1
+@ray.remote
+def f():
+    return 1
+
+assert ray.get(f.remote()) == 1
+"""
+
+    env = start_http_proxy
+    run_string_as_driver(script, dict(os.environ, **env))
 
 
 # https://github.com/ray-project/ray/issues/16025
@@ -177,82 +189,198 @@ def test_submit_api(shutdown_only):
     assert ray.get([id1, id2, id3, id4]) == [0, 1, "test", 2]
 
 
-def test_invalid_arguments(shutdown_only):
-    ray.init(num_cpus=2)
+def test_invalid_arguments():
+    import re
 
-    for opt in [np.random.randint(-100, -1), np.random.uniform(0, 1)]:
-        with pytest.raises(
-            ValueError,
-            match="The keyword 'num_returns' only accepts 0 or a positive integer",
-        ):
+    def f():
+        return 1
 
-            @ray.remote(num_returns=opt)
-            def g1():
-                return 1
+    class A:
+        x = 1
 
-    for opt in [np.random.randint(-100, -2), np.random.uniform(0, 1)]:
-        with pytest.raises(
-            ValueError,
-            match="The keyword 'max_retries' only accepts 0, -1 or a"
-            " positive integer",
-        ):
+    template1 = (
+        "The type of keyword '{}' "
+        + f"must be {(int, type(None))}, but received type {float}"
+    )
 
-            @ray.remote(max_retries=opt)
-            def g2():
-                return 1
+    # Type check
+    for keyword in ("num_returns", "max_retries", "max_calls"):
+        with pytest.raises(TypeError, match=re.escape(template1.format(keyword))):
+            ray.remote(**{keyword: np.random.uniform(0, 1)})(f)
 
-    for opt in [np.random.randint(-100, -1), np.random.uniform(0, 1)]:
-        with pytest.raises(
-            ValueError,
-            match="The keyword 'max_calls' only accepts 0 or a positive integer",
-        ):
+    for keyword in ("max_restarts", "max_task_retries"):
+        with pytest.raises(TypeError, match=re.escape(template1.format(keyword))):
+            ray.remote(**{keyword: np.random.uniform(0, 1)})(A)
 
-            @ray.remote(max_calls=opt)
-            def g3():
-                return 1
+    # Value check for non-negative finite values
+    for keyword in ("num_returns", "max_calls"):
+        for v in (np.random.randint(-100, -2), -1):
+            with pytest.raises(
+                ValueError,
+                match=f"The keyword '{keyword}' only accepts None, "
+                f"0 or a positive integer",
+            ):
+                ray.remote(**{keyword: v})(f)
 
-    for opt in [np.random.randint(-100, -2), np.random.uniform(0, 1)]:
-        with pytest.raises(
-            ValueError,
-            match="The keyword 'max_restarts' only accepts -1, 0 or a"
-            " positive integer",
-        ):
+    # Value check for non-negative and infinite values
+    template2 = (
+        "The keyword '{}' only accepts None, 0, -1 or a positive integer, "
+        "where -1 represents infinity."
+    )
 
-            @ray.remote(max_restarts=opt)
-            class A1:
-                x = 1
+    with pytest.raises(ValueError, match=template2.format("max_retries")):
+        ray.remote(max_retries=np.random.randint(-100, -2))(f)
 
-    for opt in [np.random.randint(-100, -2), np.random.uniform(0, 1)]:
-        with pytest.raises(
-            ValueError,
-            match="The keyword 'max_task_retries' only accepts -1, 0 or a"
-            " positive integer",
-        ):
+    for keyword in ("max_restarts", "max_task_retries"):
+        with pytest.raises(ValueError, match=template2.format(keyword)):
+            ray.remote(**{keyword: np.random.randint(-100, -2)})(A)
 
-            @ray.remote(max_task_retries=opt)
-            class A2:
-                x = 1
+    metadata_type_err = (
+        "The type of keyword '_metadata' "
+        + f"must be {(dict, type(None))}, but received type {float}"
+    )
+    with pytest.raises(TypeError, match=re.escape(metadata_type_err)):
+        ray.remote(_metadata=3.14)(A)
 
-
-def test_user_setup_function():
-    script = """
-import ray
-ray.init()
-@ray.remote
-def get_pkg_dir():
-    return ray._private.runtime_env.VAR
-
-print("remote", ray.get(get_pkg_dir.remote()))
-print("local", ray._private.runtime_env.VAR)
+    ray.remote(_metadata={"data": 1})(f)
+    ray.remote(_metadata={"data": 1})(A)
 
 
-"""
+def test_options():
+    """General test of option keywords in Ray."""
+    import re
+    from ray._private import ray_option_utils
 
-    env = {"RAY_USER_SETUP_FUNCTION": "ray._private.test_utils.set_setup_func"}
-    out = run_string_as_driver(script, dict(os.environ, **env))
-    (remote_out, local_out) = out.strip().splitlines()[-2:]
-    assert remote_out == "remote hello world"
-    assert local_out == "local hello world"
+    def f():
+        return 1
+
+    class A:
+        x = 1
+
+    task_defaults = {
+        k: v.default_value for k, v in ray_option_utils.task_options.items()
+    }
+    task_defaults_for_options = task_defaults.copy()
+    task_defaults_for_options.pop("max_calls")
+    ray.remote(f).options(**task_defaults_for_options)
+    ray.remote(**task_defaults)(f).options(**task_defaults_for_options)
+    with pytest.raises(
+        ValueError,
+        match=re.escape("Setting 'max_calls' is not supported in '.options()'."),
+    ):
+        ray.remote(f).options(max_calls=1)
+
+    actor_defaults = {
+        k: v.default_value for k, v in ray_option_utils.actor_options.items()
+    }
+    actor_defaults_for_options = actor_defaults.copy()
+    actor_defaults_for_options.pop("concurrency_groups")
+    ray.remote(A).options(**actor_defaults_for_options)
+    ray.remote(**actor_defaults)(A).options(**actor_defaults_for_options)
+    with pytest.raises(
+        ValueError,
+        match=re.escape(
+            "Setting 'concurrency_groups' is not supported in '.options()'."
+        ),
+    ):
+        ray.remote(A).options(concurrency_groups=[])
+
+    unique_object = type("###", (), {})()
+    for k, v in ray_option_utils.task_options.items():
+        v.validate(k, v.default_value)
+        with pytest.raises(TypeError):
+            v.validate(k, unique_object)
+
+    for k, v in ray_option_utils.actor_options.items():
+        v.validate(k, v.default_value)
+        with pytest.raises(TypeError):
+            v.validate(k, unique_object)
+
+    # test updating each namespace of "_metadata" independently
+    assert ray_option_utils.update_options(
+        {
+            "_metadata": {"ns1": {"a1": 1, "b1": 2, "c1": 3}, "ns2": {"a2": 1}},
+            "num_cpus": 1,
+            "xxx": {"x": 2},
+            "zzz": 42,
+        },
+        {
+            "_metadata": {"ns1": {"b1": 22}, "ns3": {"b3": 2}},
+            "num_cpus": 2,
+            "xxx": {"y": 2},
+            "yyy": 3,
+        },
+    ) == {
+        "_metadata": {
+            "ns1": {"a1": 1, "b1": 22, "c1": 3},
+            "ns2": {"a2": 1},
+            "ns3": {"b3": 2},
+        },
+        "num_cpus": 2,
+        "xxx": {"y": 2},
+        "yyy": 3,
+        "zzz": 42,
+    }
+
+    # test options for other Ray libraries.
+    namespace = "namespace"
+
+    class mock_options:
+        def __init__(self, **options):
+            self.options = {"_metadata": {namespace: options}}
+
+        def keys(self):
+            return ("_metadata",)
+
+        def __getitem__(self, key):
+            return self.options[key]
+
+        def __call__(self, f):
+            f._default_options.update(self.options)
+            return f
+
+    @mock_options(a=1, b=2)
+    @ray.remote(num_gpus=2)
+    def foo():
+        pass
+
+    assert foo._default_options == {
+        "_metadata": {"namespace": {"a": 1, "b": 2}},
+        "num_gpus": 2,
+    }
+
+    f2 = foo.options(num_cpus=1, num_gpus=1, **mock_options(a=11, c=3))
+
+    # TODO(suquark): The current implementation of `.options()` is so bad that we
+    # cannot even access its options from outside. Here we hack the closures to
+    # achieve our goal. Need futher efforts to clean up the tech debt.
+    assert f2.remote.__closure__[1].cell_contents == {
+        "_metadata": {"namespace": {"a": 11, "b": 2, "c": 3}},
+        "num_cpus": 1,
+        "num_gpus": 1,
+    }
+
+    class mock_options2(mock_options):
+        def __init__(self, **options):
+            self.options = {"_metadata": {namespace + "2": options}}
+
+    f3 = foo.options(num_cpus=1, num_gpus=1, **mock_options2(a=11, c=3))
+
+    assert f3.remote.__closure__[1].cell_contents == {
+        "_metadata": {"namespace": {"a": 1, "b": 2}, "namespace2": {"a": 11, "c": 3}},
+        "num_cpus": 1,
+        "num_gpus": 1,
+    }
+
+    with pytest.raises(TypeError):
+        # Ensure only a single "**option" per ".options()".
+        # Otherwise it would be confusing.
+        foo.options(
+            num_cpus=1,
+            num_gpus=1,
+            **mock_options(a=11, c=3),
+            **mock_options2(a=11, c=3),
+        )
 
 
 # https://github.com/ray-project/ray/issues/17842

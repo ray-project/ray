@@ -1,0 +1,1 @@
+../ci/run/bazel.py

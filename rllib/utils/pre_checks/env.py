@@ -1,13 +1,15 @@
 """Common pre-checks for all RLlib experiments."""
+from copy import copy
 import logging
-import numpy as np
-from typing import TYPE_CHECKING, Set
-
 import gym
+import numpy as np
+import traceback
+from typing import TYPE_CHECKING, Set
 
 from ray.actor import ActorHandle
 from ray.rllib.utils.spaces.space_utils import convert_element_to_space_type
 from ray.rllib.utils.typing import EnvType
+from ray.util import log_once
 
 if TYPE_CHECKING:
     from ray.rllib.env import BaseEnv, MultiAgentEnv
@@ -40,35 +42,48 @@ def check_env(env: EnvType) -> None:
         logger.warning("Skipping env checking for this experiment")
         return
 
-    if not isinstance(
-        env,
-        (
-            BaseEnv,
-            gym.Env,
-            MultiAgentEnv,
-            RemoteBaseEnv,
-            VectorEnv,
-            ExternalMultiAgentEnv,
-            ExternalEnv,
-            ActorHandle,
-        ),
-    ):
+    try:
+        if not isinstance(
+            env,
+            (
+                BaseEnv,
+                gym.Env,
+                MultiAgentEnv,
+                RemoteBaseEnv,
+                VectorEnv,
+                ExternalMultiAgentEnv,
+                ExternalEnv,
+                ActorHandle,
+            ),
+        ):
+            raise ValueError(
+                "Env must be one of the supported types: BaseEnv, gym.Env, "
+                "MultiAgentEnv, VectorEnv, RemoteBaseEnv, ExternalMultiAgentEnv, "
+                f"ExternalEnv, but instead was a {type(env)}"
+            )
+        if isinstance(env, MultiAgentEnv):
+            check_multiagent_environments(env)
+        elif isinstance(env, gym.Env):
+            check_gym_environments(env)
+        elif isinstance(env, BaseEnv):
+            check_base_env(env)
+        else:
+            logger.warning(
+                "Env checking isn't implemented for VectorEnvs, RemoteBaseEnvs, "
+                "ExternalMultiAgentEnv,or ExternalEnvs or Environments that are "
+                "Ray actors"
+            )
+    except Exception:
+        actual_error = traceback.format_exc()
         raise ValueError(
-            "Env must be one of the supported types: BaseEnv, gym.Env, "
-            "MultiAgentEnv, VectorEnv, RemoteBaseEnv, ExternalMultiAgentEnv, "
-            f"ExternalEnv, but instead was a {type(env)}"
-        )
-
-    if isinstance(env, MultiAgentEnv):
-        check_multiagent_environments(env)
-    elif isinstance(env, gym.Env):
-        check_gym_environments(env)
-    elif isinstance(env, BaseEnv):
-        check_base_env(env)
-    else:
-        logger.warning(
-            "Env checking isn't implemented for VectorEnvs, RemoteBaseEnvs, "
-            "ExternalMultiAgentEnv,or ExternalEnvs or Environments that are Ray actors"
+            f"{actual_error}\n"
+            "The above error has been found in your environment! "
+            "We've added a module for checking your custom environments. It "
+            "may cause your experiment to fail if your environment is not set up"
+            "correctly. You can disable this behavior by setting "
+            "`disable_env_checking=True` in your config "
+            "dictionary. You can run the environment checking module "
+            "standalone by calling ray.rllib.utils.check_env([env])."
         )
 
 
@@ -191,6 +206,20 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
 
     if not isinstance(env, MultiAgentEnv):
         raise ValueError("The passed env is not a MultiAgentEnv.")
+    elif not (
+        hasattr(env, "observation_space")
+        and hasattr(env, "action_space")
+        and hasattr(env, "_agent_ids")
+        and hasattr(env, "_spaces_in_preferred_format")
+    ):
+        if log_once("ma_env_super_ctor_called"):
+            logger.warning(
+                f"Your MultiAgentEnv {env} does not have some or all of the needed "
+                "base-class attributes! Make sure you call `super().__init__` from "
+                "within your MutiAgentEnv's constructor. "
+                "This will raise an error in the future."
+            )
+        return
 
     reset_obs = env.reset()
     sampled_obs = env.observation_space_sample()
@@ -232,7 +261,7 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
     if not env.action_space_contains(sampled_action):
         error = (
             _not_contained_error("action_space_sample", "action")
-            + "\n\n sampled_action {sampled_action}\n\n"
+            + f"\n\n sampled_action {sampled_action}\n\n"
         )
         raise ValueError(error)
 
@@ -249,7 +278,7 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
     if not env.observation_space_contains(next_obs):
         error = (
             _not_contained_error("env.step(sampled_action)", "observation")
-            + ":\n\n next_obs: {next_obs} \n\n sampled_obs: {sampled_obs}"
+            + f":\n\n next_obs: {next_obs} \n\n sampled_obs: {sampled_obs}"
         )
         raise ValueError(error)
 
@@ -331,12 +360,17 @@ def _check_reward(reward, base_env=False, agent_ids=None):
         for _, multi_agent_dict in reward.items():
             for agent_id, rew in multi_agent_dict.items():
                 if not (
-                    np.isreal(rew) and not isinstance(rew, bool) and np.isscalar(rew)
+                    np.isreal(rew)
+                    and not isinstance(rew, bool)
+                    and (
+                        np.isscalar(rew)
+                        or (isinstance(rew, np.ndarray) and rew.shape == ())
+                    )
                 ):
                     error = (
                         "Your step function must return rewards that are"
                         f" integer or float. reward: {rew}. Instead it was a "
-                        f"{type(reward)}"
+                        f"{type(rew)}"
                     )
                     raise ValueError(error)
                 if not (agent_id in agent_ids or agent_id == "__all__"):
@@ -347,7 +381,12 @@ def _check_reward(reward, base_env=False, agent_ids=None):
                     )
                     raise ValueError(error)
     elif not (
-        np.isreal(reward) and not isinstance(reward, bool) and np.isscalar(reward)
+        np.isreal(reward)
+        and not isinstance(reward, bool)
+        and (
+            np.isscalar(reward)
+            or (isinstance(reward, np.ndarray) and reward.shape == ())
+        )
     ):
         error = (
             "Your step function must return a reward that is integer or float. "
@@ -450,7 +489,7 @@ def _check_if_element_multi_agent_dict(env, element, function_string, base_env=F
                 f" {type(element)}"
             )
         raise ValueError(error)
-    agent_ids: Set = env.get_agent_ids()
+    agent_ids: Set = copy(env.get_agent_ids())
     agent_ids.add("__all__")
 
     if not all(k in agent_ids for k in element):

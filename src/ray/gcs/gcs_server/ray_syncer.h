@@ -23,7 +23,7 @@
 
 namespace ray {
 class GcsPlacementGroupSchedulerTest;
-namespace syncer {
+namespace gcs_syncer {
 
 // RaySyncer is a service to sync components in the cluster.
 // It's supposed to be used to synchronize resource usage and scheduling information
@@ -185,5 +185,5 @@ class RaySyncer {
   friend class ray::GcsPlacementGroupSchedulerTest;
 };
 
-}  // namespace syncer
+}  // namespace gcs_syncer
 }  // namespace ray

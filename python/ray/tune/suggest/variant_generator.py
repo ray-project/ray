@@ -1,5 +1,6 @@
 import copy
 import logging
+import re
 from collections.abc import Mapping
 from typing import Any, Dict, Generator, List, Optional, Tuple
 
@@ -90,22 +91,34 @@ def resolve_nested_dict(nested_dict: Dict) -> Dict[Tuple, Any]:
 
 
 def format_vars(resolved_vars: Dict) -> str:
-    """Formats the resolved variable dict into a single string."""
-    out = []
-    for path, value in sorted(resolved_vars.items()):
-        if path[0] in ["run", "env", "resources_per_trial"]:
-            continue  # TrialRunner already has these in the experiment_tag
-        pieces = []
-        last_string = True
-        for k in path[::-1]:
-            if isinstance(k, int):
-                pieces.append(str(k))
-            elif last_string:
-                last_string = False
-                pieces.append(k)
-        pieces.reverse()
-        out.append(_clean_value("_".join(pieces)) + "=" + _clean_value(value))
-    return ",".join(out)
+    """Format variables to be used as experiment tags.
+
+    Experiment tags are used in directory names, so this method makes sure
+    the resulting tags can be legally used in directory names on all systems.
+
+    The input to this function is a dict of the form
+    ``{("nested", "config", "path"): "value"}``. The output will be a comma
+    separated string of the form ``last_key=value``, so in this example
+    ``path=value``.
+
+    Note that the sanitizing implies that empty strings are possible return
+    values. This is expected and acceptable, as it is not a common case and
+    the resulting directory names will still be valid.
+
+    Args:
+        resolved_vars: Dictionary mapping from config path tuples to a value.
+
+    Returns:
+        Comma-separated key=value string.
+    """
+    vars = resolved_vars.copy()
+    # TrialRunner already has these in the experiment_tag
+    for v in ["run", "env", "resources_per_trial"]:
+        vars.pop(v, None)
+
+    return ",".join(
+        f"{_clean_value(k[-1])}={_clean_value(v)}" for k, v in sorted(vars.items())
+    )
 
 
 def flatten_resolved_vars(resolved_vars: Dict) -> Dict:
@@ -120,10 +133,14 @@ def flatten_resolved_vars(resolved_vars: Dict) -> Dict:
 
 
 def _clean_value(value: Any) -> str:
+    """Format floats and replace invalid string characters with ``_``."""
     if isinstance(value, float):
-        return "{:.5}".format(value)
+        return f"{value:.4f}"
     else:
-        return str(value).replace("/", "_")
+        # Define an invalid alphabet, which is the inverse of the
+        # stated regex characters
+        invalid_alphabet = r"[^a-zA-Z0-9_-]+"
+        return re.sub(invalid_alphabet, "_", str(value)).strip("_")
 
 
 def parse_spec_vars(

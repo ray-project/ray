@@ -131,7 +131,7 @@ class MockReferenceCounter : public ReferenceCounterInterface {
 class ActorManagerTest : public ::testing::Test {
  public:
   ActorManagerTest()
-      : options_("", 1, ""),
+      : options_("localhost:6793"),
         gcs_client_mock_(new MockGcsClient(options_)),
         actor_info_accessor_(new MockActorInfoAccessor(gcs_client_mock_.get())),
         direct_actor_submitter_(new MockDirectActorSubmitter()),

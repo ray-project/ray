@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import time
 from typing import (
     TypeVar,
@@ -142,6 +143,7 @@ class _BlockExecStatsBuilder:
 
 
 @DeveloperAPI
+@dataclass
 class BlockMetadata:
     """Metadata about the block.
 
@@ -154,22 +156,15 @@ class BlockMetadata:
         exec_stats: Execution stats for this block.
     """
 
-    def __init__(
-        self,
-        *,
-        num_rows: Optional[int],
-        size_bytes: Optional[int],
-        schema: Union[type, "pyarrow.lib.Schema"],
-        input_files: List[str],
-        exec_stats: Optional[BlockExecStats]
-    ):
-        if input_files is None:
-            input_files = []
-        self.num_rows: Optional[int] = num_rows
-        self.size_bytes: Optional[int] = size_bytes
-        self.schema: Optional[Any] = schema
-        self.input_files: List[str] = input_files
-        self.exec_stats: Optional[BlockExecStats] = exec_stats
+    num_rows: Optional[int]
+    size_bytes: Optional[int]
+    schema: Optional[Union[type, "pyarrow.lib.Schema"]]
+    input_files: Optional[List[str]]
+    exec_stats: Optional[BlockExecStats]
+
+    def __post_init__(self):
+        if self.input_files is None:
+            self.input_files = []
 
 
 @DeveloperAPI
@@ -225,6 +220,10 @@ class BlockAccessor(Generic[T]):
 
     def to_arrow(self) -> "pyarrow.Table":
         """Convert this block into an Arrow table."""
+        raise NotImplementedError
+
+    def to_block(self) -> Block:
+        """Return the base block that this accessor wraps."""
         raise NotImplementedError
 
     def size_bytes(self) -> int:

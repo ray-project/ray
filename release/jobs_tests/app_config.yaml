@@ -1,0 +1,15 @@
+base_image: "anyscale/ray:nightly-py37"
+env_vars: {}
+debian_packages:
+  - curl
+  - unzip
+
+python:
+  pip_packages: []
+  conda_packages: []
+
+post_build_cmds:
+  - 'rm -r wrk || true && git clone https://github.com/wg/wrk.git /tmp/wrk && cd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin'
+  - pip uninstall -y ray || true
+  - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}

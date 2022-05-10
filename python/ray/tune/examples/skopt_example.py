@@ -1,6 +1,8 @@
-"""This example demonstrates the usage of Skopt with Ray Tune.
+"""This example demonstrates the usage of SkOpt with Ray Tune.
 
 It also checks that it is usable with a separate scheduler.
+
+Requires the SkOpt library to be installed (`pip install scikit-optimize`).
 """
 import time
 

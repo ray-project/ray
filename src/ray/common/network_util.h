@@ -130,14 +130,6 @@ class AsyncClient {
 /// \return a valid local ip.
 std::string GetValidLocalIp(int port, int64_t timeout_ms);
 
-/// A helper function to test whether target rpc server is valid.
-///
-/// \param ip The ip that the target rpc server is listening on.
-/// \param port The port that the target rpc server is listening on.
-/// \param timeout_ms The maximum wait time in milliseconds.
-/// \return Whether target rpc server is valid.
-bool Ping(const std::string &ip, int port, int64_t timeout_ms);
-
 bool CheckFree(int port);
 
 /// \namespace NetIf

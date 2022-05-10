@@ -3,6 +3,8 @@ multi-objective optimization.
 
 Please note that schedulers may not work correctly with multi-objective
 optimization.
+
+Requires the Optuna library to be installed (`pip install optuna`).
 """
 import time
 

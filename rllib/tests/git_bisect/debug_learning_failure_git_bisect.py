@@ -181,7 +181,7 @@ if __name__ == "__main__":
             subprocess.run("pip uninstall -y ray".split(" "))
         except Exception:
             pass
-        subprocess.run("ci/travis/install-bazel.sh".split(" "))
+        subprocess.run("ci/env/install-bazel.sh".split(" "))
         os.chdir("python")
         subprocess.run("pip install -e . --verbose".split(" "))
         os.chdir("../")

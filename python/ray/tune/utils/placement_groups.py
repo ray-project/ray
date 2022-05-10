@@ -243,16 +243,6 @@ def resource_dict_to_pg_factory(spec: Optional[Dict[str, float]]):
         spec = spec._asdict()
 
     spec = spec.copy()
-    extra_custom = spec.pop("extra_custom_resources", {}) or {}
-
-    if any(k.startswith("extra_") and spec[k] for k in spec) or any(
-        extra_custom[k] for k in extra_custom
-    ):
-        raise ValueError(
-            "Passing `extra_*` resource requirements to `resources_per_trial` "
-            "is deprecated. Please use a `PlacementGroupFactory` object "
-            "to define your resource requirements instead."
-        )
 
     cpus = spec.pop("cpu", 0.0)
     gpus = spec.pop("gpu", 0.0)
@@ -508,6 +498,8 @@ class PlacementGroupManager:
             head_bundle = pg.bundle_specs[0].copy()
             num_cpus = head_bundle.pop("CPU", 0)
             num_gpus = head_bundle.pop("GPU", 0)
+            memory = head_bundle.pop("memory", None)
+            object_store_memory = head_bundle.pop("object_store_memory", None)
 
             # Only custom resources remain in `head_bundle`
             resources = head_bundle
@@ -517,6 +509,8 @@ class PlacementGroupManager:
                 placement_group_capture_child_tasks=True,
                 num_cpus=num_cpus,
                 num_gpus=num_gpus,
+                memory=memory,
+                object_store_memory=object_store_memory,
                 resources=resources,
             )
         else:

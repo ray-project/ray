@@ -24,6 +24,7 @@
 #include "ray/gcs/test/gcs_test_util.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_kv_manager.h"
+#include "mock/ray/pubsub/publisher.h"
 // clang-format on
 
 namespace ray {
@@ -36,8 +37,9 @@ class MockInMemoryStoreClient : public gcs::InMemoryStoreClient {
   Status AsyncPut(const std::string &table_name,
                   const std::string &key,
                   const std::string &data,
-                  const gcs::StatusCallback &callback) override {
-    callback(Status::OK());
+                  bool overwrite,
+                  std::function<void(bool)> callback) override {
+    callback(true);
     return Status::OK();
   }
 };
@@ -55,7 +57,7 @@ class GcsJobManagerTest : public ::testing::Test {
     promise.get_future().get();
 
     gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
-        std::make_unique<GcsServerMocker::MockGcsPubSub>(redis_client_));
+        std::make_unique<ray::pubsub::MockPublisher>());
     store_client_ = std::make_shared<MockInMemoryStoreClient>(io_service_);
     gcs_table_storage_ = std::make_shared<gcs::GcsTableStorage>(store_client_);
     kv_ = std::make_unique<gcs::MockInternalKVInterface>();
@@ -71,7 +73,6 @@ class GcsJobManagerTest : public ::testing::Test {
   instrumented_io_context io_service_;
   std::unique_ptr<std::thread> thread_io_service_;
   std::shared_ptr<gcs::StoreClient> store_client_;
-  std::shared_ptr<gcs::RedisClient> redis_client_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
   std::unique_ptr<gcs::GcsFunctionManager> function_manager_;

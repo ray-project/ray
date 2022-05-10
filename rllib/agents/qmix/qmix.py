@@ -3,20 +3,25 @@ from typing import Type
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.dqn.simple_q import SimpleQTrainer
 from ray.rllib.agents.qmix.qmix_policy import QMixTorchPolicy
-from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.execution.concurrency_ops import Concurrently
-from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.execution.replay_ops import (
-    SimpleReplayBuffer,
-    Replay,
-    StoreToReplayBuffer,
+from ray.rllib.execution.rollout_ops import (
+    synchronous_parallel_sample,
 )
-from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
-from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
+from ray.rllib.execution.train_ops import (
+    multi_gpu_train_one_step,
+    train_one_step,
+)
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import TrainerConfigDict
-from ray.util.iter import LocalIterator
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.metrics import (
+    LAST_TARGET_UPDATE_TS,
+    NUM_AGENT_STEPS_SAMPLED,
+    NUM_ENV_STEPS_SAMPLED,
+    NUM_TARGET_UPDATES,
+    SYNCH_WORKER_WEIGHTS_TIMER,
+)
+from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
+from ray.rllib.utils.typing import ResultDict, TrainerConfigDict
 
 # fmt: off
 # __sphinx_doc_begin__
@@ -61,14 +66,25 @@ DEFAULT_CONFIG = with_common_config({
         "explore": False,
     },
 
-    # Number of env steps to optimize for before returning
-    "timesteps_per_iteration": 1000,
+    # Minimum env sampling timesteps to accumulate within a single `train()` call. This
+    # value does not affect learning, only the number of times `Trainer.step_attempt()`
+    # is called by `Trauber.train()`. If - after one `step_attempt()`, the env sampling
+    # timestep count has not been reached, will perform n more `step_attempt()` calls
+    # until the minimum timesteps have been executed. Set to 0 for no minimum timesteps.
+    "min_sample_timesteps_per_reporting": 1000,
     # Update the target network every `target_network_update_freq` steps.
     "target_network_update_freq": 500,
 
     # === Replay buffer ===
-    # Size of the replay buffer in batches (not timesteps!).
-    "buffer_size": 1000,
+    "replay_buffer_config": {
+        # Use the new ReplayBuffer API here
+        "_enable_replay_buffer_api": True,
+        "type": "SimpleReplayBuffer",
+        # Size of the replay buffer in batches (not timesteps!).
+        "capacity": 1000,
+        "learning_starts": 1000,
+    },
+
     # === Optimization ===
     # Learning rate for RMSProp optimizer
     "lr": 0.0005,
@@ -78,14 +94,12 @@ DEFAULT_CONFIG = with_common_config({
     "optim_eps": 0.00001,
     # If not None, clip gradients during optimization at this value
     "grad_norm_clipping": 10,
-    # How many steps of the model to sample before learning starts.
-    "learning_starts": 1000,
     # Update the replay buffer with this many samples at once. Note that
     # this setting applies per-worker if num_workers > 1.
     "rollout_fragment_length": 4,
-    # Size of a batched sampled from replay buffer for training. Note that
-    # if async_updates is set, then each worker returns gradients for a
-    # batch of this size.
+    # Minimum batch size used for training (in timesteps). With the default buffer
+    # (ReplayBuffer) this means, sampling from the buffer (entire-episode SampleBatches)
+    # as many times as is required to reach at least this number of timesteps.
     "train_batch_size": 32,
 
     # === Parallelism ===
@@ -105,6 +119,12 @@ DEFAULT_CONFIG = with_common_config({
     },
     # Only torch supported so far.
     "framework": "torch",
+
+    # Deprecated keys:
+    # Use `replay_buffer_config.learning_starts` instead.
+    "learning_starts": DEPRECATED_VALUE,
+    # Use `replay_buffer_config.capacity` instead.
+    "buffer_size": DEPRECATED_VALUE,
 })
 # __sphinx_doc_end__
 # fmt: on
@@ -128,36 +148,74 @@ class QMixTrainer(SimpleQTrainer):
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         return QMixTorchPolicy
 
-    @staticmethod
     @override(SimpleQTrainer)
-    def execution_plan(
-        workers: WorkerSet, config: TrainerConfigDict, **kwargs
-    ) -> LocalIterator[dict]:
-        assert (
-            len(kwargs) == 0
-        ), "QMIX execution_plan does NOT take any additional parameters"
+    def training_iteration(self) -> ResultDict:
+        """QMIX training iteration function.
 
-        rollouts = ParallelRollouts(workers, mode="bulk_sync")
-        replay_buffer = SimpleReplayBuffer(config["buffer_size"])
+        - Sample n MultiAgentBatches from n workers synchronously.
+        - Store new samples in the replay buffer.
+        - Sample one training MultiAgentBatch from the replay buffer.
+        - Learn on the training batch.
+        - Update the target network every `target_network_update_freq` steps.
+        - Return all collected training metrics for the iteration.
 
-        store_op = rollouts.for_each(StoreToReplayBuffer(local_buffer=replay_buffer))
-
-        train_op = (
-            Replay(local_buffer=replay_buffer)
-            .combine(
-                ConcatBatches(
-                    min_batch_size=config["train_batch_size"],
-                    count_steps_by=config["multiagent"]["count_steps_by"],
-                )
-            )
-            .for_each(TrainOneStep(workers))
-            .for_each(
-                UpdateTargetNetwork(workers, config["target_network_update_freq"])
-            )
+        Returns:
+            The results dict from executing the training iteration.
+        """
+        # Sample n batches from n workers.
+        new_sample_batches = synchronous_parallel_sample(
+            worker_set=self.workers, concat=False
         )
 
-        merged_op = Concurrently(
-            [store_op, train_op], mode="round_robin", output_indexes=[1]
-        )
+        for batch in new_sample_batches:
+            # Update counters.
+            self._counters[NUM_ENV_STEPS_SAMPLED] += batch.env_steps()
+            self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
+            # Store new samples in the replay buffer.
+            self.local_replay_buffer.add(batch)
 
-        return StandardMetricsReporting(merged_op, workers, config)
+        # Sample n batches from replay buffer until the total number of timesteps
+        # reaches `train_batch_size`.
+        train_batch = sample_min_n_steps_from_buffer(
+            replay_buffer=self.local_replay_buffer,
+            min_steps=self.config["train_batch_size"],
+            count_by_agent_steps=self._by_agent_steps,
+        )
+        if train_batch is None:
+            return {}
+
+        # Learn on the training batch.
+        # Use simple optimizer (only for multi-agent or tf-eager; all other
+        # cases should use the multi-GPU optimizer, even if only using 1 GPU)
+        if self.config.get("simple_optimizer") is True:
+            train_results = train_one_step(self, train_batch)
+        else:
+            train_results = multi_gpu_train_one_step(self, train_batch)
+
+        # TODO: Move training steps counter update outside of `train_one_step()` method.
+        # # Update train step counters.
+        # self._counters[NUM_ENV_STEPS_TRAINED] += train_batch.env_steps()
+        # self._counters[NUM_AGENT_STEPS_TRAINED] += train_batch.agent_steps()
+
+        # Update target network every `target_network_update_freq` steps.
+        cur_ts = self._counters[NUM_ENV_STEPS_SAMPLED]
+        last_update = self._counters[LAST_TARGET_UPDATE_TS]
+        if cur_ts - last_update >= self.config["target_network_update_freq"]:
+            to_update = self.workers.local_worker().get_policies_to_train()
+            self.workers.local_worker().foreach_policy_to_train(
+                lambda p, pid: pid in to_update and p.update_target()
+            )
+            self._counters[NUM_TARGET_UPDATES] += 1
+            self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
+
+        # Update weights and global_vars - after learning on the local worker - on all
+        # remote workers.
+        global_vars = {
+            "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
+        }
+        # Update remote workers' weights and global vars after learning on local worker.
+        with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+            self.workers.sync_weights(global_vars=global_vars)
+
+        # Return all collected metrics for the iteration.
+        return train_results

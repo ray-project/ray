@@ -83,6 +83,8 @@ Then, run your Ray script using one of the following options:
 2. via ``ray job submit`` (:ref:`docs <jobs-overview>`) from your laptop (``ray job submit -- python train.py``)
 3. via the :ref:`Ray Client<ray-client>` from your laptop.
 
+.. _pytorch-lightning-tune:
+
 Distributed Hyperparameter Optimization with Ray Tune
 -----------------------------------------------------
 

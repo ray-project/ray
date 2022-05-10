@@ -30,6 +30,9 @@ from ray._private.runtime_env.working_dir import WorkingDirManager
 from ray._private.runtime_env.container import ContainerManager
 from ray._private.runtime_env.uri_cache import URICache
 from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
+from ray.core.generated.runtime_env_common_pb2 import (
+    RuntimeEnvState as ProtoRuntimeEnvState,
+)
 
 default_logger = logging.getLogger(__name__)
 
@@ -59,6 +62,8 @@ class CreatedEnvResult:
     # If success is True, will be a serialized RuntimeEnvContext
     # If success is False, will be an error message.
     result: str
+    # The time to create a runtime env in ms.
+    creation_time_ms: int
 
 
 class UriType(Enum):
@@ -155,6 +160,15 @@ class ReferenceTable:
         self._decrease_reference_for_runtime_env(serialized_env)
         uris = self._uris_parser(runtime_env)
         self._decrease_reference_for_uris(uris)
+
+    @property
+    def runtime_env_refs(self) -> Dict[str, int]:
+        """Return the runtime_env -> ref count mapping.
+
+        Returns:
+            The mapping of serialized runtime env -> ref count.
+        """
+        return self._runtime_env_reference
 
 
 class RuntimeEnvAgent(
@@ -362,7 +376,7 @@ class RuntimeEnvAgent(
                 setup_timeout_seconds(int): The timeout of runtime environment creation.
 
             Returns:
-                a tuple which contains result(bool), runtime env context(str), and error
+                a tuple which contains result(bool), runtime env context(str), error
                 message(str).
 
             """
@@ -481,6 +495,7 @@ class RuntimeEnvAgent(
                 else runtime_env_config["setup_timeout_seconds"]
             )
 
+            start = time.perf_counter()
             (
                 successful,
                 serialized_context,
@@ -491,6 +506,7 @@ class RuntimeEnvAgent(
                 request.serialized_allocated_resource_instances,
                 setup_timeout_seconds,
             )
+            creation_time_ms = int(round((time.perf_counter() - start) * 1000, 0))
             if not successful:
                 # Recover the reference.
                 self._reference_table.decrease_reference(
@@ -498,7 +514,9 @@ class RuntimeEnvAgent(
                 )
             # Add the result to env cache.
             self._env_cache[serialized_env] = CreatedEnvResult(
-                successful, serialized_context if successful else error_message
+                successful,
+                serialized_context if successful else error_message,
+                creation_time_ms,
             )
             # Reply the RPC
             return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
@@ -537,6 +555,34 @@ class RuntimeEnvAgent(
         return runtime_env_agent_pb2.DeleteRuntimeEnvIfPossibleReply(
             status=agent_manager_pb2.AGENT_RPC_STATUS_OK
         )
+
+    async def GetRuntimeEnvsInfo(self, request, context):
+        """Return the runtime env information of the node."""
+        # TODO(sang): Currently, it only includes runtime_env information.
+        # We should include the URI information which includes,
+        # URIs
+        # Caller
+        # Ref counts
+        # Cache information
+        # Metrics (creation time & success)
+        # Deleted URIs
+        runtime_env_states = defaultdict(ProtoRuntimeEnvState)
+        runtime_env_refs = self._reference_table.runtime_env_refs
+        for runtime_env, ref_cnt in runtime_env_refs.items():
+            runtime_env_states[runtime_env].runtime_env = runtime_env
+            runtime_env_states[runtime_env].ref_cnt = ref_cnt
+        for runtime_env, result in self._env_cache.items():
+            runtime_env_states[runtime_env].runtime_env = runtime_env
+            runtime_env_states[runtime_env].success = result.success
+            if not result.success:
+                runtime_env_states[runtime_env].error = result.result
+            runtime_env_states[runtime_env].creation_time_ms = result.creation_time_ms
+
+        reply = runtime_env_agent_pb2.GetRuntimeEnvsInfoReply()
+        for runtime_env_state in runtime_env_states.values():
+            reply.runtime_env_states.append(runtime_env_state)
+
+        return reply
 
     async def run(self, server):
         if server:

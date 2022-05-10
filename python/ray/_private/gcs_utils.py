@@ -6,6 +6,8 @@ import time
 
 import grpc
 
+import ray
+from ray import ray_constants
 from ray.core.generated.common_pb2 import ErrorType
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated import gcs_service_pb2
@@ -73,7 +75,7 @@ _GRPC_KEEPALIVE_TIMEOUT_MS = 60 * 1000
 # grpc.keepalive_permit_without_calls=0: No keepalive without inflight calls.
 # grpc.use_local_subchannel_pool=0: Subchannels are shared.
 _GRPC_OPTIONS = [
-    ("grpc.enable_http_proxy", 0),
+    *ray_constants.GLOBAL_GRPC_OPTIONS,
     ("grpc.max_send_message_length", _MAX_MESSAGE_LENGTH),
     ("grpc.max_receive_message_length", _MAX_MESSAGE_LENGTH),
     ("grpc.keepalive_time_ms", _GRPC_KEEPALIVE_TIME_MS),
@@ -93,6 +95,38 @@ def create_gcs_channel(address: str, aio=False):
     from ray._private.utils import init_grpc_channel
 
     return init_grpc_channel(address, options=_GRPC_OPTIONS, asynchronous=aio)
+
+
+def check_health(address: str, timeout=2) -> bool:
+    """Checks Ray cluster health, before / without actually connecting to the
+    cluster via ray.init().
+
+    Args:
+        address: Ray cluster / GCS address string, e.g. ip:port.
+        timeout: request timeout.
+    Returns:
+        Returns True if the cluster is running and has matching Ray version.
+        Returns False if no service is running.
+        Raises an exception otherwise.
+    """
+    req = gcs_service_pb2.CheckAliveRequest()
+    try:
+        channel = create_gcs_channel(address)
+        stub = gcs_service_pb2_grpc.HeartbeatInfoGcsServiceStub(channel)
+        resp = stub.CheckAlive(req, timeout=timeout)
+    except grpc.RpcError:
+        return False
+    if resp.status.code != GcsCode.OK:
+        raise RuntimeError(f"GCS running at {address} is unhealthy: {resp.status}")
+    if resp.ray_version is None:
+        resp.ray_version = "<= 1.12"
+    if resp.ray_version != ray.__version__:
+        raise RuntimeError(
+            f"Ray cluster at {address} has version "
+            f"{resp.ray_version}, but this process is running "
+            f"Ray version {ray.__version__}."
+        )
+    return True
 
 
 def _auto_reconnect(f):

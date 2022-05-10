@@ -87,7 +87,6 @@ int main(int argc, char *argv[]) {
   gcs_server_config.redis_password = redis_password;
   gcs_server_config.retry_redis = retry_redis;
   gcs_server_config.node_ip_address = node_ip_address;
-  gcs_server_config.grpc_pubsub_enabled = RayConfig::instance().gcs_grpc_based_pubsub();
   gcs_server_config.log_dir = log_dir;
   gcs_server_config.raylet_config_list = config_list;
   ray::gcs::GcsServer gcs_server(gcs_server_config, main_service);

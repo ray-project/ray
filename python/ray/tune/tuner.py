@@ -35,24 +35,47 @@ class Tuner:
         tune_config: Tuning algorithm specific configs.
             Refer to ray.tune.tune_config.TuneConfig for more info.
         run_config: Runtime configuration that is specific to individual trials.
-            Refer to ray.ml.config.RunConfig for more info.
+            If passed, this will overwrite the run config passed to the Trainer,
+            if applicable. Refer to ray.ml.config.RunConfig for more info.
 
     Usage pattern:
 
     .. code-block:: python
 
-        # TODO(xwjiang): Make this runnable. Add imports.
+        from sklearn.datasets import load_breast_cancer
+
+        from ray import tune
+        from ray.data import from_pandas
+        from ray.ml.config import RunConfig
+        from ray.ml.train.integrations.xgboost import XGBoostTrainer
+        from ray.tune.tuner import Tuner
+
+        def get_dataset():
+            data_raw = load_breast_cancer(as_frame=True)
+            dataset_df = data_raw["data"]
+            dataset_df["target"] = data_raw["target"]
+            dataset = from_pandas(dataset_df)
+            return dataset
+
+        trainer = XGBoostTrainer(
+            label_column="target",
+            params={},
+            datasets={"train": get_dataset()},
+        )
 
         param_space = {
             "scaling_config": {
-                "num_actors": tune.grid_search([2, 4]),
-                "cpus_per_actor": 2,
-                "gpus_per_actor": 0,
+                "num_workers": tune.grid_search([2, 4]),
+                "resources_per_worker": {
+                    "CPU": tune.grid_search([1, 2]),
+                },
             },
-            "preprocessor": tune.grid_search([prep_v1, prep_v2]),
-            "datasets": {
-                "train_dataset": tune.grid_search([ds1, ds2]),
-            },
+            # You can even grid search various datasets in Tune.
+            # "datasets": {
+            #     "train": tune.grid_search(
+            #         [ds1, ds2]
+            #     ),
+            # },
             "params": {
                 "objective": "binary:logistic",
                 "tree_method": "approx",
@@ -95,6 +118,10 @@ class Tuner:
         tune_config: Optional[TuneConfig] = None,
         run_config: Optional[RunConfig] = None,
         # This is internal only arg.
+        # Only for dogfooding purposes. We can slowly promote these args
+        # to RunConfig or TuneConfig as needed.
+        # TODO(xwjiang): Remove this later.
+        _tuner_kwargs: Optional[Dict] = None,
         _tuner_internal: Optional[TunerInternal] = None,
     ):
         """Configure and construct a tune run."""
@@ -156,8 +183,7 @@ class Tuner:
         to resume.
 
         Raises:
-            TuneError: If errors occur executing the experiment that originate from
-                Tune.
+            RayTaskError when the exception happens in trainable else TuneError.
         """
 
         if not self._is_ray_client:

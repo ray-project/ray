@@ -97,6 +97,8 @@ message GetNamedActorInfoReply {
   GcsStatus status = 1;
   // Data of actor.
   ActorTableData actor_table_data = 2;
+  // The task specification of this actor's creation task.
+  TaskSpec task_spec = 3;
 }
 
 message ListNamedActorsRequest {
@@ -186,6 +188,7 @@ message CheckAliveRequest {
 
 message CheckAliveReply {
   GcsStatus status = 1;
+  string ray_version = 2;
 }
 
 message GetInternalConfigRequest {

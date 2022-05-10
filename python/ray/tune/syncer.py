@@ -1,20 +1,30 @@
-from typing import Any, Callable, Dict, List, TYPE_CHECKING, Type, Union, Optional
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    TYPE_CHECKING,
+    Type,
+    Union,
+    Optional,
+    Tuple,
+)
 
 import distutils
 import logging
 import os
 import time
 from dataclasses import dataclass
-import warnings
 
 from inspect import isclass
 from shlex import quote
 
 import ray
 import yaml
+from ray.ml.utils.remote_storage import get_fs_and_path, fs_hint
 from ray.tune import TuneError
 from ray.tune.callback import Callback
-from ray.tune.checkpoint_manager import Checkpoint
+from ray.tune.checkpoint_manager import _TuneCheckpoint
 from ray.tune.result import NODE_IP
 from ray.util import get_node_ip_address
 from ray.util.debug import log_once
@@ -25,6 +35,7 @@ from ray.tune.sync_client import (
     get_cloud_sync_client,
     NOOP,
     SyncClient,
+    RemoteTaskClient,
 )
 from ray.util.annotations import PublicAPI
 
@@ -46,6 +57,22 @@ _syncers = {}
 def wait_for_sync():
     for syncer in _syncers.values():
         syncer.wait()
+
+
+def validate_upload_dir(sync_config: "SyncConfig"):
+    if sync_config.upload_dir:
+        exc = None
+        try:
+            fs, _ = get_fs_and_path(sync_config.upload_dir)
+        except ImportError as e:
+            fs = None
+            exc = e
+        if not fs:
+            raise ValueError(
+                f"Could not identify external storage filesystem for "
+                f"upload dir `{sync_config.upload_dir}`. "
+                f"Hint: {fs_hint(sync_config.upload_dir)}"
+            ) from exc
 
 
 def set_sync_periods(sync_config: "SyncConfig"):
@@ -70,13 +97,13 @@ def validate_sync_config(sync_config: "SyncConfig"):
         sync_config.node_sync_period = -1
         sync_config.cloud_sync_period = -1
 
-        warnings.warn(
+        # Deprecated: Remove in Ray > 1.13
+        raise DeprecationWarning(
             "The `node_sync_period` and "
             "`cloud_sync_period` properties of `tune.SyncConfig` are "
             "deprecated. Pass the `sync_period` property instead. "
             "\nFor now, the lower of the two values (if provided) will "
-            f"be used as the sync_period. This value is: {sync_period}",
-            DeprecationWarning,
+            f"be used as the sync_period. This value is: {sync_period}"
         )
 
     if sync_config.sync_to_cloud or sync_config.sync_to_driver:
@@ -91,19 +118,19 @@ def validate_sync_config(sync_config: "SyncConfig"):
         sync_config.sync_to_cloud = None
         sync_config.sync_to_driver = None
 
-        warnings.warn(
+        # Deprecated: Remove in Ray > 1.13
+        raise DeprecationWarning(
             "The `sync_to_cloud` and `sync_to_driver` properties of "
             "`tune.SyncConfig` are deprecated. Pass the `syncer` property "
             "instead. Presence of an `upload_dir` decides if checkpoints "
             "are synced to cloud or not. Syncing to driver is "
             "automatically disabled if an `upload_dir` is given."
             f"\nFor now, as the upload dir is {help}, the respective "
-            f"syncer is used. This value is: {syncer}",
-            DeprecationWarning,
+            f"syncer is used. This value is: {syncer}"
         )
 
 
-def log_sync_template(options: str = ""):
+def get_rsync_template_if_available(options: str = ""):
     """Template enabling syncs between driver and worker when possible.
     Requires ray cluster to be started with the autoscaler. Also requires
     rsync to be installed.
@@ -165,12 +192,13 @@ class SyncConfig:
     """
 
     upload_dir: Optional[str] = None
-    syncer: Union[None, str] = "auto"
+    syncer: Optional[str] = "auto"
 
     sync_on_checkpoint: bool = True
     sync_period: int = 300
 
     # Deprecated arguments
+    # Deprecated: Remove in Ray > 1.13
     sync_to_cloud: Any = None
     sync_to_driver: Any = None
     node_sync_period: int = -1
@@ -196,8 +224,14 @@ class Syncer:
         self.last_sync_down_time = float("-inf")
         self.sync_client = sync_client
 
+    @property
+    def _pass_ip_path_tuples(self) -> False:
+        """Return True if the sync client expects (ip, path) tuples instead
+        of rsync strings (user@ip:/path/)."""
+        return isinstance(self.sync_client, RemoteTaskClient)
+
     def sync_up_if_needed(self, sync_period: int, exclude: Optional[List] = None):
-        """Syncs up if time since last sync up is greather than sync_period.
+        """Syncs up if time since last sync up is greater than sync_period.
 
         Args:
             sync_period: Time period between subsequent syncs.
@@ -209,7 +243,7 @@ class Syncer:
             self.sync_up(exclude)
 
     def sync_down_if_needed(self, sync_period: int, exclude: Optional[List] = None):
-        """Syncs down if time since last sync down is greather than sync_period.
+        """Syncs down if time since last sync down is greater than sync_period.
 
         Args:
             sync_period: Time period between subsequent syncs.
@@ -283,7 +317,7 @@ class Syncer:
         self.sync_client.close()
 
     @property
-    def _remote_path(self):
+    def _remote_path(self) -> Optional[Union[str, Tuple[str, str]]]:
         return self._remote_dir
 
 
@@ -358,7 +392,7 @@ class NodeSyncer(Syncer):
         return super(NodeSyncer, self).sync_down(exclude=exclude)
 
     @property
-    def _remote_path(self):
+    def _remote_path(self) -> Optional[Union[str, Tuple[str, str]]]:
         ssh_user = get_ssh_user()
         global _log_sync_warned
         if not self.has_remote_target():
@@ -368,6 +402,8 @@ class NodeSyncer(Syncer):
                 logger.error("Syncer requires cluster to be setup with `ray up`.")
                 _log_sync_warned = True
             return None
+        if self._pass_ip_path_tuples:
+            return self.worker_ip, self._remote_dir
         return "{}@{}:{}/".format(ssh_user, self.worker_ip, self._remote_dir)
 
 
@@ -427,7 +463,7 @@ def get_cloud_syncer(
 def get_node_syncer(
     local_dir: str,
     remote_dir: Optional[str] = None,
-    sync_function: Optional[Union[Callable, str, bool]] = None,
+    sync_function: Optional[Union[Callable, str, bool, Type[Syncer]]] = None,
 ):
     """Returns a NodeSyncer.
 
@@ -437,7 +473,8 @@ def get_node_syncer(
             noop Syncer is returned.
         sync_function: Function for syncing the local_dir to
             remote_dir. If string, then it must be a string template for
-            syncer to run. If True or not provided, it defaults rsync. If
+            syncer to run. If True or not provided, it defaults rsync
+            (if available) or otherwise remote-task based syncing. If
             False, a noop Syncer is returned.
     """
     if sync_function == "auto":
@@ -445,28 +482,33 @@ def get_node_syncer(
 
     key = (local_dir, remote_dir)
     if key in _syncers:
+        # Get cached syncer
         return _syncers[key]
     elif isclass(sync_function) and issubclass(sync_function, Syncer):
+        # Type[Syncer]
         _syncers[key] = sync_function(local_dir, remote_dir, None)
         return _syncers[key]
     elif not remote_dir or sync_function is False:
+        # Do not sync trials if no remote dir specified or syncer=False
         sync_client = NOOP
     elif sync_function and sync_function is not True:
+        # String or callable (for function syncers)
         sync_client = get_sync_client(sync_function)
     else:
-        sync = log_sync_template()
-        if sync:
-            sync_client = CommandBasedClient(sync, sync)
+        # sync_function=True or sync_function=None --> default
+        rsync_function_str = get_rsync_template_if_available()
+        if rsync_function_str:
+            sync_client = CommandBasedClient(rsync_function_str, rsync_function_str)
             sync_client.set_logdir(local_dir)
         else:
-            sync_client = NOOP
+            sync_client = RemoteTaskClient()
 
     _syncers[key] = NodeSyncer(local_dir, remote_dir, sync_client)
     return _syncers[key]
 
 
 class SyncerCallback(Callback):
-    def __init__(self, sync_function: Union[None, bool, Callable]):
+    def __init__(self, sync_function: Optional[Union[bool, Callable]]):
         self._sync_function = sync_function
         self._syncers: Dict["Trial", NodeSyncer] = {}
 
@@ -480,8 +522,11 @@ class SyncerCallback(Callback):
             trial.logdir, remote_dir=trial.logdir, sync_function=self._sync_function
         )
 
-    def _sync_trial_checkpoint(self, trial: "Trial", checkpoint: Checkpoint):
-        if checkpoint.storage == Checkpoint.MEMORY:
+    def _remove_trial_syncer(self, trial: "Trial"):
+        self._syncers.pop(trial, None)
+
+    def _sync_trial_checkpoint(self, trial: "Trial", checkpoint: _TuneCheckpoint):
+        if checkpoint.storage == _TuneCheckpoint.MEMORY:
             return
 
         trial_syncer = self._get_trial_syncer(trial)
@@ -497,10 +542,8 @@ class SyncerCallback(Callback):
                 # Errors occurring during this wait are not fatal for this
                 # checkpoint, so it should just be logged.
                 logger.error(
-                    "Trial %s: An error occurred during the "
-                    "checkpoint pre-sync wait - %s",
-                    trial,
-                    str(e),
+                    f"Trial {trial}: An error occurred during the "
+                    f"checkpoint pre-sync wait: {e}"
                 )
             # Force sync down and wait before tracking the new checkpoint.
             try:
@@ -508,14 +551,14 @@ class SyncerCallback(Callback):
                     trial_syncer.wait()
                 else:
                     logger.error(
-                        "Trial %s: Checkpoint sync skipped. This should not happen.",
-                        trial,
+                        f"Trial {trial}: Checkpoint sync skipped. "
+                        f"This should not happen."
                     )
             except TuneError as e:
                 if trial.uses_cloud_checkpointing:
                     # Even though rsync failed the trainable can restore
                     # from remote durable storage.
-                    logger.error("Trial %s: Sync error - %s", trial, str(e))
+                    logger.error(f"Trial {trial}: Sync error: {e}")
                 else:
                     # If the trainable didn't have remote storage to upload
                     # to then this checkpoint may have been lost, so we
@@ -562,15 +605,17 @@ class SyncerCallback(Callback):
         else:
             trainable_ip = ray.get(trial.runner.get_current_ip.remote())
         trial_syncer.set_worker_ip(trainable_ip)
-        trial_syncer.sync_down_if_needed()
+        # Always sync down when trial completed
+        trial_syncer.sync_down()
         trial_syncer.close()
+        self._remove_trial_syncer(trial)
 
     def on_checkpoint(
         self,
         iteration: int,
         trials: List["Trial"],
         trial: "Trial",
-        checkpoint: Checkpoint,
+        checkpoint: _TuneCheckpoint,
         **info,
     ):
         self._sync_trial_checkpoint(trial, checkpoint)

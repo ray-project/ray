@@ -32,6 +32,14 @@ def actor_classname_from_task_spec(task_spec):
     )
 
 
+def actor_classname_from_func_descriptor(func_desc):
+    return (
+        func_desc.get("pythonFunctionDescriptor", {})
+        .get("className", "Unknown actor class")
+        .split(".")[-1]
+    )
+
+
 def _group_actors_by_python_class(actors):
     groups = defaultdict(list)
     for actor in actors.values():

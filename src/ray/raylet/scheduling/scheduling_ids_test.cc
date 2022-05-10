@@ -49,4 +49,20 @@ TEST_F(SchedulingIDsTest, PrepopulateResourceIDTest) {
   // mean while NodeID is not populated.
   ASSERT_NE(kCPU_ResourceLabel, NodeID(CPU).Binary());
 }
+
+TEST_F(SchedulingIDsTest, UnitInstanceResourceTest) {
+  RayConfig::instance().initialize(
+      R"(
+{
+  "predefined_unit_instance_resources": "CPU,GPU",
+  "custom_unit_instance_resources": "custom1"
+}
+  )");
+  ASSERT_TRUE(ResourceID::CPU().IsUnitInstanceResource());
+  ASSERT_TRUE(ResourceID::GPU().IsUnitInstanceResource());
+  ASSERT_TRUE(ResourceID("custom1").IsUnitInstanceResource());
+
+  ASSERT_FALSE(ResourceID::Memory().IsUnitInstanceResource());
+  ASSERT_FALSE(ResourceID("custom2").IsUnitInstanceResource());
+}
 }  // namespace ray

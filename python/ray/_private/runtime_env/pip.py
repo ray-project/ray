@@ -18,6 +18,8 @@ from ray._private.utils import (
 
 default_logger = logging.getLogger(__name__)
 
+_WIN32 = os.name == "nt"
+
 
 def _get_pip_hash(pip_dict: Dict) -> str:
     serialized_pip_spec = json.dumps(pip_dict, sort_keys=True)
@@ -51,13 +53,18 @@ class _PathHelper:
     @classmethod
     def get_virtualenv_python(cls, target_dir: str) -> str:
         virtualenv_path = cls.get_virtualenv_path(target_dir)
-        return os.path.join(virtualenv_path, "bin/python")
+        if _WIN32:
+            return os.path.join(virtualenv_path, "Scripts", "python.exe")
+        else:
+            return os.path.join(virtualenv_path, "bin", "python")
 
     @classmethod
     def get_virtualenv_activate_command(cls, target_dir: str) -> str:
         virtualenv_path = cls.get_virtualenv_path(target_dir)
-        # TODO(SongGuyang): Support Windows
-        return "source %s 1>&2" % (os.path.join(virtualenv_path, "bin/activate"))
+        if _WIN32:
+            return "%s 1>&2" % (os.path.join(virtualenv_path, "Scripts", "activate"))
+        else:
+            return "source %s 1>&2" % (os.path.join(virtualenv_path, "bin/activate"))
 
     @staticmethod
     def get_requirements_file(target_dir: str) -> str:
@@ -167,8 +174,12 @@ class PipProcessor:
                 "-c",
                 "import ray; print(ray.__version__, ray.__path__[0])",
             ]
+            if _WIN32:
+                env = os.environ.copy()
+            else:
+                env = {}
             output = await check_output_cmd(
-                check_ray_cmd, logger=logger, cwd=cwd, env={}
+                check_ray_cmd, logger=logger, cwd=cwd, env=env
             )
             # print after import ray may have [0m endings, so we strip them by *_
             ray_version, ray_path, *_ = [s.strip() for s in output.split()]
@@ -196,9 +207,15 @@ class PipProcessor:
         python = sys.executable
         virtualenv_path = os.path.join(path, "virtualenv")
         virtualenv_app_data_path = os.path.join(path, "virtualenv_app_data")
-        current_python_dir = os.path.abspath(
-            os.path.join(os.path.dirname(python), "..")
-        )
+
+        if _WIN32:
+            current_python_dir = sys.prefix
+            env = os.environ.copy()
+        else:
+            current_python_dir = os.path.abspath(
+                os.path.join(os.path.dirname(python), "..")
+            )
+            env = {}
 
         if cls._is_in_virtualenv():
             # virtualenv-clone homepage:
@@ -251,9 +268,9 @@ class PipProcessor:
             logger.info(
                 "Creating virtualenv at %s, current python dir %s",
                 virtualenv_path,
-                current_python_dir,
+                virtualenv_path,
             )
-        await check_output_cmd(create_venv_cmd, logger=logger, cwd=cwd, env={})
+        await check_output_cmd(create_venv_cmd, logger=logger, cwd=cwd, env=env)
 
     @classmethod
     async def _install_pip_packages(

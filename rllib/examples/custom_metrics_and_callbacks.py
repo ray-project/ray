@@ -4,7 +4,7 @@ Here we use callbacks to track the average CartPole pole angle magnitude as a
 custom metric.
 """
 
-from typing import Dict
+from typing import Dict, Tuple
 import argparse
 import numpy as np
 import os
@@ -80,7 +80,7 @@ class MyCallbacks(DefaultCallbacks):
     ):
         # Check if there are multiple episodes in a batch, i.e.
         # "batch_mode": "truncate_episodes".
-        if worker.sampler.sample_collector.multiple_episodes_in_batch:
+        if worker.policy_config["batch_mode"] == "truncate_episodes":
             # Make sure this episode is really done.
             assert episode.batch_builder.policy_collectors["default_policy"].batches[
                 -1
@@ -129,7 +129,7 @@ class MyCallbacks(DefaultCallbacks):
         policy_id: str,
         policies: Dict[str, Policy],
         postprocessed_batch: SampleBatch,
-        original_batches: Dict[str, SampleBatch],
+        original_batches: Dict[str, Tuple[Policy, SampleBatch]],
         **kwargs
     ):
         print("postprocessed {} steps".format(postprocessed_batch.count))

@@ -6,11 +6,10 @@ from typing import Dict, List, Optional
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
-from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.simplex import Simplex
-from ray.rllib.utils.typing import ModelConfigDict, TensorType
+from ray.rllib.utils.typing import ModelConfigDict, TensorType, TensorStructType
 
 tf1, tf, tfv = try_import_tf()
 
@@ -180,13 +179,7 @@ class SACTFModel(TFModelV2):
                 )
                 self.concat_obs_and_actions = True
             else:
-                if isinstance(orig_space, gym.spaces.Tuple):
-                    spaces = list(orig_space.spaces)
-                elif isinstance(orig_space, gym.spaces.Dict):
-                    spaces = list(orig_space.spaces.values())
-                else:
-                    spaces = [obs_space]
-                input_space = gym.spaces.Tuple(spaces + [action_space])
+                input_space = gym.spaces.Tuple([orig_space, action_space])
 
         model = ModelCatalog.get_model_v2(
             input_space,
@@ -245,8 +238,6 @@ class SACTFModel(TFModelV2):
                 model_out = tf.concat(model_out, axis=-1)
             elif isinstance(model_out, dict):
                 model_out = tf.concat(list(model_out.values()), axis=-1)
-        elif isinstance(model_out, dict):
-            model_out = list(model_out.values())
 
         # Continuous case -> concat actions to model_out.
         if actions is not None:
@@ -255,7 +246,7 @@ class SACTFModel(TFModelV2):
             else:
                 # TODO(junogng) : SampleBatch doesn't support list columns yet.
                 #     Use ModelInputDict.
-                input_dict = {"obs": force_list(model_out) + [actions]}
+                input_dict = {"obs": (model_out, actions)}
         # Discrete case -> return q-vals for all actions.
         else:
             input_dict = {"obs": model_out}
@@ -263,11 +254,16 @@ class SACTFModel(TFModelV2):
         # training).
         input_dict["is_training"] = True
 
-        out, _ = net(input_dict, [], None)
-        return out
+        return net(input_dict, [], None)
 
-    def get_policy_output(self, model_out: TensorType) -> TensorType:
-        """Returns policy outputs, given the output of self.__call__().
+    def get_action_model_outputs(
+        self,
+        model_out: TensorType,
+        state_in: List[TensorType] = None,
+        seq_lens: TensorType = None,
+    ) -> (TensorType, List[TensorType]):
+        """Returns distribution inputs and states given the output of
+        policy.model().
 
         For continuous action spaces, these will be the mean/stddev
         distribution inputs for the (SquashedGaussian) action distribution.
@@ -276,26 +272,41 @@ class SACTFModel(TFModelV2):
 
         Args:
             model_out (TensorType): Feature outputs from the model layers
-                (result of doing `self.__call__(obs)`).
+                (result of doing `model(obs)`).
+            state_in List(TensorType): State input for recurrent cells
+            seq_lens (TensorType): Sequence lengths of input- and state
+                sequences
 
         Returns:
             TensorType: Distribution inputs for sampling actions.
         """
-        # Model outs may come as original Tuple/Dict observations, concat them
-        # here if this is the case.
-        if isinstance(self.action_model.obs_space, Box):
-            if isinstance(model_out, (list, tuple)):
-                model_out = tf.concat(model_out, axis=-1)
-            elif isinstance(model_out, dict):
-                model_out = tf.concat(
+
+        def concat_obs_if_necessary(obs: TensorStructType):
+            """Concat model outs if they are original tuple observations."""
+            if isinstance(obs, (list, tuple)):
+                obs = tf.concat(obs, axis=-1)
+            elif isinstance(obs, dict):
+                obs = tf.concat(
                     [
                         tf.expand_dims(val, 1) if len(val.shape) == 1 else val
-                        for val in tree.flatten(model_out.values())
+                        for val in tree.flatten(obs.values())
                     ],
                     axis=-1,
                 )
-        out, _ = self.action_model({"obs": model_out}, [], None)
-        return out
+            return obs
+
+        if state_in is None:
+            state_in = []
+
+        if isinstance(model_out, dict) and "obs" in model_out:
+            # Model outs may come as original Tuple observations
+            if isinstance(self.action_model.obs_space, Box):
+                model_out["obs"] = concat_obs_if_necessary(model_out["obs"])
+            return self.action_model(model_out, state_in, seq_lens)
+        else:
+            if isinstance(self.action_model.obs_space, Box):
+                model_out = concat_obs_if_necessary(model_out)
+            return self.action_model({"obs": model_out}, state_in, seq_lens)
 
     def policy_variables(self):
         """Return the list of variables for the policy net."""

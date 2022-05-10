@@ -14,9 +14,9 @@
 
 #include "ray/gcs/gcs_server/gcs_heartbeat_manager.h"
 
+#include "ray/common/constants.h"
 #include "ray/common/ray_config.h"
 #include "ray/gcs/pb_util.h"
-#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 namespace gcs {
@@ -93,6 +93,7 @@ void GcsHeartbeatManager::HandleReportHeartbeat(
 void GcsHeartbeatManager::HandleCheckAlive(const rpc::CheckAliveRequest &request,
                                            rpc::CheckAliveReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
+  reply->set_ray_version(kRayVersion);
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 

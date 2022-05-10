@@ -15,7 +15,7 @@ class TorchTrainer(DataParallelTrainer):
 
     This Trainer runs the function ``train_loop_per_worker`` on multiple Ray
     Actors. These actors already have the necessary torch process group already
-    configured for distributed pytorch training.
+    configured for distributed PyTorch training.
 
     The ``train_loop_per_worker`` function is expected to take in either 0 or 1
     arguments:
@@ -139,7 +139,7 @@ class TorchTrainer(DataParallelTrainer):
             # scaling_config = {"num_workers": 3, "use_gpu": True}
             trainer = TorchTrainer(
                 train_loop_per_worker=train_loop_per_worker,
-                scaling_config={"num_workers": 3},
+                scaling_config=scaling_config,
                 datasets={"train": train_dataset})
             result = trainer.fit()
 
@@ -158,13 +158,14 @@ class TorchTrainer(DataParallelTrainer):
             dataset. If a ``preprocessor`` is provided and has not already been fit,
             it will be fit on the training dataset. All datasets will be transformed
             by the ``preprocessor`` if one is provided.
-        preprocessor: A ray.ml.preprocessor.Preprocessor to preprocess the
+        preprocessor: A ``ray.ml.preprocessor.Preprocessor`` to preprocess the
             provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
     """
 
     def __init__(
         self,
+        *,
         train_loop_per_worker: Union[Callable[[], None], Callable[[Dict], None]],
         train_loop_config: Optional[Dict] = None,
         torch_config: Optional[TorchConfig] = None,

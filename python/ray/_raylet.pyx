@@ -65,6 +65,7 @@ from ray.includes.common cimport (
     CPlacementStrategy,
     CSchedulingStrategy,
     CPlacementGroupSchedulingStrategy,
+    CNodeAffinitySchedulingStrategy,
     CRayFunction,
     CWorkerType,
     CJobConfig,
@@ -126,6 +127,7 @@ from ray.exceptions import (
 from ray import external_storage
 from ray.util.scheduling_strategies import (
     PlacementGroupSchedulingStrategy,
+    NodeAffinitySchedulingStrategy,
 )
 import ray.ray_constants as ray_constants
 from ray._private.async_compat import sync_to_async, get_new_event_loop
@@ -416,7 +418,7 @@ cdef prepare_args_internal(
                     "Could not serialize the argument "
                     f"{repr(arg)} for a task or actor "
                     f"{function_descriptor.repr}. Check "
-                    "https://docs.ray.io/en/master/serialization.html#troubleshooting " # noqa
+                    "https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting " # noqa
                     "for more information.")
                 raise TypeError(msg) from e
             metadata = serialized_arg.metadata
@@ -613,7 +615,7 @@ cdef execute_task(
 
             return function(actor, *arguments, **kwarguments)
 
-    with core_worker.profile_event(b"task", extra_data=extra_data):
+    with core_worker.profile_event(b"task::" + name, extra_data=extra_data):
         try:
             task_exception = False
             if not (<int>task_type == <int>TASK_TYPE_ACTOR_TASK
@@ -1456,6 +1458,7 @@ cdef class CoreWorker:
         cdef:
             CPlacementGroupSchedulingStrategy \
                 *c_placement_group_scheduling_strategy
+            CNodeAffinitySchedulingStrategy *c_node_affinity_scheduling_strategy
         assert python_scheduling_strategy is not None
         if python_scheduling_strategy == "DEFAULT":
             c_scheduling_strategy[0].mutable_default_scheduling_strategy()
@@ -1476,13 +1479,23 @@ cdef class CoreWorker:
                 .set_placement_group_capture_child_tasks(
                     python_scheduling_strategy
                     .placement_group_capture_child_tasks)
+        elif isinstance(python_scheduling_strategy,
+                        NodeAffinitySchedulingStrategy):
+            c_node_affinity_scheduling_strategy = \
+                c_scheduling_strategy[0] \
+                .mutable_node_affinity_scheduling_strategy()
+            c_node_affinity_scheduling_strategy[0].set_node_id(
+                NodeID.from_hex(python_scheduling_strategy.node_id).binary())
+            c_node_affinity_scheduling_strategy[0].set_soft(
+                python_scheduling_strategy.soft)
         else:
             raise ValueError(
                 f"Invalid scheduling_strategy value "
                 f"{python_scheduling_strategy}. "
                 f"Valid values are [\"DEFAULT\""
                 f" | \"SPREAD\""
-                f" | PlacementGroupSchedulingStrategy]")
+                f" | PlacementGroupSchedulingStrategy"
+                f" | NodeAffinitySchedulingStrategy]")
 
     def submit_task(self,
                     Language language,

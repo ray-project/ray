@@ -1,6 +1,8 @@
 """This example demonstrates the usage of BayesOpt with Ray Tune.
 
 It also checks that it is usable with a separate scheduler.
+
+Requires the BayesOpt library to be installed (`pip install bayesian-optimization`).
 """
 import time
 

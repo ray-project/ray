@@ -17,31 +17,6 @@
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
-namespace {
-
-using ray::BundleSpecification;
-using ray::NodeID;
-
-// Get a set of bundle specifications grouped by the node.
-std::unordered_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
-GetUnplacedBundlesPerNode(
-    const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
-    const ray::gcs::ScheduleMap &selected_nodes) {
-  std::unordered_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
-      node_to_bundles;
-  for (const auto &bundle : bundles) {
-    const auto &bundle_id = bundle->BundleId();
-    const auto &iter = selected_nodes.find(bundle_id);
-    RAY_CHECK(iter != selected_nodes.end());
-    if (node_to_bundles.find(iter->second) == node_to_bundles.end()) {
-      node_to_bundles[iter->second] = {};
-    }
-    node_to_bundles[iter->second].push_back(bundle);
-  }
-  return node_to_bundles;
-}
-}  // namespace
-
 namespace ray {
 namespace gcs {
 
@@ -52,108 +27,14 @@ GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
     GcsResourceManager &gcs_resource_manager,
     ClusterResourceScheduler &cluster_resource_scheduler,
     std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
-    syncer::RaySyncer &ray_syncer)
+    gcs_syncer::RaySyncer &ray_syncer)
     : return_timer_(io_context),
       gcs_table_storage_(std::move(gcs_table_storage)),
       gcs_node_manager_(gcs_node_manager),
       gcs_resource_manager_(gcs_resource_manager),
       cluster_resource_scheduler_(cluster_resource_scheduler),
       raylet_client_pool_(raylet_client_pool),
-      ray_syncer_(ray_syncer) {
-  scheduler_strategies_.push_back(std::make_shared<GcsPackStrategy>());
-  scheduler_strategies_.push_back(std::make_shared<GcsSpreadStrategy>());
-  scheduler_strategies_.push_back(std::make_shared<GcsStrictPackStrategy>());
-  scheduler_strategies_.push_back(std::make_shared<GcsStrictSpreadStrategy>());
-}
-
-std::vector<ResourceRequest> GcsScheduleStrategy::GetRequiredResourcesFromBundles(
-    const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles) {
-  std::vector<ResourceRequest> required_resources;
-  for (const auto &bundle : bundles) {
-    required_resources.push_back(bundle->GetRequiredResources());
-  }
-  return required_resources;
-}
-
-ScheduleResult GcsScheduleStrategy::GenerateScheduleResult(
-    const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
-    const std::vector<scheduling::NodeID> &selected_nodes,
-    const SchedulingResultStatus &status) {
-  ScheduleMap schedule_map;
-  if (status.IsSuccess() && !selected_nodes.empty()) {
-    RAY_CHECK(bundles.size() == selected_nodes.size());
-    int index = 0;
-    for (const auto &bundle : bundles) {
-      schedule_map[bundle->BundleId()] =
-          NodeID::FromBinary(selected_nodes[index++].Binary());
-    }
-  }
-  return std::make_pair(status, schedule_map);
-}
-
-ScheduleResult GcsStrictPackStrategy::Schedule(
-    const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
-    const std::unique_ptr<ScheduleContext> &context,
-    ClusterResourceScheduler &cluster_resource_scheduler) {
-  const auto &required_resources = GetRequiredResourcesFromBundles(bundles);
-  const auto &scheduling_result = cluster_resource_scheduler.Schedule(
-      required_resources, SchedulingType::STRICT_PACK);
-  return GenerateScheduleResult(
-      bundles, scheduling_result.selected_nodes, scheduling_result.status);
-}
-
-ScheduleResult GcsPackStrategy::Schedule(
-    const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
-    const std::unique_ptr<ScheduleContext> &context,
-    ClusterResourceScheduler &cluster_resource_scheduler) {
-  // The current algorithm is to select a node and deploy as many bundles as possible.
-  // First fill up a node. If the node resource is insufficient, select a new node.
-  // TODO(ffbin): We will speed this up in next PR. Currently it is a double for loop.
-  const auto &required_resources = GetRequiredResourcesFromBundles(bundles);
-  const auto &scheduling_result =
-      cluster_resource_scheduler.Schedule(required_resources, SchedulingType::PACK);
-  return GenerateScheduleResult(
-      bundles, scheduling_result.selected_nodes, scheduling_result.status);
-}
-
-ScheduleResult GcsSpreadStrategy::Schedule(
-    const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
-    const std::unique_ptr<ScheduleContext> &context,
-    ClusterResourceScheduler &cluster_resource_scheduler) {
-  const auto &required_resources = GetRequiredResourcesFromBundles(bundles);
-  const auto &scheduling_result =
-      cluster_resource_scheduler.Schedule(required_resources, SchedulingType::SPREAD);
-  return GenerateScheduleResult(
-      bundles, scheduling_result.selected_nodes, scheduling_result.status);
-}
-
-ScheduleResult GcsStrictSpreadStrategy::Schedule(
-    const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
-    const std::unique_ptr<ScheduleContext> &context,
-    ClusterResourceScheduler &cluster_resource_scheduler) {
-  // TODO(ffbin): A bundle may require special resources, such as GPU. We need to
-  // schedule bundles with special resource requirements first, which will be implemented
-  // in the next pr.
-
-  // Filter out the nodes already scheduled by this placement group.
-  absl::flat_hash_set<scheduling::NodeID> nodes_in_use;
-  if (context->bundle_locations_.has_value()) {
-    const auto &bundle_locations = context->bundle_locations_.value();
-    for (auto &bundle : *bundle_locations) {
-      nodes_in_use.insert(scheduling::NodeID(bundle.second.first.Binary()));
-    }
-  }
-
-  const auto &required_resources = GetRequiredResourcesFromBundles(bundles);
-  const auto &scheduling_result = cluster_resource_scheduler.Schedule(
-      required_resources,
-      SchedulingType::STRICT_SPREAD,
-      /*node_filter_func=*/[&nodes_in_use](const scheduling::NodeID &node_id) {
-        return nodes_in_use.count(node_id) == 0;
-      });
-  return GenerateScheduleResult(
-      bundles, scheduling_result.selected_nodes, scheduling_result.status);
-}
+      ray_syncer_(ray_syncer) {}
 
 void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
     std::shared_ptr<GcsPlacementGroup> placement_group,
@@ -176,13 +57,20 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   RAY_LOG(DEBUG) << "Scheduling placement group " << placement_group->GetName()
                  << ", id: " << placement_group->GetPlacementGroupID()
                  << ", bundles size = " << bundles.size();
-  auto scheduling_result = scheduler_strategies_[strategy]->Schedule(
-      bundles,
-      GetScheduleContext(placement_group->GetPlacementGroupID()),
-      cluster_resource_scheduler_);
 
-  auto result_status = scheduling_result.first;
-  auto selected_nodes = scheduling_result.second;
+  std::vector<const ResourceRequest *> resource_request_list;
+  resource_request_list.reserve(bundles.size());
+  for (const auto &bundle : bundles) {
+    resource_request_list.emplace_back(&bundle->GetRequiredResources());
+  }
+
+  auto scheduling_options =
+      CreateSchedulingOptions(placement_group->GetPlacementGroupID(), strategy);
+  auto scheduling_result =
+      cluster_resource_scheduler_.Schedule(resource_request_list, scheduling_options);
+
+  auto result_status = scheduling_result.status;
+  const auto &selected_nodes = scheduling_result.selected_nodes;
 
   if (!result_status.IsSuccess()) {
     RAY_LOG(DEBUG) << "Failed to schedule placement group " << placement_group->GetName()
@@ -195,16 +83,32 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
     return;
   }
 
+  RAY_CHECK(bundles.size() == selected_nodes.size());
+
+  // Covert to a map of bundle to node.
+  ScheduleMap bundle_to_node;
+  for (size_t i = 0; i < selected_nodes.size(); ++i) {
+    bundle_to_node[bundles[i]->BundleId()] =
+        NodeID::FromBinary(selected_nodes[i].Binary());
+  }
+
   auto lease_status_tracker =
-      std::make_shared<LeaseStatusTracker>(placement_group, bundles, selected_nodes);
+      std::make_shared<LeaseStatusTracker>(placement_group, bundles, bundle_to_node);
   RAY_CHECK(placement_group_leasing_in_progress_
                 .emplace(placement_group->GetPlacementGroupID(), lease_status_tracker)
                 .second);
 
-  const auto &pending_bundles = GetUnplacedBundlesPerNode(bundles, selected_nodes);
-  for (const auto &node_to_bundles : pending_bundles) {
-    const auto &node_id = node_to_bundles.first;
-    const auto &bundles_per_node = node_to_bundles.second;
+  // Covert to a set of bundle specifications grouped by the node.
+  std::unordered_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
+      node_to_bundles;
+  for (size_t i = 0; i < selected_nodes.size(); ++i) {
+    node_to_bundles[NodeID::FromBinary(selected_nodes[i].Binary())].emplace_back(
+        bundles[i]);
+  }
+
+  for (const auto &entry : node_to_bundles) {
+    const auto &node_id = entry.first;
+    const auto &bundles_per_node = entry.second;
     for (const auto &bundle : bundles_per_node) {
       lease_status_tracker->MarkPreparePhaseStarted(node_id, bundle);
     }
@@ -521,26 +425,33 @@ void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(
   }
 }
 
-std::unique_ptr<ScheduleContext> GcsPlacementGroupScheduler::GetScheduleContext(
+std::unique_ptr<BundleSchedulingContext>
+GcsPlacementGroupScheduler::CreateSchedulingContext(
     const PlacementGroupID &placement_group_id) {
   auto &alive_nodes = gcs_node_manager_.GetAllAliveNodes();
   committed_bundle_location_index_.AddNodes(alive_nodes);
-
-  auto node_to_bundles = std::make_shared<absl::flat_hash_map<NodeID, int64_t>>();
-  for (const auto &node_it : alive_nodes) {
-    const auto &node_id = node_it.first;
-    const auto &bundle_locations_on_node =
-        committed_bundle_location_index_.GetBundleLocationsOnNode(node_id);
-    RAY_CHECK(bundle_locations_on_node)
-        << "Bundle locations haven't been registered for node id " << node_id;
-    const int bundles_size = bundle_locations_on_node.value()->size();
-    node_to_bundles->emplace(node_id, bundles_size);
-  }
-
-  auto &bundle_locations =
+  auto bundle_locations =
       committed_bundle_location_index_.GetBundleLocations(placement_group_id);
-  return std::unique_ptr<ScheduleContext>(
-      new ScheduleContext(std::move(node_to_bundles), bundle_locations));
+  return std::make_unique<BundleSchedulingContext>(std::move(bundle_locations));
+}
+
+SchedulingOptions GcsPlacementGroupScheduler::CreateSchedulingOptions(
+    const PlacementGroupID &placement_group_id, rpc::PlacementStrategy strategy) {
+  switch (strategy) {
+  case rpc::PlacementStrategy::PACK:
+    return SchedulingOptions::BundlePack();
+  case rpc::PlacementStrategy::SPREAD:
+    return SchedulingOptions::BundleSpread();
+  case rpc::PlacementStrategy::STRICT_PACK:
+    return SchedulingOptions::BundleStrictPack();
+  case rpc::PlacementStrategy::STRICT_SPREAD:
+    return SchedulingOptions::BundleStrictSpread(
+        CreateSchedulingContext(placement_group_id));
+  default:
+    RAY_LOG(FATAL) << "Unsupported scheduling type: "
+                   << rpc::PlacementStrategy_Name(strategy);
+  }
+  UNREACHABLE;
 }
 
 absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>>

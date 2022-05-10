@@ -1,8 +1,6 @@
 from functools import wraps
 import importlib
 from itertools import groupby
-import json
-import logging
 import pickle
 import random
 import string
@@ -17,6 +15,8 @@ from ray.actor import ActorHandle
 import requests
 import numpy as np
 import pydantic
+import pydantic.json
+import fastapi.encoders
 
 import ray
 import ray.serialization_addons
@@ -47,65 +47,46 @@ def parse_request_item(request_item):
     return request_item.args, request_item.kwargs
 
 
-class LoggingContext:
-    """
-    Context manager to manage logging behaviors within a particular block, such as:
-    1) Overriding logging level
+class _ServeCustomEncoders:
+    """Group of custom encoders for common types that's not handled by FastAPI."""
 
-    Source (python3 official documentation)
-    https://docs.python.org/3/howto/logging-cookbook.html#using-a-context-manager-for-selective-logging # noqa: E501
-    """
+    @staticmethod
+    def encode_np_array(obj):
+        assert isinstance(obj, np.ndarray)
+        if obj.dtype.kind == "f":  # floats
+            obj = obj.astype(float)
+        if obj.dtype.kind in {"i", "u"}:  # signed and unsigned integers.
+            obj = obj.astype(int)
+        return obj.tolist()
 
-    def __init__(self, logger, level=None):
-        self.logger = logger
-        self.level = level
+    @staticmethod
+    def encode_np_scaler(obj):
+        assert isinstance(obj, np.generic)
+        return obj.item()
 
-    def __enter__(self):
-        if self.level is not None:
-            self.old_level = self.logger.level
-            self.logger.setLevel(self.level)
-
-    def __exit__(self, et, ev, tb):
-        if self.level is not None:
-            self.logger.setLevel(self.old_level)
-
-
-def _get_logger():
-    logger = logging.getLogger("ray.serve")
-    # TODO(simon): Make logging level configurable.
-    log_level = os.environ.get("SERVE_LOG_DEBUG")
-    if log_level and int(log_level):
-        logger.setLevel(logging.DEBUG)
-    else:
-        logger.setLevel(logging.INFO)
-    return logger
+    @staticmethod
+    def encode_exception(obj):
+        assert isinstance(obj, Exception)
+        return str(obj)
 
 
-logger = _get_logger()
+serve_encoders = {
+    np.ndarray: _ServeCustomEncoders.encode_np_array,
+    np.generic: _ServeCustomEncoders.encode_np_scaler,
+    Exception: _ServeCustomEncoders.encode_exception,
+}
 
 
-class ServeEncoder(json.JSONEncoder):
-    """Ray.Serve's utility JSON encoder. Adds support for:
-    - bytes
-    - Pydantic types
-    - Exceptions
-    - numpy.ndarray
-    """
-
-    def default(self, o):  # pylint: disable=E0202
-        if isinstance(o, bytes):
-            return o.decode("utf-8")
-        if isinstance(o, pydantic.BaseModel):
-            return o.dict()
-        if isinstance(o, Exception):
-            return str(o)
-        if isinstance(o, np.ndarray):
-            if o.dtype.kind == "f":  # floats
-                o = o.astype(float)
-            if o.dtype.kind in {"i", "u"}:  # signed and unsigned integers.
-                o = o.astype(int)
-            return o.tolist()
-        return super().default(o)
+def install_serve_encoders_to_fastapi():
+    """Inject Serve's encoders so FastAPI's jsonable_encoder can pick it up."""
+    # https://stackoverflow.com/questions/62311401/override-default-encoders-for-jsonable-encoder-in-fastapi # noqa
+    pydantic.json.ENCODERS_BY_TYPE.update(serve_encoders)
+    # FastAPI cache these encoders at import time, so we also needs to refresh it.
+    fastapi.encoders.encoders_by_class_tuples = (
+        fastapi.encoders.generate_encoders_by_class_tuples(
+            pydantic.json.ENCODERS_BY_TYPE
+        )
+    )
 
 
 @ray.remote(num_cpus=0)
@@ -169,6 +150,17 @@ def get_all_node_ids():
             node_ids.append(("{}-{}".format(node_id, index), node_id))
 
     return node_ids
+
+
+def node_id_to_ip_addr(node_id: str):
+    """Recovers the IP address for an entry from get_all_node_ids."""
+    if ":" in node_id:
+        node_id = node_id.split(":")[1]
+
+    if "-" in node_id:
+        node_id = node_id.split("-")[0]
+
+    return node_id
 
 
 def get_node_id_for_actor(actor_handle):

@@ -369,11 +369,11 @@ def setup_config(
     # It's confusing as some users might (correctly!) set it in their
     # model config and then won't notice that it's silently overwritten
     # here.
-    if config["vf_share_layers"] != DEPRECATED_VALUE:
+    if config.get("vf_share_layers", DEPRECATED_VALUE) != DEPRECATED_VALUE:
         deprecation_warning(
             old="config[vf_share_layers]",
             new="config[model][vf_share_layers]",
-            error=False,
+            error=True,
         )
         config["model"]["vf_share_layers"] = config["vf_share_layers"]
 

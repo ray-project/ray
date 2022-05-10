@@ -131,7 +131,7 @@ class TorchMultiCategorical(TorchDistributionWrapper):
         if isinstance(actions, torch.Tensor):
             if isinstance(self.action_space, gym.spaces.Box):
                 actions = torch.reshape(
-                    actions, [-1, int(np.product(self.action_space.shape))]
+                    actions, [-1, int(np.prod(self.action_space.shape))]
                 )
             actions = torch.unbind(actions, dim=1)
         logps = torch.stack([cat.log_prob(act) for cat, act in zip(self.cats, actions)])
@@ -171,9 +171,10 @@ class TorchMultiCategorical(TorchDistributionWrapper):
             high_ = np.max(action_space.high)
             assert np.all(action_space.low == low_)
             assert np.all(action_space.high == high_)
-            np.product(action_space.shape) * (high_ - low_ + 1)
+            np.prod(action_space.shape, dtype=np.int32) * (high_ - low_ + 1)
         # MultiDiscrete space.
         else:
+            # `nvec` is already integer. No need to cast.
             return np.sum(action_space.nvec)
 
 
@@ -268,7 +269,7 @@ class TorchDiagGaussian(TorchDistributionWrapper):
     def required_model_output_shape(
         action_space: gym.Space, model_config: ModelConfigDict
     ) -> Union[int, np.ndarray]:
-        return np.prod(action_space.shape) * 2
+        return np.prod(action_space.shape, dtype=np.int32) * 2
 
 
 @DeveloperAPI
@@ -374,7 +375,7 @@ class TorchSquashedGaussian(TorchDistributionWrapper):
     def required_model_output_shape(
         action_space: gym.Space, model_config: ModelConfigDict
     ) -> Union[int, np.ndarray]:
-        return np.prod(action_space.shape) * 2
+        return np.prod(action_space.shape, dtype=np.int32) * 2
 
 
 @DeveloperAPI
@@ -434,7 +435,7 @@ class TorchBeta(TorchDistributionWrapper):
     def required_model_output_shape(
         action_space: gym.Space, model_config: ModelConfigDict
     ) -> Union[int, np.ndarray]:
-        return np.prod(action_space.shape) * 2
+        return np.prod(action_space.shape, dtype=np.int32) * 2
 
 
 @DeveloperAPI
@@ -462,7 +463,7 @@ class TorchDeterministic(TorchDistributionWrapper):
     def required_model_output_shape(
         action_space: gym.Space, model_config: ModelConfigDict
     ) -> Union[int, np.ndarray]:
-        return np.prod(action_space.shape)
+        return np.prod(action_space.shape, dtype=np.int32)
 
 
 @DeveloperAPI
@@ -582,7 +583,7 @@ class TorchMultiActionDistribution(TorchDistributionWrapper):
 
     @override(ActionDistribution)
     def required_model_output_shape(self, action_space, model_config):
-        return np.sum(self.input_lens)
+        return np.sum(self.input_lens, dtype=np.int32)
 
 
 @DeveloperAPI
@@ -633,4 +634,4 @@ class TorchDirichlet(TorchDistributionWrapper):
     @staticmethod
     @override(ActionDistribution)
     def required_model_output_shape(action_space, model_config):
-        return np.prod(action_space.shape)
+        return np.prod(action_space.shape, dtype=np.int32)

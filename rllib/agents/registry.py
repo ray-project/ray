@@ -3,7 +3,6 @@
 import traceback
 
 from ray.rllib.contrib.registry import CONTRIBUTED_ALGORITHMS
-from ray.rllib.utils.deprecation import Deprecated
 
 
 def _import_a2c():
@@ -108,6 +107,12 @@ def _import_impala():
     return impala.ImpalaTrainer, impala.DEFAULT_CONFIG
 
 
+def _import_maddpg():
+    from ray.rllib.agents import maddpg
+
+    return maddpg.MADDPGTrainer, maddpg.DEFAULT_CONFIG
+
+
 def _import_maml():
     from ray.rllib.agents import maml
 
@@ -197,6 +202,7 @@ ALGORITHMS = {
     "DQN": _import_dqn,
     "DREAMER": _import_dreamer,
     "IMPALA": _import_impala,
+    "MADDPG": _import_maddpg,
     "MAML": _import_maml,
     "MARWIL": _import_marwil,
     "MBMPO": _import_mbmpo,
@@ -226,11 +232,6 @@ def get_trainer_class(alg: str, return_config=False) -> type:
         if return_config:
             return class_, config
         return class_
-
-
-@Deprecated(new="ray.rllib.agents.registry::get_trainer_class()", error=True)
-def get_agent_class(alg: str) -> type:
-    return get_trainer_class(alg)
 
 
 def _get_trainer_class(alg: str, return_config=False) -> type:

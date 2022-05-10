@@ -39,6 +39,31 @@ for _ in range(10):
     assert "Spilled " not in out_str
 
 
+def _hook(env):
+    return {"env_vars": {"HOOK_KEY": "HOOK_VALUE"}}
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_runtime_env_hook():
+    script = """
+import ray
+import os
+
+@ray.remote
+def f():
+    return os.environ.get("HOOK_KEY")
+
+print(ray.get(f.remote()))
+"""
+
+    proc = run_string_as_driver_nonblocking(
+        script, env={"RAY_RUNTIME_ENV_HOOK": "ray.tests.test_output._hook"}
+    )
+    out_str = proc.stdout.read().decode("ascii") + proc.stderr.read().decode("ascii")
+    print(out_str)
+    assert "HOOK_VALUE" in out_str
+
+
 def test_autoscaler_infeasible():
     script = """
 import ray
@@ -447,6 +472,10 @@ run_experiments(
     # Make sure the script is running before sending a sigterm.
     with pytest.raises(subprocess.TimeoutExpired):
         print(proc.wait(timeout=10))
+        std_str = proc.stdout.read().decode("ascii")
+        err_str = proc.stderr.read().decode("ascii")
+        print(f"STDOUT:\n{std_str}")
+        print(f"STDERR:\n{err_str}")
     print(f"Script is running... pid: {proc.pid}")
     # Send multiple signals to terminate it like real world scenario.
     for _ in range(10):
@@ -525,6 +554,30 @@ time.sleep(5)
     """
     out = run_string_as_driver(script)
     assert actor_repr not in out
+
+
+def test_node_name_in_raylet_death():
+    NODE_NAME = "RAY_TEST_RAYLET_DEATH_NODE_NAME"
+    script = f"""
+import ray
+import time
+import os
+
+NUM_HEARTBEATS=10
+HEARTBEAT_PERIOD=500
+WAIT_BUFFER_SECONDS=5
+
+os.environ["RAY_num_heartbeats_timeout"]=str(NUM_HEARTBEATS)
+os.environ["RAY_raylet_heartbeat_period_milliseconds"]=str(HEARTBEAT_PERIOD)
+
+ray.init(_node_name=\"{NODE_NAME}\")
+# This will kill raylet without letting it exit gracefully.
+ray.worker._global_node.kill_raylet()
+time.sleep(NUM_HEARTBEATS * HEARTBEAT_PERIOD / 1000 + WAIT_BUFFER_SECONDS)
+ray.shutdown()
+    """
+    out = run_string_as_driver(script)
+    assert out.count(f"node name: {NODE_NAME} has been marked dead") == 1
 
 
 if __name__ == "__main__":

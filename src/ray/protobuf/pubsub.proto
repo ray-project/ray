@@ -62,8 +62,8 @@ message PubMessage {
   ChannelType channel_type = 1;
   /// The key id (e.g., object id) in bytes.
   bytes key_id = 2;
-  /// A message for the publish message.
-  oneof pub_message_one_of {
+  /// At least one message must be set.
+  oneof inner_message {
     WorkerObjectEvictionMessage worker_object_eviction_message = 3;
     WorkerRefRemovedMessage worker_ref_removed_message = 4;
     WorkerObjectLocationsPubMessage worker_object_locations_message = 5;

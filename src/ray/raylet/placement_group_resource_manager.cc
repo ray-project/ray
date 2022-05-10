@@ -130,7 +130,8 @@ void NewPlacementGroupResourceManager::CommitBundle(
     const auto &resource_name = resource.first;
     const auto &original_resource_name = GetOriginalResourceName(resource_name);
     if (original_resource_name != kBundle_ResourceLabel) {
-      const auto &instances = task_resource_instances.Get(original_resource_name);
+      const auto &instances =
+          task_resource_instances.Get(ResourceID(original_resource_name));
       cluster_resource_scheduler_->GetLocalResourceManager().AddLocalResourceInstances(
           scheduling::ResourceID{resource_name}, instances);
     } else {

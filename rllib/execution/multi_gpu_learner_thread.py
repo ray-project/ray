@@ -209,12 +209,16 @@ class _MultiGPULoaderThread(threading.Thread):
                 if not s.local_worker.is_policy_to_train(pid, batch):
                     continue
                 policy = policy_map[pid]
-                policy.load_batch_into_buffer(
-                    batch=batch
-                    if isinstance(batch, SampleBatch)
-                    else batch.policy_batches[pid],
-                    buffer_index=buffer_idx,
-                )
+                if isinstance(batch, SampleBatch):
+                    policy.load_batch_into_buffer(
+                        batch=batch,
+                        buffer_index=buffer_idx,
+                    )
+                elif pid in batch.policy_batches:
+                    policy.load_batch_into_buffer(
+                        batch=batch.policy_batches[pid],
+                        buffer_index=buffer_idx,
+                    )
 
         # Tag just-loaded stack as "ready".
         s.ready_tower_stacks.put(buffer_idx)

@@ -1,3 +1,4 @@
+import enum
 import os
 import pickle
 from collections.abc import Sequence
@@ -15,6 +16,7 @@ from ray.tune.utils import flatten_dict
 from ray.tune.trial import Trial
 
 import yaml
+from ray.util.annotations import Deprecated
 
 try:
     import wandb
@@ -23,7 +25,6 @@ except ImportError:
     wandb = None
 
 WANDB_ENV_VAR = "WANDB_API_KEY"
-_WANDB_QUEUE_END = (None,)
 _VALID_TYPES = (Number, wandb.data_types.Video, wandb.data_types.Image)
 _VALID_ITERABLE_TYPES = (wandb.data_types.Video, wandb.data_types.Image)
 
@@ -180,31 +181,53 @@ def _set_api_key(api_key_file: Optional[str] = None, api_key: Optional[str] = No
         )
 
 
+class _QueueItem(enum.Enum):
+    END = enum.auto()
+    RESULT = enum.auto()
+    CHECKPOINT = enum.auto()
+
+
 class _WandbLoggingProcess(Process):
     """
     We need a `multiprocessing.Process` to allow multiple concurrent
     wandb logging instances locally.
+
+    We use a queue for the driver to communicate with the logging process.
+    The queue accepts the following items:
+
+    - If it's a dict, it is assumed to be a result and will be logged using
+      ``wandb.log()``
+    - If it's a checkpoint object, it will be saved using ``wandb.log_artifact()``.
     """
 
     def __init__(
         self, queue: Queue, exclude: List[str], to_config: List[str], *args, **kwargs
     ):
         super(_WandbLoggingProcess, self).__init__()
+
         self.queue = queue
         self._exclude = set(exclude)
         self._to_config = set(to_config)
         self.args = args
         self.kwargs = kwargs
 
+        self._trial_name = self.kwargs.get("name", "unknown")
+
     def run(self):
-        # Since we're running in a separate process already, use threads.
-        os.environ["WANDB_START_METHOD"] = "thread"
+        wandb.require("service")
         wandb.init(*self.args, **self.kwargs)
+        wandb.setup()
         while True:
-            result = self.queue.get()
-            if result == _WANDB_QUEUE_END:
+            item_type, item_content = self.queue.get()
+            if item_type == _QueueItem.END:
                 break
-            log, config_update = self._handle_result(result)
+
+            if item_type == _QueueItem.CHECKPOINT:
+                self._handle_checkpoint(item_content)
+                continue
+
+            assert item_type == _QueueItem.RESULT
+            log, config_update = self._handle_result(item_content)
             try:
                 wandb.config.update(config_update, allow_val_change=True)
                 wandb.log(log)
@@ -212,7 +235,12 @@ class _WandbLoggingProcess(Process):
                 # Ignore HTTPError. Missing a few data points is not a
                 # big issue, as long as things eventually recover.
                 logger.warn("Failed to log result to w&b: {}".format(str(e)))
-        wandb.join()
+        wandb.finish()
+
+    def _handle_checkpoint(self, checkpoint_path: str):
+        artifact = wandb.Artifact(name=f"checkpoint_{self._trial_name}", type="model")
+        artifact.add_dir(checkpoint_path)
+        wandb.log_artifact(artifact)
 
     def _handle_result(self, result: Dict) -> Tuple[Dict, Dict]:
         config_update = result.get("config", {}).copy()
@@ -255,6 +283,8 @@ class WandbLoggerCallback(LoggerCallback):
             the ``results`` dict should be logged. This makes sense if
             parameters will change during training, e.g. with
             PopulationBasedTraining. Defaults to False.
+        save_checkpoints: If ``True``, model checkpoints will be saved to
+            Wandb as artifacts. Defaults to ``False``.
         **kwargs: The keyword arguments will be pased to ``wandb.init()``.
 
     Wandb's ``group``, ``run_id`` and ``run_name`` are automatically selected
@@ -308,7 +338,8 @@ class WandbLoggerCallback(LoggerCallback):
         api_key: Optional[str] = None,
         excludes: Optional[List[str]] = None,
         log_config: bool = False,
-        **kwargs
+        save_checkpoints: bool = False,
+        **kwargs,
     ):
         self.project = project
         self.group = group
@@ -316,12 +347,13 @@ class WandbLoggerCallback(LoggerCallback):
         self.api_key = api_key
         self.excludes = excludes or []
         self.log_config = log_config
+        self.save_checkpoints = save_checkpoints
         self.kwargs = kwargs
 
         self._trial_processes: Dict["Trial", _WandbLoggingProcess] = {}
         self._trial_queues: Dict["Trial", Queue] = {}
 
-    def setup(self):
+    def setup(self, *args, **kwargs):
         self.api_key_file = (
             os.path.expanduser(self.api_key_path) if self.api_key_path else None
         )
@@ -371,7 +403,7 @@ class WandbLoggerCallback(LoggerCallback):
             queue=self._trial_queues[trial],
             exclude=exclude_results,
             to_config=self._config_results,
-            **wandb_init_kwargs
+            **wandb_init_kwargs,
         )
         self._trial_processes[trial].start()
 
@@ -380,10 +412,16 @@ class WandbLoggerCallback(LoggerCallback):
             self.log_trial_start(trial)
 
         result = _clean_log(result)
-        self._trial_queues[trial].put(result)
+        self._trial_queues[trial].put((_QueueItem.RESULT, result))
+
+    def log_trial_save(self, trial: "Trial"):
+        if self.save_checkpoints and trial.checkpoint:
+            self._trial_queues[trial].put(
+                (_QueueItem.CHECKPOINT, trial.checkpoint.value)
+            )
 
     def log_trial_end(self, trial: "Trial", failed: bool = False):
-        self._trial_queues[trial].put(_WANDB_QUEUE_END)
+        self._trial_queues[trial].put((_QueueItem.END, None))
         self._trial_processes[trial].join(timeout=10)
 
         del self._trial_queues[trial]
@@ -392,12 +430,13 @@ class WandbLoggerCallback(LoggerCallback):
     def __del__(self):
         for trial in self._trial_processes:
             if trial in self._trial_queues:
-                self._trial_queues[trial].put(_WANDB_QUEUE_END)
+                self._trial_queues[trial].put((_QueueItem.END, None))
                 del self._trial_queues[trial]
             self._trial_processes[trial].join(timeout=2)
             del self._trial_processes[trial]
 
 
+@Deprecated
 class WandbLogger(Logger):
     """WandbLogger
 
@@ -414,7 +453,7 @@ class WandbLogger(Logger):
     the ``config`` parameter of ``tune.run()`` (see example below).
 
     The ``wandb`` config key can be optionally included in the
-    ``logger_config`` subkey of ``config`` to be compatible with RLLib
+    ``logger_config`` subkey of ``config`` to be compatible with RLlib
     trainables (see second example below).
 
     The content of the ``wandb`` config entry is passed to ``wandb.init()``
@@ -444,8 +483,7 @@ class WandbLogger(Logger):
 
     .. code-block:: python
 
-        from ray.tune.logger import DEFAULT_LOGGERS
-        from ray.tune.integration.wandb import WandbLogger
+        from ray.tune.integration.wandb import WandbLoggerCallback
         tune.run(
             train_fn,
             config={
@@ -459,14 +497,14 @@ class WandbLogger(Logger):
                     "log_config": True
                 }
             },
-            loggers=DEFAULT_LOGGERS + (WandbLogger, ))
+            calllbacks=[WandbLoggerCallback])
 
-    Example for RLLib:
+    Example for RLlib:
 
     .. code-block :: python
 
         from ray import tune
-        from ray.tune.integration.wandb import WandbLogger
+        from ray.tune.integration.wandb import WandbLoggerCallback
 
         tune.run(
             "PPO",
@@ -479,40 +517,18 @@ class WandbLogger(Logger):
                     }
                 }
             },
-            loggers=[WandbLogger])
+            callbacks=[WandbLoggerCallback])
 
 
     """
 
     _experiment_logger_cls = WandbLoggerCallback
 
-    def _init(self):
-        config = self.config.copy()
-        config.pop("callbacks", None)  # Remove callbacks
-
-        try:
-            if config.get("logger_config", {}).get("wandb"):
-                logger_config = config.pop("logger_config")
-                wandb_config = logger_config.get("wandb").copy()
-            else:
-                wandb_config = config.pop("wandb").copy()
-        except KeyError:
-            raise ValueError(
-                "Wandb logger specified but no configuration has been passed. "
-                "Make sure to include a `wandb` key in your `config` dict "
-                "containing at least a `project` specification."
-            )
-
-        self._trial_experiment_logger = self._experiment_logger_cls(**wandb_config)
-        self._trial_experiment_logger.setup()
-        self._trial_experiment_logger.log_trial_start(self.trial)
-
-    def on_result(self, result: Dict):
-        self._trial_experiment_logger.log_trial_result(0, self.trial, result)
-
-    def close(self):
-        self._trial_experiment_logger.log_trial_end(self.trial, failed=False)
-        del self._trial_experiment_logger
+    def __init__(self, *args, **kwargs):
+        raise DeprecationWarning(
+            "This `Logger` class is deprecated. "
+            "Use the `WandbLoggerCallback` callback instead."
+        )
 
 
 class WandbTrainableMixin:

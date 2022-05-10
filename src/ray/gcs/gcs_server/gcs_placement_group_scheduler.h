@@ -19,9 +19,9 @@
 #include "ray/common/id.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
-#include "ray/gcs/gcs_server/gcs_resource_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/ray_syncer.h"
+#include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/policy/scheduling_context.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/raylet_client/raylet_client.h"
@@ -35,9 +35,6 @@ namespace gcs {
 
 class GcsPlacementGroup;
 
-using ClusterResourceScheduler = gcs::GcsResourceScheduler;
-using ScheduleContext = raylet_scheduling_policy::BundleSchedulingContext;
-
 using ReserveResourceClientFactoryFn =
     std::function<std::shared_ptr<ResourceReserveInterface>(const rpc::Address &address)>;
 
@@ -46,8 +43,11 @@ using PGSchedulingFailureCallback =
 using PGSchedulingSuccessfulCallback =
     std::function<void(std::shared_ptr<GcsPlacementGroup>)>;
 
+using raylet_scheduling_policy::BundleSchedulingContext;
+using raylet_scheduling_policy::SchedulingOptions;
+using raylet_scheduling_policy::SchedulingResultStatus;
+
 using ScheduleMap = absl::flat_hash_map<BundleID, NodeID, pair_hash>;
-using ScheduleResult = std::pair<SchedulingResultStatus, ScheduleMap>;
 
 class GcsPlacementGroupSchedulerInterface {
  public:
@@ -97,75 +97,6 @@ class GcsPlacementGroupSchedulerInterface {
           &group_to_bundles) = 0;
 
   virtual ~GcsPlacementGroupSchedulerInterface() {}
-};
-
-class GcsScheduleStrategy {
- public:
-  virtual ~GcsScheduleStrategy() {}
-  virtual ScheduleResult Schedule(
-      const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
-      const std::unique_ptr<ScheduleContext> &context,
-      ClusterResourceScheduler &cluster_resource_scheduler) = 0;
-
- protected:
-  /// Get required resources from bundles.
-  ///
-  /// \param bundles Bundles to be scheduled.
-  /// \return Required resources.
-  std::vector<ResourceRequest> GetRequiredResourcesFromBundles(
-      const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles);
-
-  /// Generate `ScheduleResult` from bundles and nodes .
-  ///
-  /// \param bundles Bundles to be scheduled.
-  /// \param selected_nodes selected_nodes to be scheduled.
-  /// \param status Status of the scheduling result.
-  /// \return The scheduling result from the required resource.
-  ScheduleResult GenerateScheduleResult(
-      const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
-      const std::vector<scheduling::NodeID> &selected_nodes,
-      const SchedulingResultStatus &status);
-};
-
-/// The `GcsPackStrategy` is that pack all bundles in one node as much as possible.
-/// If one node does not have enough resources, we need to divide bundles to multiple
-/// nodes.
-class GcsPackStrategy : public GcsScheduleStrategy {
- public:
-  ScheduleResult Schedule(
-      const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
-      const std::unique_ptr<ScheduleContext> &context,
-      ClusterResourceScheduler &cluster_resource_scheduler) override;
-};
-
-/// The `GcsSpreadStrategy` is that spread all bundles in different nodes.
-class GcsSpreadStrategy : public GcsScheduleStrategy {
- public:
-  ScheduleResult Schedule(
-      const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
-      const std::unique_ptr<ScheduleContext> &context,
-      ClusterResourceScheduler &cluster_resource_scheduler) override;
-};
-
-/// The `GcsStrictPackStrategy` is that all bundles must be scheduled to one node. If one
-/// node does not have enough resources, it will fail to schedule.
-class GcsStrictPackStrategy : public GcsScheduleStrategy {
- public:
-  ScheduleResult Schedule(
-      const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
-      const std::unique_ptr<ScheduleContext> &context,
-      ClusterResourceScheduler &cluster_resource_scheduler) override;
-};
-
-/// The `GcsStrictSpreadStrategy` is that spread all bundles in different nodes.
-/// A node can only deploy one bundle.
-/// If the node resource is insufficient, it will fail to schedule.
-class GcsStrictSpreadStrategy : public GcsScheduleStrategy {
- public:
-  ScheduleResult Schedule(
-      const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
-      const std::unique_ptr<ScheduleContext> &context,
-      ClusterResourceScheduler &cluster_resource_scheduler) override;
 };
 
 enum class LeasingState {
@@ -398,7 +329,8 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param gcs_node_manager The node manager which is used when scheduling.
   /// \param gcs_resource_manager The resource manager which is used when scheduling.
   /// \param cluster_resource_scheduler The resource scheduler which is used when
-  /// scheduling. \param lease_client_factory Factory to create remote lease client.
+  /// scheduling.
+  /// \param lease_client_factory Factory to create remote lease client.
   GcsPlacementGroupScheduler(
       instrumented_io_context &io_context,
       std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
@@ -406,7 +338,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       GcsResourceManager &gcs_resource_manager,
       ClusterResourceScheduler &cluster_resource_scheduler,
       std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
-      syncer::RaySyncer &ray_syncer);
+      gcs_syncer::RaySyncer &ray_syncer);
 
   virtual ~GcsPlacementGroupScheduler() = default;
 
@@ -545,9 +477,13 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// Return the bundle resources to the cluster resources.
   void ReturnBundleResources(const std::shared_ptr<BundleLocations> &bundle_locations);
 
-  /// Generate schedule context.
-  std::unique_ptr<ScheduleContext> GetScheduleContext(
+  /// Create scheduling context.
+  std::unique_ptr<BundleSchedulingContext> CreateSchedulingContext(
       const PlacementGroupID &placement_group_id);
+
+  /// Create scheduling options.
+  SchedulingOptions CreateSchedulingOptions(const PlacementGroupID &placement_group_id,
+                                            rpc::PlacementStrategy strategy);
 
   /// A timer that ticks every cancel resource failure milliseconds.
   boost::asio::deadline_timer return_timer_;
@@ -564,9 +500,6 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// Reference of ClusterResourceScheduler.
   ClusterResourceScheduler &cluster_resource_scheduler_;
 
-  /// A vector to store all the schedule strategy.
-  std::vector<std::shared_ptr<GcsScheduleStrategy>> scheduler_strategies_;
-
   /// Index to lookup committed bundle locations of node or placement group.
   BundleLocationIndex committed_bundle_location_index_;
 
@@ -582,7 +515,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
 
   /// The syncer of resource. This is used to report placement group updates.
   /// TODO (iycheng): Remove this one from pg once we finish the refactor
-  syncer::RaySyncer &ray_syncer_;
+  gcs_syncer::RaySyncer &ray_syncer_;
 };
 
 }  // namespace gcs

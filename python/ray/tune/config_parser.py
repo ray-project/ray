@@ -34,7 +34,7 @@ def make_parser(parser_creator=None, **kwargs):
         default=None,
         type=str,
         help="The algorithm or model to train. This may refer to the name "
-        "of a built-on algorithm (e.g. RLLib's DQN or PPO), or a "
+        "of a built-on algorithm (e.g. RLlib's DQN or PPO), or a "
         "user-defined trainable function or class registered in the "
         "tune registry.",
     )

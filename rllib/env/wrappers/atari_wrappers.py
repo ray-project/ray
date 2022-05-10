@@ -95,7 +95,13 @@ class NoopResetEnv(gym.Wrapper):
         if self.override_num_noops is not None:
             noops = self.override_num_noops
         else:
-            noops = self.unwrapped.np_random.randint(1, self.noop_max + 1)
+            # This environment now uses the pcg64 random number generator which
+            # does not have randint as an attribute only has integers.
+            try:
+                noops = self.unwrapped.np_random.integers(1, self.noop_max + 1)
+            # Also still support older versions.
+            except AttributeError:
+                noops = self.unwrapped.np_random.randint(1, self.noop_max + 1)
         assert noops > 0
         obs = None
         for _ in range(noops):

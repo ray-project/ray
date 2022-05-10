@@ -12,7 +12,8 @@ import ray
 from ray import serve
 from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
 from ray._private.test_utils import wait_for_condition
-from ray.serve.api import Application, RayServeDAGHandle
+from ray.serve.application import Application
+from ray.serve.deployment_graph import RayServeDAGHandle
 
 
 def ping_endpoint(endpoint: str, params: str = ""):
@@ -208,7 +209,7 @@ def test_status(ray_start_stop):
 
     subprocess.check_output(["serve", "deploy", config_file_name])
     status_response = subprocess.check_output(["serve", "status"])
-    statuses = json.loads(status_response)["statuses"]
+    statuses = json.loads(status_response)
 
     expected_deployments = {"shallow", "deep", "one"}
     for status in statuses:

@@ -1,5 +1,5 @@
-Actor Tasks Execution Orders
-============================
+Actor Task Execution Orders
+===========================
 
 Synchronous, Single-Threaded Actor
 ----------------------------------

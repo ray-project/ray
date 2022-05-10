@@ -1,6 +1,5 @@
 import ray
 from ray.experimental.dag.py_obj_scanner import _PyObjScanner
-from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
 
 from typing import (
     Optional,
@@ -11,10 +10,8 @@ from typing import (
     Any,
     TypeVar,
     Callable,
-    Set,
 )
 import uuid
-import json
 
 T = TypeVar("T")
 
@@ -86,39 +83,48 @@ class DAGNode:
         """Execute this DAG using the Ray default executor."""
         return self.apply_recursive(lambda node: node._execute_impl(*args, **kwargs))
 
-    def _get_toplevel_child_nodes(self) -> Set["DAGNode"]:
-        """Return the set of nodes specified as top-level args.
+    def _get_toplevel_child_nodes(self) -> List["DAGNode"]:
+        """Return the list of nodes specified as top-level args.
 
         For example, in `f.remote(a, [b])`, only `a` is a top-level arg.
 
-        This set of nodes are those that are typically resolved prior to
+        This list of nodes are those that are typically resolved prior to
         task execution in Ray. This does not include nodes nested within args.
         For that, use ``_get_all_child_nodes()``.
         """
 
-        children = set()
+        # we use List instead of Set here because the hash key of the node
+        # object changes each time we create it. So if using Set here, the
+        # order of returned children can be different if we create the same
+        # nodes and dag one more time.
+        children = []
         for a in self.get_args():
             if isinstance(a, DAGNode):
-                children.add(a)
+                if a not in children:
+                    children.append(a)
         for a in self.get_kwargs().values():
             if isinstance(a, DAGNode):
-                children.add(a)
+                if a not in children:
+                    children.append(a)
         for a in self.get_other_args_to_resolve().values():
             if isinstance(a, DAGNode):
-                children.add(a)
+                if a not in children:
+                    children.append(a)
         return children
 
-    def _get_all_child_nodes(self) -> Set["DAGNode"]:
-        """Return the set of nodes referenced by the args, kwargs, and
+    def _get_all_child_nodes(self) -> List["DAGNode"]:
+        """Return the list of nodes referenced by the args, kwargs, and
         args_to_resolve in current node, even they're deeply nested.
 
         Examples:
-            f.remote(a, [b]) -> set(a, b)
-            f.remote(a, [b], key={"nested": [c]}) -> set(a, b, c)
+            f.remote(a, [b]) -> [a, b]
+            f.remote(a, [b], key={"nested": [c]}) -> [a, b, c]
         """
 
         scanner = _PyObjScanner()
-        children = set()
+        # we use List instead of Set here, reason explained
+        # in `_get_toplevel_child_nodes`.
+        children = []
         for n in scanner.find_nodes(
             [
                 self._bound_args,
@@ -126,7 +132,8 @@ class DAGNode:
                 self._bound_other_args_to_resolve,
             ]
         ):
-            children.add(n)
+            if n not in children:
+                children.append(n)
         return children
 
     def _apply_and_replace_all_child_nodes(
@@ -280,10 +287,7 @@ class DAGNode:
 
     def __getattr__(self, attr: str):
         if attr == "bind":
-            raise AttributeError(
-                f".bind() cannot be used again on {type(self)} "
-                f"(args: {self.get_args()}, kwargs: {self.get_kwargs()})."
-            )
+            raise AttributeError(f".bind() cannot be used again on {type(self)} ")
         elif attr == "remote":
             raise AttributeError(
                 f".remote() cannot be used on {type(self)}. To execute the task "
@@ -291,57 +295,3 @@ class DAGNode:
             )
         else:
             return self.__getattribute__(attr)
-
-    def to_json_base(
-        self, encoder_cls: json.JSONEncoder, dag_node_type: str
-    ) -> Dict[str, Any]:
-        """
-        Base JSON serializer for DAGNode types with base info. Each DAGNode
-        subclass needs to update with its own fields.
-
-        JSON serialization is not hard requirement for functionalities of a
-        DAG authored at Ray level, therefore implementations here meant to
-        facilitate JSON encoder implemenation in other libraries such as Ray
-        Serve.
-
-        Args:
-            encoder_cls (json.JSONEncoder): JSON encoder class used to handle
-                DAGNode nested in any args or options, created and passed from
-                caller, and is expected to be the same across all DAGNode types.
-
-        Returns:
-            json_dict (Dict[str, Any]): JSON serialized DAGNode.
-        """
-        return {
-            DAGNODE_TYPE_KEY: dag_node_type,
-            # Will be overriden by build()
-            "import_path": "",
-            "args": json.dumps(self.get_args(), cls=encoder_cls),
-            "kwargs": json.dumps(self.get_kwargs(), cls=encoder_cls),
-            # .options() should not contain any DAGNode type
-            "options": json.dumps(self.get_options()),
-            "other_args_to_resolve": json.dumps(
-                self.get_other_args_to_resolve(), cls=encoder_cls
-            ),
-            "uuid": self.get_stable_uuid(),
-        }
-
-    @staticmethod
-    def from_json_base(input_json, object_hook=None):
-        # Post-order JSON deserialization
-        args = json.loads(input_json["args"], object_hook=object_hook)
-        kwargs = json.loads(input_json["kwargs"], object_hook=object_hook)
-        # .options() should not contain any DAGNode type
-        options = json.loads(input_json["options"])
-        other_args_to_resolve = json.loads(
-            input_json["other_args_to_resolve"], object_hook=object_hook
-        )
-        uuid = input_json["uuid"]
-
-        return {
-            "args": args,
-            "kwargs": kwargs,
-            "options": options,
-            "other_args_to_resolve": other_args_to_resolve,
-            "uuid": uuid,
-        }

@@ -10,7 +10,13 @@ from ray.train.utils import get_address_and_port
 from ray.train.worker_group import WorkerGroup
 from ray.util import PublicAPI
 
-import tensorflow as tf
+try:
+    import tensorflow as tf
+except ModuleNotFoundError:
+    raise ModuleNotFoundError(
+        "TensorFlow isn't installed. To install TensorFlow, run 'pip install "
+        "tensorflow'."
+    )
 
 logger = logging.getLogger(__name__)
 

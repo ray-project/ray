@@ -1,5 +1,5 @@
 import builtins
-from typing import Any, Generic, List, Callable, Union, Tuple, Iterable
+from typing import Any, Generic, List, Dict, Callable, Union, Tuple, Iterable
 
 import numpy as np
 
@@ -55,6 +55,7 @@ class Datasource(Generic[T]):
         self,
         blocks: List[ObjectRef[Block]],
         metadata: List[BlockMetadata],
+        ray_remote_args: Dict[str, Any],
         **write_args,
     ) -> List[ObjectRef[WriteResult]]:
         """Launch Ray tasks for writing blocks out to the datasource.
@@ -63,6 +64,7 @@ class Datasource(Generic[T]):
             blocks: List of data block references. It is recommended that one
                 write task be generated per block.
             metadata: List of block metadata.
+            ray_remote_args: Kwargs passed to ray.remote in the write tasks.
             write_args: Additional kwargs to pass to the datasource impl.
 
         Returns:
@@ -277,6 +279,7 @@ class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):
         self,
         blocks: List[ObjectRef[Block]],
         metadata: List[BlockMetadata],
+        ray_remote_args: Dict[str, Any],
         **write_args,
     ) -> List[ObjectRef[WriteResult]]:
         tasks = []

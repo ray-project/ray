@@ -13,10 +13,34 @@ class Chain(Preprocessor):
         preprocessors: The preprocessors that should be executed sequentially.
     """
 
-    _is_fittable = False
+    def fit_status(self):
+        fittable_count = 0
+        fitted_count = 0
+        for p in self.preprocessors:
+            # AIR does not support a chain of chained preprocessors at this point.
+            # Assert to explicitly call this out.
+            # This can be revisited if compelling use cases emerge.
+            assert not isinstance(
+                p, Chain
+            ), "A chain preprocessor should not contain another chain preprocessor."
+            if p.fit_status() == Preprocessor.FitStatus.FITTED:
+                fittable_count += 1
+                fitted_count += 1
+            elif p.fit_status() == Preprocessor.FitStatus.NOT_FITTED:
+                fittable_count += 1
+            else:
+                assert p.fit_status() == Preprocessor.FitStatus.NOT_FITTABLE
+        if fittable_count > 0:
+            if fitted_count == fittable_count:
+                return Preprocessor.FitStatus.FITTED
+            elif fitted_count > 0:
+                return Preprocessor.FitStatus.PARTIALLY_FITTED
+            else:
+                return Preprocessor.FitStatus.NOT_FITTED
+        else:
+            return Preprocessor.FitStatus.NOT_FITTABLE
 
     def __init__(self, *preprocessors: Preprocessor):
-        super().__init__()
         self.preprocessors = preprocessors
 
     def _fit(self, ds: Dataset) -> Preprocessor:
@@ -40,8 +64,5 @@ class Chain(Preprocessor):
             df = preprocessor.transform_batch(df)
         return df
 
-    def check_is_fitted(self) -> bool:
-        return all(p.check_is_fitted() for p in self.preprocessors)
-
     def __repr__(self):
-        return f"<Chain preprocessors={self.preprocessors}>"
+        return f"Chain(preprocessors={self.preprocessors})"

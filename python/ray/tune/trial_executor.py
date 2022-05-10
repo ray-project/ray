@@ -1,11 +1,12 @@
 # coding: utf-8
 from abc import abstractmethod
 import logging
-from typing import Dict, List, Optional
-import warnings
+from typing import Dict, List, Optional, Union
 
+from ray.exceptions import RayTaskError
+from ray.tune import TuneError
 from ray.util.annotations import DeveloperAPI
-from ray.tune.trial import Trial, Checkpoint
+from ray.tune.trial import Trial, _TuneCheckpoint
 
 logger = logging.getLogger(__name__)
 
@@ -23,13 +24,13 @@ class _WarnOnDirectInheritanceMeta(type):
             )
             and "TrialExecutor" in tuple(base.__name__ for base in bases)
         ):
-            deprecation_msg = (
+            raise DeprecationWarning(
                 f"{name} inherits from TrialExecutor, which is being "
                 "deprecated. "
                 "RFC: https://github.com/ray-project/ray/issues/17593. "
                 "Please reach out on the Ray Github if you have any concerns."
             )
-            warnings.warn(deprecation_msg, DeprecationWarning)
+
         cls = super().__new__(mcls, name, bases, module, **kwargs)
         return cls
 
@@ -92,7 +93,10 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
 
     @abstractmethod
     def stop_trial(
-        self, trial: Trial, error: bool = False, error_msg: Optional[str] = None
+        self,
+        trial: Trial,
+        error: bool = False,
+        exc: Optional[Union[TuneError, RayTaskError]] = None,
     ) -> None:
         """Stops the trial.
 
@@ -102,7 +106,7 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
 
         Args:
             error: Whether to mark this trial as terminated in error.
-            error_msg: Optional error message.
+            exc: Optional exception.
 
         """
         pass
@@ -119,7 +123,7 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
         """
         assert trial.status == Trial.RUNNING, trial.status
         try:
-            self.save(trial, Checkpoint.MEMORY)
+            self.save(trial, _TuneCheckpoint.MEMORY)
             self.stop_trial(trial)
             self.set_status(trial, Trial.PAUSED)
         except Exception:
@@ -189,9 +193,9 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
     def save(
         self,
         trial: Trial,
-        storage: str = Checkpoint.PERSISTENT,
+        storage: str = _TuneCheckpoint.PERSISTENT,
         result: Optional[Dict] = None,
-    ) -> Checkpoint:
+    ) -> _TuneCheckpoint:
         """Saves training state of this trial to a checkpoint.
 
         If result is None, this trial's last result will be used.

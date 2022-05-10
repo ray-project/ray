@@ -62,7 +62,7 @@ def _repeat_tensor(t: TensorType, n: int):
 def policy_actions_repeat(model, action_dist, obs, num_repeat=1):
     batch_size = tf.shape(tree.flatten(obs)[0])[0]
     obs_temp = tree.map_structure(lambda t: _repeat_tensor(t, num_repeat), obs)
-    logits = model.get_policy_output(obs_temp)
+    logits, _ = model.get_action_model_outputs(obs_temp)
     policy_dist = action_dist(logits, model)
     actions, logp_ = policy_dist.sample_logp()
     logp = tf.expand_dims(logp_, -1)
@@ -75,9 +75,9 @@ def q_values_repeat(model, obs, actions, twin=False):
     num_repeat = action_shape // obs_shape
     obs_temp = tree.map_structure(lambda t: _repeat_tensor(t, num_repeat), obs)
     if not twin:
-        preds_ = model.get_q_values(obs_temp, actions)
+        preds_, _ = model.get_q_values(obs_temp, actions)
     else:
-        preds_ = model.get_twin_q_values(obs_temp, actions)
+        preds_, _ = model.get_twin_q_values(obs_temp, actions)
     preds = tf.reshape(preds_, [obs_shape, num_repeat, 1])
     return preds
 
@@ -120,7 +120,8 @@ def cql_loss(
     )
 
     action_dist_class = _get_dist_class(policy, policy.config, policy.action_space)
-    action_dist_t = action_dist_class(model.get_policy_output(model_out_t), model)
+    action_dist_inputs_t, _ = model.get_action_model_outputs(model_out_t)
+    action_dist_t = action_dist_class(action_dist_inputs_t, model)
     policy_t, log_pis_t = action_dist_t.sample_logp()
     log_pis_t = tf.expand_dims(log_pis_t, -1)
 
@@ -133,9 +134,9 @@ def cql_loss(
     # Policy Loss (Either Behavior Clone Loss or SAC Loss)
     alpha = tf.math.exp(model.log_alpha)
     if policy.cur_iter >= bc_iters:
-        min_q = model.get_q_values(model_out_t, policy_t)
+        min_q, _ = model.get_q_values(model_out_t, policy_t)
         if twin_q:
-            twin_q_ = model.get_twin_q_values(model_out_t, policy_t)
+            twin_q_, _ = model.get_twin_q_values(model_out_t, policy_t)
             min_q = tf.math.minimum(min_q, twin_q_)
         actor_loss = tf.reduce_mean(tf.stop_gradient(alpha) * log_pis_t - min_q)
     else:
@@ -146,19 +147,20 @@ def cql_loss(
     # Critic Loss (Standard SAC Critic L2 Loss + CQL Entropy Loss)
     # SAC Loss:
     # Q-values for the batched actions.
-    action_dist_tp1 = action_dist_class(model.get_policy_output(model_out_tp1), model)
+    action_dist_inputs_tp1, _ = model.get_action_model_outputs(model_out_tp1)
+    action_dist_tp1 = action_dist_class(action_dist_inputs_tp1, model)
     policy_tp1, _ = action_dist_tp1.sample_logp()
 
-    q_t = model.get_q_values(model_out_t, actions)
+    q_t, _ = model.get_q_values(model_out_t, actions)
     q_t_selected = tf.squeeze(q_t, axis=-1)
     if twin_q:
-        twin_q_t = model.get_twin_q_values(model_out_t, actions)
+        twin_q_t, _ = model.get_twin_q_values(model_out_t, actions)
         twin_q_t_selected = tf.squeeze(twin_q_t, axis=-1)
 
     # Target q network evaluation.
-    q_tp1 = policy.target_model.get_q_values(target_model_out_tp1, policy_tp1)
+    q_tp1, _ = policy.target_model.get_q_values(target_model_out_tp1, policy_tp1)
     if twin_q:
-        twin_q_tp1 = policy.target_model.get_twin_q_values(
+        twin_q_tp1, _ = policy.target_model.get_twin_q_values(
             target_model_out_tp1, policy_tp1
         )
         # Take min over both twin-NNs.
@@ -416,6 +418,7 @@ CQLTFPolicy = build_tf_policy(
     before_init=setup_early_mixins,
     after_init=setup_late_mixins,
     make_model=build_sac_model,
+    extra_learn_fetches_fn=lambda policy: {"td_error": policy.td_error},
     mixins=[ActorCriticOptimizerMixin, TargetNetworkMixin, ComputeTDErrorMixin],
     action_distribution_fn=get_distribution_inputs_and_class,
     compute_gradients_fn=compute_gradients_fn,

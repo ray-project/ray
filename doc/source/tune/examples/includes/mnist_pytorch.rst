@@ -19,7 +19,7 @@ You can wrap your model in ``torch.nn.parallel.DistributedDataParallel`` to supp
 
 .. code-block:: python
 
-    from ray.util.sgd.torch import is_distributed_trainable
+    from ray.tune.integration.torch import is_distributed_trainable
     from torch.nn.parallel import DistributedDataParallel
 
     def train_cifar(config, checkpoint_dir=None, data_dir=None):
@@ -42,7 +42,7 @@ If using checkpointing, be sure to use a :ref:`special checkpoint context manage
 
 .. code-block:: python
 
-    from ray.util.sgd.torch import distributed_checkpoint_dir
+    from ray.tune.integration.torch import distributed_checkpoint_dir
 
     #### Using distributed data parallel training
     # Inside `def train_cifar(...)`,
@@ -62,7 +62,7 @@ This is essentially equivalent to running ``torch.distributed.launch`` for each 
     # You'll probably want to be running on a distributed Ray cluster.
     # ray.init(address="auto")
 
-    from ray.util.sgd.integration.torch import DistributedTrainableCreator
+    from ray.tune.integration.torch import DistributedTrainableCreator
 
     distributed_train_cifar = DistributedTrainableCreator(
       partial(train_cifar, data_dir=data_dir),

@@ -51,18 +51,8 @@ class RedisStoreClientTest : public StoreClientTestBase {
 
 TEST_F(RedisStoreClientTest, AsyncPutAndAsyncGetTest) { TestAsyncPutAndAsyncGet(); }
 
-TEST_F(RedisStoreClientTest, AsyncPutAndDeleteWithIndexTest) {
-  TestAsyncPutAndDeleteWithIndex();
-}
-
 TEST_F(RedisStoreClientTest, AsyncGetAllAndBatchDeleteTest) {
   TestAsyncGetAllAndBatchDelete();
-}
-
-TEST_F(RedisStoreClientTest, TestAsyncDeleteWithIndex) { TestAsyncDeleteWithIndex(); }
-
-TEST_F(RedisStoreClientTest, TestAsyncBatchDeleteWithIndex) {
-  TestAsyncBatchDeleteWithIndex();
 }
 
 }  // namespace gcs

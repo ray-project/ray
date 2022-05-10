@@ -53,6 +53,11 @@ parser.add_argument(
     default=10000.0,
     help="Reward at which we stop training.",
 )
+parser.add_argument(
+    "--local-mode",
+    action="store_true",
+    help="Init Ray in local mode for easier debugging.",
+)
 
 
 def curriculum_fn(
@@ -91,7 +96,7 @@ def curriculum_fn(
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    ray.init()
+    ray.init(local_mode=args.local_mode)
 
     # Can also register the env creator function explicitly with:
     # register_env(

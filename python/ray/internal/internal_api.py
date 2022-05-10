@@ -75,7 +75,7 @@ def get_store_stats(state, node_manager_address=None, node_manager_port=None):
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     reply = stub.FormatGlobalMemoryInfo(
         node_manager_pb2.FormatGlobalMemoryInfoRequest(include_memory_info=False),
-        timeout=30.0,
+        timeout=60.0,
     )
     return store_stats_summary(reply)
 

@@ -68,6 +68,8 @@ class ILocalTaskManager {
   virtual void DebugStr(std::stringstream &buffer) const = 0;
 
   virtual size_t GetNumTaskSpilled() const = 0;
+  virtual size_t GetNumWaitingTaskSpilled() const = 0;
+  virtual size_t GetNumUnschedulableTaskSpilled() const = 0;
 };
 }  // namespace raylet
 }  // namespace ray

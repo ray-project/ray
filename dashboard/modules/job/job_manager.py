@@ -433,7 +433,7 @@ class JobManager:
         job_info = JobInfo(
             entrypoint=entrypoint,
             status=JobStatus.PENDING,
-            start_time=int(time.time()),
+            start_time=int(time.time() * 1000),
             metadata=metadata,
             runtime_env=runtime_env,
         )

@@ -41,11 +41,7 @@ inline gcs::GcsClientOptions ToGcsClientOptions(JNIEnv *env, jobject gcs_client_
       env,
       (jstring)env->GetObjectField(gcs_client_options, java_gcs_client_options_password));
 
-  if (RayConfig::instance().bootstrap_with_gcs()) {
-    return gcs::GcsClientOptions(ip + ":" + std::to_string(port));
-  } else {
-    return gcs::GcsClientOptions(ip, port, password);
-  }
+  return gcs::GcsClientOptions(ip + ":" + std::to_string(port));
 }
 
 jobject ToJavaArgs(JNIEnv *env,
@@ -298,14 +294,14 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
   options.metrics_agent_port = -1;
   options.startup_token = startupToken;
   options.runtime_env_hash = runtimeEnvHash;
-   options.object_allocator =
+  options.object_allocator =
       [](const ray::RayObject &object,
          const ObjectID &object_id) -> std::shared_ptr<ray::RayObject> {
     if (!object.HasData()) {
       /// This object only has metadata, and doesn't have data. In this case, we can
       /// just use the original RayObject and doesn't have to put in the JVM heap.
-      return std::make_shared<ray::RayObject>(object.GetData(), object.GetMetadata(),
-                                              object.GetNestedRefs(), true);
+      return std::make_shared<ray::RayObject>(
+          object.GetData(), object.GetMetadata(), object.GetNestedRefs(), true);
     }
     JNIEnv *env = GetJNIEnv();
     auto java_byte_array = NativeBufferToJavaByteArray(env, object.GetData());
@@ -313,7 +309,8 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
     RAY_LOG(DEBUG) << "Allocating Java byte array for object " << object_id;
     env->CallStaticVoidMethod(java_object_ref_impl_class,
                               java_object_ref_impl_class_on_memory_store_object_allocated,
-                              raw_object_id_byte_array, java_byte_array);
+                              raw_object_id_byte_array,
+                              java_byte_array);
     auto java_weak_ref = CreateJavaWeakRef(env, java_byte_array);
     // This shared_ptr will be captured by the data_factory. So when the data_factory
     // is destructed, we deference the java_weak_ref.
@@ -336,8 +333,10 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
       return std::make_shared<JavaByteArrayBuffer>(env, java_byte_array);
     };
     std::shared_ptr<ray::Buffer> metadata_buffer = object.GetMetadata();
-    return std::make_shared<ray::RayObject>(metadata_buffer, object.GetNestedRefs(),
-                                            std::move(data_factory), /*copy_data=*/true);
+    return std::make_shared<ray::RayObject>(metadata_buffer,
+                                            object.GetNestedRefs(),
+                                            std::move(data_factory),
+                                            /*copy_data=*/true);
   };
 
   CoreWorkerProcess::Initialize(options);
@@ -426,7 +425,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeGetResourceIds(JNIEnv *env, jclass) {
 
 JNIEXPORT jstring JNICALL
 Java_io_ray_runtime_RayNativeRuntime_nativeGetNamespace(JNIEnv *env, jclass) {
-return env->NewStringUTF(
+  return env->NewStringUTF(
       CoreWorkerProcess::GetCoreWorker().GetJobConfig().ray_namespace().c_str());
 }
 

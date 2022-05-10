@@ -4,39 +4,32 @@
 Transforming Datasets
 =====================
 
-Datasets can be transformed in parallel using ``.map()``.
+Datasets can be transformed in parallel using ``.map_batches()``. Ray will transform
+batches of records in the Dataset using the given function. The function must return
+a batch of records. You are allowed to filter or add additional records to the batch,
+which will change the size of the Dataset.
+
 Transformations are executed *eagerly* and block until the operation is finished.
-Datasets also supports ``.filter()`` and ``.flat_map()``.
 
 .. code-block:: python
 
-    ds = ray.data.range(10000)
-    ds = ds.map(lambda x: x * 2)
-    # -> Map Progress: 100%|████████████████████| 200/200 [00:00<00:00, 1123.54it/s]
-    # -> Dataset(num_blocks=200, num_rows=10000, schema=<class 'int'>)
-    ds.take(5)
-    # -> [0, 2, 4, 6, 8]
-
-    ds.filter(lambda x: x > 5).take(5)
-    # -> Map Progress: 100%|████████████████████| 200/200 [00:00<00:00, 1859.63it/s]
-    # -> [6, 8, 10, 12, 14]
-
-    ds.flat_map(lambda x: [x, -x]).take(5)
-    # -> Map Progress: 100%|████████████████████| 200/200 [00:00<00:00, 1568.10it/s]
-    # -> [0, 0, 2, -2, 4]
-
-To take advantage of vectorized functions, use ``.map_batches()``.
-Note that you can also implement ``filter`` and ``flat_map`` using ``.map_batches()``,
-since your map function can return an output batch of any size.
-
-.. code-block:: python
+    def transform_batch(df: pandas.DataFrame) -> pandas.DataFrame:
+        return df.applymap(lambda x: x * 2)
 
     ds = ray.data.range_arrow(10000)
-    ds = ds.map_batches(
-        lambda df: df.applymap(lambda x: x * 2), batch_format="pandas")
+    ds = ds.map_batches(transform_batch, batch_format="pandas")
     # -> Map Progress: 100%|████████████████████| 200/200 [00:00<00:00, 1927.62it/s]
     ds.take(5)
     # -> [{'value': 0}, {'value': 2}, ...]
+
+The batch format can be specified using ``batch_format`` option, which defaults to "native",
+meaning pandas format for Arrow-compatible batches, and Python lists for other types. You
+can also specify explicitly "arrow" or "pandas" to force a conversion to that batch format.
+The batch size can also be chosen. If not given, the batch size will default to entire blocks.
+
+.. tip::
+
+    Datasets also provides the convenience methods ``map``, ``flat_map``, and ``filter``, which are not vectorized (slower than ``map_batches``), but may be useful for development.
 
 By default, transformations are executed using Ray tasks.
 For transformations that require setup, specify ``compute=ray.data.ActorPoolStrategy(min, max)`` and Ray will use an autoscaling actor pool of ``min`` to ``max`` actors to execute your transforms.

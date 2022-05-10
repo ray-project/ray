@@ -2,32 +2,35 @@
 The test file for all standalone tests that doesn't
 requires a shared Serve instance.
 """
+import logging
 import os
+import socket
 import subprocess
 import sys
-import socket
-from typing import Optional
 from tempfile import mkstemp
+from typing import Optional
 
 import pytest
 import pydantic
 import requests
 
 import ray
-from ray import serve
-from ray.cluster_utils import Cluster, cluster_not_supported
-from ray.serve.constants import SERVE_ROOT_URL_ENV_KEY, SERVE_PROXY_NAME
-from ray.serve.exceptions import RayServeException
-from ray.serve.utils import block_until_http_ready, get_all_node_ids, format_actor_name
-from ray.serve.config import HTTPOptions
-from ray.serve.api import internal_get_global_client
+import ray._private.gcs_utils as gcs_utils
+from ray._private.services import new_port
 from ray._private.test_utils import (
     run_string_as_driver,
     wait_for_condition,
     convert_actor_state,
 )
-from ray._private.services import new_port
-import ray._private.gcs_utils as gcs_utils
+from ray.cluster_utils import Cluster, cluster_not_supported
+
+from ray import serve
+from ray.serve.context import get_global_client
+from ray.serve.config import HTTPOptions
+from ray.serve.constants import SERVE_ROOT_URL_ENV_KEY, SERVE_PROXY_NAME
+from ray.serve.exceptions import RayServeException
+from ray.serve.generated.serve_pb2 import ActorNameList
+from ray.serve.utils import block_until_http_ready, get_all_node_ids, format_actor_name
 
 # Explicitly importing it here because it is a ray core tests utility (
 # not in the tree)
@@ -55,12 +58,12 @@ def test_shutdown(ray_shutdown):
 
     f.deploy()
 
-    serve_controller_name = serve.api._global_client._controller_name
+    serve_controller_name = serve.context._global_client._controller_name
     actor_names = [
         serve_controller_name,
         format_actor_name(
             SERVE_PROXY_NAME,
-            serve.api._global_client._controller_name,
+            serve.context._global_client._controller_name,
             get_all_node_ids()[0][0],
         ),
     ]
@@ -121,7 +124,7 @@ def test_detached_deployment(ray_cluster):
     assert ray.get(f.get_handle().remote()) == "from_f"
     assert requests.get("http://localhost:8000/say_hi_f").text == "from_f"
 
-    serve.api._global_client = None
+    serve.context._global_client = None
     ray.shutdown()
 
     # Create the second job, make sure we can still create new deployments.
@@ -197,7 +200,9 @@ def test_multiple_routers(ray_cluster):
         for node_id, _ in get_all_node_ids():
             proxy_names.append(
                 format_actor_name(
-                    SERVE_PROXY_NAME, serve.api._global_client._controller_name, node_id
+                    SERVE_PROXY_NAME,
+                    serve.context._global_client._controller_name,
+                    node_id,
                 )
             )
         return proxy_names
@@ -372,7 +377,7 @@ def test_no_http(ray_shutdown):
             if actor["State"] == convert_actor_state(gcs_utils.ActorTableData.ALIVE)
         ]
         assert len(live_actors) == 1
-        controller = serve.api._global_client._controller
+        controller = serve.context._global_client._controller
         assert len(ray.get(controller.get_http_proxies.remote())) == 0
 
         # Test that the handle still works.
@@ -443,9 +448,13 @@ def test_fixed_number_proxies(ray_cluster):
     )
 
     # Only the controller and two http proxy should be started.
-    controller_handle = internal_get_global_client()._controller
+    controller_handle = get_global_client()._controller
     node_to_http_actors = ray.get(controller_handle.get_http_proxies.remote())
     assert len(node_to_http_actors) == 2
+
+    proxy_names_bytes = ray.get(controller_handle.get_http_proxy_names.remote())
+    proxy_names = ActorNameList.FromString(proxy_names_bytes)
+    assert len(proxy_names.names) == 2
 
     serve.shutdown()
     ray.shutdown()
@@ -500,7 +509,7 @@ def test_serve_controller_namespace(
 
     ray.init(namespace=namespace)
     serve.start(detached=detached)
-    client = serve.api._global_client
+    client = serve.context._global_client
     if namespace:
         controller_namespace = namespace
     elif detached:
@@ -641,11 +650,7 @@ def test_snapshot_always_written_to_internal_kv(
 
 
 def test_serve_start_different_http_checkpoint_options_warning(caplog):
-    import logging
-    from tempfile import mkstemp
-    from ray.serve.utils import logger
-    from ray._private.services import new_port
-
+    logger = logging.getLogger("ray.serve")
     caplog.set_level(logging.WARNING, logger="ray.serve")
 
     warning_msg = []

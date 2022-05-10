@@ -16,10 +16,14 @@ def test_max_running_tasks(num_tasks):
     def task():
         time.sleep(sleep_time)
 
+    def time_up(start_time):
+        return time.time() - start_time >= sleep_time
+
     refs = [task.remote() for _ in tqdm.trange(num_tasks, desc="Launching tasks")]
 
     max_cpus = ray.cluster_resources()["CPU"]
     min_cpus_available = max_cpus
+    start_time = time.time()
     for _ in tqdm.trange(int(sleep_time / 0.1), desc="Waiting"):
         try:
             cur_cpus = ray.available_resources().get("CPU", 0)
@@ -28,6 +32,9 @@ def test_max_running_tasks(num_tasks):
             # There are race conditions `.get` can fail if a new heartbeat
             # comes at the same time.
             pass
+        if time_up(start_time):
+            print(f"Time up for sleeping {sleep_time} seconds")
+            break
         time.sleep(0.1)
 
     # There are some relevant magic numbers in this check. 10k tasks each

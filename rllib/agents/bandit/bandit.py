@@ -21,10 +21,10 @@ DEFAULT_CONFIG = with_common_config({
     "rollout_fragment_length": 1,
     "train_batch_size": 1,
 
-    # Bandits cant afford to do one timestep per iteration as it is extremely
-    # slow because of metrics collection overhead. This setting means that the
-    # agent will be trained for 100 times in one iteration of Rllib
-    "timesteps_per_iteration": 100,
+    # Make sure, a `train()` call performs at least 100 env sampling timesteps, before
+    # reporting results. Not setting this (default is 0) would significantly slow down
+    # the Bandit Trainer.
+    "min_sample_timesteps_per_reporting": 100,
 })
 # __sphinx_doc_end__
 # fmt: on

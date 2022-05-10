@@ -17,6 +17,7 @@
 #include <cmath>
 #include <cstdint>
 #include <iostream>
+#include <vector>
 
 #define RESOURCE_UNIT_SCALING 10000
 
@@ -112,3 +113,14 @@ inline std::ostream &operator<<(std::ostream &out, FixedPoint const &ru1) {
   out << ru1.i_;
   return out;
 }
+
+// Helper functions for FixedPoint vectors.
+
+/// Construct a FixedPoint vector from a double vector.
+std::vector<FixedPoint> FixedPointVectorFromDouble(const std::vector<double> &vector);
+
+/// Convert a FixedPoint vector to a double vector.
+std::vector<double> FixedPointVectorToDouble(const std::vector<FixedPoint> &vector_fp);
+
+/// Convert a FixedPoint vector to string.
+std::string FixedPointVectorToString(const std::vector<FixedPoint> &vector);

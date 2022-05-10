@@ -186,23 +186,33 @@ message WaitForActorOutOfScopeReply {
 message UpdateObjectLocationBatchRequest {
   bytes intended_worker_id = 1;
   bytes node_id = 2;
-  repeated ObjectLocationStateUpdate object_location_states = 3;
+  repeated ObjectLocationUpdate object_location_updates = 3;
 }
 
 message UpdateObjectLocationBatchReply {
 }
 
-enum ObjectLocationState {
-  // The latest object state.
-  // Object is added.
+enum ObjectPlasmaLocationUpdate {
+  // Object is added to plasma store.
   ADDED = 0;
-  // Object is removed.
+  // Object is removed from plasma store.
   REMOVED = 1;
 }
 
-message ObjectLocationStateUpdate {
+message ObjectSpilledLocationUpdate {
+  // For objects that have been spilled to external storage, the URL from which
+  // they can be retrieved.
+  string spilled_url = 3;
+  // Whether the object is spilled to local storage or cloud storage.
+  bool spilled_to_local_storage = 4;
+}
+
+message ObjectLocationUpdate {
   bytes object_id = 1;
-  ObjectLocationState state = 2;
+  // When it's set, it indicates whether the object is added or removed from plasma store.
+  optional ObjectPlasmaLocationUpdate plasma_location_update = 2;
+  // When it's set, it contains where the object is spilled to.
+  optional ObjectSpilledLocationUpdate spilled_location_update = 3;
 }
 
 message GetObjectLocationsOwnerRequest {
@@ -236,7 +246,9 @@ message CancelTaskRequest {
 
 message CancelTaskReply {
   // Whether the requested task is the currently running task.
-  bool attempt_succeeded = 1;
+  bool requested_task_running = 1;
+  // Whether the task is canceled.
+  bool attempt_succeeded = 2;
 }
 
 message RemoteCancelTaskRequest {
@@ -257,11 +269,16 @@ message GetCoreWorkerStatsRequest {
   // Whether to include memory stats. This could be large since it includes
   // metadata for all live object references.
   bool include_memory_info = 2;
+  // Whether to include task information. This could be large since it
+  // includes metadata for all live tasks.
+  bool include_task_info = 3;
 }
 
 message GetCoreWorkerStatsReply {
   // Debug information returned from the core worker.
   CoreWorkerStats core_worker_stats = 1;
+  // A list of task information of the current worker.
+  repeated TaskInfoEntry task_info_entries = 2;
 }
 
 message LocalGCRequest {
@@ -306,22 +323,6 @@ message DeleteSpilledObjectsRequest {
 }
 
 message DeleteSpilledObjectsReply {
-}
-
-message AddSpilledUrlRequest {
-  // Object that was spilled.
-  bytes object_id = 1;
-  // For objects that have been spilled to external storage, the URL from which
-  // they can be retrieved.
-  string spilled_url = 2;
-  // The ID of the node that spilled the object.
-  // This will be Nil if the object was spilled to distributed external storage.
-  bytes spilled_node_id = 3;
-  // The size of the object in bytes.
-  int64 size = 4;
-}
-
-message AddSpilledUrlReply {
 }
 
 message ExitRequest {
@@ -392,9 +393,6 @@ service CoreWorkerService {
   // Delete spilled objects from external storage. Caller: raylet; callee: I/O worker.
   rpc DeleteSpilledObjects(DeleteSpilledObjectsRequest)
       returns (DeleteSpilledObjectsReply);
-  // Add spilled URL, spilled node ID, and update object size for owned object.
-  // Caller: raylet; callee: owner worker.
-  rpc AddSpilledUrl(AddSpilledUrlRequest) returns (AddSpilledUrlReply);
   // Notification from raylet that an object ID is available in local plasma.
   rpc PlasmaObjectReady(PlasmaObjectReadyRequest) returns (PlasmaObjectReadyReply);
   // Request for a worker to exit.

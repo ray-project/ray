@@ -5,8 +5,6 @@ import threading
 from concurrent.futures import Future
 from queue import Queue
 
-import grpc
-
 try:
     from grpc import aio as aiogrpc
 except ImportError:
@@ -14,7 +12,7 @@ except ImportError:
 
 import ray.experimental.internal_kv as internal_kv
 import ray._private.utils
-from ray._private.gcs_utils import GcsClient
+from ray._private.gcs_utils import GcsClient, check_health
 import ray._private.services
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
@@ -23,8 +21,6 @@ from ray._private.gcs_pubsub import (
     GcsAioErrorSubscriber,
     GcsAioLogSubscriber,
 )
-from ray.core.generated import gcs_service_pb2
-from ray.core.generated import gcs_service_pb2_grpc
 from ray.dashboard.datacenter import DataOrganizer
 from ray.dashboard.utils import async_loop_forever
 
@@ -32,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 aiogrpc.init_grpc_aio()
 GRPC_CHANNEL_OPTIONS = (
-    ("grpc.enable_http_proxy", 0),
+    *ray_constants.GLOBAL_GRPC_OPTIONS,
     ("grpc.max_send_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
     ("grpc.max_receive_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
 )
@@ -40,12 +36,7 @@ GRPC_CHANNEL_OPTIONS = (
 
 class GCSHealthCheckThread(threading.Thread):
     def __init__(self, gcs_address: str):
-        self.grpc_gcs_channel = ray._private.utils.init_grpc_channel(
-            gcs_address, options=GRPC_CHANNEL_OPTIONS
-        )
-        self.gcs_heartbeat_info_stub = gcs_service_pb2_grpc.HeartbeatInfoGcsServiceStub(
-            self.grpc_gcs_channel
-        )
+        self.gcs_address = gcs_address
         self.work_queue = Queue()
 
         super().__init__(daemon=True)
@@ -53,22 +44,8 @@ class GCSHealthCheckThread(threading.Thread):
     def run(self) -> None:
         while True:
             future = self.work_queue.get()
-            check_result = self._check_once_synchrounously()
+            check_result = check_health(self.gcs_address)
             future.set_result(check_result)
-
-    def _check_once_synchrounously(self) -> bool:
-        request = gcs_service_pb2.CheckAliveRequest()
-        try:
-            reply = self.gcs_heartbeat_info_stub.CheckAlive(
-                request, timeout=dashboard_consts.GCS_CHECK_ALIVE_RPC_TIMEOUT
-            )
-            if reply.status.code != 0:
-                logger.exception(f"Failed to CheckAlive: {reply.status.message}")
-                return False
-        except grpc.RpcError:  # Deadline Exceeded
-            logger.exception("Got RpcError when checking GCS is alive")
-            return False
-        return True
 
     async def check_once(self) -> bool:
         """Ask the thread to perform a healthcheck."""

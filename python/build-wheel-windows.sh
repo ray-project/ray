@@ -8,7 +8,7 @@ WORKSPACE_DIR="${ROOT_DIR}/.."
 PY_VERSIONS=($(python -s -c "import runpy, sys; runpy.run_path(sys.argv.pop(), run_name='__api__')" python_versions "${ROOT_DIR}"/setup.py | tr -d "\r"))
 
 bazel_preclean() {
-  "${WORKSPACE_DIR}"/ci/travis/bazel.py preclean "mnemonic(\"Genrule\", deps(//:*))"
+  "${WORKSPACE_DIR}"/ci/run/bazel.py preclean "mnemonic(\"Genrule\", deps(//:*))"
 }
 
 get_python_version() {
@@ -53,7 +53,7 @@ EOF
 }
 
 install_ray() {
-  # TODO(mehrdadn): This function should be unified with the one in ci/travis/ci.sh.
+  # TODO(mehrdadn): This function should be unified with the one in ci/ci.sh.
   (
     pip install wheel
 

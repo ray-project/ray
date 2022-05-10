@@ -15,7 +15,7 @@ import argparse
 import os
 
 from ray.rllib.utils.test_utils import check_learning_achieved
-from ray.tune.logger import Logger
+from ray.tune.logger import Logger, LegacyLoggerCallback
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -119,7 +119,11 @@ if __name__ == "__main__":
     }
 
     results = tune.run(
-        args.run, config=config, stop=stop, verbose=2, loggers=[MyPrintLogger]
+        args.run,
+        config=config,
+        stop=stop,
+        verbose=2,
+        callbacks=[LegacyLoggerCallback(MyPrintLogger)],
     )
 
     if args.as_test:

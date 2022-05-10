@@ -190,7 +190,7 @@ if __name__ == "__main__":
             raise e
 
         # Something went wrong, so push an error to all drivers.
-        gcs_publisher = GcsPublisher(args.gcs_address)
+        gcs_publisher = GcsPublisher(address=args.gcs_address)
         ray._private.utils.publish_error_to_driver(
             ray_constants.DASHBOARD_DIED_ERROR,
             message,

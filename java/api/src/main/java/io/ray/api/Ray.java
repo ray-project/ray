@@ -83,6 +83,7 @@ public final class Ray extends RayCall {
    * @param objectRef The reference of the object to get.
    * @param timeoutMs The maximum amount of time in miliseconds to wait before returning.
    * @return The Java object.
+   * @throws RayTimeoutException If it's timeout to get the object.
    */
   public static <T> T get(ObjectRef<T> objectRef, long timeoutMs) {
     return internal().get(objectRef, timeoutMs);
@@ -104,6 +105,7 @@ public final class Ray extends RayCall {
    * @param objectList A list of object references.
    * @param timeoutMs The maximum amount of time in miliseconds to wait before returning.
    * @return A list of Java objects.
+   * @throws RayTimeoutException If it's timeout to get the object.
    */
   public static <T> List<T> get(List<ObjectRef<T>> objectList, long timeoutMs) {
     return internal().get(objectList, timeoutMs);

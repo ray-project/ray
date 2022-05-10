@@ -109,8 +109,7 @@ if __name__ == "__main__":
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "num_workers": 0,
         "model": {"custom_model": "eager_model"},
-        # Alternatively, use "tf2" here for enforcing TF version 2.x.
-        "framework": "tfe",
+        "framework": "tf2",
     }
     stop = {
         "timesteps_total": args.stop_timesteps,

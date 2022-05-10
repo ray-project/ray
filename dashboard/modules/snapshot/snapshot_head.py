@@ -137,6 +137,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         for job_submission_id, job_info in self._job_info_client.get_all_jobs().items():
             if job_info is not None:
                 entry = {
+                    "job_submission_id": job_submission_id,
                     "status": job_info.status,
                     "message": job_info.message,
                     "error_type": job_info.error_type,
@@ -169,7 +170,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                 "start_time": actor_table_entry.start_time,
                 "end_time": actor_table_entry.end_time,
                 "is_detached": actor_table_entry.is_detached,
-                "resources": dict(actor_table_entry.task_spec.required_resources),
+                "resources": dict(actor_table_entry.required_resources),
                 "actor_class": actor_table_entry.class_name,
                 "current_worker_id": actor_table_entry.address.worker_id.hex(),
                 "current_raylet_id": actor_table_entry.address.raylet_id.hex(),

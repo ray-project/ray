@@ -52,12 +52,17 @@ import yaml
 from dataclasses import dataclass, asdict
 from typing import Optional, List
 from pathlib import Path
+from enum import Enum, auto
 
 import ray
 import requests
 
 import ray.ray_constants as ray_constants
 import ray._private.usage.usage_constants as usage_constant
+from ray.experimental.internal_kv import (
+    _internal_kv_put,
+    _internal_kv_initialized,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +110,7 @@ class UsageStatsToReport:
     total_num_gpus: Optional[int]
     total_memory_gb: Optional[float]
     total_object_store_memory_gb: Optional[float]
+    library_usages: Optional[List[str]]
     # The total number of successful reports for the lifetime of the cluster.
     total_success: int
     # The total number of failed reports for the lifetime of the cluster.
@@ -128,6 +134,54 @@ class UsageStatsToWrite:
     error: str
 
 
+class UsageStatsEnabledness(Enum):
+    ENABLED_EXPLICITLY = auto()
+    DISABLED_EXPLICITLY = auto()
+    ENABLED_BY_DEFAULT = auto()
+
+
+_recorded_library_usages = set()
+
+
+def _put_library_usage(library_usage: str):
+    assert _internal_kv_initialized()
+    try:
+        _internal_kv_put(
+            f"{usage_constant.LIBRARY_USAGE_PREFIX}{library_usage}",
+            "",
+            namespace=usage_constant.USAGE_STATS_NAMESPACE,
+        )
+    except Exception as e:
+        logger.debug(f"Failed to put library usage, {e}")
+
+
+def record_library_usage(library_usage: str):
+    """Record library usage (e.g. which library is used)"""
+    if library_usage in _recorded_library_usages:
+        return
+    _recorded_library_usages.add(library_usage)
+
+    if not _internal_kv_initialized():
+        # This happens if the library is imported before ray.init
+        return
+
+    # Only report library usage from driver to reduce
+    # the load to kv store.
+    if ray.worker.global_worker.mode == ray.SCRIPT_MODE:
+        _put_library_usage(library_usage)
+
+
+def _put_pre_init_library_usages():
+    assert _internal_kv_initialized()
+    if ray.worker.global_worker.mode != ray.SCRIPT_MODE:
+        return
+    for library_usage in _recorded_library_usages:
+        _put_library_usage(library_usage)
+
+
+ray.worker._post_init_hooks.append(_put_pre_init_library_usages)
+
+
 def _usage_stats_report_url():
     # The usage collection server URL.
     # The environment variable is testing-purpose only.
@@ -138,12 +192,51 @@ def _usage_stats_report_interval_s():
     return int(os.getenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", 3600))
 
 
-def _usage_stats_enabled():
-    """
-    NOTE: This is the private API, and it is not a reliable
-    way to know if usage stats are enabled from the cluster.
-    """
-    return int(os.getenv("RAY_USAGE_STATS_ENABLED", "0")) == 1
+def _usage_stats_config_path():
+    return os.getenv(
+        "RAY_USAGE_STATS_CONFIG_PATH", os.path.expanduser("~/.ray/config.json")
+    )
+
+
+def _usage_stats_enabledness() -> UsageStatsEnabledness:
+    # Env var has higher priority than config file.
+    usage_stats_enabled_env_var = os.getenv(usage_constant.USAGE_STATS_ENABLED_ENV_VAR)
+    if usage_stats_enabled_env_var == "0":
+        return UsageStatsEnabledness.DISABLED_EXPLICITLY
+    elif usage_stats_enabled_env_var == "1":
+        return UsageStatsEnabledness.ENABLED_EXPLICITLY
+    elif usage_stats_enabled_env_var is not None:
+        raise ValueError(
+            f"Valid value for {usage_constant.USAGE_STATS_ENABLED_ENV_VAR} "
+            f"env var is 0 or 1, but got {usage_stats_enabled_env_var}"
+        )
+
+    usage_stats_enabled_config_var = None
+    try:
+        with open(_usage_stats_config_path()) as f:
+            config = json.load(f)
+            usage_stats_enabled_config_var = config.get("usage_stats")
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        logger.debug(f"Failed to load usage stats config {e}")
+
+    if usage_stats_enabled_config_var is False:
+        return UsageStatsEnabledness.DISABLED_EXPLICITLY
+    elif usage_stats_enabled_config_var is True:
+        return UsageStatsEnabledness.ENABLED_EXPLICITLY
+    elif usage_stats_enabled_config_var is not None:
+        raise ValueError(
+            f"Valid value for 'usage_stats' in {_usage_stats_config_path()}"
+            f" is true or false, but got {usage_stats_enabled_config_var}"
+        )
+
+    # Usage stats is enabled by default.
+    return UsageStatsEnabledness.ENABLED_BY_DEFAULT
+
+
+def usage_stats_enabled() -> bool:
+    return _usage_stats_enabledness() is not UsageStatsEnabledness.DISABLED_EXPLICITLY
 
 
 def _usage_stats_prompt_enabled():
@@ -160,7 +253,7 @@ def _generate_cluster_metadata():
         "python_version": python_version,
     }
     # Additional metadata is recorded only when usage stats are enabled.
-    if _usage_stats_enabled():
+    if usage_stats_enabled():
         metadata.update(
             {
                 "schema_version": usage_constant.SCHEMA_VERSION,
@@ -174,15 +267,79 @@ def _generate_cluster_metadata():
     return metadata
 
 
-def print_usage_stats_heads_up_message() -> None:
-    try:
-        if (not _usage_stats_prompt_enabled()) or _usage_stats_enabled():
-            return
+def show_usage_stats_prompt() -> None:
+    if not _usage_stats_prompt_enabled():
+        return
 
-        print(usage_constant.USAGE_STATS_HEADS_UP_MESSAGE, file=sys.stderr)
-    except Exception:
-        # Silently ignore the exception since it doesn't affect the use of ray.
+    from ray.autoscaler._private.cli_logger import cli_logger
+
+    usage_stats_enabledness = _usage_stats_enabledness()
+    if usage_stats_enabledness is UsageStatsEnabledness.DISABLED_EXPLICITLY:
+        cli_logger.print(usage_constant.USAGE_STATS_DISABLED_MESSAGE)
+    elif usage_stats_enabledness is UsageStatsEnabledness.ENABLED_BY_DEFAULT:
+
+        if cli_logger.interactive:
+            enabled = cli_logger.confirm(
+                False,
+                usage_constant.USAGE_STATS_CONFIRMATION_MESSAGE,
+                _default=True,
+                _timeout_s=10,
+            )
+            set_usage_stats_enabled_via_env_var(enabled)
+            # Remember user's choice.
+            try:
+                set_usage_stats_enabled_via_config(enabled)
+            except Exception as e:
+                logger.debug(
+                    f"Failed to persist usage stats choice for future clusters: {e}"
+                )
+            if enabled:
+                cli_logger.print(usage_constant.USAGE_STATS_ENABLED_MESSAGE)
+            else:
+                cli_logger.print(usage_constant.USAGE_STATS_DISABLED_MESSAGE)
+        else:
+            cli_logger.print(
+                usage_constant.USAGE_STATS_ENABLED_BY_DEFAULT_MESSAGE,
+            )
+    else:
+        assert usage_stats_enabledness is UsageStatsEnabledness.ENABLED_EXPLICITLY
+        cli_logger.print(usage_constant.USAGE_STATS_ENABLED_MESSAGE)
+
+
+def set_usage_stats_enabled_via_config(enabled) -> None:
+    config = {}
+    try:
+        with open(_usage_stats_config_path()) as f:
+            config = json.load(f)
+        if not isinstance(config, dict):
+            logger.debug(
+                f"Invalid ray config file, should be a json dict but got {type(config)}"
+            )
+            config = {}
+    except FileNotFoundError:
         pass
+    except Exception as e:
+        logger.debug(f"Failed to load ray config file {e}")
+
+    config["usage_stats"] = enabled
+
+    try:
+        os.makedirs(os.path.dirname(_usage_stats_config_path()), exist_ok=True)
+        with open(_usage_stats_config_path(), "w") as f:
+            json.dump(config, f)
+    except Exception as e:
+        raise Exception(
+            "Failed to "
+            f'{"enable" if enabled else "disable"}'
+            ' usage stats by writing {"usage_stats": '
+            f'{"true" if enabled else "false"}'
+            "} to "
+            f"{_usage_stats_config_path()}"
+        ) from e
+
+
+def set_usage_stats_enabled_via_env_var(enabled) -> None:
+    os.environ[usage_constant.USAGE_STATS_ENABLED_ENV_VAR] = "1" if enabled else "0"
 
 
 def put_cluster_metadata(gcs_client, num_retries) -> None:
@@ -206,6 +363,24 @@ def put_cluster_metadata(gcs_client, num_retries) -> None:
         num_retries=num_retries,
     )
     return metadata
+
+
+def get_library_usages_to_report(gcs_client, num_retries) -> List[str]:
+    try:
+        result = []
+        library_usages = ray._private.utils.internal_kv_list_with_retry(
+            gcs_client,
+            usage_constant.LIBRARY_USAGE_PREFIX,
+            namespace=usage_constant.USAGE_STATS_NAMESPACE,
+            num_retries=num_retries,
+        )
+        for library_usage in library_usages:
+            library_usage = library_usage.decode("utf-8")
+            result.append(library_usage[len(usage_constant.LIBRARY_USAGE_PREFIX) :])
+        return result
+    except Exception as e:
+        logger.info(f"Failed to get library usages to report {e}")
+        return []
 
 
 def get_cluster_status_to_report(gcs_client, num_retries) -> ClusterStatusToReport:
@@ -388,6 +563,10 @@ def generate_report_data(
         ray.experimental.internal_kv.internal_kv_get_gcs_client(),
         num_retries=20,
     )
+    library_usages = get_library_usages_to_report(
+        ray.experimental.internal_kv.internal_kv_get_gcs_client(),
+        num_retries=20,
+    )
     data = UsageStatsToReport(
         ray_version=cluster_metadata["ray_version"],
         python_version=cluster_metadata["python_version"],
@@ -407,6 +586,7 @@ def generate_report_data(
         total_num_gpus=cluster_status_to_report.total_num_gpus,
         total_memory_gb=cluster_status_to_report.total_memory_gb,
         total_object_store_memory_gb=cluster_status_to_report.total_object_store_memory_gb,  # noqa: E501
+        library_usages=library_usages,
         total_success=total_success,
         total_failed=total_failed,
         seq_number=seq_number,
@@ -449,9 +629,6 @@ class UsageReportClient:
             data (dict): Data to report
             dir_path (Path): The path to the directory to write usage data.
         """
-        if not _usage_stats_enabled():
-            return
-
         # Atomically update the file.
         dir_path = Path(dir_path)
         destination = dir_path / usage_constant.USAGE_STATS_FILE
@@ -474,9 +651,6 @@ class UsageReportClient:
         Raises:
             requests.HTTPError if requests fails.
         """
-        if not _usage_stats_enabled():
-            return
-
         r = requests.request(
             "POST",
             url,

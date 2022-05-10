@@ -23,46 +23,17 @@ namespace ray {
 
 using namespace ::ray::raylet_scheduling_policy;
 
-ClusterResourceScheduler::ClusterResourceScheduler()
-    : local_node_id_(scheduling::NodeID::Nil()) {
-  cluster_resource_manager_ = std::make_unique<ClusterResourceManager>();
-  NodeResources node_resources;
-  node_resources.predefined_resources.resize(PredefinedResources_MAX);
-  local_resource_manager_ = std::make_unique<LocalResourceManager>(
-      local_node_id_,
-      node_resources,
-      /*get_used_object_store_memory*/ nullptr,
-      /*get_pull_manager_at_capacity*/ nullptr,
-      [&](const NodeResources &local_resource_update) {
-        cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_resource_update);
-      });
-  scheduling_policy_ =
-      std::make_unique<raylet_scheduling_policy::CompositeSchedulingPolicy>(
-          local_node_id_,
-          cluster_resource_manager_->GetResourceView(),
-          [this](auto node_id) { return this->NodeAlive(node_id); });
-}
-
 ClusterResourceScheduler::ClusterResourceScheduler(
     scheduling::NodeID local_node_id,
     const NodeResources &local_node_resources,
-    std::function<bool(scheduling::NodeID)> is_node_available_fn)
-    : local_node_id_(local_node_id), is_node_available_fn_(is_node_available_fn) {
-  cluster_resource_manager_ = std::make_unique<ClusterResourceManager>();
-  local_resource_manager_ = std::make_unique<LocalResourceManager>(
-      local_node_id,
-      local_node_resources,
-      /*get_used_object_store_memory*/ nullptr,
-      /*get_pull_manager_at_capacity*/ nullptr,
-      [&](const NodeResources &local_resource_update) {
-        cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_resource_update);
-      });
-  cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_node_resources);
-  scheduling_policy_ =
-      std::make_unique<raylet_scheduling_policy::CompositeSchedulingPolicy>(
-          local_node_id_,
-          cluster_resource_manager_->GetResourceView(),
-          [this](auto node_id) { return this->NodeAlive(node_id); });
+    std::function<bool(scheduling::NodeID)> is_node_available_fn,
+    bool is_local_node_with_raylet)
+    : local_node_id_(local_node_id),
+      is_node_available_fn_(is_node_available_fn),
+      is_local_node_with_raylet_(is_local_node_with_raylet) {
+  Init(local_node_resources,
+       /*get_used_object_store_memory=*/nullptr,
+       /*get_pull_manager_at_capacity=*/nullptr);
 }
 
 ClusterResourceScheduler::ClusterResourceScheduler(
@@ -74,30 +45,45 @@ ClusterResourceScheduler::ClusterResourceScheduler(
     : local_node_id_(local_node_id), is_node_available_fn_(is_node_available_fn) {
   NodeResources node_resources =
       ResourceMapToNodeResources(local_node_resources, local_node_resources);
+  Init(node_resources, get_used_object_store_memory, get_pull_manager_at_capacity);
+}
+
+void ClusterResourceScheduler::Init(
+    const NodeResources &local_node_resources,
+    std::function<int64_t(void)> get_used_object_store_memory,
+    std::function<bool(void)> get_pull_manager_at_capacity) {
   cluster_resource_manager_ = std::make_unique<ClusterResourceManager>();
   local_resource_manager_ = std::make_unique<LocalResourceManager>(
       local_node_id_,
-      node_resources,
+      local_node_resources,
       get_used_object_store_memory,
       get_pull_manager_at_capacity,
-      [&](const NodeResources &local_resource_update) {
+      [this](const NodeResources &local_resource_update) {
         cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_resource_update);
       });
-  cluster_resource_manager_->AddOrUpdateNode(local_node_id_, node_resources);
+  RAY_CHECK(!local_node_id_.IsNil());
+  cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_node_resources);
   scheduling_policy_ =
       std::make_unique<raylet_scheduling_policy::CompositeSchedulingPolicy>(
           local_node_id_,
-          cluster_resource_manager_->GetResourceView(),
+          *cluster_resource_manager_,
+          /*is_node_available_fn*/
+          [this](auto node_id) { return this->NodeAlive(node_id); });
+  bundle_scheduling_policy_ =
+      std::make_unique<raylet_scheduling_policy::CompositeBundleSchedulingPolicy>(
+          *cluster_resource_manager_,
+          /*is_node_available_fn*/
           [this](auto node_id) { return this->NodeAlive(node_id); });
 }
 
 bool ClusterResourceScheduler::NodeAlive(scheduling::NodeID node_id) const {
   if (node_id == local_node_id_) {
-    return true;
+    return is_local_node_with_raylet_;
   }
   if (node_id.IsNil()) {
     return false;
   }
+  RAY_CHECK(is_node_available_fn_ != nullptr);
   return is_node_available_fn_(node_id);
 }
 
@@ -133,6 +119,16 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
                                      SchedulingOptions::Spread(
                                          /*avoid_local_node*/ force_spillback,
                                          /*require_node_available*/ force_spillback));
+  } else if (scheduling_strategy.scheduling_strategy_case() ==
+             rpc::SchedulingStrategy::SchedulingStrategyCase::
+                 kNodeAffinitySchedulingStrategy) {
+    best_node_id = scheduling_policy_->Schedule(
+        resource_request,
+        SchedulingOptions::NodeAffinity(
+            force_spillback,
+            force_spillback,
+            scheduling_strategy.node_affinity_scheduling_strategy().node_id(),
+            scheduling_strategy.node_affinity_scheduling_strategy().soft()));
   } else {
     // TODO (Alex): Setting require_available == force_spillback is a hack in order to
     // remain bug compatible with the legacy scheduling algorithms.
@@ -206,9 +202,11 @@ bool ClusterResourceScheduler::AllocateRemoteTaskResources(
 }
 
 bool ClusterResourceScheduler::IsSchedulableOnNode(
-    scheduling::NodeID node_id, const absl::flat_hash_map<std::string, double> &shape) {
+    scheduling::NodeID node_id,
+    const absl::flat_hash_map<std::string, double> &shape,
+    bool requires_object_store_memory) {
   auto resource_request =
-      ResourceMapToResourceRequest(shape, /*requires_object_store_memory=*/false);
+      ResourceMapToResourceRequest(shape, requires_object_store_memory);
   return IsSchedulable(resource_request, node_id);
 }
 
@@ -222,27 +220,40 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
   // going through the full hybrid policy since we don't want spillback.
   if (prioritize_local_node && !exclude_local_node &&
       IsSchedulableOnNode(local_node_id_,
-                          task_spec.GetRequiredResources().GetResourceMap())) {
+                          task_spec.GetRequiredResources().GetResourceMap(),
+                          requires_object_store_memory)) {
     *is_infeasible = false;
     return local_node_id_;
   }
 
   // This argument is used to set violation, which is an unsupported feature now.
   int64_t _unused;
-  return GetBestSchedulableNode(
-      task_spec.GetRequiredPlacementResources().GetResourceMap(),
-      task_spec.GetMessage().scheduling_strategy(),
-      requires_object_store_memory,
-      task_spec.IsActorCreationTask(),
-      exclude_local_node,
-      &_unused,
-      is_infeasible);
+  scheduling::NodeID best_node =
+      GetBestSchedulableNode(task_spec.GetRequiredPlacementResources().GetResourceMap(),
+                             task_spec.GetMessage().scheduling_strategy(),
+                             requires_object_store_memory,
+                             task_spec.IsActorCreationTask(),
+                             exclude_local_node,
+                             &_unused,
+                             is_infeasible);
+
+  // If there is no other available nodes, prefer waiting on the local node
+  // since the local node is chosen for a reason (e.g. spread).
+  if (prioritize_local_node && !best_node.IsNil() &&
+      !IsSchedulableOnNode(best_node,
+                           task_spec.GetRequiredResources().GetResourceMap(),
+                           requires_object_store_memory)) {
+    *is_infeasible = false;
+    return local_node_id_;
+  }
+
+  return best_node;
 }
 
 SchedulingResult ClusterResourceScheduler::Schedule(
     const std::vector<const ResourceRequest *> &resource_request_list,
-    SchedulingOptions options,
-    SchedulingContext *context) {
-  return scheduling_policy_->Schedule(resource_request_list, options, context);
+    SchedulingOptions options) {
+  return bundle_scheduling_policy_->Schedule(resource_request_list, options);
 }
+
 }  // namespace ray

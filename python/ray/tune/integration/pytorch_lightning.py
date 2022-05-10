@@ -202,7 +202,7 @@ class TuneReportCallback(TuneCallback):
 
     def __init__(
         self,
-        metrics: Union[None, str, List[str], Dict[str, str]] = None,
+        metrics: Optional[Union[str, List[str], Dict[str, str]]] = None,
         on: Union[str, List[str]] = "validation_end",
     ):
         super(TuneReportCallback, self).__init__(on)
@@ -313,7 +313,7 @@ class TuneReportCheckpointCallback(TuneCallback):
 
     def __init__(
         self,
-        metrics: Union[None, str, List[str], Dict[str, str]] = None,
+        metrics: Optional[Union[str, List[str], Dict[str, str]]] = None,
         filename: str = "checkpoint",
         on: Union[str, List[str]] = "validation_end",
     ):

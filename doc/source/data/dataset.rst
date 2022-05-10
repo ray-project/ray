@@ -58,7 +58,7 @@ Advanced users can utilize the Ray Datasets API reference for their projects.
     ^^^
 
     Start with our quick start tutorials for :ref:`working with Datasets<ray_datasets_quick_start>`
-    and :ref:`Dataset Pipelines<dataset_pipelines_quick_start>`.
+    and :ref:`Dataset Pipelines<pipelining_datasets>`.
     These concrete examples will give you an idea of how to use Ray Datasets.
 
     +++
@@ -159,7 +159,7 @@ Supported Input Formats
      - ✅
    * - MARS Dataframe
      - :func:`ray.data.from_mars()`
-     - (todo)
+     - ✅
    * - Pandas Dataframe Objects
      - :func:`ray.data.from_pandas()`
      - ✅
@@ -168,6 +168,9 @@ Supported Input Formats
      - ✅
    * - Arrow Table Objects
      - :func:`ray.data.from_arrow()`
+     - ✅
+   * - 🤗 (Hugging Face) Dataset
+     - :func:`ray.data.from_huggingface()`
      - ✅
    * - Custom Datasource
      - :func:`ray.data.read_datasource()`
@@ -206,7 +209,7 @@ Supported Output Formats
      - ✅
    * - MARS Dataframe
      - :meth:`ds.to_mars() <ray.data.Dataset.to_mars>`
-     - (todo)
+     - ✅
    * - Arrow Table Objects
      - :meth:`ds.to_arrow_refs() <ray.data.Dataset.to_arrow_refs>`
      - ✅

@@ -36,5 +36,17 @@ std::vector<rpc::ObjectReference> SendInternal(const ActorID &peer_actor_id,
                                                int return_num);
 
 const stats::TagKeyType TagRegister(const std::string tag_name);
+
+/// Get current actor id via internal.
+const ActorID &GetCurrentActorID();
+
+/// Set the core worker associated with the current thread by worker ID.
+/// Currently used by Java worker only.
+///
+/// \param worker_id The worker ID of the core worker instance.
+void SetCurrentThreadWorker(const WorkerID &worker_id);
+
+/// Get core worker initialization flag via internal.
+bool IsInitialized();
 }  // namespace internal
 }  // namespace ray

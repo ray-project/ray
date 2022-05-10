@@ -1,5 +1,4 @@
 import time
-import asyncio
 from dataclasses import dataclass
 import functools
 import logging
@@ -21,13 +20,11 @@ from ray.workflow.workflow_access import (
 from ray.workflow.common import (
     Workflow,
     WorkflowStatus,
-    WorkflowOutputType,
     WorkflowExecutionResult,
     StepType,
     StepID,
     WorkflowData,
     WorkflowStaticRef,
-    asyncio_run,
     CheckpointMode,
 )
 
@@ -43,24 +40,14 @@ WaitResult = Tuple[List[Any], List[Workflow]]
 logger = logging.getLogger(__name__)
 
 
-def _resolve_object_ref(ref: ObjectRef) -> Tuple[Any, ObjectRef]:
-    """
-    Resolves the ObjectRef into the object instance.
-
-    Returns:
-        The object instance and the direct ObjectRef to the instance.
-    """
-    last_ref = ref
-    while True:
-        if isinstance(ref, ObjectRef):
-            last_ref = ref
-        else:
-            break
-        ref = ray.get(last_ref)
-    return ref, last_ref
+def _resolve_static_workflow_ref(workflow_ref: WorkflowStaticRef):
+    """Get the output of a workflow step with the step ID and ObjectRef."""
+    while isinstance(workflow_ref, WorkflowStaticRef):
+        workflow_ref = ray.get(workflow_ref.ref)
+    return workflow_ref
 
 
-def _resolve_dynamic_workflow_refs(workflow_refs: "List[WorkflowRef]"):
+def _resolve_dynamic_workflow_refs(job_id, workflow_refs: "List[WorkflowRef]"):
     """Get the output of a workflow step with the step ID at runtime.
 
     We lookup the output by the following order:
@@ -73,7 +60,6 @@ def _resolve_dynamic_workflow_refs(workflow_refs: "List[WorkflowRef]"):
     workflow_manager = get_or_create_management_actor()
     context = workflow_context.get_workflow_step_context()
     workflow_id = context.workflow_id
-    storage_url = context.storage_url
     workflow_ref_mapping = []
     for workflow_ref in workflow_refs:
         step_ref = ray.get(
@@ -84,7 +70,7 @@ def _resolve_dynamic_workflow_refs(workflow_refs: "List[WorkflowRef]"):
         get_cached_step = False
         if step_ref is not None:
             try:
-                output, _ = _resolve_object_ref(step_ref)
+                output = _resolve_static_workflow_ref(step_ref)
                 get_cached_step = True
             except Exception:
                 get_cached_step = False
@@ -100,14 +86,14 @@ def _resolve_dynamic_workflow_refs(workflow_refs: "List[WorkflowRef]"):
                     f"Current step: '{current_step_id}'"
                 )
                 step_ref = recovery.resume_workflow_step(
-                    workflow_id, workflow_ref.step_id, storage_url, None
+                    job_id, workflow_id, workflow_ref.step_id, None
                 ).persisted_output
-                output, _ = _resolve_object_ref(step_ref)
+                output = _resolve_static_workflow_ref(step_ref)
         workflow_ref_mapping.append(output)
     return workflow_ref_mapping
 
 
-def _execute_workflow(workflow: "Workflow") -> "WorkflowExecutionResult":
+def _execute_workflow(job_id, workflow: "Workflow") -> "WorkflowExecutionResult":
     """Internal function of workflow execution."""
     if workflow.executed:
         return workflow.result
@@ -152,13 +138,9 @@ def _execute_workflow(workflow: "Workflow") -> "WorkflowExecutionResult":
                 extra_options = w.data.step_options.ray_options
                 # The input workflow is not a reference to an executed
                 # workflow.
-                output = execute_workflow(w).persisted_output
-                static_ref = WorkflowStaticRef(
-                    step_id=w.step_id,
-                    ref=output,
-                    _resolve_like_object_ref_in_args=extra_options.get(
-                        "_resolve_like_object_ref_in_args", False
-                    ),
+                static_ref = execute_workflow(job_id, w).persisted_output
+                static_ref._resolve_like_object_ref_in_args = extra_options.get(
+                    "_resolve_like_object_ref_in_args", False
                 )
             workflow_outputs.append(static_ref)
 
@@ -166,6 +148,7 @@ def _execute_workflow(workflow: "Workflow") -> "WorkflowExecutionResult":
         args=inputs.args,
         workflow_outputs=workflow_outputs,
         workflow_refs=inputs.workflow_refs,
+        job_id=job_id,
     )
 
     # Stage 2: match executors
@@ -203,6 +186,7 @@ def _execute_workflow(workflow: "Workflow") -> "WorkflowExecutionResult":
     persisted_output, volatile_output = executor(
         workflow_data.func_body,
         step_context,
+        job_id,
         workflow.step_id,
         baked_inputs,
         workflow_data.step_options,
@@ -214,6 +198,11 @@ def _execute_workflow(workflow: "Workflow") -> "WorkflowExecutionResult":
             # TODO: [Possible flaky bug] Here the RUNNING state may
             # be recorded earlier than SUCCESSFUL. This caused some
             # confusion during development.
+
+            # convert into workflow static ref for step status record.
+            volatile_output = WorkflowStaticRef.from_output(
+                workflow.step_id, volatile_output
+            )
             _record_step_status(
                 workflow.step_id, WorkflowStatus.RUNNING, [volatile_output]
             )
@@ -234,7 +223,7 @@ class InplaceReturnedWorkflow:
     context: Dict
 
 
-def execute_workflow(workflow: Workflow) -> "WorkflowExecutionResult":
+def execute_workflow(job_id, workflow: Workflow) -> "WorkflowExecutionResult":
     """Execute workflow.
 
     This function also performs tail-recursion optimization for inplace
@@ -249,21 +238,23 @@ def execute_workflow(workflow: Workflow) -> "WorkflowExecutionResult":
     context = {}
     while True:
         with workflow_context.fork_workflow_step_context(**context):
-            result = _execute_workflow(workflow)
+            result = _execute_workflow(job_id, workflow)
         if not isinstance(result.persisted_output, InplaceReturnedWorkflow):
             break
         workflow = result.persisted_output.workflow
         context = result.persisted_output.context
 
-    # Convert the outputs into ObjectRefs.
-    if not isinstance(result.persisted_output, WorkflowOutputType):
-        result.persisted_output = ray.put(result.persisted_output)
-    if not isinstance(result.persisted_output, WorkflowOutputType):
-        result.volatile_output = ray.put(result.volatile_output)
+    # Convert the outputs into WorkflowStaticRef.
+    result.persisted_output = WorkflowStaticRef.from_output(
+        workflow.step_id, result.persisted_output
+    )
+    result.volatile_output = WorkflowStaticRef.from_output(
+        workflow.step_id, result.volatile_output
+    )
     return result
 
 
-async def _write_step_inputs(
+def _write_step_inputs(
     wf_storage: workflow_storage.WorkflowStorage, step_id: StepID, inputs: WorkflowData
 ) -> None:
     """Save workflow inputs."""
@@ -273,24 +264,21 @@ async def _write_step_inputs(
         # with plasma store object in memory.
         args_obj = ray.get(inputs.inputs.args)
     workflow_id = wf_storage._workflow_id
-    storage = wf_storage._storage
-    save_tasks = [
-        # TODO (Alex): Handle the json case better?
-        wf_storage._put(wf_storage._key_step_input_metadata(step_id), metadata, True),
-        wf_storage._put(
-            wf_storage._key_step_user_metadata(step_id), inputs.user_metadata, True
-        ),
-        serialization.dump_to_storage(
-            wf_storage._key_step_function_body(step_id),
-            inputs.func_body,
-            workflow_id,
-            storage,
-        ),
-        serialization.dump_to_storage(
-            wf_storage._key_step_args(step_id), args_obj, workflow_id, storage
-        ),
-    ]
-    await asyncio.gather(*save_tasks)
+
+    # TODO (Alex): Handle the json case better?
+    wf_storage._put(wf_storage._key_step_input_metadata(step_id), metadata, True),
+    wf_storage._put(
+        wf_storage._key_step_user_metadata(step_id), inputs.user_metadata, True
+    ),
+    serialization.dump_to_storage(
+        wf_storage._key_step_function_body(step_id),
+        inputs.func_body,
+        workflow_id,
+        wf_storage,
+    ),
+    serialization.dump_to_storage(
+        wf_storage._key_step_args(step_id), args_obj, workflow_id, wf_storage
+    ),
 
 
 def commit_step(
@@ -317,7 +305,6 @@ def commit_step(
             # its input (again).
             if w.ref is None:
                 tasks.append(_write_step_inputs(store, w.step_id, w.data))
-        asyncio_run(asyncio.gather(*tasks))
 
     context = workflow_context.get_workflow_step_context()
     store.save_step_output(
@@ -429,6 +416,7 @@ def _wrap_run(
 def _workflow_step_executor(
     func: Callable,
     context: "WorkflowStepContext",
+    job_id: str,
     step_id: "StepID",
     baked_inputs: "_BakedWorkflowInputs",
     runtime_options: "WorkflowStepRuntimeOptions",
@@ -526,7 +514,7 @@ def _workflow_step_executor(
             with workflow_context.fork_workflow_step_context(
                 outer_most_step_id=outer_most_step_id
             ):
-                result = execute_workflow(sub_workflow)
+                result = execute_workflow(job_id, sub_workflow)
             # When virtual actor returns a workflow in the method,
             # the volatile_output and persisted_output will be put together
             persisted_output = result.persisted_output
@@ -543,6 +531,7 @@ def _workflow_step_executor(
         volatile_output = volatile_output.run_async(
             workflow_context.get_current_workflow_id()
         )
+        volatile_output = WorkflowStaticRef.from_output(step_id, volatile_output)
     return persisted_output, volatile_output
 
 
@@ -550,19 +539,22 @@ def _workflow_step_executor(
 def _workflow_step_executor_remote(
     func: Callable,
     context: "WorkflowStepContext",
+    job_id: str,
     step_id: "StepID",
     baked_inputs: "_BakedWorkflowInputs",
     runtime_options: "WorkflowStepRuntimeOptions",
 ) -> Any:
     """The remote version of '_workflow_step_executor'."""
-    return _workflow_step_executor(
-        func, context, step_id, baked_inputs, runtime_options
-    )
+    with workflow_context.workflow_logging_context(job_id):
+        return _workflow_step_executor(
+            func, context, job_id, step_id, baked_inputs, runtime_options
+        )
 
 
 def _workflow_wait_executor(
     func: Callable,
     context: "WorkflowStepContext",
+    job_id: str,
     step_id: "StepID",
     baked_inputs: "_BakedWorkflowInputs",
     runtime_options: "WorkflowStepRuntimeOptions",
@@ -582,10 +574,7 @@ def _workflow_wait_executor(
 
     # Part 2: Resolve any ready workflows.
     ready_workflows, remaining_workflows = baked_inputs.wait(**wait_options)
-    ready_objects = []
-    for w in ready_workflows:
-        obj, _ = _resolve_object_ref(w.ref.ref)
-        ready_objects.append(obj)
+    ready_objects = [_resolve_static_workflow_ref(w.ref) for w in ready_workflows]
     persisted_output = (ready_objects, remaining_workflows)
 
     # Part 3: Save the outputs.
@@ -607,14 +596,26 @@ def _workflow_wait_executor(
 def _workflow_wait_executor_remote(
     func: Callable,
     context: "WorkflowStepContext",
+    job_id: str,
     step_id: "StepID",
     baked_inputs: "_BakedWorkflowInputs",
     runtime_options: "WorkflowStepRuntimeOptions",
 ) -> Any:
     """The remote version of '_workflow_wait_executor'"""
-    return _workflow_wait_executor(
-        func, context, step_id, baked_inputs, runtime_options
-    )
+    with workflow_context.workflow_logging_context(job_id):
+        return _workflow_wait_executor(
+            func, context, job_id, step_id, baked_inputs, runtime_options
+        )
+
+
+class _SelfDereference:
+    """A object that dereferences static object ref during deserialization."""
+
+    def __init__(self, x):
+        self.x = x
+
+    def __reduce__(self):
+        return _resolve_static_workflow_ref, (self.x,)
 
 
 @dataclass
@@ -626,6 +627,7 @@ class _BakedWorkflowInputs:
     args: "ObjectRef"
     workflow_outputs: "List[WorkflowStaticRef]"
     workflow_refs: "List[WorkflowRef]"
+    job_id: str
 
     def resolve(self) -> Tuple[List, Dict]:
         """
@@ -645,14 +647,18 @@ class _BakedWorkflowInputs:
             Instances of arguments.
         """
         objects_mapping = []
-        for obj_ref in self.workflow_outputs:
-            if obj_ref._resolve_like_object_ref_in_args:
-                obj = obj_ref.ref
+        for static_workflow_ref in self.workflow_outputs:
+            if static_workflow_ref._resolve_like_object_ref_in_args:
+                # Keep it unresolved as an ObjectRef. Then we resolve it
+                # later in the arguments, like how Ray does with ObjectRefs.
+                obj = ray.put(_SelfDereference(static_workflow_ref))
             else:
-                obj, ref = _resolve_object_ref(obj_ref.ref)
+                obj = _resolve_static_workflow_ref(static_workflow_ref)
             objects_mapping.append(obj)
 
-        workflow_ref_mapping = _resolve_dynamic_workflow_refs(self.workflow_refs)
+        workflow_ref_mapping = _resolve_dynamic_workflow_refs(
+            self.job_id, self.workflow_refs
+        )
 
         with serialization_context.workflow_args_resolving_context(
             objects_mapping, workflow_ref_mapping
@@ -700,6 +706,7 @@ class _BakedWorkflowInputs:
             self.args,
             self.workflow_outputs,
             self.workflow_refs,
+            self.job_id,
         )
 
 

@@ -60,7 +60,11 @@ class GroupManager(object):
         elif backend == types.Backend.GLOO:
             logger.debug("Creating GLOO group: '{}'...".format(group_name))
             g = GLOOGroup(
-                world_size, rank, group_name, store_type="redis", device_type="tcp"
+                world_size,
+                rank,
+                group_name,
+                store_type="ray_internal_kv",
+                device_type="tcp",
             )
             self._name_group_map[group_name] = g
             self._group_name_map[g] = group_name

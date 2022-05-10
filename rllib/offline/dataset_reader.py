@@ -32,9 +32,19 @@ def get_dataset_and_shards(
     ), "Must specify input_config dict if using Dataset input."
 
     input_config = config["input_config"]
-    if not input_config.get("format", None) or not input_config.get("path", None):
+
+    format = input_config.get("format")
+    path = input_config.get("path")
+    loader_fn = input_config.get("loader_fn")
+
+    if loader_fn and (format or path):
         raise ValueError(
-            "Must specify format and path via input_config key"
+            "When using a `loader_fn`, you cannot specify a `format` or `path`."
+        )
+
+    if not (format and path) and not loader_fn:
+        raise ValueError(
+            "Must specify format and path, or a loader_fn via input_config key"
             " when using Ray dataset input."
         )
 
@@ -43,9 +53,11 @@ def get_dataset_and_shards(
         "num_cpus_per_read_task", DEFAULT_NUM_CPUS_PER_TASK
     )
 
-    format = input_config["format"]
-    path = input_config["path"]
-    if format == "json":
+    assert loader_fn or (format and path)
+
+    if loader_fn:
+        dataset = loader_fn()
+    elif format == "json":
         dataset = ray.data.read_json(
             path, parallelism=parallelism, ray_remote_args={"num_cpus": cpus_per_task}
         )

@@ -17,9 +17,9 @@ from ray.workflow.common import (
     WorkflowRef,
     StepType,
     WorkflowStepRuntimeOptions,
+    validate_user_metadata,
 )
 from ray.workflow import serialization_context
-from ray.workflow.storage import Storage, get_global_storage
 from ray.workflow.workflow_storage import WorkflowStorage
 from ray.workflow.recovery import get_latest_output
 from ray.workflow.workflow_access import get_or_create_management_actor
@@ -141,8 +141,9 @@ class ActorMethod(ActorMethodBase):
                 "actor.method.run()' instead."
             )
         try:
+            job_id = ray.get_runtime_context().job_id.hex()
             return actor._actor_method_call(
-                self._method_helper, args=args, kwargs=kwargs
+                job_id, self._method_helper, args=args, kwargs=kwargs
             )
         except TypeError as exc:  # capture a friendlier stacktrace
             raise TypeError(
@@ -237,7 +238,7 @@ class _VirtualActorMethodHelper:
             if self._method_name == "__init__":
                 state_ref = None
             else:
-                ws = WorkflowStorage(actor_id, get_global_storage())
+                ws = WorkflowStorage(actor_id)
                 state_ref = WorkflowRef(ws.get_entrypoint_step_id())
             # This is a hack to insert a positional argument.
             flattened_args = [signature.DUMMY_TYPE, state_ref] + flattened_args
@@ -268,22 +269,19 @@ class _VirtualActorMethodHelper:
         metadata=None,
         **ray_options,
     ) -> "_VirtualActorMethodHelper":
-        if metadata is not None:
-            if not isinstance(metadata, dict):
-                raise ValueError("metadata must be a dict.")
-            for k, v in metadata.items():
-                try:
-                    json.dumps(v)
-                except TypeError as e:
-                    raise ValueError(
-                        "metadata values must be JSON serializable, "
-                        "however '{}' has a value whose {}.".format(k, e)
-                    )
+        validate_user_metadata(metadata)
         options = WorkflowStepRuntimeOptions.make(
             step_type=self._options.step_type,
-            catch_exceptions=catch_exceptions,
-            max_retries=max_retries,
-            ray_options=ray_options,
+            catch_exceptions=catch_exceptions
+            if catch_exceptions is not None
+            else self._options.catch_exceptions,
+            max_retries=max_retries
+            if max_retries is not None
+            else self._options.max_retries,
+            ray_options={
+                **self._options.ray_options,
+                **(ray_options if ray_options is not None else {}),
+            },
         )
         _self = _VirtualActorMethodHelper(
             self._original_class,
@@ -291,9 +289,11 @@ class _VirtualActorMethodHelper:
             self._method_name,
             runtime_options=options,
         )
-
-        _self._name = name
-        _self._user_metadata = metadata
+        _self._name = name if name is not None else self._name
+        _self._user_metadata = {
+            **self._user_metadata,
+            **(metadata if metadata is not None else {}),
+        }
         return _self
 
     def __call__(self, *args, **kwargs):
@@ -434,9 +434,7 @@ class VirtualActorClass(VirtualActorClassBase):
 
     def get_or_create(self, actor_id: str, *args, **kwargs) -> "VirtualActor":
         """Create an actor. See `VirtualActorClassBase.create()`."""
-        return self._get_or_create(
-            actor_id, args=args, kwargs=kwargs, storage=get_global_storage()
-        )
+        return self._get_or_create(actor_id, args=args, kwargs=kwargs)
 
     # TODO(suquark): support num_cpu etc in options
     def options(self) -> VirtualActorClassBase:
@@ -446,26 +444,22 @@ class VirtualActorClass(VirtualActorClassBase):
 
         class ActorOptionWrapper(VirtualActorClassBase):
             def get_or_create(self, actor_id: str, *args, **kwargs):
-                return actor_cls._get_or_create(
-                    actor_id, args=args, kwargs=kwargs, storage=get_global_storage()
-                )
+                return actor_cls._get_or_create(actor_id, args=args, kwargs=kwargs)
 
         return ActorOptionWrapper()
 
-    def _get_or_create(
-        self, actor_id: str, args, kwargs, storage: Storage
-    ) -> "VirtualActor":
+    def _get_or_create(self, actor_id: str, args, kwargs) -> "VirtualActor":
         """Create a new virtual actor"""
         try:
-            return get_actor(actor_id, storage)
+            return get_actor(actor_id)
         except Exception:
-            instance = self._construct(actor_id, storage)
+            instance = self._construct(actor_id)
             instance._create(args, kwargs)
             return instance
 
-    def _construct(self, actor_id: str, storage: Storage) -> "VirtualActor":
+    def _construct(self, actor_id: str) -> "VirtualActor":
         """Construct a blank virtual actor."""
-        return VirtualActor(self._metadata, actor_id, storage)
+        return VirtualActor(self._metadata, actor_id)
 
     def __reduce__(self):
         return decorate_actor, (self._metadata.cls,)
@@ -475,10 +469,9 @@ def _wrap_readonly_actor_method(actor_id: str, cls: type, method_name: str):
     # generate better step names
     @functools.wraps(getattr(cls, method_name))
     def _readonly_actor_method(*args, **kwargs):
-        storage = get_global_storage()
         instance = cls.__new__(cls)
         try:
-            state = get_latest_output(actor_id, storage)
+            state = get_latest_output(actor_id)
         except Exception as e:
             raise VirtualActorNotInitializedError(
                 f"Virtual actor '{actor_id}' has not been initialized. "
@@ -518,16 +511,16 @@ def _wrap_actor_method(cls: type, method_name: str):
 class VirtualActor:
     """The instance of a virtual actor class."""
 
-    def __init__(self, metadata: VirtualActorMetadata, actor_id: str, storage: Storage):
+    def __init__(self, metadata: VirtualActorMetadata, actor_id: str):
         self._metadata = metadata
         self._actor_id = actor_id
-        self._storage = storage
 
     def _create(self, args: Tuple[Any], kwargs: Dict[str, Any]):
-        workflow_storage = WorkflowStorage(self._actor_id, self._storage)
+        workflow_storage = WorkflowStorage(self._actor_id)
         workflow_storage.save_actor_class_body(self._metadata.cls)
         method_helper = self._metadata.methods["__init__"]
-        ref = self._actor_method_call(method_helper, args, kwargs)
+        job_id = ray.get_runtime_context().job_id.hex()
+        ref = self._actor_method_call(job_id, method_helper, args, kwargs)
         workflow_manager = get_or_create_management_actor()
         # keep the ref in a list to prevent dereference
         ray.get(workflow_manager.init_actor.remote(self._actor_id, [ref]))
@@ -550,14 +543,12 @@ class VirtualActor:
         raise AttributeError(f"No method with name '{method_name}'")
 
     def _actor_method_call(
-        self, method_helper: _VirtualActorMethodHelper, args, kwargs
+        self, job_id, method_helper: _VirtualActorMethodHelper, args, kwargs
     ) -> "ObjectRef":
-        with workflow_context.workflow_step_context(
-            self._actor_id, self._storage.storage_url
-        ):
+        with workflow_context.workflow_step_context(self._actor_id):
             wf = method_helper.step(*args, **kwargs)
             if method_helper.readonly:
-                return execute_workflow(wf).volatile_output
+                return execute_workflow(job_id, wf).volatile_output.ref
             else:
                 return wf.run_async(self._actor_id)
 
@@ -567,7 +558,7 @@ def decorate_actor(cls: type):
     return VirtualActorClass._from_class(cls)
 
 
-def get_actor(actor_id: str, storage: Storage) -> VirtualActor:
+def get_actor(actor_id: str) -> VirtualActor:
     """Get an virtual actor.
 
     Args:
@@ -577,7 +568,7 @@ def get_actor(actor_id: str, storage: Storage) -> VirtualActor:
     Returns:
         A virtual actor.
     """
-    ws = WorkflowStorage(actor_id, storage)
+    ws = WorkflowStorage(actor_id)
     cls = ws.load_actor_class_body()
     v_cls = VirtualActorClass._from_class(cls)
-    return v_cls._construct(actor_id, storage)
+    return v_cls._construct(actor_id)

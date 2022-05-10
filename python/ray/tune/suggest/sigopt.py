@@ -90,7 +90,7 @@ class SigOptSearch(Searcher):
         ]
         algo = SigOptSearch(
             space, name="SigOpt Example Experiment",
-            max_concurrent=1, metric="mean_loss", mode="min")
+            metric="mean_loss", mode="min")
 
 
         Example:
@@ -117,7 +117,7 @@ class SigOptSearch(Searcher):
         ]
         algo = SigOptSearch(
             space, name="SigOpt Multi Objective Example Experiment",
-            max_concurrent=1, metric=["average", "std"], mode=["max", "min"])
+            metric=["average", "std"], mode=["max", "min"])
     """
 
     OBJECTIVE_MAP = {
@@ -135,8 +135,8 @@ class SigOptSearch(Searcher):
         experiment_id: Optional[str] = None,
         observation_budget: Optional[int] = None,
         project: Optional[str] = None,
-        metric: Union[None, str, List[str]] = "episode_reward_mean",
-        mode: Union[None, str, List[str]] = "max",
+        metric: Optional[Union[str, List[str]]] = "episode_reward_mean",
+        mode: Optional[Union[str, List[str]]] = "max",
         points_to_evaluate: Optional[List[Dict]] = None,
         **kwargs,
     ):

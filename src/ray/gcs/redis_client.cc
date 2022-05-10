@@ -131,10 +131,7 @@ Status RedisClient::Connect(std::vector<instrumented_io_context *> io_services) 
   RAY_CHECK_OK(primary_context_->Connect(options_.server_ip_,
                                          options_.server_port_,
                                          /*sharding=*/true,
-                                         /*password=*/options_.password_,
-                                         options_.enable_sync_conn_,
-                                         options_.enable_async_conn_,
-                                         options_.enable_subscribe_conn_));
+                                         /*password=*/options_.password_));
 
   if (options_.enable_sharding_conn_) {
     // Moving sharding into constructor defaultly means that sharding = true.
@@ -157,10 +154,7 @@ Status RedisClient::Connect(std::vector<instrumented_io_context *> io_services) 
       RAY_CHECK_OK(shard_contexts_[i]->Connect(addresses[i],
                                                ports[i],
                                                /*sharding=*/true,
-                                               /*password=*/options_.password_,
-                                               /*enable_sync_conn=*/false,
-                                               /*enable_async_conn=*/true,
-                                               /*enable_subscribe_conn=*/false));
+                                               /*password=*/options_.password_));
     }
   } else {
     shard_contexts_.push_back(std::make_shared<RedisContext>(*io_services[0]));
@@ -168,10 +162,7 @@ Status RedisClient::Connect(std::vector<instrumented_io_context *> io_services) 
     RAY_CHECK_OK(shard_contexts_[0]->Connect(options_.server_ip_,
                                              options_.server_port_,
                                              /*sharding=*/true,
-                                             /*password=*/options_.password_,
-                                             /*enable_sync_conn=*/false,
-                                             /*enable_async_conn=*/true,
-                                             /*enable_subscribe_conn=*/false));
+                                             /*password=*/options_.password_));
   }
 
   Attach();
@@ -190,16 +181,9 @@ void RedisClient::Attach() {
     shard_asio_async_clients_.emplace_back(
         new RedisAsioClient(io_service, context->async_context()));
   }
-
   instrumented_io_context &io_service = primary_context_->io_service();
-  if (options_.enable_async_conn_) {
-    asio_async_auxiliary_client_.reset(
-        new RedisAsioClient(io_service, primary_context_->async_context()));
-  }
-  if (options_.enable_subscribe_conn_) {
-    asio_subscribe_auxiliary_client_.reset(
-        new RedisAsioClient(io_service, primary_context_->subscribe_context()));
-  }
+  asio_async_auxiliary_client_.reset(
+      new RedisAsioClient(io_service, primary_context_->async_context()));
 }
 
 void RedisClient::Disconnect() {

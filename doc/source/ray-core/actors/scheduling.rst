@@ -25,10 +25,25 @@ See :ref:`Placement Group <ray-placement-group-doc-ref>` for more details.
 
 Scheduling Strategy
 -------------------
-Actors support ``scheduling_strategy`` option to specify the strategy used to decide the best node among available nodes.
-Currently the only supported strategy for actors is "DEFAULT".
-"DEFAULT" is the default strategy used by Ray. With the current implementation, Ray will try to pack actors on nodes
+Actors support a ``scheduling_strategy`` option to specify the strategy used to decide the best node among available nodes.
+Currently the supported strategies for actors are ``"DEFAULT"``, ``"SPREAD"`` and
+``ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(node_id, soft: bool)``.
+
+``"DEFAULT"`` is the default strategy used by Ray. With the current implementation, Ray will try to pack actors on nodes
 until the resource utilization is beyond a certain threshold and spread actors afterwards.
+
+"SPREAD" strategy will try to spread the actors among available nodes.
+
+NodeAffinitySchedulingStrategy is a low-level strategy that allows an actor to be scheduled onto a particular node specified by its node id.
+The ``soft`` flag specifies whether the actor is allowed to run somewhere else if the specified node doesn't exist (e.g. if the node dies)
+or is infeasible because it does not have the resources required to run the actor. In these cases, if ``soft`` is True, the actor will be scheduled onto a different feasible node.
+Otherwise, the actor will fail with ``ActorUnschedulableError``.
+As long as the specified node is alive and feasible, the actor will only run there
+regardless of the ``soft`` flag. This means if the node currently has no available resources, the actor will wait until resources
+become available.
+This strategy should *only* be used if other high level scheduling strategies (e.g. :ref:`placement group <ray-placement-group-doc-ref>`) cannot give the
+desired actor placements.
+
 Currently Ray handles actors that don't require any resources (i.e., ``num_cpus=0`` with no other resources) specially by randomly choosing a node in the cluster without considering resource utilization.
 Since nodes are randomly chosen, actors that don't require any resources are effectively SPREAD across the cluster.
 
@@ -36,7 +51,7 @@ Since nodes are randomly chosen, actors that don't require any resources are eff
 
     .. code-block:: python
 
-        @ray.remote
+        @ray.remote(num_cpus=1)
         class Actor:
             pass
 
@@ -45,3 +60,14 @@ Since nodes are randomly chosen, actors that don't require any resources are eff
 
         # Zero-CPU (and no other resources) actors are randomly assigned to nodes.
         a2 = Actor.options(num_cpus=0).remote()
+
+        # Only run the actor on the local node.
+        a3 = Actor.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(
+                node_id = ray.get_runtime_context().node_id,
+                soft = False,
+            )
+        ).remote()
+
+        # Spread actors across the cluster.
+        actors = [Actor.options(scheduling_strategy="SPREAD").remote() for i in range(100)]

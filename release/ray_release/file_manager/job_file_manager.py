@@ -49,7 +49,7 @@ class JobFileManager(FileManager):
         # remote source -> s3
         bucket_address = f"s3://{self.bucket}/{remote_upload_to}"
         retcode, _ = self._run_with_retry(
-            self.job_manager.run_and_wait(
+            lambda: self.job_manager.run_and_wait(
                 (
                     f"pip install -q awscli && "
                     f"aws s3 cp {source} {bucket_address} "

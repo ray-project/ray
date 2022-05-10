@@ -65,7 +65,20 @@ class TrainableUtil:
         return checkpoint_path
 
     @staticmethod
-    def pickle_checkpoint(checkpoint_path):
+    def load_checkpoint_metadata(checkpoint_path: str) -> Optional[Dict]:
+        metadata_path = os.path.join(checkpoint_path, ".tune_metadata")
+        if not os.path.exists(metadata_path):
+            checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
+            metadatas = glob.glob(f"{checkpoint_dir}/**/.tune_metadata", recursive=True)
+            if not metadatas:
+                return None
+            metadata_path = metadatas[0]
+
+        with open(metadata_path, "rb") as f:
+            return pickle.load(f)
+
+    @staticmethod
+    def pickle_checkpoint(checkpoint_path: str):
         """Pickles checkpoint data."""
         checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
         data = {}
@@ -188,6 +201,11 @@ class TrainableUtil:
         iter_chkpt_pairs = []
         for marker_path in marker_paths:
             chkpt_dir = os.path.dirname(marker_path)
+
+            # Skip temporary checkpoints
+            if os.path.basename(chkpt_dir).startswith("checkpoint_tmp"):
+                continue
+
             metadata_file = glob.glob(
                 os.path.join(glob.escape(chkpt_dir), "*.tune_metadata")
             )
@@ -202,8 +220,17 @@ class TrainableUtil:
                     "{} has zero or more than one tune_metadata.".format(chkpt_dir)
                 )
 
-            chkpt_path = metadata_file[0][: -len(".tune_metadata")]
-            chkpt_iter = int(chkpt_dir[chkpt_dir.rfind("_") + 1 :])
+            metadata_file = metadata_file[0]
+
+            try:
+                with open(metadata_file, "rb") as f:
+                    metadata = pickle.load(f)
+            except Exception as e:
+                logger.warning(f"Could not read metadata from checkpoint: {e}")
+                metadata = {}
+
+            chkpt_path = metadata_file[: -len(".tune_metadata")]
+            chkpt_iter = metadata.get("iteration", -1)
             iter_chkpt_pairs.append([chkpt_iter, chkpt_path])
 
         chkpt_df = pd.DataFrame(

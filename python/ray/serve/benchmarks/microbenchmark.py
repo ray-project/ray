@@ -4,6 +4,7 @@
 
 import aiohttp
 import asyncio
+import logging
 import time
 import requests
 
@@ -11,7 +12,8 @@ import numpy as np
 
 import ray
 from ray import serve
-from ray.serve.utils import logger
+
+logger = logging.getLogger(__file__)
 
 NUM_CLIENTS = 8
 CALLS_PER_BATCH = 100

@@ -15,8 +15,6 @@
 namespace ray {
 namespace gcs {
 
-using ScheduleContext = raylet_scheduling_policy::BundleSchedulingContext;
-
 class Mockpair_hash : public pair_hash {
  public:
 };
@@ -59,101 +57,6 @@ class MockGcsPlacementGroupSchedulerInterface
                   PlacementGroupID,
                   std::vector<std::shared_ptr<BundleSpecification>>> &group_to_bundles)),
               (override));
-};
-
-}  // namespace gcs
-}  // namespace ray
-
-namespace ray {
-namespace gcs {
-
-class MockScheduleContext : public ScheduleContext {
- public:
-};
-
-}  // namespace gcs
-}  // namespace ray
-
-namespace ray {
-namespace gcs {
-
-class MockGcsScheduleStrategy : public GcsScheduleStrategy {
- public:
-  MOCK_METHOD(
-      ScheduleResult,
-      Schedule,
-      (const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
-       const std::unique_ptr<ScheduleContext> &context,
-       ClusterResourceScheduler &cluster_resource_scheduler),
-      (override));
-};
-
-}  // namespace gcs
-}  // namespace ray
-
-namespace ray {
-namespace gcs {
-
-class MockGcsPackStrategy : public GcsPackStrategy {
- public:
-  MOCK_METHOD(
-      ScheduleResult,
-      Schedule,
-      (const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
-       const std::unique_ptr<ScheduleContext> &context,
-       ClusterResourceScheduler &cluster_resource_scheduler),
-      (override));
-};
-
-}  // namespace gcs
-}  // namespace ray
-
-namespace ray {
-namespace gcs {
-
-class MockGcsSpreadStrategy : public GcsSpreadStrategy {
- public:
-  MOCK_METHOD(
-      ScheduleResult,
-      Schedule,
-      (const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
-       const std::unique_ptr<ScheduleContext> &context,
-       ClusterResourceScheduler &cluster_resource_scheduler),
-      (override));
-};
-
-}  // namespace gcs
-}  // namespace ray
-
-namespace ray {
-namespace gcs {
-
-class MockGcsStrictPackStrategy : public GcsStrictPackStrategy {
- public:
-  MOCK_METHOD(
-      ScheduleResult,
-      Schedule,
-      (const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
-       const std::unique_ptr<ScheduleContext> &context,
-       ClusterResourceScheduler &cluster_resource_scheduler),
-      (override));
-};
-
-}  // namespace gcs
-}  // namespace ray
-
-namespace ray {
-namespace gcs {
-
-class MockGcsStrictSpreadStrategy : public GcsStrictSpreadStrategy {
- public:
-  MOCK_METHOD(
-      ScheduleResult,
-      Schedule,
-      (const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
-       const std::unique_ptr<ScheduleContext> &context,
-       ClusterResourceScheduler &cluster_resource_scheduler),
-      (override));
 };
 
 }  // namespace gcs

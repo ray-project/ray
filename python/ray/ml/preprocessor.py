@@ -1,4 +1,6 @@
 import abc
+import warnings
+from enum import Enum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -6,12 +8,6 @@ if TYPE_CHECKING:
 
 from ray.data import Dataset
 from ray.ml.predictor import DataBatchType
-
-
-class PreprocessorAlreadyFittedException(RuntimeError):
-    """Error raised when the preprocessor cannot be fitted again."""
-
-    pass
 
 
 class PreprocessorNotFittedException(RuntimeError):
@@ -29,13 +25,37 @@ class Preprocessor(abc.ABC):
     fitting, and uses these attributes to implement its normalization transform.
     """
 
+    class FitStatus(str, Enum):
+        """The fit status of preprocessor."""
+
+        NOT_FITTABLE = "NOT_FITTABLE"
+        NOT_FITTED = "NOT_FITTED"
+        # Only meaningful for Chain preprocessors.
+        # At least one contained preprocessor in the chain preprocessor
+        # is fitted and at least one that can be fitted is not fitted yet.
+        # This is a state that show up if caller only interacts
+        # with the chain preprocessor through intended Preprocessor APIs.
+        PARTIALLY_FITTED = "PARTIALLY_FITTED"
+        FITTED = "FITTED"
+
     # Preprocessors that do not need to be fitted must override this.
     _is_fittable = True
+
+    def fit_status(self) -> "Preprocessor.FitStatus":
+        if not self._is_fittable:
+            return Preprocessor.FitStatus.NOT_FITTABLE
+        elif self._check_is_fitted():
+            return Preprocessor.FitStatus.FITTED
+        else:
+            return Preprocessor.FitStatus.NOT_FITTED
 
     def fit(self, dataset: Dataset) -> "Preprocessor":
         """Fit this Preprocessor to the Dataset.
 
         Fitted state attributes will be directly set in the Preprocessor.
+
+        Calling it more than once will overwrite all previously fitted state:
+        ``preprocessor.fit(A).fit(B)`` is equivalent to ``preprocessor.fit(B)``.
 
         Args:
             dataset: Input dataset.
@@ -43,16 +63,29 @@ class Preprocessor(abc.ABC):
         Returns:
             Preprocessor: The fitted Preprocessor with state attributes.
         """
-        if self.check_is_fitted():
-            raise PreprocessorAlreadyFittedException(
-                "`fit` cannot be called multiple times. "
-                "Create a new Preprocessor to fit a new Dataset."
+        fit_status = self.fit_status()
+        if fit_status == Preprocessor.FitStatus.NOT_FITTABLE:
+            # No-op as there is no state to be fitted.
+            return self
+
+        if fit_status in (
+            Preprocessor.FitStatus.FITTED,
+            Preprocessor.FitStatus.PARTIALLY_FITTED,
+        ):
+            warnings.warn(
+                "`fit` has already been called on the preprocessor (or at least one "
+                "contained preprocessors if this is a chain). "
+                "All previously fitted state will be overwritten!"
             )
 
         return self._fit(dataset)
 
     def fit_transform(self, dataset: Dataset) -> Dataset:
         """Fit this Preprocessor to the Dataset and then transform the Dataset.
+
+        Calling it more than once will overwrite all previously fitted state:
+        ``preprocessor.fit_transform(A).fit_transform(B)``
+        is equivalent to ``preprocessor.fit_transform(B)``.
 
         Args:
             dataset: Input Dataset.
@@ -71,10 +104,18 @@ class Preprocessor(abc.ABC):
 
         Returns:
             ray.data.Dataset: The transformed Dataset.
+
+        Raises:
+            PreprocessorNotFittedException, if ``fit`` is not called yet.
         """
-        if self._is_fittable and not self.check_is_fitted():
+        fit_status = self.fit_status()
+        if fit_status in (
+            Preprocessor.FitStatus.PARTIALLY_FITTED,
+            Preprocessor.FitStatus.NOT_FITTED,
+        ):
             raise PreprocessorNotFittedException(
-                "`fit` must be called before `transform`."
+                "`fit` must be called before `transform`, "
+                "or simply use fit_transform() to run both steps"
             )
         return self._transform(dataset)
 
@@ -87,13 +128,17 @@ class Preprocessor(abc.ABC):
         Returns:
             DataBatchType: The transformed data batch.
         """
-        if self._is_fittable and not self.check_is_fitted():
+        fit_status = self.fit_status()
+        if fit_status in (
+            Preprocessor.FitStatus.PARTIALLY_FITTED,
+            Preprocessor.FitStatus.NOT_FITTED,
+        ):
             raise PreprocessorNotFittedException(
                 "`fit` must be called before `transform_batch`."
             )
         return self._transform_batch(df)
 
-    def check_is_fitted(self) -> bool:
+    def _check_is_fitted(self) -> bool:
         """Returns whether this preprocessor is fitted.
 
         We use the convention that attributes with a trailing ``_`` are set after

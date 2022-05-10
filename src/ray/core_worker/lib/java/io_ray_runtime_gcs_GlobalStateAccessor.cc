@@ -31,17 +31,8 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeCreateGlobalStateAccessor(
   std::string bootstrap_address = JavaStringToNativeString(env, j_bootstrap_address);
   std::string redis_password = JavaStringToNativeString(env, j_redis_passowrd);
   gcs::GlobalStateAccessor *gcs_accessor = nullptr;
-  if (RayConfig::instance().bootstrap_with_gcs()) {
-    ray::gcs::GcsClientOptions client_options(bootstrap_address);
-    gcs_accessor = new gcs::GlobalStateAccessor(client_options);
-  } else {
-    std::vector<std::string> results;
-    boost::split(results, bootstrap_address, boost::is_any_of(":"));
-    RAY_CHECK(results.size() == 2);
-    ray::gcs::GcsClientOptions client_options(
-        results[0], std::stoi(results[1]), redis_password);
-    gcs_accessor = new gcs::GlobalStateAccessor(client_options);
-  }
+  ray::gcs::GcsClientOptions client_options(bootstrap_address);
+  gcs_accessor = new gcs::GlobalStateAccessor(client_options);
   return reinterpret_cast<jlong>(gcs_accessor);
 }
 

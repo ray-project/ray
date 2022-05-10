@@ -49,6 +49,11 @@ enum TaskType {
   DRIVER_TASK = 3;
 }
 
+message NodeAffinitySchedulingStrategy {
+  bytes node_id = 1;
+  bool soft = 2;
+}
+
 message PlacementGroupSchedulingStrategy {
   // Placement group that is associated with this task.
   bytes placement_group_id = 1;
@@ -62,6 +67,7 @@ message DefaultSchedulingStrategy {}
 
 message SpreadSchedulingStrategy {}
 
+// Update std::hash<SchedulingStrategy> in task_spec.h when this is changed.
 message SchedulingStrategy {
   oneof scheduling_strategy {
     // Default hybrid scheduling strategy.
@@ -70,6 +76,7 @@ message SchedulingStrategy {
     PlacementGroupSchedulingStrategy placement_group_scheduling_strategy = 2;
     // Best effort spread scheduling strategy.
     SpreadSchedulingStrategy spread_scheduling_strategy = 3;
+    NodeAffinitySchedulingStrategy node_affinity_scheduling_strategy = 4;
   }
 }
 
@@ -182,6 +189,10 @@ enum ErrorType {
   TASK_PLACEMENT_GROUP_REMOVED = 16;
   // Indicates that the placement group corresponding to an actor has been removed.
   ACTOR_PLACEMENT_GROUP_REMOVED = 17;
+  // The task is unschedulable.
+  TASK_UNSCHEDULABLE_ERROR = 18;
+  // The actor is unschedulable.
+  ACTOR_UNSCHEDULABLE_ERROR = 19;
 }
 
 /// The information per ray error type.
@@ -189,6 +200,7 @@ message RayErrorInfo {
   oneof error {
     ActorDeathCause actor_died_error = 2;
     RuntimeEnvFailedContext runtime_env_setup_failed_error = 3;
+    string error_message = 4;
   }
 }
 
@@ -209,12 +221,17 @@ message ActorDeathCause {
     RayException creation_task_failure_context = 1;
     RuntimeEnvFailedContext runtime_env_failed_context = 2;
     ActorDiedErrorContext actor_died_error_context = 3;
+    ActorUnschedulableContext actor_unschedulable_context = 4;
   }
 }
 // ---Actor death contexts start----
 // Indicates that this actor is marked as DEAD due to runtime environment setup failure.
 message RuntimeEnvFailedContext {
   // TODO(sang,lixin) Get this error message from agent.
+  string error_message = 1;
+}
+
+message ActorUnschedulableContext {
   string error_message = 1;
 }
 
@@ -301,6 +318,28 @@ message TaskSpec {
   // A count of the number of times this task has been attempted so far. 0
   // means this is the first execution.
   uint64 attempt_number = 28;
+}
+
+message TaskInfoEntry {
+  // Type of this task.
+  TaskType type = 1;
+  // Name of this task.
+  string name = 2;
+  // Language of this task.
+  Language language = 3;
+  // Function descriptor of this task uniquely describe the function to execute.
+  string func_or_class_name = 4;
+  TaskStatus scheduling_state = 5;
+  // ID of the job that this task belongs to.
+  bytes job_id = 6;
+  // Task ID of the task.
+  bytes task_id = 7;
+  // Task ID of the parent task.
+  bytes parent_task_id = 8;
+  // Quantities of the different resources required by this task.
+  map<string, double> required_resources = 13;
+  // Runtime environment for this task.
+  RuntimeEnvInfo runtime_env_info = 23;
 }
 
 message Bundle {

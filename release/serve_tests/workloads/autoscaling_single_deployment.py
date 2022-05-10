@@ -27,11 +27,11 @@ Report:
 
 import click
 import json
+import logging
 import math
 import os
 
 from ray import serve
-from ray.serve.utils import logger
 from serve_test_utils import (
     aggregate_all_metrics,
     run_wrk_on_all_nodes,
@@ -46,6 +46,8 @@ from serve_test_cluster_utils import (
     NUM_CONNECTIONS,
 )
 from typing import Optional
+
+logger = logging.getLogger(__file__)
 
 # Experiment configs
 DEFAULT_SMOKE_TEST_MIN_NUM_REPLICA = 1

@@ -1,5 +1,4 @@
 import logging
-import os
 import types
 from typing import Dict, Set, List, Tuple, Union, Optional, Any, TYPE_CHECKING
 import time
@@ -7,6 +6,7 @@ import time
 import ray
 from ray.experimental.dag import DAGNode
 from ray.experimental.dag.input_node import DAGInputData
+from ray.remote_function import RemoteFunction
 
 from ray.workflow import execution
 from ray.workflow.step_function import WorkflowStepFunction
@@ -14,10 +14,8 @@ from ray.workflow.step_function import WorkflowStepFunction
 # avoid collision with arguments & APIs
 
 from ray.workflow import virtual_actor_class
-from ray.workflow import storage as storage_base
 from ray.workflow.common import (
     WorkflowStatus,
-    ensure_ray_initialized,
     Workflow,
     Event,
     WorkflowRunningError,
@@ -28,10 +26,10 @@ from ray.workflow.common import (
 )
 from ray.workflow import serialization
 from ray.workflow.event_listener import EventListener, EventListenerType, TimerListener
-from ray.workflow.storage import Storage
 from ray.workflow import workflow_access
 from ray.workflow.workflow_storage import get_workflow_storage
 from ray.util.annotations import PublicAPI
+from ray._private.usage import usage_lib
 
 if TYPE_CHECKING:
     from ray.workflow.virtual_actor_class import VirtualActorClass, VirtualActor
@@ -39,45 +37,33 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+_is_workflow_initialized = False
+
+
 @PublicAPI(stability="beta")
-def init(storage: "Optional[Union[str, Storage]]" = None) -> None:
+def init() -> None:
     """Initialize workflow.
 
-    Args:
-        storage: The external storage URL or a custom storage class. If not
-            specified, ``/tmp/ray/workflow_data`` will be used.
+    If Ray is not initialized, we will initialize Ray and
+    use ``/tmp/ray/workflow_data`` as the default storage.
     """
-    if storage is None:
-        storage = os.environ.get("RAY_WORKFLOW_STORAGE")
+    usage_lib.record_library_usage("workflow")
 
-    if storage is None:
+    if not ray.is_initialized():
         # We should use get_temp_dir_path, but for ray client, we don't
         # have this one. We need a flag to tell whether it's a client
         # or a driver to use the right dir.
         # For now, just use /tmp/ray/workflow_data
-        storage = "file:///tmp/ray/workflow_data"
-    if isinstance(storage, str):
-        logger.info(f"Using storage: {storage}")
-        storage = storage_base.create_storage(storage)
-    elif not isinstance(storage, Storage):
-        raise TypeError("'storage' should be None, str, or Storage type.")
-
-    try:
-        _storage = storage_base.get_global_storage()
-    except RuntimeError:
-        pass
-    else:
-        # we have to use the 'else' branch because we would raise a
-        # runtime error, but we do not want to be captured by 'except'
-        if _storage.storage_url == storage.storage_url:
-            logger.warning("Calling 'workflow.init()' again with the same storage.")
-        else:
-            raise RuntimeError(
-                "Calling 'workflow.init()' again with a different storage"
-            )
-    storage_base.set_global_storage(storage)
+        ray.init(storage="file:///tmp/ray/workflow_data")
     workflow_access.init_management_actor()
     serialization.init_manager()
+    global _is_workflow_initialized
+    _is_workflow_initialized = True
+
+
+def _ensure_workflow_initialized() -> None:
+    if not _is_workflow_initialized or not ray.is_initialized():
+        init()
 
 
 def make_step_decorator(
@@ -196,8 +182,8 @@ def get_actor(actor_id: str) -> "VirtualActor":
     Returns:
         A virtual actor.
     """
-    ensure_ray_initialized()
-    return virtual_actor_class.get_actor(actor_id, storage_base.get_global_storage())
+    _ensure_workflow_initialized()
+    return virtual_actor_class.get_actor(actor_id)
 
 
 @PublicAPI(stability="beta")
@@ -222,7 +208,7 @@ def resume(workflow_id: str) -> ray.ObjectRef:
     Returns:
         An object reference that can be used to retrieve the workflow result.
     """
-    ensure_ray_initialized()
+    _ensure_workflow_initialized()
     return execution.resume(workflow_id)
 
 
@@ -249,7 +235,7 @@ def get_output(workflow_id: str, *, name: Optional[str] = None) -> ray.ObjectRef
     Returns:
         An object reference that can be used to retrieve the workflow result.
     """
-    ensure_ray_initialized()
+    _ensure_workflow_initialized()
     return execution.get_output(workflow_id, name)
 
 
@@ -285,7 +271,7 @@ def list_all(
     Returns:
         A list of tuple with workflow id and workflow status
     """
-    ensure_ray_initialized()
+    _ensure_workflow_initialized()
     if isinstance(status_filter, str):
         status_filter = set({WorkflowStatus(status_filter)})
     elif isinstance(status_filter, WorkflowStatus):
@@ -334,7 +320,7 @@ def resume_all(include_failed: bool = False) -> Dict[str, ray.ObjectRef]:
     Returns:
         A list of (workflow_id, returned_obj_ref) resumed.
     """
-    ensure_ray_initialized()
+    _ensure_workflow_initialized()
     return execution.resume_all(include_failed)
 
 
@@ -355,7 +341,7 @@ def get_status(workflow_id: str) -> WorkflowStatus:
     Returns:
         The status of that workflow
     """
-    ensure_ray_initialized()
+    _ensure_workflow_initialized()
     if not isinstance(workflow_id, str):
         raise TypeError("workflow_id has to be a string type.")
     return execution.get_status(workflow_id)
@@ -364,19 +350,19 @@ def get_status(workflow_id: str) -> WorkflowStatus:
 @PublicAPI(stability="beta")
 def wait_for_event(
     event_listener_type: EventListenerType, *args, **kwargs
-) -> Workflow[Event]:
+) -> "DAGNode[Event]":
     if not issubclass(event_listener_type, EventListener):
         raise TypeError(
             f"Event listener type is {event_listener_type.__name__}"
             ", which is not a subclass of workflow.EventListener"
         )
 
-    @step
+    @ray.remote
     def get_message(event_listener_type: EventListenerType, *args, **kwargs) -> Event:
         event_listener = event_listener_type()
         return asyncio_run(event_listener.poll_for_event(*args, **kwargs))
 
-    @step
+    @ray.remote
     def message_committed(
         event_listener_type: EventListenerType, event: Event
     ) -> Event:
@@ -384,22 +370,22 @@ def wait_for_event(
         asyncio_run(event_listener.event_checkpointed(event))
         return event
 
-    return message_committed.step(
-        event_listener_type, get_message.step(event_listener_type, *args, **kwargs)
+    return message_committed.bind(
+        event_listener_type, get_message.bind(event_listener_type, *args, **kwargs)
     )
 
 
 @PublicAPI(stability="beta")
-def sleep(duration: float) -> Workflow[Event]:
+def sleep(duration: float) -> "DAGNode[Event]":
     """
     A workfow that resolves after sleeping for a given duration.
     """
 
-    @step
+    @ray.remote
     def end_time():
         return time.time() + duration
 
-    return wait_for_event(TimerListener, end_time.step())
+    return wait_for_event(TimerListener, end_time.bind())
 
 
 @PublicAPI(stability="beta")
@@ -451,7 +437,7 @@ def get_metadata(workflow_id: str, name: Optional[str] = None) -> Dict[str, Any]
     Raises:
         ValueError: if given workflow or workflow step does not exist.
     """
-    ensure_ray_initialized()
+    _ensure_workflow_initialized()
     return execution.get_metadata(workflow_id, name)
 
 
@@ -476,7 +462,7 @@ def cancel(workflow_id: str) -> None:
         None
 
     """
-    ensure_ray_initialized()
+    _ensure_workflow_initialized()
     if not isinstance(workflow_id, str):
         raise TypeError("workflow_id has to be a string type.")
     return execution.cancel(workflow_id)
@@ -507,6 +493,7 @@ def delete(workflow_id: str) -> None:
 
     """
 
+    _ensure_workflow_initialized()
     try:
         status = get_status(workflow_id)
         if status == WorkflowStatus.RUNNING:
@@ -636,6 +623,58 @@ def continuation(dag_node: "DAGNode") -> Union[Workflow, ray.ObjectRef]:
     return ray.get(dag_node.execute())
 
 
+@PublicAPI(stability="beta")
+class options:
+    """This class serves both as a decorator and options for workflow.
+
+    Examples:
+        >>> import ray
+        >>> from ray import workflow
+        >>>
+        >>> # specify workflow options with a decorator
+        >>> @workflow.options(catch_exceptions=True):
+        >>> @ray.remote
+        >>> def foo():
+        >>>     return 1
+        >>>
+        >>> # speficy workflow options in ".options"
+        >>> foo_new = foo.options(**workflow.options(catch_exceptions=False))
+    """
+
+    def __init__(self, **workflow_options: Dict[str, Any]):
+        # TODO(suquark): More rigid arguments check like @ray.remote arguments. This is
+        # fairly complex, but we should enable it later.
+        valid_options = {
+            "name",
+            "metadata",
+            "catch_exceptions",
+            "max_retries",
+            "allow_inplace",
+            "checkpoint",
+        }
+        invalid_keywords = set(workflow_options.keys()) - valid_options
+        if invalid_keywords:
+            raise ValueError(
+                f"Invalid option keywords {invalid_keywords} for workflow steps. "
+                f"Valid ones are {valid_options}."
+            )
+        from ray.workflow.common import WORKFLOW_OPTIONS
+
+        self.options = {"_metadata": {WORKFLOW_OPTIONS: workflow_options}}
+
+    def keys(self):
+        return ("_metadata",)
+
+    def __getitem__(self, key):
+        return self.options[key]
+
+    def __call__(self, f: RemoteFunction) -> RemoteFunction:
+        if not isinstance(f, RemoteFunction):
+            raise ValueError("Only apply 'workflow.options' to Ray remote functions.")
+        f._default_options.update(self.options)
+        return f
+
+
 __all__ = (
     "step",
     "virtual_actor",
@@ -646,4 +685,5 @@ __all__ = (
     "get_status",
     "get_metadata",
     "cancel",
+    "options",
 )

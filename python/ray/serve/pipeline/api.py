@@ -1,11 +1,13 @@
 from typing import List
+
 from ray.experimental.dag.dag_node import DAGNode
 from ray.serve.pipeline.generate import (
     transform_ray_dag_to_serve_dag,
     extract_deployments_from_serve_dag,
     process_ingress_deployment_in_serve_dag,
 )
-from ray.serve.api import Deployment
+from ray.serve.deployment import Deployment
+from ray.experimental.dag.utils import DAGNodeNameGenerator
 
 
 def build(ray_dag_root_node: DAGNode) -> List[Deployment]:
@@ -56,17 +58,23 @@ def build(ray_dag_root_node: DAGNode) -> List[Deployment]:
         Assuming we have non-JSON serializable or inline defined class or
         function in local pipeline development.
 
-        >>> deployments = serve.build(ray_dag) # it can be method node
-        >>> deployments = serve.build(m1) # or just a regular node.
+        >>> from ray.serve.api import build as build_app
+        >>> deployments = build_app(ray_dag) # it can be method node
+        >>> deployments = build_app(m1) # or just a regular node.
     """
-    serve_root_dag = ray_dag_root_node.apply_recursive(transform_ray_dag_to_serve_dag)
+    with DAGNodeNameGenerator() as node_name_generator:
+        serve_root_dag = ray_dag_root_node.apply_recursive(
+            lambda node: transform_ray_dag_to_serve_dag(node, node_name_generator)
+        )
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
     deployments_with_http = process_ingress_deployment_in_serve_dag(deployments)
 
     return deployments_with_http
 
 
-def get_and_validate_ingress_deployment(deployments: List[Deployment]) -> Deployment:
+def get_and_validate_ingress_deployment(
+    deployments: List[Deployment],
+) -> Deployment:
     """Validation for http route prefixes for a list of deployments in pipeline.
 
     Ensures:

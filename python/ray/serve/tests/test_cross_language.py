@@ -33,9 +33,7 @@ def test_controller_starts_java_replica(shutdown_only):  # noqa: F811
         controller.deploy.remote(
             name=deployment_name,
             deployment_config_proto_bytes=config.to_proto_bytes(),
-            replica_config=replica_config,
-            version=None,
-            prev_version=None,
+            replica_config_proto_bytes=replica_config.to_proto_bytes(),
             route_prefix=None,
             deployer_job_id=ray.get_runtime_context().job_id,
         )

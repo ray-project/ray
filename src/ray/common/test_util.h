@@ -116,7 +116,7 @@ class TestSetupUtil {
   static void ShutDownRedisServers();
   static void FlushAllRedisServers();
 
-  static std::string StartGcsServer(const std::string &redis_address);
+  static std::string StartGcsServer(int port);
   static void StopGcsServer(const std::string &gcs_server_socket_name);
   static std::string StartRaylet(const std::string &node_ip_address,
                                  const int &port,

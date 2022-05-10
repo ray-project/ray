@@ -86,6 +86,10 @@ message DeploymentConfig {
 
   // The deployment's autoscaling configuration.
   AutoscalingConfig autoscaling_config = 10;
+
+  string version = 11;
+
+  string prev_version = 12;
 }
 
 // Deployment language.
@@ -131,6 +135,15 @@ message EndpointSet {
   map<string, EndpointInfo> endpoints = 1;
 }
 
+// Now Actor handle can be transfered across language through ray call, but the list of
+// Actor handles can't. So we use this message wrapped a Actor name list to pass actor
+// list across language. When Actor handle list supports across language, this message can
+// be replaced.
+message ActorNameList {
+  repeated string names = 1;
+}
+
+// It is deprecated. Use ActorNameList instead.
 message ActorSet {
   repeated string names = 1;
 }
@@ -138,4 +151,50 @@ message ActorSet {
 message DeploymentVersion {
   string code_version = 1;
   bytes user_config = 2;
+}
+
+message ReplicaConfig {
+  bytes serialized_deployment_def = 1;
+  bytes init_args = 2;
+  bytes init_kwargs = 3;
+  string ray_actor_options = 4;
+}
+
+message DeploymentInfo {
+  string name = 1;
+  DeploymentConfig deployment_config = 2;
+  ReplicaConfig replica_config = 3;
+  int64 start_time_ms = 4;
+  string actor_name = 5;
+  bytes serialized_deployment_def = 6;
+  string version = 7;
+  int64 end_time_ms = 8;
+}
+
+// Wrap DeploymentInfo and route. The "" route value need to be convert to None/null.
+message DeploymentRoute {
+  DeploymentInfo deployment_info = 1;
+  string route = 2;
+}
+
+// Wrap a list for DeploymentRoute.
+message DeploymentRouteList {
+  repeated DeploymentRoute deployment_routes = 1;
+}
+
+enum DeploymentStatus {
+  UPDATING = 0;
+  HEALTHY = 1;
+  UNHEALTHY = 2;
+}
+
+message DeploymentStatusInfo {
+  string name = 1;
+  DeploymentStatus status = 2;
+  string message = 3;
+}
+
+// Wrap a list for DeploymentStatusInfo.
+message DeploymentStatusInfoList {
+  repeated DeploymentStatusInfo deployment_status_infos = 1;
 }

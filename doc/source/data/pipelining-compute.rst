@@ -71,6 +71,11 @@ Per-Window Transformations
 
 While most Dataset operations are per-row (e.g., map, filter), some operations apply to the Dataset as a whole (e.g., sort, shuffle). When applied to a pipeline, holistic transforms like shuffle are applied separately to each window in the pipeline:
 
+.. important::
+
+   Windowed shuffle or global shuffle are expensive operations. Use only if you really need them.
+   Alternatively, you may consider local shuffle after converting to_tf() or to_torch(), if simple shuffle is sufficient.
+
 .. code-block:: python
 
     # Example of randomly shuffling each window of a pipeline.

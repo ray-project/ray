@@ -737,7 +737,14 @@ class Policy(metaclass=ABCMeta):
         """
         # Store the current global time step (sum over all policies' sample
         # steps).
-        self.global_timestep = global_vars["timestep"]
+        # Make sure, we keep global_timestep as a Tensor for tf-eager
+        # (leads to memory leaks if not doing so).
+        from ray.rllib.policy.eager_tf_policy import EagerTFPolicy
+
+        if self.framework in ["tf2", "tfe"] and isinstance(self, EagerTFPolicy):
+            self.global_timestep.assign(global_vars["timestep"])
+        else:
+            self.global_timestep = global_vars["timestep"]
 
     @DeveloperAPI
     def export_checkpoint(self, export_dir: str) -> None:

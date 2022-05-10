@@ -211,7 +211,7 @@ def action_sampler_fn(policy, model, input_dict, state, explore, timestep):
         action = 2.0 * torch.rand(1, model.action_space.shape[0]) - 1.0
         state = model.get_initial_state()
     else:
-        # Weird RLLib Handling, this happens when env rests
+        # Weird RLlib Handling, this happens when env rests
         if len(state[0].size()) == 3:
             # Very hacky, but works on all envs
             state = model.get_initial_state()

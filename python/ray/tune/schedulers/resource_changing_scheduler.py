@@ -6,7 +6,6 @@ from typing import Dict, Any, List, Optional, Set, Tuple, Union, Callable
 import pickle
 import warnings
 
-from ray.util import log_once
 from ray.util.annotations import PublicAPI, Deprecated
 from ray.tune import trial_runner
 from ray.tune.resources import Resources
@@ -385,7 +384,7 @@ class DistributeResources:
         trial: Trial,
         result: Dict[str, Any],
         scheduler: "ResourceChangingScheduler",
-    ) -> Union[None, PlacementGroupFactory]:
+    ) -> Optional[PlacementGroupFactory]:
         """Run resource allocation logic.
 
         Returns a new ``PlacementGroupFactory`` with updated
@@ -583,13 +582,14 @@ _DistributeResourcesDefault = DistributeResources(add_bundles=False)
 _DistributeResourcesDistributedDefault = DistributeResources(add_bundles=True)
 
 
+# Deprecated: Remove in Ray > 1.13
 @Deprecated
 def evenly_distribute_cpus_gpus(
     trial_runner: "trial_runner.TrialRunner",
     trial: Trial,
     result: Dict[str, Any],
     scheduler: "ResourceChangingScheduler",
-) -> Union[None, PlacementGroupFactory]:
+) -> Optional[PlacementGroupFactory]:
     """This is a basic uniform resource allocating function.
 
     This function is used by default in ``ResourceChangingScheduler``.
@@ -621,25 +621,23 @@ def evenly_distribute_cpus_gpus(
             the function.
     """
 
-    if log_once("evenly_distribute_cpus_gpus_deprecated"):
-        warnings.warn(
-            "DeprecationWarning: `evenly_distribute_cpus_gpus` "
-            "and `evenly_distribute_cpus_gpus_distributed` are "
-            "being deprecated. Use `DistributeResources()` and "
-            "`DistributeResources(add_bundles=False)` instead "
-            "for equivalent functionality."
-        )
-
-    return _DistributeResourcesDefault(trial_runner, trial, result, scheduler)
+    raise DeprecationWarning(
+        "DeprecationWarning: `evenly_distribute_cpus_gpus` "
+        "and `evenly_distribute_cpus_gpus_distributed` are "
+        "being deprecated. Use `DistributeResources()` and "
+        "`DistributeResources(add_bundles=False)` instead "
+        "for equivalent functionality."
+    )
 
 
+# Deprecated: Remove in Ray > 1.13
 @Deprecated
 def evenly_distribute_cpus_gpus_distributed(
     trial_runner: "trial_runner.TrialRunner",
     trial: Trial,
     result: Dict[str, Any],
     scheduler: "ResourceChangingScheduler",
-) -> Union[None, PlacementGroupFactory]:
+) -> Optional[PlacementGroupFactory]:
     """This is a basic uniform resource allocating function.
 
     The function naively balances free resources (CPUs and GPUs) between
@@ -671,17 +669,12 @@ def evenly_distribute_cpus_gpus_distributed(
             the function.
     """
 
-    if log_once("evenly_distribute_cpus_gpus_deprecated"):
-        warnings.warn(
-            "DeprecationWarning: `evenly_distribute_cpus_gpus` "
-            "and `evenly_distribute_cpus_gpus_distributed` are "
-            "being deprecated. Use `DistributeResources()` and "
-            "`DistributeResources(add_bundles=False)` instead "
-            "for equivalent functionality."
-        )
-
-    return _DistributeResourcesDistributedDefault(
-        trial_runner, trial, result, scheduler
+    raise DeprecationWarning(
+        "DeprecationWarning: `evenly_distribute_cpus_gpus` "
+        "and `evenly_distribute_cpus_gpus_distributed` are "
+        "being deprecated. Use `DistributeResources()` and "
+        "`DistributeResources(add_bundles=False)` instead "
+        "for equivalent functionality."
     )
 
 
@@ -746,7 +739,7 @@ class ResourceChangingScheduler(TrialScheduler):
                 trial: Trial,
                 result: Dict[str, Any],
                 scheduler: "ResourceChangingScheduler"
-            ) -> Union[None, PlacementGroupFactory, Resource]:
+            ) -> Optional[Union[PlacementGroupFactory, Resource]]:
                 # logic here
                 # usage of PlacementGroupFactory is strongly preferred
                 return PlacementGroupFactory(...)
@@ -770,7 +763,7 @@ class ResourceChangingScheduler(TrialScheduler):
                     Dict[str, Any],
                     "ResourceChangingScheduler",
                 ],
-                Union[None, PlacementGroupFactory, Resources],
+                Optional[Union[PlacementGroupFactory, Resources]],
             ]
         ] = _DistributeResourcesDefault,
     ) -> None:
@@ -787,7 +780,7 @@ class ResourceChangingScheduler(TrialScheduler):
             Union[Resources, PlacementGroupFactory]
         ] = None
         self._trials_to_reallocate: Dict[
-            Trial, Union[None, dict, PlacementGroupFactory]
+            Trial, Optional[Union[dict, PlacementGroupFactory]]
         ] = {}
         self._reallocated_trial_ids: Set[str] = set()
         self._metric = None
@@ -951,7 +944,7 @@ class ResourceChangingScheduler(TrialScheduler):
 
     def reallocate_trial_resources_if_needed(
         self, trial_runner: "trial_runner.TrialRunner", trial: Trial, result: Dict
-    ) -> Union[None, dict, PlacementGroupFactory]:
+    ) -> Optional[Union[dict, PlacementGroupFactory]]:
         """Calls user defined resources_allocation_function. If the returned
         resources are not none and not the same as currently present, returns
         them. Otherwise, returns None."""

@@ -29,6 +29,15 @@ The numpy array is stored as a read-only object, and all Ray workers on the same
 
 .. tip:: You can often avoid serialization issues by using only native types (e.g., numpy arrays or lists/dicts of numpy arrays and other primitive types), or by using Actors hold objects that cannot be serialized.
 
+Fixing "assignment destination is read-only"
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Because Ray puts numpy arrays in the object store, when deserialized as arguments in remote functions they will become read-only. For example, the following code snippet will crash:
+
+.. literalinclude:: /ray-core/doc_code/deser.py
+
+To avoid this issue, you can manually copy the array at the destination if you need to mutate it (``arr = arr.copy()``). Note that this is effectively like disabling the zero-copy deserialization feature provided by Ray.
+
 Serialization notes
 -------------------
 
@@ -196,6 +205,10 @@ The resulting output is:
     Consider either removing the instantiation/imports of these variables or moving the instantiation into the scope of the function/class.
     If you have any suggestions on how to improve this error message, please reach out to the Ray developers on github.com/ray-project/ray/issues/
     =============================================================
+
+For even more detailed information, set environmental variable ``RAY_PICKLE_VERBOSE_DEBUG='2'`` before importing Ray. This enables
+serialization with python-based backend instead of C-Pickle, so you can debug into python code at the middle of serialization.
+However, this would make serialization much slower.
 
 Known Issues
 ------------

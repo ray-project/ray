@@ -21,6 +21,9 @@ logger = logging.getLogger()
 env_bin_dir = "bin"
 if sys.platform == "win32":
     env_bin_dir = "Scripts"
+    _WIN32 = True
+else:
+    _WIN32 = False
 
 
 class UserError(Exception):
@@ -49,6 +52,10 @@ def _dirmatch(path, matchwith):
 def _virtualenv_sys(venv_path):
     """obtain version and path info from a virtualenv."""
     executable = os.path.join(venv_path, env_bin_dir, "python")
+    if _WIN32:
+        env = os.environ.copy()
+    else:
+        env = {}
     # Must use "executable" as the first argument rather than as the
     # keyword argument "executable" to get correct value from sys.path
     p = subprocess.Popen(
@@ -59,7 +66,7 @@ def _virtualenv_sys(venv_path):
             'print ("%d.%d" % (sys.version_info.major, sys.version_info.minor));'
             'print ("\\n".join(sys.path));',
         ],
-        env={},
+        env=env,
         stdout=subprocess.PIPE,
     )
     stdout, err = p.communicate()

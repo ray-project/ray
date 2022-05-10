@@ -1,17 +1,19 @@
 import logging
 import platform
 from typing import Any, Dict, List, Optional
+
 import numpy as np
 import random
 from enum import Enum
-from ray.util.debug import log_once
 
 # Import ray before psutil will make sure we use psutil's bundled version
 import ray  # noqa F401
 import psutil  # noqa E402
 
+from ray.util.debug import log_once
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import ExperimentalAPI
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics.window_stat import WindowStat
 from ray.rllib.utils.typing import SampleBatchType
 from ray.rllib.execution.buffers.replay_buffer import warn_replay_capacity
@@ -27,6 +29,7 @@ class StorageUnit(Enum):
     TIMESTEPS = "timesteps"
     SEQUENCES = "sequences"
     EPISODES = "episodes"
+    FRAGMENTS = "fragments"
 
 
 @ExperimentalAPI
@@ -51,15 +54,23 @@ class ReplayBuffer:
             self._storage_unit = StorageUnit.SEQUENCES
         elif storage_unit in ["episodes", StorageUnit.EPISODES]:
             self._storage_unit = StorageUnit.EPISODES
+        elif storage_unit in ["fragments", StorageUnit.FRAGMENTS]:
+            self._storage_unit = StorageUnit.FRAGMENTS
         else:
             raise ValueError(
-                "storage_unit must be either 'timesteps', `sequences` or `episodes`."
+                "storage_unit must be either 'timesteps', `sequences` or `episodes` "
+                "or `fragments`."
             )
 
         # The actual storage (list of SampleBatches or MultiAgentBatches).
         self._storage = []
 
         # Caps the number of timesteps stored in this buffer
+        if capacity <= 0:
+            raise ValueError(
+                "Capacity of replay buffer has to be greater than zero "
+                "but was set to {}.".format(capacity)
+            )
         self.capacity = capacity
         # The next index to override in the buffer.
         self._next_idx = 0
@@ -141,6 +152,8 @@ class ReplayBuffer:
                             "to be added to it. Some samples may be "
                             "dropped."
                         )
+        elif self._storage_unit == StorageUnit.FRAGMENTS:
+            self._add_single_batch(batch, **kwargs)
 
     @ExperimentalAPI
     def _add_single_batch(self, item: SampleBatchType, **kwargs) -> None:
@@ -261,10 +274,13 @@ class ReplayBuffer:
 
     def _encode_sample(self, idxes: List[int]) -> SampleBatchType:
         """Fetches concatenated samples at given indeces from the storage."""
-        samples = [self._storage[i] for i in idxes]
+        samples = []
+        for i in idxes:
+            self._hit_count[i] += 1
+            samples.append(self._storage[i])
 
         if samples:
-            # Assume all samples are of same type
+            # We assume all samples are of same type
             sample_type = type(samples[0])
             out = sample_type.concat_samples(samples)
         else:
@@ -280,3 +296,11 @@ class ReplayBuffer:
             name could not be determined.
         """
         return platform.node()
+
+    @Deprecated(old="ReplayBuffer.add_batch()", new="RepayBuffer.add()", error=False)
+    def add_batch(self, *args, **kwargs):
+        return self.add(*args, **kwargs)
+
+    @Deprecated(old="RepayBuffer.replay()", new="RepayBuffer.sample()", error=False)
+    def replay(self, *args, **kwargs):
+        return self.sample(*args, **kwargs)

@@ -753,7 +753,7 @@ class TrialRunnerTest3(unittest.TestCase):
         ray.init(num_cpus=3)
 
         # This makes checkpointing take 2 seconds.
-        def sync_up(source, target):
+        def sync_up(source, target, exclude=None):
             time.sleep(2)
             return True
 

@@ -137,7 +137,7 @@ class MultiCategorical(TFActionDistribution):
         if isinstance(actions, tf.Tensor):
             if isinstance(self.action_space, gym.spaces.Box):
                 actions = tf.reshape(
-                    actions, [-1, int(np.product(self.action_space.shape))]
+                    actions, [-1, int(np.prod(self.action_space.shape))]
                 )
             elif isinstance(self.action_space, gym.spaces.MultiDiscrete):
                 actions.set_shape((None, len(self.cats)))
@@ -185,9 +185,10 @@ class MultiCategorical(TFActionDistribution):
             high_ = np.max(action_space.high)
             assert np.all(action_space.low == low_)
             assert np.all(action_space.high == high_)
-            np.product(action_space.shape) * (high_ - low_ + 1)
+            np.prod(action_space.shape, dtype=np.int32) * (high_ - low_ + 1)
         # MultiDiscrete space.
         else:
+            # nvec is already integer, so no casting needed.
             return np.sum(action_space.nvec)
 
 
@@ -375,7 +376,7 @@ class DiagGaussian(TFActionDistribution):
     def required_model_output_shape(
         action_space: gym.Space, model_config: ModelConfigDict
     ) -> Union[int, np.ndarray]:
-        return np.prod(action_space.shape) * 2
+        return np.prod(action_space.shape, dtype=np.int32) * 2
 
 
 @DeveloperAPI
@@ -474,7 +475,7 @@ class SquashedGaussian(TFActionDistribution):
     def required_model_output_shape(
         action_space: gym.Space, model_config: ModelConfigDict
     ) -> Union[int, np.ndarray]:
-        return np.prod(action_space.shape) * 2
+        return np.prod(action_space.shape, dtype=np.int32) * 2
 
 
 @DeveloperAPI
@@ -530,7 +531,7 @@ class Beta(TFActionDistribution):
     def required_model_output_shape(
         action_space: gym.Space, model_config: ModelConfigDict
     ) -> Union[int, np.ndarray]:
-        return np.prod(action_space.shape) * 2
+        return np.prod(action_space.shape, dtype=np.int32) * 2
 
 
 @DeveloperAPI
@@ -558,7 +559,7 @@ class Deterministic(TFActionDistribution):
     def required_model_output_shape(
         action_space: gym.Space, model_config: ModelConfigDict
     ) -> Union[int, np.ndarray]:
-        return np.prod(action_space.shape)
+        return np.prod(action_space.shape, dtype=np.int32)
 
 
 @DeveloperAPI
@@ -658,7 +659,7 @@ class MultiActionDistribution(TFActionDistribution):
 
     @override(ActionDistribution)
     def required_model_output_shape(self, action_space, model_config):
-        return np.sum(self.input_lens)
+        return np.sum(self.input_lens, dtype=np.int32)
 
 
 @DeveloperAPI
@@ -715,4 +716,4 @@ class Dirichlet(TFActionDistribution):
     def required_model_output_shape(
         action_space: gym.Space, model_config: ModelConfigDict
     ) -> Union[int, np.ndarray]:
-        return np.prod(action_space.shape)
+        return np.prod(action_space.shape, dtype=np.int32)

@@ -64,13 +64,16 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> ActorManager::GetNamedActo
     // implemented using a promise that's captured in the RPC callback.
     // There should be no risk of deadlock because we don't hold any
     // locks during the call and the RPCs run on a separate thread.
-    rpc::ActorTableData result;
-    const auto status = gcs_client_->Actors().SyncGetByName(name, ray_namespace, result);
+    rpc::ActorTableData actor_table_data;
+    rpc::TaskSpec task_spec;
+    const auto status = gcs_client_->Actors().SyncGetByName(
+        name, ray_namespace, actor_table_data, task_spec);
     if (status.ok()) {
-      auto actor_handle = std::make_unique<ActorHandle>(result);
+      auto actor_handle = std::make_unique<ActorHandle>(actor_table_data, task_spec);
       actor_id = actor_handle->GetActorID();
       AddNewActorHandle(std::move(actor_handle),
-                        GenerateCachedActorName(result.ray_namespace(), result.name()),
+                        GenerateCachedActorName(actor_table_data.ray_namespace(),
+                                                actor_table_data.name()),
                         call_site,
                         caller_address,
                         /*is_detached*/ true);

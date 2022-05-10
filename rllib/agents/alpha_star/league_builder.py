@@ -1,14 +1,16 @@
 from abc import ABCMeta
+from collections import defaultdict
 import logging
 import numpy as np
 import re
+from typing import Any, DefaultDict, Dict
 
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.numpy import softmax
-from ray.rllib.utils.typing import TrainerConfigDict, ResultDict
+from ray.rllib.utils.typing import PolicyID, TrainerConfigDict, ResultDict
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +40,14 @@ class LeagueBuilder(metaclass=ABCMeta):
                 operations.
         """
         raise NotImplementedError
+
+    def __getstate__(self) -> Dict[str, Any]:
+        """Returns a state dict, mapping str keys to state variables.
+
+        Returns:
+            The current state dict of this LeagueBuilder.
+        """
+        return {}
 
 
 @ExperimentalAPI
@@ -80,9 +90,9 @@ class AlphaStarLeagueBuilder(LeagueBuilder):
             num_random_policies: The number of random policies to add to the
                 league. This must be an even number (including 0) as these
                 will be evenly distributed amongst league- and main- exploiters.
-            num_learning_league_exploiters: The number of learning
+            num_learning_league_exploiters: The number of initially learning
                 league-exploiters to create.
-            num_learning_main_exploiters: The number of learning
+            num_learning_main_exploiters: The number of initially learning
                 main-exploiters to create.
             win_rate_threshold_for_new_snapshot: The win-rate to be achieved
                 for a learning policy to get snapshot'd (forked into `self` +
@@ -106,6 +116,8 @@ class AlphaStarLeagueBuilder(LeagueBuilder):
         self.prob_main_exploiter_playing_against_learning_main = (
             prob_main_exploiter_playing_against_learning_main
         )
+        # Store the win rates for league overview printouts.
+        self.win_rates: DefaultDict[PolicyID, float] = defaultdict(float)
 
         assert num_random_policies % 2 == 0, (
             "ERROR: `num_random_policies` must be even number (we'll distribute "
@@ -149,7 +161,7 @@ class AlphaStarLeagueBuilder(LeagueBuilder):
             policies[pid] = PolicySpec()
             ma_config["policies_to_train"].append(pid)
 
-        # Initial policy mapping function: main_0 vs main_exploiter_0.
+        # Build initial policy mapping function: main_0 vs main_exploiter_0.
         ma_config["policy_mapping_fn"] = (
             lambda aid, ep, worker, **kw: "main_0"
             if ep.episode_id % 2 == aid
@@ -166,6 +178,8 @@ class AlphaStarLeagueBuilder(LeagueBuilder):
         else:
             hist_stats = result["hist_stats"]
 
+        # TODO: Add example on how to use callable here, instead of updating
+        #  policies_to_train via this simple set.
         trainable_policies = local_worker.get_policies_to_train()
         non_trainable_policies = (
             set(local_worker.policy_map.keys()) - trainable_policies
@@ -188,13 +202,13 @@ class AlphaStarLeagueBuilder(LeagueBuilder):
             win_rate = won / len(rew)
             # TODO: This should probably be a running average
             #  (instead of hard-overriding it with the most recent data).
-            self.trainer.win_rates[policy_id] = win_rate
+            self.win_rates[policy_id] = win_rate
 
             # Policy is a snapshot (frozen) -> Ignore.
             if policy_id not in trainable_policies:
                 continue
 
-            logger.info(f"\t{policy_id} win-rate={win_rate} -> ", end="")
+            logger.info(f"\t{policy_id} win-rate={win_rate} -> ")
 
             # If win rate is good enough -> Snapshot current policy and decide,
             # whether to freeze the new snapshot or not.
@@ -354,3 +368,17 @@ class AlphaStarLeagueBuilder(LeagueBuilder):
 
             else:
                 logger.info("not good enough; will keep learning ...")
+
+    def __getstate__(self) -> Dict[str, Any]:
+        return {
+            "win_rates": self.win_rates,
+            "main_policies": self.main_policies,
+            "league_exploiters": self.league_exploiters,
+            "main_exploiters": self.main_exploiters,
+        }
+
+    def __setstate__(self, state) -> None:
+        self.win_rates = state["win_rates"]
+        self.main_policies = state["main_policies"]
+        self.league_exploiters = state["league_exploiters"]
+        self.main_exploiters = state["main_exploiters"]
