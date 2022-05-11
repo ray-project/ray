@@ -298,7 +298,7 @@ Serve provides a default DAGDriver implementation that accepts HTTP request and 
 You can configure how does the DAGDriver convert HTTP request types. By default, we directly send in a [```starlette.requests.Request```](https://www.starlette.io/requests/) object to represent the whole request. You can also specifies built-in adapters. In this example, we will use a `json_request` adapter that parses HTTP body with JSON parser.
 
 ```{tip}
-There are several useful adapters like ndarray JSON, image object, etc. You can checkout {ref}`the list of adapters here <serve-http-adapters>`. You can also easily plug in your own adapter by passing in in the ```http_adapter``` field.
+There are several useful adapters like ndarray JSON, image object, etc. You can checkout [the list of adapters here](serve-http-adapters). You can also easily plug in your own adapter by passing in in the ```http_adapter``` field.
 ```
 
 +++

@@ -1,6 +1,11 @@
-from ray.rllib.agents.alpha_star.alpha_star import DEFAULT_CONFIG, AlphaStarTrainer
+from ray.rllib.agents.alpha_star.alpha_star import (
+    AlphaStarConfig,
+    AlphaStarTrainer,
+    DEFAULT_CONFIG,
+)
 
 __all__ = [
-    "DEFAULT_CONFIG",
+    "AlphaStarConfig",
     "AlphaStarTrainer",
+    "DEFAULT_CONFIG",
 ]

@@ -18,23 +18,24 @@ class TestDreamer(unittest.TestCase):
 
     def test_dreamer_compilation(self):
         """Test whether an DreamerTrainer can be built with all frameworks."""
-        config = dreamer.DEFAULT_CONFIG.copy()
-        config["env_config"] = {
-            "observation_space": Box(-1.0, 1.0, (3, 64, 64)),
-            "action_space": Box(-1.0, 1.0, (3,)),
-        }
+        config = dreamer.DREAMERConfig()
+        config.environment(
+            env=RandomEnv,
+            env_config={
+                "observation_space": Box(-1.0, 1.0, (3, 64, 64)),
+                "action_space": Box(-1.0, 1.0, (3,)),
+            },
+        )
         # Num episode chunks per batch.
-        config["batch_size"] = 2
         # Length (ts) of an episode chunk in a batch.
-        config["batch_length"] = 20
         # Sub-iterations per .train() call.
-        config["dreamer_train_iters"] = 4
+        config.training(batch_size=2, batch_length=20, dreamer_train_iters=4)
 
         num_iterations = 1
 
         # Test against all frameworks.
         for _ in framework_iterator(config, frameworks="torch"):
-            trainer = dreamer.DREAMERTrainer(config=config, env=RandomEnv)
+            trainer = config.build()
             for i in range(num_iterations):
                 results = trainer.train()
                 print(results)
