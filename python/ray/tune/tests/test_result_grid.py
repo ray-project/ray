@@ -1,5 +1,6 @@
 import json
 import os
+import pytest
 
 from ray import tune
 from ray.ml.checkpoint import Checkpoint
@@ -102,7 +103,6 @@ def test_result_grid_df():
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
 
     sys.exit(pytest.main(["-v", __file__]))
