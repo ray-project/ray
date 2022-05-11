@@ -12,13 +12,16 @@ the replay buffer config (link).
 Basic Usage
 ------------
 
-Here is a basic example of running the R2D2 algorithm, which runs without prioritized replay by default, with prioritzed replay:
+Here is a full example of running the R2D2 algorithm, which runs without prioritized replay by default, with prioritzed replay:
 
-.. literalinclude:: ../../../../rllib/examples/replay_buffer_api.py
-   :language: python
+.. dropdown:: **Changing a replay buffer configuration**
+    :animate: fade-in-slide-down
 
-..   start-after: __sphinx_doc_basic_replay_buffer_usage__begin__
-..   end-before: __sphinx_doc_basic_replay_buffer_usage_end__
+    .. literalinclude:: ../../../../rllib/examples/replay_buffer_api.py
+        :language: python
+
+    ..   start-after: __sphinx_doc_basic_replay_buffer_usage__begin__
+    ..   end-before: __sphinx_doc_basic_replay_buffer_usage_end__
 
 Specifying a buffer type works the same way as specifying an exploration type.
 Here are three ways of specifying a type:
