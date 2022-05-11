@@ -124,13 +124,15 @@ class ResultGrid:
 
         Example:
 
-            result_grid = Tuner.fit(...)
+            .. code-block:: python
 
-            # Get last reported results per trial
-            df = result_grid.get_dataframe()
+                result_grid = Tuner.fit(...)
 
-            # Get best ever reported accuracy per trial
-            df = result_grid.get_dataframe(metric="accuracy", mode="max")
+                # Get last reported results per trial
+                df = result_grid.get_dataframe()
+
+                # Get best ever reported accuracy per trial
+                df = result_grid.get_dataframe(metric="accuracy", mode="max")
 
         Args:
             filter_metric: Metric to filter best result for.
