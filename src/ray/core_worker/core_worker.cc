@@ -1514,12 +1514,6 @@ rpc::RuntimeEnv CoreWorker::OverrideRuntimeEnv(
   return result_runtime_env;
 }
 
-// TODO(SongGuyang): This function exists in both C++ and Python. We should make this
-// logic clearly.
-static std::string encode_plugin_uri(std::string plugin, std::string uri) {
-  return plugin + "|" + uri;
-}
-
 static std::vector<std::string> GetUrisFromRuntimeEnv(
     const rpc::RuntimeEnv *runtime_env) {
   std::vector<std::string> result;
@@ -1528,21 +1522,21 @@ static std::vector<std::string> GetUrisFromRuntimeEnv(
   }
   if (!runtime_env->uris().working_dir_uri().empty()) {
     const auto &uri = runtime_env->uris().working_dir_uri();
-    result.emplace_back(encode_plugin_uri("working_dir", uri));
+    result.emplace_back(uri);
   }
   for (const auto &uri : runtime_env->uris().py_modules_uris()) {
-    result.emplace_back(encode_plugin_uri("py_modules", uri));
+    result.emplace_back(uri);
   }
   if (!runtime_env->uris().conda_uri().empty()) {
     const auto &uri = runtime_env->uris().conda_uri();
-    result.emplace_back(encode_plugin_uri("conda", uri));
+    result.emplace_back(uri);
   }
   if (!runtime_env->uris().pip_uri().empty()) {
     const auto &uri = runtime_env->uris().pip_uri();
-    result.emplace_back(encode_plugin_uri("pip", uri));
+    result.emplace_back(uri);
   }
   for (const auto &uri : runtime_env->uris().plugin_uris()) {
-    result.emplace_back(encode_plugin_uri("plugin", uri));
+    result.emplace_back(uri);
   }
   return result;
 }
