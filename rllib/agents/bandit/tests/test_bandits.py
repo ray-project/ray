@@ -28,7 +28,6 @@ class TestBandits(unittest.TestCase):
             for train_batch_size in [1, 10]:
                 config.training(train_batch_size=train_batch_size)
                 trainer = config.build()
-                trainer = bandit.BanditLinTSTrainer(config=config)
                 results = None
                 for i in range(num_iterations):
                     results = trainer.train()
@@ -51,7 +50,7 @@ class TestBandits(unittest.TestCase):
         for _ in framework_iterator(config, frameworks="torch"):
             for train_batch_size in [1, 10]:
                 config.training(train_batch_size=train_batch_size)
-                trainer = bandit.BanditLinUCBTrainer(config=config)
+                trainer = config.build()
                 results = None
                 for i in range(num_iterations):
                     results = trainer.train()
