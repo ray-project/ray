@@ -2,7 +2,7 @@
 
 The example shows how to chain nodes using the same class and having different args passed in
 
-![pic](chain_nodes_same_class_different_args.svg)
+![pic](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/deployment-graph/chain_nodes_same_class_different_args.svg)
 
 ## Code
 

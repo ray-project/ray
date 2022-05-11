@@ -66,7 +66,7 @@ parts:
           - file: serve/core-apis
           - file: serve/http-servehandle
           - file: serve/ml-models
-          - file: serve/deployment-graph/deployment-graph
+          - file: serve/deployment-graph
             sections:
               - file: serve/deployment-graph/deployment-graph-e2e-tutorial
               - file: serve/deployment-graph/deployment-graph-user-guides

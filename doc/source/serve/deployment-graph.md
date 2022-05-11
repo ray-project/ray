@@ -16,5 +16,5 @@ kernelspec:
 
 # Deployment Graph
 
-- [E2E Tutorials](./deployment-graph-e2e-tutorial.md)
-- [User Guides](./deployment-graph-user-guides.md)
+- [E2E Tutorials](./deployment-graph/deployment-graph-e2e-tutorial.md)
+- [User Guides](./deployment-graph/deployment-graph-user-guides.md)
