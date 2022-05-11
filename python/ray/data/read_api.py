@@ -969,6 +969,10 @@ def from_huggingface(
 ) -> Union[Dataset[ArrowRow], Dict[str, Dataset[ArrowRow]]]:
     """Create a dataset from a Hugging Face Datasets Dataset.
 
+    This function is not parallelized, and is intended to be used
+    with Hugging Face Datasets that are loaded into memory (as opposed
+    to memory-mapped).
+
     Args:
         dataset: A Hugging Face ``Dataset``, or ``DatasetDict``.
             ``IterableDataset`` is not supported.

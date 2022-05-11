@@ -170,7 +170,7 @@ def r2d2_loss(policy: Policy, model, _, train_batch: SampleBatch) -> TensorType:
         # Seq-mask all loss-related terms.
         seq_mask = sequence_mask(train_batch[SampleBatch.SEQ_LENS], T)[:, :-1]
         # Mask away also the burn-in sequence at the beginning.
-        burn_in = policy.config["burn_in"]
+        burn_in = policy.config["replay_buffer_config"]["replay_burn_in"]
         if burn_in > 0 and burn_in < T:
             seq_mask[:, :burn_in] = False
 
