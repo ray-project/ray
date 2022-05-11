@@ -18,7 +18,6 @@ block and becomes part of the new, sorted dataset.
 """
 from typing import List, Any, Callable, TypeVar, Tuple, Union
 
-import logging
 import numpy as np
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockMetadata, BlockAccessor, BlockExecStats
