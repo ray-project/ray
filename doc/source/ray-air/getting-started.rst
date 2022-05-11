@@ -63,7 +63,7 @@ We believe Ray AIR provides unique value deriving from Ray.
 .. dropdown:: Future-proof via flexibility and scalability
     :animate: fade-in-slide-down
 
-    Ray's scalability and flexibility makes Ray AIR future-proof. Advanced serving pipelines, elastic training, online learning, reinforcement learning applications are being built and scaled today on Ray. Common patterns are being incorporated into libraries like Serve.
+    Ray's scalability and flexibility makes Ray AIR future-proof. Advanced serving pipelines, elastic training, online learning, reinforcement learning applications are being built and scaled today on Ray. Common patterns are being incorporated into libraries like Ray Serve.
 
 
 Next Steps

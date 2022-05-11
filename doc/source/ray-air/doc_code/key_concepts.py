@@ -60,7 +60,7 @@ tuner = Tuner(
             "max_depth": tune.randint(1, 9)
         }
     },
-    tune_config=TuneConfig(num_samples=20, metric="loss", mode="min"),
+    tune_config=TuneConfig(num_samples=20, metric="train-logloss", mode="min"),
 )
 result_grid = tuner.fit()
 best_result = result_grid.get_best_result()

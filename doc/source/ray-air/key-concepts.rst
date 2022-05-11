@@ -1,7 +1,7 @@
 AIR Key Concepts
 ================
 
-Here, we cover the main concepts that AIR is consisted of.
+Here, we cover the main concepts in AIR.
 
 .. contents::
     :local:
@@ -12,9 +12,9 @@ Preprocessors
 
 Preprocessors are primitives that can be used to transform input data into features.
 
-A preprocessor can be fitted during Training, and applied at runtime in both Training and Serving on data batches in the same way.
+A preprocessor can be fitted during Training, and applied at runtime in both Training and Serving on data batches in the same way. AIR comes with a collection of built-in preprocessors, and you can also define your own with simple templates.
 
-Preprocessors operate on :ref:`Ray Datasets <datasets>`.
+Preprocessors operate on :ref:`Ray Datasets <datasets>`, which makes them scalable and compatible with a variety of datasources and dataframe libraries.
 
 
 .. literalinclude:: doc_code/key_concepts.py
@@ -26,7 +26,7 @@ Preprocessors operate on :ref:`Ray Datasets <datasets>`.
 Trainers
 --------
 
-Trainers are wrapper classes around third-party training frameworks like XGBoost and Pytorch. They are built to help integrate with core Ray actors (for distribution), Tune, and Datasets.
+Trainers are wrapper classes around third-party training frameworks like XGBoost and Pytorch. They are built to help integrate with core Ray actors (for distribution), Ray Tune, and Ray Datasets.
 
 See the documentation on :ref:`Trainers <air-trainer-ref>`.
 
