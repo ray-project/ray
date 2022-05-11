@@ -230,23 +230,39 @@ class ValueNetworkMixin:
                 return tf.constant(0.0)
 
         self._value = value
+        self._cached_extra_action_fetches = None
 
     def extra_action_out_fn(self) -> Dict[str, TensorType]:
+        # Note: there are 2 reasons we are caching the extra_action_fetches here.
+        # 1. for better performance, so we don't query base class and model for
+        #    extra fetches every single time.
+        # 2. for correctness. TF1 is special because the static graph may contain
+        #    two logical graphs. One created by DynamicTFPolicy for action
+        #    computation, and one created by MultiGPUTower for GPU training.
+        #    Depending on which logical graph ran last time,
+        #    self.model.value_function() will point to the output tensor
+        #    of the specific logical graph, causing problem if we try to
+        #    fetch action (run inference) using the training output tensor.
+        #    For that reason, we cache the action output tensor from the
+        #    vanilla DynamicTFPolicy once and call it a day.
+        if self._cached_extra_action_fetches is not None:
+            return self._cached_extra_action_fetches
+
         # TODO: (sven) Deprecate once we only allow native keras models.
-        fetches = super().extra_action_out_fn()
+        self._cached_extra_action_fetches = super().extra_action_out_fn()
         # Keras models return values for each call in third return argument
         # (dict).
         if isinstance(self.model, tf.keras.Model):
-            return fetches
+            return self._cached_extra_action_fetches
         # Return value function outputs. VF estimates will hence be added to the
         # SampleBatches produced by the sampler(s) to generate the train batches
         # going into the loss function.
-        fetches.update(
+        self._cached_extra_action_fetches.update(
             {
                 SampleBatch.VF_PREDS: self.model.value_function(),
             }
         )
-        return fetches
+        return self._cached_extra_action_fetches
 
 
 class ComputeGAEMixIn:
