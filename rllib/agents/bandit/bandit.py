@@ -19,24 +19,16 @@ class BanditConfig(TrainerConfig):
     between BanditLinUCBTrainer and BanditLinTSTrainer. You likely
     want to use the child classes BanditLinTSConfig or BanditLinUCBConfig
     instead.
-
-    Example:
-        >>> config = BanditConfig().rollouts(num_rollout_workers=4).
-        ... exploration(exploration_config={"type": "BanditLinUCBTrainer"})
-        >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
-        >>> trainer = config.build(env=WheelBanditEnv)
-        >>> trainer.train()
     """
 
     def __init__(
         self, trainer_class: Union["BanditLinTSTrainer", "BanditLinUCBTrainer"] = None
     ):
-        """Initializes a BanditConfig instance."""
         super().__init__(trainer_class=trainer_class)
         # fmt: off
         # __sphinx_doc_begin__
         # Override some of TrainerConfig's default values with bandit-specific values.
+        self.framework_str = "torch"
         self.num_workers = 0
         self.rollout_fragment_length = 1
         self.train_batch_size = 1
@@ -52,6 +44,8 @@ class BanditLinTSConfig(BanditConfig):
     """Defines a contextual bandit configuration class from which
     a Thompson-sampling contexual bandit can be built.
     Example:
+        >>> from ray.rllib.agents.bandit import BanditLinTSConfig
+        >>> from ray.rllib.examples.env.bandit_envs_discrete import WheelBanditEnv
         >>> config = BanditLinTSConfig().rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
         >>> # Build a Trainer object from the config and run 1 training iteration.
@@ -73,6 +67,8 @@ class BanditLinUCBConfig(BanditConfig):
     """Defines a contextual bandit configuration class from which
     a upper confidence bound contexual bandit can be built.
     Example:
+        >>> from ray.rllib.agents.bandit import BanditLinUCBConfig
+        >>> from ray.rllib.examples.env.bandit_envs_discrete import WheelBanditEnv
         >>> config = BanditLinUCBConfig().rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
         >>> # Build a Trainer object from the config and run 1 training iteration.
@@ -105,7 +101,7 @@ class BanditLinTSTrainer(Trainer):
         elif config["framework"] == "tf2":
             return BanditTFPolicy
         else:
-            raise NotImplementedError()
+            raise NotImplementedError("Only torch or tf2 frameworks supported")
 
 
 class BanditLinUCBTrainer(Trainer):
@@ -121,10 +117,10 @@ class BanditLinUCBTrainer(Trainer):
         elif config["framework"] == "tf2":
             return BanditTFPolicy
         else:
-            raise NotImplementedError()
+            raise NotImplementedError("Only torch or tf2 frameworks supported")
 
 
-# Deprecated: Use ray.rllib.agents.bandits.BanditLinUCBConfig instead!
+# Deprecated: Use ray.rllib.agents.bandit.BanditLinUCBConfig instead!
 class _deprecated_default_config(dict):
     def __init__(self):
         super().__init__(BanditLinUCBConfig().to_dict())
