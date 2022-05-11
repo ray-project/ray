@@ -19,6 +19,7 @@ Code example
     import ray
     ray.init()
 
+    @ray.remote
     def f():
         pass
 
