@@ -14,3 +14,4 @@ API References
     ../ray-core/package-ref.rst
     ../cluster/reference.rst
     ../cluster/jobs-package-ref.rst
+    ../cluster/usage-stats-data-ref.rst
