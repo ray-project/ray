@@ -195,7 +195,7 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         self, tag_filters: Dict[str, str]
     ) -> List[Dict[str, Any]]:
         """Get the list of pods in the Ray cluster, excluding pods
-        marked for termination.
+        marked for deletion.
 
         Filter by the specified tag_filters.
 
@@ -209,6 +209,10 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         data = self._get("pods?labelSelector=" + requests.utils.quote(label_filters))
         result = []
         for pod in data["items"]:
+            # Kubernetes sets metadata.deletionTimestamp immediately after admitting a
+            # request to delete an object. Full removal of the object may take some time
+            # after the deletion timestamp is set.
+            # See https://kubernetes.io/docs/reference/using-api/api-concepts/#resource-deletion
             if "deletionTimestamp" in pod["metadata"]:
                 # Ignore pods marked for termination.
                 continue
