@@ -84,10 +84,17 @@ def setup_redis(param, monkeypatch):
         proc.process.terminate()
 
 
-@pytest.fixture
-def maybe_external_redis(request, monkeypatch):
+@pytest.fixture(scope="session")
+def monkeysession(request):
+    from _pytest.monkeypatch import MonkeyPatch
+    mpatch = MonkeyPatch()
+    yield mpatch
+    mpatch.undo()
+
+@pytest.fixture(scope="session")
+def maybe_external_redis(request, monkeysession):
     if "REDIS_MODE" in os.environ:
-        g = setup_redis(getattr(request, "param", {}), monkeypatch)
+        g = setup_redis(getattr(request, "param", {}), monkeysession)
         next(g)
         yield
         next(g)
@@ -96,9 +103,9 @@ def maybe_external_redis(request, monkeypatch):
 
 
 @pytest.fixture
-def external_redis(request, monkeypatch):
+def external_redis(request, monkeysession):
     # Setup external Redis and env var for initialization.
-    g = setup_redis(getattr(request, "param", {}), monkeypatch)
+    g = setup_redis(getattr(request, "param", {}), monkeysession)
     next(g)
     yield
     next(g)
