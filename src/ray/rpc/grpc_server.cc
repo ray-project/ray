@@ -127,6 +127,10 @@ void GrpcServer::Run() {
   is_closed_ = false;
 }
 
+void GrpcServer::RegisterService(grpc::Service &service) {
+  services_.emplace_back(service);
+}
+
 void GrpcServer::RegisterService(GrpcService &service) {
   services_.emplace_back(service.GetGrpcService());
 
