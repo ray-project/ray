@@ -21,13 +21,16 @@ from ray.autoscaler._private.util import hash_launch_conf
 logger = logging.getLogger(__name__)
 
 
-class NodeLauncher(threading.Thread):
-    """Launches nodes asynchronously in the background."""
+class BaseNodeLauncher:
+    """Launches Ray nodes in the main thread using method
+    `BaseNodeLauncher.try_launch_node`.
 
+    This is a superclass of NodeLauncher, which launches nodes asynchronously
+    in the background.
+    """
     def __init__(
         self,
         provider,
-        queue,
         pending,
         event_summarizer,
         prom_metrics=None,
@@ -36,7 +39,6 @@ class NodeLauncher(threading.Thread):
         *args,
         **kwargs,
     ):
-        self.queue = queue
         self.pending = pending
         self.prom_metrics = prom_metrics or AutoscalerPrometheusMetrics()
         self.provider = provider
@@ -90,10 +92,9 @@ class NodeLauncher(threading.Thread):
             self.prom_metrics.worker_create_node_time.observe(launch_time)
         self.prom_metrics.started_nodes.inc(count)
 
-    def _try_launch_node(
+    def try_launch_node(
         self, config: Dict[str, Any], count: int, node_type: Optional[str]
     ):
-        config, count, node_type = self.queue.get()
         self.log("Got {} nodes to launch.".format(count))
         try:
             self._launch_node(config, count, node_type)
@@ -119,11 +120,34 @@ class NodeLauncher(threading.Thread):
             self.pending.dec(node_type, count)
             self.prom_metrics.pending_nodes.set(self.pending.value)
 
-    def run(self):
-        while True:
-            config, count, node_type = self.queue.get()
-            self._try_launch_node(config, count, node_type)
-
     def log(self, statement):
         prefix = "NodeLauncher{}:".format(self.index)
         logger.info(prefix + " {}".format(statement))
+
+
+class NodeLauncher(BaseNodeLauncher, threading.Thread):
+    """Launches nodes asynchronously in the background."""
+    def __init__(
+        self,
+        provider,
+        queue,
+        pending,
+        event_summarizer,
+        prom_metrics=None,
+        node_types=None,
+        index=None,
+        *thread_args,
+        **thread_kwargs,
+    ):
+        self.queue = queue
+        BaseNodeLauncher.__init__(
+            self, provider, pending, event_summarizer, prom_metrics, node_types, index
+        )
+        threading.Thread.__init__(
+            *thread_args, **thread_kwargs
+        )
+
+    def run(self):
+        while True:
+            config, count, node_type = self.queue.get()
+            self.try_launch_node(config, count, node_type)
