@@ -23,14 +23,14 @@ logger = logging.getLogger(__name__)
 
 class BaseNodeLauncher:
     """Launches Ray nodes in the main thread using
-    `BaseNodeLauncher.launch_node`.
+    `BaseNodeLauncher.launch_node()`.
 
     This is a superclass of NodeLauncher, which launches nodes asynchronously
     in the background.
 
     By default, the subclass NodeLauncher is used to launch nodes in subthreads.
     That behavior can be flagged off in the provider config, so that the autoscaler
-    uses BaseNodeLauncher in the main thread.
+    makes blocking calls to BaseNodeLauncher.launch_node() in the main thread.
     """
 
     def __init__(
