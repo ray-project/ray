@@ -2522,7 +2522,7 @@ def test_write_datasource_ray_remote_args(ray_start_cluster):
 
 
 def test_image_folder_datasource(ray_start_regular_shared):
-    root = os.path.join(__file__, "image-folder")
+    root = os.path.join(os.path.dirname(__file__), "image-folder")
     ds = ray.data.read_datasource(ImageFolderDatasource(), paths=[root])
 
     assert ds.count() == 2

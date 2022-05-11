@@ -1,9 +1,8 @@
 import pathlib
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
 import imageio as iio
 import numpy as np
-from pyarrow.fs import FileSelector, FileType
 from ray.data.block import Block
 from ray.data.datasource.binary_datasource import BinaryDatasource
 from ray.data.datasource.datasource import ReadTask
@@ -14,6 +13,9 @@ from ray.data.datasource.file_meta_provider import (
     FastFileMetadataProvider,
 )
 from ray.data.datasource.partitioning import PathPartitionFilter
+
+if TYPE_CHECKING:
+    import pyarrow
 
 IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".gif"]
 
@@ -33,15 +35,23 @@ class ImageFolderDatasource(BinaryDatasource):
     root/cat/[...]/asd932_.png
     ```
 
+    Datasets read with `ImageFolderDatasource` contain two columns: 'image' and
+    'label'. The 'image' column contains `ndarray`s of shape (H, W, C), and the
+    `label` column contain strings corresponding to class.
+
     Examples:
         >>> import ray
         >>> from ray.data.datasource import ImageFolderDatasource
         >>>
-        >>> ds = ray.data.read_datasource(
+        >>> ds = ray.data.read_datasource(  # doctest: +SKIP
         ...     ImageFolderDatasource(),
         ...     paths=["s3://tiny-imagenet/train"]
         ... )
-        >>> TODO
+        >>> sample = ds.take(1)[0]  # doctest: +SKIP
+        >>> sample["image"].shape  # doctest: +SKIP
+        (469, 387, 3)
+        >>> sample["label"]  # doctest: +SKIP
+        'n01443537'
 
     Raises:
         ValueError: if more than one path is provided. You should only provide the path
@@ -70,14 +80,14 @@ class ImageFolderDatasource(BinaryDatasource):
             )
 
         try:
-            import imageio
+            import imageio  # noqa: F401
         except ImportError:
             raise ValueError(
                 "`ImageFolderDatasource` depends on 'imageio', but 'imageio' couldn't "
                 "be imported. You can install 'imageio' by running "
                 "`pip install imageio`."
             )
-            
+
         # We call `_resolve_paths_and_filesystem` so that the dataset root is formatted
         # in the same way as the paths passed to `_get_class_from_path`.
         paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
