@@ -13,6 +13,9 @@ def _import_comet():
     Used to check if comet_ml is installed and, otherwise, pass an informative
     error message.
     """
+    if "COMET_DISABLE_AUTO_LOGGING" not in os.environ:
+        os.environ["COMET_DISABLE_AUTO_LOGGING"] = "1"
+
     try:
         import comet_ml  # noqa: F401
     except ImportError:
@@ -211,9 +214,6 @@ class CometLoggerCallback(LoggerCallback):
 
     def log_trial_save(self, trial: "Trial"):
         if self.save_checkpoints and trial.checkpoint:
-            if trial not in self._trial_experiments:
-                self.log_trial_start(trial)
-
             experiment = self._trial_experiments[trial]
 
             artifact = comet_ml.Artifact(
@@ -228,7 +228,7 @@ class CometLoggerCallback(LoggerCallback):
                     local_file = os.path.join(checkpoint_root, rel_root, file)
                     logical_path = os.path.join(rel_root, file)
 
-                    # Strp leading `./`
+                    # Strip leading `./`
                     if logical_path.startswith("./"):
                         logical_path = logical_path[2:]
 

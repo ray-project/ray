@@ -15,7 +15,7 @@ def clear_wandb_project():
 def clear_comet_ml_project():
     import comet_ml
 
-    # This is hardcoded in the `ray/ml/examples/upload_to_wandb.py` example
+    # This is hardcoded in the `ray/ml/examples/upload_to_comet_ml.py` example
     comet_ml_project = "ray-air-example"
 
     api = comet_ml.API()
