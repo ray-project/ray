@@ -1247,7 +1247,7 @@ class StandardAutoscaler:
         if self.disable_background_launch_batch:
             assert self.foreground_node_launcher is not None
             # Launch in the main thread and block.
-            self.foreground_node_launcher.try_launch_node(config, count, node_type)
+            self.foreground_node_launcher.launch_node(config, count, node_type)
         else:
             assert self.launch_queue is not None
             # Split into individual launch requests of the max batch size.

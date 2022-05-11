@@ -23,10 +23,14 @@ logger = logging.getLogger(__name__)
 
 class BaseNodeLauncher:
     """Launches Ray nodes in the main thread using
-    `BaseNodeLauncher.try_launch_node`.
+    `BaseNodeLauncher.launch_node`.
 
     This is a superclass of NodeLauncher, which launches nodes asynchronously
     in the background.
+
+    By default, the subclass NodeLauncher is used to launch nodes in subthreads.
+    That behavior can be flagged off in the provider config, so that the autoscaler
+    uses BaseNodeLauncher in the main thread.
     """
 
     def __init__(
@@ -46,6 +50,34 @@ class BaseNodeLauncher:
         self.node_types = node_types
         self.index = str(index) if index is not None else ""
         self.event_summarizer = event_summarizer
+
+    def launch_node(
+        self, config: Dict[str, Any], count: int, node_type: Optional[str]
+    ):
+        self.log("Got {} nodes to launch.".format(count))
+        try:
+            self._launch_node(config, count, node_type)
+        except Exception:
+            self.prom_metrics.node_launch_exceptions.inc()
+            self.prom_metrics.failed_create_nodes.inc(count)
+            self.event_summarizer.add(
+                "Failed to launch {} nodes of type " + str(node_type) + ".",
+                quantity=count,
+                aggregate=operator.add,
+            )
+            # Log traceback from failed node creation only once per minute
+            # to avoid spamming driver logs with tracebacks.
+            self.event_summarizer.add_once_per_interval(
+                message="Node creation failed. See the traceback below."
+                " See autoscaler logs for further details.\n"
+                f"{traceback.format_exc()}",
+                key="Failed to create node.",
+                interval_s=60,
+            )
+            logger.exception("Launch failed")
+        finally:
+            self.pending.dec(node_type, count)
+            self.prom_metrics.pending_nodes.set(self.pending.value)
 
     def _launch_node(
         self, config: Dict[str, Any], count: int, node_type: Optional[str]
@@ -92,34 +124,6 @@ class BaseNodeLauncher:
             self.prom_metrics.worker_create_node_time.observe(launch_time)
         self.prom_metrics.started_nodes.inc(count)
 
-    def try_launch_node(
-        self, config: Dict[str, Any], count: int, node_type: Optional[str]
-    ):
-        self.log("Got {} nodes to launch.".format(count))
-        try:
-            self._launch_node(config, count, node_type)
-        except Exception:
-            self.prom_metrics.node_launch_exceptions.inc()
-            self.prom_metrics.failed_create_nodes.inc(count)
-            self.event_summarizer.add(
-                "Failed to launch {} nodes of type " + str(node_type) + ".",
-                quantity=count,
-                aggregate=operator.add,
-            )
-            # Log traceback from failed node creation only once per minute
-            # to avoid spamming driver logs with tracebacks.
-            self.event_summarizer.add_once_per_interval(
-                message="Node creation failed. See the traceback below."
-                " See autoscaler logs for further details.\n"
-                f"{traceback.format_exc()}",
-                key="Failed to create node.",
-                interval_s=60,
-            )
-            logger.exception("Launch failed")
-        finally:
-            self.pending.dec(node_type, count)
-            self.prom_metrics.pending_nodes.set(self.pending.value)
-
     def log(self, statement):
         prefix = "NodeLauncher{}:".format(self.index)
         logger.info(prefix + " {}".format(statement))
@@ -142,11 +146,18 @@ class NodeLauncher(BaseNodeLauncher, threading.Thread):
     ):
         self.queue = queue
         BaseNodeLauncher.__init__(
-            self, provider, pending, event_summarizer, prom_metrics, node_types, index
+            self, provider=provider, pending=pending, event_summarizer=event_summarizer, prom_metrics=prom_metrics, node_types=node_types, index=index
         )
         threading.Thread.__init__(*thread_args, **thread_kwargs)
 
     def run(self):
+        """Collects launch data from queue populated by StandardAutoscaler.
+        Launches nodes in a background thread.
+
+        Overrides threading.Thread.run().
+        NodeLauncher.start() executes this loop in a background thread.
+        """
         while True:
             config, count, node_type = self.queue.get()
-            self.try_launch_node(config, count, node_type)
+            # launch_node is implemented in BaseNodeLauncher
+            self.launch_node(config, count, node_type)
