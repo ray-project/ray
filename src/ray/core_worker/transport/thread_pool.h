@@ -40,7 +40,7 @@ class BoundedExecutor {
     return max_concurrency_in_default_group > 1;
   }
 
-  explicit BoundedExecutor(int max_concurrency) : pool_(max_concurrency){};
+  explicit BoundedExecutor(int max_concurrency);
 
   int32_t GetMaxConcurrency() const;
 
