@@ -1458,7 +1458,7 @@ def submit(
     args,
     script_args,
     disable_usage_stats,
-    extra_screen_args: str = None,
+    extra_screen_args: Optional[str] = None,
 ):
     """Uploads and runs a script on the specified cluster.
 
@@ -1485,6 +1485,9 @@ def submit(
 
     assert not (screen and tmux), "Can specify only one of `screen` or `tmux`."
     assert not (script_args and args), "Use -- --arg1 --arg2 for script args."
+
+    if (extra_screen_args is not None) and (not screen):
+        cli_logger.abort("To use extra_screen_args, it is required to use the --screen flag")
 
     if args:
         cli_logger.warning(

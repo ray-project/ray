@@ -1021,7 +1021,7 @@ def exec_cluster(
     port_forward: Optional[Port_forward] = None,
     with_output: bool = False,
     _allow_uninitialized_state: bool = False,
-    extra_screen_args: str = None,
+    extra_screen_args: Optional[str] = None,
 ) -> str:
     """Runs a command on the specified cluster.
 
@@ -1127,7 +1127,7 @@ def _exec(
     with_output: bool = False,
     run_env: str = "auto",
     shutdown_after_run: bool = False,
-    extra_screen_args: str = None,
+    extra_screen_args: Optional[str] = None,
 ) -> str:
     if cmd:
         if screen:
