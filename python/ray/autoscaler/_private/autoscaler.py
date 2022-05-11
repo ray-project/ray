@@ -246,6 +246,10 @@ class StandardAutoscaler:
             "disable_launch_config_check", False
         )
 
+        self.disable_background_launch_batch = self.config["provider"].get(
+            "disable_background_launch_batch"
+        )
+
         # Node launchers
         self.launch_queue = queue.Queue()
         self.pending_launches = ConcurrentCounter()
