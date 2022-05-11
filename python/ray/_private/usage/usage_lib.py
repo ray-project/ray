@@ -92,30 +92,49 @@ class ClusterStatusToReport:
 class UsageStatsToReport:
     """Usage stats to report"""
 
+    #: The Ray version in use.
     ray_version: str
+    #: The Python version in use.
     python_version: str
+    #: The schema version of the report.
     schema_version: str
+    #: The source of the data (i.e. OSS).
     source: str
+    #: A random id of the cluster session.
     session_id: str
+    #: The git commit hash of Ray (i.e. ray.__commit__).
     git_commit: str
+    #: The operating system in use.
     os: str
+    #: When the data is collected and reported.
     collect_timestamp_ms: int
+    #: When the cluster is started.
     session_start_timestamp_ms: int
+    #: The cloud provider found in the cluster.yaml file (e.g., aws).
     cloud_provider: Optional[str]
+    #: The min_workers found in the cluster.yaml file.
     min_workers: Optional[int]
+    #: The max_workers found in the cluster.yaml file.
     max_workers: Optional[int]
+    #: The head node instance type found in the cluster.yaml file (e.g., i3.8xlarge).
     head_node_instance_type: Optional[str]
+    #: The worker node instance types found in the cluster.yaml file (e.g., i3.8xlarge).
     worker_node_instance_types: Optional[List[str]]
+    #: The total num of cpus in the cluster.
     total_num_cpus: Optional[int]
+    #: The total num of gpus in the cluster.
     total_num_gpus: Optional[int]
+    #: The total size of memory in the cluster.
     total_memory_gb: Optional[float]
+    #: The total size of object store memory in the cluster.
     total_object_store_memory_gb: Optional[float]
+    #: The Ray libraries that are used (e.g., rllib).
     library_usages: Optional[List[str]]
-    # The total number of successful reports for the lifetime of the cluster.
+    #: The total number of successful reports for the lifetime of the cluster.
     total_success: int
-    # The total number of failed reports for the lifetime of the cluster.
+    #: The total number of failed reports for the lifetime of the cluster.
     total_failed: int
-    # The sequence number of the report.
+    #: The sequence number of the report.
     seq_number: int
 
 
