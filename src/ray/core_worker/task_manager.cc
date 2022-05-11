@@ -244,7 +244,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
         VectorFromProtobuf<rpc::ObjectReference>(return_object.nested_inlined_refs());
     if (return_object.in_plasma()) {
       // NOTE(swang): We need to add the location of the object before marking
-      // it as localin the in-memory store so that the data locality policy
+      // it as local in the in-memory store so that the data locality policy
       // will choose the right raylet for any queued dependent tasks.
       const auto pinned_at_raylet_id = NodeID::FromBinary(worker_addr.raylet_id());
       reference_counter_->UpdateObjectPinnedAtRaylet(object_id, pinned_at_raylet_id);
