@@ -996,6 +996,9 @@ class Dataset(Generic[T]):
     def split_proportionately(self, proportions: List[float]) -> List["Dataset[T]"]:
         """Split the dataset using proportions.
 
+        A common use case for this would be splitting the dataset into train
+        and test sets (equivalent to eg. scikit-learn's ``train_test_split``).
+
         The indices to split at will be calculated in such a way so that all splits
         always contains at least one element. If that is not possible,
         an exception will be raised.
