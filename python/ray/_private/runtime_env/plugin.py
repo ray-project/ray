@@ -65,7 +65,7 @@ class RuntimeEnvPlugin(ABC):
 
     def modify_context(
         self,
-        uris: Optional[Union[str, List[str]]],
+        uri: Optional[str],
         runtime_env: "RuntimeEnv",  # noqa: F821
         context: RuntimeEnvContext,
         logger: logging.Logger,
@@ -76,7 +76,7 @@ class RuntimeEnvPlugin(ABC):
         startup, or add new environment variables.
 
         Args:
-            uris(Union(str, List[str]): a URI or list of URIs used by this plugin.
+            uri(str): a URI uniquely describing this resource.
             runtime_env(RuntimeEnv): the runtime env protobuf.
             ctx(RuntimeEnvContext): auxiliary information supplied by Ray.
         """
@@ -86,7 +86,7 @@ class RuntimeEnvPlugin(ABC):
         """Delete the the runtime environment given uri.
 
         Args:
-            uri(str): a URI describing the resource to be deleted.
+            uri(str): a URI uniquely describing this resource.
             ctx(RuntimeEnvContext): auxiliary information supplied by Ray.
 
         Returns:
@@ -96,7 +96,7 @@ class RuntimeEnvPlugin(ABC):
 
 
 @DeveloperAPI
-class PluginCacheManager(ABC):
+class PluginCacheManager():
     """A manager for plugins.
 
     This class is used to manage plugins along with a cache for plugin URIs.
