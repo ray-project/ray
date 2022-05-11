@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 class BaseNodeLauncher:
-    """Launches Ray nodes in the main thread using method
+    """Launches Ray nodes in the main thread using
     `BaseNodeLauncher.try_launch_node`.
 
     This is a superclass of NodeLauncher, which launches nodes asynchronously
@@ -45,7 +45,6 @@ class BaseNodeLauncher:
         self.node_types = node_types
         self.index = str(index) if index is not None else ""
         self.event_summarizer = event_summarizer
-        super(NodeLauncher, self).__init__(*args, **kwargs)
 
     def _launch_node(
         self, config: Dict[str, Any], count: int, node_type: Optional[str]
