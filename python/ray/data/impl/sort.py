@@ -30,8 +30,6 @@ from ray.data.impl.shuffle import ShuffleOp, SimpleShufflePlan
 from ray.data.impl.push_based_shuffle import PushBasedShufflePlan
 from ray.data.context import DatasetContext
 
-logger = logging.getLogger(__name__)
-
 T = TypeVar("T")
 
 # Data can be sorted by value (None), a list of columns and
