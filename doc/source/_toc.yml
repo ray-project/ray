@@ -132,6 +132,7 @@ parts:
       - file: cluster/cloud
       - file: cluster/deploy
       - file: cluster/api
+      - file: cluster/usage-stats
 
   - caption: References
     chapters:
