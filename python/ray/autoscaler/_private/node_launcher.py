@@ -90,33 +90,39 @@ class NodeLauncher(threading.Thread):
             self.prom_metrics.worker_create_node_time.observe(launch_time)
         self.prom_metrics.started_nodes.inc(count)
 
+    def _try_launch_node(
+        self, config: Dict[str, Any], count: int, node_type: Optional[str]
+    ):
+        config, count, node_type = self.queue.get()
+        self.log("Got {} nodes to launch.".format(count))
+        try:
+            self._launch_node(config, count, node_type)
+        except Exception:
+            self.prom_metrics.node_launch_exceptions.inc()
+            self.prom_metrics.failed_create_nodes.inc(count)
+            self.event_summarizer.add(
+                "Failed to launch {} nodes of type " + str(node_type) + ".",
+                quantity=count,
+                aggregate=operator.add,
+            )
+            # Log traceback from failed node creation only once per minute
+            # to avoid spamming driver logs with tracebacks.
+            self.event_summarizer.add_once_per_interval(
+                message="Node creation failed. See the traceback below."
+                " See autoscaler logs for further details.\n"
+                f"{traceback.format_exc()}",
+                key="Failed to create node.",
+                interval_s=60,
+            )
+            logger.exception("Launch failed")
+        finally:
+            self.pending.dec(node_type, count)
+            self.prom_metrics.pending_nodes.set(self.pending.value)
+
     def run(self):
         while True:
             config, count, node_type = self.queue.get()
-            self.log("Got {} nodes to launch.".format(count))
-            try:
-                self._launch_node(config, count, node_type)
-            except Exception:
-                self.prom_metrics.node_launch_exceptions.inc()
-                self.prom_metrics.failed_create_nodes.inc(count)
-                self.event_summarizer.add(
-                    "Failed to launch {} nodes of type " + node_type + ".",
-                    quantity=count,
-                    aggregate=operator.add,
-                )
-                # Log traceback from failed node creation only once per minute
-                # to avoid spamming driver logs with tracebacks.
-                self.event_summarizer.add_once_per_interval(
-                    message="Node creation failed. See the traceback below."
-                    " See autoscaler logs for further details.\n"
-                    f"{traceback.format_exc()}",
-                    key="Failed to create node.",
-                    interval_s=60,
-                )
-                logger.exception("Launch failed")
-            finally:
-                self.pending.dec(node_type, count)
-                self.prom_metrics.pending_nodes.set(self.pending.value)
+            self._try_launch_node(config, count, node_type)
 
     def log(self, statement):
         prefix = "NodeLauncher{}:".format(self.index)
