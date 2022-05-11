@@ -21,23 +21,23 @@ IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".gif"]
 
 
 class ImageFolderDatasource(BinaryDatasource):
-    """A datasource that allows you to load datasets like ImageNet.
+    """A datasource that lets you read datasets like `ImageNet <https://www.image-net.org/>`_.
 
-    This datasource works with any dataset where the images are arranged in this way:
+    This datasource works with any dataset where images are arranged in this way:
 
-    ```
-    root/dog/xxx.png
-    root/dog/xxy.png
-    root/dog/[...]/xxz.png
+    .. code-block::
 
-    root/cat/123.png
-    root/cat/nsdf3.png
-    root/cat/[...]/asd932_.png
-    ```
+        root/dog/xxx.png
+        root/dog/xxy.png
+        root/dog/[...]/xxz.png
 
-    Datasets read with `ImageFolderDatasource` contain two columns: 'image' and
-    'label'. The 'image' column contains `ndarray`s of shape (H, W, C), and the
-    `label` column contains strings corresponding to class.
+        root/cat/123.png
+        root/cat/nsdf3.png
+        root/cat/[...]/asd932_.png
+
+    Datasets read with ``ImageFolderDatasource`` contain two columns: ``'image'`` and
+    ``'label'``. The ``'image'`` column contains ``ndarray`` objects of shape 
+    :math:`(H, W, C)`, and the ``label`` column contains strings corresponding to labels.
 
     Examples:
         >>> import ray
@@ -45,7 +45,7 @@ class ImageFolderDatasource(BinaryDatasource):
         >>>
         >>> ds = ray.data.read_datasource(  # doctest: +SKIP
         ...     ImageFolderDatasource(),
-        ...     paths=["s3://tiny-imagenet/train"]
+        ...     paths=["/data/imagenet/train"]
         ... )
         >>> sample = ds.take(1)[0]  # doctest: +SKIP
         >>> sample["image"].shape  # doctest: +SKIP
