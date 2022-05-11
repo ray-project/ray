@@ -1207,15 +1207,7 @@ def check_spilled_mb(address, spilled=None, restored=None, fallback=None):
             if "Restored" in s:
                 return False
         if spilled:
-            if not isinstance(spilled, list):
-                spilled_lst = [spilled]
-            else:
-                spilled_lst = spilled
-            found = False
-            for n in spilled_lst:
-                if "Spilled {} MiB".format(n) in s:
-                    found = True
-            if not found:
+            if "Spilled {} MiB".format(spilled) not in s:
                 return False
         else:
             if "Spilled" in s:

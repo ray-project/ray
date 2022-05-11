@@ -157,18 +157,15 @@ class LocalObjectManager {
   std::string DebugString() const;
 
  private:
-  FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectsOfSizeZero);
+  FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectsOfSize);
   FRIEND_TEST(LocalObjectManagerTest, TestSpillUptoMaxFuseCount);
   FRIEND_TEST(LocalObjectManagerTest,
               TestSpillObjectsOfSizeNumBytesToSpillHigherThanMinBytesToSpill);
   FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectNotEvictable);
 
-  /// Asynchronously spill objects when space is needed. The callback tries to
-  /// spill at least num_bytes_to_spill and returns true if we found objects to
-  /// spill.
-  /// If num_bytes_to_spill many objects cannot be found and there are other
-  /// objects already being spilled, this will return false to give the
-  /// currently spilling objects time to finish.
+  /// Asynchronously spill objects when space is needed.
+  /// The callback tries to spill objects as much as num_bytes_to_spill and returns
+  /// true if we could spill the corresponding bytes.
   /// NOTE(sang): If 0 is given, this method spills a single object.
   ///
   /// \param num_bytes_to_spill The total number of bytes to spill.
@@ -345,9 +342,7 @@ class LocalObjectManager {
   /// The last time a restore log finished.
   int64_t last_restore_log_ns_ = 0;
 
-  friend class LocalObjectManagerTestWithMinSpillingSize;
   friend class LocalObjectManagerTest;
-  friend class LocalObjectManagerFusedTest;
 };
 
 };  // namespace raylet
