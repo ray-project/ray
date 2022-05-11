@@ -125,7 +125,10 @@ class BaseNodeLauncher:
         self.prom_metrics.started_nodes.inc(count)
 
     def log(self, statement):
-        prefix = "NodeLauncher{}:".format(self.index)
+        # launcher_class is "BaseNodeLauncher", or "NodeLauncher" if called
+        # from that subclass.
+        launcher_class: str = type(self).__name__
+        prefix = "{}{}:".format(launcher_class, self.index)
         logger.info(prefix + " {}".format(statement))
 
 
@@ -146,9 +149,11 @@ class NodeLauncher(BaseNodeLauncher, threading.Thread):
     ):
         self.queue = queue
         BaseNodeLauncher.__init__(
-            self, provider=provider, pending=pending, event_summarizer=event_summarizer, prom_metrics=prom_metrics, node_types=node_types, index=index
+            self, provider=provider, pending=pending,
+            event_summarizer=event_summarizer, prom_metrics=prom_metrics,
+            node_types=node_types, index=index
         )
-        threading.Thread.__init__(*thread_args, **thread_kwargs)
+        threading.Thread.__init__(self, *thread_args, **thread_kwargs)
 
     def run(self):
         """Collects launch data from queue populated by StandardAutoscaler.
