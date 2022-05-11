@@ -20,7 +20,7 @@ default_logger = logging.getLogger(__name__)
 class RuntimeEnvPlugin(ABC):
     """Abstract base class for runtime environment plugins."""
 
-    name: str = ""
+    name: str
 
     @staticmethod
     def validate(runtime_env_dict: dict) -> str:
@@ -96,7 +96,7 @@ class RuntimeEnvPlugin(ABC):
 
 
 @DeveloperAPI
-class PluginCacheManager():
+class PluginCacheManager:
     """A manager for plugins.
 
     This class is used to manage plugins along with a cache for plugin URIs.
