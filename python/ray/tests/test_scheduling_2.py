@@ -14,7 +14,6 @@ from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
 )
 from ray._private.test_utils import wait_for_condition, make_global_state_accessor
-from ray.tests.conftest import object_spilling_config
 
 
 @pytest.mark.skipif(

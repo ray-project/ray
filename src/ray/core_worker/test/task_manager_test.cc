@@ -336,15 +336,14 @@ TEST_F(TaskManagerTest, TestLocalityDataAdded) {
   auto return_id = spec.ReturnId(0);
   auto node_id = NodeID::FromRandom();
   int object_size = 100;
-  store_->GetAsync(
-        return_id, [&](std::shared_ptr<RayObject> obj) {
-        // By the time the return object is available to get, we should be able
-        // to get the locality data too.
-        auto locality_data = reference_counter_->GetLocalityData(return_id);
-        ASSERT_TRUE(locality_data.has_value());
-        ASSERT_EQ(locality_data->object_size, object_size);
-        ASSERT_TRUE(locality_data->nodes_containing_object.contains(node_id));
-        });
+  store_->GetAsync(return_id, [&](std::shared_ptr<RayObject> obj) {
+    // By the time the return object is available to get, we should be able
+    // to get the locality data too.
+    auto locality_data = reference_counter_->GetLocalityData(return_id);
+    ASSERT_TRUE(locality_data.has_value());
+    ASSERT_EQ(locality_data->object_size, object_size);
+    ASSERT_TRUE(locality_data->nodes_containing_object.contains(node_id));
+  });
 
   rpc::PushTaskReply reply;
   auto return_object = reply.add_return_objects();
