@@ -193,4 +193,38 @@ public class RuntimeEnvTest {
     testDownloadAndLoadPackage(
         "https://github.com/ray-project/test_packages/raw/main/raw_resources/java-1.0-SNAPSHOT.zip");
   }
+
+  private static boolean findClass(String className) {
+    try {
+      Class.forName(className);
+    } catch (ClassNotFoundException e) {
+      return false;
+    }
+    return true;
+  }
+
+  private static void testDownloadAndLoadPackageForTask(String url) {
+    try {
+      Ray.init();
+      final RuntimeEnv runtimeEnv = new RuntimeEnv.Builder().addJars(ImmutableList.of(url)).build();
+      boolean ret = Ray
+        .task(RuntimeEnvTest::findClass, "io.testpackages.Foo")
+        .setRuntimeEnv(runtimeEnv)
+        .remote()
+        .get();
+      Assert.assertTrue(ret);
+    } finally {
+      Ray.shutdown();
+    }
+  }
+
+  public void testJarPackageForTask() {
+    testDownloadAndLoadPackageForTask(
+      "https://github.com/ray-project/test_packages/raw/main/raw_resources/java-1.0-SNAPSHOT.jar");
+  }
+
+  public void testZipPackageForTask() {
+    testDownloadAndLoadPackageForTask(
+      "https://github.com/ray-project/test_packages/raw/main/raw_resources/java-1.0-SNAPSHOT.zip");
+  }
 }
