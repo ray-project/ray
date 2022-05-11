@@ -25,7 +25,7 @@ class NodeState {
 
   /// Set the local component.
   ///
-  /// \param cid The component id.
+  /// \param message_type The type of the message for this component.
   /// \param reporter The reporter is defined to be the local module which wants to
   /// broadcast its internal status to the whole clsuter. When it's null, it means there
   /// is no reporter in the local node for this component. This is the place there
@@ -36,16 +36,16 @@ class NodeState {
   /// received messages are consumed.
   ///
   /// \return true if set successfully.
-  bool SetComponent(RayComponentId cid,
+  bool SetComponent(MessageType message_type,
                     const ReporterInterface *reporter,
                     ReceiverInterface *receiver);
 
   /// Get the snapshot of a component for a newer version.
   ///
-  /// \param cid The component id to take the snapshot.
+  /// \param message_type The component to take the snapshot.
   ///
   /// \return If a snapshot is taken, return the message, otherwise std::nullopt.
-  std::optional<RaySyncMessage> CreateSyncMessage(RayComponentId cid);
+  std::optional<RaySyncMessage> CreateSyncMessage(MessageType message_type);
 
   /// Consume a message. Receiver will consume this message if it doesn't have
   /// this message.
@@ -127,7 +127,7 @@ class NodeSyncConnection {
   std::function<void(std::shared_ptr<RaySyncMessage>)> message_processor_;
 
   /// Buffering all the updates. Sending will be done in an async way.
-  absl::flat_hash_map<std::pair<std::string, RayComponentId>,
+  absl::flat_hash_map<std::pair<std::string, MessageType>,
                       std::shared_ptr<const RaySyncMessage>>
       sending_buffer_;
 

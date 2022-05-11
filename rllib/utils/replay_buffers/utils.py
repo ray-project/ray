@@ -192,7 +192,7 @@ def validate_buffer_config(config: dict):
                 error=False,
             )
             # Copy values over to new location in config to support new
-            # and old configuration style
+            # and old configuration style.
             if config.get("replay_buffer_config") is not None:
                 config["replay_buffer_config"][k] = config[k]
 

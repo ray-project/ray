@@ -59,7 +59,7 @@ class TestR2D2(unittest.TestCase):
         config["model"]["fcnet_hiddens"] = [32]
         config["model"]["lstm_cell_size"] = 64
 
-        config["burn_in"] = 20
+        config["replay_buffer_config"]["replay_burn_in"] = 20
         config["zero_init_states"] = True
 
         config["dueling"] = False
