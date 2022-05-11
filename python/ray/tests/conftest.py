@@ -87,9 +87,11 @@ def setup_redis(param, monkeypatch):
 @pytest.fixture(scope="session")
 def monkeysession(request):
     from _pytest.monkeypatch import MonkeyPatch
+
     mpatch = MonkeyPatch()
     yield mpatch
     mpatch.undo()
+
 
 @pytest.fixture(scope="session")
 def maybe_external_redis(request, monkeysession):
