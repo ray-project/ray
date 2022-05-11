@@ -38,7 +38,7 @@ class SimpleBlockBuilder(BlockBuilder[T]):
     def add_block(self, block: List[T]) -> None:
         if not isinstance(block, list):
             raise TypeError(
-                f"Got a block of type {type(block)}, expected list."
+                f"Got a block of type {type(block)}, expected list. "
                 "If you are mapping a function, ensure it returns an "
                 "object with the expected type. Block:\n"
                 f"{block}"
