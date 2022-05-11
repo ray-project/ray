@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <chrono>
 #include <boost/asio/ip/tcp.hpp>
+#include <chrono>
 
 #include "absl/strings/substitute.h"
 #include "gtest/gtest.h"
@@ -71,7 +71,8 @@ class GcsClientReconnectionTest : public ::testing::Test {
           new boost::asio::io_service::work(*client_io_service_));
       client_io_service_->run();
     });
-    gcs::GcsClientOptions options("127.0.0.1:" + std::to_string(config_.grpc_server_port));
+    gcs::GcsClientOptions options("127.0.0.1:" +
+                                  std::to_string(config_.grpc_server_port));
     gcs_client_ = std::make_unique<gcs::GcsClient>(options);
     RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
     return gcs_client_.get();
@@ -99,7 +100,6 @@ class GcsClientReconnectionTest : public ::testing::Test {
     }
     return false;
   }
-
 
  protected:
   unsigned short GetFreePort() {
