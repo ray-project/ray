@@ -3,7 +3,7 @@
 AIR Deployment Guide
 ====================
 
-Here, we describe how you might use or deploy AIR in your infrastructure. There are two main deployment patterns -- a la carte and within existing platforms.
+Here, we describe how you might use or deploy AIR in your infrastructure. There are two main deployment patterns -- pick and choose and within existing platforms.
 
 The core idea is that AIR can be **complementary** to your existing infrastructure and integration tools.
 
@@ -41,7 +41,7 @@ In the above diagram:
 Existing ML Platform integration
 --------------------------------
 
-Often times, you may already have an existing machine learning platform but want to use some subset of Ray AIR. For example, an ML engineer wants to use Ray AIR within the ML Platform their organization has purchased (e.g., SageMaker, Vertex).
+You may already have an existing machine learning platform but want to use some subset of Ray AIR. For example, an ML engineer wants to use Ray AIR within the ML Platform their organization has purchased (e.g., SageMaker, Vertex).
 
 Ray AIR can complement existing machine learning platforms by integrating with existing pipeline/workflow orchestrators, storage, and tracking services, without requiring a replacement of your entire ML platform.
 
@@ -51,8 +51,8 @@ Ray AIR can complement existing machine learning platforms by integrating with e
 
 In the above diagram:
 
-1. A workflow orchestrator such as AirFlow, Oozie, SageMaker Pipelines, etc. is responsible for scheduling and creating Ray AIR clusters and running AIR apps and services. The AIR app may be part of a larger orchestrated workflow (e.g., Spark ETL, then Training on Ray).
-2. Lightweight orchestration of task graphs can be handled entirely within AIR. External workflow orchestrators will integrate nicely but are only needed if running non-Ray steps.
+1. A workflow orchestrator such as AirFlow, Oozie, SageMaker Pipelines, etc. is responsible for scheduling and creating Ray clusters and running Ray AIR apps and services. The Ray AIR app may be part of a larger orchestrated workflow (e.g., Spark ETL, then Training on Ray).
+2. Lightweight orchestration of task graphs can be handled entirely within Ray AIR. External workflow orchestrators will integrate nicely but are only needed if running non-Ray steps.
 3. Ray AIR clusters can also be created for interactive use (e.g., Jupyter notebooks, Google Colab, Databricks Notebooks, etc.).
 4. Ray Train, Datasets, and Serve provide integration with Feature Stores like Feast for Training and Serving.
 5. Ray Train and Tune provide integration with tracking services such as MLFlow and Weights & Biases.
