@@ -7,7 +7,6 @@ import argparse
 import json
 import os
 from pprint import pformat
-import py_dep_analysis as pda
 import re
 import subprocess
 import sys
@@ -102,6 +101,8 @@ if __name__ == "__main__":
 
         # Dry run py_dep_analysis.py to see which tests we would have run.
         try:
+            import py_dep_analysis as pda
+
             graph = pda.build_dep_graph()
             rllib_tests = pda.list_rllib_tests()
             print("Total # of RLlib tests: ", len(rllib_tests), file=sys.stderr)
