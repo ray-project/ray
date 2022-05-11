@@ -37,7 +37,7 @@ class ImageFolderDatasource(BinaryDatasource):
 
     Datasets read with `ImageFolderDatasource` contain two columns: 'image' and
     'label'. The 'image' column contains `ndarray`s of shape (H, W, C), and the
-    `label` column contain strings corresponding to class.
+    `label` column contains strings corresponding to class.
 
     Examples:
         >>> import ray
