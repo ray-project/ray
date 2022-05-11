@@ -5,13 +5,9 @@ from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.parallel_requests import (
     AsyncRequestsManager,
 )
-from ray.rllib.execution.rollout_ops import AsyncGradients
-from ray.rllib.execution.train_ops import ApplyGradients
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
@@ -30,7 +26,6 @@ from ray.rllib.utils.typing import (
     TrainerConfigDict,
     PartialTrainerConfigDict,
 )
-from ray.util.iter import LocalIterator
 
 logger = logging.getLogger(__name__)
 
@@ -212,7 +207,7 @@ class A3CTrainer(Trainer):
             # Results are a mapping from ActorHandle (RolloutWorker) to their
             # returned gradient calculation results.
             self._worker_manager.submit(sample_and_compute_grads, for_all_workers=True)
-            async_results = self._worker_manager.get_ready_requests()
+            async_results = self._worker_manager.get_ready_results()
 
         # Loop through all fetched worker-computed gradients (if any)
         # and apply them - one by one - to the local worker's model.

@@ -293,7 +293,7 @@ class AlphaStarTrainer(appo.APPOTrainer):
             max_remote_requests_in_flight=self.config[
                 "max_requests_in_flight_per_sampler_worker"
             ],
-            ray_wait_timeout_s=self.config["sample_wait_timeout"]
+            ray_wait_timeout_s=self.config["sample_wait_timeout"],
         )
 
     @override(Trainer)
@@ -316,12 +316,13 @@ class AlphaStarTrainer(appo.APPOTrainer):
             # if there are no remote workers (e.g. num_workers=0)
             if not self.workers.remote_workers():
                 worker = self.workers.local_worker()
-                statistics = worker.apply(self._sample_and_send_to_buffer())
+                statistics = worker.apply(self._sample_and_send_to_buffer)
                 sample_results = {worker: [statistics]}
             else:
-                self._sampling_actor_manager.submit(self._sample_and_send_to_buffer,
-                                                    for_all_workers=True)
-                sample_results = self._sampling_actor_manager.get_ready_requests()
+                self._sampling_actor_manager.submit(
+                    self._sample_and_send_to_buffer, for_all_workers=True
+                )
+                sample_results = self._sampling_actor_manager.get_ready_results()
         # Update sample counters.
         for sample_result in sample_results.values():
             for (env_steps, agent_steps) in sample_result:

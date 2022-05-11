@@ -479,7 +479,7 @@ class ApexTrainer(DQNTrainer):
                 fn_kwargs={"replay_actors": self._replay_actors},
                 for_all_workers=True,
             )
-            num_samples_ready_dict = self._sampling_actor_manager.get_ready_requests()
+            num_samples_ready_dict = self._sampling_actor_manager.get_ready_results()
         return num_samples_ready_dict
 
     def update_workers(self, _num_samples_ready: Dict[ActorHandle, int]) -> int:
@@ -533,7 +533,7 @@ class ApexTrainer(DQNTrainer):
             """Wait for the replay actors to finish sampling for timeout seconds.
             If the timeout is None, then block on the actors indefinitely.
             """
-            _replay_samples_ready = self._replay_actor_manager.get_ready_requests()
+            _replay_samples_ready = self._replay_actor_manager.get_ready_results()
 
             for _replay_actor, _sample_batches in _replay_samples_ready.items():
                 for _sample_batch in _sample_batches:

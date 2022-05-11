@@ -754,7 +754,7 @@ class ImpalaTrainer(Trainer):
             )
             sample_batches: Dict[
                 ActorHandle, List[ObjectRef]
-            ] = self._sampling_actor_manager.get_ready_requests()
+            ] = self._sampling_actor_manager.get_ready_results()
         else:
             # only sampling on the local worker
             sample_batches = {
@@ -837,7 +837,7 @@ class ImpalaTrainer(Trainer):
 
         waiting_processed_sample_batches: Dict[
             ActorHandle, List[ObjectRef]
-        ] = self._replay_actor_manager.get_ready_requests()
+        ] = self._replay_actor_manager.get_ready_results()
         for ready_sub_batches in waiting_processed_sample_batches.values():
             ready_processed_batches.extend(ready_sub_batches)
 

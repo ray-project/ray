@@ -1,4 +1,5 @@
 import logging
+import random
 from collections import defaultdict
 from queue import Queue
 from typing import Any, Callable, DefaultDict, Dict, List, Optional, Set
@@ -199,7 +200,7 @@ class AsyncRequestsManager:
             be queued.
         ray_wait_timeout_s: The maximum amount of time to wait for inflight requests
             to be done and ready when calling
-            AsyncRequestsManager.get_ready_requests().
+            AsyncRequestsManager.get_ready_results().
 
     Example:
         >>> import time
@@ -220,11 +221,11 @@ class AsyncRequestsManager:
         >>> manager = AsyncRequestsManager(workers,
         ...                                max_remote_requests_in_flight_per_actor=2)
         >>> manager.submit(lambda worker, a, b: worker.task(a, b), fn_args=[1, 2])
-        >>> print(manager.get_ready_requests())
+        >>> print(manager.get_ready_results())
         >>> manager.submit(lambda worker, a, b: worker.task(a, b),
         ...                fn_kwargs={"a": 1, "b": 2})
         >>> time.sleep(2) # Wait for the tasks to finish.
-        >>> print(manager.get_ready_requests())
+        >>> print(manager.get_ready_results())
     """
 
     def __init__(
@@ -238,62 +239,101 @@ class AsyncRequestsManager:
         self._return_object_refs = return_object_refs
         self._max_remote_requests_in_flight = max_remote_requests_in_flight
         self._all_workers = set(workers)
-        self._num_workers = len(workers)
-        self._available_workers = workers.copy()
-        self._available_workers_set = set(self._available_workers)
-        self._unavailable_workers = set()
-        self._remote_requests_in_flight = defaultdict(set)
         self._pending_to_actor = {}
-        self._call_queue = Queue(maxsize=0)
         self._pending_remotes = []
+        self._remote_requests_in_flight = defaultdict(set)
+        self._call_queue = defaultdict(lambda: Queue(maxsize=0))
 
     def submit(
         self,
         remote_fn: Callable,
         *,
+        actor: ActorHandle = None,
         fn_args: List[Any] = None,
         fn_kwargs: Dict[str, Any] = None,
         for_all_workers: bool = False,
     ) -> None:
-        """Submit a remote function call schedule on available workers.
+        """Submit a remote function call schedule on available workers or on actor
+            if actor is specified.
 
         Args:
             remote_fn: The remote function to call
+            actor:
             fn_args: The arguments to pass to the remote function
             fn_kwargs: The keyword arguments to pass to the remote function
-            for_all_workers: If True, submit this request to the queue for as many
-                number of workers that there are. If False, submit the request without
-                replicating it.
+            for_all_workers: If True, submit this request to all of the actors.
+        Raises:
+            ValueError: If actor has not been added to the manager.
+            ValueError: If actor and for_all_workers are both specified.
+            ValueError: If there are no actors available to submit a request to.
 
         """
+        if actor and for_all_workers:
+            raise ValueError(
+                "Cannot specify actor and for_all_workers at the same time."
+            )
         if fn_args is None:
             fn_args = []
         if fn_kwargs is None:
             fn_kwargs = {}
         call = (remote_fn, fn_args, fn_kwargs)
-        if for_all_workers:
-            for _ in range(self._num_workers):
-                self._call_queue.put(call)
-        else:
-            self._call_queue.put(call)
+        if actor:
+            if actor not in self._all_workers:
+                raise ValueError(
+                    f"Actor {actor} has not been added to the manager."
+                    f" You must call manager.add_worker(actor) first "
+                    f"before submitting requests to actor."
+                )
+            self._call_queue[actor].put(call)
+        elif for_all_workers:
+            for actor in self._all_workers:
+                self._call_queue[actor].put(call)
+        else:  # Submit to a random worker.
+            if len(self._all_workers) == 0:
+                raise ValueError("No workers available to submit request.")
+            elif len(self._all_workers) == 1:
+                actor = list(self._all_workers)[0]
+            else:
+                # load balance by getting 2 random actors and then placing the call
+                # on the actor with the least number of inflight requests. If max
+                # inflight requests is reached, place the call on the actor with the
+                # smaller queue
+                [a1, a2] = random.sample(self._all_workers, 2)
+                num_inflight_req_a1 = len(self._remote_requests_in_flight[a1])
+                num_inflight_req_a2 = len(self._remote_requests_in_flight[a2])
+                if num_inflight_req_a1 < num_inflight_req_a2:
+                    actor = a1
+                elif num_inflight_req_a1 > num_inflight_req_a2:
+                    actor = a2
+                else:
+                    if self._call_queue[a1].qsize() < self._call_queue[a2].qsize():
+                        actor = a1
+                    else:
+                        actor = a2
+            self._call_queue[actor].put(call)
+
         self._run()
 
     def _run(self) -> int:
-        """Run submitted requests on available workers"""
+        """Launch the submited requests remotely on workers that don't have more
+        than max_inflight_requests in flight.
+        """
         num_requests_launched = 0
-        available_actor = self._get_available_actor()
-        while available_actor and self._call_queue.qsize() > 0:
-            remote_fn, fn_args, fn_kwargs = self._call_queue.get()
-            req = available_actor.apply.remote(remote_fn, *fn_args, **fn_kwargs)
-            self._remote_requests_in_flight[available_actor].add(req)
-            self._pending_remotes.append(req)
-            self._pending_to_actor[req] = available_actor
-            available_actor = self._get_available_actor()
-            num_requests_launched += 1
+        for actor, q in self._call_queue.items():
+            while (
+                len(self._remote_requests_in_flight[actor])
+                < self._max_remote_requests_in_flight
+            ) and q.qsize() > 0:
+                remote_fn, fn_args, fn_kwargs = q.get()
+                req = actor.apply.remote(remote_fn, *fn_args, **fn_kwargs)
+                self._remote_requests_in_flight[actor].add(req)
+                self._pending_to_actor[req] = actor
+                self._pending_remotes.append(req)
+                num_requests_launched += 1
         return num_requests_launched
 
-    def get_ready_requests(self) -> Dict[ActorHandle, List[Any]]:
-        """Get requests that are ready to be returned
+    def get_ready_results(self) -> Dict[ActorHandle, List[Any]]:
+        """Get results that are ready to be returned
 
         Returns:
             A dictionary of actor handles to lists of returns from tasks that were
@@ -304,7 +344,7 @@ class AsyncRequestsManager:
         ready_requests_dict = defaultdict(list)
         ready_requests, self._pending_remotes = ray.wait(
             self._pending_remotes,
-            timeout=self._ray_wait_timeout_s,
+            timeout=0,
             num_returns=len(self._pending_remotes),
         )
         if not self._return_object_refs:
@@ -315,36 +355,10 @@ class AsyncRequestsManager:
             actor = self._pending_to_actor[req]
             self._remote_requests_in_flight[actor].remove(req)
             ready_requests_dict[actor].append(obj)
-            if actor in self._unavailable_workers:
-                self._available_workers.append(actor)
-                self._available_workers_set.add(actor)
-                self._unavailable_workers.remove(actor)
             del self._pending_to_actor[req]
         del ready_requests
         self._run()
         return dict(ready_requests_dict)
-
-    def _get_available_actor(self) -> Optional[ActorHandle]:
-        """Get an available actor to run a remote request"""
-        available_actor = (
-            self._available_workers[0] if self._available_workers else None
-        )
-        while available_actor:
-            if (
-                len(self._remote_requests_in_flight[available_actor])
-                >= self._max_remote_requests_in_flight
-            ):
-                self._unavailable_workers.add(available_actor)
-                self._available_workers_set.remove(available_actor)
-                self._available_workers.pop(0)
-                available_actor = (
-                    self._available_workers[0] if self._available_workers else None
-                )
-            else:
-                available_actor = self._available_workers.pop(0)
-                self._available_workers.append(available_actor)
-                return available_actor
-        return None
 
     def add_worker(self, new_worker: ActorHandle) -> None:
         """Add a new worker to the manager
@@ -355,11 +369,7 @@ class AsyncRequestsManager:
         """
         if new_worker in self._all_workers:
             return
-        self._available_workers.append(new_worker)
-        self._available_workers_set.add(new_worker)
         self._all_workers.add(new_worker)
-        self._num_workers += 1
-        self._run()
 
     def remove_worker(self, worker: ActorHandle) -> None:
         """Remove a worker from the manager
@@ -370,23 +380,16 @@ class AsyncRequestsManager:
         if worker not in self._all_workers:
             return
         self._all_workers.remove(worker)
-        self._num_workers -= 1
-        if worker in self._available_workers_set:
-            self._available_workers_set.remove(worker)
-            self._available_workers.remote(worker)
-        if worker in self._unavailable_workers:
-            self._unavailable_workers.remove(worker)
-            if worker in self._remote_requests_in_flight:
-                for req in self._remote_requests_in_flight[worker]:
-                    # can't cancel inflight actor requests so instead block till
-                    # they are done
-                    ray.get(req)
-                    self._pending_remotes.remove(req)
-                    del self._pending_to_actor[req]
-                    del req
-                del self._remote_requests_in_flight[worker]
-
-
+        if worker in self._remote_requests_in_flight:
+            for req in self._remote_requests_in_flight[worker]:
+                # can't cancel inflight actor requests so instead block till
+                # they are done
+                ray.get(req)
+                self._pending_remotes.remove(req)
+                del self._pending_to_actor[req]
+                del req
+            del self._remote_requests_in_flight[worker]
+            del self._call_queue[worker]
 
     def get_manager_statistics(self) -> Dict[str, Any]:
         """Get statistics about the the manager
@@ -398,9 +401,10 @@ class AsyncRequestsManager:
         Returns:
             A dictionary of statistics about the manager.
         """
-
+        num_requests_to_be_scheduled = sum(
+            len(self._call_queue[worker].qsize()) for worker in self._call_queue
+        )
         return {
-            "num_available_workers": len(self._available_workers),
             "num_pending_inflight_requests": len(self._pending_remotes),
-            "num_requests_to_be_scheduled": len(self._call_queue.qsize()),
+            "num_requests_to_be_scheduled": num_requests_to_be_scheduled,
         }

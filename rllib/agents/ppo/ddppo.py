@@ -28,10 +28,7 @@ from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.common import (
     STEPS_TRAINED_THIS_ITER_COUNTER,
 )
-from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.parallel_requests import AsyncRequestsManager
-from ray.rllib.execution.rollout_ops import ParallelRollouts
-from ray.rllib.evaluation.rollout_worker import get_global_worker
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
     LEARN_ON_BATCH_TIMER,
@@ -235,7 +232,7 @@ class DDPPOTrainer(PPOTrainer):
         self._ddppo_worker_manager.submit(
             self._sample_and_train_torch_distributed, for_all_workers=True
         )
-        sample_and_update_results = self._ddppo_worker_manager.get_ready_requests()
+        sample_and_update_results = self._ddppo_worker_manager.get_ready_results()
 
         # For all results collected:
         # - Update our counters and timers.
