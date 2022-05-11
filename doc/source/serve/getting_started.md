@@ -380,13 +380,14 @@ $ python fastapi_client.py
 ```
 
 Congratulations! You just built and deployed a machine learning model on Ray
-Serve! You should now have enough context to dive into the {doc}`core-apis` to
-get a deeper understanding of Ray Serve.
+Serve!
 
-To learn more about how to start a multi-node cluster for your Ray Serve
-deployments, see {ref}`serve-deploy-tutorial`. For more interesting example
-applications, including integrations with popular machine learning frameworks
-and Python web servers, be sure to check out {doc}`tutorials/index`.
+
+## Next Steps
+
+- Dive into the {doc}`core-apis` to get a deeper understanding of Ray Serve.
+- Learn more about how to deploy your Ray Serve application to a multi-node cluster: {ref}`serve-deploy-tutorial`.
+- Check more in-depth tutorials for popular machine learning frameworks: {doc}`tutorials/index`.
 
 ```{rubric} Footnotes
 ```
