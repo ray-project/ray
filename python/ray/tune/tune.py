@@ -624,8 +624,12 @@ def run(
             "from your scheduler or from your call to `tune.run()`"
         )
 
+    progress_metrics = detect_progress_metrics(run_or_experiment)
+
     # Create syncer callbacks
-    callbacks = create_default_callbacks(callbacks, sync_config, metric=metric)
+    callbacks = create_default_callbacks(
+        callbacks, sync_config, metric=metric, progress_metrics=progress_metrics
+    )
 
     runner = TrialRunner(
         search_alg=search_alg,
