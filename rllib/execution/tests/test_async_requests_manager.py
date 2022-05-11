@@ -112,7 +112,9 @@ class TestAsyncRequestsManager(unittest.TestCase):
         """Tests that the async manager can properly add and remove actors"""
 
         workers = []
-        manager = AsyncRequestsManager(workers, max_remote_requests_in_flight_per_worker=2)
+        manager = AsyncRequestsManager(
+            workers, max_remote_requests_in_flight_per_worker=2
+        )
         if not (
             (
                 len(manager._all_workers)
