@@ -1,15 +1,13 @@
 from typing import Optional, List, Union
-import os
 import numpy as np
 import pandas as pd
 
 import lightgbm
 
-import ray.cloudpickle as cpickle
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.predictor import Predictor, DataBatchType
 from ray.ml.preprocessor import Preprocessor
-from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY
+from ray.ml.train.integrations.lightgbm import load_checkpoint
 
 
 class LightGBMPredictor(Predictor):
@@ -39,15 +37,7 @@ class LightGBMPredictor(Predictor):
                 ``LightGBMTrainer`` run.
 
         """
-        with checkpoint.as_directory() as path:
-            bst = lightgbm.Booster(model_file=os.path.join(path, MODEL_KEY))
-            preprocessor_path = os.path.join(path, PREPROCESSOR_KEY)
-            if os.path.exists(preprocessor_path):
-                with open(preprocessor_path, "rb") as f:
-                    preprocessor = cpickle.load(f)
-            else:
-                preprocessor = None
-
+        bst, preprocessor = load_checkpoint(checkpoint)
         return LightGBMPredictor(model=bst, preprocessor=preprocessor)
 
     def predict(

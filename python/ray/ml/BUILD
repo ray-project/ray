@@ -21,6 +21,33 @@ py_test(
     args = ["--use-gpu", "--num-workers=2", "--epochs=1", "--dataset=fake"]
 )
 
+py_test(
+    name = "horovod_cifar_pbt_example",
+    size = "medium",
+    srcs = ["examples/horovod/horovod_cifar_pbt_example.py"],
+    tags = ["team:ml", "exlusive"],
+    deps = [":ml_lib"],
+    args = ["--smoke-test"]
+)
+
+py_test(
+    name = "horovod_pytorch_example",
+    size = "medium",
+    srcs = ["examples/horovod/horovod_pytorch_example.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"],
+    args = ["--num-epochs=1"]
+)
+
+py_test(
+    name = "horovod_tune_example",
+    size = "medium",
+    srcs = ["examples/horovod/horovod_tune_example.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"],
+    args = ["--smoke-test"]
+)
+
 py_test (
     name = "huggingface_basic_language_modeling_example",
     size = "medium",

@@ -57,7 +57,7 @@ logger = logging.getLogger(__name__)
 
 
 class ImpalaConfig(TrainerConfig):
-    """Defines an ARSTrainer configuration class from which an ImpalaTrainer can be built.
+    """Defines a configuration class from which an ImpalaTrainer can be built.
 
     Example:
         >>> from ray.rllib.agents.impala import ImpalaConfig
@@ -137,7 +137,6 @@ class ImpalaConfig(TrainerConfig):
         # fmt: on
 
         # Deprecated value.
-        self._disable_execution_plan_api = True
         self.num_data_loader_buffers = DEPRECATED_VALUE
 
     @override(TrainerConfig)

@@ -18,29 +18,6 @@ def disable_aiohttp_cache():
 
 
 @pytest.fixture
-def set_http_proxy():
-    http_proxy = os.environ.get("http_proxy", None)
-    https_proxy = os.environ.get("https_proxy", None)
-
-    # set http proxy
-    os.environ["http_proxy"] = "www.example.com:990"
-    os.environ["https_proxy"] = "www.example.com:990"
-
-    yield
-
-    # reset http proxy
-    if http_proxy:
-        os.environ["http_proxy"] = http_proxy
-    else:
-        del os.environ["http_proxy"]
-
-    if https_proxy:
-        os.environ["https_proxy"] = https_proxy
-    else:
-        del os.environ["https_proxy"]
-
-
-@pytest.fixture
 def small_event_line_limit():
     os.environ["EVENT_READ_LINE_LENGTH_LIMIT"] = "1024"
     yield 1024
