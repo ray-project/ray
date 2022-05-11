@@ -255,6 +255,11 @@ if setup_spec.type == SetupType.RAY:
         "scipy",
     ]
 
+    # Ray AI Runtime should encompass Data, Tune, and Serve.
+    setup_spec.extras["air"] = (
+        setup_spec.extras["tune"] + setup_spec["data"] + setup_spec.extras["serve"]
+    )
+
     setup_spec.extras["all"] = list(
         set(chain.from_iterable(setup_spec.extras.values()))
     )
