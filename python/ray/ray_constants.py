@@ -332,6 +332,14 @@ CALL_STACK_LINE_DELIMITER = " | "
 # NOTE: This is equal to the C++ limit of (RAY_CONFIG::max_grpc_message_size)
 GRPC_CPP_MAX_MESSAGE_SIZE = 100 * 1024 * 1024
 
+# GRPC options
+GRPC_ENABLE_HTTP_PROXY = (
+    1
+    if os.environ.get("RAY_grpc_enable_http_proxy", "0").lower() in ("1", "true")
+    else 0
+)
+GLOBAL_GRPC_OPTIONS = (("grpc.enable_http_proxy", GRPC_ENABLE_HTTP_PROXY),)
+
 # Internal kv namespaces
 KV_NAMESPACE_DASHBOARD = b"dashboard"
 KV_NAMESPACE_SESSION = b"session"
@@ -348,3 +356,5 @@ KV_NAMESPACE_SERVE = b"serve"
 KV_NAMESPACE_FUNCTION_TABLE = b"fun"
 
 LANGUAGE_WORKER_TYPES = ["python", "java", "cpp"]
+
+NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"

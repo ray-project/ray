@@ -159,7 +159,7 @@ def r2d2_loss(policy: Policy, model, _, train_batch: SampleBatch) -> TensorType:
         # Seq-mask all loss-related terms.
         seq_mask = tf.sequence_mask(train_batch[SampleBatch.SEQ_LENS], T)[:, :-1]
         # Mask away also the burn-in sequence at the beginning.
-        burn_in = policy.config["burn_in"]
+        burn_in = policy.config["replay_buffer_config"]["replay_burn_in"]
         # Making sure, this works for both static graph and eager.
         if burn_in > 0:
             seq_mask = tf.cond(
