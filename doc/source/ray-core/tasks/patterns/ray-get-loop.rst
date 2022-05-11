@@ -20,18 +20,18 @@ Code example
     ray.init()
 
     @ray.remote
-    def f():
-        pass
+    def f(i):
+        return i
 
     # Antipattern: no parallelism due to calling ray.get inside of the loop.
     returns = []
-    for _ in range(100):
-        returns.append(ray.get(f.remote()))
+    for i in range(100):
+        returns.append(ray.get(f.remote(i)))
 
     # Better approach: parallelism because the tasks are spawned in parallel.
     refs = []
-    for _ in range(100):
-        refs.append(f.remote())
+    for i in range(100):
+        refs.append(f.remote(i))
 
     returns = ray.get(refs)
 
