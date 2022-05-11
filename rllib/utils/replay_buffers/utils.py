@@ -138,7 +138,7 @@ def validate_buffer_config(config: dict):
     if config.get("replay_buffer_config", None) is None:
         config["replay_buffer_config"] = {}
 
-    prioritized_replay = config.get("prioritized_replay")
+    prioritized_replay = config.get("prioritized_replay", DEPRECATED_VALUE)
     if prioritized_replay != DEPRECATED_VALUE:
         deprecation_warning(
             old="config['prioritized_replay'] or config['replay_buffer_config']["

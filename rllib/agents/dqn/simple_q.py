@@ -41,6 +41,7 @@ from ray.rllib.utils.metrics import (
     NUM_TARGET_UPDATES,
     NUM_ENV_STEPS_TRAINED,
 )
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 logger = logging.getLogger(__name__)
 

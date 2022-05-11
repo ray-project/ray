@@ -61,6 +61,7 @@ from ray.rllib.utils.typing import (
 )
 from ray.tune.trainable import Trainable
 from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 # fmt: off
 # __sphinx_doc_begin__
@@ -82,6 +83,8 @@ APEX_DEFAULT_CONFIG = merge_dicts(
         #     DistributedReplayBuffer type is supported.
         "replay_buffer_config": {
             "no_local_replay_buffer": True,
+            # Specify prioritized replay by supplying a buffer type that supports prioritization
+            "prioritized_replay": DEPRECATED_VALUE,
             "type": "MultiAgentPrioritizedReplayBuffer",
             "capacity": 2000000,
             "replay_batch_size": 32,

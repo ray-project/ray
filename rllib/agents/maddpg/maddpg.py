@@ -20,6 +20,7 @@ from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -70,6 +71,8 @@ DEFAULT_CONFIG = with_common_config({
     # === Replay buffer ===
     "replay_buffer_config": {
         "type": "MultiAgentReplayBuffer",
+        # Specify prioritized replay by supplying a buffer type that supports prioritization
+        "prioritized_replay": DEPRECATED_VALUE,
         "capacity": int(1e6),
         # How many steps of the model to sample before learning starts.
         "learning_starts": 1024 * 25,

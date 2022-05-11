@@ -46,6 +46,7 @@ from ray.rllib.execution.common import (
     LAST_TARGET_UPDATE_TS,
     NUM_TARGET_UPDATES,
 )
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +79,8 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         # === Replay buffer ===
         "replay_buffer_config": {
             "type": "MultiAgentPrioritizedReplayBuffer",
+            # Specify prioritized replay by supplying a buffer type that supports prioritization
+            "prioritized_replay": DEPRECATED_VALUE,
             # Size of the replay buffer. Note that if async_updates is set,
             # then each worker will have a replay buffer of this size.
             "capacity": 50000,

@@ -53,6 +53,8 @@ CQL_DEFAULT_CONFIG = merge_dicts(
         "min_q_weight": 5.0,
         "replay_buffer_config": {
             "type": "MultiAgentPrioritizedReplayBuffer",
+            # Specify prioritized replay by supplying a buffer type that supports prioritization
+            "prioritized_replay": DEPRECATED_VALUE,
             # Replay buffer should be larger or equal the size of the offline
             # dataset.
             "capacity": int(1e6),

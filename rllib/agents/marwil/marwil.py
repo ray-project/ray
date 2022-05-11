@@ -27,6 +27,7 @@ from ray.rllib.utils.typing import (
     ResultDict,
     TrainerConfigDict,
 )
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 # fmt: off
 # __sphinx_doc_begin__
@@ -79,6 +80,8 @@ DEFAULT_CONFIG = with_common_config({
         # uniformly from the buffer (`train_batch_size` samples) for
         # each training step.
         "capacity": 10000,
+        # Specify prioritized replay by supplying a buffer type that supports prioritization
+        "prioritized_replay": DEPRECATED_VALUE,
         # Number of steps to read before learning starts.
         "learning_starts": 0,
     },

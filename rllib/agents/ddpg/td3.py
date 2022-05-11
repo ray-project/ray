@@ -6,6 +6,7 @@ TD3 paper.
 from ray.rllib.agents.ddpg.ddpg import DDPGTrainer, DEFAULT_CONFIG as DDPG_CONFIG
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 TD3_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
     DDPG_CONFIG,
@@ -53,6 +54,8 @@ TD3_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
         "use_state_preprocessor": False,
         "replay_buffer_config": {
             "type": "MultiAgentReplayBuffer",
+            # Specify prioritized replay by supplying a buffer type that supports prioritization
+            "prioritized_replay": DEPRECATED_VALUE,
             "capacity": 1000000,
             "learning_starts": 10000,
             "worker_side_prioritization": False,
