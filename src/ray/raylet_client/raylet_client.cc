@@ -346,6 +346,10 @@ void RayletClient::RequestObjectSpillage(
   grpc_client_->RequestObjectSpillage(request, callback);
 }
 
+std::shared_ptr<grpc::Channel> RayletClient::GetChannel() const {
+  return grpc_client_->Channel();
+}
+
 void RayletClient::ReportWorkerBacklog(
     const WorkerID &worker_id,
     const std::vector<rpc::WorkerBacklogReport> &backlog_reports) {
