@@ -3,6 +3,7 @@ import sys
 import ray
 import ray._private.gcs_utils as gcs_utils
 import pytest
+import psutil
 from ray._private.test_utils import (
     generate_system_config_map,
     wait_for_condition,
@@ -228,6 +229,60 @@ def test_del_actor_after_gcs_server_restart(ray_start_regular_with_external_redi
     # name should be properly deleted.
     with pytest.raises(ValueError):
         ray.get_actor("abc")
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular_with_external_redis",
+    [
+        generate_system_config_map(
+            num_heartbeats_timeout=20, gcs_rpc_server_reconnect_timeout_s=60
+        )
+    ],
+    indirect=True,
+)
+def test_raylet_resubscription(ray_start_regular_with_external_redis):
+    # This test is to make sure resubscription in raylet is working.
+    # When subscription failed, raylet will not get worker failure error
+    # and thus, it won't kill the worker which is fate sharing with the failed
+    # one.
+
+    @ray.remote
+    def long_run():
+        from time import sleep
+        print("LONG_RUN")
+        sleep(10000)
+
+    @ray.remote
+    def bar():
+        import os
+        return (os.getpid(),
+                # Use runtime env to make sure task is running in a different
+                # ray worker
+                long_run.options(runtime_env={"env_vars":{"P": ""}}).remote())
+
+    (pid, obj_ref) = ray.get(bar.remote())
+
+    long_run_pid = None
+    def condition():
+        nonlocal long_run_pid
+        for proc in psutil.process_iter():
+            if proc.name() == "ray::long_run()":
+                long_run_pid = proc.pid
+                return True
+        return False
+    wait_for_condition(condition, timeout=5)
+
+    # kill the gcs
+    ray.worker._global_node.kill_gcs_server()
+
+    # then kill the owner
+    p = psutil.Process(pid)
+    p.kill()
+
+    ray.worker._global_node.start_gcs_server()
+
+    # The long_run_pid should exit
+    wait_for_pid_to_exit(long_run_pid, 5)
 
 
 @pytest.mark.parametrize("auto_reconnect", [True, False])
