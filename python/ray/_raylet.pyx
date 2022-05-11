@@ -1772,14 +1772,14 @@ cdef class CoreWorker:
             check_status(CCoreWorkerProcess.GetCoreWorker().KillActor(
                   c_actor_id, True, no_restart))
 
-    def cancel_task(self, ObjectRef object_ref, c_bool force_kill,
+    def cancel_task(self, object_refs, c_bool force_kill,
                     c_bool recursive):
         cdef:
-            CObjectID c_object_id = object_ref.native()
+            c_vector[CObjectID] c_object_ids = ObjectRefsToVector(object_refs)
             CRayStatus status = CRayStatus.OK()
 
-        status = CCoreWorkerProcess.GetCoreWorker().CancelTask(
-                                            c_object_id, force_kill, recursive)
+        status = CCoreWorkerProcess.GetCoreWorker().CancelMultipleTasks(
+                                            c_object_ids, force_kill, recursive)
 
         if not status.ok():
             raise TypeError(status.message().decode())

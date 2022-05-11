@@ -2097,7 +2097,12 @@ def kill(actor: "ray.actor.ActorHandle", *, no_restart: bool = True):
 
 @PublicAPI
 @client_mode_hook(auto_init=True)
-def cancel(object_ref: ray.ObjectRef, *, force: bool = False, recursive: bool = True):
+def cancel(
+    object_refs: Union[ray.ObjectRef, List[ray.ObjectRef]],
+    *,
+    force: bool = False,
+    recursive: bool = True,
+):
     """Cancels a task according to the following conditions.
 
     If the specified task is pending execution, it will not be executed. If
@@ -2125,12 +2130,22 @@ def cancel(object_ref: ray.ObjectRef, *, force: bool = False, recursive: bool = 
     worker = ray.worker.global_worker
     worker.check_connected()
 
-    if not isinstance(object_ref, ray.ObjectRef):
-        raise TypeError(
-            "ray.cancel() only supported for non-actor object refs. "
-            f"Got: {type(object_ref)}."
+    if isinstance(object_refs, ray.ObjectRef):
+        object_refs = [object_refs]
+
+    if not isinstance(object_refs, list):
+        raise ValueError(
+            "'object_refs' must either be an object ref " "or a list of object refs."
         )
-    return worker.core_worker.cancel_task(object_ref, force, recursive)
+
+    for i in range(len(object_refs)):
+        if not isinstance(object_refs[i], ray.ObjectRef):
+            raise TypeError(
+                "ray.cancel() only supported for non-actor object refs. "
+                f"Got object_refs[{i}]: {type(object_refs[i])}."
+            )
+
+    return worker.core_worker.cancel_task(object_refs, force, recursive)
 
 
 def _mode(worker=global_worker):

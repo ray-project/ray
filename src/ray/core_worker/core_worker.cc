@@ -2048,6 +2048,18 @@ Status CoreWorker::CancelTask(const ObjectID &object_id,
   return Status::OK();
 }
 
+Status CoreWorker::CancelMultipleTasks(const std::vector<ObjectID> &object_ids,
+                                       bool force_kill,
+                                       bool recursive) {
+  for (const ObjectID &object_id : object_ids) {
+    Status temp_result = CancelTask(object_id, force_kill, recursive);
+    if (not temp_result.ok()) {
+      return temp_result;
+    }
+  }
+  return Status::OK();
+}
+
 Status CoreWorker::CancelChildren(const TaskID &task_id, bool force_kill) {
   bool recursive_success = true;
   for (const auto &child_id : task_manager_->GetPendingChildrenTasks(task_id)) {
