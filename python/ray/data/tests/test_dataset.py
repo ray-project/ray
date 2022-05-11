@@ -431,6 +431,21 @@ def test_arrow_block_slice_copy_empty():
     assert table2.num_rows == 0
 
 
+def test_range_pandas(ray_start_regular_shared):
+    ds = ray.data.range_pandas(10)
+    pd.testing.assert_frame_equal(
+        ds.to_pandas(),
+        pd.DataFrame({"value": list(range(10))}),
+    )
+
+    ds = ray.data.range_pandas(10, parallelism=2)
+    assert ds.num_blocks() == 2
+    pd.testing.assert_frame_equal(
+        ds.to_pandas(),
+        pd.DataFrame({"value": list(range(10))}),
+    )
+
+
 def test_tensors(ray_start_regular_shared):
     # Create directly.
     ds = ray.data.range_tensor(5, shape=(3, 5))

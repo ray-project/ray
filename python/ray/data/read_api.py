@@ -58,6 +58,7 @@ from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.impl.arrow_block import ArrowRow
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList
+from ray.data.impl.pandas_block import PandasRow
 from ray.data.impl.plan import ExecutionPlan
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.stats import DatasetStats
@@ -156,6 +157,31 @@ def range_arrow(n: int, *, parallelism: int = 200) -> Dataset[ArrowRow]:
     """
     return read_datasource(
         RangeDatasource(), parallelism=parallelism, n=n, block_format="arrow"
+    )
+
+
+@PublicAPI
+def range_pandas(n: int, *, parallelism: int = 200) -> Dataset[PandasRow]:
+    """Create a Pandas dataset from a range of integers [0..n).
+
+    Examples:
+        >>> import ray
+        >>> ds = ray.data.range_pandas(1000) # doctest: +SKIP
+        >>> ds.map(lambda r: {"v2": r["value"] * 2}).show() # doctest: +SKIP
+
+    This is similar to range(), but uses Pandas DataFrames to hold the integers
+    in Pandas records. The dataset elements take the form {"value": N}.
+
+    Args:
+        n: The upper bound of the range of integer records.
+        parallelism: The amount of parallelism to use for the dataset.
+            Parallelism may be limited by the number of items.
+
+    Returns:
+        Dataset holding the integers as Pandas records.
+    """
+    return read_datasource(
+        RangeDatasource(), parallelism=parallelism, n=n, block_format="pandas"
     )
 
 
