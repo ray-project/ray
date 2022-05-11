@@ -145,7 +145,7 @@ class Monitor:
         retry_on_failure: bool = True,
     ):
         gcs_address = address
-        options = (("grpc.enable_http_proxy", 0),)
+        options = ray_constants.GLOBAL_GRPC_OPTIONS
         gcs_channel = ray._private.utils.init_grpc_channel(gcs_address, options)
         # TODO: Use gcs client for this
         self.gcs_node_resources_stub = (

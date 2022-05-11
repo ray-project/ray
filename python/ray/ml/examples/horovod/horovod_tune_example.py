@@ -1,10 +1,13 @@
-import torch
 import numpy as np
+import time
+import torch
 
 import ray
+from ray import train
 from ray import tune
-from ray.tune.integration.horovod import DistributedTrainableCreator
-import time
+from ray.ml.train.integrations.horovod import HorovodTrainer
+from ray.tune.tune_config import TuneConfig
+from ray.tune.tuner import Tuner
 
 
 def sq(x):
@@ -43,7 +46,7 @@ class Net(torch.nn.Module):
             return return_val
 
 
-def train(config):
+def train_loop_per_worker(config):
     import torch
     import horovod.torch as hvd
 
@@ -80,27 +83,28 @@ def train(config):
 
         optimizer.step()
         time.sleep(0.1)
-        tune.report(loss=loss.item())
+        train.report(loss=loss.item())
     total = time.time() - start
     print(f"Took {total:0.3f} s. Avg: {total / num_steps:0.3f} s.")
 
 
 def tune_horovod(num_workers, num_samples, use_gpu, mode="square", x_max=1.0):
-    horovod_trainable = DistributedTrainableCreator(
-        train,
-        use_gpu=use_gpu,
-        num_workers=num_workers,
-        replicate_pem=False,
+    horovod_trainer = HorovodTrainer(
+        train_loop_per_worker=train_loop_per_worker,
+        scaling_config={"num_workers": num_workers, "use_gpu": use_gpu},
+        train_loop_config={"mode": mode, "x_max": x_max},
     )
-    analysis = tune.run(
-        horovod_trainable,
-        metric="loss",
-        mode="min",
-        config={"lr": tune.uniform(0.1, 1), "mode": mode, "x_max": x_max},
-        num_samples=num_samples,
-        fail_fast=True,
+
+    tuner = Tuner(
+        horovod_trainer,
+        param_space={"train_loop_config": {"lr": tune.uniform(0.1, 1)}},
+        tune_config=TuneConfig(mode="min", metric="loss", num_samples=num_samples),
+        _tuner_kwargs={"fail_fast": True},
     )
-    print("Best hyperparameters found were: ", analysis.best_config)
+
+    result_grid = tuner.fit()
+
+    print("Best hyperparameters found were: ", result_grid.get_best_result().config)
 
 
 if __name__ == "__main__":
@@ -129,7 +133,7 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     if args.smoke_test:
-        ray.init(num_cpus=2)
+        ray.init(num_cpus=3)
     elif args.server_address:
         ray.init(f"ray://{args.server_address}")
 

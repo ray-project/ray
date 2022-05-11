@@ -596,37 +596,55 @@ def test_immutable_types():
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_MINIMAL") == "1",
-    reason="This test is not supposed to work for minimal installation.",
+    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == "1",
+    reason="This test is not supposed to work for minimal or default installation.",
 )
-def test_http_proxy(enable_test_module, set_http_proxy, shutdown_only):
-    address_info = ray.init(num_cpus=1, include_dashboard=True)
-    assert wait_until_server_available(address_info["webui_url"]) is True
+def test_http_proxy(enable_test_module, start_http_proxy, shutdown_only):
+    # C++ config `grpc_enable_http_proxy` only initializes once, so we have to
+    # run driver as a separate process to make sure the correct config value
+    # is initialized.
+    script = """
+import ray
+import time
+import requests
+from ray._private.test_utils import (
+    format_web_url,
+    wait_until_server_available,
+)
+import logging
 
-    webui_url = address_info["webui_url"]
-    webui_url = format_web_url(webui_url)
+logger = logging.getLogger(__name__)
 
-    timeout_seconds = 10
-    start_time = time.time()
-    while True:
-        time.sleep(1)
+address_info = ray.init(num_cpus=1, include_dashboard=True)
+assert wait_until_server_available(address_info["webui_url"]) is True
+
+webui_url = address_info["webui_url"]
+webui_url = format_web_url(webui_url)
+
+timeout_seconds = 10
+start_time = time.time()
+while True:
+    time.sleep(1)
+    try:
+        response = requests.get(
+            webui_url + "/test/dump", proxies={"http": None, "https": None}
+        )
+        response.raise_for_status()
         try:
-            response = requests.get(
-                webui_url + "/test/dump", proxies={"http": None, "https": None}
-            )
-            response.raise_for_status()
-            try:
-                response.json()
-                assert response.ok
-            except Exception as ex:
-                logger.info("failed response: %s", response.text)
-                raise ex
-            break
-        except (AssertionError, requests.exceptions.ConnectionError) as e:
-            logger.info("Retry because of %s", e)
-        finally:
-            if time.time() > start_time + timeout_seconds:
-                raise Exception("Timed out while testing.")
+            response.json()
+            assert response.ok
+        except Exception as ex:
+            logger.info("failed response: %s", response.text)
+            raise ex
+        break
+    except (AssertionError, requests.exceptions.ConnectionError) as e:
+        logger.info("Retry because of %s", e)
+    finally:
+        if time.time() > start_time + timeout_seconds:
+            raise Exception("Timed out while testing.")
+"""
+    env = start_http_proxy
+    run_string_as_driver(script, dict(os.environ, **env))
 
 
 @pytest.mark.skipif(
