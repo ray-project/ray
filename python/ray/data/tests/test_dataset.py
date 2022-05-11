@@ -5227,26 +5227,101 @@ def test_actor_pool_strategy_apply_interrupt(shutdown_only):
     wait_for_condition(lambda: (ray.available_resources().get("CPU", 0) == cpus))
 
 
-def test_actor_pool_strategy_default_num_actors(shutdown_only):
+def test_actor_pool_strategy_cpu_ratio_bound(shutdown_only):
+    # Ensure that the pool bound doesn't grow beyond 1.25 x num_cpus.
+
+    # This mapper delay must be long enough relative to actor startup time in order to
+    # trigger the "add new workers" autoscaling loop and hit the CPU ratio bound.
+    ACTOR_STARTUP_DELAY = 1
+
     def f(x):
         import time
 
-        time.sleep(1)
+        time.sleep(ACTOR_STARTUP_DELAY)
         return x
 
     num_cpus = 5
     ray.init(num_cpus=num_cpus)
     compute_strategy = ray.data.ActorPoolStrategy()
-    ray.data.range(10, parallelism=10).map_batches(
-        f, batch_size=1, compute=compute_strategy
+    # Parallelism must be greater than num_cpus * 2, otherwise we will hit the # of
+    # input blocks bound rather than the CPU bound.
+    ray.data.range(100, parallelism=20).map_batches(
+        f,
+        compute=compute_strategy,
+        batch_size=None,
     )
     expected_max_num_workers = math.ceil(
         num_cpus * (1 / compute_strategy.ready_to_total_workers_ratio)
     )
-    assert (
-        compute_strategy.num_workers >= num_cpus
-        and compute_strategy.num_workers <= expected_max_num_workers
-    ), "Number of actors is out of the expected bound"
+    assert compute_strategy.max_num_workers >= num_cpus
+    assert compute_strategy.max_num_workers <= expected_max_num_workers
+
+
+def test_actor_pool_strategy_in_blocks_bound(shutdown_only):
+    # Ensure # of input blocks constrains actor pool size.
+
+    # This mapper delay must be long enough relative to actor startup time in order to
+    # trigger the "add new workers" autoscaling loop and hit the input blocks bound.
+    ACTOR_STARTUP_DELAY = 2
+
+    def f(x):
+        import time
+
+        time.sleep(ACTOR_STARTUP_DELAY)
+        return x
+
+    num_cpus = 10
+    ray.init(num_cpus=num_cpus)
+    compute_strategy = ray.data.ActorPoolStrategy()
+    num_blocks = 8
+    ray.data.range(100, parallelism=num_blocks).map_batches(
+        f,
+        compute=compute_strategy,
+        batch_size=None,
+    )
+    # Default of 2 tasks in flight per actor.
+    expected_max_num_workers = num_blocks // 2
+    assert compute_strategy.max_num_workers <= expected_max_num_workers
+
+    # Test that (1) max size is truncated to # of input blocks bound, and (2) that the
+    # number of in flight tasks per actor affects said bound.
+    max_tasks_in_flight_per_actor = 4
+    compute_strategy = ray.data.ActorPoolStrategy(
+        max_size=20,
+        max_tasks_in_flight_per_actor=max_tasks_in_flight_per_actor,
+    )
+    num_blocks = 8
+    ray.data.range(100, parallelism=num_blocks).map_batches(
+        f,
+        compute=compute_strategy,
+        batch_size=None,
+    )
+    expected_max_num_workers = num_blocks // max_tasks_in_flight_per_actor
+    assert compute_strategy.max_num_workers <= expected_max_num_workers
+
+    # Test that min size is truncated to # of input blocks bound.
+    compute_strategy = ray.data.ActorPoolStrategy(min_size=8)
+    num_blocks = 8
+    ray.data.range(100, parallelism=8).map_batches(
+        f,
+        compute=compute_strategy,
+        batch_size=None,
+    )
+    expected_max_num_workers = num_blocks // 2
+    assert compute_strategy.max_num_workers <= expected_max_num_workers
+
+
+def test_actor_pool_strategy_single_block_liveness(shutdown_only):
+    # Ensure liveness for a single block dataset (i.e. that the # of input blocks bound
+    # bottoms out at 1 actor).
+    ray.init(num_cpus=1)
+    compute_strategy = ray.data.ActorPoolStrategy()
+    ray.data.range(100, parallelism=1).map_batches(
+        lambda x: x,
+        compute=compute_strategy,
+        batch_size=None,
+    )
+    assert compute_strategy.max_num_workers == 1
 
 
 def test_default_batch_format(shutdown_only):

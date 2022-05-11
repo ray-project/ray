@@ -196,8 +196,12 @@ class ActorPoolStrategy(ComputeStrategy):
         """Construct ActorPoolStrategy for a Dataset transform.
 
         Args:
-            min_size: The minimize size of the actor pool.
-            max_size: The maximum size of the actor pool.
+            min_size: The minimum size of the actor pool. The actor pool size is also
+                bounded from above by the number of blocks being transformed, which
+                takes precedence over min_size if smaller.
+            max_size: The maximum size of the actor pool. The actor pool size is also
+                bounded from above by the number of blocks being transformed, which
+                takes precedence over max_size if smaller.
             max_tasks_in_flight_per_actor: The maximum number of tasks to concurrently
                 send to a single actor worker. Increasing this will increase
                 opportunities for pipelining task dependency prefetching with
@@ -216,7 +220,8 @@ class ActorPoolStrategy(ComputeStrategy):
         self.min_size = min_size
         self.max_size = max_size or float("inf")
         self.max_tasks_in_flight_per_actor = max_tasks_in_flight_per_actor
-        self.num_workers = 0
+        # High water mark for the pool.
+        self.max_num_workers = 0
         self.ready_to_total_workers_ratio = 0.8
 
     def _apply(
@@ -262,6 +267,12 @@ class ActorPoolStrategy(ComputeStrategy):
             block_list.clear()
 
         orig_num_blocks = len(block_bundles)
+        # Bound actor pool size by maximum parallel map task submission, which is
+        # equivalent to the number of input blocks adjusted for the max concurrently
+        # submitted in-flight tasks per worker.
+        pool_upper_bound = max(orig_num_blocks // self.max_tasks_in_flight_per_actor, 1)
+        max_size = min(pool_upper_bound, self.max_size)
+        min_size = min(pool_upper_bound, self.min_size)
         results = []
         name = name.title()
         map_bar = ProgressBar(name, total=orig_num_blocks)
@@ -328,12 +339,12 @@ class ActorPoolStrategy(ComputeStrategy):
             else:
                 remote_args["scheduling_strategy"] = ctx.scheduling_strategy
 
-        BlockWorker = ray.remote(**remote_args)(BlockWorker)
-
-        workers = [
+        BlockWorker = ray.remote(BlockWorker).options(**remote_args)
+        workers = {
             BlockWorker.remote(*fn_constructor_args, **fn_constructor_kwargs)
-            for _ in range(self.min_size)
-        ]
+            for _ in range(min_size)
+        }
+        self.max_num_workers = len(workers)
         tasks = {w.ready.remote(): w for w in workers}
         tasks_in_flight = collections.defaultdict(int)
         metadata_mapping = {}
@@ -346,16 +357,40 @@ class ActorPoolStrategy(ComputeStrategy):
                     list(tasks.keys()), timeout=0.01, num_returns=1, fetch_local=False
                 )
                 if not ready:
+                    # Only create a new worker if:
                     if (
-                        len(workers) < self.max_size
+                        # 1. The actor pool size does not exceed the configured max
+                        # size.
+                        len(workers) < max_size
+                        # 2. At least 80% of the workers in the pool have already
+                        # started. This will ensure that workers will be launched in
+                        # parallel while bounding the worker pool to requesting 125% of
+                        # the cluster's available resources. The excess workers will be
+                        # scaled down by the policy given at the end of this autoscaling
+                        # loop.
                         and len(ready_workers) / len(workers)
                         > self.ready_to_total_workers_ratio
+                        # 3. There will be work for the new worker to do. Specifically,
+                        # whether there are not enough (still-initializing) workers
+                        # to transform the remaining blocks in the queue in parallel,
+                        # adjusted for the number of tasks we try to concurrently send
+                        # to each worker.
+                        # NOTE: This bound assumes that the existing workers won't
+                        # process any of the remaining blocks, and therefore may cause
+                        # us to over-allocate workers, but we'd rather spin up a few
+                        # unnecessary workers than risk blocking the work queue.
+                        and (
+                            len(workers) - len(ready_workers)
+                            < len(block_bundles) // self.max_tasks_in_flight_per_actor
+                        )
                     ):
                         w = BlockWorker.remote(
                             *fn_constructor_args, **fn_constructor_kwargs
                         )
-                        workers.append(w)
                         tasks[w.ready.remote()] = w
+                        workers.add(w)
+                        # Update pool's high water mark.
+                        self.max_num_workers = max(len(workers), self.max_num_workers)
                         map_bar.set_description(
                             "Map Progress ({} actors {} pending)".format(
                                 len(ready_workers), len(workers) - len(ready_workers)
@@ -397,8 +432,50 @@ class ActorPoolStrategy(ComputeStrategy):
                     block_indices[ref] = len(block_bundles)
                     tasks_in_flight[worker] += 1
 
+                # Try to scale down if there's no more work to do and pending/idle
+                # workers.
+                if not block_bundles:
+                    should_update = False
+                    if tasks_in_flight[worker] == 0:
+                        should_update = True
+                        # No more work to do and worker is idle, so we terminate the
+                        # worker.
+                        ready_workers.remove(worker)
+                        workers.remove(worker)
+                        # Explicitly terminate the actor to expedite cleanup.
+                        ray.kill(worker)
+                    # Terminate all pending workers, since we now know that they will
+                    # have no work to do. We try to eagerly terminate these pending
+                    # workers in order to:
+                    #  1. Free up resources they would otherwise acquire.
+                    #  2. Decrease Ray's scheduling load.
+                    #  3. Account for resource-bounded case where the actors will never
+                    #  be scheduled, in which case the actor creation will always be
+                    #  pending util the pool is destroyed.
+                    workers_to_terminate = workers - ready_workers
+                    if workers_to_terminate:
+                        # NOTE: This will run at most once in a pool's lifetime.
+                        should_update = True
+                        workers_to_ready_tasks = {}
+                        for task, worker in tasks.items():
+                            if worker in workers_to_terminate:
+                                # Worker is pending and should therefore only have a
+                                # single "ready" task in the task map.
+                                assert worker not in workers_to_ready_tasks
+                                workers_to_ready_tasks[worker] = task
+                        for worker_ in workers_to_terminate:
+                            workers.remove(worker_)
+                            del tasks[workers_to_ready_tasks[worker_]]
+                            # Explicitly terminate the actor to expedite cleanup.
+                            ray.kill(worker_)
+                    if should_update:
+                        map_bar.set_description(
+                            "Map Progress ({} actors {} pending)".format(
+                                len(ready_workers), len(workers) - len(ready_workers)
+                            )
+                        )
+
             map_bar.close()
-            self.num_workers += len(workers)
             new_blocks, new_metadata = [], []
             # Put blocks in input order.
             results.sort(key=block_indices.get)
