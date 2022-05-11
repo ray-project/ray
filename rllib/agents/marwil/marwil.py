@@ -2,7 +2,10 @@ from typing import Type
 
 from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.agents.marwil.marwil_tf_policy import MARWILTFPolicy
-from ray.rllib.execution.buffers.multi_agent_replay_buffer import MultiAgentReplayBuffer
+from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import (
+    MultiAgentReplayBuffer,
+)
+from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
@@ -101,6 +104,8 @@ class MARWILTrainer(Trainer):
         # Call super's validation method.
         super().validate_config(config)
 
+        validate_buffer_config(config)
+
         if config["num_gpus"] > 1:
             raise ValueError("`num_gpus` > 1 not yet supported for MARWIL!")
 
@@ -142,10 +147,10 @@ class MARWILTrainer(Trainer):
         self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
         self._counters[NUM_ENV_STEPS_SAMPLED] += batch.env_steps()
         # Add batch to replay buffer.
-        self.local_replay_buffer.add_batch(batch)
+        self.local_replay_buffer.add(batch)
 
         # Pull batch from replay buffer and train on it.
-        train_batch = self.local_replay_buffer.replay()
+        train_batch = self.local_replay_buffer.sample(self.config["train_batch_size"])
         # Train.
         if self.config["simple_optimizer"]:
             train_results = train_one_step(self, train_batch)
