@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <gtest/gtest_prod.h>
+
 #include "absl/container/flat_hash_map.h"
 #include "ray/core_worker/actor_creator.h"
 #include "ray/core_worker/actor_handle.h"
@@ -216,6 +218,9 @@ class ActorManager {
   absl::flat_hash_map<ActorID, bool> subscribed_actors_;
   /// Protects access `subscribed_actors_`.
   mutable absl::Mutex subscription_mutex_;
+
+  FRIEND_TEST(ActorManagerTest, TestNamedActorIsKilledAfterSubscribeFinished);
+  FRIEND_TEST(ActorManagerTest, TestNamedActorIsKilledBeforeSubscribeFinished);
 };
 
 }  // namespace core
