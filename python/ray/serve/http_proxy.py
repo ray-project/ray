@@ -1,5 +1,6 @@
 import asyncio
 from asyncio.tasks import FIRST_COMPLETED
+import os
 import logging
 import pickle
 import socket
@@ -21,6 +22,7 @@ from ray.serve.http_util import (
     RawASGIResponse,
     receive_http_body,
     Response,
+    set_socket_reuse_port,
 )
 from ray.serve.common import EndpointInfo, EndpointTag
 from ray.serve.constants import SERVE_LOGGER_NAME
@@ -32,6 +34,9 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 MAX_REPLICA_FAILURE_RETRIES = 10
 DISCONNECT_ERROR_CODE = "disconnection"
+SOCKET_REUSE_PORT_ENABLED = (
+    os.environ.get("SERVE_SOCKET_REUSE_PORT_ENABLED", "1") == "1"
+)
 
 
 async def _send_request_to_handle(handle, scope, receive, send) -> str:
@@ -384,13 +389,8 @@ class HTTPProxyActor:
 
     async def run(self):
         sock = socket.socket()
-        # These two socket options will allow multiple process to bind the the
-        # same port. Kernel will evenly load balance among the port listeners.
-        # Note: this will only work on Linux.
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        if hasattr(socket, "SO_REUSEPORT"):
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-
+        if SOCKET_REUSE_PORT_ENABLED:
+            set_socket_reuse_port(sock)
         try:
             sock.bind((self.host, self.port))
         except OSError:

@@ -905,10 +905,10 @@ Status CoreWorker::PutInLocalPlasmaStore(const RayObject &object,
     if (pin_object) {
       // Tell the raylet to pin the object **after** it is created.
       RAY_LOG(DEBUG) << "Pinning put object " << object_id;
-      local_raylet_client_->PinObjectIDs(
+      local_raylet_client_->PinObjectID(
           rpc_address_,
           object_id,
-          [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
+          [this, object_id](const Status &status, const rpc::PinObjectIDReply &reply) {
             if (!status.ok()) {
               RAY_LOG(INFO) << "Failed to pin existing copy of the object " << object_id
                             << ". This object may get evicted while there are still "
@@ -1065,10 +1065,10 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
   if (pin_object) {
     // Tell the raylet to pin the object **after** it is created.
     RAY_LOG(DEBUG) << "Pinning sealed object " << object_id;
-    local_raylet_client_->PinObjectIDs(
+    local_raylet_client_->PinObjectID(
         owner_address != nullptr ? *owner_address : rpc_address_,
         object_id,
-        [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
+        [this, object_id](const Status &status, const rpc::PinObjectIDReply &reply) {
           if (!status.ok()) {
             RAY_LOG(INFO) << "Failed to pin existing copy of the object " << object_id
                           << ". This object may get evicted while there are still "
@@ -2465,11 +2465,11 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
     // Asynchronously ask the raylet to pin the object. Note that this can fail
     // if the raylet fails. We expect the owner of the object to handle that
     // case (e.g., by detecting the raylet failure and storing an error).
-    local_raylet_client_->PinObjectIDs(
+    local_raylet_client_->PinObjectID(
         owner_address,
         return_id,
         [return_id, pinned_return_object](const Status &status,
-                                          const rpc::PinObjectIDsReply &reply) {
+                                          const rpc::PinObjectIDReply &reply) {
           if (!status.ok()) {
             RAY_LOG(INFO) << "Failed to pin existing copy of the task return object "
                           << return_id

@@ -45,24 +45,61 @@ namespace rpc {
     INVOKE_RPC_CALL(SERVICE, METHOD, request, callback, rpc_client, method_timeout_ms); \
   }
 
+inline std::shared_ptr<grpc::Channel> BuildChannel(
+    const std::string &address,
+    int port,
+    std::optional<grpc::ChannelArguments> arguments = std::nullopt) {
+  if (!arguments.has_value()) {
+    arguments = grpc::ChannelArguments();
+    arguments->SetInt(GRPC_ARG_ENABLE_HTTP_PROXY,
+                      ::RayConfig::instance().grpc_enable_http_proxy() ? 1 : 0);
+    arguments->SetMaxSendMessageSize(::RayConfig::instance().max_grpc_message_size());
+    arguments->SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
+  }
+
+  std::shared_ptr<grpc::Channel> channel;
+  if (::RayConfig::instance().USE_TLS()) {
+    std::string server_cert_file = std::string(::RayConfig::instance().TLS_SERVER_CERT());
+    std::string server_key_file = std::string(::RayConfig::instance().TLS_SERVER_KEY());
+    std::string root_cert_file = std::string(::RayConfig::instance().TLS_CA_CERT());
+    std::string server_cert_chain = ReadCert(server_cert_file);
+    std::string private_key = ReadCert(server_key_file);
+    std::string cacert = ReadCert(root_cert_file);
+
+    grpc::SslCredentialsOptions ssl_opts;
+    ssl_opts.pem_root_certs = cacert;
+    ssl_opts.pem_private_key = private_key;
+    ssl_opts.pem_cert_chain = server_cert_chain;
+    auto ssl_creds = grpc::SslCredentials(ssl_opts);
+    channel = grpc::CreateCustomChannel(
+        address + ":" + std::to_string(port), ssl_creds, *arguments);
+  } else {
+    channel = grpc::CreateCustomChannel(address + ":" + std::to_string(port),
+                                        grpc::InsecureChannelCredentials(),
+                                        *arguments);
+  }
+  return channel;
+}
+
 template <class GrpcService>
 class GrpcClient {
  public:
+  GrpcClient(std::shared_ptr<grpc::Channel> channel,
+             ClientCallManager &call_manager,
+             bool use_tls = false)
+      : client_call_manager_(call_manager), use_tls_(use_tls) {
+    channel_ = std::move(channel);
+    stub_ = GrpcService::NewStub(channel_);
+  }
+
   GrpcClient(const std::string &address,
              const int port,
              ClientCallManager &call_manager,
              bool use_tls = false)
       : client_call_manager_(call_manager), use_tls_(use_tls) {
-    grpc::ChannelArguments argument;
-    // Disable http proxy since it disrupts local connections. TODO(ekl) we should make
-    // this configurable, or selectively set it for known local connections only.
-    argument.SetInt(GRPC_ARG_ENABLE_HTTP_PROXY, 0);
-    argument.SetMaxSendMessageSize(::RayConfig::instance().max_grpc_message_size());
-    argument.SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
-
-    std::shared_ptr<grpc::Channel> channel = BuildChannel(argument, address, port);
-
-    stub_ = GrpcService::NewStub(channel);
+    std::shared_ptr<grpc::Channel> channel = BuildChannel(address, port);
+    channel_ = BuildChannel(address, port);
+    stub_ = GrpcService::NewStub(channel_);
   }
 
   GrpcClient(const std::string &address,
@@ -75,13 +112,13 @@ class GrpcClient {
     quota.SetMaxThreads(num_threads);
     grpc::ChannelArguments argument;
     argument.SetResourceQuota(quota);
-    argument.SetInt(GRPC_ARG_ENABLE_HTTP_PROXY, 0);
+    argument.SetInt(GRPC_ARG_ENABLE_HTTP_PROXY,
+                    ::RayConfig::instance().grpc_enable_http_proxy() ? 1 : 0);
     argument.SetMaxSendMessageSize(::RayConfig::instance().max_grpc_message_size());
     argument.SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
 
-    std::shared_ptr<grpc::Channel> channel = BuildChannel(argument, address, port);
-
-    stub_ = GrpcService::NewStub(channel);
+    channel_ = BuildChannel(address, port, argument);
+    stub_ = GrpcService::NewStub(channel_);
   }
 
   /// Create a new `ClientCall` and send request.
@@ -115,40 +152,16 @@ class GrpcClient {
     RAY_CHECK(call != nullptr);
   }
 
+  std::shared_ptr<grpc::Channel> Channel() const { return channel_; }
+
  private:
   ClientCallManager &client_call_manager_;
   /// The gRPC-generated stub.
   std::unique_ptr<typename GrpcService::Stub> stub_;
   /// Whether to use TLS.
   bool use_tls_;
-
-  std::shared_ptr<grpc::Channel> BuildChannel(const grpc::ChannelArguments &argument,
-                                              const std::string &address,
-                                              int port) {
-    std::shared_ptr<grpc::Channel> channel;
-    if (::RayConfig::instance().USE_TLS()) {
-      std::string server_cert_file =
-          std::string(::RayConfig::instance().TLS_SERVER_CERT());
-      std::string server_key_file = std::string(::RayConfig::instance().TLS_SERVER_KEY());
-      std::string root_cert_file = std::string(::RayConfig::instance().TLS_CA_CERT());
-      std::string server_cert_chain = ReadCert(server_cert_file);
-      std::string private_key = ReadCert(server_key_file);
-      std::string cacert = ReadCert(root_cert_file);
-
-      grpc::SslCredentialsOptions ssl_opts;
-      ssl_opts.pem_root_certs = cacert;
-      ssl_opts.pem_private_key = private_key;
-      ssl_opts.pem_cert_chain = server_cert_chain;
-      auto ssl_creds = grpc::SslCredentials(ssl_opts);
-      channel = grpc::CreateCustomChannel(
-          address + ":" + std::to_string(port), ssl_creds, argument);
-    } else {
-      channel = grpc::CreateCustomChannel(address + ":" + std::to_string(port),
-                                          grpc::InsecureChannelCredentials(),
-                                          argument);
-    }
-    return channel;
-  };
+  /// The channel of the stub.
+  std::shared_ptr<grpc::Channel> channel_;
 };
 
 }  // namespace rpc

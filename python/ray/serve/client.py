@@ -44,6 +44,9 @@ from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 
 
 logger = logging.getLogger(__file__)
+# Whether to issue warnings about using sync handles in async context
+# or using async handle in sync context.
+_WARN_SYNC_ASYNC_HANDLE_CONTEXT: bool = True
 
 
 def _ensure_connected(f: Callable) -> Callable:
@@ -393,7 +396,7 @@ class ServeControllerClient:
             else:
                 raise ex
 
-        if asyncio_loop_running and sync:
+        if asyncio_loop_running and sync and _WARN_SYNC_ASYNC_HANDLE_CONTEXT:
             logger.warning(
                 "You are retrieving a sync handle inside an asyncio loop. "
                 "Try getting client.get_handle(.., sync=False) to get better "
@@ -401,7 +404,7 @@ class ServeControllerClient:
                 "serve/http-servehandle.html#sync-and-async-handles"
             )
 
-        if not asyncio_loop_running and not sync:
+        if not asyncio_loop_running and not sync and _WARN_SYNC_ASYNC_HANDLE_CONTEXT:
             logger.warning(
                 "You are retrieving an async handle outside an asyncio loop. "
                 "You should make sure client.get_handle is called inside a "

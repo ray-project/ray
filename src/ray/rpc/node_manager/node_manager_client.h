@@ -53,6 +53,8 @@ class NodeManagerClient {
     GetNodeStats(request, callback);
   }
 
+  std::shared_ptr<grpc::Channel> Channel() const { return grpc_client_->Channel(); }
+
  private:
   /// The RPC client.
   std::unique_ptr<GrpcClient<NodeManagerService>> grpc_client_;
@@ -74,6 +76,8 @@ class NodeManagerWorkerClient
     auto instance = new NodeManagerWorkerClient(address, port, client_call_manager);
     return std::shared_ptr<NodeManagerWorkerClient>(instance);
   }
+
+  std::shared_ptr<grpc::Channel> Channel() const { return grpc_client_->Channel(); }
 
   /// Update cluster resource usage.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
@@ -149,7 +153,7 @@ class NodeManagerWorkerClient
 
   /// Notify the raylet to pin the provided object IDs.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
-                         PinObjectIDs,
+                         PinObjectID,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 

@@ -603,6 +603,10 @@ def run_learning_tests_from_yaml(
         smoke_test (bool): Whether this is just a smoke-test. If True,
             set time_total_s to 5min and don't early out due to rewards
             or timesteps reached.
+
+    Returns:
+        A results dict mapping strings (e.g. "time_taken", "stats", "passed") to
+            the respective stats/values.
     """
     print("Will run the following yaml files:")
     for yaml_file in yaml_files:

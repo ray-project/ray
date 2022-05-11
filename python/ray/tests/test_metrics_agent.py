@@ -44,7 +44,6 @@ _METRICS = [
     "ray_internal_num_spilled_tasks",
     # "ray_unintentional_worker_failures_total",
     # "ray_node_failure_total",
-    "ray_outbound_heartbeat_size_kb_sum",
     "ray_operation_count",
     "ray_operation_run_time_ms",
     "ray_operation_queue_time_ms",
@@ -74,6 +73,9 @@ _METRICS = [
     "ray_gcs_new_resource_creation_latency_ms_sum",
     "ray_gcs_actors_count",
 ]
+
+if not ray._raylet.Config.use_ray_syncer():
+    _METRICS.append("ray_outbound_heartbeat_size_kb_sum")
 
 # This list of metrics should be kept in sync with
 # ray/python/ray/autoscaler/_private/prom_metrics.py

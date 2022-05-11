@@ -276,9 +276,13 @@ def call_ray_start(request):
         "--max-worker-port=0 --port 0",
     )
     command_args = parameter.split(" ")
-    out = ray._private.utils.decode(
-        subprocess.check_output(command_args, stderr=subprocess.STDOUT)
-    )
+    try:
+        out = ray._private.utils.decode(
+            subprocess.check_output(command_args, stderr=subprocess.STDOUT)
+        )
+    except Exception as e:
+        print(type(e), e)
+        raise
     # Get the redis address from the output.
     redis_substring_prefix = "--address='"
     address_location = out.find(redis_substring_prefix) + len(redis_substring_prefix)
@@ -692,8 +696,14 @@ def pytest_runtest_makereport(item, call):
     outcome = yield
     rep = outcome.get_result()
 
-    append_short_test_summary(rep)
-    create_ray_logs_for_failed_test(rep)
+    try:
+        append_short_test_summary(rep)
+    except Exception as e:
+        print(f"+++ Error creating PyTest summary\n{e}")
+    try:
+        create_ray_logs_for_failed_test(rep)
+    except Exception as e:
+        print(f"+++ Error saving Ray logs for failing test\n{e}")
 
 
 def append_short_test_summary(rep):
@@ -784,12 +794,16 @@ def _get_markdown_annotation(rep) -> str:
         # Here we just print each traceback and the link to the respective
         # lines in GutHub
         for tb, loc, _ in rep.longrepr.chain:
-            path, url = _get_repo_github_path_and_link(loc.path, loc.lineno)
+            if loc:
+                path, url = _get_repo_github_path_and_link(loc.path, loc.lineno)
+                github_link = f"[{path}:{loc.lineno}]({url})\n\n"
+            else:
+                github_link = ""
 
             markdown += "```\n"
             markdown += str(tb)
             markdown += "\n```\n\n"
-            markdown += f"[{path}:{loc.lineno}]({url})\n\n"
+            markdown += github_link
 
         markdown += "</details>\n"
 
@@ -857,3 +871,27 @@ def create_ray_logs_for_failed_test(rep):
     test_name = rep.nodeid.replace(os.sep, "::")
     output_file = os.path.join(archive_dir, f"{test_name}_{time.time():.4f}")
     shutil.make_archive(output_file, "zip", logs_dir)
+
+
+@pytest.fixture(params=[True, False])
+def start_http_proxy(request):
+    env = {}
+
+    proxy = None
+    try:
+        if request.param:
+            # the `proxy` command is from the proxy.py package.
+            proxy = subprocess.Popen(
+                ["proxy", "--port", "8899", "--log-level", "ERROR"]
+            )
+            env["RAY_grpc_enable_http_proxy"] = "1"
+            proxy_url = "http://localhost:8899"
+        else:
+            proxy_url = "http://example.com"
+        env["http_proxy"] = proxy_url
+        env["https_proxy"] = proxy_url
+        yield env
+    finally:
+        if proxy:
+            proxy.terminate()
+            proxy.wait()
