@@ -75,13 +75,12 @@ def create_checkpoint(
 
 
 @pytest.mark.parametrize("batch_type", [list, np.array, pd.DataFrame])
-def test_predict_no_preprocessor(batch_type):
+@pytest.mark.parametrize("batch_size", [1, 20])
+def test_predict_no_preprocessor(batch_type, batch_size):
     checkpoint = create_checkpoint()
     predictor = RLPredictor.from_checkpoint(checkpoint)
 
-    batch_size = 20
-
-    # Observations, batch n = 20
+    # Observations
     obs = batch_type([[1.0] * 10] * batch_size)
     actions = predictor.predict(obs)
 
@@ -91,14 +90,13 @@ def test_predict_no_preprocessor(batch_type):
 
 
 @pytest.mark.parametrize("batch_type", [list, np.array, pd.DataFrame])
-def test_predict_with_preprocessor(batch_type):
+@pytest.mark.parametrize("batch_size", [1, 20])
+def test_predict_with_preprocessor(batch_type, batch_size):
     preprocessor = _DummyPreprocessor()
     checkpoint = create_checkpoint(preprocessor=preprocessor)
     predictor = RLPredictor.from_checkpoint(checkpoint)
 
-    batch_size = 20
-
-    # Observations, batch n = 20
+    # Observations
     obs = batch_type([[1.0] * 10] * batch_size)
     actions = predictor.predict(obs)
 

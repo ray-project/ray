@@ -188,8 +188,10 @@ class CheckpointManager:
         except KeyError:
             logger.error(
                 "Result dict has no key: {}. "
-                "checkpoint_score_attr must be set to a key in the "
-                "result dict.".format(self._checkpoint_score_attr)
+                "checkpoint_score_attr must be set to a key of the "
+                "result dict. Valid keys are {}".format(
+                    self._checkpoint_score_attr, list(checkpoint.result.keys())
+                )
             )
             return
 
