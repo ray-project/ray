@@ -91,7 +91,8 @@ DEFAULT_CONFIG = with_common_config({
     "replay_buffer_config": {
         "type": "MultiAgentPrioritizedReplayBuffer",
         "capacity": 50000,
-        # Specify prioritized replay by supplying a buffer type that supports prioritization
+        # Specify prioritized replay by supplying a buffer type that supports
+        # prioritization
         "prioritized_replay": DEPRECATED_VALUE,
         # Alpha parameter for prioritized replay buffer.
         "prioritized_replay_alpha": 0.6,

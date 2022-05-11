@@ -83,7 +83,8 @@ APEX_DEFAULT_CONFIG = merge_dicts(
         #     DistributedReplayBuffer type is supported.
         "replay_buffer_config": {
             "no_local_replay_buffer": True,
-            # Specify prioritized replay by supplying a buffer type that supports prioritization
+            # Specify prioritized replay by supplying a buffer type that supports
+            # prioritization
             "prioritized_replay": DEPRECATED_VALUE,
             "type": "MultiAgentPrioritizedReplayBuffer",
             "capacity": 2000000,

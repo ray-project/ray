@@ -54,7 +54,8 @@ TD3_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
         "use_state_preprocessor": False,
         "replay_buffer_config": {
             "type": "MultiAgentReplayBuffer",
-            # Specify prioritized replay by supplying a buffer type that supports prioritization
+            # Specify prioritized replay by supplying a buffer type that supports
+            # prioritization
             "prioritized_replay": DEPRECATED_VALUE,
             "capacity": 1000000,
             "learning_starts": 10000,

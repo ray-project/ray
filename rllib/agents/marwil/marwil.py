@@ -2,9 +2,6 @@ from typing import Type
 
 from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.agents.marwil.marwil_tf_policy import MARWILTFPolicy
-from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import (
-    MultiAgentReplayBuffer,
-)
 from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
@@ -23,7 +20,6 @@ from ray.rllib.utils.metrics import (
     WORKER_UPDATE_TIMER,
 )
 from ray.rllib.utils.typing import (
-    PartialTrainerConfigDict,
     ResultDict,
     TrainerConfigDict,
 )
@@ -74,16 +70,19 @@ DEFAULT_CONFIG = with_common_config({
     "train_batch_size": 2000,
 
     "replay_buffer_config": {
+        "type": "MultiAgentPrioritizedReplayBuffer",
         # Size of the replay buffer in (single and independent) timesteps.
         # The buffer gets filled by reading from the input files line-by-line
         # and adding all timesteps on one line at once. We then sample
         # uniformly from the buffer (`train_batch_size` samples) for
         # each training step.
         "capacity": 10000,
-        # Specify prioritized replay by supplying a buffer type that supports prioritization
+        # Specify prioritized replay by supplying a buffer type that supports
+        # prioritization
         "prioritized_replay": DEPRECATED_VALUE,
         # Number of steps to read before learning starts.
         "learning_starts": 0,
+        "replay_sequence_length": 1
     },
 
     # A coeff to encourage higher action distribution entropy for exploration.
@@ -126,21 +125,6 @@ class MARWILTrainer(Trainer):
             return MARWILTorchPolicy
         else:
             return MARWILTFPolicy
-
-    @override(Trainer)
-    def setup(self, config: PartialTrainerConfigDict):
-        super().setup(config)
-        # `training_iteration` implementation: Setup buffer in `setup`, not
-        # in `execution_plan` (deprecated).
-        if self.config["_disable_execution_plan_api"] is True:
-            self.local_replay_buffer = MultiAgentReplayBuffer(
-                learning_starts=self.config["replay_buffer_config"]["learning_starts"],
-                capacity=self.config["replay_buffer_config"]["capacity"],
-                replay_batch_size=self.config["replay_buffer_config"][
-                    "replay_batch_size"
-                ],
-                replay_sequence_length=1,
-            )
 
     @override(Trainer)
     def training_iteration(self) -> ResultDict:
