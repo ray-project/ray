@@ -2303,6 +2303,7 @@ Dict[str, List[str]]]): The names of the columns
         ] = None,
         prefetch_blocks: int = 0,
         batch_size: int = 1,
+        drop_last: bool = False,
     ) -> "tf.data.Dataset":
         """Return a TF Dataset over this dataset.
 
@@ -2358,6 +2359,10 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
             prefetch_blocks: The number of blocks to prefetch ahead of the
                 current block during the scan.
             batch_size: Record batch size. Defaults to 1.
+            drop_last (bool): Set to True to drop the last incomplete batch,
+                if the dataset size is not divisible by the batch size. If
+                False and the size of dataset is not divisible by the batch
+                size, then the last batch will be smaller. Defaults to False.
 
         Returns:
             A tf.data.Dataset.
@@ -2380,6 +2385,7 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
                 prefetch_blocks=prefetch_blocks,
                 batch_size=batch_size,
                 batch_format="pandas",
+                drop_last=drop_last,
             ):
                 if label_column:
                     targets = batch.pop(label_column).values
