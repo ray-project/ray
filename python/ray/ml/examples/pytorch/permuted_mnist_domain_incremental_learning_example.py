@@ -1,35 +1,39 @@
-"""Example of domain incremental learning with Permuted MNIST.
+# Adapted from Continual AI Avalanche example https://avalanche.continualai.org/
 
-We train a simple neural network N times, with each task/experience containing a
-different pixel permutation of MNIST.
+# In this example, we show how to use Ray AIR to incrementally train a simple PyTorch model
+# on a stream of incoming tasks.
+#
+# Each task is a random permutation of the MNIST Dataset, which is a common benchmark
+# used for continual training. After training on all the
+# tasks, the model is expected to be able to make predictions on data from any task.
 
-After training on N tasks, the neural network can make predictions on any permutation
-of MNIST digits that it was trained on.
+# In this example, we use just a naive finetuning strategy, where the model is trained
+# on each task, without any special methods to prevent catastrophic forgetting (
+# https://en.wikipedia.org/wiki/Catastrophic_interference). Model performance is
+# expected to be poor.
+#
+# More precisely, this example showcases domain incremental training, in which during
+# prediction/testing
+# time, the model is asked to predict on data from tasks trained on so far with the
+# task ID not provided. This is opposed to task incremental training, where the task ID is
+# provided during prediction/testing time.
 
-This example uses just a naive fine-tuning strategy.
-"""
-from typing import Iterator
+# For more information on the 3 different categories for incremental/continual
+# learning, please see here: https://arxiv.org/pdf/1904.07734.pdf.
 
-import pandas as pd
+# Step 1: Installations
+
+# To get started, we first install the necessary Ray and PyTorch packages.
+
+# !pip install ray[data, tune] >= 1.13
+# !pip install torch, torchvision
+
+# Step 2: Define our model
+
+# Let's now define our model that we want to train with. This is just a simple
+# multilayer perceptron.
+
 import torch.nn as nn
-from torch.nn import CrossEntropyLoss
-from torch.optim import SGD
-import torchvision
-from torchvision import transforms
-from torchvision.transforms import ToTensor, RandomCrop
-import numpy as np
-
-import ray
-from ray import train
-from ray.data.datasource.torch_datasource import SimpleTorchDatasource
-from ray.data import ActorPoolStrategy
-from ray.data.extensions import TensorArray
-from ray.ml import Checkpoint
-from ray.ml.batch_predictor import BatchPredictor
-from ray.ml.predictors.integrations.torch import TorchPredictor
-from ray.ml.preprocessors import BatchMapper
-from ray.ml.train.integrations.torch import TorchTrainer
-
 
 class SimpleMLP(nn.Module):
     def __init__(self, num_classes=10, input_size=28 * 28):
@@ -50,6 +54,20 @@ class SimpleMLP(nn.Module):
         x = self.classifier(x)
         return x
 
+# Step 2: Create the Stream of tasks.
+
+# We can now create a stream of tasks (where each task contains a dataset to train
+# on). For this example, we will create an artificial stream of tasks consisting of
+# Permuted variations of MNIST, which is a classic benchmark in continual learning
+# research.
+
+# For real-world scenarios, this step is not necessary as fresh data will already be
+# arriving as a stream of tasks. It does not need to be artificially created.
+
+# We first define a simple function that will return the original MNIST Dataset as a
+# distributed Ray Dataset.
+
+import ray
 
 def get_mnist_dataset(train: bool = True) -> ray.data.Dataset:
     """Returns MNIST Dataset as a ray.data.Dataset.
@@ -78,6 +96,15 @@ def get_mnist_dataset(train: bool = True) -> ray.data.Dataset:
     )
 
     return mnist_dataset
+
+# Then we create a PermutedMNISTStream abstraction. This abstraction provides two
+# methods (generate_train_stream and generate_test_stream) that returns an Iterator
+# over Ray Datasets. Each item in this iterator contains a unique permutation of
+# MNIST, and is one task that we want to train on.
+
+from typing import Iterator
+
+import numpy as np
 
 
 class PermutedMNISTStream:
@@ -126,6 +153,11 @@ class PermutedMNISTStream:
             )
             yield convert_dataset_to_pandas_format(permuted_mnist_dataset)
 
+
+# Step 3: Train incrementally
+
+# Now that we can get an Iterator over Ray Datasets, we can incrementally train our
+# model in a distributed fashion.
 
 # TODO: Handle this automatically in TorchVisionDatasource
 def convert_dataset_to_pandas_format(image_dataset: ray.data.Dataset):
@@ -194,24 +226,23 @@ def train_loop_per_worker(config: dict):
         train.save_checkpoint(model=model.module.state_dict())
 
 
-def preprocess_images(df: pd.DataFrame) -> pd.DataFrame:
-    """Preprocess images by scaling each channel in the image."""
-
-    torchvision_transforms = transforms.Compose(
-        [ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
-    )
-
-    new_df = df.copy()
-    new_df["image"] = df["image"].map(torchvision_transforms)
-    return new_df
-
-
 def incremental_train(dataset_stream: Iterator[ray.data.Dataset]) -> Checkpoint:
     """Incrementally trains MLP model on each task in a distributed fashion.
 
     Args:
         dataset_stream: The stream of datasets to train on.
     """
+
+    def preprocess_images(df: pd.DataFrame) -> pd.DataFrame:
+        """Preprocess images by scaling each channel in the image."""
+
+        torchvision_transforms = transforms.Compose(
+            [ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
+        )
+
+        new_df = df.copy()
+        new_df["image"] = df["image"].map(torchvision_transforms)
+        return new_df
 
     latest_checkpoint = None
 
@@ -233,6 +264,29 @@ def incremental_train(dataset_stream: Iterator[ray.data.Dataset]) -> Checkpoint:
         latest_checkpoint = result.checkpoint
 
     return latest_checkpoint
+
+
+from typing import Iterator
+
+import pandas as pd
+
+from torch.nn import CrossEntropyLoss
+from torch.optim import SGD
+import torchvision
+from torchvision import transforms
+from torchvision.transforms import ToTensor, RandomCrop
+import numpy as np
+
+import ray
+from ray import train
+from ray.data.datasource.torch_datasource import SimpleTorchDatasource
+from ray.data import ActorPoolStrategy
+from ray.data.extensions import TensorArray
+from ray.ml import Checkpoint
+from ray.ml.batch_predictor import BatchPredictor
+from ray.ml.predictors.integrations.torch import TorchPredictor
+from ray.ml.preprocessors import BatchMapper
+from ray.ml.train.integrations.torch import TorchTrainer
 
 
 def predict(checkpoint: Checkpoint, test_dataset_stream: Iterator[ray.data.Dataset]):
