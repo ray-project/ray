@@ -249,20 +249,25 @@ def test_raylet_resubscription(ray_start_regular_with_external_redis):
     @ray.remote
     def long_run():
         from time import sleep
+
         print("LONG_RUN")
         sleep(10000)
 
     @ray.remote
     def bar():
         import os
-        return (os.getpid(),
-                # Use runtime env to make sure task is running in a different
-                # ray worker
-                long_run.options(runtime_env={"env_vars":{"P": ""}}).remote())
+
+        return (
+            os.getpid(),
+            # Use runtime env to make sure task is running in a different
+            # ray worker
+            long_run.options(runtime_env={"env_vars": {"P": ""}}).remote(),
+        )
 
     (pid, obj_ref) = ray.get(bar.remote())
 
     long_run_pid = None
+
     def condition():
         nonlocal long_run_pid
         for proc in psutil.process_iter():
@@ -270,6 +275,7 @@ def test_raylet_resubscription(ray_start_regular_with_external_redis):
                 long_run_pid = proc.pid
                 return True
         return False
+
     wait_for_condition(condition, timeout=5)
 
     # kill the gcs
