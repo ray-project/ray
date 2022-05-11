@@ -91,6 +91,11 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> ActorManager::GetNamedActo
       RAY_LOG(ERROR) << error_str;
       return std::make_pair(nullptr, Status::TimedOut(error_str));
     }
+  } else {
+    // When the named actor is already cached, the reference of actor_creation_return_id
+    // must be increased.
+    auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
+    reference_counter_->AddLocalReference(actor_creation_return_id, call_site);
   }
 
   if (actor_id.IsNil()) {
