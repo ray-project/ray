@@ -200,6 +200,9 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         Filter by the specified tag_filters.
 
         Return a list of pod objects, represented as dictionaries.
+
+        Details on K8s resource deletion:
+        https://kubernetes.io/docs/reference/using-api/api-concepts/#resource-deletion
         """
         label_filters = to_label_selector(
             {
@@ -211,8 +214,7 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         for pod in data["items"]:
             # Kubernetes sets metadata.deletionTimestamp immediately after admitting a
             # request to delete an object. Full removal of the object may take some time
-            # after the deletion timestamp is set.
-            # See https://kubernetes.io/docs/reference/using-api/api-concepts/#resource-deletion
+            # after the deletion timestamp is set. See link in docstring for details.
             if "deletionTimestamp" in pod["metadata"]:
                 # Ignore pods marked for termination.
                 continue
