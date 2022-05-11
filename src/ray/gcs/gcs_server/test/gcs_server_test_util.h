@@ -288,6 +288,8 @@ struct GcsServerMocker {
         bool graceful,
         const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback) override{};
 
+    void GCSRestart(const rpc::ClientCallback<rpc::GCSRestartReply> &callback) override {};
+
     ~MockRayletClient() {}
 
     int num_workers_requested = 0;
