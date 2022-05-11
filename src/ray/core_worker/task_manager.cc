@@ -201,13 +201,13 @@ bool TaskManager::IsTaskPending(const TaskID &task_id) const {
   return it->second.IsPending();
 }
 
-bool TaskManager::IsTaskSubmittedToWorker(const TaskID &task_id) const {
+bool TaskManager::IsTaskWaitingForExecution(const TaskID &task_id) const {
   absl::MutexLock lock(&mu_);
   const auto it = submissible_tasks_.find(task_id);
   if (it == submissible_tasks_.end()) {
     return false;
   }
-  return it->second.IsSubmittedToWorker();
+  return it->second.IsWaitingForExecution();
 }
 
 bool TaskManager::IsTaskRescheduling(const TaskID &task_id) const {
@@ -383,7 +383,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id) {
     } else {
       RAY_CHECK(num_retries_left == 0 || num_retries_left == -1);
     }
-    it->second.status = rpc::TaskStatus::RESCHEDULED;
+    it->second.status = rpc::TaskStatus::SCHEDULED;
   }
 
   // We should not hold the lock during these calls because they may trigger
@@ -659,14 +659,13 @@ void TaskManager::MarkDependenciesResolved(const TaskID &task_id) {
   }
 }
 
-void TaskManager::MarkTaskSubmitted(const TaskID &task_id) {
+void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id) {
   absl::MutexLock lock(&mu_);
   auto it = submissible_tasks_.find(task_id);
   RAY_CHECK(it != submissible_tasks_.end())
       << "Tried to run a task that was not pending " << task_id;
-  RAY_CHECK(it->second.status == rpc::TaskStatus::SCHEDULED ||
-            it->second.status == rpc::TaskStatus::RESCHEDULED);
-  it->second.status = rpc::TaskStatus::SUBMITTED_TO_WORKER;
+  RAY_CHECK(it->second.status == rpc::TaskStatus::SCHEDULED);
+  it->second.status = rpc::TaskStatus::WAITING_FOR_EXECUTION;
 }
 
 void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply) const {

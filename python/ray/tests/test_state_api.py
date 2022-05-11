@@ -736,7 +736,7 @@ def test_list_tasks(shutdown_only):
         running = len(
             list(
                 filter(
-                    lambda task: task["scheduling_state"] == "SUBMITTED_TO_WORKER",
+                    lambda task: task["scheduling_state"] == "WAITING_FOR_EXECUTION",
                     tasks,
                 )
             )

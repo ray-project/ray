@@ -279,6 +279,10 @@ message GetCoreWorkerStatsReply {
   CoreWorkerStats core_worker_stats = 1;
   // A list of task information of the current worker.
   repeated TaskInfoEntry task_info_entries = 2;
+  // A list of task that's currently running.
+  // All tasks must be treated as TaskStatus::RUNNING
+  // from the caller side (processing side).
+  repeated bytes running_task_ids = 3;
 }
 
 message LocalGCRequest {

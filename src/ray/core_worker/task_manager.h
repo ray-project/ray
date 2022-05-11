@@ -47,7 +47,7 @@ class TaskFinisherInterface {
                                       const rpc::RayErrorInfo *ray_error_info = nullptr,
                                       bool mark_task_object_failed = true) = 0;
 
-  virtual void MarkTaskRunning(const TaskID &task_id) = 0;
+  virtual void MarkTaskWaitingForExecution(const TaskID &task_id) = 0;
 
   virtual void OnTaskDependenciesInlined(
       const std::vector<ObjectID> &inlined_dependency_ids,
@@ -232,11 +232,11 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \return Whether the task is pending.
   bool IsTaskPending(const TaskID &task_id) const;
 
-  /// Return whether the task is submitted to a worker.
+  /// Return whether the task is scheduled adn waiting for execution.
   ///
   /// \param[in] task_id ID of the task to query.
-  /// \return Whether the task is submitted to a worker.
-  bool IsTaskSubmittedToWorker(const TaskID &task_id) const;
+  /// \return Whether the task is waiting for execution.
+  bool IsTaskWaitingForExecution(const TaskID &task_id) const;
 
   /// Return whether the task is rescheduling.
   ///
@@ -263,10 +263,10 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[in] task_id The task that is now scheduled.
   void MarkDependenciesResolved(const TaskID &task_id) override;
 
-  /// Record that the given task is submitted to the worker and will be executing.
+  /// Record that the given task is scheduled and wait for execution.
   ///
   /// \param[in] task_id The task that is will be running.
-  void MarkTaskRunning(const TaskID &task_id) override;
+  void MarkTaskWaitingForExecution(const TaskID &task_id) override;
 
   /// Add debug information about the current task status for the ObjectRefs
   /// included in the given stats.
@@ -291,11 +291,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
     bool IsPending() const { return status != rpc::TaskStatus::FINISHED; }
 
-    bool IsSubmittedToWorker() const {
-      return status == rpc::TaskStatus::SUBMITTED_TO_WORKER;
+    bool IsWaitingForExecution() const {
+      return status == rpc::TaskStatus::WAITING_FOR_EXECUTION;
     }
-
-    bool IsRescheduling() const { return status == rpc::TaskStatus::RESCHEDULED; }
 
     /// The task spec. This is pinned as long as the following are true:
     /// - The task is still pending execution. This means that the task may
