@@ -106,6 +106,14 @@ class ResultGrid:
 
             # Get best ever reported accuracy per trial
             df = result_grid.get_dataframe(metric="accuracy", mode="max")
+
+        Args:
+            filter_metric: Metric to filter best result for.
+            filter_mode: If ``filter_metric`` is given, one of ``["min", "max"]``
+                to specify if we should find the minimum or maximum result.
+
+        Returns:
+            Pandas DataFrame with each trial as a row and their results as columns.
         """
         return self._experiment_analysis.dataframe(
             metric=filter_metric, mode=filter_mode
