@@ -102,6 +102,12 @@ class PPOConfig(TrainerConfig):
         # fmt: on
 
     @override(TrainerConfig)
+    def exploration(self, *args, **kwargs):
+        raise NotImplementedError(
+            "Policy-gradient methods like PPO cannot use custom exploration."
+        )
+
+    @override(TrainerConfig)
     def training(
         self,
         *,
