@@ -19,6 +19,35 @@ IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".gif"]
 
 
 class ImageFolderDatasource(BinaryDatasource):
+    """A datasource that allows you to load datasets like ImageNet.
+
+    This datasource works with any dataset where the images are arranged in this way:
+
+    ```
+    root/dog/xxx.png
+    root/dog/xxy.png
+    root/dog/[...]/xxz.png
+
+    root/cat/123.png
+    root/cat/nsdf3.png
+    root/cat/[...]/asd932_.png
+    ```
+
+    Examples:
+        >>> import ray
+        >>> from ray.data.datasource import ImageFolderDatasource
+        >>>
+        >>> ds = ray.data.read_datasource(
+        ...     ImageFolderDatasource(),
+        ...     paths=["s3://tiny-imagenet/train"]
+        ... )
+        >>> TODO
+
+    Raises:
+        ValueError: if more than one path is provided. You should only provide the path
+            to the dataset root.
+    """
+
     def prepare_read(
         self,
         parallelism: int,
@@ -32,8 +61,26 @@ class ImageFolderDatasource(BinaryDatasource):
         _block_udf: Optional[Callable[[Block], Block]] = None,
         **reader_args,
     ) -> List[ReadTask]:
+        if len(paths) > 1:
+            raise ValueError(
+                "`ImageFolderDatasource` expects 1 path representing the dataset "
+                f"root, but it got {len(paths)} paths instead. To fix this error, "
+                "pass in a single-element list containing the dataset root (for "
+                'example, `paths=["s3://imagenet/train"]`)'
+            )
+
+        try:
+            import imageio
+        except ImportError:
+            raise ValueError(
+                "`ImageFolderDatasource` depends on 'imageio', but 'imageio' couldn't "
+                "be imported. You can install 'imageio' by running "
+                "`pip install imageio`."
+            )
+            
+        # We call `_resolve_paths_and_filesystem` so that the dataset root is formatted
+        # in the same way as the paths passed to `_get_class_from_path`.
         paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
-        assert len(paths) == 1
         self.root = paths[0]
 
         paths, _ = meta_provider.expand_paths(paths, filesystem)
