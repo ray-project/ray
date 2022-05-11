@@ -98,6 +98,8 @@ build_wheel_windows() {
         exit 1
       fi
 
+      conda install --upgrade setuptools==58.4
+
       unset PYTHON2_BIN_PATH PYTHON3_BIN_PATH  # make sure these aren't set by some chance
       install_ray
       cd "${WORKSPACE_DIR}"/python
