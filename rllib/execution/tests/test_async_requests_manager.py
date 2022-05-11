@@ -94,7 +94,9 @@ class TestAsyncRequestsManager(unittest.TestCase):
         """Tests that the async manager can properly handle actors with tasks that
         vary in the amount of time that they take to run"""
         workers = [RemoteRLlibActor.remote(sleep_time=0.1) for _ in range(1)]
-        manager = AsyncRequestsManager(workers, max_remote_requests_in_flight=2)
+        manager = AsyncRequestsManager(
+            workers, max_remote_requests_in_flight_per_worker=2
+        )
         for _ in range(2):
             manager.submit(lambda w, a, b: w.task2(a, b), fn_args=[1, 2])
         time.sleep(3)
