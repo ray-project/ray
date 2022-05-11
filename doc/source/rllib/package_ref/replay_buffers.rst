@@ -1,7 +1,7 @@
-.. _env-reference-docs:
+.. _replay-buffer-api-reference-docs:
 
 Replay Buffer API
-============
+==================
 
 RLlib comes with a set of extendable replay buffers which are used mostly in Q-Learning algorithms.
 The base :py:class:`~ray.rllib.utils.replay_buffers.replay_buffer.ReplayBuffer` class (link) only supports storing experiences in different storage units (link).
@@ -10,7 +10,7 @@ You can find buffer types and arguments to modify their behaviour as part of RLl
 the replay buffer config (link).
 
 Basic Usage
-----
+------------
 
 Here is a basic example of running the R2D2 algorithm, which runs without prioritized replay by default, with prioritzed replay:
 
@@ -31,12 +31,15 @@ Here are three ways of specifying a type:
 
 Apart from specifying a type, other parameters in that config are:
 
-1) Parameters that define how algorithms interact with replay buffers
- * e.g. "worker_side_prioritization" to decide where to compute priorities
-2) Constructor arguments to instantiate the replay buffer
- * e.g. "capacity" to limit the buffers size
-3) Call arguments for underlying replay buffer methods
- * e.g. "prioritized_replay_beta" is used by the :py:class:`~ray.rllib.utils.replay_buffers.multi_agent_prioritized_replay_buffer.PrioritizedMultiAgentReplayBuffer` to call the sample method of every underlying :py:class:`~ray.rllib.utils.replay_buffers.prioritized_replay_buffer.PrioritizedReplayBuffer`
+* Parameters that define how algorithms interact with replay buffers
+   * e.g. "worker_side_prioritization" to decide where to compute priorities
+
+* Constructor arguments to instantiate the replay buffer
+   * e.g. "capacity" to limit the buffers size
+
+* Call arguments for underlying replay buffer methods
+   * e.g. "prioritized_replay_beta" is used by the :py:class:`~ray.rllib.utils.replay_buffers.multi_agent_prioritized_replay_buffer.PrioritizedMultiAgentReplayBuffer` to call the sample method of every underlying :py:class:`~ray.rllib.utils.replay_buffers.prioritized_replay_buffer.PrioritizedReplayBuffer`
+
 
 Most of the time, only 1. and 2. are of interest.
 3. is an advanced feature that supports use cases where a :py:class:`~ray.rllib.utils.replay_buffers.multi_agent_replay_buffer.MultiAgentReplayBuffer` instantiates underlying buffers that need constructor or default call arguments.
@@ -50,10 +53,10 @@ Here is an example of how to implement your own toy example of a ReplayBuffer cl
 ..   end-before: __sphinx_doc_replay_buffer_own_buffer__begin__
 
 Advanced Usage
-----
+---------------
 
 In RLlib, all replay buffers implement the :py:class:`~ray.rllib.utils.replay_buffers.replay_buffer.ReplayBuffer` interface.
-Therefore, they support, whenever possible, different :py:class:`~ray.rllib.utils.replay_buffers.replay_buffer.StorageUnit`s.
+Therefore, they support, whenever possible, different :py:class:`~ray.rllib.utils.replay_buffers.replay_buffer.StorageUnit` s.
 The storage_unit constructor argument of a replay buffer defines how sequences are stored, and therefore the unit in which they are sampled.
 When later calling the sample() method, num_units will relate to said storage_unit.
 
@@ -81,13 +84,10 @@ Here is an example of how to specify an underlying replay buffer:
 
 
 Replay Buffers API Reference
--------------------------
+-----------------------------
 
 .. toctree::
    :maxdepth: 1
 
-   replaybuffers/replay_buffer.rst
-   replaybuffers/multi_agent_env.rst
-   replaybuffers/vector_env.rst
-   replaybuffers/external_env.rst
+   replay_buffers/replay_buffer.rst
 

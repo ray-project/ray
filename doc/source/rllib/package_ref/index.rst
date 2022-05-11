@@ -27,5 +27,6 @@ If you think there is anything missing, please open an issue on `Github`_.
    offline.rst
    execution.rst
    utils.rst
+   replay_buffers.rst
 
 .. include:: /_includes/rllib/announcement_bottom.rst
