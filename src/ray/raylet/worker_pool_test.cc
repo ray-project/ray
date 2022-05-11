@@ -308,7 +308,6 @@ class WorkerPoolMock : public WorkerPool {
       if (pushed_it == pushedProcesses_.end()) {
         int runtime_env_hash = 0;
         bool is_java = false;
-        bool has_dynamic_options = false;
         // Parses runtime env hash to make sure the pushed workers can be popped out.
         for (auto command_args : it->second) {
           std::string runtime_env_key = "--runtime-env-hash=";
@@ -320,10 +319,6 @@ class WorkerPoolMock : public WorkerPool {
           pos = command_args.find("java");
           if (pos != std::string::npos) {
             is_java = true;
-          }
-          pos = command_args.find("-X");
-          if (pos != std::string::npos) {
-            has_dynamic_options = true;
           }
         }
         // TODO(SongGuyang): support C++ language workers.
