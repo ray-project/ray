@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include <chrono>
+#include <boost/asio/ip/tcp.hpp>
 
 #include "absl/strings/substitute.h"
 #include "gtest/gtest.h"
@@ -70,7 +71,7 @@ class GcsClientReconnectionTest : public ::testing::Test {
           new boost::asio::io_service::work(*client_io_service_));
       client_io_service_->run();
     });
-    gcs::GcsClientOptions options("127.0.0.1:5397");
+    gcs::GcsClientOptions options("127.0.0.1:" + std::to_string(config_.grpc_server_port));
     gcs_client_ = std::make_unique<gcs::GcsClient>(options);
     RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
     return gcs_client_.get();
@@ -99,12 +100,21 @@ class GcsClientReconnectionTest : public ::testing::Test {
     return false;
   }
 
+
  protected:
+  unsigned short GetFreePort() {
+    using namespace boost::asio;
+    io_service service;
+    ip::tcp::acceptor acceptor(service, ip::tcp::endpoint(ip::tcp::v4(), 0));
+    unsigned short port = acceptor.local_endpoint().port();
+    return port;
+  }
+
   void SetUp() override {
     config_.redis_address = "127.0.0.1";
     config_.enable_sharding_conn = false;
     config_.redis_port = TEST_REDIS_SERVER_PORTS.front();
-    config_.grpc_server_port = 5397;
+    config_.grpc_server_port = GetFreePort();
     config_.grpc_server_name = "MockedGcsServer";
     config_.grpc_server_thread_num = 1;
     config_.node_ip_address = "127.0.0.1";
