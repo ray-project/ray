@@ -231,14 +231,14 @@ class ApexTrainer(DQNTrainer):
             ]
         self._replay_actor_manager = AsyncRequestsManager(
             self._replay_actors,
-            max_remote_requests_in_flight=self.config[
+            max_remote_requests_in_flight_per_worker=self.config[
                 "max_requests_in_flight_per_aggregator_worker"
             ],
             ray_wait_timeout_s=0.05,
         )
         self._sampling_actor_manager = AsyncRequestsManager(
             self.workers.remote_workers(),
-            max_remote_requests_in_flight=self.config[
+            max_remote_requests_in_flight_per_worker=self.config[
                 "max_requests_in_flight_per_sampler_worker"
             ],
             ray_wait_timeout_s=0.05,

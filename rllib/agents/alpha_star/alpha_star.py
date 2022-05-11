@@ -290,7 +290,7 @@ class AlphaStarTrainer(appo.APPOTrainer):
         self.distributed_learners = distributed_learners
         self._sampling_actor_manager = AsyncRequestsManager(
             self.workers.remote_workers(),
-            max_remote_requests_in_flight=self.config[
+            max_remote_requests_in_flight_per_worker=self.config[
                 "max_requests_in_flight_per_sampler_worker"
             ],
             ray_wait_timeout_s=self.config["sample_wait_timeout"],
@@ -341,7 +341,7 @@ class AlphaStarTrainer(appo.APPOTrainer):
                 remote_requests_in_flight=self.remote_requests_in_flight,
                 actors=pol_actors,
                 ray_wait_timeout_s=self.config["learn_wait_timeout"],
-                max_remote_requests_in_flight_per_actor=2,
+                max_remote_requests_in_flight_per_worker=2,
                 remote_fn=self._update_policy,
                 remote_args=args,
             )

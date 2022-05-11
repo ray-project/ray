@@ -220,8 +220,7 @@ class DDPPOTrainer(PPOTrainer):
             logger.info("Torch process group init completed")
             self._ddppo_worker_manager = AsyncRequestsManager(
                 self.workers.remote_workers(),
-                max_remote_requests_in_flight=1,
-                ray_wait_timeout_s=0.03,
+                max_remote_requests_in_flight_per_worker=1,
             )
 
     @override(PPOTrainer)

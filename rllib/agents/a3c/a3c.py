@@ -162,7 +162,7 @@ class A3CTrainer(Trainer):
     def setup(self, config: PartialTrainerConfigDict):
         super().setup(config)
         self._worker_manager = AsyncRequestsManager(
-            self.workers.remote_workers(), max_remote_requests_in_flight=1
+            self.workers.remote_workers(), max_remote_requests_in_flight_per_worker=1
         )
 
     @override(Trainer)

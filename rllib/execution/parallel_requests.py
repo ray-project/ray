@@ -16,7 +16,7 @@ def asynchronous_parallel_requests(
     remote_requests_in_flight: DefaultDict[ActorHandle, Set[ray.ObjectRef]],
     actors: List[ActorHandle],
     ray_wait_timeout_s: Optional[float] = None,
-    max_remote_requests_in_flight_per_actor: int = 2,
+    max_remote_requests_in_flight_per_worker: int = 2,
     remote_fn: Optional[
         Callable[[Any, Optional[Any], Optional[Any]], Any]
     ] = lambda actor: actor.sample(),
@@ -29,7 +29,7 @@ def asynchronous_parallel_requests(
 
     May use a timeout (if provided) on `ray.wait()` and returns only those
     samples that could be gathered in the timeout window. Allows a maximum
-    of `max_remote_requests_in_flight_per_actor` remote calls to be in-flight
+    of `max_remote_requests_in_flight_per_worker` remote calls to be in-flight
     per remote actor.
 
     Alternatively to calling `actor.sample.remote()`, the user can provide a
@@ -45,7 +45,7 @@ def asynchronous_parallel_requests(
         ray_wait_timeout_s: Timeout (in sec) to be used for the underlying
             `ray.wait()` calls. If None (default), never time out (block
             until at least one actor returns something).
-        max_remote_requests_in_flight_per_actor: Maximum number of remote
+        max_remote_requests_in_flight_per_worker: Maximum number of remote
             requests sent to each actor. 2 (default) is probably
             sufficient to avoid idle times between two requests.
         remote_fn: If provided, use `actor.apply.remote(remote_fn)` instead of
@@ -107,12 +107,12 @@ def asynchronous_parallel_requests(
                 remote_to_actor[r] = actor
 
     # Add new requests, if possible (if
-    # `max_remote_requests_in_flight_per_actor` setting allows it).
+    # `max_remote_requests_in_flight_per_worker` setting allows it).
     for actor_idx, actor in enumerate(actors):
         # Still room for another request to this actor.
         if (
             len(remote_requests_in_flight[actor])
-            < max_remote_requests_in_flight_per_actor
+            < max_remote_requests_in_flight_per_worker
         ):
             if remote_fn is not None:
                 args = remote_args[actor_idx] if remote_args else []
@@ -120,7 +120,7 @@ def asynchronous_parallel_requests(
                 for _ in range(num_requests_to_launch):
                     if (
                         len(remote_requests_in_flight[actor])
-                        >= max_remote_requests_in_flight_per_actor
+                        >= max_remote_requests_in_flight_per_worker
                     ):
                         break
                     req = actor.apply.remote(remote_fn, *args, **kwargs)
@@ -180,7 +180,7 @@ def wait_asynchronous_requests(
         remote_requests_in_flight=remote_requests_in_flight,
         actors=list(remote_requests_in_flight.keys()),
         ray_wait_timeout_s=ray_wait_timeout_s,
-        max_remote_requests_in_flight_per_actor=float("inf"),
+        max_remote_requests_in_flight_per_worker=float("inf"),
         remote_fn=None,
     )
     return ready_requests
@@ -193,10 +193,10 @@ class AsyncRequestsManager:
         workers: A list of ray remote workers to operate on. These workers must have an
             `apply` method which takes a function and a list of arguments to that
             function.
-        max_remote_requests_in_flight_per_actor: The maximum number of remote
+        max_remote_requests_in_flight_per_worker: The maximum number of remote
             requests that can be in flight per actor. Any requests made to the pool
             that cannot be scheduled because the
-            max_remote_requests_in_flight_per_actor per actor has been reached will
+            max_remote_requests_in_flight_per_worker per actor has been reached will
             be queued.
         ray_wait_timeout_s: The maximum amount of time to wait for inflight requests
             to be done and ready when calling
@@ -219,7 +219,7 @@ class AsyncRequestsManager:
         >>>
         >>> workers = [MyActor.remote() for _ in range(3)]
         >>> manager = AsyncRequestsManager(workers,
-        ...                                max_remote_requests_in_flight_per_actor=2)
+        ...                                max_remote_requests_in_flight_per_worker=2)
         >>> manager.submit(lambda worker, a, b: worker.task(a, b), fn_args=[1, 2])
         >>> print(manager.get_ready_results())
         >>> manager.submit(lambda worker, a, b: worker.task(a, b),
@@ -231,13 +231,13 @@ class AsyncRequestsManager:
     def __init__(
         self,
         workers: List[ActorHandle],
-        max_remote_requests_in_flight: int = 2,
+        max_remote_requests_in_flight_per_worker: int = 2,
         ray_wait_timeout_s: Optional[float] = 0.03,
         return_object_refs: bool = False,
     ):
         self._ray_wait_timeout_s = ray_wait_timeout_s
         self._return_object_refs = return_object_refs
-        self._max_remote_requests_in_flight = max_remote_requests_in_flight
+        self._max_remote_requests_in_flight = max_remote_requests_in_flight_per_worker
         self._all_workers = set(workers)
         self._pending_to_actor = {}
         self._pending_remotes = []
