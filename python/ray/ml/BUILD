@@ -163,6 +163,14 @@ py_test(
 )
 
 py_test(
+    name = "tfx_tabular_train_to_serve",
+    size = "large",
+    srcs = ["examples/tfx_tabular_train_to_serve.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
     name = "xgboost_example",
     size = "medium",
     srcs = ["examples/xgboost_example.py"],

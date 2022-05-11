@@ -148,6 +148,7 @@ def train_loop_per_worker(config):
         )
 
     for epoch in range(EPOCH):
+        print(f"Training epoch = {epoch}...")
         tf_dataset = prepare_dataset_shard(
             dataset_shard.to_tf(
                 label_column="is_big_tip",
@@ -169,7 +170,10 @@ trainer = TensorflowTrainer(
     datasets={"train": train_dataset},
     preprocessor=chained_pp,
 )
+print("Start training...")
 result = trainer.fit()
+
+print("Start serving...")
 
 
 async def adapter(request: Request):

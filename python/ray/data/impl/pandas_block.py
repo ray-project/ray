@@ -49,9 +49,12 @@ class PandasRow(TableRow):
             return None
         item = col.iloc[0]
         try:
-            # Try to interpret this as a numpy-type value.
-            # See https://stackoverflow.com/questions/9452775/converting-numpy-dtypes-to-native-python-types.  # noqa: E501
-            return item.item()
+            if item.size == 1:
+                # Try to interpret this as a numpy-type value.
+                # See https://stackoverflow.com/questions/9452775/converting-numpy-dtypes-to-native-python-types.  # noqa: E501
+                return item.item()
+            else:
+                return item
         except AttributeError:
             # Fallback to the original form.
             return item
