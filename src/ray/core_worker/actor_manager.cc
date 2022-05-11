@@ -302,8 +302,8 @@ void ActorManager::SubscribeActorState(const ActorID &actor_id) {
           // after the actor died, otherwise the stale named actor will be cached.
           // NOTE: We can not guarantee the order of arrival of `on_done` callback and
           // subscribe callback for the time being.
+          absl::MutexLock lock(&cache_mutex_);
           if (IsValidActor(actor_id)) {
-            absl::MutexLock lock(&cache_mutex_);
             cached_actor_name_to_ids_.emplace(cached_actor_name, actor_id);
           }
         }
@@ -316,18 +316,20 @@ void ActorManager::MakeActorInvalid(std::shared_ptr<ActorHandle> actor_handle) {
   const auto &actor_name = actor_handle->GetName();
   const auto &ray_namespace = actor_handle->GetNamespace();
 
+  {  // Mark the actor as invalid before removing the named actor from the cache.
+    absl::MutexLock lock(&subscription_mutex_);
+    auto iter = subscribed_actors_.find(actor_id);
+    if (iter != subscribed_actors_.end()) {
+      iter->second = false;
+    }
+  }
+
   /// Invalidate named actor cache.
   if (!actor_name.empty()) {
     RAY_LOG(DEBUG) << "Actor name cache is invalided for the actor of name " << actor_name
                    << " namespace " << ray_namespace << " id " << actor_id;
     absl::MutexLock lock(&cache_mutex_);
     cached_actor_name_to_ids_.erase(GenerateCachedActorName(ray_namespace, actor_name));
-  }
-
-  absl::MutexLock lock(&subscription_mutex_);
-  auto iter = subscribed_actors_.find(actor_id);
-  if (iter != subscribed_actors_.end()) {
-    iter->second = false;
   }
 }
 
