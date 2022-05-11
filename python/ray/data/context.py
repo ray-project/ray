@@ -38,7 +38,7 @@ DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
     os.environ.get("RAY_DATASET_PUSH_BASED_SHUFFLE", None)
 )
 
-# Whether to use Polars for tabular dataset groupbys and aggregations.
+# Whether to use Polars for tabular dataset sorts, groupbys, and aggregations.
 DEFAULT_USE_POLARS = False
 
 
