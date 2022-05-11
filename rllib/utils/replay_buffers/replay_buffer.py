@@ -40,8 +40,8 @@ class ReplayBuffer:
 
     Examples:
         >>> from ray.rllib.utils.replay_buffers import ReplayBuffer
-        >>> ReplayBuffer = ... # doctest: +SKIP
-        >>> env = MyBaseEnv() # doctest: +SKIP
+        >>> buffer = ReplayBuffer(capacity=10, storage_unit=StorageUnit.TIMESTEPS)
+        >>> env = MyBaseEnv() # doctest: +SK
         >>> obs, rewards, dones, infos, off_policy_actions = env.poll() # doctest: +SKIP
         >>> print(obs) # doctest: +SKIP
         {
@@ -83,7 +83,8 @@ class ReplayBuffer:
     """
 
     def __init__(
-        self, capacity: int = 10000, storage_unit: str = "timesteps", **kwargs
+        self, capacity: int = 10000, storage_unit: StorageUnit =
+        StorageUnit.TIMESTEPS, **kwargs
     ):
         """Initializes a (FIFO) ReplayBuffer instance.
 

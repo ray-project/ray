@@ -1,6 +1,6 @@
 .. _env-reference-docs:
 
-Replay Buffers
+Replay Buffer API
 ============
 
 RLlib comes with a set of extendable replay buffers which are used mostly in Q-Learning algorithms.
@@ -57,35 +57,27 @@ Therefore, they support, whenever possible, different :py:class:`~ray.rllib.util
 The storage_unit constructor argument of a replay buffer defines how sequences are stored, and therefore the unit in which they are sampled.
 When later calling the sample() method, num_units will relate to said storage_unit.
 
-Here is an example
+Here is a full example of how to modify the storage_unit and interact with a custom buffer:
 
-The :py:class:`~ray.rllib.env.base_env.BaseEnv` API allows RLlib to support:
-
-1) Vectorization of sub-environments (i.e. individual `gym.Env <https://github.com/openai/gym>`_ instances, stacked to form a vector of envs) in order to batch the action computing model forward passes.
-2) External simulators requiring async execution (e.g. envs that run on separate machines and independently request actions from a policy server).
-3) Stepping through the individual sub-environments in parallel via pre-converting them into separate `@ray.remote` actors.
-4) Multi-agent RL via dicts mapping agent IDs to observations/rewards/etc..
-
-For example, if you provide a custom `gym.Env <https://github.com/openai/gym>`_ class to RLlib, auto-conversion to :py:class:`~ray.rllib.env.base_env.BaseEnv` goes as follows:
-
-- User provides a `gym.Env <https://github.com/openai/gym>`_ -> :py:class:`~ray.rllib.env.vector_env._VectorizedGymEnv` (is-a :py:class:`~ray.rllib.env.vector_env.VectorEnv`) -> :py:class:`~ray.rllib.env.base_env.BaseEnv`
-
-Here is a simple example:
-
-.. literalinclude:: ../../../../rllib/examples/documentation/custom_gym_env.py
+.. literalinclude:: ../../../../rllib/examples/documentation/replay_buffer_demo.py
    :language: python
 
-..   start-after: __sphinx_doc_model_construct_1_begin__
-..   end-before: __sphinx_doc_model_construct_1_end__
+..   start-after: __sphinx_doc_replay_buffer_advanced_usage_storage_unit__begin__
+..   end-before: __sphinx_doc_replay_buffer_advanced_usage_storage_unit__end__
 
-However, you may also conveniently sub-class any of the other supported RLlib-specific
-environment types. The automated paths from those env types (or callables returning instances of those types) to
-an RLlib :py:class:`~ray.rllib.env.base_env.BaseEnv` is as follows:
+As noted above, Rllib's :py:class:`~ray.rllib.utils.replay_buffers.multi_agent_replay_buffer.MultiAgentReplayBuffer` s
+support modification of underlying replay buffers. Under the hood, the :py:class:`~ray.rllib.utils.replay_buffers.multi_agent_replay_buffer.MultiAgentReplayBuffer`
+stores experiences per policy in separate underlying replay buffers. You can modify their behaviour by specifying an underlying replay buffer config that works
+the same as the parent's config.
 
-- User provides a custom :py:class:`~ray.rllib.env.multi_agent_env.MultiAgentEnv` (is-a `gym.Env <https://github.com/openai/gym>`_) -> :py:class:`~ray.rllib.env.vector_env.VectorEnv` -> :py:class:`~ray.rllib.env.base_env.BaseEnv`
-- User uses a policy client (via an external simulator) -> :py:class:`~ray.rllib.env.external_env.ExternalEnv` | :py:class:`~ray.rllib.env.external_multi_agent_env.ExternalMultiAgentEnv` -> :py:class:`~ray.rllib.env.base_env.BaseEnv`
-- User provides a custom :py:class:`~ray.rllib.env.vector_env.VectorEnv` -> :py:class:`~ray.rllib.env.base_env.BaseEnv`
-- User provides a custom :py:class:`~ray.rllib.env.base_env.BaseEnv` -> do nothing
+Here is an example of how to specify an underlying replay buffer:
+
+.. literalinclude:: ../../../../rllib/examples/documentation/replay_buffer_demo.py
+   :language: python
+
+..   start-after: __sphinx_doc_replay_buffer_advanced_usage_underlying_buffers__begin__
+..   end-before: __sphinx_doc_replay_buffer_advanced_usage_underlying_buffers__end__
+
 
 
 Replay Buffers API Reference
