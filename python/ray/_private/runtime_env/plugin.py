@@ -1,6 +1,6 @@
 from abc import ABC
 import logging
-from typing import Optional, List, Union
+from typing import Optional
 from ray._private.runtime_env.uri_cache import URICache
 
 from ray.util.annotations import DeveloperAPI
