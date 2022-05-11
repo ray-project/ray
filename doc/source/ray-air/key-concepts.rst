@@ -70,7 +70,7 @@ You can take a trained model and do batch inference using the BatchPredictor obj
     :end-before: __air_batch_predictor_end__
 
 
-.. Online Inference
-.. ----------------
+Online Inference
+----------------
 
 .. TODO

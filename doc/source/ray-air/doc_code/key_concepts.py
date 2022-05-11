@@ -1,27 +1,28 @@
 # __air_preprocessors_start__
+import ray
+import pandas as pd
+from sklearn.datasets import load_breast_cancer
+from sklearn.model_selection import train_test_split
+
 from ray.ml.preprocessors import *
 
-col_a = [-1, -1, 1, 1]
-col_b = [1, 1, 1, None]
-col_c = ["sunday", "monday", "tuesday", "tuesday"]
-in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b, "C": col_c})
-ds = ray.data.from_pandas(in_df)
+data_raw = load_breast_cancer()
+dataset_df = pd.DataFrame(data_raw["data"], columns=data_raw["feature_names"])
+dataset_df["target"] = data_raw["target"]
+train_df, test_df = train_test_split(dataset_df, test_size=0.3)
+train_dataset = ray.data.from_pandas(train_df)
+valid_dataset = ray.data.from_pandas(test_df)
+test_dataset = ray.data.from_pandas(test_df.drop("target", axis=1))
 
-imputer = SimpleImputer(["B"])
-scaler = StandardScaler(["A", "B"])
-encoder = LabelEncoder("C")
-chain = Chain(scaler, imputer, encoder)
-
-# Fit data.
-chain.fit(ds)
-assert imputer.stats_ == {
-    "mean(B)": 0.0,
-}
+columns_to_scale = ["mean radius", "mean texture"]
+preprocessor = StandardScaler(columns=columns_to_scale)
 # __air_preprocessors_end__
 
 # __air_trainer_start__
 from ray.ml.train.integrations.xgboost import XGBoostTrainer
 
+num_workers = 4
+use_gpu = False
 # XGBoost specific params
 params = {
     "tree_method": "approx",
@@ -39,7 +40,7 @@ trainer = XGBoostTrainer(
     params=params,
     datasets={"train": train_dataset, "valid": valid_dataset},
     preprocessor=preprocessor,
-    num_boost_round=100,
+    num_boost_round=20,
 )
 
 result = trainer.fit()
@@ -51,7 +52,8 @@ print(result.checkpoint)
 # __air_trainer_output_end__
 
 # __air_tuner_start__
-from ray.tune import Tuner, TuneConfig
+from ray import tune
+from ray.tune.tuner import Tuner, TuneConfig
 
 tuner = Tuner(
     trainer,
@@ -80,3 +82,17 @@ predicted_labels = (
 )
 
 # __air_batch_predictor_end__
+
+# __air_deploy_start__
+from ray import serve
+from ray.serve import ModelWrapperDeployment
+
+serve.start(detached=True)
+deployment = ModelWrapperDeployment.options(name=name)
+deployment.deploy(RLPredictor, checkpoint)
+print(deployment.url)
+# __air_deploy_end__
+
+# __air_inference_start__
+
+# __air_inference_end__
