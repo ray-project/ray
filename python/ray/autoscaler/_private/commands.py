@@ -1021,6 +1021,7 @@ def exec_cluster(
     port_forward: Optional[Port_forward] = None,
     with_output: bool = False,
     _allow_uninitialized_state: bool = False,
+    extra_screen_args: Optional[str] = None,
 ) -> str:
     """Runs a command on the specified cluster.
 
@@ -1030,6 +1031,7 @@ def exec_cluster(
         run_env: whether to run the command on the host or in a container.
             Select between "auto", "host" and "docker"
         screen: whether to run in a screen
+        extra_screen_args: optional custom additional args to screen command
         tmux: whether to run in a tmux session
         stop: whether to stop the cluster after command run
         start: whether to start the cluster if it isn't up
@@ -1098,6 +1100,7 @@ def exec_cluster(
         with_output=with_output,
         run_env=run_env,
         shutdown_after_run=shutdown_after_run,
+        extra_screen_args=extra_screen_args,
     )
     if tmux or screen:
         attach_command_parts = ["ray attach", config_file]
@@ -1124,6 +1127,7 @@ def _exec(
     with_output: bool = False,
     run_env: str = "auto",
     shutdown_after_run: bool = False,
+    extra_screen_args: Optional[str] = None,
 ) -> str:
     if cmd:
         if screen:
@@ -1131,6 +1135,12 @@ def _exec(
                 "screen",
                 "-L",
                 "-dm",
+            ]
+
+            if extra_screen_args is not None and len(extra_screen_args) > 0:
+                wrapped_cmd += [extra_screen_args]
+
+            wrapped_cmd += [
                 "bash",
                 "-c",
                 quote(cmd + "; exec bash"),

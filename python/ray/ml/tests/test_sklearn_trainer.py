@@ -1,15 +1,12 @@
-import os
-from typing import Optional, Tuple
 import pytest
 import pandas as pd
 
 import ray
-import ray.cloudpickle as cpickle
 from ray import tune
 from ray.ml.checkpoint import Checkpoint
-from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY, TRAIN_DATASET_KEY
+from ray.ml.constants import TRAIN_DATASET_KEY
 
-from ray.ml.train.integrations.sklearn import SklearnTrainer
+from ray.ml.train.integrations.sklearn import SklearnTrainer, load_checkpoint
 from ray.ml.preprocessor import Preprocessor
 
 from sklearn.datasets import load_breast_cancer
@@ -31,23 +28,6 @@ data_raw = load_breast_cancer()
 dataset_df = pd.DataFrame(data_raw["data"], columns=data_raw["feature_names"])
 dataset_df["target"] = data_raw["target"]
 train_df, test_df = train_test_split(dataset_df, test_size=0.3)
-
-
-def load_from_checkpoint(
-    checkpoint: Checkpoint,
-) -> Tuple[RandomForestClassifier, Optional[Preprocessor]]:
-    path = checkpoint.to_directory()
-    estimator_path = os.path.join(path, MODEL_KEY)
-    with open(estimator_path, "rb") as f:
-        estimator = cpickle.load(f)
-    preprocessor_path = os.path.join(path, PREPROCESSOR_KEY)
-    if os.path.exists(preprocessor_path):
-        with open(preprocessor_path, "rb") as f:
-            preprocessor = cpickle.load(f)
-    else:
-        preprocessor = None
-
-    return estimator, preprocessor
 
 
 def test_fit(ray_start_4_cpus):
@@ -111,7 +91,7 @@ def test_no_auto_cpu_params(ray_start_4_cpus, tmpdir):
     )
     result = trainer.fit()
 
-    model, _ = load_from_checkpoint(result.checkpoint)
+    model, _ = load_checkpoint(result.checkpoint)
     assert model.n_jobs == 1
 
 
@@ -145,7 +125,7 @@ def test_preprocessor_in_checkpoint(ray_start_4_cpus, tmpdir):
     checkpoint_path = checkpoint.to_directory(tmpdir)
     resume_from = Checkpoint.from_directory(checkpoint_path)
 
-    model, preprocessor = load_from_checkpoint(resume_from)
+    model, preprocessor = load_checkpoint(resume_from)
     assert hasattr(model, "feature_importances_")
     assert preprocessor.is_same
     assert preprocessor.fitted_
