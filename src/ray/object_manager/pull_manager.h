@@ -196,26 +196,75 @@ class PullManager {
     // object. This includes bundle requests whose objects are not actively
     // being pulled.
     absl::flat_hash_set<uint64_t> bundle_request_ids;
+
+    bool IsPullable() const { return object_size_set && !pending_object_creation; }
   };
 
-  struct PullBundleRequest {
-    PullBundleRequest(const std::vector<rpc::ObjectReference> &requested_objects)
-        : objects(requested_objects), num_object_sizes_missing(objects.size()) {}
-    const std::vector<rpc::ObjectReference> objects;
-    size_t num_object_sizes_missing;
-    // The total number of bytes needed by this pull bundle request. Note that
-    // the objects may overlap with another request, so the actual amount of
-    // memory needed to activate this request may be less than this amount.
-    size_t num_bytes_needed = 0;
+  struct BundlePullRequest {
+    BundlePullRequest(std::vector<ObjectID> requested_objects,
+                      BundlePriority bundle_priority)
+        : objects(std::move(requested_objects)), priority(bundle_priority) {}
+    const std::vector<ObjectID> objects;
+    const BundlePriority priority;
+    absl::flat_hash_set<ObjectID> pullable_objects;
 
-    void RegisterObjectSize(size_t object_size) {
-      RAY_CHECK(num_object_sizes_missing > 0);
-      num_object_sizes_missing--;
-      num_bytes_needed += object_size;
+    void MarkObjectAsPullable(const ObjectID &object) {
+      pullable_objects.emplace(object);
+    }
+
+    void MarkObjectAsUnpullable(const ObjectID &object) {
+      pullable_objects.erase(object);
+    }
+
+    // A bundle is pullable if we know the sizes of all objects
+    // and none of them is pending creation due to object reconstruction.
+    bool IsPullable() const { return pullable_objects.size() == objects.size(); }
+  };
+
+  struct BundlePullRequests {
+    absl::flat_hash_map<uint64_t, BundlePullRequest> requests;
+    // If a request is not active or inactive, it must be unpullable.
+    // Allowed transitions are active <--> inactive and inactive <--> unpullable.
+    std::set<uint64_t> active_requests;
+    std::set<uint64_t> inactive_requests;
+
+    void AddBundlePullRequest(uint64_t request_id, BundlePullRequest request) {
+      requests.emplace(request_id, std::move(request));
+      if (request.IsPullable()) {
+        inactive_requests.emplace(request_id);
+      }
+    }
+
+    void ActivateBundlePullRequest(uint64_t request_id) {
+      RAY_CHECK_GT(inactive_requests.count(request_id), 0L);
+      inactive_requests.erase(request_id);
+      active_requests.emplace(request_id);
+    }
+
+    void DeactivateBundlePullRequest(uint64_t request_id) {
+      RAY_CHECK_GT(active_requests.count(request_id), 0L);
+      active_requests.erase(request_id);
+      inactive_requests.emplace(request_id);
+    }
+
+    void MarkBundleAsPullable(uint64_t request_id) {
+      RAY_CHECK(map_find_or_die(requests, request_id).IsPullable());
+      RAY_CHECK_EQ(active_requests.count(request_id), 0L);
+      inactive_requests.emplace(request_id);
+    }
+
+    void MarkBundleAsUnpullable(uint64_t request_id) {
+      RAY_CHECK(!map_find_or_die(requests, request_id).IsPullable());
+      RAY_CHECK_EQ(active_requests.count(request_id), 0L);
+      inactive_requests.erase(request_id);
+    }
+
+    void RemoveBundlePullRequest(uint64_t request_id) {
+      requests.erase(request_id);
+      active_requests.erase(request_id);
+      inactive_requests.erase(request_id);
     }
   };
-
-  using Queue = std::map<uint64_t, PullBundleRequest>;
 
   /// Try to make an object local, by restoring the object from external
   /// storage or by fetching the object from one of its expected client
@@ -259,16 +308,14 @@ class PullManager {
   /// size information), or activating the request would exceed memory quota.
   ///
   /// Note that we allow exceeding the quota to maintain at least 1 active bundle.
-  bool ActivateNextPullBundleRequest(const Queue &bundles,
-                                     uint64_t *highest_req_id_being_pulled,
+  bool ActivateNextBundlePullRequest(BundlePullRequests *bundles,
                                      bool respect_quota,
                                      std::vector<ObjectID> *objects_to_pull);
 
   /// Deactivate a pull request in the queue. This cancels any pull or restore
   /// operations for the object.
-  void DeactivatePullBundleRequest(const Queue &bundles,
-                                   const Queue::iterator &request_it,
-                                   uint64_t *highest_req_id_being_pulled,
+  void DeactivateBundlePullRequest(BundlePullRequests *bundles,
+                                   uint64_t request_id,
                                    std::unordered_set<ObjectID> *objects_to_cancel);
 
   /// Helper method that deactivates requests from the given queue until the pull
@@ -279,19 +326,17 @@ class PullManager {
   /// \param quota_margin Keep deactivating bundles until this amount of quota margin
   ///                     becomes available.
   void DeactivateUntilMarginAvailable(const std::string &debug_name,
-                                      Queue &bundles,
+                                      BundlePullRequests *bundles,
                                       int retain_min,
                                       int64_t quota_margin,
-                                      uint64_t *highest_id_for_bundle,
                                       std::unordered_set<ObjectID> *objects_to_cancel);
 
   /// Return debug info about this bundle queue.
-  std::string BundleInfo(const Queue &bundles, uint64_t highest_id_being_pulled) const;
+  std::string BundleInfo(const BundlePullRequests &bundles) const;
 
   /// Return the incremental space required to pull the next bundle, if available.
   /// If the next bundle is not ready for pulling, 0L will be returned.
-  int64_t NextRequestBundleSize(const Queue &bundles,
-                                uint64_t highest_id_being_pulled) const;
+  int64_t NextRequestBundleSize(const BundlePullRequests &bundles) const;
 
   /// See the constructor's arguments.
   NodeID self_node_id_;
@@ -306,7 +351,7 @@ class PullManager {
   /// cancel. Start at 1 because 0 means null.
   uint64_t next_req_id_ = 1;
 
-  /// The currently active pull requests. Each request is a bundle of objects
+  /// The currently pullable pull requests. Each request is a bundle of objects
   /// that must be made local. The key is the ID that was assigned to that
   /// request, which can be used by the caller to cancel the request.
   ///
@@ -319,11 +364,11 @@ class PullManager {
   /// We only enable plasma fallback allocations for ray.get() requests, which
   /// also take precedence over ray.wait() requests.
   ///
-  /// Queues of `ray.get` and `ray.wait` requests made by workers.
-  Queue get_request_bundles_;
-  Queue wait_request_bundles_;
-  /// Queue of arguments of queued tasks.
-  Queue task_argument_bundles_;
+  /// Bundle pull requests of `ray.get` and `ray.wait` requests made by workers.
+  BundlePullRequests get_request_bundles_;
+  BundlePullRequests wait_request_bundles_;
+  /// Bundle pull requests of arguments of queued tasks.
+  BundlePullRequests task_argument_bundles_;
 
   /// The total number of bytes that we are currently pulling. This is the
   /// total size of the objects requested that we are actively pulling. To
@@ -340,21 +385,6 @@ class PullManager {
 
   /// Callback to pin plasma objects.
   std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object_;
-
-  /// The last time OOM was reported. Track this so we don't spam warnings when
-  /// the object store is full.
-  uint64_t last_oom_reported_ms_ = 0;
-
-  /// A pointer to the highest request ID whose objects we are currently
-  /// pulling. We always pull a contiguous prefix of the active pull requests.
-  /// This means that all requests with a lower ID are either already canceled
-  /// or their objects are also being pulled.
-  ///
-  /// We keep one pointer for each request queue, since we prioritize worker
-  /// requests over task argument requests, and gets over waits.
-  uint64_t highest_get_req_id_being_pulled_ = 0;
-  uint64_t highest_wait_req_id_being_pulled_ = 0;
-  uint64_t highest_task_req_id_being_pulled_ = 0;
 
   /// The objects that this object manager has been asked to fetch from remote
   /// object managers.
