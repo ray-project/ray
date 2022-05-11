@@ -37,7 +37,8 @@ export type RayConfigResponse = {
 export const getRayConfig = () => get<RayConfigResponse>("/api/ray_config", {});
 
 export type UsageStatsEnabledResponse = {
-  enabled: boolean;
+  usageStatsEnabled: boolean;
+  usageStatsPromptEnabled: boolean;
 };
 
 export const getUsageStatsEnabled = () =>
