@@ -349,10 +349,11 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
             [this, task_spec = std::move(task.value().first)] {
               rpc::PushTaskReply reply;
               rpc::Address addr;
-              ReplyCallback(Status::IOError("The actor is temporarily unavailable."),
-                            reply,
-                            addr,
-                            task_spec);
+              HandlePushTaskReply(
+                  Status::IOError("The actor is temporarily unavailable."),
+                  reply,
+                  addr,
+                  task_spec);
             },
             "CoreWorkerDirectActorTaskSubmitter::SendPendingTasks_ForceFail");
       }
@@ -427,7 +428,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
   rpc::Address addr(queue.rpc_client->Addr());
   rpc::ClientCallback<rpc::PushTaskReply> reply_callback =
       [this, addr, task_spec](const Status &status, const rpc::PushTaskReply &reply) {
-        ReplyCallback(status, reply, addr, task_spec);
+        HandlePushTaskReply(status, reply, addr, task_spec);
       };
 
   queue.inflight_task_callbacks.emplace(task_id, std::move(reply_callback));
