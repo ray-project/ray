@@ -262,6 +262,7 @@ def test_autoscaler_shutdown_node_http_everynode(
         idle_timeout_minutes=0.05,
     )
     cluster.start()
+    ray.init(address="auto")
 
     serve.start(http_options={"location": "EveryNode"})
 
