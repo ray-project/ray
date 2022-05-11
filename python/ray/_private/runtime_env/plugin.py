@@ -97,10 +97,7 @@ class RuntimeEnvPlugin(ABC):
 
 @DeveloperAPI
 class PluginCacheManager:
-    """A manager for plugins.
-
-    This class is used to manage plugins along with a cache for plugin URIs.
-    """
+    """Manages a plugin and a cache for its local resources."""
 
     def __init__(self, plugin: RuntimeEnvPlugin, uri_cache: URICache):
         self._plugin = plugin
