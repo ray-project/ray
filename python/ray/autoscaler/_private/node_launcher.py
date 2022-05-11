@@ -28,6 +28,7 @@ class BaseNodeLauncher:
     This is a superclass of NodeLauncher, which launches nodes asynchronously
     in the background.
     """
+
     def __init__(
         self,
         provider,
@@ -126,6 +127,7 @@ class BaseNodeLauncher:
 
 class NodeLauncher(BaseNodeLauncher, threading.Thread):
     """Launches nodes asynchronously in the background."""
+
     def __init__(
         self,
         provider,
@@ -142,9 +144,7 @@ class NodeLauncher(BaseNodeLauncher, threading.Thread):
         BaseNodeLauncher.__init__(
             self, provider, pending, event_summarizer, prom_metrics, node_types, index
         )
-        threading.Thread.__init__(
-            *thread_args, **thread_kwargs
-        )
+        threading.Thread.__init__(*thread_args, **thread_kwargs)
 
     def run(self):
         while True:

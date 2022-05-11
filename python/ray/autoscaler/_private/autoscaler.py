@@ -43,7 +43,7 @@ from ray.autoscaler._private.local.node_provider import (
 from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler._private.updater import NodeUpdaterThread
-from ray.autoscaler._private.node_launcher import NodeLauncher
+from ray.autoscaler._private.node_launcher import BaseNodeLauncher, NodeLauncher
 from ray.autoscaler._private.node_tracker import NodeTracker
 from ray.autoscaler._private.resource_demand_scheduler import (
     get_bin_pack_residual,
@@ -246,26 +246,41 @@ class StandardAutoscaler:
             "disable_launch_config_check", False
         )
 
+        # By default, the autoscaler launches nodes in batches asynchronously in a
+        # background thread.
+        # When the following flag is set, that behavior is disabled, so that nodes
+        # are launched in the main thread.
         self.disable_background_launch_batch = self.config["provider"].get(
             "disable_background_launch_batch"
         )
 
         # Node launchers
-        self.launch_queue = queue.Queue()
+        self.foreground_node_launcher = None
+        self.launch_queue = None
         self.pending_launches = ConcurrentCounter()
-        max_batches = math.ceil(max_concurrent_launches / float(max_launch_batch))
-        for i in range(int(max_batches)):
-            node_launcher = NodeLauncher(
+        if self.disable_background_launch_batch:
+            self.foreground_node_launcher = BaseNodeLauncher(
                 provider=self.provider,
-                queue=self.launch_queue,
-                index=i,
                 pending=self.pending_launches,
                 node_types=self.available_node_types,
                 prom_metrics=self.prom_metrics,
                 event_summarizer=self.event_summarizer,
             )
-            node_launcher.daemon = True
-            node_launcher.start()
+        else:
+            self.launch_queue = queue.Queue()
+            max_batches = math.ceil(max_concurrent_launches / float(max_launch_batch))
+            for i in range(int(max_batches)):
+                node_launcher = NodeLauncher(
+                    provider=self.provider,
+                    queue=self.launch_queue,
+                    index=i,
+                    pending=self.pending_launches,
+                    node_types=self.available_node_types,
+                    prom_metrics=self.prom_metrics,
+                    event_summarizer=self.event_summarizer,
+                )
+                node_launcher.daemon = True
+                node_launcher.start()
 
         # NodeTracker maintains soft state to track the number of recently
         # failed nodes. It is best effort only.
@@ -1229,12 +1244,19 @@ class StandardAutoscaler:
         self.pending_launches.inc(node_type, count)
         self.prom_metrics.pending_nodes.set(self.pending_launches.value)
         config = copy.deepcopy(self.config)
-        # Split into individual launch requests of the max batch size.
-        while count > 0:
-            self.launch_queue.put(
-                (config, min(count, self.max_launch_batch), node_type)
-            )
-            count -= self.max_launch_batch
+        if self.disable_background_launch_batch:
+            assert self.foreground_node_launcher is not None
+            # Launch in the main thread and block.
+            self.foreground_node_launcher.try_launch_node(config, count, node_type)
+        else:
+            assert self.launch_queue is not None
+            # Split into individual launch requests of the max batch size.
+            while count > 0:
+                # Enqueue launch data for the background NodeUpdater threads.
+                self.launch_queue.put(
+                    (config, min(count, self.max_launch_batch), node_type)
+                )
+                count -= self.max_launch_batch
 
     def kill_workers(self):
         logger.error("StandardAutoscaler: kill_workers triggered")
