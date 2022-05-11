@@ -293,7 +293,6 @@ class AlphaStarTrainer(appo.APPOTrainer):
             max_remote_requests_in_flight_per_worker=self.config[
                 "max_requests_in_flight_per_sampler_worker"
             ],
-            ray_wait_timeout_s=self.config["sample_wait_timeout"],
         )
 
     @override(Trainer)

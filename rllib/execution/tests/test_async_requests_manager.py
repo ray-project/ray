@@ -44,7 +44,9 @@ class TestAsyncRequestsManager(unittest.TestCase):
         vary in the amount of time that they take to run"""
         workers = [RemoteRLlibActor.remote(sleep_time=0.1) for _ in range(2)]
         workers += [RemoteRLlibActor.remote(sleep_time=5) for _ in range(2)]
-        manager = AsyncRequestsManager(workers, max_remote_requests_in_flight=1)
+        manager = AsyncRequestsManager(
+            workers, max_remote_requests_in_flight_per_worker=1
+        )
         for _ in range(4):
             manager.submit(lambda w: w.task())
         time.sleep(3)
@@ -64,7 +66,9 @@ class TestAsyncRequestsManager(unittest.TestCase):
         """Tests that the async manager can properly buffer tasks and not
         schedule more inflight requests than allowed"""
         workers = [RemoteRLlibActor.remote(sleep_time=0.1) for _ in range(2)]
-        manager = AsyncRequestsManager(workers, max_remote_requests_in_flight=2)
+        manager = AsyncRequestsManager(
+            workers, max_remote_requests_in_flight_per_worker=2
+        )
         for _ in range(8):
             manager.submit(lambda w: w.task())
         assert len(manager._pending_remotes) == 4
@@ -164,7 +168,9 @@ class TestAsyncRequestsManager(unittest.TestCase):
     def test_submit_to_actor(self):
         workers = [RemoteRLlibActor.remote(sleep_time=0.1) for _ in range(2)]
         worker_not_in_manager = RemoteRLlibActor.remote(sleep_time=0.1)
-        manager = AsyncRequestsManager(workers, max_remote_requests_in_flight=2)
+        manager = AsyncRequestsManager(
+            workers, max_remote_requests_in_flight_per_worker=2
+        )
         manager.submit(lambda w: w.task(), actor=workers[0])
         time.sleep(3)
         results = manager.get_ready_results()

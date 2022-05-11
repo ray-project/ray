@@ -234,14 +234,12 @@ class ApexTrainer(DQNTrainer):
             max_remote_requests_in_flight_per_worker=self.config[
                 "max_requests_in_flight_per_aggregator_worker"
             ],
-            ray_wait_timeout_s=0.05,
         )
         self._sampling_actor_manager = AsyncRequestsManager(
             self.workers.remote_workers(),
             max_remote_requests_in_flight_per_worker=self.config[
                 "max_requests_in_flight_per_sampler_worker"
             ],
-            ray_wait_timeout_s=0.05,
         )
         self.learner_thread = LearnerThread(self.workers.local_worker())
         self.learner_thread.start()
