@@ -72,14 +72,39 @@ class ResultGrid:
                 values are disregarded and these trials are never selected as
                 the best trial.
         """
-        return self._trial_to_result(
-            self._experiment_analysis.get_best_trial(
-                metric=metric,
-                mode=mode,
-                scope=scope,
-                filter_nan_and_inf=filter_nan_and_inf,
+        if not metric and not self._experiment_analysis.default_metric:
+            raise ValueError(
+                "No metric is provided. Either pass in a `metric` arg to "
+                "`get_best_result` or specify a metric in the "
+                "`TuneConfig` of your `Tuner`."
             )
+        if not mode and not self._experiment_analysis.default_mode:
+            raise ValueError(
+                "No mode is provided. Either pass in a `mode` arg to "
+                "`get_best_result` or specify a mode in the "
+                "`TuneConfig` of your `Tuner`."
+            )
+        best_trial = self._experiment_analysis.get_best_trial(
+            metric=metric,
+            mode=mode,
+            scope=scope,
+            filter_nan_and_inf=filter_nan_and_inf,
         )
+        if not best_trial:
+            error_msg = (
+                "No best trial found for the given metric: "
+                f"{metric or self._experiment_analysis.default_metric}. "
+                "This means that no trial has reported this metric"
+            )
+            error_msg += (
+                ", or all values reported for this metric are NaN. To not ignore NaN "
+                "values, you can set the `filter_nan_and_inf` arg to False."
+                if filter_nan_and_inf
+                else "."
+            )
+            raise RuntimeError(error_msg)
+
+        return self._trial_to_result(best_trial)
 
     def get_dataframe(
         self,
