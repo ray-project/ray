@@ -14,7 +14,7 @@ class Worker:
        return True
 
 
-def test_two_groups_in_one_cluster():
+def test_two_groups_in_one_cluster(ray_start_regular_shared):
     w1 = Worker.remote()
     ret1 = w1.init_gloo_group.remote(1, 0, "name_1")
     w2 = Worker.remote()
@@ -23,7 +23,7 @@ def test_two_groups_in_one_cluster():
     assert ray.get(ret2)
 
 
-def test_failure_when_initializing():
+def test_failure_when_initializing(shutdown_only):
     # job1
     ray.init()
     w1 = Worker.remote()
@@ -36,7 +36,6 @@ def test_failure_when_initializing():
     w2 = Worker.remote()
     ret2 = w2.init_gloo_group.remote(1, 0, "name_1")
     assert ray.get(ret2)
-    ray.shutdown()
 
 
 if __name__ == "__main__":
