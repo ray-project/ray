@@ -31,14 +31,29 @@ To build Ray locally you will need to have the Git repository, so first, fork it
 
         git clone https://github.com/[your username]/ray.git
 
-Next make sure you connect your repository to the upstream (main project) Ray repository. This will allow you to push your code to your repository when proposing changes (in pull requests) while also pulling updates from the main project:
+Then you can enter into the Ray git repository directory:
 
 .. code-block:: shell
-    
-    # Enter into the cloned repository directory
+
     cd ray
-    # Connect to the upstream repository
-    git remote add upstream https://github.com/ray-project/ray.git
+
+Next make sure you connect your repository to the upstream (main project) Ray repository. This will allow you to push your code to your repository when proposing changes (in pull requests) while also pulling updates from the main project.
+
+.. tabbed:: Git SSH
+
+    To connect your repository using SSH (the default) run the command:
+
+    .. code-block:: shell
+
+        git remote add upstream git@github.com:ray-project/ray.git
+
+.. tabbed:: Git HTTPS
+
+    To connect your repository using HTTPS run the command:
+
+    .. code-block:: shell
+
+        git remote add upstream https://github.com/ray-project/ray.git
 
 Every time you want to update your local version you can pull the changes from the main repository:
 
