@@ -12,7 +12,7 @@ import time
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.utils import get_directory_size_bytes
 from ray._private.runtime_env.working_dir import (
-    WorkingDirManager,
+    WorkingDirPlugin,
     set_pythonpath_in_context,
 )
 from ray._private.runtime_env.packaging import (
@@ -64,7 +64,7 @@ async def test_create_delete_size_equal(tmpdir, ray_start_regular):
     uploaded = upload_package_if_needed(uri, tmpdir, dir_to_upload)
     assert uploaded
 
-    manager = WorkingDirManager(tmpdir)
+    manager = WorkingDirPlugin(tmpdir)
 
     created_size_bytes = await manager.create(uri, {}, RuntimeEnvContext())
     deleted_size_bytes = manager.delete_uri(uri)

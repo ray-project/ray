@@ -104,7 +104,7 @@ def set_pythonpath_in_context(python_path: str, context: RuntimeEnvContext):
     context.env_vars["PYTHONPATH"] = python_path
 
 
-class WorkingDirManager(RuntimeEnvPlugin):
+class WorkingDirPlugin(RuntimeEnvPlugin):
 
     name = "working_dir"
 

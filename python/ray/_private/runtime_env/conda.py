@@ -247,7 +247,7 @@ def _get_conda_dict_with_ray_inserted(
     return conda_dict
 
 
-class CondaManager(RuntimeEnvPlugin):
+class CondaPlugin(RuntimeEnvPlugin):
 
     name = "conda"
 
@@ -290,7 +290,7 @@ class CondaManager(RuntimeEnvPlugin):
         protocol, hash = parse_uri(uri)
         if protocol != Protocol.CONDA:
             raise ValueError(
-                "CondaManager can only delete URIs with protocol "
+                "CondaPlugin can only delete URIs with protocol "
                 f"conda.  Received protocol {protocol}, URI {uri}"
             )
 

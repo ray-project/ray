@@ -24,11 +24,11 @@ from ray.experimental.internal_kv import (
 )
 from ray._private.ray_logging import setup_component_logger
 from ray._private.async_compat import create_task
-from ray._private.runtime_env.pip import PipManager
-from ray._private.runtime_env.conda import CondaManager
+from ray._private.runtime_env.pip import PipPlugin
+from ray._private.runtime_env.conda import CondaPlugin
 from ray._private.runtime_env.context import RuntimeEnvContext
-from ray._private.runtime_env.py_modules import PyModulesManager
-from ray._private.runtime_env.working_dir import WorkingDirManager
+from ray._private.runtime_env.py_modules import PyModulesPlugin
+from ray._private.runtime_env.working_dir import WorkingDirPlugin
 from ray._private.runtime_env.container import ContainerManager
 from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
 from ray.core.generated.runtime_env_common_pb2 import (
@@ -181,17 +181,17 @@ class RuntimeEnvAgent(
         self._env_locks: Dict[str, asyncio.Lock] = dict()
         _initialize_internal_kv(self._dashboard_agent.gcs_client)
         assert _internal_kv_initialized()
-        self._pip_manager = PipManager(self._runtime_env_dir)
-        self._conda_manager = CondaManager(self._runtime_env_dir)
-        self._py_modules_manager = PyModulesManager(self._runtime_env_dir)
-        self._working_dir_manager = WorkingDirManager(self._runtime_env_dir)
+        self._pip_plugin = PipPlugin(self._runtime_env_dir)
+        self._conda_plugin = CondaPlugin(self._runtime_env_dir)
+        self._py_modules_plugin = PyModulesPlugin(self._runtime_env_dir)
+        self._working_dir_plugin = WorkingDirPlugin(self._runtime_env_dir)
         self._container_manager = ContainerManager(dashboard_agent.temp_dir)
 
         self._base_plugins: Dict[str, RuntimeEnvPlugin] = {
-            "working_dir": self._working_dir_manager,
-            "pip": self._pip_manager,
-            "conda": self._conda_manager,
-            "py_modules": self._py_modules_manager,
+            "working_dir": self._working_dir_plugin,
+            "pip": self._pip_plugin,
+            "conda": self._conda_plugin,
+            "py_modules": self._py_modules_plugin,
         }
         self._uri_caches = {}
         self._base_plugin_cache_managers = {}
@@ -218,16 +218,16 @@ class RuntimeEnvAgent(
 
     def uris_parser(self, runtime_env):
         result = list()
-        uri = self._working_dir_manager.get_uri(runtime_env)
+        uri = self._working_dir_plugin.get_uri(runtime_env)
         if uri:
             result.append((uri, UriType.WORKING_DIR))
-        uris = self._py_modules_manager.get_uris(runtime_env)
+        uris = self._py_modules_plugin.get_uris(runtime_env)
         for uri in uris:
             result.append((uri, UriType.PY_MODULES))
-        uri = self._pip_manager.get_uri(runtime_env)
+        uri = self._pip_plugin.get_uri(runtime_env)
         if uri:
             result.append((uri, UriType.PIP))
-        uri = self._conda_manager.get_uri(runtime_env)
+        uri = self._conda_plugin.get_uri(runtime_env)
         if uri:
             result.append((uri, UriType.CONDA))
         return result

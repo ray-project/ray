@@ -126,7 +126,7 @@ def upload_py_modules_if_needed(
     return runtime_env
 
 
-class PyModulesManager(RuntimeEnvPlugin):
+class PyModulesPlugin(RuntimeEnvPlugin):
 
     name = "py_modules"
 

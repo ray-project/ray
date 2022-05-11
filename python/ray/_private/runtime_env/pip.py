@@ -366,7 +366,7 @@ class PipProcessor:
         return self._run().__await__()
 
 
-class PipManager(RuntimeEnvPlugin):
+class PipPlugin(RuntimeEnvPlugin):
     name = "pip"
 
     def __init__(self, resources_dir: str):
@@ -398,7 +398,7 @@ class PipManager(RuntimeEnvPlugin):
         protocol, hash = parse_uri(uri)
         if protocol != Protocol.PIP:
             raise ValueError(
-                "PipManager can only delete URIs with protocol "
+                "PipPlugin can only delete URIs with protocol "
                 f"pip. Received protocol {protocol}, URI {uri}"
             )
 
