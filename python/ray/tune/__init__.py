@@ -38,6 +38,8 @@ from ray.tune.sample import (
     loguniform,
     qloguniform,
 )
+from ray.tune.tune_config import TuneConfig
+from ray.tune.tuner import Tuner
 from ray.tune.suggest import create_searcher
 from ray.tune.schedulers import create_scheduler
 from ray.tune.utils.placement_groups import PlacementGroupFactory
@@ -93,4 +95,6 @@ __all__ = [
     "create_searcher",
     "create_scheduler",
     "PlacementGroupFactory",
+    "Tuner",
+    "TuneConfig"
 ]
