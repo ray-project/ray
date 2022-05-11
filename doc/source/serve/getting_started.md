@@ -8,7 +8,7 @@ We'll be using [HuggingFace's SummarizationPipeline](https://huggingface.co/docs
 
 :::{tip}
 If you have suggestions on how to improve this tutorial,
-    please `let us know <https://github.com/ray-project/ray/issues/new/choose>`_!
+    please [let us know](https://github.com/ray-project/ray/issues/new/choose)!
 :::
 
 To run this example, you will need to install the following:
