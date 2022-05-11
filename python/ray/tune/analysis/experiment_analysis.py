@@ -500,7 +500,10 @@ class ExperimentAnalysis:
             try:
                 with open(os.path.join(path, EXPR_PARAM_FILE)) as f:
                     config = json.load(f)
-                self._configs[path] = flatten_dict({CONFIG_PREFIX: config})
+                if prefix:
+                    self._configs[path] = flatten_dict({CONFIG_PREFIX: config})
+                else:
+                    self._configs[path] = config
             except Exception:
                 fail_count += 1
 
