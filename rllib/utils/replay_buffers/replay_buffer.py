@@ -34,6 +34,54 @@ class StorageUnit(Enum):
 
 @ExperimentalAPI
 class ReplayBuffer:
+    """The lowest-level replay buffer interface used by RLlib.
+
+    This class implements a basic ring-type of buffer with random sampling.
+
+    Examples:
+        >>> from ray.rllib.utils.replay_buffers import ReplayBuffer
+        >>> ReplayBuffer = ... # doctest: +SKIP
+        >>> env = MyBaseEnv() # doctest: +SKIP
+        >>> obs, rewards, dones, infos, off_policy_actions = env.poll() # doctest: +SKIP
+        >>> print(obs) # doctest: +SKIP
+        {
+            "env_0": {
+                "car_0": [2.4, 1.6],
+                "car_1": [3.4, -3.2],
+            },
+            "env_1": {
+                "car_0": [8.0, 4.1],
+            },
+            "env_2": {
+                "car_0": [2.3, 3.3],
+                "car_1": [1.4, -0.2],
+                "car_3": [1.2, 0.1],
+            },
+        }
+        >>> env.send_actions({ # doctest: +SKIP
+        ...   "env_0": { # doctest: +SKIP
+        ...     "car_0": 0, # doctest: +SKIP
+        ...     "car_1": 1, # doctest: +SKIP
+        ...   }, ... # doctest: +SKIP
+        ... }) # doctest: +SKIP
+        >>> obs, rewards, dones, infos, off_policy_actions = env.poll() # doctest: +SKIP
+        >>> print(obs) # doctest: +SKIP
+        {
+            "env_0": {
+                "car_0": [4.1, 1.7],
+                "car_1": [3.2, -4.2],
+            }, ...
+        }
+        >>> print(dones) # doctest: +SKIP
+        {
+            "env_0": {
+                "__all__": False,
+                "car_0": False,
+                "car_1": True,
+            }, ...
+        }
+    """
+
     def __init__(
         self, capacity: int = 10000, storage_unit: str = "timesteps", **kwargs
     ):
