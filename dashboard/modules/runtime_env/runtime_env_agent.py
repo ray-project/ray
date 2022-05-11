@@ -75,6 +75,7 @@ class UriType(Enum):
     PY_MODULES = 2
     PIP = 3
     CONDA = 4
+    JAVA_JARS = 5
 
 
 class ReferenceTable:
