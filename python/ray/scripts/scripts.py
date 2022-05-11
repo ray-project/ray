@@ -1487,7 +1487,9 @@ def submit(
     assert not (script_args and args), "Use -- --arg1 --arg2 for script args."
 
     if (extra_screen_args is not None) and (not screen):
-        cli_logger.abort("To use extra_screen_args, it is required to use the --screen flag")
+        cli_logger.abort(
+            "To use extra_screen_args, it is required to use the --screen flag"
+        )
 
     if args:
         cli_logger.warning(
