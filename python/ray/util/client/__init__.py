@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 # This version string is incremented to indicate breaking changes in the
 # protocol that require upgrading the client version.
-CURRENT_PROTOCOL_VERSION = "2022-03-16"
+CURRENT_PROTOCOL_VERSION = "2022-05-06"
 
 
 class _ClientContext:
