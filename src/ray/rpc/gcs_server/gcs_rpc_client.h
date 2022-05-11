@@ -165,7 +165,15 @@ class GcsRpcClient {
         gcs_port_(port),
         io_context_(&client_call_manager.GetMainService()),
         periodical_runner_(std::make_unique<PeriodicalRunner>(*io_context_)) {
-    channel_ = BuildChannel(address, port);
+    grpc::ChannelArguments arguments;
+    arguments.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS,
+                     ::RayConfig::instance().gcs_grpc_max_reconnect_backoff_ms());
+    arguments.SetInt(GRPC_ARG_MIN_RECONNECT_BACKOFF_MS,
+                     ::RayConfig::instance().gcs_grpc_min_reconnect_backoff_ms());
+    arguments.SetInt(GRPC_ARG_INITIAL_RECONNECT_BACKOFF_MS,
+                     ::RayConfig::instance().gcs_grpc_initial_reconnect_backoff_ms());
+
+    channel_ = BuildChannel(address, port, arguments);
 
     // If not the reconnection will continue to work.
     auto deadline =

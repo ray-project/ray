@@ -58,14 +58,6 @@ inline std::shared_ptr<grpc::Channel> BuildChannel(
   arguments->SetMaxSendMessageSize(::RayConfig::instance().max_grpc_message_size());
   arguments->SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
 
-  // Setup reconnections configs
-  arguments->SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS,
-                    ::RayConfig::instance().gcs_grpc_max_reconnect_backoff_ms());
-  arguments->SetInt(GRPC_ARG_MIN_RECONNECT_BACKOFF_MS,
-                    ::RayConfig::instance().gcs_grpc_min_reconnect_backoff_ms());
-  arguments->SetInt(GRPC_ARG_INITIAL_RECONNECT_BACKOFF_MS,
-                    ::RayConfig::instance().gcs_grpc_initial_reconnect_backoff_ms());
-
   std::shared_ptr<grpc::Channel> channel;
   if (::RayConfig::instance().USE_TLS()) {
     std::string server_cert_file = std::string(::RayConfig::instance().TLS_SERVER_CERT());
