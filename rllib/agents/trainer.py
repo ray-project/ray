@@ -1484,9 +1484,9 @@ class Trainer(Trainable):
     @override(Trainable)
     def cleanup(self) -> None:
         # Stop all workers.
-        if hasattr(self, "workers"):
+        if hasattr(self, "workers") and self.workers is not None:
             self.workers.stop()
-        if hasattr(self, "evaluation_workers"):
+        if hasattr(self, "evaluation_workers") and self.evaluation_workers is not None:
             self.evaluation_workers.stop()
 
     @OverrideToImplementCustomLogic
