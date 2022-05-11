@@ -163,6 +163,43 @@ def test_node_failure_detector_when_gcs_server_restart(
     ],
     indirect=True,
 )
+def test_actor_raylet_resubscription(ray_start_regular_with_external_redis):
+    # stat an actor
+    @ray.remote
+    class A:
+        def ready(self):
+            import os
+            return os.getpid()
+
+    actor = A.options(name="abc", max_restarts=0).remote()
+    pid = ray.get(actor.ready.remote())
+    print("actor is ready and kill gcs")
+
+    ray.worker._global_node.kill_gcs_server()
+
+    print("make actor exit")
+    import psutil
+    p = psutil.Process(pid)
+    p.kill()
+    from time import sleep
+    sleep(1)
+    print("start gcs")
+    ray.worker._global_node.start_gcs_server()
+
+    print("try actor method again")
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(actor.ready.remote())
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular_with_external_redis",
+    [
+        generate_system_config_map(
+            num_heartbeats_timeout=20, gcs_rpc_server_reconnect_timeout_s=60
+        )
+    ],
+    indirect=True,
+)
 def test_del_actor_after_gcs_server_restart(ray_start_regular_with_external_redis):
     actor = Increase.options(name="abc").remote()
     result = ray.get(actor.method.remote(1))
