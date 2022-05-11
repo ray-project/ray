@@ -169,6 +169,7 @@ def test_actor_raylet_resubscription(ray_start_regular_with_external_redis):
     class A:
         def ready(self):
             import os
+
             return os.getpid()
 
     actor = A.options(name="abc", max_restarts=0).remote()
@@ -179,9 +180,11 @@ def test_actor_raylet_resubscription(ray_start_regular_with_external_redis):
 
     print("make actor exit")
     import psutil
+
     p = psutil.Process(pid)
     p.kill()
     from time import sleep
+
     sleep(1)
     print("start gcs")
     ray.worker._global_node.start_gcs_server()
