@@ -155,6 +155,16 @@ The top-level vs not top-level passing convention also applies to actor construc
     actor_handle.method.remote(obj)  # by-value
     actor_handle.method.remote([obj])  # by-reference
 
+Closure Capture of Objects
+--------------------------
+
+You can also pass objects to tasks via *closure-capture*. This can be convenient when you have a large object that you want to share verbatim between many tasks or actors, and don't want to pass it repeatedly as an argument. Be aware however that defining a task that closes over an object ref will pin the object via reference-counting, so the object will not be evicted until the job completes.
+
+.. literalinclude:: doc_code/obj_capture.py
+
+Nested Objects
+--------------
+
 Ray also supports nested object references. This allows you to build composite objects that themselves hold references to further sub-objects.
 
 .. code-block:: python
@@ -162,13 +172,6 @@ Ray also supports nested object references. This allows you to build composite o
     # Objects can be nested within each other. Ray will keep the inner object
     # alive via reference counting until all outer object references are deleted.
     object_ref_2 = ray.put([object_ref])
-
-Closure Capture of Objects
---------------------------
-
-You can also pass objects to tasks via *closure-capture*. This can be convenient when you have a large object that you want to share verbatim between many tasks or actors, and don't want to pass it repeatedly as an argument. Be aware however that defining a task that closes over an object ref will pin the object via reference-counting, so the object will not be evicted until the job completes.
-
-.. literalinclude:: doc_code/obj_capture.py
 
 More about Ray Objects
 ----------------------
