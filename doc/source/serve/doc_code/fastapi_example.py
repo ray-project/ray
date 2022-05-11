@@ -21,3 +21,4 @@ FastAPIDeployment.deploy()
 
 # 3: Query the deployment and print the result.
 print(requests.get("http://localhost:8000/hello", params={"name": "Theodore"}).json())
+# "Hello Theodore!"

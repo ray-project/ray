@@ -20,3 +20,4 @@ SentimentAnalysisDeployment.deploy()
 # 3: Query the deployment and print the result.
 print(requests.get("http://localhost:8000/",
                    params={"text": "Ray Serve is great!"}).json())
+# {'label': 'POSITIVE', 'score': 0.9998476505279541}

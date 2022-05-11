@@ -37,8 +37,6 @@ pip install "ray[serve]"
 ```
 :::
 
-(serve-quickstart)=
-
 :::{tabbed} Quickstart
 
 To run this example, install the following: ``pip install ray["serve"]``.
@@ -50,7 +48,7 @@ In this quick-start example we will define a simple "hello world" deployment, de
 ```
 :::
 
-:::{tabbed} FastAPI Integration
+:::{tabbed} FastAPI integration
 
 To run this example, install the following: ``pip install ray["serve"]``.
 
@@ -61,7 +59,7 @@ In this example we will use Serve's [FastAPI](https://fastapi.tiangolo.com/) int
 ```
 :::
 
-:::{tabbed} Serve a Hugging Face Model
+:::{tabbed} Serving a Hugging Face NLP model
 
 To run this example, install the following: ``pip install ray["serve"] transformers``.
 
@@ -74,6 +72,12 @@ The model we'll use is a sentiment analysis model: it will take a text string as
 :::
 
 ## Why choose Serve?
+
+:::{dropdown} TODO: Testing this out
+
+Here's the relevant text.
+
+:::
 
 There are generally two ways of serving machine learning applications, both with serious limitations:
 you can use a **traditional web server**---your own Flask app---or you can use a cloud-hosted solution.
