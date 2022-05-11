@@ -1,7 +1,6 @@
 import os
 from typing import Dict, List
 
-import comet_ml
 from ray.tune.logger import LoggerCallback
 from ray.tune.trial import Trial
 from ray.tune.utils import flatten_dict
@@ -20,6 +19,8 @@ def _import_comet():
         import comet_ml  # noqa: F401
     except ImportError:
         raise RuntimeError("pip install 'comet-ml' to use CometLoggerCallback")
+
+    return comet_ml
 
 
 class CometLoggerCallback(LoggerCallback):
@@ -213,6 +214,8 @@ class CometLoggerCallback(LoggerCallback):
             experiment.log_curve(k, x=range(len(v)), y=v, step=step)
 
     def log_trial_save(self, trial: "Trial"):
+        comet_ml = _import_comet()
+
         if self.save_checkpoints and trial.checkpoint:
             experiment = self._trial_experiments[trial]
 
