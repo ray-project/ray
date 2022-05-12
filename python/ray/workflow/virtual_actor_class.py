@@ -459,7 +459,8 @@ class VirtualActorClass(VirtualActorClassBase):
     def _get_or_create(self, actor_id: str, args, kwargs) -> "VirtualActor":
         """Create a new virtual actor"""
         try:
-            return get_actor(actor_id)
+            # return get_actor(actor_id)
+            raise Exception
         except Exception:
             instance = self._construct(actor_id)
             @ray.remote
