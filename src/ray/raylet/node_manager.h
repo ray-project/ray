@@ -551,10 +551,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                                rpc::CancelWorkerLeaseReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a `PinObjectID` request.
-  void HandlePinObjectID(const rpc::PinObjectIDRequest &request,
-                         rpc::PinObjectIDReply *reply,
-                         rpc::SendReplyCallback send_reply_callback) override;
+  /// Handle a `PinObjectIDs` request.
+  void HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
+                          rpc::PinObjectIDsReply *reply,
+                          rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `NodeStats` request.
   void HandleGetNodeStats(const rpc::GetNodeStatsRequest &request,

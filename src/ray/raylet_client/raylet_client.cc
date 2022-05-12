@@ -464,9 +464,9 @@ void RayletClient::ReleaseUnusedBundles(
       });
 }
 
-void RayletClient::PinObjectID(const rpc::Address &caller_address,
-                               const ObjectID &object_id,
-                               rpc::ClientCallback<rpc::PinObjectIDReply> callback) {
+void RayletClient::PinObjectIDs(const rpc::Address &caller_address,
+                                const ObjectID &object_id,
+                                rpc::ClientCallback<rpc::PinObjectIDsReply> callback) {
   pin_batcher_->Add(caller_address, object_id, std::move(callback));
 }
 
@@ -534,7 +534,7 @@ PinBatcher::PinBatcher(std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_c
 
 void PinBatcher::Add(const rpc::Address &address,
                      const ObjectID &object_id,
-                     rpc::ClientCallback<rpc::PinObjectIDReply> callback) {
+                     rpc::ClientCallback<rpc::PinObjectIDsReply> callback) {
   absl::MutexLock lock(&mu_);
   total_inflight_pins_++;
   RayletDestination &raylet =
@@ -556,13 +556,13 @@ bool PinBatcher::Flush(const std::string &raylet_id) {
   raylet.inflight_ = std::move(raylet.buffered_);
   raylet.buffered_.clear();
 
-  rpc::PinObjectIDRequest request;
+  rpc::PinObjectIDsRequest request;
   request.mutable_owner_address()->CopyFrom(raylet.raylet_address_);
   for (const auto &req : raylet.inflight_) {
     request.add_object_ids(req.object_id.Binary());
   }
   auto rpc_callback = [this, raylet_id](Status status,
-                                        const rpc::PinObjectIDReply &reply) {
+                                        const rpc::PinObjectIDsReply &reply) {
     std::vector<Request> inflight;
     {
       absl::MutexLock lock(&mu_);
@@ -579,7 +579,7 @@ bool PinBatcher::Flush(const std::string &raylet_id) {
       req.callback(status, reply);
     }
   };
-  grpc_client_->PinObjectID(request, std::move(rpc_callback));
+  grpc_client_->PinObjectIDs(request, std::move(rpc_callback));
 
   return true;
 }

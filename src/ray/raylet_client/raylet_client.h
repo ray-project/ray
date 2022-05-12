@@ -50,9 +50,9 @@ namespace ray {
 class PinObjectsInterface {
  public:
   /// Request to a raylet to pin a plasma object. The callback will be sent via gRPC.
-  virtual void PinObjectID(const rpc::Address &caller_address,
-                           const ObjectID &object_id,
-                           rpc::ClientCallback<rpc::PinObjectIDReply> callback) = 0;
+  virtual void PinObjectIDs(const rpc::Address &caller_address,
+                            const ObjectID &object_id,
+                            rpc::ClientCallback<rpc::PinObjectIDsReply> callback) = 0;
 
   virtual ~PinObjectsInterface(){};
 };
@@ -232,7 +232,7 @@ class RayletConnection {
   std::mutex write_mutex_;
 };
 
-/// Batches PinObjectIDRequest so there would be only one outstanding
+/// Batches PinObjectIDsRequest so there would be only one outstanding
 /// request per Raylet. This reduces the memory and CPU overhead when a
 /// large number of objects need to be pinned.
 class PinBatcher {
@@ -242,7 +242,7 @@ class PinBatcher {
   /// Adds objects to be pinned at the address.
   void Add(const rpc::Address &address,
            const ObjectID &object_id,
-           rpc::ClientCallback<rpc::PinObjectIDReply> callback);
+           rpc::ClientCallback<rpc::PinObjectIDsReply> callback);
 
   /// Total number of objects waiting to be pinned.
   int64_t TotalPending() const;
@@ -250,11 +250,11 @@ class PinBatcher {
  private:
   // Request from a single Add() call.
   struct Request {
-    Request(ObjectID oid, rpc::ClientCallback<rpc::PinObjectIDReply> cb)
+    Request(ObjectID oid, rpc::ClientCallback<rpc::PinObjectIDsReply> cb)
         : object_id(oid), callback(std::move(cb)) {}
 
     ObjectID object_id;
-    rpc::ClientCallback<rpc::PinObjectIDReply> callback;
+    rpc::ClientCallback<rpc::PinObjectIDsReply> callback;
   };
 
   // Collects buffered pin object requests intended for a raylet.
@@ -488,9 +488,9 @@ class RayletClient : public RayletClientInterface {
       const std::vector<rpc::Bundle> &bundles_in_use,
       const rpc::ClientCallback<rpc::ReleaseUnusedBundlesReply> &callback) override;
 
-  void PinObjectID(const rpc::Address &caller_address,
-                   const ObjectID &object_id,
-                   rpc::ClientCallback<rpc::PinObjectIDReply> callback) override;
+  void PinObjectIDs(const rpc::Address &caller_address,
+                    const ObjectID &object_id,
+                    rpc::ClientCallback<rpc::PinObjectIDsReply> callback) override;
 
   void ShutdownRaylet(
       const NodeID &node_id,
@@ -539,7 +539,7 @@ class RayletClient : public RayletClientInterface {
   ResourceMappingType resource_ids_;
   /// The connection to the raylet server.
   std::unique_ptr<RayletConnection> conn_;
-  /// Batches pin object ID requests to the same raylet. All PinObjectID requests
+  /// Batches pin object ID requests to the same raylet. All PinObjectIDs requests
   /// should go through this.
   std::unique_ptr<PinBatcher> pin_batcher_;
 };

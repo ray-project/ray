@@ -2315,7 +2315,7 @@ Status NodeManager::GetObjectsFromPlasma(
   // Pin the objects in plasma by getting them and holding a reference to
   // the returned buffer.
   // NOTE: the caller must ensure that the objects already exist in plasma before
-  // sending a PinObjectID request.
+  // sending a PinObjectIDs request.
   std::vector<plasma::ObjectBuffer> plasma_results;
   // TODO(swang): This `Get` has a timeout of 0, so the plasma store will not
   // block when serving the request. However, if the plasma store is under
@@ -2336,9 +2336,9 @@ Status NodeManager::GetObjectsFromPlasma(
   return Status::OK();
 }
 
-void NodeManager::HandlePinObjectID(const rpc::PinObjectIDRequest &request,
-                                    rpc::PinObjectIDReply *reply,
-                                    rpc::SendReplyCallback send_reply_callback) {
+void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
+                                     rpc::PinObjectIDsReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) {
   std::vector<ObjectID> object_ids;
   object_ids.reserve(request.object_ids_size());
   const auto &owner_address = request.owner_address();
