@@ -1386,27 +1386,6 @@ py_test(
 )
 
 # --------------------------------------------------------------------
-# Optimizers and Memories
-# rllib/execution/
-#
-# Tag: execution
-# --------------------------------------------------------------------
-
-py_test(
-    name = "test_segment_tree",
-    tags = ["team:ml", "execution"],
-    size = "small",
-    srcs = ["execution/tests/test_segment_tree.py"]
-)
-
-py_test(
-    name = "test_prioritized_replay_buffer",
-    tags = ["team:ml", "execution"],
-    size = "small",
-    srcs = ["execution/tests/test_prioritized_replay_buffer.py"]
-)
-
-# --------------------------------------------------------------------
 # Models and Distributions
 # rllib/models/
 #

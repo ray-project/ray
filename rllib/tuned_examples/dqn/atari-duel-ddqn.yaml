@@ -15,14 +15,15 @@ dueling-ddqn:
         dueling: true
         num_atoms: 1
         noisy: false
-        prioritized_replay: false
+        replay_buffer_config:
+          type: MultiAgentReplayBuffer
+          learning_starts: 20000
+          capacity: 1000000
         n_step: 1
         target_network_update_freq: 8000
         lr: .0000625
         adam_epsilon: .00015
         hiddens: [512]
-        learning_starts: 20000
-        buffer_size: 1000000
         rollout_fragment_length: 4
         train_batch_size: 32
         exploration_config:

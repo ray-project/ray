@@ -188,11 +188,12 @@ cql-halfcheetahbulletenv-v0:
         no_done_at_end: false
         n_step: 3
         rollout_fragment_length: 1
-        prioritized_replay: false
+        replay_buffer_config:
+          type: MultiAgentReplayBuffer
+          learning_starts: 256
         train_batch_size: 256
         target_network_update_freq: 0
         min_train_timesteps_per_reporting: 1000
-        learning_starts: 256
         optimization:
             actor_learning_rate: 0.0001
             critic_learning_rate: 0.0003
@@ -240,24 +241,24 @@ ddpg-hopperbulletenv-v0:
         min_sample_timesteps_per_reporting: 1000
         target_network_update_freq: 0
         tau: 0.001
-        buffer_size: 10000
-        prioritized_replay: True
-        prioritized_replay_alpha: 0.6
-        prioritized_replay_beta: 0.4
-        prioritized_replay_eps: 0.000001
+        replay_buffer_config:
+          capacity: 10000
+          prioritized_replay_alpha: 0.6
+          prioritized_replay_beta: 0.4
+          prioritized_replay_eps: 0.000001
+          learning_starts: 500
+          worker_side_prioritization: false
         clip_rewards: false
         actor_lr: 0.001
         critic_lr: 0.001
         use_huber: true
         huber_threshold: 1.0
         l2_reg: 0.000001
-        learning_starts: 500
         rollout_fragment_length: 1
         train_batch_size: 48
         num_gpus: 1
         num_workers: 0
         num_gpus_per_worker: 0
-        worker_side_prioritization: false
 
 # Basically the same as atari-ppo, but adapted for DDPPO. Note that DDPPO
 # isn't actually any more efficient on Atari, since the network size is
@@ -311,20 +312,21 @@ dqn-breakoutnoframeskip-v4:
         dueling: false
         num_atoms: 1
         noisy: false
-        prioritized_replay: false
+        replay_buffer_config:
+          type: MultiAgentReplayBuffer
+          learning_starts: 20000
+          capacity: 1000000
+          prioritized_replay_alpha: 0.5
         n_step: 1
         target_network_update_freq: 8000
         lr: .0000625
         adam_epsilon: .00015
         hiddens: [512]
-        learning_starts: 20000
-        buffer_size: 1000000
         rollout_fragment_length: 4
         train_batch_size: 32
         exploration_config:
             epsilon_timesteps: 200000
             final_epsilon: 0.01
-        prioritized_replay_alpha: 0.5
         num_gpus: 0.5
         min_sample_timesteps_per_reporting: 10000
 
@@ -440,11 +442,11 @@ sac-halfcheetahbulletenv-v0:
         no_done_at_end: false
         n_step: 3
         rollout_fragment_length: 1
-        prioritized_replay: true
         train_batch_size: 256
         target_network_update_freq: 1
         min_sample_timesteps_per_reporting: 1000
-        learning_starts: 10000
+        replay_buffer_config:
+          learning_starts: 10000
         optimization:
             actor_learning_rate: 0.0003
             critic_learning_rate: 0.0003
