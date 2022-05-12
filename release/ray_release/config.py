@@ -142,6 +142,7 @@ def as_smoke_test(test: Test) -> Test:
 
     smoke_test_config = test.pop("smoke_test")
     new_test = deep_update(test, smoke_test_config)
+    new_test["_is_smoke_test"] = True
     return new_test
 
 
