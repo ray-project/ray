@@ -287,9 +287,7 @@ class GcsClient:
         req = gcs_service_pb2.AddTemporaryURIReferenceRequest(
             uri=uri, expiration_s=expiration_s
         )
-        print("got request")
         reply = self._runtime_env_stub.AddTemporaryURIReference(req)
-        print("got reply")
         if reply.status.code != GcsCode.OK:
             raise RuntimeError(
                 f"Failed to add temporary uri reference for {uri} "
