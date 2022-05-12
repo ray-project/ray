@@ -47,7 +47,10 @@ class TrackedCheckpoint:
     def delete(self, delete_fn: Optional[Callable[["TrackedCheckpoint"], None]] = None):
         """Delete checkpoint from disk, if needed."""
         delete_fn = delete_fn or _default_delete_fn
-        delete_fn(self)
+        try:
+            delete_fn(self)
+        except Exception as e:
+            logger.warning(f"Checkpoint deletion failed: {e}")
 
     def __repr__(self):
         if self.storage_mode == TrackedCheckpoint.MEMORY:
@@ -70,7 +73,7 @@ def _default_delete_fn(checkpoint: TrackedCheckpoint):
         elif os.path.isdir(checkpoint.dir_or_data):
             shutil.rmtree(checkpoint.dir_or_data)
             return
-    logger.warning(
+    raise RuntimeError(
         f"Could not delete checkpoint {checkpoint} from disk as it is "
         f"neither file not directory. Path: {checkpoint.dir_or_data}."
     )
