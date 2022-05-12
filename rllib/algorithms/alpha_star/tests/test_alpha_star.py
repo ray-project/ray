@@ -2,7 +2,7 @@ import pyspiel
 import unittest
 
 import ray
-import ray.rllib.agents.alpha_star as alpha_star
+import ray.rllib.algorithms.alpha_star as alpha_star
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
 from ray.rllib.utils.test_utils import (
     check_compute_single_action,

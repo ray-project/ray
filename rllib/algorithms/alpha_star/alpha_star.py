@@ -9,8 +9,8 @@ from typing import Any, Dict, Optional, Type
 
 import ray
 from ray.actor import ActorHandle
-from ray.rllib.agents.alpha_star.distributed_learners import DistributedLearners
-from ray.rllib.agents.alpha_star.league_builder import AlphaStarLeagueBuilder
+from ray.rllib.algorithms.alpha_star.distributed_learners import DistributedLearners
+from ray.rllib.algorithms.alpha_star.league_builder import AlphaStarLeagueBuilder
 from ray.rllib.agents.trainer import Trainer
 import ray.rllib.agents.ppo.appo as appo
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -48,7 +48,7 @@ class AlphaStarConfig(appo.APPOConfig):
     """Defines a configuration class from which an AlphaStarTrainer can be built.
 
     Example:
-        >>> from ray.rllib.agents.alpha_star import AlphaStarConfig
+        >>> from ray.rllib.algorithms.alpha_star import AlphaStarConfig
         >>> config = AlphaStarConfig().training(lr=0.0003, train_batch_size=512)\
         ...     .resources(num_gpus=4)\
         ...     .rollouts(num_rollout_workers=64)
@@ -58,7 +58,7 @@ class AlphaStarConfig(appo.APPOConfig):
         >>> trainer.train()
 
     Example:
-        >>> from ray.rllib.agents.alpha_star import AlphaStarConfig
+        >>> from ray.rllib.algorithms.alpha_star import AlphaStarConfig
         >>> from ray import tune
         >>> config = AlphaStarConfig()
         >>> # Print out some default values.
@@ -168,7 +168,7 @@ class AlphaStarConfig(appo.APPOConfig):
                 to be used for league building logic. All other keys (that are not
                 `type`) will be used as constructor kwargs on the given class to
                 construct the LeagueBuilder instance. See the
-                `ray.rllib.agents.alpha_star.league_builder::AlphaStarLeagueBuilder`
+                `ray.rllib.algorithms.alpha_star.league_builder::AlphaStarLeagueBuilder`
                 (used by default by this algo) as an example.
             max_num_policies_to_train: The maximum number of trainable policies for this
                 Trainer. Each trainable policy will exist as a independent remote actor,
@@ -584,8 +584,8 @@ class _deprecated_default_config(dict):
         super().__init__(AlphaStarConfig().to_dict())
 
     @Deprecated(
-        old="ray.rllib.agents.alpha_star.alpha_star.DEFAULT_CONFIG",
-        new="ray.rllib.agents.alpha_star.alpha_star.AlphaStarConfig(...)",
+        old="ray.rllib.algorithms.alpha_star.alpha_star.DEFAULT_CONFIG",
+        new="ray.rllib.algorithms.alpha_star.alpha_star.AlphaStarConfig(...)",
         error=False,
     )
     def __getitem__(self, item):

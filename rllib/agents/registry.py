@@ -18,7 +18,10 @@ def _import_a3c():
 
 
 def _import_alpha_star():
-    from ray.rllib.agents.alpha_star.alpha_star import AlphaStarTrainer, DEFAULT_CONFIG
+    from ray.rllib.algorithms.alpha_star.alpha_star import (
+        AlphaStarTrainer,
+        DEFAULT_CONFIG,
+    )
 
     return AlphaStarTrainer, DEFAULT_CONFIG
 
