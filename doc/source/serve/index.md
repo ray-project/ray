@@ -7,7 +7,9 @@
 # Serve: Scalable and Programmable Serving
 
 :::{tip}
-Get in touch with us if you're using or considering using [Ray Serve](https://docs.google.com/forms/d/1l8HT35jXMPtxVUtQPeGoe09VGp5jcvSv0TqPgyz6lGU).
+[Get in touch with us](https://docs.google.com/forms/d/1l8HT35jXMPtxVUtQPeGoe09VGp5jcvSv0TqPgyz6lGU) if you're using or considering using Ray Serve.
+
+Chat with Ray Serve users and developers on our [forum](https://discuss.ray.io/).
 :::
 
 ```{image} logo.svg
@@ -23,10 +25,6 @@ Serve is framework agnostic, so you can use a single toolkit to serve everything
   [Tensorflow, and Keras](serve-tensorflow-tutorial), to [Scikit-Learn](serve-sklearn-tutorial) models, to arbitrary Python business logic.
 You can also write a complex inference service consisting of multiple ML models and business logic all in Python code using the [deployment graph](serve-deployment-graph) API.
 Serve is built on Ray, so it easily scales to many machines and offers flexible scheduling support such as fractional GPUs so you can share resources and serve many machine learning models at low cost.
-
-:::{tip}
-Chat with Ray Serve users and developers on our [forum](https://discuss.ray.io/)!
-:::
 
 :::{tabbed} Installation
 
