@@ -1,5 +1,5 @@
 Observability
-===============
+=============
 
 .. toctree::
     :maxdepth: 1
