@@ -48,9 +48,6 @@ from ray.autoscaler._private.node_tracker import NodeTracker
 from ray.autoscaler._private.resource_demand_scheduler import (
     get_bin_pack_residual,
     ResourceDemandScheduler,
-    NodeType,
-    NodeID,
-    NodeIP,
     ResourceDict,
 )
 from ray.autoscaler._private.util import (
@@ -60,6 +57,11 @@ from ray.autoscaler._private.util import (
     hash_launch_conf,
     hash_runtime_conf,
     format_info_string,
+    NodeCount,
+    NodeTypeConfigDict,
+    NodeType,
+    NodeID,
+    NodeIP,
 )
 from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_NUM_FAILURES,
@@ -83,6 +85,8 @@ UpdateInstructions = namedtuple(
     "UpdateInstructions",
     ["node_id", "setup_commands", "ray_start_commands", "docker_config"],
 )
+
+NodeLaunchData = Tuple[NodeTypeConfigDict, NodeCount, NodeType]
 
 
 @dataclass
@@ -261,8 +265,8 @@ class StandardAutoscaler:
             logger.info("Node launch will take place in the main thread.")
 
         # Node launchers
-        self.foreground_node_launcher = None
-        self.launch_queue = None
+        self.foreground_node_launcher: Optional[BaseNodeLauncher] = None
+        self.launch_queue: Optional[queue.Queue[NodeLaunchData]] = None
         self.pending_launches = ConcurrentCounter()
         if self.disable_background_launch_batch:
             self.foreground_node_launcher = BaseNodeLauncher(
