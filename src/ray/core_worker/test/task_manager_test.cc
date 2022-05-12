@@ -258,7 +258,6 @@ TEST_F(TaskManagerTest, TestTaskReconstruction) {
     RAY_LOG(INFO) << "Retry " << i;
     manager_.FailOrRetryPendingTask(spec.TaskId(), error);
     ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
-    ASSERT_TRUE(manager_.IsTaskRescheduling(spec.TaskId()));
     ASSERT_TRUE(reference_counter_->IsObjectPendingCreation(return_id));
     ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
     std::vector<std::shared_ptr<RayObject>> results;
@@ -268,8 +267,6 @@ TEST_F(TaskManagerTest, TestTaskReconstruction) {
 
   manager_.FailOrRetryPendingTask(spec.TaskId(), error);
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
-  // It is not rescheduled because it doesn't retry anymore.
-  ASSERT_FALSE(manager_.IsTaskRescheduling(spec.TaskId()));
   // Only the return object reference should remain.
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
   ASSERT_FALSE(reference_counter_->IsObjectPendingCreation(return_id));
@@ -303,7 +300,6 @@ TEST_F(TaskManagerTest, TestTaskKill) {
   auto error = rpc::ErrorType::TASK_CANCELLED;
   manager_.FailOrRetryPendingTask(spec.TaskId(), error);
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
-  ASSERT_FALSE(manager_.IsTaskRescheduling(spec.TaskId()));
   std::vector<std::shared_ptr<RayObject>> results;
   RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, false, &results));
   ASSERT_EQ(results.size(), 1);

@@ -210,15 +210,6 @@ bool TaskManager::IsTaskWaitingForExecution(const TaskID &task_id) const {
   return it->second.IsWaitingForExecution();
 }
 
-bool TaskManager::IsTaskRescheduling(const TaskID &task_id) const {
-  absl::MutexLock lock(&mu_);
-  const auto it = submissible_tasks_.find(task_id);
-  if (it == submissible_tasks_.end()) {
-    return false;
-  }
-  return it->second.IsRescheduling();
-}
-
 size_t TaskManager::NumSubmissibleTasks() const {
   absl::MutexLock lock(&mu_);
   return submissible_tasks_.size();
@@ -672,7 +663,7 @@ void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply) const {
   absl::MutexLock lock(&mu_);
   for (const auto &task_it : submissible_tasks_) {
     const auto &task_entry = task_it.second;
-    auto entry = reply->add_task_info_entries();
+    auto entry = reply->add_owned_task_info_entries();
     const auto &task_spec = task_entry.spec;
     const auto &task_state = task_entry.status;
     rpc::TaskType type;

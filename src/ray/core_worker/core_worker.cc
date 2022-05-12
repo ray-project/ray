@@ -3170,7 +3170,7 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
   if (request.include_task_info()) {
     task_manager_->FillTaskInfo(reply);
     for (const auto &current_running_task : current_tasks_) {
-      reply->add_running_task_ids(current_running_task->second.TaskId());
+      reply->add_running_task_ids(current_running_task.second.TaskId().Binary());
     }
   }
 

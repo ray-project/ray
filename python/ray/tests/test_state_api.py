@@ -136,7 +136,7 @@ def generate_worker_data(id):
 
 def generate_task_data(id, name):
     return GetTasksInfoReply(
-        task_info_entries=[
+        owned_task_info_entries=[
             TaskInfoEntry(
                 task_id=id,
                 name=name,
