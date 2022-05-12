@@ -647,7 +647,7 @@ py_test(
     name = "test_alpha_star",
     tags = ["team:ml", "trainers_dir"],
     size = "large",
-    srcs = ["agents/alpha_star/tests/test_alpha_star.py"]
+    srcs = ["algorithms/alpha_star/tests/test_alpha_star.py"]
 )
 
 # APEXTrainer (DQN)
