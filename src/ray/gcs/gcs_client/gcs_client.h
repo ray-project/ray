@@ -180,6 +180,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   // Gcs rpc client
   std::shared_ptr<rpc::GcsRpcClient> gcs_rpc_client_;
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
+  std::function<void()> resubscribe_func_;
 };
 
 }  // namespace gcs

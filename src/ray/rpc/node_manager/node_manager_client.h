@@ -99,7 +99,7 @@ class NodeManagerWorkerClient
 
   /// Get a resource load
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
-                         GCSRestart,
+                         NotifyGCSRestart,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 

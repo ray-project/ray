@@ -505,9 +505,10 @@ void RayletClient::GetResourceLoad(
   grpc_client_->GetResourceLoad(request, callback);
 }
 
-void RayletClient::GCSRestart(const rpc::ClientCallback<rpc::GCSRestartReply> &callback) {
-  rpc::GCSRestartRequest request;
-  grpc_client_->GCSRestart(request, callback);
+void RayletClient::NotifyGCSRestart(
+    const rpc::ClientCallback<rpc::NotifyGCSRestartReply> &callback) {
+  rpc::NotifyGCSRestartRequest request;
+  grpc_client_->NotifyGCSRestart(request, callback);
 }
 
 void RayletClient::SubscribeToPlasma(const ObjectID &object_id,
