@@ -29,18 +29,16 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE
 from ray.rllib.utils.metrics import (
+    LAST_TARGET_UPDATE_TS,
     NUM_AGENT_STEPS_SAMPLED,
+    NUM_ENV_STEPS_TRAINED,
     NUM_ENV_STEPS_SAMPLED,
+    NUM_TARGET_UPDATES,
     TARGET_NET_UPDATE_TIMER,
 )
 from ray.rllib.utils.typing import (
     ResultDict,
     TrainerConfigDict,
-)
-from ray.rllib.utils.metrics import (
-    LAST_TARGET_UPDATE_TS,
-    NUM_TARGET_UPDATES,
-    NUM_ENV_STEPS_TRAINED,
 )
 
 logger = logging.getLogger(__name__)
