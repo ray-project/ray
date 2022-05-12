@@ -154,8 +154,10 @@ def test_blocking_group_does_not_block_others(ray_start_regular_shared):
 
     async_actor = AsyncActor.remote()
     # Execute f1 twice for blocking the group1.
-    async_actor.f1.remote()
-    async_actor.f1.remote()
+    obj_0 = async_actor.f1.remote()
+    obj_1 = async_actor.f1.remote()
+    # Wait a while to make sure f2 is scheduled after f1.
+    ray.wait([obj_0, obj_1], timeout=5)
     # f2 should work well even if group1 is blocking.
     assert "ok" == ray.get(async_actor.f2.remote())
 

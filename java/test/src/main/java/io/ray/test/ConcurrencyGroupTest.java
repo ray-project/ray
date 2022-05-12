@@ -1,5 +1,6 @@
 package io.ray.test;
 
+import com.google.common.collect.ImmutableList;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
@@ -214,8 +215,12 @@ public class ConcurrencyGroupTest extends BaseTest {
         Ray.actor(ConcurrencyActor2::new).setConcurrencyGroups(group1, group2).remote();
 
     // Execute f1 twice. and the cg1 is blocking, but cg2 should work well.
-    myActor.task(ConcurrencyActor2::f1).remote();
-    myActor.task(ConcurrencyActor2::f1).remote();
+    ObjectRef<String> obj0 = myActor.task(ConcurrencyActor2::f1).remote();
+    ObjectRef<String> obj1 = myActor.task(ConcurrencyActor2::f1).remote();
+    // Wait a while to make sure f2 is scheduled after f1.
+    Ray.wait(ImmutableList.of(obj0, obj1), 2, 5 * 1000);
+
+    // f2 should work well even if group1 is blocking.
     Assert.assertEquals(myActor.task(ConcurrencyActor2::f2).remote().get(), "ok");
   }
 
