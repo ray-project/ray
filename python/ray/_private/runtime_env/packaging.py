@@ -250,8 +250,9 @@ def add_temporary_uri_reference(uri: str) -> None:
     the reference would never be removed, so the package would never be deleted.
     """
 
+    # Defaults to 30 seconds.  This should be enough time for the job to start.
     TEMPORARY_REFERENCE_EXPIRATION_S = int(
-        os.environ.get("RAY_runtime_env_temporary_reference_expiration_s", 60 * 10)
+        os.environ.get("RAY_runtime_env_temporary_reference_expiration_s", 30)
     )
 
     if TEMPORARY_REFERENCE_EXPIRATION_S > 0:
