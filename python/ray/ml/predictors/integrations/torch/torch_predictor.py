@@ -97,9 +97,7 @@ class TorchPredictor(Predictor):
         # dimensional numpy arrays as values. Have to convert to list for this to work.
         # TODO: Don't return pandas dataframe and instead return ndarray or Dict[str,
         #  ndarray] directly.
-        return pd.DataFrame(
-            {"predictions": prediction.tolist()}, columns=["predictions"]
-        )
+        return pd.DataFrame(prediction, columns=["predictions"])
 
     def predict(
         self,

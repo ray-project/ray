@@ -142,9 +142,14 @@ class TensorflowPredictor(Predictor):
                 data = data[feature_columns]
             data = data.values
         else:
-            data = data[:, feature_columns]
+            if feature_columns:
+                data = data[:, feature_columns]
 
-        tensor = tf.convert_to_tensor(data, dtype=dtype)
+        row, column = data.shape
+        if column == 1 and row > 0 and isinstance(data[0][0], tf.Tensor):
+            tensor = tf.stack(data[:, 0].tolist())
+        else:
+            tensor = tf.convert_to_tensor(data, dtype=dtype)
 
         # TensorFlow model objects cannot be pickled, therefore we use
         # a callable that returns the model and initialize it here,
@@ -153,5 +158,16 @@ class TensorflowPredictor(Predictor):
         if self.model_weights:
             model.set_weights(self.model_weights)
 
-        prediction = model(tensor).numpy().ravel()
-        return pd.DataFrame(prediction, columns=["predictions"])
+        result_tensor = model(tensor)
+        if (
+            tf.rank(result_tensor) < 2
+            or tf.rank(result_tensor) == 2
+            and result_tensor.shape[1] < 2
+        ):
+            return pd.DataFrame(result_tensor.numpy().ravel(), columns=["predictions"])
+        else:
+            # TODO: remove when dataset side supports ndarray.
+            if result_tensor.shape[0] > 1:
+                return tf.unstack(result_tensor)
+            else:
+                return [result_tensor[0]]
