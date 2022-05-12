@@ -196,6 +196,7 @@ class RuntimeEnvAgent(
             self._pip_plugin,
             self._conda_plugin,
             self._py_modules_plugin,
+            self._java_jars_plugin,
         ]
         self._uri_caches = {}
         self._base_plugin_cache_managers = {}
@@ -234,6 +235,9 @@ class RuntimeEnvAgent(
         uri = self._conda_plugin.get_uri(runtime_env)
         if uri:
             result.append((uri, UriType.CONDA))
+        uris = self._java_jars_plugin.get_uris(runtime_env)
+        for uri in uris:
+            result.append((uri, UriType.JAVA_JARS))
         return result
 
     def unused_uris_processor(self, unused_uris: List[Tuple[str, UriType]]) -> None:
