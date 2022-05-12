@@ -4,12 +4,12 @@ import random
 from typing import Optional
 
 from ray.rllib.agents.trainer_config import TrainerConfig
-from ray.rllib.agents.dreamer.dreamer_torch_policy import DreamerTorchPolicy
+from ray.rllib.algorithms.dreamer.dreamer_torch_policy import DreamerTorchPolicy
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, _get_shared_metrics
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.evaluation.metrics import collect_metrics
-from ray.rllib.agents.dreamer.dreamer_model import DreamerModel
+from ray.rllib.algorithms.dreamer.dreamer_model import DreamerModel
 from ray.rllib.execution.rollout_ops import (
     ParallelRollouts,
     synchronous_parallel_sample,
@@ -31,7 +31,7 @@ class DREAMERConfig(TrainerConfig):
     """Defines a PPOTrainer configuration class from which a PPOTrainer can be built.
 
     Example:
-        >>> from ray.rllib.agents.dreamer import DREAMERConfig
+        >>> from ray.rllib.algorithms.dreamer import DREAMERConfig
         >>> config = DREAMERConfig().training(gamma=0.9, lr=0.01)\
         ...     .resources(num_gpus=0)\
         ...     .rollouts(num_rollout_workers=4)
@@ -42,7 +42,7 @@ class DREAMERConfig(TrainerConfig):
 
     Example:
         >>> from ray import tune
-        >>> from ray.rllib.agents.dreamer import DREAMERConfig
+        >>> from ray.rllib.algorithms.dreamer import DREAMERConfig
         >>> config = DREAMERConfig()
         >>> # Print out some default values.
         >>> print(config.clip_param)
@@ -418,14 +418,14 @@ class DREAMERTrainer(Trainer):
         return results
 
 
-# Deprecated: Use ray.rllib.agents.dreamer.DREAMERConfig instead!
+# Deprecated: Use ray.rllib.algorithms.dreamer.DREAMERConfig instead!
 class _deprecated_default_config(dict):
     def __init__(self):
         super().__init__(DREAMERConfig().to_dict())
 
     @Deprecated(
-        old="ray.rllib.agents.dreamer.dreamer.DEFAULT_CONFIG",
-        new="ray.rllib.agents.dreamer.dreamer.DREAMERConfig(...)",
+        old="ray.rllib.algorithms.dreamer.dreamer.DEFAULT_CONFIG",
+        new="ray.rllib.algorithms.dreamer.dreamer.DREAMERConfig(...)",
         error=False,
     )
     def __getitem__(self, item):

@@ -711,7 +711,7 @@ py_test(
     name = "test_dreamer",
     tags = ["team:ml", "trainers_dir"],
     size = "small",
-    srcs = ["agents/dreamer/tests/test_dreamer.py"]
+    srcs = ["algorithms/dreamer/tests/test_dreamer.py"]
 )
 
 # ES

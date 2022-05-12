@@ -4,7 +4,7 @@ import numpy as np
 from typing import Dict, Optional
 
 import ray
-from ray.rllib.agents.dreamer.utils import FreezeParameters
+from ray.rllib.algorithms.dreamer.utils import FreezeParameters
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
@@ -284,7 +284,7 @@ def preprocess_episode(
 DreamerTorchPolicy = build_policy_class(
     name="DreamerTorchPolicy",
     framework="torch",
-    get_default_config=lambda: ray.rllib.agents.dreamer.dreamer.DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.algorithms.dreamer.dreamer.DEFAULT_CONFIG,
     action_sampler_fn=action_sampler_fn,
     postprocess_fn=preprocess_episode,
     loss_fn=dreamer_loss,

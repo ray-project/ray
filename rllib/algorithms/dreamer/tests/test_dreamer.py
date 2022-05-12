@@ -2,7 +2,7 @@ from gym.spaces import Box
 import unittest
 
 import ray
-import ray.rllib.agents.dreamer as dreamer
+import ray.rllib.algorithms.dreamer as dreamer
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.utils.test_utils import framework_iterator
 

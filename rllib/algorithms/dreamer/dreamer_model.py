@@ -8,7 +8,7 @@ from ray.rllib.utils.framework import TensorType
 torch, nn = try_import_torch()
 if torch:
     from torch import distributions as td
-    from ray.rllib.agents.dreamer.utils import (
+    from ray.rllib.algorithms.dreamer.utils import (
         Linear,
         Conv2d,
         ConvTranspose2d,
