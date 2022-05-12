@@ -100,6 +100,7 @@ def _generate_provider_config(ray_cluster_namespace: str) -> Dict[str, Any]:
         "namespace": ray_cluster_namespace,
         "disable_node_updaters": True,
         "disable_launch_config_check": True,
+        "disable_background_launch_batch": True
     }
 
 

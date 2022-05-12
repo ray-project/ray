@@ -161,6 +161,12 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         assert (
             provider_config.get("disable_node_updaters", False) is True
         ), "Must disable node updaters to use KuberayNodeProvider."
+        assert (
+            provider_config.get("disable_launch_config_check", False) is True
+        ), "Must disable launch config check to use KuberayNodeProvider."
+        assert (
+            provider_config.get("disable_background_launch_batch", False) is True
+        ), "Must disable background launch batch to use KuberayNodeProvider."
         provider_exists = True
 
         super().__init__(provider_config, cluster_name)
