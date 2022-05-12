@@ -42,8 +42,6 @@ class BoundedExecutor {
 
   explicit BoundedExecutor(int max_concurrency);
 
-  int32_t GetMaxConcurrency() const;
-
   /// Posts work to the pool
   void Post(std::function<void()> fn) { boost::asio::post(pool_, std::move(fn)); }
 
@@ -54,8 +52,6 @@ class BoundedExecutor {
   void Join();
 
  private:
-  /// The max number of concurrently running tasks allowed.
-  const int max_concurrency_;
   /// The underlying thread pool for running tasks.
   boost::asio::thread_pool pool_;
 };

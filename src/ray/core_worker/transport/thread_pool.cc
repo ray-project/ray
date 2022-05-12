@@ -19,10 +19,7 @@
 namespace ray {
 namespace core {
 
-BoundedExecutor::BoundedExecutor(int max_concurrency)
-    : max_concurrency_(max_concurrency), pool_(max_concurrency){};
-
-int32_t BoundedExecutor::GetMaxConcurrency() const { return max_concurrency_; }
+BoundedExecutor::BoundedExecutor(int max_concurrency) : pool_(max_concurrency){};
 
 /// Stop the thread pool.
 void BoundedExecutor::Stop() { pool_.stop(); }
