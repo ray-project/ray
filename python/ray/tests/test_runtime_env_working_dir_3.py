@@ -407,5 +407,41 @@ class TestSkipLocalGC:
         assert not check_local_files_gced(cluster)
 
 
+@pytest.mark.parametrize("expiration_s", [0, 5])
+@pytest.mark.parametrize("source", [lazy_fixture("tmp_working_dir")])
+def test_temporary_uri_reference(start_cluster, source, expiration_s, monkeypatch):
+    """Test that temporary GCS URI references are deleted after expiration_s."""
+    monkeypatch.setenv(
+        "RAY_RUNTIME_ENV_temporary_reference_expiration_s", str(expiration_s)
+    )
+
+    cluster, address = start_cluster
+    print("Started cluster with address ", address)
+    ray.init(address, runtime_env={"working_dir": source})
+    print("Initialized Ray.")
+
+    @ray.remote
+    def f():
+        pass
+
+    # Wait for runtime env to be set up. This can be accomplished by getting
+    # the result of a task.
+    ray.get(f.remote())
+    print("Created and received response from task f.")
+    ray.shutdown()
+    print("Ray has been shut down.")
+    time.sleep(2)
+
+    if expiration_s > 0:
+        assert not check_internal_kv_gced()
+    else:
+        assert check_internal_kv_gced()
+    print("check_internal_kv_gced passed.")
+    time.sleep(expiration_s)
+
+    assert check_internal_kv_gced()
+    print("check_internal_kv_gced passed a second time.")
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
