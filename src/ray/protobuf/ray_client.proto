@@ -284,8 +284,7 @@ message ClientAddTemporaryURIReferenceRequest {
   int32 expiration_s = 2;
 }
 
-message ClientAddTemporaryURIReferenceResponse {
-}
+message ClientAddTemporaryURIReferenceResponse {}
 
 
 message InitRequest {
@@ -344,8 +343,7 @@ service RayletDriver {
       returns (ClientListNamedActorsResponse) {
   }
   rpc AddTemporaryURIReference(ClientAddTemporaryURIReferenceRequest) 
-      returns (ClientAddTemporaryURIReferenceResponse) {
-  }
+      returns (ClientAddTemporaryURIReferenceResponse) {}
 }
 
 message ReleaseRequest {
