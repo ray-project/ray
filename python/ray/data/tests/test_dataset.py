@@ -3592,9 +3592,14 @@ def test_random_sample(ray_start_regular_shared):
     ds = ds1.union(ds2).union(ds3)
     test(ds)
 
+    # Small datasets
+
+    ds1 = ray.data.range(5, parallelism=5)
+    test(ds1)
+
 
 def test_random_sample_checks(ray_start_regular_shared):
-    with pytest.raises(ValueError) as e_info:
+    with pytest.raises(ValueError):
         # Cannot sample -1
         ray.data.range(1).random_sample(-1)
     with pytest.raises(ValueError):
