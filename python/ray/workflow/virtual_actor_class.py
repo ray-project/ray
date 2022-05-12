@@ -437,11 +437,11 @@ class VirtualActorClass(VirtualActorClassBase):
 
     def get_or_create(self, actor_id: str, *args, **kwargs) -> "VirtualActor":
         """Create an actor. See `VirtualActorClassBase.create()`."""
-        # if ray._private.client_mode_hook.is_client_mode_enabled:
-        #     @ray.remote
-        #     def get_remote(actor, actor_id, args, kwargs):
-        #         return actor._get_or_create(actor_id, args=args, kwargs=kwargs)
-        #     return ray.get(get_remote.remote(self, actor_id, args=args, kwargs=kwargs))
+        if ray._private.client_mode_hook.is_client_mode_enabled:
+            @ray.remote
+            def get_remote(actor, actor_id, args, kwargs):
+                return actor._get_or_create(actor_id, args=args, kwargs=kwargs)
+            return ray.get(get_remote.remote(self, actor_id, args=args, kwargs=kwargs))
 
         return self._get_or_create(actor_id, args=args, kwargs=kwargs)
 
@@ -460,20 +460,20 @@ class VirtualActorClass(VirtualActorClassBase):
     def _get_or_create(self, actor_id: str, args, kwargs) -> "VirtualActor":
         """Create a new virtual actor"""
         try:
-            # return get_actor(actor_id)
-            raise Exception
+            return get_actor(actor_id)
+            # raise Exception
         except Exception:
             instance = self._construct(actor_id)
-            if ray._private.client_mode_hook.is_client_mode_enabled:
-                @ray.remote
-                def f(va, actor_id, args, kwargs):
-                    ins = va._construct(actor_id)
-                    ins._create(args, kwargs)
-                    return ins
-                return ray.get(f.remote(self, actor_id, args, kwargs))
-            else:
-                instance._create(args, kwargs)
-                return instance
+            # if ray._private.client_mode_hook.is_client_mode_enabled:
+            #     @ray.remote
+            #     def f(va, actor_id, args, kwargs):
+            #         ins = va._construct(actor_id)
+            #         ins._create(args, kwargs)
+            #         return ins
+            #     return ray.get(f.remote(self, actor_id, args, kwargs))
+            # else:
+            instance._create(args, kwargs)
+            return instance
 
     def _construct(self, actor_id: str) -> "VirtualActor":
         """Construct a blank virtual actor."""
