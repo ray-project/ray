@@ -4,6 +4,7 @@ def py_test_module_list(files, size, deps, extra_srcs, name_suffix="", **kwargs)
     for file in files:
         # remove .py
         name = file[:-3] + name_suffix
+        ####name = "staging-" + name
         main = file
         native.py_test(
             name = name,
