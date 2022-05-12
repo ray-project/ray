@@ -39,7 +39,7 @@ pip install "ray[serve]"
 
 :::{tabbed} Quickstart
 
-To run this example, install the following: ``pip install ray["serve"]``.
+To run this example, install the following: ``pip install ray["serve"]``
 
 In this quick-start example we will define a simple "hello world" deployment, deploy it behind HTTP locally, and query it.
 
@@ -50,7 +50,7 @@ In this quick-start example we will define a simple "hello world" deployment, de
 
 :::{tabbed} FastAPI integration
 
-To run this example, install the following: ``pip install ray["serve"]``.
+To run this example, install the following: ``pip install ray["serve"]``
 
 In this example we will use Serve's [FastAPI](https://fastapi.tiangolo.com/) integration to make use of more advanced HTTP functionality.
 
@@ -61,7 +61,7 @@ In this example we will use Serve's [FastAPI](https://fastapi.tiangolo.com/) int
 
 :::{tabbed} Serving a Hugging Face NLP model
 
-To run this example, install the following: ``pip install ray["serve"] transformers``.
+To run this example, install the following: ``pip install ray["serve"] transformers``
 
 In this example we will serve a pre-trained [Hugging Face transformers](https://huggingface.co/docs/transformers/index) model using Ray Serve.
 The model we'll use is a sentiment analysis model: it will take a text string as input and return if the text was "POSITIVE" or "NEGATIVE."
