@@ -280,7 +280,9 @@ def _store_package_in_gcs(
     # script exited (e.g. via Ctrl-C) before the job started, the reference would never
     # be removed, so the package would never be deleted from the GCS.
     if TEMPORARY_REFERENCE_EXPIRATION_S > 0:
-        _add_temporary_uri_reference(pkg_uri, expiration_s=TEMPORARY_REFERENCE_EXPIRATION_S)
+        _add_temporary_uri_reference(
+            pkg_uri, expiration_s=TEMPORARY_REFERENCE_EXPIRATION_S
+        )
 
     try:
         _internal_kv_put(pkg_uri, data)
