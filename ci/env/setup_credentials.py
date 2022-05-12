@@ -1,3 +1,8 @@
+"""
+This script is used to set up credentials for some services in the
+CI environment. For instance, it can fetch WandB API tokens and write
+the WandB configuration file so test scripts can use the service.
+"""
 import os
 import sys
 

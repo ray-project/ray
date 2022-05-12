@@ -1,3 +1,8 @@
+"""
+This script is used to clean up state after running test scripts, including
+on external services. For instance, this script can be used to remove the runs
+from WandB that have been saved during unit testing or when running examples.
+"""
 import sys
 
 
