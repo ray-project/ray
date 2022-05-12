@@ -286,7 +286,6 @@ message ClientAddTemporaryURIReferenceRequest {
 
 message ClientAddTemporaryURIReferenceResponse {}
 
-
 message InitRequest {
   // job_config of ray.init
   bytes job_config = 1;
@@ -342,7 +341,7 @@ service RayletDriver {
   rpc ListNamedActors(ClientListNamedActorsRequest)
       returns (ClientListNamedActorsResponse) {
   }
-  rpc AddTemporaryURIReference(ClientAddTemporaryURIReferenceRequest) 
+  rpc AddTemporaryURIReference(ClientAddTemporaryURIReferenceRequest)
       returns (ClientAddTemporaryURIReferenceResponse) {}
 }
 

@@ -473,6 +473,12 @@ def test_request_headers(job_sdk_client):
         )
 
 
+def test_add_temporary_uri_reference(job_sdk_client):
+    client = job_sdk_client
+    r = client._do_request("POST", "/api/packages/gcs/asdfasdf.zip/ref")
+    assert r.status_code == 200
+
+
 @pytest.mark.parametrize("scheme", ["http", "https", "fake_module"])
 @pytest.mark.parametrize("host", ["127.0.0.1", "localhost", "fake.dns.name"])
 @pytest.mark.parametrize("port", [None, 8265, 10000])

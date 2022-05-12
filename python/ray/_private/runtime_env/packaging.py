@@ -241,12 +241,13 @@ def _get_gitignore(path: Path) -> Optional[Callable]:
 def add_temporary_uri_reference(uri: str) -> None:
     """Add a temporary reference to a URI in the GCS to prevent premature deletion.
 
-    Packages is uploaded to GCS in order to be downloaded by
-    a runtime env plugin (e.g. working_dir, py_modules) after the job starts. Add a
-    temporary reference to the package in the GCS to prevent it from being deleted
-    before the job starts. If this reference didn't have an expiration, then if the
-    script exited (e.g. via Ctrl-C) before the job started, the reference would never
-    be removed, so the package would never be deleted from the GCS.
+    Packages are uploaded to GCS in order to be downloaded by a runtime env plugin
+    (e.g. working_dir, py_modules) after the job starts.
+
+    This function adds a temporary reference to the package in the GCS to prevent
+    it from being deleted before the job starts. If this reference didn't have an
+    expiration, then if the script exited (e.g. via Ctrl-C) before the job started,
+    the reference would never be removed, so the package would never be deleted.
     """
 
     TEMPORARY_REFERENCE_EXPIRATION_S = int(
