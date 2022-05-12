@@ -196,7 +196,7 @@ class CQLTrainer(SACTrainer):
             train_results,
         )
 
-        # Update target network every target_network_update_freq steps
+        # Update target network every `target_network_update_freq` training steps.
         cur_ts = self._counters[
             NUM_AGENT_STEPS_TRAINED if self._by_agent_steps else NUM_ENV_STEPS_TRAINED
         ]

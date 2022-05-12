@@ -15,13 +15,14 @@ from ray.rllib.agents.ppo.appo_tf_policy import AsyncPPOTFPolicy
 from ray.rllib.agents.ppo.ppo import UpdateKL
 from ray.rllib.agents import impala
 from ray.rllib.policy.policy import Policy
-from ray.rllib.execution.common import (
-    STEPS_SAMPLED_COUNTER,
-    LAST_TARGET_UPDATE_TS,
-    NUM_TARGET_UPDATES,
-)
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.metrics import (
+    LAST_TARGET_UPDATE_TS,
+    NUM_AGENT_STEPS_SAMPLED,
+    NUM_ENV_STEPS_SAMPLED,
+    NUM_TARGET_UPDATES,
+)
 from ray.rllib.utils.typing import (
     PartialTrainerConfigDict,
     ResultDict,
@@ -188,7 +189,7 @@ class APPOTrainer(impala.ImpalaTrainer):
             train_results: The results dict collected during the most recent
                 training step.
         """
-        cur_ts = self._counters[STEPS_SAMPLED_COUNTER]
+        cur_ts = self._counters[NUM_AGENT_STEPS_SAMPLED if self._by_agent_steps else NUM_ENV_STEPS_SAMPLED]
         last_update = self._counters[LAST_TARGET_UPDATE_TS]
         target_update_freq = self.config["num_sgd_iter"] * self.config[
             "minibatch_buffer_size"]

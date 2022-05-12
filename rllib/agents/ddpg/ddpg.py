@@ -134,7 +134,7 @@ DEFAULT_CONFIG = with_common_config({
     "critic_lr": 1e-3,
     # Learning rate for the actor (policy) optimizer.
     "actor_lr": 1e-3,
-    # Update the target network every `target_network_update_freq` steps.
+    # Update the target network every `target_network_update_freq` sample steps.
     "target_network_update_freq": 0,
     # Update the target by \tau * policy + (1-\tau) * target_policy
     "tau": 0.002,

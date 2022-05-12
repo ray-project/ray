@@ -115,6 +115,7 @@ APEX_DEFAULT_CONFIG = merge_dicts(
         "learning_starts": 50000,
         "train_batch_size": 512,
         "rollout_fragment_length": 50,
+        # Update the target network every `target_network_update_freq` sample timesteps.
         "target_network_update_freq": 500000,
         # Minimum env sampling timesteps to accumulate within a single `train()` call.
         # This value does not affect learning, only the number of times
