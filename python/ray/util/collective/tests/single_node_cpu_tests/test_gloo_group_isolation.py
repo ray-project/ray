@@ -10,8 +10,8 @@ class Worker:
         pass
 
     def init_gloo_group(rank: int, world_size: int, group_name: str):
-       col.init_collective_group(world_size, rank, Backend.GLOO, group_name)
-       return True
+        col.init_collective_group(world_size, rank, Backend.GLOO, group_name)
+        return True
 
 
 def test_two_groups_in_one_cluster(ray_start_regular_shared):
