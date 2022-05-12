@@ -1,12 +1,22 @@
 import inspect
 import logging
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Union, Type, TYPE_CHECKING
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Union,
+    Type,
+    TYPE_CHECKING,
+)
 
 import ray
 from ray import tune
 from ray.actor import ActorHandle
-from ray.ml.constants import TRAIN_DATASET_KEY, PREPROCESSOR_KEY
+from ray.ml.constants import MODEL_KEY, TRAIN_DATASET_KEY, PREPROCESSOR_KEY
 from ray.ml.trainer import Trainer
 from ray.ml.config import ScalingConfig, RunConfig
 from ray.ml.trainer import GenDataset
@@ -347,6 +357,34 @@ class DataParallelTrainer(Trainer):
 
         # Shutdown workers.
         backend_executor.shutdown()
+
+
+def _load_checkpoint(
+    checkpoint: Checkpoint, trainer_name: str
+) -> Tuple[Any, Optional[Preprocessor]]:
+    """Load a Ray Train Checkpoint.
+
+    This is a private API.
+
+    Args:
+        checkpoint: The checkpoint to load the weights and
+            preprocessor from.
+        trainer_name: Trainer class name to use in error
+            message.
+
+    Returns:
+        The model or weights and AIR preprocessor contained within.
+    """
+    checkpoint_dict = checkpoint.to_dict()
+    preprocessor = checkpoint_dict.get(PREPROCESSOR_KEY, None)
+    if MODEL_KEY not in checkpoint_dict:
+        raise RuntimeError(
+            f"No item with key: {MODEL_KEY} is found in the "
+            f"Checkpoint. Make sure this key exists when saving the "
+            f"checkpoint in ``{trainer_name}``."
+        )
+    model = checkpoint_dict[MODEL_KEY]
+    return model, preprocessor
 
 
 def _default_dataset_split_fn(

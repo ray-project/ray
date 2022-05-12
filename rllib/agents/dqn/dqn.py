@@ -15,8 +15,8 @@ from typing import List, Optional, Type
 from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
 from ray.rllib.agents.dqn.simple_q import (
+    SimpleQConfig,
     SimpleQTrainer,
-    DEFAULT_CONFIG as SIMPLEQ_DEFAULT_CONFIG,
 )
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.execution.rollout_ops import (
@@ -53,7 +53,7 @@ logger = logging.getLogger(__name__)
 # fmt: off
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = Trainer.merge_trainer_configs(
-    SIMPLEQ_DEFAULT_CONFIG,
+    SimpleQConfig().to_dict(),
     {
         # === Model ===
         # Number of atoms for representing the distribution of return. When
@@ -216,13 +216,20 @@ class DQNTrainer(SimpleQTrainer):
             # Store new samples in replay buffer.
             self.local_replay_buffer.add_batch(new_sample_batch)
 
+        global_vars = {
+            "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
+        }
+
         for _ in range(sample_and_train_weight):
             # Sample training batch (MultiAgentBatch) from replay buffer.
-            train_batch = self.local_replay_buffer.replay()
+            train_batch = self.local_replay_buffer.sample(
+                self.config["train_batch_size"]
+            )
 
             # Old-style replay buffers return None if learning has not started
-            if not train_batch:
-                continue
+            if train_batch is None or len(train_batch) == 0:
+                self.workers.local_worker().set_global_vars(global_vars)
+                break
 
             # Postprocess batch before we learn on it
             post_fn = self.config.get("before_learn_on_batch") or (lambda b, *a: b)
@@ -257,9 +264,6 @@ class DQNTrainer(SimpleQTrainer):
 
             # Update weights and global_vars - after learning on the local worker -
             # on all remote workers.
-            global_vars = {
-                "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
-            }
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
                 self.workers.sync_weights(global_vars=global_vars)
 
