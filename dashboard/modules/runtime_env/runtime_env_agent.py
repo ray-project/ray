@@ -8,7 +8,7 @@ import time
 from typing import Dict, Set, List, Tuple, Callable
 from enum import Enum
 from collections import defaultdict
-from ray._private.runtime_env.plugin import PluginCacheManager, RuntimeEnvPlugin
+from ray._private.runtime_env.plugin import PluginCacheManager
 from ray._private.runtime_env.uri_cache import URICache
 
 from ray._private.utils import import_attr
@@ -188,25 +188,25 @@ class RuntimeEnvAgent(
         self._working_dir_plugin = WorkingDirPlugin(self._runtime_env_dir)
         self._container_manager = ContainerManager(dashboard_agent.temp_dir)
 
-        self._base_plugins: Dict[str, RuntimeEnvPlugin] = {
-            "working_dir": self._working_dir_plugin,
-            "pip": self._pip_plugin,
-            "conda": self._conda_plugin,
-            "py_modules": self._py_modules_plugin,
-        }
+        self._base_plugins = [
+            self._working_dir_plugin,
+            self._pip_plugin,
+            self._conda_plugin,
+            self._py_modules_plugin,
+        ]
         self._uri_caches = {}
         self._base_plugin_cache_managers = {}
-        for plugin_name, plugin in self._base_plugins.items():
+        for plugin in self._base_plugins:
             # Set the max size for the cache.  Defaults to 10 GB.
-            cache_size_env_var = f"RAY_RUNTIME_ENV_{plugin_name}_CACHE_SIZE_GB".upper()
+            cache_size_env_var = f"RAY_RUNTIME_ENV_{plugin.name}_CACHE_SIZE_GB".upper()
             cache_size_bytes = int(
                 (1024 ** 3) * float(os.environ.get(cache_size_env_var, 10))
             )
-            self._uri_caches[plugin_name] = URICache(
+            self._uri_caches[plugin.name] = URICache(
                 plugin.delete_uri, cache_size_bytes
             )
-            self._base_plugin_cache_managers[plugin_name] = PluginCacheManager(
-                plugin, self._uri_caches[plugin_name]
+            self._base_plugin_cache_managers[plugin.name] = PluginCacheManager(
+                plugin, self._uri_caches[plugin.name]
             )
 
         self._reference_table = ReferenceTable(
