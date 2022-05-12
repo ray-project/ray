@@ -83,25 +83,22 @@ DEFAULT_CONFIG = with_common_config({
     "min_sample_timesteps_per_reporting": 100,
 
     # === Replay buffer ===
-    # The following values have moved because of the new ReplayBuffer API
-    "buffer_size": DEPRECATED_VALUE,
-    "prioritized_replay": DEPRECATED_VALUE,
-    "learning_starts": DEPRECATED_VALUE,
-    "replay_batch_size": DEPRECATED_VALUE,
-    "replay_sequence_length": DEPRECATED_VALUE,
-    "prioritized_replay_alpha": DEPRECATED_VALUE,
-    "prioritized_replay_beta": DEPRECATED_VALUE,
-    "prioritized_replay_eps": DEPRECATED_VALUE,
     "replay_buffer_config": {
+        # Enable the new ReplayBuffer API.
         "_enable_replay_buffer_api": True,
         "type": "MultiAgentPrioritizedReplayBuffer",
         "capacity": int(1e6),
         # How many steps of the model to sample before learning starts.
         "learning_starts": 1500,
+        # The number of continuous environment steps to replay at once. This may
+        # be set to greater than 1 to support recurrent models.
+        "replay_sequence_length": 1,
         # If True prioritized replay buffer will be used.
         "prioritized_replay": False,
         "prioritized_replay_alpha": 0.6,
+        # Beta parameter for sampling from prioritized replay buffer.
         "prioritized_replay_beta": 0.4,
+        # Epsilon to add to the TD errors when updating priorities.
         "prioritized_replay_eps": 1e-6,
     },
     # Set this to True, if you want the contents of your buffer(s) to be
@@ -170,6 +167,18 @@ DEFAULT_CONFIG = with_common_config({
     # Use a Beta-distribution instead of a SquashedGaussian for bounded,
     # continuous action spaces (not recommended, for debugging only).
     "_use_beta_distribution": False,
+
+    # Deprecated.
+    # The following values have moved because of the new ReplayBuffer API.
+    "prioritized_replay": DEPRECATED_VALUE,
+    "prioritized_replay_alpha": DEPRECATED_VALUE,
+    "prioritized_replay_beta": DEPRECATED_VALUE,
+    "prioritized_replay_eps": DEPRECATED_VALUE,
+    "learning_starts": DEPRECATED_VALUE,
+    "buffer_size": DEPRECATED_VALUE,
+    "replay_batch_size": DEPRECATED_VALUE,
+    "replay_sequence_length": DEPRECATED_VALUE,
+
 })
 # __sphinx_doc_end__
 # fmt: on
