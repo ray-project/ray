@@ -114,7 +114,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             protocol=req.match_info["protocol"],
             package_name=req.match_info["package_name"],
         )
-        logger.info(f"Adding temporary reference to package {package_uri}.")
+        logger.debug(f"Adding temporary reference to package {package_uri}.")
         try:
             add_temporary_uri_reference(package_uri)
         except Exception:
