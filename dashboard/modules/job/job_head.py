@@ -81,6 +81,15 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             package_name=req.match_info["package_name"],
         )
 
+        logger.debug(f"Adding temporary reference to package {package_uri}.")
+        try:
+            add_temporary_uri_reference(package_uri)
+        except Exception:
+            return Response(
+                text=traceback.format_exc(),
+                status=aiohttp.web.HTTPInternalServerError.status_code,
+            )
+
         if not package_exists(package_uri):
             return Response(
                 text=f"Package {package_uri} does not exist",
@@ -105,23 +114,6 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 status=aiohttp.web.HTTPInternalServerError.status_code,
             )
 
-        return Response(status=aiohttp.web.HTTPOk.status_code)
-
-    @routes.post("/api/packages/{protocol}/{package_name}/ref")
-    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
-    async def add_temporary_uri_reference(self, req: Request):
-        package_uri = http_uri_components_to_uri(
-            protocol=req.match_info["protocol"],
-            package_name=req.match_info["package_name"],
-        )
-        logger.debug(f"Adding temporary reference to package {package_uri}.")
-        try:
-            add_temporary_uri_reference(package_uri)
-        except Exception:
-            return Response(
-                text=traceback.format_exc(),
-                status=aiohttp.web.HTTPInternalServerError.status_code,
-            )
         return Response(status=aiohttp.web.HTTPOk.status_code)
 
     @routes.post("/api/jobs/")

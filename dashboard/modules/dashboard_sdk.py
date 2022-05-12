@@ -249,12 +249,6 @@ class SubmissionClient:
             headers=self._headers,
         )
 
-    def _increment_temporary_reference(self, package_uri: str):
-        protocol, package_name = uri_to_http_components(package_uri)
-        r = self._do_request("POST", f"/api/packages/{protocol}/{package_name}/ref")
-        if r.status_code != 200:
-            self._raise_error(r)
-
     def _package_exists(
         self,
         package_uri: str,
@@ -316,8 +310,6 @@ class SubmissionClient:
             package_uri = get_uri_for_package(Path(package_path))
         else:
             package_uri = get_uri_for_directory(package_path, excludes=excludes)
-
-        self._increment_temporary_reference(package_uri)
 
         if not self._package_exists(package_uri):
             self._upload_package(
