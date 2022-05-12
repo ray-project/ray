@@ -26,6 +26,5 @@ __all__ = [
     "SimpleQConfig",
     "SimpleQTFPolicy",
     "SimpleQTorchPolicy",
-    "SimpleQConfig",
     "SimpleQTrainer",
 ]
