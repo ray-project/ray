@@ -1,23 +1,26 @@
-(end-to-end-tutorial)=
+(getting-started)=
 
-# End-to-End Tutorial
+# Getting Started
 
-By the end of this tutorial you will have learned how to deploy a machine
-learning model locally via Ray Serve.
+This tutorial will walk you through the process of using Ray Serve to deploy a single model behind HTTP locally.
 
-First, install Ray Serve and all of its dependencies by running the following
-command in your terminal:
+We'll be using [HuggingFace's SummarizationPipeline](https://huggingface.co/docs/transformers/main_classes/pipelines#transformers.SummarizationPipeline) to deploy a model that summarizes text.
+
+:::{tip}
+If you have suggestions on how to improve this tutorial,
+    please [let us know](https://github.com/ray-project/ray/issues/new/choose)!
+:::
+
+To run this example, you will need to install the following:
 
 ```bash
-$ pip install "ray[serve]"
+$ pip install "ray[serve]" transformers
 ```
 
-For this tutorial, we'll use [HuggingFace's SummarizationPipeline](https://huggingface.co/docs/transformers/main_classes/pipelines#transformers.SummarizationPipeline)
-to access a model that summarizes text.
 
 ## Example Model
 
-Let's first take a look at how the model works, without using Ray Serve.
+Let's first take a look at how the model works without using Ray Serve.
 This is the code for the model:
 
 ```{literalinclude} ../../../python/ray/serve/examples/doc/e2e_local.py
@@ -59,7 +62,7 @@ PyTorch, and Tensorflow for more info and examples:
 - {ref}`serve-pytorch-tutorial`
 - {ref}`serve-tensorflow-tutorial`
 
-## Converting to Ray Serve Deployment
+## Converting to a Ray Serve Deployment
 
 This tutorial's goal is to deploy this model using Ray Serve, so it can be
 scaled up and queried over HTTP. We'll start by converting the above Python
@@ -318,7 +321,7 @@ co-pilot, col. Edwin E. Aldrin Jr. of the air force -- brought their ship to
 rest on a level, rock-strewn plain ."
 ```
 
-## Adding Functionality with FastAPI
+## Advanced HTTP Functionality with FastAPI
 
 Now suppose we want to expose additional functionality in our model. In
 particular, the `summarize` function also has `min_length` and
@@ -377,13 +380,14 @@ $ python fastapi_client.py
 ```
 
 Congratulations! You just built and deployed a machine learning model on Ray
-Serve! You should now have enough context to dive into the {doc}`core-apis` to
-get a deeper understanding of Ray Serve.
+Serve!
 
-To learn more about how to start a multi-node cluster for your Ray Serve
-deployments, see {ref}`serve-deploy-tutorial`. For more interesting example
-applications, including integrations with popular machine learning frameworks
-and Python web servers, be sure to check out {doc}`tutorials/index`.
+
+## Next Steps
+
+- Dive into the {doc}`core-apis` to get a deeper understanding of Ray Serve.
+- Learn more about how to deploy your Ray Serve application to a multi-node cluster: {ref}`serve-deploy-tutorial`.
+- Check more in-depth tutorials for popular machine learning frameworks: {doc}`tutorials/index`.
 
 ```{rubric} Footnotes
 ```

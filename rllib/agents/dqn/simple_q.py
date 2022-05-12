@@ -172,39 +172,57 @@ class SimpleQConfig(TrainerConfig):
         """Sets the training related configuration.
 
         Args:
-            timesteps_per_iteration: Minimum env steps to optimize for per train call. This value does not affect learning, only the length of iterations.
-            target_network_update_freq: Update the target network every `target_network_update_freq` steps.
+            timesteps_per_iteration: Minimum env steps to optimize for per train call.
+                This value does not affect learning, only the length of iterations.
+            target_network_update_freq: Update the target network every
+                `target_network_update_freq` sample steps.
             replay_buffer_config: Replay buffer config.
                 Examples:
-                    {
-                        "_enable_replay_buffer_api": True,
-                        "learning_starts": 1000,
-                        "type": "MultiAgentReplayBuffer",
-                        "capacity": 50000,
-                        "replay_batch_size": 32,
-                        "replay_sequence_length": 1,
-                    }
-                    - OR -
-                    {
-                        "_enable_replay_buffer_api": True,
-                        "type": "MultiAgentPrioritizedReplayBuffer",
-                        "capacity": 50000,
-                        "prioritized_replay_alpha": 0.6,
-                        "prioritized_replay_beta": 0.4,
-                        "prioritized_replay_eps": 1e-6,
-                        "replay_sequence_length": 1,
-                    }
-                    - Where -
-                    prioritized_replay_alpha: Alpha parameter controls the degree of prioritization in the buffer. In other words, when a buffer sample has a higher temporal-difference error, with how much more probability should it drawn to use to update the parametrized Q-network. 0.0 corresponds to uniform probability. Setting much above 1.0 may quickly result as the sampling distribution could become heavily “pointy” with low entropy.
-                    prioritized_replay_beta: Beta parameter controls the degree of importance sampling which suppresses the influence of gradient updates from samples that have higher probability of being sampled via alpha parameter and the temporal-difference error.
-                    prioritized_replay_eps: Epsilon parameter sets the baseline probability for sampling so that when the temporal-difference error of a sample is zero, there is still a chance of drawing the sample.
-            store_buffer_in_checkpoints: Set this to True, if you want the contents of your buffer(s) to be stored in any saved checkpoints as well.
+                {
+                "_enable_replay_buffer_api": True,
+                "type": "MultiAgentReplayBuffer",
+                "learning_starts": 1000,
+                "capacity": 50000,
+                "replay_batch_size": 32,
+                "replay_sequence_length": 1,
+                }
+                - OR -
+                {
+                "_enable_replay_buffer_api": True,
+                "type": "MultiAgentPrioritizedReplayBuffer",
+                "capacity": 50000,
+                "prioritized_replay_alpha": 0.6,
+                "prioritized_replay_beta": 0.4,
+                "prioritized_replay_eps": 1e-6,
+                "replay_sequence_length": 1,
+                }
+                - Where -
+                prioritized_replay_alpha: Alpha parameter controls the degree of
+                prioritization in the buffer. In other words, when a buffer sample has
+                a higher temporal-difference error, with how much more probability
+                should it drawn to use to update the parametrized Q-network. 0.0
+                corresponds to uniform probability. Setting much above 1.0 may quickly
+                result as the sampling distribution could become heavily “pointy” with
+                low entropy.
+                prioritized_replay_beta: Beta parameter controls the degree of
+                importance sampling which suppresses the influence of gradient updates
+                from samples that have higher probability of being sampled via alpha
+                parameter and the temporal-difference error.
+                prioritized_replay_eps: Epsilon parameter sets the baseline probability
+                for sampling so that when the temporal-difference error of a sample is
+                zero, there is still a chance of drawing the sample.
+            store_buffer_in_checkpoints: Set this to True, if you want the contents of
+                your buffer(s) to be stored in any saved checkpoints as well.
                 Warnings will be created if:
-                    - This is True AND restoring from a checkpoint that contains no buffer data.
-                    - This is False AND restoring from a checkpoint that does contain buffer data.
-            lr_schedule: Learning rate schedule. In the format of [[timestep, value], [timestep, value], ...]. A schedule should normally start from timestep 0.
-            adam_epsilon: Adam epsilon hyper parameter
-            grad_clip: If not None, clip gradients during optimization at this value
+                - This is True AND restoring from a checkpoint that contains no buffer
+                data.
+                - This is False AND restoring from a checkpoint that does contain
+                buffer data.
+            lr_schedule: Learning rate schedule. In the format of [[timestep, value],
+                [timestep, value], ...]. A schedule should normally start from
+                timestep 0.
+            adam_epsilon: Adam optimizer's epsilon hyper parameter.
+            grad_clip: If not None, clip gradients during optimization at this value.
 
         Returns:
             This updated TrainerConfig object.
