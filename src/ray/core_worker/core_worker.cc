@@ -608,20 +608,19 @@ void CoreWorker::Exit(
   reference_counter_->ReleaseAllLocalReferences();
 
   // Callback to shutdown.
-  auto shutdown =
-      [this, exit_type, detail = std::move(detail), creation_task_exception_pb_bytes]() {
-        // To avoid problems, make sure shutdown is always called from the same
-        // event loop each time.
-        task_execution_service_.post(
-            [this,
-             exit_type,
-             detail = std::move(detail),
-             creation_task_exception_pb_bytes]() {
-              Disconnect(exit_type, detail, creation_task_exception_pb_bytes);
-              Shutdown();
-            },
-            "CoreWorker.Shutdown");
-      };
+  auto shutdown = [this, exit_type, detail, creation_task_exception_pb_bytes]() {
+    // To avoid problems, make sure shutdown is always called from the same
+    // event loop each time.
+    task_execution_service_.post(
+        [this,
+         exit_type,
+         detail = std::move(detail),
+         creation_task_exception_pb_bytes]() {
+          Disconnect(exit_type, detail, creation_task_exception_pb_bytes);
+          Shutdown();
+        },
+        "CoreWorker.Shutdown");
+  };
   // Callback to drain objects once all pending tasks have been drained.
   auto drain_references_callback = [this, shutdown]() {
     // Post to the event loop to avoid a deadlock between the TaskManager and
