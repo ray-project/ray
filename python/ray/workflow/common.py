@@ -375,6 +375,26 @@ class Workflow(Generic[T]):
         # step id will be generated during runtime
         self._step_id: StepID = None
         self._ref: Optional[WorkflowStaticRef] = None
+        # We save the reduce for later use in ray client
+        self._original_reduce = self.__reduce__
+
+        def wf_reduce(self):
+            """Serialization helper for workflow.
+            By default Workflow[T] objects are not serializable, except
+            it is a reference to a workflow (when workflow.ref is not 'None').
+            The reference can be passed around, but the workflow must
+            be processed locally so we can capture it in the DAG and
+            checkpoint its inputs properly.
+            """
+            if self._ref is None:
+                raise ValueError(
+                    "Workflow[T] objects are not serializable. "
+                    "This means they cannot be passed or returned from Ray "
+                    "remote, or stored in Ray objects."
+                )
+            return Workflow.from_ref, (self._ref,)
+
+        self.__reduce__ = wf_reduce
 
     @property
     def _workflow_id(self):
@@ -419,6 +439,7 @@ class Workflow(Generic[T]):
         using BFS."""
         # deque is used instead of queue.Queue because queue.Queue is aimed
         # at multi-threading. We just need a pure data structure here.
+        assert not ray._private.client_mode_hook.is_client_mode_enabled
         visited_workflows: Set[Workflow] = {self}
         q = deque([self])
         while q:  # deque's pythonic way to check emptyness
@@ -454,23 +475,6 @@ class Workflow(Generic[T]):
         wf = Workflow(data)
         wf._ref = workflow_ref
         return wf
-
-    def __reduce__(self):
-        """Serialization helper for workflow.
-
-        By default Workflow[T] objects are not serializable, except
-        it is a reference to a workflow (when workflow.ref is not 'None').
-        The reference can be passed around, but the workflow must
-        be processed locally so we can capture it in the DAG and
-        checkpoint its inputs properly.
-        """
-        if self._ref is None:
-            raise ValueError(
-                "Workflow[T] objects are not serializable. "
-                "This means they cannot be passed or returned from Ray "
-                "remote, or stored in Ray objects."
-            )
-        return Workflow.from_ref, (self._ref,)
 
     @PublicAPI(stability="beta")
     def run(
@@ -553,14 +557,34 @@ class Workflow(Generic[T]):
            The running result as ray.ObjectRef.
 
         """
-        # TODO(suquark): avoid cyclic importing
-        from ray.workflow.execution import run
         from ray.workflow.api import _ensure_workflow_initialized
 
         _ensure_workflow_initialized()
 
         self._step_id = None
-        return run(self, workflow_id, metadata)
+        if ray._private.client_mode_hook.is_client_mode_enabled:
+            self.__reduce__, self._original_reduce = (
+                self._original_reduce,
+                self.__reduce__,
+            )
+
+            @ray.remote
+            def client_mode_run(workflow, workflow_id, metadata):
+                from ray.workflow.execution import run
+                return run(workflow, workflow_id, metadata)
+
+            ret = client_mode_run.remote(
+                self, workflow_id, metadata
+            )
+            self.__reduce__, self._original_reduce = (
+                self._original_reduce,
+                self.__reduce__,
+            )
+            return ray.get(ret)
+        else:
+            from ray.workflow.execution import run
+
+            return run(self, workflow_id, metadata)
 
 
 @PublicAPI(stability="beta")

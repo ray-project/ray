@@ -562,7 +562,11 @@ def wait(
     for w in workflows:
         if not isinstance(w, Workflow):
             raise TypeError("The input of workflow.wait should be a list of workflows.")
-    wait_inputs = serialization_context.make_workflow_inputs(workflows)
+
+    def prepare_inputs():
+        _ensure_workflow_initialized()
+        return serialization_context.make_workflow_inputs(workflows)
+
     step_options = WorkflowStepRuntimeOptions.make(
         step_type=StepType.WAIT,
         # Pass the options through Ray options. "num_returns" conflicts with
@@ -577,12 +581,12 @@ def wait(
     )
     workflow_data = WorkflowData(
         func_body=None,
-        inputs=wait_inputs,
+        inputs=None,
         step_options=step_options,
         name="workflow.wait",
         user_metadata={},
     )
-    return Workflow(workflow_data)
+    return Workflow(workflow_data, prepare_inputs)
 
 
 @PublicAPI(stability="beta")
