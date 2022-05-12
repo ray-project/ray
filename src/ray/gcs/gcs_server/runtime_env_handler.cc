@@ -35,7 +35,7 @@ void RuntimeEnvHandler::HandleAddTemporaryURIReference(
         RAY_LOG(DEBUG) << "Removed temporary URI reference for ID " << hex_id
                        << "with URI:" << request.uri();
       },
-      request.expiration_s() * 1000);
+      /* expiration_ms= */ request.expiration_s() * 1000);
   return;
 }
 }  // namespace gcs
