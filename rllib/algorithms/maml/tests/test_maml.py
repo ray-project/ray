@@ -1,7 +1,7 @@
 import unittest
 
 import ray
-import ray.rllib.agents.maml as maml
+import ray.rllib.algorithms.maml as maml
 from ray.rllib.utils.test_utils import (
     check_compute_single_action,
     check_train_results,

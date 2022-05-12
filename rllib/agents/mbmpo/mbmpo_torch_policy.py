@@ -5,7 +5,7 @@ from typing import Tuple, Type
 
 import ray
 from ray.rllib.agents.a3c.a3c_torch_policy import vf_preds_fetches
-from ray.rllib.agents.maml.maml_torch_policy import (
+from ray.rllib.algorithms.maml.maml_torch_policy import (
     setup_mixins,
     maml_loss,
     maml_stats,

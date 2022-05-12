@@ -761,7 +761,7 @@ py_test(
     name = "test_maml",
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
-    srcs = ["agents/maml/tests/test_maml.py"]
+    srcs = ["algorithms/maml/tests/test_maml.py"]
 )
 
 # MBMPOTrainer

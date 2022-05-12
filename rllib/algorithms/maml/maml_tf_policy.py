@@ -442,7 +442,7 @@ def setup_mixins(policy, obs_space, action_space, config):
 
 MAMLTFPolicy = build_tf_policy(
     name="MAMLTFPolicy",
-    get_default_config=lambda: ray.rllib.agents.maml.maml.DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.algorithms.maml.maml.DEFAULT_CONFIG,
     loss_fn=maml_loss,
     stats_fn=maml_stats,
     optimizer_fn=maml_optimizer_fn,
