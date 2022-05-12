@@ -1,3 +1,8 @@
+"""
+This script is used to clean up state after running test scripts, including
+on external services. For instance, this script can be used to remove the runs
+from WandB that have been saved during unit testing or when running examples.
+"""
 import sys
 
 
@@ -12,7 +17,21 @@ def clear_wandb_project():
         run.delete()
 
 
-SERVICES = {"wandb": clear_wandb_project}
+def clear_comet_ml_project():
+    import comet_ml
+
+    # This is hardcoded in the `ray/ml/examples/upload_to_comet_ml.py` example
+    comet_ml_project = "ray-air-example"
+
+    api = comet_ml.API()
+    workspace = api.get_default_workspace()
+    experiments = api.get_experiments(
+        workspace=workspace, project_name=comet_ml_project
+    )
+    api.delete_experiments([experiment.key for experiment in experiments])
+
+
+SERVICES = {"wandb": clear_wandb_project, "comet_ml": clear_comet_ml_project}
 
 
 if __name__ == "__main__":
