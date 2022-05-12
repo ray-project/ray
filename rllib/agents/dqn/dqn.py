@@ -176,51 +176,70 @@ class DQNConfig(SimpleQConfig):
                 When this is greater than 1, distributional Q-learning is used.
             v_min: Minimum value estimation
             v_max: Maximum value estimation
-            noisy: Whether to use noisy network to aid exploration. This adds parametric noise to the model weights.
-            sigma0: Control the initial parameter noise for noisy nets
-            dueling: Whether to use dueling dqn
-            hiddens: Dense-layer setup for each the advantage branch and the value branch
-            double_q: Whether to use double dqn
-            n_step: N-step Q-learning
-            before_learn_on_batch: Callback to run before learning on a multi-agent batch of experiences
-            training_intensity: The intensity with which to update the model (vs collecting samples from the env).
+            noisy: Whether to use noisy network to aid exploration. This adds parametric
+                noise to the model weights.
+            sigma0: Control the initial parameter noise for noisy nets.
+            dueling: Whether to use dueling DQN.
+            hiddens: Dense-layer setup for each the advantage branch and the value
+                branch
+            double_q: Whether to use double DQN.
+            n_step: N-step for Q-learning.
+            before_learn_on_batch: Callback to run before learning on a multi-agent
+                batch of experiences.
+            training_intensity: The intensity with which to update the model (vs
+                collecting samples from the env).
                 If None, uses "natural" values of:
-                    `train_batch_size` / (`rollout_fragment_length` x `num_workers` x `num_envs_per_worker`).
-                If provided, will make sure that the ratio between ts inserted into and sampled from th buffer matches the given values.
-                    Example:
-                        training_intensity=1000.0
-                        train_batch_size=250
-                        rollout_fragment_length=1
-                        num_workers=1 (or 0)
-                        num_envs_per_worker=1
-                        -> natural value = 250 / 1 = 250.0
-                        -> will make sure that replay+train op will be executed 4x asoften as rollout+insert op (4 * 250 = 1000).
-                        See: rllib/agents/dqn/dqn.py::calculate_rr_weights for further details.
+                `train_batch_size` / (`rollout_fragment_length` x `num_workers` x
+                `num_envs_per_worker`).
+                If not None, will make sure that the ratio between timesteps inserted
+                into and sampled from th buffer matches the given values.
+                Example:
+                training_intensity=1000.0
+                train_batch_size=250
+                rollout_fragment_length=1
+                num_workers=1 (or 0)
+                num_envs_per_worker=1
+                -> natural value = 250 / 1 = 250.0
+                -> will make sure that replay+train op will be executed 4x asoften as
+                rollout+insert op (4 * 250 = 1000).
+                See: rllib/agents/dqn/dqn.py::calculate_rr_weights for further details.
             worker_side_prioritization: Whether to compute priorities on workers.
             replay_buffer_config: Replay buffer config.
                 Examples:
-                    {
-                        "_enable_replay_buffer_api": True,
-                        "learning_starts": 1000,
-                        "type": "MultiAgentReplayBuffer",
-                        "capacity": 50000,
-                        "replay_batch_size": 32,
-                        "replay_sequence_length": 1,
-                    }
-                    - OR -
-                    {
-                        "_enable_replay_buffer_api": True,
-                        "type": "MultiAgentPrioritizedReplayBuffer",
-                        "capacity": 50000,
-                        "prioritized_replay_alpha": 0.6,
-                        "prioritized_replay_beta": 0.4,
-                        "prioritized_replay_eps": 1e-6,
-                        "replay_sequence_length": 1,
-                    }
-                    - Where -
-                    prioritized_replay_alpha: Alpha parameter controls the degree of prioritization in the buffer. In other words, when a buffer sample has a higher temporal-difference error, with how much more probability should it drawn to use to update the parametrized Q-network. 0.0 corresponds to uniform probability. Setting much above 1.0 may quickly result as the sampling distribution could become heavily “pointy” with low entropy.
-                    prioritized_replay_beta: Beta parameter controls the degree of importance sampling which suppresses the influence of gradient updates from samples that have higher probability of being sampled via alpha parameter and the temporal-difference error.
-                    prioritized_replay_eps: Epsilon parameter sets the baseline probability for sampling so that when the temporal-difference error of a sample is zero, there is still a chance of drawing the sample.
+                {
+                "_enable_replay_buffer_api": True,
+                "type": "MultiAgentReplayBuffer",
+                "learning_starts": 1000,
+                "capacity": 50000,
+                "replay_batch_size": 32,
+                "replay_sequence_length": 1,
+                }
+                - OR -
+                {
+                "_enable_replay_buffer_api": True,
+                "type": "MultiAgentPrioritizedReplayBuffer",
+                "capacity": 50000,
+                "prioritized_replay_alpha": 0.6,
+                "prioritized_replay_beta": 0.4,
+                "prioritized_replay_eps": 1e-6,
+                "replay_sequence_length": 1,
+                }
+                - Where -
+                prioritized_replay_alpha: Alpha parameter controls the degree of
+                prioritization in the buffer. In other words, when a buffer sample has
+                a higher temporal-difference error, with how much more probability
+                should it drawn to use to update the parametrized Q-network. 0.0
+                corresponds to uniform probability. Setting much above 1.0 may quickly
+                result as the sampling distribution could become heavily “pointy” with
+                low entropy.
+                prioritized_replay_beta: Beta parameter controls the degree of
+                importance sampling which suppresses the influence of gradient updates
+                from samples that have higher probability of being sampled via alpha
+                parameter and the temporal-difference error.
+                prioritized_replay_eps: Epsilon parameter sets the baseline probability
+                for sampling so that when the temporal-difference error of a sample is
+                zero, there is still a chance of drawing the sample.
+
         Returns:
             This updated TrainerConfig object.
         """
