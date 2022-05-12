@@ -616,25 +616,22 @@ class Dataset(Generic[T]):
     def random_sample(
         self, fraction: float, *, seed: Optional[int] = None
     ) -> "Dataset[T]":
-        """Randomly samples a fraction of the elements of this dataset by uniform sampling.
+        """Randomly samples a fraction of the elements of this dataset.
 
-        Note that the exact fraction of elements to sample is not guaranteed.
+        Note that the exact number of elements returned is not guaranteed.
 
         Examples:
             >>> import ray
             >>> ds = ray.data.range(100) # doctest: +SKIP
-            >>> ds.random_sample(5) # doctest: +SKIP
-            >>> # Sample this dataset with a fixed random seed.
-            >>> ds.random_sample(5, seed=12345) # doctest: +SKIP
-
+            >>> ds.random_sample(0.1) # doctest: +SKIP
+            >>> ds.random_sample(0.2, seed=12345) # doctest: +SKIP
 
         Args:
             fraction: The fraction of elements to sample.
-
             seed: Seeds the python random pRNG generator.
 
         Returns:
-            Returns a dataset with *fraction* of the elements of the original dataset
+            Returns a Dataset containing the sampled elements.
         """
         import random
         import math
@@ -642,24 +639,15 @@ class Dataset(Generic[T]):
         import pandas as pd
 
         if self.num_blocks() == 0:
-            raise ValueError("Cannot from an empty dataset")
+            raise ValueError("Cannot sample from an empty dataset.")
 
         if fraction < 0 or fraction > 1:
-            raise ValueError("Fraction must be between 0 and 1")
+            raise ValueError("Fraction must be between 0 and 1.")
 
         if seed:
             random.seed(seed)
 
         def process_batch(batch):
-            """
-            Processes a batch of inputs
-            Args:
-                batch: The batch to process
-
-            Returns:
-                Randomly sampled elements from the batch
-            """
-
             if isinstance(batch, list):
                 return random.sample(batch, math.ceil(len(batch) * fraction))
             if isinstance(batch, pa.Table):
@@ -670,7 +658,7 @@ class Dataset(Generic[T]):
             if isinstance(batch, pd.DataFrame):
                 return batch.sample(frac=fraction)
 
-            raise ValueError("Unsupported batch type")
+            raise ValueError("Unsupported batch type: {}".format(type(batch)))
 
         return self.map_batches(process_batch)
 
