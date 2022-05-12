@@ -279,6 +279,15 @@ message KVListResponse {
   repeated bytes keys = 1;
 }
 
+message ClientAddTemporaryURIReferenceRequest {
+  string uri = 1;
+  int32 expiration_s = 2;
+}
+
+message ClientAddTemporaryURIReferenceResponse {
+}
+
+
 message InitRequest {
   // job_config of ray.init
   bytes job_config = 1;
@@ -333,6 +342,9 @@ service RayletDriver {
   }
   rpc ListNamedActors(ClientListNamedActorsRequest)
       returns (ClientListNamedActorsResponse) {
+  }
+  rpc AddTemporaryURIReference(ClientAddTemporaryURIReferenceRequest) 
+      returns (ClientAddTemporaryURIReferenceResponse) {
   }
 }
 

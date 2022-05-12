@@ -336,6 +336,10 @@ class ClientAPI:
         """Hook for internal_kv._internal_kv_list."""
         return self.worker.internal_kv_list(as_bytes(prefix))
 
+    def _add_temporary_uri_reference(self, uri: str, expiration_s: int) -> None:
+        """Hook for internal_kv._add_temporary_uri_reference."""
+        return self.worker.add_temporary_uri_reference(uri, expiration_s)
+
     def _convert_actor(self, actor: "ActorClass") -> str:
         """Register a ClientActorClass for the ActorClass and return a UUID"""
         return self.worker._convert_actor(actor)

@@ -59,7 +59,7 @@ def _internal_kv_exists(
 
 
 @client_mode_hook(auto_init=False)
-def _add_temporary_uri_reference(uri: str, expiration_s: int):
+def _add_temporary_uri_reference(uri: str, expiration_s: int) -> None:
     """Add a temporary reference to a runtime_env URI.
 
     This reference will be removed after expiration_s seconds.

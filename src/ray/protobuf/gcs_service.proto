@@ -511,7 +511,8 @@ message AddTemporaryURIReferenceReply {
 }
 
 service RuntimeEnvGcsService {
-  rpc AddTemporaryURIReference(AddTemporaryURIReferenceRequest) returns (AddTemporaryURIReferenceReply);
+  rpc AddTemporaryURIReference(AddTemporaryURIReferenceRequest)
+      returns (AddTemporaryURIReferenceReply);
 }
 
 message GcsPublishRequest {

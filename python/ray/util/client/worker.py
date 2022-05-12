@@ -739,6 +739,12 @@ class Worker:
         req = ray_client_pb2.KVListRequest(prefix=prefix)
         return self._call_stub("KVList", req, metadata=self.metadata).keys
 
+    def add_temporary_uri_reference(self, uri: str, expiration_s: int) -> None:
+        req = ray_client_pb2.ClientAddTemporaryURIReferenceRequest(
+            uri=uri, expiration_s=expiration_s
+        )
+        self._call_stub("AddTemporaryURIReference", req, metadata=self.metadata)
+
     def list_named_actors(self, all_namespaces: bool) -> List[Dict[str, str]]:
         req = ray_client_pb2.ClientListNamedActorsRequest(all_namespaces=all_namespaces)
         return json.loads(self.data_client.ListNamedActors(req).actors_json)
