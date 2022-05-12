@@ -265,8 +265,8 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   }
 
   @Override
-  public RuntimeEnv createRuntimeEnv(Map<String, String> envVars) {
-    return new RuntimeEnvImpl(envVars);
+  public RuntimeEnv createRuntimeEnv(Map<String, String> envVars, List<String> jars) {
+    return new RuntimeEnvImpl(envVars, jars);
   }
 
   private ObjectRef callNormalFunction(
