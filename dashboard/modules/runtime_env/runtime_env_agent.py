@@ -319,9 +319,7 @@ class RuntimeEnvAgent(
                     plugin_class = import_attr(plugin_class_path)
                     plugin = plugin_class()
                     # TODO(architkulkarni): implement uri support
-                    plugin.create(
-                        "uri not implemented", json.loads(config), context
-                    )
+                    plugin.create("uri not implemented", json.loads(config), context)
                     plugin.modify_context(
                         "uri not implemented", json.loads(config), context
                     )
