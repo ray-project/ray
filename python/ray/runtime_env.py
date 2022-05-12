@@ -10,7 +10,7 @@ from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnv as ProtoRuntimeEnv,
     RuntimeEnvConfig as ProtoRuntimeEnvConfig,
 )
-from ray._private.runtime_env.plugin import RuntimeEnvPlugin, encode_plugin_uri
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.runtime_env.validation import OPTION_TO_VALIDATION_FN
 from ray._private.utils import import_attr
 from ray._private.runtime_env.conda import (
@@ -427,18 +427,18 @@ class RuntimeEnv(dict):
         # URIs from all plugins.
         plugin_uris = []
         if "working_dir" in self:
-            plugin_uris.append(encode_plugin_uri("working_dir", self["working_dir"]))
+            plugin_uris.append(self["working_dir"])
         if "py_modules" in self:
             for uri in self["py_modules"]:
-                plugin_uris.append(encode_plugin_uri("py_modules", uri))
+                plugin_uris.append(uri)
         if "conda" in self:
             uri = get_conda_uri(self)
             if uri is not None:
-                plugin_uris.append(encode_plugin_uri("conda", uri))
+                plugin_uris.append(uri)
         if "pip" in self:
             uri = get_pip_uri(self)
             if uri is not None:
-                plugin_uris.append(encode_plugin_uri("pip", uri))
+                plugin_uris.append(uri)
 
         return plugin_uris
 

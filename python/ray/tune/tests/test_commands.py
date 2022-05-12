@@ -114,7 +114,7 @@ def test_ls_with_cfg(start_ray, tmpdir):
         local_dir=str(tmpdir),
     )
 
-    columns = [CONFIG_PREFIX + "test_variable", "trial_id"]
+    columns = [CONFIG_PREFIX + "/test_variable", "trial_id"]
     limit = 4
     with Capturing() as output:
         commands.list_trials(experiment_path, info_keys=columns, limit=limit)

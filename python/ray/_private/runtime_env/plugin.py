@@ -6,13 +6,6 @@ from ray._private.runtime_env.uri_cache import URICache
 from ray.util.annotations import DeveloperAPI
 from ray._private.runtime_env.context import RuntimeEnvContext
 
-
-# TODO(SongGuyang): This function exists in both C++ and Python.
-# We should make this logic clearly.
-def encode_plugin_uri(plugin: str, uri: str) -> str:
-    return plugin + "|" + uri
-
-
 default_logger = logging.getLogger(__name__)
 
 

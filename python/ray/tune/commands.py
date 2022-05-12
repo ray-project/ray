@@ -122,8 +122,10 @@ def list_trials(
     except TuneError as e:
         raise click.ClickException("No trial data found!") from e
 
+    config_prefix = CONFIG_PREFIX + "/"
+
     def key_filter(k):
-        return k in DEFAULT_CLI_KEYS or k.startswith(CONFIG_PREFIX)
+        return k in DEFAULT_CLI_KEYS or k.startswith(config_prefix)
 
     col_keys = [k for k in checkpoints_df.columns if key_filter(k)]
 

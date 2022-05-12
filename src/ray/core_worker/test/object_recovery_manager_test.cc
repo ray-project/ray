@@ -58,23 +58,24 @@ class MockTaskResubmitter : public TaskResubmissionInterface {
 
 class MockRayletClient : public PinObjectsInterface {
  public:
-  void PinObjectID(const rpc::Address &caller_address,
-                   const ObjectID &object_id,
-                   rpc::ClientCallback<rpc::PinObjectIDReply> callback) override {
-    RAY_LOG(INFO) << "PinObjectID " << object_id.Hex();
-    callbacks.push_back(std::move(callback));
+  void PinObjectIDs(
+      const rpc::Address &caller_address,
+      const std::vector<ObjectID> &object_ids,
+      const rpc::ClientCallback<rpc::PinObjectIDsReply> &callback) override {
+    RAY_LOG(INFO) << "PinObjectIDs " << object_ids.size();
+    callbacks.push_back(callback);
   }
 
   size_t Flush() {
     size_t flushed = callbacks.size();
     for (const auto &callback : callbacks) {
-      callback(Status::OK(), rpc::PinObjectIDReply());
+      callback(Status::OK(), rpc::PinObjectIDsReply());
     }
     callbacks.clear();
     return flushed;
   }
 
-  std::list<rpc::ClientCallback<rpc::PinObjectIDReply>> callbacks = {};
+  std::list<rpc::ClientCallback<rpc::PinObjectIDsReply>> callbacks = {};
 };
 
 class MockObjectDirectory {
