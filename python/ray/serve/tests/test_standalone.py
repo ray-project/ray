@@ -12,6 +12,7 @@ from typing import Optional
 
 import pytest
 import pydantic
+from ray.serve.http_util import set_socket_reuse_port
 import requests
 
 import ray
@@ -178,8 +179,27 @@ def test_dedicated_cpu(controller_cpu, num_proxy_cpus, ray_cluster):
     ray.shutdown()
 
 
+def test_set_socket_reuse_port():
+    sock = socket.socket()
+    if hasattr(socket, "SO_REUSEPORT"):
+        # If the flag exists, we should be able to to use it
+        assert set_socket_reuse_port(sock)
+    elif sys.platform == "linux":
+        # If the flag doesn't exist, but we are only mordern version
+        # of linux, we should be able to force set this flag.
+        assert set_socket_reuse_port(sock)
+    else:
+        # Otherwise, it should graceful fail without exception.
+        assert not set_socket_reuse_port(sock)
+
+
+def _reuse_port_is_available():
+    sock = socket.socket()
+    return set_socket_reuse_port(sock)
+
+
 @pytest.mark.skipif(
-    not hasattr(socket, "SO_REUSEPORT"),
+    not _reuse_port_is_available(),
     reason=(
         "Port sharing only works on newer verion of Linux. "
         "This test can only be ran when port sharing is supported."

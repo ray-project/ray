@@ -463,6 +463,7 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
   RAY_LOG(INFO) << "Started worker process of " << workers_to_start
                 << " worker(s) with pid " << proc.GetId() << ", the token "
                 << worker_startup_token_counter_;
+  AdjustWorkerOomScore(proc.GetId());
   MonitorStartingWorkerProcess(
       proc, worker_startup_token_counter_, language, worker_type);
   AddWorkerProcess(state, workers_to_start, worker_type, proc, start, runtime_env_info);
@@ -473,6 +474,27 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
     io_worker_state.num_starting_io_workers++;
   }
   return {proc, worker_startup_token};
+}
+
+void WorkerPool::AdjustWorkerOomScore(pid_t pid) const {
+#ifdef __linux__
+  std::ofstream oom_score_file;
+  std::string filename("/proc/" + std::to_string(pid) + "/oom_score_adj");
+  oom_score_file.open(filename, std::ofstream::out);
+  int oom_score_adj = RayConfig::instance().worker_oom_score_adjustment();
+  oom_score_adj = std::max(oom_score_adj, 0);
+  oom_score_adj = std::min(oom_score_adj, 1000);
+  if (oom_score_file.is_open()) {
+    // Adjust worker's OOM score so that the OS prioritizes killing these
+    // processes over the raylet.
+    oom_score_file << std::to_string(oom_score_adj);
+  }
+  if (oom_score_file.fail()) {
+    RAY_LOG(INFO) << "Failed to set OOM score adjustment for worker with PID " << pid
+                  << ", error: " << strerror(errno);
+  }
+  oom_score_file.close();
+#endif
 }
 
 void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
