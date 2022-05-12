@@ -26,8 +26,7 @@ from ray.rllib.execution.train_ops import (
     multi_gpu_train_one_step,
 )
 from ray.rllib.policy.policy import Policy
-from ray.rllib.utils.annotations import ExperimentalAPI
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
@@ -48,9 +47,10 @@ logger = logging.getLogger(__name__)
 
 
 class SimpleQConfig(TrainerConfig):
-    """Defines a SimpleQTrainer configuration class from which a SimpleQTrainer can be built.
+    """Defines a configuration class from which a SimpleQTrainer can be built.
 
     Example:
+        >>> from ray.rllib.agents.dqn import SimpleQConfig
         >>> config = SimpleQConfig()
         >>> print(config.replay_buffer_config)
         >>> replay_config = config.replay_buffer_config.update(
@@ -59,10 +59,13 @@ class SimpleQConfig(TrainerConfig):
         >>>         "replay_batch_size": 64,
         >>>     }
         >>> )
-        >>> config.training(replay_buffer_config=replay_config)
-                  .resources(num_gpus=1)\
-                  .rollouts(num_rollout_workers=3)
+        >>> config.training(replay_buffer_config=replay_config)\
+        ...       .resources(num_gpus=1)\
+        ...       .rollouts(num_rollout_workers=3)
+
     Example:
+        >>> from ray.rllib.agents.dqn import SimpleQConfig
+        >>> from ray import tune
         >>> config = SimpleQConfig()
         >>> config.training(adam_epsilon=tune.grid_search([1e-8, 5e-8, 1e-7])
         >>> config.environment(env="CartPole-v1")
@@ -73,6 +76,7 @@ class SimpleQConfig(TrainerConfig):
         >>> )
 
     Example:
+        >>> from ray.rllib.agents.dqn import SimpleQConfig
         >>> config = SimpleQConfig()
         >>> print(config.exploration_config)
         >>> explore_config = config.exploration_config.update(
@@ -80,19 +84,20 @@ class SimpleQConfig(TrainerConfig):
         >>>         "initial_epsilon": 1.5,
         >>>         "final_epsilon": 0.01,
         >>>         "epsilon_timesteps": 5000,
-        >>>     }
+        >>>     })
         >>> config = SimpleQConfig().rollouts(rollout_fragment_length=32)\
         >>>                         .exploration(exploration_config=explore_config)\
         >>>                         .training(learning_starts=200)
 
     Example:
+        >>> from ray.rllib.agents.dqn import SimpleQConfig
         >>> config = SimpleQConfig()
         >>> print(config.exploration_config)
         >>> explore_config = config.exploration_config.update(
         >>>     {
         >>>         "type": "softq",
         >>>         "temperature": [1.0],
-        >>>     }
+        >>>     })
         >>> config = SimpleQConfig().training(lr_schedule=[[1, 1e-3], [500, 5e-3]])\
         >>>                         .exploration(exploration_config=explore_config)
     """
@@ -101,15 +106,10 @@ class SimpleQConfig(TrainerConfig):
         """Initializes a SimpleQConfig instance."""
         super().__init__(trainer_class=SimpleQTrainer)
 
-        # Simple Q specific config settings.
+        # Simple Q specific
         # fmt: off
         # __sphinx_doc_begin__
-        #
-        self.timesteps_per_iteration = 1000
         self.target_network_update_freq = 500
-        # TODO(smorad): Remove deprecated fields after Artur plugs 
-        # the new replay buffer api into APEX
-        self.prioritized_replay = DEPRECATED_VALUE
         self.replay_buffer_config = {
             "_enable_replay_buffer_api": True,
             "learning_starts": 1000,
@@ -122,7 +122,6 @@ class SimpleQConfig(TrainerConfig):
         self.lr_schedule = None
         self.adam_epsilon = 1e-8
         self.grad_clip = 40
-        self.learning_starts = 1000
         # __sphinx_doc_end__
         # fmt: on
 
@@ -148,19 +147,28 @@ class SimpleQConfig(TrainerConfig):
 
         # `reporting()`
         self.min_time_s_per_reporting = 1
+        self.min_sample_timesteps_per_reporting = 1000
+
+        # Deprecated.
+        self.buffer_size = DEPRECATED_VALUE
+        self.prioritized_replay = DEPRECATED_VALUE
+        self.learning_starts = DEPRECATED_VALUE
+        self.replay_batch_size = DEPRECATED_VALUE
+        self.replay_sequence_length = DEPRECATED_VALUE
+        self.prioritized_replay_alpha = DEPRECATED_VALUE
+        self.prioritized_replay_beta = DEPRECATED_VALUE
+        self.prioritized_replay_eps = DEPRECATED_VALUE
 
     @override(TrainerConfig)
     def training(
         self,
         *,
-        timesteps_per_iteration: Optional[int] = None,
         target_network_update_freq: Optional[int] = None,
         replay_buffer_config: Optional[dict] = None,
         store_buffer_in_checkpoints: Optional[bool] = None,
         lr_schedule: Optional[List[List[Union[int, float]]]] = None,
         adam_epsilon: Optional[float] = None,
         grad_clip: Optional[int] = None,
-        learning_starts: Optional[int] = None,
         **kwargs,
     ) -> "SimpleQConfig":
         """Sets the training related configuration.
@@ -199,7 +207,6 @@ class SimpleQConfig(TrainerConfig):
             lr_schedule: Learning rate schedule. In the format of [[timestep, value], [timestep, value], ...]. A schedule should normally start from timestep 0.
             adam_epsilon: Adam epsilon hyper parameter
             grad_clip: If not None, clip gradients during optimization at this value
-            learning_starts: How many steps of the model to sample before learning starts.
 
         Returns:
             This updated TrainerConfig object.
@@ -207,8 +214,6 @@ class SimpleQConfig(TrainerConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        if timesteps_per_iteration is not None:
-            self.timesteps_per_iteration = timesteps_per_iteration
         if target_network_update_freq is not None:
             self.target_network_update_freq = target_network_update_freq
         if replay_buffer_config is not None:
@@ -221,22 +226,8 @@ class SimpleQConfig(TrainerConfig):
             self.adam_epsilon = adam_epsilon
         if grad_clip is not None:
             self.grad_clip = grad_clip
-        if learning_starts is not None:
-            self.learning_starts = learning_starts
 
-
-# Deprecated: Use ray.rllib.agents.dqn.simple_q.SimpleQConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(SimpleQConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.agents.dqn.simple_q.DEFAULT_CONFIG",
-        new="ray.rllib.agents.dqn.simple_q.SimpleQConfig(...)",
-        error=False,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
+        return self
 
 
 class SimpleQTrainer(Trainer):
@@ -247,7 +238,14 @@ class SimpleQTrainer(Trainer):
 
     @override(Trainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
-        """Checks and updates the config based on settings."""
+        """Validates the Trainer's config dict.
+
+        Args:
+            config: The Trainer's config to check.
+
+        Raises:
+            ValueError: In case something is wrong with the config.
+        """
         # Call super's validation method.
         super().validate_config(config)
 
@@ -314,10 +312,19 @@ class SimpleQTrainer(Trainer):
             self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
             # Store new samples in the replay buffer
             # Use deprecated add_batch() to support old replay buffers for now
-            self.local_replay_buffer.add_batch(batch)
+            self.local_replay_buffer.add(batch)
+
+        global_vars = {
+            "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
+        }
 
         # Use deprecated replay() to support old replay buffers for now
-        train_batch = self.local_replay_buffer.replay(batch_size)
+        train_batch = self.local_replay_buffer.sample(batch_size)
+        # If not yet learning, early-out here and do not perform learning, weight-
+        # synching, or target net updating.
+        if train_batch is None or len(train_batch) == 0:
+            self.workers.local_worker().set_global_vars(global_vars)
+            return {}
 
         # Learn on the training batch.
         # Use simple optimizer (only for multi-agent or tf-eager; all other
@@ -346,14 +353,25 @@ class SimpleQTrainer(Trainer):
 
         # Update weights and global_vars - after learning on the local worker - on all
         # remote workers.
-        global_vars = {
-            "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
-        }
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
             self.workers.sync_weights(global_vars=global_vars)
 
         # Return all collected metrics for the iteration.
         return train_results
+
+
+# Deprecated: Use ray.rllib.agents.dqn.simple_q.SimpleQConfig instead!
+class _deprecated_default_config(dict):
+    def __init__(self):
+        super().__init__(SimpleQConfig().to_dict())
+
+    @Deprecated(
+        old="ray.rllib.agents.dqn.simple_q.DEFAULT_CONFIG",
+        new="ray.rllib.agents.dqn.simple_q.SimpleQConfig(...)",
+        error=False,
+    )
+    def __getitem__(self, item):
+        return super().__getitem__(item)
 
 
 DEFAULT_CONFIG = _deprecated_default_config()

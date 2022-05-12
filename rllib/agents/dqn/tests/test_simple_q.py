@@ -37,7 +37,7 @@ class TestSimpleQ(unittest.TestCase):
         num_iterations = 2
 
         for _ in framework_iterator(config, with_eager_tracing=True):
-            trainer = dqn.SimpleQTrainer(config=config, env="CartPole-v0")
+            trainer = config.build(env="CartPole-v0")
             rw = trainer.workers.local_worker()
             for i in range(num_iterations):
                 sb = rw.sample()
@@ -52,8 +52,12 @@ class TestSimpleQ(unittest.TestCase):
         """Tests the Simple-Q loss function results on all frameworks."""
         config = dqn.simple_q.SimpleQConfig().rollouts(num_rollout_workers=0)
         # Use very simple net (layer0=10 nodes, q-layer=2 nodes (2 actions)).
-        config.model["fcnet_hiddens"] = [10]
-        config.model["fcnet_activation"] = "linear"
+        config.training(
+            model={
+                "fcnet_hiddens": [10],
+                "fcnet_activation": "linear",
+            }
+        )
 
         for fw in framework_iterator(config):
             # Generate Trainer and get its default Policy object.
