@@ -434,13 +434,13 @@ class VirtualActorClass(VirtualActorClassBase):
 
     def get_or_create(self, actor_id: str, *args, **kwargs) -> "VirtualActor":
         """Create an actor. See `VirtualActorClassBase.create()`."""
-        # if ray._private.client_mode_hook.is_client_mode_enabled:
-        #     _cls = self._metadata.cls
-        #     @ray.remote
-        #     def get_remote(actor_id, args, kwargs):
-        #         actor_cls = VirtualActorClass._from_class(_cls)
-        #         return actor_cls._get_or_create(actor_id, args=args, kwargs=kwargs)
-        #     return ray.get(get_remote.remote(actor_id, args=args, kwargs=kwargs))
+        if ray._private.client_mode_hook.is_client_mode_enabled:
+            _cls = self._metadata.cls
+            @ray.remote
+            def get_remote(actor_id, args, kwargs):
+                actor_cls = VirtualActorClass._from_class(_cls)
+                return actor_cls._get_or_create(actor_id, args=args, kwargs=kwargs)
+            return ray.get(get_remote.remote(actor_id, args=args, kwargs=kwargs))
 
         return self._get_or_create(actor_id, args=args, kwargs=kwargs)
 
@@ -459,13 +459,14 @@ class VirtualActorClass(VirtualActorClassBase):
     def _get_or_create(self, actor_id: str, args, kwargs) -> "VirtualActor":
         """Create a new virtual actor"""
         try:
-            return Exception
+            return get_actor(actor_id)
         except Exception:
             instance = self._construct(actor_id)
-            @ray.remote
-            def f(args, kwargs):
-                instance._create(args, kwargs)
-            ray.get(f.remote(args, kwargs))
+            # @ray.remote
+            # def f(args, kwargs):
+            #     instance._create(args, kwargs)
+            # ray.get(f.remote(args, kwargs))
+            instance._create(args, kwargs)
             return instance
 
     def _construct(self, actor_id: str) -> "VirtualActor":
