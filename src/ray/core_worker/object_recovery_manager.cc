@@ -119,7 +119,7 @@ void ObjectRecoveryManager::PinExistingObjectCopy(
   }
 
   client->PinObjectIDs(rpc_address_,
-                       object_id,
+                       {object_id},
                        [this, object_id, other_locations, node_id](
                            const Status &status, const rpc::PinObjectIDsReply &reply) {
                          if (status.ok()) {

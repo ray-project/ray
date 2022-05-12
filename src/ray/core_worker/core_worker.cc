@@ -898,19 +898,13 @@ Status CoreWorker::PutInLocalPlasmaStore(const RayObject &object,
       RAY_LOG(DEBUG) << "Pinning put object " << object_id;
       local_raylet_client_->PinObjectIDs(
           rpc_address_,
-          object_id,
+          {object_id},
           [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
-            if (!status.ok()) {
-              RAY_LOG(INFO) << "Failed to pin existing copy of the object " << object_id
-                            << ". This object may get evicted while there are still "
-                               "references to it: "
-                            << status;
-            }
             // Only release the object once the raylet has responded to avoid the race
             // condition that the object could be evicted before the raylet pins it.
-            if (auto s = plasma_store_provider_->Release(object_id); !s.ok()) {
+            if (!plasma_store_provider_->Release(object_id).ok()) {
               RAY_LOG(ERROR) << "Failed to release ObjectID (" << object_id
-                             << "), might cause a leak in plasma: " << s;
+                             << "), might cause a leak in plasma.";
             }
           });
     } else {
@@ -1058,19 +1052,13 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
     RAY_LOG(DEBUG) << "Pinning sealed object " << object_id;
     local_raylet_client_->PinObjectIDs(
         owner_address != nullptr ? *owner_address : rpc_address_,
-        object_id,
+        {object_id},
         [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
-          if (!status.ok()) {
-            RAY_LOG(INFO) << "Failed to pin existing copy of the object " << object_id
-                          << ". This object may get evicted while there are still "
-                             "references to it: "
-                          << status;
-          }
           // Only release the object once the raylet has responded to avoid the race
           // condition that the object could be evicted before the raylet pins it.
-          if (auto s = plasma_store_provider_->Release(object_id); !s.ok()) {
+          if (!plasma_store_provider_->Release(object_id).ok()) {
             RAY_LOG(ERROR) << "Failed to release ObjectID (" << object_id
-                           << "), might cause a leak in plasma: " << s;
+                           << "), might cause a leak in plasma.";
           }
         });
   } else {
@@ -2452,15 +2440,14 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
     // case (e.g., by detecting the raylet failure and storing an error).
     local_raylet_client_->PinObjectIDs(
         owner_address,
-        return_id,
+        {return_id},
         [return_id, pinned_return_object](const Status &status,
                                           const rpc::PinObjectIDsReply &reply) {
           if (!status.ok()) {
             RAY_LOG(INFO) << "Failed to pin existing copy of the task return object "
                           << return_id
                           << ". This object may get evicted while there are still "
-                             "references to it: "
-                          << status;
+                             "references to it.";
           }
         });
     return true;
