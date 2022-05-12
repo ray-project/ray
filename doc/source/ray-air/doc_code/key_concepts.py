@@ -62,7 +62,7 @@ tuner = Tuner(
             "max_depth": tune.randint(1, 9)
         }
     },
-    tune_config=TuneConfig(num_samples=20, metric="train-logloss", mode="min"),
+    tune_config=TuneConfig(num_samples=5, metric="train-logloss", mode="min"),
 )
 result_grid = tuner.fit()
 best_result = result_grid.get_best_result()
@@ -70,6 +70,8 @@ print(best_result)
 # __air_tuner_end__
 
 # __air_batch_predictor_start__
+from ray.ml.batch_predictor import BatchPredictor
+from ray.ml.predictors.integrations.xgboost import XGBoostPredictor
 
 batch_predictor = BatchPredictor.from_checkpoint(
     result.checkpoint, XGBoostPredictor
@@ -85,14 +87,32 @@ predicted_labels = (
 
 # __air_deploy_start__
 from ray import serve
-from ray.serve import ModelWrapperDeployment
+from ray.serve.model_wrappers import ModelWrapperDeployment
+from ray.serve.http_adapters import json_request
 
 serve.start(detached=True)
-deployment = ModelWrapperDeployment.options(name=name)
-deployment.deploy(RLPredictor, checkpoint)
+deployment = ModelWrapperDeployment.options(name="XGBoostService")
+
+from fastapi import Request
+async def adapter(request: Request):
+    content = await request.json()
+    print(content)
+    return pd.DataFrame.from_dict(content)
+
+deployment.deploy(
+    XGBoostPredictor,
+    result.checkpoint,
+    batching_params=False,
+    http_adapter=adapter)
+
 print(deployment.url)
 # __air_deploy_end__
 
 # __air_inference_start__
+import requests
+sample_input = test_dataset.take(1)
+sample_input = dict(sample_input[0])
 
+output = requests.post(deployment.url, json=[sample_input]).json()
+print(output)
 # __air_inference_end__
