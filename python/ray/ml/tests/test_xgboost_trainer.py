@@ -1,5 +1,3 @@
-import os
-from typing import Optional, Tuple
 import pytest
 import json
 import pandas as pd
@@ -7,12 +5,11 @@ import pandas as pd
 import xgboost as xgb
 
 import ray
-import ray.cloudpickle as cpickle
 from ray import tune
 from ray.ml.checkpoint import Checkpoint
-from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY, TRAIN_DATASET_KEY
+from ray.ml.constants import TRAIN_DATASET_KEY
 
-from ray.ml.train.integrations.xgboost import XGBoostTrainer
+from ray.ml.train.integrations.xgboost import XGBoostTrainer, load_checkpoint
 from ray.ml.preprocessor import Preprocessor
 
 from sklearn.datasets import load_breast_cancer
@@ -46,22 +43,6 @@ def get_num_trees(booster: xgb.Booster) -> int:
     return len(data)
 
 
-def load_from_checkpoint(
-    checkpoint: Checkpoint,
-) -> Tuple[xgb.Booster, Optional[Preprocessor]]:
-    checkpoint_path = checkpoint.to_directory()
-    xgb_model = xgb.Booster()
-    xgb_model.load_model(os.path.join(checkpoint_path, MODEL_KEY))
-    preprocessor_path = os.path.join(checkpoint_path, PREPROCESSOR_KEY)
-    if os.path.exists(preprocessor_path):
-        with open(preprocessor_path, "rb") as f:
-            preprocessor = cpickle.load(f)
-    else:
-        preprocessor = None
-
-    return xgb_model, preprocessor
-
-
 def test_fit(ray_start_4_cpus):
     train_dataset = ray.data.from_pandas(train_df)
     valid_dataset = ray.data.from_pandas(test_df)
@@ -86,7 +67,7 @@ def test_resume_from_checkpoint(ray_start_4_cpus, tmpdir):
     )
     result = trainer.fit()
     checkpoint = result.checkpoint
-    xgb_model, _ = load_from_checkpoint(checkpoint)
+    xgb_model, _ = load_checkpoint(checkpoint)
     assert get_num_trees(xgb_model) == 5
 
     # Move checkpoint to a different directory.
@@ -105,7 +86,7 @@ def test_resume_from_checkpoint(ray_start_4_cpus, tmpdir):
     )
     result = trainer.fit()
     checkpoint = result.checkpoint
-    model, _ = load_from_checkpoint(checkpoint)
+    model, _ = load_checkpoint(checkpoint)
     assert get_num_trees(model) == 10
 
 
@@ -139,7 +120,7 @@ def test_preprocessor_in_checkpoint(ray_start_4_cpus, tmpdir):
     checkpoint_path = checkpoint.to_directory(tmpdir)
     resume_from = Checkpoint.from_directory(checkpoint_path)
 
-    model, preprocessor = load_from_checkpoint(resume_from)
+    model, preprocessor = load_checkpoint(resume_from)
     assert get_num_trees(model) == 10
     assert preprocessor.is_same
     assert preprocessor.fitted_
