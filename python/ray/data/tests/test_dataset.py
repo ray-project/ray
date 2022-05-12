@@ -3566,7 +3566,7 @@ def test_random_shuffle_spread(ray_start_cluster):
     assert set(locations) == {node1_id, node2_id}
 
 
-def test_random_sample():
+def test_random_sample(ray_start_regular_shared):
     import math
 
     def test(dataset, sample_percent=0.5):
