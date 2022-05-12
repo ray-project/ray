@@ -83,13 +83,9 @@ predicted_labels = (
 
 # __air_deploy_start__
 from ray import serve
+from fastapi import Request
 from ray.serve.model_wrappers import ModelWrapperDeployment
 from ray.serve.http_adapters import json_request
-
-serve.start(detached=True)
-deployment = ModelWrapperDeployment.options(name="XGBoostService")
-
-from fastapi import Request
 
 
 async def adapter(request: Request):
@@ -97,6 +93,9 @@ async def adapter(request: Request):
     print(content)
     return pd.DataFrame.from_dict(content)
 
+
+serve.start(detached=True)
+deployment = ModelWrapperDeployment.options(name="XGBoostService")
 
 deployment.deploy(
     XGBoostPredictor, result.checkpoint, batching_params=False, http_adapter=adapter

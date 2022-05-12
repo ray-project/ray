@@ -1,7 +1,7 @@
 .. _air-api-ref:
 
-AI Runtime API Reference
-========================
+AIR API
+=======
 
 .. contents::
     :local:

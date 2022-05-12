@@ -69,6 +69,7 @@ We believe Ray AIR provides unique value deriving from Ray.
 Next Steps
 ----------
 
+- :ref:`air-key-concepts`
 - `Examples <https://github.com/ray-project/ray/tree/master/python/ray/ml/examples>`__
 - :ref:`Deployment Guide <air-deployment>`
 - :ref:`API reference <air-api-ref>`

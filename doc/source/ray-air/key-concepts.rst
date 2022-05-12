@@ -1,5 +1,7 @@
-AIR Key Concepts
-================
+.. _air-key-concepts:
+
+Key Concepts
+============
 
 Here, we cover the main concepts in AIR.
 
@@ -73,4 +75,16 @@ You can take a trained model and do batch inference using the BatchPredictor obj
 Online Inference
 ----------------
 
-.. TODO
+Deploy the model as an inference service by using Ray Serve and the ``ModelWrapperDeployment`` class.
+
+.. literalinclude:: doc_code/key_concepts.py
+    :language: python
+    :start-after: __air_deploy_start__
+    :end-before: __air_deploy_end__
+
+After deploying the service, you can send requests to it.
+
+.. literalinclude:: doc_code/key_concepts.py
+    :language: python
+    :start-after: __air_inference_start__
+    :end-before: __air_inference_end__
