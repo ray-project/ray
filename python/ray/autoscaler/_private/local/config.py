@@ -100,6 +100,13 @@ def prepare_manual(config: Dict[str, Any]) -> Dict[str, Any]:
     else:
         node_type["max_workers"] = max_workers
 
+    if max_workers < num_ips:
+        cli_logger.warning(
+            f"The value of `max_workers` supplied ({max_workers}) is less"
+            f" than the number of available worker ips ({num_ips})."
+            f" At most {max_workers} Ray worker nodes will connect to the cluster."
+        )
+
     return config
 
 

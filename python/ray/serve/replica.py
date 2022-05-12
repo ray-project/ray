@@ -18,7 +18,7 @@ from ray.util import metrics
 from ray._private.async_compat import sync_to_async
 
 from ray.serve.autoscaling_metrics import start_metrics_pusher
-from ray.serve.common import ReplicaTag
+from ray.serve.common import HEALTH_CHECK_CONCURRENCY_GROUP, ReplicaTag
 from ray.serve.config import DeploymentConfig
 from ray.serve.constants import (
     HEALTH_CHECK_METHOD,
@@ -219,6 +219,7 @@ def create_replica_wrapper(
             if self.replica is not None:
                 return await self.replica.prepare_for_shutdown()
 
+        @ray.method(concurrency_group=HEALTH_CHECK_CONCURRENCY_GROUP)
         async def check_health(self):
             await self.replica.check_health()
 

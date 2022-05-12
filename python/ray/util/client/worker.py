@@ -27,7 +27,6 @@ import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.exceptions import GetTimeoutError
 from ray.ray_constants import DEFAULT_CLIENT_RECONNECT_GRACE_PERIOD
 from ray.util.client.client_pickler import (
-    convert_to_arg,
     dumps_from_client,
     loads_from_server,
 )
@@ -547,17 +546,14 @@ class Worker:
 
     def call_remote(self, instance, *args, **kwargs) -> List[Future]:
         task = instance._prepare_client_task()
-        for arg in args:
-            pb_arg = convert_to_arg(arg, self._client_id)
-            task.args.append(pb_arg)
-        for k, v in kwargs.items():
-            task.kwargs[k].CopyFrom(convert_to_arg(v, self._client_id))
+        # data is serialized tuple of (args, kwargs)
+        task.data = dumps_from_client((args, kwargs), self._client_id)
         return self._call_schedule_for_task(task, instance._num_returns())
 
     def _call_schedule_for_task(
         self, task: ray_client_pb2.ClientTask, num_returns: int
     ) -> List[Future]:
-        logger.debug("Scheduling %s" % task)
+        logger.debug(f"Scheduling task {task.name} {task.type} {task.payload_id}")
         task.client_id = self._client_id
         if num_returns is None:
             num_returns = 1
@@ -653,6 +649,8 @@ class Worker:
         task.type = ray_client_pb2.ClientTask.NAMED_ACTOR
         task.name = name
         task.namespace = namespace or ""
+        # Populate task.data with empty args and kwargs
+        task.data = dumps_from_client(([], {}), self._client_id)
         futures = self._call_schedule_for_task(task, 1)
         assert len(futures) == 1
         handle = ClientActorHandle(ClientActorRef(futures[0]))

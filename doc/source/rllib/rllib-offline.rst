@@ -51,6 +51,8 @@ Then, we can tell DQN to train using these previously generated experiences with
             "input_evaluation": [],
             "explore": false}'
 
+.. _is:
+
 **Off-policy estimation:** Since the input experiences are not from running simulations, RLlib cannot report the true policy performance during training. However, you can use ``tensorboard --logdir=~/ray_results`` to monitor training progress via other metrics such as estimated Q-value. Alternatively, `off-policy estimation <https://arxiv.org/pdf/1511.03722.pdf>`__ can be used, which requires both the source and target action probabilities to be available (i.e., the ``action_prob`` batch key). For DQN, this means enabling soft Q learning so that actions are sampled from a probability distribution:
 
 .. code-block:: bash

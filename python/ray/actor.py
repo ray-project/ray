@@ -547,7 +547,9 @@ class ActorClass:
         # "concurrency_groups" could not be used in ".options()",
         # we should remove it before merging options from '@ray.remote'.
         default_options.pop("concurrency_groups", None)
-        updated_options = {**default_options, **actor_options}
+        updated_options = ray_option_utils.update_options(
+            default_options, actor_options
+        )
         ray_option_utils.validate_actor_options(updated_options, in_options=True)
 
         # only update runtime_env when ".options()" specifies new runtime_env
