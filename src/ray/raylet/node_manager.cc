@@ -731,6 +731,7 @@ void NodeManager::HandleReleaseUnusedBundles(
 void NodeManager::HandleGetTasksInfo(const rpc::GetTasksInfoRequest &request,
                                      rpc::GetTasksInfoReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
+  cluster_task_manager_->FillTaskInformation(reply);
   QueryAllWorkerStates(
       /*on_replied*/
       [reply](const ray::Status &status, const rpc::GetCoreWorkerStatsReply &r) {

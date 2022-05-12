@@ -168,6 +168,8 @@ class LocalTaskManager : public ILocalTaskManager {
 
   void ClearWorkerBacklog(const WorkerID &worker_id);
 
+  void FillTaskInformation(rpc::GetNodeStatsReply *reply) const;
+
   const absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
       &GetTaskToDispatch() const override {
     return tasks_to_dispatch_;

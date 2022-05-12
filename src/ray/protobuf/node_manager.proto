@@ -305,6 +305,7 @@ message GetTasksInfoReply {
   // All tasks must be treated as TaskStatus::RUNNING
   // from the caller side.
   repeated bytes running_task_ids = 3;
+  repeated DetailedSchedulingState detailed_scheduling_states = 4;
 }
 
 message GetObjectsInfoRequest {}

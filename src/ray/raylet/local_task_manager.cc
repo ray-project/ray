@@ -922,6 +922,36 @@ int64_t LocalTaskManager::TotalBacklogSize(SchedulingClass scheduling_class) {
   return sum;
 }
 
+void LocalTaskManager::FillTaskInformation(rpc::GetNodeStatsReply *reply) const {
+  auto update_node_state_reply = [&](const auto &shape_it) {
+    auto &work_queue = shape_it.second;
+    for (const auto &work_it : work_queue) {
+      const auto &work = *work_it;
+      const auto &task = work_it->task;
+      const auto &spec = task.GetTaskSpecification();
+      auto state = reply->add_detailed_scheduling_states();
+      state->set_task_id(spec.TaskId().Binary());
+      state->set_scheduling_state(
+          internal::UnscheduledWorkCauseToString(work.GetUnscheduledCause()));
+    }
+  };
+
+  auto update_node_state_reply_for_waiting_tasks = [&](const auto &work) {
+    const auto &task = work->task;
+    const auto &spec = task.GetTaskSpecification();
+    auto state = reply->add_detailed_scheduling_states();
+    state->set_task_id(spec.TaskId().Binary());
+    state->set_scheduling_state(
+        internal::UnscheduledWorkCauseToString(work->GetUnscheduledCause()));
+  };
+
+  std::for_each(
+      tasks_to_dispatch_.cbegin(), tasks_to_dispatch_.cend(), update_node_state_reply);
+  std::for_each(waiting_task_queue_.cbegin(),
+                waiting_task_queue_.cend(),
+                update_node_state_reply_for_waiting_tasks);
+}
+
 void LocalTaskManager::ReleaseWorkerResources(std::shared_ptr<WorkerInterface> worker) {
   RAY_CHECK(worker != nullptr);
   auto allocated_instances = worker->GetAllocatedInstances();

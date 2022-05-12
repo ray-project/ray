@@ -536,6 +536,11 @@ enum TaskStatus {
   RUNNING = 6;
 }
 
+message DetailedSchedulingState {
+  bytes task_id = 1;
+  string scheduling_state = 2;
+}
+
 // Debug info for a referenced object.
 message ObjectRefInfo {
   // Object id that is referenced.

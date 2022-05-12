@@ -103,6 +103,9 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
       rpc::ResourcesData &data,
       const std::shared_ptr<NodeResources> &last_reported_resources = nullptr) override;
 
+  /// SANG-TODO
+  void FillTaskInformation(rpc::GetNodeStatsReply *reply) const override;
+
   /// Return if any tasks are pending resource acquisition.
   ///
   /// \param[out] example: An example task that is deadlocking.

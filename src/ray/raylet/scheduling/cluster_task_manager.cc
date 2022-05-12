@@ -60,6 +60,7 @@ void ClusterTaskManager::QueueAndScheduleTask(
   // If the scheduling class is infeasible, just add the work to the infeasible queue
   // directly.
   if (infeasible_tasks_.count(scheduling_class) > 0) {
+    work->SetStateWaiting(internal::UnscheduledWorkCause::INFEASIBLE);
     infeasible_tasks_[scheduling_class].push_back(work);
   } else {
     tasks_to_schedule_[scheduling_class].push_back(work);
@@ -146,6 +147,7 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
       }
 
       // TODO(sang): Use a shared pointer deque to reduce copy overhead.
+      work->SetStateWaiting(internal::UnscheduledWorkCause::INFEASIBLE);
       infeasible_tasks_[shapes_it->first] = shapes_it->second;
       tasks_to_schedule_.erase(shapes_it++);
     } else if (work_queue.empty()) {
@@ -189,6 +191,8 @@ void ClusterTaskManager::TryScheduleInfeasibleTask() {
       RAY_LOG(DEBUG) << "Infeasible task of task id "
                      << task.GetTaskSpecification().TaskId()
                      << " is now feasible. Move the entry back to tasks_to_schedule_";
+      work->SetStateWaiting(
+          internal::UnscheduledWorkCause::WAITING_FOR_RESOURCE_ACQUISITION);
       tasks_to_schedule_[shapes_it->first] = shapes_it->second;
       infeasible_tasks_.erase(shapes_it++);
     }
@@ -255,6 +259,26 @@ void ClusterTaskManager::FillResourceUsage(
   if (scheduler_resource_reporter_) {
     scheduler_resource_reporter_->FillResourceUsage(data, last_reported_resources);
   }
+}
+
+void ClusterTaskManager::FillTaskInformation(rpc::GetNodeStatsReply *reply) const {
+  auto update_node_state_reply = [&](const auto &shape_it) {
+    auto &work_queue = shape_it.second;
+    for (const auto &work_it : work_queue) {
+      const auto &task = work_it->task;
+      const auto &spec = task.GetTaskSpecification();
+      auto state = reply->add_detailed_scheduling_states();
+      state->set_task_id(spec.TaskId().Binary());
+      state->set_scheduling_state(
+          internal::UnscheduledWorkCauseToString(work_it->GetUnscheduledCause()));
+    }
+  };
+
+  std::for_each(
+      tasks_to_schedule_.cbegin(), tasks_to_schedule_.cend(), update_node_state_reply);
+  std::for_each(
+      infeasible_tasks_.cbegin(), infeasible_tasks_.cend(), update_node_state_reply);
+  local_task_manager_->FillTaskInformation(reply);
 }
 
 bool ClusterTaskManager::AnyPendingTasksForResourceAcquisition(

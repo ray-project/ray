@@ -79,6 +79,9 @@ class ClusterTaskManagerInterface {
                                                      int *num_pending_actor_creation,
                                                      int *num_pending_tasks) const = 0;
 
+  /// SANG-TODO
+  virtual void FillTaskInformation(rpc::GetNodeStatsReply *reply) const = 0;
+
   /// The helper to dump the debug state of the cluster task manater.
   virtual std::string DebugStr() const = 0;
 
