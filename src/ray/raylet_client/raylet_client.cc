@@ -521,12 +521,6 @@ void RayletClient::GetSystemConfig(
   grpc_client_->GetSystemConfig(request, callback);
 }
 
-void RayletClient::GetGcsServerAddress(
-    const rpc::ClientCallback<rpc::GetGcsServerAddressReply> &callback) {
-  rpc::GetGcsServerAddressRequest request;
-  grpc_client_->GetGcsServerAddress(request, callback);
-}
-
 int64_t RayletClient::GetPinsInFlight() const { return pin_batcher_->TotalPending(); }
 
 PinBatcher::PinBatcher(std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client)

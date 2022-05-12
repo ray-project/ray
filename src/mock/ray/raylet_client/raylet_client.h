@@ -199,10 +199,6 @@ class MockRayletClientInterface : public RayletClientInterface {
               (const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback),
               (override));
   MOCK_METHOD(void,
-              GetGcsServerAddress,
-              (const rpc::ClientCallback<rpc::GetGcsServerAddressReply> &callback),
-              (override));
-  MOCK_METHOD(void,
               UpdateResourceUsage,
               (std::string & serialized_resource_usage_batch,
                const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &callback),
