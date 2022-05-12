@@ -38,6 +38,7 @@ Preprocessors
     :members:
     :show-inheritance:
 
+.. autofunction:: ray.ml.train_test_split
 
 Trainer
 ~~~~~~~

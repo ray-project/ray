@@ -998,6 +998,7 @@ class Dataset(Generic[T]):
 
         A common use case for this would be splitting the dataset into train
         and test sets (equivalent to eg. scikit-learn's ``train_test_split``).
+        See also :func:`ray.ml.train_test_split` for a higher level abstraction.
 
         The indices to split at will be calculated in such a way so that all splits
         always contains at least one element. If that is not possible,
@@ -1019,7 +1020,8 @@ class Dataset(Generic[T]):
 
         Time complexity: O(num splits)
 
-        See also: ``Dataset.split``, ``Dataset.split_at_indices``
+        See also: ``Dataset.split``, ``Dataset.split_at_indices``,
+        :func:`ray.ml.train_test_split`
 
         Args:
             proportions: List of proportions to split the dataset according to.
