@@ -39,21 +39,6 @@
 namespace ray {
 namespace rpc {
 
-/// The maximum number of requests in flight per client.
-const int64_t kMaxBytesInFlight = 16 * 1024 * 1024;
-
-/// The base size in bytes per request.
-const int64_t kBaseRequestSize = 1024;
-
-/// Get the estimated size in bytes of the given task.
-const static int64_t RequestSizeInBytes(const PushTaskRequest &request) {
-  int64_t size = kBaseRequestSize;
-  for (auto &arg : request.task_spec().args()) {
-    size += arg.data().size();
-  }
-  return size;
-}
-
 // Shared between direct actor and task submitters.
 /* class CoreWorkerClientInterface; */
 
@@ -338,13 +323,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
       return;
     }
 
-    {
-      absl::MutexLock lock(&mutex_);
-      send_queue_.push_back(std::make_pair(
-          std::move(request),
-          std::move(const_cast<ClientCallback<PushTaskReply> &>(callback))));
-    }
-    SendRequests();
+    SendRequest(std::move(request), callback);
   }
 
   void PushNormalTask(std::unique_ptr<PushTaskRequest> request,
@@ -359,51 +338,31 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
                     /*method_timeout_ms*/ -1);
   }
 
-  /// Send as many pending tasks as possible. This method is thread-safe.
-  ///
-  /// The client will guarantee no more than kMaxBytesInFlight bytes of RPCs are being
-  /// sent at once. This prevents the server scheduling queue from being overwhelmed.
-  /// See direct_actor.proto for a description of the ordering protocol.
-  void SendRequests() {
+  void SendRequest(std::unique_ptr<PushTaskRequest> request,
+                   const ClientCallback<PushTaskReply> &callback) {
     absl::MutexLock lock(&mutex_);
     auto this_ptr = this->shared_from_this();
 
-    while (!send_queue_.empty() && rpc_bytes_in_flight_ < kMaxBytesInFlight) {
-      auto pair = std::move(*send_queue_.begin());
-      send_queue_.pop_front();
+    int64_t seq_no = request->sequence_number();
+    request->set_client_processed_up_to(max_finished_seq_no_);
 
-      auto request = std::move(pair.first);
-      int64_t task_size = RequestSizeInBytes(*request);
-      int64_t seq_no = request->sequence_number();
-      request->set_client_processed_up_to(max_finished_seq_no_);
-      rpc_bytes_in_flight_ += task_size;
+    auto rpc_callback = [this, this_ptr, seq_no, callback = std::move(pair.second)](
+                            Status status, const rpc::PushTaskReply &reply) {
+      {
+        absl::MutexLock lock(&mutex_);
+        if (seq_no > max_finished_seq_no_) {
+          max_finished_seq_no_ = seq_no;
+        }
+      }
+      callback(status, reply);
+    };
 
-      auto rpc_callback =
-          [this, this_ptr, seq_no, task_size, callback = std::move(pair.second)](
-              Status status, const rpc::PushTaskReply &reply) {
-            {
-              absl::MutexLock lock(&mutex_);
-              if (seq_no > max_finished_seq_no_) {
-                max_finished_seq_no_ = seq_no;
-              }
-              rpc_bytes_in_flight_ -= task_size;
-              RAY_CHECK(rpc_bytes_in_flight_ >= 0);
-            }
-            SendRequests();
-            callback(status, reply);
-          };
-
-      RAY_UNUSED(INVOKE_RPC_CALL(CoreWorkerService,
-                                 PushTask,
-                                 *request,
-                                 std::move(rpc_callback),
-                                 grpc_client_,
-                                 /*method_timeout_ms*/ -1));
-    }
-
-    if (!send_queue_.empty()) {
-      RAY_LOG(DEBUG) << "client send queue size " << send_queue_.size();
-    }
+    RAY_UNUSED(INVOKE_RPC_CALL(CoreWorkerService,
+                               PushTask,
+                               *request,
+                               std::move(rpc_callback),
+                               grpc_client_,
+                               /*method_timeout_ms*/ -1));
   }
 
   /// Returns the max acked sequence number, useful for checking on progress.
@@ -421,13 +380,6 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   /// The RPC client.
   std::unique_ptr<GrpcClient<CoreWorkerService>> grpc_client_;
-
-  /// Queue of requests to send.
-  std::deque<std::pair<std::unique_ptr<PushTaskRequest>, ClientCallback<PushTaskReply>>>
-      send_queue_ GUARDED_BY(mutex_);
-
-  /// The number of bytes currently in flight.
-  int64_t rpc_bytes_in_flight_ GUARDED_BY(mutex_) = 0;
 
   /// The max sequence number we have processed responses for.
   int64_t max_finished_seq_no_ GUARDED_BY(mutex_) = -1;
