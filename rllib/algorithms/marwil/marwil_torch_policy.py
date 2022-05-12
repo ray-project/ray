@@ -3,7 +3,7 @@ from typing import Dict
 
 import ray
 from ray.rllib.agents.a3c.a3c_torch_policy import ValueNetworkMixin
-from ray.rllib.agents.marwil.marwil_tf_policy import postprocess_advantages
+from ray.rllib.algorithms.marwil.marwil_tf_policy import postprocess_advantages
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -113,7 +113,7 @@ MARWILTorchPolicy = build_policy_class(
     name="MARWILTorchPolicy",
     framework="torch",
     loss_fn=marwil_loss,
-    get_default_config=lambda: ray.rllib.agents.marwil.marwil.DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.algorithms.marwil.marwil.DEFAULT_CONFIG,
     stats_fn=stats,
     postprocess_fn=postprocess_advantages,
     extra_grad_process_fn=apply_grad_clipping,

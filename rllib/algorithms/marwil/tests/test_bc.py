@@ -3,7 +3,7 @@ from pathlib import Path
 import unittest
 
 import ray
-import ray.rllib.agents.marwil as marwil
+import ray.rllib.algorithms.marwil as marwil
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import (
     check_compute_single_action,

@@ -1,4 +1,4 @@
-from ray.rllib.agents.marwil.marwil import (
+from ray.rllib.algorithms.marwil.marwil import (
     MARWILTrainer,
     DEFAULT_CONFIG as MARWIL_CONFIG,
 )

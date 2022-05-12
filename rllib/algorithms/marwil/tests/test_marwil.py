@@ -4,7 +4,7 @@ from pathlib import Path
 import unittest
 
 import ray
-import ray.rllib.agents.marwil as marwil
+import ray.rllib.algorithms.marwil as marwil
 from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.offline import JsonReader
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
