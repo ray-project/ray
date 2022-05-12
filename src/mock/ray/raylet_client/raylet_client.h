@@ -17,10 +17,10 @@ namespace ray {
 class MockPinObjectsInterface : public PinObjectsInterface {
  public:
   MOCK_METHOD(void,
-              PinObjectIDs,
+              PinObjectID,
               (const rpc::Address &caller_address,
-               const std::vector<ObjectID> &object_ids,
-               const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback),
+               const ObjectID &object_id,
+               rpc::ClientCallback<rpc::PinObjectIDReply> callback),
               (override));
 };
 
@@ -132,6 +132,7 @@ class MockRayletClientInterface : public RayletClientInterface {
               WaitForDirectActorCallArgs,
               (const std::vector<rpc::ObjectReference> &references, int64_t tag),
               (override));
+  MOCK_METHOD(std::shared_ptr<grpc::Channel>, GetChannel, (), (const));
   MOCK_METHOD(void,
               ReportWorkerBacklog,
               (const WorkerID &worker_id,
@@ -188,10 +189,10 @@ class MockRayletClientInterface : public RayletClientInterface {
                const rpc::ClientCallback<rpc::ReleaseUnusedBundlesReply> &callback),
               (override));
   MOCK_METHOD(void,
-              PinObjectIDs,
+              PinObjectID,
               (const rpc::Address &caller_address,
-               const std::vector<ObjectID> &object_ids,
-               const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback),
+               const ObjectID &object_id,
+               rpc::ClientCallback<rpc::PinObjectIDReply> callback),
               (override));
   MOCK_METHOD(void,
               GetSystemConfig,

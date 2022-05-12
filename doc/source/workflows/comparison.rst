@@ -5,10 +5,9 @@ Comparison between Ray Core APIs and Workflows
 ----------------------------------------------
 Workflows is built on top of Ray, and offers a mostly consistent subset of its API while providing durability. This section highlights some of the differences:
 
-``func.remote`` vs ``func.step``
+``func.remote`` vs ``func.bind``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-With Ray tasks, ``func.remote`` will submit a remote task to run. In Ray workflows, ``func.step`` is used to create a ``Workflow`` object. Execution of the workflow is deferred until ``.run(workflow_id="id")`` or ``.run_async(workflow_id="id")`` is called on the ``Workflow``. Specifying the workflow id allows for resuming of the workflow by its id in case of cluster failure.
-
+With Ray tasks, ``func.remote`` will submit a remote task to run eagerly. In Ray workflows, ``func.bind`` is used to create a DAG, and the DAG is converted into a workflow. Execution of the workflow is deferred until ``.run(workflow_id="id")`` or ``.run_async(workflow_id="id")`` is called on the ``Workflow``. Specifying the workflow id allows for resuming of the workflow by its id in case of cluster failure.
 
 ``Actor.remote`` vs ``Actor.get_or_create``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

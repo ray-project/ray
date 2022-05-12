@@ -19,6 +19,7 @@
 #include <fstream>
 #include <memory>
 
+#include "absl/time/clock.h"
 #include "boost/filesystem.hpp"
 #include "boost/system/error_code.hpp"
 #include "ray/common/asio/asio_util.h"
@@ -267,7 +268,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
             std::vector<ObjectID> object_ids = {object_id};
             std::vector<std::unique_ptr<RayObject>> results;
             std::unique_ptr<RayObject> result;
-            if (GetObjectsFromPlasma(object_ids, &results) && results.size() > 0) {
+            if (GetObjectsFromPlasma(object_ids, &results).ok() && results.size() > 0) {
               result = std::move(results[0]);
             }
             return result;
@@ -329,7 +330,9 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       global_gc_throttler_(RayConfig::instance().global_gc_min_interval_s() * 1e9),
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
       record_metrics_period_ms_(config.record_metrics_period_ms),
-      next_resource_seq_no_(0) {
+      next_resource_seq_no_(0),
+      ray_syncer_(io_service_, self_node_id_.Binary()),
+      ray_syncer_service_(ray_syncer_) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   RAY_CHECK(RayConfig::instance().raylet_heartbeat_period_milliseconds() > 0);
   cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
@@ -384,7 +387,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       leased_workers_,
       [this](const std::vector<ObjectID> &object_ids,
              std::vector<std::unique_ptr<RayObject>> *results) {
-        return GetObjectsFromPlasma(object_ids, results);
+        return GetObjectsFromPlasma(object_ids, results).ok();
       },
       max_task_args_memory);
   cluster_task_manager_ = std::make_shared<ClusterTaskManager>(
@@ -404,6 +407,9 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
   // Run the node manger rpc server.
   node_manager_server_.RegisterService(node_manager_service_);
   node_manager_server_.RegisterService(agent_manager_service_);
+  if (RayConfig::instance().use_ray_syncer()) {
+    node_manager_server_.RegisterService(ray_syncer_service_);
+  }
   node_manager_server_.Run();
 
   worker_pool_.SetNodeManagerPort(GetServerPort());
@@ -541,6 +547,35 @@ ray::Status NodeManager::RegisterGcs() {
         "NodeManager.deadline_timer.print_event_loop_stats");
   }
 
+  if (RayConfig::instance().use_ray_syncer()) {
+    // Register resource manager and scheduler
+    ray_syncer_.Register(
+        /* message_type */ syncer::MessageType::RESOURCE_VIEW,
+        /* reporter */ &cluster_resource_scheduler_->GetLocalResourceManager(),
+        /* receiver */ this,
+        /* pull_from_reporter_interval_ms */
+        RayConfig::instance().raylet_report_resources_period_milliseconds());
+
+    // Register a commands channel.
+    // It's only used for GC right now.
+    ray_syncer_.Register(
+        /* message_type */ syncer::MessageType::COMMANDS,
+        /* reporter */ this,
+        /* receiver */ this,
+        /* pull_from_reporter_interval_ms */ 0);
+
+    periodical_runner_.RunFnPeriodically(
+        [this] {
+          auto triggered_by_global_gc = TryLocalGC();
+          // If plasma store is under high pressure, we should try to schedule a global
+          // gc.
+          if (triggered_by_global_gc) {
+            ray_syncer_.OnDemandBroadcasting(syncer::MessageType::COMMANDS);
+          }
+        },
+        RayConfig::instance().raylet_check_gc_period_milliseconds(),
+        "NodeManager.CheckGC");
+  }
   return ray::Status::OK();
 }
 
@@ -618,30 +653,8 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     FillNormalTaskResourceUsage(resources_data);
   }
-  // If plasma store is under high pressure, we should try to schedule a global gc.
-  bool plasma_high_pressure =
-      object_manager_.GetUsedMemoryPercentage() > high_plasma_storage_usage_;
-  if (plasma_high_pressure && global_gc_throttler_.AbleToRun()) {
-    TriggerGlobalGC();
-  }
 
-  // Set the global gc bit on the outgoing heartbeat message.
-  bool triggered_by_global_gc = false;
-  if (should_global_gc_) {
-    resources_data.set_should_global_gc(true);
-    triggered_by_global_gc = true;
-    should_global_gc_ = false;
-    global_gc_throttler_.RunNow();
-  }
-
-  // Trigger local GC if needed. This throttles the frequency of local GC calls
-  // to at most once per heartbeat interval.
-  if ((should_local_gc_ ||
-       (absl::GetCurrentTimeNanos() - local_gc_run_time_ns_ > local_gc_interval_ns_)) &&
-      local_gc_throttler_.AbleToRun()) {
-    DoLocalGC(triggered_by_global_gc);
-    should_local_gc_ = false;
-  }
+  resources_data.set_should_global_gc(TryLocalGC());
 }
 
 void NodeManager::DoLocalGC(bool triggered_by_global_gc) {
@@ -1799,6 +1812,10 @@ void NodeManager::HandleCommitBundleResources(
   RAY_LOG(DEBUG) << "Request to commit resources for bundles: "
                  << GetDebugStringForBundles(bundle_specs);
   placement_group_resource_manager_->CommitBundles(bundle_specs);
+  if (RayConfig::instance().use_ray_syncer()) {
+    // To reduce the lag, we trigger a broadcasting immediately.
+    RAY_CHECK(ray_syncer_.OnDemandBroadcasting(syncer::MessageType::RESOURCE_VIEW));
+  }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 
   cluster_task_manager_->ScheduleAndDispatchTasks();
@@ -1836,6 +1853,10 @@ void NodeManager::HandleCancelResourceReserve(
 
   // Return bundle resources.
   placement_group_resource_manager_->ReturnBundle(bundle_spec);
+  if (RayConfig::instance().use_ray_syncer()) {
+    // To reduce the lag, we trigger a broadcasting immediately.
+    RAY_CHECK(ray_syncer_.OnDemandBroadcasting(syncer::MessageType::RESOURCE_VIEW));
+  }
   cluster_task_manager_->ScheduleAndDispatchTasks();
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
@@ -2288,23 +2309,21 @@ std::string compact_tag_string(const opencensus::stats::ViewDescriptor &view,
   return result.str();
 }
 
-bool NodeManager::GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
-                                       std::vector<std::unique_ptr<RayObject>> *results) {
+Status NodeManager::GetObjectsFromPlasma(
+    const std::vector<ObjectID> &object_ids,
+    std::vector<std::unique_ptr<RayObject>> *results) {
   // Pin the objects in plasma by getting them and holding a reference to
   // the returned buffer.
   // NOTE: the caller must ensure that the objects already exist in plasma before
-  // sending a PinObjectIDs request.
+  // sending a PinObjectID request.
   std::vector<plasma::ObjectBuffer> plasma_results;
   // TODO(swang): This `Get` has a timeout of 0, so the plasma store will not
   // block when serving the request. However, if the plasma store is under
   // heavy load, then this request can still block the NodeManager event loop
   // since we must wait for the plasma store's reply. We should consider using
   // an `AsyncGet` instead.
-  if (!store_client_
-           .Get(object_ids, /*timeout_ms=*/0, &plasma_results, /*is_from_worker=*/false)
-           .ok()) {
-    return false;
-  }
+  RAY_RETURN_NOT_OK(store_client_.Get(
+      object_ids, /*timeout_ms=*/0, &plasma_results, /*is_from_worker=*/false));
 
   for (const auto &plasma_result : plasma_results) {
     if (plasma_result.data == nullptr) {
@@ -2314,12 +2333,12 @@ bool NodeManager::GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
           new RayObject(plasma_result.data, plasma_result.metadata, {})));
     }
   }
-  return true;
+  return Status::OK();
 }
 
-void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
-                                     rpc::PinObjectIDsReply *reply,
-                                     rpc::SendReplyCallback send_reply_callback) {
+void NodeManager::HandlePinObjectID(const rpc::PinObjectIDRequest &request,
+                                    rpc::PinObjectIDReply *reply,
+                                    rpc::SendReplyCallback send_reply_callback) {
   std::vector<ObjectID> object_ids;
   object_ids.reserve(request.object_ids_size());
   const auto &owner_address = request.owner_address();
@@ -2327,12 +2346,12 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
     object_ids.push_back(ObjectID::FromBinary(object_id_binary));
   }
   std::vector<std::unique_ptr<RayObject>> results;
-  if (!GetObjectsFromPlasma(object_ids, &results)) {
+  if (auto s = GetObjectsFromPlasma(object_ids, &results); !s.ok()) {
     RAY_LOG(WARNING)
         << "Failed to get objects that should have been in the object store. These "
-           "objects may have been evicted while there are still references in scope.";
-    // TODO(suquark): Maybe "Status::ObjectNotFound" is more accurate here.
-    send_reply_callback(Status::Invalid("Failed to get objects."), nullptr, nullptr);
+           "objects may have been evicted while there are still references in scope: "
+        << s;
+    send_reply_callback(s, nullptr, nullptr);
     return;
   }
   // Wait for the object to be freed by the owner, which keeps the ref count.
@@ -2617,6 +2636,33 @@ void NodeManager::HandleGlobalGC(const rpc::GlobalGCRequest &request,
   TriggerGlobalGC();
 }
 
+bool NodeManager::TryLocalGC() {
+  // If plasma store is under high pressure, we should try to schedule a global gc.
+  bool plasma_high_pressure =
+      object_manager_.GetUsedMemoryPercentage() > high_plasma_storage_usage_;
+  if (plasma_high_pressure && global_gc_throttler_.AbleToRun()) {
+    TriggerGlobalGC();
+  }
+
+  // Set the global gc bit on the outgoing heartbeat message.
+  bool triggered_by_global_gc = false;
+  if (should_global_gc_) {
+    triggered_by_global_gc = true;
+    should_global_gc_ = false;
+    global_gc_throttler_.RunNow();
+  }
+
+  // Trigger local GC if needed. This throttles the frequency of local GC calls
+  // to at most once per heartbeat interval.
+  if ((should_local_gc_ ||
+       (absl::GetCurrentTimeNanos() - local_gc_run_time_ns_ > local_gc_interval_ns_)) &&
+      local_gc_throttler_.AbleToRun()) {
+    DoLocalGC(triggered_by_global_gc);
+    should_local_gc_ = false;
+  }
+  return triggered_by_global_gc;
+}
+
 void NodeManager::TriggerGlobalGC() {
   should_global_gc_ = true;
   // We won't see our own request, so trigger local GC in the next heartbeat.
@@ -2644,6 +2690,38 @@ void NodeManager::RecordMetrics() {
   uint64_t duration_ms = current_time - last_metrics_recorded_at_ms_;
   last_metrics_recorded_at_ms_ = current_time;
   object_directory_->RecordMetrics(duration_ms);
+}
+
+void NodeManager::ConsumeSyncMessage(
+    std::shared_ptr<const syncer::RaySyncMessage> message) {
+  if (message->message_type() == syncer::MessageType::RESOURCE_VIEW) {
+    rpc::ResourcesData data;
+    data.ParseFromString(message->sync_message());
+    NodeID node_id = NodeID::FromBinary(data.node_id());
+    UpdateResourceUsage(node_id, data);
+  } else if (message->message_type() == syncer::MessageType::COMMANDS) {
+    rpc::ResourcesData data;
+    data.ParseFromString(message->sync_message());
+    if (data.should_global_gc()) {
+      should_local_gc_ = true;
+    }
+  }
+}
+
+std::optional<syncer::RaySyncMessage> NodeManager::CreateSyncMessage(
+    int64_t after_version, syncer::MessageType message_type) const {
+  RAY_CHECK(message_type == syncer::MessageType::COMMANDS);
+
+  rpc::ResourcesData resources_data;
+  resources_data.set_should_global_gc(true);
+  syncer::RaySyncMessage msg;
+  msg.set_version(absl::GetCurrentTimeNanos());
+  msg.set_node_id(self_node_id_.Binary());
+  msg.set_message_type(syncer::MessageType::COMMANDS);
+  std::string serialized_msg;
+  RAY_CHECK(resources_data.SerializeToString(&serialized_msg));
+  msg.set_sync_message(std::move(serialized_msg));
+  return std::make_optional(std::move(msg));
 }
 
 void NodeManager::PublishInfeasibleTaskError(const RayTask &task) const {

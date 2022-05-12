@@ -21,6 +21,7 @@
 #include "ray/common/id.h"
 #include "ray/common/task/task.h"
 #include "ray/common/ray_object.h"
+#include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/client_connection.h"
 #include "ray/common/task/task_common.h"
 #include "ray/common/task/scheduling_resources.h"
@@ -138,7 +139,9 @@ class HeartbeatSender {
   uint64_t last_heartbeat_at_ms_;
 };
 
-class NodeManager : public rpc::NodeManagerServiceHandler {
+class NodeManager : public rpc::NodeManagerServiceHandler,
+                    public syncer::ReporterInterface,
+                    public syncer::ReceiverInterface {
  public:
   /// Create a node manager.
   ///
@@ -172,7 +175,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Subscribe to the relevant GCS tables and set up handlers.
   ///
   /// \return Status indicating whether this was done successfully or not.
-  ray::Status RegisterGcs();
+  Status RegisterGcs();
 
   /// Get initial node manager configuration.
   const NodeManagerConfig &GetInitialConfig() const;
@@ -187,6 +190,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Get the port of the node manager rpc server.
   int GetServerPort() const { return node_manager_server_.GetPort(); }
+
+  void ConsumeSyncMessage(std::shared_ptr<const syncer::RaySyncMessage> message) override;
+
+  std::optional<syncer::RaySyncMessage> CreateSyncMessage(
+      int64_t after_version, syncer::MessageType message_type) const override;
 
   int GetObjectManagerPort() const { return object_manager_.GetServerPort(); }
 
@@ -218,7 +226,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param include_task_info If true, it requires every task metadata information
   /// from all workers.
   void QueryAllWorkerStates(
-      const std::function<void(const ray::Status &status,
+      const std::function<void(const Status &status,
                                const rpc::GetCoreWorkerStatsReply &r)> &on_replied,
       rpc::SendReplyCallback &send_reply_callback,
       bool include_memory_info,
@@ -543,10 +551,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                                rpc::CancelWorkerLeaseReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a `PinObjectIDs` request.
-  void HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
-                          rpc::PinObjectIDsReply *reply,
-                          rpc::SendReplyCallback send_reply_callback) override;
+  /// Handle a `PinObjectID` request.
+  void HandlePinObjectID(const rpc::PinObjectIDRequest &request,
+                         rpc::PinObjectIDReply *reply,
+                         rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `NodeStats` request.
   void HandleGetNodeStats(const rpc::GetNodeStatsRequest &request,
@@ -624,9 +632,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param[in] object_ids The objects to get.
   /// \param[out] results The pointers to objects stored in
   /// plasma.
-  /// \return Whether the request was successful.
-  bool GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
-                            std::vector<std::unique_ptr<RayObject>> *results);
+  /// \return Status of the request.
+  Status GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
+                              std::vector<std::unique_ptr<RayObject>> *results);
 
   /// Populate the relevant parts of the heartbeat table. This is intended for
   /// sending raylet <-> gcs heartbeats. In particular, this should fill in
@@ -646,6 +654,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
       const std::shared_ptr<ClientConnection> &client,
       rpc::WorkerExitType disconnect_type = rpc::WorkerExitType::SYSTEM_ERROR_EXIT,
       const rpc::RayException *creation_task_exception = nullptr);
+
+  bool TryLocalGC();
 
   /// ID of this node.
   NodeID self_node_id_;
@@ -797,6 +807,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Whether or not if the node draining process has already received.
   bool is_node_drained_ = false;
+
+  /// Ray syncer for synchronization
+  syncer::RaySyncer ray_syncer_;
+
+  /// RaySyncerService for gRPC
+  syncer::RaySyncerService ray_syncer_service_;
 };
 
 }  // namespace raylet

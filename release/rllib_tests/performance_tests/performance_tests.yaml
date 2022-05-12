@@ -66,7 +66,7 @@ appo-pongnoframeskip-v4:
     run: APPO
     frameworks: [ "tf", "tf2", "torch" ]
     stop:
-        time_total_s: 2000
+        time_total_s: 3600
     config:
         vtrace: True
         use_kl_loss: False
