@@ -90,7 +90,10 @@ Locality-Aware Scheduling
 By default, Ray prefers available nodes that have large task arguments locally
 to avoid transferring data over the network. If there are multiple large task arguments,
 the node with most object bytes local is preferred.
-However, when ``"SPREAD"`` and ``NodeAffinitySchedulingStrategy`` scheduling strategies are specified,
+This takes precedence over the ``"DEFAULT"`` scheduling strategy,
+which means we will try to run the task on the locality preferred node regardless of the node resource utilization.
+However, if the locality preferred node is not available, we may run the task somewhere else.
+When ``"SPREAD"`` and ``NodeAffinitySchedulingStrategy`` scheduling strategies are specified,
 they have higher precedence and data locality is no longer considered.
 Note: Locality-aware scheduling is only for tasks not actors.
 

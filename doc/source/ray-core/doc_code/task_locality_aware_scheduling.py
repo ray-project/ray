@@ -24,7 +24,8 @@ def consume_function(data):
 large_object = large_object_function.remote()
 small_object = small_object_function.remote()
 
-# Ray will try to run consume_function on the same node where large_object_function runs.
+# Ray will try to run consume_function on the same node
+# where large_object_function runs.
 consume_function.remote(large_object)
 
 # Ray will try to spread consume_function across the entire cluster
