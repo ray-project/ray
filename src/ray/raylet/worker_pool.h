@@ -692,6 +692,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   void RemoveWorkerProcess(State &state, const StartupToken &proc_startup_token);
 
+  /// Increase worker OOM scores to avoid raylet crashes from heap memory
+  /// pressure.
+  void AdjustWorkerOomScore(pid_t pid) const;
+
   /// For Process class for managing subprocesses (e.g. reaping zombies).
   instrumented_io_context *io_service_;
   /// Node ID of the current node.

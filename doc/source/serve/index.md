@@ -211,7 +211,7 @@ If you plan on running on multiple machines, Ray Serve will serve you well!
 
 ## What's next?
 
-Check out the {ref}`end-to-end-tutorial` and {doc}`core-apis`, look at the {ref}`serve-faq`,
+Check out {ref}`getting-started` and {doc}`core-apis`, look at the {ref}`serve-faq`,
 or head over to the {doc}`tutorials/index` to get started building your Ray Serve applications.
 
 For more, see the following blog posts about Ray Serve:
