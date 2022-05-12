@@ -109,6 +109,8 @@ class PluginCacheManager:
         context: RuntimeEnvContext,
         logger: logging.Logger = default_logger,
     ):
+        # TODO(architkulkarni): We should standardize on `get_uris` for all plugins
+        # and remove this conditional logic.
         multiple_uris = hasattr(self._plugin, "get_uris")
 
         if multiple_uris:

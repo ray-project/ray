@@ -191,6 +191,9 @@ class RuntimeEnvAgent(
         self._working_dir_plugin = WorkingDirPlugin(self._runtime_env_dir)
         self._container_manager = ContainerManager(dashboard_agent.temp_dir)
 
+        # TODO(architkulkarni): "base plugins" and third-party plugins should all go
+        # through the same code path.  We should never need to refer to
+        # self._xxx_plugin, we should just iterate through self._plugins.
         self._base_plugins = [
             self._working_dir_plugin,
             self._pip_plugin,
