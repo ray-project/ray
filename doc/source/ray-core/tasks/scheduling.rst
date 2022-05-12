@@ -87,7 +87,7 @@ especially in a multi-tenant cluster: for example, an application won't know wha
 
 Locality-Aware Scheduling
 -------------------------
-By default, Ray prefers available nodes that have large task arguments locally
+By default, Ray prefers available nodes that have large task arguments local
 to avoid transferring data over the network. If there are multiple large task arguments,
 the node with most object bytes local is preferred.
 This takes precedence over the ``"DEFAULT"`` scheduling strategy,
