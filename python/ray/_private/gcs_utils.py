@@ -284,8 +284,6 @@ class GcsClient:
 
     @_auto_reconnect
     def add_temporary_uri_reference(self, uri: str, expiration_s: int) -> None:
-        logger.info(f"add_temporary_uri_reference {uri}")
-        print("add_temporary_uri_reference", uri, expiration_s)
         req = gcs_service_pb2.AddTemporaryURIReferenceRequest(
             uri=uri, expiration_s=expiration_s
         )
