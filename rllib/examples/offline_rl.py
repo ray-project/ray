@@ -38,7 +38,7 @@ if __name__ == "__main__":
     config["bc_iters"] = 0
     config["clip_actions"] = False
     config["normalize_actions"] = True
-    config["learning_starts"] = 256
+    config["replay_buffer_config"]["learning_starts"] = 256
     config["rollout_fragment_length"] = 1
     # Test without prioritized replay
     config["replay_buffer_config"]["type"] = "MultiAgentReplayBuffer"

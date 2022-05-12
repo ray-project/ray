@@ -11,12 +11,13 @@ invertedpendulum-td3:
     config:
         # Works for both torch and tf.
         framework: tf
+        replay_buffer_config:
+          learning_starts: 1000
         # === Model ===
         actor_hiddens: [32, 32]
         critic_hiddens: [32, 32]
 
         # === Exploration ===
-        learning_starts: 1000
         exploration_config:
             random_timesteps: 1000
 
