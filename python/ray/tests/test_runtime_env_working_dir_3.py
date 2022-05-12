@@ -32,6 +32,7 @@ def working_dir_and_pymodules_disable_URI_cache():
         {
             "RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB": "0",
             "RAY_RUNTIME_ENV_PY_MODULES_CACHE_SIZE_GB": "0",
+            "RAY_runtime_env_temporary_reference_expiration_s": "0",
         },
     ):
         print("URI caching disabled (cache size set to 0).")
