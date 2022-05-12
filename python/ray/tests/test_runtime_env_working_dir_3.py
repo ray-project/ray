@@ -52,6 +52,16 @@ def URI_cache_10_MB():
         print("URI cache size set to 0.01 GB.")
         yield
 
+@pytest.fixture(scope="class")
+def disable_temporary_reference():
+    with mock.patch.dict(
+        os.environ,
+        {
+            "RAY_runtime_env_temporary_reference_expiration_s": "0",
+        },
+    ):
+        print("temporary reference disabled.")
+        yield
 
 def check_internal_kv_gced():
     return len(kv._internal_kv_list("gcs://")) == 0
@@ -67,6 +77,7 @@ class TestGC:
         self,
         start_cluster,
         working_dir_and_pymodules_disable_URI_cache,
+        disable_temporary_reference,
         option: str,
         source: str,
     ):
@@ -155,7 +166,7 @@ class TestGC:
     @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
     @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
     def test_actor_level_gc(
-        self, start_cluster, working_dir_and_pymodules_disable_URI_cache, option: str
+        self, start_cluster, working_dir_and_pymodules_disable_URI_cache, disable_temporary_reference, option: str
     ):
         """Tests that actor-level working_dir is GC'd when the actor exits."""
         NUM_NODES = 5
@@ -218,6 +229,7 @@ class TestGC:
         self,
         start_cluster,
         working_dir_and_pymodules_disable_URI_cache,
+        disable_temporary_reference,
         option: str,
         source: str,
     ):
@@ -387,6 +399,7 @@ class TestSkipLocalGC:
         skip_local_gc,
         start_cluster,
         working_dir_and_pymodules_disable_URI_cache,
+        disable_temporary_reference,
         source,
     ):
         cluster, address = start_cluster
@@ -407,43 +420,43 @@ class TestSkipLocalGC:
         time.sleep(1)  # Give time for GC to potentially happen
         assert not check_local_files_gced(cluster)
 
+class TestTemporaryURIReference:
+    @pytest.mark.parametrize("expiration_s", [0, 5])
+    @pytest.mark.parametrize("source", [lazy_fixture("tmp_working_dir")])
+    def test_temporary_uri_reference(start_cluster, source, expiration_s, monkeypatch):
+        """Test that temporary GCS URI references are deleted after expiration_s."""
+        monkeypatch.setenv(
+            "RAY_runtime_env_temporary_reference_expiration_s", str(expiration_s)
+        )
 
-@pytest.mark.parametrize("expiration_s", [0, 5])
-@pytest.mark.parametrize("source", [lazy_fixture("tmp_working_dir")])
-def test_temporary_uri_reference(start_cluster, source, expiration_s, monkeypatch):
-    """Test that temporary GCS URI references are deleted after expiration_s."""
-    monkeypatch.setenv(
-        "RAY_runtime_env_temporary_reference_expiration_s", str(expiration_s)
-    )
+        cluster, address = start_cluster
+        print("Started cluster with address ", address)
+        ray.init(address, namespace="test", runtime_env={"working_dir": source})
+        print("Initialized Ray.")
 
-    cluster, address = start_cluster
-    print("Started cluster with address ", address)
-    ray.init(address, namespace="test", runtime_env={"working_dir": source})
-    print("Initialized Ray.")
+        @ray.remote
+        def f():
+            pass
 
-    @ray.remote
-    def f():
-        pass
+        # Wait for runtime env to be set up. This can be accomplished by getting
+        # the result of a task.
+        ray.get(f.remote())
+        print("Created and received response from task f.")
+        ray.shutdown()
+        print("Ray has been shut down.")
 
-    # Wait for runtime env to be set up. This can be accomplished by getting
-    # the result of a task.
-    ray.get(f.remote())
-    print("Created and received response from task f.")
-    ray.shutdown()
-    print("Ray has been shut down.")
+        # Give time for deletion to occur if expiration_s is 0.
+        time.sleep(2)
 
-    # Give time for deletion to occur if expiration_s is 0.
-    time.sleep(2)
+        if expiration_s > 0:
+            assert not check_internal_kv_gced()
+        else:
+            wait_for_condition(lambda: check_internal_kv_gced())
+        print("check_internal_kv_gced passed.")
 
-    if expiration_s > 0:
-        assert not check_internal_kv_gced()
-    else:
-        wait_for_condition(lambda: check_internal_kv_gced())
-    print("check_internal_kv_gced passed.")
+        wait_for_condition(lambda: check_internal_kv_gced(), timeout=expiration_s + 1)
 
-    wait_for_condition(lambda: check_internal_kv_gced(), timeout=expiration_s + 1)
-
-    print("check_internal_kv_gced passed a second time.")
+        print("check_internal_kv_gced passed a second time.")
 
 
 if __name__ == "__main__":

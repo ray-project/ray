@@ -27,9 +27,7 @@ GCS_STORAGE_MAX_SIZE = int(
     os.environ.get("RAY_max_grpc_message_size", 250 * 1024 * 1024)
 )
 
-TEMPORARY_REFERENCE_EXPIRATION_S = int(
-    os.environ.get("RAY_runtime_env_temporary_reference_expiration_s", 60 * 10)
-)
+
 RAY_PKG_PREFIX = "_ray_pkg_"
 
 
@@ -279,6 +277,15 @@ def _store_package_in_gcs(
     # before the job starts. If this reference didn't have an expiration, then if the
     # script exited (e.g. via Ctrl-C) before the job started, the reference would never
     # be removed, so the package would never be deleted from the GCS.
+    
+    TEMPORARY_REFERENCE_EXPIRATION_S = int(
+    os.environ.get("RAY_runtime_env_temporary_reference_expiration_s", 60 * 10)
+)
+    # TODO(architkulkarni): Move this to the appropriate place. We want to set the
+    # temporary reference in both cases: (1) if we upload a package, and (2) we just 
+    # check and see that the package already exists and skip the upload.  Case (2)
+    # will require a separate call for the Ray Job Submission codepath, which
+    # is different.
     if TEMPORARY_REFERENCE_EXPIRATION_S > 0:
         _add_temporary_uri_reference(
             pkg_uri, expiration_s=TEMPORARY_REFERENCE_EXPIRATION_S
