@@ -462,14 +462,12 @@ class VirtualActorClass(VirtualActorClassBase):
             # return get_actor(actor_id)
             raise Exception
         except Exception:
-            cls = self._metadata.cls
             instance = self._construct(actor_id)
             @ray.remote
-            def f(cls, actor_id, args, kwargs):
-                virtual = VirtualActorClass._from_class(cls)
-                ins = virtual._construct(actor_id)
+            def f(va, actor_id, args, kwargs):
+                ins = va._construct(actor_id)
                 ins._create(args, kwargs)
-            ray.get(f.remote(cls, actor_id, args, kwargs))
+            ray.get(f.remote(self, actor_id, args, kwargs))
             # instance._create(args, kwargs)
             return instance
 
