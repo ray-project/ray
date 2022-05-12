@@ -26,9 +26,9 @@ public interface RuntimeContext {
   boolean wasCurrentActorRestarted();
 
   /**
-   * Returns true if Ray is running in single-process mode, false if Ray is running in cluster mode.
+   * Returns true if Ray is running in local mode, false if Ray is running in cluster mode.
    */
-  boolean isSingleProcess();
+  boolean isLocalMode();
 
   /** Get all node information in Ray cluster. */
   List<NodeInfo> getAllNodeInfo();

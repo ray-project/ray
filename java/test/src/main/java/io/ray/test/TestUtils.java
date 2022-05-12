@@ -34,8 +34,8 @@ public class TestUtils {
 
   private static final int WAIT_INTERVAL_MS = 5;
 
-  public static boolean isSingleProcessMode() {
-    return getRuntime().getRayConfig().runMode == RunMode.SINGLE_PROCESS;
+  public static boolean isLocalMode() {
+    return getRuntime().getRayConfig().runMode == RunMode.LOCAL;
   }
 
   /**

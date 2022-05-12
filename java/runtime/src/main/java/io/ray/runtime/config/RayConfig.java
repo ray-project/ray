@@ -109,7 +109,7 @@ public class RayConfig {
     boolean isDriver = workerMode == WorkerType.DRIVER;
     // Run mode.
     if (config.hasPath("ray.local-mode")) {
-      runMode = config.getBoolean("ray.local-mode") ? RunMode.SINGLE_PROCESS : RunMode.CLUSTER;
+      runMode = config.getBoolean("ray.local-mode") ? RunMode.LOCAL : RunMode.CLUSTER;
     } else {
       runMode = config.getEnum(RunMode.class, "ray.run-mode");
     }

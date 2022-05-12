@@ -67,7 +67,7 @@ public class RayRuntimeProxy implements InvocationHandler {
    * <p>This method should be invoked at the beginning of most public methods of {@link RayRuntime},
    * otherwise the native code might crash due to thread local core worker was not set. We check it
    * for {@link AbstractRayRuntime} instead of {@link RayNativeRuntime} because we want to catch the
-   * error even if the application runs in {@link RunMode#SINGLE_PROCESS} mode.
+   * error even if the application runs in {@link RunMode#LOCAL} mode.
    */
   private void checkIsContextSet() {
     if (!obj.isContextSet.get()) {
