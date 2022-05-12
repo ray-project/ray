@@ -182,6 +182,14 @@ py_test(
 )
 
 py_test(
+    name = "upload_to_comet_ml",
+    size = "medium",
+    srcs = ["examples/upload_to_comet_ml.py"],
+    tags = ["team:ml", "exclusive", "needs_credentials"],
+    deps = [":ml_lib"]
+)
+
+py_test(
     name = "upload_to_wandb",
     size = "medium",
     srcs = ["examples/upload_to_wandb.py"],
