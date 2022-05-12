@@ -1,5 +1,6 @@
 package io.ray.test;
 
+import com.google.common.collect.ImmutableList;
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.runtimeenv.RuntimeEnv;
@@ -18,6 +19,15 @@ public class RuntimeEnvTest {
 
     public int getPid() {
       return SystemUtil.pid();
+    }
+
+    public boolean findClass(String className) {
+      try {
+        Class.forName(className);
+      } catch (ClassNotFoundException e) {
+        return false;
+      }
+      return true;
     }
   }
 
@@ -160,5 +170,27 @@ public class RuntimeEnvTest {
     } finally {
       Ray.shutdown();
     }
+  }
+
+  private static void testDownloadAndLoadPackage(String url) {
+    try {
+      Ray.init();
+      final RuntimeEnv runtimeEnv = new RuntimeEnv.Builder().addJars(ImmutableList.of(url)).build();
+      ActorHandle<A> actor1 = Ray.actor(A::new).setRuntimeEnv(runtimeEnv).remote();
+      boolean ret = actor1.task(A::findClass, "io.testpackages.Foo").remote().get();
+      Assert.assertTrue(ret);
+    } finally {
+      Ray.shutdown();
+    }
+  }
+
+  public void testJarPackageInActor() {
+    testDownloadAndLoadPackage(
+        "https://github.com/ray-project/test_packages/raw/main/raw_resources/java-1.0-SNAPSHOT.jar");
+  }
+
+  public void testZipPackageInActor() {
+    testDownloadAndLoadPackage(
+        "https://github.com/ray-project/test_packages/raw/main/raw_resources/java-1.0-SNAPSHOT.zip");
   }
 }

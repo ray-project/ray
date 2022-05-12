@@ -1,15 +1,13 @@
 from typing import Optional, List, Union
-import os
 
 import pandas as pd
 import numpy as np
 from joblib import parallel_backend
 
-import ray.cloudpickle as cpickle
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.predictor import Predictor, DataBatchType
 from ray.ml.preprocessor import Preprocessor
-from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY
+from ray.ml.train.integrations.sklearn import load_checkpoint
 from ray.ml.utils.sklearn_utils import set_cpu_params
 from ray.util.joblib import register_ray
 
@@ -44,16 +42,7 @@ class SklearnPredictor(Predictor):
                 ``SklearnTrainer`` run.
 
         """
-        with checkpoint.as_directory() as path:
-            estimator_path = os.path.join(path, MODEL_KEY)
-            with open(estimator_path, "rb") as f:
-                estimator = cpickle.load(f)
-            preprocessor_path = os.path.join(path, PREPROCESSOR_KEY)
-            if os.path.exists(preprocessor_path):
-                with open(preprocessor_path, "rb") as f:
-                    preprocessor = cpickle.load(f)
-            else:
-                preprocessor = None
+        estimator, preprocessor = load_checkpoint(checkpoint)
         return SklearnPredictor(estimator=estimator, preprocessor=preprocessor)
 
     def predict(
