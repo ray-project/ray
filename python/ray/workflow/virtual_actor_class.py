@@ -461,18 +461,11 @@ class VirtualActorClass(VirtualActorClassBase):
         try:
             return get_actor(actor_id)
         except Exception:
-            if ray._private.client_mode_hook.is_client_mode_enabled:
-                # _cls = self._metadata.cls
-
-                @ray.remote
-                def get_remote(actor_id, args, kwargs):
-                    instance = self._construct(actor_id)
-                    instance._create(args, kwargs)
-                    return instance
-
-                return ray.get(get_remote.remote(actor_id, args=args, kwargs=kwargs))
             instance = self._construct(actor_id)
-            instance._create(args, kwargs)
+            @ray.remote
+            def f(args, kwargs):
+                instance._create(args, kwargs)
+            ray.get(f.remote(args, kwargs))
             return instance
 
     def _construct(self, actor_id: str) -> "VirtualActor":
