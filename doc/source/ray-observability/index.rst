@@ -5,10 +5,10 @@ Observability
     :maxdepth: 1
     :caption: Observability, Debugging, and Profiling
 
-    ../ray-core/ray-dashboard.rst
-    ray-debugging.rst
-    ray-logging.rst
-    ray-metrics.rst
-    ray-tracing.rst
-    ../ray-contribute/debugging.rst
-    ../ray-contribute/profiling.rst
+    ../ray-core/ray-dashboard
+    ray-debugging
+    ray-logging
+    ray-metrics
+    ray-tracing
+    ../ray-contribute/debugging
+    ../ray-contribute/profiling
