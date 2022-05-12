@@ -93,9 +93,17 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> ActorManager::GetNamedActo
     }
   } else {
     // When the named actor is already cached, the reference of actor_creation_return_id
-    // must be increased.
-    auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
-    reference_counter_->AddLocalReference(actor_creation_return_id, call_site);
+    // must be increased, so we call AddNewActorHandle again here to ensure that.
+    std::string serialized_actor_handle;
+    auto actor_handle = GetActorHandle(actor_id);
+    actor_handle->Serialize(&serialized_actor_handle);
+
+    AddNewActorHandle(
+        std::make_unique<ActorHandle>(serialized_actor_handle),
+        GenerateCachedActorName(actor_handle->GetNamespace(), actor_handle->GetName()),
+        call_site,
+        caller_address,
+        /*is_detached*/ true);
   }
 
   if (actor_id.IsNil()) {
