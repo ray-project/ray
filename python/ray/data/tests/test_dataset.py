@@ -3593,7 +3593,7 @@ def test_random_sample(ray_start_regular_shared):
     test(ds)
 
 
-def test_random_sample_checks():
+def test_random_sample_checks(ray_start_regular_shared):
     with pytest.raises(ValueError) as e_info:
         ray.data.range(1).random_sample(-1)
         ray.data.range(0).random_sample(0.2)
