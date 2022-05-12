@@ -82,8 +82,7 @@ class LearnerInfoBuilder:
             # Reduce mean across all minibatch SGD steps (axis=0 to keep
             # all shapes as-is).
             info[policy_id] = tree.map_structure_with_path(
-                all_tower_reduce,
-                *results_all_towers
+                all_tower_reduce, *results_all_towers
             )
 
         return info
