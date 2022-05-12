@@ -146,9 +146,9 @@ class MockNodeManager : public NodeManager {
                rpc::SendReplyCallback send_reply_callback),
               (override));
   MOCK_METHOD(void,
-              HandleGCSRestart,
-              (const rpc::GCSRestartRequest &request,
-               rpc::GCSRestartReply *reply,
+              HandleNotifyGCSRestart,
+              (const rpc::NotifyGCSRestartRequest &request,
+               rpc::NotifyGCSRestartReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
   MOCK_METHOD(void,

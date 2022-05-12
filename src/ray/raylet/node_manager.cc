@@ -1075,8 +1075,8 @@ void NodeManager::ResourceDeleted(const NodeID &node_id,
   return;
 }
 
-void NodeManager::HandleNotifyGCSRestart(const rpc::GCSRestartRequest &request,
-                                         rpc::GCSRestartReply *reply,
+void NodeManager::HandleNotifyGCSRestart(const rpc::NotifyGCSRestartRequest &request,
+                                         rpc::NotifyGCSRestartReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
   gcs_client_->AsyncResubscribe();
   send_reply_callback(Status::OK(), nullptr, nullptr);

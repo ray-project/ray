@@ -216,8 +216,8 @@ class MockRayletClientInterface : public RayletClientInterface {
               (const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback),
               (override));
   MOCK_METHOD(void,
-              GCSRestart,
-              (const rpc::ClientCallback<rpc::GCSRestartReply> &callback),
+              NotifyGCSRestart,
+              (const rpc::ClientCallback<rpc::NotifyGCSRestartReply> &callback),
               (override));
   MOCK_METHOD(void,
               ShutdownRaylet,
