@@ -28,6 +28,7 @@ def test_failure_when_initializing(shutdown_only):
     ray.init()
     w1 = Worker.remote()
     ret1 = w1.init_gloo_group.remote(2, 0, "name_1")
+    ray.wait([ret1], timeout=1)
     time.sleep(5)
     ray.shutdown()
 
