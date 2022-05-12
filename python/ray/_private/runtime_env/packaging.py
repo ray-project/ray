@@ -13,6 +13,7 @@ from ray.experimental.internal_kv import (
     _internal_kv_put,
     _internal_kv_get,
     _internal_kv_exists,
+    _add_temporary_uri_reference,
 )
 from ray._private.thirdparty.pathspec import PathSpec
 
@@ -24,6 +25,10 @@ FILE_SIZE_WARNING = 10 * 1024 * 1024  # 10MiB
 # Keep in sync with max_grpc_message_size in ray_config_def.h.
 GCS_STORAGE_MAX_SIZE = int(
     os.environ.get("RAY_max_grpc_message_size", 250 * 1024 * 1024)
+)
+
+TEMPORARY_REFERENCE_EXPIRATION_S = int(
+    os.environ.get("RAY_runtime_env_temporary_reference_expiration_s", 60 * 10)
 )
 RAY_PKG_PREFIX = "_ray_pkg_"
 
@@ -258,6 +263,15 @@ def _store_package_in_gcs(
         )
 
     logger.info(f"Pushing file package '{pkg_uri}' ({size_str}) to Ray cluster...")
+
+    # NOTE(architkulkarni): The package is uploaded to GCS in order to be downloaded by
+    # a runtime env plugin (e.g. working_dir, py_modules) after the job starts. Add a
+    # temporary reference to the package in the GCS to prevent it from being deleted
+    # before the job starts. If this reference didn't have an expiration, then if the
+    # script exited (e.g. via Ctrl-C) before the job started, the reference would never
+    # be removed, so the package would never be deleted from the GCS.
+    _add_temporary_uri_reference(pkg_uri, expiration_s=TEMPORARY_REFERENCE_EXPIRATION_S)
+
     try:
         _internal_kv_put(pkg_uri, data)
     except Exception as e:

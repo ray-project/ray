@@ -198,6 +198,9 @@ class GcsClient:
         self._kv_stub = gcs_service_pb2_grpc.InternalKVGcsServiceStub(
             self._channel.channel()
         )
+        self._runtime_env_stub = gcs_service_pb2_grpc.RuntimeEnvGcsServiceStub(
+            self._channel.channel()
+        )
 
     @property
     def address(self):
@@ -276,6 +279,22 @@ class GcsClient:
         else:
             raise RuntimeError(
                 f"Failed to list prefix {prefix} "
+                f"due to error {reply.status.message}"
+            )
+
+    @_auto_reconnect
+    def add_temporary_uri_reference(self, uri: str, expiration_s: int) -> None:
+        logger.info(f"add_temporary_uri_reference {uri}")
+        print("add_temporary_uri_reference", uri, expiration_s)
+        req = gcs_service_pb2.AddTemporaryURIReferenceRequest(
+            uri=uri, expiration_s=expiration_s
+        )
+        print("got request")
+        reply = self._runtime_env_stub.AddTemporaryURIReference(req)
+        print("got reply")
+        if reply.status.code != GcsCode.OK:
+            raise RuntimeError(
+                f"Failed to add temporary uri reference for {uri} "
                 f"due to error {reply.status.message}"
             )
 

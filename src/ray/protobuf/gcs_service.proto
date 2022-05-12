@@ -501,6 +501,19 @@ service InternalKVGcsService {
   rpc InternalKVKeys(InternalKVKeysRequest) returns (InternalKVKeysReply);
 }
 
+message AddTemporaryURIReferenceRequest {
+  string uri = 1;
+  int32 expiration_s = 2;
+}
+
+message AddTemporaryURIReferenceReply {
+  GcsStatus status = 1;
+}
+
+service RuntimeEnvGcsService {
+  rpc AddTemporaryURIReference(AddTemporaryURIReferenceRequest) returns (AddTemporaryURIReferenceReply);
+}
+
 message GcsPublishRequest {
   /// The messages that are published.
   repeated PubMessage pub_messages = 1;

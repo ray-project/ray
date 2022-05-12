@@ -59,6 +59,15 @@ def _internal_kv_exists(
 
 
 @client_mode_hook(auto_init=False)
+def _add_temporary_uri_reference(uri: str, expiration_s: int):
+    """Add a temporary reference to a runtime_env URI.
+
+    This reference will be removed after expiration_s seconds.
+    """
+    return global_gcs_client.add_temporary_uri_reference(uri, expiration_s)
+
+
+@client_mode_hook(auto_init=False)
 def _internal_kv_put(
     key: Union[str, bytes],
     value: Union[str, bytes],
