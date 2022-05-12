@@ -19,6 +19,7 @@
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
+#include "ray/gcs/store_client/observable_store_client.h"
 #include "ray/gcs/store_client/redis_store_client.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -366,7 +367,8 @@ class RedisGcsTableStorage : public GcsTableStorage {
 class InMemoryGcsTableStorage : public GcsTableStorage {
  public:
   explicit InMemoryGcsTableStorage(instrumented_io_context &main_io_service)
-      : GcsTableStorage(std::make_shared<InMemoryStoreClient>(main_io_service)) {}
+      : GcsTableStorage(std::make_shared<ObservableStoreClient>(
+            std::make_unique<InMemoryStoreClient>(main_io_service))) {}
 };
 
 }  // namespace gcs

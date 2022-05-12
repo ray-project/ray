@@ -1,11 +1,24 @@
+import copy
 import logging
-from typing import Callable, List, Optional, Type, Union
+import platform
+import random
+from collections import defaultdict
+
+import queue
+from typing import Optional, Type, List, Dict, Union, DefaultDict, Set, Callable, Any
 
 import ray
+from ray.actor import ActorHandle
+from ray.rllib import SampleBatch
 from ray.rllib.agents.impala.vtrace_tf_policy import VTraceTFPolicy
 from ray.rllib.agents.trainer import Trainer, TrainerConfig
+from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
 from ray.rllib.execution.learner_thread import LearnerThread
 from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
+from ray.rllib.execution.parallel_requests import (
+    asynchronous_parallel_requests,
+    wait_asynchronous_requests,
+)
 from ray.rllib.execution.tree_agg import gather_experiences_tree_aggregation
 from ray.rllib.execution.common import (
     STEPS_TRAINED_COUNTER,
@@ -18,20 +31,35 @@ from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.execution.concurrency_ops import Concurrently, Enqueue, Dequeue
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.policy.policy import Policy
+from ray.rllib.utils.actors import create_colocated_actors
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.metrics import (
+    NUM_AGENT_STEPS_SAMPLED,
+    NUM_AGENT_STEPS_TRAINED,
+    NUM_ENV_STEPS_SAMPLED,
+)
+
+# from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
+from ray.rllib.utils.typing import (
+    PartialTrainerConfigDict,
+    ResultDict,
+    TrainerConfigDict,
+    SampleBatchType,
+    T,
+)
 from ray.rllib.utils.deprecation import (
     Deprecated,
     DEPRECATED_VALUE,
     deprecation_warning,
 )
-from ray.rllib.utils.typing import PartialTrainerConfigDict, TrainerConfigDict
 from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.types import ObjectRef
 
 logger = logging.getLogger(__name__)
 
 
 class ImpalaConfig(TrainerConfig):
-    """Defines an ARSTrainer configuration class from which an ImpalaTrainer can be built.
+    """Defines a configuration class from which an ImpalaTrainer can be built.
 
     Example:
         >>> from ray.rllib.agents.impala import ImpalaConfig
@@ -78,10 +106,14 @@ class ImpalaConfig(TrainerConfig):
         self.minibatch_buffer_size = 1
         self.num_sgd_iter = 1
         self.replay_proportion = 0.0
+        self.replay_ratio = ((1 / self.replay_proportion)
+                             if self.replay_proportion > 0 else 0.0)
         self.replay_buffer_num_slots = 0
         self.learner_queue_size = 16
         self.learner_queue_timeout = 300
         self.max_sample_requests_in_flight_per_worker = 2
+        self.aggregator_wait_timeout = 0.03
+        self.sample_wait_timeout = 0.03
         self.broadcast_interval = 1
         self.num_aggregation_workers = 0
         self.grad_clip = 40.0
@@ -126,6 +158,8 @@ class ImpalaConfig(TrainerConfig):
         learner_queue_size: Optional[int] = None,
         learner_queue_timeout: Optional[float] = None,
         max_sample_requests_in_flight_per_worker: Optional[int] = None,
+        aggregator_wait_timeout: Optional[float] = None,
+        sample_wait_timeout: Optional[float] = None,
         broadcast_interval: Optional[int] = None,
         num_aggregation_workers: Optional[int] = None,
         grad_clip: Optional[float] = None,
@@ -171,7 +205,8 @@ class ImpalaConfig(TrainerConfig):
                 minibatching. This conf only has an effect if `num_sgd_iter > 1`.
             num_sgd_iter: Number of passes to make over each train batch.
             replay_proportion: Set >0 to enable experience replay. Saved samples will
-                be replayed with a p:1 proportion to new data samples.
+                be replayed with a p:1 proportion to new data samples. Used in the
+                execution plan API.
             replay_buffer_num_slots: Number of sample batches to store for replay.
                 The number of transitions saved total will be
                 (replay_buffer_num_slots * rollout_fragment_length).
@@ -180,27 +215,34 @@ class ImpalaConfig(TrainerConfig):
             learner_queue_timeout: Wait for train batches to be available in minibatch
                 buffer queue this many seconds. This may need to be increased e.g. when
                 training with a slow environment.
-            max_sample_requests_in_flight_per_worker: Level of queuing for sampling.
+            max_sample_requests_in_flight_per_worker: Level of queuing for sampling
+                and replay aggregator operations (if using aggregator workers).
+            aggregator_wait_timeout: Amount of time to block and wait on pending calls
+                to replay aggregator workers.
+            sample_wait_timeout: Amount of time to block and wait on pending calls to
+                sampling workers.
             broadcast_interval: Max number of workers to broadcast one set of
                 weights to.
-
             num_aggregation_workers: Use n (`num_aggregation_workers`) extra Actors for
                 multi-level aggregation of the data produced by the m RolloutWorkers
                 (`num_workers`). Note that n should be much smaller than m.
                 This can make sense if ingesting >2GB/s of samples, or if
                 the data requires decompression.
-            grad_clip:
+            grad_clip: If specified, clip the global norm of gradients by this amount.
             opt_type: Either "adam" or "rmsprop".
-            lr_schedule:
-
-            decay: `opt_type=rmsprop` settings.
-            momentum:
-            epsilon:
-
+            lr_schedule: Learning rate schedule. In the format of
+                [[timestep, lr-value], [timestep, lr-value], ...]
+                Intermediary timesteps will be assigned to interpolated learning rate
+                values. A schedule should normally start from timestep 0.
+            decay: Decay setting for the RMSProp optimizer, in case `opt_type=rmsprop`.
+            momentum: Momentum setting for the RMSProp optimizer, in case
+                `opt_type=rmsprop`.
+            epsilon: Epsilon setting for the RMSProp optimizer, in case
+                `opt_type=rmsprop`.
             vf_loss_coeff: Coefficient for the value function term in the loss function.
             entropy_coeff: Coefficient for the entropy regularizer term in the loss
                 function.
-            entropy_coeff_schedule:
+            entropy_coeff_schedule: Decay schedule for the entropy regularizer.
             _separate_vf_optimizer: Set this to true to have two separate optimizers
                 optimize the policy-and value networks.
             _lr_vf: If _separate_vf_optimizer is True, define separate learning rate
@@ -240,6 +282,10 @@ class ImpalaConfig(TrainerConfig):
             self.max_sample_requests_in_flight_per_worker = (
                 max_sample_requests_in_flight_per_worker
             )
+        if aggregator_wait_timeout is not None:
+            self.aggregator_wait_timeout = aggregator_wait_timeout
+        if sample_wait_timeout is not None:
+            self.sample_wait_timeout = sample_wait_timeout
         if broadcast_interval is not None:
             self.broadcast_interval = broadcast_interval
         if num_aggregation_workers is not None:
@@ -458,6 +504,99 @@ class ImpalaTrainer(Trainer):
                 )
                 config["_tf_policy_handles_more_than_one_loss"] = True
 
+    @override(Trainer)
+    def setup(self, config: PartialTrainerConfigDict):
+        super().setup(config)
+        self.remote_sampling_requests_in_flight: DefaultDict[
+            ActorHandle, Set[ray.ObjectRef]
+        ] = defaultdict(set)
+
+        if self.config["_disable_execution_plan_api"]:
+            # Setup after_train_step callback.
+            self._after_train_step = lambda *a, **k: None
+            if self.config["after_train_step"]:
+                self._after_train_step = self.config["after_train_step"](
+                    self.workers, self.config
+                )
+
+            # Create extra aggregation workers and assign each rollout worker to
+            # one of them.
+            self.batches_to_place_on_learner = []
+            self.batch_being_built = []
+            if self.config["num_aggregation_workers"] > 0:
+                # This spawns `num_aggregation_workers` actors that aggregate
+                # experiences coming from RolloutWorkers in parallel. We force
+                # colocation on the same node (localhost) to maximize data bandwidth
+                # between them and the learner.
+                localhost = platform.node()
+                assert localhost != "", (
+                    "ERROR: Cannot determine local node name! "
+                    "`platform.node()` returned empty string."
+                )
+                all_co_located = create_colocated_actors(
+                    actor_specs=[
+                        # (class, args, kwargs={}, count=1)
+                        (
+                            AggregatorWorker,
+                            [
+                                self.config,
+                            ],
+                            {},
+                            self.config["num_aggregation_workers"],
+                        )
+                    ],
+                    node=localhost,
+                )
+                self.aggregator_workers = [
+                    actor for actor_groups in all_co_located for actor in actor_groups
+                ]
+                self.remote_aggregator_requests_in_flight: DefaultDict[
+                    ActorHandle, Set[ray.ObjectRef]
+                ] = defaultdict(set)
+
+            else:
+                # Create our local mixin buffer if the num of aggregation workers is 0.
+                self.local_mixin_buffer = MixInMultiAgentReplayBuffer(
+                    capacity=(
+                        self.config["replay_buffer_num_slots"]
+                        if self.config["replay_buffer_num_slots"] > 0
+                        else 1
+                    ),
+                    replay_ratio=self.config["replay_ratio"],
+                )
+
+            # Create and start the learner thread.
+            self._learner_thread = make_learner_thread(
+                self.workers.local_worker(), self.config
+            )
+            self._learner_thread.start()
+            self.workers_that_need_updates = set()
+
+    @override(Trainer)
+    def training_iteration(self) -> ResultDict:
+        unprocessed_sample_batches = self.get_samples_from_workers()
+
+        self.workers_that_need_updates |= unprocessed_sample_batches.keys()
+
+        if self.config["num_aggregation_workers"] > 0:
+            batch = self.process_experiences_tree_aggregation(
+                unprocessed_sample_batches
+            )
+        else:
+            batch = self.process_experiences_directly(unprocessed_sample_batches)
+
+        self.concatenate_batches_and_pre_queue(batch)
+        self.place_processed_samples_on_learner_queue()
+        learner_results = self.process_trained_results()
+
+        self.update_workers_if_necessary()
+
+        # Callback for APPO to use to update KL, target network periodically.
+        # The input to the callback is the learner fetches dict.
+        self._after_train_step(learner_results)
+
+        return learner_results
+
     @staticmethod
     @override(Trainer)
     def execution_plan(workers, config, **kwargs):
@@ -567,6 +706,208 @@ class ImpalaTrainer(Trainer):
             ),
             strategy=config.get("placement_strategy", "PACK"),
         )
+
+    def concatenate_batches_and_pre_queue(self, batches: List[SampleBatch]):
+        """Concatenate batches that are being returned from rollout workers
+
+        Args:
+            batches: batches of experiences from rollout workers
+
+        """
+
+        def aggregate_into_larger_batch():
+            if (
+                sum(b.count for b in self.batch_being_built)
+                >= self.config["train_batch_size"]
+            ):
+                batch_to_add = SampleBatch.concat_samples(self.batch_being_built)
+                self.batches_to_place_on_learner.append(batch_to_add)
+                self.batch_being_built = []
+
+        for batch in batches:
+            self.batch_being_built.append(batch)
+            aggregate_into_larger_batch()
+
+    def get_samples_from_workers(self) -> Dict[ActorHandle, List[SampleBatch]]:
+        # Perform asynchronous sampling on all (remote) rollout workers.
+        if self.workers.remote_workers():
+            sample_batches: Dict[
+                ActorHandle, List[ObjectRef]
+            ] = asynchronous_parallel_requests(
+                remote_requests_in_flight=self.remote_requests_in_flight,
+                actors=self.workers.remote_workers(),
+                ray_wait_timeout_s=self.config["sample_wait_timeout"],
+                max_remote_requests_in_flight_per_actor=self.config[
+                    "max_sample_requests_in_flight_per_worker"
+                ],
+                return_result_obj_ref_ids=True,
+            )
+        else:
+            # only sampling on the local worker
+            sample_batches = {
+                self.workers.local_worker(): [self.workers.local_worker().sample()]
+            }
+        return sample_batches
+
+    def place_processed_samples_on_learner_queue(self) -> None:
+        self._counters["num_samples_added_to_queue"] = 0
+
+        while self.batches_to_place_on_learner:
+            batch = self.batches_to_place_on_learner[0]
+            try:
+                self._learner_thread.inqueue.put(batch, block=False)
+                self.batches_to_place_on_learner.pop(0)
+                self._counters[NUM_ENV_STEPS_SAMPLED] += batch.count
+                self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
+                self._counters["num_samples_added_to_queue"] = batch.count
+            except queue.Full:
+                self._counters["num_times_learner_queue_full"] += 1
+
+    def process_trained_results(self) -> ResultDict:
+        # Get learner outputs/stats from output queue.
+        learner_infos = []
+        num_agent_steps_trained = 0
+
+        for _ in range(self._learner_thread.outqueue.qsize()):
+            if self._learner_thread.is_alive():
+                (
+                    num_trained_samples,
+                    learner_results,
+                ) = self._learner_thread.outqueue.get(timeout=0.001)
+                num_agent_steps_trained += num_trained_samples
+                if learner_results:
+                    learner_infos.append(learner_results)
+            else:
+                raise RuntimeError("The learner thread died in while training")
+        learner_info = copy.deepcopy(self._learner_thread.learner_info)
+
+        # Update the steps trained counters.
+        self._counters[STEPS_TRAINED_THIS_ITER_COUNTER] = num_agent_steps_trained
+        self._counters[NUM_AGENT_STEPS_TRAINED] += num_agent_steps_trained
+
+        return learner_info
+
+    def process_experiences_directly(
+        self, actor_to_sample_batches_refs: Dict[ActorHandle, List[ObjectRef]]
+    ) -> Union[SampleBatchType, None]:
+        processed_batches = []
+        batches = [
+            sample_batch_ref
+            for refs_batch in actor_to_sample_batches_refs.values()
+            for sample_batch_ref in refs_batch
+        ]
+        if not batches:
+            return processed_batches
+        if batches and isinstance(batches[0], ray.ObjectRef):
+            batches = ray.get(batches)
+        for batch in batches:
+            batch = batch.decompress_if_needed()
+            self.local_mixin_buffer.add_batch(batch)
+            batch = self.local_mixin_buffer.replay()
+            if batch:
+                processed_batches.append(batch)
+        return processed_batches
+
+    def process_experiences_tree_aggregation(
+        self, actor_to_sample_batches_refs: Dict[ActorHandle, List[ObjectRef]]
+    ) -> Union[SampleBatchType, None]:
+        batches = [
+            sample_batch_ref
+            for refs_batch in actor_to_sample_batches_refs.values()
+            for sample_batch_ref in refs_batch
+        ]
+        ready_processed_batches = []
+        for batch in batches:
+            aggregator = random.choice(self.aggregator_workers)
+            processed_sample_batches: Dict[
+                ActorHandle, List[ObjectRef]
+            ] = asynchronous_parallel_requests(
+                remote_requests_in_flight=self.remote_aggregator_requests_in_flight,
+                actors=[aggregator],
+                remote_fn=lambda actor, b: actor.process_episodes(b),
+                remote_kwargs=[{"b": batch}],
+                ray_wait_timeout_s=self.config["aggregator_wait_timeout"],
+                max_remote_requests_in_flight_per_actor=float("inf"),
+            )
+            for ready_sub_batches in processed_sample_batches.values():
+                ready_processed_batches.extend(ready_sub_batches)
+
+        waiting_processed_sample_batches: Dict[
+            ActorHandle, List[ObjectRef]
+        ] = wait_asynchronous_requests(
+            remote_requests_in_flight=self.remote_aggregator_requests_in_flight,
+            ray_wait_timeout_s=self.config["aggregator_wait_timeout"],
+        )
+        for ready_sub_batches in waiting_processed_sample_batches.values():
+            ready_processed_batches.extend(ready_sub_batches)
+
+        return ready_processed_batches
+
+    def update_workers_if_necessary(self) -> None:
+        # Only need to update workers if there are remote workers.
+        global_vars = {"timestep": self._counters[NUM_AGENT_STEPS_TRAINED]}
+        self._counters["steps_since_broadcast"] += 1
+        if (
+            self.workers.remote_workers()
+            and self._counters["steps_since_broadcast"]
+            >= self.config["broadcast_interval"]
+            and self.workers_that_need_updates
+        ):
+            weights = ray.put(self.workers.local_worker().get_weights())
+            self._counters["steps_since_broadcast"] = 0
+            self._learner_thread.weights_updated = False
+            self._counters["num_weight_broadcasts"] += 1
+
+            for worker in self.workers_that_need_updates:
+                worker.set_weights.remote(weights, global_vars)
+            self.workers_that_need_updates = set()
+
+        # Update global vars of the local worker.
+        self.workers.local_worker().set_global_vars(global_vars)
+
+    @override(Trainer)
+    def _compile_step_results(self, *, step_ctx, step_attempt_results=None):
+        result = super()._compile_step_results(
+            step_ctx=step_ctx, step_attempt_results=step_attempt_results
+        )
+        result = self._learner_thread.add_learner_metrics(
+            result, overwrite_learner_info=False
+        )
+        return result
+
+
+@ray.remote(num_cpus=0)
+class AggregatorWorker:
+    """A worker for doing tree aggregation of collected episodes"""
+
+    def __init__(self, config: TrainerConfigDict):
+        self.config = config
+        self._mixin_buffer = MixInMultiAgentReplayBuffer(
+            capacity=(
+                self.config["replay_buffer_num_slots"]
+                if self.config["replay_buffer_num_slots"] > 0
+                else 1
+            ),
+            replay_ratio=self.config["replay_ratio"],
+        )
+
+    def process_episodes(self, batch: SampleBatchType) -> SampleBatchType:
+        batch = batch.decompress_if_needed()
+        self._mixin_buffer.add_batch(batch)
+        processed_batches = self._mixin_buffer.replay()
+        return processed_batches
+
+    def apply(
+        self,
+        func: Callable[["AggregatorWorker", Optional[Any], Optional[Any]], T],
+        *_args,
+        **kwargs,
+    ) -> T:
+        """Calls the given function with this AggregatorWorker instance."""
+        return func(self, *_args, **kwargs)
+
+    def get_host(self) -> str:
+        return platform.node()
 
 
 # Deprecated: Use ray.rllib.agents.pg.PGConfig instead!

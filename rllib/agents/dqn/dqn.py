@@ -15,29 +15,20 @@ from typing import List, Optional, Type
 from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
 from ray.rllib.agents.dqn.simple_q import (
+    SimpleQConfig,
     SimpleQTrainer,
-    DEFAULT_CONFIG as SIMPLEQ_DEFAULT_CONFIG,
 )
 from ray.rllib.agents.trainer import Trainer
-from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.execution.concurrency_ops import Concurrently
-from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
 from ray.rllib.execution.rollout_ops import (
-    ParallelRollouts,
     synchronous_parallel_sample,
 )
 from ray.rllib.execution.train_ops import (
-    TrainOneStep,
-    UpdateTargetNetwork,
-    MultiGPUTrainOneStep,
     train_one_step,
     multi_gpu_train_one_step,
 )
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.utils import update_priorities_in_replay_buffer
-from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import (
     ResultDict,
     TrainerConfigDict,
@@ -45,11 +36,6 @@ from ray.rllib.utils.typing import (
 from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
     NUM_AGENT_STEPS_SAMPLED,
-)
-from ray.util.iter import LocalIterator
-from ray.rllib.utils.replay_buffers import MultiAgentPrioritizedReplayBuffer
-from ray.rllib.execution.buffers.multi_agent_replay_buffer import (
-    MultiAgentReplayBuffer as LegacyMultiAgentReplayBuffer,
 )
 from ray.rllib.utils.deprecation import (
     Deprecated,
@@ -67,7 +53,7 @@ logger = logging.getLogger(__name__)
 # fmt: off
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = Trainer.merge_trainer_configs(
-    SIMPLEQ_DEFAULT_CONFIG,
+    SimpleQConfig().to_dict(),
     {
         # === Model ===
         # Number of atoms for representing the distribution of return. When
@@ -143,12 +129,6 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         # === Parallelism ===
         # Whether to compute priorities on workers.
         "worker_side_prioritization": False,
-
-        # Experimental flag.
-        # If True, the execution plan API will not be used. Instead,
-        # a Trainer's `training_iteration` method will be called as-is each
-        # training iteration.
-        "_disable_execution_plan_api": True,
     },
     _allow_unknown_configs=True,
 )
@@ -236,13 +216,20 @@ class DQNTrainer(SimpleQTrainer):
             # Store new samples in replay buffer.
             self.local_replay_buffer.add_batch(new_sample_batch)
 
+        global_vars = {
+            "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
+        }
+
         for _ in range(sample_and_train_weight):
             # Sample training batch (MultiAgentBatch) from replay buffer.
-            train_batch = self.local_replay_buffer.replay()
+            train_batch = self.local_replay_buffer.sample(
+                self.config["train_batch_size"]
+            )
 
             # Old-style replay buffers return None if learning has not started
-            if not train_batch:
-                continue
+            if train_batch is None or len(train_batch) == 0:
+                self.workers.local_worker().set_global_vars(global_vars)
+                break
 
             # Postprocess batch before we learn on it
             post_fn = self.config.get("before_learn_on_batch") or (lambda b, *a: b)
@@ -277,111 +264,11 @@ class DQNTrainer(SimpleQTrainer):
 
             # Update weights and global_vars - after learning on the local worker -
             # on all remote workers.
-            global_vars = {
-                "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
-            }
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
                 self.workers.sync_weights(global_vars=global_vars)
 
         # Return all collected metrics for the iteration.
         return train_results
-
-    @staticmethod
-    @override(SimpleQTrainer)
-    def execution_plan(
-        workers: WorkerSet, config: TrainerConfigDict, **kwargs
-    ) -> LocalIterator[dict]:
-        assert (
-            "local_replay_buffer" in kwargs
-        ), "DQN's execution plan requires a local replay buffer."
-
-        # Assign to Trainer, so we can store the MultiAgentReplayBuffer's
-        # data when we save checkpoints.
-        local_replay_buffer = kwargs["local_replay_buffer"]
-
-        rollouts = ParallelRollouts(workers, mode="bulk_sync")
-
-        # We execute the following steps concurrently:
-        # (1) Generate rollouts and store them in our local replay buffer.
-        # Calling next() on store_op drives this.
-        store_op = rollouts.for_each(
-            StoreToReplayBuffer(local_buffer=local_replay_buffer)
-        )
-
-        def update_prio(item):
-            samples, info_dict = item
-            prio_dict = {}
-            for policy_id, info in info_dict.items():
-                # TODO(sven): This is currently structured differently for
-                #  torch/tf. Clean up these results/info dicts across
-                #  policies (note: fixing this in torch_policy.py will
-                #  break e.g. DDPPO!).
-                td_error = info.get("td_error", info[LEARNER_STATS_KEY].get("td_error"))
-                samples.policy_batches[policy_id].set_get_interceptor(None)
-                batch_indices = samples.policy_batches[policy_id].get("batch_indexes")
-                # In case the buffer stores sequences, TD-error could
-                # already be calculated per sequence chunk.
-                if len(batch_indices) != len(td_error):
-                    T = local_replay_buffer.replay_sequence_length
-                    assert (
-                        len(batch_indices) > len(td_error)
-                        and len(batch_indices) % T == 0
-                    )
-                    batch_indices = batch_indices.reshape([-1, T])[:, 0]
-                    assert len(batch_indices) == len(td_error)
-                prio_dict[policy_id] = (batch_indices, td_error)
-            local_replay_buffer.update_priorities(prio_dict)
-            return info_dict
-
-        # (2) Read and train on experiences from the replay buffer. Every batch
-        # returned from the LocalReplay() iterator is passed to TrainOneStep to
-        # take a SGD step, and then we decide whether to update the target
-        # network.
-        post_fn = config.get("before_learn_on_batch") or (lambda b, *a: b)
-
-        if config["simple_optimizer"]:
-            train_step_op = TrainOneStep(workers)
-        else:
-            train_step_op = MultiGPUTrainOneStep(
-                workers=workers,
-                sgd_minibatch_size=config["train_batch_size"],
-                num_sgd_iter=1,
-                num_gpus=config["num_gpus"],
-                _fake_gpus=config["_fake_gpus"],
-            )
-
-        if (
-            type(local_replay_buffer) is LegacyMultiAgentReplayBuffer
-            and config["replay_buffer_config"].get("prioritized_replay_alpha", 0.0)
-            > 0.0
-        ) or isinstance(local_replay_buffer, MultiAgentPrioritizedReplayBuffer):
-            update_prio_fn = update_prio
-        else:
-
-            def update_prio_fn(x):
-                return x
-
-        replay_op = (
-            Replay(local_buffer=local_replay_buffer)
-            .for_each(lambda x: post_fn(x, workers, config))
-            .for_each(train_step_op)
-            .for_each(update_prio_fn)
-            .for_each(
-                UpdateTargetNetwork(workers, config["target_network_update_freq"])
-            )
-        )
-
-        # Alternate deterministically between (1) and (2).
-        # Only return the output of (2) since training metrics are not
-        # available until (2) runs.
-        train_op = Concurrently(
-            [store_op, replay_op],
-            mode="round_robin",
-            output_indexes=[1],
-            round_robin_weights=calculate_rr_weights(config),
-        )
-
-        return StandardMetricsReporting(train_op, workers, config)
 
 
 @Deprecated(

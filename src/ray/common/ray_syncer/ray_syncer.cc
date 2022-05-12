@@ -22,30 +22,30 @@ namespace syncer {
 
 NodeState::NodeState() { sync_message_versions_taken_.fill(-1); }
 
-bool NodeState::SetComponent(RayComponentId cid,
+bool NodeState::SetComponent(MessageType message_type,
                              const ReporterInterface *reporter,
                              ReceiverInterface *receiver) {
-  if (cid < static_cast<RayComponentId>(kComponentArraySize) &&
-      reporters_[cid] == nullptr && receivers_[cid] == nullptr) {
-    reporters_[cid] = reporter;
-    receivers_[cid] = receiver;
+  if (message_type < static_cast<MessageType>(kComponentArraySize) &&
+      reporters_[message_type] == nullptr && receivers_[message_type] == nullptr) {
+    reporters_[message_type] = reporter;
+    receivers_[message_type] = receiver;
     return true;
   } else {
-    RAY_LOG(FATAL) << "Fail to set components, component_id:" << cid
+    RAY_LOG(FATAL) << "Fail to set components, message_type:" << message_type
                    << ", reporter:" << reporter << ", receiver:" << receiver;
     return false;
   }
 }
 
-std::optional<RaySyncMessage> NodeState::CreateSyncMessage(RayComponentId cid) {
-  if (reporters_[cid] == nullptr) {
+std::optional<RaySyncMessage> NodeState::CreateSyncMessage(MessageType message_type) {
+  if (reporters_[message_type] == nullptr) {
     return std::nullopt;
   }
-  auto message =
-      reporters_[cid]->CreateSyncMessage(sync_message_versions_taken_[cid], cid);
+  auto message = reporters_[message_type]->CreateSyncMessage(
+      sync_message_versions_taken_[message_type], message_type);
   if (message != std::nullopt) {
-    sync_message_versions_taken_[cid] = message->version();
-    RAY_LOG(DEBUG) << "Sync message taken: cid:" << cid
+    sync_message_versions_taken_[message_type] = message->version();
+    RAY_LOG(DEBUG) << "Sync message taken: message_type:" << message_type
                    << ", version:" << message->version()
                    << ", node:" << NodeID::FromBinary(message->node_id());
   }
@@ -53,7 +53,7 @@ std::optional<RaySyncMessage> NodeState::CreateSyncMessage(RayComponentId cid) {
 }
 
 bool NodeState::ConsumeSyncMessage(std::shared_ptr<const RaySyncMessage> message) {
-  auto &current = cluster_view_[message->node_id()][message->component_id()];
+  auto &current = cluster_view_[message->node_id()][message->message_type()];
 
   RAY_LOG(DEBUG) << "ConsumeSyncMessage: " << (current ? current->version() : -1)
                  << " message_version: " << message->version()
@@ -64,7 +64,7 @@ bool NodeState::ConsumeSyncMessage(std::shared_ptr<const RaySyncMessage> message
   }
 
   current = message;
-  auto receiver = receivers_[message->component_id()];
+  auto receiver = receivers_[message->message_type()];
   if (receiver != nullptr) {
     receiver->ConsumeSyncMessage(message);
   }
@@ -83,11 +83,11 @@ void NodeSyncConnection::ReceiveUpdate(RaySyncMessages messages) {
   for (auto &message : *messages.mutable_sync_messages()) {
     auto &node_versions = GetNodeComponentVersions(message.node_id());
     RAY_LOG(DEBUG) << "Receive update: "
-                   << " component_id=" << message.component_id()
+                   << " message_type=" << message.message_type()
                    << ", message_version=" << message.version()
-                   << ", local_message_version=" << node_versions[message.component_id()];
-    if (node_versions[message.component_id()] < message.version()) {
-      node_versions[message.component_id()] = message.version();
+                   << ", local_message_version=" << node_versions[message.message_type()];
+    if (node_versions[message.message_type()] < message.version()) {
+      node_versions[message.message_type()] = message.version();
       message_processor_(std::make_shared<RaySyncMessage>(std::move(message)));
     }
   }
@@ -104,9 +104,9 @@ bool NodeSyncConnection::PushToSendingQueue(
   }
 
   auto &node_versions = GetNodeComponentVersions(message->node_id());
-  if (node_versions[message->component_id()] < message->version()) {
-    node_versions[message->component_id()] = message->version();
-    sending_buffer_[std::make_pair(message->node_id(), message->component_id())] =
+  if (node_versions[message->message_type()] < message->version()) {
+    node_versions[message->message_type()] = message->version();
+    sending_buffer_[std::make_pair(message->node_id(), message->message_type())] =
         message;
     return true;
   }
@@ -323,30 +323,30 @@ void RaySyncer::Disconnect(const std::string &node_id) {
       "RaySyncerDisconnect");
 }
 
-bool RaySyncer::Register(RayComponentId component_id,
+bool RaySyncer::Register(MessageType message_type,
                          const ReporterInterface *reporter,
                          ReceiverInterface *receiver,
                          int64_t pull_from_reporter_interval_ms) {
-  if (!node_state_->SetComponent(component_id, reporter, receiver)) {
+  if (!node_state_->SetComponent(message_type, reporter, receiver)) {
     return false;
   }
 
   // Set job to pull from reporter periodically
   if (reporter != nullptr && pull_from_reporter_interval_ms > 0) {
     timer_.RunFnPeriodically(
-        [this, component_id]() { OnDemandBroadcasting(component_id); },
+        [this, message_type]() { OnDemandBroadcasting(message_type); },
         pull_from_reporter_interval_ms);
   }
 
   RAY_LOG(DEBUG) << "Registered components: "
-                 << "component_id:" << component_id << ", reporter:" << reporter
+                 << "message_type:" << message_type << ", reporter:" << reporter
                  << ", receiver:" << receiver
                  << ", pull_from_reporter_interval_ms:" << pull_from_reporter_interval_ms;
   return true;
 }
 
-bool RaySyncer::OnDemandBroadcasting(RayComponentId component_id) {
-  auto msg = node_state_->CreateSyncMessage(component_id);
+bool RaySyncer::OnDemandBroadcasting(MessageType message_type) {
+  auto msg = node_state_->CreateSyncMessage(message_type);
   if (msg) {
     RAY_CHECK(msg->node_id() == GetLocalNodeID());
     BroadcastMessage(std::make_shared<RaySyncMessage>(std::move(*msg)));

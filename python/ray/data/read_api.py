@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     import mars
     import modin
     import pyspark
+    import datasets
 
 import ray
 from ray.types import ObjectRef
@@ -960,6 +961,40 @@ def from_spark(
     import raydp
 
     return raydp.spark.spark_dataframe_to_ray_dataset(df, parallelism)
+
+
+@PublicAPI
+def from_huggingface(
+    dataset: Union["datasets.Dataset", "datasets.DatasetDict"],
+) -> Union[Dataset[ArrowRow], Dict[str, Dataset[ArrowRow]]]:
+    """Create a dataset from a Hugging Face Datasets Dataset.
+
+    This function is not parallelized, and is intended to be used
+    with Hugging Face Datasets that are loaded into memory (as opposed
+    to memory-mapped).
+
+    Args:
+        dataset: A Hugging Face ``Dataset``, or ``DatasetDict``.
+            ``IterableDataset`` is not supported.
+
+    Returns:
+        Dataset holding Arrow records from the Hugging Face Dataset, or a
+        dict of datasets in case ``dataset`` is a ``DatasetDict``.
+    """
+    import datasets
+
+    def convert(ds: "datasets.Dataset") -> Dataset[ArrowRow]:
+        return from_arrow(ds.data.table)
+
+    if isinstance(dataset, datasets.DatasetDict):
+        return {k: convert(ds) for k, ds in dataset.items()}
+    elif isinstance(dataset, datasets.Dataset):
+        return convert(dataset)
+    else:
+        raise TypeError(
+            "`dataset` must be a `datasets.Dataset` or `datasets.DatasetDict`, "
+            f"got {type(dataset)}"
+        )
 
 
 def _df_to_block(df: "pandas.DataFrame") -> Block[ArrowRow]:

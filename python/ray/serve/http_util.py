@@ -1,14 +1,21 @@
 import asyncio
+import socket
 from dataclasses import dataclass
 import inspect
 import json
+import logging
 from typing import Any, Dict, Type
 
 import starlette.responses
 import starlette.requests
 from starlette.types import Send, ASGIApp
+from fastapi.encoders import jsonable_encoder
 
 from ray.serve.exceptions import RayServeException
+from ray.serve.constants import SERVE_LOGGER_NAME
+
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 @dataclass
@@ -76,9 +83,11 @@ class Response:
             self.set_content_type("text-utf8")
         else:
             # Delayed import since utils depends on http_util
-            from ray.serve.utils import ServeEncoder
+            from ray.serve.utils import serve_encoders
 
-            self.body = json.dumps(content, cls=ServeEncoder, indent=2).encode()
+            self.body = json.dumps(
+                jsonable_encoder(content, custom_encoder=serve_encoders)
+            ).encode()
             self.set_content_type("json")
 
     def set_content_type(self, content_type):
@@ -247,3 +256,32 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
         if serve_cls is not None and serve_cls != cls:
             routes_to_remove.append(route)
     fastapi_app.routes[:] = [r for r in fastapi_app.routes if r not in routes_to_remove]
+
+
+def set_socket_reuse_port(sock: socket.socket) -> bool:
+    """Mutate a socket object to allow multiple process listening on the same port.
+
+    Returns:
+        success(bool): whether the setting was successful.
+    """
+    try:
+        # These two socket options will allow multiple process to bind the the
+        # same port. Kernel will evenly load balance among the port listeners.
+        # Note: this will only work on Linux.
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        if hasattr(socket, "SO_REUSEPORT"):
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        # In some Python binary distribution (e.g., conda py3.6), this flag
+        # was not present at build time but available in runtime. But
+        # Python relies on compiler flag to include this in binary.
+        # Therefore, in the absence of socket.SO_REUSEPORT, we try
+        # to use `15` which is value in linux kernel.
+        # https://github.com/torvalds/linux/blob/master/tools/include/uapi/asm-generic/socket.h#L27
+        else:
+            sock.setsockopt(socket.SOL_SOCKET, 15, 1)
+        return True
+    except Exception as e:
+        logger.debug(
+            f"Setting SO_REUSEPORT failed because of {e}. SO_REUSEPORT is disabled."
+        )
+        return False
