@@ -26,8 +26,6 @@ FILE_SIZE_WARNING = 10 * 1024 * 1024  # 10MiB
 GCS_STORAGE_MAX_SIZE = int(
     os.environ.get("RAY_max_grpc_message_size", 250 * 1024 * 1024)
 )
-
-
 RAY_PKG_PREFIX = "_ray_pkg_"
 
 
@@ -289,7 +287,6 @@ def _store_package_in_gcs(
         )
 
     logger.info(f"Pushing file package '{pkg_uri}' ({size_str}) to Ray cluster...")
-
     try:
         _internal_kv_put(pkg_uri, data)
     except Exception as e:
