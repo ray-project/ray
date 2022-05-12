@@ -13,7 +13,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import (
     EntropyCoeffSchedule,
     KLCoeffMixin,
-    LearningssssRateSchedule,
+    LearningRateSchedule,
     ValueNetworkMixin,
     TorchPolicy,
 )
@@ -37,7 +37,7 @@ class PPOTorchPolicy(
     LearningRateSchedule,
     EntropyCoeffSchedule,
     KLCoeffMixin,
-    TorchPolicy
+    TorchPolicy,
 ):
     """PyTorch policy class used with PPOTrainer."""
 

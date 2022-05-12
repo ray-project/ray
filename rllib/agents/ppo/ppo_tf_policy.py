@@ -23,14 +23,13 @@ from ray.rllib.policy.tf_mixins import (
     ValueNetworkMixin,
 )
 from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import (
     Deprecated,
     DEPRECATED_VALUE,
     deprecation_warning,
 )
-from ray.rllib.utils.framework import try_import_tf, get_variable
-from ray.rllib.utils.tf_utils import explained_variance, make_tf_callable
+from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.tf_utils import explained_variance
 from ray.rllib.utils.typing import (
     AgentID,
     LocalOptimizer,
