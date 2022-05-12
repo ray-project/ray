@@ -246,9 +246,13 @@ def add_temporary_uri_reference(uri: str) -> None:
     (e.g. working_dir, py_modules) after the job starts.
 
     This function adds a temporary reference to the package in the GCS to prevent
-    it from being deleted before the job starts. If this reference didn't have an
-    expiration, then if the script exited (e.g. via Ctrl-C) before the job started,
-    the reference would never be removed, so the package would never be deleted.
+    it from being deleted before the job starts. (See #23423 for the bug where
+    this happened.)
+
+    If this reference didn't have an expiration, then if the script exited
+    (e.g. via Ctrl-C) before the job started, the reference would never be
+    removed, so the package would never be deleted.
+
     """
 
     # Defaults to 30 seconds.  This should be enough time for the job to start.
