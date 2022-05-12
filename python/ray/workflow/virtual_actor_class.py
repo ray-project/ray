@@ -232,18 +232,18 @@ class _VirtualActorMethodHelper:
         return self._options.step_type == StepType.READONLY_ACTOR_METHOD
 
     def step(self, *args, **kwargs):
-        flattened_args = signature.flatten_args(self._signature, args, kwargs)
         actor_id = workflow_context.get_current_workflow_id()
-        if not self.readonly:
-            if self._method_name == "__init__":
-                state_ref = None
-            else:
-                ws = WorkflowStorage(actor_id)
-                state_ref = WorkflowRef(ws.get_entrypoint_step_id())
-            # This is a hack to insert a positional argument.
-            flattened_args = [signature.DUMMY_TYPE, state_ref] + flattened_args
 
         def prepare_inputs():
+            flattened_args = signature.flatten_args(self._signature, args, kwargs)
+            if not self.readonly:
+                if self._method_name == "__init__":
+                    state_ref = None
+                else:
+                    ws = WorkflowStorage(actor_id)
+                    state_ref = WorkflowRef(ws.get_entrypoint_step_id())
+                # This is a hack to insert a positional argument.
+                flattened_args = [signature.DUMMY_TYPE, state_ref] + flattened_args
             # _ensure_workflow_initialized()
             return serialization_context.make_workflow_inputs(flattened_args)
         # workflow_inputs = serialization_context.make_workflow_inputs(flattened_args)
