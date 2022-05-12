@@ -320,6 +320,8 @@ class AsyncRequestsManager:
         """
         num_requests_launched = 0
         for actor, q in self._call_queue.items():
+            # print(len(self._remote_requests_in_flight[actor]))
+            # print(self._max_remote_requests_in_flight)
             while (
                 len(self._remote_requests_in_flight[actor])
                 < self._max_remote_requests_in_flight
@@ -408,3 +410,7 @@ class AsyncRequestsManager:
             "num_pending_inflight_requests": len(self._pending_remotes),
             "num_requests_to_be_scheduled": num_requests_to_be_scheduled,
         }
+
+    @property
+    def workers(self):
+        return frozenset(self._all_workers)
