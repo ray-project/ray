@@ -240,6 +240,25 @@ def _get_gitignore(path: Path) -> Optional[Callable]:
         return None
 
 
+def add_temporary_uri_reference(uri: str) -> None:
+    """Add a temporary reference to a URI in the GCS to prevent premature deletion.
+
+    Packages is uploaded to GCS in order to be downloaded by
+    a runtime env plugin (e.g. working_dir, py_modules) after the job starts. Add a
+    temporary reference to the package in the GCS to prevent it from being deleted
+    before the job starts. If this reference didn't have an expiration, then if the
+    script exited (e.g. via Ctrl-C) before the job started, the reference would never
+    be removed, so the package would never be deleted from the GCS.
+    """
+
+    TEMPORARY_REFERENCE_EXPIRATION_S = int(
+        os.environ.get("RAY_runtime_env_temporary_reference_expiration_s", 60 * 10)
+    )
+
+    if TEMPORARY_REFERENCE_EXPIRATION_S > 0:
+        _add_temporary_uri_reference(uri, expiration_s=TEMPORARY_REFERENCE_EXPIRATION_S)
+
+
 def _store_package_in_gcs(
     pkg_uri: str,
     data: bytes,
@@ -270,26 +289,6 @@ def _store_package_in_gcs(
         )
 
     logger.info(f"Pushing file package '{pkg_uri}' ({size_str}) to Ray cluster...")
-
-    # NOTE(architkulkarni): The package is uploaded to GCS in order to be downloaded by
-    # a runtime env plugin (e.g. working_dir, py_modules) after the job starts. Add a
-    # temporary reference to the package in the GCS to prevent it from being deleted
-    # before the job starts. If this reference didn't have an expiration, then if the
-    # script exited (e.g. via Ctrl-C) before the job started, the reference would never
-    # be removed, so the package would never be deleted from the GCS.
-
-    TEMPORARY_REFERENCE_EXPIRATION_S = int(
-        os.environ.get("RAY_runtime_env_temporary_reference_expiration_s", 60 * 10)
-    )
-    # TODO(architkulkarni): Move this to the appropriate place. We want to set the
-    # temporary reference in both cases: (1) if we upload a package, and (2) we just
-    # check and see that the package already exists and skip the upload.  Case (2)
-    # will require a separate call for the Ray Job Submission codepath, which
-    # is different.
-    if TEMPORARY_REFERENCE_EXPIRATION_S > 0:
-        _add_temporary_uri_reference(
-            pkg_uri, expiration_s=TEMPORARY_REFERENCE_EXPIRATION_S
-        )
 
     try:
         _internal_kv_put(pkg_uri, data)
@@ -484,6 +483,8 @@ def upload_package_if_needed(
 
     if logger is None:
         logger = default_logger
+
+    add_temporary_uri_reference(pkg_uri)
 
     if package_exists(pkg_uri):
         return False
