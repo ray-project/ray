@@ -15,7 +15,7 @@ import copy
 from collections import defaultdict
 from ray.autoscaler._private.commands import get_or_create_head_node
 from jsonschema.exceptions import ValidationError
-from typing import Any, Dict, Callable, List, Optional
+from typing import Dict, Callable, List, Optional
 
 import ray
 from ray.core.generated import gcs_service_pb2
@@ -173,7 +173,9 @@ class MockNode:
 
         self.node_config = node_config
         self.node_type = node_type
-        self.created_in_main_thread = threading.current_thread() is threading.main_thread()
+        self.created_in_main_thread = (
+            threading.current_thread() is threading.main_thread()
+        )
 
     def matches(self, tags):
         for k, v in tags.items():
@@ -1502,7 +1504,7 @@ class AutoscalingTest(unittest.TestCase):
     def helperDynamicScaling(
         self,
         drain_node_outcome: DrainNodeOutcome = DrainNodeOutcome.Succeeded,
-        foreground_node_launcher: bool = False
+        foreground_node_launcher: bool = False,
     ):
         mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
         mock_node_info_stub = MockNodeInfoStub(drain_node_outcome)
@@ -1555,8 +1557,9 @@ class AutoscalingTest(unittest.TestCase):
         """Test autoscaling with node launcher in the foreground."""
         self.helperDynamicScaling(foreground_node_launcher=True)
 
-    def _helperDynamicScaling(self, mock_metrics, mock_node_info_stub,
-                              foreground_node_launcher=False):
+    def _helperDynamicScaling(
+        self, mock_metrics, mock_node_info_stub, foreground_node_launcher=False
+    ):
         config = copy.deepcopy(SMALL_CLUSTER)
         if foreground_node_launcher:
             config["provider"]["disable_background_launch_batch"] = True
@@ -1751,8 +1754,7 @@ class AutoscalingTest(unittest.TestCase):
     def testAggressiveAutoscalingWithForegroundLauncher(self):
         self._aggressiveAutoscalingHelper(foreground_node_launcher=True)
 
-    def _aggressiveAutoscalingHelper(self,
-                                     foreground_node_launcher: bool = False):
+    def _aggressiveAutoscalingHelper(self, foreground_node_launcher: bool = False):
         config = copy.deepcopy(SMALL_CLUSTER)
         config["min_workers"] = 0
         config["max_workers"] = 10
@@ -1842,6 +1844,18 @@ class AutoscalingTest(unittest.TestCase):
         for ip in worker_ips:
             # Mark workers inactive.
             lm.last_used_time_by_ip[ip] = 0
+        # Clear the resource demands.
+        # Otherwise in "foreground launcher" mode, workers would be deleted
+        # for being idle and instantly re-created due to resource demand!
+        lm.update(
+            worker_ip,
+            mock_raylet_id(),
+            {},
+            {},
+            {},
+            waiting_bundles=[],
+            infeasible_bundles=[],
+        )
         autoscaler.update()
         self.waitForNodes(1)  # only the head node
         # Make sure they don't get overwritten.

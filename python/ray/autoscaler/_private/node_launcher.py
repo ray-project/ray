@@ -51,9 +51,7 @@ class BaseNodeLauncher:
         self.index = str(index) if index is not None else ""
         self.event_summarizer = event_summarizer
 
-    def launch_node(
-        self, config: Dict[str, Any], count: int, node_type: Optional[str]
-    ):
+    def launch_node(self, config: Dict[str, Any], count: int, node_type: Optional[str]):
         self.log("Got {} nodes to launch.".format(count))
         try:
             self._launch_node(config, count, node_type)
@@ -149,9 +147,13 @@ class NodeLauncher(BaseNodeLauncher, threading.Thread):
     ):
         self.queue = queue
         BaseNodeLauncher.__init__(
-            self, provider=provider, pending=pending,
-            event_summarizer=event_summarizer, prom_metrics=prom_metrics,
-            node_types=node_types, index=index
+            self,
+            provider=provider,
+            pending=pending,
+            event_summarizer=event_summarizer,
+            prom_metrics=prom_metrics,
+            node_types=node_types,
+            index=index,
         )
         threading.Thread.__init__(self, *thread_args, **thread_kwargs)
 
