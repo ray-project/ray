@@ -52,6 +52,7 @@ def URI_cache_10_MB():
         print("URI cache size set to 0.01 GB.")
         yield
 
+
 @pytest.fixture(scope="class")
 def disable_temporary_reference():
     with mock.patch.dict(
@@ -62,6 +63,7 @@ def disable_temporary_reference():
     ):
         print("temporary reference disabled.")
         yield
+
 
 def check_internal_kv_gced():
     return len(kv._internal_kv_list("gcs://")) == 0
@@ -166,7 +168,11 @@ class TestGC:
     @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
     @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
     def test_actor_level_gc(
-        self, start_cluster, working_dir_and_pymodules_disable_URI_cache, disable_temporary_reference, option: str
+        self,
+        start_cluster,
+        working_dir_and_pymodules_disable_URI_cache,
+        disable_temporary_reference,
+        option: str,
     ):
         """Tests that actor-level working_dir is GC'd when the actor exits."""
         NUM_NODES = 5
@@ -419,6 +425,7 @@ class TestSkipLocalGC:
 
         time.sleep(1)  # Give time for GC to potentially happen
         assert not check_local_files_gced(cluster)
+
 
 class TestTemporaryURIReference:
     @pytest.mark.parametrize("expiration_s", [0, 5])
