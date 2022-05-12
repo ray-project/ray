@@ -417,7 +417,7 @@ def test_temporary_uri_reference(start_cluster, source, expiration_s, monkeypatc
 
     cluster, address = start_cluster
     print("Started cluster with address ", address)
-    ray.init(address, runtime_env={"working_dir": source})
+    ray.init(address, namespace="test", runtime_env={"working_dir": source})
     print("Initialized Ray.")
 
     @ray.remote
@@ -430,16 +430,18 @@ def test_temporary_uri_reference(start_cluster, source, expiration_s, monkeypatc
     print("Created and received response from task f.")
     ray.shutdown()
     print("Ray has been shut down.")
+
+    # Give time for deletion to occur if expiration_s is 0.
     time.sleep(2)
 
     if expiration_s > 0:
         assert not check_internal_kv_gced()
     else:
-        assert check_internal_kv_gced()
+        wait_for_condition(lambda: check_internal_kv_gced())
     print("check_internal_kv_gced passed.")
-    time.sleep(expiration_s)
 
-    assert check_internal_kv_gced()
+    wait_for_condition(lambda: check_internal_kv_gced(), timeout=expiration_s + 1)
+
     print("check_internal_kv_gced passed a second time.")
 
 
