@@ -2412,22 +2412,20 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
 
   std::ostringstream stream;
   if (status.IsCreationTaskError()) {
-    stream << "Worker exits because there was an exception in the initialization method "
-              "(e.g., __init__). Fix the exceptions from the initialization to resolve "
-              "the issue. "
-           << status.message();
     Exit(rpc::WorkerExitType::ACTOR_INIT_FAILURE_EXIT,
-         stream.str(),
+         absl::StrCat(
+             "Worker exits because there was an exception in the initialization method "
+             "(e.g., __init__). Fix the exceptions from the initialization to resolve "
+             "the issue. ",
+             status.message()),
          creation_task_exception_pb_bytes);
   } else if (status.IsIntentionalSystemExit()) {
-    stream << "Worker exits by an user request. " << status.message();
     Exit(rpc::WorkerExitType::INTENTIONAL_USER_EXIT,
-         stream.str(),
+         absl::StrCat("Worker exits by an user request. ", status.message()),
          creation_task_exception_pb_bytes);
   } else if (status.IsUnexpectedSystemExit()) {
-    stream << "Worker exits unexpectedly. " << status.message();
     Exit(rpc::WorkerExitType::UNEXPECTED_SYSTEM_EXIT,
-         stream.str(),
+         absl::StrCat("Worker exits unexpectedly. ", status.message()),
          creation_task_exception_pb_bytes);
   } else if (!status.ok()) {
     RAY_LOG(FATAL) << "Unexpected task status type : " << status;
