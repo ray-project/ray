@@ -147,4 +147,4 @@ EXPR_PROGRESS_FILE = "progress.csv"
 EXPR_RESULT_FILE = "result.json"
 
 # Config prefix when using ExperimentAnalysis.
-CONFIG_PREFIX = "config/"
+CONFIG_PREFIX = "config"
