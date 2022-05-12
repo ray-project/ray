@@ -7,7 +7,7 @@ import requests
 
 
 # __streamlit_model_begin__
-if 'model' not in st.session_state:
+if "model" not in st.session_state:
     serve.start()
 
     @serve.deployment
@@ -17,7 +17,7 @@ if 'model' not in st.session_state:
         return language_model(query, max_length=100)
 
     model.deploy()
-    st.session_state['model'] = True
+    st.session_state["model"] = True
 # __streamlit_model_end__
 
 # __streamlit_test_begin__
@@ -39,7 +39,7 @@ st.title("Serving a GPT-2 model")
 
 query = st.text_input(label="Input prompt", value="What's the meaning of life?")
 
-if st.button('Run model'):
+if st.button("Run model"):
     output = gpt2(query)
 
     st.header("Model output")
