@@ -98,11 +98,12 @@ def all_tower_reduce(path, *tower_data):
     elif tower_data[0] is None:
         return None
 
-    # Min stats: Reduce min.
-    if path[-1].startswith("min_"):
-        return np.nanmin(tower_data)
-    # Max stats: Reduce max.
-    elif path[-1].startswith("max_"):
-        return np.nanmax(tower_data)
+    if isinstance(path[-1], str):
+        # Min stats: Reduce min.
+        if path[-1].startswith("min_"):
+            return np.nanmin(tower_data)
+        # Max stats: Reduce max.
+        elif path[-1].startswith("max_"):
+            return np.nanmax(tower_data)
     # Everything else: Reduce mean.
     return np.nanmean(tower_data)
