@@ -325,7 +325,9 @@ class TestGC:
         print("check_local_files_gced passed wait_for_condition block.")
 
     @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-    def test_hit_cache_size_limit(self, start_cluster, URI_cache_10_MB):
+    def test_hit_cache_size_limit(
+        self, start_cluster, URI_cache_10_MB, disable_temporary_reference
+    ):
         """Test eviction happens when we exceed a nonzero (10MB) cache size."""
         NUM_NODES = 3
         cluster, address = start_cluster
@@ -427,43 +429,43 @@ class TestSkipLocalGC:
         assert not check_local_files_gced(cluster)
 
 
-class TestTemporaryURIReference:
-    @pytest.mark.parametrize("expiration_s", [0, 5])
-    @pytest.mark.parametrize("source", [lazy_fixture("tmp_working_dir")])
-    def test_temporary_uri_reference(start_cluster, source, expiration_s, monkeypatch):
-        """Test that temporary GCS URI references are deleted after expiration_s."""
-        monkeypatch.setenv(
-            "RAY_runtime_env_temporary_reference_expiration_s", str(expiration_s)
-        )
+@pytest.mark.parametrize("expiration_s", [0, 20])
+@pytest.mark.parametrize("source", [lazy_fixture("tmp_working_dir")])
+def test_temporary_uri_reference(start_cluster, source, expiration_s, monkeypatch):
+    """Test that temporary GCS URI references are deleted after expiration_s."""
+    monkeypatch.setenv(
+        "RAY_runtime_env_temporary_reference_expiration_s", str(expiration_s)
+    )
 
-        cluster, address = start_cluster
-        print("Started cluster with address ", address)
-        ray.init(address, namespace="test", runtime_env={"working_dir": source})
-        print("Initialized Ray.")
+    cluster, address = start_cluster
 
-        @ray.remote
-        def f():
-            pass
+    start = time.time()
+    ray.init(address, namespace="test", runtime_env={"working_dir": source})
 
-        # Wait for runtime env to be set up. This can be accomplished by getting
-        # the result of a task.
-        ray.get(f.remote())
-        print("Created and received response from task f.")
-        ray.shutdown()
-        print("Ray has been shut down.")
+    @ray.remote
+    def f():
+        pass
 
-        # Give time for deletion to occur if expiration_s is 0.
-        time.sleep(2)
+    # Wait for runtime env to be set up. This can be accomplished by getting
+    # the result of a task.
+    ray.get(f.remote())
+    ray.shutdown()
 
-        if expiration_s > 0:
-            assert not check_internal_kv_gced()
-        else:
-            wait_for_condition(lambda: check_internal_kv_gced())
-        print("check_internal_kv_gced passed.")
+    # Give time for deletion to occur if expiration_s is 0.
+    time.sleep(2)
 
-        wait_for_condition(lambda: check_internal_kv_gced(), timeout=expiration_s + 1)
+    # Need to re-connect to use internal_kv.
+    ray.init(address=address)
 
-        print("check_internal_kv_gced passed a second time.")
+    print("Starting Internal KV checks at time ", time.time() - start)
+    if expiration_s > 0:
+        assert not check_internal_kv_gced()
+        wait_for_condition(check_internal_kv_gced, timeout=2 * expiration_s)
+        assert expiration_s < time.time() - start < 2 * expiration_s
+        print("Internal KV was GC'ed at time ", time.time() - start)
+    else:
+        wait_for_condition(check_internal_kv_gced)
+        print("Internal KV was GC'ed at time ", time.time() - start)
 
 
 if __name__ == "__main__":
