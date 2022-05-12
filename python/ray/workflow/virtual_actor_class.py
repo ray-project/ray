@@ -327,6 +327,9 @@ class VirtualActorMetadata:
         """Generate random actor ID."""
         return f"{slugify(self.qualname)}.{uuid.uuid4()}"
 
+    def __reduce__(self):
+        return self.__init__, (self.cls,)
+
 
 class VirtualActorClassBase(metaclass=abc.ABCMeta):
     @abc.abstractmethod
@@ -466,10 +469,11 @@ class VirtualActorClass(VirtualActorClassBase):
                 def f(va, actor_id, args, kwargs):
                     ins = va._construct(actor_id)
                     ins._create(args, kwargs)
-                ray.get(f.remote(self, actor_id, args, kwargs))
+                    return ins
+                return ray.get(f.remote(self, actor_id, args, kwargs))
             else:
                 instance._create(args, kwargs)
-            return instance
+                return instance
 
     def _construct(self, actor_id: str) -> "VirtualActor":
         """Construct a blank virtual actor."""
@@ -565,6 +569,9 @@ class VirtualActor:
                 return execute_workflow(job_id, wf).volatile_output.ref
             else:
                 return wf.run_async(self._actor_id)
+
+    def __reduce__(self):
+        return self.__init__, (self._metadata, self._actor_id)
 
 
 def decorate_actor(cls: type):
