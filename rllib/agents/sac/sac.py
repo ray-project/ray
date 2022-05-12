@@ -84,16 +84,13 @@ DEFAULT_CONFIG = with_common_config({
 
     # === Replay buffer ===
     "replay_buffer_config": {
-        "type": "MultiAgentPrioritizedReplayBuffer",
+        "type": "MultiAgentReplayBuffer",
         # Specify prioritized replay by supplying a buffer type that supports
         # prioritization
         "prioritized_replay": DEPRECATED_VALUE,
         "capacity": int(1e6),
         # How many steps of the model to sample before learning starts.
         "learning_starts": 1500,
-        "prioritized_replay_alpha": 0.6,
-        "prioritized_replay_beta": 0.4,
-        "prioritized_replay_eps": 1e-6,
         # Whether to compute priorities on workers.
         "worker_side_prioritization": False,
     },

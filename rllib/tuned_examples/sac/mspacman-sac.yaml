@@ -32,6 +32,7 @@ mspacman-sac-tf:
         # Paper uses 20k random timesteps, which is not exactly the same, but
         # seems to work nevertheless.
         replay_buffer_config:
+          type: MultiAgentPrioritizedReplayBuffer
           learning_starts: 20000
         optimization:
             actor_learning_rate: 0.0003
