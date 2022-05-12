@@ -25,9 +25,7 @@ public interface RuntimeContext {
   /** Returns true if the current actor was restarted, otherwise false. */
   boolean wasCurrentActorRestarted();
 
-  /**
-   * Returns true if Ray is running in local mode, false if Ray is running in cluster mode.
-   */
+  /** Returns true if Ray is running in local mode, false if Ray is running in cluster mode. */
   boolean isLocalMode();
 
   /** Get all node information in Ray cluster. */

@@ -372,8 +372,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
         LOGGER.debug("Creating Actor {}, jvmOptions = {}.", functionDescriptor, options.jvmOptions);
       }
     }
-    if (rayConfig.runMode == RunMode.LOCAL
-        && functionDescriptor.getLanguage() != Language.JAVA) {
+    if (rayConfig.runMode == RunMode.LOCAL && functionDescriptor.getLanguage() != Language.JAVA) {
       throw new IllegalArgumentException(
           "Ray doesn't support cross-language invocation in local mode.");
     }
