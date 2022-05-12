@@ -1,7 +1,7 @@
-from gym.spaces import Discrete, MultiDiscrete, Space, Tuple
+from gym.spaces import Discrete, MultiDiscrete, Space
+import logging
 import numpy as np
-from typing import Optional, Tuple, Union
-import xxhash
+from typing import Optional, Union
 
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.models.action_dist import ActionDistribution
@@ -15,6 +15,8 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.tf_utils import get_placeholder
 from ray.rllib.utils.typing import FromConfigSpec, ModelConfigDict, TensorType
+
+logger = logging.getLogger(__name__)
 
 tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
@@ -87,14 +89,18 @@ class NovelD(Exploration):
             )
             
         # Try to import xxhash.
-        try:
-            import xxhash            
+        try:           
+            import xxhash
             self._hash_state = self._xxhash_state
+            logger.info("Initializing NovelD: Found `xxhash`. Using it for hashing "
+                        "visited states in exploration as it offers higher performance " 
+                        "and can provide hashing for larger observation spaces.")
         except ImportError as e:     
-            self._hash_state = self._strhash_state
-            print("xxhash not found. Falling back to default hashing. If you want to install "
-                  + "`xxhash` use `pip install xxhash`. `xxhash` shows better performance and "
-                  + "can provide hashing for larger observation spaces.")
+            self._hash_state = self._defaulthash_state
+            logger.warning("Initializing NovelD: `xxhash` not found. Falling back to "
+                           "default hashing. If you want to install `xxhash` use "
+                           "`pip install xxhash`. `xxhash` shows higher performance and "
+                           "can provide hashing for larger observation spaces.")
             
         self.embed_dim = embed_dim
         # In case no configuration is passed in, use the Policy's model config.
@@ -433,7 +439,7 @@ class NovelD(Exploration):
 
         return sample_batch
         
-    def _strhash_state(
+    def _defaulthash_state(
         self,
         obs,
     ):
@@ -454,6 +460,7 @@ class NovelD(Exploration):
         
         This is used to count states for the intrinsic rewards.
         """
+        import xxhash
         data = bytes() + b',' + obs.tobytes()        
         return xxhash.xxh3_64_hexdigest(data)
         

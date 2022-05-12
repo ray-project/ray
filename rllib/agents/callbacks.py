@@ -548,14 +548,47 @@ class RE3UpdateCallbacks(DefaultCallbacks):
         
     
 class NovelDMetricsCallbacks(DefaultCallbacks):
+    """Collects metrics for NovelD exploration.
     
+    The metrics should help users monitor the exploration of
+    the environment. The metrics tracked are:
+    
+    intrinsic_reward: The intrinsic reward given by NovelD for
+        exploring new states. These are averaged over the 
+        timesteps in the episode. A high metric indicates that 
+        a lot of new states are explored over the course of an
+        episode.
+    novelty: The novelty in NovelD is the distillation error. 
+        This error decreases over the run of an experiment for 
+        already explored states. A low metric indicats that 
+        the agent visits states where it has already been or 
+        states that are very similar to states he visited before. 
+        If the state is truly novel this metric increases.
+    novelty_next: This is the equivalent metric for the next 
+        state visited (see `novelty`). Together with `novelty` 
+        this metric helps the user to understand the values for 
+        the `intrinsic_reward`.
+    state_counts_total: The number of states explored over the 
+        course of the experiment. If this metric stagnates it is
+        a sign of little exploration. 
+    state_counts_avg: The average number of state visits. This 
+        metric averages the visits to single states. If this metric 
+        rises it is a sign of either little exploration or of 
+        states that have to be crossed by the agent to go further. 
+        Together with `state_counts_total` this metric helps user 
+        to get a glimpse at state exploration. A low 
+        `state_counts_total` with high `state_counts_avg` is a 
+        strong sign of little exploration, whereas a high 
+        `state_counts_total` together with a low `state_counts_avg` 
+        is a good indicator of much exploration.
+    """
     def __init__(self):
         super().__init__()
         
     def on_episode_start(
         self,
         *,
-        worker: RolloutWorker,
+        worker: "RolloutWorker",
         base_env: BaseEnv,
         policies: Dict[str, Policy],
         episode: Episode,
@@ -576,7 +609,7 @@ class NovelDMetricsCallbacks(DefaultCallbacks):
     def on_episode_step(
         self,
         *,
-        worker: RolloutWorker,
+        worker: "RolloutWorker",
         base_env: BaseEnv,
         policies: Dict[str, Policy],
         episode: Episode,
@@ -588,6 +621,7 @@ class NovelDMetricsCallbacks(DefaultCallbacks):
             "after `env.reset()`."
         )
         
+        # Get the actual state values of the NovelD exploration.
         (
             intrinsic_reward,
             novelty,
@@ -606,7 +640,7 @@ class NovelDMetricsCallbacks(DefaultCallbacks):
     def on_episode_end(
         self,
         *,
-        worker: RolloutWorker,
+        worker: "RolloutWorker",
         base_env: BaseEnv,
         policies: Dict[str, Policy],
         episode: Episode,
@@ -614,9 +648,16 @@ class NovelDMetricsCallbacks(DefaultCallbacks):
         **kwargs,
     ):
         # Average over episode.
-        episode.custom_metrics["intrinsic_reward"] = np.mean(episode.user_data["intrinsic_reward"])
-        episode.custom_metrics["novelty"] = np.mean(episode.user_data["novelty"])
-        episode.custom_metrics["novelty_next"] = np.mean(episode.user_data["novelty_next"])
-        episode.custom_metrics["state_counts_total"] = np.mean(episode.user_data["state_counts_total"])
-        episode.custom_metrics["state_counts_avg"] = np.mean(episode.user_data["state_counts_avg"])
+        episode.custom_metrics["noveld/intrinsic_reward"] = np.mean(episode.user_data["intrinsic_reward"])
+        episode.custom_metrics["noveld/novelty"] = np.mean(episode.user_data["novelty"])
+        episode.custom_metrics["noveld/novelty_next"] = np.mean(episode.user_data["novelty_next"])
+        episode.custom_metrics["noveld/state_counts_total"] = np.mean(episode.user_data["state_counts_total"])
+        episode.custom_metrics["noveld/state_counts_avg"] = np.mean(episode.user_data["state_counts_avg"])
+        
+        # Show also histograms of episodic intrinsic rewards.
+        episode.hist_data["noveld/intrinsic_reward"] = episode.user_data["intrinsic_reward"]
+        episode.hist_data["noveld/novelty"] = episode.user_data["novelty"]
+        episode.hist_data["noveld/novelty_next"] = episode.user_data["novelty_next"]
+        episode.hist_data["noveld/state_counts_total"] = episode.user_data["state_counts_total"]
+        episode.hist_data["noveld/state_counts_avg"] = episode.user_data["state_counts_avg"]
         
