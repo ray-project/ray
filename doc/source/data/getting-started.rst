@@ -127,7 +127,7 @@ Transformations are executed *eagerly* and block until the operation is finished
 
 .. code-block:: python
 
-    def transform_batch(df: pandas.DataFrame) -> pandas.DataFrame:
+    def transform_batch(df: pandas.DataFrame) -> pd.DataFrame:
         return df.applymap(lambda x: x * 2)
 
     ds = ray.data.range_arrow(10000)
