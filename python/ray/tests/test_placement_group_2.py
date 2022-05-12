@@ -811,5 +811,24 @@ def test_bundle_recreated_when_raylet_fo_after_gcs_server_restart(
     assert ray.get(actor.method.remote(1), timeout=5) == 3
 
 
+def test_create_pg_when_add_new_node_after_gcs_server_restart(
+    ray_start_cluster_head_with_external_redis,
+):
+    cluster = ray_start_cluster_head_with_external_redis
+
+    # Restart gcs server.
+    cluster.head_node.kill_gcs_server()
+    cluster.head_node.start_gcs_server()
+
+    # Restart the raylet.
+    cluster.add_node(num_cpus=2)
+    cluster.wait_for_nodes()
+
+    placement_group = ray.util.placement_group([{"CPU": 2}])
+    ray.get(placement_group.ready(), timeout=10)
+    table = ray.util.placement_group_table(placement_group)
+    assert table["state"] == "CREATED"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
