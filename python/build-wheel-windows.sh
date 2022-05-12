@@ -100,7 +100,7 @@ build_wheel_windows() {
 
       # Drop this pin once Python 3.6 is retired from Ray.
       # Details in https://github.com/ray-project/ray/issues/24653.
-      conda install --upgrade setuptools==58.4
+      pip install --upgrade setuptools==58.4
 
       unset PYTHON2_BIN_PATH PYTHON3_BIN_PATH  # make sure these aren't set by some chance
       install_ray
