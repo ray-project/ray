@@ -26,6 +26,7 @@ from ray._private.runtime_env.pip import PipManager
 from ray._private.runtime_env.conda import CondaManager
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.py_modules import PyModulesManager
+from ray._private.runtime_env.java_jars import JavaJarsManager
 from ray._private.runtime_env.working_dir import WorkingDirManager
 from ray._private.runtime_env.container import ContainerManager
 from ray._private.runtime_env.uri_cache import URICache
@@ -46,6 +47,9 @@ WORKING_DIR_CACHE_SIZE_BYTES = int(
 )
 PY_MODULES_CACHE_SIZE_BYTES = int(
     (1024 ** 3) * float(os.environ.get("RAY_RUNTIME_ENV_PY_MODULES_CACHE_SIZE_GB", 10))
+)
+JAVA_JARS_CACHE_SIZE_BYTES = int(
+    (1024 ** 3) * float(os.environ.get("RAY_RUNTIME_ENV_JAVA_JARS_CACHE_SIZE_GB", 10))
 )
 CONDA_CACHE_SIZE_BYTES = int(
     (1024 ** 3) * float(os.environ.get("RAY_RUNTIME_ENV_CONDA_CACHE_SIZE_GB", 10))
@@ -71,6 +75,7 @@ class UriType(Enum):
     PY_MODULES = 2
     PIP = 3
     CONDA = 4
+    JAVA_JARS = 5
 
 
 class ReferenceTable:
@@ -198,6 +203,7 @@ class RuntimeEnvAgent(
         self._pip_manager = PipManager(self._runtime_env_dir)
         self._conda_manager = CondaManager(self._runtime_env_dir)
         self._py_modules_manager = PyModulesManager(self._runtime_env_dir)
+        self._java_jars_manager = JavaJarsManager(self._runtime_env_dir)
         self._working_dir_manager = WorkingDirManager(self._runtime_env_dir)
         self._container_manager = ContainerManager(dashboard_agent.temp_dir)
 
@@ -212,6 +218,9 @@ class RuntimeEnvAgent(
         )
         self._py_modules_uri_cache = URICache(
             self._py_modules_manager.delete_uri, PY_MODULES_CACHE_SIZE_BYTES
+        )
+        self._java_jars_uri_cache = URICache(
+            self._java_jars_manager.delete_uri, JAVA_JARS_CACHE_SIZE_BYTES
         )
         self._conda_uri_cache = URICache(
             self._conda_manager.delete_uri, CONDA_CACHE_SIZE_BYTES
@@ -243,6 +252,8 @@ class RuntimeEnvAgent(
                 self._working_dir_uri_cache.mark_unused(uri)
             elif uri_type == UriType.PY_MODULES:
                 self._py_modules_uri_cache.mark_unused(uri)
+            elif uri_type == UriType.JAVA_JARS:
+                self._java_jars_uri_cache.mark_unused(uri)
             elif uri_type == UriType.CONDA:
                 self._conda_uri_cache.mark_unused(uri)
             elif uri_type == UriType.PIP:
@@ -287,7 +298,6 @@ class RuntimeEnvAgent(
             allocated_resource: dict = json.loads(
                 serialized_allocated_resource_instances or "{}"
             )
-
             # Use a separate logger for each job.
             per_job_logger = self.get_or_create_logger(request.job_id)
             # TODO(chenk008): Add log about allocated_resource to
@@ -319,23 +329,24 @@ class RuntimeEnvAgent(
             # Set up py_modules. For now, py_modules uses multiple URIs so
             # the logic is slightly different from working_dir, conda, and
             # pip above.
-            py_modules_uris = self._py_modules_manager.get_uris(runtime_env)
-            if py_modules_uris is not None:
-                for uri in py_modules_uris:
-                    if uri not in self._py_modules_uri_cache:
-                        per_job_logger.debug(f"Cache miss for URI {uri}.")
-                        size_bytes = await self._py_modules_manager.create(
-                            uri, runtime_env, context, logger=per_job_logger
-                        )
-                        self._py_modules_uri_cache.add(
-                            uri, size_bytes, logger=per_job_logger
-                        )
-                    else:
-                        per_job_logger.debug(f"Cache hit for URI {uri}.")
-                        self._py_modules_uri_cache.mark_used(uri, logger=per_job_logger)
-            self._py_modules_manager.modify_context(
-                py_modules_uris, runtime_env, context
-            )
+            for (manager, uri_cache) in [
+                (self._java_jars_manager, self._java_jars_uri_cache),
+                (self._py_modules_manager, self._py_modules_uri_cache),
+            ]:
+                uris = manager.get_uris(runtime_env)
+                if uris is not None:
+                    per_job_logger.debug(f"URIs is not None, URI {uris}.")
+                    for uri in uris:
+                        if uri not in uri_cache:
+                            per_job_logger.debug(f"Cache miss for URI {uri}.")
+                            size_bytes = await manager.create(
+                                uri, runtime_env, context, logger=per_job_logger
+                            )
+                            uri_cache.add(uri, size_bytes, logger=per_job_logger)
+                        else:
+                            per_job_logger.debug(f"Cache hit for URI {uri}.")
+                            uri_cache.mark_used(uri, logger=per_job_logger)
+                manager.modify_context(uris, runtime_env, context)
 
             def setup_plugins():
                 # Run setup function from all the plugins
