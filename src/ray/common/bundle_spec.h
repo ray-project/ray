@@ -72,6 +72,8 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
     return bundle_resource_labels_;
   }
 
+  absl::flat_hash_map<std::string, double> GetWildcardResources() const;
+
   std::string DebugString() const;
 
  private:

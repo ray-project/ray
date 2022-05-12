@@ -20,11 +20,13 @@
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/raylet/scheduling/cluster_resource_data.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
+#include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
+using raylet::ClusterTaskManager;
 namespace gcs {
 /// Ideally, the logic related to resource calculation should be moved from
 /// `gcs_resoruce_manager` to `cluster_resource_manager`, and all logic related to
@@ -52,9 +54,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   explicit GcsResourceManager(
       std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
       ClusterResourceManager &cluster_resource_manager,
-      scheduling::NodeID local_node_id = scheduling::NodeID::Nil(),
-      std::function<void(rpc::ResourcesData &data)> get_gcs_node_resource_usage =
-          [](auto) { return; });
+      NodeID local_node_id,
+      std::shared_ptr<ClusterTaskManager> cluster_task_manager = nullptr);
 
   virtual ~GcsResourceManager() {}
 
@@ -170,14 +171,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   uint64_t counts_[CountType::CountType_MAX] = {0};
 
   ClusterResourceManager &cluster_resource_manager_;
-  scheduling::NodeID local_node_id_;
-
-  /// Get the resource usage of the gcs node. Note, different from worker nodes,
-  /// gcs node only provides pending and infeasible actor info.
-  ///
-  /// \param[out] data: Output parameter. `resource_load_by_shape` is the only field
-  /// filled.
-  std::function<void(rpc::ResourcesData &data)> get_gcs_node_resource_usage_;
+  NodeID local_node_id_;
+  std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
 };
 
 }  // namespace gcs

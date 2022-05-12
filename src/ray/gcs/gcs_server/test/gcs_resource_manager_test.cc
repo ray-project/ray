@@ -28,8 +28,8 @@ using ::testing::_;
 class GcsResourceManagerTest : public ::testing::Test {
  public:
   GcsResourceManagerTest() {
-    gcs_resource_manager_ =
-        std::make_shared<gcs::GcsResourceManager>(nullptr, cluster_resource_manager_);
+    gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(
+        nullptr, cluster_resource_manager_, NodeID::FromRandom());
   }
 
   ClusterResourceManager cluster_resource_manager_;

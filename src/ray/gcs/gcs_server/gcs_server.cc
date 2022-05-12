@@ -252,11 +252,8 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
   gcs_resource_manager_ = std::make_shared<GcsResourceManager>(
       gcs_table_storage_,
       cluster_resource_scheduler_->GetClusterResourceManager(),
-      scheduling::NodeID(local_node_id_.Binary()),
-      /*get_gcs_node_resource_usage=*/
-      [this](rpc::ResourcesData &data) {
-        cluster_task_manager_->FillPendingActorInfo(data);
-      });
+      local_node_id_,
+      cluster_task_manager_);
 
   // Initialize by gcs tables data.
   gcs_resource_manager_->Initialize(gcs_init_data);
