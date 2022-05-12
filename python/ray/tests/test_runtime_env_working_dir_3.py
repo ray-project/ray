@@ -46,6 +46,7 @@ def URI_cache_10_MB():
         {
             "RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB": "0.01",
             "RAY_RUNTIME_ENV_PY_MODULES_CACHE_SIZE_GB": "0.01",
+            "RAY_runtime_env_temporary_reference_expiration_s": "0",
         },
     ):
         print("URI cache size set to 0.01 GB.")
