@@ -2064,6 +2064,29 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "gcs_client_reconnection_test",
+    srcs = [
+        "src/ray/gcs/gcs_client/test/gcs_client_reconnection_test.cc",
+    ],
+    args = [
+        "$(location redis-server)",
+        "$(location redis-cli)",
+    ],
+    copts = COPTS,
+    data = [
+        "//:redis-cli",
+        "//:redis-server",
+    ],
+    tags = ["team:core"],
+    deps = [
+        ":gcs_client_lib",
+        ":gcs_server_lib",
+        ":gcs_test_util_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "object_manager",
     srcs = glob([

@@ -197,6 +197,12 @@ class MultiAgentReplayBuffer(ParallelIteratorWorker):
                         self.replay_buffers[policy_id].add(time_slice, weight=weight)
         self.num_added += batch.count
 
+    # TODO: This entire class will be removed soon. Leave this as a shim in case
+    #  new `training_iteration` methods call the new replay buffer API's `sample()`
+    #  method on this old buffer class here.
+    def sample(self, num_items=None):
+        return self.replay()
+
     def replay(self, policy_id: Optional[PolicyID] = None) -> SampleBatchType:
         """If this buffer was given a fake batch, return it, otherwise return
         a MultiAgentBatch with samples.
