@@ -118,7 +118,7 @@ Counter.deploy()
 ```
 
 :::{note}
-Deployments can be configured to improve performance, for example by increasing the number of replicas of the class being served in parallel.  For details, see {ref}`configuring-a-deployment`.
+Deployments can be configured to improve performance, for example by increasing the number of replicas of the class being served in parallel.  For details, see [Guide on how to configure a deployment](configuring-a-deployment).
 :::
 
 Now that our deployment is up and running, let's test it out by making a query over HTTP.
@@ -177,7 +177,7 @@ Note that the count has been reset to zero because the new version of `Counter` 
 {"count": 0}
 ```
 
-Congratulations, you just built and ran your first Ray Serve application! You should now have enough context to dive into the {doc}`core-apis` to get a deeper understanding of Ray Serve.
+Congratulations, you just built and ran your first Ray Serve application! You should now have enough context to dive into the {doc}`key-concepts` to get a deeper understanding of Ray Serve.
 For more interesting example applications, including integrations with popular machine learning frameworks and Python web servers, be sure to check out {doc}`tutorials/index`.
 For a high-level view of the architecture underlying Ray Serve, see {doc}`architecture`.
 
@@ -211,7 +211,7 @@ If you plan on running on multiple machines, Ray Serve will serve you well!
 
 ## What's next?
 
-Check out the {ref}`end-to-end-tutorial` and {doc}`core-apis`, look at the {ref}`serve-faq`,
+Check out the {ref}`end-to-end-tutorial` and {doc}`key-concepts`, look at the {ref}`serve-faq`,
 or head over to the {doc}`tutorials/index` to get started building your Ray Serve applications.
 
 For more, see the following blog posts about Ray Serve:

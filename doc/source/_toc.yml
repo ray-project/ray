@@ -63,7 +63,10 @@ parts:
         title: Ray Serve
         sections:
           - file: serve/end_to_end_tutorial
-          - file: serve/core-apis
+          - file: serve/key-concepts
+          - file: serve/user-guide
+            sections:
+              - file: serve/managing-deployments
           - file: serve/http-servehandle
           - file: serve/ml-models
           - file: serve/deployment-graph
