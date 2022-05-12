@@ -23,8 +23,10 @@ Chat with Ray Serve users and developers on our [forum](https://discuss.ray.io/)
 Ray Serve is a scalable model serving library for building online inference APIs.
 Serve is framework agnostic, so you can use a single toolkit to serve everything from deep learning models built with frameworks like [PyTorch](serve-pytorch-tutorial),
   [Tensorflow, and Keras](serve-tensorflow-tutorial), to [Scikit-Learn](serve-sklearn-tutorial) models, to arbitrary Python business logic.
-You can also write a complex inference service consisting of multiple ML models and business logic all in Python code using the [deployment graph](serve-deployment-graph) API.
-Serve is built on Ray, so it easily scales to many machines and offers flexible scheduling support such as fractional GPUs so you can share resources and serve many machine learning models at low cost.
+
+Serve is particularly well suited for {ref}`serve-model-composition`, enabling you to build a complex inference service consisting of multiple ML models and business logic all in Python code.
+
+Serve is built on top of Ray, so it easily scales to many machines and offers flexible scheduling support such as fractional GPUs so you can share resources and serve many machine learning models at low cost.
 
 :::{tabbed} Installation
 
@@ -72,17 +74,19 @@ The model we'll use is a sentiment analysis model: it will take a text string as
 ## Why choose Serve?
 
 :::{dropdown} Build end-to-end ML-powered applications
+:animate: fade-in-slide-down
 
 Many solutions for ML serving focus on "tensor-in, tensor-out" serving: that is, they wrap ML models behind a predefined, structured endpoint.
 However, machine learning isn't useful in isolation!
 It's often important to combine machine learning with business logic and traditional web serving logic such as database queries.
 
-Ray Serve is unique in that it allows you to build an end-to-end distributed serving application in a single framework.
-You can combine multiple ML models, business logic, and expressive HTTP handling using Serve's FastAPI integration (see {ref}`serve-fastapi-http`) to build your entire application end-to-end.
+Ray Serve is unique in that it allows you to build and deploy an end-to-end distributed serving application in a single framework.
+You can combine multiple ML models, business logic, and expressive HTTP handling using Serve's FastAPI integration (see {ref}`serve-fastapi-http`) to build your entire application as one Python program.
 
 :::
 
-:::{dropdown} Combine multiple models using a programmable Python API
+:::{dropdown} Combine multiple models using a programmable API
+:animate: fade-in-slide-down
 
 Often solving a problem requires more than just a single machine learning model.
 For instance, image processing applications typically require a multi-stage pipeline consisting of steps like preprocessing, segmentation, and filtering in order to achieve their end goal.
@@ -90,27 +94,27 @@ In many cases each model may use a different architecture or framework and requi
 
 Many other solutions support defining a static graph in YAML or some other configuration language.
 This can be limiting and hard to work with.
-Ray Serve, on the other hand, supports multi-model composition using a programmable Python API where calls to different models look just like Python function calls.
-The models can use different resources and run across different machines in the cluster, but to the developer it's just like writing a regular program.
-See {ref}`serve-model-composition` for more details.
+Ray Serve, on the other hand, supports multi-model composition using a programmable API where calls to different models look just like function calls.
+The models can use different resources and run across different machines in the cluster, but to the developer it's just like writing a regular program (see {ref}`serve-model-composition` for more details).
 
 :::
 
 :::{dropdown} Flexibly scale up and allocate resources
+:animate: fade-in-slide-down
 
 Machine learning models are compute-intensive and therefore can be very expensive to operate.
 A key requirement for any ML serving system is being able to dynamically scale up and down and allocate the right resources for each model to handle the request load while saving cost.
 
 Serve offers a number of built-in primitives to help make your ML serving application efficient.
-It supports dynamically scaling the resources for a model up and down by adjusting the number of replicas (including autoscaling based on request load), batching requests to take advantage of efficient vectorized operations (especially important on GPUs!), and a flexible resource allocation model that enables you to serve many models on limited hardware resources.
+It supports dynamically scaling the resources for a model up and down by adjusting the number of replicas, batching requests to take advantage of efficient vectorized operations (especially important on GPUs), and a flexible resource allocation model that enables you to serve many models on limited hardware resources.
 
 :::
 
 :::{dropdown} Avoid framework or vendor lock-in
+:animate: fade-in-slide-down
 
-Machine learning moves fast!
-With new libraries and model architectures being released all the time, it's important to avoid locking yourself into a solution that is tied to a specific framework and therefore locking yourself out of the bext solution to suit your needs.
-This is particularly important in serving, where making changes to your infrastrcture can be time consuming, expensive, and risky.
+Machine learning moves fast, with new libraries and model architectures being released all the time, it's important to avoid locking yourself into a solution that is tied to a specific framework.
+This is particularly important in serving, where making changes to your infrastructure can be time consuming, expensive, and risky.
 Additionally, many hosted solutions are limited to a single cloud provider which can be a problem in today's multi-cloud world.
 
 Ray Serve is not tied to any specific machine learning library or framework, but rather provides a general-purpose scalable serving layer.
