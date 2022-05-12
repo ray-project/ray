@@ -653,8 +653,9 @@ void TaskManager::MarkDependenciesResolved(const TaskID &task_id) {
 void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id) {
   absl::MutexLock lock(&mu_);
   auto it = submissible_tasks_.find(task_id);
-  RAY_CHECK(it != submissible_tasks_.end())
-      << "Tried to run a task that was not pending " << task_id;
+  if (it == submissible_tasks_.end()) {
+    return;
+  }
   RAY_CHECK(it->second.status == rpc::TaskStatus::SCHEDULED);
   it->second.status = rpc::TaskStatus::WAITING_FOR_EXECUTION;
 }
