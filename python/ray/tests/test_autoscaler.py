@@ -661,6 +661,29 @@ class AutoscalingTest(unittest.TestCase):
             f.write(yaml.dump(new_config))
         return path
 
+    def worker_node_thread_check(self, foreground_node_launcher: bool):
+        """Confirms that worker nodes were launched in the main thread if foreground
+        node launch is enabled, in a subthread otherwise.
+
+
+        Args:
+            foreground_node_launcher: Whether workers nodes are expected to be
+            launched in the foreground.
+
+        """
+        worker_ids = self.provider.non_terminated_nodes(tag_filters=WORKER_FILTER)
+        worker_nodes = [self.provider.mock_nodes[worker_id] for worker_id in worker_ids]
+        if foreground_node_launcher:
+            # All workers were created in the main thread.
+            assert all(
+                worker_node.created_in_main_thread for worker_node in worker_nodes
+            )
+        else:
+            # All workers were created in a background thread.
+            assert not any(
+                worker_node.created_in_main_thread for worker_node in worker_nodes
+            )
+
     def testAutoscalerConfigValidationFailNotFatal(self):
         invalid_config = {**SMALL_CLUSTER, "invalid_property_12345": "test"}
         # First check that this config is actually invalid
@@ -1629,19 +1652,7 @@ class AutoscalingTest(unittest.TestCase):
         else:
             self.waitForNodes(10, tag_filters=WORKER_FILTER)
 
-        worker_ids = self.provider.non_terminated_nodes(tag_filters=WORKER_FILTER)
-        if foreground_node_launcher:
-            # All workers were created in the main thread.
-            assert all(
-                self.provider.mock_nodes[worker_id].created_in_main_thread
-                for worker_id in worker_ids
-            )
-        else:
-            # All workers were created in a background thread.
-            assert not any(
-                self.provider.mock_nodes[worker_id].created_in_main_thread
-                for worker_id in worker_ids
-            )
+        self.worker_node_thread_check(foreground_node_launcher)
 
         # Check the launch failure event is generated.
         autoscaler.update()
@@ -1824,19 +1835,7 @@ class AutoscalingTest(unittest.TestCase):
             assert self.num_nodes() == 11
         else:
             self.waitForNodes(11)
-        worker_ids = self.provider.non_terminated_nodes(tag_filters=WORKER_FILTER)
-        if foreground_node_launcher:
-            # All workers were created in the main thread.
-            assert all(
-                self.provider.mock_nodes[worker_id].created_in_main_thread
-                for worker_id in worker_ids
-            )
-        else:
-            # All workers were created in a background thread.
-            assert not any(
-                self.provider.mock_nodes[worker_id].created_in_main_thread
-                for worker_id in worker_ids
-            )
+        self.worker_node_thread_check(foreground_node_launcher)
 
         worker_ips = self.provider.non_terminated_node_ips(
             tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER},
