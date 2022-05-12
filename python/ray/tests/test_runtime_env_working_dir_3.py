@@ -413,7 +413,7 @@ class TestSkipLocalGC:
 def test_temporary_uri_reference(start_cluster, source, expiration_s, monkeypatch):
     """Test that temporary GCS URI references are deleted after expiration_s."""
     monkeypatch.setenv(
-        "RAY_RUNTIME_ENV_temporary_reference_expiration_s", str(expiration_s)
+        "RAY_runtime_env_temporary_reference_expiration_s", str(expiration_s)
     )
 
     cluster, address = start_cluster
