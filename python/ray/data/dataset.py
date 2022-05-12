@@ -618,7 +618,8 @@ class Dataset(Generic[T]):
     ) -> "Dataset[T]":
         """Randomly samples a fraction of the elements of this dataset.
 
-        Note that the exact number of elements returned is not guaranteed.
+        Note that the exact number of elements returned is not guaranteed,
+        and that the number of elements being returned is roughly fraction * total_rows.
 
         Examples:
             >>> import ray
