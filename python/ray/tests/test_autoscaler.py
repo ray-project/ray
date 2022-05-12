@@ -15,7 +15,7 @@ import copy
 from collections import defaultdict
 from ray.autoscaler._private.commands import get_or_create_head_node
 from jsonschema.exceptions import ValidationError
-from typing import Dict, Callable, List, Optional
+from typing import Any, Dict, Callable, List, Optional
 
 import ray
 from ray.core.generated import gcs_service_pb2
@@ -49,6 +49,8 @@ from ray._private.test_utils import RayTestTimeoutException
 
 import grpc
 import pytest
+
+WORKER_FILTER = {TAG_RAY_NODE_KIND: NODE_KIND_WORKER}
 
 
 class DrainNodeOutcome(str, Enum):
@@ -171,6 +173,7 @@ class MockNode:
 
         self.node_config = node_config
         self.node_type = node_type
+        self.created_in_main_thread = threading.current_thread() is threading.main_thread()
 
     def matches(self, tags):
         for k, v in tags.items():
@@ -624,13 +627,15 @@ class AutoscalingTest(unittest.TestCase):
             fail_msg="Last round of updaters didn't complete on time.",
         )
 
-    def waitForNodes(self, expected, comparison=None, tag_filters=None):
+    def num_nodes(self, tag_filters=None):
         if tag_filters is None:
             tag_filters = {}
+        return len(self.provider.non_terminated_nodes(tag_filters))
 
+    def waitForNodes(self, expected, comparison=None, tag_filters=None):
         MAX_ITER = 50
         for i in range(MAX_ITER):
-            n = len(self.provider.non_terminated_nodes(tag_filters))
+            n = self.num_nodes(tag_filters)
             if comparison is None:
                 comparison = self.assertEqual
             try:
@@ -1494,7 +1499,11 @@ class AutoscalingTest(unittest.TestCase):
     def testDynamicScaling6(self):
         self.helperDynamicScaling(DrainNodeOutcome.FailedToFindIp)
 
-    def helperDynamicScaling(self, drain_node_outcome: DrainNodeOutcome):
+    def helperDynamicScaling(
+        self,
+        drain_node_outcome: DrainNodeOutcome = DrainNodeOutcome.Succeeded,
+        foreground_node_launcher: bool = False
+    ):
         mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
         mock_node_info_stub = MockNodeInfoStub(drain_node_outcome)
 
@@ -1542,8 +1551,17 @@ class AutoscalingTest(unittest.TestCase):
             # We encountered an exception fetching ip.
             assert mock_metrics.drain_node_exceptions.inc.call_count > 0
 
-    def _helperDynamicScaling(self, mock_metrics, mock_node_info_stub):
-        config_path = self.write_config(SMALL_CLUSTER)
+    def testDynamicScalingForegroundLauncher(self):
+        """Test autoscaling with node launcher in the foreground."""
+        self.helperDynamicScaling(foreground_node_launcher=True)
+
+    def _helperDynamicScaling(self, mock_metrics, mock_node_info_stub,
+                              foreground_node_launcher=False):
+        config = copy.deepcopy(SMALL_CLUSTER)
+        if foreground_node_launcher:
+            config["provider"]["disable_background_launch_batch"] = True
+
+        config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
         runner.respond_to_call("json .Config.Env", ["[]" for i in range(12)])
@@ -1571,12 +1589,17 @@ class AutoscalingTest(unittest.TestCase):
         )
         if mock_node_info_stub.drain_node_outcome == DrainNodeOutcome.FailedToFindIp:
             autoscaler.fail_to_find_ip_during_drain = True
-        self.waitForNodes(0, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
+        self.waitForNodes(0, tag_filters=WORKER_FILTER)
         autoscaler.update()
-        self.waitForNodes(2, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
+        if foreground_node_launcher:
+            # If we launched in the foreground, shouldn't need to wait for nodes
+            # to be available. (Node creation should block.)
+            assert self.num_nodes(tag_filters=WORKER_FILTER) == 2
+        else:
+            self.waitForNodes(2, tag_filters=WORKER_FILTER)
 
         # Update the config to reduce the cluster size
-        new_config = SMALL_CLUSTER.copy()
+        new_config = copy.deepcopy(SMALL_CLUSTER)
         new_config["max_workers"] = 1
         self.write_config(new_config)
         fill_in_raylet_ids(self.provider, lm)
@@ -1596,7 +1619,26 @@ class AutoscalingTest(unittest.TestCase):
         )[0]
         lm.update(worker_ip, mock_raylet_id(), {"CPU": 1}, {"CPU": 1}, {})
         autoscaler.update()
-        self.waitForNodes(10, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
+        if foreground_node_launcher:
+            # If we launched in the foreground, shouldn't need to wait for nodes
+            # to be available. (Node creation should block.)
+            assert self.num_nodes(tag_filters=WORKER_FILTER) == 10
+        else:
+            self.waitForNodes(10, tag_filters=WORKER_FILTER)
+
+        worker_ids = self.provider.non_terminated_nodes(tag_filters=WORKER_FILTER)
+        if foreground_node_launcher:
+            # All workers were created in the main thread.
+            assert all(
+                self.provider.mock_nodes[worker_id].created_in_main_thread
+                for worker_id in worker_ids
+            )
+        else:
+            # All workers were created in a background thread.
+            assert not any(
+                self.provider.mock_nodes[worker_id].created_in_main_thread
+                for worker_id in worker_ids
+            )
 
         # Check the launch failure event is generated.
         autoscaler.update()
@@ -1704,11 +1746,20 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(10)
 
     def testAggressiveAutoscaling(self):
-        config = SMALL_CLUSTER.copy()
+        self._aggressiveAutoscalingHelper()
+
+    def testAggressiveAutoscalingWithForegroundLauncher(self):
+        self._aggressiveAutoscalingHelper(foreground_node_launcher=True)
+
+    def _aggressiveAutoscalingHelper(self,
+                                     foreground_node_launcher: bool = False):
+        config = copy.deepcopy(SMALL_CLUSTER)
         config["min_workers"] = 0
         config["max_workers"] = 10
         config["idle_timeout_minutes"] = 0
         config["upscaling_speed"] = config["max_workers"]
+        if foreground_node_launcher:
+            config["provider"]["disable_background_launch_batch"] = True
         config_path = self.write_config(config)
 
         self.provider = MockProvider()
@@ -1765,7 +1816,26 @@ class AutoscalingTest(unittest.TestCase):
         # Otherwise the worker is immediately terminated due to being idle.
         lm.last_used_time_by_ip[worker_ip] = time.time() + 5
         autoscaler.update()
-        self.waitForNodes(11)
+
+        if foreground_node_launcher:
+            # No wait if node launch is blocking and happens in the foreground.
+            assert self.num_nodes() == 11
+        else:
+            self.waitForNodes(11)
+        worker_ids = self.provider.non_terminated_nodes(tag_filters=WORKER_FILTER)
+        if foreground_node_launcher:
+            # All workers were created in the main thread.
+            assert all(
+                self.provider.mock_nodes[worker_id].created_in_main_thread
+                for worker_id in worker_ids
+            )
+        else:
+            # All workers were created in a background thread.
+            assert not any(
+                self.provider.mock_nodes[worker_id].created_in_main_thread
+                for worker_id in worker_ids
+            )
+
         worker_ips = self.provider.non_terminated_node_ips(
             tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER},
         )
