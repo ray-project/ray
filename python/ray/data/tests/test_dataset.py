@@ -3595,8 +3595,13 @@ def test_random_sample(ray_start_regular_shared):
 
 def test_random_sample_checks(ray_start_regular_shared):
     with pytest.raises(ValueError) as e_info:
+        # Cannot sample -1
         ray.data.range(1).random_sample(-1)
+    with pytest.raises(ValueError):
+        # Cannot sample from empty dataset
         ray.data.range(0).random_sample(0.2)
+    with pytest.raises(ValueError):
+        # Cannot sample fraction > 1
         ray.data.range(1).random_sample(10)
 
 
