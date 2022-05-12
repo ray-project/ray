@@ -510,6 +510,8 @@ message AddTemporaryURIReferenceReply {
   GcsStatus status = 1;
 }
 
+/// Handles adding URI references from Python for runtime_env packages
+/// that are stored in the GCS.
 service RuntimeEnvGcsService {
   rpc AddTemporaryURIReference(AddTemporaryURIReferenceRequest)
       returns (AddTemporaryURIReferenceReply);
