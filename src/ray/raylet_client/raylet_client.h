@@ -184,9 +184,6 @@ class RayletClientInterface : public PinObjectsInterface,
   virtual void GetSystemConfig(
       const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) = 0;
 
-  virtual void GetGcsServerAddress(
-      const rpc::ClientCallback<rpc::GetGcsServerAddressReply> &callback) = 0;
-
   virtual void ShutdownRaylet(
       const NodeID &node_id,
       bool graceful,
