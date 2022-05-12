@@ -3,6 +3,7 @@ from pathlib import Path
 import os
 import shutil
 import sys
+import time
 import json
 import yaml
 import tempfile
@@ -27,8 +28,13 @@ from ray._private.test_utils import (
     wait_for_condition,
     wait_until_server_available,
 )
+import ray.experimental.internal_kv as kv
 
 logger = logging.getLogger(__name__)
+
+
+def check_internal_kv_gced():
+    return len(kv._internal_kv_list("gcs://")) == 0
 
 
 @pytest.fixture(scope="module")
@@ -272,6 +278,49 @@ def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
 
     logs = client.get_job_logs(job_id)
     assert runtime_env_option["expected_logs"] in logs
+
+
+@pytest.mark.parametrize("expiration_s", [0, 10])
+def test_temporary_uri_reference(monkeypatch, expiration_s):
+    """Test that temporary GCS URI references are deleted after expiration_s."""
+    monkeypatch.setenv(
+        "RAY_runtime_env_temporary_reference_expiration_s", str(expiration_s)
+    )
+    # We can't use the fixture job_sdk_client because we need to set the
+    # expiration_s env var before Ray starts.
+
+    with _ray_start(include_dashboard=True, num_cpus=1) as ctx:
+        headers = {"Connection": "keep-alive", "Authorization": "TOK:<MY_TOKEN>"}
+        address = ctx.address_info["webui_url"]
+        assert wait_until_server_available(address)
+        client = JobSubmissionClient(format_web_url(address), headers=headers)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir)
+
+            hello_file = path / "hi.txt"
+            with hello_file.open(mode="w") as f:
+                f.write("hi\n")
+
+            start = time.time()
+
+            client.submit_job(
+                entrypoint="echo hi", runtime_env={"working_dir": tmp_dir}
+            )
+
+            # Give time for deletion to occur if expiration_s is 0.
+            time.sleep(2)
+            # Need to connect to Ray to check internal_kv.
+            # ray.init(address="auto")
+
+            print("Starting Internal KV checks at time ", time.time() - start)
+            if expiration_s > 0:
+                assert not check_internal_kv_gced()
+                wait_for_condition(check_internal_kv_gced, timeout=2 * expiration_s)
+                assert expiration_s < time.time() - start < 2 * expiration_s
+                print("Internal KV was GC'ed at time ", time.time() - start)
+            else:
+                wait_for_condition(check_internal_kv_gced)
+                print("Internal KV was GC'ed at time ", time.time() - start)
 
 
 def test_http_bad_request(job_sdk_client):
