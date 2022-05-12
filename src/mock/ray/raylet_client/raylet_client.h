@@ -132,6 +132,7 @@ class MockRayletClientInterface : public RayletClientInterface {
               WaitForDirectActorCallArgs,
               (const std::vector<rpc::ObjectReference> &references, int64_t tag),
               (override));
+  MOCK_METHOD(std::shared_ptr<grpc::Channel>, GetChannel, (), (const));
   MOCK_METHOD(void,
               ReportWorkerBacklog,
               (const WorkerID &worker_id,

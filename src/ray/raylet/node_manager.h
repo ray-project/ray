@@ -21,6 +21,7 @@
 #include "ray/common/id.h"
 #include "ray/common/task/task.h"
 #include "ray/common/ray_object.h"
+#include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/client_connection.h"
 #include "ray/common/task/task_common.h"
 #include "ray/common/task/scheduling_resources.h"
@@ -138,7 +139,9 @@ class HeartbeatSender {
   uint64_t last_heartbeat_at_ms_;
 };
 
-class NodeManager : public rpc::NodeManagerServiceHandler {
+class NodeManager : public rpc::NodeManagerServiceHandler,
+                    public syncer::ReporterInterface,
+                    public syncer::ReceiverInterface {
  public:
   /// Create a node manager.
   ///
@@ -187,6 +190,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Get the port of the node manager rpc server.
   int GetServerPort() const { return node_manager_server_.GetPort(); }
+
+  void ConsumeSyncMessage(std::shared_ptr<const syncer::RaySyncMessage> message) override;
+
+  std::optional<syncer::RaySyncMessage> CreateSyncMessage(
+      int64_t after_version, syncer::MessageType message_type) const override;
 
   int GetObjectManagerPort() const { return object_manager_.GetServerPort(); }
 
@@ -652,6 +660,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
       rpc::WorkerExitType disconnect_type = rpc::WorkerExitType::SYSTEM_ERROR_EXIT,
       const rpc::RayException *creation_task_exception = nullptr);
 
+  bool TryLocalGC();
+
   /// ID of this node.
   NodeID self_node_id_;
   /// The user-given identifier or name of this node.
@@ -802,6 +812,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Whether or not if the node draining process has already received.
   bool is_node_drained_ = false;
+
+  /// Ray syncer for synchronization
+  syncer::RaySyncer ray_syncer_;
+
+  /// RaySyncerService for gRPC
+  syncer::RaySyncerService ray_syncer_service_;
 };
 
 }  // namespace raylet

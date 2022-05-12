@@ -80,10 +80,8 @@ DEFAULT_CONFIG = with_common_config({
     "target_network_update_freq": 500,
 
     # === Replay buffer ===
-    # Size of the replay buffer. Note that if async_updates is set, then
-    # each worker will have a replay buffer of this size.
-    "buffer_size": DEPRECATED_VALUE,
     # The following values have moved because of the new ReplayBuffer API
+    "buffer_size": DEPRECATED_VALUE,
     "prioritized_replay": DEPRECATED_VALUE,
     "learning_starts": DEPRECATED_VALUE,
     "replay_batch_size": DEPRECATED_VALUE,
@@ -152,6 +150,9 @@ class SimpleQTrainer(Trainer):
     @override(Trainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
         """Checks and updates the config based on settings."""
+        # Call validate_buffer_config first b/c some keys might
+        validate_buffer_config(config)
+
         # Call super's validation method.
         super().validate_config(config)
 
@@ -168,8 +169,6 @@ class SimpleQTrainer(Trainer):
                     "ParameterNoise Exploration and `noisy` network cannot be"
                     " used at the same time!"
                 )
-
-        validate_buffer_config(config)
 
         # Multi-agent mode and multi-GPU optimizer.
         if config["multiagent"]["policies"] and not config["simple_optimizer"]:

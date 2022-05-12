@@ -315,11 +315,9 @@ message GetResourceLoadReply {
   ResourcesData resources = 1;
 }
 
-message GCSRestartRequest {
-}
+message GCSRestartRequest {}
 
-message GCSRestartReply {
-}
+message GCSRestartReply {}
 
 // Service for inter-node-manager communication.
 service NodeManagerService {

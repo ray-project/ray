@@ -338,7 +338,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       GcsResourceManager &gcs_resource_manager,
       ClusterResourceScheduler &cluster_resource_scheduler,
       std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
-      gcs_syncer::RaySyncer &ray_syncer);
+      gcs_syncer::RaySyncer *ray_syncer);
 
   virtual ~GcsPlacementGroupScheduler() = default;
 
@@ -515,7 +515,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
 
   /// The syncer of resource. This is used to report placement group updates.
   /// TODO (iycheng): Remove this one from pg once we finish the refactor
-  gcs_syncer::RaySyncer &ray_syncer_;
+  gcs_syncer::RaySyncer *ray_syncer_;
 };
 
 }  // namespace gcs

@@ -193,6 +193,8 @@ class RayletClientInterface : public PinObjectsInterface,
       const NodeID &node_id,
       bool graceful,
       const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback) = 0;
+
+  virtual std::shared_ptr<grpc::Channel> GetChannel() const = 0;
 };
 
 namespace raylet {
@@ -434,6 +436,8 @@ class RayletClient : public RayletClientInterface {
   void RequestObjectSpillage(
       const ObjectID &object_id,
       const rpc::ClientCallback<rpc::RequestObjectSpillageReply> &callback);
+
+  std::shared_ptr<grpc::Channel> GetChannel() const override;
 
   /// Implements WorkerLeaseInterface.
   void RequestWorkerLease(
