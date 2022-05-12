@@ -51,15 +51,6 @@ CQL_DEFAULT_CONFIG = merge_dicts(
         "lagrangian_thresh": 5.0,
         # Min Q weight multiplier.
         "min_q_weight": 5.0,
-        "replay_buffer_config": {
-            "type": "MultiAgentPrioritizedReplayBuffer",
-            # Specify prioritized replay by supplying a buffer type that supports
-            # prioritization
-            "prioritized_replay": DEPRECATED_VALUE,
-            # Replay buffer should be larger or equal the size of the offline
-            # dataset.
-            "capacity": int(1e6),
-        },
         # Reporting: As CQL is offline (no sampling steps), we need to limit
         # `self.train()` reporting by the number of steps trained (not sampled).
         "min_sample_timesteps_per_reporting": 0,
