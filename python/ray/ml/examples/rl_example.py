@@ -77,9 +77,6 @@ def train_rl_ppo_online(num_workers: int, use_gpu: bool = False) -> Result:
         config={
             "env": "CartPole-v0",
             "framework": "tf",
-            "evaluation_num_workers": 1,
-            "evaluation_interval": 1,
-            "evaluation_config": {"input": "sampler"},
         },
     )
     # Todo (krfricke/xwjiang): Enable checkpoint config in RunConfig

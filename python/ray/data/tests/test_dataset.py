@@ -2960,11 +2960,11 @@ def test_groupby_map_groups_merging_invalid_result(ray_start_regular_shared):
     grouped = ds.groupby(lambda x: x)
 
     # The UDF returns None, which is invalid.
-    with pytest.raises(AssertionError):
+    with pytest.raises(TypeError):
         grouped.map_groups(lambda x: None if x == [1] else x)
 
     # The UDF returns a type that's different than the input type, which is invalid.
-    with pytest.raises(AssertionError):
+    with pytest.raises(TypeError):
         grouped.map_groups(lambda x: pd.DataFrame([1]) if x == [1] else x)
 
 
