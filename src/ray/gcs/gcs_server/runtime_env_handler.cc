@@ -24,6 +24,12 @@ void RuntimeEnvHandler::HandleAddTemporaryURIReference(
   RAY_LOG(DEBUG) << "Received AddTemporaryURIReference request: "
                  << request.DebugString();
 
+  if (request.expiration_s() == 0) {
+    RAY_LOG(DEBUG) << "Expiration time is 0, will not add temporary URI reference.";
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+    return;
+  }
+
   // Use a random ID to hold the temporary reference URI.
   std::string hex_id(12, 0);
   FillRandom(&hex_id);
