@@ -321,7 +321,10 @@ class RuntimeEnvAgent(
                     # TODO(architkulkarni): implement uri support
                     plugin.create("uri not implemented", json.loads(config), context)
                     plugin.modify_context(
-                        "uri not implemented", json.loads(config), context
+                        "uri not implemented",
+                        json.loads(config),
+                        context,
+                        per_job_logger,
                     )
 
             loop = asyncio.get_event_loop()
