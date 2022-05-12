@@ -289,8 +289,12 @@ void ActorManager::SubscribeActorState(const ActorID &actor_id) {
 
   auto actor_handle = GetActorHandle(actor_id);
   RAY_CHECK(actor_handle != nullptr);
-  auto cached_actor_name =
-      GenerateCachedActorName(actor_handle->GetNamespace(), actor_handle->GetName());
+
+  std::string cached_actor_name;
+  if (!actor_handle->GetName().empty()) {
+    cached_actor_name =
+        GenerateCachedActorName(actor_handle->GetNamespace(), actor_handle->GetName());
+  }
 
   // Register a callback to handle actor notifications.
   auto actor_notification_callback =
