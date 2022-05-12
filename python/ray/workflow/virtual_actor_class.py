@@ -469,7 +469,7 @@ class VirtualActorClass(VirtualActorClassBase):
                 virtual = VirtualActorClass._from_class(cls)
                 ins = virtual._construct(actor_id)
                 ins._create(args, kwargs)
-            ray.get(f.remote(instance, actor_id, args, kwargs))
+            ray.get(f.remote(cls, actor_id, args, kwargs))
             # instance._create(args, kwargs)
             return instance
 
