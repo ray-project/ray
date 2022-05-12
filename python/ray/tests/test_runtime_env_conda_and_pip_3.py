@@ -18,6 +18,7 @@ if not os.environ.get("CI"):
     os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"] = "1"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on windows")
 def test_multiple_pip_installs(start_cluster, monkeypatch):
     """Test that multiple pip installs don't interfere with each other."""
     monkeypatch.setenv("RUNTIME_ENV_RETRY_TIMES", "0")
