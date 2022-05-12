@@ -328,7 +328,7 @@ class VirtualActorMetadata:
         return f"{slugify(self.qualname)}.{uuid.uuid4()}"
 
     def __reduce__(self):
-        return self.__init__, (self.cls,)
+        return self.__class__, (self.cls,)
 
 
 class VirtualActorClassBase(metaclass=abc.ABCMeta):
@@ -571,7 +571,7 @@ class VirtualActor:
                 return wf.run_async(self._actor_id)
 
     def __reduce__(self):
-        return self.__init__, (self._metadata, self._actor_id)
+        return self.__class__, (self._metadata, self._actor_id)
 
 
 def decorate_actor(cls: type):
