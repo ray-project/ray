@@ -12,10 +12,15 @@ from joblib import parallel_backend
 
 from ray import tune
 import ray.cloudpickle as cpickle
+from ray.ml.checkpoint import Checkpoint
 from ray.ml.config import RunConfig, ScalingConfig
-from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY, TRAIN_DATASET_KEY
+from ray.ml.constants import MODEL_KEY, TRAIN_DATASET_KEY
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.trainer import GenDataset, Trainer
+from ray.ml.utils.checkpointing import (
+    load_preprocessor_from_dir,
+    save_preprocessor_to_dir,
+)
 from ray.ml.utils.sklearn_utils import has_cpu_params, set_cpu_params
 from ray.util import PublicAPI
 from ray.util.joblib import register_ray
@@ -404,10 +409,7 @@ class SklearnTrainer(Trainer):
                     cpickle.dump(self.estimator, f)
 
                 if self.preprocessor:
-                    with open(
-                        os.path.join(checkpoint_dir, PREPROCESSOR_KEY), "wb"
-                    ) as f:
-                        cpickle.dump(self.preprocessor, f)
+                    save_preprocessor_to_dir(self.preprocessor, checkpoint_dir)
 
             if self.label_column:
                 validation_set_scores = self._score_on_validation_sets(
@@ -434,3 +436,25 @@ class SklearnTrainer(Trainer):
             "fit_time": fit_time,
         }
         tune.report(**results)
+
+
+def load_checkpoint(
+    checkpoint: Checkpoint,
+) -> Tuple[BaseEstimator, Optional[Preprocessor]]:
+    """Load a Checkpoint from ``SklearnTrainer``.
+
+    Args:
+        checkpoint: The checkpoint to load the estimator and
+            preprocessor from. It is expected to be from the result of a
+            ``SklearnTrainer`` run.
+
+    Returns:
+        The estimator and AIR preprocessor contained within.
+    """
+    with checkpoint.as_directory() as checkpoint_path:
+        estimator_path = os.path.join(checkpoint_path, MODEL_KEY)
+        with open(estimator_path, "rb") as f:
+            estimator_path = cpickle.load(f)
+        preprocessor = load_preprocessor_from_dir(checkpoint_path)
+
+    return estimator_path, preprocessor

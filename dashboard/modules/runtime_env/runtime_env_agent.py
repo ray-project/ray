@@ -28,6 +28,7 @@ from ray._private.runtime_env.pip import PipPlugin
 from ray._private.runtime_env.conda import CondaPlugin
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.py_modules import PyModulesPlugin
+from ray._private.runtime_env.java_jars import JavaJarsPlugin
 from ray._private.runtime_env.working_dir import WorkingDirPlugin
 from ray._private.runtime_env.container import ContainerManager
 from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
@@ -58,6 +59,7 @@ class UriType(Enum):
     PY_MODULES = 2
     PIP = 3
     CONDA = 4
+    JAVA_JARS = 5
 
 
 class ReferenceTable:
@@ -185,6 +187,7 @@ class RuntimeEnvAgent(
         self._pip_plugin = PipPlugin(self._runtime_env_dir)
         self._conda_plugin = CondaPlugin(self._runtime_env_dir)
         self._py_modules_plugin = PyModulesPlugin(self._runtime_env_dir)
+        self._java_jars_plugin = JavaJarsPlugin(self._runtime_env_dir)
         self._working_dir_plugin = WorkingDirPlugin(self._runtime_env_dir)
         self._container_manager = ContainerManager(dashboard_agent.temp_dir)
 
@@ -239,6 +242,8 @@ class RuntimeEnvAgent(
                 self._uri_caches["working_dir"].mark_unused(uri)
             elif uri_type == UriType.PY_MODULES:
                 self._uri_caches["py_modules"].mark_unused(uri)
+            elif uri_type == UriType.JAVA_JARS:
+                self._uri_caches["java_jars"].mark_unused(uri)
             elif uri_type == UriType.CONDA:
                 self._uri_caches["conda"].mark_unused(uri)
             elif uri_type == UriType.PIP:
@@ -283,7 +288,6 @@ class RuntimeEnvAgent(
             allocated_resource: dict = json.loads(
                 serialized_allocated_resource_instances or "{}"
             )
-
             # Use a separate logger for each job.
             per_job_logger = self.get_or_create_logger(request.job_id)
             # TODO(chenk008): Add log about allocated_resource to

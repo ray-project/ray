@@ -236,6 +236,12 @@ RAY_CONFIG(int64_t, worker_register_timeout_seconds, 60)
 /// The maximum number of workers to iterate whenever we analyze the resources usage.
 RAY_CONFIG(uint32_t, worker_max_resource_analysis_iteration, 128);
 
+/// A value to add to workers' OOM score adjustment, so that the OS prioritizes
+/// killing these over the raylet. 0 or positive values only (negative values
+/// require sudo permissions).
+/// NOTE(swang): Linux only.
+RAY_CONFIG(int, worker_oom_score_adjustment, 1000)
+
 /// Allow up to 60 seconds for connecting to Redis.
 RAY_CONFIG(int64_t, redis_db_connect_retries, 600)
 RAY_CONFIG(int64_t, redis_db_connect_wait_milliseconds, 100)
@@ -344,8 +350,25 @@ RAY_CONFIG(bool, support_fork, false)
 /// Each reconnection ping will be retried every 1 second.
 RAY_CONFIG(int32_t, gcs_rpc_server_reconnect_timeout_s, 60)
 
+/// The timeout for GCS connection in seconds
+RAY_CONFIG(int32_t, gcs_rpc_server_connect_timeout_s, 5)
+
 /// Minimum interval between reconnecting gcs rpc server when gcs server restarts.
 RAY_CONFIG(int32_t, minimum_gcs_reconnect_interval_milliseconds, 5000)
+
+/// gRPC channel reconnection related configs to GCS.
+/// Check https://grpc.github.io/grpc/core/group__grpc__arg__keys.html for details
+RAY_CONFIG(int32_t, gcs_grpc_max_reconnect_backoff_ms, 2000)
+RAY_CONFIG(int32_t, gcs_grpc_min_reconnect_backoff_ms, 100)
+RAY_CONFIG(int32_t, gcs_grpc_initial_reconnect_backoff_ms, 100)
+
+/// Maximum bytes of request queued when RPC failed due to GCS is down.
+/// If reach the limit, the core worker will hang until GCS is reconnected.
+/// By default, the value if 5GB.
+RAY_CONFIG(uint64_t, gcs_grpc_max_request_queued_max_bytes, 1024UL * 1024 * 1024 * 5)
+
+/// The duration between two checks for grpc status.
+RAY_CONFIG(int32_t, gcs_client_check_connection_status_interval_milliseconds, 1000)
 
 /// Feature flag to use the ray syncer for resource synchronization
 RAY_CONFIG(bool, use_ray_syncer, false)
