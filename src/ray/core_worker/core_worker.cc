@@ -176,16 +176,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                 << rpc_address_.port() << ", worker ID " << worker_context_.GetWorkerID()
                 << ", raylet " << local_raylet_id;
 
-  // Begin to get gcs server address from raylet.
-  gcs_server_address_updater_ = std::make_unique<GcsServerAddressUpdater>(
-      options_.raylet_ip_address,
-      options_.node_manager_port,
-      [this](std::string ip, int port) {
-        absl::MutexLock lock(&gcs_server_address_mutex_);
-        gcs_server_address_.first = ip;
-        gcs_server_address_.second = port;
-      });
-
   gcs_client_ = std::make_shared<gcs::GcsClient>(options_.gcs_options);
 
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));

@@ -1087,12 +1087,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // Client to the GCS shared by core worker interfaces.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
 
-  std::pair<std::string, int> gcs_server_address_ GUARDED_BY(gcs_server_address_mutex_) =
-      std::make_pair<std::string, int>("", 0);
-  /// To protect accessing the `gcs_server_address_`.
-  absl::Mutex gcs_server_address_mutex_;
-  std::unique_ptr<GcsServerAddressUpdater> gcs_server_address_updater_;
-
   // Client to the raylet shared by core worker interfaces. This needs to be a
   // shared_ptr for direct calls because we can lease multiple workers through
   // one client, and we need to keep the connection alive until we return all
