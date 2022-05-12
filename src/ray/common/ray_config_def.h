@@ -236,12 +236,6 @@ RAY_CONFIG(int64_t, worker_register_timeout_seconds, 60)
 /// The maximum number of workers to iterate whenever we analyze the resources usage.
 RAY_CONFIG(uint32_t, worker_max_resource_analysis_iteration, 128);
 
-/// A value to add to workers' OOM score adjustment, so that the OS prioritizes
-/// killing these over the raylet. 0 or positive values only (negative values
-/// require sudo permissions).
-/// NOTE(swang): Linux only.
-RAY_CONFIG(int, worker_oom_score_adjustment, 1000)
-
 /// Allow up to 60 seconds for connecting to Redis.
 RAY_CONFIG(int64_t, redis_db_connect_retries, 600)
 RAY_CONFIG(int64_t, redis_db_connect_wait_milliseconds, 100)
