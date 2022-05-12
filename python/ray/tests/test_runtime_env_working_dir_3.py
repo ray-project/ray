@@ -32,7 +32,7 @@ def working_dir_and_pymodules_disable_URI_cache():
         {
             "RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB": "0",
             "RAY_RUNTIME_ENV_PY_MODULES_CACHE_SIZE_GB": "0",
-            "RAY_runtime_env_temporary_reference_expiration_s": "0",
+            "RAY_RUNTIME_ENV_TEMPORARY_REFERENCE_EXPIRATION_S": "0",
         },
     ):
         print("URI caching disabled (cache size set to 0).")
@@ -46,7 +46,7 @@ def URI_cache_10_MB():
         {
             "RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB": "0.01",
             "RAY_RUNTIME_ENV_PY_MODULES_CACHE_SIZE_GB": "0.01",
-            "RAY_runtime_env_temporary_reference_expiration_s": "0",
+            "RAY_RUNTIME_ENV_TEMPORARY_REFERENCE_EXPIRATION_S": "0",
         },
     ):
         print("URI cache size set to 0.01 GB.")
@@ -58,7 +58,7 @@ def disable_temporary_reference():
     with mock.patch.dict(
         os.environ,
         {
-            "RAY_runtime_env_temporary_reference_expiration_s": "0",
+            "RAY_RUNTIME_ENV_TEMPORARY_REFERENCE_EXPIRATION_S": "0",
         },
     ):
         print("temporary reference disabled.")
@@ -434,7 +434,7 @@ class TestSkipLocalGC:
 def test_temporary_uri_reference(start_cluster, source, expiration_s, monkeypatch):
     """Test that temporary GCS URI references are deleted after expiration_s."""
     monkeypatch.setenv(
-        "RAY_runtime_env_temporary_reference_expiration_s", str(expiration_s)
+        "RAY_RUNTIME_ENV_TEMPORARY_REFERENCE_EXPIRATION_S", str(expiration_s)
     )
 
     cluster, address = start_cluster

@@ -16,6 +16,7 @@ from ray.experimental.internal_kv import (
     _add_temporary_uri_reference,
 )
 from ray._private.thirdparty.pathspec import PathSpec
+from ray.ray_constants import RAY_RUNTIME_ENV_TEMPORARY_REFERENCE_EXPIRATION_S
 
 default_logger = logging.getLogger(__name__)
 
@@ -251,12 +252,12 @@ def add_temporary_uri_reference(uri: str) -> None:
     """
 
     # Defaults to 30 seconds.  This should be enough time for the job to start.
-    TEMPORARY_REFERENCE_EXPIRATION_S = int(
-        os.environ.get("RAY_runtime_env_temporary_reference_expiration_s", 30)
+    expiration_s = int(
+        os.environ.get(RAY_RUNTIME_ENV_TEMPORARY_REFERENCE_EXPIRATION_S, 30)
     )
 
-    if TEMPORARY_REFERENCE_EXPIRATION_S > 0:
-        _add_temporary_uri_reference(uri, expiration_s=TEMPORARY_REFERENCE_EXPIRATION_S)
+    if expiration_s > 0:
+        _add_temporary_uri_reference(uri, expiration_s=expiration_s)
 
 
 def _store_package_in_gcs(

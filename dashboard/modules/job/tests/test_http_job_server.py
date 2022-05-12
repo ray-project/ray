@@ -284,7 +284,7 @@ def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
 def test_temporary_uri_reference(monkeypatch, expiration_s):
     """Test that temporary GCS URI references are deleted after expiration_s."""
     monkeypatch.setenv(
-        "RAY_runtime_env_temporary_reference_expiration_s", str(expiration_s)
+        "RAY_RUNTIME_ENV_TEMPORARY_REFERENCE_EXPIRATION_S", str(expiration_s)
     )
     # We can't use the fixture job_sdk_client because we need to set the
     # expiration_s env var before Ray starts.
