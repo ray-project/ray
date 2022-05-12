@@ -687,7 +687,7 @@ py_test(
     name = "test_cql",
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
-    srcs = ["agents/cql/tests/test_cql.py"]
+    srcs = ["algorithms/cql/tests/test_cql.py"]
 )
 
 # DDPGTrainer
@@ -769,7 +769,7 @@ py_test(
     name = "test_mbmpo",
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
-    srcs = ["agents/mbmpo/tests/test_mbmpo.py"]
+    srcs = ["algorithms/mbmpo/tests/test_mbmpo.py"]
 )
 
 # PGTrainer

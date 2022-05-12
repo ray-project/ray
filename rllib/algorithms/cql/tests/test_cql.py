@@ -4,7 +4,7 @@ import os
 import unittest
 
 import ray
-import ray.rllib.agents.cql as cql
+import ray.rllib.algorithms.cql as cql
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import (
     check_compute_single_action,

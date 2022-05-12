@@ -121,7 +121,7 @@ def make_model_and_action_dist(
 MBMPOTorchPolicy = build_policy_class(
     name="MBMPOTorchPolicy",
     framework="torch",
-    get_default_config=lambda: ray.rllib.agents.mbmpo.mbmpo.DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.algorithms.mbmpo.mbmpo.DEFAULT_CONFIG,
     make_model_and_action_dist=make_model_and_action_dist,
     loss_fn=maml_loss,
     stats_fn=maml_stats,

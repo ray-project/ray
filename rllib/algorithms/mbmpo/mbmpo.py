@@ -4,9 +4,9 @@ from typing import List, Type
 
 import ray
 from ray.rllib.agents import with_common_config
-from ray.rllib.agents.mbmpo.mbmpo_torch_policy import MBMPOTorchPolicy
-from ray.rllib.agents.mbmpo.model_ensemble import DynamicsEnsembleCustomModel
-from ray.rllib.agents.mbmpo.utils import calculate_gae_advantages, MBMPOExploration
+from ray.rllib.algorithms.mbmpo.mbmpo_torch_policy import MBMPOTorchPolicy
+from ray.rllib.algorithms.mbmpo.model_ensemble import DynamicsEnsembleCustomModel
+from ray.rllib.algorithms.mbmpo.utils import calculate_gae_advantages, MBMPOExploration
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.wrappers.model_vector_env import model_vector_env

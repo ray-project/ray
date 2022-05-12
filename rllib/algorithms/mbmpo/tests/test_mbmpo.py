@@ -1,7 +1,7 @@
 import unittest
 
 import ray
-import ray.rllib.agents.mbmpo as mbmpo
+import ray.rllib.algorithms.mbmpo as mbmpo
 from ray.rllib.utils.test_utils import (
     check_compute_single_action,
     check_train_results,
