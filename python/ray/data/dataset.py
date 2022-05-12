@@ -660,17 +660,19 @@ class Dataset(Generic[T]):
                 if strategy == 0:
                     return random.sample(batch, math.ceil(len(batch) * fraction))
                 else:
-                    # Picks the item if the weight generated for that item <= fraction
+                    # Picks the item if weight generated for that item <= fraction
                     return [batch[i] for i in range(len(batch)) if probs[i] <= fraction]
 
             if isinstance(batch, pa.Table):
                 if strategy == 0:
                     # Generate a mask to select random indices
-                    indices = random.sample(range(len(batch)), math.ceil(len(batch) * fraction))
+                    indices = random.sample(
+                        range(len(batch)), math.ceil(len(batch) * fraction)
+                    )
                     mask = [True if i in indices else False for i in range(len(batch))]
                     return batch.filter(mask)
                 else:
-                    # Lets the item pass if the weight generated for that item <= fraction
+                    # Lets the item pass if weight generated for that item <= fraction
                     mask = [True if p <= fraction else False for p in probs]
                     return batch.filter(mask)
             if isinstance(batch, pd.DataFrame):
