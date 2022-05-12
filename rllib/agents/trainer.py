@@ -2134,7 +2134,7 @@ class Trainer(Trainable):
             None, if local replay buffer is not needed.
         """
         if not config.get("replay_buffer_config") or config["replay_buffer_config"].get(
-            "no_local_replay_buffer" or config.get("no_local_replay_buffer"), False
+            "no_local_replay_buffer" or config.get("no_local_replay_buffer")
         ):
             return
 

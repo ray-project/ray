@@ -273,7 +273,7 @@ class ApexTrainer(DQNTrainer):
                 local_sampling_worker = self.workers.local_worker()
                 batch = local_sampling_worker.sample()
                 actor = random.choice(self.replay_actors)
-                ray.get(actor.add_batch.remote(batch))
+                ray.get(actor.add.remote(batch))
                 batch_statistics = {
                     local_sampling_worker: [
                         {
@@ -398,7 +398,8 @@ class ApexTrainer(DQNTrainer):
                     actors=[rand_actor],
                     ray_wait_timeout_s=0.1,
                     max_remote_requests_in_flight_per_actor=num_requests_to_launch,
-                    remote_fn=lambda actor: actor.replay(),
+                    remote_args=[[self.config["train_batch_size"]]],
+                    remote_fn=lambda actor, num_items: actor.sample(num_items),
                 )
             for replay_actor, sample_batches in replay_samples_ready.items():
                 for sample_batch in sample_batches:
