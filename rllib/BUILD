@@ -743,7 +743,7 @@ py_test(
     size = "large",
     # Include the json data file.
     data = ["tests/data/cartpole/large.json"],
-    srcs = ["agents/marwil/tests/test_marwil.py"]
+    srcs = ["algorithms/marwil/tests/test_marwil.py"]
 )
 
 # BCTrainer (sub-type of MARWIL)
@@ -753,7 +753,7 @@ py_test(
     size = "large",
     # Include the json data file.
     data = ["tests/data/cartpole/large.json"],
-    srcs = ["agents/marwil/tests/test_bc.py"]
+    srcs = ["algorithms/marwil/tests/test_bc.py"]
 )
 
 # MAMLTrainer
