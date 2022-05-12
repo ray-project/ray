@@ -93,7 +93,8 @@ class LearnerThread(threading.Thread):
             self.weights_updated = True
 
         self.num_steps += 1
-        self.outqueue.put((batch.count, self.learner_info))
+        # Put tuple: env-steps, agent-steps, and learner info into the queue.
+        self.outqueue.put((batch.count, batch.agent_steps(), self.learner_info))
         self.learner_queue_size.push(self.inqueue.qsize())
 
     def add_learner_metrics(self, result: Dict, overwrite_learner_info=True) -> Dict:

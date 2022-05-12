@@ -133,7 +133,7 @@ class TestAPPO(unittest.TestCase):
             # Should be close to the starting coeff of 0.01.
             self.assertGreaterEqual(coeff, 0.005)
 
-            coeff = _step_n_times(trainer, 10)  # 200 timesteps
+            coeff = _step_n_times(trainer, 5)  # 200 timesteps
             # Should have annealed to the final coeff of 0.0001.
             self.assertLessEqual(coeff, 0.00011)
 
