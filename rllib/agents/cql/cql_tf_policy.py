@@ -418,6 +418,7 @@ CQLTFPolicy = build_tf_policy(
     before_init=setup_early_mixins,
     after_init=setup_late_mixins,
     make_model=build_sac_model,
+    extra_learn_fetches_fn=lambda policy: {"td_error": policy.td_error},
     mixins=[ActorCriticOptimizerMixin, TargetNetworkMixin, ComputeTDErrorMixin],
     action_distribution_fn=get_distribution_inputs_and_class,
     compute_gradients_fn=compute_gradients_fn,

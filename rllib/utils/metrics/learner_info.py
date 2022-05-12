@@ -81,9 +81,8 @@ class LearnerInfoBuilder:
         for policy_id, results_all_towers in self.results_all_towers.items():
             # Reduce mean across all minibatch SGD steps (axis=0 to keep
             # all shapes as-is).
-            info[policy_id] = tree.map_structure(
-                lambda *s: None if s[0] is None else np.nanmean(s, axis=0),
-                *results_all_towers
+            info[policy_id] = tree.map_structure_with_path(
+                all_tower_reduce, *results_all_towers
             )
 
         return info
@@ -95,12 +94,15 @@ def all_tower_reduce(path, *tower_data):
     # each item's weight in a prioritized replay buffer.
     if len(path) == 1 and path[0] == "td_error":
         return np.concatenate(tower_data, axis=0)
+    elif tower_data[0] is None:
+        return None
 
-    # Min stats: Reduce min.
-    if path[-1].startswith("min_"):
-        return np.nanmin(tower_data)
-    # Max stats: Reduce max.
-    elif path[-1].startswith("max_"):
-        return np.nanmax(tower_data)
+    if isinstance(path[-1], str):
+        # Min stats: Reduce min.
+        if path[-1].startswith("min_"):
+            return np.nanmin(tower_data)
+        # Max stats: Reduce max.
+        elif path[-1].startswith("max_"):
+            return np.nanmax(tower_data)
     # Everything else: Reduce mean.
     return np.nanmean(tower_data)

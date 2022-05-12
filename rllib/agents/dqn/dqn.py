@@ -15,8 +15,8 @@ from typing import List, Optional, Type, Callable
 from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
 from ray.rllib.agents.dqn.simple_q import (
-    SimpleQTrainer,
     SimpleQConfig,
+    SimpleQTrainer,
 )
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
@@ -54,6 +54,7 @@ class DQNConfig(SimpleQConfig):
     """Defines a DQNTrainer configuration class from which a DQNTrainer can be built.
 
     Example:
+        >>> from ray.rllib.agents.dqn.dqn import DQNConfig
         >>> config = DQNConfig()
         >>> print(config.replay_buffer_config)
         >>> replay_config = config.replay_buffer_config.update(
@@ -71,7 +72,10 @@ class DQNConfig(SimpleQConfig):
         >>> trainer = DQNTrainer(config=config)
         >>> while True:
         >>>     trainer.train()
+
     Example:
+        >>> from ray.rllib.agents.dqn.dqn import DQNConfig
+        >>> from ray import tune
         >>> config = DQNConfig()
         >>> config.training(num_atoms=tune.grid_search(list(range(1,11)))
         >>> config.environment(env="CartPole-v1")
@@ -80,7 +84,9 @@ class DQNConfig(SimpleQConfig):
         >>>     stop={"episode_reward_mean":200},
         >>>     config=config.to_dict()
         >>> )
+
     Example:
+        >>> from ray.rllib.agents.dqn.dqn import DQNConfig
         >>> config = DQNConfig()
         >>> print(config.exploration_config)
         >>> explore_config = config.exploration_config.update(
@@ -92,7 +98,9 @@ class DQNConfig(SimpleQConfig):
         >>> )
         >>> config.training(lr_schedule=[[1, 1e-3, [500, 5e-3]])\
         >>>       .exploration(exploration_config=explore_config)
+
     Example:
+        >>> from ray.rllib.agents.dqn.dqn import DQNConfig
         >>> config = DQNConfig()
         >>> print(config.exploration_config)
         >>> explore_config = config.exploration_config.update(
@@ -139,7 +147,6 @@ class DQNConfig(SimpleQConfig):
         }
         # fmt: on
         # __sphinx_doc_end__
-        self._disable_execution_plan_api = True
 
     @override(SimpleQConfig)
     def training(
@@ -342,13 +349,20 @@ class DQNTrainer(SimpleQTrainer):
             # Store new samples in replay buffer.
             self.local_replay_buffer.add_batch(new_sample_batch)
 
+        global_vars = {
+            "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
+        }
+
         for _ in range(sample_and_train_weight):
             # Sample training batch (MultiAgentBatch) from replay buffer.
-            train_batch = self.local_replay_buffer.replay()
+            train_batch = self.local_replay_buffer.sample(
+                self.config["train_batch_size"]
+            )
 
             # Old-style replay buffers return None if learning has not started
-            if not train_batch:
-                continue
+            if train_batch is None or len(train_batch) == 0:
+                self.workers.local_worker().set_global_vars(global_vars)
+                break
 
             # Postprocess batch before we learn on it
             post_fn = self.config.get("before_learn_on_batch") or (lambda b, *a: b)
@@ -383,9 +397,6 @@ class DQNTrainer(SimpleQTrainer):
 
             # Update weights and global_vars - after learning on the local worker -
             # on all remote workers.
-            global_vars = {
-                "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
-            }
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
                 self.workers.sync_weights(global_vars=global_vars)
 

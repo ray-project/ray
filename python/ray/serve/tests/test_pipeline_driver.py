@@ -1,3 +1,5 @@
+import contextlib
+import io
 import sys
 import numpy as np
 from pydantic import BaseModel
@@ -12,6 +14,7 @@ from ray.serve.http_adapters import json_request
 from ray.experimental.dag.input_node import InputNode
 from ray import serve
 import ray
+from ray._private.test_utils import wait_for_condition
 
 
 def my_resolver(a: int):
@@ -168,6 +171,31 @@ def test_driver_np_serializer(serve_instance):
         dag = DAGDriver.bind(return_np_int.bind(inp))
     serve.run(dag)
     assert requests.get("http://127.0.0.1:8000/").json() == [42]
+
+
+def test_dag_driver_sync_warning(serve_instance):
+    with InputNode() as inp:
+        dag = echo.bind(inp)
+
+    log_file = io.StringIO()
+    with contextlib.redirect_stderr(log_file):
+
+        handle = serve.run(DAGDriver.bind(dag))
+        assert ray.get(handle.predict.remote(42)) == 42
+
+        def wait_for_request_success_log():
+            lines = log_file.getvalue().splitlines()
+            for line in lines:
+                if "DAGDriver" in line and "HANDLE predict OK" in line:
+                    return True
+            return False
+
+        wait_for_condition(wait_for_request_success_log)
+
+        assert (
+            "You are retrieving a sync handle inside an asyncio loop."
+            not in log_file.getvalue()
+        )
 
 
 if __name__ == "__main__":
