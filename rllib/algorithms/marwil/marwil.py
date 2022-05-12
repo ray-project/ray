@@ -110,7 +110,9 @@ class MARWILTrainer(Trainer):
     @override(Trainer)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
-            from ray.rllib.algorithms.marwil.marwil_torch_policy import MARWILTorchPolicy
+            from ray.rllib.algorithms.marwil.marwil_torch_policy import (
+                MARWILTorchPolicy,
+            )
 
             return MARWILTorchPolicy
         else:
