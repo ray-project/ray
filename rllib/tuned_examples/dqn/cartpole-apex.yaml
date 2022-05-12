@@ -16,10 +16,10 @@ cartpole-apex-dqn-training-itr:
         framework: tf
         # Make this work with only 5 CPUs and 0 GPUs:
         num_workers: 3
-
+        optimizer:
+          num_replay_buffer_shards: 2
         replay_buffer_config:
           capacity: 20000
-          num_replay_buffer_shards: 2
           learning_starts: 1000
 
         num_gpus: 0
