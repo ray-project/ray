@@ -91,6 +91,39 @@
 #  alert: default
 
 
+#########################
+# AIR release tests
+#########################
+- name: long_running_horovod_tune_test
+  group: AIR tests
+  working_dir: air_tests
+
+  frequency: weekly
+  team: ml
+
+  cluster:
+    cluster_env: horovod/app_config_master.yaml
+    cluster_compute: horovod/compute_tpl.yaml
+
+  run:
+    timeout: 36000
+    script: python horovod/workloads/horovod_tune_test.py
+    long_running: true
+    wait_for_nodes:
+      num_nodes: 3
+
+    type: sdk_command
+    file_manager: job
+
+  smoke_test:
+    frequency: disabled
+
+    run:
+      timeout: 1800
+
+  alert: default
+
+
 #######################
 # XGBoost release tests
 #######################
@@ -2868,43 +2901,6 @@
 
 
 #########################
-# Horovod tests
-#########################
-- name: horovod_tune_test
-  group: Horovod tests
-  working_dir: horovod_tests
-
-  legacy:
-    test_name: horovod_test
-    test_suite: horovod_tests
-
-  frequency: weekly
-  team: ml
-
-  cluster:
-    cluster_env: app_config_master.yaml
-    cluster_compute: compute_tpl.yaml
-
-  run:
-    timeout: 36000
-    script: python workloads/horovod_tune_test.py
-    long_running: true
-    wait_for_nodes:
-      num_nodes: 3
-
-    type: sdk_command
-    file_manager: job
-
-  smoke_test:
-    frequency: disabled
-
-    run:
-      timeout: 1800
-
-  alert: default
-
-
-#########################
 # Core Scalability Tests
 #########################
 
@@ -3481,8 +3477,6 @@
   legacy:
     test_name: dataset_shuffle_sort_1tb_small_instances
     test_suite: dataset_test
-
-  stable: false
 
   frequency: nightly
   team: core

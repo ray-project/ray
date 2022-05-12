@@ -168,7 +168,8 @@ class Categorizer(Preprocessor):
         return df
 
     def __repr__(self):
-        return f"<Categorizer columns={self.columns} stats={self.stats_}>"
+        stats = getattr(self, "stats_", None)
+        return f"<Categorizer columns={self.columns} stats={stats}>"
 
 
 def _get_unique_value_indices(
