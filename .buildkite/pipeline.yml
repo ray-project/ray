@@ -341,7 +341,7 @@
   parallelism: 3
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - REDIS_MODE=1 . ./ci/ci.sh test_large_gcs
+    - REDIS_MODE=1 . ./ci/ci.sh test_large
 - label: ":redis: (Medium A-J)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
