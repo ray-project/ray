@@ -51,6 +51,8 @@ WORKFLOW_USER_METADATA = "user_run_metadata.json"
 WORKFLOW_PRERUN_METADATA = "pre_run_metadata.json"
 WORKFLOW_POSTRUN_METADATA = "post_run_metadata.json"
 WORKFLOW_PROGRESS = "progress.json"
+WORKFLOW_STATUS_DIR = "__status__"
+WORKFLOW_STATUS_ON_CHANGE_DIR = "status_on_change"
 # Without this counter, we're going to scan all steps to get the number of
 # steps with a given name. This can be very expensive if there are too
 # many duplicates.
@@ -573,13 +575,21 @@ class WorkflowStorage:
             return None
 
     def _list_workflow(self) -> List[Tuple[str, WorkflowStatus]]:
+        # Create a workflow storage with an empty workflow_id.
+        # This turns keys into their directories.
+        store = WorkflowStorage("")
+        # Fix workflow status that failed to be updated.
+        for workflow_id in self._scan(
+            self._key_workflow_status_on_change(), ignore_errors=True
+        ):
+            store._workflow_id = workflow_id
+            store.load_and_fix_workflow_status()
         results = []
-        for workflow_id in self._scan("", ignore_errors=True):
-            try:
-                metadata = self._get(os.path.join(workflow_id, WORKFLOW_META), True)
-                results.append((workflow_id, WorkflowStatus(metadata["status"])))
-            except KeyNotFoundError:
-                pass
+        for status in WorkflowStatus:
+            for workflow_id in self._scan(
+                self._key_workflow_with_status(status), ignore_errors=True
+            ):
+                results.append((workflow_id, status))
         return results
 
     def list_workflow(self) -> List[Tuple[str, WorkflowStatus]]:
@@ -620,6 +630,39 @@ class WorkflowStorage:
 
         if not found:
             raise WorkflowNotFoundError(self._workflow_id)
+
+    def update_workflow_status(
+        self, status: WorkflowStatus, prev_status: Optional[WorkflowStatus]
+    ):
+        """Update the status of the workflow."""
+        if prev_status is None:
+            prev_status = self.load_and_fix_workflow_status()
+        if prev_status != status:
+            # Transactional update of workflow status
+            self._put(self._key_workflow_status_on_change(), b"")
+            self.save_workflow_meta(WorkflowMetaData(status))
+            self._put(self._key_workflow_with_status(status), b"")
+            self._storage.delete(self._key_workflow_with_status(prev_status))
+            self._storage.delete(self._key_workflow_status_on_change())
+
+    def load_and_fix_workflow_status(self):
+        """Load workflow status. If we find the previous status updating failed,
+        fix it with redo-log transaction recovery."""
+        metadata = self.load_workflow_meta()
+        if metadata is None:
+            prev_status = WorkflowStatus.NONE
+        else:
+            prev_status = metadata.status
+
+        if self._exists(self._key_workflow_status_on_change()):
+            # This means the previous status update failed. Fix it.
+            self._put(self._key_workflow_with_status(prev_status), b"")
+            for s in WorkflowStatus:
+                if s != prev_status:
+                    self._storage.delete(self._key_workflow_with_status(s))
+            self._storage.delete(self._key_workflow_status_on_change())
+
+        return prev_status
 
     def _put(self, key: str, data: Any, is_json: bool = False) -> str:
         """Serialize and put an object in the object store.
@@ -735,6 +778,14 @@ class WorkflowStorage:
 
     def _key_num_steps_with_name(self, name):
         return os.path.join(DUPLICATE_NAME_COUNTER, name)
+
+    def _key_workflow_with_status(self, status: WorkflowStatus):
+        return os.path.join(WORKFLOW_STATUS_DIR, status.value, self._workflow_id)
+
+    def _key_workflow_status_on_change(self):
+        return os.path.join(
+            WORKFLOW_STATUS_DIR, WORKFLOW_STATUS_ON_CHANGE_DIR, self._workflow_id
+        )
 
 
 def get_workflow_storage(workflow_id: Optional[str] = None) -> WorkflowStorage:
