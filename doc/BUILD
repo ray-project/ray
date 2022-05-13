@@ -165,7 +165,7 @@ py_test_run_all_subdirectory(
 # --------------------------------------------------------------------
 
 py_test_run_all_subdirectory(
-    size = "medium",
+    size = "large",
     include = ["source/ray-air/doc_code/*.py"],
     exclude = [],
     extra_srcs = [],
