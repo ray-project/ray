@@ -1,8 +1,8 @@
-import io
 import logging
 import threading
 import traceback
 import yaml
+import io
 
 import ray.cloudpickle as pickle
 from ray import ray_constants
@@ -44,6 +44,52 @@ from ray import serialization_addons
 
 logger = logging.getLogger(__name__)
 
+_pickle_whitelist = None
+
+class RestrictedUnpickler(pickle.Unpickler):
+
+    def find_class(self, module, name):
+        if _pickle_whitelist is None or (
+            module in _pickle_whitelist and (
+                _pickle_whitelist[module] is None or name in _pickle_whitelist[module])):
+            return super().find_class(module, name)
+
+        if module == "ray.serialization":
+            return super().find_class(module, name)
+
+        # Forbid everything else.
+        raise pickle.UnpicklingError("global '%s.%s' is forbidden" %
+                                     (module, name))
+
+
+def restricted_loads(serialized_data, *, fix_imports=True,
+        encoding="ASCII", errors="strict", buffers=None):
+    if isinstance(serialized_data, str):
+        raise TypeError("Can't load pickle from unicode string")
+    file = io.BytesIO(serialized_data)
+    return RestrictedUnpickler(file, fix_imports=fix_imports, buffers=buffers,
+                    encoding=encoding, errors=errors).load()
+
+def patch_pickle_for_security():
+    global _pickle_whitelist
+    whitelist_path = ray_constants.RAY_PICKLE_WHITELIST_CONFIG_PATH
+    if whitelist_path is None:
+            return
+
+    _pickle_whitelist = yaml.safe_load(
+        open(whitelist_path, "rt")
+    ).get("pickle_whitelist", None)
+    if _pickle_whitelist is None:
+        return
+
+    if "*" in _pickle_whitelist:
+        _pickle_whitelist = None
+    for module, attr_list in _pickle_whitelist.items():
+        if "*" in attr_list:
+            _pickle_whitelist[module] = None
+    pickle.loads = restricted_loads
+
+patch_pickle_for_security()
 
 class DeserializationError(Exception):
     pass
@@ -85,24 +131,6 @@ def _actor_handle_deserializer(serialized_obj):
     outer_id = context.get_outer_object_ref()
     return ray.actor.ActorHandle._deserialization_helper(serialized_obj, outer_id)
 
-class RestrictedUnpickler(pickle.Unpickler):
-
-    def find_class(self, module, name):
-
-        if module == "ray.serialization":
-            return super().find_class(module, name)
-
-        if self._pickle_whitelist is None or (
-            module in self._pickle_whitelist and (
-                self._pickle_whitelist[module] is None or name in self._pickle_whitelist[module])):
-            return super().find_class(module, name)
-        # Forbid everything else.
-        raise pickle.UnpicklingError("global '%s.%s' is forbidden" %
-                                     (module, name))
-
-    def set_ray_pickle_whitelist(self, safe_module: dict):
-        self._pickle_whitelist = safe_module
-
 
 class SerializationContext:
     """Initialize the serialization library.
@@ -140,20 +168,6 @@ class SerializationContext:
 
         self._register_cloudpickle_reducer(ray.ObjectRef, object_ref_reducer)
         serialization_addons.apply(self)
-
-        # None means match all strings
-        self._pickle_whitelist = None
-        whitelist_path = ray_constants.RAY_WHITELIST_PATH
-        if whitelist_path is None:
-            return
-        self._pickle_whitelist = yaml.safe_load(
-            open(whitelist_path)
-        ).get("pickle_whitelist", None)
-        if "*" in self._pickle_whitelist:
-            self._pickle_whitelist = None
-        for module, attr_list in self._pickle_whitelist.items():
-            if "*" in attr_list:
-                self._pickle_whitelist[module] = None
 
     def _register_cloudpickle_reducer(self, cls, reducer):
         pickle.CloudPickler.dispatch[cls] = reducer
@@ -207,23 +221,13 @@ class SerializationContext:
             # a local reference that won't ever be removed.
             ray.worker.global_worker.core_worker.add_object_ref_reference(object_ref)
 
-    def restricted_loads(self, serialized_data, *, fix_imports=True,
-        encoding="ASCII", errors="strict", buffers=None):
-        if isinstance(serialized_data, str):
-            raise TypeError("Can't load pickle from unicode string")
-        file = io.BytesIO(serialized_data)
-        unpickler = RestrictedUnpickler(file, fix_imports=fix_imports, buffers=buffers,
-                      encoding=encoding, errors=errors)
-        unpickler.set_ray_pickle_whitelist(self._pickle_whitelist)
-        return unpickler.load()
-
     def _deserialize_pickle5_data(self, data):
         try:
             in_band, buffers = unpack_pickle5_buffers(data)
             if len(buffers) > 0:
-                obj = self.restricted_loads(in_band, buffers=buffers)
+                obj = pickle.loads(in_band, buffers=buffers)
             else:
-                obj = self.restricted_loads(in_band)
+                obj = pickle.loads(in_band)
         # cloudpickle does not provide error types
         except pickle.pickle.PicklingError:
             raise DeserializationError()

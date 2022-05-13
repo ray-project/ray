@@ -692,7 +692,8 @@ def test_restricted_loads(shutdown_only):
             }
         }
         yaml.safe_dump(whitelist_config, open(config_path, "wt"))
-        ray.ray_constants.RAY_WHITELIST_PATH = config_path
+        ray.ray_constants.RAY_PICKLE_WHITELIST_CONFIG_PATH = config_path
+        ray.serialization.patch_pickle_for_security()
         ray.init()
         data = np.zeros((10, 10))
         ref1 = ray.put(data)
@@ -701,7 +702,12 @@ def test_restricted_loads(shutdown_only):
         ref2 = ray.put([ref1])
         ray.get(ref2)
 
-
+        class WrongClass:
+            pass
+        ref3 = ray.put(WrongClass())
+        with pytest.raises(ray.exceptions.RaySystemError) as error:
+            ray.get(ref3)
+        assert isinstance(error.value.args[0], ray.cloudpickle.UnpicklingError)
 
 
 if __name__ == "__main__":
