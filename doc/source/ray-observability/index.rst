@@ -1,5 +1,7 @@
+.. _ray-observability:
+
 Observability
-===============
+=============
 
 .. toctree::
     :maxdepth: 1

@@ -1,14 +1,11 @@
 format: jb-book
 root: index
 parts:
-  - caption: Overview
+  - caption: ""
     chapters:
       - file: ray-overview/index
       - file: ray-overview/installation
       - file: ray-overview/ray-libraries
-
-  - caption: Ray ML
-    chapters:
       - file: data/dataset
         title: Ray Data
         sections:
@@ -18,7 +15,6 @@ parts:
           - file: data/examples/big_data_ingestion
           - file: data/package-ref
           - file: data/integrations
-
       - file: train/train
         title: Ray Train
         sections:
@@ -27,7 +23,6 @@ parts:
           - file: train/faq
           - file: train/architecture
           - file: train/api
-
       - file: tune/index
         title: Ray Tune
         sections:
@@ -57,8 +52,7 @@ parts:
                 title: "Scalability Benchmarks"
           - file: tune/examples/index
           - file: tune/faq
-          - file: tune/api_docs/overview.rst
-
+          - file: tune/api_docs/overview
       - file: serve/index
         title: Ray Serve
         sections:
@@ -79,7 +73,6 @@ parts:
           - file: serve/tutorials/index
           - file: serve/faq
           - file: serve/package-ref
-
       - file: rllib/index
         title: Ray RLlib
         sections:
@@ -96,20 +89,35 @@ parts:
               - file: rllib/rllib-dev
           - file: rllib/rllib-examples
           - file: rllib/package_ref/index
-
-      - file: workflows/concepts
-        title: Ray Workflows
+      - file: ray-core/walkthrough
+        title: Ray Core
         sections:
-          - file: workflows/basics
-          - file: workflows/management
-          - file: workflows/actors
-          - file: workflows/metadata
-          - file: workflows/events
-          - file: workflows/comparison
-          - file: workflows/advanced
-          - file: workflows/package-ref
+        - file: ray-core/key-concepts
+          title: "Key Concepts"
+        - file: ray-core/user-guide
+          title: "User Guides"
+        - file: ray-core/examples/overview
+          title: "Examples"
+          sections:
+            - file: ray-core/examples/plot_example-a3c
+            - file: ray-core/examples/plot_example-lm
+            - file: ray-core/examples/plot_hyperparameter
+            - file: ray-core/examples/plot_lbfgs
+            - file: ray-core/examples/plot_parameter_server
+            - file: ray-core/examples/plot_pong_example
+        - file: ray-core/package-ref
+
+      - file: cluster/quickstart
+        title: Ray Clusters
+        sections:
+        - file: cluster/user-guide
+        - file: cluster/cloud
+        - file: cluster/deploy
+        - file: cluster/api
+        - file: cluster/usage-stats
+
       - file: ray-more-libs/index
-        title: More Ray ML Libraries
+        title: More Ray Libraries
         sections:
           - file: ray-air/getting-started
             sections:
@@ -117,6 +125,17 @@ parts:
               - file: ray-air/deployment
               - file: ray-air/examples/index
               - file: ray-air/package-ref
+          - file: workflows/concepts
+            title: Ray Workflows
+            sections:
+              - file: workflows/basics
+              - file: workflows/management
+              - file: workflows/actors
+              - file: workflows/metadata
+              - file: workflows/events
+              - file: workflows/comparison
+              - file: workflows/advanced
+              - file: workflows/package-ref
           - file: ray-more-libs/joblib
           - file: ray-more-libs/lightgbm-ray
           - file: ray-more-libs/multiprocessing
@@ -127,48 +146,19 @@ parts:
           - file: ray-core/examples/dask_xgboost/dask_xgboost
           - file: ray-core/examples/modin_xgboost/modin_xgboost
 
-  - caption: Ray Core
-    chapters:
-      - file: ray-core/walkthrough
-        title: Getting Started
-      - file: ray-core/key-concepts
-        title: "Key Concepts"
-      - file: ray-core/user-guide
-        title: "User Guides"
-      - file: ray-core/examples/overview
-        title: "Examples"
-        sections:
-          - file: ray-core/examples/plot_example-a3c
-          - file: ray-core/examples/plot_example-lm
-          - file: ray-core/examples/plot_hyperparameter
-          - file: ray-core/examples/plot_lbfgs
-          - file: ray-core/examples/plot_parameter_server
-          - file: ray-core/examples/plot_pong_example
-      - file: ray-core/package-ref
-
-  - caption: Ray Clusters
-    chapters:
-      - file: cluster/quickstart
-      - file: cluster/user-guide
-      - file: cluster/cloud
-      - file: cluster/deploy
-      - file: cluster/api
-      - file: cluster/usage-stats
-
-  - caption: References
-    chapters:
       - file: ray-references/api
+        title: API References
 
-  - caption: Developer Guides
-    chapters:
-      - file: ray-contribute/getting-involved
+      - file: ray-contribute/index
+        title: Developer Guides
         sections:
-          - file: ray-contribute/development
-          - file: ray-contribute/docs
-          - file: ray-contribute/fake-autoscaler
-          - file: ray-core/examples/testing-tips
-      - file: ray-core/configure
-      - file: ray-observability/index
-      - file: ray-contribute/whitepaper
+          - file: ray-contribute/getting-involved
+            sections:
+            - file: ray-contribute/development
+            - file: ray-contribute/docs
+            - file: ray-contribute/fake-autoscaler
+            - file: ray-core/examples/testing-tips
+          - file: ray-core/configure
+          - file: ray-observability/index
 
 # TODO: Add examples section

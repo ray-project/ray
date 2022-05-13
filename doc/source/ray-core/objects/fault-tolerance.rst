@@ -10,4 +10,4 @@ Ray delegates the metadata tracking of an object to its *owner process*. Typical
 
 The owner of the object tracks the location and reference count for an object. If the owner process is unexpectedly killed, then the object cannot be recovered, even via lineage reconstruction.
 
-For more information about how object ownership works, see the :ref:`Ray Architecture Whitepaper <whitepaper>`.
+For more information about how object ownership works, see the :ref:`Ray Architecture Whitepaper <papers>`.

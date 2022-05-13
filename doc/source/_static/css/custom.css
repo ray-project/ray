@@ -10,6 +10,18 @@
     margin: auto;
 }
 
+li.toctree-l1 {
+    font-weight: 600;
+}
+
+li.toctree-l2 {
+    font-weight: 520;
+}
+
+li.toctree-l3 {
+    font-weight: normal;
+}
+
 /* Hide confusing "<-" back arrow in navigation for larger displays */
 @media (min-width: 768px) {
     #navbar-toggler {

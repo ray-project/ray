@@ -1,12 +1,14 @@
-More Ray ML Libraries
-=====================
+More Ray Libraries
+==================
 
-.. TODO: we added the three Ray Core examples below, since they don't really belong there.
-    Going forward, make sure that all "Ray Lightning" and XGBoost topics are in one document or group,
-    and not next to each other.
+.. TODO: we added the three Ray Core examples below, since they don't really belong
+    there. Going forward, make sure that all "Ray Lightning" and XGBoost topics are
+    in one document or group, and not next to each other.
 
 Ray has a variety of different extra integrations with ecosystem libraries.
 
+- :ref:`air`
+- :ref:`workflows`
 - :ref:`ray-joblib`
 - :ref:`lightgbm-ray`
 - :ref:`ray-multiprocessing`

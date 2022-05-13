@@ -1,4 +1,4 @@
-.. _getting-involved:
+.. _getting-involved-ref:
 
 Getting Involved / Contributing
 ===============================
