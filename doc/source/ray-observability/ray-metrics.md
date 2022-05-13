@@ -1,8 +1,8 @@
-(ray-metrics)=
+(ray-metrics-ref)=
 
 # Exporting Metrics
 
-To help monitoring Ray applications, Ray
+To help monitor Ray applications, Ray
 
 - Collects Ray's pre-selected system level metrics.
 - Exposes metrics in a Prometheus format. We'll call the endpoint to access

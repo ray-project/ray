@@ -1,3 +1,5 @@
+(debugging-ray)=
+
 # Debugging Ray applications (for developers)
 
 This document details, for Ray developers, how to debug your Ray applications.

@@ -22,7 +22,7 @@ In this example pictured above, we have a single-node cluster with a deployment 
 ## Logging
 
 :::{note}
-For an overview of logging in Ray, see [Ray Logging](ray-logging).
+For an overview of logging in Ray, see [Ray Logging](ray-logging-ref).
 :::
 
 Ray Serve uses Python's standard `logging` facility with the `"ray.serve"` named logger.
@@ -197,7 +197,7 @@ You should see something similar to the following:
 ## Metrics
 
 Ray Serve exposes important system metrics like the number of successful and
-errored requests through the [Ray metrics monitoring infrastructure](ray-metrics). By default,
+errored requests through the [Ray metrics monitoring infrastructure](ray-metrics-ref). By default,
 the metrics are exposed in Prometheus format on each node.
 
 The following metrics are exposed by Ray Serve:
@@ -263,4 +263,4 @@ Here's an example:
 ```
 
 See the
-[Ray Metrics documentation](ray-metrics) for more details, including instructions for scraping these metrics using Prometheus.
+[Ray Metrics documentation](ray-metrics-ref) for more details, including instructions for scraping these metrics using Prometheus.

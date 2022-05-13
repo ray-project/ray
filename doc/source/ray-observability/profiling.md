@@ -1,3 +1,5 @@
+(ray-profiling)=
+
 # Profiling Ray applications (for developers)
 
 This document details, for Ray developers, how to analyze Ray performance.

@@ -1,4 +1,4 @@
-(ray-logging)=
+(ray-logging-ref)=
 
 # Logging
 
