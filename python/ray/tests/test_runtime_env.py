@@ -1,3 +1,4 @@
+import logging
 import os
 import pytest
 import sys
@@ -563,7 +564,7 @@ class MyPlugin(RuntimeEnvPlugin):
 
     @staticmethod
     def modify_context(
-        uri: str, plugin_config_dict: dict, ctx: RuntimeEnvContext
+        uri: str, runtime_env: dict, ctx: RuntimeEnvContext, logger: logging.Logger
     ) -> None:
         global runtime_env_retry_times
         runtime_env_retry_times += 1
