@@ -14,6 +14,7 @@ class PGConfig(TrainerConfig):
     """Defines a PGTrainer configuration class from which a PGTrainer can be built.
 
     Example:
+        >>> from ray.rllib.agents.pg import PGConfig
         >>> config = PGConfig().training(lr=0.01).resources(num_gpus=1)
         >>> print(config.to_dict())
         >>> # Build a Trainer object from the config and run 1 training iteration.
@@ -21,6 +22,7 @@ class PGConfig(TrainerConfig):
         >>> trainer.train()
 
     Example:
+        >>> from ray.rllib.agents.pg import PGConfig
         >>> from ray import tune
         >>> config = PGConfig()
         >>> # Print out some default values.
