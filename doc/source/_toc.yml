@@ -62,7 +62,7 @@ parts:
       - file: serve/index
         title: Ray Serve
         sections:
-          - file: serve/end_to_end_tutorial
+          - file: serve/getting_started
           - file: serve/core-apis
           - file: serve/http-servehandle
           - file: serve/ml-models
