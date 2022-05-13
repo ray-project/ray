@@ -38,7 +38,7 @@ from ray.rllib.examples.models.centralized_critic_models import (
 )
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.tf_policy import LearningRateSchedule, EntropyCoeffSchedule
+from ray.rllib.policy.tf_mixins import LearningRateSchedule, EntropyCoeffSchedule
 from ray.rllib.policy.torch_policy import (
     LearningRateSchedule as TorchLR,
     EntropyCoeffSchedule as TorchEntropyCoeffSchedule,

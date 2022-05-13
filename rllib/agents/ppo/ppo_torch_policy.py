@@ -10,7 +10,7 @@ from ray.rllib.evaluation.postprocessing import (
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_policy import (
+from ray.rllib.policy.torch_mixins import (
     EntropyCoeffSchedule,
     KLCoeffMixin,
     LearningRateSchedule,
