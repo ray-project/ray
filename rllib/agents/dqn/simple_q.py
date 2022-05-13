@@ -104,9 +104,9 @@ class SimpleQConfig(TrainerConfig):
         >>>                         .exploration(exploration_config=explore_config)
     """
 
-    def __init__(self, trainer_class=None):
+    def __init__(self):
         """Initializes a SimpleQConfig instance."""
-        super().__init__(trainer_class=trainer_class or SimpleQTrainer)
+        super().__init__(trainer_class=SimpleQTrainer)
 
         # Simple Q specific
         # fmt: off

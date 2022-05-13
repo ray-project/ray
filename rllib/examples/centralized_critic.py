@@ -20,9 +20,7 @@ import os
 
 import ray
 from ray import tune
-from ray.rllib.algorithms.maml.maml_torch_policy import (
-    KLCoeffMixin as TorchKLCoeffMixin,
-)
+from ray.rllib.agents.maml.maml_torch_policy import KLCoeffMixin as TorchKLCoeffMixin
 from ray.rllib.agents.ppo.ppo import PPOTrainer
 from ray.rllib.agents.ppo.ppo_tf_policy import (
     PPOTFPolicy,
