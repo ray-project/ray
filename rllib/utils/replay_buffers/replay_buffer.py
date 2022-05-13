@@ -358,5 +358,5 @@ class ReplayBuffer(ParallelIteratorWorker):
         new="RepayBuffer.sample(" "num_items)",
         error=False,
     )
-    def replay(self, *args, **kwargs):
-        return self.sample(*args, **kwargs)
+    def replay(self, num_items):
+        return self.sample(num_items)
