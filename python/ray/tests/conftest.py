@@ -86,8 +86,8 @@ def _setup_redis(request):
     for proc in processes:
         proc.process.terminate()
 
-
-def _maybe_external_redis(request):
+@pytest.fixture
+def maybe_external_redis(request):
     import os
 
     if "REDIS_MODE" in os.environ:
@@ -115,11 +115,6 @@ def external_redis(request):
             os.environ["RAY_REDIS_ADDRESS"] = old_addr
         else:
             os.environ.pop("RAY_REDIS_ADDRESS")
-
-
-maybe_external_redis = pytest.fixture(_maybe_external_redis)
-maybe_external_redis_module = pytest.fixture(scope="module")(_maybe_external_redis)
-
 
 @pytest.fixture
 def shutdown_only(maybe_external_redis):
@@ -176,14 +171,14 @@ def ray_start_regular_with_external_redis(request, external_redis):
 
 
 @pytest.fixture(scope="module")
-def ray_start_regular_shared(request, maybe_external_redis_module):
+def ray_start_regular_shared(request):
     param = getattr(request, "param", {})
     with _ray_start(**param) as res:
         yield res
 
 
 @pytest.fixture(scope="module", params=[{"local_mode": True}, {"local_mode": False}])
-def ray_start_shared_local_modes(request, maybe_external_redis_module):
+def ray_start_shared_local_modes(request):
     param = getattr(request, "param", {})
     with _ray_start(**param) as res:
         yield res
