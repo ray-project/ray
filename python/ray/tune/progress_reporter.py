@@ -546,12 +546,12 @@ class JupyterNotebookReporter(TuneReporterBase, RemoteReporterMixin):
             self.display(progress_str)
 
     def display(self, string: str) -> None:
-        from IPython.core.display import display, HTML
+        from IPython.display import display, HTML, clear_output
 
         if not self._display_handle:
-            self._display_handle = display(
-                HTML(string), display_id=True, clear=self._overwrite
-            )
+            if self._overwrite:
+                clear_output(wait=True)
+            self._display_handle = display(HTML(string), display_id=True)
         else:
             self._display_handle.update(HTML(string))
 
