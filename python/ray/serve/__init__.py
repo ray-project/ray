@@ -11,7 +11,6 @@ try:
     )
     from ray.serve.batching import batch
     from ray.serve.config import HTTPOptions
-    from ray.experimental.dag.input_node import InputNode
 except ModuleNotFoundError as e:
     e.msg += (
         '. You can run `pip install "ray[serve]"` to install all Ray Serve'
@@ -36,5 +35,4 @@ __all__ = [
     "get_deployment",
     "list_deployments",
     "run",
-    "InputNode",
 ]

@@ -1,7 +1,7 @@
 import sys
 
 import pytest
-from ray.serve import InputNode
+from ray.serve.dag import InputNode
 from ray.serve.pipeline.api import build as pipeline_build
 
 import ray
