@@ -8,8 +8,10 @@ import traceback
 
 from typing import List
 import ray.cloudpickle as pickle
-from ray.rllib.env.policy_client import PolicyClient, \
-    _create_embedded_rollout_worker, Commands
+from ray.rllib.env.policy_client import (
+    _create_embedded_rollout_worker,
+    Commands,
+)
 from ray.rllib.offline.input_reader import InputReader
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override, PublicAPI
@@ -82,10 +84,12 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
         self.metrics_queue = queue.Queue()
         self.idle_timeout = idle_timeout
 
+        # Forwards client-reported metrics directly into the local rollout
+        # worker.
         if self.rollout_worker.sampler is not None:
-            # Forwards client-reported rewards directly into the local rollout
-            # worker. This is a bit of a hack since it is patching the get_metrics
+            # This is a bit of a hack since it is patching the get_metrics
             # function of the sampler.
+
             def get_metrics():
                 completed = []
                 while True:
@@ -95,19 +99,23 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
                         break
 
                 return completed
+
             self.rollout_worker.sampler.get_metrics = get_metrics
         else:
+            # If there is no sampler, act like if there would be one to collect
+            # metrics from
             class MetricsDummySampler(SamplerInput):
                 """This sampler only maintains a queue to get metrics from.
 
                 It implements the
 
                 """
+
                 def __init__(self, metrics_queue):
                     """Initializes an AsyncSampler instance.
 
                     Args:
-                        worker: The RolloutWorker that will use this Sampler for sampling.
+                        metrics_queue: A queue of metrics
                     """
                     self.metrics_queue = metrics_queue
 
@@ -122,9 +130,7 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
                     completed = []
                     while True:
                         try:
-                            completed.append(
-                                self.metrics_queue.get_nowait()
-                            )
+                            completed.append(self.metrics_queue.get_nowait())
                         except queue.Empty:
                             break
                     return completed
