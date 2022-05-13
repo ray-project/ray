@@ -37,4 +37,5 @@ class RayServeDAGHandle:
             self.dag_node = json.loads(
                 self.dag_node_json, object_hook=dagnode_from_json
             )
+
         return self.dag_node.execute(*args, **kwargs)

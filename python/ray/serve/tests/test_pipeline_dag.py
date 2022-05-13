@@ -87,6 +87,7 @@ def fn_hello():
 
 @serve.deployment
 def combine(m1_output, m2_output, kwargs_output=0):
+    print(f"<<<< combine: {m1_output} + {m2_output}")
     return m1_output + m2_output + kwargs_output
 
 
@@ -150,10 +151,12 @@ async def json_resolver(request: starlette.requests.Request):
 def test_chained_function(serve_instance, use_build):
     @serve.deployment
     def func_1(input):
+        print(f"<<<< func_1: {input}")
         return input
 
     @serve.deployment
     def func_2(input):
+        print(f"<<<< func_2: {input}")
         return input * 2
 
     with InputNode() as dag_input:
@@ -163,7 +166,7 @@ def test_chained_function(serve_instance, use_build):
     # with pytest.raises(ValueError, match="Please provide a driver class"):
     #     _ = serve.run(serve_dag)
 
-    handle = serve.run(DAGDriver.bind(serve_dag, http_adapter=json_resolver))
+    handle = serve.run(DAGDriver.bind(serve_dag, http_adapter="ray.serve.tests.test_pipeline_dag.json_resolver"))
     assert ray.get(handle.predict.remote(2)) == 6  # 2 + 2*2
     assert requests.post("http://127.0.0.1:8000/", json=2).json() == 6
 

@@ -24,9 +24,11 @@ class DeploymentExecutorNode(DAGNode):
     def __init__(
         self,
         deployment_handle: Union[RayServeSyncHandle, RayServeHandle],
+        args,
+        kwargs,
         other_args_to_resolve: Optional[Dict[str, Any]] = None,
     ):
-        super().__init__([], {}, {}, other_args_to_resolve=other_args_to_resolve)
+        super().__init__(args, kwargs, {}, other_args_to_resolve=other_args_to_resolve)
         self._deployment_handle = deployment_handle
 
     def _copy_impl(
@@ -38,6 +40,8 @@ class DeploymentExecutorNode(DAGNode):
     ):
         return DeploymentExecutorNode(
             self._deployment_handle,
+            new_args,
+            new_kwargs,
             other_args_to_resolve=new_other_args_to_resolve,
         )
 
@@ -48,7 +52,7 @@ class DeploymentExecutorNode(DAGNode):
         whatever this method returns. We return a handle here so method node can
         directly call upon.
         """
-        return self._deployment_handle
+        return self._deployment_handle.remote(*self._bound_args, **self._bound_kwargs)
 
     def __str__(self) -> str:
         return get_dag_node_str(self, str(self._deployment_handle))
@@ -57,6 +61,8 @@ class DeploymentExecutorNode(DAGNode):
         return {
             DAGNODE_TYPE_KEY: DeploymentExecutorNode.__name__,
             "deployment_handle": self._deployment_handle,
+            "args": self.get_args(),
+            "kwargs": self.get_kwargs(),
             "other_args_to_resolve": self.get_other_args_to_resolve(),
             "uuid": self.get_stable_uuid(),
         }
@@ -66,5 +72,7 @@ class DeploymentExecutorNode(DAGNode):
         assert input_json[DAGNODE_TYPE_KEY] == DeploymentExecutorNode.__name__
         return cls(
             input_json["deployment_handle"],
+            input_json["args"],
+            input_json["kwargs"],
             other_args_to_resolve=input_json["other_args_to_resolve"],
         )

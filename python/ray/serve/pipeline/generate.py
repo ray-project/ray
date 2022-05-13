@@ -103,7 +103,11 @@ def transform_serve_dag_to_serve_executor_dag(serve_dag_root_node: DAGNode):
     """
     if isinstance(serve_dag_root_node, DeploymentNode):
         print("DeploymentNode")
-        return DeploymentExecutorNode(serve_dag_root_node._deployment_handle)
+        return DeploymentExecutorNode(
+            serve_dag_root_node._deployment_handle,
+            serve_dag_root_node.get_args(),
+            serve_dag_root_node.get_kwargs()
+        )
     elif isinstance(serve_dag_root_node, DeploymentFunctionNode):
         print("DeploymentFunctionNode")
         return DeploymentFunctionExecutorNode(

@@ -87,9 +87,11 @@ class DAGDriver(SimpleSchemaIngress):
         *,
         http_adapter: Optional[Union[str, Callable]] = None,
     ):
+        print(f">>>> Creating DAGDriver with dag_handle: {dag_handle}")
         self.dag_handle = dag_handle
         super().__init__(http_adapter)
 
     async def predict(self, *args, **kwargs):
         """Perform inference directly without HTTP."""
+        print(f">>>>DAGDriver: Calling predict with dag_handle: {self.dag_handle}")
         return await self.dag_handle.remote(*args, **kwargs)
