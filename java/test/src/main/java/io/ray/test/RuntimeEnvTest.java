@@ -265,4 +265,56 @@ public class RuntimeEnvTest {
       Ray.shutdown();
     }
   }
+
+  private static boolean findClasses(List<String> classNames) {
+    try {
+      for (String name : classNames) {
+        Class.forName(name);
+      }
+    } catch (ClassNotFoundException e) {
+      return false;
+    }
+    return true;
+  }
+
+  private static void testDownloadAndLoadPackagesForTask(
+      List<String> urls, List<String> classNames) {
+    try {
+      Ray.init();
+      final RuntimeEnv runtimeEnv = new RuntimeEnv.Builder().addJars(urls).build();
+      boolean ret =
+          Ray.task(RuntimeEnvTest::findClasses, classNames)
+              .setRuntimeEnv(runtimeEnv)
+              .remote()
+              .get();
+      Assert.assertTrue(ret);
+    } finally {
+      Ray.shutdown();
+    }
+  }
+
+  private static void testDownloadAndLoadPackagesForTask(String url, String className) {
+    testDownloadAndLoadPackagesForTask(ImmutableList.of(url), ImmutableList.of(className));
+  }
+
+  public void testJarPackageForTask() {
+    testDownloadAndLoadPackagesForTask(
+        "https://github.com/ray-project/test_packages/raw/main/raw_resources/bar.jar",
+        "io.testpackages.Bar");
+  }
+
+  public void testZipPackageForTask() {
+    testDownloadAndLoadPackagesForTask(
+        "https://github.com/ray-project/test_packages/raw/main/raw_resources/foo.zip",
+        "io.testpackages.Foo");
+  }
+
+  /// This case tests that a task needs 2 jars for load different classes.
+  public void testMultipleJars() {
+    testDownloadAndLoadPackagesForTask(
+        ImmutableList.of(
+            "https://github.com/ray-project/test_packages/raw/main/raw_resources/bar.jar",
+            "https://github.com/ray-project/test_packages/raw/main/raw_resources/foo.jar"),
+        ImmutableList.of("io.testpackages.Bar", "io.testpackages.Foo"));
+  }
 }
