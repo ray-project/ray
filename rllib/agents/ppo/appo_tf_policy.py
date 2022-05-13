@@ -24,12 +24,12 @@ from ray.rllib.evaluation.postprocessing import (
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.policy.tf_policy import (
+from ray.rllib.policy.tf_mixins import (
     EntropyCoeffSchedule,
     LearningRateSchedule,
-    TFPolicy,
 )
+from ray.rllib.policy.tf_policy_template import build_tf_policy
+from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.agents.ppo.ppo_tf_policy import KLCoeffMixin, ValueNetworkMixin
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
