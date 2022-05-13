@@ -314,8 +314,8 @@ class WorkflowManagementActor:
         if workflow_id in self._workflow_outputs and name is None:
             return self._workflow_outputs[workflow_id].output
         wf_store = workflow_storage.WorkflowStorage(workflow_id)
-        meta = wf_store.load_workflow_meta()
-        if meta is None:
+        meta = wf_store.load_and_fix_workflow_status()
+        if meta == common.WorkflowStatus.NONE:
             raise ValueError(f"No such workflow {workflow_id}")
         if meta == common.WorkflowStatus.CANCELED:
             raise ValueError(f"Workflow {workflow_id} is canceled")

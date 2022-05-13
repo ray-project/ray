@@ -10,7 +10,6 @@ from ray.workflow import workflow_storage
 from ray.workflow.common import (
     Workflow,
     WorkflowStatus,
-    WorkflowMetaData,
     StepType,
     WorkflowNotFoundError,
     validate_user_metadata,
@@ -143,12 +142,12 @@ def get_status(workflow_id: str) -> Optional[WorkflowStatus]:
     if running:
         return WorkflowStatus.RUNNING
     store = workflow_storage.get_workflow_storage(workflow_id)
-    meta = store.load_workflow_meta()
-    if meta is None:
+    status = store.load_and_fix_workflow_status()
+    if status == WorkflowStatus.NONE:
         raise WorkflowNotFoundError(workflow_id)
-    if meta.status == WorkflowStatus.RUNNING:
+    if status == WorkflowStatus.RUNNING:
         return WorkflowStatus.RESUMABLE
-    return meta.status
+    return status
 
 
 def get_metadata(workflow_id: str, name: Optional[str]) -> Dict[str, Any]:

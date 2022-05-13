@@ -16,7 +16,6 @@ from ray.internal import storage
 from ray.workflow.common import (
     Workflow,
     StepID,
-    WorkflowMetaData,
     WorkflowStatus,
     WorkflowRef,
     WorkflowNotFoundError,
@@ -547,33 +546,6 @@ class WorkflowStorage:
 
         return _load_workflow_metadata()
 
-    def save_workflow_meta(self, metadata: WorkflowMetaData) -> None:
-        """Save the metadata of the current workflow.
-
-        Args:
-            metadata: WorkflowMetaData of the current workflow.
-
-        Raises:
-            DataSaveError: if we fail to save the class body.
-        """
-
-        metadata = {"status": metadata.status.value}
-        self._put(self._key_workflow_metadata(), metadata, True)
-
-    def load_workflow_meta(self) -> Optional[WorkflowMetaData]:
-        """Load the metadata of the current workflow.
-
-        Returns:
-            The metadata of the current workflow. If it doesn't exist,
-            return None.
-        """
-
-        try:
-            metadata = self._get(self._key_workflow_metadata(), True)
-            return WorkflowMetaData(status=WorkflowStatus(metadata["status"]))
-        except KeyNotFoundError:
-            return None
-
     def _list_workflow(self) -> List[Tuple[str, WorkflowStatus]]:
         # Create a workflow storage with an empty workflow_id.
         # This turns keys into their directories.
@@ -640,7 +612,7 @@ class WorkflowStorage:
         if prev_status != status:
             # Transactional update of workflow status
             self._put(self._key_workflow_status_on_change(), b"")
-            self.save_workflow_meta(WorkflowMetaData(status))
+            self._put(self._key_workflow_metadata(), {"status": status.value}, True)
             self._put(self._key_workflow_with_status(status), b"")
             self._storage.delete(self._key_workflow_with_status(prev_status))
             self._storage.delete(self._key_workflow_status_on_change())
@@ -648,11 +620,11 @@ class WorkflowStorage:
     def load_and_fix_workflow_status(self):
         """Load workflow status. If we find the previous status updating failed,
         fix it with redo-log transaction recovery."""
-        metadata = self.load_workflow_meta()
-        if metadata is None:
+        try:
+            metadata = self._get(self._key_workflow_metadata(), True)
+            prev_status = WorkflowStatus(metadata["status"])
+        except KeyNotFoundError:
             prev_status = WorkflowStatus.NONE
-        else:
-            prev_status = metadata.status
 
         if self._exists(self._key_workflow_status_on_change()):
             # This means the previous status update failed. Fix it.
