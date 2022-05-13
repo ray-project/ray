@@ -105,11 +105,7 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
             # If there is no sampler, act like if there would be one to collect
             # metrics from
             class MetricsDummySampler(SamplerInput):
-                """This sampler only maintains a queue to get metrics from.
-
-                It implements the
-
-                """
+                """This sampler only maintains a queue to get metrics from."""
 
                 def __init__(self, metrics_queue):
                     """Initializes an AsyncSampler instance.
