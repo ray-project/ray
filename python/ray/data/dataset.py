@@ -648,20 +648,16 @@ class Dataset(Generic[T]):
             random.seed(seed)
 
         def process_batch(batch):
-            # Utilizes Bernoulli sampling, similar to Apache spark
-            probs = [random.random() for _ in range(len(batch))]
-
             if isinstance(batch, list):
-                return [batch[i] for i in range(len(batch)) if probs[i] <= fraction]
-
+                return [row for row in batch if random.random() <= fraction]
             if isinstance(batch, pa.Table):
                 # Lets the item pass if weight generated for that item <= fraction
-                mask = [p <= fraction for p in probs]
-                return batch.filter(mask)
+                return batch.filter(
+                    pa.array(random.random() <= fraction for _ in range(len(batch)))
+                )
             if isinstance(batch, pd.DataFrame):
                 return batch.sample(frac=fraction)
-
-            raise ValueError("Unsupported batch type: {}".format(type(batch)))
+            raise ValueError(f"Unsupported batch type: {type(batch)}")
 
         return self.map_batches(process_batch)
 
