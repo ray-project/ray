@@ -14,6 +14,8 @@ from ray.serve.deployment import Deployment
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.pipeline.deployment_node import DeploymentNode
 from ray.serve.pipeline.deployment_function_node import DeploymentFunctionNode
+from ray.serve.deployment_executor_node import DeploymentExecutorNode
+from ray.serve.deployment_function_executor_node import DeploymentFunctionExecutorNode
 
 
 def transform_ray_dag_to_serve_dag(
@@ -93,6 +95,25 @@ def extract_deployments_from_serve_dag(
     serve_dag_root.apply_recursive(extractor)
 
     return list(deployments.values())
+
+def transform_serve_dag_to_serve_executor_dag(serve_dag_root_node: DAGNode):
+    """Given a runnable serve dag with deployment init args and options
+    processed, transform into an equivalent, but minimal dag optimized for
+    execution.
+    """
+
+    if isinstance(serve_dag_root_node, DeploymentNode):
+        return DeploymentExecutorNode(serve_dag_root_node._deployment_handle)
+    elif isinstance(serve_dag_root_node, DeploymentFunctionNode):
+        return DeploymentFunctionExecutorNode(
+            serve_dag_root_node._deployment_handle,
+            serve_dag_root_node.get_args(),
+            serve_dag_root_node.get_kwargs()
+        )
+    else:
+        print(f">>>> WUT {serve_dag_root_node}")
+        return serve_dag_root_node
+
 
 
 def get_pipeline_input_node(serve_dag_root_node: DAGNode):
