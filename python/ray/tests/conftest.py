@@ -88,10 +88,10 @@ def _setup_redis(request):
 
 
 def _maybe_external_redis(request):
-    with _setup_redis(request) as addr:
-        import os
+    import os
 
-        if "REDIS_MODE" in os.environ:
+    if "REDIS_MODE" in os.environ:
+        with _setup_redis(request) as addr:
             old_addr = os.environ.get("RAY_REDIS_ADDRESS")
             os.environ["RAY_REDIS_ADDRESS"] = addr
             yield
@@ -99,8 +99,8 @@ def _maybe_external_redis(request):
                 os.environ["RAY_REDIS_ADDRESS"] = old_addr
             else:
                 del os.environ["RAY_REDIS_ADDRESS"]
-        else:
-            yield
+    else:
+        yield
 
 
 @pytest.fixture

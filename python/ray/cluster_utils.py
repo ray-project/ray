@@ -88,7 +88,7 @@ class AutoscalingCluster:
         env = os.environ.copy()
         env.update({"AUTOSCALER_UPDATE_INTERVAL_S": "1", "RAY_FAKE_CLUSTER": "1"})
         self._process = subprocess.Popen(cmd, env=env)
-        time.sleep(5)  # TODO(ekl) wait for it properly
+        time.sleep(10)  # TODO(ekl) wait for it properly
 
     def shutdown(self):
         """Terminate the cluster."""
