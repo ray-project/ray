@@ -42,9 +42,9 @@ class TestRNNSAC(unittest.TestCase):
             "lstm_use_prev_reward": True,
         }
 
-        # Test without MultiAgentPrioritizedReplayBuffer
+        # Test with MultiAgentPrioritizedReplayBuffer
         config["replay_buffer_config"] = {
-            "type": "MultiAgentReplayBuffer",
+            "type": "MultiAgentPrioritizedReplayBuffer",
             "replay_burn_in": 20,
             "zero_init_states": True,
         }

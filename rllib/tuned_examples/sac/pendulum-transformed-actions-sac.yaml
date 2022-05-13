@@ -34,6 +34,7 @@ transformed-actions-pendulum-sac-dummy-torch:
         target_network_update_freq: 1
         min_sample_timesteps_per_reporting: 1000
         replay_buffer_config:
+          type: MultiAgentPrioritizedReplayBuffer
           learning_starts: 256
         optimization:
           actor_learning_rate: 0.0003

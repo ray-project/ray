@@ -23,21 +23,17 @@ def check_batch_sizes(train_results):
         if pid == "batch_count":
             continue
         # Expect td-errors to be per batch-item.
-        if "td_error" in policy_stats:
-            configured_b = train_results["config"]["train_batch_size"]
-            actual_b = policy_stats["td_error"].shape[0]
-            # R2D2 case.
-            if (configured_b - actual_b) / actual_b > 0.1:
-                assert (
-                    configured_b
-                    / (
-                        train_results["config"]["model"]["max_seq_len"]
-                        + train_results["config"]["replay_buffer_config"][
-                            "replay_burn_in"
-                        ]
-                    )
-                    == actual_b
+        configured_b = train_results["config"]["train_batch_size"]
+        actual_b = policy_stats["td_error"].shape[0]
+        if (configured_b - actual_b) / actual_b > 0.1:
+            assert (
+                configured_b
+                / (
+                    train_results["config"]["model"]["max_seq_len"]
+                    + train_results["config"]["replay_buffer_config"]["replay_burn_in"]
                 )
+                == actual_b
+            )
 
 
 class TestR2D2(unittest.TestCase):

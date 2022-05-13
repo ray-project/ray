@@ -180,25 +180,25 @@ class ApexTrainer(DQNTrainer):
             ]
 
         num_replay_buffer_shards = self.config["optimizer"]["num_replay_buffer_shards"]
-        self.config["replay_buffer_config"]["capacity"] = (
+
+        # Create copy here so that we can modify without breaking other logic
+        replay_actor_config = copy.deepcopy(self.config["replay_buffer_config"])
+
+        replay_actor_config["capacity"] = (
             self.config["replay_buffer_config"]["capacity"] // num_replay_buffer_shards
         )
 
-        ReplayActor = ray.remote(num_cpus=0)(
-            self.config["replay_buffer_config"]["type"]
-        )
+        ReplayActor = ray.remote(num_cpus=0)(replay_actor_config["type"])
 
         # Place all replay buffer shards on the same node as the learner
         # (driver process that runs this execution plan).
-        if self.config["replay_buffer_config"][
-            "replay_buffer_shards_colocated_with_driver"
-        ]:
+        if replay_actor_config["replay_buffer_shards_colocated_with_driver"]:
             self.replay_actors = create_colocated_actors(
                 actor_specs=[  # (class, args, kwargs={}, count)
                     (
                         ReplayActor,
                         None,
-                        self.config["replay_buffer_config"],
+                        replay_actor_config,
                         num_replay_buffer_shards,
                     )
                 ],
@@ -209,7 +209,7 @@ class ApexTrainer(DQNTrainer):
         # Place replay buffer shards on any node(s).
         else:
             self.replay_actors = [
-                ReplayActor.remote(*self.config["replay_buffer_config"])
+                ReplayActor.remote(*replay_actor_config)
                 for _ in range(num_replay_buffer_shards)
             ]
         self.learner_thread = LearnerThread(self.workers.local_worker())

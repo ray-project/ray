@@ -13,6 +13,7 @@ cartpole-sac:
         soft_horizon: true
         n_step: 3
         replay_buffer_config:
+          type: MultiAgentPrioritizedReplayBuffer
           learning_starts: 256
         initial_alpha: 0.2
         clip_actions: false

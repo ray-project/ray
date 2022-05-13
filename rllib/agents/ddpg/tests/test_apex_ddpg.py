@@ -13,7 +13,7 @@ from ray.rllib.utils.test_utils import (
 
 class TestApexDDPG(unittest.TestCase):
     def setUp(self):
-        ray.init(num_cpus=4, local_mode=True)
+        ray.init(num_cpus=4)
 
     def tearDown(self):
         ray.shutdown()
