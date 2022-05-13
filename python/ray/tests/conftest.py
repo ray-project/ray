@@ -86,6 +86,7 @@ def _setup_redis(request):
     for proc in processes:
         proc.process.terminate()
 
+
 @pytest.fixture
 def maybe_external_redis(request):
     import os
@@ -115,6 +116,7 @@ def external_redis(request):
             os.environ["RAY_REDIS_ADDRESS"] = old_addr
         else:
             os.environ.pop("RAY_REDIS_ADDRESS")
+
 
 @pytest.fixture
 def shutdown_only(maybe_external_redis):
