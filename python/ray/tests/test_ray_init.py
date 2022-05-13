@@ -3,7 +3,6 @@ import sys
 
 import logging
 import pytest
-import redis
 import unittest.mock
 import ray
 import ray._private.services
