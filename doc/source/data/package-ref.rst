@@ -125,7 +125,7 @@ Custom Datasource API
     :members:
 
 Datasource File Metadata API
-----------------------------
+---------------------
 
 .. autoclass:: ray.data.datasource.FileMetadataProvider
     :members:
