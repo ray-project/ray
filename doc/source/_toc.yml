@@ -119,6 +119,7 @@ parts:
           - file: serve/user-guide
             sections:
               - file: serve/managing-deployments
+              - file: serve/handling-dependencies
           - file: serve/http-servehandle
           - file: serve/ml-models
           - file: serve/deployment-graph

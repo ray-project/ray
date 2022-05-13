@@ -1,5 +1,3 @@
-(managing-deployments)=
-
 # Managing Deployments
 
 This section should help you:
