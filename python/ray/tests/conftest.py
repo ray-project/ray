@@ -57,7 +57,11 @@ def get_default_fixture_ray_kwargs():
     return ray_kwargs
 
 
-def setup_redis(param, monkeypatch):
+@contextmanager
+def _setup_redis(request):
+    # Setup external Redis and env var for initialization.
+    param = getattr(request, "param", {})
+
     external_redis_ports = param.get("external_redis_ports")
     if external_redis_ports is None:
         with socket.socket() as s:
@@ -78,39 +82,43 @@ def setup_redis(param, monkeypatch):
         processes.append(proc)
         wait_for_redis_to_start("127.0.0.1", port, ray_constants.REDIS_DEFAULT_PASSWORD)
     address_str = ",".join(map(lambda x: f"127.0.0.1:{x}", external_redis_ports))
-    monkeypatch.setenv("RAY_REDIS_ADDRESS", address_str)
-    yield None
+    yield address_str
     for proc in processes:
         proc.process.terminate()
 
 
-@pytest.fixture(scope="session")
-def monkeysession(request):
-    from _pytest.monkeypatch import MonkeyPatch
+def _maybe_external_redis(request):
+    with _setup_redis(request) as addr:
+        import os
 
-    mpatch = MonkeyPatch()
-    yield mpatch
-    mpatch.undo()
-
-
-@pytest.fixture(scope="session")
-def maybe_external_redis(request, monkeysession):
-    if "REDIS_MODE" in os.environ:
-        g = setup_redis(getattr(request, "param", {}), monkeysession)
-        next(g)
-        yield
-        next(g)
-    else:
-        yield
+        if "REDIS_MODE" in os.environ:
+            old_addr = os.environ.get("RAY_REDIS_ADDRESS")
+            os.environ["RAY_REDIS_ADDRESS"] = addr
+            yield
+            if old_addr is not None:
+                os.environ["RAY_REDIS_ADDRESS"] = old_addr
+            else:
+                del os.environ["RAY_REDIS_ADDRESS"]
+        else:
+            yield
 
 
 @pytest.fixture
-def external_redis(request, monkeysession):
-    # Setup external Redis and env var for initialization.
-    g = setup_redis(getattr(request, "param", {}), monkeysession)
-    next(g)
-    yield
-    next(g)
+def external_redis(request):
+    import os
+
+    with _setup_redis(request) as addr:
+        old_addr = os.environ.get("RAY_REDIS_ADDRESS")
+        os.environ["RAY_REDIS_ADDRESS"] = addr
+        yield
+        if old_addr is not None:
+            os.environ["RAY_REDIS_ADDRESS"] = old_addr
+        else:
+            os.environ.pop("RAY_REDIS_ADDRESS")
+
+
+maybe_external_redis = pytest.fixture(_maybe_external_redis)
+maybe_external_redis_module = pytest.fixture(scope="module")(_maybe_external_redis)
 
 
 @pytest.fixture
@@ -168,14 +176,14 @@ def ray_start_regular_with_external_redis(request, external_redis):
 
 
 @pytest.fixture(scope="module")
-def ray_start_regular_shared(request, maybe_external_redis):
+def ray_start_regular_shared(request, maybe_external_redis_module):
     param = getattr(request, "param", {})
     with _ray_start(**param) as res:
         yield res
 
 
 @pytest.fixture(scope="module", params=[{"local_mode": True}, {"local_mode": False}])
-def ray_start_shared_local_modes(request, maybe_external_redis):
+def ray_start_shared_local_modes(request, maybe_external_redis_module):
     param = getattr(request, "param", {})
     with _ray_start(**param) as res:
         yield res
