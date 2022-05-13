@@ -6,10 +6,11 @@ API References
     :caption: Ray API References
 
     ../data/package-ref
-    ../train/api.
+    ../train/api
     ../tune/api_docs/overview
     ../serve/package-ref
     ../rllib/package_ref/index
+    ../ray-air/package-ref
     ../workflows/package-ref
     ../ray-core/package-ref
     ../cluster/reference
