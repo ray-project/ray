@@ -116,6 +116,9 @@ parts:
               - file: ray-air/key-concepts
               - file: ray-air/deployment
               - file: ray-air/examples/index
+                sections:
+                  - file: ray-air/examples/analyze_tuning_results
+                    title: "Analyze hyperparameter tuning results"
               - file: ray-air/package-ref
           - file: ray-more-libs/joblib
           - file: ray-more-libs/lightgbm-ray
