@@ -289,7 +289,7 @@ def setup_mixins(
         action_space (gym.spaces.Space): The Policy's action space.
         config (TrainerConfigDict): The Policy's config.
     """
-    ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
+    ValueNetworkMixin.__init__(policy, config)
     KLCoeffMixin.__init__(policy, config)
     EntropyCoeffSchedule.__init__(
         policy, config["entropy_coeff"], config["entropy_coeff_schedule"]
