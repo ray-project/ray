@@ -1,14 +1,15 @@
 from ray.rllib.algorithms.cql.cql import CQLTrainer, CQL_DEFAULT_CONFIG
+from ray.rllib.algorithms.cql.cql_tf_policy import CQLTFPolicy
 from ray.rllib.algorithms.cql.cql_torch_policy import CQLTorchPolicy
+from ray.rllib.utils.deprecation import deprecation_warning
 
 __all__ = [
     "CQL_DEFAULT_CONFIG",
+    "CQLTFPolicy",
     "CQLTorchPolicy",
     "CQLTrainer",
 ]
 
-from ray.rllib.utils.deprecation import deprecation_warning
-
 deprecation_warning(
-    "ray.rllib.agents.dreamer", "ray.rllib.algorithms.dreamer", error=False
+    "ray.rllib.agents.cql", "ray.rllib.algorithms.cql", error=False
 )
