@@ -80,9 +80,15 @@ class AlphaStarLeagueBuilder(LeagueBuilder):
     ):
         """Initializes a AlphaStarLeagueBuilder instance.
 
+        The following match types are possible:
+        LE: A learning (not snapshot) league_exploiter vs any snapshot policy.
+        ME: A learning (not snapshot) main exploiter vs any main.
+        M: Main self-play (main vs main).
+
         Args:
             trainer: The Trainer object by which this league builder is used.
-                Trainer calls `build_league()` after each training step.
+                Trainer calls `build_league()` after each training step to reconfigure
+                the league structure (e.g. to add/remove policies).
             trainer_config: The (not yet validated) config dict to be
                 used on the Trainer. Child classes of `LeagueBuilder`
                 should preprocess this to add e.g. multiagent settings

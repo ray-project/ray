@@ -3,6 +3,7 @@ import sys
 import ray
 import ray._private.gcs_utils as gcs_utils
 import pytest
+from time import sleep
 from ray._private.test_utils import (
     generate_system_config_map,
     wait_for_condition,
@@ -212,6 +213,77 @@ def test_gcs_client_reconnect(ray_start_regular_with_external_redis, auto_reconn
         pass
     else:
         assert gcs_client.internal_kv_get(b"a", None) == b"b"
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular_with_external_redis",
+    [
+        {
+            **generate_system_config_map(
+                num_heartbeats_timeout=20, gcs_rpc_server_reconnect_timeout_s=3600
+            ),
+            "namespace": "actor",
+        }
+    ],
+    indirect=True,
+)
+def test_actor_workloads(ray_start_regular_with_external_redis):
+    """This test cover the case to create actor while gcs is down
+    and also make sure existing actor continue to work even when
+    GCS is down.
+    """
+
+    @ray.remote
+    class Counter:
+        def r(self, v):
+            return v
+
+    c = Counter.remote()
+    r = ray.get(c.r.remote(10))
+    assert r == 10
+
+    print("GCS is killed")
+    ray.worker._global_node.kill_gcs_server()
+
+    print("Start to create a new actor")
+    cc = Counter.remote()
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(cc.r.remote(10), timeout=5)
+
+    assert ray.get(c.r.remote(10)) == 10
+    ray.worker._global_node.start_gcs_server()
+
+    import threading
+
+    def f():
+        assert ray.get(cc.r.remote(10)) == 10
+
+    t = threading.Thread(target=f)
+    t.start()
+    t.join()
+
+    c = Counter.options(lifetime="detached", name="C").remote()
+
+    assert ray.get(c.r.remote(10)) == 10
+
+    ray.worker._global_node.kill_gcs_server()
+
+    sleep(2)
+
+    assert ray.get(c.r.remote(10)) == 10
+
+    ray.worker._global_node.start_gcs_server()
+
+    from ray._private.test_utils import run_string_as_driver
+
+    run_string_as_driver(
+        """
+import ray
+ray.init('auto', namespace='actor')
+a = ray.get_actor("C")
+assert ray.get(a.r.remote(10)) == 10
+"""
+    )
 
 
 if __name__ == "__main__":
