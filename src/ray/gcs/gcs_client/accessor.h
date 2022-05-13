@@ -459,7 +459,7 @@ class NodeResourceInfoAccessor {
   /// server.
   virtual void AsyncResubscribe();
 
-  /// Report resource usage of a node to GCS asynchronously. Only used in tests.
+  /// Report resource usage of a node to GCS asynchronously.
   ///
   /// \param data_ptr The data that will be reported to GCS.
   /// \param callback Callback that will be called after report finishes.
