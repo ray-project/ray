@@ -971,16 +971,20 @@ def test_tensors_in_tables_to_torch(ray_start_regular_shared, pipelined):
     df = pd.concat([df1, df2])
     ds = ray.data.from_pandas([df1, df2])
     ds = maybe_pipeline(ds, pipelined)
-    torchd = ds.to_torch(label_column="label", batch_size=2)
+    torchd = ds.to_torch(
+        label_column="label", batch_size=2, unsqueeze_label_tensor=False
+    )
 
     num_epochs = 1 if pipelined else 2
     for _ in range(num_epochs):
-        iterations = []
+        features, labels = [], []
         for batch in iter(torchd):
-            iterations.append(batch[0].numpy())
-        combined_iterations = np.concatenate(iterations)
+            features.append(batch[0].numpy())
+            labels.append(batch[1].numpy())
+        features, labels = np.concatenate(features), np.concatenate(labels)
         values = np.stack([df["one"].to_numpy(), df["two"].to_numpy()], axis=1)
-        np.testing.assert_array_equal(np.sort(values), np.sort(combined_iterations))
+        np.testing.assert_array_equal(values, features)
+        np.testing.assert_array_equal(df["label"].to_numpy(), labels)
 
 
 @pytest.mark.parametrize("pipelined", [False, True])
@@ -1012,19 +1016,22 @@ def test_tensors_in_tables_to_torch_mix(ray_start_regular_shared, pipelined):
         label_column="label",
         feature_columns=[["one"], ["two"]],
         batch_size=2,
+        unsqueeze_label_tensor=False,
         unsqueeze_feature_tensors=False,
     )
 
     num_epochs = 1 if pipelined else 2
     for _ in range(num_epochs):
-        col1, col2 = [], []
+        col1, col2, labels = [], [], []
         for batch in iter(torchd):
-            features = batch[0]
-            col1.append(features[0].numpy())
-            col2.append(features[1].numpy())
+            col1.append(batch[0][0].numpy())
+            col2.append(batch[0][1].numpy())
+            labels.append(batch[1].numpy())
         col1, col2 = np.concatenate(col1), np.concatenate(col2)
+        labels = np.concatenate(labels)
         np.testing.assert_array_equal(col1, np.sort(df["one"].to_numpy()))
         np.testing.assert_array_equal(col2, np.sort(df["two"].to_numpy()))
+        np.testing.assert_array_equal(labels, np.sort(df["label"].to_numpy()))
 
 
 @pytest.mark.parametrize("pipelined", [False, True])
@@ -1062,12 +1069,14 @@ def test_tensors_in_tables_to_tf(ray_start_regular_shared, pipelined):
         ),
         batch_size=2,
     )
-    iterations = []
+    features, labels = [], []
     for batch in tfd.as_numpy_iterator():
-        iterations.append(batch[0])
-    combined_iterations = np.concatenate(iterations)
+        features.append(batch[0])
+        labels.append(batch[1])
+    features, labels = np.concatenate(features), np.concatenate(labels)
     values = np.stack([df["one"].to_numpy(), df["two"].to_numpy()], axis=1)
-    np.testing.assert_array_equal(values, combined_iterations)
+    np.testing.assert_array_equal(values, features)
+    np.testing.assert_array_equal(df["label"].to_numpy(), labels)
 
 
 @pytest.mark.parametrize("pipelined", [False, True])
@@ -1109,15 +1118,17 @@ def test_tensors_in_tables_to_tf_mix(ray_start_regular_shared, pipelined):
         ),
         batch_size=2,
     )
-    col1, col2 = [], []
+    col1, col2, labels = [], [], []
     for batch in tfd.as_numpy_iterator():
-        features = batch[0]
-        col1.append(features[0])
-        col2.append(features[1])
+        col1.append(batch[0][0])
+        col2.append(batch[0][1])
+        labels.append(batch[1])
     col1 = np.squeeze(np.concatenate(col1), axis=1)
     col2 = np.squeeze(np.concatenate(col2), axis=1)
+    labels = np.concatenate(labels)
     np.testing.assert_array_equal(col1, np.sort(df["one"].to_numpy()))
     np.testing.assert_array_equal(col2, np.sort(df["two"].to_numpy()))
+    np.testing.assert_array_equal(labels, np.sort(df["label"].to_numpy()))
 
 
 def test_empty_shuffle(ray_start_regular_shared):

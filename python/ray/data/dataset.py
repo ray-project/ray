@@ -2381,7 +2381,7 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
             output_signature = tuple(output_signature)
 
         def get_df_values(df: "pandas.DataFrame") -> np.ndarray:
-            # TODO(Clark): Support unsqueezing column dimension API, simialr to
+            # TODO(Clark): Support unsqueezing column dimension API, similar to
             # to_torch().
             try:
                 values = df.values
