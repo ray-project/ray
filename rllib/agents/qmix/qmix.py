@@ -77,7 +77,7 @@ class QMixConfig(SimpleQConfig):
             "learning_starts": 1000,
         }
         self.optim_alpha = 0.99
-        self.optim_eps =0.00001
+        self.optim_eps = 0.00001
         self.grad_norm_clipping = 10
         self.worker_side_prioritization = False
 

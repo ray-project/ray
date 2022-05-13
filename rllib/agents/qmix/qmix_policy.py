@@ -176,9 +176,6 @@ class QMixTorchPolicy(TorchPolicy):
         self.h_size = config["model"]["lstm_cell_size"]
         self.has_env_global_state = False
         self.has_action_mask = False
-        #self.device = (
-        #    torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-        #)
 
         agent_obs_space = obs_space.original_space.spaces[0]
         if isinstance(agent_obs_space, gym.spaces.Dict):
