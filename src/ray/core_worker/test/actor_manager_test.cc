@@ -391,7 +391,7 @@ TEST_F(ActorManagerTest, TestNamedActorIsKilledAfterSubscribeFinished) {
   std::string actor_name = "actor_name";
   ActorID actor_id = AddActorHandle(ray_namespace, actor_name);
   // Make sure the actor is valid.
-  ASSERT_TRUE(actor_manager_->IsValidActor(actor_id));
+  ASSERT_FALSE(actor_manager_->IsActorKilledOrOutOfScope(actor_id));
   // Make sure the finished callback is cached as it is not reached yet.
   ASSERT_TRUE(actor_info_accessor_->subscribe_finished_callback_map_.contains(actor_id));
 
@@ -412,7 +412,7 @@ TEST_F(ActorManagerTest, TestNamedActorIsKilledAfterSubscribeFinished) {
   // The actor is killed.
   actor_manager_->OnActorKilled(actor_id);
   // Make sure the actor is invalid.
-  ASSERT_FALSE(actor_manager_->IsValidActor(actor_id));
+  ASSERT_TRUE(actor_manager_->IsActorKilledOrOutOfScope(actor_id));
 
   // Make sure the named actor will not be deleted from `cached_actor_name_to_ids_`
   ASSERT_TRUE(actor_manager_->GetCachedNamedActorID(cached_actor_name).IsNil());
@@ -423,14 +423,14 @@ TEST_F(ActorManagerTest, TestNamedActorIsKilledBeforeSubscribeFinished) {
   std::string actor_name = "actor_name";
   ActorID actor_id = AddActorHandle(ray_namespace, actor_name);
   // Make sure the actor is valid.
-  ASSERT_TRUE(actor_manager_->IsValidActor(actor_id));
+  ASSERT_FALSE(actor_manager_->IsActorKilledOrOutOfScope(actor_id));
   // Make sure the finished callback is cached as it is not reached yet.
   ASSERT_TRUE(actor_info_accessor_->subscribe_finished_callback_map_.contains(actor_id));
 
   // The actor is killed.
   actor_manager_->OnActorKilled(actor_id);
   // Make sure the actor is invalid.
-  ASSERT_FALSE(actor_manager_->IsValidActor(actor_id));
+  ASSERT_TRUE(actor_manager_->IsActorKilledOrOutOfScope(actor_id));
 
   rpc::ActorTableData actor_table_data;
   actor_table_data.set_actor_id(actor_id.Binary());

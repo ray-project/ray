@@ -180,13 +180,15 @@ class ActorManager {
   void HandleActorStateNotification(const ActorID &actor_id,
                                     const rpc::ActorTableData &actor_data);
 
-  /// Function that's invoked when the actor is out of scope.
+  /// Function that's invoked when the actor is killed or out of scope.
+  /// After the actor is invalidated, task submission to the actor will throw an
+  /// exception.
   ///
   /// \param actor_handle The actor handle that will be marked as invalidate.
-  void MakeActorInvalid(std::shared_ptr<ActorHandle> actor_handle);
+  void InvalidateActor(std::shared_ptr<ActorHandle> actor_handle);
 
   /// Check if actor is valid.
-  bool IsValidActor(const ActorID &actor_id) const;
+  bool IsActorKilledOrOutOfScope(const ActorID &actor_id) const;
 
   /// GCS client.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
@@ -205,8 +207,8 @@ class ActorManager {
   absl::flat_hash_map<ActorID, std::shared_ptr<ActorHandle>> actor_handles_
       GUARDED_BY(mutex_);
 
-  /// Protects access `cached_actor_name_to_ids_`.
-  absl::Mutex cache_mutex_;
+  /// Protects access `cached_actor_name_to_ids_` and `subscribed_actors_`.
+  mutable absl::Mutex cache_mutex_;
 
   /// The map to cache name and id of the named actors in this worker locally, to avoid
   /// getting them from GCS frequently.
@@ -215,9 +217,7 @@ class ActorManager {
 
   /// Map from actor id to it's state(true: valid, false: invalid).
   /// The state of actor is true When the actor is out of scope or is killed
-  absl::flat_hash_map<ActorID, bool> subscribed_actors_;
-  /// Protects access `subscribed_actors_`.
-  mutable absl::Mutex subscription_mutex_;
+  absl::flat_hash_map<ActorID, bool> subscribed_actors_ GUARDED_BY(cache_mutex_);
 
   FRIEND_TEST(ActorManagerTest, TestNamedActorIsKilledAfterSubscribeFinished);
   FRIEND_TEST(ActorManagerTest, TestNamedActorIsKilledBeforeSubscribeFinished);
