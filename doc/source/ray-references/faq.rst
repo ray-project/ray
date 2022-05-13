@@ -7,8 +7,8 @@ FAQ
     :maxdepth: 1
     :caption: Frequently Asked Questions
 
-    ./../tune/faq.rst
-    ./../serve/faq.rst
+    ./../tune/faq
+    ./../serve/faq
 
 
 Further Questions or Issues?
