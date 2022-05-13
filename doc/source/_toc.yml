@@ -110,6 +110,22 @@ parts:
           - file: workflows/package-ref
       - file: ray-more-libs/index
         title: More Ray ML Libraries
+        sections:
+          - file: ray-air/getting-started
+            sections:
+              - file: ray-air/key-concepts
+              - file: ray-air/deployment
+              - file: ray-air/examples/index
+              - file: ray-air/package-ref
+          - file: ray-more-libs/joblib
+          - file: ray-more-libs/lightgbm-ray
+          - file: ray-more-libs/multiprocessing
+          - file: ray-more-libs/ray-collective
+          - file: ray-more-libs/ray-lightning
+          - file: ray-core/examples/using-ray-with-pytorch-lightning
+          - file: ray-more-libs/xgboost-ray
+          - file: ray-core/examples/dask_xgboost/dask_xgboost
+          - file: ray-core/examples/modin_xgboost/modin_xgboost
 
   - caption: Ray Core
     chapters:

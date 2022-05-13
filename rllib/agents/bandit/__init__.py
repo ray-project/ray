@@ -1,3 +1,13 @@
-from ray.rllib.agents.bandit.bandit import BanditLinTSTrainer, BanditLinUCBTrainer
+from ray.rllib.agents.bandit.bandit import (
+    BanditLinTSTrainer,
+    BanditLinUCBTrainer,
+    BanditLinTSConfig,
+    BanditLinUCBConfig,
+)
 
-__all__ = ["BanditLinTSTrainer", "BanditLinUCBTrainer"]
+__all__ = [
+    "BanditLinTSTrainer",
+    "BanditLinUCBTrainer",
+    "BanditLinTSConfig",
+    "BanditLinUCBConfig",
+]
