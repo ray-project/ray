@@ -55,13 +55,10 @@ class PullManagerTestWithCapacity {
             }) {}
 
   void AssertNoLeaks() {
-    ASSERT_TRUE(pull_manager_.get_request_bundles_.empty());
-    ASSERT_TRUE(pull_manager_.wait_request_bundles_.empty());
-    ASSERT_TRUE(pull_manager_.task_argument_bundles_.empty());
+    ASSERT_TRUE(pull_manager_.get_request_bundles_.Empty());
+    ASSERT_TRUE(pull_manager_.wait_request_bundles_.Empty());
+    ASSERT_TRUE(pull_manager_.task_argument_bundles_.Empty());
     ASSERT_EQ(pull_manager_.num_active_bundles_, 0);
-    ASSERT_EQ(pull_manager_.highest_get_req_id_being_pulled_, 0);
-    ASSERT_EQ(pull_manager_.highest_wait_req_id_being_pulled_, 0);
-    ASSERT_EQ(pull_manager_.highest_task_req_id_being_pulled_, 0);
     ASSERT_TRUE(pull_manager_.object_pull_requests_.empty());
     absl::MutexLock lock(&pull_manager_.active_objects_mu_);
     ASSERT_TRUE(pull_manager_.active_object_pull_requests_.empty());
@@ -179,6 +176,130 @@ TEST_P(PullManagerTest, TestStaleSubscription) {
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
   ASSERT_EQ(num_abort_calls_[oid], 1);
 
+  AssertNoLeaks();
+}
+
+TEST_P(PullManagerWithAdmissionControlTest, TestPullObjectPendingCreation) {
+  auto prio = BundlePriority::TASK_ARGS;
+
+  auto refs_1 = CreateObjectRefs(1);
+  auto refs_2 = CreateObjectRefs(1);
+  AssertNumActiveRequestsEquals(0);
+  std::vector<rpc::ObjectReference> objects_to_locate;
+  auto req_id_1 = pull_manager_.Pull(refs_1, prio, &objects_to_locate);
+  ASSERT_EQ(ObjectRefsToIds(objects_to_locate), ObjectRefsToIds(refs_1));
+  objects_to_locate.clear();
+  auto req_id_2 = pull_manager_.Pull(refs_2, prio, &objects_to_locate);
+  ASSERT_EQ(ObjectRefsToIds(objects_to_locate), ObjectRefsToIds(refs_2));
+  AssertNumActiveRequestsEquals(0);
+
+  std::unordered_set<NodeID> client_ids;
+  client_ids.insert(NodeID::FromRandom());
+  pull_manager_.OnLocationChange(
+      ObjectRefToId(refs_1[0]), client_ids, "", NodeID::Nil(), false, 6);
+  AssertNumActiveRequestsEquals(1);
+  AssertNumActiveBundlesEquals(1);
+  ASSERT_EQ(num_send_pull_request_calls_, 1);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 0);
+  ASSERT_TRUE(pull_manager_.IsObjectActive(ObjectRefToId(refs_1[0])));
+
+  // The second request won't be activated since available memory is only 10.
+  pull_manager_.OnLocationChange(
+      ObjectRefToId(refs_2[0]), client_ids, "", NodeID::Nil(), false, 6);
+  AssertNumActiveRequestsEquals(1);
+  AssertNumActiveBundlesEquals(1);
+  ASSERT_EQ(num_send_pull_request_calls_, 1);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 0);
+  ASSERT_FALSE(pull_manager_.IsObjectActive(ObjectRefToId(refs_2[0])));
+
+  // The first object is lost and pending creation.
+  // In this case, the first request will be deactivated and the second request will be
+  // activated.
+  pull_manager_.OnLocationChange(
+      ObjectRefToId(refs_1[0]), {}, "", NodeID::Nil(), true, 6);
+  AssertNumActiveRequestsEquals(1);
+  AssertNumActiveBundlesEquals(1);
+  ASSERT_EQ(num_send_pull_request_calls_, 2);
+  ASSERT_EQ(num_abort_calls_[ObjectRefToId(refs_1[0])], 1);
+  ASSERT_FALSE(pull_manager_.IsObjectActive(ObjectRefToId(refs_1[0])));
+  ASSERT_TRUE(pull_manager_.IsObjectActive(ObjectRefToId(refs_2[0])));
+
+  // The first object is recreated but the pull request will be inactive since there is no
+  // available memory.
+  pull_manager_.OnLocationChange(
+      ObjectRefToId(refs_1[0]), client_ids, "", NodeID::Nil(), false, 6);
+  AssertNumActiveRequestsEquals(1);
+  AssertNumActiveBundlesEquals(1);
+  ASSERT_EQ(num_send_pull_request_calls_, 2);
+  ASSERT_EQ(num_abort_calls_[ObjectRefToId(refs_1[0])], 1);
+  ASSERT_FALSE(pull_manager_.IsObjectActive(ObjectRefToId(refs_1[0])));
+  ASSERT_TRUE(pull_manager_.IsObjectActive(ObjectRefToId(refs_2[0])));
+
+  pull_manager_.CancelPull(req_id_2);
+  // The first request is active now due to the available memory freed by the second
+  // request.
+  AssertNumActiveRequestsEquals(1);
+  AssertNumActiveBundlesEquals(1);
+  ASSERT_EQ(num_send_pull_request_calls_, 3);
+  ASSERT_EQ(num_abort_calls_[ObjectRefToId(refs_1[0])], 1);
+  ASSERT_TRUE(pull_manager_.IsObjectActive(ObjectRefToId(refs_1[0])));
+
+  pull_manager_.CancelPull(req_id_1);
+
+  AssertNoLeaks();
+}
+
+TEST_P(PullManagerWithAdmissionControlTest, TestPullOrder) {
+  auto prio = BundlePriority::TASK_ARGS;
+  if (GetParam()) {
+    prio = BundlePriority::GET_REQUEST;
+  }
+
+  auto refs_1 = CreateObjectRefs(1);
+  auto refs_2 = CreateObjectRefs(1);
+  AssertNumActiveRequestsEquals(0);
+  std::vector<rpc::ObjectReference> objects_to_locate;
+  auto req_id_1 = pull_manager_.Pull(refs_1, prio, &objects_to_locate);
+  ASSERT_EQ(ObjectRefsToIds(objects_to_locate), ObjectRefsToIds(refs_1));
+  objects_to_locate.clear();
+  auto req_id_2 = pull_manager_.Pull(refs_2, prio, &objects_to_locate);
+  ASSERT_EQ(ObjectRefsToIds(objects_to_locate), ObjectRefsToIds(refs_2));
+  AssertNumActiveRequestsEquals(0);
+
+  std::unordered_set<NodeID> client_ids;
+  client_ids.insert(NodeID::FromRandom());
+  // Second pull request gets the location first,
+  // so it will be pulled before the first request.
+  pull_manager_.OnLocationChange(
+      ObjectRefToId(refs_2[0]), client_ids, "", NodeID::Nil(), false, 0);
+  AssertNumActiveRequestsEquals(1);
+  AssertNumActiveBundlesEquals(1);
+  ASSERT_EQ(num_send_pull_request_calls_, 1);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 0);
+  ASSERT_TRUE(pull_manager_.IsObjectActive(ObjectRefToId(refs_2[0])));
+  ASSERT_FALSE(pull_manager_.IsObjectActive(ObjectRefToId(refs_1[0])));
+
+  pull_manager_.OnLocationChange(
+      ObjectRefToId(refs_1[0]), client_ids, "", NodeID::Nil(), false, 0);
+  AssertNumActiveRequestsEquals(2);
+  AssertNumActiveBundlesEquals(2);
+  ASSERT_EQ(num_send_pull_request_calls_, 2);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 0);
+  ASSERT_TRUE(pull_manager_.IsObjectActive(ObjectRefToId(refs_2[0])));
+  ASSERT_TRUE(pull_manager_.IsObjectActive(ObjectRefToId(refs_1[0])));
+
+  objects_to_locate.clear();
+  // All the locations are known so the pull request is active immediately.
+  auto req_id_3 = pull_manager_.Pull(
+      std::vector<rpc::ObjectReference>{refs_1[0], refs_2[0]}, prio, &objects_to_locate);
+  ASSERT_TRUE(objects_to_locate.empty());
+  AssertNumActiveBundlesEquals(3);
+  ASSERT_EQ(num_send_pull_request_calls_, 2);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 0);
+
+  pull_manager_.CancelPull(req_id_1);
+  pull_manager_.CancelPull(req_id_2);
+  pull_manager_.CancelPull(req_id_3);
   AssertNoLeaks();
 }
 

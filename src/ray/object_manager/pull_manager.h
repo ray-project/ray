@@ -228,8 +228,10 @@ class PullManager {
     std::set<uint64_t> active_requests;
     std::set<uint64_t> inactive_requests;
 
+    bool Empty() const { return requests.empty(); }
+
     void AddBundlePullRequest(uint64_t request_id, BundlePullRequest request) {
-      requests.emplace(request_id, std::move(request));
+      requests.emplace(request_id, request);
       if (request.IsPullable()) {
         inactive_requests.emplace(request_id);
       }
