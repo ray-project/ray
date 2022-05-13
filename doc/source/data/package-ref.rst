@@ -123,6 +123,18 @@ Custom Datasource API
 .. autoclass:: ray.data.ReadTask
     :members:
 
+Datasource File Metadata API
+----------------------------
+
+.. autoclass:: ray.data.datasource.FileMetadataProvider
+    :members:
+
+.. autoclass:: ray.data.datasource.BaseFileMetadataProvider
+    :members:
+
+.. autoclass:: ray.data.datasource.ParquetMetadataProvider
+    :members:
+
 Built-in Datasources
 --------------------
 
