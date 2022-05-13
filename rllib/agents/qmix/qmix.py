@@ -1,6 +1,5 @@
-from typing import Type
+from typing import Optional, Type
 
-from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.dqn.simple_q import SimpleQConfig, SimpleQTrainer
 from ray.rllib.agents.qmix.qmix_policy import QMixTorchPolicy
 from ray.rllib.execution.rollout_ops import (
@@ -12,7 +11,7 @@ from ray.rllib.execution.train_ops import (
 )
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, Deprecated
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
     NUM_AGENT_STEPS_SAMPLED,
@@ -28,25 +27,27 @@ class QMixConfig(SimpleQConfig):
     """Defines a configuration class from which a QMixTrainer can be built.
 
     Example:
+        >>> from ray.rllib.examples.env.two_step_game import TwoStepGame
         >>> from ray.rllib.agents.qmix import QMixConfig
         >>> config = QMixConfig().training(gamma=0.9, lr=0.01, kl_coeff=0.3)\
         ...             .resources(num_gpus=0)\
         ...             .rollouts(num_workers=4)
         >>> print(config.to_dict())
         >>> # Build a Trainer object from the config and run 1 training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
+        >>> trainer = config.build(env=TwoStepGame)
         >>> trainer.train()
 
     Example:
+        >>> from ray.rllib.examples.env.two_step_game import TwoStepGame
         >>> from ray.rllib.agents.qmix import QMixConfig
         >>> from ray import tune
         >>> config = QMixConfig()
         >>> # Print out some default values.
-        >>> print(config.)
+        >>> print(config.optim_alpha)
         >>> # Update the config object.
-        >>> config.training(lr=tune.grid_search([0.001, 0.0001]), =0.2)
+        >>> config.training(lr=tune.grid_search([0.001, 0.0001]), optim_alpha=0.97)
         >>> # Set the config object's env.
-        >>> config.environment(env="")
+        >>> config.environment(env=TwoStepGame)
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
         >>> tune.run(
@@ -63,36 +64,36 @@ class QMixConfig(SimpleQConfig):
         # fmt: off
         # __sphinx_doc_begin__
         # QMix specific settings:
-        "mixer": "qmix",
-        "mixing_embed_dim": 32,
-        "double_q": True,
-        "target_network_update_freq": 500,
-        "replay_buffer_config": {
+        self.mixer = "qmix"
+        self.mixing_embed_dim = 32
+        self.double_q = True
+        self.target_network_update_freq = 500
+        self.replay_buffer_config = {
             # Use the new ReplayBuffer API here
             "_enable_replay_buffer_api": True,
             "type": "SimpleReplayBuffer",
             # Size of the replay buffer in batches (not timesteps!).
             "capacity": 1000,
             "learning_starts": 1000,
-        },
-        "optim_alpha": 0.99,
-        "optim_eps": 0.00001,
-        "grad_norm_clipping": 10,
-        "worker_side_prioritization": False,
+        }
+        self.optim_alpha = 0.99
+        self.optim_eps =0.00001
+        self.grad_norm_clipping = 10
+        self.worker_side_prioritization = False
 
         # Override some of TrainerConfig's default values with QMix-specific values.
-        "num_workers": 0,
-        "min_time_s_per_reporting": 1,
-        "model": {
+        self.num_workers = 0
+        self.min_time_s_per_reporting = 1
+        self.model = {
             "lstm_cell_size": 64,
             "max_seq_len": 999999,
-        },
-        "framework": "torch",
-        "lr": 0.0005,
-        "rollout_fragment_length": 4,
-        "train_batch_size": 32,
-        "batch_mode": "complete_episodes",
-        "exploration_config": {
+        }
+        self.framework_str = "torch"
+        self.lr = 0.0005
+        self.rollout_fragment_length = 4
+        self.train_batch_size = 32
+        self.batch_mode = "complete_episodes"
+        self.exploration_config = {
             # The Exploration class to use.
             "type": "EpsilonGreedy",
             # Config for the Exploration class' constructor:
@@ -106,25 +107,24 @@ class QMixConfig(SimpleQConfig):
             #   "type": "SoftQ"
             #   "temperature": [float, e.g. 1.0]
             # }
-        },
+        }
 
         # Evaluate with epsilon=0 every `evaluation_interval` training iterations.
         # The evaluation stats will be reported under the "evaluation" metric key.
         # Note that evaluation is currently not parallelized, and that for Ape-X
         # metrics are already only reported for the lowest epsilon workers.
-        "evaluation_interval": None,
-        "evaluation_duration": 10,
-        "evaluation_config": {
+        self.evaluation_interval = None
+        self.evaluation_duration = 10
+        self.evaluation_config = {
             "explore": False,
-        },
-        "min_sample_timesteps_per_reporting": 1000,
+        }
+        self.min_sample_timesteps_per_reporting = 1000
         # __sphinx_doc_end__
         # fmt: on
 
-
         # Deprecated keys:
-        "learning_starts": DEPRECATED_VALUE,
-        "buffer_size": DEPRECATED_VALUE,
+        self.learning_starts = DEPRECATED_VALUE
+        self.buffer_size = DEPRECATED_VALUE
 
     @override(SimpleQConfig)
     def training(
@@ -140,8 +140,8 @@ class QMixConfig(SimpleQConfig):
         grad_norm_clipping: Optional[float] = None,
         worker_side_prioritization: Optional[bool] = None,
         **kwargs,
-    ) -> "PPOConfig":
-        """
+    ) -> "QMixConfig":
+        """Sets the training related configuration.
 
         Args:
             mixer: Mixing network. Either "qmix", "vdn", or None.
@@ -156,18 +156,31 @@ class QMixConfig(SimpleQConfig):
                 this value.
             worker_side_prioritization: Whether to compute priorities for the replay
                 buffer on worker side.
+
         Returns:
-
+            This updated TrainerConfig object.
         """
-
-        #Sets the training related configuration.
-
-        #Returns:
-        #    This updated TrainerConfig object.
-
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
+        if mixer is not None:
+            self.mixer = mixer
+        if mixing_embed_dim is not None:
+            self.mixing_embed_dim = mixing_embed_dim
+        if double_q is not None:
+            self.double_q = double_q
+        if target_network_update_freq is not None:
+            self.target_network_update_freq = target_network_update_freq
+        if replay_buffer_config is not None:
+            self.replay_buffer_config = replay_buffer_config
+        if optim_alpha is not None:
+            self.optim_alpha = optim_alpha
+        if optim_eps is not None:
+            self.optim_eps = optim_eps
+        if grad_norm_clipping is not None:
+            self.grad_norm_clipping = grad_norm_clipping
+        if worker_side_prioritization is not None:
+            self.worker_side_prioritization = worker_side_prioritization
 
         return self
 
@@ -261,3 +274,20 @@ class QMixTrainer(SimpleQTrainer):
 
         # Return all collected metrics for the iteration.
         return train_results
+
+
+# Deprecated: Use ray.rllib.agents.qmix.qmix.QMixConfig instead!
+class _deprecated_default_config(dict):
+    def __init__(self):
+        super().__init__(QMixConfig().to_dict())
+
+    @Deprecated(
+        old="ray.rllib.agents.qmix.qmix.DEFAULT_CONFIG",
+        new="ray.rllib.agents.qmix.qmix.QMixConfig(...)",
+        error=False,
+    )
+    def __getitem__(self, item):
+        return super().__getitem__(item)
+
+
+DEFAULT_CONFIG = _deprecated_default_config()
