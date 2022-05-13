@@ -91,7 +91,7 @@ class ServePPOModel:
 
 :::{tip}
 Although we used a single input and `trainer.compute_single_action(...)` here, you
-can process a batch of input using Ray Serve's {ref}`batching<serve-batching>` feature
+can process a batch of input using Ray Serve's [batching](serve-batching) feature
 and use `trainer.compute_actions(...)` to process a batch of inputs.
 :::
 

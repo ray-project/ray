@@ -62,11 +62,16 @@ parts:
       - file: serve/index
         title: Ray Serve
         sections:
-          - file: serve/end_to_end_tutorial
+          - file: serve/getting_started
           - file: serve/core-apis
           - file: serve/http-servehandle
           - file: serve/ml-models
           - file: serve/deployment-graph
+            sections:
+              - file: serve/deployment-graph/deployment-graph-e2e-tutorial
+              - file: serve/deployment-graph/deployment-graph-user-guides
+                sections:
+                   - file: serve/deployment-graph/chain_nodes_same_class_different_args
           - file: serve/deployment
           - file: serve/monitoring
           - file: serve/performance
@@ -132,6 +137,7 @@ parts:
       - file: cluster/cloud
       - file: cluster/deploy
       - file: cluster/api
+      - file: cluster/usage-stats
 
   - caption: References
     chapters:

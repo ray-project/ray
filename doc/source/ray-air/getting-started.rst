@@ -1,3 +1,5 @@
+.. _air:
+
 Ray AI Runtime (alpha)
 ======================
 
@@ -14,6 +16,7 @@ Ray AIR consists of 5 key components -- Data processing (Ray Data), Model Traini
 
 Users can use these libraries interchangeably to scale different parts of standard ML workflows.
 
+To get started, install Ray AIR via `pip install -U "ray[air]"`
 
 .. tip::
     **Getting involved with Ray AIR.** We'll be holding office hours, development sprints, and other activities as we get closer to the Ray AIR Beta/GA release. Want to join us? Fill out `this short form <https://forms.gle/wCCdbaQDtgErYycT6>`__!
