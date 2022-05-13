@@ -1,6 +1,6 @@
 import ray
 from ray import serve
-from ray.experimental.dag.input_node import InputNode
+from ray.serve.deployment_graph import InputNode
 
 
 ray.init()
@@ -21,12 +21,11 @@ def combine(value_refs):
     return sum(ray.get(value_refs))
 
 
-number_nodes = 2
-nodes = [Model.bind(weight) for weight in range(0, number_nodes)]
-outputs = []
 with InputNode() as user_input:
-    for i in range(0, number_nodes):
-        outputs.append(nodes[i].forward.bind(user_input))
-    dag = combine.bind(outputs)
+    model1 = Model.bind(0)
+    model2 = Model.bind(1)
+    output1 = model1.forward.bind(user_input)
+    output2 = model2.forward.bind(user_input)
+    dag = combine.bind([output1, output2])
 
 print(ray.get(dag.execute(1)))
