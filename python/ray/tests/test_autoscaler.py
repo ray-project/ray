@@ -665,7 +665,6 @@ class AutoscalingTest(unittest.TestCase):
         """Confirms that worker nodes were launched in the main thread if foreground
         node launch is enabled, in a subthread otherwise.
 
-
         Args:
             foreground_node_launcher: Whether workers nodes are expected to be
             launched in the foreground.
