@@ -571,11 +571,10 @@ class Workflow(Generic[T]):
             @ray.remote
             def client_mode_run(workflow, workflow_id, metadata):
                 from ray.workflow.execution import run
+
                 return run(workflow, workflow_id, metadata)
 
-            ret = client_mode_run.remote(
-                self, workflow_id, metadata
-            )
+            ret = client_mode_run.remote(self, workflow_id, metadata)
             self.__reduce__, self._original_reduce = (
                 self._original_reduce,
                 self.__reduce__,

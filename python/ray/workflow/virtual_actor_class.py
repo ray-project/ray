@@ -440,10 +440,14 @@ class VirtualActorClass(VirtualActorClassBase):
     def get_or_create(self, actor_id: str, *args, **kwargs) -> "VirtualActor":
         """Create an actor. See `VirtualActorClassBase.create()`."""
         if ray._private.client_mode_hook.is_client_mode_enabled:
+
             @ray.remote
             def get_or_create_remote(vac, actor_id, args, kwargs):
                 return vac._get_or_create(actor_id, args=args, kwargs=kwargs)
-            return ray.get(get_or_create_remote.remote(self, actor_id, args=args, kwargs=kwargs))
+
+            return ray.get(
+                get_or_create_remote.remote(self, actor_id, args=args, kwargs=kwargs)
+            )
         return self._get_or_create(actor_id, args=args, kwargs=kwargs)
 
     # TODO(suquark): support num_cpu etc in options
