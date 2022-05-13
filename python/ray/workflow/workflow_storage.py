@@ -87,6 +87,90 @@ class StepInspectResult:
         )
 
 
+class WorkflowIndexingStorage:
+    """Access and maintance the indexing of workflow status."""
+
+    def __init__(self):
+        self._storage = storage.get_client(WORKFLOW_ROOT)
+
+    def update_workflow_status(
+        self, workflow_id: str, status: WorkflowStatus, prev_status: WorkflowStatus
+    ):
+        """Update the status of the workflow."""
+        if prev_status != status:
+            # Transactional update of workflow status
+            self._storage.put(self._key_workflow_status_on_change(workflow_id), b"")
+            self._storage.put(
+                self._key_workflow_metadata(workflow_id),
+                json.dumps({"status": status.value}).encode(),
+            )
+            self._storage.put(self._key_workflow_with_status(workflow_id, status), b"")
+            if prev_status is not WorkflowStatus.NONE:
+                self._storage.delete(
+                    self._key_workflow_with_status(workflow_id, prev_status)
+                )
+            self._storage.delete(self._key_workflow_status_on_change(workflow_id))
+
+    def load_and_fix_workflow_status(self, workflow_id: str):
+        """Load workflow status. If we find the previous status updating failed,
+        fix it with redo-log transaction recovery."""
+        raw_data = self._storage.get(self._key_workflow_metadata(workflow_id))
+        if raw_data is not None:
+            metadata = json.loads(raw_data)
+            prev_status = WorkflowStatus(metadata["status"])
+        else:
+            prev_status = WorkflowStatus.NONE
+
+        if (
+            self._storage.get_info(self._key_workflow_status_on_change(workflow_id))
+            is not None
+        ):
+            # This means the previous status update failed. Fix it.
+            self._storage.put(
+                self._key_workflow_with_status(workflow_id, prev_status), b""
+            )
+            for s in WorkflowStatus:
+                if s != prev_status:
+                    self._storage.delete(self._key_workflow_with_status(workflow_id, s))
+            assert self._storage.delete(
+                self._key_workflow_status_on_change(workflow_id)
+            )
+
+        return prev_status
+
+    def list_workflow(self) -> List[Tuple[str, WorkflowStatus]]:
+        # Fix workflow status that failed to be updated.
+        try:
+            for p in self._storage.list(self._key_workflow_status_on_change("")):
+                workflow_id = p.base_name
+                self.load_and_fix_workflow_status(workflow_id)
+        except FileNotFoundError:
+            pass
+        results = []
+        for status in WorkflowStatus:
+            if status != WorkflowStatus.NONE:
+                try:
+                    for p in self._storage.list(
+                        self._key_workflow_with_status("", status)
+                    ):
+                        workflow_id = p.base_name
+                        results.append((workflow_id, status))
+                except FileNotFoundError:
+                    pass
+        return results
+
+    def _key_workflow_with_status(self, workflow_id: str, status: WorkflowStatus):
+        return os.path.join(WORKFLOW_STATUS_DIR, status.value, workflow_id)
+
+    def _key_workflow_status_on_change(self, workflow_id: str):
+        return os.path.join(
+            WORKFLOW_STATUS_DIR, WORKFLOW_STATUS_ON_CHANGE_DIR, workflow_id
+        )
+
+    def _key_workflow_metadata(self, workflow_id: str):
+        return os.path.join(workflow_id, WORKFLOW_META)
+
+
 class WorkflowStorage:
     """Access workflow in storage. This is a higher-level abstraction,
     which does not care about the underlining storage implementation."""
@@ -97,6 +181,7 @@ class WorkflowStorage:
         _ensure_workflow_initialized()
 
         self._storage = storage.get_client(os.path.join(WORKFLOW_ROOT, workflow_id))
+        self._status_storage = WorkflowIndexingStorage()
         self._workflow_id = workflow_id
 
     def load_step_output(self, step_id: StepID) -> Any:
@@ -546,26 +631,8 @@ class WorkflowStorage:
 
         return _load_workflow_metadata()
 
-    def _list_workflow(self) -> List[Tuple[str, WorkflowStatus]]:
-        # Create a workflow storage with an empty workflow_id.
-        # This turns keys into their directories.
-        store = WorkflowStorage("")
-        # Fix workflow status that failed to be updated.
-        for workflow_id in self._scan(
-            self._key_workflow_status_on_change(), ignore_errors=True
-        ):
-            store._workflow_id = workflow_id
-            store.load_and_fix_workflow_status()
-        results = []
-        for status in WorkflowStatus:
-            for workflow_id in self._scan(
-                self._key_workflow_with_status(status), ignore_errors=True
-            ):
-                results.append((workflow_id, status))
-        return results
-
     def list_workflow(self) -> List[Tuple[str, WorkflowStatus]]:
-        return self._list_workflow()
+        return self._status_storage.list_workflow()
 
     def advance_progress(self, finished_step_id: "StepID") -> None:
         """Save the latest progress of a workflow. This is used by a
@@ -604,37 +671,21 @@ class WorkflowStorage:
             raise WorkflowNotFoundError(self._workflow_id)
 
     def update_workflow_status(
-        self, status: WorkflowStatus, prev_status: Optional[WorkflowStatus]
+        self, status: WorkflowStatus, prev_status: Optional[WorkflowStatus] = None
     ):
         """Update the status of the workflow."""
         if prev_status is None:
-            prev_status = self.load_and_fix_workflow_status()
-        if prev_status != status:
-            # Transactional update of workflow status
-            self._put(self._key_workflow_status_on_change(), b"")
-            self._put(self._key_workflow_metadata(), {"status": status.value}, True)
-            self._put(self._key_workflow_with_status(status), b"")
-            self._storage.delete(self._key_workflow_with_status(prev_status))
-            self._storage.delete(self._key_workflow_status_on_change())
+            prev_status = self._status_storage.load_and_fix_workflow_status(
+                self._workflow_id
+            )
+        self._status_storage.update_workflow_status(
+            self._workflow_id, status, prev_status
+        )
 
     def load_and_fix_workflow_status(self):
         """Load workflow status. If we find the previous status updating failed,
         fix it with redo-log transaction recovery."""
-        try:
-            metadata = self._get(self._key_workflow_metadata(), True)
-            prev_status = WorkflowStatus(metadata["status"])
-        except KeyNotFoundError:
-            prev_status = WorkflowStatus.NONE
-
-        if self._exists(self._key_workflow_status_on_change()):
-            # This means the previous status update failed. Fix it.
-            self._put(self._key_workflow_with_status(prev_status), b"")
-            for s in WorkflowStatus:
-                if s != prev_status:
-                    self._storage.delete(self._key_workflow_with_status(s))
-            self._storage.delete(self._key_workflow_status_on_change())
-
-        return prev_status
+        return self._status_storage.load_and_fix_workflow_status(self._workflow_id)
 
     def _put(self, key: str, data: Any, is_json: bool = False) -> str:
         """Serialize and put an object in the object store.
@@ -750,14 +801,6 @@ class WorkflowStorage:
 
     def _key_num_steps_with_name(self, name):
         return os.path.join(DUPLICATE_NAME_COUNTER, name)
-
-    def _key_workflow_with_status(self, status: WorkflowStatus):
-        return os.path.join(WORKFLOW_STATUS_DIR, status.value, self._workflow_id)
-
-    def _key_workflow_status_on_change(self):
-        return os.path.join(
-            WORKFLOW_STATUS_DIR, WORKFLOW_STATUS_ON_CHANGE_DIR, self._workflow_id
-        )
 
 
 def get_workflow_storage(workflow_id: Optional[str] = None) -> WorkflowStorage:

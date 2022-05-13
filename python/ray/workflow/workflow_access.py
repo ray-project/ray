@@ -215,6 +215,7 @@ class WorkflowManagementActor:
         if workflow_id not in self._workflow_status:
             self._workflow_status[workflow_id] = wf_store.load_and_fix_workflow_status()
         wf_store.update_workflow_status(status, self._workflow_status[workflow_id])
+        self._workflow_status[workflow_id] = status
 
     def update_step_status(
         self,
