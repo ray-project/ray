@@ -386,7 +386,7 @@ class PullManager {
   int64_t num_active_bundles_ = 0;
 
   /// Callback to pin plasma objects.
-  std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object_;
+  std::function<std::unique_ptr<RayObject>(const ObjectID &object_ids)> pin_object_;
 
   /// The objects that this object manager has been asked to fetch from remote
   /// object managers.

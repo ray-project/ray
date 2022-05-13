@@ -10,6 +10,7 @@ See also: centralized_critic.py for centralized critic PPO on this game.
 
 import argparse
 from gym.spaces import Dict, Discrete, Tuple, MultiDiscrete
+import logging
 import os
 
 import ray
@@ -19,6 +20,8 @@ from ray.rllib.env.multi_agent_env import ENV_STATE
 from ray.rllib.examples.env.two_step_game import TwoStepGame
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.test_utils import check_learning_achieved
+
+logger = logging.getLogger(__name__)
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -63,6 +66,13 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
+
+    if args.run == "contrib/MADDPG":
+        logger.warning(
+            "`contrib/MADDPG` is not longer a valid algorithm descriptor! "
+            "Use `MADDPG` instead."
+        )
+        args.run = "MADDPG"
 
     grouping = {
         "group_1": [0, 1],

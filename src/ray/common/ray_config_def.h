@@ -64,6 +64,10 @@ RAY_CONFIG(uint64_t, num_heartbeats_warning, 5)
 
 /// The duration between reporting resources sent by the raylets.
 RAY_CONFIG(uint64_t, raylet_report_resources_period_milliseconds, 100)
+
+/// The duration between raylet check memory pressure and send gc request
+RAY_CONFIG(uint64_t, raylet_check_gc_period_milliseconds, 100)
+
 /// For a raylet, if the last resource report was sent more than this many
 /// report periods ago, then a warning will be logged that the report
 /// handler is drifting.
@@ -232,6 +236,12 @@ RAY_CONFIG(int64_t, worker_register_timeout_seconds, 60)
 /// The maximum number of workers to iterate whenever we analyze the resources usage.
 RAY_CONFIG(uint32_t, worker_max_resource_analysis_iteration, 128);
 
+/// A value to add to workers' OOM score adjustment, so that the OS prioritizes
+/// killing these over the raylet. 0 or positive values only (negative values
+/// require sudo permissions).
+/// NOTE(swang): Linux only.
+RAY_CONFIG(int, worker_oom_score_adjustment, 1000)
+
 /// Allow up to 60 seconds for connecting to Redis.
 RAY_CONFIG(int64_t, redis_db_connect_retries, 600)
 RAY_CONFIG(int64_t, redis_db_connect_wait_milliseconds, 100)
@@ -342,6 +352,9 @@ RAY_CONFIG(int32_t, gcs_rpc_server_reconnect_timeout_s, 60)
 
 /// Minimum interval between reconnecting gcs rpc server when gcs server restarts.
 RAY_CONFIG(int32_t, minimum_gcs_reconnect_interval_milliseconds, 5000)
+
+/// Feature flag to use the ray syncer for resource synchronization
+RAY_CONFIG(bool, use_ray_syncer, false)
 
 /// The interval at which the gcs client will check if the address of gcs service has
 /// changed. When the address changed, we will resubscribe again.

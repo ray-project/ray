@@ -1,3 +1,3 @@
-from ray.ml.train.integrations.torch.torch_trainer import TorchTrainer
+from ray.ml.train.integrations.torch.torch_trainer import TorchTrainer, load_checkpoint
 
-__all__ = ["TorchTrainer"]
+__all__ = ["TorchTrainer", "load_checkpoint"]
