@@ -1,4 +1,4 @@
-On.. _tune-examples-ref:
+.. _tune-examples-ref:
 
 ========
 Examples
