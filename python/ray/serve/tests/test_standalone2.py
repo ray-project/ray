@@ -262,8 +262,7 @@ def test_autoscaler_shutdown_node_http_everynode(
         idle_timeout_minutes=0.05,
     )
     cluster.start()
-    # Somehow Ray can't find active cluster after start, adding a retry here.
-    wait_for_condition(lambda: ray.init(address="auto"))
+    ray.init(address="auto")
 
     serve.start(http_options={"location": "EveryNode"})
 

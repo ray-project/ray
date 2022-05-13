@@ -62,7 +62,7 @@ class Rendezvous:
 
     def create_store(self, store_type):
         if store_type == "ray_internal_kv":
-            ray_internal_kv_store = gloo_util.RayInternalKvStore()
+            ray_internal_kv_store = gloo_util.RayInternalKvStore(self._group_name)
             self._store = pygloo.rendezvous.CustomStore(ray_internal_kv_store)
         elif store_type == "redis":
             redisStore = pygloo.rendezvous.RedisStore(
