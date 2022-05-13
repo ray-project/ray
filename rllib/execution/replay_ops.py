@@ -23,7 +23,7 @@ class StoreToReplayBuffer:
     The batch that was stored is returned.
 
     Examples:
-        >>> from ray.rllib.execution.buffers import multi_agent_replay_buffer
+        >>> from ray.rllib.utils.replay_buffers import multi_agent_replay_buffer
         >>> from ray.rllib.execution.replay_ops import StoreToReplayBuffer
         >>> from ray.rllib.execution import ParallelRollouts
         >>> actors = [ # doctest: +SKIP
@@ -61,10 +61,10 @@ class StoreToReplayBuffer:
 
     def __call__(self, batch: SampleBatchType):
         if self.local_actor is not None:
-            self.local_actor.add_batch(batch)
+            self.local_actor.add(batch)
         else:
             actor = random.choice(self.replay_actors)
-            actor.add_batch.remote(batch)
+            actor.add.remote(batch)
         return batch
 
 
@@ -88,7 +88,7 @@ def Replay(
             per actor.
 
     Examples:
-        >>> from ray.rllib.execution.buffers import multi_agent_replay_buffer
+        >>> from ray.rllib.utils.replay_buffers import multi_agent_replay_buffer
         >>> actors = [ # doctest: +SKIP
         ...     multi_agent_replay_buffer.ReplayActor.remote() for _ in range(4)]
         >>> replay_op = Replay(actors=actors) # doctest: +SKIP

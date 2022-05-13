@@ -16,6 +16,7 @@ from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics.window_stat import WindowStat
 from ray.rllib.utils.typing import SampleBatchType, T
 from ray.util.annotations import DeveloperAPI
+from ray.util.iter import ParallelIteratorWorker
 
 # Constant that represents all policies in lockstep replay mode.
 _ALL_POLICIES = "__all__"
@@ -55,7 +56,7 @@ def warn_replay_capacity(*, item: SampleBatchType, num_items: int) -> None:
 
 
 @DeveloperAPI
-class ReplayBuffer:
+class ReplayBuffer(ParallelIteratorWorker):
     def __init__(
         self, capacity: int = 10000, storage_unit: str = "timesteps", **kwargs
     ):
@@ -117,6 +118,12 @@ class ReplayBuffer:
         self._est_size_bytes = 0
 
         self.batch_size = None
+
+        def gen_replay():
+            while True:
+                yield self.replay()
+
+        ParallelIteratorWorker.__init__(self, gen_replay, False)
 
     def __len__(self) -> int:
         """Returns the number of items currently stored in this buffer."""
@@ -346,6 +353,10 @@ class ReplayBuffer:
     def add_batch(self, *args, **kwargs):
         return self.add(*args, **kwargs)
 
-    @Deprecated(old="RepayBuffer.replay()", new="RepayBuffer.sample()", error=False)
+    @Deprecated(
+        old="RepayBuffer.replay(num_items)",
+        new="RepayBuffer.sample(" "num_items)",
+        error=False,
+    )
     def replay(self, *args, **kwargs):
         return self.sample(*args, **kwargs)
