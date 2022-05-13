@@ -349,6 +349,14 @@ message AssignObjectOwnerRequest {
 message AssignObjectOwnerReply {
 }
 
+message ForwardLineageRequest {
+}
+
+message ForwardLineageReply {
+  // The ID of added object.
+  bytes object_id = 1;
+}
+
 service CoreWorkerService {
   // Push a task directly to this worker from another.
   rpc PushTask(PushTaskRequest) returns (PushTaskReply);
@@ -399,4 +407,6 @@ service CoreWorkerService {
   rpc Exit(ExitRequest) returns (ExitReply);
   // Assign the owner of an object to the intended worker.
   rpc AssignObjectOwner(AssignObjectOwnerRequest) returns (AssignObjectOwnerReply);
+  //
+  rpc ForwardLineage(ForwardLineageRequest) returns (ForwardLineageReply);
 }

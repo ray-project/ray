@@ -947,12 +947,12 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
   if (!status.ok()) {
     return status;
   }
-  *object_id = ObjectID::FromIndex(worker_context_.GetCurrentInternalTaskId(),
-                                   worker_context_.GetNextPutIndex());
   rpc::Address real_owner_address =
       owner_address != nullptr ? *owner_address : rpc_address_;
   bool owned_by_us = real_owner_address.worker_id() == rpc_address_.worker_id();
   if (owned_by_us) {
+    *object_id = ObjectID::FromIndex(worker_context_.GetCurrentInternalTaskId(),
+                                     worker_context_.GetNextPutIndex());
     reference_counter_->AddOwnedObject(*object_id,
                                        contained_object_ids,
                                        rpc_address_,
@@ -962,6 +962,16 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
                                        /*add_local_ref=*/true,
                                        NodeID::FromBinary(rpc_address_.raylet_id()));
   } else {
+    auto conn = core_worker_client_pool_->GetOrConnect(real_owner_address);
+    rpc::ForwardLineageRequest forward_request;
+    std::promise<Status> status_promise;
+    conn->ForwardLineage(forward_request,
+                        [&status_promise, object_id](const Status &returned_status,
+                                    const rpc::ForwardLineageReply &reply) {
+                          *object_id = ObjectID::FromBinary(reply.object_id());
+                          status_promise.set_value(returned_status);
+                        });
+    status = status_promise.get_future().get();
     // Because in the remote worker's `HandleAssignObjectOwner`,
     // a `WaitForRefRemoved` RPC request will be sent back to
     // the current worker. So we need to make sure ref count is > 0
@@ -984,8 +994,7 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
       request.add_contained_object_ids(contained_object_id.Binary());
     }
     request.set_object_size(data_size + metadata->Size());
-    auto conn = core_worker_client_pool_->GetOrConnect(real_owner_address);
-    std::promise<Status> status_promise;
+    status_promise = std::promise<Status>();
     conn->AssignObjectOwner(request,
                             [&status_promise](const Status &returned_status,
                                               const rpc::AssignObjectOwnerReply &reply) {
@@ -3264,6 +3273,14 @@ void CoreWorker::HandleExit(const rpc::ExitRequest &request,
       },
       // We need to kill it regardless if the RPC failed.
       [this]() { Exit(rpc::WorkerExitType::INTENDED_EXIT); });
+}
+
+void CoreWorker::HandleForwardLineage(const rpc::ForwardLineageRequest &request,
+                                         rpc::ForwardLineageReply *reply,
+                                         rpc::SendReplyCallback send_reply_callback) {
+  reply->set_object_id(ObjectID::FromIndex(worker_context_.GetCurrentInternalTaskId(),
+                                     worker_context_.GetNextPutIndex()).Binary());
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void CoreWorker::HandleAssignObjectOwner(const rpc::AssignObjectOwnerRequest &request,

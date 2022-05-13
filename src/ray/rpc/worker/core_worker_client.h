@@ -193,6 +193,10 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
                                  const ClientCallback<AssignObjectOwnerReply> &callback) {
   }
 
+  virtual void ForwardLineage(const ForwardLineageRequest &request,
+                              const ClientCallback<ForwardLineageReply> &callback) {
+  }
+
   /// Returns the max acked sequence number, useful for checking on progress.
   virtual int64_t ClientProcessedUpToSeqno() { return -1; }
 
@@ -317,6 +321,12 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService,
                          AssignObjectOwner,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1,
+                         override)
+
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService,
+                         ForwardLineage,
                          grpc_client_,
                          /*method_timeout_ms*/ -1,
                          override)

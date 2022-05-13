@@ -769,6 +769,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                   rpc::ExitReply *reply,
                   rpc::SendReplyCallback send_reply_callback) override;
 
+  // 
+  void HandleForwardLineage(const rpc::ForwardLineageRequest &request,
+                               rpc::ForwardLineageReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
+
   // Set local worker as the owner of object.
   // Request by borrower's worker, execute by owner's worker.
   void HandleAssignObjectOwner(const rpc::AssignObjectOwnerRequest &request,
