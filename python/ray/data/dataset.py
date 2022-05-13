@@ -656,7 +656,7 @@ class Dataset(Generic[T]):
 
             if isinstance(batch, pa.Table):
                 # Lets the item pass if weight generated for that item <= fraction
-                mask = [True if p <= fraction else False for p in probs]
+                mask = [p <= fraction for p in probs]
                 return batch.filter(mask)
             if isinstance(batch, pd.DataFrame):
                 return batch.sample(frac=fraction)
