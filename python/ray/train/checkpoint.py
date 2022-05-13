@@ -142,8 +142,7 @@ class CheckpointManager(CommonCheckpointManager):
         checkpoint_results: List[TrainingResult],
         decode_checkpoint_fn: Callable,
     ) -> None:
-        """Perform all processing for a checkpoint."""
-
+        """Ray Train entrypoint. Perform all processing for a checkpoint."""
         # Get checkpoint from first worker.
         checkpoint_data = checkpoint_results[0].data
 
@@ -169,14 +168,16 @@ class CheckpointManager(CommonCheckpointManager):
             storage_mode=TrackedCheckpoint.MEMORY,
             result={score_attr: checkpoint_data.get(score_attr, 0.0)},
         )
+        self.register_checkpoint(checkpoint=tracked_checkpoint)
 
+    def register_checkpoint(self, checkpoint: TrackedCheckpoint):
         # Always update the latest memory checkpoint
-        self._replace_latest_memory_checkpoint(tracked_checkpoint)
+        self._replace_latest_memory_checkpoint(checkpoint)
 
         # Only process further if we consider keeping this checkpoint on disk
         if self._checkpoint_strategy.num_to_keep != 0:
             not_yet_persisted_checkpoint = (
-                _NotYetPersistedCheckpoint.from_tracked_checkpoint(tracked_checkpoint)
+                _NotYetPersistedCheckpoint.from_tracked_checkpoint(checkpoint)
             )
             self._decide_what_to_do_with_checkpoint(not_yet_persisted_checkpoint)
 

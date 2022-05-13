@@ -56,7 +56,7 @@ class CheckpointManager(CommonCheckpointManager):
 
         super().__init__(checkpoint_strategy=checkpoint_strategy, delete_fn=delete_fn)
 
-    def on_checkpoint(self, checkpoint: TrackedCheckpoint):
+    def handle_checkpoint(self, checkpoint: TrackedCheckpoint):
         # Set checkpoint ID
         checkpoint.id = checkpoint.id or self._latest_checkpoint_id
         self._latest_checkpoint_id += 1
@@ -70,6 +70,11 @@ class CheckpointManager(CommonCheckpointManager):
                 or self._checkpoint_strategy.num_to_keep > 0
             )
             self._decide_what_to_do_with_checkpoint(checkpoint)
+
+    def on_checkpoint(self, checkpoint: TrackedCheckpoint):
+        """Ray Tune's entrypoint"""
+        # Todo (krfricke): Replace with handle_checkpoint.
+        self.handle_checkpoint(checkpoint)
 
     def _skip_persisted_checkpoint(self, persisted_checkpoint: TrackedCheckpoint):
         assert persisted_checkpoint.storage_mode == TrackedCheckpoint.PERSISTENT
