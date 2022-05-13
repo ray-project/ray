@@ -4,6 +4,7 @@ from ray import ObjectRef
 from ray.experimental.dag import DAGNode
 from ray.serve.handle import RayServeSyncHandle, RayServeHandle
 from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
+from ray.experimental.dag.format_utils import get_dag_node_str
 
 
 class DeploymentFunctionExecutorNode(DAGNode):
@@ -60,24 +61,24 @@ class DeploymentFunctionExecutorNode(DAGNode):
             *self._bound_args, **self._bound_kwargs
         )
 
+    def __str__(self) -> str:
+        return get_dag_node_str(self, str(self._deployment_function_handle))
+
     def to_json(self) -> Dict[str, Any]:
         return {
             DAGNODE_TYPE_KEY: DeploymentFunctionExecutorNode.__name__,
             "deployment_function_handle": self._deployment_function_handle,
             "args": self.get_args(),
             "kwargs": self.get_kwargs(),
-            "other_args_to_resolve": self.get_other_args_to_resolve(),
-            "uuid": self.get_stable_uuid(),
+            "other_args_to_resolve": self.get_other_args_to_resolve()
         }
 
     @classmethod
     def from_json(cls, input_json):
         assert input_json[DAGNODE_TYPE_KEY] == DeploymentFunctionExecutorNode.__name__
-        node = cls(
+        return cls(
             input_json["deployment_function_handle"],
             input_json["args"],
             input_json["kwargs"],
             other_args_to_resolve=input_json["other_args_to_resolve"],
         )
-        node._stable_uuid = input_json["uuid"]
-        return node

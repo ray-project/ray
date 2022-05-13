@@ -78,7 +78,7 @@ def build(ray_dag_root_node: DAGNode) -> List[Deployment]:
 
     serve_dag_root_json = json.dumps(serve_executor_root_dag, cls=DAGNodeEncoder)
     new_dag_handle = RayServeDAGHandle(serve_dag_root_json)
-    deployments_with_http[-1].init_args = new_dag_handle
+    deployments_with_http[-1] = deployments_with_http[-1].options(init_args=(new_dag_handle,))
 
     return deployments_with_http
 

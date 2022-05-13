@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Set
 from collections import OrderedDict
 
 from ray.experimental.dag import (
@@ -101,17 +101,18 @@ def transform_serve_dag_to_serve_executor_dag(serve_dag_root_node: DAGNode):
     processed, transform into an equivalent, but minimal dag optimized for
     execution.
     """
-
     if isinstance(serve_dag_root_node, DeploymentNode):
+        print("DeploymentNode")
         return DeploymentExecutorNode(serve_dag_root_node._deployment_handle)
     elif isinstance(serve_dag_root_node, DeploymentFunctionNode):
+        print("DeploymentFunctionNode")
         return DeploymentFunctionExecutorNode(
             serve_dag_root_node._deployment_handle,
             serve_dag_root_node.get_args(),
             serve_dag_root_node.get_kwargs()
         )
     else:
-        print(f">>>> WUT {serve_dag_root_node}")
+        print("Other")
         return serve_dag_root_node
 
 

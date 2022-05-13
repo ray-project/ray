@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional, List, Union
 from ray.experimental.dag import DAGNode
 from ray.serve.handle import RayServeSyncHandle, RayServeHandle
 from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
+from ray.experimental.dag.format_utils import get_dag_node_str
 
 class DeploymentExecutorNode(DAGNode):
     """The lightweight executor DAGNode of DeploymentNode that optimizes for
@@ -49,6 +50,9 @@ class DeploymentExecutorNode(DAGNode):
         """
         return self._deployment_handle
 
+    def __str__(self) -> str:
+        return get_dag_node_str(self, str(self._deployment_handle))
+
     def to_json(self) -> Dict[str, Any]:
         return {
             DAGNODE_TYPE_KEY: DeploymentExecutorNode.__name__,
@@ -60,9 +64,7 @@ class DeploymentExecutorNode(DAGNode):
     @classmethod
     def from_json(cls, input_json):
         assert input_json[DAGNODE_TYPE_KEY] == DeploymentExecutorNode.__name__
-        node = cls(
+        return cls(
             input_json["deployment_handle"],
             other_args_to_resolve=input_json["other_args_to_resolve"],
         )
-        node._stable_uuid = input_json["uuid"]
-        return node

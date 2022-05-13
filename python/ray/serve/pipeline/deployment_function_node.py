@@ -130,7 +130,7 @@ class DeploymentFunctionNode(DAGNode):
     @classmethod
     def from_json(cls, input_json):
         assert input_json[DAGNODE_TYPE_KEY] == DeploymentFunctionNode.__name__
-        node = cls(
+        return cls(
             input_json["import_path"],
             input_json["deployment_name"],
             input_json["args"],
@@ -138,5 +138,3 @@ class DeploymentFunctionNode(DAGNode):
             input_json["options"],
             other_args_to_resolve=input_json["other_args_to_resolve"],
         )
-        node._stable_uuid = input_json["uuid"]
-        return node
