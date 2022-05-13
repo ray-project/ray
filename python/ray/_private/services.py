@@ -579,16 +579,16 @@ def create_redis_client(redis_address, password=None):
         try:
             cli.ping()
             return cli
-        except Exception as e:
+        except Exception:
             create_redis_client.instances.pop(redis_address)
             if i >= num_retries - 1:
-                raise RuntimeError(
-                    f"Unable to connect to Redis at {redis_address}: {e}"
-                )
+                break
             # Wait a little bit.
             time.sleep(delay)
             # Make sure the retry interval doesn't increase too large.
             delay = min(1, delay * 2)
+
+    raise RuntimeError(f"Unable to connect to Redis at {redis_address}")
 
 
 def start_ray_process(
@@ -1899,13 +1899,8 @@ def build_java_worker_command(
     command = (
         [sys.executable]
         + [setup_worker_path]
-        + ["java"]
         + ["-D{}={}".format(*pair) for pair in pairs]
     )
-
-    # Add ray jars path to java classpath
-    ray_jars = os.path.join(get_ray_jars_dir(), "*")
-    command += ["-cp", ray_jars]
 
     command += ["RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER"]
     command += ["io.ray.runtime.runner.worker.DefaultWorker"]
