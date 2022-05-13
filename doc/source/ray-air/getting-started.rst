@@ -27,16 +27,71 @@ Quick Start
 
 .. tabbed:: XGBoost
 
-    .. literalinclude:: /../../python/ray/ml/examples/xgboost_example.py
+    Preprocess your data with a ``Preprocessor``.
+
+    .. literalinclude:: doc_code/xgboost_starter.py
+        :language: python
+        :start-after: __air_xgb_preprocess_start__
+        :end-before: __air_xgb_preprocess_end__
+
+    Train a model with an ``XGBoostTrainer``.
+
+    .. literalinclude:: doc_code/xgboost_starter.py
+        :language: python
+        :start-after: __air_xgb_train_start__
+        :end-before: __air_xgb_train_end__
+
+
+    Use the trained model for batch prediction with a ``BatchPredictor``.
+
+    .. literalinclude:: doc_code/xgboost_starter.py
+        :language: python
+        :start-after: __air_xgb_batchpred_start__
+        :end-before: __air_xgb_batchpred_end__
+
 
 .. tabbed:: Pytorch
 
-    .. literalinclude:: /../../python/ray/ml/examples/pytorch/torch_linear_dataset_example.py
+    Create your dataset.
+
+    .. literalinclude:: doc_code/pytorch_starter.py
+        :language: python
+        :start-after: __air_pytorch_preprocess_start__
+        :end-before: __air_pytorch_preprocess_end__
+
+    Train a model with a ``TorchTrainer``.
+
+    .. literalinclude:: doc_code/pytorch_starter.py
+        :language: python
+        :start-after: __air_pytorch_train_start__
+        :end-before: __air_pytorch_train_end__
 
 
 .. tabbed:: Tensorflow
 
-    .. literalinclude:: /../../python/ray/ml/examples/tf/tensorflow_linear_dataset_example.py
+    Create your ``Ray Dataset``.
+
+    .. literalinclude:: doc_code/tf_starter.py
+        :language: python
+        :start-after: __air_tf_preprocess_start__
+        :end-before: __air_tf_preprocess_end__
+
+    Train a model with a ``TensorflowTrainer``.
+
+    .. literalinclude:: doc_code/tf_starter.py
+        :language: python
+        :start-after: __air_tf_train_start__
+        :end-before: __air_tf_train_end__
+
+
+    Use the trained model for batch prediction with a ``BatchPredictor``.
+
+    .. literalinclude:: doc_code/tf_starter.py
+        :language: python
+        :start-after: __air_tf_batchpred_start__
+        :end-before: __air_tf_batchpred_end__
+
+See the :ref:`Key Concepts <air-key-concepts>` for more that Ray AIR has to offer.
 
 
 Why Ray AIR?
