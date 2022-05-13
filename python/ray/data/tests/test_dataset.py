@@ -3569,33 +3569,31 @@ def test_random_shuffle_spread(ray_start_cluster):
 def test_random_sample(ray_start_regular_shared):
     import math
 
-    def test(dataset, sample_percent=0.5):
+    def ensure_sample_size_close(dataset, sample_percent=0.5):
         r1 = ds.random_sample(sample_percent)
         assert math.isclose(
             r1.count(), int(ds.count() * sample_percent), rel_tol=2, abs_tol=2
         )
 
     ds = ray.data.range(10, parallelism=2)
-    test(ds)
+    ensure_sample_size_close(ds)
 
     ds = ray.data.range_arrow(10, parallelism=2)
-    test(ds)
+    ensure_sample_size_close(ds)
 
     ds = ray.data.range_tensor(5, parallelism=2, shape=(2, 2))
-    test(ds)
+    ensure_sample_size_close(ds)
 
-    # "weird" datasets
+    # imbalanced datasets
     ds1 = ray.data.range(1, parallelism=1)
     ds2 = ray.data.range(2, parallelism=1)
     ds3 = ray.data.range(3, parallelism=1)
     # noinspection PyTypeChecker
     ds = ds1.union(ds2).union(ds3)
-    test(ds)
-
+    ensure_sample_size_close(ds)
     # Small datasets
-
     ds1 = ray.data.range(5, parallelism=5)
-    test(ds1)
+    ensure_sample_size_close(ds1)
 
 
 def test_random_sample_checks(ray_start_regular_shared):
