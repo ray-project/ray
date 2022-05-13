@@ -1,14 +1,14 @@
+```{eval-rst}
 .. include:: /_includes/train/announcement.rst
+```
 
-.. _train-docs:
+(train-docs)=
 
-Ray Train: Distributed Deep Learning
-====================================
+# Ray Train: Distributed Deep Learning
 
-.. _`issue on GitHub`: https://github.com/ray-project/ray/issues
-.. _`1.12 docs`: https://docs.ray.io/en/releases-1.12.0/raysgd/raysgd.html
-
-.. tip:: Get in touch with us if you're using or considering using `Ray Train <https://forms.gle/PXFcJmHwszCwQhqX7>`_!
+:::{tip}
+Get in touch with us if you're using or considering using [Ray Train](https://forms.gle/PXFcJmHwszCwQhqX7)!
+:::
 
 Ray Train is a lightweight library for distributed deep learning, allowing you
 to scale up and speed up training for your deep learning models.
@@ -16,53 +16,50 @@ to scale up and speed up training for your deep learning models.
 The main features are:
 
 - **Ease of use**: Scale your single process training code to a cluster in just a couple lines of code.
-- **Composability**: Ray Train interoperates with :ref:`Ray Tune <tune-main>` to tune your distributed model and :ref:`Ray Datasets <datasets>` to train on large amounts of data.
+- **Composability**: Ray Train interoperates with {ref}`Ray Tune <tune-main>` to tune your distributed model and {ref}`Ray Datasets <datasets>` to train on large amounts of data.
 - **Interactivity**: Ray Train fits in your workflow with support to run from any environment, including seamless Jupyter notebook support.
 
-.. note::
+:::{note}
+This API is in its Beta release (as of Ray 1.9) and may be revised in
+future Ray releases. If you encounter any bugs, please file an
+[issue on GitHub].
+:::
 
-  This API is in its Beta release (as of Ray 1.9) and may be revised in
-  future Ray releases. If you encounter any bugs, please file an
-  `issue on GitHub`_.
+:::{note}
+Ray Train replaces Ray SGD as the standard library for distributed deep learning on Ray.
+Ray SGD has been fully deprecated as of Ray 1.13. If you are using an older version of Ray
+and are looking for the Ray SGD docs, you can find them in the Ray [1.12 docs].
+:::
 
-.. note::
-
-  Ray Train replaces Ray SGD as the standard library for distributed deep learning on Ray.
-  Ray SGD has been fully deprecated as of Ray 1.13. If you are using an older version of Ray
-  and are looking for the Ray SGD docs, you can find them in the Ray `1.12 docs`_.
-
-Intro to Ray Train
-------------------
+## Intro to Ray Train
 
 Ray Train is a library that aims to simplify distributed deep learning.
 
 **Frameworks**: Ray Train is built to abstract away the coordination/configuration setup of distributed deep learning frameworks such as Pytorch Distributed and Tensorflow Distributed, allowing users to only focus on implementing training logic.
 
-* For Pytorch, Ray Train automatically handles the construction of the distributed process group.
-* For Tensorflow, Ray Train automatically handles the coordination of the ``TF_CONFIG``. The current implementation assumes that the user will use a MultiWorkerMirroredStrategy, but this will change in the near future.
-* For Horovod, Ray Train automatically handles the construction of the Horovod runtime and Rendezvous server.
+- For Pytorch, Ray Train automatically handles the construction of the distributed process group.
+- For Tensorflow, Ray Train automatically handles the coordination of the `TF_CONFIG`. The current implementation assumes that the user will use a MultiWorkerMirroredStrategy, but this will change in the near future.
+- For Horovod, Ray Train automatically handles the construction of the Horovod runtime and Rendezvous server.
 
 **Built for data scientists/ML practitioners**: Ray Train has support for standard ML tools and features that practitioners love:
 
-* Callbacks for early stopping
-* Checkpointing
-* Integration with TensorBoard, Weights/Biases, and MLflow
-* Jupyter notebooks
+- Callbacks for early stopping
+- Checkpointing
+- Integration with TensorBoard, Weights/Biases, and MLflow
+- Jupyter notebooks
 
 **Integration with Ray Ecosystem**: Distributed deep learning often comes with a lot of complexity.
 
+- Use {ref}`Ray Datasets <datasets>` with Ray Train to handle and train on large amounts of data.
+- Use {ref}`Ray Tune <tune-main>` with Ray Train to leverage cutting edge hyperparameter techniques and distribute both your training and tuning.
+- You can leverage the {ref}`Ray cluster launcher <cluster-cloud>` to launch autoscaling or spot instance clusters to train your model at scale on any cloud.
 
-* Use :ref:`Ray Datasets <datasets>` with Ray Train to handle and train on large amounts of data.
-* Use :ref:`Ray Tune <tune-main>` with Ray Train to leverage cutting edge hyperparameter techniques and distribute both your training and tuning.
-* You can leverage the :ref:`Ray cluster launcher <cluster-cloud>` to launch autoscaling or spot instance clusters to train your model at scale on any cloud.
-
-
-Quick Start
------------
+## Quick Start
 
 Ray Train abstracts away the complexity of setting up a distributed training
 system. Let's take following simple examples:
 
+```{eval-rst}
 .. tabbed:: PyTorch
 
     This example shows how you can use Ray Train with PyTorch.
@@ -111,7 +108,9 @@ system. Let's take following simple examples:
        :end-before: __torch_trainer_end__
 
     See :ref:`train-porting-code` for a more comprehensive example.
+```
 
+```{eval-rst}
 .. tabbed:: TensorFlow
 
     This example shows how you can use Ray Train to set up `Multi-worker training
@@ -161,7 +160,13 @@ system. Let's take following simple examples:
 
     See :ref:`train-porting-code` for a more comprehensive example.
 
+```
 
-**Next steps:** Check out the :ref:`User Guide <train-user-guide>`!
+**Next steps:** Check out the {ref}`User Guide <train-user-guide>`!
 
+```{eval-rst}
 .. include:: /_includes/train/announcement_bottom.rst
+```
+
+[1.12 docs]: https://docs.ray.io/en/releases-1.12.0/raysgd/raysgd.html
+[issue on github]: https://github.com/ray-project/ray/issues
