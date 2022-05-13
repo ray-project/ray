@@ -45,8 +45,6 @@ aiorwlock
 
 # Requirements for running tests
 pyarrow >= 6.0.1, < 7.0.0
-# Used for Dataset tests.
-polars
 azure-cli-core==2.29.1
 azure-identity==1.7.0
 azure-mgmt-compute==23.1.0
