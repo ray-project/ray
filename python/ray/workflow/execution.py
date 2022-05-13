@@ -131,7 +131,7 @@ def cancel(workflow_id: str) -> None:
         ray.get(workflow_manager.cancel_workflow.remote(workflow_id))
     except ValueError:
         wf_store = workflow_storage.get_workflow_storage(workflow_id)
-        wf_store.save_workflow_meta(WorkflowMetaData(WorkflowStatus.CANCELED))
+        wf_store.update_workflow_status(WorkflowStatus.CANCELED)
 
 
 def get_status(workflow_id: str) -> Optional[WorkflowStatus]:
