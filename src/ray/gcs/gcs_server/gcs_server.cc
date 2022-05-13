@@ -549,29 +549,23 @@ void GcsServer::InitPubSubHandler() {
 void GcsServer::InitRuntimeEnvManager() {
   runtime_env_manager_ = std::make_unique<RuntimeEnvManager>(
       /*deleter=*/[this](const std::string &plugin_uri, auto callback) {
-        // A valid runtime env URI is of the form "plugin|protocol://hash".
-        std::string plugin_sep = "|";
+        // A valid runtime env URI is of the form "protocol://hash".
         std::string protocol_sep = "://";
-        auto plugin_end_pos = plugin_uri.find(plugin_sep);
         auto protocol_end_pos = plugin_uri.find(protocol_sep);
-        if (protocol_end_pos == std::string::npos ||
-            plugin_end_pos == std::string::npos) {
+        if (protocol_end_pos == std::string::npos) {
           RAY_LOG(ERROR) << "Plugin URI must be of form "
-                         << "<plugin>|<protocol>://<hash>, got " << plugin_uri;
+                         << "<protocol>://<hash>, got " << plugin_uri;
           callback(false);
         } else {
-          auto protocol_pos = plugin_end_pos + plugin_sep.size();
-          int protocol_len = protocol_end_pos - protocol_pos;
-          auto protocol = plugin_uri.substr(protocol_pos, protocol_len);
+          auto protocol = plugin_uri.substr(0, protocol_end_pos);
           if (protocol != "gcs") {
             // Some URIs do not correspond to files in the GCS.  Skip deletion for
             // these.
             callback(true);
           } else {
-            auto uri = plugin_uri.substr(protocol_pos);
             this->kv_manager_->GetInstance().Del(
                 "" /* namespace */,
-                uri /* key */,
+                plugin_uri /* key */,
                 false /* del_by_prefix*/,
                 [callback = std::move(callback)](int64_t) { callback(false); });
           }

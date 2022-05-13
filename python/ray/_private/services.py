@@ -579,16 +579,16 @@ def create_redis_client(redis_address, password=None):
         try:
             cli.ping()
             return cli
-        except Exception as e:
+        except Exception:
             create_redis_client.instances.pop(redis_address)
             if i >= num_retries - 1:
-                raise RuntimeError(
-                    f"Unable to connect to Redis at {redis_address}: {e}"
-                )
+                break
             # Wait a little bit.
             time.sleep(delay)
             # Make sure the retry interval doesn't increase too large.
             delay = min(1, delay * 2)
+
+    raise RuntimeError(f"Unable to connect to Redis at {redis_address}")
 
 
 def start_ray_process(

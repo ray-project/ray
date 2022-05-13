@@ -163,6 +163,31 @@ py_test_run_all_subdirectory(
 )
 
 # --------------------------------------------------------------------
+# Test all doc/source/ray-air/examples notebooks.
+# --------------------------------------------------------------------
+
+py_test_run_all_notebooks(
+    size = "medium",
+    include = ["doc/source/ray-air/examples/*.ipynb"],
+    exclude = [],
+    data = ["//doc/source/ray-air/examples:air_examples"],
+    tags = ["exclusive", "team:ml"],
+)
+
+# --------------------------------------------------------------------
+# Test all doc/source/ray-air/doc_code code included in rst/md files.
+# --------------------------------------------------------------------
+
+py_test_run_all_subdirectory(
+    size = "large",
+    include = ["source/ray-air/doc_code/*.py"],
+    exclude = [],
+    extra_srcs = [],
+    tags = ["exclusive", "team:ml"],
+)
+
+
+# --------------------------------------------------------------------
 # Test all doc/source/ray-overview/doc_code snippets, used on ray.io
 # --------------------------------------------------------------------
 
