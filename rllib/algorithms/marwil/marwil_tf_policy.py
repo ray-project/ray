@@ -216,7 +216,7 @@ def setup_mixins(
     config: TrainerConfigDict,
 ) -> None:
     # Setup Value branch of our NN.
-    ValueNetworkMixin.__init__(policy, config)
+    ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
 
     # Not needed for pure BC.
     if policy.config["beta"] != 0.0:

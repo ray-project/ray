@@ -15,8 +15,8 @@ from ray.rllib.policy.torch_mixins import (
     KLCoeffMixin,
     LearningRateSchedule,
     ValueNetworkMixin,
-    TorchPolicy,
 )
+from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -53,6 +53,7 @@ class PPOTorchPolicy(
             max_seq_len=config["model"]["max_seq_len"],
         )
 
+        ValueNetworkMixin.__init__(self, config)
         EntropyCoeffSchedule.__init__(
             self, config["entropy_coeff"], config["entropy_coeff_schedule"]
         )
