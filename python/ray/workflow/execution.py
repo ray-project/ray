@@ -142,7 +142,7 @@ def get_status(workflow_id: str) -> Optional[WorkflowStatus]:
     if running:
         return WorkflowStatus.RUNNING
     store = workflow_storage.get_workflow_storage(workflow_id)
-    status = store.load_and_fix_workflow_status()
+    status = store.load_workflow_status()
     if status == WorkflowStatus.NONE:
         raise WorkflowNotFoundError(workflow_id)
     if status == WorkflowStatus.RUNNING:

@@ -675,14 +675,12 @@ class WorkflowStorage:
     ):
         """Update the status of the workflow."""
         if prev_status is None:
-            prev_status = self._status_storage.load_and_fix_workflow_status(
-                self._workflow_id
-            )
+            prev_status = self.load_workflow_status()
         self._status_storage.update_workflow_status(
             self._workflow_id, status, prev_status
         )
 
-    def load_and_fix_workflow_status(self):
+    def load_workflow_status(self):
         """Load workflow status. If we find the previous status updating failed,
         fix it with redo-log transaction recovery."""
         return self._status_storage.load_and_fix_workflow_status(self._workflow_id)

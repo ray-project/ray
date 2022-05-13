@@ -213,7 +213,7 @@ class WorkflowManagementActor:
     def _update_workflow_status(self, workflow_id: str, status: common.WorkflowStatus):
         wf_store = workflow_storage.WorkflowStorage(workflow_id)
         if workflow_id not in self._workflow_status:
-            self._workflow_status[workflow_id] = wf_store.load_and_fix_workflow_status()
+            self._workflow_status[workflow_id] = wf_store.load_workflow_status()
         wf_store.update_workflow_status(status, self._workflow_status[workflow_id])
         self._workflow_status[workflow_id] = status
 
@@ -315,7 +315,7 @@ class WorkflowManagementActor:
         if workflow_id in self._workflow_outputs and name is None:
             return self._workflow_outputs[workflow_id].output
         wf_store = workflow_storage.WorkflowStorage(workflow_id)
-        meta = wf_store.load_and_fix_workflow_status()
+        meta = wf_store.load_workflow_status()
         if meta == common.WorkflowStatus.NONE:
             raise ValueError(f"No such workflow {workflow_id}")
         if meta == common.WorkflowStatus.CANCELED:
