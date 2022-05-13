@@ -195,7 +195,7 @@ class WorkflowManagementActor:
         )
         self._step_output_cache[(workflow_id, step_id)] = latest_output
 
-        self._update_workflow_status(common.WorkflowStatus.RUNNING)
+        self._update_workflow_status(workflow_id, common.WorkflowStatus.RUNNING)
 
         if workflow_id not in self._step_status:
             self._step_status[workflow_id] = {}
@@ -241,10 +241,10 @@ class WorkflowManagementActor:
         if status == common.WorkflowStatus.FAILED:
             if workflow_id in self._workflow_outputs:
                 cancel_job(self._workflow_outputs.pop(workflow_id).output)
-            self._update_workflow_status(common.WorkflowStatus.FAILED)
+            self._update_workflow_status(workflow_id, common.WorkflowStatus.FAILED)
             self._step_status.pop(workflow_id)
         else:
-            self._update_workflow_status(common.WorkflowStatus.SUCCESSFUL)
+            self._update_workflow_status(workflow_id, common.WorkflowStatus.SUCCESSFUL)
             self._step_status.pop(workflow_id)
         wf_store = workflow_storage.WorkflowStorage(workflow_id)
         wf_store.save_workflow_postrun_metadata({"end_time": time.time()})
@@ -252,7 +252,7 @@ class WorkflowManagementActor:
     def cancel_workflow(self, workflow_id: str) -> None:
         self._step_status.pop(workflow_id)
         cancel_job(self._workflow_outputs.pop(workflow_id).output)
-        self._update_workflow_status(common.WorkflowStatus.CANCELED)
+        self._update_workflow_status(workflow_id, common.WorkflowStatus.CANCELED)
 
     def is_workflow_running(self, workflow_id: str) -> bool:
         return (
