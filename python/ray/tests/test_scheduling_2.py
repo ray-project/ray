@@ -648,10 +648,10 @@ def test_demand_report_when_scale_up(shutdown_only):
 
 
 def test_data_locality_spilled_objects(
-    ray_start_cluster_enabled, object_spilling_config
+    ray_start_cluster_enabled, fs_only_object_spilling_config
 ):
     cluster = ray_start_cluster_enabled
-    object_spilling_config, _ = object_spilling_config
+    object_spilling_config, _ = fs_only_object_spilling_config
     cluster.add_node(
         num_cpus=1,
         object_store_memory=100 * 1024 * 1024,
