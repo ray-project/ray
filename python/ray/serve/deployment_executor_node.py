@@ -2,6 +2,7 @@
 
 from typing import Any, Dict, Optional, List, Union
 
+import ray
 from ray.experimental.dag import DAGNode
 from ray.serve.handle import RayServeSyncHandle, RayServeHandle
 from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
@@ -52,7 +53,9 @@ class DeploymentExecutorNode(DAGNode):
         whatever this method returns. We return a handle here so method node can
         directly call upon.
         """
-        return self._deployment_handle.remote(*self._bound_args, **self._bound_kwargs)
+        print(f"????? called with args: {args}, kwargs: {kwargs}")
+        print(f"????? _bound_args: {self._bound_args}, _bound_kwargs: {self._bound_kwargs}")
+        return self._bound_args[0]
 
     def __str__(self) -> str:
         return get_dag_node_str(self, str(self._deployment_handle))
