@@ -29,7 +29,7 @@ void CoreWorkerDirectActorTaskSubmitter::AddActorQueueIfNotExists(
     const ActorID &actor_id,
     int32_t max_pending_calls,
     bool execute_out_of_order,
-    int64_t max_task_retries) {
+    bool fail_if_actor_unreachable) {
   absl::MutexLock lock(&mu_);
   // No need to check whether the insert was successful, since it is possible
   // for this worker to have multiple references to the same actor.
@@ -37,7 +37,8 @@ void CoreWorkerDirectActorTaskSubmitter::AddActorQueueIfNotExists(
                 << actor_id;
   client_queues_.emplace(
       actor_id,
-      ClientQueue(actor_id, execute_out_of_order, max_pending_calls, max_task_retries));
+      ClientQueue(
+          actor_id, execute_out_of_order, max_pending_calls, fail_if_actor_unreachable));
 }
 
 void CoreWorkerDirectActorTaskSubmitter::KillActor(const ActorID &actor_id,
@@ -337,9 +338,9 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
   auto &actor_submit_queue = client_queue.actor_submit_queue;
   if (!client_queue.rpc_client) {
     if (client_queue.state == rpc::ActorTableData::RESTARTING &&
-        client_queue.max_task_retries == 0) {
-      // When `max_task_retries` is 0, tasks submitted while the actor is in `RESTARTING`
-      // state will fail immediately.
+        client_queue.fail_if_actor_unreachable) {
+      // When `fail_if_actor_unreachable` is true, tasks submitted while the actor is in
+      // `RESTARTING` state fail immediately.
       while (true) {
         auto task = actor_submit_queue->PopNextTaskToSend();
         if (!task.has_value()) {
@@ -455,7 +456,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
   queue.rpc_client->PushActorTask(std::move(request), skip_queue, wrapped_callback);
 }
 
-void CoreWorkerDirectActorTaskSubmitter::ReplyCallback(
+void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
     const Status &status,
     const rpc::PushTaskReply &reply,
     const rpc::Address &addr,
