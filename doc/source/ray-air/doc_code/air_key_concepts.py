@@ -42,7 +42,7 @@ trainer = XGBoostTrainer(
     params=params,
     datasets={"train": train_dataset, "valid": valid_dataset},
     preprocessor=preprocessor,
-    num_boost_round=20,
+    num_boost_round=5,
 )
 
 result = trainer.fit()
