@@ -62,7 +62,7 @@ parts:
       - file: serve/index
         title: Ray Serve
         sections:
-          - file: serve/getting_started
+          - file: serve/end_to_end_tutorial
           - file: serve/core-apis
           - file: serve/http-servehandle
           - file: serve/ml-models
@@ -153,6 +153,21 @@ parts:
           - file: ray-core/examples/testing-tips
       - file: ray-core/configure
       - file: ray-observability/index
+        sections:
+          - file: ray-core/ray-dashboard
+            title: "Using the Ray Dashboard"
+          - file: ray-observability/ray-debugging
+            title: "Using the Ray Debugger"
+          - file: ray-observability/ray-logging
+            title: "Logging Ray apps"
+          - file: ray-observability/ray-metrics
+            title: "Exporting Ray metrics"
+          - file: ray-observability/ray-tracing
+            title: "Tracing Ray apps"
+          - file: ray-observability/debugging
+            title: "Debugging Ray apps"
+          - file: ray-observability/profiling
+            title: "Profiling Ray apps"
       - file: ray-contribute/whitepaper
 
 # TODO: Add examples section
