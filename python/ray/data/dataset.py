@@ -635,7 +635,6 @@ class Dataset(Generic[T]):
             Returns a Dataset containing the sampled elements.
         """
         import random
-        import math
         import pyarrow as pa
         import pandas as pd
 
