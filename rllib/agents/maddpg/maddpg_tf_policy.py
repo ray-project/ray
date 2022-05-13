@@ -27,8 +27,6 @@ class MADDPGPostprocessing:
     def postprocess_trajectory(
         self, sample_batch, other_agent_batches=None, episode=None
     ):
-        # FIXME: Get done from info is required since agentwise done is not
-        #  supported now.
         sample_batch[SampleBatch.DONES] = self.get_done_from_info(
             sample_batch[SampleBatch.INFOS]
         )
@@ -43,7 +41,7 @@ class MADDPGPostprocessing:
 class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
     def __init__(self, obs_space, act_space, config):
         # _____ Initial Configuration
-        config = dict(ray.rllib.agents.maddpg.DEFAULT_CONFIG, **config)
+        config = dict(ray.rllib.contrib.maddpg.DEFAULT_CONFIG, **config)
         self.config = config
         self.global_step = tf1.train.get_or_create_global_step()
 

@@ -13,6 +13,7 @@ import logging
 from typing import Type
 
 from ray.rllib.agents.maddpg.maddpg_tf_policy import MADDPGTFPolicy
+from ray.rllib.agents.maddpg.maddpg_torch_policy import MADDPGTorchPolicy
 from ray.rllib.agents.dqn.dqn import DQNTrainer
 from ray.rllib.agents.trainer import COMMON_CONFIG, with_common_config
 from ray.rllib.policy.policy import Policy
