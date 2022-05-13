@@ -1,4 +1,3 @@
-import copy
 import gc
 import heapq
 import logging
@@ -11,7 +10,6 @@ from pathlib import Path
 from typing import Optional, Dict, Union, Callable, Tuple, List, Any
 
 import ray
-from ray.ml import Checkpoint
 from ray.tune.result import NODE_IP
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
@@ -31,21 +29,12 @@ class TrackedCheckpoint:
     order to add metadata (e.g. the result, or the node where it has been created)
     and for bookkeeping purposes.
 
-    The data can be an object, a checkpoint directory, or a future to either. Because
-    we can't know if it's data or a directory from a future, this class expects
-    a ``storage_mode`` that makes the data type explicit.
-
-    The passed metrics can be used to compare performance of different checkpoints.
-    The ``checkpoint_id`` is passed as an alternative to be able to order
-    checkpoints in time.
-
     Args:
         dir_or_data: Checkpoint directory, checkpoint data, or a future to either.
         storage_mode: Either MEMORY or PERSISTENT.
-        checkpoint_id: Checkpoint number. Will be used to determine checkpoint order
-            if metrics are not available. Usually this should be monotonically
+        checkpoint_id: Checkpoint number. Usually this should be monotonically
             increasing for each tracked checkpoint.
-        metrics: Observed metrics for this checkpoint. This is used to determine
+        result: Observed metrics for this checkpoint. This is used to determine
             the value of the ``checkpoint_score_attr``.
         node_ip: IP of the node where the checkpoint was generated. Defaults
             to the current node.
@@ -59,15 +48,16 @@ class TrackedCheckpoint:
         dir_or_data: Optional[Union[str, Path, Dict, ray.ObjectRef]],
         storage_mode: str,
         checkpoint_id: Optional[int] = None,
-        metrics: Optional[Dict] = None,
+        result: Optional[Dict] = None,
         node_ip: Optional[str] = None,
     ):
         self.dir_or_data = dir_or_data
         self.id = checkpoint_id
         self.storage_mode = storage_mode
 
-        self.metrics = metrics or {}
-        self.node_ip = node_ip or self.metrics.get(NODE_IP, None)
+        # Todo: What to do if result is a subset of dir_or_data (dict)
+        self.result = result or {}
+        self.node_ip = node_ip or self.result.get(NODE_IP, None)
 
     def commit(self, path: Optional[Path] = None) -> None:
         """Commit checkpoint to disk, if needed.
@@ -75,20 +65,7 @@ class TrackedCheckpoint:
         Args:
             path: Path to commit checkpoint to.
         """
-        if self.storage_mode == TrackedCheckpoint.MEMORY:
-            # Do not persist memory checkpoints
-            return
-
-        if not isinstance(self.dir_or_data, dict):
-            # Only persist dictionaries
-            return
-
-        if not path:
-            # If no path is given, skip
-            return
-
-        checkpoint = Checkpoint.from_dict(self.dir_or_data)
-        self.dir_or_data = checkpoint.to_directory(str(path))
+        pass
 
     def delete(
         self, delete_fn: Optional[Callable[["TrackedCheckpoint"], None]] = None
@@ -107,7 +84,7 @@ class TrackedCheckpoint:
 
     def __repr__(self):
         if self.storage_mode == TrackedCheckpoint.MEMORY:
-            return f"<TrackedCheckpoint storage='MEMORY' result={self.metrics}>"
+            return f"<TrackedCheckpoint storage='MEMORY' result={self.result}>"
 
         return (
             f"<TrackedCheckpoint storage='PERSISTENT' "
@@ -190,7 +167,6 @@ class CheckpointStrategy:
             )
 
 
-@DeveloperAPI
 class CheckpointManager:
     """Common checkpoint management and bookkeeping class for Ray Train and Tune.
 
@@ -202,19 +178,7 @@ class CheckpointManager:
     The manager supports lazy data writing by utilizing the
     ``TrackedCheckpoint.commit()`` API, which is only invoked if the checkpoint
     should be persisted to disk.
-
-    Args:
-        checkpoint_strategy: Checkpoint strategy defining how many and which
-            checkpoints to keep.
-        latest_checkpoint_id: First checkpoint ID to use (e.g. in case we
-            continue training an existing experiment).
-        delete_fn: Function that takes a TrackedCheckpoint and deletes it from disk
-            or memory upon request.
-
     """
-
-    # If memory checkpoints should be persisted
-    _persist_memory_checkpoints: bool = False
 
     def __init__(
         self,
@@ -257,26 +221,12 @@ class CheckpointManager:
         this checkpoint should be kept, and if older or worse performing
         checkpoints should be deleted.
 
+        Subclasses have to implement this method.
+
         Args:
             checkpoint: Tracked checkpoint object to add to bookkeeping.
         """
-        checkpoint.id = checkpoint.id or self._latest_checkpoint_id
-
-        if checkpoint.storage_mode == TrackedCheckpoint.MEMORY:
-            self._replace_latest_memory_checkpoint(checkpoint)
-
-            if self._persist_memory_checkpoints:
-                persisted_checkpoint = copy.copy(checkpoint)
-                persisted_checkpoint.storage_mode = TrackedCheckpoint.PERSISTENT
-            else:
-                persisted_checkpoint = None
-        else:
-            persisted_checkpoint = checkpoint
-
-        if persisted_checkpoint and self._checkpoint_strategy.num_to_keep != 0:
-            self._decide_what_to_do_with_checkpoint(persisted_checkpoint)
-
-        self._latest_checkpoint_id += 1
+        raise NotImplementedError
 
     def _replace_latest_memory_checkpoint(self, memory_checkpoint: TrackedCheckpoint):
         assert memory_checkpoint.storage_mode == TrackedCheckpoint.MEMORY
@@ -312,15 +262,15 @@ class CheckpointManager:
         checkpoint_score_attribute = (
             self._checkpoint_strategy.checkpoint_score_attribute
         )
-        if checkpoint_score_attribute not in checkpoint.metrics:
+        if checkpoint_score_attribute not in checkpoint.result:
             logger.error(
                 f"Result dict has no key: {checkpoint_score_attribute}. "
                 f"checkpoint_score_attr must be set to a key in the "
-                f"result dict. Valid keys are: {list(checkpoint.metrics.keys())}"
+                f"result dict. Valid keys are: {list(checkpoint.result.keys())}"
             )
             checkpoint_result = float("-inf")
         else:
-            checkpoint_result = checkpoint.metrics[checkpoint_score_attribute]
+            checkpoint_result = checkpoint.result[checkpoint_score_attribute]
 
         checkpoint_score_order = self._checkpoint_strategy.checkpoint_score_order
         if checkpoint_score_order == MAX:
@@ -346,8 +296,6 @@ class CheckpointManager:
         )
 
     def _decide_what_to_do_with_checkpoint(self, checkpoint: TrackedCheckpoint):
-        assert checkpoint.storage_mode == TrackedCheckpoint.PERSISTENT
-
         checkpoint_score = self._get_checkpoint_score(checkpoint)
         wrapped_checkpoint = _HeapCheckpointWrapper(
             priority=checkpoint_score, tracked_checkpoint=checkpoint
