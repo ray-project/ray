@@ -27,6 +27,8 @@ class MADDPGPostprocessing:
     def postprocess_trajectory(
         self, sample_batch, other_agent_batches=None, episode=None
     ):
+        # FIXME: Get done from info is required since agentwise done is not
+        #  supported now.
         sample_batch[SampleBatch.DONES] = self.get_done_from_info(
             sample_batch[SampleBatch.INFOS]
         )
