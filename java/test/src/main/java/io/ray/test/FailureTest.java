@@ -9,8 +9,7 @@ import io.ray.runtime.exception.RayActorException;
 import io.ray.runtime.exception.RayTaskException;
 import io.ray.runtime.exception.RayWorkerException;
 import io.ray.runtime.exception.UnreconstructableException;
-import java.time.Duration;
-import java.time.Instant;
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
 import org.testng.Assert;
@@ -68,6 +67,18 @@ public class FailureTest extends BaseTest {
     public int badMethod2() {
       System.exit(-1);
       return 0;
+    }
+  }
+
+  public static class SlowActor {
+    public SlowActor(ActorHandle<SignalActor> signalActor) {
+      if (Ray.getRuntimeContext().wasCurrentActorRestarted()) {
+        signalActor.task(SignalActor::waitSignal).remote().get();
+      }
+    }
+
+    public String ping() {
+      return "pong";
     }
   }
 
@@ -142,6 +153,28 @@ public class FailureTest extends BaseTest {
     }
   }
 
+  public void testActorTaskFastFail() throws IOException, InterruptedException {
+    ActorHandle<SignalActor> signalActor = SignalActor.create();
+    // NOTE(kfstorm): Currently, `max_task_retries` is always 0 for actors created in Java.
+    // Once `max_task_retries` is configurable in Java, we'd better set it to 0 explicitly to show
+    // the test scenario.
+    ActorHandle<SlowActor> actor =
+        Ray.actor(SlowActor::new, signalActor).setMaxRestarts(1).remote();
+    actor.task(SlowActor::ping).remote().get();
+    actor.kill(/*noRestart=*/ false);
+
+    // Wait for a while so that now the driver knows the actor is in RESTARTING state.
+    Thread.sleep(1000);
+    // An actor task should fail quickly until the actor is restarted.
+    Assert.expectThrows(RayActorException.class, () -> actor.task(SlowActor::ping).remote().get());
+
+    signalActor.task(SignalActor::sendSignal).remote().get();
+    // Wait for a while so that now the driver knows the actor is in ALIVE state.
+    Thread.sleep(1000);
+    // An actor task should succeed.
+    actor.task(SlowActor::ping).remote().get();
+  }
+
   public void testGetThrowsQuicklyWhenFoundException() {
     List<RayFunc0<Integer>> badFunctions =
         Arrays.asList(FailureTest::badFunc, FailureTest::badFunc2);
@@ -149,17 +182,10 @@ public class FailureTest extends BaseTest {
     for (RayFunc0<Integer> badFunc : badFunctions) {
       ObjectRef<Integer> obj1 = Ray.task(badFunc).remote();
       ObjectRef<Integer> obj2 = Ray.task(FailureTest::slowFunc).remote();
-      Instant start = Instant.now();
-      try {
-        Ray.get(Arrays.asList(obj1, obj2));
-        Assert.fail("Should throw RayException.");
-      } catch (RuntimeException e) {
-        Instant end = Instant.now();
-        long duration = Duration.between(start, end).toMillis();
-        Assert.assertTrue(
-            duration < 5000,
-            "Should fail quickly. " + "Actual execution time: " + duration + " ms.");
-      }
+      TestUtils.executeWithinTime(
+          () ->
+              Assert.expectThrows(RuntimeException.class, () -> Ray.get(Arrays.asList(obj1, obj2))),
+          5000);
     }
   }
 
