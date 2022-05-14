@@ -109,9 +109,9 @@ class GcsClientReconnectionTest : public ::testing::Test {
     gcs_client_.reset();
   }
 
-  bool WaitUntil(std::function<bool()> predicate, std::chrono::duration<int64_t> time_s) {
+  bool WaitUntil(std::function<bool()> predicate, std::chrono::nanoseconds timeout) {
     auto start = steady_clock::now();
-    while (steady_clock::now() - start <= time_s) {
+    while (steady_clock::now() - start <= timeout) {
       if (predicate()) {
         return true;
       }
@@ -248,15 +248,19 @@ TEST_F(GcsClientReconnectionTest, ReconnectionBackoff) {
       },
       1s));
 
+  auto now = std::chrono::steady_clock::now();
   StartGCS();
 
-  // For 1s, there is no reconnection
+  // For 2s, there is no reconnection
+  auto remaining = 2s - (std::chrono::steady_clock::now() - now);
+  remaining = remaining < 0s ? 0s : remaining;
+
   ASSERT_FALSE(WaitUntil(
       [channel]() {
         auto status = channel->GetState(false);
         return status != GRPC_CHANNEL_TRANSIENT_FAILURE;
       },
-      1s));
+      remaining));
 
   // Then there is reconnection
   ASSERT_TRUE(WaitUntil(
@@ -264,7 +268,7 @@ TEST_F(GcsClientReconnectionTest, ReconnectionBackoff) {
         auto status = channel->GetState(false);
         return status != GRPC_CHANNEL_TRANSIENT_FAILURE;
       },
-      5s));
+      3s));
 
   // Eventually it should be ready.
   ASSERT_FALSE(WaitUntil(
