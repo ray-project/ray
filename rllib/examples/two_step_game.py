@@ -136,20 +136,24 @@ if __name__ == "__main__":
             "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         }
     elif args.run == "QMIX":
-        config = QMixConfig()\
-            .training(mixer=args.mixer, train_batch_size=32)\
-            .rollouts(num_rollout_workers=0, rollout_fragment_length=4)\
-            .exploration(exploration_config={
-                "final_epsilon": 0.0,
-            })\
+        config = (
+            QMixConfig()
+            .training(mixer=args.mixer, train_batch_size=32)
+            .rollouts(num_rollout_workers=0, rollout_fragment_length=4)
+            .exploration(
+                exploration_config={
+                    "final_epsilon": 0.0,
+                }
+            )
             .environment(
                 env="grouped_twostep",
                 env_config={
                     "separate_state_space": True,
                     "one_hot_state_encoding": True,
-                }
-            )\
+                },
+            )
             .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        )
         config = config.to_dict()
     else:
         config = {

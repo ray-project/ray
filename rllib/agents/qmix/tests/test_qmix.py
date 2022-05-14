@@ -95,13 +95,15 @@ class TestQMix(unittest.TestCase):
             ),
         )
 
-        config = QMixConfig()\
-            .framework(framework="torch")\
+        config = (
+            QMixConfig()
+            .framework(framework="torch")
             .environment(
                 env="action_mask_test",
                 env_config={"avail_actions": [3, 4, 8]},
-            )\
-            .rollouts(num_envs_per_worker=5) # Test with vectorization on.
+            )
+            .rollouts(num_envs_per_worker=5)
+        )  # Test with vectorization on.
 
         trainer = config.build()
 
