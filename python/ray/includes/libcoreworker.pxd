@@ -133,7 +133,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             c_bool no_restart)
         CRayStatus CancelTask(const CObjectID &object_id, c_bool force_kill,
                               c_bool recursive)
-        CRayStatus CancelMultipleTasks(const c_vector[CObjectID] &ids, c_bool force_kill,
+        CRayStatus CancelMultipleTasks(const c_vector[CObjectID] &ids,
+                                       c_bool force_kill,
                                        c_bool recursive)
 
         unique_ptr[CProfileEvent] CreateProfileEvent(

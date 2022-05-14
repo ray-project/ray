@@ -2052,8 +2052,25 @@ Status CoreWorker::CancelMultipleTasks(const std::vector<ObjectID> &object_ids,
                                        bool force_kill,
                                        bool recursive) {
   for (const ObjectID &object_id : object_ids) {
-    Status temp_result = CancelTask(object_id, force_kill, recursive);
-    if (not temp_result.ok()) {
+    auto task_spec = task_manager_->GetTaskSpec(object_id.TaskId());
+    direct_task_submitter_->ClearStatusByTaskID(task_spec.value().TaskId());
+  }
+
+  for (const ObjectID &object_id : object_ids) {
+    CancelTask(object_id, force_kill, recursive);
+  }
+
+  for (const ObjectID &object_id : object_ids) {
+    auto task_spec = task_manager_->GetTaskSpec(object_id.TaskId());
+    Status temp_result =
+        direct_task_submitter_->GetStatusByTaskID(task_spec.value().TaskId());
+    int64_t wait_time = 1;
+    while (temp_result.IsNotSetYet()) {
+      std::this_thread::sleep_for(std::chrono::seconds(wait_time));
+      wait_time *= 2;
+      temp_result = direct_task_submitter_->GetStatusByTaskID(task_spec.value().TaskId());
+    }
+    if (!temp_result.ok()) {
       return temp_result;
     }
   }

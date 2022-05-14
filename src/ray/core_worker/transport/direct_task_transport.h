@@ -117,6 +117,21 @@ class CoreWorkerDirectTaskSubmitter {
     return num_leases_requested_;
   }
 
+  Status GetStatusByTaskID(TaskID &taskID) {
+    if (taskID2status.find(taskID) == taskID2status.end()) {
+      return Status::NotSetYet();
+    }
+    return taskID2status[taskID];
+  }
+
+  void SetStatusByTaskID(TaskID &taskID, Status status) {
+    taskID2status[taskID] = status;
+  }
+
+  void ClearStatusByTaskID(TaskID &taskID) {
+    taskID2status[taskID] = Status::NotSetYet();
+  }
+
   /// Report worker backlog information to the local raylet.
   /// Since each worker only reports to its local rayet
   /// we avoid double counting backlogs in autoscaler.
@@ -207,6 +222,8 @@ class CoreWorkerDirectTaskSubmitter {
   /// Cache of gRPC clients to remote raylets.
   absl::flat_hash_map<NodeID, std::shared_ptr<WorkerLeaseInterface>> remote_lease_clients_
       GUARDED_BY(mu_);
+
+  absl::flat_hash_map<TaskID, Status> taskID2status;
 
   /// Factory for producing new clients to request leases from remote nodes.
   LeaseClientFactoryFn lease_client_factory_;

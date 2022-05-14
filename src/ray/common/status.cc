@@ -63,6 +63,8 @@ namespace ray {
 #define STATUS_CODE_GRPC_UNAVAILABLE "GrpcUnavailable"
 #define STATUS_CODE_GRPC_UNKNOWN "GrpcUnknown"
 
+#define STATUS_CODE_NOT_SET_YET "NotSetYet"
+
 Status::Status(StatusCode code, const std::string &msg) {
   assert(code != StatusCode::OK);
   state_ = new State;
@@ -109,6 +111,7 @@ std::string Status::CodeAsString() const {
       {StatusCode::TransientObjectStoreFull, STATUS_CODE_TRANSIENT_OBJECT_STORE_FULL},
       {StatusCode::GrpcUnavailable, STATUS_CODE_GRPC_UNAVAILABLE},
       {StatusCode::GrpcUnknown, STATUS_CODE_GRPC_UNKNOWN},
+      {StatusCode::NotSetYet, STATUS_CODE_NOT_SET_YET},
   };
 
   auto it = code_to_str.find(code());

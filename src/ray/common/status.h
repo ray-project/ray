@@ -108,6 +108,7 @@ enum class StatusCode : char {
   // This represents all other status codes
   // returned by grpc that are not defined above.
   GrpcUnknown = 27,
+  NotSetYet = 28
 };
 
 #if defined(__clang__)
@@ -220,6 +221,8 @@ class RAY_EXPORT Status {
     return Status(StatusCode::GrpcUnknown, msg);
   }
 
+  static Status NotSetYet() { return Status(StatusCode::NotSetYet, ""); }
+
   static StatusCode StringToCode(const std::string &str);
 
   // Returns true iff the status indicates success.
@@ -258,6 +261,7 @@ class RAY_EXPORT Status {
   }
   bool IsGrpcUnavailable() const { return code() == StatusCode::GrpcUnavailable; }
   bool IsGrpcUnknown() const { return code() == StatusCode::GrpcUnknown; }
+  bool IsNotSetYet() const { return code() == StatusCode::NotSetYet; }
 
   bool IsGrpcError() const { return IsGrpcUnknown() || IsGrpcUnavailable(); }
 
