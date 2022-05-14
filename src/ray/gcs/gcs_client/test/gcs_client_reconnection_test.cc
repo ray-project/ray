@@ -110,6 +110,7 @@ class GcsClientReconnectionTest : public ::testing::Test {
   }
 
   bool WaitUntil(std::function<bool()> predicate, std::chrono::nanoseconds timeout) {
+    RAY_LOG(INFO) << "Waiting for " << timeout.count();
     auto start = steady_clock::now();
     while (steady_clock::now() - start <= timeout) {
       if (predicate()) {
@@ -252,7 +253,7 @@ TEST_F(GcsClientReconnectionTest, ReconnectionBackoff) {
   StartGCS();
 
   // For 2s, there is no reconnection
-  auto remaining = 2s - (std::chrono::steady_clock::now() - now);
+  auto remaining = 1s - (std::chrono::steady_clock::now() - now);
   remaining = remaining < 0s ? 0s : remaining;
 
   ASSERT_FALSE(WaitUntil(
