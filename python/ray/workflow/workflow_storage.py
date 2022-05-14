@@ -159,6 +159,12 @@ class WorkflowIndexingStorage:
                     pass
         return results
 
+    def delete_workflow_status(self, workflow_id: str):
+        """Delete status indexing for the workflow."""
+        status = self.load_and_fix_workflow_status(workflow_id)
+        if status != WorkflowStatus.NONE:
+            self._storage.delete(self._key_workflow_with_status(workflow_id, status))
+
     def _key_workflow_with_status(self, workflow_id: str, status: WorkflowStatus):
         return os.path.join(WORKFLOW_STATUS_DIR, status.value, workflow_id)
 
@@ -662,6 +668,7 @@ class WorkflowStorage:
     def delete_workflow(self) -> None:
         # TODO (Alex): There's a race condition here if someone tries to
         # start the workflow between these ops.
+        self._status_storage.delete_workflow_status(self._workflow_id)
         found = self._storage.delete_dir("")
         # TODO (Alex): Different file systems seem to have different
         # behavior when deleting a prefix that doesn't exist, so we may
