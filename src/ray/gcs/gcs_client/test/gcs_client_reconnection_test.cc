@@ -269,7 +269,7 @@ TEST_F(GcsClientReconnectionTest, ReconnectionBackoff) {
         auto status = channel->GetState(false);
         return status != GRPC_CHANNEL_TRANSIENT_FAILURE;
       },
-      3s));
+      4s));
 
   // Eventually it should be ready.
   ASSERT_FALSE(WaitUntil(
