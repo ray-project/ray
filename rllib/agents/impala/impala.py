@@ -748,12 +748,12 @@ class ImpalaTrainer(Trainer):
     def get_samples_from_workers(self) -> Dict[ActorHandle, List[SampleBatch]]:
         # Perform asynchronous sampling on all (remote) rollout workers.
         if self.workers.remote_workers():
-            self._sampling_actor_manager.submit(
-                lambda worker: worker.sample(), for_all_workers=True
+            self._sampling_actor_manager.call_on_all_available(
+                lambda worker: worker.sample()
             )
             sample_batches: Dict[
                 ActorHandle, List[ObjectRef]
-            ] = self._sampling_actor_manager.get_ready_results()
+            ] = self._sampling_actor_manager.get_ready()
         else:
             # only sampling on the local worker
             sample_batches = {
@@ -830,13 +830,13 @@ class ImpalaTrainer(Trainer):
         ]
         ready_processed_batches = []
         for batch in batches:
-            self._replay_actor_manager.submit(
+            self._replay_actor_manager.call(
                 lambda actor, b: actor.process_episodes(b), fn_kwargs={"b": batch}
             )
 
         waiting_processed_sample_batches: Dict[
             ActorHandle, List[ObjectRef]
-        ] = self._replay_actor_manager.get_ready_results()
+        ] = self._replay_actor_manager.get_ready()
         for ready_sub_batches in waiting_processed_sample_batches.values():
             ready_processed_batches.extend(ready_sub_batches)
 

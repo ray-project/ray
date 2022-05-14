@@ -423,10 +423,10 @@ class AlphaStarTrainer(appo.APPOTrainer):
                 statistics = worker.apply(self._sample_and_send_to_buffer)
                 sample_results = {worker: [statistics]}
             else:
-                self._sampling_actor_manager.submit(
-                    self._sample_and_send_to_buffer, for_all_workers=True
+                self._sampling_actor_manager.call_on_all_available(
+                    self._sample_and_send_to_buffer
                 )
-                sample_results = self._sampling_actor_manager.get_ready_results()
+                sample_results = self._sampling_actor_manager.get_ready()
         # Update sample counters.
         for sample_result in sample_results.values():
             for (env_steps, agent_steps) in sample_result:
@@ -439,10 +439,10 @@ class AlphaStarTrainer(appo.APPOTrainer):
             for pid, pol_actor, repl_actor in self.distributed_learners:
                 if pol_actor not in self._learner_worker_manager.workers:
                     self._learner_worker_manager.add_worker(pol_actor)
-                self._learner_worker_manager.submit(
+                self._learner_worker_manager.call(
                     self._update_policy, actor=pol_actor, fn_args=[repl_actor, pid]
                 )
-            train_results = self._learner_worker_manager.get_ready_results()
+            train_results = self._learner_worker_manager.get_ready()
 
         # Update sample counters.
         for train_result in train_results.values():

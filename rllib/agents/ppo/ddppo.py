@@ -228,10 +228,10 @@ class DDPPOTrainer(PPOTrainer):
         # Shortcut.
         first_worker = self.workers.remote_workers()[0]
 
-        self._ddppo_worker_manager.submit(
-            self._sample_and_train_torch_distributed, for_all_workers=True
+        self._ddppo_worker_manager.call_on_all_available(
+            self._sample_and_train_torch_distributed
         )
-        sample_and_update_results = self._ddppo_worker_manager.get_ready_results()
+        sample_and_update_results = self._ddppo_worker_manager.get_ready()
 
         # For all results collected:
         # - Update our counters and timers.

@@ -142,7 +142,7 @@ APEX_DEFAULT_CONFIG = merge_dicts(
         # the number of remote requests in flight, or enable compression in your
         # experiment of timesteps.
         "max_requests_in_flight_per_sampler_worker": 2,
-        "max_requests_in_flight_per_aggregator_worker": 2,
+        "max_requests_in_flight_per_aggregator_worker": float("inf"),
     },
 )
 # __sphinx_doc_end__
@@ -472,12 +472,11 @@ class ApexTrainer(DQNTrainer):
 
         # Sample and Store in the Replay Actors on the sampling workers.
         with self._timers[SAMPLE_TIMER]:
-            self._sampling_actor_manager.submit(
+            self._sampling_actor_manager.call_on_all_available(
                 remote_worker_sample_and_store,
                 fn_kwargs={"replay_actors": self._replay_actors},
-                for_all_workers=True,
             )
-            num_samples_ready_dict = self._sampling_actor_manager.get_ready_results()
+            num_samples_ready_dict = self._sampling_actor_manager.get_ready()
         return num_samples_ready_dict
 
     def update_workers(self, _num_samples_ready: Dict[ActorHandle, int]) -> int:
@@ -531,7 +530,7 @@ class ApexTrainer(DQNTrainer):
             """Wait for the replay actors to finish sampling for timeout seconds.
             If the timeout is None, then block on the actors indefinitely.
             """
-            _replay_samples_ready = self._replay_actor_manager.get_ready_results()
+            _replay_samples_ready = self._replay_actor_manager.get_ready()
 
             for _replay_actor, _sample_batches in _replay_samples_ready.items():
                 for _sample_batch in _sample_batches:
@@ -548,7 +547,7 @@ class ApexTrainer(DQNTrainer):
             num_requests_to_launch = max(1, round(num_requests_to_launch))
             self.curr_num_samples_collected = 0
             for _ in range(num_requests_to_launch):
-                self._replay_actor_manager.submit(lambda actor: actor.replay())
+                self._replay_actor_manager.call(lambda actor: actor.replay())
             wait_on_replay_actors()
 
         # add the sample batches to the learner queue

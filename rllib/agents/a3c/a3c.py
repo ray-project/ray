@@ -206,8 +206,8 @@ class A3CTrainer(Trainer):
         with self._timers[GRAD_WAIT_TIMER]:
             # Results are a mapping from ActorHandle (RolloutWorker) to their
             # returned gradient calculation results.
-            self._worker_manager.submit(sample_and_compute_grads, for_all_workers=True)
-            async_results = self._worker_manager.get_ready_results()
+            self._worker_manager.call_on_all_available(sample_and_compute_grads)
+            async_results = self._worker_manager.get_ready()
 
         # Loop through all fetched worker-computed gradients (if any)
         # and apply them - one by one - to the local worker's model.

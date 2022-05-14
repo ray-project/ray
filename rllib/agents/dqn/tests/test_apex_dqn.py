@@ -77,6 +77,7 @@ class TestApexDQN(unittest.TestCase):
     def test_apex_lr_schedule(self):
         config = apex.APEX_DEFAULT_CONFIG.copy()
         config["num_workers"] = 1
+        config["training_intensity"] = 1
         config["num_gpus"] = 0
         config["learning_starts"] = 10
         config["train_batch_size"] = 10
@@ -123,8 +124,7 @@ class TestApexDQN(unittest.TestCase):
 
         for _ in framework_iterator(config):
             trainer = apex.ApexTrainer(config=config, env="CartPole-v0")
-
-            lr = _step_n_times(trainer, 5)  # 10 timesteps
+            lr = _step_n_times(trainer, 3)  # 10 timesteps
             # Close to 0.2
             self.assertGreaterEqual(lr, 0.1)
 
