@@ -28,7 +28,9 @@ def custom_retry_strategy(func: Any, num_retries: int, delay_s: int) -> str:
         else:
             print("Retrying exception after delay", error)
             time.sleep(delay_s)
-            return workflow.continuation(custom_retry_strategy.bind(func, num_retries - 1, delay_s))
+            return workflow.continuation(
+                custom_retry_strategy.bind(func, num_retries - 1, delay_s)
+            )
 
     res = func.options(**workflow.options(catch_exceptions=True)).bind()
     return workflow.continuation(handle_result.bind(res))
@@ -37,6 +39,10 @@ def custom_retry_strategy(func: Any, num_retries: int, delay_s: int) -> str:
 if __name__ == "__main__":
     workflow.init()
     # Default retry strategy.
-    print(workflow.create(flaky_step.options(**workflow.options(max_retries=10)).bind()).run())
+    print(
+        workflow.create(
+            flaky_step.options(**workflow.options(max_retries=10)).bind()
+        ).run()
+    )
     # Custom strategy.
     print(workflow.create(custom_retry_strategy.bind(flaky_step, 10, 1)).run())
