@@ -341,8 +341,8 @@ def test_zip_pandas(ray_start_regular_shared):
 
 
 def test_zip_arrow(ray_start_regular_shared):
-    ds1 = ray.data.range_arrow(5).map(lambda r: {"id": r["value"]})
-    ds2 = ray.data.range_arrow(5).map(
+    ds1 = ray.data.range_table(5).map(lambda r: {"id": r["value"]})
+    ds2 = ray.data.range_table(5).map(
         lambda r: {"a": r["value"] + 1, "b": r["value"] + 2}
     )
     ds = ds1.zip(ds2)
@@ -431,19 +431,16 @@ def test_arrow_block_slice_copy_empty():
     assert table2.num_rows == 0
 
 
-def test_range_pandas(ray_start_regular_shared):
-    ds = ray.data.range_pandas(10)
-    pd.testing.assert_frame_equal(
-        ds.to_pandas(),
-        pd.DataFrame({"value": list(range(10))}),
-    )
+def test_range_table(ray_start_regular_shared):
+    ds = ray.data.range_table(10)
+    assert ds.num_blocks() == 10
+    assert ds.count() == 10
+    assert ds.take() == [{"value": i} for i in range(10)]
 
-    ds = ray.data.range_pandas(10, parallelism=2)
+    ds = ray.data.range_table(10, parallelism=2)
     assert ds.num_blocks() == 2
-    pd.testing.assert_frame_equal(
-        ds.to_pandas(),
-        pd.DataFrame({"value": list(range(10))}),
-    )
+    assert ds.count() == 10
+    assert ds.take() == [{"value": i} for i in range(10)]
 
 
 def test_tensors(ray_start_regular_shared):
@@ -1083,7 +1080,7 @@ def test_empty_dataset(ray_start_regular_shared):
 
 def test_schema(ray_start_regular_shared):
     ds = ray.data.range(10)
-    ds2 = ray.data.range_arrow(10)
+    ds2 = ray.data.range_table(10)
     ds3 = ds2.repartition(5)
     ds4 = ds3.map(lambda x: {"a": "hi", "b": 1.0}).limit(5).repartition(1)
     assert str(ds) == "Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
@@ -1131,7 +1128,7 @@ def test_convert_types(ray_start_regular_shared):
     assert arrow_ds.take() == [{"a": 0}]
     assert "ArrowRow" in arrow_ds.map(lambda x: str(type(x))).take()[0]
 
-    arrow_ds = ray.data.range_arrow(1)
+    arrow_ds = ray.data.range_table(1)
     assert arrow_ds.map(lambda x: "plain_{}".format(x["value"])).take() == ["plain_0"]
     assert arrow_ds.map(lambda x: {"a": (x["value"],)}).take() == [{"a": [0]}]
 
@@ -1196,7 +1193,7 @@ def test_repartition_noshuffle(ray_start_regular_shared):
 
 
 def test_repartition_shuffle_arrow(ray_start_regular_shared):
-    ds = ray.data.range_arrow(20, parallelism=10)
+    ds = ray.data.range_table(20, parallelism=10)
     assert ds.num_blocks() == 10
     assert ds.count() == 20
     assert ds._block_num_rows() == [2] * 10
@@ -1211,7 +1208,7 @@ def test_repartition_shuffle_arrow(ray_start_regular_shared):
     assert ds3.count() == 20
     assert ds3._block_num_rows() == [2] * 10 + [0] * 10
 
-    large = ray.data.range_arrow(10000, parallelism=10)
+    large = ray.data.range_table(10000, parallelism=10)
     large = large.repartition(20, shuffle=True)
     assert large._block_num_rows() == [500] * 20
 
@@ -1233,7 +1230,7 @@ def test_convert_to_pyarrow(ray_start_regular_shared, tmp_path):
 
 
 def test_pyarrow(ray_start_regular_shared):
-    ds = ray.data.range_arrow(5)
+    ds = ray.data.range_table(5)
     assert ds.map(lambda x: {"b": x["value"] + 2}).take() == [
         {"b": 2},
         {"b": 3},
@@ -1551,10 +1548,10 @@ def test_add_column(ray_start_regular_shared):
     ds = ray.data.range(5).add_column("foo", lambda x: 1)
     assert ds.take(1) == [{"value": 0, "foo": 1}]
 
-    ds = ray.data.range_arrow(5).add_column("foo", lambda x: x["value"] + 1)
+    ds = ray.data.range_table(5).add_column("foo", lambda x: x["value"] + 1)
     assert ds.take(1) == [{"value": 0, "foo": 1}]
 
-    ds = ray.data.range_arrow(5).add_column("value", lambda x: x["value"] + 1)
+    ds = ray.data.range_table(5).add_column("value", lambda x: x["value"] + 1)
     assert ds.take(2) == [{"value": 1}, {"value": 2}]
 
     with pytest.raises(ValueError):
@@ -2035,7 +2032,7 @@ def test_block_builder_for_block(ray_start_regular_shared):
 def test_groupby_arrow(ray_start_regular_shared):
     # Test empty dataset.
     agg_ds = (
-        ray.data.range_arrow(10)
+        ray.data.range_table(10)
         .filter(lambda r: r["value"] > 10)
         .groupby("value")
         .count()
@@ -2051,7 +2048,7 @@ def test_groupby_errors(ray_start_regular_shared):
     with pytest.raises(ValueError):
         ds.groupby("foo").count().show()
 
-    ds = ray.data.range_arrow(100)
+    ds = ray.data.range_table(100)
     ds.groupby(None).count().show()  # OK
     with pytest.raises(ValueError):
         ds.groupby(lambda x: x % 2).count().show()
@@ -2066,7 +2063,7 @@ def test_agg_errors(ray_start_regular_shared):
     with pytest.raises(ValueError):
         ds.aggregate(Max("foo"))
 
-    ds = ray.data.range_arrow(100)
+    ds = ray.data.range_table(100)
     ds.aggregate(Max("value"))  # OK
     with pytest.raises(ValueError):
         ds.aggregate(Max())
@@ -2217,7 +2214,7 @@ def test_global_tabular_sum(ray_start_regular_shared, ds_format, num_parts):
     assert ds.sum("A") == 4950
 
     # Test empty dataset
-    ds = ray.data.range_arrow(10)
+    ds = ray.data.range_table(10)
     if ds_format == "pandas":
         ds = _to_pandas(ds)
     assert ds.filter(lambda r: r["value"] > 10).sum("value") is None
@@ -2322,7 +2319,7 @@ def test_global_tabular_min(ray_start_regular_shared, ds_format, num_parts):
     assert ds.min("A") == 0
 
     # Test empty dataset
-    ds = ray.data.range_arrow(10)
+    ds = ray.data.range_table(10)
     if ds_format == "pandas":
         ds = _to_pandas(ds)
     assert ds.filter(lambda r: r["value"] > 10).min("value") is None
@@ -2427,7 +2424,7 @@ def test_global_tabular_max(ray_start_regular_shared, ds_format, num_parts):
     assert ds.max("A") == 99
 
     # Test empty dataset
-    ds = ray.data.range_arrow(10)
+    ds = ray.data.range_table(10)
     if ds_format == "pandas":
         ds = _to_pandas(ds)
     assert ds.filter(lambda r: r["value"] > 10).max("value") is None
@@ -2532,7 +2529,7 @@ def test_global_tabular_mean(ray_start_regular_shared, ds_format, num_parts):
     assert ds.mean("A") == 49.5
 
     # Test empty dataset
-    ds = ray.data.range_arrow(10)
+    ds = ray.data.range_table(10)
     if ds_format == "pandas":
         ds = _to_pandas(ds)
     assert ds.filter(lambda r: r["value"] > 10).mean("value") is None
@@ -3478,9 +3475,9 @@ def test_random_shuffle(shutdown_only, pipelined, use_push_based_shuffle):
         assert r1 != r0, (r1, r0)
         assert r1 != r3, (r1, r3)
 
-        r0 = ray.data.range_arrow(100, parallelism=5).take(999)
-        r1 = ray.data.range_arrow(100, parallelism=5).random_shuffle(seed=0).take(999)
-        r2 = ray.data.range_arrow(100, parallelism=5).random_shuffle(seed=0).take(999)
+        r0 = ray.data.range_table(100, parallelism=5).take(999)
+        r1 = ray.data.range_table(100, parallelism=5).random_shuffle(seed=0).take(999)
+        r2 = ray.data.range_table(100, parallelism=5).random_shuffle(seed=0).take(999)
         assert r1 == r2, (r1, r2)
         assert r1 != r0, (r1, r0)
 

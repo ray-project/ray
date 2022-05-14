@@ -1,7 +1,7 @@
 from ray.data.read_api import (
     from_items,
     range,
-    range_arrow,
+    range_table,
     range_tensor,
     read_parquet,
     read_parquet_bulk,
@@ -53,7 +53,7 @@ __all__ = [
     "from_spark",
     "from_huggingface",
     "range",
-    "range_arrow",
+    "range_table",
     "range_tensor",
     "read_text",
     "read_binary_files",

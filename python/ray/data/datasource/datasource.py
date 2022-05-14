@@ -189,10 +189,6 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
                 return pa.Table.from_arrays(
                     [np.arange(start, start + count)], names=["value"]
                 )
-            elif block_format == "pandas":
-                import pandas as pd
-
-                return pd.DataFrame({"value": np.arange(start, start + count)})
             elif block_format == "tensor":
                 import pyarrow as pa
 
@@ -215,10 +211,6 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
                 import pyarrow as pa
 
                 schema = pa.Table.from_pydict({"value": [0]}).schema
-            elif block_format == "pandas":
-                import pandas as pd
-
-                schema = BlockAccessor.for_block(pd.DataFrame({"value": [0]})).schema()
             elif block_format == "tensor":
                 _check_pyarrow_version()
                 from ray.data.extensions import TensorArray
