@@ -40,7 +40,7 @@ def test_max_running_tasks(num_tasks):
     # There are some relevant magic numbers in this check. 10k tasks each
     # require 1/4 cpus. Therefore, ideally 2.5k cpus will be used.
     err_str = f"Only {max_cpus - min_cpus_available}/{max_cpus} cpus used."
-    threshold = num_tasks * cpus_per_task * 0.75
+    threshold = num_tasks * cpus_per_task * 0.70
     assert max_cpus - min_cpus_available > threshold, err_str
 
     for _ in tqdm.trange(num_tasks, desc="Ensuring all tasks have finished"):

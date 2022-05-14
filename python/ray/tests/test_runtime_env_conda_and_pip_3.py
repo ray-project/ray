@@ -18,6 +18,45 @@ if not os.environ.get("CI"):
     os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"] = "1"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on windows")
+def test_multiple_pip_installs(start_cluster, monkeypatch):
+    """Test that multiple pip installs don't interfere with each other."""
+    monkeypatch.setenv("RUNTIME_ENV_RETRY_TIMES", "0")
+    cluster, address = start_cluster
+
+    ray.init(
+        address,
+        runtime_env={
+            "pip": ["pip-install-test"],
+            "env_vars": {"TEST_VAR_1": "test_1"},
+        },
+    )
+
+    @ray.remote
+    def f():
+        return True
+
+    @ray.remote(
+        runtime_env={
+            "pip": ["pip-install-test"],
+            "env_vars": {"TEST_VAR_2": "test_2"},
+        }
+    )
+    def f2():
+        return True
+
+    @ray.remote(
+        runtime_env={
+            "pip": ["pip-install-test"],
+            "env_vars": {"TEST_VAR_3": "test_3"},
+        }
+    )
+    def f3():
+        return True
+
+    assert all(ray.get([f.remote(), f2.remote(), f3.remote()]))
+
+
 class TestGC:
     @pytest.mark.skipif(
         os.environ.get("CI") and sys.platform != "linux",
