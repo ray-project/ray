@@ -134,21 +134,21 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     while (gcs_server_->GetPort() == 0) {
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
-    while(true) {
+    while (true) {
       auto channel =
           grpc::CreateChannel(absl::StrCat("127.0.0.1:", gcs_server_->GetPort()),
                               grpc::InsecureChannelCredentials());
-        std::unique_ptr<rpc::HeartbeatInfoGcsService::Stub> stub =
-            rpc::HeartbeatInfoGcsService::NewStub(std::move(channel));
-        grpc::ClientContext context;
-        context.set_deadline(std::chrono::system_clock::now() + 1s);
-        const rpc::CheckAliveRequest request;
-        rpc::CheckAliveReply reply;
-        auto status = stub->CheckAlive(&context, request, &reply);
-        if (!status.ok()) {
-          RAY_LOG(WARNING) << "Unable to reach GCS: " << status.error_code() << " "
-                          << status.error_message();
-          continue;
+      std::unique_ptr<rpc::HeartbeatInfoGcsService::Stub> stub =
+          rpc::HeartbeatInfoGcsService::NewStub(std::move(channel));
+      grpc::ClientContext context;
+      context.set_deadline(std::chrono::system_clock::now() + 1s);
+      const rpc::CheckAliveRequest request;
+      rpc::CheckAliveReply reply;
+      auto status = stub->CheckAlive(&context, request, &reply);
+      if (!status.ok()) {
+        RAY_LOG(WARNING) << "Unable to reach GCS: " << status.error_code() << " "
+                         << status.error_message();
+        continue;
       }
       break;
     }
