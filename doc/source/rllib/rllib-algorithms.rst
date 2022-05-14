@@ -539,7 +539,7 @@ Cheetah-Run    640             ~800
 
 **Dreamer-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/agents/dreamer/dreamer.py
+.. literalinclude:: ../../../rllib/algorithms/dreamer/dreamer.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
