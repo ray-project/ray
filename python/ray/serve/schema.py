@@ -349,6 +349,10 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
 
     @validator("import_path")
     def import_path_format_valid(cls, v: str):
+
+        if v is None:
+            return
+
         if ":" in v:
             if v.count(":") > 1:
                 raise ValueError(
