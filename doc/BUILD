@@ -140,6 +140,7 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test_run_all_notebooks(
+    name = "doc_notebooks_tune_examples",
     size = "medium",
     include = ["source/tune/examples/*.ipynb"],
     exclude = [],
@@ -152,6 +153,7 @@ py_test_run_all_notebooks(
 # --------------------------------------------------------------------
 
 py_test_run_all_subdirectory(
+    name = "doc_notebooks_tune_doc_code",
     size = "medium",
     include = ["source/tune/doc_code/*.py"],
     exclude = [],
@@ -164,6 +166,7 @@ py_test_run_all_subdirectory(
 # --------------------------------------------------------------------
 
 py_test_run_all_notebooks(
+    name = "doc_notebooks_air_examples",
     size = "medium",
     include = ["source/ray-air/examples/*.ipynb"],
     exclude = [],
@@ -176,6 +179,7 @@ py_test_run_all_notebooks(
 # --------------------------------------------------------------------
 
 py_test_run_all_subdirectory(
+    name = "doc_notebooks_air_doc_code",
     size = "large",
     include = ["source/ray-air/doc_code/*.py"],
     exclude = [],
@@ -189,6 +193,7 @@ py_test_run_all_subdirectory(
 # --------------------------------------------------------------------
 
 py_test_run_all_subdirectory(
+    name = "doc_notebooks_ray_overview_doc_code",
     size = "small",
     include = ["source/ray-overview/doc_code/*.py"],
     exclude = ["source/ray-overview/doc_code/ray_data.py"],
