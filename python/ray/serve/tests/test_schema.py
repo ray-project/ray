@@ -25,7 +25,7 @@ from ray.serve.deployment import (
 )
 
 
-def valid_runtime_envs() -> List[Dict]:
+def get_valid_runtime_envs() -> List[Dict]:
     """Get list of runtime environments allowed in Serve config/REST API."""
 
     return [
@@ -63,7 +63,7 @@ def valid_runtime_envs() -> List[Dict]:
     ]
 
 
-def invalid_runtime_envs() -> List[Dict]:
+def get_invalid_runtime_envs() -> List[Dict]:
     """Get list of runtime environments not allowed in Serve config/REST API."""
 
     return [
@@ -78,6 +78,45 @@ def invalid_runtime_envs() -> List[Dict]:
                 ),
             ],
         }
+    ]
+
+
+def get_valid_import_paths() -> List[str]:
+    """Get list of import paths allowed in Serve config/REST API."""
+
+    return [
+        "module.deployment_graph",
+        "module.submodule1.deploymentGraph",
+        "module.submodule1.submodule_2.DeploymentGraph",
+        "module:deploymentgraph",
+        "module.submodule1:deploymentGraph",
+        "module.submodule1.submodule_2:DeploymentGraph",
+    ]
+
+
+def get_invalid_import_paths() -> List[str]:
+    """Get list of import paths not allowed in Serve config/REST API."""
+
+    return [
+        # Empty import path
+        "",
+        # Only a dot
+        ".",
+        # Only a colon,
+        ":",
+        # Import path with no dot or colon
+        "module_deployment_graph",
+        # Import path with empty deployment graph
+        "module.",
+        "module.submodule.",
+        # Import path with no deployment graph
+        ".module",
+        # Import paths with more than 1 colon
+        "module:submodule1:deploymentGraph",
+        "module.submodule1:deploymentGraph:",
+        "module:submodule1:submodule_2:DeploymentGraph",
+        "module.submodule_1:submodule2:deployment_Graph",
+        "module.submodule_1:submodule2:sm3.dg",
     ]
 
 
@@ -119,14 +158,14 @@ class TestRayActorOptionsSchema:
         ray_actor_options_schema = self.get_valid_ray_actor_options_schema()
 
         # Ensure invalid runtime_envs trigger ValueError
-        for env in invalid_runtime_envs():
+        for env in get_invalid_runtime_envs():
             ray_actor_options_schema["runtime_env"] = env
 
             with pytest.raises(ValueError):
                 RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
 
         # Ensure valid runtime_envs can be used
-        for env in valid_runtime_envs():
+        for env in get_valid_runtime_envs():
             ray_actor_options_schema["runtime_env"] = env
             RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
 
@@ -239,12 +278,12 @@ class TestDeploymentSchema:
             DeploymentSchema.parse_obj(deployment_schema)
 
         # DeploymentSchema should be generated once import_path is set
-        deployment_schema["import_path"] = "my_module.MyClass"
-        DeploymentSchema.parse_obj(deployment_schema)
+        for path in get_valid_import_paths():
+            deployment_schema["import_path"] = path
+            DeploymentSchema.parse_obj(deployment_schema)
 
         # Invalid import_path syntax should raise a ValidationError
-        invalid_paths = ["", "MyClass", ".", "hello,world"]
-        for path in invalid_paths:
+        for path in get_invalid_import_paths():
             deployment_schema["import_path"] = path
             with pytest.raises(ValidationError):
                 DeploymentSchema.parse_obj(deployment_schema)
@@ -351,6 +390,8 @@ class TestDeploymentSchema:
 class TestServeApplicationSchema:
     def get_valid_serve_application_schema(self):
         return {
+            "import_path": "module.graph",
+            "runtime_env": {},
             "deployments": [
                 {
                     "name": "shallow",
@@ -435,16 +476,30 @@ class TestServeApplicationSchema:
         serve_application_schema = self.get_valid_serve_application_schema()
 
         # Ensure invalid runtime_envs trigger ValueError
-        for env in invalid_runtime_envs():
+        for env in get_invalid_runtime_envs():
             serve_application_schema["runtime_env"] = env
 
             with pytest.raises(ValueError):
                 ServeApplicationSchema.parse_obj(serve_application_schema)
 
         # Ensure valid runtime_envs can be used
-        for env in valid_runtime_envs():
+        for env in get_valid_runtime_envs():
             serve_application_schema["runtime_env"] = env
             ServeApplicationSchema.parse_obj(serve_application_schema)
+    
+    def test_serve_application_import_path(self):
+        # Test different import path formats
+
+        serve_application_schema = self.get_valid_serve_application_schema()
+
+        for path in get_valid_import_paths():
+            serve_application_schema["import_path"] = path
+            ServeApplicationSchema.parse_obj(serve_application_schema)
+
+        for path in get_invalid_import_paths():
+            serve_application_schema["import_path"] = path
+            with pytest.raises(ValidationError):
+                ServeApplicationSchema.parse_obj(serve_application_schema)
 
 
 class TestDeploymentStatusSchema:

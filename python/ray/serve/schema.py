@@ -88,9 +88,6 @@ class DeploymentSchema(BaseModel, extra=Extra.forbid):
             'MyClassOrFunction". Only works with Python '
             "applications."
         ),
-        # This regex checks that there is at least one character, followed by
-        # a dot, followed by at least one more character.
-        regex=r".+\..+",
     )
     num_replicas: int = Field(
         default=None,
@@ -280,6 +277,35 @@ class DeploymentSchema(BaseModel, extra=Extra.forbid):
             )
 
         return v
+    
+    @validator("import_path")
+    def import_path_format_valid(cls, v: str):
+        if ":" in v:
+            if v.count(":") > 1:
+                raise ValueError(
+                    f'Got invalid import path "{v}". An '
+                    "import path may have at most one colon."
+                )
+            if v.rfind(":") == 0 or v.rfind(":") == len(v) - 1:
+                raise ValueError(
+                    f'Got invalid import path "{v}". An '
+                    "import path may not start or end with a colon."
+                )
+            return v
+        else:
+            if v.count(".") == 0:
+                raise ValueError(
+                    f'Got invalid import path "{v}". An '
+                    "import path must contain at least one dot or colon "
+                    "separating the module (and potentially submodules) from "
+                    "the deployment graph. E.g.: \"module.deployment_graph\"."
+                )
+            if v.rfind(".") == 0 or v.rfind(".") == len(v) - 1:
+                raise ValueError(
+                    f'Got invalid import path "{v}". An '
+                    "import path may not start or end with a dot."
+                )
+        return v
 
 
 class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
@@ -294,9 +320,6 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
             "applications. This field is REQUIRED when deploying Serve config "
             "to a Ray cluster."
         ),
-        # This regex checks that there is at least one character, followed by
-        # a dot, followed by at least one more character.
-        regex=r".+\..+",
     )
     runtime_env: dict = Field(
         default={},
@@ -323,6 +346,34 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
                 parse_uri(uri)
 
         return v
+    
+    @validator("import_path")
+    def import_path_format_valid(cls, v: str):
+        if ":" in v:
+            if v.count(":") > 1:
+                raise ValueError(
+                    f'Got invalid import path "{v}". An '
+                    "import path may have at most one colon."
+                )
+            if v.rfind(":") == 0 or v.rfind(":") == len(v) - 1:
+                raise ValueError(
+                    f'Got invalid import path "{v}". An '
+                    "import path may not start or end with a colon."
+                )
+            return v
+        else:
+            if v.count(".") < 1:
+                raise ValueError(
+                    f'Got invalid import path "{v}". An '
+                    "import path must contain at least on dot or colon "
+                    "separating the module (and potentially submodules) from "
+                    "the deployment graph. E.g.: \"module.deployment_graph\"."
+                )
+            if v.rfind(".") == 0 or v.rfind(".") == len(v) - 1:
+                raise ValueError(
+                    f'Got invalid import path "{v}". An '
+                    "import path may not start or end with a dot."
+                )
 
 
 class DeploymentStatusSchema(BaseModel, extra=Extra.forbid):
