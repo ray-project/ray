@@ -215,8 +215,9 @@ class _RandomAccessWorker:
             col = block[self.key_field]
             indices = np.searchsorted(col, keys)
             acc = BlockAccessor.for_block(block)
-            result = [acc._create_table_row(acc.slice(i, i + 1, copy=True))
-                for i in indices]
+            result = [
+                acc._create_table_row(acc.slice(i, i + 1, copy=True)) for i in indices
+            ]
         else:
             result = [self._get(i, k) for i, k in zip(block_indices, keys)]
         self.total_time += time.perf_counter() - start
