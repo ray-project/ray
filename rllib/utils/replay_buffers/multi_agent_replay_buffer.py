@@ -122,7 +122,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         else:
             self.underlying_buffer_call_args = {}
 
-        if replay_sequence_length > 1:
+        if replay_sequence_length > 1 and self._storage_unit == "timesteps":
             self.replay_batch_size = int(
                 max(1, replay_batch_size // replay_sequence_length)
             )

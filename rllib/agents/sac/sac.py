@@ -91,6 +91,16 @@ DEFAULT_CONFIG = with_common_config({
         "capacity": int(1e6),
         # How many steps of the model to sample before learning starts.
         "learning_starts": 1500,
+        # The number of continuous environment steps to replay at once. This may
+        # be set to greater than 1 to support recurrent models.
+        "replay_sequence_length": 1,
+        # If True prioritized replay buffer will be used.
+        "prioritized_replay": False,
+        "prioritized_replay_alpha": 0.6,
+        # Beta parameter for sampling from prioritized replay buffer.
+        "prioritized_replay_beta": 0.4,
+        # Epsilon to add to the TD errors when updating priorities.
+        "prioritized_replay_eps": 1e-6,
         # Whether to compute priorities on workers.
         "worker_side_prioritization": False,
     },

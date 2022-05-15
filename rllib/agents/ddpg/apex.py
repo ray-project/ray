@@ -1,5 +1,5 @@
 from ray.rllib.agents.dqn.apex import ApexTrainer
-from ray.rllib.agents.ddpg.ddpg import DDPGTrainer, DEFAULT_CONFIG as DDPG_CONFIG
+from ray.rllib.agents.ddpg.ddpg import DDPGConfig, DDPGTrainer
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TrainerConfigDict
@@ -9,7 +9,7 @@ from ray.rllib.utils.typing import ResultDict
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 APEX_DDPG_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
-    DDPG_CONFIG,  # see also the options in ddpg.py, which are also supported
+    DDPGConfig().to_dict(),  # see also the options in ddpg.py, which are also supported
     {
         "optimizer": {
             "max_weight_sync_delay": 400,
