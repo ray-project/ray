@@ -5,7 +5,6 @@ import sys
 import os
 import yaml
 import requests
-import numpy as np
 
 import ray
 from ray import serve

@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, Extra, root_validator, validator
-from typing import Union, Tuple, List, Dict
+from typing import Union, List, Dict
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve.common import DeploymentStatus, DeploymentStatusInfo
 from ray.serve.utils import DEFAULT
@@ -277,7 +277,7 @@ class DeploymentSchema(BaseModel, extra=Extra.forbid):
             )
 
         return v
-    
+
     @validator("import_path")
     def import_path_format_valid(cls, v: str):
         if ":" in v:
@@ -298,7 +298,7 @@ class DeploymentSchema(BaseModel, extra=Extra.forbid):
                     f'Got invalid import path "{v}". An '
                     "import path must contain at least one dot or colon "
                     "separating the module (and potentially submodules) from "
-                    "the deployment graph. E.g.: \"module.deployment_graph\"."
+                    'the deployment graph. E.g.: "module.deployment_graph".'
                 )
             if v.rfind(".") == 0 or v.rfind(".") == len(v) - 1:
                 raise ValueError(
@@ -346,7 +346,7 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
                 parse_uri(uri)
 
         return v
-    
+
     @validator("import_path")
     def import_path_format_valid(cls, v: str):
         if ":" in v:
@@ -367,7 +367,7 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
                     f'Got invalid import path "{v}". An '
                     "import path must contain at least on dot or colon "
                     "separating the module (and potentially submodules) from "
-                    "the deployment graph. E.g.: \"module.deployment_graph\"."
+                    'the deployment graph. E.g.: "module.deployment_graph".'
                 )
             if v.rfind(".") == 0 or v.rfind(".") == len(v) - 1:
                 raise ValueError(

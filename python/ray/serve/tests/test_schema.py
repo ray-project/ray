@@ -31,7 +31,6 @@ def get_valid_runtime_envs() -> List[Dict]:
     return [
         # Empty runtime_env
         {},
-
         # Runtime_env with remote_URIs
         {
             "working_dir": (
@@ -44,7 +43,6 @@ def get_valid_runtime_envs() -> List[Dict]:
                 ),
             ],
         },
-
         # Runtime_env with extra options
         {
             "working_dir": (
@@ -59,7 +57,7 @@ def get_valid_runtime_envs() -> List[Dict]:
             "pip": ["pandas", "numpy"],
             "env_vars": {"OMP_NUM_THREADS": "32", "EXAMPLE_VAR": "hello"},
             "excludes": "imaginary_file.txt",
-        }
+        },
     ]
 
 
@@ -159,7 +157,7 @@ class TestRayActorOptionsSchema:
         ray_actor_options_schema = self.get_valid_ray_actor_options_schema()
         ray_actor_options_schema["runtime_env"] = env
         RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
-    
+
     @pytest.mark.parametrize("env", get_invalid_runtime_envs())
     def test_ray_actor_options_invalid_runtime_env(self, env):
         # Test invalid runtime_env configurations
@@ -448,7 +446,7 @@ class TestServeApplicationSchema:
                         "accelerator_type": None,
                     },
                 },
-            ]
+            ],
         }
 
     def test_valid_serve_application_schema(self):
@@ -469,7 +467,7 @@ class TestServeApplicationSchema:
         serve_application_schema["fake_field"] = None
         with pytest.raises(ValidationError):
             ServeApplicationSchema.parse_obj(serve_application_schema)
-    
+
     @pytest.mark.parametrize("env", get_valid_runtime_envs())
     def test_serve_application_valid_runtime_env(self, env):
         # Test valid runtime_env configurations
@@ -486,7 +484,7 @@ class TestServeApplicationSchema:
         serve_application_schema["runtime_env"] = env
         with pytest.raises(ValueError):
             ServeApplicationSchema.parse_obj(serve_application_schema)
-    
+
     @pytest.mark.parametrize("path", get_valid_import_paths())
     def test_serve_application_valid_import_path(self, path):
         # Test valid import path formats
@@ -494,7 +492,7 @@ class TestServeApplicationSchema:
         serve_application_schema = self.get_valid_serve_application_schema()
         serve_application_schema["import_path"] = path
         ServeApplicationSchema.parse_obj(serve_application_schema)
-    
+
     @pytest.mark.parametrize("path", get_invalid_import_paths())
     def test_serve_application_invalid_import_path(self, path):
         # Test invalid import path formats
