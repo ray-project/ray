@@ -2,7 +2,7 @@ import numpy as np
 import unittest
 
 import ray
-import ray.rllib.agents.dqn as dqn
+from ray.rllib.agents import dqn
 from ray.rllib.agents.dqn.simple_q_tf_policy import build_q_losses as loss_tf
 from ray.rllib.agents.dqn.simple_q_torch_policy import build_q_losses as loss_torch
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -29,11 +29,10 @@ class TestSimpleQ(unittest.TestCase):
 
     def test_simple_q_compilation(self):
         """Test whether a SimpleQTrainer can be built on all frameworks."""
-        config = dqn.SimpleQConfig()
-        # Run locally.
-        config.num_workers = 0
-        # Test with compression.
-        config.compress_observations = True
+        # Run locally and with compression
+        config = dqn.simple_q.SimpleQConfig().rollouts(
+            num_rollout_workers=0, compress_observations=True
+        )
 
         num_iterations = 2
 
@@ -51,9 +50,7 @@ class TestSimpleQ(unittest.TestCase):
 
     def test_simple_q_loss_function(self):
         """Tests the Simple-Q loss function results on all frameworks."""
-        config = dqn.SimpleQConfig()
-        # Run locally.
-        config.num_workers = 0
+        config = dqn.simple_q.SimpleQConfig().rollouts(num_rollout_workers=0)
         # Use very simple net (layer0=10 nodes, q-layer=2 nodes (2 actions)).
         config.training(
             model={

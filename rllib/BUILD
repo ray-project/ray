@@ -330,7 +330,7 @@ py_test(
     name = "learning_tests_cartpole_simpleq_fake_gpus",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/dqn/cartpole-simpleq-fake-gpus.yaml"],
     args = ["--yaml-dir=tuned_examples/dqn"]
