@@ -141,7 +141,7 @@ py_test(
 
 py_test_run_all_notebooks(
     size = "medium",
-    include = ["doc/source/tune/examples/*.ipynb"],
+    include = ["source/tune/examples/*.ipynb"],
     exclude = [],
     data = ["//doc/source/tune/examples:tune_examples"],
     tags = ["exclusive", "team:ml"],
@@ -165,7 +165,7 @@ py_test_run_all_subdirectory(
 
 py_test_run_all_notebooks(
     size = "medium",
-    include = ["doc/source/ray-air/examples/*.ipynb"],
+    include = ["source/ray-air/examples/*.ipynb"],
     exclude = [],
     data = ["//doc/source/ray-air/examples:air_examples"],
     tags = ["exclusive", "team:ml"],
