@@ -231,11 +231,6 @@ class SlateQTrainer(DQNTrainer):
         return SlateQConfig().to_dict()
 
     @override(DQNTrainer)
-    def validate_config(self, config: TrainerConfigDict) -> None:
-        super().validate_config(config)
-        validate_buffer_config(config)
-
-    @override(DQNTrainer)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             return SlateQTorchPolicy

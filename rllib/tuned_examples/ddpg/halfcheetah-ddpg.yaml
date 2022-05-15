@@ -31,6 +31,7 @@ halfcheetah-ddpg:
 
         # === Replay buffer ===
         replay_buffer_config:
+          type: MultiAgentPrioritizedReplayBuffer
           capacity: 10000
           prioritized_replay_alpha: 0.6
           prioritized_replay_beta: 0.4

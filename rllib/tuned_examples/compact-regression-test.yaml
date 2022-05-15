@@ -90,6 +90,7 @@ apex:
           epsilon_timesteps: 200000
           final_epsilon: 0.01
         replay_buffer_config:
+          type: MultiAgentPrioritizedReplayBuffer
           prioritized_replay_alpha: 0.5
           capacity: 1000000
         num_gpus: 1
@@ -130,7 +131,6 @@ atari-basic-dqn:
           type: MultiAgentReplayBuffer
           learning_starts: 20000
           capacity: 1000000
-          prioritized_replay_alpha: 0.5
         n_step: 1
         target_network_update_freq: 8000
         lr: .0000625

@@ -86,7 +86,7 @@ DEFAULT_CONFIG = with_common_config({
     "replay_buffer_config": {
         "type": "MultiAgentReplayBuffer",
         # Specify prioritized replay by supplying a buffer type that supports
-        # prioritization
+        # prioritization, for example: MultiAgentPrioritizedReplayBuffer.
         "prioritized_replay": DEPRECATED_VALUE,
         "capacity": int(1e6),
         # How many steps of the model to sample before learning starts.

@@ -21,6 +21,7 @@ mujoco-td3:
         exploration_config:
             random_timesteps: 10000
         replay_buffer_config:
+          type: MultiAgentReplayBuffer
           learning_starts: 10000
         # === Evaluation ===
         evaluation_interval: 10

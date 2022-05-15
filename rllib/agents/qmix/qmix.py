@@ -79,7 +79,7 @@ DEFAULT_CONFIG = with_common_config({
     "replay_buffer_config": {
         "type": "SimpleReplayBuffer",
         # Specify prioritized replay by supplying a buffer type that supports
-        # prioritization
+        # prioritization, for example: MultiAgentPrioritizedReplayBuffer.
         "prioritized_replay": DEPRECATED_VALUE,
         # Size of the replay buffer in batches (not timesteps!).
         "capacity": 1000,

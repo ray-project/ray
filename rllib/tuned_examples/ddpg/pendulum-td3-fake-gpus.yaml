@@ -11,6 +11,7 @@ pendulum-td3-fake-gpus:
         critic_hiddens: [64, 64]
 
         replay_buffer_config:
+          type: MultiAgentReplayBuffer
           learning_starts: 5000
         exploration_config:
             random_timesteps: 5000

@@ -19,6 +19,7 @@ cartpole-apex-dqn-training-itr:
         optimizer:
           num_replay_buffer_shards: 2
         replay_buffer_config:
+          type: MultiAgentPrioritizedReplayBuffer
           capacity: 20000
           learning_starts: 1000
 

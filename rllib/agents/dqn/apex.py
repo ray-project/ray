@@ -89,6 +89,7 @@ APEX_DEFAULT_CONFIG = merge_dicts(
             "type": "MultiAgentPrioritizedReplayBuffer",
             "capacity": 2000000,
             "replay_batch_size": 32,
+            # Alpha parameter for prioritized replay buffer.
             "prioritized_replay_alpha": 0.6,
             # Beta parameter for sampling from prioritized replay buffer.
             "prioritized_replay_beta": 0.4,

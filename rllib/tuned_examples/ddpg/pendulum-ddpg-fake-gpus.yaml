@@ -17,6 +17,7 @@ pendulum-ddpg-fake-gpus:
             final_scale: 0.02
         min_sample_timesteps_per_reporting: 600
         replay_buffer_config:
+          type: MultiAgentPrioritizedReplayBuffer
           capacity: 10000
           worker_side_prioritization: false
           learning_starts: 500

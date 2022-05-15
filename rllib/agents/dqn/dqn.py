@@ -80,7 +80,7 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         "replay_buffer_config": {
             "type": "MultiAgentPrioritizedReplayBuffer",
             # Specify prioritized replay by supplying a buffer type that supports
-            # prioritization
+            # prioritization, for example: MultiAgentPrioritizedReplayBuffer.
             "prioritized_replay": DEPRECATED_VALUE,
             # Size of the replay buffer. Note that if async_updates is set,
             # then each worker will have a replay buffer of this size.

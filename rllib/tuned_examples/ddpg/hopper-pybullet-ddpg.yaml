@@ -26,6 +26,7 @@ ddpg-hopperbulletenv-v0:
         target_network_update_freq: 0
         tau: 0.001
         replay_buffer_config:
+          type: MultiAgentPrioritizedReplayBuffer
           capacity: 10000
           prioritized_replay_alpha: 0.6
           prioritized_replay_beta: 0.4

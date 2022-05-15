@@ -21,10 +21,10 @@ APEX_DDPG_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
         "num_gpus": 0,
         "num_workers": 32,
         "replay_buffer_config": {
-            "capcity": 2000000,
+            "capacity": 2000000,
             "no_local_replay_buffer": True,
             # Specify prioritized replay by supplying a buffer type that supports
-            # prioritization
+            # prioritization, for example: MultiAgentPrioritizedReplayBuffer.
             "prioritized_replay": DEPRECATED_VALUE,
             "learning_starts": 50000,
             # Whether all shards of the replay buffer must be co-located

@@ -16,6 +16,7 @@ pong-deterministic-rainbow:
           final_epsilon: 0.0
         target_network_update_freq: 500
         replay_buffer_config:
+          type: MultiAgentPrioritizedReplayBuffer
           prioritized_replay_alpha: 0.5
           learning_starts: 10000
           capacity: 50000

@@ -34,7 +34,7 @@ R2D2_DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         "replay_buffer_config": {
             "type": "MultiAgentReplayBuffer",
             # Specify prioritized replay by supplying a buffer type that supports
-            # prioritization
+            # prioritization, for example: MultiAgentPrioritizedReplayBuffer.
             "prioritized_replay": DEPRECATED_VALUE,
             # Size of the replay buffer (in sequences, not timesteps).
             "capacity": 100000,
