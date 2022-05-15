@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, Extra, root_validator, validator
-from typing import Union, List, Dict
+from typing import Union, Tuple, List, Dict
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve.common import DeploymentStatus, DeploymentStatusInfo
 from ray.serve.utils import DEFAULT
@@ -87,6 +87,18 @@ class DeploymentSchema(BaseModel, extra=Extra.forbid):
             '"from module.submodule_1...submodule_n import '
             'MyClassOrFunction". Only works with Python '
             "applications."
+        ),
+    )
+    init_args: Union[Tuple, List] = Field(
+        default=None,
+        description=(
+            "The application's init_args. Only works with Python applications."
+        ),
+    )
+    init_kwargs: Dict = Field(
+        default=None,
+        description=(
+            "The application's init_args. Only works with Python applications."
         ),
     )
     num_replicas: int = Field(
