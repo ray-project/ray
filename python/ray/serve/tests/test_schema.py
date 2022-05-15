@@ -1,12 +1,11 @@
 import sys
-
-from pydantic import ValidationError
-
-import pytest
-
 import requests
+import pytest
+from pydantic import ValidationError
+from typing import List, Dict
 
 import ray
+from ray import serve
 from ray.serve.schema import (
     RayActorOptionsSchema,
     DeploymentSchema,
@@ -24,14 +23,67 @@ from ray.serve.deployment import (
     deployment_to_schema,
     schema_to_deployment,
 )
-from ray import serve
+
+
+def valid_runtime_envs() -> List[Dict]:
+    """Get list of runtime environments allowed in Serve config/REST API."""
+
+    return [
+        # Empty runtime_env
+        {},
+
+        # Runtime_env with remote_URIs
+        {
+            "working_dir": (
+                "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
+            ),
+            "py_modules": [
+                (
+                    "https://github.com/shrekris-anyscale/"
+                    "test_deploy_group/archive/HEAD.zip"
+                ),
+            ],
+        },
+
+        # Runtime_env with extra options
+        {
+            "working_dir": (
+                "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
+            ),
+            "py_modules": [
+                (
+                    "https://github.com/shrekris-anyscale/"
+                    "test_deploy_group/archive/HEAD.zip"
+                ),
+            ],
+            "pip": ["pandas", "numpy"],
+            "env_vars": {"OMP_NUM_THREADS": "32", "EXAMPLE_VAR": "hello"},
+            "excludes": "imaginary_file.txt",
+        }
+    ]
+
+
+def invalid_runtime_envs() -> List[Dict]:
+    """Get list of runtime environments not allowed in Serve config/REST API."""
+
+    return [
+        # Local URIs in working_dir and py_modules
+        {
+            "working_dir": ".",
+            "py_modules": [
+                "/Desktop/my_project",
+                (
+                    "https://github.com/shrekris-anyscale/"
+                    "test_deploy_group/archive/HEAD.zip"
+                ),
+            ],
+        }
+    ]
 
 
 class TestRayActorOptionsSchema:
-    def test_valid_ray_actor_options_schema(self):
-        # Ensure a valid RayActorOptionsSchema can be generated
-
-        ray_actor_options_schema = {
+    def get_valid_ray_actor_options_schema(self):
+        return {
             "runtime_env": {
                 "working_dir": (
                     "https://github.com/shrekris-anyscale/"
@@ -46,6 +98,10 @@ class TestRayActorOptionsSchema:
             "accelerator_type": NVIDIA_TESLA_V100,
         }
 
+    def test_valid_ray_actor_options_schema(self):
+        # Ensure a valid RayActorOptionsSchema can be generated
+
+        ray_actor_options_schema = self.get_valid_ray_actor_options_schema()
         RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
 
     def test_ge_zero_ray_actor_options_schema(self):
@@ -57,51 +113,22 @@ class TestRayActorOptionsSchema:
             with pytest.raises(ValidationError):
                 RayActorOptionsSchema.parse_obj({field: -1})
 
-    def test_runtime_env(self):
+    def test_ray_actor_options_runtime_env(self):
         # Test different runtime_env configurations
 
-        ray_actor_options_schema = {
-            "runtime_env": {},
-            "num_cpus": 0.2,
-            "num_gpus": 50,
-            "memory": 3,
-            "object_store_memory": 64,
-            "resources": {"custom_asic": 12},
-            "accelerator_type": NVIDIA_TESLA_V100,
-        }
+        ray_actor_options_schema = self.get_valid_ray_actor_options_schema()
 
-        # ray_actor_options_schema should work as is
-        RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
+        # Ensure invalid runtime_envs trigger ValueError
+        for env in invalid_runtime_envs():
+            ray_actor_options_schema["runtime_env"] = env
 
-        # working_dir and py_modules cannot contain local uris
-        ray_actor_options_schema["runtime_env"] = {
-            "working_dir": ".",
-            "py_modules": [
-                "/Desktop/my_project",
-                (
-                    "https://github.com/shrekris-anyscale/"
-                    "test_deploy_group/archive/HEAD.zip"
-                ),
-            ],
-        }
+            with pytest.raises(ValueError):
+                RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
 
-        with pytest.raises(ValueError):
+        # Ensure valid runtime_envs can be used
+        for env in valid_runtime_envs():
+            ray_actor_options_schema["runtime_env"] = env
             RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
-
-        # remote uris should work
-        ray_actor_options_schema["runtime_env"] = {
-            "working_dir": (
-                "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
-            ),
-            "py_modules": [
-                (
-                    "https://github.com/shrekris-anyscale/"
-                    "test_deploy_group/archive/HEAD.zip"
-                ),
-            ],
-        }
-
-        RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
 
     def test_extra_fields_invalid_ray_actor_options(self):
         # Undefined fields should be forbidden in the schema
@@ -400,6 +427,23 @@ class TestServeApplicationSchema:
         # Schema should raise error when a nonspecified field is included
         serve_application_schema["fake_field"] = None
         with pytest.raises(ValidationError):
+            ServeApplicationSchema.parse_obj(serve_application_schema)
+    
+    def test_serve_application_runtime_env(self):
+        # Test different runtime_env configurations
+
+        serve_application_schema = self.get_valid_serve_application_schema()
+
+        # Ensure invalid runtime_envs trigger ValueError
+        for env in invalid_runtime_envs():
+            serve_application_schema["runtime_env"] = env
+
+            with pytest.raises(ValueError):
+                ServeApplicationSchema.parse_obj(serve_application_schema)
+
+        # Ensure valid runtime_envs can be used
+        for env in valid_runtime_envs():
+            serve_application_schema["runtime_env"] = env
             ServeApplicationSchema.parse_obj(serve_application_schema)
 
 
