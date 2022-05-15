@@ -13,7 +13,7 @@ from ray.rllib.evaluation.postprocessing import (
 from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.policy.torch_mixins import ValueNetworkMixin
+from ray.rllib.policy.tf_mixins import ValueNetworkMixin
 from ray.rllib.utils import try_import_tf
 
 tf1, tf, tfv = try_import_tf()
