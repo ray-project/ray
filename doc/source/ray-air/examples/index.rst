@@ -9,4 +9,4 @@ Examples
 General Examples
 ----------------
 
-This section will contain examples on how to use Ray AIR shortly.
+- :doc:`/ray-air/examples/analyze_tuning_results`: How to analyze trial results (e.g. find the best trial) of a hyperparameter tuning run.

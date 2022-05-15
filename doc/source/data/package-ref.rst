@@ -12,7 +12,6 @@ Creating Datasets
 .. autofunction:: ray.data.read_csv
 .. autofunction:: ray.data.read_json
 .. autofunction:: ray.data.read_parquet
-.. autofunction:: ray.data.read_parquet_bulk
 .. autofunction:: ray.data.read_numpy
 .. autofunction:: ray.data.read_text
 .. autofunction:: ray.data.read_binary_files
@@ -122,18 +121,6 @@ Custom Datasource API
     :members:
 
 .. autoclass:: ray.data.ReadTask
-    :members:
-
-Datasource File Metadata API
----------------------
-
-.. autoclass:: ray.data.datasource.FileMetadataProvider
-    :members:
-
-.. autoclass:: ray.data.datasource.BaseFileMetadataProvider
-    :members:
-
-.. autoclass:: ray.data.datasource.ParquetMetadataProvider
     :members:
 
 Built-in Datasources
