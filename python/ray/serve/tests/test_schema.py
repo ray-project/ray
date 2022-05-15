@@ -487,19 +487,22 @@ class TestServeApplicationSchema:
             serve_application_schema["runtime_env"] = env
             ServeApplicationSchema.parse_obj(serve_application_schema)
     
-    def test_serve_application_import_path(self):
-        # Test different import path formats
+    @pytest.mark.parametrize("path", get_valid_import_paths())
+    def test_serve_application_valid_import_path(self, path):
+        # Test valid import path formats
 
         serve_application_schema = self.get_valid_serve_application_schema()
+        serve_application_schema["import_path"] = path
+        ServeApplicationSchema.parse_obj(serve_application_schema)
+    
+    @pytest.mark.parametrize("path", get_invalid_import_paths())
+    def test_serve_application_invalid_import_path(self, path):
+        # Test invalid import path formats
 
-        for path in get_valid_import_paths():
-            serve_application_schema["import_path"] = path
+        serve_application_schema = self.get_valid_serve_application_schema()
+        serve_application_schema["import_path"] = path
+        with pytest.raises(ValidationError):
             ServeApplicationSchema.parse_obj(serve_application_schema)
-
-        for path in get_invalid_import_paths():
-            serve_application_schema["import_path"] = path
-            with pytest.raises(ValidationError):
-                ServeApplicationSchema.parse_obj(serve_application_schema)
 
 
 class TestDeploymentStatusSchema:
