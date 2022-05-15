@@ -152,21 +152,21 @@ class TestRayActorOptionsSchema:
             with pytest.raises(ValidationError):
                 RayActorOptionsSchema.parse_obj({field: -1})
 
-    def test_ray_actor_options_runtime_env(self):
-        # Test different runtime_env configurations
+    @pytest.mark.parametrize("env", get_valid_runtime_envs())
+    def test_ray_actor_options_valid_runtime_env(self, env):
+        # Test valid runtime_env configurations
 
         ray_actor_options_schema = self.get_valid_ray_actor_options_schema()
+        ray_actor_options_schema["runtime_env"] = env
+        RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
+    
+    @pytest.mark.parametrize("env", get_invalid_runtime_envs())
+    def test_ray_actor_options_invalid_runtime_env(self, env):
+        # Test invalid runtime_env configurations
 
-        # Ensure invalid runtime_envs trigger ValueError
-        for env in get_invalid_runtime_envs():
-            ray_actor_options_schema["runtime_env"] = env
-
-            with pytest.raises(ValueError):
-                RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
-
-        # Ensure valid runtime_envs can be used
-        for env in get_valid_runtime_envs():
-            ray_actor_options_schema["runtime_env"] = env
+        ray_actor_options_schema = self.get_valid_ray_actor_options_schema()
+        ray_actor_options_schema["runtime_env"] = env
+        with pytest.raises(ValueError):
             RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
 
     def test_extra_fields_invalid_ray_actor_options(self):
