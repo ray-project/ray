@@ -6,6 +6,7 @@ import argparse
 import tempfile
 import sys
 import os
+from pathlib import Path
 
 import jupytext
 
@@ -20,6 +21,8 @@ if __name__ == "__main__":
     args, remainder = parser.parse_known_args()
 
     print(f"test_myst_doc.py cwd: {os.getcwd()}, path to run: {args.path}")
+    path = Path(os.getcwd())
+    print(list(path.rglob("*")))
     assert args.path
 
     with open(args.path, "r") as f:
