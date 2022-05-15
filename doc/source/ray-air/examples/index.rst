@@ -10,3 +10,11 @@ General Examples
 ----------------
 
 - :doc:`/ray-air/examples/analyze_tuning_results`: How to analyze trial results (e.g. find the best trial) of a hyperparameter tuning run.
+
+
+.. air-huggingface-examples:
+
+Hugging Face Examples
+----------------
+
+- :doc:`/ray-air/examples/gpu_examples/analyze_tuning_results`: How to run Hugging Face Transformers fine-tuning on a text classification task.

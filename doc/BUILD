@@ -171,6 +171,16 @@ py_test_run_all_notebooks(
     tags = ["exclusive", "team:ml"],
 )
 
+# With GPU
+
+py_test_run_all_notebooks(
+    size = "medium",
+    include = ["doc/source/ray-air/examples/gpu_examples/*.ipynb"],
+    exclude = [],
+    data = ["//doc/source/ray-air/examples/gpu_examples:air_gpu_examples"],
+    tags = ["exclusive", "team:ml", "gpu"],
+)
+
 # --------------------------------------------------------------------
 # Test all doc/source/ray-air/doc_code code included in rst/md files.
 # --------------------------------------------------------------------
