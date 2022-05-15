@@ -20,7 +20,8 @@ marwil-halfcheetahbulletenv-v0:
             fcnet_hiddens: [256, 256, 256]
 
         evaluation_num_workers: 1
-        evaluation_interval: 1
+        evaluation_parallel_to_training: true
+        evaluation_interval: 3
         evaluation_config:
             input: sampler
         always_attach_evaluation_results: True
