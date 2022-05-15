@@ -470,21 +470,21 @@ class TestServeApplicationSchema:
         with pytest.raises(ValidationError):
             ServeApplicationSchema.parse_obj(serve_application_schema)
     
-    def test_serve_application_runtime_env(self):
-        # Test different runtime_env configurations
+    @pytest.mark.parametrize("env", get_valid_runtime_envs())
+    def test_serve_application_valid_runtime_env(self, env):
+        # Test valid runtime_env configurations
 
         serve_application_schema = self.get_valid_serve_application_schema()
+        serve_application_schema["runtime_env"] = env
+        ServeApplicationSchema.parse_obj(serve_application_schema)
 
-        # Ensure invalid runtime_envs trigger ValueError
-        for env in get_invalid_runtime_envs():
-            serve_application_schema["runtime_env"] = env
+    @pytest.mark.parametrize("env", get_invalid_runtime_envs())
+    def test_serve_application_invalid_runtime_env(self, env):
+        # Test invalid runtime_env configurations
 
-            with pytest.raises(ValueError):
-                ServeApplicationSchema.parse_obj(serve_application_schema)
-
-        # Ensure valid runtime_envs can be used
-        for env in get_valid_runtime_envs():
-            serve_application_schema["runtime_env"] = env
+        serve_application_schema = self.get_valid_serve_application_schema()
+        serve_application_schema["runtime_env"] = env
+        with pytest.raises(ValueError):
             ServeApplicationSchema.parse_obj(serve_application_schema)
     
     @pytest.mark.parametrize("path", get_valid_import_paths())
