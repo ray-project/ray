@@ -211,6 +211,8 @@ class _RandomAccessWorker:
     def multiget(self, block_indices, keys):
         start = time.perf_counter()
         if self.dataset_format == "arrow" and len(set(block_indices)) == 1:
+            # Fast path: use np.searchsorted for vectorized search on a single block.
+            # This is ~3x faster than the naive case.
             block = self.blocks[block_indices[0]]
             col = block[self.key_field]
             indices = np.searchsorted(col, keys)
