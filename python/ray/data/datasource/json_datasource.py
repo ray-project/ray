@@ -43,5 +43,6 @@ class JSONDatasource(FileBasedDatasource):
         lines = writer_args.pop("lines", True)
         block.to_pandas().to_json(f, orient=orient, lines=lines, **writer_args)
 
-    def _file_format(self):
+    @staticmethod
+    def _file_extension() -> str:
         return "json"

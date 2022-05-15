@@ -48,5 +48,6 @@ class ParquetBaseDatasource(FileBasedDatasource):
         writer_args = _resolve_kwargs(writer_args_fn, **writer_args)
         pq.write_table(block.to_arrow(), f, **writer_args)
 
-    def _file_format(self) -> str:
+    @staticmethod
+    def _file_extension() -> str:
         return "parquet"

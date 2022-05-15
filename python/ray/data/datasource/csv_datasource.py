@@ -56,5 +56,6 @@ class CSVDatasource(FileBasedDatasource):
         write_options = writer_args.pop("write_options", None)
         csv.write_csv(block.to_arrow(), f, write_options, **writer_args)
 
-    def _file_format(self):
+    @staticmethod
+    def _file_extension():
         return "csv"

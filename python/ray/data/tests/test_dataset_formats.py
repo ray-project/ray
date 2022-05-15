@@ -446,9 +446,15 @@ def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
     path2 = os.path.join(setup_data_path, "test2.parquet")
     pq.write_table(table, path2, filesystem=fs)
 
-    # Expect directory path expansion to fail.
-    with pytest.raises(OSError):
+    # Expect directory path expansion to fail due to default format-based path
+    # filtering.
+    with pytest.raises(ValueError):
         ray.data.read_parquet_bulk(data_path, filesystem=fs)
+
+    # Expect directory path expansion to fail with OS error if default format-based path
+    # filtering is turnd off.
+    with pytest.raises(OSError):
+        ray.data.read_parquet_bulk(data_path, filesystem=fs, partition_filter=None)
 
     # Expect individual file paths to be processed successfully.
     paths = [path1, path2]
@@ -475,6 +481,26 @@ def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
         "schema={one: int64, two: string})"
     ), ds
     assert ds._plan.execute()._num_computed() == 2
+
+    # Forces a data read.
+    values = [[s["one"], s["two"]] for s in ds.take()]
+    assert ds._plan.execute()._num_computed() == 2
+    assert sorted(values) == [
+        [1, "a"],
+        [2, "b"],
+        [3, "c"],
+        [4, "e"],
+        [5, "f"],
+        [6, "g"],
+    ]
+
+    # Non-Parquet file should be ignored.
+    txt_path = os.path.join(data_path, "foo.txt")
+    with open(txt_path, "w") as f:
+        f.write("foobar")
+
+    ds = ray.data.read_parquet_bulk(paths + [txt_path], filesystem=fs)
+    assert ds.num_blocks() == 2
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
@@ -1014,6 +1040,17 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     )
     assert str(ds.take(2)) == "[{'value': array([0])}, {'value': array([1])}]"
 
+    # Test default format-based path filtering.
+    with open(os.path.join(path, "foo.txt"), "w") as f:
+        f.write("foobar")
+    # Non-NPY file should be ignored.
+    ds = ray.data.read_numpy(path)
+    assert str(ds) == (
+        "Dataset(num_blocks=1, num_rows=10, "
+        "schema={value: <ArrowTensorType: shape=(1,), dtype=int64>})"
+    )
+    assert str(ds.take(2)) == "[{'value': array([0])}, {'value': array([1])}]"
+
 
 def test_numpy_read_meta_provider(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "test_np_dir")
@@ -1171,6 +1208,16 @@ def test_read_text(ray_start_regular_shared, tmp_path):
         f.write("goodbye")
     with open(os.path.join(path, "file3.txt"), "w") as f:
         f.write("ray\n")
+    ds = ray.data.read_text(path)
+    assert sorted(ds.take()) == ["goodbye", "hello", "ray", "world"]
+    ds = ray.data.read_text(path, drop_empty_lines=False)
+    assert ds.count() == 5
+
+    # Test default format-based path filtering.
+    df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    csv_path = os.path.join(path, "file4.csv")
+    df.to_csv(csv_path, index=False)
+    # Non-txt file should be ignored.
     ds = ray.data.read_text(path)
     assert sorted(ds.take()) == ["goodbye", "hello", "ray", "world"]
     ds = ray.data.read_text(path, drop_empty_lines=False)
@@ -1512,6 +1559,31 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
         shutil.rmtree(dir_path)
     else:
         fs.delete_dir(_unwrap_protocol(dir_path))
+
+    # Directory, two files and non-json file (test default format-based path filtering).
+    path = os.path.join(data_path, "test_json_dir")
+    if fs is None:
+        os.mkdir(path)
+    else:
+        fs.create_dir(_unwrap_protocol(path))
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    path1 = os.path.join(path, "data0.json")
+    df1.to_json(path1, orient="records", lines=True, storage_options=storage_options)
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    path2 = os.path.join(path, "data1.json")
+    df2.to_json(path2, orient="records", lines=True, storage_options=storage_options)
+    with open(os.path.join(path, "foo.txt"), "w") as f:
+        f.write("foobar")
+    # Non-JSON file should be ignored.
+    ds = ray.data.read_json(path, filesystem=fs)
+    assert ds.num_blocks() == 2
+    df = pd.concat([df1, df2], ignore_index=True)
+    dsdf = ds.to_pandas()
+    assert df.equals(dsdf)
+    if fs is None:
+        shutil.rmtree(path)
+    else:
+        fs.delete_dir(_unwrap_protocol(path))
 
 
 def test_zipped_json_read(ray_start_regular_shared, tmp_path):
@@ -1939,6 +2011,31 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
         shutil.rmtree(dir_path)
     else:
         fs.delete_dir(_unwrap_protocol(dir_path))
+
+    # Directory, two files and non-csv file (test default format-based path filtering).
+    path = os.path.join(data_path, "test_csv_dir")
+    if fs is None:
+        os.mkdir(path)
+    else:
+        fs.create_dir(_unwrap_protocol(path))
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    path1 = os.path.join(path, "data0.csv")
+    df1.to_csv(path1, index=False, storage_options=storage_options)
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    path2 = os.path.join(path, "data1.csv")
+    df2.to_csv(path2, index=False, storage_options=storage_options)
+    with open(os.path.join(path, "foo.txt"), "w") as f:
+        f.write("foobar")
+    # Non-CSV file should be ignored.
+    ds = ray.data.read_csv(path, filesystem=fs)
+    assert ds.num_blocks() == 2
+    df = pd.concat([df1, df2], ignore_index=True)
+    dsdf = ds.to_pandas()
+    assert df.equals(dsdf)
+    if fs is None:
+        shutil.rmtree(path)
+    else:
+        fs.delete_dir(_unwrap_protocol(path))
 
 
 @pytest.mark.parametrize(

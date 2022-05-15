@@ -48,5 +48,6 @@ class NumpyDatasource(FileBasedDatasource):
         value = block.to_numpy(column)
         np.save(f, value)
 
-    def _file_format(self):
+    @staticmethod
+    def _file_extension():
         return "npy"

@@ -124,6 +124,32 @@ class DefaultBlockWritePathProvider(BlockWritePathProvider):
         return posixpath.join(base_path, suffix)
 
 
+class FileExtensionFilter(PathPartitionFilter):
+    """A file-extension-based path filter, that filters out all files that don't end
+    with the provided extension(s).
+    """
+
+    def __init__(
+        self,
+        file_extensions: Union[str, List[str]],
+        allow_if_no_extension: bool = False,
+    ):
+        if isinstance(file_extensions, str):
+            file_extensions = [file_extensions]
+
+        self.extensions = [f".{ext.lower()}" for ext in file_extensions]
+        self.allow_if_no_extension = allow_if_no_extension
+
+    def _file_has_extension(self, path: str):
+        suffixes = [suffix.lower() for suffix in pathlib.Path(path).suffixes]
+        if not suffixes:
+            return self.allow_if_no_extension
+        return any(ext in suffixes for ext in self.extensions)
+
+    def __call__(self, paths: List[str]) -> List[str]:
+        return [path for path in paths if self._file_has_extension(path)]
+
+
 @DeveloperAPI
 class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
     """File-based datasource, for reading and writing files.
@@ -156,7 +182,14 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
         paths, file_sizes = meta_provider.expand_paths(paths, filesystem)
         if partition_filter is not None:
-            paths = partition_filter(paths)
+            filtered_paths = partition_filter(paths)
+            if not filtered_paths:
+                raise ValueError(
+                    f"All provided and expanded paths {paths} have been filtered out "
+                    f"by the path filter {partition_filter}; please change either the "
+                    "provided paths or path partition filter."
+                )
+            paths = filtered_paths
 
         read_stream = self._read_stream
 
@@ -355,15 +388,20 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
             "Subclasses of FileBasedDatasource must implement _write_files()."
         )
 
-    def _file_format(self):
-        """Returns the file format string, to be used as the file extension
+    @staticmethod
+    def _file_extension() -> str:
+        """Returns the file extension string, to be used as the file extension
         when writing files.
 
         This method should be implemented by subclasses.
         """
         raise NotImplementedError(
-            "Subclasses of FileBasedDatasource must implement _file_format()."
+            "Subclasses of FileBasedDatasource must implement _file_extension()."
         )
+
+    @classmethod
+    def file_extension_filter(cls) -> PathPartitionFilter:
+        return FileExtensionFilter(cls._file_extension())
 
 
 # TODO(Clark): Add unit test coverage of _resolve_paths_and_filesystem and
