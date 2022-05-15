@@ -111,6 +111,8 @@ class ImpalaConfig(TrainerConfig):
         self.learner_queue_timeout = 300
         self.max_requests_in_flight_per_sampler_worker = 2
         self.max_requests_in_flight_per_aggregator_worker = 2
+        self.timeout_s_sampler_manager = 0.03
+        self.timeout_s_aggregator_manager = 0.03
         self.broadcast_interval = 1
         self.num_aggregation_workers = 0
         self.grad_clip = 40.0
@@ -156,6 +158,8 @@ class ImpalaConfig(TrainerConfig):
         learner_queue_timeout: Optional[float] = None,
         max_requests_in_flight_per_sampler_worker: Optional[int] = None,
         max_requests_in_flight_per_aggregator_worker: Optional[int] = None,
+        timeout_s_sampler_manager: Optional[float] = None,
+        timeout_s_aggregator_manager: Optional[float] = None,
         broadcast_interval: Optional[int] = None,
         num_aggregation_workers: Optional[int] = None,
         grad_clip: Optional[float] = None,
@@ -215,6 +219,12 @@ class ImpalaConfig(TrainerConfig):
                 operations.
             max_requests_in_flight_per_aggregator_worker: Level of queuing for replay
                 aggregator operations (if using aggregator workers).
+            timeout_s_sampler_manager: The timeout for waiting for sampling results
+                for workers -- typically if this is too low, the manager won't be able
+                to retrieve ready sampling results.
+            timeout_s_aggregator_manager: The timeout for waiting for replay worker
+                results -- typically if this is too low, the manager won't be able to
+                retrieve ready replay requests.
             broadcast_interval: Max number of workers to broadcast one set of
                 weights to.
             num_aggregation_workers: Use n (`num_aggregation_workers`) extra Actors for
@@ -296,6 +306,10 @@ class ImpalaConfig(TrainerConfig):
             self.max_requests_in_flight_per_aggregator_worker = (
                 max_requests_in_flight_per_aggregator_worker
             )
+        if timeout_s_sampler_manager is not None:
+            self.timeout_s_sampler_manager = timeout_s_sampler_manager
+        if timeout_s_aggregator_manager is not None:
+            self.timeout_s_aggregator_manager = timeout_s_aggregator_manager
         if grad_clip is not None:
             self.grad_clip = grad_clip
         if opt_type is not None:
@@ -561,6 +575,7 @@ class ImpalaTrainer(Trainer):
                     max_remote_requests_in_flight_per_worker=self.config[
                         "max_requests_in_flight_per_aggregator_worker"
                     ],
+                    ray_wait_timeout_s=self.config["timeout_s_aggregator_manager"],
                 )
 
             else:
@@ -580,6 +595,7 @@ class ImpalaTrainer(Trainer):
                     "max_requests_in_flight_per_sampler_worker"
                 ],
                 return_object_refs=True,
+                ray_wait_timeout_s=self.config["timeout_s_sampler_manager"],
             )
 
             # Create and start the learner thread.

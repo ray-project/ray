@@ -88,14 +88,15 @@ class AlphaStarConfig(appo.APPOConfig):
         # AlphaStar specific settings:
         self.replay_buffer_capacity = 20
         self.replay_buffer_replay_ratio = 0.5
-        self.sample_wait_timeout = 0.01
-        self.learn_wait_timeout = 0.1
         # Tuning max_requests_in_flight_per_sampler_worker and
         # max_requests_in_flight_per_learner_worker is important so backpressure is
         # created on the remote workers and the object store doesn't fill up
         # unexpectedly. If the workers spend time idle, consider increasing these.
         self.max_requests_in_flight_per_sampler_worker = 2
         self.max_requests_in_flight_per_learner_worker = 2
+
+        self.timeout_s_sampler_manager = 0.02
+        self.timeout_s_learner_manager = 0.02
 
         # League-building parameters.
         # The LeagueBuilder class to be used for league building logic.
@@ -152,8 +153,8 @@ class AlphaStarConfig(appo.APPOConfig):
         replay_buffer_replay_ratio: Optional[float] = None,
         max_requests_in_flight_per_sampler_worker: Optional[int] = None,
         max_requests_in_flight_per_learner_worker: Optional[int] = None,
-        sample_wait_timeout: Optional[float] = None,
-        learn_wait_timeout: Optional[float] = None,
+        timeout_s_sampler_manager: Optional[float] = None,
+        timeout_s_learner_manager: Optional[float] = None,
         league_builder_config: Optional[Dict[str, Any]] = None,
         max_num_policies_to_train: Optional[int] = None,
         **kwargs,
@@ -165,15 +166,15 @@ class AlphaStarConfig(appo.APPOConfig):
                 policy.
             replay_buffer_replay_ratio: For example, ratio=0.2 -> 20% of samples in
                 each train batch are old (replayed) ones.
-            sample_wait_timeout: Timeout to use for `ray.wait()` when waiting for
+            timeout_s_sampler_manager: Timeout to use for `ray.wait()` when waiting for
                 samplers to have placed new data into the buffers. If no samples are
                 ready within the timeout, the buffers used for mixin-sampling will
                 return only older samples.
-            learn_wait_timeout: Timeout to use for `ray.wait()` when waiting for the
-                policy learner actors to have performed an update and returned learning
-                stats. If no learner actors have produced any learning results in the
-                meantime, their learner-stats in the results will be empty for that
-                iteration.
+            timeout_s_learner_manager: Timeout to use for `ray.wait()` when waiting for
+                the policy learner actors to have performed an update and returned
+                learning stats. If no learner actors have produced any learning
+                results in the meantime, their learner-stats in the results will be
+                empty for that iteration.
             max_requests_in_flight_per_sampler_worker: Maximum number of ray remote
                 calls that can be run in parallel for each sampler worker. This is
                 particularly important when dealing with many sampler workers or
@@ -211,10 +212,10 @@ class AlphaStarConfig(appo.APPOConfig):
             self.replay_buffer_capacity = replay_buffer_capacity
         if replay_buffer_replay_ratio is not None:
             self.replay_buffer_replay_ratio = replay_buffer_replay_ratio
-        if sample_wait_timeout is not None:
-            self.sample_wait_timeout = sample_wait_timeout
-        if learn_wait_timeout is not None:
-            self.learn_wait_timeout = learn_wait_timeout
+        if timeout_s_sampler_manager is not None:
+            self.timeout_s_sampler_manager = timeout_s_sampler_manager
+        if timeout_s_learner_manager is not None:
+            self.timeout_s_learner_manager = timeout_s_learner_manager
         if league_builder_config is not None:
             self.league_builder_config = league_builder_config
         if max_num_policies_to_train is not None:
@@ -391,12 +392,13 @@ class AlphaStarTrainer(appo.APPOTrainer):
             max_remote_requests_in_flight_per_worker=self.config[
                 "max_requests_in_flight_per_sampler_worker"
             ],
+            ray_wait_timeout_s=self.config["timeout_s_sampler_manager"],
         )
         policy_actors = [policy_actor for _, policy_actor, _ in distributed_learners]
         self._learner_worker_manager = AsyncRequestsManager(
             workers=policy_actors,
             max_remote_requests_in_flight_per_worker=self.config[
-                "max_requests_in_flight_per_learner_worker"
+                "timeout_s_learner_manager"
             ],
         )
 

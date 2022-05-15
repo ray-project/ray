@@ -221,6 +221,7 @@ class DDPPOTrainer(PPOTrainer):
             self._ddppo_worker_manager = AsyncRequestsManager(
                 self.workers.remote_workers(),
                 max_remote_requests_in_flight_per_worker=1,
+                ray_wait_timeout_s=0.03,
             )
 
     @override(PPOTrainer)

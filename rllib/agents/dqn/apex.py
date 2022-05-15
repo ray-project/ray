@@ -143,6 +143,10 @@ APEX_DEFAULT_CONFIG = merge_dicts(
         # experiment of timesteps.
         "max_requests_in_flight_per_sampler_worker": 2,
         "max_requests_in_flight_per_aggregator_worker": float("inf"),
+        # The timeout for waiting for replay and sampling worker results -- typically
+        # if this is too low, the manager won't be able to retrieve ready results.
+        "timeout_s_sampler_manager": 0.02,
+        "timeout_s_replay_manager": 0.02,
     },
 )
 # __sphinx_doc_end__
@@ -234,12 +238,14 @@ class ApexTrainer(DQNTrainer):
             max_remote_requests_in_flight_per_worker=self.config[
                 "max_requests_in_flight_per_aggregator_worker"
             ],
+            ray_wait_timeout_s=self.config["timeout_s_sampler_manager"],
         )
         self._sampling_actor_manager = AsyncRequestsManager(
             self.workers.remote_workers(),
             max_remote_requests_in_flight_per_worker=self.config[
                 "max_requests_in_flight_per_sampler_worker"
             ],
+            ray_wait_timeout_s=self.config["timeout_s_replay_manager"],
         )
         self.learner_thread = LearnerThread(self.workers.local_worker())
         self.learner_thread.start()
