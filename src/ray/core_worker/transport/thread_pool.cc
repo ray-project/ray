@@ -19,32 +19,13 @@
 namespace ray {
 namespace core {
 
-/// Wraps a thread-pool to block posts until the pool has free slots. This is used
-/// by the SchedulingQueue to provide backpressure to clients.
-BoundedExecutor::BoundedExecutor(int max_concurrency)
-    : num_running_(0), max_concurrency_(max_concurrency), pool_(max_concurrency){};
-
-/// Posts work to the pool, blocking if no free threads are available.
-void BoundedExecutor::PostBlocking(std::function<void()> fn) {
-  mu_.LockWhen(absl::Condition(this, &BoundedExecutor::ThreadsAvailable));
-  num_running_ += 1;
-  mu_.Unlock();
-  boost::asio::post(pool_, [this, fn]() {
-    fn();
-    absl::MutexLock lock(&mu_);
-    num_running_ -= 1;
-  });
-}
-
-int32_t BoundedExecutor::GetMaxConcurrency() const { return max_concurrency_; }
+BoundedExecutor::BoundedExecutor(int max_concurrency) : pool_(max_concurrency){};
 
 /// Stop the thread pool.
 void BoundedExecutor::Stop() { pool_.stop(); }
 
 /// Join the thread pool.
 void BoundedExecutor::Join() { pool_.join(); }
-
-bool BoundedExecutor::ThreadsAvailable() { return num_running_ < max_concurrency_; }
 
 }  // namespace core
 }  // namespace ray

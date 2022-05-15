@@ -258,7 +258,7 @@ def usage_stats_enabled() -> bool:
     return _usage_stats_enabledness() is not UsageStatsEnabledness.DISABLED_EXPLICITLY
 
 
-def _usage_stats_prompt_enabled():
+def usage_stats_prompt_enabled():
     return int(os.getenv("RAY_USAGE_STATS_PROMPT_ENABLED", "1")) == 1
 
 
@@ -287,7 +287,7 @@ def _generate_cluster_metadata():
 
 
 def show_usage_stats_prompt() -> None:
-    if not _usage_stats_prompt_enabled():
+    if not usage_stats_prompt_enabled():
         return
 
     from ray.autoscaler._private.cli_logger import cli_logger
