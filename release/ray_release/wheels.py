@@ -9,7 +9,7 @@ import time
 import urllib.request
 from typing import Optional, List, Tuple
 
-from ray_release.config import set_test_env_var
+from ray_release.config import set_test_env_var, DEFAULT_PYTHON_VERSION
 from ray_release.exception import (
     RayWheelsUnspecifiedError,
     RayWheelsNotFoundError,
@@ -17,7 +17,7 @@ from ray_release.exception import (
     ReleaseTestSetupError,
 )
 from ray_release.logger import logger
-from ray_release.util import url_exists
+from ray_release.util import url_exists, python_version_str
 
 DEFAULT_BRANCH = "master"
 DEFAULT_GIT_OWNER = "ray-project"
@@ -96,23 +96,33 @@ def get_latest_commits(
     return commits
 
 
-def get_wheels_filename(ray_version: str) -> str:
-    return f"ray-{ray_version}-cp37-cp37m-manylinux2014_x86_64.whl"
+def get_wheels_filename(
+    ray_version: str, python_version: Tuple[int, int] = DEFAULT_PYTHON_VERSION
+) -> str:
+    version_str = python_version_str(python_version)
+    return (
+        f"ray-{ray_version}-cp{version_str}-cp{version_str}m-manylinux2014_x86_64.whl"
+    )
 
 
 def get_ray_wheels_url(
-    repo_url: str, branch: str, commit: str, ray_version: str
+    repo_url: str,
+    branch: str,
+    commit: str,
+    ray_version: str,
+    python_version: Tuple[int, int] = DEFAULT_PYTHON_VERSION,
 ) -> str:
     if not repo_url.startswith("https://github.com/ray-project/ray"):
         return (
             f"https://ray-ci-artifact-pr-public.s3.amazonaws.com/"
-            f"{commit}/tmp/artifacts/.whl/{get_wheels_filename(ray_version)}"
+            f"{commit}/tmp/artifacts/.whl/"
+            f"{get_wheels_filename(ray_version, python_version)}"
         )
 
     # Else, ray repo
     return (
         f"https://s3-us-west-2.amazonaws.com/ray-wheels/"
-        f"{branch}/{commit}/{get_wheels_filename(ray_version)}"
+        f"{branch}/{commit}/{get_wheels_filename(ray_version, python_version)}"
     )
 
 
@@ -144,9 +154,11 @@ def wait_for_url(
 
 
 def find_and_wait_for_ray_wheels_url(
-    ray_wheels: Optional[str] = None, timeout: float = 3600.0
+    ray_wheels: Optional[str] = None,
+    python_version: Tuple[int, int] = DEFAULT_PYTHON_VERSION,
+    timeout: float = 3600.0,
 ) -> str:
-    ray_wheels_url = find_ray_wheels_url(ray_wheels)
+    ray_wheels_url = find_ray_wheels_url(ray_wheels, python_version=python_version)
     logger.info(f"Using Ray wheels URL: {ray_wheels_url}")
     return wait_for_url(ray_wheels_url, timeout=timeout)
 
@@ -177,7 +189,10 @@ def get_buildkite_repo_branch() -> Tuple[str, str]:
     return repo_url, branch
 
 
-def find_ray_wheels_url(ray_wheels: Optional[str] = None) -> str:
+def find_ray_wheels_url(
+    ray_wheels: Optional[str] = None,
+    python_version: Tuple[int, int] = DEFAULT_PYTHON_VERSION,
+) -> str:
     if not ray_wheels:
         # If no wheels are specified, default to BUILDKITE_COMMIT
         commit = os.environ.get("BUILDKITE_COMMIT", None)
@@ -202,7 +217,7 @@ def find_ray_wheels_url(ray_wheels: Optional[str] = None) -> str:
         set_test_env_var("RAY_BRANCH", branch)
         set_test_env_var("RAY_VERSION", ray_version)
 
-        return get_ray_wheels_url(repo_url, branch, commit, ray_version)
+        return get_ray_wheels_url(repo_url, branch, commit, ray_version, python_version)
 
     # If this is a URL, return
     if ray_wheels.startswith("https://") or ray_wheels.startswith("http://"):
@@ -238,7 +253,9 @@ def find_ray_wheels_url(ray_wheels: Optional[str] = None) -> str:
 
         for commit in latest_commits:
             try:
-                wheels_url = get_ray_wheels_url(repo_url, branch, commit, ray_version)
+                wheels_url = get_ray_wheels_url(
+                    repo_url, branch, commit, ray_version, python_version
+                )
             except Exception as e:
                 logger.info(f"Commit not found for PR: {e}")
                 continue
@@ -262,7 +279,9 @@ def find_ray_wheels_url(ray_wheels: Optional[str] = None) -> str:
     commit = commit_or_branch
     ray_version = get_ray_version(repo_url, commit)
     branch = os.environ.get("BUILDKITE_BRANCH", DEFAULT_BRANCH)
-    wheels_url = get_ray_wheels_url(repo_url, branch, commit, ray_version)
+    wheels_url = get_ray_wheels_url(
+        repo_url, branch, commit, ray_version, python_version
+    )
 
     set_test_env_var("RAY_COMMIT", commit)
     set_test_env_var("RAY_BRANCH", branch)

@@ -3,7 +3,7 @@ import datetime
 import json
 import os
 import re
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import jinja2
 import jsonschema
@@ -27,6 +27,8 @@ DEFAULT_AUTOSUSPEND_MINS = 120
 DEFAULT_WAIT_FOR_NODES_TIMEOUT = 3000
 
 DEFAULT_CLOUD_ID = "cld_4F7k8814aZzGG8TNUGPKnc"
+
+DEFAULT_PYTHON_VERSION = (3, 7)
 
 DEFAULT_ENV = {
     "DATESTAMP": str(datetime.datetime.now().strftime("%Y%m%d")),
@@ -143,6 +145,15 @@ def as_smoke_test(test: Test) -> Test:
     smoke_test_config = test.pop("smoke_test")
     new_test = deep_update(test, smoke_test_config)
     return new_test
+
+
+def parse_python_version(version: str) -> Tuple[int, int]:
+    """From XY and X.Y to (X, Y)"""
+    match = re.match(r"^([0-9])\.?([0-9]+)$", version)
+    if not match:
+        raise ReleaseTestConfigError(f"Invalid Python version string: {version}")
+
+    return int(match.group(1)), int(match.group(2))
 
 
 def get_wheels_sanity_check(commit: Optional[str] = None):

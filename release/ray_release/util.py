@@ -4,7 +4,7 @@ import json
 import os
 import subprocess
 import time
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Tuple
 
 import requests
 from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
@@ -124,3 +124,8 @@ def get_pip_packages() -> List[str]:
     from pip._internal.operations import freeze
 
     return list(freeze.freeze())
+
+
+def python_version_str(python_version: Tuple[int, int]) -> str:
+    """From (X, Y) to XY"""
+    return "".join([str(x) for x in python_version])
