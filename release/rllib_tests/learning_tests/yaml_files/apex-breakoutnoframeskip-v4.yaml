@@ -1,10 +1,12 @@
 apex-breakoutnoframeskip-v4:
     env: BreakoutNoFrameskip-v4
     run: APEX
-    frameworks: [ "tf", "tf2", "torch" ]
-    stop:
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
         episode_reward_mean: 100.0
-        time_total_s: 3600
+        timesteps_total: 7000000
+    stop:
+        time_total_s: 7200
     config:
         double_q: false
         dueling: false

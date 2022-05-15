@@ -2108,35 +2108,6 @@
     test_name: learning_tests
     test_suite: rllib_tests
 
-  frequency: weekly
-  team: ml
-
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: 8gpus_64cpus.yaml
-
-  run:
-    timeout: 14400
-    script: python learning_tests/run.py
-    type: sdk_command
-    file_manager: job
-
-  smoke_test:
-    frequency: nightly
-
-    run:
-      timeout: 1200
-
-  alert: default
-
-- name: rllib_dashboard_tests
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  legacy:
-    test_name: dashboard_tests
-    test_suite: rllib_tests
-
   frequency: nightly
   team: ml
 
@@ -2146,7 +2117,7 @@
 
   run:
     timeout: 14400
-    script: python dashboard_tests/run.py
+    script: python learning_tests/run.py
     type: sdk_command
     file_manager: job
 

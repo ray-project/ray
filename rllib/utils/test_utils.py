@@ -597,10 +597,10 @@ def run_learning_tests_from_yaml(
     """Runs the given experiments in yaml_files and returns results dict.
 
     Args:
-        yaml_files (List[str]): List of yaml file names.
-        max_num_repeats (int): How many times should we repeat a failed
+        yaml_files: List of yaml file names.
+        max_num_repeats: How many times should we repeat a failed
             experiment?
-        smoke_test (bool): Whether this is just a smoke-test. If True,
+        smoke_test: Whether this is just a smoke-test. If True,
             set time_total_s to 5min and don't early out due to rewards
             or timesteps reached.
 
