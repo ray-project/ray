@@ -1,8 +1,6 @@
 deployments:
 
   - name: shallow
-    init_args: null
-    init_kwargs: null
     import_path: "test_env.shallow_import.ShallowClass"
     num_replicas: 1
     route_prefix: "/shallow"
@@ -20,8 +18,6 @@ deployments:
           - "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
 
   - name: deep
-    init_args: null
-    init_kwargs: null
     import_path: "test_env.subdir1.subdir2.deep_import.DeepClass"
     num_replicas: 1
     route_prefix: "/deep"
@@ -39,8 +35,6 @@ deployments:
           - "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
 
   - name: one
-    init_args: null
-    init_kwargs: null
     import_path: "test_module.test.one"
     num_replicas: 2
     max_concurrent_queries: null
