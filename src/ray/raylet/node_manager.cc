@@ -1078,7 +1078,21 @@ void NodeManager::ResourceDeleted(const NodeID &node_id,
 void NodeManager::HandleNotifyGCSRestart(const rpc::NotifyGCSRestartRequest &request,
                                          rpc::NotifyGCSRestartReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
+  // When GCS restarts, it'll notify raylet to do some initialization work (resubscribing).
+  // Raylet will also notify all workers to do this job.
+  // Workers are registered to raylet first (blocking call) and then connect to GCS,
+  // so there is no race condition here.
   gcs_client_->AsyncResubscribe();
+  auto workers = worker_pool_.GetAllRegisteredWorkers(true);
+  for(auto worker : workers) {
+    worker->AsyncNotifyGCSRestarted();
+  }
+
+  auto drivers = worker_pool_.GetAllRegisteredDrivers(true);
+  for(auto driver : drivers) {
+    driver->AsyncNotifyGCSRestarted();
+  }
+
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
