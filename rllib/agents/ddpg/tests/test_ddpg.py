@@ -1,13 +1,11 @@
 import numpy as np
 import re
 import unittest
-from tempfile import TemporaryDirectory
 
 import ray
 import ray.rllib.agents.ddpg as ddpg
 from ray.rllib.agents.ddpg.ddpg_torch_policy import ddpg_actor_critic_loss as loss_torch
 from ray.rllib.agents.sac.tests.test_sac import SimpleEnv
-from ray.rllib.execution.buffers.multi_agent_replay_buffer import MultiAgentReplayBuffer
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import fc, huber_loss, l2_loss, relu, sigmoid
@@ -18,6 +16,7 @@ from ray.rllib.utils.test_utils import (
     framework_iterator,
 )
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
+from ray.rllib.utils.replay_buffers.utils import patch_buffer_with_fake_sampling_method
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -34,62 +33,46 @@ class TestDDPG(unittest.TestCase):
 
     def test_ddpg_compilation(self):
         """Test whether a DDPGTrainer can be built with both frameworks."""
-        config = ddpg.DEFAULT_CONFIG.copy()
-        config["seed"] = 42
-        config["num_workers"] = 1
-        config["num_envs_per_worker"] = 2
-        config["learning_starts"] = 0
-        config["exploration_config"]["random_timesteps"] = 100
+        config = ddpg.DDPGConfig()
+        config.seed = 42
+        config.num_workers = 0
+        config.num_envs_per_worker = 2
+        config.replay_buffer_config["learning_starts"] = 0
+        explore = config.exploration_config.update({"random_timesteps": 100})
+        config.exploration(exploration_config=explore)
 
         num_iterations = 1
 
         # Test against all frameworks.
         for _ in framework_iterator(config, with_eager_tracing=True):
-            trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v1")
+            """"""
+            trainer = config.build(env="Pendulum-v1")
             for i in range(num_iterations):
                 results = trainer.train()
                 check_train_results(results)
                 print(results)
             check_compute_single_action(trainer)
             # Ensure apply_gradient_fn is being called and updating global_step
-            if config["framework"] == "tf":
-                a = trainer.get_policy().global_step.eval(
-                    trainer.get_policy().get_session()
-                )
+            pol = trainer.get_policy()
+            if config.framework_str == "tf":
+                a = pol.get_session().run(pol.global_step)
             else:
-                a = trainer.get_policy().global_step
+                a = pol.global_step
             check(a, 500)
-            trainer.stop()
-
-    def test_ddpg_checkpoint_save_and_restore(self):
-        """Test whether a DDPGTrainer can save and load checkpoints."""
-        config = ddpg.DEFAULT_CONFIG.copy()
-        config["num_workers"] = 1
-        config["num_envs_per_worker"] = 2
-        config["learning_starts"] = 0
-        config["exploration_config"]["random_timesteps"] = 100
-
-        # Test against all frameworks.
-        for _ in framework_iterator(config, with_eager_tracing=True):
-            trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v1")
-            trainer.train()
-            with TemporaryDirectory() as temp_dir:
-                checkpoint = trainer.save(temp_dir)
-                trainer.restore(checkpoint)
             trainer.stop()
 
     def test_ddpg_exploration_and_with_random_prerun(self):
         """Tests DDPG's Exploration (w/ random actions for n timesteps)."""
-        core_config = ddpg.DEFAULT_CONFIG.copy()
-        core_config["num_workers"] = 0  # Run locally.
+
+        config = ddpg.DDPGConfig().rollouts(num_rollout_workers=0)
         obs = np.array([0.0, 0.1, -0.1])
 
         # Test against all frameworks.
-        for _ in framework_iterator(core_config):
-            config = core_config.copy()
-            config["seed"] = 42
+        for _ in framework_iterator(config):
+            config = ddpg.DDPGConfig().rollouts(num_rollout_workers=0)
+            config.seed = 42
             # Default OUNoise setup.
-            trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v1")
+            trainer = config.build(env="Pendulum-v1")
             # Setting explore=False should always return the same action.
             a_ = trainer.compute_single_action(obs, explore=False)
             check(trainer.get_policy().global_timestep, 1)
@@ -106,14 +89,17 @@ class TestDDPG(unittest.TestCase):
             trainer.stop()
 
             # Check randomness at beginning.
-            config["exploration_config"] = {
-                # Act randomly at beginning ...
-                "random_timesteps": 50,
-                # Then act very closely to deterministic actions thereafter.
-                "ou_base_scale": 0.001,
-                "initial_scale": 0.001,
-                "final_scale": 0.001,
-            }
+            config.exploration_config.update(
+                {
+                    # Act randomly at beginning ...
+                    "random_timesteps": 50,
+                    # Then act very closely to deterministic actions thereafter.
+                    "ou_base_scale": 0.001,
+                    "initial_scale": 0.001,
+                    "final_scale": 0.001,
+                }
+            )
+
             trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v1")
             # ts=0 (get a deterministic action as per explore=False).
             deterministic_action = trainer.compute_single_action(obs, explore=False)
@@ -141,24 +127,28 @@ class TestDDPG(unittest.TestCase):
 
     def test_ddpg_loss_function(self):
         """Tests DDPG loss function results across all frameworks."""
-        config = ddpg.DEFAULT_CONFIG.copy()
+        config = ddpg.DDPGConfig()
         # Run locally.
-        config["seed"] = 42
-        config["num_workers"] = 0
-        config["learning_starts"] = 0
-        config["twin_q"] = True
-        config["use_huber"] = True
-        config["huber_threshold"] = 1.0
-        config["gamma"] = 0.99
+        config.seed = 42
+        config.num_workers = 0
+        config.learning_starts = 0
+        config.twin_q = True
+        config.use_huber = True
+        config.huber_threshold = 1.0
+        config.gamma = 0.99
         # Make this small (seems to introduce errors).
-        config["l2_reg"] = 1e-10
-        config["prioritized_replay"] = False
+        config.l2_reg = 1e-10
+        config.replay_buffer_config = {
+            "_enable_replay_buffer_api": True,
+            "type": "MultiAgentReplayBuffer",
+            "capacity": 50000,
+        }
         # Use very simple nets.
-        config["actor_hiddens"] = [10]
-        config["critic_hiddens"] = [10]
+        config.actor_hiddens = [10]
+        config.critic_hiddens = [10]
         # Make sure, timing differences do not affect trainer.train().
-        config["min_time_s_per_reporting"] = 0
-        config["min_sample_timesteps_per_reporting"] = 100
+        config.min_time_s_per_reporting = 0
+        config.min_sample_timesteps_per_reporting = 100
 
         map_ = {
             # Normal net.
@@ -232,7 +222,7 @@ class TestDDPG(unittest.TestCase):
             config, frameworks=("tf", "torch"), session=True
         ):
             # Generate Trainer and get its default Policy object.
-            trainer = ddpg.DDPGTrainer(config=config, env=env)
+            trainer = config.build(env=env)
             policy = trainer.get_policy()
             p_sess = None
             if sess:
@@ -261,9 +251,9 @@ class TestDDPG(unittest.TestCase):
                     weights_dict,
                     sorted(weights_dict.keys()),
                     fw,
-                    gamma=config["gamma"],
-                    huber_threshold=config["huber_threshold"],
-                    l2_reg=config["l2_reg"],
+                    gamma=config.gamma,
+                    huber_threshold=config.huber_threshold,
+                    l2_reg=config.l2_reg,
                     sess=sess,
                 )
 
@@ -376,8 +366,8 @@ class TestDDPG(unittest.TestCase):
                     tf_inputs.append(in_)
                     # Set a fake-batch to use
                     # (instead of sampling from replay buffer).
-                    buf = MultiAgentReplayBuffer.get_instance_for_testing()
-                    buf._fake_batch = in_
+                    buf = trainer.local_replay_buffer
+                    patch_buffer_with_fake_sampling_method(buf, in_)
                     trainer.train()
                     updated_weights = policy.get_weights()
                     # Net must have changed.
@@ -397,8 +387,8 @@ class TestDDPG(unittest.TestCase):
                     in_ = tf_inputs[update_iteration]
                     # Set a fake-batch to use
                     # (instead of sampling from replay buffer).
-                    buf = MultiAgentReplayBuffer.get_instance_for_testing()
-                    buf._fake_batch = in_
+                    buf = trainer.local_replay_buffer
+                    patch_buffer_with_fake_sampling_method(buf, in_)
                     trainer.train()
                     # Compare updated model and target weights.
                     for tf_key in tf_weights.keys():

@@ -2,19 +2,12 @@ from typing import Type
 
 from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.agents.marwil.marwil_tf_policy import MARWILTFPolicy
-from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.buffers.multi_agent_replay_buffer import MultiAgentReplayBuffer
-from ray.rllib.execution.concurrency_ops import Concurrently
-from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
 from ray.rllib.execution.rollout_ops import (
-    ConcatBatches,
-    ParallelRollouts,
     synchronous_parallel_sample,
 )
 from ray.rllib.execution.train_ops import (
     multi_gpu_train_one_step,
-    TrainOneStep,
     train_one_step,
 )
 from ray.rllib.policy.policy import Policy
@@ -31,7 +24,6 @@ from ray.rllib.utils.typing import (
     ResultDict,
     TrainerConfigDict,
 )
-from ray.util.iter import LocalIterator
 
 # fmt: off
 # __sphinx_doc_begin__
@@ -90,9 +82,6 @@ DEFAULT_CONFIG = with_common_config({
 
     # === Parallelism ===
     "num_workers": 0,
-
-    # Use new `training_iteration` API (instead of `execution_plan` method).
-    "_disable_execution_plan_api": True,
 })
 # __sphinx_doc_end__
 # fmt: on
@@ -174,39 +163,3 @@ class MARWILTrainer(Trainer):
         self.workers.local_worker().set_global_vars(global_vars)
 
         return train_results
-
-    @staticmethod
-    @override(Trainer)
-    def execution_plan(
-        workers: WorkerSet, config: TrainerConfigDict, **kwargs
-    ) -> LocalIterator[dict]:
-        assert (
-            len(kwargs) == 0
-        ), "Marwill execution_plan does NOT take any additional parameters"
-
-        rollouts = ParallelRollouts(workers, mode="bulk_sync")
-        replay_buffer = MultiAgentReplayBuffer(
-            learning_starts=config["learning_starts"],
-            capacity=config["replay_buffer_size"],
-            replay_batch_size=config["train_batch_size"],
-            replay_sequence_length=1,
-        )
-
-        store_op = rollouts.for_each(StoreToReplayBuffer(local_buffer=replay_buffer))
-
-        replay_op = (
-            Replay(local_buffer=replay_buffer)
-            .combine(
-                ConcatBatches(
-                    min_batch_size=config["train_batch_size"],
-                    count_steps_by=config["multiagent"]["count_steps_by"],
-                )
-            )
-            .for_each(TrainOneStep(workers))
-        )
-
-        train_op = Concurrently(
-            [store_op, replay_op], mode="round_robin", output_indexes=[1]
-        )
-
-        return StandardMetricsReporting(train_op, workers, config)

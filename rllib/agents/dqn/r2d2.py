@@ -8,20 +8,21 @@ from ray.rllib.agents.trainer import Trainer
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 logger = logging.getLogger(__name__)
 
 # fmt: off
 # __sphinx_doc_begin__
 R2D2_DEFAULT_CONFIG = Trainer.merge_trainer_configs(
-    DQN_DEFAULT_CONFIG,  # See keys in impala.py, which are also supported.
+    DQN_DEFAULT_CONFIG,  # See keys in dqn.py, which are also supported.
     {
         # Learning rate for adam optimizer.
         "lr": 1e-4,
         # Discount factor.
         "gamma": 0.997,
         # Train batch size (in number of single timesteps).
-        "train_batch_size": 64 * 20,
+        "train_batch_size": 64,
         # Adam epsilon hyper parameter
         "adam_epsilon": 1e-3,
         # Run in parallel by default.
@@ -31,23 +32,25 @@ R2D2_DEFAULT_CONFIG = Trainer.merge_trainer_configs(
 
         # === Replay buffer ===
         "replay_buffer_config": {
-            # For now we don't use the new ReplayBuffer API here
-            "_enable_replay_buffer_api": False,
+            "_enable_replay_buffer_api": True,
             "type": "MultiAgentReplayBuffer",
-            "prioritized_replay": False,
-            "prioritized_replay_alpha": 0.6,
-            # Beta parameter for sampling from prioritized replay buffer.
-            "prioritized_replay_beta": 0.4,
-            # Epsilon to add to the TD errors when updating priorities.
-            "prioritized_replay_eps": 1e-6,
             # Size of the replay buffer (in sequences, not timesteps).
             "capacity": 100000,
+            "storage_unit": "sequences",
             # Set automatically: The number
             # of contiguous environment steps to
             # replay at once. Will be calculated via
             # model->max_seq_len + burn_in.
             # Do not set this to any valid value!
             "replay_sequence_length": -1,
+            # If > 0, use the `replay_burn_in` first steps of each replay-sampled
+            # sequence (starting either from all 0.0-values if `zero_init_state=True` or
+            # from the already stored values) to calculate an even more accurate
+            # initial states for the actual sequence (starting after this burn-in
+            # window). In the burn-in case, the actual length of the sequence
+            # used for loss calculation is `n - replay_burn_in` time steps
+            # (n=LSTM’s/attention net’s max_seq_len).
+            "replay_burn_in": 0,
         },
         # If True, assume a zero-initialized state input (no matter where in
         # the episode the sequence is located).
@@ -56,14 +59,6 @@ R2D2_DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         # and update that initial state during training (from the internal
         # state outputs of the immediately preceding sequence).
         "zero_init_states": True,
-        # If > 0, use the `burn_in` first steps of each replay-sampled sequence
-        # (starting either from all 0.0-values if `zero_init_state=True` or
-        # from the already stored values) to calculate an even more accurate
-        # initial states for the actual sequence (starting after this burn-in
-        # window). In the burn-in case, the actual length of the sequence
-        # used for loss calculation is `n - burn_in` time steps
-        # (n=LSTM’s/attention net’s max_seq_len).
-        "burn_in": 0,
 
         # Whether to use the h-function from the paper [1] to scale target
         # values in the R2D2-loss function:
@@ -76,11 +71,9 @@ R2D2_DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         # Update the target network every `target_network_update_freq` steps.
         "target_network_update_freq": 2500,
 
-        # Experimental flag.
-        # If True, the execution plan API will not be used. Instead,
-        # a Trainer's `training_iteration` method will be called as-is each
-        # training iteration.
-        "_disable_execution_plan_api": False,
+        # Deprecated keys:
+        # Use config["replay_buffer_config"]["replay_burn_in"] instead
+        "burn_in": DEPRECATED_VALUE
     },
     _allow_unknown_configs=True,
 )
@@ -135,7 +128,8 @@ class R2D2Trainer(DQNTrainer):
         # Add the `burn_in` to the Model's max_seq_len.
         # Set the replay sequence length to the max_seq_len of the model.
         config["replay_buffer_config"]["replay_sequence_length"] = (
-            config["burn_in"] + config["model"]["max_seq_len"]
+            config["replay_buffer_config"]["replay_burn_in"]
+            + config["model"]["max_seq_len"]
         )
 
         if config.get("batch_mode") != "complete_episodes":

@@ -5,7 +5,7 @@ import tempfile
 from distutils.version import LooseVersion
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple, Type, Union
-from ray.ml.utils.torch_utils import load_torch_model
+import warnings
 
 import torch
 import transformers
@@ -13,7 +13,6 @@ import transformers.modeling_utils
 import transformers.trainer
 from transformers.trainer import WEIGHTS_NAME, TRAINING_ARGS_NAME
 import transformers.training_args
-import ray.cloudpickle as cpickle
 from torch.utils.data import Dataset as TorchDataset
 
 from ray import train
@@ -21,7 +20,7 @@ from ray import tune
 from ray.util import PublicAPI, get_node_ip_address
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.config import RunConfig, ScalingConfig
-from ray.ml.constants import EVALUATION_DATASET_KEY, PREPROCESSOR_KEY, TRAIN_DATASET_KEY
+from ray.ml.constants import EVALUATION_DATASET_KEY, TRAIN_DATASET_KEY
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.train.integrations.torch import TorchTrainer
 from ray.ml.trainer import GenDataset
@@ -33,6 +32,11 @@ from ray.ml.train.integrations.huggingface.huggingface_utils import (
     TrainReportCallback,
     wrap_transformers_trainer,
 )
+from ray.ml.utils.checkpointing import (
+    load_preprocessor_from_dir,
+    save_preprocessor_to_dir,
+)
+from ray.ml.utils.torch_utils import load_torch_model
 from ray.train.constants import TUNE_CHECKPOINT_ID
 from ray.train.torch import TorchConfig
 from ray.tune.trainable import Trainable
@@ -78,8 +82,7 @@ class _DataParallelSyncingCheckpointManager(_DataParallelCheckpointManager):
                 )
                 delete_on_node(node_ip=source_ip, path=source_path)
             checkpoint_dir = Path(checkpoint_dir)
-            with open(checkpoint_dir.joinpath(PREPROCESSOR_KEY), "wb") as f:
-                cpickle.dump(self.preprocessor, f)
+            save_preprocessor_to_dir(self.preprocessor, checkpoint_dir)
             # add tune checkpoint id
             with open(checkpoint_dir.joinpath(TUNE_CHECKPOINT_ID), "w") as f:
                 f.write(str(self._latest_checkpoint_id))
@@ -112,7 +115,8 @@ class HuggingFaceTrainer(TorchTrainer):
     argument in ``TrainingArguments`` will be automatically set. Please note
     that if you want to use CPU training, you will need to set the ``no_cuda``
     argument in ``TrainingArguments`` manually - otherwise, an exception
-    (segfault) may be thrown.
+    (segfault) may be thrown. Furthermore, 'steps' value for ``save_strategy``,
+    ``logging_strategy`` and ``evaluation_strategy`` is not yet supported.
 
     Example:
         .. code-block:: python
@@ -169,9 +173,9 @@ class HuggingFaceTrainer(TorchTrainer):
                 batch_size=1000,
                 num_proc=1,
             )
-            ray_train_ds = ray.data.from_arrow(lm_datasets["train"]._data.table)
-            ray_evaluation_ds = ray.data.from_arrow(
-                lm_datasets["evaluation"]._data.table
+            ray_train_ds = ray.data.from_huggingface(lm_datasets["train"])
+            ray_evaluation_ds = ray.data.from_huggingface(
+                lm_datasets["evaluation"]
             )
 
             def trainer_init_per_worker(train_dataset, eval_dataset, **config):
@@ -376,73 +380,64 @@ class HuggingFaceTrainer(TorchTrainer):
             self._param_dict = original_param_dict
         return ret
 
-    @staticmethod
-    def load_huggingface_checkpoint(
-        checkpoint: Checkpoint,
-        model: Union[
-            Type[transformers.modeling_utils.PreTrainedModel], torch.nn.Module
-        ],
-        tokenizer: Optional[Type[transformers.PreTrainedTokenizer]] = None,
-        *,
-        tokenizer_kwargs: Optional[Dict[str, Any]] = None,
-        **pretrained_model_kwargs,
-    ) -> Tuple[
-        Union[transformers.modeling_utils.PreTrainedModel, torch.nn.Module],
-        transformers.training_args.TrainingArguments,
-        Optional[transformers.PreTrainedTokenizer],
-        Optional[Preprocessor],
-    ]:
-        """Load a Checkpoint from ``HuggingFaceTrainer``.
 
-        Return the model, ``TrainingArguments``, tokenizer and AIR preprocessor
+def load_checkpoint(
+    checkpoint: Checkpoint,
+    model: Union[Type[transformers.modeling_utils.PreTrainedModel], torch.nn.Module],
+    tokenizer: Optional[Type[transformers.PreTrainedTokenizer]] = None,
+    *,
+    tokenizer_kwargs: Optional[Dict[str, Any]] = None,
+    **pretrained_model_kwargs,
+) -> Tuple[
+    Union[transformers.modeling_utils.PreTrainedModel, torch.nn.Module],
+    transformers.training_args.TrainingArguments,
+    Optional[transformers.PreTrainedTokenizer],
+    Optional[Preprocessor],
+]:
+    """Load a Checkpoint from ``HuggingFaceTrainer``.
+
+
+    Args:
+        checkpoint: The checkpoint to load the model and
+            preprocessor from. It is expected to be from the result of a
+            ``HuggingFaceTrainer`` run.
+        model: Either a ``transformers.PreTrainedModel`` class
+            (eg. ``AutoModelForCausalLM``), or a PyTorch model to load the
+            weights to. This should be the same model used for training.
+        tokenizer: A ``transformers.PreTrainedTokenizer`` class to load
+            the model tokenizer to. If not specified, the tokenizer will
+            not be loaded. Will throw an exception if specified, but no
+            tokenizer was found in the checkpoint.
+        tokenizer_kwargs: Dict of kwargs to pass to ``tokenizer.from_pretrained``
+            call. Ignored if ``tokenizer`` is None.
+        **pretrained_model_kwargs: Kwargs to pass to ``mode.from_pretrained``
+            call. Ignored if ``model`` is not a ``transformers.PreTrainedModel``
+            class.
+
+    Returns:
+        The model, ``TrainingArguments``, tokenizer and AIR preprocessor
         contained within. Those can be used to initialize a ``transformers.Trainer``
         object locally.
-
-        Args:
-            checkpoint: The checkpoint to load the model and
-                preprocessor from. It is expected to be from the result of a
-                ``HuggingFaceTrainer`` run.
-            model: Either a ``transformers.PreTrainedModel`` class
-                (eg. ``AutoModelForCausalLM``), or a PyTorch model to load the
-                weights to. This should be the same model used for training.
-            tokenizer: A ``transformers.PreTrainedTokenizer`` class to load
-                the model tokenizer to. If not specified, the tokenizer will
-                not be loaded. Will throw an exception if specified, but no
-                tokenizer was found in the checkpoint.
-            tokenizer_kwargs: Dict of kwargs to pass to ``tokenizer.from_pretrained``
-                call. Ignored if ``tokenizer`` is None.
-            **pretrained_model_kwargs: Kwargs to pass to ``mode.from_pretrained``
-                call. Ignored if ``model`` is not a ``transformers.PreTrainedModel``
-                class.
-        """
-        tokenizer_kwargs = tokenizer_kwargs or {}
-        with checkpoint.as_directory() as checkpoint_path:
-            preprocessor_path = os.path.join(checkpoint_path, PREPROCESSOR_KEY)
-            if os.path.exists(preprocessor_path):
-                with open(preprocessor_path, "rb") as f:
-                    preprocessor = cpickle.load(f)
-            else:
-                preprocessor = None
-            if isinstance(model, torch.nn.Module):
-                state_dict = torch.load(
-                    os.path.join(checkpoint_path, WEIGHTS_NAME), map_location="cpu"
-                )
-                model = load_torch_model(saved_model=state_dict, model_definition=model)
-            else:
-                model = model.from_pretrained(
-                    checkpoint_path, **pretrained_model_kwargs
-                )
-            if tokenizer:
-                tokenizer = tokenizer.from_pretrained(
-                    checkpoint_path, **tokenizer_kwargs
-                )
-            training_args_path = os.path.join(checkpoint_path, TRAINING_ARGS_NAME)
-            if os.path.exists(training_args_path):
-                with open(training_args_path, "rb") as f:
-                    training_args = torch.load(f, map_location="cpu")
-            else:
-                training_args = None
-        return model, training_args, tokenizer, preprocessor
+    """
+    tokenizer_kwargs = tokenizer_kwargs or {}
+    with checkpoint.as_directory() as checkpoint_path:
+        preprocessor = load_preprocessor_from_dir(checkpoint_path)
+        if isinstance(model, torch.nn.Module):
+            state_dict = torch.load(
+                os.path.join(checkpoint_path, WEIGHTS_NAME), map_location="cpu"
+            )
+            model = load_torch_model(saved_model=state_dict, model_definition=model)
+        else:
+            model = model.from_pretrained(checkpoint_path, **pretrained_model_kwargs)
+        if tokenizer:
+            tokenizer = tokenizer.from_pretrained(checkpoint_path, **tokenizer_kwargs)
+        training_args_path = os.path.join(checkpoint_path, TRAINING_ARGS_NAME)
+        if os.path.exists(training_args_path):
+            with open(training_args_path, "rb") as f:
+                training_args = torch.load(f, map_location="cpu")
+        else:
+            training_args = None
+    return model, training_args, tokenizer, preprocessor
 
 
 def _huggingface_train_loop_per_worker(config):
@@ -466,13 +461,22 @@ def _huggingface_train_loop_per_worker(config):
         train_torch_dataset, eval_torch_dataset, **config
     )
 
-    if trainer.args.push_to_hub:
+    if trainer.args.push_to_hub and not trainer.args.hub_token:
+        warnings.warn(
+            "You have set `push_to_hub=True` but didn't specify `hub_token`. "
+            "Pushing to hub will most likely fail, as the credentials will not "
+            "be automatically propagated from the local enviroment to the Ray Actors. "
+            "If that happens, specify `hub_token` in `TrainingArguments`."
+        )
+
+    if (
+        trainer.args.evaluation_strategy == "steps"
+        or trainer.args.save_strategy == "steps"
+        or trainer.args.logging_strategy == "steps"
+    ):
         raise ValueError(
-            "`push_to_hub` parameter in `TrainingArgs` is not supported by "
-            "`HuggingFaceTrainer`. If you would like to push your model to hub "
-            "after training, use the `HuggingFaceTrainer.load_huggingface_checkpoint`"
-            " method to obtain the model from a returned checkpoint, and use it to "
-            "instantiate the `transformers.Trainer` class."
+            "'steps' value for `evaluation_strategy`, `logging_strategy` "
+            "or `save_strategy` is not yet supported."
         )
 
     trainer = wrap_transformers_trainer(trainer)
@@ -498,7 +502,6 @@ def _huggingface_train_loop_per_worker(config):
         if source_ip == target_ip:
             checkpoint_path = source_path
         else:
-            # TODO(yard1): Confirm if tempdir is the right approach here.
             checkpoint_path = tempfile.mkdtemp(
                 suffix=Path(trainer.args.output_dir).name
             )

@@ -5,14 +5,9 @@ from typing import Type
 from ray.rllib.agents.cql.cql_tf_policy import CQLTFPolicy
 from ray.rllib.agents.cql.cql_torch_policy import CQLTorchPolicy
 from ray.rllib.agents.sac.sac import SACTrainer, DEFAULT_CONFIG as SAC_CONFIG
-from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.execution.replay_ops import Replay
 from ray.rllib.execution.train_ops import (
     multi_gpu_train_one_step,
-    MultiGPUTrainOneStep,
     train_one_step,
-    TrainOneStep,
-    UpdateTargetNetwork,
 )
 from ray.rllib.offline.shuffled_input import ShuffledInput
 from ray.rllib.policy.policy import Policy
@@ -29,7 +24,6 @@ from ray.rllib.utils.metrics import (
     TARGET_NET_UPDATE_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
 )
-from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.replay_buffers.utils import update_priorities_in_replay_buffer
 from ray.rllib.utils.typing import ResultDict, TrainerConfigDict
 
@@ -58,8 +52,8 @@ CQL_DEFAULT_CONFIG = merge_dicts(
         # Min Q weight multiplier.
         "min_q_weight": 5.0,
         "replay_buffer_config": {
-            "_enable_replay_buffer_api": False,
-            "type": "MultiAgentReplayBuffer",
+            "_enable_replay_buffer_api": True,
+            "type": "MultiAgentPrioritizedReplayBuffer",
             # Replay buffer should be larger or equal the size of the offline
             # dataset.
             "capacity": int(1e6),
@@ -68,9 +62,6 @@ CQL_DEFAULT_CONFIG = merge_dicts(
         # `self.train()` reporting by the number of steps trained (not sampled).
         "min_sample_timesteps_per_reporting": 0,
         "min_train_timesteps_per_reporting": 100,
-
-        # Use the Trainer's `training_iteration` function instead of `execution_plan`.
-        "_disable_execution_plan_api": True,
 
         # Deprecated keys.
         # Use `replay_buffer_config.capacity` instead.
@@ -179,7 +170,7 @@ class CQLTrainer(SACTrainer):
     def training_iteration(self) -> ResultDict:
 
         # Sample training batch from replay buffer.
-        train_batch = self.local_replay_buffer.replay()
+        train_batch = self.local_replay_buffer.sample(self.config["train_batch_size"])
 
         # Old-style replay buffers return None if learning has not started
         if not train_batch:
@@ -226,63 +217,3 @@ class CQLTrainer(SACTrainer):
 
         # Return all collected metrics for the iteration.
         return train_results
-
-    @staticmethod
-    @override(SACTrainer)
-    def execution_plan(workers, config, **kwargs):
-        assert (
-            "local_replay_buffer" in kwargs
-        ), "CQL execution plan requires a local replay buffer."
-
-        local_replay_buffer = kwargs["local_replay_buffer"]
-
-        def update_prio(item):
-            samples, info_dict = item
-            if config.get("prioritized_replay"):
-                prio_dict = {}
-                for policy_id, info in info_dict.items():
-                    # TODO(sven): This is currently structured differently for
-                    #  torch/tf. Clean up these results/info dicts across
-                    #  policies (note: fixing this in torch_policy.py will
-                    #  break e.g. DDPPO!).
-                    td_error = info.get(
-                        "td_error", info[LEARNER_STATS_KEY].get("td_error")
-                    )
-                    samples.policy_batches[policy_id].set_get_interceptor(None)
-                    prio_dict[policy_id] = (
-                        samples.policy_batches[policy_id].get("batch_indexes"),
-                        td_error,
-                    )
-                local_replay_buffer.update_priorities(prio_dict)
-            return info_dict
-
-        # (2) Read and train on experiences from the replay buffer. Every batch
-        # returned from the LocalReplay() iterator is passed to TrainOneStep to
-        # take a SGD step, and then we decide whether to update the target
-        # network.
-        post_fn = config.get("before_learn_on_batch") or (lambda b, *a: b)
-
-        if config["simple_optimizer"]:
-            train_step_op = TrainOneStep(workers)
-        else:
-            train_step_op = MultiGPUTrainOneStep(
-                workers=workers,
-                sgd_minibatch_size=config["train_batch_size"],
-                num_sgd_iter=1,
-                num_gpus=config["num_gpus"],
-                _fake_gpus=config["_fake_gpus"],
-            )
-
-        train_op = (
-            Replay(local_buffer=local_replay_buffer)
-            .for_each(lambda x: post_fn(x, workers, config))
-            .for_each(train_step_op)
-            .for_each(update_prio)
-            .for_each(
-                UpdateTargetNetwork(workers, config["target_network_update_freq"])
-            )
-        )
-
-        return StandardMetricsReporting(
-            train_op, workers, config, by_steps_trained=True
-        )

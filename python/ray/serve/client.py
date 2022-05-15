@@ -44,6 +44,9 @@ from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 
 
 logger = logging.getLogger(__file__)
+# Whether to issue warnings about using sync handles in async context
+# or using async handle in sync context.
+_WARN_SYNC_ASYNC_HANDLE_CONTEXT: bool = True
 
 
 def _ensure_connected(f: Callable) -> Callable:
@@ -259,7 +262,12 @@ class ServeControllerClient:
             self.log_deployment_ready(name, version, url, tag)
 
     @_ensure_connected
-    def deploy_group(self, deployments: List[Dict], _blocking: bool = True):
+    def deploy_group(
+        self,
+        deployments: List[Dict],
+        _blocking: bool = True,
+        remove_past_deployments: bool = True,
+    ):
         deployment_args_list = []
         for deployment in deployments:
             deployment_args_list.append(
@@ -294,6 +302,18 @@ class ServeControllerClient:
             if _blocking:
                 self._wait_for_deployment_healthy(name)
                 self.log_deployment_ready(name, version, url, tags[i])
+
+        if remove_past_deployments:
+            # clean up the old deployments
+            new_deployments_names = set()
+            for deployment in deployments:
+                new_deployments_names.add(deployment["name"])
+
+            all_deployments_names = set(self.list_deployments().keys())
+            deployment_names_to_delete = all_deployments_names.difference(
+                new_deployments_names
+            )
+            self.delete_deployments(deployment_names_to_delete)
 
     @_ensure_connected
     def delete_deployments(self, names: Iterable[str], blocking: bool = True) -> None:
@@ -376,7 +396,7 @@ class ServeControllerClient:
             else:
                 raise ex
 
-        if asyncio_loop_running and sync:
+        if asyncio_loop_running and sync and _WARN_SYNC_ASYNC_HANDLE_CONTEXT:
             logger.warning(
                 "You are retrieving a sync handle inside an asyncio loop. "
                 "Try getting client.get_handle(.., sync=False) to get better "
@@ -384,7 +404,7 @@ class ServeControllerClient:
                 "serve/http-servehandle.html#sync-and-async-handles"
             )
 
-        if not asyncio_loop_running and not sync:
+        if not asyncio_loop_running and not sync and _WARN_SYNC_ASYNC_HANDLE_CONTEXT:
             logger.warning(
                 "You are retrieving an async handle outside an asyncio loop. "
                 "You should make sure client.get_handle is called inside a "

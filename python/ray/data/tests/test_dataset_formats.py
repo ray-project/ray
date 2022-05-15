@@ -281,6 +281,20 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     assert ds_df.equals(df)
 
 
+def test_read_example_data(ray_start_regular_shared, tmp_path):
+    ds = ray.data.read_csv("example://iris.csv")
+    assert ds.count() == 150
+    assert ds.take(1) == [
+        {
+            "sepal.length": 5.1,
+            "sepal.width": 3.5,
+            "petal.length": 1.4,
+            "petal.width": 0.2,
+            "variety": "Setosa",
+        }
+    ]
+
+
 @pytest.mark.parametrize(
     "fs,data_path",
     [
@@ -2401,6 +2415,34 @@ def test_csv_read_no_header(shutdown_only, tmp_path):
     )
     out_df = ds.to_pandas()
     assert df.equals(out_df)
+
+
+def test_csv_read_with_column_type_specified(shutdown_only, tmp_path):
+    from pyarrow import csv
+
+    file_path = os.path.join(tmp_path, "test.csv")
+    df = pd.DataFrame({"one": [1, 2, 3e1], "two": ["a", "b", "c"]})
+    df.to_csv(file_path, index=False)
+
+    # Incorrect to parse scientific notation in int64 as PyArrow represents
+    # it as double.
+    with pytest.raises(pa.lib.ArrowInvalid):
+        ray.data.read_csv(
+            file_path,
+            convert_options=csv.ConvertOptions(
+                column_types={"one": "int64", "two": "string"}
+            ),
+        )
+
+    # Parsing scientific notation in double shoud work.
+    ds = ray.data.read_csv(
+        file_path,
+        convert_options=csv.ConvertOptions(
+            column_types={"one": "float64", "two": "string"}
+        ),
+    )
+    expected_df = pd.DataFrame({"one": [1.0, 2.0, 30.0], "two": ["a", "b", "c"]})
+    assert ds.to_pandas().equals(expected_df)
 
 
 class NodeLoggerOutputDatasource(Datasource[Union[ArrowRow, int]]):

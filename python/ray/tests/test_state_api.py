@@ -1,3 +1,4 @@
+import json
 import sys
 import pytest
 
@@ -34,6 +35,11 @@ from ray.core.generated.gcs_service_pb2 import (
     GetAllNodeInfoReply,
     GetAllWorkerInfoReply,
 )
+from ray.core.generated.runtime_env_common_pb2 import (
+    RuntimeEnvState as RuntimeEnvStateProto,
+)
+from ray.core.generated.runtime_env_agent_pb2 import GetRuntimeEnvsInfoReply
+import ray.dashboard.consts as dashboard_consts
 from ray.dashboard.state_aggregator import StateAPIManager
 from ray.experimental.state.api import (
     list_actors,
@@ -43,6 +49,7 @@ from ray.experimental.state.api import (
     list_workers,
     list_tasks,
     list_objects,
+    list_runtime_envs,
 )
 from ray.experimental.state.common import (
     ActorState,
@@ -51,6 +58,7 @@ from ray.experimental.state.common import (
     WorkerState,
     TaskState,
     ObjectState,
+    RuntimeEnvState,
     ListApiOptions,
     DEFAULT_RPC_TIMEOUT,
     DEFAULT_LIMIT,
@@ -60,6 +68,7 @@ from ray.experimental.state.state_manager import (
     StateSourceNetworkException,
 )
 from ray.experimental.state.state_cli import list_state_cli_group
+from ray.runtime_env import RuntimeEnv
 from ray._private.test_utils import wait_for_condition
 from ray.job_submission import JobSubmissionClient
 
@@ -156,6 +165,20 @@ def generate_object_info(obj_id):
                 attempt_number=1,
             )
         ],
+    )
+
+
+def generate_runtime_env_info(runtime_env, creation_time=None):
+    return GetRuntimeEnvsInfoReply(
+        runtime_env_states=[
+            RuntimeEnvStateProto(
+                runtime_env=runtime_env.serialize(),
+                ref_cnt=1,
+                success=True,
+                error=None,
+                creation_time_ms=creation_time,
+            )
+        ]
     )
 
 
@@ -317,6 +340,55 @@ async def test_api_manager_list_objects(state_api_manager):
     assert len(result) == 1
 
 
+@pytest.mark.skip(
+    reason=("Not passing in CI although it works locally. Will handle it later.")
+)
+@pytest.mark.asyncio
+async def test_api_manager_list_runtime_envs(state_api_manager):
+    data_source_client = state_api_manager.data_source_client
+    data_source_client.get_all_registered_agent_ids = MagicMock()
+    data_source_client.get_all_registered_agent_ids.return_value = ["1", "2", "3"]
+
+    data_source_client.get_runtime_envs_info.side_effect = [
+        generate_runtime_env_info(RuntimeEnv(**{"pip": ["requests"]})),
+        generate_runtime_env_info(
+            RuntimeEnv(**{"pip": ["tensorflow"]}), creation_time=15
+        ),
+        generate_runtime_env_info(RuntimeEnv(**{"pip": ["ray"]}), creation_time=10),
+    ]
+    result = await state_api_manager.list_runtime_envs(option=list_api_options())
+    data_source_client.get_runtime_envs_info.assert_any_call(
+        "1", timeout=DEFAULT_RPC_TIMEOUT
+    )
+    data_source_client.get_runtime_envs_info.assert_any_call(
+        "2", timeout=DEFAULT_RPC_TIMEOUT
+    )
+    data_source_client.get_runtime_envs_info.assert_any_call(
+        "3", timeout=DEFAULT_RPC_TIMEOUT
+    )
+    assert len(result) == 3
+    verify_schema(RuntimeEnvState, result[0])
+    verify_schema(RuntimeEnvState, result[1])
+    verify_schema(RuntimeEnvState, result[2])
+
+    # Make sure the higher creation time is sorted first.
+    assert "creation_time_ms" not in result[0]
+    result[1]["creation_time_ms"] > result[2]["creation_time_ms"]
+
+    """
+    Test limit
+    """
+    data_source_client.get_runtime_envs_info.side_effect = [
+        generate_runtime_env_info(RuntimeEnv(**{"pip": ["requests"]})),
+        generate_runtime_env_info(
+            RuntimeEnv(**{"pip": ["tensorflow"]}), creation_time=15
+        ),
+        generate_runtime_env_info(RuntimeEnv(**{"pip": ["ray"]})),
+    ]
+    result = await state_api_manager.list_runtime_envs(option=list_api_options(limit=1))
+    assert len(result) == 1
+
+
 """
 Integration tests
 """
@@ -332,7 +404,7 @@ async def test_state_data_source_client(ray_start_cluster):
     worker = cluster.add_node(num_cpus=2)
 
     GRPC_CHANNEL_OPTIONS = (
-        ("grpc.enable_http_proxy", 0),
+        *ray_constants.GLOBAL_GRPC_OPTIONS,
         ("grpc.max_send_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
         ("grpc.max_receive_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
     )
@@ -414,6 +486,30 @@ async def test_state_data_source_client(ray_start_cluster):
         assert isinstance(result, GetNodeStatsReply)
 
     """
+    Test runtime env
+    """
+    with pytest.raises(ValueError):
+        # Since we didn't register this node id, it should raise an exception.
+        result = await client.get_object_info("1234")
+    wait_for_condition(lambda: len(ray.nodes()) == 2)
+    for node in ray.nodes():
+        node_id = node["NodeID"]
+        key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{node_id}"
+
+        def get_port():
+            return ray.experimental.internal_kv._internal_kv_get(
+                key, namespace=ray_constants.KV_NAMESPACE_DASHBOARD
+            )
+
+        wait_for_condition(lambda: get_port() is not None)
+        # The second index is the gRPC port
+        port = json.loads(get_port())[1]
+        ip = node["NodeManagerAddress"]
+        client.register_agent_client(node_id, ip, port)
+        result = await client.get_runtime_envs_info(node_id)
+        assert isinstance(result, GetRuntimeEnvsInfoReply)
+
+    """
     Test the exception is raised when the RPC error occurs.
     """
     cluster.remove_node(worker)
@@ -477,6 +573,9 @@ def test_cli_apis_sanity_check(ray_start_cluster):
     obj = ray.put(3)  # noqa
     task = f.remote()  # noqa
     actor = Actor.remote()  # noqa
+    actor_runtime_env = Actor.options(  # noqa
+        runtime_env={"pip": ["requests"]}
+    ).remote()
     job_id = client.submit_job(  # noqa
         # Entrypoint shell command to execute
         entrypoint="ls",
@@ -501,6 +600,7 @@ def test_cli_apis_sanity_check(ray_start_cluster):
     wait_for_condition(lambda: verify_output("jobs", ["raysubmit"]))
     wait_for_condition(lambda: verify_output("tasks", ["task_id"]))
     wait_for_condition(lambda: verify_output("objects", ["object_id"]))
+    wait_for_condition(lambda: verify_output("runtime-envs", ["runtime_env"]))
 
 
 @pytest.mark.skipif(
@@ -666,6 +766,44 @@ def test_list_objects(shutdown_only):
 
     wait_for_condition(verify)
     print(list_objects())
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Runtime env not working in Windows."
+)
+def test_list_runtime_envs(shutdown_only):
+    ray.init(runtime_env={"pip": ["requests"]})
+
+    @ray.remote
+    class Actor:
+        def ready(self):
+            pass
+
+    a = Actor.remote()  # noqa
+    b = Actor.options(runtime_env={"pip": ["nonexistent_dep"]}).remote()  # noqa
+    ray.get(a.ready.remote())
+    with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
+        ray.get(b.ready.remote())
+
+    def verify():
+        result = list_runtime_envs()
+        correct_num = len(result) == 2
+
+        failed_runtime_env = result[0]
+        correct_failed_state = (
+            not failed_runtime_env["success"]
+            and failed_runtime_env.get("error")
+            and failed_runtime_env["ref_cnt"] == "0"
+        )
+
+        successful_runtime_env = result[1]
+        correct_successful_state = (
+            successful_runtime_env["success"]
+            and successful_runtime_env["ref_cnt"] == "2"
+        )
+        return correct_num and correct_failed_state and correct_successful_state
+
+    wait_for_condition(verify)
 
 
 def test_limit(shutdown_only):

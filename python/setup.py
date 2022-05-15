@@ -255,6 +255,15 @@ if setup_spec.type == SetupType.RAY:
         "scipy",
     ]
 
+    # Ray AI Runtime should encompass Data, Tune, and Serve.
+    setup_spec.extras["air"] = list(
+        set(
+            setup_spec.extras["tune"]
+            + setup_spec.extras["data"]
+            + setup_spec.extras["serve"]
+        )
+    )
+
     setup_spec.extras["all"] = list(
         set(chain.from_iterable(setup_spec.extras.values()))
     )
@@ -268,7 +277,7 @@ if setup_spec.type == SetupType.RAY:
         "click >= 7.0, <= 8.0.4",
         "dataclasses; python_version < '3.7'",
         "filelock",
-        "grpcio >= 1.28.1, <= 1.43.0",
+        "grpcio >= 1.28.1, != 1.44.0",
         "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",
         "numpy >= 1.16; python_version < '3.9'",

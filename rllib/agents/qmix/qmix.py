@@ -3,24 +3,12 @@ from typing import Type
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.dqn.simple_q import SimpleQTrainer
 from ray.rllib.agents.qmix.qmix_policy import QMixTorchPolicy
-from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.execution.concurrency_ops import Concurrently
-from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.execution.replay_ops import (
-    SimpleReplayBuffer,
-    Replay,
-    StoreToReplayBuffer,
-)
 from ray.rllib.execution.rollout_ops import (
-    ConcatBatches,
-    ParallelRollouts,
     synchronous_parallel_sample,
 )
 from ray.rllib.execution.train_ops import (
     multi_gpu_train_one_step,
     train_one_step,
-    TrainOneStep,
-    UpdateTargetNetwork,
 )
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
@@ -34,7 +22,6 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
 from ray.rllib.utils.typing import ResultDict, TrainerConfigDict
-from ray.util.iter import LocalIterator
 
 # fmt: off
 # __sphinx_doc_begin__
@@ -132,12 +119,6 @@ DEFAULT_CONFIG = with_common_config({
     },
     # Only torch supported so far.
     "framework": "torch",
-
-    # === Experimental Flags ===
-    # If True, the execution plan API will not be used. Instead,
-    # a Trainer's `training_iteration` method will be called as-is each
-    # training iteration.
-    "_disable_execution_plan_api": True,
 
     # Deprecated keys:
     # Use `replay_buffer_config.learning_starts` instead.
@@ -238,37 +219,3 @@ class QMixTrainer(SimpleQTrainer):
 
         # Return all collected metrics for the iteration.
         return train_results
-
-    @staticmethod
-    @override(SimpleQTrainer)
-    def execution_plan(
-        workers: WorkerSet, config: TrainerConfigDict, **kwargs
-    ) -> LocalIterator[dict]:
-        assert (
-            len(kwargs) == 0
-        ), "QMIX execution_plan does NOT take any additional parameters"
-
-        rollouts = ParallelRollouts(workers, mode="bulk_sync")
-        replay_buffer = SimpleReplayBuffer(config["buffer_size"])
-
-        store_op = rollouts.for_each(StoreToReplayBuffer(local_buffer=replay_buffer))
-
-        train_op = (
-            Replay(local_buffer=replay_buffer)
-            .combine(
-                ConcatBatches(
-                    min_batch_size=config["train_batch_size"],
-                    count_steps_by=config["multiagent"]["count_steps_by"],
-                )
-            )
-            .for_each(TrainOneStep(workers))
-            .for_each(
-                UpdateTargetNetwork(workers, config["target_network_update_freq"])
-            )
-        )
-
-        merged_op = Concurrently(
-            [store_op, train_op], mode="round_robin", output_indexes=[1]
-        )
-
-        return StandardMetricsReporting(merged_op, workers, config)

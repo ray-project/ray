@@ -1,3 +1,4 @@
+import logging
 import inspect
 
 from functools import wraps
@@ -6,6 +7,7 @@ import grpc
 import ray
 
 from typing import Dict, List
+from ray import ray_constants
 
 from ray.core.generated.gcs_service_pb2 import (
     GetAllActorInfoRequest,
@@ -23,10 +25,16 @@ from ray.core.generated.node_manager_pb2 import (
     GetNodeStatsRequest,
     GetNodeStatsReply,
 )
+from ray.core.generated.runtime_env_agent_pb2 import (
+    GetRuntimeEnvsInfoRequest,
+    GetRuntimeEnvsInfoReply,
+)
+from ray.core.generated.runtime_env_agent_pb2_grpc import RuntimeEnvServiceStub
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated.node_manager_pb2_grpc import NodeManagerServiceStub
-from ray.core.generated.reporter_pb2_grpc import ReporterServiceStub
 from ray.dashboard.modules.job.common import JobInfoStorageClient, JobInfo
+
+logger = logging.getLogger(__name__)
 
 
 class StateSourceNetworkException(Exception):
@@ -99,7 +107,7 @@ class StateDataSourceClient:
 
     def register_raylet_client(self, node_id: str, address: str, port: int):
         full_addr = f"{address}:{port}"
-        options = (("grpc.enable_http_proxy", 0),)
+        options = ray_constants.GLOBAL_GRPC_OPTIONS
         channel = ray._private.utils.init_grpc_channel(
             full_addr, options, asynchronous=True
         )
@@ -109,11 +117,11 @@ class StateDataSourceClient:
         self._raylet_stubs.pop(node_id)
 
     def register_agent_client(self, node_id, address: str, port: int):
-        options = (("grpc.enable_http_proxy", 0),)
+        options = ray_constants.GLOBAL_GRPC_OPTIONS
         channel = ray._private.utils.init_grpc_channel(
             f"{address}:{port}", options=options, asynchronous=True
         )
-        self._agent_stubs[node_id] = ReporterServiceStub(channel)
+        self._agent_stubs[node_id] = RuntimeEnvServiceStub(channel)
 
     def unregister_agent_client(self, node_id: str):
         self._agent_stubs.pop(node_id)
@@ -185,6 +193,20 @@ class StateDataSourceClient:
 
         reply = await stub.GetNodeStats(
             GetNodeStatsRequest(include_memory_info=True),
+            timeout=timeout,
+        )
+        return reply
+
+    @handle_network_errors
+    async def get_runtime_envs_info(
+        self, node_id: str, timeout: int = None
+    ) -> GetRuntimeEnvsInfoReply:
+        stub = self._agent_stubs.get(node_id)
+        if not stub:
+            raise ValueError(f"Agent for a node id, {node_id} doesn't exist.")
+
+        reply = await stub.GetRuntimeEnvsInfo(
+            GetRuntimeEnvsInfoRequest(),
             timeout=timeout,
         )
         return reply

@@ -160,7 +160,6 @@ class TrainReportCallback(TrainerCallback):
         # we delay the train.report call after the checkpoint is reported
         # to Ray Train.
         self.delayed_report = {}
-        self.first_report_keys = None
         super().__init__()
 
     def on_step_end(self, args, state, control, **kwargs):
@@ -172,13 +171,7 @@ class TrainReportCallback(TrainerCallback):
     def on_log(self, args, state, control, model=None, logs=None, **kwargs):
         # Log is called in multiple places (evaluation, train metrics).
         report = {**logs, "step": state.global_step, "epoch": state.epoch}
-        if not self.first_report_keys:
-            self.first_report_keys = set(report)
-        # if saving or training end is coming, delay reporting
-        if not control.should_save and not control.should_training_stop:
-            train.report(**report)
-        else:
-            self.delayed_report.update(report)
+        self.delayed_report.update(report)
 
     def on_save(self, args, state, control, **kwargs):
         # Save is called after evaluation.
@@ -192,12 +185,17 @@ class TrainReportCallback(TrainerCallback):
                     CHECKPOINT_PATH_ON_NODE_KEY: str(checkpoint_path),
                 }
             )
-        if self.delayed_report and not control.should_training_stop:
-            train.report(**self.delayed_report)
-            self.delayed_report = {}
 
-    def on_train_end(self, args, state, control, **kwargs):
-        # Final callback. Train metrics are logged right before this.
+    def _report(self):
         if self.delayed_report:
             train.report(**self.delayed_report)
             self.delayed_report = {}
+
+    def on_epoch_begin(self, args, state, control, **kwargs):
+        # Report previous epoch - this way we ensure everything
+        # is recorded.
+        self._report()
+
+    def on_train_end(self, args, state, control, **kwargs):
+        # Final callback. Train metrics are logged right before this.
+        self._report()
