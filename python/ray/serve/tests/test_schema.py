@@ -140,8 +140,6 @@ class TestDeploymentSchema:
 
         return {
             "name": "deep",
-            "init_args": None,
-            "init_kwargs": None,
             "import_path": "my_module.MyClass",
             "num_replicas": None,
             "route_prefix": None,
@@ -168,8 +166,6 @@ class TestDeploymentSchema:
 
         deployment_schema = {
             "name": "shallow",
-            "init_args": [4, "glue"],
-            "init_kwargs": {"fuel": "diesel"},
             "import_path": "test_env.shallow_import.ShallowClass",
             "num_replicas": 2,
             "route_prefix": "/shallow",
@@ -210,8 +206,6 @@ class TestDeploymentSchema:
 
         # Python requires an import path
         deployment_schema = self.get_minimal_deployment_schema()
-        deployment_schema["init_args"] = [1, 2]
-        deployment_schema["init_kwargs"] = {"threshold": 0.5}
         del deployment_schema["import_path"]
 
         with pytest.raises(ValueError, match="must be specified"):
@@ -333,8 +327,6 @@ class TestServeApplicationSchema:
             "deployments": [
                 {
                     "name": "shallow",
-                    "init_args": [4, "glue"],
-                    "init_kwargs": {"fuel": "diesel"},
                     "import_path": "test_env.shallow_import.ShallowClass",
                     "num_replicas": 2,
                     "route_prefix": "/shallow",
@@ -368,8 +360,6 @@ class TestServeApplicationSchema:
                 },
                 {
                     "name": "deep",
-                    "init_args": None,
-                    "init_kwargs": None,
                     "import_path": ("test_env.subdir1.subdir2.deep_import.DeepClass"),
                     "num_replicas": None,
                     "route_prefix": None,
