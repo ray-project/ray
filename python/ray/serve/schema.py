@@ -92,18 +92,6 @@ class DeploymentSchema(BaseModel, extra=Extra.forbid):
         # a dot, followed by at least one more character.
         regex=r".+\..+",
     )
-    init_args: Union[Tuple, List] = Field(
-        default=None,
-        description=(
-            "The application's init_args. Only works with Python applications."
-        ),
-    )
-    init_kwargs: Dict = Field(
-        default=None,
-        description=(
-            "The application's init_args. Only works with Python applications."
-        ),
-    )
     num_replicas: int = Field(
         default=None,
         description=(
