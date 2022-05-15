@@ -30,7 +30,7 @@ namespace rpc {
 #define RAY_CORE_WORKER_RPC_HANDLERS                                         \
   RPC_SERVICE_HANDLER(CoreWorkerService, PushTask, -1)                       \
   RPC_SERVICE_HANDLER(CoreWorkerService, DirectActorCallArgWaitComplete, -1) \
-  RPC_SERVICE_HANDLER(CoreWorkerService, RayletNotifyGCSRestart, -1) \
+  RPC_SERVICE_HANDLER(CoreWorkerService, RayletNotifyGCSRestart, -1)         \
   RPC_SERVICE_HANDLER(CoreWorkerService, GetObjectStatus, -1)                \
   RPC_SERVICE_HANDLER(CoreWorkerService, WaitForActorOutOfScope, -1)         \
   RPC_SERVICE_HANDLER(CoreWorkerService, PubsubLongPolling, -1)              \

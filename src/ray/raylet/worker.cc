@@ -97,14 +97,14 @@ int Worker::AssignedPort() const { return assigned_port_; }
 void Worker::SetAssignedPort(int port) { assigned_port_ = port; };
 
 void Worker::AsyncNotifyGCSRestart() {
-  if(rpc_client_) {
+  if (rpc_client_) {
     rpc::RayletNotifyGCSRestartRequest request;
-    rpc_client_->RayletNotifyGCSRestart(
-        request, [](Status status, auto reply) {
-          if (!status.ok()) {
-            RAY_LOG(ERROR) << "Failed to notify worker about GCS restarting: " << status.ToString();
-          }
-        });
+    rpc_client_->RayletNotifyGCSRestart(request, [](Status status, auto reply) {
+      if (!status.ok()) {
+        RAY_LOG(ERROR) << "Failed to notify worker about GCS restarting: "
+                       << status.ToString();
+      }
+    });
   } else {
     notify_gcs_restarted_ = true;
   }
@@ -117,7 +117,7 @@ void Worker::Connect(int port) {
   addr.set_ip_address(ip_address_);
   addr.set_port(port_);
   rpc_client_ = std::make_unique<rpc::CoreWorkerClient>(addr, client_call_manager_);
-  if(notify_gcs_restarted_) {
+  if (notify_gcs_restarted_) {
     // We need to send RPC to notify about the GCS restarts
     AsyncNotifyGCSRestart();
     notify_gcs_restarted_ = false;
@@ -126,7 +126,7 @@ void Worker::Connect(int port) {
 
 void Worker::Connect(std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client) {
   rpc_client_ = rpc_client;
-  if(notify_gcs_restarted_) {
+  if (notify_gcs_restarted_) {
     // We need to send RPC to notify about the GCS restarts
     AsyncNotifyGCSRestart();
     notify_gcs_restarted_ = false;

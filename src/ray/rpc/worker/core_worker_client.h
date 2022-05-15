@@ -193,8 +193,9 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
                                  const ClientCallback<AssignObjectOwnerReply> &callback) {
   }
 
-  virtual void RayletNotifyGCSRestart(const RayletNotifyGCSRestartRequest& request,
-                                      const ClientCallback<RayletNotifyGCSRestartReply>& callback) {}
+  virtual void RayletNotifyGCSRestart(
+      const RayletNotifyGCSRestartRequest &request,
+      const ClientCallback<RayletNotifyGCSRestartReply> &callback) {}
 
   /// Returns the max acked sequence number, useful for checking on progress.
   virtual int64_t ClientProcessedUpToSeqno() { return -1; }
