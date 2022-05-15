@@ -87,7 +87,6 @@ RAY_PROCESSES = [
     ["gcs_server", True],
     ["monitor.py", False],
     ["ray.util.client.server", False],
-    ["redis-server", False],
     ["default_worker.py", False],  # Python worker.
     ["setup_worker.py", False],  # Python environment setup worker.
     # For mac osx, setproctitle doesn't change the process name returned

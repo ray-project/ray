@@ -969,7 +969,11 @@ def stop(force, grace_period):
             raise ValueError(msg)
 
         found = []
-
+        for candidate in process_infos:
+            proc, proc_cmd, proc_args = candidate
+            corpus = proc_cmd if filter_by_cmd else subprocess.list2cmdline(proc_args)
+            if keyword in corpus:
+                found.append(candidate)
         for proc, proc_cmd, proc_args in found:
             proc_string = str(subprocess.list2cmdline(proc_args))
             try:
