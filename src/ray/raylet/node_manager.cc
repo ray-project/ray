@@ -1085,12 +1085,12 @@ void NodeManager::HandleNotifyGCSRestart(const rpc::NotifyGCSRestartRequest &req
   gcs_client_->AsyncResubscribe();
   auto workers = worker_pool_.GetAllRegisteredWorkers(true);
   for(auto worker : workers) {
-    worker->AsyncNotifyGCSRestarted();
+    worker->AsyncNotifyGCSRestart();
   }
 
   auto drivers = worker_pool_.GetAllRegisteredDrivers(true);
   for(auto driver : drivers) {
-    driver->AsyncNotifyGCSRestarted();
+    driver->AsyncNotifyGCSRestart();
   }
 
   send_reply_callback(Status::OK(), nullptr, nullptr);
