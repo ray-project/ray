@@ -1,6 +1,8 @@
 load("//bazel:python.bzl", "py_test_run_all_subdirectory")
 load("//bazel:python.bzl", "py_test_run_all_notebooks")
 
+exports_files(["test_myst_doc.py"])
+
 # --------------------------------------------------------------------
 # Tests from the doc directory.
 # Please keep these sorted alphabetically, but start with the
@@ -135,17 +137,7 @@ py_test(
     tags = ["exclusive", "post_wheel_build", "team:serve"]
 )
 
-# --------------------------------------------------------------------
-# Test all doc/source/tune/examples notebooks.
-# --------------------------------------------------------------------
 
-py_test_run_all_notebooks(
-    size = "medium",
-    include = ["source/tune/examples/*.ipynb"],
-    exclude = [],
-    data = ["//doc/source/tune/examples:tune_examples"],
-    tags = ["exclusive", "team:ml"],
-)
 
 # --------------------------------------------------------------------
 # Test all doc/source/tune/doc_code code included in rst/md files.
@@ -156,18 +148,6 @@ py_test_run_all_subdirectory(
     include = ["source/tune/doc_code/*.py"],
     exclude = [],
     extra_srcs = [],
-    tags = ["exclusive", "team:ml"],
-)
-
-# --------------------------------------------------------------------
-# Test all doc/source/ray-air/examples notebooks.
-# --------------------------------------------------------------------
-
-py_test_run_all_notebooks(
-    size = "medium",
-    include = ["source/ray-air/examples/*.ipynb"],
-    exclude = [],
-    data = ["//doc/source/ray-air/examples:air_examples"],
     tags = ["exclusive", "team:ml"],
 )
 
@@ -185,13 +165,13 @@ py_test_run_all_subdirectory(
 
 
 # --------------------------------------------------------------------
-# Test all doc/source/ray-overview/doc_code snippets, used on ray.io
+# Test all doc/source/ray-overview/doc_test snippets, used on ray.io
 # --------------------------------------------------------------------
 
 py_test_run_all_subdirectory(
     size = "small",
-    include = ["source/ray-overview/doc_code/*.py"],
-    exclude = ["source/ray-overview/doc_code/ray_data.py"],
+    include = ["source/ray-overview/doc_test/*.py"],
+    exclude = ["source/ray-overview/doc_test/ray_data.py"],
     extra_srcs = [],
     tags = ["exclusive", "team:ml"],
 )

@@ -3,7 +3,7 @@
 def py_test_module_list(files, size, deps, extra_srcs, name_suffix="", **kwargs):
     for file in files:
         # remove .py
-        name = file[:-3] + name_suffix
+        name = file + name_suffix
         main = file
         native.py_test(
             name = name,
@@ -14,11 +14,14 @@ def py_test_module_list(files, size, deps, extra_srcs, name_suffix="", **kwargs)
         )
 
 def py_test_run_all_subdirectory(include, exclude, extra_srcs, **kwargs):
-    for file in native.glob(include = include, exclude = exclude):
+    print("py_test_run_all_subdirectory")
+    print(include)
+    print(exclude)
+    for file in native.glob(include = include, exclude = exclude, allow_empty=False):
         print(file)
         basename = file.rpartition("/")[-1]
         native.py_test(
-            name = basename[:-3],
+            name = basename,
             srcs = extra_srcs + [file],
             **kwargs
         )
@@ -28,13 +31,13 @@ def py_test_run_all_notebooks(include, exclude, **kwargs):
     print("py_test_run_all_notebooks")
     print(include)
     print(exclude)
-    for file in native.glob(include = include, exclude = exclude):
+    for file in native.glob(include = include, exclude = exclude, allow_empty=False):
         print(file)
         basename = file.rpartition("/")[-1]
         native.py_test(
-            name = basename[:-3],
+            name = basename,
             main = "test_myst_doc.py",
-            srcs = ["test_myst_doc.py"],
+            srcs = ["//doc:test_myst_doc.py"],
             args = ["--path", file],
             **kwargs
         )

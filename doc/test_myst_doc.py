@@ -5,6 +5,7 @@ import subprocess
 import argparse
 import tempfile
 import sys
+import os
 
 import jupytext
 
@@ -17,6 +18,9 @@ parser.add_argument(
 if __name__ == "__main__":
 
     args, remainder = parser.parse_known_args()
+
+    print(f"test_myst_doc.py cwd: {os.getcwd()}, path to run: {args.path}")
+    assert args.path
 
     with open(args.path, "r") as f:
         notebook = jupytext.read(f)
