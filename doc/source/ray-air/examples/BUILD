@@ -14,6 +14,6 @@ py_test_run_all_notebooks(
     size = "medium",
     include = ["*.ipynb"],
     exclude = [],
-    data = ["//doc:source/ray-air/examples:air_examples"],
+    data = ["//doc/source/ray-air/examples:air_examples"],
     tags = ["exclusive", "team:ml"],
 )
