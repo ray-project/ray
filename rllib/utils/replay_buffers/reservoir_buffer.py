@@ -72,6 +72,9 @@ class ReservoirBuffer(ReplayBuffer):
                 self._next_idx = idx
                 self._evicted_hit_stats.push(self._hit_count[idx])
                 self._hit_count[idx] = 0
+
+                item_to_be_removed = self._storage[idx]
+                self._est_size_bytes -= item_to_be_removed.size_bytes()
                 self._storage[idx] = item
 
                 assert item.count > 0, item
