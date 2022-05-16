@@ -130,20 +130,23 @@ class TensorflowPredictor(Predictor):
         """
         if self.preprocessor:
             data = self.preprocessor.transform_batch(data)
+            import ipdb; ipdb.set_trace()
 
-        if isinstance(data, pd.DataFrame):
-            if feature_columns:
-                data = data[feature_columns]
-            data = data.values
-        else:
-            if feature_columns:
-                data = data[:, feature_columns]
-
-        row, column = data.shape
-        if column == 1 and row > 0 and isinstance(data[0][0], tf.Tensor):
-            tensor = tf.stack(data[:, 0].tolist())
-        else:
-            tensor = tf.convert_to_tensor(data, dtype=dtype)
+        # if isinstance(data, pd.DataFrame):
+        #     if feature_columns:
+        #         data = data[feature_columns]
+        #     data = data.values
+        # else:
+        #     if feature_columns:
+        #         data = data[:, feature_columns]
+        #
+        # row, column = data.shape
+        # if column == 1 and row > 0 and isinstance(data[0][0], tf.Tensor):
+        #     tensor = tf.stack(data[:, 0].tolist())
+        # else:
+        #     tensor = tf.convert_to_tensor(data, dtype=dtype)
+        data = data.values
+        tensor = tf.convert_to_tensor(data, dtype=dtype)
 
         # TensorFlow model objects cannot be pickled, therefore we use
         # a callable that returns the model and initialize it here,

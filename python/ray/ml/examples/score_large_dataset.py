@@ -1,10 +1,12 @@
 #  Adapted from Highly Performant TensorFlow Batch Inference on Image Data
 #  Using the SageMaker Python SDK
 #  https://github.com/aws/amazon-sagemaker-examples/blob/main/sagemaker_batch_transform/tensorflow_open-images_jpg/  # noqa
+import numpy as np
 import pandas as pd
 import tensorflow as tf
 
 import ray
+from ray.data.extensions import TensorArray
 from ray.ml.batch_predictor import BatchPredictor
 from ray.ml.predictors.integrations.tensorflow import TensorflowPredictor
 from ray.ml.preprocessors import BatchMapper
@@ -13,18 +15,20 @@ from ray import train
 
 
 # Should the logic here be consolidated into some preprocessor or DataSource to reuse?
-def per_element_transform(x: bytes) -> tf.Tensor:
+def per_element_transform(x: bytes):
     image_tensor = tf.io.decode_image(x)
     resized_image_tensor = tf.image.resize(image_tensor, [224, 224])
     processed_new_image_tensor = tf.keras.applications.resnet_v2.preprocess_input(
         resized_image_tensor
     )
-    return processed_new_image_tensor
+    res = processed_new_image_tensor.numpy()
+    return res
 
 
 def per_dataframe_transform(df: pd.DataFrame) -> pd.DataFrame:
-    df["value"] = df["value"].apply(per_element_transform)
-    return df
+    return pd.DataFrame({"value": TensorArray(df["value"].to_numpy())})
+    # df["value"] = df["value"].apply(per_element_transform)
+    # return df
 
 
 preprocessor = BatchMapper(per_dataframe_transform)
