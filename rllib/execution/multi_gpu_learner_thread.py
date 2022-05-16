@@ -171,7 +171,13 @@ class MultiGPULearnerThread(LearnerThread):
             self.idle_tower_stacks.put(buffer_idx)
 
         # Put tuple: env-steps, agent-steps, and learner info into the queue.
-        self.outqueue.put((get_num_samples_loaded_into_buffer, get_num_samples_loaded_into_buffer, self.learner_info))
+        self.outqueue.put(
+            (
+                get_num_samples_loaded_into_buffer,
+                get_num_samples_loaded_into_buffer,
+                self.learner_info
+            )
+        )
         self.learner_queue_size.push(self.inqueue.qsize())
 
 
