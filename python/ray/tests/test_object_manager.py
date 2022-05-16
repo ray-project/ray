@@ -612,12 +612,10 @@ def test_pull_bundle_deadlock(ray_start_cluster):
     def task_b_to_c(b):
         return "c"
 
-    print(worker_node_1_id)
-    print(worker_node_2_id)
-    print(object_a)
-    print(object_b)
-
     object_c = task_b_to_c.remote(object_b)
+    # task_a_to_b will be re-executed on worker_node_2 so pull manager there will
+    # have object_a pull request after the existing object_b pull request.
+    # Make sure object_b pull request won't block the object_a pull request.
     cluster.remove_node(worker_node_1, allow_graceful=False)
     assert ray.get(object_c) == "c"
 
