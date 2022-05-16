@@ -1,7 +1,11 @@
 from pydantic import BaseModel, Field, Extra, root_validator, validator
 from typing import Union, Tuple, List, Dict
 from ray._private.runtime_env.packaging import parse_uri
-from ray.serve.common import DeploymentStatus, DeploymentStatusInfo
+from ray.serve.common import (
+    DeploymentStatus,
+    DeploymentStatusInfo,
+    ServeApplicationStatusInfo,
+)
 from ray.serve.utils import DEFAULT
 
 
@@ -309,7 +313,15 @@ class DeploymentStatusSchema(BaseModel, extra=Extra.forbid):
 
 
 class ServeApplicationStatusSchema(BaseModel, extra=Extra.forbid):
-    statuses: List[DeploymentStatusSchema] = Field(...)
+    app_status: ServeApplicationStatusInfo = Field(
+        ...,
+        description=(
+            "Describes if the Serve application is DEPLOYING, if the "
+            "DEPLOY_FAILED, or if the app is RUNNING. Includes a timestamp of "
+            "when the application received its last deploy request."
+        ),
+    )
+    deployment_statuses: List[DeploymentStatusSchema] = Field(...)
 
 
 def status_info_to_schema(
