@@ -101,10 +101,10 @@ class TestAPPO(unittest.TestCase):
                 train_batch_size=20,
                 # Initial entropy_coeff, doesn't really matter because of the schedule
                 # below.
-                entropy_coeff=0.01,
+                entropy_coeff=0.1,
                 entropy_coeff_schedule=[
-                    [0, 0.01],
-                    [120, 0.0001],
+                    [0, 0.1],
+                    [200, 0.001],
                 ],
             )
         )
@@ -122,6 +122,7 @@ class TestAPPO(unittest.TestCase):
             """
             for _ in range(n):
                 results = trainer.train()
+                print(trainer.workers.local_worker().global_vars)
                 print(results)
             return results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][LEARNER_STATS_KEY][
                 "entropy_coeff"
@@ -131,12 +132,14 @@ class TestAPPO(unittest.TestCase):
             trainer = config.build(env="CartPole-v0")
 
             coeff = _step_n_times(trainer, 5)  # 100 timesteps
-            # Should be close to the starting coeff of 0.01.
-            self.assertGreaterEqual(coeff, 0.005)
+            # Should be somewhere between starting coeff 0.1 and end coeff 0.001.
+            self.assertLessEqual(coeff, 0.075)
+            self.assertGreaterEqual(coeff, 0.03)
 
             coeff = _step_n_times(trainer, 5)  # 200 timesteps
-            # Should have annealed to the final coeff of 0.0001.
-            self.assertLessEqual(coeff, 0.00011)
+            # Should have annealed to the final coeff of 0.001.
+            self.assertLessEqual(coeff, 0.03)
+            self.assertGreaterEqual(coeff, 0.001)
 
             trainer.stop()
 
