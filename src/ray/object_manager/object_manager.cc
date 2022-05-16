@@ -736,12 +736,15 @@ std::string ObjectManager::DebugString() const {
 void ObjectManager::RecordMetrics() {
   pull_manager_->RecordMetrics();
   push_manager_->RecordMetrics();
-  // used_memory_ includes the fallback allocation, so we should subtract it here
+  // used_memory_ includes the fallback allocation, so we should add it again here
   // to calculate the exact available memory.
   stats::ObjectStoreAvailableMemory().Record(
-      config_.object_store_memory - used_memory_ -
+      config_.object_store_memory - used_memory_ +
       plasma::plasma_store_runner->GetFallbackAllocated());
-  stats::ObjectStoreUsedMemory().Record(used_memory_);
+  // Subtract fallback allocated memory. It is tracked separately by
+  // `ObjectStoreFallbackMemory`.
+  stats::ObjectStoreUsedMemory().Record(
+      used_memory_ - plasma::plasma_store_runner->GetFallbackAllocated());
   stats::ObjectStoreFallbackMemory().Record(
       plasma::plasma_store_runner->GetFallbackAllocated());
   stats::ObjectStoreLocalObjects().Record(local_objects_.size());
