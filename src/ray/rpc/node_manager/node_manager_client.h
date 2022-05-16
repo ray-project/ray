@@ -159,7 +159,7 @@ class NodeManagerWorkerClient
 
   /// Notify the raylet to pin the provided object IDs.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
-                         PinObjectIDs,
+                         PinObjectID,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
