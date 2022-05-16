@@ -404,7 +404,7 @@ Now let's define an actor that uses GPU. We'll also define a task that use ``ext
     @ray.remote(num_gpus=1)
     class GPUActor:
         def __init__(self):
-          pass
+            pass
 
     @ray.remote(resources={"extra_resource": 1})
     def extra_resource_task():
