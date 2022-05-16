@@ -42,9 +42,9 @@ builtin cd "$(dirname "${BASH_SOURCE:-$0}")"
 ROOT="$(git rev-parse --show-toplevel)"
 builtin cd "$ROOT" || exit 1
 
-# black version differs based on installation method:
-#   1) 'black, 21.12b0 (compiled: no)'
-#   2) 'black, version 21.12b0'
+# NOTE(edoakes): black version differs based on installation method:
+#   Option 1) 'black, 21.12b0 (compiled: no)'
+#   Option 2) 'black, version 21.12b0'
 BLACK_VERSION_STR=$(black --version)
 if [[ "$BLACK_VERSION_STR" == *"compiled"* ]]
 then
