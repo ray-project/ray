@@ -9,7 +9,8 @@ import time
 import urllib.request
 from typing import Optional, List, Tuple
 
-from ray_release.config import set_test_env_var, DEFAULT_PYTHON_VERSION
+from ray_release.config import DEFAULT_PYTHON_VERSION
+from ray_release.template import set_test_env_var
 from ray_release.exception import (
     RayWheelsUnspecifiedError,
     RayWheelsNotFoundError,

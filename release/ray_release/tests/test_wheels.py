@@ -6,7 +6,8 @@ from unittest.mock import patch
 
 from freezegun import freeze_time
 
-from ray_release.config import Test, load_test_cluster_env
+from ray_release.config import Test
+from ray_release.template import load_test_cluster_env
 from ray_release.exception import RayWheelsNotFoundError, RayWheelsTimeoutError
 from ray_release.wheels import (
     get_ray_version,

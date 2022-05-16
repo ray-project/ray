@@ -5,11 +5,11 @@ from typing import Optional, Dict, Any
 from ray_release.buildkite.concurrency import CONCURRENY_GROUPS, get_concurrency_group
 from ray_release.config import (
     Test,
-    get_test_env_var,
     as_smoke_test,
     parse_python_version,
     DEFAULT_PYTHON_VERSION,
 )
+from ray_release.template import get_test_env_var
 from ray_release.exception import ReleaseTestConfigError
 from ray_release.util import python_version_str
 
