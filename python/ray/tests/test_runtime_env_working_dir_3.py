@@ -434,10 +434,10 @@ class TestSkipLocalGC:
 
 @pytest.mark.parametrize("expiration_s", [0, 20])
 @pytest.mark.parametrize("source", [lazy_fixture("tmp_working_dir")])
-def test_temporary_uri_reference(start_cluster, source, expiration_s, monkeypatch):
+def test_pin_runtime_env_uri(start_cluster, source, expiration_s, monkeypatch):
     """Test that temporary GCS URI references are deleted after expiration_s."""
     monkeypatch.setenv(
-        "RAY_RUNTIME_ENV_TEMPORARY_REFERENCE_EXPIRATION_S", str(expiration_s)
+        RAY_RUNTIME_ENV_TEMP_REF_EXPIRATION_S_ENV_VAR, str(expiration_s)
     )
 
     cluster, address = start_cluster
@@ -450,12 +450,9 @@ def test_temporary_uri_reference(start_cluster, source, expiration_s, monkeypatc
         pass
 
     # Wait for runtime env to be set up. This can be accomplished by getting
-    # the result of a task.
+    # the result of a task that depends on it.
     ray.get(f.remote())
     ray.shutdown()
-
-    # Give time for deletion to occur if expiration_s is 0.
-    time.sleep(2)
 
     # Need to re-connect to use internal_kv.
     ray.init(address=address)
