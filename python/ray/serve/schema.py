@@ -324,7 +324,7 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
     import_path: str = Field(
         default=None,
         description=(
-            "The deployment graph's full import path. Should be of the "
+            "An import path to a bound deployment node. Should be of the "
             'form "module.submodule_1...submodule_n.'
             'dag_node." This is equivalent to '
             '"from module.submodule_1...submodule_n import '
