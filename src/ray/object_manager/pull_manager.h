@@ -238,26 +238,26 @@ class PullManager {
     }
 
     void ActivateBundlePullRequest(uint64_t request_id) {
-      RAY_CHECK_GT(inactive_requests.count(request_id), 0L);
+      RAY_CHECK_GT(inactive_requests.count(request_id), 0u);
       inactive_requests.erase(request_id);
       active_requests.emplace(request_id);
     }
 
     void DeactivateBundlePullRequest(uint64_t request_id) {
-      RAY_CHECK_GT(active_requests.count(request_id), 0L);
+      RAY_CHECK_GT(active_requests.count(request_id), 0u);
       active_requests.erase(request_id);
       inactive_requests.emplace(request_id);
     }
 
     void MarkBundleAsPullable(uint64_t request_id) {
       RAY_CHECK(map_find_or_die(requests, request_id).IsPullable());
-      RAY_CHECK_EQ(active_requests.count(request_id), 0L);
+      RAY_CHECK_EQ(active_requests.count(request_id), 0u);
       inactive_requests.emplace(request_id);
     }
 
     void MarkBundleAsUnpullable(uint64_t request_id) {
       RAY_CHECK(!map_find_or_die(requests, request_id).IsPullable());
-      RAY_CHECK_EQ(active_requests.count(request_id), 0L);
+      RAY_CHECK_EQ(active_requests.count(request_id), 0u);
       inactive_requests.erase(request_id);
     }
 
