@@ -33,7 +33,7 @@ import org.objectweb.asm.Type;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** Manages functions globally. */
+/** Manages functions in the current worker. */
 public class FunctionManager {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(FunctionManager.class);
