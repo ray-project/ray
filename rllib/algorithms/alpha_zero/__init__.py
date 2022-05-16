@@ -1,4 +1,4 @@
-from ray.rllib.algorithms.alpha_zero.alpha_zero_trainer import (
+from ray.rllib.algorithms.alpha_zero.alpha_zero import (
     AlphaZeroTrainer,
     DEFAULT_CONFIG,
 )
