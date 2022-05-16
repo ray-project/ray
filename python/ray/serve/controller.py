@@ -480,37 +480,21 @@ class ServeController:
             )
         return deployment_route_list.SerializeToString()
 
-    def get_deployment_statuses(self) -> bytes:
-        """Gets the current status information about all deployments.
+    def get_serve_status(self) -> bytes:
 
-        Returns:
-            DeploymentStatusInfoList's protobuf serialized bytes
-        """
-        from ray.serve.generated.serve_pb2 import DeploymentStatusInfoList
-
-        deployment_status_info_list = DeploymentStatusInfoList()
-        statuses = self.deployment_state_manager.get_deployment_statuses()
-        status_protos = map(lambda status: status.to_proto(), statuses)
-        deployment_status_info_list.deployment_status_infos.extend(status_protos)
-        return deployment_status_info_list.SerializeToString()
-
-    def get_serve_status(self) -> StatusInfo:
-        from ray.serve.generated.serve_pb2 import DeploymentStatusInfoList
-        from ray.serve.common import DeploymentStatusInfo
-
-        # TODO (shrekris-anyscale): Update these defaults using REST API status
+        # TODO (shrekris-anyscale): Replace defaults with actual REST API status
         serve_app_status = ServeApplicationStatus.RUNNING
         serve_app_message = ""
         deployment_timestamp = str(time.time())
 
-        proto = DeploymentStatusInfoList.FromString(self.get_deployment_statuses())
-
-        return StatusInfo(
-            app_status=ServeApplicationStatusInfo(
-                serve_app_status, serve_app_message, deployment_timestamp
-            ),
-            deployment_statuses=[
-                DeploymentStatusInfo.from_proto(deployment_status_info)
-                for deployment_status_info in proto.deployment_status_infos
-            ],
+        app_status = ServeApplicationStatusInfo(
+            serve_app_status, serve_app_message, deployment_timestamp
         )
+        deployment_statuses = self.deployment_state_manager.get_deployment_statuses()
+
+        status_info = StatusInfo(
+            app_status=app_status,
+            deployment_statuses=deployment_statuses,
+        )
+
+        return status_info.to_proto().SerializeToString()

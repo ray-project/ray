@@ -38,6 +38,7 @@ from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import (
     DeploymentRoute,
     DeploymentRouteList,
+    StatusInfo as StatusInfoProto,
 )
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 
@@ -349,21 +350,12 @@ class ServeControllerClient:
             for deployment_route in deployment_route_list.deployment_routes
         }
 
-    # @_ensure_connected
-    # def get_deployment_statuses(self) -> Dict[str, DeploymentStatusInfo]:
-    #     proto = DeploymentStatusInfoList.FromString(
-    #         ray.get(self._controller.get_deployment_statuses.remote())
-    #     )
-    #     return {
-    #         deployment_status_info.name: DeploymentStatusInfo.from_proto(
-    #             deployment_status_info
-    #         )
-    #         for deployment_status_info in proto.deployment_status_infos
-    #     }
-
     @_ensure_connected
     def get_serve_status(self) -> StatusInfo:
-        return ray.get(self._controller.get_serve_status.remote())
+        proto = StatusInfoProto.FromString(
+            ray.get(self._controller.get_serve_status.remote())
+        )
+        return StatusInfo.from_proto(proto)
 
     @_ensure_connected
     def get_handle(
