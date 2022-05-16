@@ -212,6 +212,6 @@ message ServeApplicationStatusInfo {
 }
 
 message StatusInfo {
-  ServeApplicationStatus app_status = 1;
+  ServeApplicationStatusInfo app_status = 1;
   DeploymentStatusInfoList deployment_statuses = 2;
 }

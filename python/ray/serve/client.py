@@ -184,13 +184,13 @@ class ServeControllerClient:
         start = time.time()
         while time.time() - start < timeout_s or timeout_s < 0:
 
-            try:
-                status = self.get_serve_status().get_deployment_status(name)
-            except ValueError:
+            status = self.get_serve_status().get_deployment_status(name)
+            
+            if status is None:
                 raise RuntimeError(
                     f"Waiting for deployment {name} to be HEALTHY, "
                     "but deployment doesn't exist."
-                ) from None
+                )
 
             if status.status == DeploymentStatus.HEALTHY:
                 break
@@ -219,9 +219,8 @@ class ServeControllerClient:
         """
         start = time.time()
         while time.time() - start < timeout_s:
-            try:
-                curr_status = self.get_serve_status().get_deployment_status(name)
-            except ValueError:
+            curr_status = self.get_serve_status().get_deployment_status(name)
+            if curr_status is None:
                 break
             logger.debug(
                 f"Waiting for {name} to be deleted, current status: {curr_status}."
@@ -318,7 +317,7 @@ class ServeControllerClient:
             deployment_names_to_delete = all_deployments_names.difference(
                 new_deployments_names
             )
-            self.delete_deployments(deployment_names_to_delete)
+            self.delete_deployments(deployment_names_to_delete, blocking=_blocking)
 
     @_ensure_connected
     def delete_deployments(self, names: Iterable[str], blocking: bool = True) -> None:

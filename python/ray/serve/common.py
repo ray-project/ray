@@ -89,29 +89,21 @@ class StatusInfo:
     app_status: ServeApplicationStatusInfo
     deployment_statuses: List[DeploymentStatusInfo] = field(default_factory=list)
 
-    def get_deployment_status(self, name: str) -> DeploymentStatusInfo:
+    def get_deployment_status(self, name: str) -> Optional[DeploymentStatusInfo]:
         """Get a deployment's status by name.
 
         Args:
             name (str): Deployment's name.
 
-        Return (DeploymentStatusInfo): Status with a name matching the
-            argument, if one exists.
-
-        Raises:
-            ValueError: If this StatusInfo object has no DeploymentStatusInfo
-                with that name.
+        Return (Optional[DeploymentStatusInfo]): Status with a name matching
+            the argument, if one exists. Otherwise, returns None.
         """
 
-        try:
-            return list(
-                filter(
-                    lambda deployment_status: name == deployment_status.name,
-                    self.deployment_statuses,
-                )
-            )[0]
-        except KeyError:
-            raise ValueError(f'No deployment with name "{name}" found.') from None
+        for deployment_status in self.deployment_statuses:
+            if name == deployment_status.name:
+                return deployment_status
+        
+        return None
 
     def to_proto(self):
 
@@ -143,9 +135,9 @@ class StatusInfo:
 
         # Recreate deployment statuses
         deployment_statuses = []
-        for deployment_status_proto in StatusInfoProto.deployment_statuses:
+        for proto in proto.deployment_statuses.deployment_status_infos:
             deployment_statuses.append(
-                DeploymentStatusInfo.from_proto(deployment_status_proto)
+                DeploymentStatusInfo.from_proto(proto)
             )
 
         # Recreate StatusInfo
