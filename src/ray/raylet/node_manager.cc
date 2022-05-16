@@ -457,27 +457,6 @@ ray::Status NodeManager::RegisterGcs() {
   // ForwardTask will throw exception, because it can't get node info.
   auto on_done = [this](Status status) {
     RAY_CHECK_OK(status);
-    // Subscribe to resource changes.
-    const auto &resources_changed =
-        [this](const rpc::NodeResourceChange &resource_notification) {
-          auto id = NodeID::FromBinary(resource_notification.node_id());
-          if (id == self_node_id_) {
-            return;
-          }
-          if (resource_notification.updated_resources_size() != 0) {
-            auto resources = ResourceMapToResourceRequest(
-                MapFromProtobuf(resource_notification.updated_resources()), false);
-            ResourceCreateUpdated(id, resources);
-          }
-
-          if (resource_notification.deleted_resources_size() != 0) {
-            ResourceDeleted(
-                id, VectorFromProtobuf(resource_notification.deleted_resources()));
-          }
-        };
-    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncSubscribeToResources(
-        /*subscribe_callback=*/resources_changed,
-        /*done_callback=*/nullptr));
   };
   // Register a callback to monitor new nodes and a callback to monitor removed nodes.
   RAY_RETURN_NOT_OK(
