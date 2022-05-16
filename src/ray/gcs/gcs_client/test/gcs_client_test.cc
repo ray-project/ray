@@ -24,6 +24,8 @@
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
 #include "ray/util/util.h"
 
+using namespace std::chrono_literals;
+
 namespace ray {
 
 class GcsClientTest : public ::testing::TestWithParam<bool> {
@@ -131,6 +133,24 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     // Wait until server starts listening.
     while (gcs_server_->GetPort() == 0) {
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    while (true) {
+      auto channel =
+          grpc::CreateChannel(absl::StrCat("127.0.0.1:", gcs_server_->GetPort()),
+                              grpc::InsecureChannelCredentials());
+      std::unique_ptr<rpc::HeartbeatInfoGcsService::Stub> stub =
+          rpc::HeartbeatInfoGcsService::NewStub(std::move(channel));
+      grpc::ClientContext context;
+      context.set_deadline(std::chrono::system_clock::now() + 1s);
+      const rpc::CheckAliveRequest request;
+      rpc::CheckAliveReply reply;
+      auto status = stub->CheckAlive(&context, request, &reply);
+      if (!status.ok()) {
+        RAY_LOG(WARNING) << "Unable to reach GCS: " << status.error_code() << " "
+                         << status.error_message();
+        continue;
+      }
+      break;
     }
     RAY_LOG(INFO) << "GCS service restarted, port = " << gcs_server_->GetPort();
   }
@@ -964,12 +984,11 @@ TEST_P(GcsClientTest, TestEvictExpiredDestroyedActors) {
 }
 
 TEST_P(GcsClientTest, TestEvictExpiredDeadNodes) {
-  // Simulate the scenario of node dead.
-  int node_count = RayConfig::instance().maximum_gcs_dead_node_cached_count();
-  RegisterNodeAndMarkDead(node_count);
-
   // Restart GCS.
   RestartGcsServer();
+
+  // Simulate the scenario of node dead.
+  int node_count = RayConfig::instance().maximum_gcs_dead_node_cached_count();
 
   const auto &node_ids = RegisterNodeAndMarkDead(node_count);
 

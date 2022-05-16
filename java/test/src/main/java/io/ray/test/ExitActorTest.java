@@ -55,7 +55,17 @@ public class ExitActorTest extends BaseTest {
     Assert.assertEquals(1, (int) (actor.task(ExitingActor::incr).remote().get()));
     int pid = actor.task(ExitingActor::getPid).remote().get();
     Runtime.getRuntime().exec("kill -9 " + pid);
-    TimeUnit.SECONDS.sleep(1);
+
+    while (true) {
+      TimeUnit.SECONDS.sleep(1);
+      try {
+        actor.task(ExitingActor::getPid).remote().get();
+        break;
+      } catch (RayActorException e) {
+        continue;
+      }
+    }
+
     // Make sure this actor can be reconstructed.
     Assert.assertEquals(1, (int) actor.task(ExitingActor::incr).remote().get());
 
