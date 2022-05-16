@@ -14,9 +14,6 @@ def py_test_module_list(files, size, deps, extra_srcs, name_suffix="", **kwargs)
         )
 
 def py_test_run_all_subdirectory(include, exclude, extra_srcs, **kwargs):
-    print("py_test_run_all_subdirectory")
-    print(include)
-    print(exclude)
     for file in native.glob(include = include, exclude = exclude, allow_empty=False):
         print(file)
         basename = file.rpartition("/")[-1]
@@ -28,9 +25,6 @@ def py_test_run_all_subdirectory(include, exclude, extra_srcs, **kwargs):
 
 # Runs all included notebooks as py_test targets, by first converting them to .py files with "test_myst_doc.py".
 def py_test_run_all_notebooks(include, exclude, **kwargs):
-    print("py_test_run_all_notebooks")
-    print(include)
-    print(exclude)
     for file in native.glob(include = include, exclude = exclude, allow_empty=False):
         print(file)
         basename = file.rpartition("/")[-1]
