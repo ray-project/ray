@@ -169,8 +169,7 @@ message PinObjectIDsRequest {
   repeated bytes object_ids = 2;
 }
 
-message PinObjectIDsReply {
-}
+message PinObjectIDsReply {}
 
 message GetNodeStatsRequest {
   // Whether to include memory stats. This could be large since it includes
@@ -316,10 +315,16 @@ message GetResourceLoadReply {
   ResourcesData resources = 1;
 }
 
+message NotifyGCSRestartRequest {}
+
+message NotifyGCSRestartReply {}
+
 // Service for inter-node-manager communication.
 service NodeManagerService {
   // Update the node's view of the cluster resource usage.
   rpc UpdateResourceUsage(UpdateResourceUsageRequest) returns (UpdateResourceUsageReply);
+  // Handle the case when GCS restarted.
+  rpc NotifyGCSRestart(NotifyGCSRestartRequest) returns (NotifyGCSRestartReply);
   // Get the resource load of the raylet.
   rpc GetResourceLoad(GetResourceLoadRequest) returns (GetResourceLoadReply);
   // Request the current resource usage from this raylet
