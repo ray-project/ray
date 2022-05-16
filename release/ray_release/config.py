@@ -185,12 +185,16 @@ def load_and_render_yaml_template(
     with open(template_path, "rt") as f:
         content = f.read()
 
+    return render_yaml_template(template=content, env=env)
+
+
+def render_yaml_template(template: str, env: Optional[Dict] = None):
     render_env = copy.deepcopy(os.environ)
     if env:
         render_env.update(env)
 
     try:
-        content = jinja2.Template(content).render(env=render_env)
+        content = jinja2.Template(template).render(env=render_env)
         return yaml.safe_load(content)
     except Exception as e:
         raise ReleaseTestConfigError(
