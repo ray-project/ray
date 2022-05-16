@@ -42,8 +42,16 @@ builtin cd "$(dirname "${BASH_SOURCE:-$0}")"
 ROOT="$(git rev-parse --show-toplevel)"
 builtin cd "$ROOT" || exit 1
 
+# black version string differs on intel and m1 macs :'(
+if [[ $(uname -m) == "arm64" ]]
+then
+    # On m1 the version string looks like 'black, version 21.7b0'.
+    BLACK_VERSION=$(black --version | awk '{print $3}')
+else
+    # On intel the version string looks like 'black, 21.7b0 (compiled: no)'.
+    BLACK_VERSION=$(black --version | awk '{print $2}')
+fi
 FLAKE8_VERSION=$(flake8 --version | head -n 1 | awk '{print $1}')
-BLACK_VERSION=$(black --version | awk '{print $3}')
 MYPY_VERSION=$(mypy --version | awk '{print $2}')
 GOOGLE_JAVA_FORMAT_JAR=/tmp/google-java-format-1.7-all-deps.jar
 
