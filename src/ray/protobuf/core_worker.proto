@@ -361,11 +361,12 @@ message AssignObjectOwnerReply {}
 
 message RayletNotifyGCSRestartRequest {}
 
-message RayletNotifyGCSRestartReply{}
+message RayletNotifyGCSRestartReply {}
 
 service CoreWorkerService {
   // Notify core worker GCS has restarted.
-  rpc RayletNotifyGCSRestart(RayletNotifyGCSRestartRequest) returns (RayletNotifyGCSRestartReply);
+  rpc RayletNotifyGCSRestart(RayletNotifyGCSRestartRequest)
+      returns (RayletNotifyGCSRestartReply);
   // Push a task directly to this worker from another.
   rpc PushTask(PushTaskRequest) returns (PushTaskReply);
   // Reply from raylet that wait for direct actor call args has completed.
