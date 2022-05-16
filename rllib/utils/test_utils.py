@@ -12,6 +12,7 @@ import yaml
 
 import ray
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
+from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED, NUM_ENV_STEPS_TRAINED
 from ray.rllib.utils.typing import PartialTrainerConfigDict
 from ray.tune import CLIReporter, run_experiments
 
@@ -542,7 +543,7 @@ def check_train_results(train_results):
     info = train_results["info"]
     assert LEARNER_INFO in info, f"'learner' not in train_results['infos'] ({info})!"
     assert (
-        "num_steps_trained" in info or "num_env_steps_trained" in info
+        "num_steps_trained" in info or NUM_ENV_STEPS_TRAINED in info
     ), f"'num_(env_)?steps_trained' not in train_results['infos'] ({info})!"
 
     learner_info = info[LEARNER_INFO]
@@ -597,10 +598,10 @@ def run_learning_tests_from_yaml(
     """Runs the given experiments in yaml_files and returns results dict.
 
     Args:
-        yaml_files (List[str]): List of yaml file names.
-        max_num_repeats (int): How many times should we repeat a failed
+        yaml_files: List of yaml file names.
+        max_num_repeats: How many times should we repeat a failed
             experiment?
-        smoke_test (bool): Whether this is just a smoke-test. If True,
+        smoke_test: Whether this is just a smoke-test. If True,
             set time_total_s to 5min and don't early out due to rewards
             or timesteps reached.
 
@@ -722,7 +723,8 @@ def run_learning_tests_from_yaml(
                 metric_columns={
                     "training_iteration": "iter",
                     "time_total_s": "time_total_s",
-                    "timesteps_total": "ts",
+                    NUM_ENV_STEPS_SAMPLED: "ts (sampled)",
+                    NUM_ENV_STEPS_TRAINED: "ts (trained)",
                     "episodes_this_iter": "train_episodes",
                     "episode_reward_mean": "reward_mean",
                     "evaluation/episode_reward_mean": "eval_reward_mean",
@@ -736,7 +738,7 @@ def run_learning_tests_from_yaml(
 
         # Check each experiment for whether it passed.
         # Criteria is to a) reach reward AND b) to have reached the throughput
-        # defined by `timesteps_total` / `time_total_s`.
+        # defined by `NUM_ENV_STEPS_(SAMPLED|TRAINED)` / `time_total_s`.
         for experiment in experiments_to_run.copy():
             print(f"Analyzing experiment {experiment} ...")
             # Collect all trials within this experiment (some experiments may

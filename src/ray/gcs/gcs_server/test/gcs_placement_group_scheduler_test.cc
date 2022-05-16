@@ -54,6 +54,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
         [](auto) { return true; },
         /*is_local_node_with_raylet=*/false);
     gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(
+        io_service_,
         gcs_table_storage_,
         cluster_resource_scheduler_->GetClusterResourceManager(),
         local_node_id);
@@ -71,7 +72,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
         *gcs_resource_manager_,
         *cluster_resource_scheduler_,
         raylet_client_pool_,
-        *ray_syncer_);
+        ray_syncer_.get());
   }
 
   void TearDown() override {

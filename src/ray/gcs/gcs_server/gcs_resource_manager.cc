@@ -21,14 +21,35 @@ namespace ray {
 namespace gcs {
 
 GcsResourceManager::GcsResourceManager(
+    instrumented_io_context &io_context,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
     ClusterResourceManager &cluster_resource_manager,
     NodeID local_node_id,
     std::shared_ptr<ClusterTaskManager> cluster_task_manager)
-    : gcs_table_storage_(gcs_table_storage),
+    : io_context_(io_context),
+      gcs_table_storage_(gcs_table_storage),
       cluster_resource_manager_(cluster_resource_manager),
       local_node_id_(std::move(local_node_id)),
       cluster_task_manager_(std::move(cluster_task_manager)) {}
+
+void GcsResourceManager::ConsumeSyncMessage(
+    std::shared_ptr<const syncer::RaySyncMessage> message) {
+  // ConsumeSyncMessage is called by ray_syncer which might not run
+  // in a dedicated thread for performance.
+  // GcsResourceManager is a module always run in the main thread, so we just
+  // delegate the work to the main thread for thread safety.
+  // Ideally, all public api in GcsResourceManager need to be put into this
+  // io context for thread safety.
+  io_context_.dispatch(
+      [this, message]() {
+        rpc::ResourcesData resources;
+        resources.ParseFromString(message->sync_message());
+        resources.set_node_id(message->node_id());
+        RAY_CHECK(message->message_type() == syncer::MessageType::RESOURCE_VIEW);
+        UpdateFromResourceReport(resources);
+      },
+      "GcsResourceManager::Update");
+}
 
 void GcsResourceManager::HandleGetResources(const rpc::GetResourcesRequest &request,
                                             rpc::GetResourcesReply *reply,

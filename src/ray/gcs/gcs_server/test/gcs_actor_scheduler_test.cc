@@ -62,6 +62,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
         /*local_task_manager=*/
         std::make_shared<DummyLocalTaskManager>());
     auto gcs_resource_manager = std::make_shared<gcs::GcsResourceManager>(
+        io_service_,
         gcs_table_storage_,
         cluster_resource_scheduler->GetClusterResourceManager(),
         local_node_id_);

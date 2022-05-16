@@ -72,6 +72,8 @@ struct GcsServerMocker {
       return Status::OK();
     }
 
+    std::shared_ptr<grpc::Channel> GetChannel() const override { return nullptr; }
+
     void ReportWorkerBacklog(
         const WorkerID &worker_id,
         const std::vector<rpc::WorkerBacklogReport> &backlog_reports) override {}
@@ -252,9 +254,10 @@ struct GcsServerMocker {
     }
 
     /// PinObjectsInterface
-    void PinObjectID(const rpc::Address &caller_address,
-                     const ObjectID &object_id,
-                     rpc::ClientCallback<rpc::PinObjectIDReply> callback) override {}
+    void PinObjectIDs(
+        const rpc::Address &caller_address,
+        const std::vector<ObjectID> &object_ids,
+        const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override {}
 
     /// DependencyWaiterInterface
     ray::Status WaitForDirectActorCallArgs(
@@ -287,6 +290,9 @@ struct GcsServerMocker {
         const NodeID &node_id,
         bool graceful,
         const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback) override{};
+
+    void NotifyGCSRestart(
+        const rpc::ClientCallback<rpc::NotifyGCSRestartReply> &callback) override{};
 
     ~MockRayletClient() {}
 

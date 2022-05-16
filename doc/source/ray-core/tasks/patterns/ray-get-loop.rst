@@ -19,8 +19,9 @@ Code example
     import ray
     ray.init()
 
-    def f():
-        pass
+    @ray.remote
+    def f(i):
+        return i
 
     # Antipattern: no parallelism due to calling ray.get inside of the loop.
     returns = []
