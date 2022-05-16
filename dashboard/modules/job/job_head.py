@@ -13,7 +13,7 @@ import ray.dashboard.optional_utils as optional_utils
 from ray._private.runtime_env.packaging import (
     package_exists,
     upload_package_to_gcs,
-    add_temporary_uri_reference,
+    pin_runtime_env_uri,
 )
 from ray.dashboard.modules.job.common import (
     CURRENT_VERSION,
@@ -83,7 +83,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
         logger.debug(f"Adding temporary reference to package {package_uri}.")
         try:
-            add_temporary_uri_reference(package_uri)
+            pin_runtime_env_uri(package_uri)
         except Exception:
             return Response(
                 text=traceback.format_exc(),

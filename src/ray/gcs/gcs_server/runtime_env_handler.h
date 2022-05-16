@@ -32,9 +32,9 @@ class RuntimeEnvHandler : public rpc::RuntimeEnvHandler {
       : runtime_env_manager_(runtime_env_manager),
         delay_executor_(std::move(delay_executor)) {}
 
-  void HandleAddTemporaryURIReference(
-      const rpc::AddTemporaryURIReferenceRequest &request,
-      rpc::AddTemporaryURIReferenceReply *reply,
+  void HandlePinRuntimeEnvURI(
+      const rpc::PinRuntimeEnvURIRequest &request,
+      rpc::PinRuntimeEnvURIReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
  private:

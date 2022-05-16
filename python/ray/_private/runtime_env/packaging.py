@@ -13,10 +13,13 @@ from ray.experimental.internal_kv import (
     _internal_kv_put,
     _internal_kv_get,
     _internal_kv_exists,
-    _add_temporary_uri_reference,
+    _pin_runtime_env_uri,
 )
 from ray._private.thirdparty.pathspec import PathSpec
-from ray.ray_constants import RAY_RUNTIME_ENV_TEMPORARY_REFERENCE_EXPIRATION_S
+from ray.ray_constants import (
+    RAY_RUNTIME_ENV_TEMP_REF_EXPIRATION_S_DEFAULT,
+    RAY_RUNTIME_ENV_TEMP_REF_EXPIRATION_S_ENV_VAR,
+)
 
 default_logger = logging.getLogger(__name__)
 
@@ -239,8 +242,11 @@ def _get_gitignore(path: Path) -> Optional[Callable]:
         return None
 
 
-def add_temporary_uri_reference(uri: str) -> None:
-    """Add a temporary reference to a URI in the GCS to prevent premature deletion.
+def pin_runtime_env_uri(uri: str, *, expiration_s: Optional[int] = None) -> None:
+    """Pin a reference to a runtime_env URI in the GCS on a timeout.
+
+    This is used to avoid premature eviction in edge conditions for job
+    reference counting. See https://github.com/ray-project/ray/pull/24719.
 
     Packages are uploaded to GCS in order to be downloaded by a runtime env plugin
     (e.g. working_dir, py_modules) after the job starts.
@@ -252,16 +258,18 @@ def add_temporary_uri_reference(uri: str) -> None:
     If this reference didn't have an expiration, then if the script exited
     (e.g. via Ctrl-C) before the job started, the reference would never be
     removed, so the package would never be deleted.
-
     """
 
-    # Defaults to 30 seconds.  This should be enough time for the job to start.
-    expiration_s = int(
-        os.environ.get(RAY_RUNTIME_ENV_TEMPORARY_REFERENCE_EXPIRATION_S, 30)
-    )
+    if expiration_s is None:
+        expiration_s = int(
+            os.environ.get(
+                RAY_RUNTIME_ENV_TEMP_REF_EXPIRATION_S_ENV_VAR,
+                RAY_RUNTIME_ENV_TEMP_REF_EXPIRATION_S_DEFAULT,
+            )
+        )
 
     if expiration_s > 0:
-        _add_temporary_uri_reference(uri, expiration_s=expiration_s)
+        _pin_runtime_env_uri(uri, expiration_s=expiration_s)
 
 
 def _store_package_in_gcs(
@@ -488,7 +496,7 @@ def upload_package_if_needed(
     if logger is None:
         logger = default_logger
 
-    add_temporary_uri_reference(pkg_uri)
+    pin_runtime_env_uri(pkg_uri)
 
     if package_exists(pkg_uri):
         return False

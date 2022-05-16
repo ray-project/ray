@@ -283,15 +283,15 @@ class GcsClient:
             )
 
     @_auto_reconnect
-    def add_temporary_uri_reference(self, uri: str, expiration_s: int) -> None:
-        req = gcs_service_pb2.AddTemporaryURIReferenceRequest(
+    def pin_runtime_env_uri(self, uri: str, expiration_s: int) -> None:
+        req = gcs_service_pb2.PinRuntimeEnvURIRequest(
             uri=uri, expiration_s=expiration_s
         )
-        reply = self._runtime_env_stub.AddTemporaryURIReference(req)
+        reply = self._runtime_env_stub.PinRuntimeEnvURIRequest(req)
         if reply.status.code != GcsCode.OK:
             raise RuntimeError(
-                f"Failed to add temporary uri reference for {uri} "
-                f"due to error {reply.status.message}"
+                f"Failed to pin URI reference for {uri} "
+                f"due to error {reply.status.message}."
             )
 
 

@@ -9,8 +9,11 @@ from pytest_lazyfixture import lazy_fixture
 from unittest import mock
 
 import ray
-from ray._private.test_utils import wait_for_condition, chdir, check_local_files_gced
 import ray.experimental.internal_kv as kv
+from ray.ray_constants import (
+    RAY_RUNTIME_ENV_TEMP_REF_EXPIRATION_S_ENV_VAR,
+)
+from ray._private.test_utils import wait_for_condition, chdir, check_local_files_gced
 from ray._private.utils import get_directory_size_bytes
 
 
@@ -32,7 +35,7 @@ def working_dir_and_pymodules_disable_URI_cache():
         {
             "RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB": "0",
             "RAY_RUNTIME_ENV_PY_MODULES_CACHE_SIZE_GB": "0",
-            "RAY_RUNTIME_ENV_TEMPORARY_REFERENCE_EXPIRATION_S": "0",
+            RAY_RUNTIME_ENV_TEMP_REF_EXPIRATION_S_ENV_VAR: "0",
         },
     ):
         print("URI caching disabled (cache size set to 0).")
@@ -46,7 +49,7 @@ def URI_cache_10_MB():
         {
             "RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB": "0.01",
             "RAY_RUNTIME_ENV_PY_MODULES_CACHE_SIZE_GB": "0.01",
-            "RAY_RUNTIME_ENV_TEMPORARY_REFERENCE_EXPIRATION_S": "0",
+            RAY_RUNTIME_ENV_TEMP_REF_EXPIRATION_S_ENV_VAR: "0",
         },
     ):
         print("URI cache size set to 0.01 GB.")
@@ -54,14 +57,14 @@ def URI_cache_10_MB():
 
 
 @pytest.fixture(scope="class")
-def disable_temporary_reference():
+def disable_temporary_uri_pinning():
     with mock.patch.dict(
         os.environ,
         {
-            "RAY_RUNTIME_ENV_TEMPORARY_REFERENCE_EXPIRATION_S": "0",
+            RAY_RUNTIME_ENV_TEMP_REF_EXPIRATION_S_ENV_VAR: "0",
         },
     ):
-        print("temporary reference disabled.")
+        print("temporary URI pinning disabled.")
         yield
 
 
@@ -79,7 +82,7 @@ class TestGC:
         self,
         start_cluster,
         working_dir_and_pymodules_disable_URI_cache,
-        disable_temporary_reference,
+        disable_temporary_uri_pinning,
         option: str,
         source: str,
     ):
@@ -171,7 +174,7 @@ class TestGC:
         self,
         start_cluster,
         working_dir_and_pymodules_disable_URI_cache,
-        disable_temporary_reference,
+        disable_temporary_uri_pinning,
         option: str,
     ):
         """Tests that actor-level working_dir is GC'd when the actor exits."""
@@ -235,7 +238,7 @@ class TestGC:
         self,
         start_cluster,
         working_dir_and_pymodules_disable_URI_cache,
-        disable_temporary_reference,
+        disable_temporary_uri_pinning,
         option: str,
         source: str,
     ):
@@ -326,7 +329,7 @@ class TestGC:
 
     @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
     def test_hit_cache_size_limit(
-        self, start_cluster, URI_cache_10_MB, disable_temporary_reference
+        self, start_cluster, URI_cache_10_MB, disable_temporary_uri_pinning
     ):
         """Test eviction happens when we exceed a nonzero (10MB) cache size."""
         NUM_NODES = 3
@@ -407,7 +410,7 @@ class TestSkipLocalGC:
         skip_local_gc,
         start_cluster,
         working_dir_and_pymodules_disable_URI_cache,
-        disable_temporary_reference,
+        disable_temporary_uri_pinning,
         source,
     ):
         cluster, address = start_cluster
