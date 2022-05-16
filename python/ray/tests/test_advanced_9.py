@@ -186,6 +186,23 @@ def test_function_table_gc_actor(call_ray_start):
     wait_for_condition(lambda: function_entry_num(job_id) == 0)
 
 
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="This test is only run on linux machines.",
+)
+def test_worker_oom_score(shutdown_only):
+    @ray.remote
+    def get_oom_score():
+        import os
+
+        pid = os.getpid()
+        with open(f"/proc/{pid}/oom_score", "r") as f:
+            oom_score = f.read()
+            return int(oom_score)
+
+    assert ray.get(get_oom_score.remote()) >= 1000
+
+
 if __name__ == "__main__":
     import pytest
 
