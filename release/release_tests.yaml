@@ -2559,9 +2559,43 @@
   frequency: nightly
   working_dir: microbenchmark
 
+  python: 3.7
+
   legacy:
     test_name: microbenchmark
     test_suite: microbenchmark
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_64.yaml
+
+  run:
+    timeout: 1800
+    script: OMP_NUM_THREADS=64 RAY_ADDRESS= python run_microbenchmark.py
+
+- name: microbenchmark_38
+  group: core-daily-test
+  team: core
+  frequency: nightly
+  working_dir: microbenchmark
+
+  python: 3.8
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_64.yaml
+
+  run:
+    timeout: 1800
+    script: OMP_NUM_THREADS=64 RAY_ADDRESS= python run_microbenchmark.py
+
+- name: microbenchmark_39
+  group: core-daily-test
+  team: core
+  frequency: nightly
+  working_dir: microbenchmark
+
+  python: 3.9
 
   cluster:
     cluster_env: app_config.yaml
