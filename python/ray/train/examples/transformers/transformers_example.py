@@ -228,6 +228,9 @@ def parse_args():
 
 
 def train_func(config: Dict[str, Any]):
+    # Accelerator reads from this environment variable for GPU placement.
+    os.environ["LOCAL_RANK"] = str(ray.train.local_rank())
+
     args = config["args"]
     # Initialize the accelerator. We will let the accelerator handle device
     # placement for us in this example.
