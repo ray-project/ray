@@ -326,7 +326,7 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
         description=(
             "An import path to a bound deployment node. Should be of the "
             'form "module.submodule_1...submodule_n.'
-            'dag_node." This is equivalent to '
+            'dag_node". This is equivalent to '
             '"from module.submodule_1...submodule_n import '
             'dag_node". Only works with Python '
             "applications. This field is REQUIRED when deploying Serve config "
