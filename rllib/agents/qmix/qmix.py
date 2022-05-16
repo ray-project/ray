@@ -11,7 +11,7 @@ from ray.rllib.execution.train_ops import (
 )
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, Deprecated
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
     NUM_AGENT_STEPS_SAMPLED,
