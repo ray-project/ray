@@ -9,8 +9,8 @@ popd
 
 2. Package this folder:
 ```
-pushd docker
-zip -r retag-lambda.zip retag-lambda/
+pushd docker/retag-lambda
+zip retag-lambda.zip *
 ```
 
 3. Upload zip file to update the code.
