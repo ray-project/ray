@@ -45,6 +45,7 @@ class TestMARWIL(unittest.TestCase):
         config = (
             marwil.MARWILConfig()
             .rollouts(num_rollout_workers=2)
+            .environment(env="CartPole-v0")
             .evaluation(
                 evaluation_interval=3,
                 evaluation_num_workers=1,
