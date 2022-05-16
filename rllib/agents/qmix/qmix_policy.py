@@ -153,7 +153,6 @@ class QMixLoss(nn.Module):
         return loss, mask, masked_td_error, chosen_action_qvals, targets
 
 
-# TODO(sven): Make this a TorchPolicy child via `build_policy_class`.
 class QMixTorchPolicy(TorchPolicy):
     """QMix impl. Assumes homogeneous agents for now.
 
@@ -177,9 +176,6 @@ class QMixTorchPolicy(TorchPolicy):
         self.h_size = config["model"]["lstm_cell_size"]
         self.has_env_global_state = False
         self.has_action_mask = False
-        self.device = (
-            torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-        )
 
         agent_obs_space = obs_space.original_space.spaces[0]
         if isinstance(agent_obs_space, gym.spaces.Dict):
@@ -218,7 +214,9 @@ class QMixTorchPolicy(TorchPolicy):
             framework="torch",
             name="model",
             default_model=RNNModel,
-        ).to(self.device)
+        )
+
+        super().__init__(obs_space, action_space, config, model=self.model)
 
         self.target_model = ModelCatalog.get_model_v2(
             agent_obs_space,
@@ -229,8 +227,6 @@ class QMixTorchPolicy(TorchPolicy):
             name="target_model",
             default_model=RNNModel,
         ).to(self.device)
-
-        super().__init__(obs_space, action_space, config, model=self.model)
 
         self.exploration = self._create_exploration()
 
