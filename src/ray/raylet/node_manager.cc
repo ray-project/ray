@@ -455,9 +455,7 @@ ray::Status NodeManager::RegisterGcs() {
 
   // If the node resource message is received first and then the node message is received,
   // ForwardTask will throw exception, because it can't get node info.
-  auto on_done = [this](Status status) {
-    RAY_CHECK_OK(status);
-  };
+  auto on_done = [this](Status status) { RAY_CHECK_OK(status); };
   // Register a callback to monitor new nodes and a callback to monitor removed nodes.
   RAY_RETURN_NOT_OK(
       gcs_client_->Nodes().AsyncSubscribeToNodeChange(on_node_change, on_done));
