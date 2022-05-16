@@ -14,9 +14,7 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
-    NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_SAMPLED,
-    NUM_ENV_STEPS_TRAINED,
     WORKER_UPDATE_TIMER,
 )
 from ray.rllib.utils.typing import (
@@ -145,8 +143,11 @@ class MARWILTrainer(Trainer):
             train_results = train_one_step(self, train_batch)
         else:
             train_results = multi_gpu_train_one_step(self, train_batch)
-        self._counters[NUM_AGENT_STEPS_TRAINED] += batch.agent_steps()
-        self._counters[NUM_ENV_STEPS_TRAINED] += batch.env_steps()
+
+        # TODO: Move training steps counter update outside of `train_one_step()` method.
+        # # Update train step counters.
+        # self._counters[NUM_ENV_STEPS_TRAINED] += train_batch.env_steps()
+        # self._counters[NUM_AGENT_STEPS_TRAINED] += train_batch.agent_steps()
 
         global_vars = {
             "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
