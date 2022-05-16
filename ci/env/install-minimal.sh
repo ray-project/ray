@@ -13,5 +13,5 @@ eval "${WORKSPACE_DIR}/ci/ci.sh build"
 
 # Install test requirements
 python -m pip install -U \
-  pytest==6.2.4 \
+  pytest==6.2.5 \
   numpy
