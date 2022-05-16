@@ -13,6 +13,7 @@ class Result:
 
     runtime: Optional[float] = None
     stable: bool = True
+    smoke_test: bool = False
 
     buildkite_url: Optional[str] = None
     wheels_url: Optional[str] = None

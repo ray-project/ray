@@ -83,6 +83,14 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
   gcs_rpc_client_ = std::make_shared<rpc::GcsRpcClient>(
       options_.gcs_address_, options_.gcs_port_, *client_call_manager_);
 
+  resubscribe_func_ = [this]() {
+    job_accessor_->AsyncResubscribe();
+    actor_accessor_->AsyncResubscribe();
+    node_accessor_->AsyncResubscribe();
+    node_resource_accessor_->AsyncResubscribe();
+    worker_accessor_->AsyncResubscribe();
+  };
+
   rpc::Address gcs_address;
   gcs_address.set_ip_address(options_.gcs_address_);
   gcs_address.set_port(options_.gcs_port_);
