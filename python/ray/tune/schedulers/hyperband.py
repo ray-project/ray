@@ -57,7 +57,7 @@ class HyperBandScheduler(FIFOScheduler):
     Note that Tune's stopping criteria will be applied in conjunction with
     HyperBand's early stopping mechanisms.
 
-    See also: https://homes.cs.washington.edu/~jamieson/hyperband.html
+    See also: https://blog.ml.cmu.edu/2018/12/12/massively-parallel-hyperparameter-optimization/
 
     Args:
         time_attr: The training result attr to use for comparing time.
@@ -78,7 +78,7 @@ class HyperBandScheduler(FIFOScheduler):
             the difference is between bracket space-time allocation ratios.
         stop_last_trials: Whether to terminate the trials after
             reaching max_t. Defaults to True.
-    """
+    """  # noqa: E501
 
     _supports_buffered_results = False
 
