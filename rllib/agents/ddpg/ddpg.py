@@ -43,9 +43,9 @@ class DDPGConfig(SimpleQConfig):
         ... )
     """
 
-    def __init__(self, trainer=None):
+    def __init__(self, trainer_class=None):
         """Initializes a DDPGConfig instance."""
-        super().__init__(trainer_class=trainer or DDPGTrainer)
+        super().__init__(trainer_class=trainer_class or DDPGTrainer)
 
         # fmt: off
         # __sphinx_doc_begin__
