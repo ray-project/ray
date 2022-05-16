@@ -366,22 +366,22 @@
   parallelism: 3
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RAY_use_ray_syncer=true . ./ci/ci.sh test_large
+    - RAY_use_ray_syncer=true . ./ci/ci.sh test_large --define=RAY_STAGING_TESTS=1
 - label: ":construction: :python: (syncer) (Medium A-J)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j
-      --test_env=RAY_use_ray_syncer=true
-      python/ray/tests/...
+      --test_env=RAY_use_ray_syncer=true --define=RAY_STAGING_TESTS=1
+      -- python/ray/tests/... -//python/ray/tests:test_actor_resources
 - label: ":construction: :python: (syncer) (Medium K-Z)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z
-      --test_env=RAY_use_ray_syncer=true
+      --test_env=RAY_use_ray_syncer=true --define=RAY_STAGING_TESTS=1
       python/ray/tests/...
 
 

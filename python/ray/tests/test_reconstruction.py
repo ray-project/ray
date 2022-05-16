@@ -384,6 +384,14 @@ def test_basic_reconstruction_actor_lineage_disabled(
     with pytest.raises(ray.exceptions.ObjectLostError):
         ray.get(obj)
 
+    while True:
+        time.sleep(1)
+        try:
+            ray.get(a.pid.remote())
+            break
+        except ray.exceptions.RayActorError:
+            pass
+
     # Make sure the actor handle is still usable.
     pid = ray.get(a.pid.remote())
 

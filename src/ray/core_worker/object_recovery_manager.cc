@@ -96,7 +96,7 @@ void ObjectRecoveryManager::PinExistingObjectCopy(
     const rpc::Address &raylet_address,
     const std::vector<rpc::Address> &other_locations) {
   // If a copy still exists, pin the object by sending a
-  // PinObjectID RPC.
+  // PinObjectIDs RPC.
   const auto node_id = NodeID::FromBinary(raylet_address.raylet_id());
   RAY_LOG(DEBUG) << "Trying to pin copy of lost object " << object_id << " at node "
                  << node_id;
@@ -118,23 +118,23 @@ void ObjectRecoveryManager::PinExistingObjectCopy(
     client = client_it->second;
   }
 
-  client->PinObjectID(rpc_address_,
-                      object_id,
-                      [this, object_id, other_locations, node_id](
-                          const Status &status, const rpc::PinObjectIDReply &reply) {
-                        if (status.ok()) {
-                          // TODO(swang): Make sure that the node is still alive when
-                          // marking the object as pinned.
-                          RAY_CHECK(in_memory_store_->Put(
-                              RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
-                          reference_counter_->UpdateObjectPinnedAtRaylet(object_id,
-                                                                         node_id);
-                        } else {
-                          RAY_LOG(INFO) << "Error pinning new copy of lost object "
-                                        << object_id << ", trying again";
-                          PinOrReconstructObject(object_id, other_locations);
-                        }
-                      });
+  client->PinObjectIDs(rpc_address_,
+                       {object_id},
+                       [this, object_id, other_locations, node_id](
+                           const Status &status, const rpc::PinObjectIDsReply &reply) {
+                         if (status.ok()) {
+                           // TODO(swang): Make sure that the node is still alive when
+                           // marking the object as pinned.
+                           RAY_CHECK(in_memory_store_->Put(
+                               RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
+                           reference_counter_->UpdateObjectPinnedAtRaylet(object_id,
+                                                                          node_id);
+                         } else {
+                           RAY_LOG(INFO) << "Error pinning new copy of lost object "
+                                         << object_id << ", trying again";
+                           PinOrReconstructObject(object_id, other_locations);
+                         }
+                       });
 }
 
 void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
