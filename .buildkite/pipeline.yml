@@ -136,6 +136,24 @@
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
     - python ./ci/build/build-docker-images.py --py-versions py39 --device-types cu110 cu111 cu112 --build-type BUILDKITE --build-base
 
+- label: ":docker: Build Images: py310 (1/2)"
+  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
+  commands:
+    - LINUX_WHEELS=1 ./ci/ci.sh build
+    - pip install -q docker aws_requests_auth boto3
+    - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
+    - python ./ci/build/build-docker-images.py --py-versions py310 --device-types cpu cu101 cu102 --build-type BUILDKITE --build-base
+
+- label: ":docker: Build Images: py310 (2/2)"
+  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
+  commands:
+    - LINUX_WHEELS=1 ./ci/ci.sh build
+    - pip install -q docker aws_requests_auth boto3
+    - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
+    - python ./ci/build/build-docker-images.py --py-versions py310 --device-types cu110 cu111 cu112 --build-type BUILDKITE --build-base
+
+
+
 - label: ":book: Lint"
   commands:
     - export LINT=1
