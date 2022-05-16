@@ -76,6 +76,7 @@ class ReservoirBuffer(ReplayBuffer):
                 item_to_be_removed = self._storage[idx]
                 self._est_size_bytes -= item_to_be_removed.size_bytes()
                 self._storage[idx] = item
+                self._est_size_bytes += item.size_bytes()
 
                 assert item.count > 0, item
                 warn_replay_capacity(item=item, num_items=self.capacity / item.count)
