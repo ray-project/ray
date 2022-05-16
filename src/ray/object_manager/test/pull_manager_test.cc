@@ -96,7 +96,7 @@ class PullManagerTestWithCapacity {
 };
 
 class PullManagerTest : public PullManagerTestWithCapacity,
-                        public ::testing::TestWithParam<bool> {
+                        public ::testing::TestWithParam<BundlePriority> {
  public:
   PullManagerTest() : PullManagerTestWithCapacity(1) {}
 
@@ -109,8 +109,9 @@ class PullManagerTest : public PullManagerTestWithCapacity,
   int64_t NumBytesBeingPulled() { return pull_manager_.num_bytes_being_pulled_; }
 };
 
-class PullManagerWithAdmissionControlTest : public PullManagerTestWithCapacity,
-                                            public ::testing::TestWithParam<bool> {
+class PullManagerWithAdmissionControlTest
+    : public PullManagerTestWithCapacity,
+      public ::testing::TestWithParam<BundlePriority> {
  public:
   PullManagerWithAdmissionControlTest() : PullManagerTestWithCapacity(10) {}
 
@@ -140,10 +141,7 @@ std::vector<rpc::ObjectReference> CreateObjectRefs(int num_objs) {
 }
 
 TEST_P(PullManagerTest, TestStaleSubscription) {
-  auto prio = BundlePriority::TASK_ARGS;
-  if (GetParam()) {
-    prio = BundlePriority::GET_REQUEST;
-  }
+  BundlePriority prio = GetParam();
   auto refs = CreateObjectRefs(1);
   auto oid = ObjectRefsToIds(refs)[0];
   AssertNumActiveRequestsEquals(0);
@@ -180,7 +178,11 @@ TEST_P(PullManagerTest, TestStaleSubscription) {
 }
 
 TEST_P(PullManagerWithAdmissionControlTest, TestPullObjectPendingCreation) {
-  auto prio = BundlePriority::TASK_ARGS;
+  BundlePriority prio = GetParam();
+  if (GetParam() == BundlePriority::GET_REQUEST) {
+    // Get requests are unlimited.
+    return;
+  }
 
   auto refs_1 = CreateObjectRefs(1);
   auto refs_2 = CreateObjectRefs(1);
@@ -250,10 +252,7 @@ TEST_P(PullManagerWithAdmissionControlTest, TestPullObjectPendingCreation) {
 }
 
 TEST_P(PullManagerWithAdmissionControlTest, TestPullOrder) {
-  auto prio = BundlePriority::TASK_ARGS;
-  if (GetParam()) {
-    prio = BundlePriority::GET_REQUEST;
-  }
+  BundlePriority prio = GetParam();
 
   auto refs_1 = CreateObjectRefs(1);
   auto refs_2 = CreateObjectRefs(1);
@@ -304,10 +303,7 @@ TEST_P(PullManagerWithAdmissionControlTest, TestPullOrder) {
 }
 
 TEST_P(PullManagerTest, TestRestoreSpilledObjectRemote) {
-  auto prio = BundlePriority::TASK_ARGS;
-  if (GetParam()) {
-    prio = BundlePriority::GET_REQUEST;
-  }
+  BundlePriority prio = GetParam();
   auto refs = CreateObjectRefs(1);
   auto obj1 = ObjectRefsToIds(refs)[0];
   rpc::Address addr1;
@@ -367,10 +363,7 @@ TEST_P(PullManagerTest, TestRestoreSpilledObjectRemote) {
 }
 
 TEST_P(PullManagerTest, TestRestoreSpilledObjectLocal) {
-  auto prio = BundlePriority::TASK_ARGS;
-  if (GetParam()) {
-    prio = BundlePriority::GET_REQUEST;
-  }
+  BundlePriority prio = GetParam();
   auto refs = CreateObjectRefs(1);
   auto obj1 = ObjectRefsToIds(refs)[0];
   rpc::Address addr1;
@@ -421,10 +414,7 @@ TEST_P(PullManagerTest, TestRestoreSpilledObjectLocal) {
 
 TEST_P(PullManagerTest, TestRestoreSpilledObjectOnLocalStorage) {
   /// Test the scneario where the object is spilled to local storage, like filesystems.
-  auto prio = BundlePriority::TASK_ARGS;
-  if (GetParam()) {
-    prio = BundlePriority::GET_REQUEST;
-  }
+  BundlePriority prio = GetParam();
   auto refs = CreateObjectRefs(1);
   auto obj1 = ObjectRefsToIds(refs)[0];
   rpc::Address addr1;
@@ -469,10 +459,7 @@ TEST_P(PullManagerTest, TestRestoreSpilledObjectOnLocalStorage) {
 
 TEST_P(PullManagerTest, TestRestoreSpilledObjectOnExternalStorage) {
   /// Test the scneario where the object is spilled to external storages, such as S3.
-  auto prio = BundlePriority::TASK_ARGS;
-  if (GetParam()) {
-    prio = BundlePriority::GET_REQUEST;
-  }
+  BundlePriority prio = GetParam();
   auto refs = CreateObjectRefs(1);
   auto obj1 = ObjectRefsToIds(refs)[0];
   rpc::Address addr1;
@@ -527,19 +514,16 @@ TEST_P(PullManagerTest, TestRestoreSpilledObjectOnExternalStorage) {
 TEST_P(PullManagerTest, TestLoadBalancingRestorationRequest) {
   /* Make sure when the object copy is in other raylet, we pull object from there instead
    * of requesting the owner node to restore the object. */
-  auto prio = BundlePriority::TASK_ARGS;
-  if (GetParam()) {
-    prio = BundlePriority::GET_REQUEST;
-  }
+  BundlePriority prio = GetParam();
 
   auto refs = CreateObjectRefs(1);
   auto obj1 = ObjectRefsToIds(refs)[0];
   rpc::Address addr1;
-  ASSERT_EQ(pull_manager_.NumActiveRequests(), 0);
+  ASSERT_EQ(pull_manager_.NumObjectPullRequests(), 0);
   std::vector<rpc::ObjectReference> objects_to_locate;
   pull_manager_.Pull(refs, prio, &objects_to_locate);
   ASSERT_EQ(ObjectRefsToIds(objects_to_locate), ObjectRefsToIds(refs));
-  ASSERT_EQ(pull_manager_.NumActiveRequests(), 1);
+  ASSERT_EQ(pull_manager_.NumObjectPullRequests(), 1);
 
   std::unordered_set<NodeID> client_ids;
   const auto copy_node1 = NodeID::FromRandom();
@@ -559,10 +543,7 @@ TEST_P(PullManagerTest, TestLoadBalancingRestorationRequest) {
 }
 
 TEST_P(PullManagerTest, TestManyUpdates) {
-  auto prio = BundlePriority::TASK_ARGS;
-  if (GetParam()) {
-    prio = BundlePriority::GET_REQUEST;
-  }
+  BundlePriority prio = GetParam();
   auto refs = CreateObjectRefs(1);
   auto obj1 = ObjectRefsToIds(refs)[0];
   rpc::Address addr1;
@@ -593,10 +574,7 @@ TEST_P(PullManagerTest, TestManyUpdates) {
 }
 
 TEST_P(PullManagerTest, TestRetryTimer) {
-  auto prio = BundlePriority::TASK_ARGS;
-  if (GetParam()) {
-    prio = BundlePriority::GET_REQUEST;
-  }
+  BundlePriority prio = GetParam();
   auto refs = CreateObjectRefs(1);
   auto obj1 = ObjectRefsToIds(refs)[0];
   rpc::Address addr1;
@@ -647,10 +625,7 @@ TEST_P(PullManagerTest, TestRetryTimer) {
 }
 
 TEST_P(PullManagerTest, TestBasic) {
-  auto prio = BundlePriority::TASK_ARGS;
-  if (GetParam()) {
-    prio = BundlePriority::GET_REQUEST;
-  }
+  BundlePriority prio = GetParam();
   auto refs = CreateObjectRefs(3);
   auto oids = ObjectRefsToIds(refs);
   AssertNumActiveRequestsEquals(0);
@@ -707,10 +682,7 @@ TEST_P(PullManagerTest, TestBasic) {
 }
 
 TEST_P(PullManagerTest, TestPinActiveObjects) {
-  auto prio = BundlePriority::TASK_ARGS;
-  if (GetParam()) {
-    prio = BundlePriority::GET_REQUEST;
-  }
+  BundlePriority prio = GetParam();
   auto refs = CreateObjectRefs(3);
   auto oids = ObjectRefsToIds(refs);
   AssertNumActiveRequestsEquals(0);
@@ -767,10 +739,7 @@ TEST_P(PullManagerTest, TestPinActiveObjects) {
 }
 
 TEST_P(PullManagerTest, TestDeduplicateBundles) {
-  auto prio = BundlePriority::TASK_ARGS;
-  if (GetParam()) {
-    prio = BundlePriority::GET_REQUEST;
-  }
+  BundlePriority prio = GetParam();
   auto refs = CreateObjectRefs(3);
   auto oids = ObjectRefsToIds(refs);
   AssertNumActiveRequestsEquals(0);
@@ -833,10 +802,7 @@ TEST_P(PullManagerTest, TestDeduplicateBundles) {
 
 // https://github.com/ray-project/ray/issues/15990
 TEST_P(PullManagerTest, TestDuplicateObjectsInDuplicateRequests) {
-  auto prio = BundlePriority::TASK_ARGS;
-  if (GetParam()) {
-    prio = BundlePriority::GET_REQUEST;
-  }
+  BundlePriority prio = GetParam();
   auto refs = CreateObjectRefs(2);
   // Duplicate an object id in the pull request.
   refs.push_back(refs[0]);
@@ -861,10 +827,7 @@ TEST_P(PullManagerTest, TestDuplicateObjectsInDuplicateRequests) {
 }
 
 TEST_P(PullManagerTest, TestDuplicateObjectsAreActivatedAndCleanedUp) {
-  auto prio = BundlePriority::TASK_ARGS;
-  if (GetParam()) {
-    prio = BundlePriority::GET_REQUEST;
-  }
+  BundlePriority prio = GetParam();
   auto refs = CreateObjectRefs(1);
   // Duplicate an object id in the pull request.
   refs.push_back(refs[0]);
@@ -885,10 +848,7 @@ TEST_P(PullManagerTest, TestDuplicateObjectsAreActivatedAndCleanedUp) {
 }
 
 TEST_P(PullManagerWithAdmissionControlTest, TestBasic) {
-  auto prio = BundlePriority::TASK_ARGS;
-  if (GetParam()) {
-    prio = BundlePriority::GET_REQUEST;
-  }
+  BundlePriority prio = GetParam();
   /// Test admission control for a single pull bundle request. We should
   /// activate the request when we are under the reported capacity and
   /// deactivate it when we are over.
@@ -923,7 +883,7 @@ TEST_P(PullManagerWithAdmissionControlTest, TestBasic) {
   pull_manager_.UpdatePullsBasedOnAvailableMemory(oids.size() * object_size - 1);
 
   // In unlimited mode, we fulfill all ray.gets using the fallback allocator.
-  if (GetParam()) {
+  if (GetParam() == BundlePriority::GET_REQUEST) {
     ASSERT_FALSE(pull_manager_.HasPullsQueued());
     AssertNumActiveRequestsEquals(3);
     AssertNumActiveBundlesEquals(1);
@@ -946,10 +906,7 @@ TEST_P(PullManagerWithAdmissionControlTest, TestBasic) {
 }
 
 TEST_P(PullManagerWithAdmissionControlTest, TestQueue) {
-  auto prio = BundlePriority::TASK_ARGS;
-  if (GetParam()) {
-    prio = BundlePriority::GET_REQUEST;
-  }
+  BundlePriority prio = GetParam();
   /// Test admission control for a queue of pull bundle requests. We should
   /// activate as many requests as we can, subject to the reported capacity.
   int object_size = 2;
@@ -982,7 +939,7 @@ TEST_P(PullManagerWithAdmissionControlTest, TestQueue) {
     int num_requests_quota =
         std::min(num_requests, capacity / (object_size * num_oids_per_request));
     int num_requests_expected = std::max(1, num_requests_quota);
-    if (GetParam()) {
+    if (GetParam() == BundlePriority::GET_REQUEST) {
       num_requests_expected = num_requests;
     }
     pull_manager_.UpdatePullsBasedOnAvailableMemory(capacity);
@@ -1011,11 +968,8 @@ TEST_P(PullManagerWithAdmissionControlTest, TestQueue) {
 }
 
 TEST_P(PullManagerWithAdmissionControlTest, TestCancel) {
-  auto prio = BundlePriority::TASK_ARGS;
-  if (GetParam()) {
-    prio = BundlePriority::GET_REQUEST;
-  }
-  if (GetParam()) {
+  BundlePriority prio = GetParam();
+  if (GetParam() == BundlePriority::GET_REQUEST) {
     return;  // This case isn't meaningful to test.
   }
   /// Test admission control while requests are cancelled out-of-order. When an
@@ -1221,10 +1175,7 @@ TEST_F(PullManagerWithAdmissionControlTest, TestPrioritizeWorkerRequests) {
 }
 
 TEST_P(PullManagerTest, TestTimeOut) {
-  auto prio = BundlePriority::TASK_ARGS;
-  if (GetParam()) {
-    prio = BundlePriority::GET_REQUEST;
-  }
+  BundlePriority prio = GetParam();
   auto refs = CreateObjectRefs(1);
   auto oids = ObjectRefsToIds(refs);
   std::vector<rpc::ObjectReference> objects_to_locate;
@@ -1271,10 +1222,7 @@ TEST_P(PullManagerTest, TestTimeOut) {
 
 TEST_P(PullManagerTest, TestTimeOutAfterFailedPull) {
   // Check that a successful Pull resets the timer for failed fetches.
-  auto prio = BundlePriority::TASK_ARGS;
-  if (GetParam()) {
-    prio = BundlePriority::GET_REQUEST;
-  }
+  BundlePriority prio = GetParam();
   auto refs = CreateObjectRefs(1);
   auto oids = ObjectRefsToIds(refs);
   std::vector<rpc::ObjectReference> objects_to_locate;
@@ -1313,11 +1261,15 @@ TEST_P(PullManagerTest, TestTimeOutAfterFailedPull) {
 
 INSTANTIATE_TEST_SUITE_P(WorkerOrTaskRequests,
                          PullManagerTest,
-                         testing::Values(true, false));
+                         testing::Values(BundlePriority::GET_REQUEST,
+                                         BundlePriority::WAIT_REQUEST,
+                                         BundlePriority::TASK_ARGS));
 
 INSTANTIATE_TEST_SUITE_P(WorkerOrTaskRequests,
                          PullManagerWithAdmissionControlTest,
-                         testing::Values(true, false));
+                         testing::Values(BundlePriority::GET_REQUEST,
+                                         BundlePriority::WAIT_REQUEST,
+                                         BundlePriority::TASK_ARGS));
 }  // namespace ray
 
 int main(int argc, char **argv) {

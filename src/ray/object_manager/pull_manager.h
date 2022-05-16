@@ -80,10 +80,8 @@ class PullManager {
   ///
   /// \param object_refs The bundle of objects that must be made local.
   /// \param prio The priority class of the bundle.
-  /// task, versus the arguments of a queued task. Worker requests are
   /// \param objects_to_locate The objects whose new locations the caller
   /// should subscribe to, and call OnLocationChange for.
-  /// prioritized over queued task arguments.
   /// \return A request ID that can be used to cancel the request.
   uint64_t Pull(const std::vector<rpc::ObjectReference> &object_ref_bundle,
                 BundlePriority prio,
@@ -91,7 +89,7 @@ class PullManager {
 
   /// Update the pull requests that are currently being pulled, according to
   /// the current capacity. The PullManager will choose the objects to pull by
-  /// taking the longest contiguous prefix of the request queue whose total
+  /// taking as many as pullable requests whose total
   /// size is less than the given capacity.
   ///
   /// \param num_bytes_available The number of bytes that are currently
@@ -141,19 +139,16 @@ class PullManager {
   void ResetRetryTimer(const ObjectID &object_id);
 
   /// The number of ongoing object pulls.
-  int NumActiveRequests() const;
+  int NumObjectPullRequests() const;
 
-  /// Returns whether the object is actively being pulled. object_required
-  /// returns whether the object is still needed by some pull request on this
-  /// node (but may not be actively pulled due to throttling).
+  /// Returns whether the object is actively being pulled.
   ///
   /// This method (and this method only) is thread-safe.
   bool IsObjectActive(const ObjectID &object_id) const;
 
   /// Check whether the pull request is currently active or waiting for object
   /// size information. If this returns false, then the pull request is most
-  /// likely inactive due to lack of memory. This can also return false if an
-  /// earlier request is waiting for metadata.
+  /// likely inactive due to lack of memory.
   bool PullRequestActiveOrWaitingForMetadata(uint64_t request_id) const;
 
   /// Whether we are have requests queued that are not currently active. This
@@ -200,6 +195,7 @@ class PullManager {
     bool IsPullable() const { return object_size_set && !pending_object_creation; }
   };
 
+  /// A helper structure for tracking information about each ongoing bundle pull request.
   struct BundlePullRequest {
     BundlePullRequest(std::vector<ObjectID> requested_objects,
                       BundlePriority bundle_priority)
@@ -221,10 +217,15 @@ class PullManager {
     bool IsPullable() const { return pullable_objects.size() == objects.size(); }
   };
 
+  /// A helper structure for tracking all the bundle pull requests for a particular bundle
+  /// priority.
   struct BundlePullRequests {
     absl::flat_hash_map<uint64_t, BundlePullRequest> requests;
-    // If a request is not active or inactive, it must be unpullable.
+    // If a request is not active or inactive, it must be unpullable
+    // (i.e. requests - active_requests - inactive_requests == unpullable_requests).
     // Allowed transitions are active <--> inactive and inactive <--> unpullable.
+    // Note: we use std::set here so requests are sorted by their request ids (i.e. the
+    // order of pull).
     std::set<uint64_t> active_requests;
     std::set<uint64_t> inactive_requests;
 
@@ -265,6 +266,17 @@ class PullManager {
       requests.erase(request_id);
       active_requests.erase(request_id);
       inactive_requests.erase(request_id);
+    }
+
+    std::string DebugString() const {
+      std::stringstream result;
+      result << "BundlePullRequests[";
+      result << requests.size() << " total, ";
+      result << active_requests.size() << " active, ";
+      result << inactive_requests.size() << " inactive, ";
+      result << (requests.size() - active_requests.size() - inactive_requests.size())
+             << " unpullable]";
+      return result.str();
     }
   };
 
@@ -353,7 +365,7 @@ class PullManager {
   /// cancel. Start at 1 because 0 means null.
   uint64_t next_req_id_ = 1;
 
-  /// The currently pullable pull requests. Each request is a bundle of objects
+  /// The currently ongoing pull requests. Each request is a bundle of objects
   /// that must be made local. The key is the ID that was assigned to that
   /// request, which can be used by the caller to cancel the request.
   ///
