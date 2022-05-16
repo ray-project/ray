@@ -1,20 +1,19 @@
 import logging
 from typing import List, Optional, Type
 
-from ray.rllib.agents.dqn.simple_q import SimpleQTrainer
+from ray.rllib.agents.dqn.simple_q import SimpleQConfig, SimpleQTrainer
 from ray.rllib.agents.ddpg.ddpg_tf_policy import DDPGTFPolicy
 from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.rllib.utils.deprecation import Deprecated
 
 logger = logging.getLogger(__name__)
 
 
-class DDPGConfig(TrainerConfig):
-    """Defines a DDPGTrainer configuration class from which a DDPGTrainer can be built.
+class DDPGConfig(SimpleQConfig):
+    """Defines a configuration class from which a DDPGTrainer can be built.
 
     Example:
         >>> from ray.rllib.agents.ddpg.ddpg import DDPGConfig
@@ -44,9 +43,9 @@ class DDPGConfig(TrainerConfig):
         ... )
     """
 
-    def __init__(self):
+    def __init__(self, trainer_class=None):
         """Initializes a DDPGConfig instance."""
-        super().__init__(trainer_class=DDPGTrainer)
+        super().__init__(trainer_class=trainer_class or DDPGTrainer)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -67,7 +66,6 @@ class DDPGConfig(TrainerConfig):
         self.training_intensity = None
         self.critic_lr = 1e-3
         self.actor_lr = 1e-3
-        self.target_network_update_freq = 0
         self.tau = 0.002
         self.use_huber = False
         self.huber_threshold = 1.0
@@ -76,7 +74,7 @@ class DDPGConfig(TrainerConfig):
         # __sphinx_doc_end__
         # fmt: on
 
-        # Override some of TrainerConfig's default values with DDPG-specific values.
+        # Override some of SimpleQ's default values with DDPG-specific values.
         # .exploration()
         self.exploration_config = {
             # DDPG uses OrnsteinUhlenbeck (stateful) noise to be added to NN-output
@@ -99,13 +97,7 @@ class DDPGConfig(TrainerConfig):
             "scale_timesteps": 10000,
         }
 
-        # .evaluation()
-        self.evaluation_interval = None
-        self.evaluation_duration = 10
-        self.evaluation_config = {"explore": False}
-
-        # Common SimpleQ buffer parameters.
-        self.buffer_size = DEPRECATED_VALUE
+        # Common DDPG buffer parameters.
         self.replay_buffer_config = {
             "_enable_replay_buffer_api": True,
             "type": "MultiAgentPrioritizedReplayBuffer",
@@ -119,24 +111,16 @@ class DDPGConfig(TrainerConfig):
             # How many steps of the model to sample before learning starts.
             "learning_starts": 1500,
         }
-        self.store_buffer_in_checkpoints = False
 
         # .training()
         self.grad_clip = None
         self.train_batch_size = 256
+        self.target_network_update_freq = 0
 
         # .rollouts()
-        self.num_workers = 0
         self.rollout_fragment_length = 1
         self.worker_side_prioritization = False
         self.compress_observations = False
-
-        # .reporting()
-        self.min_time_s_per_reporting = 1
-        self.min_sample_timesteps_per_reporting = 1000
-
-        # Deprecated.
-        self.learning_starts = DEPRECATED_VALUE
 
     @override(TrainerConfig)
     def training(
@@ -155,14 +139,12 @@ class DDPGConfig(TrainerConfig):
         n_step: Optional[int] = None,
         critic_lr: Optional[float] = None,
         actor_lr: Optional[float] = None,
-        target_network_update_freq: Optional[int] = None,
         tau: Optional[float] = None,
         use_huber: Optional[bool] = None,
         huber_threshold: Optional[float] = None,
         l2_reg: Optional[float] = None,
         worker_side_prioritization: Optional[bool] = None,
         training_intensity: Optional[float] = None,
-        replay_buffer_config: Optional[dict] = None,
         **kwargs,
     ) -> "DDPGConfig":
         """Sets the training related configuration.
@@ -199,8 +181,6 @@ class DDPGConfig(TrainerConfig):
             n_step: N-step Q learning
             critic_lr: Learning rate for the critic (Q-function) optimizer.
             actor_lr: Learning rate for the actor (policy) optimizer.
-            target_network_update_freq: Update the target network every
-                `target_network_update_freq` steps.
             tau: Update the target by \tau * policy + (1-\tau) * target_policy
             use_huber: Conventionally, no need to clip gradients if using a huber loss
             huber_threshold: Threshold of a huber loss
@@ -221,7 +201,6 @@ class DDPGConfig(TrainerConfig):
                     -> will make sure that replay+train op will be executed 4x as
                     often as rollout+insert op (4 * 250 = 1000).
                 See: rllib/agents/dqn/dqn.py::calculate_rr_weights for further details.
-            replay_buffer_config: Replay buffer config.
 
         Returns:
             This updated DDPGConfig object.
@@ -254,8 +233,6 @@ class DDPGConfig(TrainerConfig):
             self.critic_lr = critic_lr
         if actor_lr is not None:
             self.actor_lr = actor_lr
-        if target_network_update_freq is not None:
-            self.target_network_update_freq = target_network_update_freq
         if tau is not None:
             self.tau = tau
         if use_huber is not None:
@@ -268,8 +245,6 @@ class DDPGConfig(TrainerConfig):
             self.worker_side_prioritization = worker_side_prioritization
         if training_intensity is not None:
             self.training_intensity = training_intensity
-        if replay_buffer_config is not None:
-            self.replay_buffer_config = replay_buffer_config
 
         return self
 
