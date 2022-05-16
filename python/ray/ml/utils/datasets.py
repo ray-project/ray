@@ -26,7 +26,8 @@ def train_test_split(
         dataset: Dataset to split.
         test_size: If float, should be between 0.0 and 1.0 and represent the proportion
             of the dataset to include in the test split. If int, represents the
-            absolute number of test samples.
+            absolute number of test samples. The train split will always be the
+            compliment of the test split.
         shuffle: Whether or not to globally shuffle the dataset before splitting.
             Defaults to False. This may be a very expensive operation with large
             datasets.
@@ -39,8 +40,6 @@ def train_test_split(
     if shuffle:
         dataset = dataset.random_shuffle(seed=seed)
 
-    dataset_length = dataset.count()
-
     if not isinstance(test_size, (int, float)):
         raise TypeError(f"`test_size` must be int or float got {type(test_size)}.")
     if isinstance(test_size, float):
@@ -51,6 +50,7 @@ def train_test_split(
             )
         return dataset.split_proportionately([1 - test_size])
     else:
+        dataset_length = dataset.count()
         if test_size <= 0 or test_size >= dataset_length:
             raise ValueError(
                 "If `test_size` is an int, it must be bigger than 0 and smaller than "
