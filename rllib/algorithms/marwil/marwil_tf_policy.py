@@ -232,7 +232,9 @@ def setup_mixins(
 
 MARWILTFPolicy = build_tf_policy(
     name="MARWILTFPolicy",
-    get_default_config=lambda: ray.rllib.algorithms.marwil.marwil.MARWILConfig().to_dict(),
+    get_default_config=lambda: (
+        ray.rllib.algorithms.marwil.marwil.MARWILConfig().to_dict()
+    ),
     loss_fn=marwil_loss,
     stats_fn=stats,
     postprocess_fn=postprocess_advantages,

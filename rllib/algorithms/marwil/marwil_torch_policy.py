@@ -113,7 +113,9 @@ MARWILTorchPolicy = build_policy_class(
     name="MARWILTorchPolicy",
     framework="torch",
     loss_fn=marwil_loss,
-    get_default_config=lambda: ray.rllib.algorithms.marwil.marwil.MARWILConfig().to_dict(),
+    get_default_config=lambda: (
+        ray.rllib.algorithms.marwil.marwil.MARWILConfig().to_dict()
+    ),
     stats_fn=stats,
     postprocess_fn=postprocess_advantages,
     extra_grad_process_fn=apply_grad_clipping,

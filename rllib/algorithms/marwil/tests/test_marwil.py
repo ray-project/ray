@@ -42,7 +42,6 @@ class TestMARWIL(unittest.TestCase):
         data_file = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
         print("data_file={} exists={}".format(data_file, os.path.isfile(data_file)))
 
-<<<<<<< HEAD:rllib/agents/marwil/tests/test_marwil.py
         config = (
             marwil.MARWILConfig()
             .rollouts(num_rollout_workers=2)
@@ -56,19 +55,6 @@ class TestMARWIL(unittest.TestCase):
             .offline_data(input_=[data_file])
         )
 
-=======
-        config = marwil.DEFAULT_CONFIG.copy()
-        config["num_workers"] = 2
-        config["env"] = "CartPole-v0"
-        config["evaluation_num_workers"] = 1
-        config["evaluation_interval"] = 3
-        config["evaluation_duration"] = 5
-        config["evaluation_parallel_to_training"] = True
-        # Evaluate on actual environment.
-        config["evaluation_config"] = {"input": "sampler"}
-        # Learn from offline data.
-        config["input"] = [data_file]
->>>>>>> 830af1f14dbb9a6f590667d882dab77be0da4e0e:rllib/algorithms/marwil/tests/test_marwil.py
         num_iterations = 350
         min_reward = 70.0
 
