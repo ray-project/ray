@@ -517,6 +517,12 @@ void raylet::RayletClient::GetResourceLoad(
   grpc_client_->GetResourceLoad(request, callback);
 }
 
+void raylet::RayletClient::NotifyGCSRestart(
+    const rpc::ClientCallback<rpc::NotifyGCSRestartReply> &callback) {
+  rpc::NotifyGCSRestartRequest request;
+  grpc_client_->NotifyGCSRestart(request, callback);
+}
+
 void raylet::RayletClient::SubscribeToPlasma(const ObjectID &object_id,
                                              const rpc::Address &owner_address) {
   flatbuffers::FlatBufferBuilder fbb;
