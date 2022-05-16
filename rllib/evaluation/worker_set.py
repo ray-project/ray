@@ -210,21 +210,32 @@ class WorkerSet:
 
         # Only sync if we have remote workers or `from_worker` is provided.
         weights = None
+        import time
         if self.remote_workers() or from_worker is not None:
             weights = (from_worker or self.local_worker()).get_weights(policies)
             print(f">>> len(weights): {len(weights)}")
+            for key in weights['default_policy'].keys():
+                # print(f">>> Tensor key: {val}, size: {val.size()}")
+                tensor = weights['default_policy'][key]
+                print(f"{(tensor.size * 4) / (10**6)} MB - {tensor.shape} - {key}")
             print(f">>> len(self.remote_workers()): {len(self.remote_workers())}")
             # Put weights only once into object store and use same object
             # ref to synch to all workers.
+            start = time.time()
             weights_ref = ray.put(weights)
+            print(f">>> Putting weights to object store: {(time.time() - start)*1000}ms")
             # Sync to all remote workers in this WorkerSet.
+            start = time.time()
             for to_worker in self.remote_workers():
                 to_worker.set_weights.remote(weights_ref, global_vars=global_vars)
+            print(f">>> Syncing weights to all workers from object store: {(time.time() - start)*1000}ms")
 
         # If `from_worker` is provided, also sync to this WorkerSet's
         # local worker.
         if from_worker is not None and self.local_worker() is not None:
+            start = time.time()
             self.local_worker().set_weights(weights, global_vars=global_vars)
+            print(f">>> Set weights on local work took: {(time.time() - start)*1000}ms")
         # If `global_vars` is provided and local worker exists  -> Update its
         # global_vars.
         elif self.local_worker() is not None and global_vars is not None:

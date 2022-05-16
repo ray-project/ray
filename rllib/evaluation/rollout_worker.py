@@ -888,6 +888,11 @@ class RolloutWorker(ParallelIteratorWorker):
 
         if self.fake_sampler:
             self.last_batch = batch
+
+        print(f"<<<< [rollout_worker] batch : {batch}")
+        for key in batch.keys():
+            val = batch[key]
+            print(f"<<<< [rollout_worker] batch : {val.size * 4 / 10**6} MB - {key}")
         return batch
 
     @DeveloperAPI
