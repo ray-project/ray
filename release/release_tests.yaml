@@ -2231,6 +2231,29 @@
 
   alert: default
 
+- name: rllib_performance_tests
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: performance_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 12gpus_192cpus.yaml
+
+  run:
+    timeout: 14400
+    script: python performance_tests/run.py
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
 ########################
 # Core Nightly Tests
 ########################
