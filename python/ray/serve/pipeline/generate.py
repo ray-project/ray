@@ -27,6 +27,7 @@ def transform_ray_dag_to_serve_dag(
     """
     if isinstance(dag_node, ClassNode):
         deployment_name = node_name_generator.get_node_name(dag_node)
+
         return DeploymentNode(
             dag_node._body,
             deployment_name,
@@ -96,29 +97,31 @@ def extract_deployments_from_serve_dag(
 
     return list(deployments.values())
 
+
 def transform_serve_dag_to_serve_executor_dag(serve_dag_root_node: DAGNode):
     """Given a runnable serve dag with deployment init args and options
     processed, transform into an equivalent, but minimal dag optimized for
     execution.
     """
     if isinstance(serve_dag_root_node, DeploymentNode):
-        print("DeploymentNode")
-        return DeploymentExecutorNode(
-            serve_dag_root_node._deployment_handle,
-            serve_dag_root_node.get_args(),
-            serve_dag_root_node.get_kwargs()
+        # TODO: (jiaodong) Do not use full Deployment init args, only the ones that connects dag.
+        print(
+            f"Creating DeploymentExecutorNode with {serve_dag_root_node.get_args()}, {serve_dag_root_node.get_kwargs()}"
         )
-    elif isinstance(serve_dag_root_node, DeploymentFunctionNode):
+
+        return DeploymentExecutorNode(
+            serve_dag_root_node.get_args(), serve_dag_root_node.get_kwargs()
+        )
+    if isinstance(serve_dag_root_node, DeploymentFunctionNode):
         print("DeploymentFunctionNode")
         return DeploymentFunctionExecutorNode(
             serve_dag_root_node._deployment_handle,
             serve_dag_root_node.get_args(),
-            serve_dag_root_node.get_kwargs()
+            serve_dag_root_node.get_kwargs(),
         )
     else:
         print("Other")
         return serve_dag_root_node
-
 
 
 def get_pipeline_input_node(serve_dag_root_node: DAGNode):

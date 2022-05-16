@@ -1,12 +1,12 @@
-
-
 from typing import Any, Dict, Optional, List, Union
 
 import ray
 from ray.experimental.dag import DAGNode
 from ray.serve.handle import RayServeSyncHandle, RayServeHandle
+from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
 from ray.experimental.dag.format_utils import get_dag_node_str
+
 
 class DeploymentExecutorNode(DAGNode):
     """The lightweight executor DAGNode of DeploymentNode that optimizes for
@@ -24,13 +24,17 @@ class DeploymentExecutorNode(DAGNode):
 
     def __init__(
         self,
-        deployment_handle: Union[RayServeSyncHandle, RayServeHandle],
-        args,
-        kwargs,
+        dag_args,  # Not deployment init args
+        dag_kwargs,  # Not deployment init kwargs
         other_args_to_resolve: Optional[Dict[str, Any]] = None,
     ):
-        super().__init__(args, kwargs, {}, other_args_to_resolve=other_args_to_resolve)
-        self._deployment_handle = deployment_handle
+        print(
+            f">>>> init DeploymentExecutorNode with args: {dag_args}, kwargs: {dag_kwargs}"
+        )
+
+        super().__init__(
+            dag_args, dag_kwargs, {}, other_args_to_resolve=other_args_to_resolve
+        )
 
     def _copy_impl(
         self,
@@ -40,21 +44,21 @@ class DeploymentExecutorNode(DAGNode):
         new_other_args_to_resolve: Dict[str, Any],
     ):
         return DeploymentExecutorNode(
-            self._deployment_handle,
             new_args,
             new_kwargs,
             other_args_to_resolve=new_other_args_to_resolve,
         )
 
     def _execute_impl(self, *args, **kwargs):
-        """Executor of DeploymentNode getting called each time on dag.execute.
-
-        The execute implementation is recursive, that is, the method nodes will receive
-        whatever this method returns. We return a handle here so method node can
-        directly call upon.
+        """Does not call into anything or produce a new value, as the time
+        this function gets called, all child nodes are already resolved to
+        ObjectRefs.
         """
-        print(f"????? called with args: {args}, kwargs: {kwargs}")
-        print(f"????? _bound_args: {self._bound_args}, _bound_kwargs: {self._bound_kwargs}")
+        print(f"????? Executor Node - called with args: {args}, kwargs: {kwargs}")
+        print(
+            f"????? Executor Node - _bound_args: {self._bound_args}, _bound_kwargs: {self._bound_kwargs}"
+        )
+        # For DAGDriver -- Return object ref of the
         return self._bound_args[0]
 
     def __str__(self) -> str:
@@ -63,18 +67,15 @@ class DeploymentExecutorNode(DAGNode):
     def to_json(self) -> Dict[str, Any]:
         return {
             DAGNODE_TYPE_KEY: DeploymentExecutorNode.__name__,
-            "deployment_handle": self._deployment_handle,
             "args": self.get_args(),
             "kwargs": self.get_kwargs(),
             "other_args_to_resolve": self.get_other_args_to_resolve(),
-            "uuid": self.get_stable_uuid(),
         }
 
     @classmethod
     def from_json(cls, input_json):
         assert input_json[DAGNODE_TYPE_KEY] == DeploymentExecutorNode.__name__
         return cls(
-            input_json["deployment_handle"],
             input_json["args"],
             input_json["kwargs"],
             other_args_to_resolve=input_json["other_args_to_resolve"],

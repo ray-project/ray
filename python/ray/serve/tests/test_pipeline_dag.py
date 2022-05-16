@@ -134,6 +134,7 @@ class NoargDriver:
 
 
 async def json_resolver(request: starlette.requests.Request):
+    print(">>>>> Running json_resolver !!!")
     return await request.json()
 
 
@@ -159,16 +160,26 @@ def test_chained_function(serve_instance, use_build):
         print(f"<<<< func_2: {input}")
         return input * 2
 
+    @serve.deployment
+    def func_3(input):
+        print(f"<<<< func_3: {input}")
+        return input * 3
+
     with InputNode() as dag_input:
         output_1 = func_1.bind(dag_input)
         output_2 = func_2.bind(dag_input)
-        serve_dag = combine.bind(output_1, output_2)
-    # with pytest.raises(ValueError, match="Please provide a driver class"):
-    #     _ = serve.run(serve_dag)
+        output_3 = func_3.bind(output_2)
+        ray_dag = combine.bind(output_1, output_2, kwargs_output=output_3)
+    with pytest.raises(ValueError, match="Please provide a driver class"):
+        _ = serve.run(ray_dag)
 
-    handle = serve.run(DAGDriver.bind(serve_dag, http_adapter="ray.serve.tests.test_pipeline_dag.json_resolver"))
-    assert ray.get(handle.predict.remote(2)) == 6  # 2 + 2*2
-    assert requests.post("http://127.0.0.1:8000/", json=2).json() == 6
+    serve_dag = DAGDriver.bind(
+        ray_dag, http_adapter="ray.serve.tests.test_pipeline_dag.json_resolver"
+    )
+
+    handle = serve.run(serve_dag)
+    assert ray.get(handle.predict.remote(2)) == 18  # 2 + 2*2 + (2*2) * 3
+    assert requests.post("http://127.0.0.1:8000/", json=2).json() == 18
 
 
 # @pytest.mark.parametrize("use_build", [False, True])

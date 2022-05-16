@@ -57,6 +57,9 @@ class DeploymentFunctionExecutorNode(DAGNode):
         receive whatever this method returns. We return a handle here so method
         node can directly call upon.
         """
+        print(
+            f"????? FunctionExecutorNode - _bound_args: {self._bound_args}, _bound_kwargs: {self._bound_kwargs}"
+        )
         return self._deployment_function_handle.remote(
             *self._bound_args, **self._bound_kwargs
         )
@@ -70,7 +73,7 @@ class DeploymentFunctionExecutorNode(DAGNode):
             "deployment_function_handle": self._deployment_function_handle,
             "args": self.get_args(),
             "kwargs": self.get_kwargs(),
-            "other_args_to_resolve": self.get_other_args_to_resolve()
+            "other_args_to_resolve": self.get_other_args_to_resolve(),
         }
 
     @classmethod

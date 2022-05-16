@@ -63,7 +63,14 @@ class DeploymentNode(DAGNode):
                 return node._get_serve_deployment_handle(
                     node._deployment, node._bound_other_args_to_resolve
                 )
-            elif isinstance(node, (DeploymentMethodNode, DeploymentFunctionNode, DeploymentFunctionExecutorNode)):
+            elif isinstance(
+                node,
+                (
+                    DeploymentMethodNode,
+                    DeploymentFunctionNode,
+                    DeploymentFunctionExecutorNode,
+                ),
+            ):
                 from ray.serve.pipeline.json_serde import DAGNodeEncoder
 
                 serve_dag_root_json = json.dumps(node, cls=DAGNodeEncoder)
@@ -75,7 +82,14 @@ class DeploymentNode(DAGNode):
         ) = self.apply_functional(
             [deployment_init_args, deployment_init_kwargs],
             predictate_fn=lambda node: isinstance(
-                node, (DeploymentNode, DeploymentMethodNode, DeploymentFunctionNode, DeploymentExecutorNode, DeploymentFunctionExecutorNode)
+                node,
+                (
+                    DeploymentNode,
+                    DeploymentMethodNode,
+                    DeploymentFunctionNode,
+                    DeploymentExecutorNode,
+                    DeploymentFunctionExecutorNode,
+                ),
             ),
             apply_fn=replace_with_handle,
         )

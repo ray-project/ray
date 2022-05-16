@@ -94,6 +94,6 @@ class DAGDriver(SimpleSchemaIngress):
     async def predict(self, *args, **kwargs):
         """Perform inference directly without HTTP."""
 
-        print(f">>>>DAGDriver: Calling predict with dag_handle: {self.dag_handle}")
-        print(f">>>>DAGDriver: Calling predict with args: {args}, kwargs: {kwargs}")
+        print(f">>>> DAGDriver: Calling predict with dag_handle: {self.dag_handle}")
+        print(f">>>> DAGDriver: Calling predict with args: {args}, kwargs: {kwargs}")
         return await self.dag_handle.remote(*args, **kwargs)
