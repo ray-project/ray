@@ -1,12 +1,8 @@
 load("//bazel:python.bzl", "py_test_module_list")
 
-SRCS = [] + select({
-    "@bazel_tools//src/conditions:windows": glob([
-        # TODO(mehrdadn): This should be added for all platforms once resulting errors are fixed
-        "**/conftest.py",
-    ]),
-    "//conditions:default": [],
-})
+SRCS =  glob([
+  "**/conftest.py",
+])
 
 py_test_module_list(
   files = [
