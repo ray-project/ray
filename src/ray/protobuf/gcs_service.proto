@@ -513,8 +513,7 @@ message PinRuntimeEnvURIReply {
 /// Handles pinning package URIs that are stored in the GCS.
 /// Future runtime_env-related RPCs should be added to this service.
 service RuntimeEnvGcsService {
-  rpc PinRuntimeEnvURI(PinRuntimeEnvURIRequest)
-      returns (PinRuntimeEnvURIReply);
+  rpc PinRuntimeEnvURI(PinRuntimeEnvURIRequest) returns (PinRuntimeEnvURIReply);
 }
 
 message GcsPublishRequest {

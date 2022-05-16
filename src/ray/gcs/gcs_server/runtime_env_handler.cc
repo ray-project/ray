@@ -21,8 +21,7 @@ void RuntimeEnvHandler::HandlePinRuntimeEnvURI(
     const rpc::PinRuntimeEnvURIRequest &request,
     rpc::PinRuntimeEnvURIReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(DEBUG) << "Received PinRuntimeEnvURI request: "
-                 << request.DebugString();
+  RAY_LOG(DEBUG) << "Received PinRuntimeEnvURI request: " << request.DebugString();
   // Use a random ID to hold the temporary reference URI.
   std::string hex_id(12, 0);
   FillRandom(&hex_id);

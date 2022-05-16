@@ -548,10 +548,9 @@ class InternalKVGrpcService : public GrpcService {
 class RuntimeEnvGcsServiceHandler {
  public:
   virtual ~RuntimeEnvGcsServiceHandler() = default;
-  virtual void HandlePinRuntimeEnvURI(
-      const PinRuntimeEnvURIRequest &request,
-      PinRuntimeEnvURIReply *reply,
-      SendReplyCallback send_reply_callback) = 0;
+  virtual void HandlePinRuntimeEnvURI(const PinRuntimeEnvURIRequest &request,
+                                      PinRuntimeEnvURIReply *reply,
+                                      SendReplyCallback send_reply_callback) = 0;
 };
 
 class RuntimeEnvGrpcService : public GrpcService {
