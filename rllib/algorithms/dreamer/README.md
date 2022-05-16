@@ -16,4 +16,4 @@ Dreamer.
 
   **[Detailed Documentation](https://docs.ray.io/en/latest/rllib/rllib-algorithms.html#dreamer)**
 
-  **[Implementation](https://github.com/ray-project/ray/blob/master/rllib/agents/dreamer/dreamer.py)**
+  **[Implementation](https://github.com/ray-project/ray/blob/master/rllib/algorithms/dreamer/dreamer.py)**
