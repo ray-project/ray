@@ -330,7 +330,7 @@ py_test(
     name = "learning_tests_cartpole_simpleq_fake_gpus",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/dqn/cartpole-simpleq-fake-gpus.yaml"],
     args = ["--yaml-dir=tuned_examples/dqn"]
@@ -647,7 +647,7 @@ py_test(
     name = "test_alpha_star",
     tags = ["team:ml", "trainers_dir"],
     size = "large",
-    srcs = ["agents/alpha_star/tests/test_alpha_star.py"]
+    srcs = ["algorithms/alpha_star/tests/test_alpha_star.py"]
 )
 
 # APEXTrainer (DQN)
@@ -687,7 +687,7 @@ py_test(
     name = "test_cql",
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
-    srcs = ["agents/cql/tests/test_cql.py"]
+    srcs = ["algorithms/cql/tests/test_cql.py"]
 )
 
 # DDPGTrainer
@@ -711,7 +711,7 @@ py_test(
     name = "test_dreamer",
     tags = ["team:ml", "trainers_dir"],
     size = "small",
-    srcs = ["agents/dreamer/tests/test_dreamer.py"]
+    srcs = ["algorithms/dreamer/tests/test_dreamer.py"]
 )
 
 # ES
@@ -743,7 +743,7 @@ py_test(
     size = "large",
     # Include the json data file.
     data = ["tests/data/cartpole/large.json"],
-    srcs = ["agents/marwil/tests/test_marwil.py"]
+    srcs = ["algorithms/marwil/tests/test_marwil.py"]
 )
 
 # BCTrainer (sub-type of MARWIL)
@@ -753,7 +753,7 @@ py_test(
     size = "large",
     # Include the json data file.
     data = ["tests/data/cartpole/large.json"],
-    srcs = ["agents/marwil/tests/test_bc.py"]
+    srcs = ["algorithms/marwil/tests/test_bc.py"]
 )
 
 # MAMLTrainer
@@ -761,7 +761,7 @@ py_test(
     name = "test_maml",
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
-    srcs = ["agents/maml/tests/test_maml.py"]
+    srcs = ["algorithms/maml/tests/test_maml.py"]
 )
 
 # MBMPOTrainer
@@ -769,7 +769,7 @@ py_test(
     name = "test_mbmpo",
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
-    srcs = ["agents/mbmpo/tests/test_mbmpo.py"]
+    srcs = ["algorithms/mbmpo/tests/test_mbmpo.py"]
 )
 
 # PGTrainer
