@@ -14,7 +14,7 @@ def _import_maddpg():
 
 
 def _import_alphazero():
-    from ray.rllib.agents.alpha_zero.alpha_zero_trainer import (
+    from ray.rllib.contrib.alpha_zero.core.alpha_zero_trainer import (
         AlphaZeroTrainer,
         DEFAULT_CONFIG,
     )
@@ -24,7 +24,7 @@ def _import_alphazero():
 
 CONTRIBUTED_ALGORITHMS = {
     "contrib/RandomAgent": _import_random_agent,
-    # Deprecated: Use `AlphaZero` and `MADDPG`, instead.
     "contrib/AlphaZero": _import_alphazero,
+    # Deprecated: Use `MADDPG`, instead.
     "contrib/MADDPG": _import_maddpg,
 }

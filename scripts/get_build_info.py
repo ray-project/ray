@@ -1,1 +1,0 @@
-../ci/build/get_build_info.py

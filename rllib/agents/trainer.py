@@ -1921,6 +1921,7 @@ class Trainer(Trainable):
             config["min_sample_timesteps_per_reporting"] = (
                 config["timesteps_per_iteration"] or 0
             )
+            config["timesteps_per_iteration"] = DEPRECATED_VALUE
 
         # Evaluation settings.
 

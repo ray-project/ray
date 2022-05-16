@@ -102,7 +102,7 @@ Bandits:
 
 Multi-agent:  
 
-- `Single-Player Alpha Zero (AlphaZero)  <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#alphazero>`__
+- `Single-Player Alpha Zero (contrib/AlphaZero)  <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#alphazero>`__ 
 - `Parameter Sharing <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#parameter>`__ 
 - `QMIX Monotonic Value Factorisation (QMIX, VDN, IQN)) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#qmix>`__ 
 - `Multi-Agent Deep Deterministic Policy Gradient (contrib/MADDPG) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#maddpg>`__ 

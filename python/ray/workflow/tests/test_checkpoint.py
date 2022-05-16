@@ -4,7 +4,6 @@ from ray.tests.conftest import *  # noqa
 
 import numpy as np
 from ray import workflow
-from ray.workflow.tests import utils
 from ray.workflow import workflow_storage
 
 
@@ -22,14 +21,14 @@ def checkpoint_dag(checkpoint):
     def average(x):
         return np.mean(x)
 
-    x = utils.update_workflow_options(
-        large_input, name="large_input", checkpoint=checkpoint
+    x = large_input.options(
+        **workflow.options(name="large_input", checkpoint=checkpoint)
     ).bind()
-    y = utils.update_workflow_options(
-        identity, name="identity", checkpoint=checkpoint
+    y = identity.options(
+        **workflow.options(name="identity", checkpoint=checkpoint)
     ).bind(x)
     return workflow.continuation(
-        utils.update_workflow_options(average, name="average").bind(y)
+        average.options(**workflow.options(name="average")).bind(y)
     )
 
 
@@ -54,13 +53,11 @@ def _assert_step_checkpoints(wf_storage, step_id, mode):
 
 
 def test_checkpoint_dag_skip_all(workflow_start_regular_shared):
-    outputs = utils.run_workflow_dag_with_options(
-        checkpoint_dag,
-        (False,),
-        workflow_id="checkpoint_skip",
-        name="checkpoint_dag",
-        checkpoint=False,
-    )
+    outputs = workflow.create(
+        checkpoint_dag.options(
+            **workflow.options(name="checkpoint_dag", checkpoint=False)
+        ).bind(False)
+    ).run(workflow_id="checkpoint_skip")
     assert np.isclose(outputs, 8388607.5)
     recovered = ray.get(workflow.resume("checkpoint_skip"))
     assert np.isclose(recovered, 8388607.5)
@@ -73,12 +70,9 @@ def test_checkpoint_dag_skip_all(workflow_start_regular_shared):
 
 
 def test_checkpoint_dag_skip_partial(workflow_start_regular_shared):
-    outputs = utils.run_workflow_dag_with_options(
-        checkpoint_dag,
-        (False,),
-        workflow_id="checkpoint_partial",
-        name="checkpoint_dag",
-    )
+    outputs = workflow.create(
+        checkpoint_dag.options(**workflow.options(name="checkpoint_dag")).bind(False)
+    ).run(workflow_id="checkpoint_partial")
     assert np.isclose(outputs, 8388607.5)
     recovered = ray.get(workflow.resume("checkpoint_partial"))
     assert np.isclose(recovered, 8388607.5)
@@ -91,9 +85,9 @@ def test_checkpoint_dag_skip_partial(workflow_start_regular_shared):
 
 
 def test_checkpoint_dag_full(workflow_start_regular_shared):
-    outputs = utils.run_workflow_dag_with_options(
-        checkpoint_dag, (True,), workflow_id="checkpoint_whole", name="checkpoint_dag"
-    )
+    outputs = workflow.create(
+        checkpoint_dag.options(**workflow.options(name="checkpoint_dag")).bind(True)
+    ).run(workflow_id="checkpoint_whole")
     assert np.isclose(outputs, 8388607.5)
     recovered = ray.get(workflow.resume("checkpoint_whole"))
     assert np.isclose(recovered, 8388607.5)

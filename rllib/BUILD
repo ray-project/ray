@@ -124,17 +124,6 @@ py_test(
     args = ["--yaml-dir=tuned_examples/alpha_star", "--num-cpus=10"]
 )
 
-# AlphaZero
-py_test(
-    name = "learning_tests_cartpole_alpha_zero",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/alpha_zerp/cartpole-sparse-rewards-alpha-zero.yaml"],
-    args = ["--yaml-dir=tuned_examples/alpha_zero", "--num-cpus=7"]
-)
-
 # APEX-DQN
 py_test(
     name = "learning_tests_cartpole_apex",
@@ -341,7 +330,7 @@ py_test(
     name = "learning_tests_cartpole_simpleq_fake_gpus",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/dqn/cartpole-simpleq-fake-gpus.yaml"],
     args = ["--yaml-dir=tuned_examples/dqn"]
@@ -661,14 +650,6 @@ py_test(
     srcs = ["agents/alpha_star/tests/test_alpha_star.py"]
 )
 
-# AlphaZero
-py_test(
-    name = "test_alpha_zero",
-    tags = ["team:ml", "trainers_dir"],
-    size = "medium",
-    srcs = ["agents/alpha_zero/tests/test_alpha_zero.py"]
-)
-
 # APEXTrainer (DQN)
 py_test(
     name = "test_apex_dqn",
@@ -690,7 +671,7 @@ py_test(
     name = "test_ars",
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
-    srcs = ["agents/ars/tests/test_ars.py"]
+    srcs = ["algorithms/ars/tests/test_ars.py"]
 )
 
 # Bandits
@@ -738,7 +719,7 @@ py_test(
     name = "test_es",
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
-    srcs = ["agents/es/tests/test_es.py"]
+    srcs = ["algorithms/es/tests/test_es.py"]
 )
 
 # IMPALA
@@ -773,14 +754,6 @@ py_test(
     # Include the json data file.
     data = ["tests/data/cartpole/large.json"],
     srcs = ["agents/marwil/tests/test_bc.py"]
-)
-
-# MADDPGTrainer
-py_test(
-    name = "test_maddpg",
-    tags = ["team:ml", "trainers_dir"],
-    size = "medium",
-    srcs = ["agents/maddpg/tests/test_maddpg.py"]
 )
 
 # MAMLTrainer
@@ -897,6 +870,15 @@ py_test(
     main = "contrib/random_agent/random_agent.py",
     size = "small",
     srcs = ["contrib/random_agent/random_agent.py"]
+)
+
+py_test(
+    name = "alpha_zero_cartpole",
+    tags = ["team:ml", "trainers_dir"],
+    main = "contrib/alpha_zero/examples/train_cartpole.py",
+    size = "large",
+    srcs = ["contrib/alpha_zero/examples/train_cartpole.py"],
+    args = ["--training-iteration=1", "--num-workers=2", "--ray-num-cpus=3"]
 )
 
 

@@ -52,8 +52,8 @@ CQL_DEFAULT_CONFIG = merge_dicts(
         # Min Q weight multiplier.
         "min_q_weight": 5.0,
         "replay_buffer_config": {
-            "_enable_replay_buffer_api": False,
-            "type": "MultiAgentReplayBuffer",
+            "_enable_replay_buffer_api": True,
+            "type": "MultiAgentPrioritizedReplayBuffer",
             # Replay buffer should be larger or equal the size of the offline
             # dataset.
             "capacity": int(1e6),
@@ -170,7 +170,7 @@ class CQLTrainer(SACTrainer):
     def training_iteration(self) -> ResultDict:
 
         # Sample training batch from replay buffer.
-        train_batch = self.local_replay_buffer.replay()
+        train_batch = self.local_replay_buffer.sample(self.config["train_batch_size"])
 
         # Old-style replay buffers return None if learning has not started
         if not train_batch:
@@ -196,7 +196,7 @@ class CQLTrainer(SACTrainer):
             train_results,
         )
 
-        # Update target network every target_network_update_freq steps
+        # Update target network every `target_network_update_freq` training steps.
         cur_ts = self._counters[
             NUM_AGENT_STEPS_TRAINED if self._by_agent_steps else NUM_ENV_STEPS_TRAINED
         ]

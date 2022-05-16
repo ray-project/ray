@@ -1,6 +1,6 @@
 import logging
 import types
-from typing import Dict, Set, List, Tuple, Union, Optional, Any, Callable, TYPE_CHECKING
+from typing import Dict, Set, List, Tuple, Union, Optional, Any, TYPE_CHECKING
 import time
 
 import ray
@@ -624,37 +624,55 @@ def continuation(dag_node: "DAGNode") -> Union[Workflow, ray.ObjectRef]:
 
 
 @PublicAPI(stability="beta")
-def options(
-    **workflow_options: Dict[str, Any]
-) -> Callable[[RemoteFunction], RemoteFunction]:
-    # TODO(suquark): More rigid arguments check like @ray.remote arguments. This is
-    # fairly complex, but we should enable it later.
-    valid_options = {
-        "name",
-        "metadata",
-        "catch_exceptions",
-        "max_retries",
-        "allow_inplace",
-        "checkpoint",
-    }
-    invalid_keywords = set(workflow_options.keys()) - valid_options
-    if invalid_keywords:
-        raise ValueError(
-            f"Invalid option keywords {invalid_keywords} for workflow steps. "
-            f"Valid ones are {valid_options}."
-        )
+class options:
+    """This class serves both as a decorator and options for workflow.
 
-    def _apply_workflow_options(f: RemoteFunction):
-        if not isinstance(f, RemoteFunction):
-            raise ValueError("Only apply 'workflow.options' to Ray remote functions.")
+    Examples:
+        >>> import ray
+        >>> from ray import workflow
+        >>>
+        >>> # specify workflow options with a decorator
+        >>> @workflow.options(catch_exceptions=True):
+        >>> @ray.remote
+        >>> def foo():
+        >>>     return 1
+        >>>
+        >>> # speficy workflow options in ".options"
+        >>> foo_new = foo.options(**workflow.options(catch_exceptions=False))
+    """
+
+    def __init__(self, **workflow_options: Dict[str, Any]):
+        # TODO(suquark): More rigid arguments check like @ray.remote arguments. This is
+        # fairly complex, but we should enable it later.
+        valid_options = {
+            "name",
+            "metadata",
+            "catch_exceptions",
+            "max_retries",
+            "allow_inplace",
+            "checkpoint",
+        }
+        invalid_keywords = set(workflow_options.keys()) - valid_options
+        if invalid_keywords:
+            raise ValueError(
+                f"Invalid option keywords {invalid_keywords} for workflow steps. "
+                f"Valid ones are {valid_options}."
+            )
         from ray.workflow.common import WORKFLOW_OPTIONS
 
-        if "_metadata" not in f._default_options:
-            f._default_options["_metadata"] = {}
-        f._default_options["_metadata"][WORKFLOW_OPTIONS] = workflow_options
-        return f
+        self.options = {"_metadata": {WORKFLOW_OPTIONS: workflow_options}}
 
-    return _apply_workflow_options
+    def keys(self):
+        return ("_metadata",)
+
+    def __getitem__(self, key):
+        return self.options[key]
+
+    def __call__(self, f: RemoteFunction) -> RemoteFunction:
+        if not isinstance(f, RemoteFunction):
+            raise ValueError("Only apply 'workflow.options' to Ray remote functions.")
+        f._default_options.update(self.options)
+        return f
 
 
 __all__ = (

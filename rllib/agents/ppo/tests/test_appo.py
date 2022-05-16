@@ -121,6 +121,7 @@ class TestAPPO(unittest.TestCase):
             """
             for _ in range(n):
                 results = trainer.train()
+                print(results)
             return results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][LEARNER_STATS_KEY][
                 "entropy_coeff"
             ]
@@ -128,11 +129,11 @@ class TestAPPO(unittest.TestCase):
         for _ in framework_iterator(config):
             trainer = config.build(env="CartPole-v0")
 
-            coeff = _step_n_times(trainer, 1)  # 20 timesteps
+            coeff = _step_n_times(trainer, 5)  # 100 timesteps
             # Should be close to the starting coeff of 0.01.
             self.assertGreaterEqual(coeff, 0.005)
 
-            coeff = _step_n_times(trainer, 10)  # 200 timesteps
+            coeff = _step_n_times(trainer, 5)  # 200 timesteps
             # Should have annealed to the final coeff of 0.0001.
             self.assertLessEqual(coeff, 0.00011)
 

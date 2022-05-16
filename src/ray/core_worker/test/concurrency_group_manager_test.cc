@@ -41,43 +41,6 @@ TEST(ConcurrencyGroupManagerTest, TestEmptyConcurrencyGroupManager) {
 #endif
 }
 
-TEST(ConcurrencyGroupManagerTest, TestBasicConcurrencyGroupManager) {
-  static auto empty = std::make_shared<ray::EmptyFunctionDescriptor>();
-
-  auto func_1_in_io_group =
-      FunctionDescriptorBuilder::BuildPython("io_module", "io_class", "io_func1", "");
-  auto func_2_in_io_group =
-      FunctionDescriptorBuilder::BuildPython("io_module", "io_class", "io_func2", "");
-  auto func_1_in_executing_group = FunctionDescriptorBuilder::BuildPython(
-      "executing_module", "executing_class", "executing_func1", "");
-  auto func_2_in_executing_group = FunctionDescriptorBuilder::BuildPython(
-      "executing_module", "executing_class", "executing_func2", "");
-  const std::vector<ray::FunctionDescriptor> fds_in_io_group = {func_1_in_io_group,
-                                                                func_2_in_io_group};
-
-  const std::vector<ray::FunctionDescriptor> fds_in_executing_group = {
-      func_1_in_executing_group, func_2_in_executing_group};
-
-  std::vector<ConcurrencyGroup> defined_concurrency_groups = {
-      {"io_group", 2, fds_in_io_group}, {"executing_group", 4, fds_in_executing_group}};
-
-  ConcurrencyGroupManager<BoundedExecutor> manager(defined_concurrency_groups, 3);
-  ASSERT_EQ(manager.GetDefaultExecutor()->GetMaxConcurrency(), 3);
-  ASSERT_EQ(manager.GetExecutor("io_group", empty)->GetMaxConcurrency(), 2);
-  ASSERT_EQ(manager.GetExecutor("executing_group", empty)->GetMaxConcurrency(), 4);
-
-  ASSERT_EQ(manager.GetExecutor("", func_1_in_io_group)->GetMaxConcurrency(), 2);
-  ASSERT_EQ(manager.GetExecutor("", func_2_in_io_group)->GetMaxConcurrency(), 2);
-  auto func_3_in_io_group =
-      FunctionDescriptorBuilder::BuildPython("io_module", "io_class", "io_func3", "");
-  ASSERT_EQ(manager.GetExecutor("", func_3_in_io_group)->GetMaxConcurrency(), 3);
-
-  ASSERT_EQ(manager.GetExecutor("", func_1_in_executing_group)->GetMaxConcurrency(), 4);
-  ASSERT_EQ(manager.GetExecutor("", func_2_in_executing_group)->GetMaxConcurrency(), 4);
-
-  manager.Stop();
-}
-
 }  // namespace core
 }  // namespace ray
 

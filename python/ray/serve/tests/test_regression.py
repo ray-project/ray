@@ -235,6 +235,33 @@ def test_uvicorn_duplicate_headers(serve_instance):
     assert resp.headers["content-length"] == "9"
 
 
+def test_healthcheck_timeout(serve_instance):
+    # https://github.com/ray-project/ray/issues/24554
+
+    signal = SignalActor.remote()
+
+    @serve.deployment(
+        _health_check_timeout_s=2,
+        _health_check_period_s=1,
+        _graceful_shutdown_timeout_s=0,
+    )
+    class A:
+        def check_health(self):
+            return True
+
+        def __call__(self):
+            ray.get(signal.wait.remote())
+
+    A.deploy()
+    handle = A.get_handle()
+    ref = handle.remote()
+    # without the proper fix, the ref will fail with actor died error.
+    with pytest.raises(GetTimeoutError):
+        ray.get(ref, timeout=10)
+    signal.send.remote()
+    ray.get(ref)
+
+
 if __name__ == "__main__":
     import sys
 

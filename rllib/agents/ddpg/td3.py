@@ -3,13 +3,13 @@
 By default, this uses a near-identical configuration to that reported in the
 TD3 paper.
 """
-from ray.rllib.agents.ddpg.ddpg import DDPGTrainer, DEFAULT_CONFIG as DDPG_CONFIG
+from ray.rllib.agents.ddpg.ddpg import DDPGConfig, DDPGTrainer
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 TD3_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
-    DDPG_CONFIG,
+    DDPGConfig().to_dict(),
     {
         # largest changes: twin Q functions, delayed policy updates, and target
         # smoothing
@@ -48,6 +48,7 @@ TD3_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
         "tau": 5e-3,
         "train_batch_size": 100,
         "use_huber": False,
+        # Update the target network every `target_network_update_freq` sample timesteps.
         "target_network_update_freq": 0,
         "num_workers": 0,
         "num_gpus_per_worker": 0,
