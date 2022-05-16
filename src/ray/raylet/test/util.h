@@ -40,6 +40,8 @@ class MockWorker : public WorkerInterface {
 
   const std::string IpAddress() const { return address_.ip_address(); }
 
+  void AsyncNotifyGCSRestart() override {}
+
   void SetAllocatedInstances(
       const std::shared_ptr<TaskResourceInstances> &allocated_instances) {
     allocated_instances_ = allocated_instances;
