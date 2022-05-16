@@ -185,7 +185,7 @@ class ServeControllerClient:
         while time.time() - start < timeout_s or timeout_s < 0:
 
             status = self.get_serve_status().get_deployment_status(name)
-            
+
             if status is None:
                 raise RuntimeError(
                     f"Waiting for deployment {name} to be HEALTHY, "

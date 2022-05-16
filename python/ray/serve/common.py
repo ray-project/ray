@@ -102,7 +102,7 @@ class StatusInfo:
         for deployment_status in self.deployment_statuses:
             if name == deployment_status.name:
                 return deployment_status
-        
+
         return None
 
     def to_proto(self):
@@ -136,9 +136,7 @@ class StatusInfo:
         # Recreate deployment statuses
         deployment_statuses = []
         for proto in proto.deployment_statuses.deployment_status_infos:
-            deployment_statuses.append(
-                DeploymentStatusInfo.from_proto(proto)
-            )
+            deployment_statuses.append(DeploymentStatusInfo.from_proto(proto))
 
         # Recreate StatusInfo
         return cls(app_status=app_status, deployment_statuses=deployment_statuses)
