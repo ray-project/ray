@@ -1065,6 +1065,7 @@ def test_memory_util(ray_start_cluster):
 
     def stats():
         info = memory_summary(cluster.address, line_wrap=False)
+        print(info)
         info = info.split("\n")
         reconstructing_waiting = [
             line
