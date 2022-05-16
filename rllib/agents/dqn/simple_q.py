@@ -17,7 +17,8 @@ from ray.rllib.agents.dqn.simple_q_torch_policy import SimpleQTorchPolicy
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.utils.metrics import SYNCH_WORKER_WEIGHTS_TIMER
-from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
+from ray.rllib.utils.replay_buffers.utils import validate_buffer_config, \
+    update_priorities_in_replay_buffer
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
@@ -349,6 +350,14 @@ class SimpleQTrainer(Trainer):
             train_results = train_one_step(self, train_batch)
         else:
             train_results = multi_gpu_train_one_step(self, train_batch)
+
+        # Update replay buffer priorities.
+        update_priorities_in_replay_buffer(
+            self.local_replay_buffer,
+            self.config,
+            train_batch,
+            train_results,
+        )
 
         # TODO: Move training steps counter update outside of `train_one_step()` method.
         # # Update train step counters.
