@@ -1,6 +1,6 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any, List, Dict, Optional
 
 import ray
 from ray.actor import ActorHandle
@@ -61,6 +61,34 @@ class DeploymentStatusInfo:
             status=DeploymentStatus(DeploymentStatusProto.Name(proto.status)),
             message=proto.message,
         )
+
+
+@dataclass
+class StatusInfo:
+    app_status: ServeApplicationStatusInfo
+    deployment_statuses: List[DeploymentStatusInfo] = field(default_factory=list)
+
+    def get_deployment_status(self, name: str) -> DeploymentStatusInfo:
+        """Get a deployment's status by name.
+
+        Args:
+            name (str): Deployment's name.
+
+        Return (DeploymentStatusInfo): Status with a name matching the
+            argument, if one exists.
+
+        Raises:
+            ValueError: If this StatusInfo object has no DeploymentStatusInfo
+                with that name.
+        """
+
+        try:
+            return filter(
+                lambda deployment_status: name == deployment_status.name,
+                self.deployment_statuses,
+            )[0]
+        except KeyError:
+            raise ValueError(f'No deployment with name "{name}" found.') from None
 
 
 HEALTH_CHECK_CONCURRENCY_GROUP = "health_check"

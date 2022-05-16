@@ -12,14 +12,13 @@ from ray.serve.schema import (
     DeploymentSchema,
     DeploymentStatusSchema,
     ServeApplicationSchema,
-    ServeApplicationStatusSchema,
+    ServeStatusSchema,
     status_info_to_schema,
-    serve_application_status_to_schema,
+    serve_status_to_schema,
 )
 from ray.util.accelerators.accelerators import NVIDIA_TESLA_V100, NVIDIA_TESLA_P4
 from ray.serve.config import AutoscalingConfig
 from ray.serve.common import DeploymentStatus, DeploymentStatusInfo
-from ray.serve.api import get_deployment_statuses
 from ray.serve.deployment import (
     deployment_to_schema,
     schema_to_deployment,
@@ -463,8 +462,8 @@ class TestDeploymentStatusSchema:
                 )
 
 
-class TestServeApplicationStatusSchema:
-    def get_valid_serve_application_status_schema(self):
+class TestServeStatusSchema:
+    def get_valid_serve_status_schema(self):
         return {
             "deployment_1": {"status": "HEALTHY", "message": ""},
             "deployment_2": {
@@ -473,31 +472,27 @@ class TestServeApplicationStatusSchema:
             },
         }
 
-    def test_valid_serve_application_status_schema(self):
-        # Ensure a valid ServeApplicationStatusSchema can be generated
+    def test_valid_serve_status_schema(self):
+        # Ensure a valid ServeStatusSchema can be generated
 
-        serve_application_status_schema = (
-            self.get_valid_serve_application_status_schema()
-        )
-        serve_application_status_to_schema(serve_application_status_schema)
+        serve_status_schema = self.get_valid_serve_status_schema()
+        serve_status_to_schema(serve_status_schema)
 
-    def test_extra_fields_invalid_serve_application_status_schema(self):
+    def test_extra_fields_invalid_serve_status_schema(self):
         # Undefined fields should be forbidden in the schema
 
-        serve_application_status_schema = (
-            self.get_valid_serve_application_status_schema()
-        )
+        serve_status_schema = self.get_valid_serve_status_schema()
 
         # Schema should be createable with valid fields
-        serve_application_status_to_schema(serve_application_status_schema)
+        serve_status_to_schema(serve_status_schema)
 
         # Schema should raise error when a nonspecified field is included
         with pytest.raises(ValidationError):
             statuses = [
                 status_info_to_schema(name, status_info)
-                for name, status_info in serve_application_status_schema.items()
+                for name, status_info in serve_status_schema.items()
             ]
-            ServeApplicationStatusSchema(statuses=statuses, fake_field=None)
+            ServeStatusSchema(statuses=statuses, fake_field=None)
 
 
 # This function is defined globally to be accessible via import path
@@ -590,13 +585,13 @@ def test_status_schema_helpers():
     f1._func_or_class = "ray.serve.tests.test_schema.global_f"
     f2._func_or_class = "ray.serve.tests.test_schema.global_f"
 
-    serve.start()
+    client = serve.start()
 
     f1.deploy()
     f2.deploy()
 
     # Check statuses
-    statuses = serve_application_status_to_schema(get_deployment_statuses()).statuses
+    statuses = serve_status_to_schema(client.get_serve_status()).statuses
     deployment_names = {"f1", "f2"}
     for deployment_status in statuses:
         assert deployment_status.status in {"UPDATING", "HEALTHY"}

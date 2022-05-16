@@ -1696,11 +1696,8 @@ class DeploymentStateManager:
         else:
             return None
 
-    def get_deployment_statuses(self) -> Dict[str, DeploymentStatusInfo]:
-        return {
-            name: state.curr_status_info
-            for name, state in self._deployment_states.items()
-        }
+    def get_deployment_statuses(self) -> List[DeploymentStatusInfo]:
+        return self._deployment_states.values()
 
     def deploy(self, deployment_name: str, deployment_info: DeploymentInfo) -> bool:
         """Deploy the deployment.

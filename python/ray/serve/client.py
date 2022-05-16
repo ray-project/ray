@@ -21,7 +21,7 @@ from ray.actor import ActorHandle
 from ray.serve.common import (
     DeploymentInfo,
     DeploymentStatus,
-    DeploymentStatusInfo,
+    StatusInfo,
 )
 from ray.serve.config import (
     DeploymentConfig,
@@ -38,7 +38,6 @@ from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import (
     DeploymentRoute,
     DeploymentRouteList,
-    DeploymentStatusInfoList,
 )
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 
@@ -155,16 +154,19 @@ class ServeControllerClient:
         """
         start = time.time()
         while time.time() - start < timeout_s:
-            statuses = self.get_deployment_statuses()
-            if len(statuses) == 0:
+            deployment_statuses = self.get_serve_status().deployment_statuses
+            if len(deployment_statuses) == 0:
                 break
             else:
                 logger.debug(
-                    f"Waiting for shutdown, {len(statuses)} deployments still alive."
+                    f"Waiting for shutdown, {len(deployment_statuses)} "
+                    "deployments still alive."
                 )
             time.sleep(CLIENT_POLLING_INTERVAL_S)
         else:
-            live_names = list(statuses.keys())
+            live_names = [
+                deployment_status.name for deployment_status in deployment_statuses
+            ]
             raise TimeoutError(
                 f"Shutdown didn't complete after {timeout_s}s. "
                 f"Deployments still alive: {live_names}."
@@ -180,10 +182,10 @@ class ServeControllerClient:
         """
         start = time.time()
         while time.time() - start < timeout_s or timeout_s < 0:
-            statuses = self.get_deployment_statuses()
+
             try:
-                status = statuses[name]
-            except KeyError:
+                status = self.get_serve_status().get_deployment_status(name)
+            except ValueError:
                 raise RuntimeError(
                     f"Waiting for deployment {name} to be HEALTHY, "
                     "but deployment doesn't exist."
@@ -192,13 +194,16 @@ class ServeControllerClient:
             if status.status == DeploymentStatus.HEALTHY:
                 break
             elif status.status == DeploymentStatus.UNHEALTHY:
-                raise RuntimeError(f"Deployment {name} is UNHEALTHY: {status.message}")
+                raise RuntimeError(
+                    f"Deployment {name} is UNHEALTHY: " f"{status.message}"
+                )
             else:
                 # Guard against new unhandled statuses being added.
                 assert status.status == DeploymentStatus.UPDATING
 
             logger.debug(
-                f"Waiting for {name} to be healthy, current status: {status.status}."
+                f"Waiting for {name} to be healthy, current status: "
+                f"{status.status}."
             )
             time.sleep(CLIENT_POLLING_INTERVAL_S)
         else:
@@ -213,14 +218,13 @@ class ServeControllerClient:
         """
         start = time.time()
         while time.time() - start < timeout_s:
-            statuses = self.get_deployment_statuses()
-            if name not in statuses:
+            try:
+                curr_status = self.get_serve_status().get_deployment_status(name)
+            except ValueError:
                 break
-            else:
-                curr_status = statuses[name].status
-                logger.debug(
-                    f"Waiting for {name} to be deleted, current status: {curr_status}."
-                )
+            logger.debug(
+                f"Waiting for {name} to be deleted, current status: {curr_status}."
+            )
             time.sleep(CLIENT_POLLING_INTERVAL_S)
         else:
             raise TimeoutError(f"Deployment {name} wasn't deleted after {timeout_s}s.")
@@ -345,20 +349,20 @@ class ServeControllerClient:
             for deployment_route in deployment_route_list.deployment_routes
         }
 
-    @_ensure_connected
-    def get_deployment_statuses(self) -> Dict[str, DeploymentStatusInfo]:
-        proto = DeploymentStatusInfoList.FromString(
-            ray.get(self._controller.get_deployment_statuses.remote())
-        )
-        return {
-            deployment_status_info.name: DeploymentStatusInfo.from_proto(
-                deployment_status_info
-            )
-            for deployment_status_info in proto.deployment_status_infos
-        }
+    # @_ensure_connected
+    # def get_deployment_statuses(self) -> Dict[str, DeploymentStatusInfo]:
+    #     proto = DeploymentStatusInfoList.FromString(
+    #         ray.get(self._controller.get_deployment_statuses.remote())
+    #     )
+    #     return {
+    #         deployment_status_info.name: DeploymentStatusInfo.from_proto(
+    #             deployment_status_info
+    #         )
+    #         for deployment_status_info in proto.deployment_status_infos
+    #     }
 
     @_ensure_connected
-    def get_serve_status(self) -> Dict:
+    def get_serve_status(self) -> StatusInfo:
         return ray.get(self._controller.get_serve_status.remote())
 
     @_ensure_connected

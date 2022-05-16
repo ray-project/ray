@@ -20,6 +20,7 @@ from ray.serve.common import (
     RunningReplicaInfo,
     ServeApplicationStatus,
     ServeApplicationStatusInfo,
+    StatusInfo,
 )
 from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
 from ray.serve.constants import (
@@ -488,18 +489,12 @@ class ServeController:
         from ray.serve.generated.serve_pb2 import DeploymentStatusInfoList
 
         deployment_status_info_list = DeploymentStatusInfoList()
-        for (
-            name,
-            deployment_status_info,
-        ) in self.deployment_state_manager.get_deployment_statuses().items():
-            deployment_status_info_proto = deployment_status_info.to_proto()
-            deployment_status_info_proto.name = name
-            deployment_status_info_list.deployment_status_infos.append(
-                deployment_status_info_proto
-            )
+        deployment_status_info_list.deployment_status_infos.extend(
+            self.deployment_state_manager.get_deployment_statuses()
+        )
         return deployment_status_info_list.SerializeToString()
 
-    def get_serve_status(self) -> Dict:
+    def get_serve_status(self) -> StatusInfo:
         from ray.serve.generated.serve_pb2 import DeploymentStatusInfoList
         from ray.serve.common import DeploymentStatusInfo
 
@@ -510,14 +505,12 @@ class ServeController:
 
         proto = DeploymentStatusInfoList.FromString(self.get_deployment_statuses())
 
-        return {
-            "app_status": ServeApplicationStatusInfo(
+        return StatusInfo(
+            app_status=ServeApplicationStatusInfo(
                 serve_app_status, serve_app_message, deployment_timestamp
             ),
-            **{
-                deployment_status_info.name: DeploymentStatusInfo.from_proto(
-                    deployment_status_info
-                )
+            deployment_statuses=[
+                DeploymentStatusInfo.from_proto(deployment_status_info)
                 for deployment_status_info in proto.deployment_status_infos
-            },
-        }
+            ],
+        )
