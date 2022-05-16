@@ -304,6 +304,8 @@ def test_raylet_resubscription(tmp_path, ray_start_regular_with_external_redis):
     indirect=True,
 )
 def test_core_worker_resubscription(tmp_path, ray_start_regular_with_external_redis):
+    # This test is to ensure core worker will resubscribe to GCS after GCS
+    # restarts.
     from filelock import FileLock
 
     lock_file = str(tmp_path / "lock")
@@ -321,12 +323,15 @@ def test_core_worker_resubscription(tmp_path, ray_start_regular_with_external_re
 
     a = Actor.remote()
     r = a.ready.remote()
+    # Actor is not ready before GCS is down.
     ray.worker._global_node.kill_gcs_server()
 
     lock.release()
-
+    # Actor is ready after GCS starts
     ray.worker._global_node.start_gcs_server()
-    ray.get(r)
+    # Test the resubscribe works: if not, it'll timeout because worker
+    # will think the actor is not ready.
+    ray.get(r, timeout=5)
 
 
 @pytest.mark.parametrize("auto_reconnect", [True, False])
