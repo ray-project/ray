@@ -89,7 +89,6 @@ class TestAPPO(unittest.TestCase):
             trainer.stop()
 
     def test_appo_entropy_coeff_schedule(self):
-        # Initial lr, doesn't really matter because of the schedule below.
         config = (
             ppo.appo.APPOConfig()
             .rollouts(
@@ -100,6 +99,8 @@ class TestAPPO(unittest.TestCase):
             .resources(num_gpus=0)
             .training(
                 train_batch_size=20,
+                # Initial entropy_coeff, doesn't really matter because of the schedule
+                # below.
                 entropy_coeff=0.01,
                 entropy_coeff_schedule=[
                     [0, 0.01],

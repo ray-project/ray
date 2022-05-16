@@ -189,7 +189,9 @@ class APPOTrainer(impala.ImpalaTrainer):
             train_results: The results dict collected during the most recent
                 training step.
         """
-        cur_ts = self._counters[NUM_AGENT_STEPS_SAMPLED if self._by_agent_steps else NUM_ENV_STEPS_SAMPLED]
+        cur_ts = self._counters[
+            NUM_AGENT_STEPS_SAMPLED if self._by_agent_steps else NUM_ENV_STEPS_SAMPLED
+        ]
         last_update = self._counters[LAST_TARGET_UPDATE_TS]
         target_update_freq = self.config["num_sgd_iter"] * self.config[
             "minibatch_buffer_size"]
