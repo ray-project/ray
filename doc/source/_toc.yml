@@ -21,6 +21,7 @@ parts:
                 title: Processing the NYC taxi dataset
               - file: data/examples/big_data_ingestion
                 title: Large-scale ML Ingest
+          - file: data/faq
           - file: data/package-ref
           - file: data/integrations
 
