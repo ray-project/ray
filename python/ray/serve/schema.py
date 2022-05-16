@@ -326,7 +326,7 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
         description=(
             "The deployment graph's full import path. Should be of the "
             'form "module.submodule_1...submodule_n.'
-            'MyClassOrFunction." This is equivalent to '
+            'dag_node." This is equivalent to '
             '"from module.submodule_1...submodule_n import '
             'MyClassOrFunction". Only works with Python '
             "applications. This field is REQUIRED when deploying Serve config "
