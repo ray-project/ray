@@ -1171,5 +1171,34 @@ def test_actor_mro(ray_start_regular_shared):
     assert obj.get_x() == 1
 
 
+def test_keep_calling_get_actor(ray_start_regular):
+    """
+    Test keep calling get_actor.
+    """
+    @ray.remote
+    class Actor:
+        def hello(self):
+            return "hello"
+
+    actor = Actor.options(name="foo").remote()
+    assert ray.get(actor.hello.remote()) == "hello"
+
+    for _ in range(10):
+        actor = ray.get_actor("foo")
+        assert ray.get(actor.hello.remote()) == "hello"
+
+    del actor
+
+    # Verify the actor is killed
+    def actor_removed():
+        try:
+            ray.get_actor("foo")
+            return False
+        except ValueError:
+            return True
+
+    wait_for_condition(actor_removed)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

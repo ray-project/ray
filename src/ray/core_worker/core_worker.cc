@@ -1964,7 +1964,7 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
 
   auto actor_handle = actor_manager_->GetActorHandle(actor_id);
   // Subscribe the actor state when we first submit the actor task. It is to reduce the
-  // number of connections.
+  // number of connections. The method is idempotent.
   actor_manager_->SubscribeActorState(actor_id);
 
   // Add one for actor cursor object id for tasks.

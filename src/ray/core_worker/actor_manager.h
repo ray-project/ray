@@ -180,12 +180,12 @@ class ActorManager {
   void HandleActorStateNotification(const ActorID &actor_id,
                                     const rpc::ActorTableData &actor_data);
 
-  /// Function that's invoked when the actor is killed or out of scope.
-  /// After the actor is invalidated, task submission to the actor will throw an
-  /// exception.
+  /// It should be invoked when the actor is killed or out of scope.
+  /// After the actor is marked killed or out of scope, task submission to the actor will
+  /// throw an exception.
   ///
   /// \param actor_handle The actor handle that will be marked as invalidate.
-  void InvalidateActor(std::shared_ptr<ActorHandle> actor_handle);
+  void MarkActorKilledOrOutOfScope(std::shared_ptr<ActorHandle> actor_handle);
 
   /// Check if actor is valid.
   bool IsActorKilledOrOutOfScope(const ActorID &actor_id) const;
@@ -215,7 +215,7 @@ class ActorManager {
   absl::flat_hash_map<std::string, ActorID> cached_actor_name_to_ids_
       GUARDED_BY(cache_mutex_);
 
-  /// Map from actor id to it's state(true: valid, false: invalid).
+  /// id -> is_killed_or_out_of_scope
   /// The state of actor is true When the actor is out of scope or is killed
   absl::flat_hash_map<ActorID, bool> subscribed_actors_ GUARDED_BY(cache_mutex_);
 

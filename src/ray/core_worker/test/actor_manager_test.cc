@@ -375,6 +375,9 @@ TEST_F(ActorManagerTest, TestActorStateNotificationAlive) {
       actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data));
 }
 
+///
+/// Verify `SubscribeActorState` is idempotent
+///
 TEST_F(ActorManagerTest, TestActorStateIsOnlySubscribedOnce) {
   ActorID actor_id = AddActorHandle();
   // Make sure the AsyncSubscribe is invoked.

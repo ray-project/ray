@@ -195,7 +195,7 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
 }
 
 void ActorManager::OnActorKilled(const ActorID &actor_id) {
-  InvalidateActor(GetActorHandle(actor_id));
+  MarkActorKilledOrOutOfScope(GetActorHandle(actor_id));
 }
 
 void ActorManager::WaitForActorOutOfScope(
@@ -211,7 +211,7 @@ void ActorManager::WaitForActorOutOfScope(
     // owner. This should avoid any asynchronous problems.
     auto callback = [this, actor_id, actor_handle, actor_out_of_scope_callback](
                         const ObjectID &object_id) {
-      InvalidateActor(actor_handle);
+      MarkActorKilledOrOutOfScope(actor_handle);
       actor_out_of_scope_callback(actor_id);
     };
 
@@ -221,7 +221,7 @@ void ActorManager::WaitForActorOutOfScope(
     const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
     if (!reference_counter_->SetDeleteCallback(actor_creation_return_id, callback)) {
       RAY_LOG(DEBUG) << "ActorID reference already gone for " << actor_id;
-      InvalidateActor(actor_handle);
+      MarkActorKilledOrOutOfScope(actor_handle);
       actor_out_of_scope_callback(actor_id);
     }
   }
@@ -328,9 +328,10 @@ void ActorManager::SubscribeActorState(const ActorID &actor_id) {
       }));
 }
 
-void ActorManager::InvalidateActor(std::shared_ptr<ActorHandle> actor_handle) {
+void ActorManager::MarkActorKilledOrOutOfScope(
+    std::shared_ptr<ActorHandle> actor_handle) {
   RAY_CHECK(actor_handle != nullptr);
-  auto actor_id = actor_handle->GetActorID();
+  const auto &actor_id = actor_handle->GetActorID();
   const auto &actor_name = actor_handle->GetName();
   const auto &ray_namespace = actor_handle->GetNamespace();
 
@@ -343,8 +344,8 @@ void ActorManager::InvalidateActor(std::shared_ptr<ActorHandle> actor_handle) {
 
   /// Invalidate named actor cache.
   if (!actor_name.empty()) {
-    RAY_LOG(DEBUG) << "Actor name cache is invalided for the actor of name " << actor_name
-                   << " namespace " << ray_namespace << " id " << actor_id;
+    RAY_LOG(DEBUG) << "Actor name cache is invalidated for the actor of name "
+                   << actor_name << " namespace " << ray_namespace << " id " << actor_id;
     cached_actor_name_to_ids_.erase(GenerateCachedActorName(ray_namespace, actor_name));
   }
 }
