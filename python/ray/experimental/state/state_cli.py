@@ -92,9 +92,7 @@ def list_state_cli_group(ctx):
 @click.pass_context
 def actors(ctx, format: str):
     url = ctx.obj["api_server_url"]
-    print_state_api_output(
-        list_actors(api_server_url=url), format, "actors"
-    )
+    print_state_api_output(list_actors(api_server_url=url), format, "actors")
 
 
 @list_state_cli_group.command()
@@ -118,9 +116,7 @@ def placement_groups(ctx, format: str):
 @click.pass_context
 def nodes(ctx, format: str):
     url = ctx.obj["api_server_url"]
-    print_state_api_output(
-        list_nodes(api_server_url=url), format, "nodes"
-    )
+    print_state_api_output(list_nodes(api_server_url=url), format, "nodes")
 
 
 @list_state_cli_group.command()
@@ -130,9 +126,7 @@ def nodes(ctx, format: str):
 @click.pass_context
 def jobs(ctx, format: str):
     url = ctx.obj["api_server_url"]
-    print_state_api_output(
-        list_jobs(api_server_url=url), format, "jobs"
-    )
+    print_state_api_output(list_jobs(api_server_url=url), format, "jobs")
 
 
 @list_state_cli_group.command()
@@ -142,9 +136,7 @@ def jobs(ctx, format: str):
 @click.pass_context
 def workers(ctx, format: str):
     url = ctx.obj["api_server_url"]
-    print_state_api_output(
-        list_workers(api_server_url=url), format, "workers"
-    )
+    print_state_api_output(list_workers(api_server_url=url), format, "workers")
 
 
 @list_state_cli_group.command()
@@ -154,9 +146,7 @@ def workers(ctx, format: str):
 @click.pass_context
 def tasks(ctx, format: str):
     url = ctx.obj["api_server_url"]
-    print_state_api_output(
-        list_tasks(api_server_url=url), format, "tasks"
-    )
+    print_state_api_output(list_tasks(api_server_url=url), format, "tasks")
 
 
 @list_state_cli_group.command()
@@ -166,9 +156,7 @@ def tasks(ctx, format: str):
 @click.pass_context
 def objects(ctx, format: str):
     url = ctx.obj["api_server_url"]
-    print_state_api_output(
-        list_objects(api_server_url=url), format, "objects"
-    )
+    print_state_api_output(list_objects(api_server_url=url), format, "objects")
 
 
 @list_state_cli_group.command()
