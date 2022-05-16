@@ -2559,7 +2559,7 @@
   frequency: nightly
   working_dir: microbenchmark
 
-  python: 3.7
+  python: "3.7"
 
   legacy:
     test_name: microbenchmark
@@ -2579,7 +2579,7 @@
   frequency: nightly
   working_dir: microbenchmark
 
-  python: 3.8
+  python: "3.8"
 
   cluster:
     cluster_env: app_config.yaml
@@ -2595,7 +2595,7 @@
   frequency: nightly
   working_dir: microbenchmark
 
-  python: 3.9
+  python: "3.9"
 
   cluster:
     cluster_env: app_config.yaml

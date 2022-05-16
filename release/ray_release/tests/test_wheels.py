@@ -183,8 +183,8 @@ class WheelsFinderTest(unittest.TestCase):
             this_env["env"] = env
 
         with patch(
-            "ray_release.config.load_and_render_yaml_template", override_env
-        ), patch("ray_release.config.get_test_environment", lambda: {}):
+            "ray_release.template.load_and_render_yaml_template", override_env
+        ), patch("ray_release.template.get_test_environment", lambda: {}):
             load_test_cluster_env(
                 Test(cluster=dict(cluster_env="invalid")),
                 ray_wheels_url="https://no-commit-url",
