@@ -328,7 +328,7 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
             'form "module.submodule_1...submodule_n.'
             'dag_node." This is equivalent to '
             '"from module.submodule_1...submodule_n import '
-            'MyClassOrFunction". Only works with Python '
+            'dag_node". Only works with Python '
             "applications. This field is REQUIRED when deploying Serve config "
             "to a Ray cluster."
         ),
