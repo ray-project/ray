@@ -21,6 +21,10 @@
 #  # Owning team. This field will be persisted to the database
 #  team: ml
 #
+#  # Python version. This optional field determines which Python version to run tests
+#  # on. This must be a string!
+#  python: "3.7"
+#
 #  # Optional location of a bash setup script to run on the driver
 #  # when setting up the local environment. Relative to working_dir
 #  driver_setup: setup_driver.sh
