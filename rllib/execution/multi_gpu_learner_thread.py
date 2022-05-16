@@ -175,7 +175,7 @@ class MultiGPULearnerThread(LearnerThread):
             (
                 get_num_samples_loaded_into_buffer,
                 get_num_samples_loaded_into_buffer,
-                self.learner_info
+                self.learner_info,
             )
         )
         self.learner_queue_size.push(self.inqueue.qsize())
