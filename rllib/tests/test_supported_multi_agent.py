@@ -95,7 +95,7 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
                 "num_workers": 2,
                 "min_sample_timesteps_per_reporting": 100,
                 "num_gpus": 0,
-                "buffer_size": 1000,
+                "replay_buffer_config": {"capacity": 1000},
                 "min_time_s_per_reporting": 1,
                 "learning_starts": 10,
                 "target_network_update_freq": 100,
@@ -111,7 +111,7 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
             {
                 "num_workers": 2,
                 "min_sample_timesteps_per_reporting": 100,
-                "buffer_size": 1000,
+                "replay_buffer_config": {"capacity": 1000},
                 "num_gpus": 0,
                 "min_time_s_per_reporting": 1,
                 "learning_starts": 10,
@@ -125,7 +125,7 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
             "DDPG",
             {
                 "min_sample_timesteps_per_reporting": 1,
-                "buffer_size": 1000,
+                "replay_buffer_config": {"capacity": 1000},
                 "use_state_preprocessor": True,
                 "learning_starts": 500,
             },
@@ -136,7 +136,7 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
             "DQN",
             {
                 "min_sample_timesteps_per_reporting": 1,
-                "buffer_size": 1000,
+                "replay_buffer_config": {"capacity": 1000},
             },
         )
 
@@ -145,7 +145,7 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
             "SAC",
             {
                 "num_workers": 0,
-                "buffer_size": 1000,
+                "replay_buffer_config": {"capacity": 1000},
                 "normalize_actions": False,
             },
         )
