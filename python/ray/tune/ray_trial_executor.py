@@ -626,6 +626,10 @@ class RayTrialExecutor(TrialExecutor):
         """
         return (
             trial in self._staged_trials
+            # or (
+            #     len(self._cached_actor_pg) > 0
+            #     and (self._pg_manager.has_cached_pg(trial.placement_group_factory))
+            # )
             or self._pg_manager.can_stage()
             or self._pg_manager.has_ready(trial, update=True)
         )
