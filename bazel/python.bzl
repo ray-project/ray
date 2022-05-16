@@ -5,7 +5,7 @@ load("@bazel_skylib//lib:paths.bzl", "paths")
 def py_test_module_list(files, size, deps, extra_srcs, name_suffix="", **kwargs):
     for file in files:
         # remove .py
-        name = paths.basename(file)[0] + name_suffix
+        name = paths.split_extension(file)[0] + name_suffix
         if name == file:
             basename = basename + "_test"
         native.py_test(
@@ -19,7 +19,7 @@ def py_test_module_list(files, size, deps, extra_srcs, name_suffix="", **kwargs)
 def py_test_run_all_subdirectory(include, exclude, extra_srcs, **kwargs):
     for file in native.glob(include = include, exclude = exclude, allow_empty=False):
         print(file)
-        basename = paths.basename(file)[0]
+        basename = paths.split_extension(file)[0]
         if basename == file:
             basename = basename + "_test"
         native.py_test(
@@ -32,7 +32,7 @@ def py_test_run_all_subdirectory(include, exclude, extra_srcs, **kwargs):
 def py_test_run_all_notebooks(include, exclude, **kwargs):
     for file in native.glob(include = include, exclude = exclude, allow_empty=False):
         print(file)
-        basename = paths.basename(file)[0]
+        basename = paths.split_extension(file)[0]
         if basename == file:
             basename = basename + "_test"
         native.py_test(
