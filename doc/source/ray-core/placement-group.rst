@@ -216,7 +216,9 @@ Let's create a placement group. Recall that each bundle is a collection of resou
         f.remote()
 
         # Will be scheduled because 2 cpus are reserved by the placement group.
-        f.options(scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)).remote()
+        f.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=pg)).remote()
 
   .. tabbed:: Java
 
@@ -511,13 +513,21 @@ because they are scheduled on a placement group with the STRICT_PACK strategy.
         def parent():
             # The child task is scheduled with the same placement group as its parent
             # although child.options(
-              scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
-            ).remote() wasn't called.
+              scheduling_strategy=PlacementGroupSchedulingStrategy(
+                  placement_group=pg)).remote() wasn't called.
             ray.get(child.remote())
 
-        ray.get(parent.options(scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)).remote())
+        ray.get(parent.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=pg)).remote())
 
-      To avoid it, you should specify `options(scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=None))` in a child task/actor remote call.
+      To avoid it, you should specify 
+      ```
+      options(
+          scheduling_strategy=PlacementGroupSchedulingStrategy(
+              placement_group=None))
+      ```
+      in a child task/actor remote call.
 
       .. code-block:: python
 
@@ -525,7 +535,9 @@ because they are scheduled on a placement group with the STRICT_PACK strategy.
         def parent():
             # In this case, the child task won't be
             # scheduled with the parent's placement group.
-            ray.get(child.options(scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=None)).remote())
+            ray.get(child.options(
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=None)).remote())
 
   .. tabbed:: Java
 
