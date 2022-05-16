@@ -436,9 +436,7 @@ class TestSkipLocalGC:
 @pytest.mark.parametrize("source", [lazy_fixture("tmp_working_dir")])
 def test_pin_runtime_env_uri(start_cluster, source, expiration_s, monkeypatch):
     """Test that temporary GCS URI references are deleted after expiration_s."""
-    monkeypatch.setenv(
-        RAY_RUNTIME_ENV_TEMP_REF_EXPIRATION_S_ENV_VAR, str(expiration_s)
-    )
+    monkeypatch.setenv(RAY_RUNTIME_ENV_TEMP_REF_EXPIRATION_S_ENV_VAR, str(expiration_s))
 
     cluster, address = start_cluster
 
