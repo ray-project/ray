@@ -99,12 +99,18 @@ class DummyLocalTaskManager : public ILocalTaskManager {
 
   const absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
       &GetTaskToDispatch() const override {
-    return tasks_to_dispatch_;
+    static const absl::flat_hash_map<SchedulingClass,
+                                     std::deque<std::shared_ptr<internal::Work>>>
+        tasks_to_dispatch;
+    return tasks_to_dispatch;
   }
 
   const absl::flat_hash_map<SchedulingClass, absl::flat_hash_map<WorkerID, int64_t>>
       &GetBackLogTracker() const override {
-    return backlog_tracker_;
+    static const absl::flat_hash_map<SchedulingClass,
+                                     absl::flat_hash_map<WorkerID, int64_t>>
+        backlog_tracker;
+    return backlog_tracker;
   }
 
   bool AnyPendingTasksForResourceAcquisition(RayTask *example,
@@ -121,14 +127,6 @@ class DummyLocalTaskManager : public ILocalTaskManager {
   size_t GetNumTaskSpilled() const override { return 0; }
   size_t GetNumWaitingTaskSpilled() const override { return 0; }
   size_t GetNumUnschedulableTaskSpilled() const override { return 0; }
-
- private:
-  /// Queue of lease requests that should be scheduled onto workers.
-  absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
-      tasks_to_dispatch_;
-  /// Track the backlog of all workers belonging to this raylet.
-  absl::flat_hash_map<SchedulingClass, absl::flat_hash_map<WorkerID, int64_t>>
-      backlog_tracker_;
 };
 
 }  // namespace raylet

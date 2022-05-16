@@ -296,8 +296,9 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
         lease_status_tracker->MarkCommitRequestReturned(node_id, bundle, status);
 
         auto resources = bundle->GetFormattedResources();
-        auto wildcard_resources = bundle->GetWildcardResources();
         // Placement group's wildcard resources have to be updated incrementally.
+        // TODO(Chong-Li): This part should be removed when PG scheduling is refactored.
+        auto wildcard_resources = bundle->GetWildcardResources();
         for (const auto &resource_entry : wildcard_resources) {
           auto capacity =
               gcs_resource_manager_.GetNodeResources(scheduling::NodeID(node_id.Binary()))

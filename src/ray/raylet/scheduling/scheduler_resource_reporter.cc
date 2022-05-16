@@ -207,11 +207,11 @@ void SchedulerResourceReporter::FillPendingActorInfo(
 
 void SchedulerResourceReporter::FillPendingActorInfo(rpc::ResourcesData &data) const {
   absl::flat_hash_map<SchedulingClass, std::pair<int, int>> pending_count_by_shape;
-  for (const auto &shape_entry : infeasible_tasks_) {
-    pending_count_by_shape[shape_entry.first].first = shape_entry.second.size();
+  for (const auto &[scheduling_class, queue] : infeasible_tasks_) {
+    pending_count_by_shape[scheduling_class].first = queue.size();
   }
-  for (const auto &shape_entry : tasks_to_schedule_) {
-    pending_count_by_shape[shape_entry.first].second = shape_entry.second.size();
+  for (const auto &[scheduling_class, queue] : tasks_to_schedule_) {
+    pending_count_by_shape[scheduling_class].second = queue.size();
   }
 
   if (!pending_count_by_shape.empty()) {

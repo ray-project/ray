@@ -143,6 +143,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   void UpdateResourceLoads(const rpc::ResourcesData &data);
 
   /// Get the resources of a specified node.
+  /// TODO(Chong-Li): This function is only used for updating PG's wildcard resources
+  /// incrementally in gcs. It should be removed when PG scheduling is refactored.
   ///
   /// \param node_id ID of the specified node.
   const NodeResources &GetNodeResources(scheduling::NodeID node_id) const;
