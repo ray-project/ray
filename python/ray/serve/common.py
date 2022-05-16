@@ -24,6 +24,19 @@ class EndpointInfo:
     route: str
 
 
+class ServeApplicationStatus(str, Enum):
+    DEPLOYING = "DEPLOYING"
+    DEPLOY_FAILED = "DEPLOY_FAILED"
+    RUNNING = "RUNNING"
+
+
+@dataclass
+class ServeApplicationStatusInfo:
+    status: ServeApplicationStatus
+    message: str = ""
+    last_deployed_timestamp: str = ""
+
+
 class DeploymentStatus(str, Enum):
     UPDATING = "UPDATING"
     HEALTHY = "HEALTHY"
