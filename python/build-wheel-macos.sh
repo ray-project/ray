@@ -33,7 +33,8 @@ PY_MMS=("3.6"
 NUMPY_VERSIONS=("1.14.5"
                 "1.14.5"
                 "1.14.5"
-                "1.19.3")
+                "1.19.3"
+                "1.22.0")
 
 ./ci/env/install-bazel.sh
 
