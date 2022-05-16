@@ -324,11 +324,11 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
     import_path: str = Field(
         default=None,
         description=(
-            "The deployment graph's full import path. Should be of the "
+            "An import path to a bound deployment node. Should be of the "
             'form "module.submodule_1...submodule_n.'
-            'MyClassOrFunction." This is equivalent to '
+            'dag_node." This is equivalent to '
             '"from module.submodule_1...submodule_n import '
-            'MyClassOrFunction". Only works with Python '
+            'dag_node". Only works with Python '
             "applications. This field is REQUIRED when deploying Serve config "
             "to a Ray cluster."
         ),
@@ -336,7 +336,7 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
     runtime_env: dict = Field(
         default={},
         description=(
-            "This deployment graph's runtime_env. working_dir and "
+            "runtime_env that the deployment graph will be run in. Per-deployment runtime_envs will inherit from this. working_dir and "
             "py_modules may contain only remote URIs."
         ),
     )
