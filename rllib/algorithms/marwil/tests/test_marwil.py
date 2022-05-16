@@ -44,6 +44,7 @@ class TestMARWIL(unittest.TestCase):
 
         config = marwil.DEFAULT_CONFIG.copy()
         config["num_workers"] = 2
+        config["env"] = "CartPole-v0"
         config["evaluation_num_workers"] = 1
         config["evaluation_interval"] = 3
         config["evaluation_duration"] = 5
@@ -57,7 +58,7 @@ class TestMARWIL(unittest.TestCase):
 
         # Test for all frameworks.
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            trainer = marwil.MARWILTrainer(config=config, env="CartPole-v0")
+            trainer = marwil.MARWILTrainer(config=config)
             learnt = False
             for i in range(num_iterations):
                 results = trainer.train()
