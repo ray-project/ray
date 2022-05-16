@@ -345,7 +345,7 @@ class AsyncRequestsManager:
         ready_requests_dict = defaultdict(list)
         ready_requests, self._pending_remotes = ray.wait(
             self._pending_remotes,
-            timeout=0,
+            timeout=self._ray_wait_timeout_s,
             num_returns=len(self._pending_remotes),
         )
         if not self._return_object_refs:
