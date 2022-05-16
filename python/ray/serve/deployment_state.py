@@ -1697,7 +1697,9 @@ class DeploymentStateManager:
             return None
 
     def get_deployment_statuses(self) -> List[DeploymentStatusInfo]:
-        return self._deployment_states.values()
+        return list(
+            map(lambda state: state.curr_status_info, self._deployment_states.values())
+        )
 
     def deploy(self, deployment_name: str, deployment_info: DeploymentInfo) -> bool:
         """Deploy the deployment.

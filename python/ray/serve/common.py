@@ -83,9 +83,11 @@ class StatusInfo:
         """
 
         try:
-            return filter(
-                lambda deployment_status: name == deployment_status.name,
-                self.deployment_statuses,
+            return list(
+                filter(
+                    lambda deployment_status: name == deployment_status.name,
+                    self.deployment_statuses,
+                )
             )[0]
         except KeyError:
             raise ValueError(f'No deployment with name "{name}" found.') from None

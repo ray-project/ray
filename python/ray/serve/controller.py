@@ -489,9 +489,9 @@ class ServeController:
         from ray.serve.generated.serve_pb2 import DeploymentStatusInfoList
 
         deployment_status_info_list = DeploymentStatusInfoList()
-        deployment_status_info_list.deployment_status_infos.extend(
-            self.deployment_state_manager.get_deployment_statuses()
-        )
+        statuses = self.deployment_state_manager.get_deployment_statuses()
+        status_protos = map(lambda status: status.to_proto(), statuses)
+        deployment_status_info_list.deployment_status_infos.extend(status_protos)
         return deployment_status_info_list.SerializeToString()
 
     def get_serve_status(self) -> StatusInfo:

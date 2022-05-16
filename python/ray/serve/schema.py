@@ -312,7 +312,6 @@ class ServeStatusSchema(BaseModel, extra=Extra.forbid):
         ),
     )
     deployment_statuses: List[DeploymentStatusInfo] = Field(
-        ...,
         default=[],
         description=(
             "List of statuses for all the deployments running in this Serve "
