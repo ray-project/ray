@@ -43,7 +43,7 @@ ROOT="$(git rev-parse --show-toplevel)"
 builtin cd "$ROOT" || exit 1
 
 FLAKE8_VERSION=$(flake8 --version | head -n 1 | awk '{print $1}')
-BLACK_VERSION=$(black --version | awk '{print $2}')
+BLACK_VERSION=$(black --version | awk '{print $3}')
 MYPY_VERSION=$(mypy --version | awk '{print $2}')
 GOOGLE_JAVA_FORMAT_JAR=/tmp/google-java-format-1.7-all-deps.jar
 
