@@ -13,5 +13,5 @@ pushd docker/retag-lambda
 zip retag-lambda.zip *
 ```
 
-3. Upload zip file to update the code.
+3. Head to the AWS Management console & select the `DockerTagLatest` function. Select `Upload from`, then `.zip file` and then select the zip file created in Step 2.
 
