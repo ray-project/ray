@@ -522,18 +522,6 @@ class GlueTest(unittest.TestCase):
         # Ensure cluster was terminated
         self.assertGreaterEqual(self.sdk.call_counter["terminate_cluster"], 1)
 
-    def testSmokeUnstableTest(self):
-        result = Result()
-
-        self._succeed_until("complete")
-
-        self.test["stable"] = False
-        self._run(result, smoke_test=True)
-
-        # Ensure stable and smoke_test are set correctly.
-        assert not result.stable
-        assert result.smoke_test
-
     def testFetchResultFails(self):
         result = Result()
 

@@ -31,7 +31,6 @@ class DBReporter(Reporter):
             "runtime": result.runtime or -1.0,
             "stable": result.stable,
             "return_code": result.return_code,
-            "smoke_test": result.smoke_test,
         }
 
         logger.debug(f"Result json: {json.dumps(result_json)}")
