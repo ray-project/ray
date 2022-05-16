@@ -45,15 +45,19 @@ class DeploymentStatus(str, Enum):
 
 @dataclass
 class DeploymentStatusInfo:
+    name: str
     status: DeploymentStatus
     message: str = ""
 
     def to_proto(self):
-        return DeploymentStatusInfoProto(status=self.status, message=self.message)
+        return DeploymentStatusInfoProto(
+            name=self.name, status=self.status, message=self.message
+        )
 
     @classmethod
     def from_proto(cls, proto: DeploymentStatusInfoProto):
         return cls(
+            name=proto.name,
             status=DeploymentStatus(DeploymentStatusProto.Name(proto.status)),
             message=proto.message,
         )
