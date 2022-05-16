@@ -3,6 +3,7 @@ import logging
 import random
 import time
 from collections import defaultdict
+import numpy as np
 from typing import List, Any, Generic, Optional, TYPE_CHECKING
 
 import ray
@@ -209,7 +210,19 @@ class _RandomAccessWorker:
 
     def multiget(self, block_indices, keys):
         start = time.perf_counter()
-        result = [self._get(i, k) for i, k in zip(block_indices, keys)]
+        if self.dataset_format == "arrow" and len(set(block_indices)) == 1:
+            # Fast path: use np.searchsorted for vectorized search on a single block.
+            # This is ~3x faster than the naive case.
+            block = self.blocks[block_indices[0]]
+            col = block[self.key_field]
+            indices = np.searchsorted(col, keys)
+            acc = BlockAccessor.for_block(block)
+            result = [
+                acc._create_table_row(acc.slice(i, i + 1, copy=True)) for i in indices
+            ]
+            # assert result == [self._get(i, k) for i, k in zip(block_indices, keys)]
+        else:
+            result = [self._get(i, k) for i, k in zip(block_indices, keys)]
         self.total_time += time.perf_counter() - start
         self.num_accesses += 1
         return result

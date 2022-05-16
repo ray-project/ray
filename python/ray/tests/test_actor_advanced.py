@@ -203,7 +203,7 @@ def test_actor_init_fails(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     remote_node = cluster.add_node()
 
-    @ray.remote(max_restarts=1)
+    @ray.remote(max_restarts=1, max_task_retries=-1)
     class Counter:
         def __init__(self):
             self.x = 0
@@ -1241,7 +1241,7 @@ def test_actor_timestamps(ray_start_regular):
         assert 500 < lapsed < 1500, f"Start: {start_time}, End: {end_time}"
 
     def restarted():
-        actor = Foo.options(max_restarts=1).remote()
+        actor = Foo.options(max_restarts=1, max_task_retries=-1).remote()
         actor_id = ray.get(actor.get_id.remote())
 
         state_after_starting = ray.state.actors()[actor_id]
@@ -1295,7 +1295,11 @@ def test_get_actor_after_killed(shutdown_only):
         ray.get_actor("actor", namespace="namespace")
 
     actor = A.options(
-        name="actor_2", namespace="namespace", lifetime="detached", max_restarts=1
+        name="actor_2",
+        namespace="namespace",
+        lifetime="detached",
+        max_restarts=1,
+        max_task_retries=-1,
     ).remote()
     ray.kill(actor, no_restart=False)
     assert ray.get(ray.get_actor("actor_2", namespace="namespace").ready.remote())

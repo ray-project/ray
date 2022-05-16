@@ -896,21 +896,15 @@ Status CoreWorker::PutInLocalPlasmaStore(const RayObject &object,
     if (pin_object) {
       // Tell the raylet to pin the object **after** it is created.
       RAY_LOG(DEBUG) << "Pinning put object " << object_id;
-      local_raylet_client_->PinObjectID(
+      local_raylet_client_->PinObjectIDs(
           rpc_address_,
-          object_id,
-          [this, object_id](const Status &status, const rpc::PinObjectIDReply &reply) {
-            if (!status.ok()) {
-              RAY_LOG(INFO) << "Failed to pin existing copy of the object " << object_id
-                            << ". This object may get evicted while there are still "
-                               "references to it: "
-                            << status;
-            }
+          {object_id},
+          [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
             // Only release the object once the raylet has responded to avoid the race
             // condition that the object could be evicted before the raylet pins it.
-            if (auto s = plasma_store_provider_->Release(object_id); !s.ok()) {
+            if (!plasma_store_provider_->Release(object_id).ok()) {
               RAY_LOG(ERROR) << "Failed to release ObjectID (" << object_id
-                             << "), might cause a leak in plasma: " << s;
+                             << "), might cause a leak in plasma.";
             }
           });
     } else {
@@ -1056,21 +1050,15 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
   if (pin_object) {
     // Tell the raylet to pin the object **after** it is created.
     RAY_LOG(DEBUG) << "Pinning sealed object " << object_id;
-    local_raylet_client_->PinObjectID(
+    local_raylet_client_->PinObjectIDs(
         owner_address != nullptr ? *owner_address : rpc_address_,
-        object_id,
-        [this, object_id](const Status &status, const rpc::PinObjectIDReply &reply) {
-          if (!status.ok()) {
-            RAY_LOG(INFO) << "Failed to pin existing copy of the object " << object_id
-                          << ". This object may get evicted while there are still "
-                             "references to it: "
-                          << status;
-          }
+        {object_id},
+        [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
           // Only release the object once the raylet has responded to avoid the race
           // condition that the object could be evicted before the raylet pins it.
-          if (auto s = plasma_store_provider_->Release(object_id); !s.ok()) {
+          if (!plasma_store_provider_->Release(object_id).ok()) {
             RAY_LOG(ERROR) << "Failed to release ObjectID (" << object_id
-                           << "), might cause a leak in plasma: " << s;
+                           << "), might cause a leak in plasma.";
           }
         });
   } else {
@@ -2272,7 +2260,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   }
   {
     absl::MutexLock lock(&mutex_);
-    current_task_ = task_spec;
+    current_tasks_.emplace(task_spec.TaskId(), task_spec);
     if (resource_ids) {
       resource_ids_ = resource_ids;
     }
@@ -2375,7 +2363,9 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   }
   {
     absl::MutexLock lock(&mutex_);
-    current_task_ = TaskSpecification();
+    auto it = current_tasks_.find(task_spec.TaskId());
+    RAY_CHECK(it != current_tasks_.end());
+    current_tasks_.erase(it);
     if (task_spec.IsNormalTask()) {
       resource_ids_.reset(new ResourceMappingType());
     }
@@ -2450,17 +2440,16 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
     // Asynchronously ask the raylet to pin the object. Note that this can fail
     // if the raylet fails. We expect the owner of the object to handle that
     // case (e.g., by detecting the raylet failure and storing an error).
-    local_raylet_client_->PinObjectID(
+    local_raylet_client_->PinObjectIDs(
         owner_address,
-        return_id,
+        {return_id},
         [return_id, pinned_return_object](const Status &status,
-                                          const rpc::PinObjectIDReply &reply) {
+                                          const rpc::PinObjectIDsReply &reply) {
           if (!status.ok()) {
             RAY_LOG(INFO) << "Failed to pin existing copy of the task return object "
                           << return_id
                           << ". This object may get evicted while there are still "
-                             "references to it: "
-                          << status;
+                             "references to it.";
           }
         });
     return true;
@@ -3116,8 +3105,6 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
   stats->set_task_queue_length(task_queue_length_);
   stats->set_num_executed_tasks(num_executed_tasks_);
   stats->set_num_object_refs_in_scope(reference_counter_->NumObjectIDsInScope());
-  stats->set_current_task_name(current_task_.GetName());
-  stats->set_current_task_func_desc(current_task_.FunctionDescriptor()->ToString());
   stats->set_ip_address(rpc_address_.ip_address());
   stats->set_port(rpc_address_.port());
   stats->set_pid(getpid());
@@ -3154,6 +3141,9 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
 
   if (request.include_task_info()) {
     task_manager_->FillTaskInfo(reply);
+    for (const auto &current_running_task : current_tasks_) {
+      reply->add_running_task_ids(current_running_task.second.TaskId().Binary());
+    }
   }
 
   send_reply_callback(Status::OK(), nullptr, nullptr);

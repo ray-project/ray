@@ -268,7 +268,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
             std::vector<ObjectID> object_ids = {object_id};
             std::vector<std::unique_ptr<RayObject>> results;
             std::unique_ptr<RayObject> result;
-            if (GetObjectsFromPlasma(object_ids, &results).ok() && results.size() > 0) {
+            if (GetObjectsFromPlasma(object_ids, &results) && results.size() > 0) {
               result = std::move(results[0]);
             }
             return result;
@@ -387,7 +387,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       leased_workers_,
       [this](const std::vector<ObjectID> &object_ids,
              std::vector<std::unique_ptr<RayObject>> *results) {
-        return GetObjectsFromPlasma(object_ids, results).ok();
+        return GetObjectsFromPlasma(object_ids, results);
       },
       max_task_args_memory);
   cluster_task_manager_ = std::make_shared<ClusterTaskManager>(
@@ -748,8 +748,11 @@ void NodeManager::HandleGetTasksInfo(const rpc::GetTasksInfoRequest &request,
       /*on_replied*/
       [reply](const ray::Status &status, const rpc::GetCoreWorkerStatsReply &r) {
         if (status.ok()) {
-          for (const auto &task_info : r.task_info_entries()) {
-            reply->add_task_info_entries()->CopyFrom(task_info);
+          for (const auto &task_info : r.owned_task_info_entries()) {
+            reply->add_owned_task_info_entries()->CopyFrom(task_info);
+          }
+          for (const auto &running_task_id : r.running_task_ids()) {
+            reply->add_running_task_ids(running_task_id);
           }
         } else {
           RAY_LOG(INFO) << "Failed to query task information from a worker.";
@@ -1073,6 +1076,13 @@ void NodeManager::ResourceDeleted(const NodeID &node_id,
         scheduling::NodeID(node_id.Binary()), scheduling::ResourceID(resource_label));
   }
   return;
+}
+
+void NodeManager::HandleNotifyGCSRestart(const rpc::NotifyGCSRestartRequest &request,
+                                         rpc::NotifyGCSRestartReply *reply,
+                                         rpc::SendReplyCallback send_reply_callback) {
+  gcs_client_->AsyncResubscribe();
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::UpdateResourceUsage(const NodeID &node_id,
@@ -2309,21 +2319,23 @@ std::string compact_tag_string(const opencensus::stats::ViewDescriptor &view,
   return result.str();
 }
 
-Status NodeManager::GetObjectsFromPlasma(
-    const std::vector<ObjectID> &object_ids,
-    std::vector<std::unique_ptr<RayObject>> *results) {
+bool NodeManager::GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
+                                       std::vector<std::unique_ptr<RayObject>> *results) {
   // Pin the objects in plasma by getting them and holding a reference to
   // the returned buffer.
   // NOTE: the caller must ensure that the objects already exist in plasma before
-  // sending a PinObjectID request.
+  // sending a PinObjectIDs request.
   std::vector<plasma::ObjectBuffer> plasma_results;
   // TODO(swang): This `Get` has a timeout of 0, so the plasma store will not
   // block when serving the request. However, if the plasma store is under
   // heavy load, then this request can still block the NodeManager event loop
   // since we must wait for the plasma store's reply. We should consider using
   // an `AsyncGet` instead.
-  RAY_RETURN_NOT_OK(store_client_.Get(
-      object_ids, /*timeout_ms=*/0, &plasma_results, /*is_from_worker=*/false));
+  if (!store_client_
+           .Get(object_ids, /*timeout_ms=*/0, &plasma_results, /*is_from_worker=*/false)
+           .ok()) {
+    return false;
+  }
 
   for (const auto &plasma_result : plasma_results) {
     if (plasma_result.data == nullptr) {
@@ -2333,12 +2345,12 @@ Status NodeManager::GetObjectsFromPlasma(
           new RayObject(plasma_result.data, plasma_result.metadata, {})));
     }
   }
-  return Status::OK();
+  return true;
 }
 
-void NodeManager::HandlePinObjectID(const rpc::PinObjectIDRequest &request,
-                                    rpc::PinObjectIDReply *reply,
-                                    rpc::SendReplyCallback send_reply_callback) {
+void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
+                                     rpc::PinObjectIDsReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) {
   std::vector<ObjectID> object_ids;
   object_ids.reserve(request.object_ids_size());
   const auto &owner_address = request.owner_address();
@@ -2346,12 +2358,12 @@ void NodeManager::HandlePinObjectID(const rpc::PinObjectIDRequest &request,
     object_ids.push_back(ObjectID::FromBinary(object_id_binary));
   }
   std::vector<std::unique_ptr<RayObject>> results;
-  if (auto s = GetObjectsFromPlasma(object_ids, &results); !s.ok()) {
+  if (!GetObjectsFromPlasma(object_ids, &results)) {
     RAY_LOG(WARNING)
         << "Failed to get objects that should have been in the object store. These "
-           "objects may have been evicted while there are still references in scope: "
-        << s;
-    send_reply_callback(s, nullptr, nullptr);
+           "objects may have been evicted while there are still references in scope.";
+    // TODO(suquark): Maybe "Status::ObjectNotFound" is more accurate here.
+    send_reply_callback(Status::Invalid("Failed to get objects."), nullptr, nullptr);
     return;
   }
   // Wait for the object to be freed by the owner, which keeps the ref count.
