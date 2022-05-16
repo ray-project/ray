@@ -50,9 +50,10 @@ namespace ray {
 class PinObjectsInterface {
  public:
   /// Request to a raylet to pin a plasma object. The callback will be sent via gRPC.
-  virtual void PinObjectID(const rpc::Address &caller_address,
-                           const ObjectID &object_id,
-                           rpc::ClientCallback<rpc::PinObjectIDReply> callback) = 0;
+  virtual void PinObjectIDs(
+      const rpc::Address &caller_address,
+      const std::vector<ObjectID> &object_ids,
+      const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) = 0;
 
   virtual ~PinObjectsInterface(){};
 };
@@ -187,6 +188,9 @@ class RayletClientInterface : public PinObjectsInterface,
   virtual void GetGcsServerAddress(
       const rpc::ClientCallback<rpc::GetGcsServerAddressReply> &callback) = 0;
 
+  virtual void NotifyGCSRestart(
+      const rpc::ClientCallback<rpc::NotifyGCSRestartReply> &callback) = 0;
+
   virtual void ShutdownRaylet(
       const NodeID &node_id,
       bool graceful,
@@ -232,53 +236,6 @@ class RayletConnection {
   std::mutex write_mutex_;
 };
 
-/// Batches PinObjectIDRequest so there would be only one outstanding
-/// request per Raylet. This reduces the memory and CPU overhead when a
-/// large number of objects need to be pinned.
-class PinBatcher {
- public:
-  PinBatcher(std::shared_ptr<rpc::NodeManagerWorkerClient> grpc_client);
-
-  /// Adds objects to be pinned at the address.
-  void Add(const rpc::Address &address,
-           const ObjectID &object_id,
-           rpc::ClientCallback<rpc::PinObjectIDReply> callback);
-
-  /// Total number of objects waiting to be pinned.
-  int64_t TotalPending() const;
-
- private:
-  // Request from a single Add() call.
-  struct Request {
-    Request(ObjectID oid, rpc::ClientCallback<rpc::PinObjectIDReply> cb)
-        : object_id(oid), callback(std::move(cb)) {}
-
-    ObjectID object_id;
-    rpc::ClientCallback<rpc::PinObjectIDReply> callback;
-  };
-
-  // Collects buffered pin object requests intended for a raylet.
-  struct RayletDestination {
-    RayletDestination(const rpc::Address &address) : raylet_address_(address) {}
-
-    const rpc::Address raylet_address_;
-    std::vector<Request> inflight_;
-    std::vector<Request> buffered_;
-  };
-
-  /// Tries sending out a batched pin request with buffered object IDs.
-  ///
-  /// \return true if a request is sent out, false otherwise, e.g. when
-  /// there is already an inflight request, or there is no buffered Object IDs.
-  bool Flush(const std::string &raylet_id) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  const std::shared_ptr<rpc::NodeManagerWorkerClient> grpc_client_;
-  mutable absl::Mutex mu_;
-  // Maps Raylet ID to the address and buffered messages for the Raylet.
-  absl::flat_hash_map<std::string, RayletDestination> raylets_ ABSL_GUARDED_BY(mu_);
-  int64_t total_inflight_pins_ ABSL_GUARDED_BY(mu_) = 0;
-};
-
 class RayletClient : public RayletClientInterface {
  public:
   /// Connect to the raylet.
@@ -304,7 +261,7 @@ class RayletClient : public RayletClientInterface {
   /// \param startup_token The startup token of the process assigned to
   /// it during startup as a command line argument.
   RayletClient(instrumented_io_context &io_service,
-               std::shared_ptr<rpc::NodeManagerWorkerClient> grpc_client,
+               std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
                const std::string &raylet_socket,
                const WorkerID &worker_id,
                rpc::WorkerType worker_type,
@@ -321,9 +278,7 @@ class RayletClient : public RayletClientInterface {
   /// Connect to the raylet via grpc only.
   ///
   /// \param grpc_client gRPC client to the raylet.
-  RayletClient(std::shared_ptr<rpc::NodeManagerWorkerClient> grpc_client);
-
-  ~RayletClient() override;
+  RayletClient(std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client);
 
   /// Notify the raylet that this client is disconnecting gracefully. This
   /// is used by actors to exit gracefully so that the raylet doesn't
@@ -488,9 +443,10 @@ class RayletClient : public RayletClientInterface {
       const std::vector<rpc::Bundle> &bundles_in_use,
       const rpc::ClientCallback<rpc::ReleaseUnusedBundlesReply> &callback) override;
 
-  void PinObjectID(const rpc::Address &caller_address,
-                   const ObjectID &object_id,
-                   rpc::ClientCallback<rpc::PinObjectIDReply> callback) override;
+  void PinObjectIDs(
+      const rpc::Address &caller_address,
+      const std::vector<ObjectID> &object_ids,
+      const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override;
 
   void ShutdownRaylet(
       const NodeID &node_id,
@@ -515,6 +471,9 @@ class RayletClient : public RayletClientInterface {
   void GetResourceLoad(
       const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback) override;
 
+  void NotifyGCSRestart(
+      const rpc::ClientCallback<rpc::NotifyGCSRestartReply> &callback) override;
+
   // Subscribe to receive notification on plasma object
   void SubscribeToPlasma(const ObjectID &object_id, const rpc::Address &owner_address);
 
@@ -524,12 +483,12 @@ class RayletClient : public RayletClientInterface {
 
   const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
 
-  int64_t GetPinsInFlight() const;
+  int64_t GetPinsInFlight() const { return pins_in_flight_.load(); }
 
  private:
   /// gRPC client to the raylet. Right now, this is only used for a couple
   /// request types.
-  std::shared_ptr<rpc::NodeManagerWorkerClient> grpc_client_;
+  std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client_;
   const WorkerID worker_id_;
   const JobID job_id_;
 
@@ -539,9 +498,12 @@ class RayletClient : public RayletClientInterface {
   ResourceMappingType resource_ids_;
   /// The connection to the raylet server.
   std::unique_ptr<RayletConnection> conn_;
-  /// Batches pin object ID requests to the same raylet. All PinObjectID requests
-  /// should go through this.
-  std::unique_ptr<PinBatcher> pin_batcher_;
+
+  /// The number of object ID pin RPCs currently in flight.
+  std::atomic<int64_t> pins_in_flight_{0};
+
+ protected:
+  RayletClient() {}
 };
 
 }  // namespace raylet
