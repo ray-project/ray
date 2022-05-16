@@ -500,9 +500,9 @@ class ExperimentAnalysis:
             try:
                 with open(os.path.join(path, EXPR_PARAM_FILE)) as f:
                     config = json.load(f)
-                    if prefix:
-                        for k in list(config):
-                            config[CONFIG_PREFIX + k] = config.pop(k)
+                if prefix:
+                    self._configs[path] = flatten_dict({CONFIG_PREFIX: config})
+                else:
                     self._configs[path] = config
             except Exception:
                 fail_count += 1
@@ -543,6 +543,11 @@ class ExperimentAnalysis:
             filter_nan_and_inf: If True (default), NaN or infinite
                 values are disregarded and these trials are never selected as
                 the best trial.
+
+        Returns:
+            The best trial for the provided metric. If no trials contain the provided
+                metric, or if the value for the metric is NaN for all trials,
+                then returns None.
         """
         if len(self.trials) == 1:
             return self.trials[0]

@@ -6,6 +6,7 @@ import contextlib
 import logging
 import pathlib
 import subprocess
+import tempfile
 import time
 from typing import Any, Dict, Generator, List, Optional
 import yaml
@@ -397,3 +398,60 @@ def ray_job_submit(
 
         assert status == JobStatus.SUCCEEDED
         return client.get_job_logs(job_id)
+
+
+def kubectl_patch(
+    kind: str,
+    name: str,
+    namespace: str,
+    patch: Dict[str, Any],
+    patch_type: str = "strategic",
+):
+    """Wrapper for kubectl patch.
+
+    Args:
+        kind: Kind of the K8s resource (e.g. pod)
+        name: Name of the K8s resource.
+        namespace: Namespace of the K8s resource.
+        patch: The patch to apply, as a dict.
+        patch_type: json, merge, or strategic
+    """
+    with tempfile.NamedTemporaryFile("w") as patch_file:
+        yaml.dump(patch, patch_file)
+        patch_file.flush()
+        subprocess.check_call(
+            [
+                "kubectl",
+                "-n",
+                f"{namespace}",
+                "patch",
+                f"{kind}",
+                f"{name}",
+                "--patch-file",
+                f"{patch_file.name}",
+                "--type",
+                f"{patch_type}",
+            ]
+        )
+
+
+def kubectl_delete(kind: str, name: str, namespace: str, wait: bool = True):
+    """Wrapper for kubectl delete.
+
+    Args:
+        kind: Kind of the K8s resource (e.g. pod)
+        name: Name of the K8s resource.
+        namespace: Namespace of the K8s resource.
+    """
+    wait_str = "true" if wait else "false"
+    subprocess.check_output(
+        [
+            "kubectl",
+            "-n",
+            f"{namespace}",
+            "delete",
+            f"{kind}",
+            f"{name}",
+            f"--wait={wait_str}",
+        ]
+    )
