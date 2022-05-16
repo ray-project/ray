@@ -48,9 +48,9 @@ builtin cd "$ROOT" || exit 1
 BLACK_VERSION_STR=$(black --version)
 if [[ "$BLACK_VERSION_STR" == *"compiled"* ]]
 then
-    BLACK_VERSION=$(echo $BLACK_VERSION_STR | awk '{print $2}')
+    BLACK_VERSION=$(echo "$BLACK_VERSION_STR" | awk '{print $2}')
 else
-    BLACK_VERSION=$(echo $BLACK_VERSION_STR | awk '{print $3}')
+    BLACK_VERSION=$(echo "$BLACK_VERSION_STR" | awk '{print $3}')
 fi
 FLAKE8_VERSION=$(flake8 --version | head -n 1 | awk '{print $1}')
 MYPY_VERSION=$(mypy --version | awk '{print $2}')
