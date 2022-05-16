@@ -119,7 +119,7 @@ class MockWorker : public WorkerInterface {
   }
   void MarkDetachedActor() override { is_detached_actor_ = true; }
   bool IsDetachedActor() const override { return is_detached_actor_; }
-  const std::shared_ptr<ClientConnection> Connection() const {
+  const std::shared_ptr<ClientConnection> Connection() const override {
     RAY_CHECK(false) << "Method unused";
     return nullptr;
   }
@@ -163,7 +163,7 @@ class MockWorker : public WorkerInterface {
   }
 
  protected:
-  void SetStartupToken(StartupToken startup_token) {
+  void SetStartupToken(StartupToken startup_token) override {
     RAY_CHECK(false) << "Method unused";
   };
 
