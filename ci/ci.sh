@@ -688,6 +688,40 @@ build() {
   fi
 }
 
+test_minimal() {
+  ./ci/env/install-minimal.sh
+  ./ci/env/env_info.sh
+  python ./ci/env/check_minimal_install.py
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 $(./ci/run/bazel_export_options)
+    python/ray/tests/test_basic
+  bazel test --test_output=streamed --config=ci $(./ci/run/bazel_export_options)
+    python/ray/tests/test_basic_2
+  bazel test --test_output=streamed --config=ci $(./ci/run/bazel_export_options)
+    python/ray/tests/test_basic_3
+  bazel test --test_output=streamed --config=ci $(./ci/run/bazel_export_options)
+    python/ray/tests/test_basic_4
+  bazel test --test_output=streamed --config=ci $(./ci/run/bazel_export_options)
+    python/ray/tests/test_basic_5
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 $(./ci/run/bazel_export_options)
+    python/ray/tests/test_output
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 $(./ci/run/bazel_export_options)
+    python/ray/tests/test_runtime_env_ray_minimal
+  bazel test --test_output=streamed --config=ci $(./ci/run/bazel_export_options)
+    python/ray/tests/test_runtime_env
+  bazel test --test_output=streamed --config=ci $(./ci/run/bazel_export_options)
+    python/ray/tests/test_runtime_env_2
+  bazel test --test_output=streamed --config=ci $(./ci/run/bazel_export_options)
+    python/ray/tests/test_runtime_env_complicated
+  bazel test --test_output=streamed --config=ci $(./ci/run/bazel_export_options)
+    python/ray/tests/test_runtime_env_validation
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 $(./ci/run/bazel_export_options)
+    python/ray/tests/test_serve_ray_minimal
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 $(./ci/run/bazel_export_options)
+    python/ray/dashboard/test_dashboard
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 $(./ci/run/bazel_export_options)
+    python/ray/tests/test_usage_stats
+}
+
 _main() {
   if [ "${GITHUB_ACTIONS-}" = true ]; then
     exec 2>&1  # Merge stdout and stderr to prevent out-of-order buffering issues
