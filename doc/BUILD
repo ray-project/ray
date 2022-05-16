@@ -110,7 +110,6 @@ py_test(
     tags = ["exclusive", "pytorch", "team:ml"]
 )
 
-# Ray Serve
 py_test(
     name = "doc_code_metrics_example",
     size = "small",
@@ -126,6 +125,10 @@ py_test(
     srcs = ["source/ray-core/doc_code/runtime_env_example.py"],
     tags = ["exclusive", "post_wheel_build", "team:serve"]
 )
+
+# --------------------------------------------------------------------
+# Test all doc/source/serve/doc_code code included in rst/md files.
+# --------------------------------------------------------------------
 
 py_test_run_all_subdirectory(
     size = "medium",

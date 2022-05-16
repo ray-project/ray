@@ -1,6 +1,9 @@
 from collections import OrderedDict
+import gym
+from typing import Dict, List, Optional
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from ray.rllib.utils.typing import AgentID
 
 # info key for the individual rewards of an agent, for example:
 # info: {
@@ -27,21 +30,35 @@ class GroupAgentsWrapper(MultiAgentEnv):
     This API is experimental.
     """
 
-    def __init__(self, env, groups, obs_space=None, act_space=None):
-        """Wrap an existing multi-agent env to group agents together.
+    def __init__(
+        self,
+        env: MultiAgentEnv,
+        groups: Dict[str, List[AgentID]],
+        obs_space: Optional[gym.Space] = None,
+        act_space: Optional[gym.Space] = None,
+    ):
+        """Wrap an existing MultiAgentEnv to group agent ID together.
 
-        See MultiAgentEnv.with_agent_groups() for usage info.
+        See `MultiAgentEnv.with_agent_groups()` for more detailed usage info.
 
         Args:
-            env (MultiAgentEnv): env to wrap
-            groups (dict): Grouping spec as documented in MultiAgentEnv.
-            obs_space (Space): Optional observation space for the grouped
-                env. Must be a tuple space.
-            act_space (Space): Optional action space for the grouped env.
-                Must be a tuple space.
+            env: The env to wrap and whose agent IDs to group into new agents.
+            groups: Mapping from group id to a list of the agent ids
+                of group members. If an agent id is not present in any group
+                value, it will be left ungrouped. The group id becomes a new agent ID
+                in the final environment.
+            obs_space: Optional observation space for the grouped
+                env. Must be a tuple space. If not provided, will infer this to be a
+                Tuple of n individual agents spaces (n=num agents in a group).
+            act_space: Optional action space for the grouped env.
+                Must be a tuple space. If not provided, will infer this to be a Tuple
+                of n individual agents spaces (n=num agents in a group).
         """
         super().__init__()
         self.env = env
+        # Inherit wrapped env's `_skip_env_checking` flag.
+        if hasattr(self.env, "_skip_env_checking"):
+            self._skip_env_checking = self.env._skip_env_checking
         self.groups = groups
         self.agent_id_to_group = {}
         for group_id, agent_ids in groups.items():
