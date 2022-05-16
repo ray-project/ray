@@ -122,7 +122,19 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         else:
             self.underlying_buffer_call_args = {}
 
-        self.replay_batch_size = replay_batch_size
+        if replay_sequence_length > 1 and self._storage_unit == "timesteps":
+            self.replay_batch_size = int(
+                max(1, replay_batch_size // replay_sequence_length)
+            )
+            logger.info(
+                "Since replay_sequence_length={} and replay_batch_size={}, "
+                "we will replay {} sequences at a time.".format(
+                    replay_sequence_length, replay_batch_size, self.replay_batch_size
+                )
+            )
+        else:
+            self.replay_batch_size = replay_batch_size
+
         self.replay_starts = learning_starts // num_shards
         self.replay_mode = replay_mode
         self.replay_sequence_length = replay_sequence_length
@@ -192,6 +204,14 @@ class MultiAgentReplayBuffer(ReplayBuffer):
             batch : The batch to be added.
             **kwargs: Forward compatibility kwargs.
         """
+        if batch is None:
+            if log_once("empty_batch_added_to_buffer"):
+                logger.info(
+                    "A batch that is `None` was added to {}. This can be "
+                    "normal at the beginning of execution but might "
+                    "indicate an issue.".format(type(self).__name__)
+                )
+            return
         # Make a copy so the replay buffer doesn't pin plasma memory.
         batch = batch.copy()
         # Handle everything as if multi-agent.

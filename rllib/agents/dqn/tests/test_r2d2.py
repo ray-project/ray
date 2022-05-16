@@ -32,7 +32,7 @@ class TestR2D2(unittest.TestCase):
         config["model"]["fcnet_hiddens"] = [32]
         config["model"]["lstm_cell_size"] = 64
 
-        config["burn_in"] = 20
+        config["replay_buffer_config"]["replay_burn_in"] = 20
         config["zero_init_states"] = True
 
         config["dueling"] = False
@@ -42,7 +42,7 @@ class TestR2D2(unittest.TestCase):
         num_iterations = 1
 
         # Test building an R2D2 agent in all frameworks.
-        for _ in framework_iterator(config):
+        for _ in framework_iterator(config, with_eager_tracing=True):
             trainer = dqn.R2D2Trainer(config=config, env="CartPole-v0")
             for i in range(num_iterations):
                 results = trainer.train()

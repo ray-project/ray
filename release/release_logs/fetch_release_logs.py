@@ -95,7 +95,7 @@ def maybe_fetch_buildkite_token() -> str:
         return buildkite_token
 
     print("Missing BUILDKITE_TOKEN, retrieving from AWS secrets store")
-    os.environ["BUILDKITE_TOKEN"] = boto3.client(
+    buildkite_token = boto3.client(
         "secretsmanager", region_name="us-west-2"
     ).get_secret_value(
         SecretId="arn:aws:secretsmanager:us-west-2:029272617770:secret:"
@@ -103,6 +103,8 @@ def maybe_fetch_buildkite_token() -> str:
     )[
         "SecretString"
     ]
+    os.environ["BUILDKITE_TOKEN"] = buildkite_token
+    return buildkite_token
 
 
 def get_results_from_build_collection(

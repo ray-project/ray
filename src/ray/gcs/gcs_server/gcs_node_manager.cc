@@ -253,12 +253,26 @@ void GcsNodeManager::OnNodeFailure(const NodeID &node_id) {
 }
 
 void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
-  for (const auto &item : gcs_init_data.Nodes()) {
-    if (item.second.state() == rpc::GcsNodeInfo::ALIVE) {
-      AddNode(std::make_shared<rpc::GcsNodeInfo>(item.second));
-    } else if (item.second.state() == rpc::GcsNodeInfo::DEAD) {
-      dead_nodes_.emplace(item.first, std::make_shared<rpc::GcsNodeInfo>(item.second));
-      sorted_dead_node_list_.emplace_back(item.first, item.second.timestamp());
+  for (const auto &[node_id, node_info] : gcs_init_data.Nodes()) {
+    if (node_info.state() == rpc::GcsNodeInfo::ALIVE) {
+      AddNode(std::make_shared<rpc::GcsNodeInfo>(node_info));
+
+      // Ask the raylet to do initialization in case of GCS restart.
+      // The protocol is correct because when a new node joined, Raylet will do:
+      //    - RegisterNode (write node to the node table)
+      //    - Setup subscription
+      // With this, it means we only need to ask the node registered to do resubscription.
+      // And for the node failed to register, they will crash on the client side due to
+      // registeration failure.
+      rpc::Address remote_address;
+      remote_address.set_raylet_id(node_info.node_id());
+      remote_address.set_ip_address(node_info.node_manager_address());
+      remote_address.set_port(node_info.node_manager_port());
+      auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(remote_address);
+      raylet_client->NotifyGCSRestart(nullptr);
+    } else if (node_info.state() == rpc::GcsNodeInfo::DEAD) {
+      dead_nodes_.emplace(node_id, std::make_shared<rpc::GcsNodeInfo>(node_info));
+      sorted_dead_node_list_.emplace_back(node_id, node_info.timestamp());
     }
   }
   sorted_dead_node_list_.sort(
