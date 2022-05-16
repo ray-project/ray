@@ -2593,22 +2593,6 @@
     timeout: 1800
     script: OMP_NUM_THREADS=64 RAY_ADDRESS= python run_microbenchmark.py
 
-- name: microbenchmark_39
-  group: core-daily-test
-  team: core
-  frequency: nightly
-  working_dir: microbenchmark
-
-  python: "3.9"
-
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_64.yaml
-
-  run:
-    timeout: 1800
-    script: OMP_NUM_THREADS=64 RAY_ADDRESS= python run_microbenchmark.py
-
 - name: dask_on_ray_10gb_sort
   group: core-daily-test
   working_dir: nightly_tests
