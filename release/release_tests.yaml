@@ -593,7 +593,7 @@
   team: ml
 
   cluster:
-    cluster_env: ../horovod_tests/app_config_master.yaml
+    cluster_env: horovod/app_config_master.yaml
     cluster_compute: horovod/compute_tpl.yaml
 
   driver_setup: horovod/driver_setup_master.sh
@@ -2108,7 +2108,7 @@
     test_name: learning_tests
     test_suite: rllib_tests
 
-  frequency: weekly
+  frequency: nightly
   team: ml
 
   cluster:
@@ -2120,12 +2120,6 @@
     script: python learning_tests/run.py
     type: sdk_command
     file_manager: job
-
-  smoke_test:
-    frequency: nightly
-
-    run:
-      timeout: 1200
 
   alert: default
 
