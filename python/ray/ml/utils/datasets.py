@@ -27,7 +27,7 @@ def train_test_split(
         test_size: If float, should be between 0.0 and 1.0 and represent the proportion
             of the dataset to include in the test split. If int, represents the
             absolute number of test samples.
-        shuffle: Whether or not to global shuffle the dataset before splitting.
+        shuffle: Whether or not to globally shuffle the dataset before splitting.
             Defaults to False. This may be a very expensive operation with large
             datasets.
         seed: Fix the random seed to use for shuffle, otherwise one will be chosen
