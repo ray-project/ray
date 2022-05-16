@@ -3,6 +3,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.typing import TrainerConfigDict
 
+
 class BCConfig(MARWILConfig):
     """Defines a BCConfig configuration class based on MARWILConfig
     from which a new configuration can be built
@@ -37,6 +38,7 @@ class BCConfig(MARWILConfig):
         ...     config=config.to_dict(),
         ... )
     """
+
     def __init__(self, trainer_class=None):
         super().__init__(trainer_class=trainer_class or BCTrainer)
 
@@ -44,12 +46,14 @@ class BCConfig(MARWILConfig):
         # __sphinx_doc_begin__
         # No need to calculate advantages (or do anything else with the rewards).
         self.beta = 0.0
-        # Advantages (calculated during postprocessing) not important for behavioral cloning.
+        # Advantages (calculated during postprocessing)
+        # not important for behavioral cloning.
         self.postprocess_inputs = False
         # No reward estimation.
         self.input_evaluation = []
         # __sphinx_doc_end__
         # fmt: on
+
 
 class BCTrainer(MARWILTrainer):
     """Behavioral Cloning (derived from MARWIL).
@@ -69,6 +73,7 @@ class BCTrainer(MARWILTrainer):
 
         if config["beta"] != 0.0:
             raise ValueError("For behavioral cloning, `beta` parameter must be 0.0!")
+
 
 # Deprecated: Use ray.rllib.agents.marwil.BCConfig instead!
 class _deprecated_default_config(dict):

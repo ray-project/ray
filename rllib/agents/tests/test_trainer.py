@@ -303,15 +303,21 @@ class TestTrainer(unittest.TestCase):
 
         env = gym.make("CartPole-v0")
 
-        offline_rl_config = (BCConfig()
-            .environment(observation_space=env.observation_space, action_space=env.action_space)
-            .evaluation(evaluation_interval=1, evaluation_num_workers=1,
-            evaluation_config={
-                "env": "CartPole-v0",
-                "input": "sampler",
-                "observation_space": None,  # Test, whether this is inferred.
-                "action_space": None,  # Test, whether this is inferred.
-            })
+        offline_rl_config = (
+            BCConfig()
+            .environment(
+                observation_space=env.observation_space, action_space=env.action_space
+            )
+            .evaluation(
+                evaluation_interval=1,
+                evaluation_num_workers=1,
+                evaluation_config={
+                    "env": "CartPole-v0",
+                    "input": "sampler",
+                    "observation_space": None,  # Test, whether this is inferred.
+                    "action_space": None,  # Test, whether this is inferred.
+                },
+            )
             .offline_data(input_=[input_file])
         )
 

@@ -1,4 +1,4 @@
-from typing import List, Optional, Type, Union
+from typing import Optional, Type
 
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.agents.trainer_config import TrainerConfig
@@ -120,24 +120,25 @@ class MARWILConfig(TrainerConfig):
     ) -> "MARWILConfig":
         """Sets the training related configuration.
         Args:
-            beta: Scaling  of advantages in exponential terms.
-            When beta is 0.0, MARWIL is reduced to behavior cloning (imitation learning);
+            beta: Scaling  of advantages in exponential terms. When beta is 0.0,
+            MARWIL is reduced to behavior cloning (imitation learning);
             see bc.py algorithm in this same directory.
             vf_coeff: Balancing value estimation loss and policy optimization loss.
-            moving_average_sqd_adv_norm_update_rate: Update rate for the 
+            moving_average_sqd_adv_norm_update_rate: Update rate for the
             squared moving average advantage norm (c^2).
-            moving_average_sqd_adv_norm_start: Starting value for the 
+            moving_average_sqd_adv_norm_start: Starting value for the
             squared moving average advantage norm (c^2).
-            replay_buffer_size: Size of the replay buffer in (single and independent) timesteps.
-            The buffer gets filled by reading from the input files line-by-line and 
-            adding all timesteps on one line at once. We then sample uniformly 
+            replay_buffer_size: Size of the replay buffer in
+            (single and independent) timesteps.
+            The buffer gets filled by reading from the input files line-by-line and
+            adding all timesteps on one line at once. We then sample uniformly
             from the buffer (`train_batch_size` samples) for each training step.
             learning_starts: Number of steps to read before learning starts.
-            bc_logstd_coeff: A coefficient to encourage higher action distribution 
+            bc_logstd_coeff: A coefficient to encourage higher action distribution
             entropy for exploration.
             grad_clip: If specified, clip the global norm of gradients by this amount.
-            use_gae: If true, use the Generalized Advantage Estimator (GAE) 
-            with a value function, see https://arxiv.org/pdf/1506.02438.pdf 
+            use_gae: If true, use the Generalized Advantage Estimator (GAE)
+            with a value function, see https://arxiv.org/pdf/1506.02438.pdf
             in case an input line ends with a non-terminal timestep.
         Returns:
             This updated TrainerConfig object.
@@ -149,7 +150,9 @@ class MARWILConfig(TrainerConfig):
         if bc_logstd_coeff is not None:
             self.bc_logstd_coeff = bc_logstd_coeff
         if moving_average_sqd_adv_norm_update_rate is not None:
-            self.moving_average_sqd_adv_norm_update_rate = moving_average_sqd_adv_norm_update_rate
+            self.moving_average_sqd_adv_norm_update_rate = (
+                moving_average_sqd_adv_norm_update_rate
+            )
         if moving_average_sqd_adv_norm_start is not None:
             self.moving_average_sqd_adv_norm_start = moving_average_sqd_adv_norm_start
         if replay_buffer_size is not None:
@@ -176,7 +179,6 @@ class MARWILTrainer(Trainer):
         # Call super's validation method.
         super().validate_config(config)
 
-        
         if config["beta"] < 0.0 or config["beta"] > 1.0:
             raise ValueError("`beta` must be within 0.0 and 1.0!")
 
@@ -245,6 +247,7 @@ class MARWILTrainer(Trainer):
         self.workers.local_worker().set_global_vars(global_vars)
 
         return train_results
+
 
 # Deprecated: Use ray.rllib.agents.marwil.MARWILConfig instead!
 class _deprecated_default_config(dict):
