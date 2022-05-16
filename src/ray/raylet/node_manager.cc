@@ -748,8 +748,11 @@ void NodeManager::HandleGetTasksInfo(const rpc::GetTasksInfoRequest &request,
       /*on_replied*/
       [reply](const ray::Status &status, const rpc::GetCoreWorkerStatsReply &r) {
         if (status.ok()) {
-          for (const auto &task_info : r.task_info_entries()) {
-            reply->add_task_info_entries()->CopyFrom(task_info);
+          for (const auto &task_info : r.owned_task_info_entries()) {
+            reply->add_owned_task_info_entries()->CopyFrom(task_info);
+          }
+          for (const auto &running_task_id : r.running_task_ids()) {
+            reply->add_running_task_ids(running_task_id);
           }
         } else {
           RAY_LOG(INFO) << "Failed to query task information from a worker.";
@@ -1073,6 +1076,13 @@ void NodeManager::ResourceDeleted(const NodeID &node_id,
         scheduling::NodeID(node_id.Binary()), scheduling::ResourceID(resource_label));
   }
   return;
+}
+
+void NodeManager::HandleNotifyGCSRestart(const rpc::NotifyGCSRestartRequest &request,
+                                         rpc::NotifyGCSRestartReply *reply,
+                                         rpc::SendReplyCallback send_reply_callback) {
+  gcs_client_->AsyncResubscribe();
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::UpdateResourceUsage(const NodeID &node_id,

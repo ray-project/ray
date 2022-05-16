@@ -14,8 +14,8 @@ from typing import List, Optional, Type, Union
 
 from ray.rllib.agents.dqn.simple_q_tf_policy import SimpleQTFPolicy
 from ray.rllib.agents.dqn.simple_q_torch_policy import SimpleQTorchPolicy
-from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.agents.trainer import Trainer
+from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.utils.metrics import SYNCH_WORKER_WEIGHTS_TIMER
 from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
 from ray.rllib.execution.rollout_ops import (
@@ -26,30 +26,26 @@ from ray.rllib.execution.train_ops import (
     multi_gpu_train_one_step,
 )
 from ray.rllib.policy.policy import Policy
-from ray.rllib.utils.annotations import ExperimentalAPI
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import ExperimentalAPI, override
+from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE
 from ray.rllib.utils.metrics import (
+    LAST_TARGET_UPDATE_TS,
     NUM_AGENT_STEPS_SAMPLED,
+    NUM_ENV_STEPS_TRAINED,
     NUM_ENV_STEPS_SAMPLED,
+    NUM_TARGET_UPDATES,
     TARGET_NET_UPDATE_TIMER,
 )
 from ray.rllib.utils.typing import (
     ResultDict,
     TrainerConfigDict,
 )
-from ray.rllib.utils.metrics import (
-    LAST_TARGET_UPDATE_TS,
-    NUM_TARGET_UPDATES,
-    NUM_ENV_STEPS_TRAINED,
-)
-from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE
 
 logger = logging.getLogger(__name__)
 
 
 class SimpleQConfig(TrainerConfig):
-    """Defines a SimpleQTrainer configuration class from which a SimpleQTrainer can
-    be built.
+    """Defines a configuration class from which a SimpleQTrainer can be built.
 
     Example:
         >>> from ray.rllib.agents.dqn import SimpleQConfig
@@ -67,7 +63,7 @@ class SimpleQConfig(TrainerConfig):
 
     Example:
         >>> from ray.rllib.agents.dqn import SimpleQConfig
-        from ray import tune
+        >>> from ray import tune
         >>> config = SimpleQConfig()
         >>> config.training(adam_epsilon=tune.grid_search([1e-8, 5e-8, 1e-7])
         >>> config.environment(env="CartPole-v1")
@@ -104,9 +100,9 @@ class SimpleQConfig(TrainerConfig):
         >>>                         .exploration(exploration_config=explore_config)
     """
 
-    def __init__(self):
+    def __init__(self, trainer_class=None):
         """Initializes a SimpleQConfig instance."""
-        super().__init__(trainer_class=SimpleQTrainer)
+        super().__init__(trainer_class=trainer_class or SimpleQTrainer)
 
         # Simple Q specific
         # fmt: off
@@ -176,23 +172,57 @@ class SimpleQConfig(TrainerConfig):
         """Sets the training related configuration.
 
         Args:
-            This value does not affect learning, only the length of iterations.
+            timesteps_per_iteration: Minimum env steps to optimize for per train call.
+                This value does not affect learning, only the length of iterations.
             target_network_update_freq: Update the target network every
-                `target_network_update_freq` steps.
+                `target_network_update_freq` sample steps.
             replay_buffer_config: Replay buffer config.
-            store_buffer_in_checkpoints: Set this to True, if you want the contents
-                of your buffer(s)
-            to be stored in any saved checkpoints as well.
+                Examples:
+                {
+                "_enable_replay_buffer_api": True,
+                "type": "MultiAgentReplayBuffer",
+                "learning_starts": 1000,
+                "capacity": 50000,
+                "replay_batch_size": 32,
+                "replay_sequence_length": 1,
+                }
+                - OR -
+                {
+                "_enable_replay_buffer_api": True,
+                "type": "MultiAgentPrioritizedReplayBuffer",
+                "capacity": 50000,
+                "prioritized_replay_alpha": 0.6,
+                "prioritized_replay_beta": 0.4,
+                "prioritized_replay_eps": 1e-6,
+                "replay_sequence_length": 1,
+                }
+                - Where -
+                prioritized_replay_alpha: Alpha parameter controls the degree of
+                prioritization in the buffer. In other words, when a buffer sample has
+                a higher temporal-difference error, with how much more probability
+                should it drawn to use to update the parametrized Q-network. 0.0
+                corresponds to uniform probability. Setting much above 1.0 may quickly
+                result as the sampling distribution could become heavily “pointy” with
+                low entropy.
+                prioritized_replay_beta: Beta parameter controls the degree of
+                importance sampling which suppresses the influence of gradient updates
+                from samples that have higher probability of being sampled via alpha
+                parameter and the temporal-difference error.
+                prioritized_replay_eps: Epsilon parameter sets the baseline probability
+                for sampling so that when the temporal-difference error of a sample is
+                zero, there is still a chance of drawing the sample.
+            store_buffer_in_checkpoints: Set this to True, if you want the contents of
+                your buffer(s) to be stored in any saved checkpoints as well.
                 Warnings will be created if:
-                    - This is True AND restoring from a checkpoint that contains no
-                      buffer data.
-                    - This is False AND restoring from a checkpoint that does contain
-                      buffer data.
-            lr_schedule: Learning rate schedule. In the format of
-                [[timestep, value], [timestep, value], ...].
-                A schedule should normally start from timestep 0.
-            adam_epsilon: Adam epsilon hyper parameter
-            grad_clip: If not None, clip gradients during optimization at this value
+                - This is True AND restoring from a checkpoint that contains no buffer
+                data.
+                - This is False AND restoring from a checkpoint that does contain
+                buffer data.
+            lr_schedule: Learning rate schedule. In the format of [[timestep, value],
+                [timestep, value], ...]. A schedule should normally start from
+                timestep 0.
+            adam_epsilon: Adam optimizer's epsilon hyper parameter.
+            grad_clip: If not None, clip gradients during optimization at this value.
 
         Returns:
             This updated TrainerConfig object.
@@ -225,8 +255,10 @@ class SimpleQTrainer(Trainer):
     @override(Trainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
         """Validates the Trainer's config dict.
+
         Args:
-            config (TrainerConfigDict): The Trainer's config to check.
+            config: The Trainer's config to check.
+
         Raises:
             ValueError: In case something is wrong with the config.
         """
