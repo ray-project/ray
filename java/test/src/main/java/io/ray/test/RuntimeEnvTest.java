@@ -12,6 +12,18 @@ import org.testng.annotations.Test;
 @Test(groups = "cluster")
 public class RuntimeEnvTest {
 
+  private static final String FOO_JAR_URL =
+      "https://github.com/ray-project/test_packages/raw/main/raw_resources/foo.jar";
+  private static final String BAR_JAR_URL =
+      "https://github.com/ray-project/test_packages/raw/main/raw_resources/bar.jar";
+  private static final String FOO_ZIP_URL =
+      "https://github.com/ray-project/test_packages/raw/main/raw_resources/foo.zip";
+  private static final String BAR_ZIP_URL =
+      "https://github.com/ray-project/test_packages/raw/main/raw_resources/bar.zip";
+
+  private static final String FOO_CLASS_NAME = "io.testpackages.Foo";
+  private static final String BAR_CLASS_NAME = "io.testpackages.Bar";
+
   private static class A {
 
     public String getEnv(String key) {
@@ -178,7 +190,7 @@ public class RuntimeEnvTest {
       Ray.init();
       final RuntimeEnv runtimeEnv = new RuntimeEnv.Builder().addJars(ImmutableList.of(url)).build();
       ActorHandle<A> actor1 = Ray.actor(A::new).setRuntimeEnv(runtimeEnv).remote();
-      boolean ret = actor1.task(A::findClass, "io.testpackages.Foo").remote().get();
+      boolean ret = actor1.task(A::findClass, FOO_CLASS_NAME).remote().get();
       Assert.assertTrue(ret);
     } finally {
       Ray.shutdown();
@@ -186,13 +198,11 @@ public class RuntimeEnvTest {
   }
 
   public void testJarPackageInActor() {
-    testDownloadAndLoadPackage(
-        "https://github.com/ray-project/test_packages/raw/main/raw_resources/java-1.0-SNAPSHOT.jar");
+    testDownloadAndLoadPackage(FOO_JAR_URL);
   }
 
   public void testZipPackageInActor() {
-    testDownloadAndLoadPackage(
-        "https://github.com/ray-project/test_packages/raw/main/raw_resources/java-1.0-SNAPSHOT.zip");
+    testDownloadAndLoadPackage(FOO_ZIP_URL);
   }
 
   private static boolean findClasses(List<String> classNames) {
@@ -227,23 +237,32 @@ public class RuntimeEnvTest {
   }
 
   public void testJarPackageForTask() {
-    testDownloadAndLoadPackagesForTask(
-        "https://github.com/ray-project/test_packages/raw/main/raw_resources/bar.jar",
-        "io.testpackages.Bar");
+    testDownloadAndLoadPackagesForTask(BAR_JAR_URL, BAR_CLASS_NAME);
   }
 
   public void testZipPackageForTask() {
-    testDownloadAndLoadPackagesForTask(
-        "https://github.com/ray-project/test_packages/raw/main/raw_resources/foo.zip",
-        "io.testpackages.Foo");
+    testDownloadAndLoadPackagesForTask(FOO_ZIP_URL, FOO_CLASS_NAME);
   }
 
   /// This case tests that a task needs 2 jars for load different classes.
   public void testMultipleJars() {
     testDownloadAndLoadPackagesForTask(
-        ImmutableList.of(
-            "https://github.com/ray-project/test_packages/raw/main/raw_resources/bar.jar",
-            "https://github.com/ray-project/test_packages/raw/main/raw_resources/foo.jar"),
-        ImmutableList.of("io.testpackages.Bar", "io.testpackages.Foo"));
+        ImmutableList.of(FOO_JAR_URL, BAR_JAR_URL),
+        ImmutableList.of(BAR_CLASS_NAME, FOO_CLASS_NAME));
+  }
+
+  public void testRuntimeEnvJarsForJob() {
+    System.setProperty("ray.job.runtime-env.jars.0", FOO_JAR_URL);
+    System.setProperty("ray.job.runtime-env.jars.1", BAR_JAR_URL);
+    try {
+      Ray.init();
+      boolean ret =
+          Ray.task(RuntimeEnvTest::findClasses, ImmutableList.of(BAR_CLASS_NAME, FOO_CLASS_NAME))
+              .remote()
+              .get();
+      Assert.assertTrue(ret);
+    } finally {
+      Ray.shutdown();
+    }
   }
 }
