@@ -281,6 +281,20 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     assert ds_df.equals(df)
 
 
+def test_read_example_data(ray_start_regular_shared, tmp_path):
+    ds = ray.data.read_csv("example://iris.csv")
+    assert ds.count() == 150
+    assert ds.take(1) == [
+        {
+            "sepal.length": 5.1,
+            "sepal.width": 3.5,
+            "petal.length": 1.4,
+            "petal.width": 0.2,
+            "variety": "Setosa",
+        }
+    ]
+
+
 @pytest.mark.parametrize(
     "fs,data_path",
     [

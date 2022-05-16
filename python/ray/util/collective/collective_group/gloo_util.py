@@ -268,16 +268,20 @@ class SignalActor:
 # The custom store which is implementated in Ray internal kv storage, helping
 # to store the rank meta information when setting up the gloo collective group.
 class RayInternalKvStore:
-    def __init__(self):
+    def __init__(self, group_name: str):
+        self._group_name = group_name
+        self._job_id = ray.get_runtime_context().job_id
         gcs_address = ray.worker._global_node.gcs_address
-        self._gcs_client = GcsClient(address=gcs_address, nums_reconnect_retry=0)
+        self._gcs_client = GcsClient(address=gcs_address, nums_reconnect_retry=10)
         internal_kv._initialize_internal_kv(self._gcs_client)
 
     def set(self, key: str, data: bytes) -> bool:
+        key = self.__concat_key_with_prefixes(key)
         ret = internal_kv._internal_kv_put(key, data)
         return ret
 
     def get(self, key: str) -> bytes:
+        key = self.__concat_key_with_prefixes(key)
         ret = internal_kv._internal_kv_get(key)
         return ret
 
@@ -285,6 +289,7 @@ class RayInternalKvStore:
         while True:
             all_exist = True
             for key in keys:
+                key = self.__concat_key_with_prefixes(key)
                 result = internal_kv._internal_kv_exists(key)
                 if not result:
                     all_exist = False
@@ -292,3 +297,8 @@ class RayInternalKvStore:
             if all_exist:
                 return True
             time.sleep(1)
+
+    def __concat_key_with_prefixes(self, original_key):
+        """Concat the necessary prefixes and key for isolation purpose for
+        different jobs and different groups."""
+        return f"{self._job_id.hex()}-{self._group_name}-{original_key}"
