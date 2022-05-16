@@ -192,16 +192,18 @@ class PullManager {
     // being pulled.
     absl::flat_hash_set<uint64_t> bundle_request_ids;
 
+    // An object is pullable if we know the size and it's not pending
+    // creation due to object reconstruction.
     bool IsPullable() const { return object_size_set && !pending_object_creation; }
   };
 
   /// A helper structure for tracking information about each ongoing bundle pull request.
   struct BundlePullRequest {
-    BundlePullRequest(std::vector<ObjectID> requested_objects,
-                      BundlePriority bundle_priority)
-        : objects(std::move(requested_objects)), priority(bundle_priority) {}
+    BundlePullRequest(std::vector<ObjectID> requested_objects)
+        : objects(std::move(requested_objects)) {}
+    // All the objects that this bundle is trying to pull.
     const std::vector<ObjectID> objects;
-    const BundlePriority priority;
+    // All the objects that are pullable.
     absl::flat_hash_set<ObjectID> pullable_objects;
 
     void MarkObjectAsPullable(const ObjectID &object) {
@@ -219,11 +221,29 @@ class PullManager {
 
   /// A helper structure for tracking all the bundle pull requests for a particular bundle
   /// priority.
-  struct BundlePullRequests {
+  struct BundlePullRequestQueue {
+    // Key is the request id assigned to each bundle pull request.
     absl::flat_hash_map<uint64_t, BundlePullRequest> requests;
-    // If a request is not active or inactive, it must be unpullable
+    // A bundle pull request can be in one of the three stats:
+    // 1. active: the bundle is actively being pulled.
+    // 2. inactive: the bundle is pullable but is not being pulled
+    // because we are at capacity in the object store.
+    // 3. unpullable: at least one object is not pullable (i.e. missing size or pending
+    // creation).
+    //
+    // All requests in the queue that are not in one of the following sets are unpullable.
     // (i.e. requests - active_requests - inactive_requests == unpullable_requests).
-    // Allowed transitions are active <--> inactive and inactive <--> unpullable.
+    //
+    // Allowed transitions between stats are:
+    // 1. active -> inactive: when we need to deactivate the pull request to make room
+    // for higher priority ones or the object being pulled is pending creation
+    // due to object reconstruction.
+    // 2. inactive -> active: when we have enough available object store memory to fullfil
+    // the request.
+    // 3. inactive -> unpullable: when the object is lost and pending creation due to
+    // object reconstruction.
+    // 4. unpullable -> inactive: when all objects have size and are not pending creation.
+    //
     // Note: we use std::set here so requests are sorted by their request ids (i.e. the
     // order of pull).
     std::set<uint64_t> active_requests;
@@ -231,6 +251,8 @@ class PullManager {
 
     bool Empty() const { return requests.empty(); }
 
+    // Add a request to the queue, the request will start with inactive or unpullable
+    // state. The caller must explicitly activate it if needed.
     void AddBundlePullRequest(uint64_t request_id, BundlePullRequest request) {
       requests.emplace(request_id, request);
       if (request.IsPullable()) {
@@ -239,14 +261,12 @@ class PullManager {
     }
 
     void ActivateBundlePullRequest(uint64_t request_id) {
-      RAY_CHECK_GT(inactive_requests.count(request_id), 0u);
-      inactive_requests.erase(request_id);
+      RAY_CHECK_EQ(inactive_requests.erase(request_id), 1u);
       active_requests.emplace(request_id);
     }
 
     void DeactivateBundlePullRequest(uint64_t request_id) {
-      RAY_CHECK_GT(active_requests.count(request_id), 0u);
-      active_requests.erase(request_id);
+      RAY_CHECK_EQ(active_requests.erase(request_id), 1u);
       inactive_requests.emplace(request_id);
     }
 
@@ -258,6 +278,8 @@ class PullManager {
 
     void MarkBundleAsUnpullable(uint64_t request_id) {
       RAY_CHECK(!map_find_or_die(requests, request_id).IsPullable());
+      // For a request to go from active to unpullable, it must be
+      // deactivated first.
       RAY_CHECK_EQ(active_requests.count(request_id), 0u);
       inactive_requests.erase(request_id);
     }
@@ -270,7 +292,7 @@ class PullManager {
 
     std::string DebugString() const {
       std::stringstream result;
-      result << "BundlePullRequests[";
+      result << "BundlePullRequestQueue[";
       result << requests.size() << " total, ";
       result << active_requests.size() << " active, ";
       result << inactive_requests.size() << " inactive, ";
@@ -322,13 +344,13 @@ class PullManager {
   /// size information), or activating the request would exceed memory quota.
   ///
   /// Note that we allow exceeding the quota to maintain at least 1 active bundle.
-  bool ActivateNextBundlePullRequest(BundlePullRequests *bundles,
+  bool ActivateNextBundlePullRequest(BundlePullRequestQueue &bundles,
                                      bool respect_quota,
                                      std::vector<ObjectID> *objects_to_pull);
 
   /// Deactivate a pull request in the queue. This cancels any pull or restore
   /// operations for the object.
-  void DeactivateBundlePullRequest(BundlePullRequests *bundles,
+  void DeactivateBundlePullRequest(BundlePullRequestQueue &bundles,
                                    uint64_t request_id,
                                    std::unordered_set<ObjectID> *objects_to_cancel);
 
@@ -340,17 +362,17 @@ class PullManager {
   /// \param quota_margin Keep deactivating bundles until this amount of quota margin
   ///                     becomes available.
   void DeactivateUntilMarginAvailable(const std::string &debug_name,
-                                      BundlePullRequests *bundles,
+                                      BundlePullRequestQueue &bundles,
                                       int retain_min,
                                       int64_t quota_margin,
                                       std::unordered_set<ObjectID> *objects_to_cancel);
 
   /// Return debug info about this bundle queue.
-  std::string BundleInfo(const BundlePullRequests &bundles) const;
+  std::string BundleInfo(const BundlePullRequestQueue &bundles) const;
 
   /// Return the incremental space required to pull the next bundle, if available.
   /// If the next bundle is not ready for pulling, 0L will be returned.
-  int64_t NextRequestBundleSize(const BundlePullRequests &bundles) const;
+  int64_t NextRequestBundleSize(const BundlePullRequestQueue &bundles) const;
 
   /// See the constructor's arguments.
   NodeID self_node_id_;
@@ -379,10 +401,10 @@ class PullManager {
   /// also take precedence over ray.wait() requests.
   ///
   /// Bundle pull requests of `ray.get` and `ray.wait` requests made by workers.
-  BundlePullRequests get_request_bundles_;
-  BundlePullRequests wait_request_bundles_;
+  BundlePullRequestQueue get_request_bundles_;
+  BundlePullRequestQueue wait_request_bundles_;
   /// Bundle pull requests of arguments of queued tasks.
-  BundlePullRequests task_argument_bundles_;
+  BundlePullRequestQueue task_argument_bundles_;
 
   /// The total number of bytes that we are currently pulling. This is the
   /// total size of the objects requested that we are actively pulling. To

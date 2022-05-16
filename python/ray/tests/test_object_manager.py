@@ -565,6 +565,7 @@ def test_object_directory_basic(ray_start_cluster_with_resource):
 
 
 def test_pull_bundle_deadlock(ray_start_cluster):
+    # Test https://github.com/ray-project/ray/issues/13689
     cluster = ray_start_cluster
     cluster.add_node(
         num_cpus=0,

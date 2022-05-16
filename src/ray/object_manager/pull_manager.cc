@@ -60,7 +60,7 @@ uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_b
     }
   }
 
-  BundlePullRequest bundle_pull_request(ObjectRefsToIds(deduplicated), prio);
+  BundlePullRequest bundle_pull_request(ObjectRefsToIds(deduplicated));
   const uint64_t req_id = next_req_id_++;
   RAY_LOG(DEBUG) << "Start pull request " << req_id
                  << ". Bundle size: " << bundle_pull_request.objects.size();
@@ -101,17 +101,17 @@ uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_b
   return req_id;
 }
 
-bool PullManager::ActivateNextBundlePullRequest(BundlePullRequests *bundles,
+bool PullManager::ActivateNextBundlePullRequest(BundlePullRequestQueue &bundles,
                                                 bool respect_quota,
                                                 std::vector<ObjectID> *objects_to_pull) {
-  if (bundles->inactive_requests.empty()) {
+  if (bundles.inactive_requests.empty()) {
     // No inactive requests in the queue.
     return false;
   }
 
   // Get the next pull request in the queue.
-  const auto next_request_id = *(bundles->inactive_requests.cbegin());
-  const auto &next_request = map_find_or_die(bundles->requests, next_request_id);
+  const auto next_request_id = *(bundles.inactive_requests.cbegin());
+  const auto &next_request = map_find_or_die(bundles.requests, next_request_id);
   RAY_CHECK(next_request.IsPullable());
 
   // Activate the pull bundle request if possible.
@@ -166,17 +166,17 @@ bool PullManager::ActivateNextBundlePullRequest(BundlePullRequests *bundles,
     }
   }
 
-  bundles->ActivateBundlePullRequest(next_request_id);
+  bundles.ActivateBundlePullRequest(next_request_id);
 
   num_active_bundles_ += 1;
   return true;
 }
 
 void PullManager::DeactivateBundlePullRequest(
-    BundlePullRequests *bundles,
+    BundlePullRequestQueue &bundles,
     uint64_t request_id,
     std::unordered_set<ObjectID> *objects_to_cancel) {
-  const auto &request = map_find_or_die(bundles->requests, request_id);
+  const auto &request = map_find_or_die(bundles.requests, request_id);
   for (const auto &obj_id : request.objects) {
     absl::MutexLock lock(&active_objects_mu_);
     auto it = active_object_pull_requests_.find(obj_id);
@@ -194,21 +194,21 @@ void PullManager::DeactivateBundlePullRequest(
     }
   }
 
-  bundles->DeactivateBundlePullRequest(request_id);
+  bundles.DeactivateBundlePullRequest(request_id);
   num_active_bundles_ -= 1;
 }
 
 void PullManager::DeactivateUntilMarginAvailable(
     const std::string &debug_name,
-    BundlePullRequests *bundles,
+    BundlePullRequestQueue &bundles,
     int retain_min,
     int64_t quota_margin,
     std::unordered_set<ObjectID> *object_ids_to_cancel) {
-  while (RemainingQuota() < quota_margin && !bundles->active_requests.empty()) {
+  while (RemainingQuota() < quota_margin && !bundles.active_requests.empty()) {
     if (num_active_bundles_ <= retain_min) {
       return;
     }
-    const uint64_t request_id = *(bundles->active_requests.rbegin());
+    const uint64_t request_id = *(bundles.active_requests.rbegin());
     RAY_LOG(DEBUG) << "Deactivating " << debug_name << " " << request_id
                    << " num bytes being pulled: " << num_bytes_being_pulled_
                    << " num bytes available: " << num_bytes_available_;
@@ -241,18 +241,18 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(int64_t num_bytes_available)
   while (get_requests_remaining) {
     const int64_t margin_required = NextRequestBundleSize(get_request_bundles_);
     DeactivateUntilMarginAvailable("task args request",
-                                   &task_argument_bundles_,
+                                   task_argument_bundles_,
                                    /*retain_min=*/0,
                                    /*quota_margin=*/margin_required,
                                    &object_ids_to_cancel);
     DeactivateUntilMarginAvailable("wait request",
-                                   &wait_request_bundles_,
+                                   wait_request_bundles_,
                                    /*retain_min=*/0,
                                    /*quota_margin=*/margin_required,
                                    &object_ids_to_cancel);
 
     // Activate the next get request unconditionally.
-    get_requests_remaining = ActivateNextBundlePullRequest(&get_request_bundles_,
+    get_requests_remaining = ActivateNextBundlePullRequest(get_request_bundles_,
                                                            /*respect_quota=*/false,
                                                            &objects_to_pull);
   }
@@ -262,32 +262,32 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(int64_t num_bytes_available)
   while (wait_requests_remaining) {
     const int64_t margin_required = NextRequestBundleSize(wait_request_bundles_);
     DeactivateUntilMarginAvailable("task args request",
-                                   &task_argument_bundles_,
+                                   task_argument_bundles_,
                                    /*retain_min=*/0,
                                    /*quota_margin=*/margin_required,
                                    &object_ids_to_cancel);
 
     // Activate the next wait request if we have space.
-    wait_requests_remaining = ActivateNextBundlePullRequest(&wait_request_bundles_,
+    wait_requests_remaining = ActivateNextBundlePullRequest(wait_request_bundles_,
                                                             /*respect_quota=*/true,
                                                             &objects_to_pull);
   }
 
   // Do the same but for task arg requests (lowest priority).
   // allowed for task arg requests.
-  while (ActivateNextBundlePullRequest(&task_argument_bundles_,
+  while (ActivateNextBundlePullRequest(task_argument_bundles_,
                                        /*respect_quota=*/true,
                                        &objects_to_pull)) {
   }
 
   // While we are over capacity, deactivate requests starting from the back of the queues.
   DeactivateUntilMarginAvailable("task args request",
-                                 &task_argument_bundles_,
+                                 task_argument_bundles_,
                                  /*retain_min=*/1,
                                  /*quota_margin=*/0L,
                                  &object_ids_to_cancel);
   DeactivateUntilMarginAvailable("wait request",
-                                 &wait_request_bundles_,
+                                 wait_request_bundles_,
                                  /*retain_min=*/1,
                                  /*quota_margin=*/0L,
                                  &object_ids_to_cancel);
@@ -312,7 +312,7 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(int64_t num_bytes_available)
 std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
   RAY_LOG(DEBUG) << "Cancel pull request " << request_id;
 
-  BundlePullRequests *bundles = nullptr;
+  BundlePullRequestQueue *bundles = nullptr;
   auto bundle_it = get_request_bundles_.requests.find(request_id);
   if (bundle_it != get_request_bundles_.requests.end()) {
     bundles = &get_request_bundles_;
@@ -328,7 +328,7 @@ std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
   // If the pull request was being actively pulled, deactivate it now.
   if (bundles->active_requests.count(request_id) > 0) {
     std::unordered_set<ObjectID> object_ids_to_cancel;
-    DeactivateBundlePullRequest(bundles, request_id, &object_ids_to_cancel);
+    DeactivateBundlePullRequest(*bundles, request_id, &object_ids_to_cancel);
     for (const auto &obj_id : object_ids_to_cancel) {
       // Call the cancellation callback outside of the lock.
       RAY_LOG(DEBUG) << "Pull cancellation requested for object " << obj_id
@@ -375,7 +375,7 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
     return;
   }
 
-  const bool is_pullable_before = it->second.IsPullable();
+  const bool was_pullable_before = it->second.IsPullable();
   // Reset the list of clients that are now expected to have the object.
   // NOTE(swang): Since we are overwriting the previous list of clients,
   // we may end up sending a duplicate request to the same client as
@@ -407,9 +407,9 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
   }
   const bool is_pullable_after = it->second.IsPullable();
 
-  if (is_pullable_before != is_pullable_after) {
+  if (was_pullable_before != is_pullable_after) {
     for (auto &bundle_request_id : it->second.bundle_request_ids) {
-      BundlePullRequests *bundles = nullptr;
+      BundlePullRequestQueue *bundles = nullptr;
       auto bundle_it = get_request_bundles_.requests.find(bundle_request_id);
       if (bundle_it != get_request_bundles_.requests.end()) {
         bundles = &get_request_bundles_;
@@ -433,7 +433,7 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
           // It's active now so we need to deactivate it
           // to free memory for other requests.
           std::unordered_set<ObjectID> objects_to_cancel;
-          DeactivateBundlePullRequest(bundles, bundle_request_id, &objects_to_cancel);
+          DeactivateBundlePullRequest(*bundles, bundle_request_id, &objects_to_cancel);
           for (const auto &obj_id : objects_to_cancel) {
             cancel_pull_request_(obj_id);
           }
@@ -649,7 +649,7 @@ bool PullManager::IsObjectActive(const ObjectID &object_id) const {
 }
 
 bool PullManager::PullRequestActiveOrWaitingForMetadata(uint64_t request_id) const {
-  const BundlePullRequests *bundles = nullptr;
+  const BundlePullRequestQueue *bundles = nullptr;
   if (get_request_bundles_.requests.contains(request_id)) {
     bundles = &get_request_bundles_;
   } else if (wait_request_bundles_.requests.contains(request_id)) {
@@ -667,7 +667,7 @@ bool PullManager::HasPullsQueued() const {
   return active_object_pull_requests_.size() != object_pull_requests_.size();
 }
 
-std::string PullManager::BundleInfo(const BundlePullRequests &bundles) const {
+std::string PullManager::BundleInfo(const BundlePullRequestQueue &bundles) const {
   auto it = bundles.requests.begin();
   if (it == bundles.requests.end()) {
     return "N/A";
@@ -693,7 +693,7 @@ std::string PullManager::BundleInfo(const BundlePullRequests &bundles) const {
   return result.str();
 }
 
-int64_t PullManager::NextRequestBundleSize(const BundlePullRequests &bundles) const {
+int64_t PullManager::NextRequestBundleSize(const BundlePullRequestQueue &bundles) const {
   if (bundles.inactive_requests.empty()) {
     // No inactive requests in the queue.
     return 0L;
