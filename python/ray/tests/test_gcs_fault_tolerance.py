@@ -243,7 +243,7 @@ def test_del_actor_after_gcs_server_restart(ray_start_regular_with_external_redi
     ],
     indirect=True,
 )
-def test_raylet_resubscription(ray_start_regular_with_external_redis):
+def test_raylet_resubscription(tmp_path, ray_start_regular_with_external_redis):
     # This test is to make sure resubscription in raylet is working.
     # When subscription failed, raylet will not get worker failure error
     # and thus, it won't kill the worker which is fate sharing with the failed
@@ -254,6 +254,9 @@ def test_raylet_resubscription(ray_start_regular_with_external_redis):
         from time import sleep
 
         print("LONG_RUN")
+        import os
+
+        (tmp_path / "long_run.pid").write_text(str(os.getpid()))
         sleep(10000)
 
     @ray.remote
@@ -273,11 +276,8 @@ def test_raylet_resubscription(ray_start_regular_with_external_redis):
 
     def condition():
         nonlocal long_run_pid
-        for proc in psutil.process_iter():
-            if proc.name() == "ray::long_run()":
-                long_run_pid = proc.pid
-                return True
-        return False
+        long_run_pid = int((tmp_path / "long_run.pid").read_text())
+        return True
 
     wait_for_condition(condition, timeout=5)
 
