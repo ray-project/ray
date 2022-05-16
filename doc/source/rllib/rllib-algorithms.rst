@@ -520,7 +520,7 @@ Hopper         620           ~650
 Dreamer
 -------
 |pytorch|
-`[paper] <https://arxiv.org/abs/1912.01603>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/dreamer/dreamer.py>`__
+`[paper] <https://arxiv.org/abs/1912.01603>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/dreamer/dreamer.py>`__
 
 Dreamer is an image-only model-based RL method that learns by imagining trajectories in the future and is evaluated on the DeepMind Control Suite `environments <https://github.com/ray-project/ray/blob/master/rllib/examples/env/dm_control_suite.py>`__. RLlib's Dreamer is adapted from the `official Google research repo <https://github.com/google-research/dreamer>`__.
 
