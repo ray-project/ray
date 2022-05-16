@@ -618,8 +618,9 @@ class Trial:
         for criteria, stop_value in self.stopping_criterion.items():
             if criteria not in result:
                 raise TuneError(
-                    "Stopping criteria {} not provided in result dict. Keys "
-                    "are {}.".format(criteria, list(result.keys()))
+                    "Stopping criteria {} not provided in result {}.".format(
+                        criteria, result
+                    )
                 )
             elif isinstance(criteria, dict):
                 raise ValueError(
