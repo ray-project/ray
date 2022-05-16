@@ -261,6 +261,7 @@ class Trainable:
             "timesteps_since_restore": self._timesteps_since_restore,
             "iterations_since_restore": self._iterations_since_restore,
             "warmup_time": self._warmup_time,
+            "training_iteration": 0,
         }
         if debug_metrics_only:
             autofilled = {k: v for k, v in autofilled.items() if k in DEBUG_METRICS}
