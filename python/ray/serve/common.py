@@ -34,7 +34,7 @@ class ServeApplicationStatus(str, Enum):
 class ServeApplicationStatusInfo:
     status: ServeApplicationStatus
     message: str = ""
-    last_deployed_timestamp: str = ""
+    deployment_timestamp: str = ""
 
 
 class DeploymentStatus(str, Enum):

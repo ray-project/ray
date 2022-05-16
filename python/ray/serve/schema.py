@@ -318,7 +318,7 @@ class ServeApplicationStatusSchema(BaseModel, extra=Extra.forbid):
         description=(
             "Describes if the Serve application is DEPLOYING, if the "
             "DEPLOY_FAILED, or if the app is RUNNING. Includes a timestamp of "
-            "when the application received its last deploy request."
+            "when the application was deployed."
         ),
     )
     deployment_statuses: List[DeploymentStatusSchema] = Field(...)
@@ -346,10 +346,18 @@ def status_info_to_schema(
 
 
 def serve_application_status_to_schema(
-    status_infos: Dict[str, Union[DeploymentStatusInfo, Dict]]
+    serve_status: Dict[
+        str, Union[ServeApplicationStatusInfo, DeploymentStatusInfo, Dict]
+    ]
 ) -> ServeApplicationStatusSchema:
+
+    app_status = serve_status["app_status"]
+    del serve_status["app_status"]
+
     schemas = [
         status_info_to_schema(deployment_name, status_info)
-        for deployment_name, status_info in status_infos.items()
+        for deployment_name, status_info in serve_status.items()
     ]
-    return ServeApplicationStatusSchema(statuses=schemas)
+    return ServeApplicationStatusSchema(
+        app_status=app_status, deployment_statuses=schemas
+    )

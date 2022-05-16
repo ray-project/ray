@@ -358,6 +358,10 @@ class ServeControllerClient:
         }
 
     @_ensure_connected
+    def get_serve_status(self) -> Dict:
+        return ray.get(self._controller.get_serve_status.remote())
+
+    @_ensure_connected
     def get_handle(
         self,
         deployment_name: str,
