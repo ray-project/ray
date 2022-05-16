@@ -336,8 +336,9 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
     runtime_env: dict = Field(
         default={},
         description=(
-            "runtime_env that the deployment graph will be run in. Per-deployment runtime_envs will inherit from this. working_dir and "
-            "py_modules may contain only remote URIs."
+            "The runtime_env that the deployment graph will be run in. "
+            "Per-deployment runtime_envs will inherit from this. working_dir "
+            "and py_modules may contain only remote URIs."
         ),
     )
     deployments: List[DeploymentSchema] = Field(...)
