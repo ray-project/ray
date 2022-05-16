@@ -101,8 +101,10 @@ def get_wheels_filename(
     ray_version: str, python_version: Tuple[int, int] = DEFAULT_PYTHON_VERSION
 ) -> str:
     version_str = python_version_str(python_version)
+    suffix = "m" if python_version[1] <= 7 else ""
     return (
-        f"ray-{ray_version}-cp{version_str}-cp{version_str}m-manylinux2014_x86_64.whl"
+        f"ray-{ray_version}-cp{version_str}-cp{version_str}{suffix}-"
+        f"manylinux2014_x86_64.whl"
     )
 
 
