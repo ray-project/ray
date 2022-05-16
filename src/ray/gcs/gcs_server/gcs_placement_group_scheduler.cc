@@ -24,14 +24,12 @@ GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
     instrumented_io_context &io_context,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
     const gcs::GcsNodeManager &gcs_node_manager,
-    GcsResourceManager &gcs_resource_manager,
     ClusterResourceScheduler &cluster_resource_scheduler,
     std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
     gcs_syncer::RaySyncer *ray_syncer)
     : return_timer_(io_context),
       gcs_table_storage_(std::move(gcs_table_storage)),
       gcs_node_manager_(gcs_node_manager),
-      gcs_resource_manager_(gcs_resource_manager),
       cluster_resource_scheduler_(cluster_resource_scheduler),
       raylet_client_pool_(raylet_client_pool),
       ray_syncer_(ray_syncer) {}
@@ -97,6 +95,10 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   RAY_CHECK(placement_group_leasing_in_progress_
                 .emplace(placement_group->GetPlacementGroupID(), lease_status_tracker)
                 .second);
+
+  // Acquire resources from gcs resources manager to reserve bundle resources.
+  const auto &prepared_bundle_locations = lease_status_tracker->GetBundleLocations();
+  AcquireBundleResources(prepared_bundle_locations);
 
   // Covert to a set of bundle specifications grouped by the node.
   std::unordered_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
@@ -236,12 +238,8 @@ void GcsPlacementGroupScheduler::CancelResourceReserve(
                                    const rpc::CancelResourceReserveReply &reply) {
         RAY_LOG(DEBUG) << "Finished cancelling the resource reserved for bundle: "
                        << bundle_spec->DebugString() << " at node " << node_id;
-        std::vector<std::string> resource_names;
-        auto &resources = bundle_spec->GetFormattedResources();
-        for (const auto &iter : resources) {
-          resource_names.push_back(iter.first);
-        }
         if (ray_syncer_ != nullptr) {
+          auto &resources = bundle_spec->GetFormattedResources();
           rpc::NodeResourceChange node_resource_change;
           for (const auto &iter : resources) {
             node_resource_change.add_deleted_resources(iter.first);
@@ -249,7 +247,6 @@ void GcsPlacementGroupScheduler::CancelResourceReserve(
           node_resource_change.set_node_id(node_id.Binary());
           ray_syncer_->Update(std::move(node_resource_change));
         }
-        gcs_resource_manager_.DeleteResources(node_id, std::move(resource_names));
       });
 }
 
@@ -296,27 +293,13 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
                                       node_id,
                                       schedule_failure_handler,
                                       schedule_success_handler](const Status &status) {
+      auto commited_bundle_locations = std::make_shared<BundleLocations>();
       for (const auto &bundle : bundles_per_node) {
         lease_status_tracker->MarkCommitRequestReturned(node_id, bundle, status);
-
-        auto resources = bundle->GetFormattedResources();
-        // For gcs actor scheduler, placement group's wildcard resources have to be
-        // updated incrementally.
-        // TODO(Chong-Li): This part should be removed when PG scheduling is refactored.
-        if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
-          auto wildcard_resources = bundle->GetWildcardResources();
-          for (const auto &resource_entry : wildcard_resources) {
-            auto capacity = gcs_resource_manager_
-                                .GetNodeResources(scheduling::NodeID(node_id.Binary()))
-                                .total.Get(scheduling::ResourceID(resource_entry.first))
-                                .Double();
-            resources[resource_entry.first] += capacity;
-          }
-        }
-        // Update the resource in gcs resource manager
-        gcs_resource_manager_.UpdateResources(node_id, resources);
+        (*commited_bundle_locations)[bundle->BundleId()] = {node_id, bundle};
 
         if (ray_syncer_ != nullptr) {
+          auto &resources = bundle->GetFormattedResources();
           // Push the message to syncer so that it can be broadcasted to all other nodes
           rpc::NodeResourceChange node_resource_change;
           node_resource_change.set_node_id(node_id.Binary());
@@ -325,6 +308,9 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
           ray_syncer_->Update(std::move(node_resource_change));
         }
       }
+      // Commit the bundle resources on the remote node to the cluster resources.
+      CommitBundleResources(commited_bundle_locations);
+
       if (lease_status_tracker->AllCommitRequestReturned()) {
         OnAllBundleCommitRequestReturned(
             lease_status_tracker, schedule_failure_handler, schedule_success_handler);
@@ -423,11 +409,6 @@ void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(
     schedule_failure_handler(placement_group, /*is_feasible*/ true);
     return;
   }
-
-  // Acquire bundle resources from gcs resources manager.
-  const auto &committed_bundle_locations =
-      lease_status_tracker->GetCommittedBundleLocations();
-  AcquireBundleResources(committed_bundle_locations);
 
   if (!lease_status_tracker->AllCommitRequestsSuccessful()) {
     // Update the state to be reschedule so that the failure handle will reschedule the
@@ -596,15 +577,54 @@ void GcsPlacementGroupScheduler::AcquireBundleResources(
   }
 }
 
+absl::flat_hash_map<scheduling::NodeID, ResourceRequest> ToNodeBundleResourcesMap(
+    const std::shared_ptr<BundleLocations> &bundle_locations) {
+  absl::flat_hash_map<scheduling::NodeID, ResourceRequest> node_bundle_resources_map;
+  for (auto &bundle : *bundle_locations) {
+    auto node_id = scheduling::NodeID(bundle.second.first.Binary());
+    const auto &bundle_spec = *bundle.second.second;
+    auto bundle_resource_request = ResourceMapToResourceRequest(
+        bundle_spec.GetFormattedResources(), /*requires_object_store_memory=*/false);
+    node_bundle_resources_map[node_id] += bundle_resource_request;
+  }
+  return node_bundle_resources_map;
+}
+
+void GcsPlacementGroupScheduler::CommitBundleResources(
+    const std::shared_ptr<BundleLocations> &bundle_locations) {
+  // Acquire bundle resources from gcs resources manager.
+  auto &cluster_resource_manager =
+      cluster_resource_scheduler_.GetClusterResourceManager();
+  auto node_bundle_resources_map = ToNodeBundleResourcesMap(bundle_locations);
+  for (const auto &[node_id, node_bundle_resources] : node_bundle_resources_map) {
+    for (const auto &[resource_id, capacity] : node_bundle_resources.ToMap()) {
+      cluster_resource_manager.UpdateResourceCapacity(
+          node_id, resource_id, capacity.Double());
+    }
+  }
+}
+
 void GcsPlacementGroupScheduler::ReturnBundleResources(
     const std::shared_ptr<BundleLocations> &bundle_locations) {
-  // Release bundle resources to gcs resources manager.
+  // Return bundle resources to gcs resources manager should contains the following steps.
+  // 1. Remove related bundle resources from nodes.
+  // 2. Add resources allocated for bundles back to nodes.
+  // TODO(Shanly): It's necessary to check whether the bundle could be returned in gcs
+  // scheduling. Only bundles with same total and availe resources could be returnd.
   auto &cluster_resource_manager =
       cluster_resource_scheduler_.GetClusterResourceManager();
   for (auto &bundle : *bundle_locations) {
+    auto node_id = scheduling::NodeID(bundle.second.first.Binary());
+    const auto &bundle_spec = *bundle.second.second;
+    // Remove bundle resource names (the label with `_group_`).
+    std::vector<scheduling::ResourceID> bundle_resource_ids;
+    for (const auto &entry : bundle_spec.GetFormattedResources()) {
+      bundle_resource_ids.emplace_back(scheduling::ResourceID(entry.first));
+    }
+    cluster_resource_manager.DeleteResources(node_id, bundle_resource_ids);
+    // Add reserved bundle resources back to the node.
     cluster_resource_manager.AddNodeAvailableResources(
-        scheduling::NodeID(bundle.second.first.Binary()),
-        bundle.second.second->GetRequiredResources());
+        node_id, bundle_spec.GetRequiredResources());
   }
 }
 

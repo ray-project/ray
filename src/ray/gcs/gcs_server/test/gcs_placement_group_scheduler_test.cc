@@ -55,7 +55,6 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
         /*is_local_node_with_raylet=*/false);
     gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(
         io_service_,
-        gcs_table_storage_,
         cluster_resource_scheduler_->GetClusterResourceManager(),
         local_node_id);
     ray_syncer_ = std::make_shared<ray::gcs_syncer::RaySyncer>(
@@ -69,7 +68,6 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
         io_service_,
         gcs_table_storage_,
         *gcs_node_manager_,
-        *gcs_resource_manager_,
         *cluster_resource_scheduler_,
         raylet_client_pool_,
         ray_syncer_.get());

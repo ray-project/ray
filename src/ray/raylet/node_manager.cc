@@ -1052,10 +1052,12 @@ void NodeManager::ResourceDeleted(const NodeID &node_id,
     return;
   }
 
+  std::vector<scheduling::ResourceID> resource_ids;
   for (const auto &resource_label : resource_names) {
-    cluster_resource_scheduler_->GetClusterResourceManager().DeleteResource(
-        scheduling::NodeID(node_id.Binary()), scheduling::ResourceID(resource_label));
+    resource_ids.emplace_back(scheduling::ResourceID(resource_label));
   }
+  cluster_resource_scheduler_->GetClusterResourceManager().DeleteResources(
+      scheduling::NodeID(node_id.Binary()), resource_ids);
   return;
 }
 

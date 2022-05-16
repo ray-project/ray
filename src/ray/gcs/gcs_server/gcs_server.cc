@@ -253,10 +253,9 @@ void GcsServer::InitGcsHeartbeatManager(const GcsInitData &gcs_init_data) {
 }
 
 void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
-  RAY_CHECK(gcs_table_storage_ && cluster_resource_scheduler_ && cluster_task_manager_);
+  RAY_CHECK(cluster_resource_scheduler_ && cluster_task_manager_);
   gcs_resource_manager_ = std::make_shared<GcsResourceManager>(
       main_service_,
-      gcs_table_storage_,
       cluster_resource_scheduler_->GetClusterResourceManager(),
       local_node_id_,
       cluster_task_manager_);
@@ -419,7 +418,6 @@ void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
       std::make_shared<GcsPlacementGroupScheduler>(main_service_,
                                                    gcs_table_storage_,
                                                    *gcs_node_manager_,
-                                                   *gcs_resource_manager_,
                                                    *cluster_resource_scheduler_,
                                                    raylet_client_pool_,
                                                    gcs_ray_syncer_.get());

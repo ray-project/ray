@@ -76,8 +76,10 @@ class ClusterResourceManager {
   /// Delete a given resource from a given node.
   ///
   /// \param node_id: Node whose resource we want to delete.
-  /// \param resource_id: Resource we want to delete
-  void DeleteResource(scheduling::NodeID node_id, scheduling::ResourceID resource_id);
+  /// \param resource_ids: Resource id list we want to delete
+  /// \return True if the node exist, else False.
+  bool DeleteResources(scheduling::NodeID node_id,
+                       const std::vector<scheduling::ResourceID> &resource_ids);
 
   /// Return local resources in human-readable string form.
   std::string GetNodeResourceViewString(scheduling::NodeID node_id) const;
@@ -119,11 +121,6 @@ class ClusterResourceManager {
   /// TODO(Shanly): Integrated this method into `UpdateNode` later.
   bool UpdateNodeNormalTaskResources(scheduling::NodeID node_id,
                                      const rpc::ResourcesData &resource_data);
-
-  /// Return false if the specified node doesn't exist.
-  /// TODO(Shanly): This method will be removed once the `gcs_resource_manager` is
-  /// replaced with `cluster_resource_scheduler`.
-  bool ContainsNode(scheduling::NodeID node_id) const;
 
   void DebugString(std::stringstream &buffer) const;
 
