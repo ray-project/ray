@@ -82,6 +82,7 @@ DEBUG_METRICS = (
     HOSTNAME,
     NODE_IP,
     "config",
+    TRAINING_ITERATION,
 )
 
 # Make sure this doesn't regress
