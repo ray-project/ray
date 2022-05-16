@@ -1,5 +1,6 @@
 import click
 import json
+import yaml
 
 from typing import Union
 
@@ -38,16 +39,7 @@ def print_state_api_output(state_data: Union[dict, list], format: str, resource:
         print(f"No {resource} in the cluster")
 
     if format == "default":
-        if isinstance(state_data, list):
-            for i, d in enumerate(state_data):
-                print(f"{resource} index: {i}")
-                format_print(d)
-                print("".join(["-" for _ in range(60)]))
-        else:
-            for id, state in state_data.items():
-                print(f"Id: {id}")
-                format_print(state)
-                print("".join(["-" for _ in range(60)]))
+        print(yaml.dump(state_data, indent=4, explicit_start=True))
     elif format == "json":
         print(json.dumps(state_data))
     elif format == "table":
