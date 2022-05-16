@@ -212,9 +212,7 @@ class WorkflowManagementActor:
 
     def _update_workflow_status(self, workflow_id: str, status: common.WorkflowStatus):
         wf_store = workflow_storage.WorkflowStorage(workflow_id)
-        if workflow_id not in self._workflow_status:
-            self._workflow_status[workflow_id] = wf_store.load_workflow_status()
-        wf_store.update_workflow_status(status, self._workflow_status[workflow_id])
+        wf_store.update_workflow_status(status)
         self._workflow_status[workflow_id] = status
 
     def update_step_status(
@@ -315,15 +313,15 @@ class WorkflowManagementActor:
         if workflow_id in self._workflow_outputs and name is None:
             return self._workflow_outputs[workflow_id].output
         wf_store = workflow_storage.WorkflowStorage(workflow_id)
-        meta = wf_store.load_workflow_status()
-        if meta == common.WorkflowStatus.NONE:
+        status = wf_store.load_workflow_status()
+        if status == common.WorkflowStatus.NONE:
             raise ValueError(f"No such workflow {workflow_id}")
-        if meta == common.WorkflowStatus.CANCELED:
+        if status == common.WorkflowStatus.CANCELED:
             raise ValueError(f"Workflow {workflow_id} is canceled")
         if name is None:
             # For resumable workflow, the workflow result is not ready.
             # It has to be resumed first.
-            if meta == common.WorkflowStatus.RESUMABLE:
+            if status == common.WorkflowStatus.RESUMABLE:
                 raise ValueError(
                     f"Workflow {workflow_id} is in resumable status, "
                     "please resume it"

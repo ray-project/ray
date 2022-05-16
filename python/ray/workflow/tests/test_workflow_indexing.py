@@ -1,3 +1,5 @@
+import pytest
+
 from ray.workflow.common import WorkflowStatus
 from ray.workflow.workflow_storage import WorkflowIndexingStorage
 
@@ -13,27 +15,21 @@ def test_workflow_status_update(workflow_start_regular):
         )
 
     for i in range(100):
-        store.update_workflow_status(
-            str(i), WorkflowStatus.RUNNING, WorkflowStatus.NONE
-        )
+        store.update_workflow_status(str(i), WorkflowStatus.RUNNING)
 
     assert sorted(store.list_workflow()) == sorted(
         [(str(i), WorkflowStatus.RUNNING) for i in range(100)]
     )
 
     for i in range(100):
-        store.update_workflow_status(
-            str(i), WorkflowStatus.RESUMABLE, WorkflowStatus.RUNNING
-        )
+        store.update_workflow_status(str(i), WorkflowStatus.RESUMABLE)
 
     assert sorted(store.list_workflow()) == sorted(
         [(str(i), WorkflowStatus.RESUMABLE) for i in range(100)]
     )
 
     for i in range(100):
-        store.update_workflow_status(
-            str(i), WorkflowStatus.FAILED, WorkflowStatus.RESUMABLE
-        )
+        store.update_workflow_status(str(i), WorkflowStatus.FAILED)
 
     assert sorted(store.list_workflow()) == sorted(
         [(str(i), WorkflowStatus.FAILED) for i in range(100)]
@@ -49,9 +45,7 @@ def test_workflow_auto_fix_status(workflow_start_regular):
     store._key_workflow_with_status = None
     for i in range(100):
         try:
-            store.update_workflow_status(
-                str(i), WorkflowStatus.RUNNING, WorkflowStatus.NONE
-            )
+            store.update_workflow_status(str(i), WorkflowStatus.RUNNING)
         except Exception:
             pass
 
@@ -65,12 +59,16 @@ def test_workflow_auto_fix_status(workflow_start_regular):
     store._key_workflow_with_status = None
     for i in range(100):
         try:
-            store.update_workflow_status(
-                str(i), WorkflowStatus.RESUMABLE, WorkflowStatus.RUNNING
-            )
+            store.update_workflow_status(str(i), WorkflowStatus.RESUMABLE)
         except Exception:
             pass
 
     store._key_workflow_with_status = _key_workflow_with_status
     for i in range(100):
         assert store.load_and_fix_workflow_status(str(i)) == WorkflowStatus.RESUMABLE
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

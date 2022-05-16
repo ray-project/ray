@@ -93,10 +93,9 @@ class WorkflowIndexingStorage:
     def __init__(self):
         self._storage = storage.get_client(WORKFLOW_ROOT)
 
-    def update_workflow_status(
-        self, workflow_id: str, status: WorkflowStatus, prev_status: WorkflowStatus
-    ):
+    def update_workflow_status(self, workflow_id: str, status: WorkflowStatus):
         """Update the status of the workflow."""
+        prev_status = self.load_and_fix_workflow_status(workflow_id)
         if prev_status != status:
             # Transactional update of workflow status
             self._storage.put(self._key_workflow_status_on_change(workflow_id), b"")
@@ -677,15 +676,9 @@ class WorkflowStorage:
         if not found:
             raise WorkflowNotFoundError(self._workflow_id)
 
-    def update_workflow_status(
-        self, status: WorkflowStatus, prev_status: Optional[WorkflowStatus] = None
-    ):
+    def update_workflow_status(self, status: WorkflowStatus):
         """Update the status of the workflow."""
-        if prev_status is None:
-            prev_status = self.load_workflow_status()
-        self._status_storage.update_workflow_status(
-            self._workflow_id, status, prev_status
-        )
+        self._status_storage.update_workflow_status(self._workflow_id, status)
 
     def load_workflow_status(self):
         """Load workflow status. If we find the previous status updating failed,
