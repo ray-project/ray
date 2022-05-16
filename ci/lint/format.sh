@@ -42,14 +42,15 @@ builtin cd "$(dirname "${BASH_SOURCE:-$0}")"
 ROOT="$(git rev-parse --show-toplevel)"
 builtin cd "$ROOT" || exit 1
 
-# black version string differs on intel and m1 macs :'(
-if [[ $(uname -m) == "arm64" ]]
+# black version differs based on installation method:
+#   1) 'black, 21.12b0 (compiled: no)'
+#   2) 'black, version 21.12b0'
+BLACK_VERSION_STR=$(black --version)
+if [[ "$BLACK_VERSION_STR" == *"compiled"* ]]
 then
-    # On m1 the version string looks like 'black, version 21.7b0'.
-    BLACK_VERSION=$(black --version | awk '{print $3}')
+    BLACK_VERSION=$(echo $BLACK_VERSION_STR | awk '{print $2}')
 else
-    # On intel the version string looks like 'black, 21.7b0 (compiled: no)'.
-    BLACK_VERSION=$(black --version | awk '{print $2}')
+    BLACK_VERSION=$(echo $BLACK_VERSION_STR | awk '{print $3}')
 fi
 FLAKE8_VERSION=$(flake8 --version | head -n 1 | awk '{print $1}')
 MYPY_VERSION=$(mypy --version | awk '{print $2}')
