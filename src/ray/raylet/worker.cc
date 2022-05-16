@@ -117,11 +117,7 @@ void Worker::Connect(int port) {
   addr.set_ip_address(ip_address_);
   addr.set_port(port_);
   rpc_client_ = std::make_unique<rpc::CoreWorkerClient>(addr, client_call_manager_);
-  if (notify_gcs_restarted_) {
-    // We need to send RPC to notify about the GCS restarts
-    AsyncNotifyGCSRestart();
-    notify_gcs_restarted_ = false;
-  }
+  Connect(rpc_client_);
 }
 
 void Worker::Connect(std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client) {

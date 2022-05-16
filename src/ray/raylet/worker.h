@@ -284,7 +284,7 @@ class Worker : public WorkerInterface {
   /// RayTask being assigned to this worker.
   RayTask assigned_task_;
   /// If true, a RPC need to be sent to notify the worker about GCS restarting.
-  bool notify_gcs_restarted_;
+  bool notify_gcs_restarted_ = false;
 };
 
 }  // namespace raylet
