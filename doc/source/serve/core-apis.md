@@ -106,7 +106,7 @@ vary due to random nature of how the prediction is computed; however, the exampl
 1\) how to expose and use deployments and 2) how to use replicas, to which requests are sent. Note that each pid
 is a separate replica associated with each deployment name, `rep-1` and `rep-2` respectively.
 
-```{literalinclude} _examples/doc_code/create_deployment.py
+```{literalinclude} doc_code/create_deployment.py
 :end-before: __serve_example_end__
 :language: python
 :start-after: __serve_example_begin__
