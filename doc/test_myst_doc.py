@@ -15,17 +15,24 @@ parser.add_argument(
     "--path",
     help="path to the jupytext-compatible file",
 )
+parser.add_argument(
+    "--find-recursively",
+    action="store_true",
+    help="if true, will attempt to find path recursively in cwd" 
+)
 
 if __name__ == "__main__":
 
     args, remainder = parser.parse_known_args()
 
     print(f"test_myst_doc.py cwd: {os.getcwd()}, path to run: {args.path}")
-    path = Path(os.getcwd())
-    print(list(path.rglob("*")))
-    assert args.path
+    path = Path(args.path)
+    cwd = Path(os.getcwd())
+    if args.find_recursively and not path.exists():
+        path = next((p for p in cwd.rglob("*") if str(p).endswith(args.path)), None) 
+    assert path and path.exists()
 
-    with open(args.path, "r") as f:
+    with open(path, "r") as f:
         notebook = jupytext.read(f)
 
     name = ""
