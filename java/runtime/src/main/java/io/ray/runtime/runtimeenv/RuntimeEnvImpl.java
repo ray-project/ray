@@ -26,6 +26,10 @@ public class RuntimeEnvImpl implements RuntimeEnv {
     return envVars;
   }
 
+  public List<String> getJars() {
+    return jars;
+  }
+
   @Override
   public String toJsonBytes() {
     // Get serializedRuntimeEnv

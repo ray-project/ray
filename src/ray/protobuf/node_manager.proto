@@ -300,7 +300,11 @@ message GetGcsServerAddressReply {
 message GetTasksInfoRequest {}
 
 message GetTasksInfoReply {
-  repeated TaskInfoEntry task_info_entries = 1;
+  repeated TaskInfoEntry owned_task_info_entries = 1;
+  // A list of task that's currently running.
+  // All tasks must be treated as TaskStatus::RUNNING
+  // from the caller side.
+  repeated bytes running_task_ids = 2;
 }
 
 message GetObjectsInfoRequest {}
@@ -315,10 +319,16 @@ message GetResourceLoadReply {
   ResourcesData resources = 1;
 }
 
+message NotifyGCSRestartRequest {}
+
+message NotifyGCSRestartReply {}
+
 // Service for inter-node-manager communication.
 service NodeManagerService {
   // Update the node's view of the cluster resource usage.
   rpc UpdateResourceUsage(UpdateResourceUsageRequest) returns (UpdateResourceUsageReply);
+  // Handle the case when GCS restarted.
+  rpc NotifyGCSRestart(NotifyGCSRestartRequest) returns (NotifyGCSRestartReply);
   // Get the resource load of the raylet.
   rpc GetResourceLoad(GetResourceLoadRequest) returns (GetResourceLoadReply);
   // Request the current resource usage from this raylet
