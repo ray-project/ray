@@ -11,7 +11,7 @@ filegroup(
 # --------------------------------------------------------------------
 
 py_test_run_all_notebooks(
-    size = "medium",
+    size = "large",
     include = ["*.ipynb"],
     exclude = [],
     data = ["//doc/source/ray-air/examples:air_examples"],

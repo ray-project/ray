@@ -10,10 +10,22 @@ filegroup(
 # Test all doc/source/tune/examples notebooks.
 # --------------------------------------------------------------------
 
+# pbt_ppo_example.ipynb is not tested right now due to large resource
+# requirements
+
 py_test_run_all_notebooks(
     size = "medium",
     include = ["*.ipynb"],
-    exclude = [],
+    exclude = ["pbt_ppo_example.ipynb", "tune-xgboost.ipynb"],
     data = ["//doc/source/tune/examples:tune_examples"],
     tags = ["exclusive", "team:ml"],
+)
+
+# GPU tests
+py_test_run_all_notebooks(
+    size = "large",
+    include = ["tune-xgboost.ipynb"],
+    exclude = [],
+    data = ["//doc/source/tune/examples:tune_examples"],
+    tags = ["exclusive", "team:ml", "gpu"],
 )
