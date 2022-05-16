@@ -717,7 +717,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 method = ImportanceSampling
                 deprecation_warning(
                     old="config.input_evaluation=[is]",
-                    new="from ray.rllib.offline.is_estimator import "
+                    new="from ray.rllib.offline.estimators.importance_sampling import "
                     f"{method.__name__}; config.input_evaluation="
                     f"[{method.__name__}]",
                     error=False,
@@ -725,8 +725,8 @@ class RolloutWorker(ParallelIteratorWorker):
             elif method == "wis":
                 method = WeightedImportanceSampling
                 deprecation_warning(
-                    old="config.input_evaluation=[is]",
-                    new="from ray.rllib.offline.wis_estimator import "
+                    old="config.input_evaluation=[wis]",
+                    new="from ray.rllib.offline.estimators.weighted_importance_sampling import "
                     f"{method.__name__}; config.input_evaluation="
                     f"[{method.__name__}]",
                     error=False,

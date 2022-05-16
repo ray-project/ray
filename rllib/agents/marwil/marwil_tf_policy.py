@@ -90,7 +90,7 @@ def postprocess_advantages(
         sample_batch,
         last_r,
         policy.config["gamma"],
-        # We just want the discounted cummulative rewards, so we won't need
+        # We just want the discounted cumulative rewards, so we won't need
         # GAE nor critic (use_critic=True: Subtract vf-estimates from returns).
         use_gae=False,
         use_critic=False,
@@ -232,7 +232,7 @@ def setup_mixins(
 
 MARWILTFPolicy = build_tf_policy(
     name="MARWILTFPolicy",
-    get_default_config=lambda: ray.rllib.agents.marwil.marwil.DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.agents.marwil.marwil.MARWILConfig().to_dict(),
     loss_fn=marwil_loss,
     stats_fn=stats,
     postprocess_fn=postprocess_advantages,
