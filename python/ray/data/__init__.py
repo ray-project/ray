@@ -1,7 +1,8 @@
-from ray.data.read_api import (
+from ray.data.read_api import (  # noqa: F401
     from_items,
     range,
     range_table,
+    range_arrow,
     range_tensor,
     read_parquet,
     read_parquet_bulk,

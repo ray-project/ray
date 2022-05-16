@@ -159,6 +159,10 @@ def range_table(n: int, *, parallelism: int = 200) -> Dataset[ArrowRow]:
     )
 
 
+def range_arrow(*args, **kwargs):
+    raise DeprecationWarning("range_arrow() is deprecated, use range_table() instead.")
+
+
 @PublicAPI
 def range_tensor(
     n: int, *, shape: Tuple = (1,), parallelism: int = 200
