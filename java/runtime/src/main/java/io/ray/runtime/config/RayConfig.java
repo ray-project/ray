@@ -201,9 +201,10 @@ public class RayConfig {
 
     {
       /// Runtime Env env-vars
+      Map<String, String> envVars = new HashMap<>();
+      List<String> jarUrls = null;
       final String envVarsPath = "ray.job.runtime-env.env-vars";
       if (config.hasPath(envVarsPath)) {
-        Map<String, String> envVars = new HashMap<>();
         Config envVarsConfig = config.getConfig(envVarsPath);
         envVarsConfig
             .entrySet()
@@ -211,8 +212,14 @@ public class RayConfig {
                 (entry) -> {
                   envVars.put(entry.getKey(), ((String) entry.getValue().unwrapped()));
                 });
-        runtimeEnvImpl = new RuntimeEnvImpl(envVars, null);
       }
+
+      /// Runtime env jars
+      final String jarsPath = "ray.job.runtime-env.jars";
+      if (config.hasPath(jarsPath)) {
+        jarUrls = config.getStringList(jarsPath);
+      }
+      runtimeEnvImpl = new RuntimeEnvImpl(envVars, jarUrls);
     }
 
     {
