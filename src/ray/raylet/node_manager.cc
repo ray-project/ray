@@ -629,7 +629,7 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
   worker_pool_.HandleJobFinished(job_id);
 }
 
-void NodeManager::FillNormalTaskResourceUsage(rpc::ResourcesData &resources_data) {
+void NodeManager::FillNormalTaskOrActorResourceUsage(rpc::ResourcesData &resources_data) {
   auto last_heartbeat_resources = gcs_client_->NodeResources().GetLastResourceUsage();
   auto normal_task_resources = local_task_manager_->CalcNormalTaskResources();
   if (last_heartbeat_resources->normal_task_resources != normal_task_resources) {
@@ -653,7 +653,7 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
   cluster_resource_scheduler_->GetLocalResourceManager().FillResourceUsage(
       resources_data);
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
-    FillNormalTaskResourceUsage(resources_data);
+    FillNormalTaskOrActorResourceUsage(resources_data);
   }
 
   resources_data.set_should_global_gc(TryLocalGC());
@@ -2470,15 +2470,12 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
   }
 }
 
-void NodeManager::HandleGetResourceUsageByTask(
-    const rpc::GetResourceUsageByTaskRequest &request,
-    rpc::GetResourceUsageByTaskReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(INFO) << "HandleGetResourceUsageByTask: lease workers: "
-                << leased_workers_.size();
+void NodeManager::HandleGetResourceUsage(const rpc::GetResourceUsageRequest &request,
+                                         rpc::GetResourceUsageReply *reply,
+                                         rpc::SendReplyCallback send_reply_callback) {
   auto total_map = reply->mutable_total();
   auto available_map = reply->mutable_available();
-  auto node_resources =
+  const auto &node_resources =
       cluster_resource_scheduler_->GetLocalResourceManager().GetLocalResources();
   for (const auto &resource : node_resources.total.ToResourceRequest().ToResourceMap()) {
     (*total_map)[resource.first] = resource.second;
@@ -2487,28 +2484,18 @@ void NodeManager::HandleGetResourceUsageByTask(
        node_resources.available.ToResourceRequest().ToResourceMap()) {
     (*available_map)[resource.first] = resource.second;
   }
-  // We get the logical resources acquired by each worker that the raylet has leased out
-  RAY_LOG(INFO) << "HandleGetResourceUsageByTask: lease workers: "
-                << leased_workers_.size();
-  for (const auto &worker_it : worker_pool_.GetAllRegisteredWorkers(
-           /*filter_dead_workers*/ true, /*filter_inactive_workers*/ true)) {
-    // Check that worker is also leased
-    RAY_CHECK(leased_workers_.find(worker_it->WorkerId()) != leased_workers_.end());
-
-    rpc::TaskResourceUsage task_resource_usage;
+  for (const auto &worker_it : worker_pool_.GetAllWorkesInUse()) {
+    auto task_or_actor_resource_usage = reply->add_task_or_actor_resource_usage();
     const auto &task_spec = worker_it->GetAssignedTask().GetTaskSpecification();
-    task_resource_usage.mutable_function_descriptor()->MergeFrom(
+    task_or_actor_resource_usage->mutable_function_descriptor()->MergeFrom(
         task_spec.GetMessage().function_descriptor());
-    task_resource_usage.set_language(task_spec.GetMessage().language());
-    task_resource_usage.set_is_actor(task_spec.IsActorCreationTask());
+    task_or_actor_resource_usage->set_language(task_spec.GetMessage().language());
+    task_or_actor_resource_usage->set_is_actor(task_spec.IsActorCreationTask());
 
-    for (auto it : task_spec.GetRequiredResources().GetResourceMap()) {
-      (*task_resource_usage.mutable_resource_usage())[it.first] = it.second;
+    for (const auto &it : task_spec.GetRequiredResources().GetResourceMap()) {
+      (*task_or_actor_resource_usage->mutable_resource_usage())[it.first] = it.second;
     }
-
-    reply->add_task_resource_usage()->MergeFrom(task_resource_usage);
   }
-  RAY_LOG(INFO) << "handled HandleGetResourceUsageByTask";
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

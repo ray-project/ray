@@ -315,7 +315,7 @@ message GetResourceLoadReply {
   ResourcesData resources = 1;
 }
 
-message TaskResourceUsage {
+message TaskOrActorResourceUsage {
   // Function descriptor for the task
   FunctionDescriptor function_descriptor = 1;
   // The programming language this task runs in
@@ -326,16 +326,16 @@ message TaskResourceUsage {
   map<string, double> resource_usage = 4;
 }
 
-message GetResourceUsageByTaskRequest {
+message GetResourceUsageRequest {
 }
 
-message GetResourceUsageByTaskReply {
+message GetResourceUsageReply {
   // Total resources on this node
   map<string, double> total = 1;
   // Available (i.e. unused) resources on this node
   map<string, double> available = 2;
   // The task resource usages of the resource-consuming tasks/actors on this node
-  repeated TaskResourceUsage task_resource_usage = 3;
+  repeated TaskOrActorResourceUsage task_or_actor_resource_usage = 3;
 }
 
 message NotifyGCSRestartRequest {}
@@ -408,5 +408,5 @@ service NodeManagerService {
   // [State API] Get the all object information of the node.
   rpc GetObjectsInfo(GetObjectsInfoRequest) returns (GetObjectsInfoReply);
   // Get the resource usage per task on this node
-  rpc GetResourceUsageByTask(GetResourceUsageByTaskRequest) returns (GetResourceUsageByTaskReply);
+  rpc GetResourceUsage(GetResourceUsageRequest) returns (GetResourceUsageReply);
 }

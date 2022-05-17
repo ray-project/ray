@@ -271,7 +271,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void TryLocalInfeasibleTaskScheduling();
 
   /// Fill out the normal task resource report.
-  void FillNormalTaskResourceUsage(rpc::ResourcesData &resources_data);
+  void FillNormalTaskOrActorResourceUsage(rpc::ResourcesData &resources_data);
 
   /// Fill out the resource report. This can be called by either method to transport the
   /// report to GCS.
@@ -601,10 +601,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                             rpc::GetObjectsInfoReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a `GetResourceUsageByTask` request.
-  void HandleGetResourceUsageByTask(const rpc::GetResourceUsageByTaskRequest &request,
-                                    rpc::GetResourceUsageByTaskReply *reply,
-                                    rpc::SendReplyCallback send_reply_callback) override;
+  /// Handle a `GetResourceUsage` request.
+  void HandleGetResourceUsage(const rpc::GetResourceUsageRequest &request,
+                              rpc::GetResourceUsageReply *reply,
+                              rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `HandleGCSRestart` request
   void HandleNotifyGCSRestart(const rpc::NotifyGCSRestartRequest &request,

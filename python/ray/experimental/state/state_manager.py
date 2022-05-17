@@ -26,8 +26,8 @@ from ray.core.generated.node_manager_pb2 import (
     GetTasksInfoReply,
     GetNodeStatsRequest,
     GetNodeStatsReply,
-    GetResourceUsageByTaskRequest,
-    GetResourceUsageByTaskReply,
+    GetResourceUsageRequest,
+    GetResourceUsageReply,
 )
 from ray.core.generated.runtime_env_agent_pb2 import (
     GetRuntimeEnvsInfoRequest,
@@ -232,14 +232,12 @@ class StateDataSourceClient:
         return reply
 
     @handle_network_errors
-    async def get_resource_usage_by_task(
+    async def get_resource_usage(
         self, node_id: str, timeout: int = None
-    ) -> GetResourceUsageByTaskReply:
+    ) -> GetResourceUsageReply:
         stub = self._raylet_stubs.get(node_id)
         if not stub:
             raise ValueError(f"Raylet for the node id: {node_id} doesn't exist.")
 
-        reply = await stub.GetResourceUsageByTask(
-            GetResourceUsageByTaskRequest(), timeout=timeout
-        )
+        reply = await stub.GetResourceUsage(GetResourceUsageRequest(), timeout=timeout)
         return reply

@@ -1,4 +1,4 @@
-from ray.core.generated.node_manager_pb2 import TaskResourceUsage
+from ray.core.generated.node_manager_pb2 import TaskOrActorResourceUsage
 from typing import Dict, List
 
 ResourceSet = Dict[str, float]
@@ -39,7 +39,7 @@ def _add_to_resources_list(
         resource_count_list.append({"resource_set": resource_set, "count": 1})
 
 
-def get_task_name(task: TaskResourceUsage):
+def get_task_name(task: TaskOrActorResourceUsage):
     fd = task.function_descriptor
     if hasattr(fd, "python_function_descriptor"):
         fd = fd.python_function_descriptor

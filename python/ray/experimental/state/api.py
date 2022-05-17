@@ -10,6 +10,11 @@ from ray.experimental.state.common import (
 )
 
 
+def _get_api_server_url():
+    assert ray.is_initialized()
+    return f"http://{ray.worker.global_worker.node.address_info['webui_url']}"
+
+
 # TODO(sang): Replace it with auto-generated methods.
 def _list(resource_name: str, options: ListApiOptions, api_server_url: str = None):
     """Query the API server in address to list "resource_name" states.
@@ -22,10 +27,7 @@ def _list(resource_name: str, options: ListApiOptions, api_server_url: str = Non
             Ray API.
     """
     if api_server_url is None:
-        assert ray.is_initialized()
-        api_server_url = (
-            f"http://{ray.worker.global_worker.node.address_info['webui_url']}"
-        )
+        api_server_url = _get_api_server_url()
 
     query_strings = []
     for field in fields(options):
@@ -44,7 +46,12 @@ def _list(resource_name: str, options: ListApiOptions, api_server_url: str = Non
         raise ValueError(
             "API server internal error. See dashboard.log file for more details."
         )
-    return r.json()["data"]["result"]
+    return response["data"]["result"]
+
+
+"""
+Ray list API
+"""
 
 
 def list_actors(
@@ -139,7 +146,43 @@ def list_runtime_envs(api_server_url: str = None, limit: int = 1000, timeout: in
     )
 
 
-# def resource_summary
-#
-#
-# def task_resource_usage
+"""
+Ray Resource API
+"""
+
+
+def summary_resources(
+    per_node: bool = False,
+    detail: bool = False,
+    api_server_url: str = None,
+    timeout: int = 30,
+):
+    if api_server_url is None:
+        api_server_url = _get_api_server_url()
+
+    # There are 4 APIs.
+    # /api/v0/resources/ -> Cluster resource information.
+    # /api/v0/resources/per_node -> Per node resource information.
+    # /api/v0/resources/detail -> Cluster resource information in detail..
+    # /api/v0/resources/per_node/detail -> Per node resource information in detail.
+    url = f"{api_server_url}/api/v0/resources"
+    if per_node:
+        url += "/per_node"
+    if detail:
+        url += "/detail"
+
+    r = requests.request(
+        "GET",
+        url,
+        headers={"Content-Type": "application/json"},
+        json=None,
+        timeout=timeout,
+    )
+    r.raise_for_status()
+
+    response = r.json()
+    if not response["result"]:
+        raise ValueError(
+            "API server internal error. See dashboard.log file for more details."
+        )
+    return response["data"]["result"]

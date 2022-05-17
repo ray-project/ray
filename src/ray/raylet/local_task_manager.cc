@@ -1048,8 +1048,7 @@ void LocalTaskManager::DebugStr(std::stringstream &buffer) const {
   // Only iterate upto this number to avoid excessive CPU usage.
   auto max_iteration = RayConfig::instance().worker_max_resource_analysis_iteration();
   uint32_t iteration = 0;
-  for (const auto &worker : worker_pool_.GetAllRegisteredWorkers(
-           /*filter_dead_workers*/ true, /*filter_inactive_workers*/ true)) {
+  for (const auto &worker : worker_pool_.GetAllWorkesInUse()) {
     if (max_iteration < iteration++) {
       break;
     }

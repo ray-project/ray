@@ -48,7 +48,7 @@ namespace rpc {
   RPC_SERVICE_HANDLER(NodeManagerService, ShutdownRaylet, -1)         \
   RPC_SERVICE_HANDLER(NodeManagerService, GetTasksInfo, -1)           \
   RPC_SERVICE_HANDLER(NodeManagerService, GetObjectsInfo, -1)         \
-  RPC_SERVICE_HANDLER(NodeManagerService, GetResourceUsageByTask, -1)
+  RPC_SERVICE_HANDLER(NodeManagerService, GetResourceUsage, -1)
 
 /// Interface of the `NodeManagerService`, see `src/ray/protobuf/node_manager.proto`.
 class NodeManagerServiceHandler {
@@ -160,9 +160,9 @@ class NodeManagerServiceHandler {
                                     GetObjectsInfoReply *reply,
                                     SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleGetResourceUsageByTask(const GetResourceUsageByTaskRequest &request,
-                                            GetResourceUsageByTaskReply *reply,
-                                            SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleGetResourceUsage(const GetResourceUsageRequest &request,
+                                      GetResourceUsageReply *reply,
+                                      SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `NodeManagerService`.

@@ -1462,7 +1462,7 @@ std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetWorkersRunningTasks
 }
 
 const std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredWorkers(
-    bool filter_dead_workers, bool filter_inactive_workers) const {
+    bool filter_dead_workers) const {
   std::vector<std::shared_ptr<WorkerInterface>> workers;
 
   for (const auto &entry : states_by_lang_) {
@@ -1474,14 +1474,26 @@ const std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegistered
       if (filter_dead_workers && worker->IsDead()) {
         continue;
       }
-      if (filter_inactive_workers) {
-        // The worker shouldn't have allocated resources if
-        if (worker->IsDead()        // worker is dead
-            || worker->IsBlocked()  // worker is blocked by blocking Ray API
-            || (worker->GetAssignedTaskId().IsNil() &&
-                worker->GetActorId().IsNil())) {  // Tasks or actors not assigned
-          continue;
-        }
+      workers.push_back(worker);
+    }
+  }
+
+  return workers;
+}
+
+const std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllWorkesInUse()
+    const {
+  std::vector<std::shared_ptr<WorkerInterface>> workers;
+
+  for (const auto &entry : states_by_lang_) {
+    for (const auto &worker : entry.second.registered_workers) {
+      // The worker shouldn't have allocated resources if
+      if (!worker->IsRegistered()  // worker is not registered
+          || worker->IsDead()      // worker is dead
+          || worker->IsBlocked()   // worker is blocked by blocking Ray API
+          || (worker->GetAssignedTaskId().IsNil() &&
+              worker->GetActorId().IsNil())) {  // Tasks or actors not assigned
+        continue;
       }
       workers.push_back(worker);
     }

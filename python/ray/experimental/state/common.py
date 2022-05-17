@@ -107,8 +107,8 @@ class ResourceSummary:
 
 
 @dataclass(init=True)
-class TaskResourceUsage:
-    task_name: str
+class TaskOrActorResourceUsage:
+    task_or_actor_name: str
     # List of resource sets used by this task
     # and their respective counts
     resource_set_list: List[ResourceSetCount]
@@ -117,4 +117,4 @@ class TaskResourceUsage:
 @dataclass(init=True)
 class DetailedResourceUsage:
     summary: ResourceSummary
-    usage: TaskResourceUsage
+    usage: TaskOrActorResourceUsage

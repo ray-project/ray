@@ -114,11 +114,16 @@ class WorkerPoolInterface {
   ///
   /// \param filter_dead_workers whether or not if this method will filter dead workers
   /// that are still registered.
-  /// \param filter_inactive_workers whether or not this method will filter workers
-  /// that don't consume any resources.
   /// \return A list containing all the workers.
   virtual const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
-      bool filter_dead_workers = false, bool filter_inactive_workers = false) const = 0;
+      bool filter_dead_workers = false) const = 0;
+
+  /// Get all workers that are in use. In use means the worker is
+  /// leased to execute tasks or actors, but it is not blocked or dead.
+  ///
+  /// \return A list containing all in-use workers.
+  virtual const std::vector<std::shared_ptr<WorkerInterface>> GetAllWorkesInUse()
+      const = 0;
 
   virtual ~WorkerPoolInterface(){};
 };
@@ -371,11 +376,15 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   ///
   /// \param filter_dead_workers whether or not if this method will filter dead workers
   /// that are still registered.
-  /// \param filter_inactive_workers whether or not this method will filter workers
-  /// that don't consume any resources.
   /// \return A list containing all the workers.
   const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
-      bool filter_dead_workers = false, bool filter_inactive_workers = false) const;
+      bool filter_dead_workers = false) const;
+
+  /// Get all workers that are in use. In use means the worker is
+  /// leased to execute tasks or actors, but it is not blocked or dead.
+  ///
+  /// \return A list containing all in-use workers.
+  const std::vector<std::shared_ptr<WorkerInterface>> GetAllWorkesInUse() const;
 
   /// Get all the registered drivers.
   ///

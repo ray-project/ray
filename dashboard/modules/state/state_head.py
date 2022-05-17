@@ -137,6 +137,36 @@ class StateHead(dashboard_utils.DashboardHeadModule):
         )
         return self._reply(success=True, message="", result=data)
 
+    @routes.get("/api/v0/resources")
+    async def get_resource_summary_cluster(self, request) -> aiohttp.web.Response:
+        data = await self._state_api.get_resource_summary()
+        return rest_response(
+            success=True, message="", result=data, convert_google_style=False
+        )
+
+    @routes.get("/api/v0/resources/per_node")
+    async def get_resource_summary_nodes(self, request) -> aiohttp.web.Response:
+        data = await self._state_api.get_resource_summary(per_node=True)
+        return rest_response(
+            success=True, message="", result=data, convert_google_style=False
+        )
+
+    @routes.get("/api/v0/resources/detail")
+    async def get_detailed_resource_usage_cluster(
+        self, request
+    ) -> aiohttp.web.Response:
+        data = await self._state_api.get_detailed_resource_usage()
+        return rest_response(
+            success=True, message="", result=data, convert_google_style=False
+        )
+
+    @routes.get("/api/v0/resources/per_node/detail")
+    async def get_detailed_resource_usage_nodes(self, request) -> aiohttp.web.Response:
+        data = await self._state_api.get_detailed_resource_usage(per_node=True)
+        return rest_response(
+            success=True, message="", result=data, convert_google_style=False
+        )
+
     async def run(self, server):
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
         self._state_api_data_source_client = StateDataSourceClient(gcs_channel)

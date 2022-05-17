@@ -22,7 +22,11 @@ from ray.core.generated.common_pb2 import (
     CoreWorkerStats,
     ObjectRefInfo,
 )
-from ray.core.generated.node_manager_pb2 import GetTasksInfoReply, GetNodeStatsReply
+from ray.core.generated.node_manager_pb2 import (
+    GetTasksInfoReply,
+    GetNodeStatsReply,
+    GetResourceUsageReply,
+)
 from ray.core.generated.gcs_pb2 import (
     ActorTableData,
     PlacementGroupTableData,
@@ -508,6 +512,23 @@ async def test_state_data_source_client(ray_start_cluster):
         client.register_agent_client(node_id, ip, port)
         result = await client.get_runtime_envs_info(node_id)
         assert isinstance(result, GetRuntimeEnvsInfoReply)
+
+    """
+    Test resource usage
+    """
+    result = await client.get_all_available_resources()
+    print(result)
+    with pytest.raises(ValueError):
+        # Since we didn't register this node id, it should raise an exception.
+        result = await client.get_resource_usage("1234")
+    wait_for_condition(lambda: len(ray.nodes()) == 2)
+    for node in ray.nodes():
+        node_id = node["NodeID"]
+        ip = node["NodeManagerAddress"]
+        port = int(node["NodeManagerPort"])
+        client.register_raylet_client(node_id, ip, port)
+        result = await client.get_resource_usage(node_id)
+        assert isinstance(result, GetResourceUsageReply)
 
     """
     Test the exception is raised when the RPC error occurs.
