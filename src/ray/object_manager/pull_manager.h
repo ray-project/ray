@@ -195,6 +195,20 @@ class PullManager {
     // An object is pullable if we know the size and it's not pending
     // creation due to object reconstruction.
     bool IsPullable() const { return object_size_set && !pending_object_creation; }
+
+    std::string DebugString() const {
+      std::stringstream result;
+      result << "ObjectPullRequest{";
+      result << "locations: " << debug_string(client_locations);
+      result << ", spilled url: " << spilled_url;
+      result << ", spilled node id: " << spilled_node_id;
+      result << ", pending creation: " << pending_object_creation;
+      result << ", object size set: " << object_size_set;
+      result << ", object size: " << object_size;
+      result << ", num of retries: " << num_retries;
+      result << "}";
+      return result.str();
+    }
   };
 
   /// A helper structure for tracking information about each ongoing bundle pull request.
@@ -292,12 +306,12 @@ class PullManager {
 
     std::string DebugString() const {
       std::stringstream result;
-      result << "BundlePullRequestQueue[";
+      result << "BundlePullRequestQueue{";
       result << requests.size() << " total, ";
       result << active_requests.size() << " active, ";
       result << inactive_requests.size() << " inactive, ";
       result << (requests.size() - active_requests.size() - inactive_requests.size())
-             << " unpullable]";
+             << " unpullable}";
       return result.str();
     }
   };

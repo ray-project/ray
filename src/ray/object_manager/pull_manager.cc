@@ -765,11 +765,7 @@ std::string PullManager::DebugString() const {
   auto it = object_pull_requests_.find(max_timeout_object_id_);
   if (it != object_pull_requests_.end()) {
     result << "\n- max timeout object id: " << max_timeout_object_id_;
-    result << "\n- max timeout request location size: "
-           << it->second.client_locations.size();
-    result << "\n- max timeout request spilled url: " << it->second.spilled_url;
-    result << "\n- max timeout request object size set: " << it->second.object_size_set;
-    result << "\n- max timeout request object size: " << it->second.object_size;
+    result << "\n- max timeout object: " << it->second.DebugString();
   } else {
     result << "\n- max timeout request is already processed. No entry.";
   }
