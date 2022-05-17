@@ -44,6 +44,7 @@ from ray.autoscaler.tags import (
     STATUS_UNINITIALIZED,
     TAG_RAY_CLUSTER_NAME,
 )
+from ray.autoscaler._private.constants import FOREGROUND_NODE_LAUNCH_KEY
 from ray.autoscaler.node_provider import NodeProvider
 from ray._private.test_utils import RayTestTimeoutException
 
@@ -1584,7 +1585,7 @@ class AutoscalingTest(unittest.TestCase):
     ):
         config = copy.deepcopy(SMALL_CLUSTER)
         if foreground_node_launcher:
-            config["provider"]["disable_background_launch_batch"] = True
+            config["provider"][FOREGROUND_NODE_LAUNCH_KEY] = True
 
         config_path = self.write_config(config)
         self.provider = MockProvider()

@@ -4,6 +4,11 @@ import requests
 import threading
 from typing import Any, Dict, List, Tuple
 
+from ray.autoscaler._private.constants import (
+    DISABLE_NODE_UPDATERS_KEY,
+    DISABLE_LAUNCH_CONFIG_CHECK_KEY,
+    FOREGROUND_NODE_LAUNCH_KEY,
+)
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import (
     NODE_KIND_HEAD,
@@ -159,14 +164,15 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
                 not provider_exists
             ), "Only one KuberayNodeProvider allowed per process."
         assert (
-            provider_config.get("disable_node_updaters", False) is True
-        ), "Must disable node updaters to use KuberayNodeProvider."
+            provider_config.get(DISABLE_NODE_UPDATERS_KEY, False) is True
+        ), f"To use KuberayNodeProvider, must set `{DISABLE_NODE_UPDATERS_KEY}:True`."
+        assert provider_config.get(DISABLE_LAUNCH_CONFIG_CHECK_KEY, False) is True, (
+            "To use KuberayNodeProvider, must set "
+            f"`{DISABLE_LAUNCH_CONFIG_CHECK_KEY}:True`."
+        )
         assert (
-            provider_config.get("disable_launch_config_check", False) is True
-        ), "Must disable launch config check to use KuberayNodeProvider."
-        assert (
-            provider_config.get("disable_background_launch_batch", False) is True
-        ), "Must disable background launch batch to use KuberayNodeProvider."
+            provider_config.get(FOREGROUND_NODE_LAUNCH_KEY, False) is True
+        ), f"To use KuberayNodeProvider, must set `{FOREGROUND_NODE_LAUNCH_KEY}:True`."
         provider_exists = True
 
         super().__init__(provider_config, cluster_name)

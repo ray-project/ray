@@ -69,6 +69,9 @@ from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
     AUTOSCALER_UPDATE_INTERVAL_S,
     AUTOSCALER_HEARTBEAT_TIMEOUT_S,
+    DISABLE_NODE_UPDATERS_KEY,
+    DISABLE_LAUNCH_CONFIG_CHECK_KEY,
+    FOREGROUND_NODE_LAUNCH_KEY,
 )
 from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
 
@@ -240,7 +243,7 @@ class StandardAutoscaler:
         # Should be set to true in situations where another component, such as
         # a Kubernetes operator, is responsible for Ray setup on nodes.
         self.disable_node_updaters = self.config["provider"].get(
-            "disable_node_updaters", False
+            DISABLE_NODE_UPDATERS_KEY, False
         )
         if self.disable_node_updaters:
             logger.info("Node updaters are disabled.")
@@ -251,7 +254,7 @@ class StandardAutoscaler:
         # This is set in the fake_multinode situations where there isn't any
         # meaningful node "type" to enforce.
         self.disable_launch_config_check = self.config["provider"].get(
-            "disable_launch_config_check", False
+            DISABLE_LAUNCH_CONFIG_CHECK_KEY, False
         )
         if self.disable_launch_config_check:
             logger.info("Launch config checks are disabled.")
@@ -261,21 +264,21 @@ class StandardAutoscaler:
         # By default, the autoscaler launches nodes in batches asynchronously in a
         # background thread.
         # When the following flag is set, that behavior is disabled, so that nodes
-        # are launched in the main thread.
-        self.disable_background_launch_batch = self.config["provider"].get(
-            "disable_background_launch_batch"
+        # are launched in the main thread, all in one batch, blocking until all
+        # NodeProvider.create_node requests have returned.
+        self.foreground_node_launch = self.config["provider"].get(
+            FOREGROUND_NODE_LAUNCH_KEY
         )
-        if self.disable_background_launch_batch:
+        if self.foreground_node_launch:
             logger.info("Node launch will take place in the main thread.")
         else:
             logger.info("Node launch will take place in background threads.")
-
 
         # Node launchers
         self.foreground_node_launcher: Optional[BaseNodeLauncher] = None
         self.launch_queue: Optional[queue.Queue[NodeLaunchData]] = None
         self.pending_launches = ConcurrentCounter()
-        if self.disable_background_launch_batch:
+        if self.foreground_node_launch:
             self.foreground_node_launcher = BaseNodeLauncher(
                 provider=self.provider,
                 pending=self.pending_launches,
@@ -1261,7 +1264,7 @@ class StandardAutoscaler:
         self.pending_launches.inc(node_type, count)
         self.prom_metrics.pending_nodes.set(self.pending_launches.value)
         config = copy.deepcopy(self.config)
-        if self.disable_background_launch_batch:
+        if self.foreground_node_launch:
             assert self.foreground_node_launcher is not None
             # Launch in the main thread and block.
             self.foreground_node_launcher.launch_node(config, count, node_type)
