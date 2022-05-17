@@ -31,7 +31,9 @@ ray.remote
 
 .. _scheduling-strategy-ref:
 
-.. autofunction:: ray.util.scheduling_strategies
+.. autofunction:: ray.util.scheduling_strategies.PlacementGroupSchedulingStrategy
+
+.. autofunction:: ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy
 
 .. _ray-get-ref:
 

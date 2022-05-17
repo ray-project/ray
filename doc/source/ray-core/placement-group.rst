@@ -200,8 +200,6 @@ Let's create a placement group. Recall that each bundle is a collection of resou
 
       .. literalinclude:: doc_code/original_resource_unavailable_example.py
         :language: python
-        :start-after: __torch_single_run_begin__
-        :end-before: __torch_single_run_end__
 
   .. tabbed:: Java
 
@@ -503,8 +501,6 @@ because they are scheduled on a placement group with the STRICT_PACK strategy.
 
       .. literalinclude:: doc_code/placement_group_capture_child_tasks_example.py
         :language: python
-        :start-after: __torch_single_run_begin__
-        :end-before: __torch_single_run_end__
 
   .. tabbed:: Java
 
