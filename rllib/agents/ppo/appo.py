@@ -14,7 +14,7 @@ import logging
 
 from ray.rllib.agents.ppo.appo_tf_policy import AsyncPPOTFPolicy
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
-from ray.rllib.agents import impala
+from ray.rllib.agents.impala import ImpalaTrainer, ImpalaConfig
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
@@ -33,7 +33,7 @@ from ray.rllib.utils.typing import (
 logger = logging.getLogger(__name__)
 
 
-class APPOConfig(impala.ImpalaConfig):
+class APPOConfig(ImpalaConfig):
     """Defines a APPOTrainer configuration class from which a new Trainer can be built.
 
     Example:
@@ -110,7 +110,7 @@ class APPOConfig(impala.ImpalaConfig):
         # __sphinx_doc_end__
         # fmt: on
 
-    @override(impala.ImpalaConfig)
+    @override(ImpalaConfig)
     def training(
         self,
         *,
@@ -167,7 +167,7 @@ class APPOConfig(impala.ImpalaConfig):
         return self
 
 
-class APPOTrainer(impala.ImpalaTrainer):
+class APPOTrainer(ImpalaTrainer):
     def __init__(self, config, *args, **kwargs):
         super().__init__(config, *args, **kwargs)
 
@@ -176,7 +176,6 @@ class APPOTrainer(impala.ImpalaTrainer):
             lambda p, _: p.update_target()
         )
 
-    @override(impala.ImpalaTrainer)
     def after_train_step(self, train_results: ResultDict) -> None:
         """Updates the target network and the KL coefficient for the APPO-loss.
 
@@ -228,12 +227,21 @@ class APPOTrainer(impala.ImpalaTrainer):
                 # Worker.
                 self.workers.local_worker().foreach_policy_to_train(update)
 
+    @override(ImpalaTrainer)
+    def training_iteration(self) -> ResultDict:
+        train_results = super().training_iteration()
+
+        # Update KL, target network periodically.
+        self.after_train_step(train_results)
+
+        return train_results
+
     @classmethod
-    @override(impala.ImpalaTrainer)
+    @override(ImpalaTrainer)
     def get_default_config(cls) -> TrainerConfigDict:
         return APPOConfig().to_dict()
 
-    @override(impala.ImpalaTrainer)
+    @override(ImpalaTrainer)
     def get_default_policy_class(
         self, config: PartialTrainerConfigDict
     ) -> Optional[Type[Policy]]:
