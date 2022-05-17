@@ -849,7 +849,7 @@ py_test(
     name = "test_slateq",
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
-    srcs = ["agents/slateq/tests/test_slateq.py"]
+    srcs = ["algorithms/slateq/tests/test_slateq.py"]
 )
 
 # TD3Trainer

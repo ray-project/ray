@@ -177,7 +177,7 @@ def _import_simple_q():
 
 
 def _import_slate_q():
-    from ray.rllib.agents import slateq
+    from ray.rllib.algorithms import slateq
 
     return slateq.SlateQTrainer, slateq.DEFAULT_CONFIG
 

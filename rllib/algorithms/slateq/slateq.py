@@ -16,8 +16,8 @@ import logging
 from typing import Any, Dict, List, Optional, Type, Union
 
 from ray.rllib.algorithms.dqn.dqn import DQNTrainer
-from ray.rllib.agents.slateq.slateq_tf_policy import SlateQTFPolicy
-from ray.rllib.agents.slateq.slateq_torch_policy import SlateQTorchPolicy
+from ray.rllib.algorithms.slateq.slateq_tf_policy import SlateQTFPolicy
+from ray.rllib.algorithms.slateq.slateq_torch_policy import SlateQTorchPolicy
 from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
@@ -31,7 +31,7 @@ class SlateQConfig(TrainerConfig):
     """Defines a configuration class from which a SlateQTrainer can be built.
 
     Example:
-        >>> from ray.rllib.agents.slateq import SlateQConfig
+        >>> from ray.rllib.algorithms.slateq import SlateQConfig
         >>> config = SlateQConfig().training(lr=0.01).resources(num_gpus=1)
         >>> print(config.to_dict())
         >>> # Build a Trainer object from the config and run 1 training iteration.
@@ -39,7 +39,7 @@ class SlateQConfig(TrainerConfig):
         >>> trainer.train()
 
     Example:
-        >>> from ray.rllib.agents.slateq import SlateQConfig
+        >>> from ray.rllib.algorithms.slateq import SlateQConfig
         >>> from ray import tune
         >>> config = SlateQConfig()
         >>> # Print out some default values.
@@ -237,14 +237,14 @@ class SlateQTrainer(DQNTrainer):
             return SlateQTFPolicy
 
 
-# Deprecated: Use ray.rllib.agents.slateq.SlateQConfig instead!
+# Deprecated: Use ray.rllib.algorithms.slateq.SlateQConfig instead!
 class _deprecated_default_config(dict):
     def __init__(self):
         super().__init__(SlateQConfig().to_dict())
 
     @Deprecated(
-        old="ray.rllib.agents.slateq.slateq.DEFAULT_CONFIG",
-        new="ray.rllib.agents.slateq.slateq.SlateQConfig(...)",
+        old="ray.rllib.algorithms.slateq.slateq.DEFAULT_CONFIG",
+        new="ray.rllib.algorithms.slateq.slateq.SlateQConfig(...)",
         error=False,
     )
     def __getitem__(self, item):

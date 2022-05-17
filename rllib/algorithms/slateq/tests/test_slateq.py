@@ -1,7 +1,7 @@
 import unittest
 
 import ray
-import ray.rllib.agents.slateq as slateq
+import ray.rllib.algorithms.slateq as slateq
 from ray.rllib.examples.env.recommender_system_envs_with_recsim import (
     InterestEvolutionRecSimEnv,
 )

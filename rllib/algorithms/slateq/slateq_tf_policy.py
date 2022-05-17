@@ -8,8 +8,8 @@ from typing import Dict
 
 import ray
 from ray.rllib.algorithms.dqn.dqn_tf_policy import clip_gradients
-from ray.rllib.agents.sac.sac_tf_policy import TargetNetworkMixin
-from ray.rllib.agents.slateq.slateq_tf_model import SlateQTFModel
+from ray.rllib.algorithms.sac.sac_tf_policy import TargetNetworkMixin
+from ray.rllib.algorithms.slateq.slateq_tf_model import SlateQTFModel
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import SlateMultiCategorical
 from ray.rllib.policy.policy import Policy
@@ -365,7 +365,7 @@ def rmsprop_optimizer(
 
 SlateQTFPolicy = build_tf_policy(
     name="SlateQTFPolicy",
-    get_default_config=lambda: ray.rllib.agents.slateq.slateq.DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.algorithms.slateq.slateq.DEFAULT_CONFIG,
     # Build model, loss functions, and optimizers
     make_model=build_slateq_model,
     loss_fn=build_slateq_losses,

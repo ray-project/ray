@@ -6,8 +6,8 @@ import numpy as np
 from typing import Dict, Tuple, Type
 
 import ray
-from ray.rllib.agents.sac.sac_torch_policy import TargetNetworkMixin
-from ray.rllib.agents.slateq.slateq_torch_model import SlateQTorchModel
+from ray.rllib.algorithms.sac.sac_torch_policy import TargetNetworkMixin
+from ray.rllib.algorithms.slateq.slateq_torch_model import SlateQTorchModel
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import (
     TorchCategorical,
@@ -421,7 +421,7 @@ def setup_late_mixins(
 SlateQTorchPolicy = build_policy_class(
     name="SlateQTorchPolicy",
     framework="torch",
-    get_default_config=lambda: ray.rllib.agents.slateq.slateq.DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.algorithms.slateq.slateq.DEFAULT_CONFIG,
     before_init=setup_early,
     after_init=setup_late_mixins,
     loss_fn=build_slateq_losses,
