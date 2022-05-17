@@ -8,7 +8,9 @@ import logging
 import math
 import numpy as np
 import os
+from packaging import version
 import pickle
+import pkg_resources
 import tempfile
 import time
 from typing import (
@@ -298,7 +300,7 @@ class Trainer(Trainable):
         self.config = self.merge_trainer_configs(
             self.get_default_config(), config, self._allow_unknown_configs
         )
-        self.config["env"] = self._env_id
+        #self.config["env"] = self._env_id
 
         # Validate the framework settings in config.
         self.validate_framework(self.config)
@@ -1572,8 +1574,19 @@ class Trainer(Trainable):
             env_id = env_specifier.__name__
 
             if config.get("remote_worker_envs"):
+                # Check gym version (0.22 or higher?).
+                # If > 0.21, can't perform auto-wrapping of the given class as this
+                # would lead to a pickle error.
+                gym_version = pkg_resources.get_distribution("gym").version
+                if version.parse(gym_version) >= version.parse("0.22"):
+                    raise ValueError(
+                        "Cannot specify a gym.Env class via `config.env` while setting "
+                        "`config.remote_worker_env=True` AND your gym version is >= "
+                        "0.22! Try installing an older version of gym or set `config."
+                        "remote_worker_env=False`."
+                    )
 
-                @ray.remote(num_cpus=0)
+                @ray.remote(num_cpus=1)
                 class _wrapper(env_specifier):
                     # Add convenience `_get_spaces` and `_is_multi_agent`
                     # methods:
