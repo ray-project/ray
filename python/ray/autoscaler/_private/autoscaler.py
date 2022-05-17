@@ -245,6 +245,7 @@ class StandardAutoscaler:
         self.disable_node_updaters = self.config["provider"].get(
             DISABLE_NODE_UPDATERS_KEY, False
         )
+        logger.info(f"{DISABLE_NODE_UPDATERS_KEY}:{self.disable_node_updaters}")
         if self.disable_node_updaters:
             logger.info("Node updaters are disabled.")
         else:
@@ -255,6 +256,9 @@ class StandardAutoscaler:
         # meaningful node "type" to enforce.
         self.disable_launch_config_check = self.config["provider"].get(
             DISABLE_LAUNCH_CONFIG_CHECK_KEY, False
+        )
+        logger.info(
+            f"{DISABLE_LAUNCH_CONFIG_CHECK_KEY}:{self.disable_launch_config_check}"
         )
         if self.disable_launch_config_check:
             logger.info("Launch config checks are disabled.")
@@ -269,6 +273,7 @@ class StandardAutoscaler:
         self.foreground_node_launch = self.config["provider"].get(
             FOREGROUND_NODE_LAUNCH_KEY
         )
+        logger.info(f"{FOREGROUND_NODE_LAUNCH_KEY}:{self.foreground_node_launch}")
         if self.foreground_node_launch:
             logger.info("Node launch will take place in the main thread.")
         else:
