@@ -24,7 +24,7 @@ from ray.cluster_utils import Cluster
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from unittest.mock import patch
 
-from ray.util.ml_utils.checkpoint_manager import TrackedCheckpoint
+from ray.util.ml_utils.checkpoint_manager import CheckpointStorage
 
 
 class TrialExecutorInsufficientResourcesTest(unittest.TestCase):
@@ -120,7 +120,7 @@ class RayTrialExecutorTest(unittest.TestCase):
             trial.update_last_result(training_result)
 
     def _simulate_saving(self, trial):
-        checkpoint = self.trial_executor.save(trial, TrackedCheckpoint.PERSISTENT)
+        checkpoint = self.trial_executor.save(trial, CheckpointStorage.PERSISTENT)
         self.assertEqual(checkpoint, trial.saving_to)
         self.assertEqual(trial.checkpoint.dir_or_data, None)
         event = self.trial_executor.get_next_executor_event(
@@ -189,7 +189,7 @@ class RayTrialExecutorTest(unittest.TestCase):
         # Pause
         self.trial_executor.pause_trial(trial)
         self.assertEqual(Trial.PAUSED, trial.status)
-        self.assertEqual(trial.checkpoint.storage_mode, TrackedCheckpoint.MEMORY)
+        self.assertEqual(trial.checkpoint.storage_mode, CheckpointStorage.MEMORY)
 
         # Resume
         self._simulate_starting_trial(trial)

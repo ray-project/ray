@@ -40,7 +40,7 @@ from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils import date_str, flatten_dict
 from ray.util.annotations import DeveloperAPI
 from ray._private.utils import binary_to_hex, hex_to_binary
-from ray.util.ml_utils.checkpoint_manager import TrackedCheckpoint
+from ray.util.ml_utils.checkpoint_manager import TrackedCheckpoint, CheckpointStorage
 
 DEBUG_PRINT_INTERVAL = 5
 logger = logging.getLogger(__name__)
@@ -110,7 +110,7 @@ class CheckpointDeleter:
             return
 
         if (
-            checkpoint.storage_mode == TrackedCheckpoint.PERSISTENT
+            checkpoint.storage_mode == CheckpointStorage.PERSISTENT
             and checkpoint.dir_or_data
         ):
             checkpoint_path = checkpoint.dir_or_data
@@ -469,7 +469,7 @@ class Trial:
         if checkpoint.dir_or_data is None:
             checkpoint = TrackedCheckpoint(
                 dir_or_data=self.restore_path,
-                storage_mode=TrackedCheckpoint.PERSISTENT,
+                storage_mode=CheckpointStorage.PERSISTENT,
             )
         return checkpoint
 

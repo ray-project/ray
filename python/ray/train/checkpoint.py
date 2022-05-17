@@ -15,7 +15,8 @@ from ray.train.utils import construct_path
 from ray.util.ml_utils.checkpoint_manager import (
     CheckpointManager as CommonCheckpointManager,
     TrackedCheckpoint,
-    CheckpointStrategy, CheckpointStorage,
+    CheckpointStrategy,
+    CheckpointStorage,
 )
 
 if TUNE_INSTALLED:

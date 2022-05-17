@@ -33,7 +33,7 @@ from ray.tune.trial_executor import TrialExecutor
 from ray.tune.resources import Resources
 
 from ray.rllib import _register_all
-from ray.util.ml_utils.checkpoint_manager import TrackedCheckpoint
+from ray.util.ml_utils.checkpoint_manager import TrackedCheckpoint, CheckpointStorage
 
 _register_all()
 
@@ -249,10 +249,10 @@ class _MockTrialExecutor(TrialExecutor):
     def restore(self, trial, checkpoint=None, block=False):
         pass
 
-    def save(self, trial, type=TrackedCheckpoint.PERSISTENT, result=None):
+    def save(self, trial, type=CheckpointStorage.PERSISTENT, result=None):
         return TrackedCheckpoint(
             dir_or_data=trial.trainable_name,
-            storage_mode=TrackedCheckpoint.PERSISTENT,
+            storage_mode=CheckpointStorage.PERSISTENT,
             metrics=result,
         )
 
@@ -312,7 +312,7 @@ class _MockTrialRunner:
         return {t for t in self.trials if t.status != Trial.TERMINATED}
 
     def _pause_trial(self, trial):
-        self.trial_executor.save(trial, TrackedCheckpoint.MEMORY, None)
+        self.trial_executor.save(trial, CheckpointStorage.MEMORY, None)
         trial.status = Trial.PAUSED
 
     def _launch_trial(self, trial):
@@ -849,7 +849,7 @@ class _MockTrial(Trial):
     def checkpoint(self):
         return TrackedCheckpoint(
             dir_or_data=self.trainable_name,
-            storage_mode=TrackedCheckpoint.MEMORY,
+            storage_mode=CheckpointStorage.MEMORY,
             metrics=None,
         )
 

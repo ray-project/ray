@@ -8,7 +8,7 @@ from ray.tune.schedulers.resource_changing_scheduler import (
     DistributeResources,
     DistributeResourcesToTopJob,
 )
-from ray.util.ml_utils.checkpoint_manager import TrackedCheckpoint
+from ray.util.ml_utils.checkpoint_manager import TrackedCheckpoint, CheckpointStorage
 
 
 class MockResourceUpdater:
@@ -51,7 +51,7 @@ class MockTrial(Trial):
     def checkpoint(self):
         return TrackedCheckpoint(
             dir_or_data="None",
-            storage_mode=TrackedCheckpoint.MEMORY,
+            storage_mode=CheckpointStorage.MEMORY,
             metrics={},
         )
 

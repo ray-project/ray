@@ -25,7 +25,7 @@ from ray.tune.trial_runner import TrialRunner
 from ray.tune import Callback
 from ray.tune.utils.callback import create_default_callbacks
 from ray.tune.experiment import Experiment
-from ray.util.ml_utils.checkpoint_manager import TrackedCheckpoint
+from ray.util.ml_utils.checkpoint_manager import TrackedCheckpoint, CheckpointStorage
 
 
 class TestCallback(Callback):
@@ -152,7 +152,7 @@ class TrialRunnerCallbacks(unittest.TestCase):
         # Just a placeholder object ref for cp.value.
         cp = TrackedCheckpoint(
             dir_or_data=ray.put(1),
-            storage_mode=TrackedCheckpoint.PERSISTENT,
+            storage_mode=CheckpointStorage.PERSISTENT,
             metrics={TRAINING_ITERATION: 0},
         )
         trials[0].saving_to = cp

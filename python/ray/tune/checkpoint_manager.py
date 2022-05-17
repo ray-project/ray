@@ -9,6 +9,7 @@ from ray.util.ml_utils.checkpoint_manager import (
     MAX,
     CheckpointManager as CommonCheckpointManager,
     TrackedCheckpoint,
+    CheckpointStorage,
 )
 from ray.util.ml_utils.dict import flatten_dict
 from ray.util.ml_utils.util import is_nan
@@ -29,6 +30,7 @@ class CheckpointManager(CommonCheckpointManager):
         delete_fn: Function that deletes checkpoints. Must be
             idempotent.
     """
+
     _persist_memory_checkpoints = False
 
     def __init__(
@@ -64,10 +66,10 @@ class CheckpointManager(CommonCheckpointManager):
         checkpoint.id = checkpoint.id or self._latest_checkpoint_id
         self._latest_checkpoint_id += 1
 
-        if checkpoint.storage_mode == TrackedCheckpoint.MEMORY:
+        if checkpoint.storage_mode == CheckpointStorage.MEMORY:
             self._replace_latest_memory_checkpoint(checkpoint)
         else:
-            assert checkpoint.storage_mode == TrackedCheckpoint.PERSISTENT
+            assert checkpoint.storage_mode == CheckpointStorage.PERSISTENT
             assert (
                 self._checkpoint_strategy.num_to_keep is None
                 or self._checkpoint_strategy.num_to_keep > 0
@@ -80,7 +82,7 @@ class CheckpointManager(CommonCheckpointManager):
         self.handle_checkpoint(checkpoint)
 
     def _skip_persisted_checkpoint(self, persisted_checkpoint: TrackedCheckpoint):
-        assert persisted_checkpoint.storage_mode == TrackedCheckpoint.PERSISTENT
+        assert persisted_checkpoint.storage_mode == CheckpointStorage.PERSISTENT
         super()._skip_persisted_checkpoint(persisted_checkpoint=persisted_checkpoint)
         # Ray Tune always keeps track of the latest persisted checkpoint.
         # Note that this checkpoint will be deleted once it is not the
@@ -96,7 +98,7 @@ class CheckpointManager(CommonCheckpointManager):
         return self._latest_persisted_checkpoint or TrackedCheckpoint(
             dir_or_data=None,
             checkpoint_id=-1,
-            storage_mode=TrackedCheckpoint.PERSISTENT,
+            storage_mode=CheckpointStorage.PERSISTENT,
         )
 
     @property
@@ -113,7 +115,7 @@ class CheckpointManager(CommonCheckpointManager):
         return self._latest_memory_checkpoint or TrackedCheckpoint(
             dir_or_data=None,
             checkpoint_id=-1,
-            storage_mode=TrackedCheckpoint.MEMORY,
+            storage_mode=CheckpointStorage.MEMORY,
         )
 
     def best_checkpoints(self):
@@ -136,7 +138,7 @@ class CheckpointManager(CommonCheckpointManager):
         state = self.__dict__.copy()
         # Avoid serializing the memory checkpoint.
         state["_newest_memory_checkpoint"] = TrackedCheckpoint(
-            TrackedCheckpoint.MEMORY, None
+            CheckpointStorage.MEMORY, None
         )
         # Avoid serializing lambda since it may capture cyclical dependencies.
         state.pop("_delete_fn")

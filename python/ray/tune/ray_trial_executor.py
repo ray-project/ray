@@ -38,7 +38,7 @@ from ray.tune.utils import warn_if_slow
 from ray.tune.utils.resource_updater import ResourceUpdater
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
-from ray.util.ml_utils.checkpoint_manager import TrackedCheckpoint
+from ray.util.ml_utils.checkpoint_manager import TrackedCheckpoint, CheckpointStorage
 from ray.util.placement_group import remove_placement_group, PlacementGroup
 
 logger = logging.getLogger(__name__)
@@ -672,7 +672,7 @@ class RayTrialExecutor(TrialExecutor):
     def save(
         self,
         trial: Trial,
-        storage: str = TrackedCheckpoint.PERSISTENT,
+        storage: str = CheckpointStorage.PERSISTENT,
         result: Optional[Dict] = None,
     ) -> TrackedCheckpoint:
         """Saves the trial's state to a checkpoint asynchronously.
@@ -690,7 +690,7 @@ class RayTrialExecutor(TrialExecutor):
         logger.debug(f"saving trial {trial}")
         result = result or trial.last_result
         with self._change_working_directory(trial):
-            if storage == TrackedCheckpoint.MEMORY:
+            if storage == CheckpointStorage.MEMORY:
                 value = trial.runner.save_to_object.remote()
                 checkpoint = TrackedCheckpoint(
                     dir_or_data=value, storage_mode=storage, metrics=result
@@ -725,7 +725,7 @@ class RayTrialExecutor(TrialExecutor):
             )
         value = checkpoint.dir_or_data
         node_ip = checkpoint.node_ip
-        if checkpoint.storage_mode == TrackedCheckpoint.MEMORY:
+        if checkpoint.storage_mode == CheckpointStorage.MEMORY:
             logger.debug("Trial %s: Attempting restore from object", trial)
             # Note that we don't store the remote since in-memory checkpoints
             # don't guarantee fault tolerance and don't need to be waited on.
