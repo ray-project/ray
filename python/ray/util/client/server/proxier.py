@@ -538,7 +538,7 @@ class RayletServicerProxy(ray_client_pb2_grpc.RayletDriverServicer):
             ray.experimental.internal_kv._pin_runtime_env_uri(
                 request.uri, expiration_s=request.expiration_s
             )
-        return ray_client_pb2.ClientAddTemporaryURIReferenceResponse()
+        return ray_client_pb2.ClientPinRuntimeEnvURIResponse()
 
     def ListNamedActors(
         self, request, context=None
