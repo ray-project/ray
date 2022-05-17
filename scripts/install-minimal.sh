@@ -1,0 +1,1 @@
+../ci/env/install-minimal.sh
