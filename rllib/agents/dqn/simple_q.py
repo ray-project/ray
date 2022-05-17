@@ -17,8 +17,10 @@ from ray.rllib.agents.dqn.simple_q_torch_policy import SimpleQTorchPolicy
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.utils.metrics import SYNCH_WORKER_WEIGHTS_TIMER
-from ray.rllib.utils.replay_buffers.utils import validate_buffer_config, \
-    update_priorities_in_replay_buffer
+from ray.rllib.utils.replay_buffers.utils import (
+    validate_buffer_config,
+    update_priorities_in_replay_buffer,
+)
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
