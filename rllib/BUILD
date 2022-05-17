@@ -661,6 +661,14 @@ py_test(
     srcs = ["algorithms/alpha_star/tests/test_alpha_star.py"]
 )
 
+# AlphaZero
+py_test(
+    name = "test_alpha_zero",
+    tags = ["team:ml", "trainers_dir"],
+    size = "large",
+    srcs = ["algorithms/alpha_zero/tests/test_alpha_zero.py"]
+)
+
 # APEXTrainer (DQN)
 py_test(
     name = "test_apex_dqn",
