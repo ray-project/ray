@@ -1,27 +1,27 @@
 """
-TensorFlow policy class used for PG.
+PyTorch policy class used for PG.
 """
 
 from typing import Dict, List, Type, Union
 
 import ray
-from ray.rllib.agents.pg.utils import post_process_advantages
+from ray.rllib.algorithms.pg.utils import post_process_advantages
 from ray.rllib.evaluation.postprocessing import Postprocessing
-from ray.rllib.models.action_dist import ActionDistribution
+from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy import Policy
-from ray.rllib.policy.tf_policy_template import build_tf_policy
+from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import TensorType
 
-tf1, tf, tfv = try_import_tf()
+torch, _ = try_import_torch()
 
 
-def pg_tf_loss(
+def pg_torch_loss(
     policy: Policy,
     model: ModelV2,
-    dist_class: Type[ActionDistribution],
+    dist_class: Type[TorchDistributionWrapper],
     train_batch: SampleBatch,
 ) -> Union[TensorType, List[TensorType]]:
     """The basic policy gradients loss function.
@@ -44,14 +44,16 @@ def pg_tf_loss(
 
     # Calculate the vanilla PG loss based on:
     # L = -E[ log(pi(a|s)) * A]
-    loss = -tf.reduce_mean(
-        action_dist.logp(train_batch[SampleBatch.ACTIONS])
-        * tf.cast(train_batch[Postprocessing.ADVANTAGES], dtype=tf.float32)
-    )
+    log_probs = action_dist.logp(train_batch[SampleBatch.ACTIONS])
 
-    policy.policy_loss = loss
+    # Final policy loss.
+    policy_loss = -torch.mean(log_probs * train_batch[Postprocessing.ADVANTAGES])
 
-    return loss
+    # Store values for stats function in model (tower), such that for
+    # multi-GPU, we do not override them during the parallel loss phase.
+    model.tower_stats["policy_loss"] = policy_loss
+
+    return policy_loss
 
 
 def pg_loss_stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
@@ -66,17 +68,18 @@ def pg_loss_stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorT
     """
 
     return {
-        "policy_loss": policy.policy_loss,
+        "policy_loss": torch.mean(torch.stack(policy.get_tower_stats("policy_loss"))),
     }
 
 
-# Build a child class of `DynamicTFPolicy`, given the extra options:
+# Build a child class of `TorchPolicy`, given the extra options:
 # - trajectory post-processing function (to calculate advantages)
 # - PG loss function
-PGTFPolicy = build_tf_policy(
-    name="PGTFPolicy",
-    get_default_config=lambda: ray.rllib.agents.pg.DEFAULT_CONFIG,
-    postprocess_fn=post_process_advantages,
+PGTorchPolicy = build_policy_class(
+    name="PGTorchPolicy",
+    framework="torch",
+    get_default_config=lambda: ray.rllib.algorithms.pg.DEFAULT_CONFIG,
+    loss_fn=pg_torch_loss,
     stats_fn=pg_loss_stats,
-    loss_fn=pg_tf_loss,
+    postprocess_fn=post_process_advantages,
 )

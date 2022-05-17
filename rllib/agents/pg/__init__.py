@@ -13,3 +13,7 @@ __all__ = [
     "PGTorchPolicy",
     "PGTrainer",
 ]
+
+from ray.rllib.utils.deprecation import deprecation_warning
+
+deprecation_warning("ray.rllib.agents.pg", "ray.rllib.algorithms.pg", error=False)

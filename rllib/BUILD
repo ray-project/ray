@@ -777,7 +777,7 @@ py_test(
     name = "test_pg",
     tags = ["team:ml", "trainers_dir"],
     size = "large",
-    srcs = ["agents/pg/tests/test_pg.py"]
+    srcs = ["algorithms/pg/tests/test_pg.py"]
 )
 
 # PPOTrainer

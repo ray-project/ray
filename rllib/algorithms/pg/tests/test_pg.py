@@ -3,7 +3,7 @@ import numpy as np
 import unittest
 
 import ray
-import ray.rllib.agents.pg as pg
+import ray.rllib.algorithms.pg as pg
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.models.tf.tf_action_dist import Categorical

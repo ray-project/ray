@@ -2,8 +2,8 @@ from typing import Type
 
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.agents.trainer_config import TrainerConfig
-from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
-from ray.rllib.agents.pg.pg_torch_policy import PGTorchPolicy
+from ray.rllib.algorithms.pg.pg_tf_policy import PGTFPolicy
+from ray.rllib.algorithms.pg.pg_torch_policy import PGTorchPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
@@ -14,7 +14,7 @@ class PGConfig(TrainerConfig):
     """Defines a PGTrainer configuration class from which a PGTrainer can be built.
 
     Example:
-        >>> from ray.rllib.agents.pg import PGConfig
+        >>> from ray.rllib.algorithms.pg import PGConfig
         >>> config = PGConfig().training(lr=0.01).resources(num_gpus=1)
         >>> print(config.to_dict())
         >>> # Build a Trainer object from the config and run 1 training iteration.
@@ -22,7 +22,7 @@ class PGConfig(TrainerConfig):
         >>> trainer.train()
 
     Example:
-        >>> from ray.rllib.agents.pg import PGConfig
+        >>> from ray.rllib.algorithms.pg import PGConfig
         >>> from ray import tune
         >>> config = PGConfig()
         >>> # Print out some default values.
@@ -80,14 +80,14 @@ class PGTrainer(Trainer):
         return PGTorchPolicy if config.get("framework") == "torch" else PGTFPolicy
 
 
-# Deprecated: Use ray.rllib.agents.pg.PGConfig instead!
+# Deprecated: Use ray.rllib.algorithms.pg.PGConfig instead!
 class _deprecated_default_config(dict):
     def __init__(self):
         super().__init__(PGConfig().to_dict())
 
     @Deprecated(
-        old="ray.rllib.agents.pg.default_config::DEFAULT_CONFIG",
-        new="ray.rllib.agents.pg.pg.PGConfig(...)",
+        old="ray.rllib.algorithms.pg.default_config::DEFAULT_CONFIG",
+        new="ray.rllib.algorithms.pg.pg.PGConfig(...)",
         error=False,
     )
     def __getitem__(self, item):
