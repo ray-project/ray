@@ -2,7 +2,7 @@ import logging
 from pathlib import Path
 from typing import List, Optional, Dict, Union, Callable
 
-from ray import cloudpickle
+from ray.ml import Checkpoint
 from ray.train.constants import (
     TIMESTAMP,
     TRAIN_CHECKPOINT_SUBDIR,
@@ -31,59 +31,8 @@ def load_checkpoint_from_path(checkpoint_to_load: Union[str, Path]) -> Dict:
     checkpoint_path = Path(checkpoint_to_load).expanduser()
     if not checkpoint_path.exists():
         raise ValueError(f"Checkpoint path {checkpoint_path} does not exist.")
-    with checkpoint_path.open("rb") as f:
-        return cloudpickle.load(f)
-
-
-class _NotYetPersistedCheckpoint(TrackedCheckpoint):
-    """Tracked checkpoint that is not yet persisted to disk.
-
-    This checkpoint class supports lazy writing. The checkpoint manager will
-    only call ``commit()`` if the checkpoint should be kept on disk. This class
-    will only then write checkpoint data to disk.
-    """
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        self._data_to_commit = self.dir_or_data
-        self.dir_or_data = None
-
-    @property
-    def committed(self) -> bool:
-        return not self._data_to_commit
-
-    def commit(self, path: Optional[Path] = None):
-        if self.committed:
-            return
-
-        assert path
-
-        # Get or create checkpoint dir.
-        path.parent.mkdir(parents=True, exist_ok=True)
-        # Write checkpoint to disk.
-        with path.open("wb") as f:
-            cloudpickle.dump(self._data_to_commit, f)
-            logger.debug(f"Checkpoint successfully written to: {path}")
-
-        self.dir_or_data = path
-        self._data_to_commit = None
-
-    def delete(self, delete_fn: Optional[Callable[["TrackedCheckpoint"], None]] = None):
-        if not self.committed:
-            return
-        return super().delete(delete_fn=delete_fn)
-
-    @classmethod
-    def from_tracked_checkpoint(cls, checkpoint: TrackedCheckpoint):
-        new_checkpoint = cls(
-            dir_or_data=checkpoint.dir_or_data,
-            storage_mode=TrackedCheckpoint.PERSISTENT,
-            checkpoint_id=checkpoint.id,
-            result=checkpoint.result,
-            node_ip=checkpoint.node_ip,
-        )
-        return new_checkpoint
+    checkpoint = Checkpoint.from_directory(str(checkpoint_path))
+    return checkpoint.to_dict()
 
 
 class CheckpointManager(CommonCheckpointManager):
@@ -113,6 +62,8 @@ class CheckpointManager(CommonCheckpointManager):
         latest_checkpoint (Optional[Dict]): The latest saved checkpoint. This
             checkpoint may not be saved to disk.
     """
+
+    _persist_memory_checkpoints = True
 
     def __init__(self, run_dir: Path, checkpoint_strategy: CheckpointStrategy):
         self.run_dir = run_dir
@@ -166,22 +117,9 @@ class CheckpointManager(CommonCheckpointManager):
             dir_or_data=checkpoint_data,
             checkpoint_id=self._latest_checkpoint_id,
             storage_mode=TrackedCheckpoint.MEMORY,
-            result={score_attr: checkpoint_data.get(score_attr, 0.0)},
+            metrics={score_attr: checkpoint_data.get(score_attr, 0.0)},
         )
         self.register_checkpoint(checkpoint=tracked_checkpoint)
-
-    def register_checkpoint(self, checkpoint: TrackedCheckpoint):
-        # Always update the latest memory checkpoint
-        self._replace_latest_memory_checkpoint(checkpoint)
-
-        # Only process further if we consider keeping this checkpoint on disk
-        if self._checkpoint_strategy.num_to_keep != 0:
-            not_yet_persisted_checkpoint = (
-                _NotYetPersistedCheckpoint.from_tracked_checkpoint(checkpoint)
-            )
-            self._decide_what_to_do_with_checkpoint(not_yet_persisted_checkpoint)
-
-        self._latest_checkpoint_id += 1
 
     def _get_next_checkpoint_path(self) -> Optional[Path]:
         """Path to the next checkpoint to persist."""
@@ -267,12 +205,7 @@ class TuneCheckpointManager(CheckpointManager):
         # resumed after failure or cancellation.
         checkpoint[TUNE_CHECKPOINT_ID] = self._latest_checkpoint_id
 
-    def _decide_what_to_do_with_checkpoint(
-        self, checkpoint: _NotYetPersistedCheckpoint
-    ):
-        assert isinstance(checkpoint, _NotYetPersistedCheckpoint)
-        assert not checkpoint.committed
-
+    def _decide_what_to_do_with_checkpoint(self, checkpoint: TrackedCheckpoint):
         self.add_tune_checkpoint_id(checkpoint._data_to_commit)
         # If inside a Tune Trainable, then checkpoint with Tune.
         with tune.checkpoint_dir(step=self._latest_checkpoint_id) as checkpoint_dir:
