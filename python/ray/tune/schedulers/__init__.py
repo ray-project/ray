@@ -1,3 +1,5 @@
+import inspect
+
 from ray._private.utils import get_function_args
 from ray.tune.schedulers.trial_scheduler import TrialScheduler, FIFOScheduler
 from ray.tune.schedulers.hyperband import HyperBandScheduler
@@ -63,11 +65,11 @@ def create_scheduler(
             f"Got: {scheduler}"
         )
 
-    if scheduler == "pb2":
-        # run wrapper function to get relevant class
-        SchedulerClass = SCHEDULER_IMPORT[scheduler]()
-    else:
-        SchedulerClass = SCHEDULER_IMPORT[scheduler]
+    SchedulerClass = SCHEDULER_IMPORT[scheduler]
+
+    if inspect.isfunction(SchedulerClass):
+        # invoke the wrapper function to retrieve class
+        SchedulerClass = SchedulerClass()
 
     scheduler_args = get_function_args(SchedulerClass)
     trimmed_kwargs = {k: v for k, v in kwargs.items() if k in scheduler_args}
