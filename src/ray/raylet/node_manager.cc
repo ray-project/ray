@@ -455,30 +455,7 @@ ray::Status NodeManager::RegisterGcs() {
 
   // If the node resource message is received first and then the node message is received,
   // ForwardTask will throw exception, because it can't get node info.
-  auto on_done = [this](Status status) {
-    RAY_CHECK_OK(status);
-    // Subscribe to resource changes.
-    const auto &resources_changed =
-        [this](const rpc::NodeResourceChange &resource_notification) {
-          auto id = NodeID::FromBinary(resource_notification.node_id());
-          if (id == self_node_id_) {
-            return;
-          }
-          if (resource_notification.updated_resources_size() != 0) {
-            auto resources = ResourceMapToResourceRequest(
-                MapFromProtobuf(resource_notification.updated_resources()), false);
-            ResourceCreateUpdated(id, resources);
-          }
-
-          if (resource_notification.deleted_resources_size() != 0) {
-            ResourceDeleted(
-                id, VectorFromProtobuf(resource_notification.deleted_resources()));
-          }
-        };
-    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncSubscribeToResources(
-        /*subscribe_callback=*/resources_changed,
-        /*done_callback=*/nullptr));
-  };
+  auto on_done = [](Status status) { RAY_CHECK_OK(status); };
   // Register a callback to monitor new nodes and a callback to monitor removed nodes.
   RAY_RETURN_NOT_OK(
       gcs_client_->Nodes().AsyncSubscribeToNodeChange(on_node_change, on_done));
@@ -748,8 +725,11 @@ void NodeManager::HandleGetTasksInfo(const rpc::GetTasksInfoRequest &request,
       /*on_replied*/
       [reply](const ray::Status &status, const rpc::GetCoreWorkerStatsReply &r) {
         if (status.ok()) {
-          for (const auto &task_info : r.task_info_entries()) {
-            reply->add_task_info_entries()->CopyFrom(task_info);
+          for (const auto &task_info : r.owned_task_info_entries()) {
+            reply->add_owned_task_info_entries()->CopyFrom(task_info);
+          }
+          for (const auto &running_task_id : r.running_task_ids()) {
+            reply->add_running_task_ids(running_task_id);
           }
         } else {
           RAY_LOG(INFO) << "Failed to query task information from a worker.";
@@ -1073,6 +1053,25 @@ void NodeManager::ResourceDeleted(const NodeID &node_id,
         scheduling::NodeID(node_id.Binary()), scheduling::ResourceID(resource_label));
   }
   return;
+}
+
+void NodeManager::HandleNotifyGCSRestart(const rpc::NotifyGCSRestartRequest &request,
+                                         rpc::NotifyGCSRestartReply *reply,
+                                         rpc::SendReplyCallback send_reply_callback) {
+  // When GCS restarts, it'll notify raylet to do some initialization work
+  // (resubscribing). Raylet will also notify all workers to do this job. Workers are
+  // registered to raylet first (blocking call) and then connect to GCS, so there is no
+  // race condition here.
+  gcs_client_->AsyncResubscribe();
+  auto workers = worker_pool_.GetAllRegisteredWorkers(true);
+  for (auto worker : workers) {
+    worker->AsyncNotifyGCSRestart();
+  }
+  auto drivers = worker_pool_.GetAllRegisteredDrivers(true);
+  for (auto driver : drivers) {
+    driver->AsyncNotifyGCSRestart();
+  }
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::UpdateResourceUsage(const NodeID &node_id,

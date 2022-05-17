@@ -135,12 +135,12 @@ def range(n: int, *, parallelism: int = 200) -> Dataset[int]:
 
 
 @PublicAPI
-def range_arrow(n: int, *, parallelism: int = 200) -> Dataset[ArrowRow]:
-    """Create an Arrow dataset from a range of integers [0..n).
+def range_table(n: int, *, parallelism: int = 200) -> Dataset[ArrowRow]:
+    """Create a tabular dataset from a range of integers [0..n).
 
     Examples:
         >>> import ray
-        >>> ds = ray.data.range_arrow(1000) # doctest: +SKIP
+        >>> ds = ray.data.range_table(1000) # doctest: +SKIP
         >>> ds.map(lambda r: {"v2": r["value"] * 2}).show() # doctest: +SKIP
 
     This is similar to range(), but uses Arrow tables to hold the integers
@@ -159,6 +159,10 @@ def range_arrow(n: int, *, parallelism: int = 200) -> Dataset[ArrowRow]:
     )
 
 
+def range_arrow(*args, **kwargs):
+    raise DeprecationWarning("range_arrow() is deprecated, use range_table() instead.")
+
+
 @PublicAPI
 def range_tensor(
     n: int, *, shape: Tuple = (1,), parallelism: int = 200
@@ -171,7 +175,7 @@ def range_tensor(
         >>> ds.map_batches( # doctest: +SKIP
         ...     lambda arr: arr * 2, batch_format="pandas").show()
 
-    This is similar to range_arrow(), but uses the ArrowTensorArray extension
+    This is similar to range_table(), but uses the ArrowTensorArray extension
     type. The dataset elements take the form {"value": array(N, shape=shape)}.
 
     Args:
