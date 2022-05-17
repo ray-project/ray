@@ -37,7 +37,6 @@ class DeploymentExecutorNode(DAGNode):
             dag_args, dag_kwargs, {}, other_args_to_resolve=other_args_to_resolve
         )
 
-
     def _copy_impl(
         self,
         new_args: List[Any],
@@ -63,10 +62,10 @@ class DeploymentExecutorNode(DAGNode):
         )
         # For DAGDriver -- Return object ref of the dag handle
         # For regular deployment -- return handle
-        if self._deployment_handle.deployment_name == "DAGDriver":
-            return self._bound_args[0]
-        else:
-            return self._deployment_handle
+        # if self._deployment_handle.deployment_name == "DAGDriver":
+        #     return self._bound_args[0]
+        # else:
+        return self._deployment_handle
 
     def __str__(self) -> str:
         return get_dag_node_str(self, str(self._deployment_handle))

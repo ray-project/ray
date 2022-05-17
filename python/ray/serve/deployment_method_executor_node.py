@@ -57,9 +57,7 @@ class DeploymentMethodExecutorNode(DAGNode):
         receive whatever this method returns. We return a handle here so method
         node can directly call upon.
         """
-        print(
-            f"????? DeploymentMethodExecutorNode - args: {args}, kwargs: {kwargs}"
-        )
+        print(f"????? DeploymentMethodExecutorNode - args: {args}, kwargs: {kwargs}")
         print(
             f"????? DeploymentMethodExecutorNode - _bound_args: {self._bound_args}, _bound_kwargs: {self._bound_kwargs}"
         )

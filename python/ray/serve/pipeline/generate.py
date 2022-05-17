@@ -1,3 +1,4 @@
+import json
 from typing import List, Set
 from collections import OrderedDict
 
@@ -11,6 +12,7 @@ from ray.experimental.dag.function_node import FunctionNode
 from ray.experimental.dag.input_node import InputNode
 from ray.experimental.dag.utils import DAGNodeNameGenerator
 from ray.serve.deployment import Deployment
+from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.pipeline.deployment_node import DeploymentNode
 from ray.serve.pipeline.deployment_function_node import DeploymentFunctionNode
@@ -113,7 +115,7 @@ def transform_serve_dag_to_serve_executor_dag(serve_dag_root_node: DAGNode):
         return DeploymentExecutorNode(
             serve_dag_root_node._deployment_handle,
             serve_dag_root_node.get_args(),
-            serve_dag_root_node.get_kwargs()
+            serve_dag_root_node.get_kwargs(),
         )
     elif isinstance(serve_dag_root_node, DeploymentMethodExecutorNode):
         print("DeploymentMethodExecutorNode")
@@ -121,7 +123,7 @@ def transform_serve_dag_to_serve_executor_dag(serve_dag_root_node: DAGNode):
             # Deployment method handle
             getattr(
                 serve_dag_root_node._deployment_handle,
-                serve_dag_root_node._deployment_method_name
+                serve_dag_root_node._deployment_method_name,
             ),
             serve_dag_root_node.get_args(),
             serve_dag_root_node.get_kwargs(),
@@ -136,6 +138,48 @@ def transform_serve_dag_to_serve_executor_dag(serve_dag_root_node: DAGNode):
     else:
         print("Other")
         return serve_dag_root_node
+
+
+def generate_driver_deployment(
+    serve_executor_dag_root_node: DAGNode, original_driver_deployment: Deployment
+):
+    """a"""
+
+    def replace_with_handle(node):
+        if isinstance(node, (DeploymentExecutorNode)):
+            return node._deployment_handle
+        elif isinstance(
+            node,
+            (DeploymentMethodExecutorNode, DeploymentFunctionExecutorNode),
+        ):
+            from ray.serve.pipeline.json_serde import DAGNodeEncoder
+
+            serve_dag_root_json = json.dumps(node, cls=DAGNodeEncoder)
+            return RayServeDAGHandle(serve_dag_root_json)
+
+    (
+        replaced_deployment_init_args,
+        replaced_deployment_init_kwargs,
+    ) = serve_executor_dag_root_node.apply_functional(
+        [
+            serve_executor_dag_root_node.get_args(),
+            serve_executor_dag_root_node.get_kwargs(),
+        ],
+        predictate_fn=lambda node: isinstance(
+            node,
+            (
+                DeploymentFunctionNode,
+                DeploymentExecutorNode,
+                DeploymentFunctionExecutorNode,
+            ),
+        ),
+        apply_fn=replace_with_handle,
+    )
+
+    return original_driver_deployment.options(
+        init_args=replaced_deployment_init_args,
+        init_kwargs=replaced_deployment_init_kwargs,
+    )
 
 
 def get_pipeline_input_node(serve_dag_root_node: DAGNode):

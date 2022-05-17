@@ -7,6 +7,7 @@ from ray.serve.pipeline.generate import (
     extract_deployments_from_serve_dag,
     transform_serve_dag_to_serve_executor_dag,
     process_ingress_deployment_in_serve_dag,
+    generate_driver_deployment,
 )
 from ray.serve.deployment import Deployment
 from ray.experimental.dag.utils import DAGNodeNameGenerator
@@ -75,16 +76,13 @@ def build(ray_dag_root_node: DAGNode) -> List[Deployment]:
     serve_executor_root_dag = serve_root_dag.apply_recursive(
         transform_serve_dag_to_serve_executor_dag
     )
-    # Manually change the root node to only return ref to bound_args[0] as single output
-    # TODO(jiaodong) Need to be able to resolve user custom DAGDriver
+    # serve_executor_root_dag._bound_other_args_to_resolve = {"DAGDriver": True}
 
-    from ray.serve.pipeline.json_serde import DAGNodeEncoder
-
-    serve_dag_root_json = json.dumps(serve_executor_root_dag, cls=DAGNodeEncoder)
-    new_dag_handle = RayServeDAGHandle(serve_dag_root_json)
-    deployments_with_http[-1] = deployments_with_http[-1].options(
-        init_args=(new_dag_handle,)
+    root_driver_deployment = deployments_with_http[-1]
+    new_driver_deployment = generate_driver_deployment(
+        serve_executor_root_dag, root_driver_deployment
     )
+    deployments_with_http[-1] = new_driver_deployment
 
     return deployments_with_http
 
