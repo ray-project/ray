@@ -29,6 +29,7 @@ class CheckpointManager(CommonCheckpointManager):
         delete_fn: Function that deletes checkpoints. Must be
             idempotent.
     """
+    _persist_memory_checkpoints = False
 
     def __init__(
         self,
