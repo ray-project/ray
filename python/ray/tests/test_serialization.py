@@ -9,6 +9,7 @@ import sys
 import weakref
 import yaml
 import tempfile
+import pathlib
 
 import numpy as np
 from numpy import log
@@ -687,8 +688,11 @@ def test_restricted_loads(shutdown_only):
     with tempfile.TemporaryDirectory() as tmp_dir:
         whitelist_config = {
             "pickle_whitelist": {
-                "numpy.core.numeric": ["*"],
-                "numpy": ["dtype"],
+                "module": {
+                    "numpy.core.numeric": ["*"],
+                    "numpy": ["dtype"],
+                },
+                "package": ["pathlib"]
             }
         }
         yaml.safe_dump(whitelist_config, open(config_path, "wt"))
@@ -702,11 +706,14 @@ def test_restricted_loads(shutdown_only):
         ref2 = ray.put([ref1])
         ray.get(ref2)
 
+        ref3 = ray.put([pathlib.Path("/tmp/test")])
+        ray.get(ref3)
+
         class WrongClass:
             pass
-        ref3 = ray.put(WrongClass())
+        ref4 = ray.put(WrongClass())
         with pytest.raises(ray.exceptions.RaySystemError) as error:
-            ray.get(ref3)
+            ray.get(ref4)
         assert isinstance(error.value.args[0], ray.cloudpickle.UnpicklingError)
 
 

@@ -49,9 +49,16 @@ _pickle_whitelist = None
 class RestrictedUnpickler(pickle.Unpickler):
 
     def find_class(self, module, name):
-        if _pickle_whitelist is None or (
-            module in _pickle_whitelist and (
-                _pickle_whitelist[module] is None or name in _pickle_whitelist[module])):
+        module_whitelist = None if _pickle_whitelist is None else _pickle_whitelist.get("module", {})
+        package_whitelist = None if _pickle_whitelist is None else _pickle_whitelist.get("package", [])
+
+        package = module.split(".")[0]
+        if package_whitelist is None or package in package_whitelist:
+            return super().find_class(module, name)
+
+        if module_whitelist is None or (
+            module in module_whitelist and (
+                module_whitelist[module] is None or name in module_whitelist[module])):
             return super().find_class(module, name)
 
         if module == "ray.serialization":
@@ -82,11 +89,14 @@ def patch_pickle_for_security():
     if _pickle_whitelist is None:
         return
 
-    if "*" in _pickle_whitelist:
+    _pickle_whitelist["module"] = _pickle_whitelist.get("module", {})
+    _pickle_whitelist["package"] = _pickle_whitelist.get("package", [])
+
+    if "*" in _pickle_whitelist["module"] or "*" in _pickle_whitelist["package"]:
         _pickle_whitelist = None
-    for module, attr_list in _pickle_whitelist.items():
+    for module_name, attr_list in _pickle_whitelist["module"].items():
         if "*" in attr_list:
-            _pickle_whitelist[module] = None
+            _pickle_whitelist["module"][module_name] = None
     pickle.loads = restricted_loads
 
 patch_pickle_for_security()
