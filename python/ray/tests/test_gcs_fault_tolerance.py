@@ -334,6 +334,19 @@ def test_core_worker_resubscription(tmp_path, ray_start_regular_with_external_re
     ray.get(r, timeout=5)
 
 
+@pytest.mark.parametrize(
+    "ray_start_regular_with_external_redis",
+    [
+        generate_system_config_map(
+            num_heartbeats_timeout=20, gcs_rpc_server_reconnect_timeout_s=60
+        )
+    ],
+    indirect=True,
+)
+def test_py_resubscription(tmp_path, ray_start_regular_with_external_redis):
+    # This test is to ensure python pubsub works
+    pass
+
 @pytest.mark.parametrize("auto_reconnect", [True, False])
 def test_gcs_client_reconnect(ray_start_regular_with_external_redis, auto_reconnect):
     gcs_address = ray.worker.global_worker.gcs_client.address
