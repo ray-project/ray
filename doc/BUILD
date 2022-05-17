@@ -110,7 +110,6 @@ py_test(
     tags = ["exclusive", "pytorch", "team:ml"]
 )
 
-# Ray Serve
 py_test(
     name = "doc_code_metrics_example",
     size = "small",
@@ -127,12 +126,16 @@ py_test(
     tags = ["exclusive", "post_wheel_build", "team:serve"]
 )
 
-py_test(
-    name = "doc_code_create_deployment_example",
-    size = "small",
-    main = "create_deployment.py",
-    srcs = ["//doc/source/serve/doc_code:serve_doc_code"],
-    tags = ["exclusive", "post_wheel_build", "team:serve"]
+# --------------------------------------------------------------------
+# Test all doc/source/serve/doc_code code included in rst/md files.
+# --------------------------------------------------------------------
+
+py_test_run_all_subdirectory(
+    size = "medium",
+    include = ["source/serve/doc_code/*.py"],
+    exclude = [],
+    extra_srcs = [],
+    tags = ["exclusive", "team:serve"],
 )
 
 # --------------------------------------------------------------------
@@ -158,6 +161,31 @@ py_test_run_all_subdirectory(
     extra_srcs = [],
     tags = ["exclusive", "team:ml"],
 )
+
+# --------------------------------------------------------------------
+# Test all doc/source/ray-air/examples notebooks.
+# --------------------------------------------------------------------
+
+py_test_run_all_notebooks(
+    size = "medium",
+    include = ["doc/source/ray-air/examples/*.ipynb"],
+    exclude = [],
+    data = ["//doc/source/ray-air/examples:air_examples"],
+    tags = ["exclusive", "team:ml"],
+)
+
+# --------------------------------------------------------------------
+# Test all doc/source/ray-air/doc_code code included in rst/md files.
+# --------------------------------------------------------------------
+
+py_test_run_all_subdirectory(
+    size = "large",
+    include = ["source/ray-air/doc_code/*.py"],
+    exclude = [],
+    extra_srcs = [],
+    tags = ["exclusive", "team:ml"],
+)
+
 
 # --------------------------------------------------------------------
 # Test all doc/source/ray-overview/doc_code snippets, used on ray.io

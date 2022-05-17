@@ -35,7 +35,6 @@ class AutoscalingCluster:
         self._config = self._generate_config(
             head_resources, worker_node_types, **config_kwargs
         )
-        self._process = None
 
     def _generate_config(self, head_resources, worker_node_types, **config_kwargs):
         base_config = yaml.safe_load(
@@ -71,7 +70,6 @@ class AutoscalingCluster:
             "start",
             "--autoscaling-config={}".format(fake_config),
             "--head",
-            "--block",
         ]
         if "CPU" in self._head_resources:
             cmd.append("--num-cpus={}".format(self._head_resources.pop("CPU")))
@@ -87,13 +85,10 @@ class AutoscalingCluster:
             )
         env = os.environ.copy()
         env.update({"AUTOSCALER_UPDATE_INTERVAL_S": "1", "RAY_FAKE_CLUSTER": "1"})
-        self._process = subprocess.Popen(cmd, env=env)
-        time.sleep(5)  # TODO(ekl) wait for it properly
+        subprocess.check_call(cmd, env=env)
 
     def shutdown(self):
         """Terminate the cluster."""
-        if self._process:
-            self._process.kill()
         subprocess.check_call(["ray", "stop", "--force"])
 
 

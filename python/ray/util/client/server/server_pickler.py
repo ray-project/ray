@@ -26,7 +26,6 @@ from ray.util.client.server.server_stubs import ClientReferenceFunction
 
 if TYPE_CHECKING:
     from ray.util.client.server.server import RayletServicer
-    import ray.core.generated.ray_client_pb2 as ray_client_pb2
 
 if sys.version_info < (3, 8):
     try:
@@ -130,7 +129,3 @@ def loads_from_client(
         return ClientUnpickler(
             server_instance, file, fix_imports=fix_imports, encoding=encoding
         ).load()
-
-
-def convert_from_arg(pb: "ray_client_pb2.Arg", server: "RayletServicer") -> Any:
-    return loads_from_client(pb.data, server)
