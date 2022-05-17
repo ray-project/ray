@@ -542,16 +542,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[out] Status
   Status CancelTask(const ObjectID &object_id, bool force_kill, bool recursive);
 
-  /// Stops the task associated with the given Object ID.
-  ///
-  /// \param[in] object_ids of the tasks to kill (must be a Non-Actor task)
-  /// \param[in] force_kill Whether to force kill a task by killing the worker.
-  /// \param[in] recursive Whether to cancel tasks submitted by the task to cancel.
-  /// \param[out] Status
-  Status CancelMultipleTasks(const std::vector<ObjectID> &object_id,
-                             bool force_kill,
-                             bool recursive);
-
   /// Decrease the reference count for this actor. Should be called by the
   /// language frontend when a reference to the ActorHandle destroyed.
   ///

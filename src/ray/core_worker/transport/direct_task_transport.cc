@@ -666,7 +666,6 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
       [this, task_spec, scheduling_key, force_kill, recursive](
           const Status &status, const rpc::CancelTaskReply &reply) {
         absl::MutexLock lock(&mu_);
-        this->SetStatusByTaskID(task_spec.TaskId(), status);
         RAY_LOG(DEBUG) << "CancelTask RPC response received for " << task_spec.TaskId()
                        << " with status " << status.ToString();
         cancelled_tasks_.erase(task_spec.TaskId());
