@@ -308,7 +308,7 @@ class GroupedDataset(Generic[T]):
             ...     for i in range(100)]) \ # doctest: +SKIP
             ...     .groupby(lambda x: x[0] % 3) \ # doctest: +SKIP
             ...     .sum(lambda x: x[2]) # doctest: +SKIP
-            >>> ray.data.range_arrow(100).groupby("value").sum() # doctest: +SKIP
+            >>> ray.data.range_table(100).groupby("value").sum() # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
             ...     for i in range(100)]) \ # doctest: +SKIP
@@ -369,7 +369,7 @@ class GroupedDataset(Generic[T]):
             ...     for i in range(100)]) \ # doctest: +SKIP
             ...     .groupby(lambda x: x[0] % 3) \ # doctest: +SKIP
             ...     .min(lambda x: x[2]) # doctest: +SKIP
-            >>> ray.data.range_arrow(100).groupby("value").min() # doctest: +SKIP
+            >>> ray.data.range_table(100).groupby("value").min() # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
             ...     for i in range(100)]) \ # doctest: +SKIP
@@ -430,7 +430,7 @@ class GroupedDataset(Generic[T]):
             ...     for i in range(100)]) \ # doctest: +SKIP
             ...     .groupby(lambda x: x[0] % 3) \ # doctest: +SKIP
             ...     .max(lambda x: x[2]) # doctest: +SKIP
-            >>> ray.data.range_arrow(100).groupby("value").max() # doctest: +SKIP
+            >>> ray.data.range_table(100).groupby("value").max() # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
             ...     for i in range(100)]) \ # doctest: +SKIP
@@ -491,7 +491,7 @@ class GroupedDataset(Generic[T]):
             ...     for i in range(100)]) \ # doctest: +SKIP
             ...     .groupby(lambda x: x[0] % 3) \ # doctest: +SKIP
             ...     .mean(lambda x: x[2]) # doctest: +SKIP
-            >>> ray.data.range_arrow(100).groupby("value").mean() # doctest: +SKIP
+            >>> ray.data.range_table(100).groupby("value").mean() # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
             ...     for i in range(100)]) \ # doctest: +SKIP
@@ -556,7 +556,7 @@ class GroupedDataset(Generic[T]):
             ...     for i in range(100)]) \ # doctest: +SKIP
             ...     .groupby(lambda x: x[0] % 3) \ # doctest: +SKIP
             ...     .std(lambda x: x[2]) # doctest: +SKIP
-            >>> ray.data.range_arrow(100).groupby("value").std(ddof=0) # doctest: +SKIP
+            >>> ray.data.range_table(100).groupby("value").std(ddof=0) # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
             ...     for i in range(100)]) \ # doctest: +SKIP
