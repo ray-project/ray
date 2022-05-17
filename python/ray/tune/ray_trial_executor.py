@@ -693,13 +693,13 @@ class RayTrialExecutor(TrialExecutor):
             if storage == TrackedCheckpoint.MEMORY:
                 value = trial.runner.save_to_object.remote()
                 checkpoint = TrackedCheckpoint(
-                    dir_or_data=value, storage_mode=storage, result=result
+                    dir_or_data=value, storage_mode=storage, metrics=result
                 )
                 trial.on_checkpoint(checkpoint)
             else:
                 value = trial.runner.save.remote()
                 checkpoint = TrackedCheckpoint(
-                    dir_or_data=value, storage_mode=storage, result=result
+                    dir_or_data=value, storage_mode=storage, metrics=result
                 )
                 trial.saving_to = checkpoint
                 self._futures[value] = (ExecutorEventType.SAVING_RESULT, trial)

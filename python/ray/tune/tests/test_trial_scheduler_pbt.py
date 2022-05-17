@@ -443,7 +443,7 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
                 return TrackedCheckpoint(
                     dir_or_data="None",
                     storage_mode=TrackedCheckpoint.MEMORY,
-                    result={},
+                    metrics={},
                 )
 
             @property

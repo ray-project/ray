@@ -153,7 +153,7 @@ class TrialRunnerCallbacks(unittest.TestCase):
         cp = TrackedCheckpoint(
             dir_or_data=ray.put(1),
             storage_mode=TrackedCheckpoint.PERSISTENT,
-            result={TRAINING_ITERATION: 0},
+            metrics={TRAINING_ITERATION: 0},
         )
         trials[0].saving_to = cp
 

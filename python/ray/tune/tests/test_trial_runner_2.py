@@ -336,7 +336,7 @@ class TrialRunnerTest2(unittest.TestCase):
             tune_cp = TrackedCheckpoint(
                 dir_or_data=checkpoint_dir,
                 storage_mode=TrackedCheckpoint.PERSISTENT,
-                result=result,
+                metrics=result,
             )
             trial.saving_to = tune_cp
 

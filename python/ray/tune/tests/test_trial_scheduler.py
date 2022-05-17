@@ -253,7 +253,7 @@ class _MockTrialExecutor(TrialExecutor):
         return TrackedCheckpoint(
             dir_or_data=trial.trainable_name,
             storage_mode=TrackedCheckpoint.PERSISTENT,
-            result=result,
+            metrics=result,
         )
 
     def reset_trial(self, trial, new_config, new_experiment_tag):
@@ -850,7 +850,7 @@ class _MockTrial(Trial):
         return TrackedCheckpoint(
             dir_or_data=self.trainable_name,
             storage_mode=TrackedCheckpoint.MEMORY,
-            result=None,
+            metrics=None,
         )
 
 
