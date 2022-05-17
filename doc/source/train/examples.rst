@@ -1,4 +1,4 @@
-.. _sgd-v2-examples:
+.. _train-examples:
 
 Ray Train Examples
 ==================

@@ -202,9 +202,8 @@ class Trial:
     Trials start in the PENDING state, and transition to RUNNING once started.
     On error it transitions to ERROR, otherwise TERMINATED on success.
 
-    There are resources allocated to each trial. It's preferred that resources
-    are specified using PlacementGroupFactory, rather than through Resources,
-    which is being deprecated.
+    There are resources allocated to each trial. These should be specified
+    using ``PlacementGroupFactory``.
 
     Attributes:
         trainable_name: Name of the trainable object to be executed.
@@ -394,7 +393,7 @@ class Trial:
             self.custom_dirname = trial_dirname_creator(self)
             if os.path.sep in self.custom_dirname:
                 raise ValueError(
-                    "Trial dirname must not contain '/'. Got {self.custom_dirname}"
+                    f"Trial dirname must not contain '/'. Got {self.custom_dirname}"
                 )
 
         self._state_json = None
@@ -619,9 +618,8 @@ class Trial:
         for criteria, stop_value in self.stopping_criterion.items():
             if criteria not in result:
                 raise TuneError(
-                    "Stopping criteria {} not provided in result {}.".format(
-                        criteria, result
-                    )
+                    "Stopping criteria {} not provided in result dict. Keys "
+                    "are {}.".format(criteria, list(result.keys()))
                 )
             elif isinstance(criteria, dict):
                 raise ValueError(
@@ -771,17 +769,7 @@ class Trial:
         if self.custom_dirname:
             generated_dirname = self.custom_dirname
         else:
-            if "MAX_LEN_IDENTIFIER" in os.environ:
-                logger.error(
-                    "The MAX_LEN_IDENTIFIER environment variable is "
-                    "deprecated and will be removed in the future. "
-                    "Use TUNE_MAX_LEN_IDENTIFIER instead."
-                )
-            MAX_LEN_IDENTIFIER = int(
-                os.environ.get(
-                    "TUNE_MAX_LEN_IDENTIFIER", os.environ.get("MAX_LEN_IDENTIFIER", 130)
-                )
-            )
+            MAX_LEN_IDENTIFIER = int(os.environ.get("TUNE_MAX_LEN_IDENTIFIER", "130"))
             generated_dirname = f"{str(self)}_{self.experiment_tag}"
             generated_dirname = generated_dirname[:MAX_LEN_IDENTIFIER]
             generated_dirname += f"_{date_str()}"

@@ -11,11 +11,10 @@ import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
 from filelock import FileLock
-from ray import serve, tune
+from ray import serve, tune, train
+from ray.train import Trainer
 from ray.util.ml_utils.node import force_on_current_node
-from ray.util.sgd.torch import TorchTrainer, TrainingOperator
-from ray.util.sgd.torch.resnet import ResNet18
-from ray.util.sgd.utils import override
+from ray.util.ml_utils.resnet import ResNet18
 from torch.utils.data import DataLoader, Subset
 from torchvision.datasets import MNIST
 
@@ -29,59 +28,85 @@ def load_mnist_data(train: bool, download: bool):
         return MNIST(root="~/data", train=train, download=download, transform=transform)
 
 
-class MnistTrainingOperator(TrainingOperator):
-    @override(TrainingOperator)
-    def setup(self, config):
-        # Create model.
-        model = ResNet18(config)
-        model.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=1, padding=3, bias=False)
+def train_epoch(dataloader, model, loss_fn, optimizer):
+    for X, y in dataloader:
+        # Compute prediction error
+        pred = model(X)
+        loss = loss_fn(pred, y)
 
-        # Create optimizer.
-        optimizer = torch.optim.SGD(
-            model.parameters(),
-            lr=config.get("lr", 0.1),
-            momentum=config.get("momentum", 0.9),
-        )
+        # Backpropagation
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
 
-        # Load in training and validation data.
-        train_dataset = load_mnist_data(True, True)
-        validation_dataset = load_mnist_data(False, False)
 
-        if config["test_mode"]:
-            train_dataset = Subset(train_dataset, list(range(64)))
-            validation_dataset = Subset(validation_dataset, list(range(64)))
+def validate_epoch(dataloader, model, loss_fn):
+    num_batches = len(dataloader)
+    model.eval()
+    loss = 0
+    with torch.no_grad():
+        for X, y in dataloader:
+            pred = model(X)
+            loss += loss_fn(pred, y).item()
+    loss /= num_batches
+    result = {"val_loss": loss}
+    return result
 
-        train_loader = DataLoader(
-            train_dataset, batch_size=config["batch_size"], num_workers=2
-        )
-        validation_loader = DataLoader(
-            validation_dataset, batch_size=config["batch_size"], num_workers=2
-        )
 
-        # Create loss.
-        criterion = nn.CrossEntropyLoss()
+def training_loop(config):
+    # Create model.
+    model = ResNet18(config)
+    model.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=1, padding=3, bias=False)
+    model = train.torch.prepare_model(model)
 
-        # Register all components.
-        self.model, self.optimizer, self.criterion = self.register(
-            models=model, optimizers=optimizer, criterion=criterion
-        )
-        self.register_data(
-            train_loader=train_loader, validation_loader=validation_loader
-        )
+    # Create optimizer.
+    optimizer = torch.optim.SGD(
+        model.parameters(),
+        lr=config.get("lr", 0.1),
+        momentum=config.get("momentum", 0.9),
+    )
+
+    # Load in training and validation data.
+    train_dataset = load_mnist_data(True, True)
+    validation_dataset = load_mnist_data(False, False)
+
+    if config["test_mode"]:
+        train_dataset = Subset(train_dataset, list(range(64)))
+        validation_dataset = Subset(validation_dataset, list(range(64)))
+
+    train_loader = DataLoader(
+        train_dataset, batch_size=config["batch_size"], num_workers=2
+    )
+    validation_loader = DataLoader(
+        validation_dataset, batch_size=config["batch_size"], num_workers=2
+    )
+
+    train_loader = train.torch.prepare_data_loader(train_loader)
+    validation_loader = train.torch.prepare_data_loader(validation_loader)
+
+    # Create loss.
+    criterion = nn.CrossEntropyLoss()
+
+    for epoch_idx in range(2):
+        train_epoch(train_loader, model, criterion, optimizer)
+        validation_loss = validate_epoch(validation_loader, model, criterion)
+
+        train.save_checkpoint(model_state_dict=model.module.state_dict())
+        train.report(**validation_loss)
 
 
 def train_mnist(test_mode=False, num_workers=1, use_gpu=False):
-    TorchTrainable = TorchTrainer.as_trainable(
-        training_operator_cls=MnistTrainingOperator,
-        num_workers=num_workers,
-        use_gpu=use_gpu,
-        config={"test_mode": test_mode, "batch_size": 128},
-    )
+    trainer = Trainer(backend="torch", num_workers=num_workers, use_gpu=use_gpu)
+    TorchTrainable = trainer.to_tune_trainable(training_loop)
 
     return tune.run(
         TorchTrainable,
         num_samples=1,
-        config={"lr": tune.grid_search([1e-4, 1e-3])},
+        config={
+            "lr": tune.grid_search([1e-4, 1e-3]),
+            "test_mode": test_mode,
+            "batch_size": 128,
+        },
         stop={"training_iteration": 2},
         verbose=1,
         metric="val_loss",
@@ -101,11 +126,14 @@ def get_remote_model(remote_model_checkpoint_path):
 
 
 def get_model(model_checkpoint_path):
-    model_state = torch.load(model_checkpoint_path)
+    checkpoint_dict = Trainer.load_checkpoint_from_path(
+        model_checkpoint_path + "/checkpoint"
+    )
+    model_state = checkpoint_dict["model_state_dict"]
 
     model = ResNet18(None)
     model.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=1, padding=3, bias=False)
-    model.load_state_dict(model_state["models"][0])
+    model.load_state_dict(model_state)
 
     return model
 

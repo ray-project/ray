@@ -217,6 +217,11 @@ class WorkerPoolMock : public WorkerPool {
     return state.spill_io_worker_state.num_starting_io_workers;
   }
 
+  int NumSpillWorkerStarted() const {
+    auto state = states_by_lang_.find(Language::PYTHON)->second;
+    return state.spill_io_worker_state.started_io_workers.size();
+  }
+
   int NumRestoreWorkerStarting() const {
     auto state = states_by_lang_.find(Language::PYTHON)->second;
     return state.restore_io_worker_state.num_starting_io_workers;
@@ -636,6 +641,21 @@ TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
     // Check that we cannot lookup the worker after it's disconnected.
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), nullptr);
   }
+
+  {
+    // Test the case where DisconnectClient happens after RegisterClientRequest but before
+    // AnnounceWorkerPort.
+    auto [proc, token] = worker_pool_->StartWorkerProcess(
+        Language::PYTHON, rpc::WorkerType::WORKER, JOB_ID, &status);
+    auto worker = worker_pool_->CreateWorker(Process(), Language::PYTHON);
+    ASSERT_EQ(worker_pool_->NumWorkersStarting(), 1);
+    RAY_CHECK_OK(worker_pool_->RegisterWorker(
+        worker, proc.GetId(), worker_pool_->GetStartupToken(proc), [](Status, int) {}));
+    worker->SetStartupToken(worker_pool_->GetStartupToken(proc));
+    worker_pool_->DisconnectWorker(
+        worker, /*disconnect_type=*/rpc::WorkerExitType::INTENDED_EXIT);
+    ASSERT_EQ(worker_pool_->NumWorkersStarting(), 0);
+  }
 }
 
 TEST_F(WorkerPoolTest, HandleUnknownWorkerRegistration) {
@@ -767,6 +787,7 @@ TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
       expected_command.end(), actor_jvm_options.begin(), actor_jvm_options.end());
   // Entry point
   expected_command.push_back("MainClass");
+  expected_command.push_back("--language=JAVA");
   ASSERT_EQ(real_command, expected_command);
   worker_pool_->HandleJobFinished(job_id);
 }
@@ -1924,6 +1945,24 @@ TEST_F(WorkerPoolTest, TestIOWorkerFailureAndSpawn) {
     worker_pool_->OnWorkerStarted(worker);
     worker_pool_->PushSpillWorker(worker);
   }
+
+  {
+    // Test the case where DisconnectClient happens after RegisterClientRequest but before
+    // AnnounceWorkerPort.
+    auto status = PopWorkerStatus::OK;
+    auto [proc, token] = worker_pool_->StartWorkerProcess(
+        rpc::Language::PYTHON, rpc::WorkerType::SPILL_WORKER, JobID::Nil(), &status);
+    ASSERT_EQ(status, PopWorkerStatus::OK);
+    auto worker = CreateSpillWorker(Process());
+    RAY_CHECK_OK(
+        worker_pool_->RegisterWorker(worker, proc.GetId(), token, [](Status, int) {}));
+    // The worker failed before announcing the worker port (i.e. OnworkerStarted)
+    worker_pool_->DisconnectWorker(
+        worker, /*disconnect_type=*/rpc::WorkerExitType::SYSTEM_ERROR_EXIT);
+  }
+
+  ASSERT_EQ(worker_pool_->NumSpillWorkerStarting(), 0);
+  ASSERT_EQ(worker_pool_->NumSpillWorkerStarted(), MAX_IO_WORKER_SIZE);
 
   // Pop spill workers should work.
 

@@ -2,7 +2,6 @@
 from abc import abstractmethod
 import logging
 from typing import Dict, List, Optional, Union
-import warnings
 
 from ray.exceptions import RayTaskError
 from ray.tune import TuneError
@@ -25,13 +24,13 @@ class _WarnOnDirectInheritanceMeta(type):
             )
             and "TrialExecutor" in tuple(base.__name__ for base in bases)
         ):
-            deprecation_msg = (
+            raise DeprecationWarning(
                 f"{name} inherits from TrialExecutor, which is being "
                 "deprecated. "
                 "RFC: https://github.com/ray-project/ray/issues/17593. "
                 "Please reach out on the Ray Github if you have any concerns."
             )
-            warnings.warn(deprecation_msg, DeprecationWarning)
+
         cls = super().__new__(mcls, name, bases, module, **kwargs)
         return cls
 

@@ -15,7 +15,6 @@ import logging
 import os
 import time
 from dataclasses import dataclass
-import warnings
 
 from inspect import isclass
 from shlex import quote
@@ -98,13 +97,13 @@ def validate_sync_config(sync_config: "SyncConfig"):
         sync_config.node_sync_period = -1
         sync_config.cloud_sync_period = -1
 
-        warnings.warn(
+        # Deprecated: Remove in Ray > 1.13
+        raise DeprecationWarning(
             "The `node_sync_period` and "
             "`cloud_sync_period` properties of `tune.SyncConfig` are "
             "deprecated. Pass the `sync_period` property instead. "
             "\nFor now, the lower of the two values (if provided) will "
-            f"be used as the sync_period. This value is: {sync_period}",
-            DeprecationWarning,
+            f"be used as the sync_period. This value is: {sync_period}"
         )
 
     if sync_config.sync_to_cloud or sync_config.sync_to_driver:
@@ -119,15 +118,15 @@ def validate_sync_config(sync_config: "SyncConfig"):
         sync_config.sync_to_cloud = None
         sync_config.sync_to_driver = None
 
-        warnings.warn(
+        # Deprecated: Remove in Ray > 1.13
+        raise DeprecationWarning(
             "The `sync_to_cloud` and `sync_to_driver` properties of "
             "`tune.SyncConfig` are deprecated. Pass the `syncer` property "
             "instead. Presence of an `upload_dir` decides if checkpoints "
             "are synced to cloud or not. Syncing to driver is "
             "automatically disabled if an `upload_dir` is given."
             f"\nFor now, as the upload dir is {help}, the respective "
-            f"syncer is used. This value is: {syncer}",
-            DeprecationWarning,
+            f"syncer is used. This value is: {syncer}"
         )
 
 
@@ -199,6 +198,7 @@ class SyncConfig:
     sync_period: int = 300
 
     # Deprecated arguments
+    # Deprecated: Remove in Ray > 1.13
     sync_to_cloud: Any = None
     sync_to_driver: Any = None
     node_sync_period: int = -1
@@ -522,6 +522,9 @@ class SyncerCallback(Callback):
             trial.logdir, remote_dir=trial.logdir, sync_function=self._sync_function
         )
 
+    def _remove_trial_syncer(self, trial: "Trial"):
+        self._syncers.pop(trial, None)
+
     def _sync_trial_checkpoint(self, trial: "Trial", checkpoint: _TuneCheckpoint):
         if checkpoint.storage == _TuneCheckpoint.MEMORY:
             return
@@ -602,8 +605,10 @@ class SyncerCallback(Callback):
         else:
             trainable_ip = ray.get(trial.runner.get_current_ip.remote())
         trial_syncer.set_worker_ip(trainable_ip)
-        trial_syncer.sync_down_if_needed()
+        # Always sync down when trial completed
+        trial_syncer.sync_down()
         trial_syncer.close()
+        self._remove_trial_syncer(trial)
 
     def on_checkpoint(
         self,

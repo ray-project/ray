@@ -114,9 +114,16 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
                 .addAllCodeSearchPath(rayConfig.codeSearchPath)
                 .setRayNamespace(rayConfig.namespace);
         RuntimeEnvInfo.Builder runtimeEnvInfoBuilder = RuntimeEnvInfo.newBuilder();
-        if (rayConfig.runtimeEnvImpl != null && !rayConfig.runtimeEnvImpl.getEnvVars().isEmpty()) {
+        if (rayConfig.runtimeEnvImpl != null) {
           RuntimeEnv.Builder runtimeEnvBuilder = RuntimeEnv.newBuilder();
-          runtimeEnvBuilder.putAllEnvVars(rayConfig.runtimeEnvImpl.getEnvVars());
+          if (!rayConfig.runtimeEnvImpl.getEnvVars().isEmpty()) {
+            runtimeEnvBuilder.putAllEnvVars(rayConfig.runtimeEnvImpl.getEnvVars());
+          }
+
+          final List<String> jarUrls = rayConfig.runtimeEnvImpl.getJars();
+          if (jarUrls != null && !jarUrls.isEmpty()) {
+            runtimeEnvBuilder.getJavaRuntimeEnvBuilder().addAllDependentJars(jarUrls);
+          }
           Printer printer = JsonFormat.printer();
           try {
             runtimeEnvInfoBuilder.setSerializedRuntimeEnv(printer.print(runtimeEnvBuilder));

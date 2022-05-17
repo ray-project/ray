@@ -15,14 +15,16 @@ pendulum-ddpg-fake-gpus:
         gamma: 0.99
         exploration_config:
             final_scale: 0.02
-        timesteps_per_iteration: 600
-        buffer_size: 10000
+        min_sample_timesteps_per_reporting: 600
+        replay_buffer_config:
+          type: MultiAgentPrioritizedReplayBuffer
+          capacity: 10000
+          worker_side_prioritization: false
+          learning_starts: 500
         clip_rewards: false
         use_huber: true
-        learning_starts: 500
         train_batch_size: 64
         num_workers: 0
-        worker_side_prioritization: false
         actor_lr: 0.0001
         critic_lr: 0.0001
 

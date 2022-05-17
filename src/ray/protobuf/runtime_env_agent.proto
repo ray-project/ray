@@ -48,9 +48,16 @@ message DeleteRuntimeEnvIfPossibleReply {
   string error_message = 2;
 }
 
+message GetRuntimeEnvsInfoRequest {}
+
+message GetRuntimeEnvsInfoReply {
+  repeated RuntimeEnvState runtime_env_states = 1;
+}
+
 service RuntimeEnvService {
   rpc GetOrCreateRuntimeEnv(GetOrCreateRuntimeEnvRequest)
       returns (GetOrCreateRuntimeEnvReply);
   rpc DeleteRuntimeEnvIfPossible(DeleteRuntimeEnvIfPossibleRequest)
       returns (DeleteRuntimeEnvIfPossibleReply);
+  rpc GetRuntimeEnvsInfo(GetRuntimeEnvsInfoRequest) returns (GetRuntimeEnvsInfoReply);
 }

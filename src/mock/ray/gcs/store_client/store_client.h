@@ -22,7 +22,8 @@ class MockStoreClient : public StoreClient {
               (const std::string &table_name,
                const std::string &key,
                const std::string &data,
-               const StatusCallback &callback),
+               bool overwrite,
+               std::function<void(bool)> callback),
               (override));
   MOCK_METHOD(Status,
               AsyncGet,
@@ -45,15 +46,28 @@ class MockStoreClient : public StoreClient {
               AsyncDelete,
               (const std::string &table_name,
                const std::string &key,
-               const StatusCallback &callback),
+               std::function<void(bool)> callback),
               (override));
   MOCK_METHOD(Status,
               AsyncBatchDelete,
               (const std::string &table_name,
                const std::vector<std::string> &keys,
-               const StatusCallback &callback),
+               std::function<void(int64_t)> callback),
               (override));
   MOCK_METHOD(int, GetNextJobID, (), (override));
+  MOCK_METHOD(Status,
+              AsyncGetKeys,
+              (const std::string &table_name,
+               const std::string &prefix,
+               std::function<void(std::vector<std::string>)> callback),
+              (override));
+
+  MOCK_METHOD(Status,
+              AsyncExists,
+              (const std::string &table_name,
+               const std::string &key,
+               std::function<void(bool)> callback),
+              (override));
 };
 
 }  // namespace gcs

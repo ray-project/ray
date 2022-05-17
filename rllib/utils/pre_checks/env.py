@@ -1,4 +1,5 @@
 """Common pre-checks for all RLlib experiments."""
+from copy import copy
 import logging
 import gym
 import numpy as np
@@ -488,7 +489,7 @@ def _check_if_element_multi_agent_dict(env, element, function_string, base_env=F
                 f" {type(element)}"
             )
         raise ValueError(error)
-    agent_ids: Set = env.get_agent_ids()
+    agent_ids: Set = copy(env.get_agent_ids())
     agent_ids.add("__all__")
 
     if not all(k in agent_ids for k in element):

@@ -37,8 +37,8 @@ class GcsPlacementGroupManagerMockTest : public Test {
     gcs_table_storage_ = std::make_shared<GcsTableStorage>(store_client_);
     gcs_placement_group_scheduler_ =
         std::make_shared<MockGcsPlacementGroupSchedulerInterface>();
-    resource_manager_ =
-        std::make_shared<MockGcsResourceManager>(nullptr, cluster_resource_manager_);
+    resource_manager_ = std::make_shared<MockGcsResourceManager>(
+        io_context_, nullptr, cluster_resource_manager_);
 
     gcs_placement_group_manager_ =
         std::make_unique<GcsPlacementGroupManager>(io_context_,
@@ -66,9 +66,9 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityReschedule) {
   auto cb = [](Status s) {};
   PGSchedulingFailureCallback failure_callback;
   PGSchedulingSuccessfulCallback success_callback;
-  StatusCallback put_cb;
-  EXPECT_CALL(*store_client_, AsyncPut(_, _, _, _))
-      .WillOnce(DoAll(SaveArg<3>(&put_cb), Return(Status::OK())));
+  std::function<void(bool)> put_cb;
+  EXPECT_CALL(*store_client_, AsyncPut(_, _, _, _, _))
+      .WillOnce(DoAll(SaveArg<4>(&put_cb), Return(Status::OK())));
   EXPECT_CALL(*gcs_placement_group_scheduler_, ScheduleUnplacedBundles(_, _, _))
       .WillOnce(DoAll(SaveArg<1>(&failure_callback), SaveArg<2>(&success_callback)));
   auto now = absl::GetCurrentTimeNanos();
@@ -77,7 +77,7 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityReschedule) {
   ASSERT_EQ(1, pending_queue.size());
   ASSERT_LE(now, pending_queue.begin()->first);
   ASSERT_GE(absl::GetCurrentTimeNanos(), pending_queue.begin()->first);
-  put_cb(Status::OK());
+  put_cb(true);
   pg->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
   failure_callback(pg, true);
   ASSERT_EQ(1, pending_queue.size());
@@ -93,9 +93,9 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityFailed) {
   auto cb = [](Status s) {};
   PGSchedulingFailureCallback failure_callback;
   PGSchedulingSuccessfulCallback success_callback;
-  StatusCallback put_cb;
-  EXPECT_CALL(*store_client_, AsyncPut(_, _, _, _))
-      .WillOnce(DoAll(SaveArg<3>(&put_cb), Return(Status::OK())));
+  std::function<void(bool)> put_cb;
+  EXPECT_CALL(*store_client_, AsyncPut(_, _, _, _, _))
+      .WillOnce(DoAll(SaveArg<4>(&put_cb), Return(Status::OK())));
   EXPECT_CALL(*gcs_placement_group_scheduler_, ScheduleUnplacedBundles(_, _, _))
       .Times(2)
       .WillRepeatedly(
@@ -106,7 +106,7 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityFailed) {
   ASSERT_EQ(1, pending_queue.size());
   ASSERT_LE(now, pending_queue.begin()->first);
   ASSERT_GE(absl::GetCurrentTimeNanos(), pending_queue.begin()->first);
-  put_cb(Status::OK());
+  put_cb(true);
   pg->UpdateState(rpc::PlacementGroupTableData::PENDING);
   now = absl::GetCurrentTimeNanos();
   failure_callback(pg, true);
@@ -151,10 +151,10 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityOrder) {
   auto cb = [](Status s) {};
   PGSchedulingFailureCallback failure_callback;
   PGSchedulingSuccessfulCallback success_callback;
-  StatusCallback put_cb;
-  EXPECT_CALL(*store_client_, AsyncPut(_, _, _, _))
+  std::function<void(bool)> put_cb;
+  EXPECT_CALL(*store_client_, AsyncPut(_, _, _, _, _))
       .Times(2)
-      .WillRepeatedly(DoAll(SaveArg<3>(&put_cb), Return(Status::OK())));
+      .WillRepeatedly(DoAll(SaveArg<4>(&put_cb), Return(Status::OK())));
   EXPECT_CALL(*gcs_placement_group_scheduler_, ScheduleUnplacedBundles(_, _, _))
       .Times(2)
       .WillRepeatedly(
@@ -163,7 +163,7 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityOrder) {
   gcs_placement_group_manager_->RegisterPlacementGroup(pg2, cb);
   auto &pending_queue = gcs_placement_group_manager_->pending_placement_groups_;
   ASSERT_EQ(2, pending_queue.size());
-  put_cb(Status::OK());
+  put_cb(true);
   ASSERT_EQ(1, pending_queue.size());
   // PG1 is scheduled first, so PG2 is in pending queue
   ASSERT_EQ(pg2, pending_queue.begin()->second.second);

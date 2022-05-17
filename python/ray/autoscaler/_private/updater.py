@@ -20,6 +20,8 @@ from ray.autoscaler._private.command_runner import (
     AUTOSCALER_NODE_START_WAIT_S,
     ProcessRunnerError,
 )
+from ray._private.usage import usage_lib
+from ray._private.usage import usage_constants
 from ray.autoscaler._private.log_timer import LogTimer
 from ray.autoscaler._private.cli_logger import cli_logger, cf
 from ray.autoscaler._private import subprocess_output_util as cmd_output_util
@@ -492,14 +494,21 @@ class NodeUpdater:
             with LogTimer(self.log_prefix + "Ray start commands", show_status=True):
                 for cmd in self.ray_start_commands:
 
+                    env_vars = {}
+                    if self.is_head_node:
+                        if usage_lib.usage_stats_enabled():
+                            env_vars[usage_constants.USAGE_STATS_ENABLED_ENV_VAR] = 1
+                        else:
+                            # Disable usage stats collection in the cluster.
+                            env_vars[usage_constants.USAGE_STATS_ENABLED_ENV_VAR] = 0
                     # Add a resource override env variable if needed:
                     if self.provider_type == "local":
                         # Local NodeProvider doesn't need resource override.
-                        env_vars = {}
+                        pass
                     elif self.node_resources:
-                        env_vars = {RESOURCES_ENVIRONMENT_VARIABLE: self.node_resources}
+                        env_vars[RESOURCES_ENVIRONMENT_VARIABLE] = self.node_resources
                     else:
-                        env_vars = {}
+                        pass
 
                     try:
                         old_redirected = cmd_output_util.is_output_redirected()

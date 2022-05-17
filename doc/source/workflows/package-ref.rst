@@ -3,7 +3,6 @@ Ray Workflows API
 
 Core API
 ---------
-.. autofunction:: ray.workflow.init
 .. autofunction:: ray.workflow.step
 .. autoclass:: ray.workflow.common.Workflow
     :members:

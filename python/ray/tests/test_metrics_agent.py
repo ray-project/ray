@@ -44,7 +44,6 @@ _METRICS = [
     "ray_internal_num_spilled_tasks",
     # "ray_unintentional_worker_failures_total",
     # "ray_node_failure_total",
-    "ray_outbound_heartbeat_size_kb_sum",
     "ray_operation_count",
     "ray_operation_run_time_ms",
     "ray_operation_queue_time_ms",
@@ -75,6 +74,9 @@ _METRICS = [
     "ray_gcs_actors_count",
 ]
 
+if not ray._raylet.Config.use_ray_syncer():
+    _METRICS.append("ray_outbound_heartbeat_size_kb_sum")
+
 # This list of metrics should be kept in sync with
 # ray/python/ray/autoscaler/_private/prom_metrics.py
 _AUTOSCALER_METRICS = [
@@ -101,7 +103,8 @@ _AUTOSCALER_METRICS = [
 
 
 @pytest.fixture
-def _setup_cluster_for_test(ray_start_cluster):
+def _setup_cluster_for_test(request, ray_start_cluster):
+    enable_metrics_collection = request.param
     NUM_NODES = 2
     cluster = ray_start_cluster
     # Add a head node.
@@ -110,6 +113,7 @@ def _setup_cluster_for_test(ray_start_cluster):
             "metrics_report_interval_ms": 1000,
             "event_stats_print_interval_ms": 500,
             "event_stats": True,
+            "enable_metrics_collection": enable_metrics_collection,
         }
     )
     # Add worker nodes.
@@ -136,7 +140,6 @@ def _setup_cluster_for_test(ray_start_cluster):
     # Generate some metrics for the placement group.
     pg = ray.util.placement_group(bundles=[{"CPU": 1}])
     ray.get(pg.ready())
-    print(ray.util.placement_group_table())
     ray.util.remove_placement_group(pg)
 
     @ray.remote
@@ -146,14 +149,13 @@ def _setup_cluster_for_test(ray_start_cluster):
                 "test_histogram", description="desc", boundaries=[0.1, 1.6]
             )
             histogram = ray.get(ray.put(histogram))  # Test serialization.
-            histogram.record(1.5)
+            histogram.observe(1.5)
             ray.get(worker_should_exit.wait.remote())
 
     a = A.remote()
     obj_refs = [f.remote(), a.ping.remote()]
     # Infeasible task
-    b = f.options(resources={"a": 1})
-    print(b)
+    b = f.options(resources={"a": 1})  # noqa
 
     node_info_list = ray.nodes()
     prom_addresses = []
@@ -173,9 +175,9 @@ def _setup_cluster_for_test(ray_start_cluster):
 
 
 @pytest.mark.skipif(prometheus_client is None, reason="Prometheus not installed")
+@pytest.mark.parametrize("_setup_cluster_for_test", [True], indirect=True)
 def test_metrics_export_end_to_end(_setup_cluster_for_test):
     TEST_TIMEOUT_S = 30
-
     prom_addresses, autoscaler_export_addr = _setup_cluster_for_test
 
     def test_cases():
@@ -372,12 +374,12 @@ def test_custom_metrics_default_tags(metric_mock):
     histogram._metric = metric_mock
 
     # Check specifying non-default tags.
-    histogram.record(10, tags={"a": "a"})
+    histogram.observe(10, tags={"a": "a"})
     metric_mock.record.assert_called_with(10, tags={"a": "a", "b": "b"})
 
     # Check overriding default tags.
     tags = {"a": "10", "b": "c"}
-    histogram.record(8, tags=tags)
+    histogram.observe(8, tags=tags)
     metric_mock.record.assert_called_with(8, tags=tags)
 
 
@@ -418,7 +420,8 @@ def test_metrics_override_shouldnt_warn(ray_start_regular, log_pubsub):
     assert len(match) == 0, match
 
 
-def test_custom_metrics_validation(ray_start_regular_shared):
+def test_custom_metrics_validation(shutdown_only):
+    ray.init()
     # Missing tag(s) from tag_keys.
     metric = Counter("name", tag_keys=("a", "b"))
     metric.set_default_tags({"a": "1"})
@@ -454,6 +457,34 @@ def test_custom_metrics_validation(ray_start_regular_shared):
     # Tag value must be str.
     with pytest.raises(TypeError):
         metric.inc(1.0, {"a": 1})
+
+
+@pytest.mark.parametrize("_setup_cluster_for_test", [False], indirect=True)
+def test_metrics_disablement(_setup_cluster_for_test):
+    """Make sure the metrics are not exported when it is disabled."""
+    prom_addresses, autoscaler_export_addr = _setup_cluster_for_test
+
+    def verify_metrics_not_collected():
+        components_dict, metric_names, _ = fetch_prometheus(prom_addresses)
+        # Make sure no component is reported.
+        for _, comp in components_dict.items():
+            if len(comp) > 0:
+                print(f"metrics from a component {comp} exists although it should not.")
+                return False
+
+        # Make sure metrics are not there.
+        for metric in _METRICS + _AUTOSCALER_METRICS:
+            if metric in metric_names:
+                print("f{metric} exists although it should not.")
+                return False
+        return True
+
+    # Make sure metrics are not collected for more than 10 seconds.
+    for _ in range(10):
+        assert verify_metrics_not_collected()
+        import time
+
+        time.sleep(1)
 
 
 if __name__ == "__main__":

@@ -20,9 +20,9 @@ from ray.tune.error import TuneError
 from ray.tune.experiment import Experiment, convert_to_experiment_list
 from ray.tune.logger import Logger
 from ray.tune.progress_reporter import (
+    RemoteReporterMixin,
     detect_reporter,
     ProgressReporter,
-    JupyterNotebookReporter,
 )
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.registry import get_trainable_cls, is_function_trainable
@@ -162,7 +162,6 @@ def run(
     # == internal only ==
     _experiment_checkpoint_dir: Optional[str] = None,
     # Deprecated args
-    queue_trials: Optional[bool] = None,
     loggers: Optional[Sequence[Type[Logger]]] = None,
     _remote: Optional[bool] = None,
 ) -> ExperimentAnalysis:
@@ -349,27 +348,6 @@ def run(
     Raises:
         TuneError: Any trials failed and `raise_on_failed_trial` is True.
     """
-
-    # To be removed in 1.9.
-    if queue_trials is not None:
-        raise DeprecationWarning(
-            "`queue_trials` has been deprecated and is replaced by "
-            "the `TUNE_MAX_PENDING_TRIALS_PG` environment variable. "
-            "Per default at least one Trial is queued at all times, "
-            "so you likely don't need to change anything other than "
-            "removing this argument from your call to `tune.run()`"
-        )
-
-    # Starting deprecation in ray 1.10.
-    if os.environ.get("TUNE_TRIAL_RESULT_WAIT_TIME_S") is not None:
-        warnings.warn("`TUNE_TRIAL_RESULT_WAIT_TIME_S` is deprecated.")
-
-    if os.environ.get("TUNE_TRIAL_STARTUP_GRACE_PERIOD") is not None:
-        warnings.warn("`TUNE_TRIAL_STARTUP_GRACE_PERIOD` is deprecated.")
-
-    if os.environ.get("TUNE_PLACEMENT_GROUP_WAIT_S") is not None:
-        warnings.warn("`TUNE_PLACEMENT_GROUP_WAIT_S` is deprecated.")
-
     # NO CODE IS TO BE ADDED ABOVE THIS COMMENT
     # remote_run_kwargs must be defined before any other
     # code is ran to ensure that at this point,
@@ -392,19 +370,22 @@ def run(
         # Make sure tune.run is called on the sever node.
         remote_run = force_on_current_node(remote_run)
 
+        set_verbosity(verbose)
+        progress_reporter = progress_reporter or detect_reporter()
+
         # JupyterNotebooks don't work with remote tune runs out of the box
         # (e.g. via Ray client) as they don't have access to the main
         # process stdout. So we introduce a queue here that accepts
-        # callables, which will then be executed on the driver side.
-        if isinstance(progress_reporter, JupyterNotebookReporter):
-            execute_queue = Queue(
+        # strings, which will then be displayed on the driver side.
+        if isinstance(progress_reporter, RemoteReporterMixin):
+            string_queue = Queue(
                 actor_options={"num_cpus": 0, **force_on_current_node(None)}
             )
-            progress_reporter.set_output_queue(execute_queue)
+            progress_reporter.output_queue = string_queue
 
             def get_next_queue_item():
                 try:
-                    return execute_queue.get(block=False)
+                    return string_queue.get(block=False)
                 except Empty:
                     return None
 
@@ -414,23 +395,25 @@ def run(
             def get_next_queue_item():
                 return None
 
-        def _handle_execute_queue():
-            execute_item = get_next_queue_item()
-            while execute_item:
-                if isinstance(execute_item, Callable):
-                    execute_item()
+        def _handle_string_queue():
+            string_item = get_next_queue_item()
+            while string_item is not None:
+                # This happens on the driver side
+                progress_reporter.display(string_item)
 
-                execute_item = get_next_queue_item()
+                string_item = get_next_queue_item()
 
+        # Override with detected progress reporter
+        remote_run_kwargs["progress_reporter"] = progress_reporter
         remote_future = remote_run.remote(_remote=False, **remote_run_kwargs)
 
         # ray.wait(...)[1] returns futures that are not ready, yet
         while ray.wait([remote_future], timeout=0.2)[1]:
             # Check if we have items to execute
-            _handle_execute_queue()
+            _handle_string_queue()
 
         # Handle queue one last time
-        _handle_execute_queue()
+        _handle_string_queue()
 
         return ray.get(remote_future)
 
@@ -439,8 +422,8 @@ def run(
     all_start = time.time()
 
     if loggers:
-        # Raise DeprecationWarning in 1.9, remove in 1.10/1.11
-        warnings.warn(
+        # Deprecated: Remove in Ray > 1.13
+        raise DeprecationWarning(
             "The `loggers` argument is deprecated. Please pass the respective "
             "`LoggerCallback` classes to the `callbacks` argument instead. "
             "See https://docs.ray.io/en/latest/tune/api_docs/logging.html"
@@ -642,9 +625,7 @@ def run(
         )
 
     # Create syncer callbacks
-    callbacks = create_default_callbacks(
-        callbacks, sync_config, metric=metric, loggers=loggers
-    )
+    callbacks = create_default_callbacks(callbacks, sync_config, metric=metric)
 
     runner = TrialRunner(
         search_alg=search_alg,
@@ -803,7 +784,6 @@ def run_experiments(
     raise_on_failed_trial: bool = True,
     concurrent: bool = True,
     # Deprecated args.
-    queue_trials: Optional[bool] = None,
     callbacks: Optional[Sequence[Callback]] = None,
     _remote: Optional[bool] = None,
 ):
@@ -822,16 +802,6 @@ def run_experiments(
         List of Trial objects, holding data for each executed trial.
 
     """
-    # To be removed in 1.9.
-    if queue_trials is not None:
-        raise DeprecationWarning(
-            "`queue_trials` has been deprecated and is replaced by "
-            "the `TUNE_MAX_PENDING_TRIALS_PG` environment variable. "
-            "Per default at least one Trial is queued at all times, "
-            "so you likely don't need to change anything other than "
-            "removing this argument from your call to `tune.run()`"
-        )
-
     if _remote is None:
         _remote = ray.util.client.ray.is_connected()
 

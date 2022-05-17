@@ -1,6 +1,7 @@
 import os
 from typing import Optional, Union
 
+import pandas as pd
 from ray.cloudpickle import cloudpickle
 from ray.exceptions import RayTaskError
 from ray.ml.checkpoint import Checkpoint
@@ -8,6 +9,7 @@ from ray.ml.result import Result
 from ray.tune import ExperimentAnalysis
 from ray.tune.error import TuneError
 from ray.tune.trial import Trial
+from ray.tune.utils.trainable import TrainableUtil
 from ray.util import PublicAPI
 
 
@@ -70,13 +72,78 @@ class ResultGrid:
                 values are disregarded and these trials are never selected as
                 the best trial.
         """
-        return self._trial_to_result(
-            self._experiment_analysis.get_best_trial(
-                metric=metric,
-                mode=mode,
-                scope=scope,
-                filter_nan_and_inf=filter_nan_and_inf,
+        if not metric and not self._experiment_analysis.default_metric:
+            raise ValueError(
+                "No metric is provided. Either pass in a `metric` arg to "
+                "`get_best_result` or specify a metric in the "
+                "`TuneConfig` of your `Tuner`."
             )
+        if not mode and not self._experiment_analysis.default_mode:
+            raise ValueError(
+                "No mode is provided. Either pass in a `mode` arg to "
+                "`get_best_result` or specify a mode in the "
+                "`TuneConfig` of your `Tuner`."
+            )
+        best_trial = self._experiment_analysis.get_best_trial(
+            metric=metric,
+            mode=mode,
+            scope=scope,
+            filter_nan_and_inf=filter_nan_and_inf,
+        )
+        if not best_trial:
+            error_msg = (
+                "No best trial found for the given metric: "
+                f"{metric or self._experiment_analysis.default_metric}. "
+                "This means that no trial has reported this metric"
+            )
+            error_msg += (
+                ", or all values reported for this metric are NaN. To not ignore NaN "
+                "values, you can set the `filter_nan_and_inf` arg to False."
+                if filter_nan_and_inf
+                else "."
+            )
+            raise RuntimeError(error_msg)
+
+        return self._trial_to_result(best_trial)
+
+    def get_dataframe(
+        self,
+        filter_metric: Optional[str] = None,
+        filter_mode: Optional[str] = None,
+    ) -> pd.DataFrame:
+        """Return dataframe of all trials with their configs and reported results.
+
+        Per default, this returns the last reported results for each trial.
+
+        If ``filter_metric`` and ``filter_mode`` are set, the results from each
+        trial are filtered for this metric and mode. For example, if
+        ``filter_metric="some_metric"`` and ``filter_mode="max"``, for each trial,
+        every received result is checked, and the one where ``some_metric`` is
+        maximal is returned.
+
+
+        Example:
+
+            .. code-block:: python
+
+                result_grid = Tuner.fit(...)
+
+                # Get last reported results per trial
+                df = result_grid.get_dataframe()
+
+                # Get best ever reported accuracy per trial
+                df = result_grid.get_dataframe(metric="accuracy", mode="max")
+
+        Args:
+            filter_metric: Metric to filter best result for.
+            filter_mode: If ``filter_metric`` is given, one of ``["min", "max"]``
+                to specify if we should find the minimum or maximum result.
+
+        Returns:
+            Pandas DataFrame with each trial as a row and their results as columns.
+        """
+        return self._experiment_analysis.dataframe(
+            metric=filter_metric, mode=filter_mode
         )
 
     def __len__(self) -> int:
@@ -98,10 +165,14 @@ class ResultGrid:
         return None
 
     def _trial_to_result(self, trial: Trial) -> Result:
+        if trial.checkpoint.value:
+            checkpoint_dir = TrainableUtil.find_checkpoint_dir(trial.checkpoint.value)
+            checkpoint = Checkpoint.from_directory(checkpoint_dir)
+        else:
+            checkpoint = None
+
         result = Result(
-            checkpoint=Checkpoint.from_directory(trial.checkpoint.value)
-            if trial.checkpoint.value
-            else None,
+            checkpoint=checkpoint,
             metrics=trial.last_result.copy(),
             error=self._populate_exception(trial),
         )

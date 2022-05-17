@@ -4,6 +4,7 @@ import logging
 from typing import List, Dict
 from itertools import islice
 
+from ray.core.generated.common_pb2 import TaskStatus
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.memory_utils as memory_utils
 from ray.dashboard.modules.job.common import JobInfo
@@ -16,9 +17,12 @@ from ray.experimental.state.common import (
     WorkerState,
     TaskState,
     ObjectState,
+    RuntimeEnvState,
     ListApiOptions,
 )
 from ray.experimental.state.state_manager import StateDataSourceClient
+from ray.runtime_env import RuntimeEnv
+from ray._private.utils import binary_to_hex
 
 logger = logging.getLogger(__name__)
 
@@ -135,14 +139,24 @@ class StateAPIManager:
             ]
         )
 
+        running_task_id = set()
+        for reply in replies:
+            for task_id in reply.running_task_ids:
+                running_task_id.add(binary_to_hex(task_id))
+
         result = []
         for reply in replies:
-            tasks = reply.task_info_entries
+            logger.info(reply)
+            tasks = reply.owned_task_info_entries
             for task in tasks:
                 data = self._message_to_dict(
                     message=task,
                     fields_to_decode=["task_id"],
                 )
+                if data["task_id"] in running_task_id:
+                    data["scheduling_state"] = TaskStatus.DESCRIPTOR.values_by_number[
+                        TaskStatus.RUNNING
+                    ].name
                 data = filter_fields(data, TaskState)
                 result.append(data)
 
@@ -194,6 +208,50 @@ class StateAPIManager:
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["object_id"])
         return {d["object_id"]: d for d in islice(result, option.limit)}
+
+    async def list_runtime_envs(self, *, option: ListApiOptions) -> List[dict]:
+        """List all runtime env information from the cluster.
+
+        Returns:
+            A list of runtime env information in the cluster.
+            The schema of returned "dict" is equivalent to the
+            `RuntimeEnvState` protobuf message.
+            We don't have id -> data mapping like other API because runtime env
+            doesn't have unique ids.
+        """
+        replies = await asyncio.gather(
+            *[
+                self._client.get_runtime_envs_info(node_id, timeout=option.timeout)
+                for node_id in self._client.get_all_registered_agent_ids()
+            ]
+        )
+        result = []
+        for node_id, reply in zip(self._client.get_all_registered_agent_ids(), replies):
+            states = reply.runtime_env_states
+            for state in states:
+                data = self._message_to_dict(message=state, fields_to_decode=[])
+                # Need to deseiralize this field.
+                data["runtime_env"] = RuntimeEnv.deserialize(
+                    data["runtime_env"]
+                ).to_dict()
+                data["node_id"] = node_id
+                data = filter_fields(data, RuntimeEnvState)
+                result.append(data)
+
+        # Sort to make the output deterministic.
+        def sort_func(entry):
+            # If creation time is not there yet (runtime env is failed
+            # to be created or not created yet, they are the highest priority.
+            # Otherwise, "bigger" creation time is coming first.
+            if "creation_time_ms" not in entry:
+                return float("inf")
+            elif entry["creation_time_ms"] is None:
+                return float("inf")
+            else:
+                return float(entry["creation_time_ms"])
+
+        result.sort(key=sort_func, reverse=True)
+        return list(islice(result, option.limit))
 
     def _message_to_dict(
         self,

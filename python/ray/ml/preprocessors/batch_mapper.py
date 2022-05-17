@@ -26,4 +26,5 @@ class BatchMapper(Preprocessor):
         return df.transform(self.fn)
 
     def __repr__(self):
-        return f"<BatchMapper udf={getattr(self.fn, __name__) or self.fn}>"
+        fn_name = getattr(self.fn, "__name__", self.fn)
+        return f"BatchMapper(fn={fn_name})"

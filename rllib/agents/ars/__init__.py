@@ -1,6 +1,6 @@
-from ray.rllib.agents.ars.ars import ARSTrainer, DEFAULT_CONFIG
-from ray.rllib.agents.ars.ars_tf_policy import ARSTFPolicy
-from ray.rllib.agents.ars.ars_torch_policy import ARSTorchPolicy
+from ray.rllib.algorithms.ars.ars import ARSTrainer, DEFAULT_CONFIG
+from ray.rllib.algorithms.ars.ars_tf_policy import ARSTFPolicy
+from ray.rllib.algorithms.ars.ars_torch_policy import ARSTorchPolicy
 
 __all__ = [
     "ARSTFPolicy",
@@ -8,3 +8,7 @@ __all__ = [
     "ARSTrainer",
     "DEFAULT_CONFIG",
 ]
+
+from ray.rllib.utils.deprecation import deprecation_warning
+
+deprecation_warning("ray.rllib.agents.ars", "ray.rllib.algorithms.ars", error=False)

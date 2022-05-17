@@ -358,6 +358,55 @@ class TestRolloutWorker(unittest.TestCase):
         self.assertLess(np.min(sample["actions"]), action_space.low[0])
         ev.stop()
 
+    def test_action_immutability(self):
+        from ray.rllib.examples.env.random_env import RandomEnv
+
+        action_space = gym.spaces.Box(0.0001, 0.0002, (5,))
+
+        class ActionMutationEnv(RandomEnv):
+            def init(self, config):
+                self.test_case = config["test_case"]
+                super().__init__(config=config)
+
+            def step(self, action):
+                # Ensure that it is called from inside the sampling process.
+                import inspect
+
+                curframe = inspect.currentframe()
+                called_from_check = any(
+                    [
+                        frame[3] == "check_gym_environments"
+                        for frame in inspect.getouterframes(curframe, 2)
+                    ]
+                )
+                # Check, whether the action is immutable.
+                if action.flags.writeable and not called_from_check:
+                    self.test_case.assertFalse(
+                        action.flags.writeable, "Action is mutable"
+                    )
+                return super().step(action)
+
+        ev = RolloutWorker(
+            env_creator=lambda _: ActionMutationEnv(
+                config=dict(
+                    test_case=self,
+                    action_space=action_space,
+                    max_episode_len=10,
+                    p_done=0.0,
+                    check_action_bounds=True,
+                )
+            ),
+            policy_spec=RandomPolicy,
+            policy_config=dict(
+                action_space=action_space,
+                ignore_action_bounds=True,
+            ),
+            clip_actions=False,
+            batch_mode="complete_episodes",
+        )
+        ev.sample()
+        ev.stop()
+
     def test_reward_clipping(self):
         # Clipping: True (clip between -1.0 and 1.0).
         ev = RolloutWorker(
