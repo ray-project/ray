@@ -761,9 +761,10 @@ Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rll
 
 **AlphaZero-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/algorithms/alpha_zero/core/alpha_zero_trainer.py
+.. literalinclude:: ../../../rllib/algorithms/alpha_zero/alpha_zero.py
    :language: python
    :start-after: __sphinx_doc_begin__
+   :end-before: __sphinx_doc_end__
 
 
 Multi-Agent Methods

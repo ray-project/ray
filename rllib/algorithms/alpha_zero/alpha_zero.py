@@ -138,8 +138,6 @@ DEFAULT_CONFIG = with_common_config({
 
     "framework": "torch",  # Only PyTorch supported so far.
 })
-
-
 # __sphinx_doc_end__
 # fmt: on
 
