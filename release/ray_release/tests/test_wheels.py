@@ -48,20 +48,20 @@ class WheelsFinderTest(unittest.TestCase):
             repo_url="https://github.com/ray-project/ray.git",
             branch="master",
             commit="1234",
-            ray_version="2.0.0.dev0",
+            ray_version="3.0.0.dev0",
         )
         self.assertEqual(
             url,
             "https://s3-us-west-2.amazonaws.com/ray-wheels/"
-            "master/1234/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl",
+            "master/1234/ray-3.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl",
         )
 
-    @patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "2.0.0.dev0")
+    @patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "3.0.0.dev0")
     def testFindRayWheelsBuildkite(self):
         repo = DEFAULT_REPO
         branch = "master"
         commit = "1234" * 10
-        version = "2.0.0.dev0"
+        version = "3.0.0.dev0"
 
         os.environ["BUILDKITE_COMMIT"] = commit
 
@@ -76,12 +76,12 @@ class WheelsFinderTest(unittest.TestCase):
 
         self.assertEqual(url, get_ray_wheels_url(repo, branch, commit, version))
 
-    @patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "2.0.0.dev0")
+    @patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "3.0.0.dev0")
     def testFindRayWheelsCommitOnly(self):
         repo = DEFAULT_REPO
         branch = "master"
         commit = "1234" * 10
-        version = "2.0.0.dev0"
+        version = "3.0.0.dev0"
 
         search_str = commit
 
@@ -110,34 +110,34 @@ class WheelsFinderTest(unittest.TestCase):
 
             self.assertEqual(url, get_ray_wheels_url(repo, branch, commit, version))
 
-    @patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "2.0.0.dev0")
+    @patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "3.0.0.dev0")
     def testFindRayWheelsBranch(self):
         repo = DEFAULT_REPO
         branch = "master"
         commit = "1234" * 10
-        version = "2.0.0.dev0"
+        version = "3.0.0.dev0"
 
         self._testFindRayWheelsCheckout(
             repo, branch, commit, version, search_str="master"
         )
 
-    @patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "2.0.0.dev0")
+    @patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "3.0.0.dev0")
     def testFindRayWheelsRepoBranch(self):
         repo = DEFAULT_REPO
         branch = "master"
         commit = "1234" * 10
-        version = "2.0.0.dev0"
+        version = "3.0.0.dev0"
 
         self._testFindRayWheelsCheckout(
             repo, branch, commit, version, search_str="ray-project:master"
         )
 
-    @patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "2.0.0.dev0")
+    @patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "3.0.0.dev0")
     def testFindRayWheelsPRRepoBranch(self):
         repo = "user"
         branch = "dev-branch"
         commit = "1234" * 10
-        version = "2.0.0.dev0"
+        version = "3.0.0.dev0"
 
         self._testFindRayWheelsCheckout(
             repo, branch, commit, version, search_str="user:dev-branch"
@@ -151,12 +151,12 @@ class WheelsFinderTest(unittest.TestCase):
         )
 
     @patch("time.sleep", lambda *a, **kw: None)
-    @patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "2.0.0.dev0")
+    @patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "3.0.0.dev0")
     def testFindAndWaitWheels(self):
         repo = DEFAULT_REPO
         branch = "master"
         commit = "1234" * 10
-        version = "2.0.0.dev0"
+        version = "3.0.0.dev0"
 
         class TrueAfter:
             def __init__(self, after: float):
@@ -181,15 +181,15 @@ class WheelsFinderTest(unittest.TestCase):
 
     def testMatchingRayWheelsURL(self):
         assert not is_wheels_url_matching_ray_verison(
-            f"http://some/location/{get_wheels_filename('2.0.0dev0', (3, 8))}", (3, 7)
+            f"http://some/location/{get_wheels_filename('3.0.0dev0', (3, 8))}", (3, 7)
         )
 
         assert not is_wheels_url_matching_ray_verison(
-            f"http://some/location/{get_wheels_filename('2.0.0dev0', (3, 7))}", (3, 8)
+            f"http://some/location/{get_wheels_filename('3.0.0dev0', (3, 7))}", (3, 8)
         )
 
         assert is_wheels_url_matching_ray_verison(
-            f"http://some/location/{get_wheels_filename('2.0.0dev0', (3, 7))}", (3, 7)
+            f"http://some/location/{get_wheels_filename('3.0.0dev0', (3, 7))}", (3, 7)
         )
 
     @patch("ray_release.wheels.resolve_url", lambda url: url)
@@ -197,10 +197,10 @@ class WheelsFinderTest(unittest.TestCase):
         # Do not rewrite if versions match
         assert (
             maybe_rewrite_wheels_url(
-                f"http://some/location/{get_wheels_filename('2.0.0dev0', (3, 7))}",
+                f"http://some/location/{get_wheels_filename('3.0.0dev0', (3, 7))}",
                 (3, 7),
             )
-            == f"http://some/location/{get_wheels_filename('2.0.0dev0', (3, 7))}"
+            == f"http://some/location/{get_wheels_filename('3.0.0dev0', (3, 7))}"
         )
 
         # Do not rewrite if version can't be parsed
@@ -212,10 +212,10 @@ class WheelsFinderTest(unittest.TestCase):
         # Rewrite when version can be parsed
         assert (
             maybe_rewrite_wheels_url(
-                f"http://some/location/{get_wheels_filename('2.0.0dev0', (3, 8))}",
+                f"http://some/location/{get_wheels_filename('3.0.0dev0', (3, 8))}",
                 (3, 7),
             )
-            == f"http://some/location/{get_wheels_filename('2.0.0dev0', (3, 7))}"
+            == f"http://some/location/{get_wheels_filename('3.0.0dev0', (3, 7))}"
         )
 
     def testWheelsSanityString(self):
