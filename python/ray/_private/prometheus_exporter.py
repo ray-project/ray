@@ -209,7 +209,7 @@ class Collector(object):
         Collect is invoked every time a prometheus.Gatherer is run
         for example when the HTTP endpoint is invoked by Prometheus.
         """
-        for v_name, view_data in self.view_name_to_data_map.items():
+        for v_name, view_data in self._view_name_to_data_map.copy().items():
             if v_name not in self.registered_views:
                 continue
             desc = self.registered_views[v_name]
