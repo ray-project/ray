@@ -402,6 +402,40 @@ Example:
   {"pip": ["torch", "ray[serve]"],
   "env_vars": {"A": "a", "B": "new", "C", "c"}}
 
+.. _runtime-env-faq:
+
+Frequently Asked Questions
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Are environments installed on every node?
+"""""""""""""""""""""""""""""""""""""""""
+
+If a runtime environment is specified in ``ray.init(runtime_env=...)``, then the environment will be installed on every node.  See :ref:`Per-Job <rte-per-job>` for more details.
+
+When is the environment installed?
+""""""""""""""""""""""""""""""""""
+
+When specified per-job, the environment is installed when you call ``ray.init()``.  
+When specified per-task or per-actor, the environment is installed when the task is invoked or the actor is instantiated (i.e. when you call ``my_task.remote()`` or ``my_actor.remote()``.)
+See :ref:`Per-Job <rte-per-job>` :ref:`Per-Task/Actor, within a job <rte-per-task-actor>` for more details.
+
+Where are the environments cached?
+""""""""""""""""""""""""""""""""""
+
+Any local files downloaded by the environments are cached at ``/tmp/ray/session_latest/runtime_resources``.
+
+
+
+How long does it take to install or to load from cache?
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+The install time usually mostly consists of the time it takes to run ``pip install`` or ``conda create`` / ``conda activate``, or to upload/download a ``working_dir``, depending on which ``runtime_env`` options you're using. 
+This could take seconds or minutes.  
+
+On the other hand, loading a runtime environment from the cache should be nearly as fast as the ordinary Ray worker startup time, which is on the order of a few seconds. A new Ray worker is started for every Ray actor or task that requires a new runtime environment.
+(Note that loading a cached ``conda`` environment could still be slow, since the ``conda activate`` command sometimes takes a few seconds.)
+
+
 
 .. _remote-uris:
 
@@ -484,6 +518,8 @@ Currently, three types of remote URIs are supported for hosting ``working_dir`` 
   - Example:
 
     - ``runtime_env = {"working_dir": "gs://example_bucket/example_file.zip"}``
+
+
 
 Hosting a Dependency on a Remote Git Provider: Step-by-Step Guide
 -----------------------------------------------------------------

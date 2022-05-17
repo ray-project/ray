@@ -23,7 +23,7 @@ preprocessor = StandardScaler(columns=columns_to_scale)
 # __air_trainer_start__
 from ray.ml.train.integrations.xgboost import XGBoostTrainer
 
-num_workers = 4
+num_workers = 2
 use_gpu = False
 # XGBoost specific params
 params = {

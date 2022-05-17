@@ -81,7 +81,6 @@ class OnesSource(Datasource):
         return read_tasks
 
 
-@pytest.mark.skip(reason="failing after #24523")
 @pytest.mark.parametrize("lazy_input", [True, False])
 def test_memory_release_pipeline(shutdown_only, lazy_input):
     context = DatasetContext.get_current()

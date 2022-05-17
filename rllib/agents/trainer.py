@@ -667,7 +667,7 @@ class Trainer(Trainable):
                     else:
                         step_results.update(self.evaluate())
                     # Collect the training results from the future.
-                    step_results.update(train_future.result())
+                    step_results.update(train_future.metrics())
             # Sequential: train (already done above), then eval.
             else:
                 step_results.update(self.evaluate())
