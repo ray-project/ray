@@ -23,7 +23,6 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE
 from ray.rllib.utils.typing import TrainerConfigDict
-from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
 
 logger = logging.getLogger(__name__)
 

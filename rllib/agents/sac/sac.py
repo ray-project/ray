@@ -94,8 +94,6 @@ DEFAULT_CONFIG = with_common_config({
         # The number of continuous environment steps to replay at once. This may
         # be set to greater than 1 to support recurrent models.
         "replay_sequence_length": 1,
-        # If True prioritized replay buffer will be used.
-        "prioritized_replay": False,
         "prioritized_replay_alpha": 0.6,
         # Beta parameter for sampling from prioritized replay buffer.
         "prioritized_replay_beta": 0.4,
