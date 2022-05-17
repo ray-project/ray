@@ -349,7 +349,7 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range_arrow(100) # doctest: +SKIP
+            >>> ds = ray.data.range_table(100) # doctest: +SKIP
             >>> # Add a new column equal to value * 2.
             >>> ds = ds.add_column( # doctest: +SKIP
             ...     "new_col", lambda df: df["value"] * 2)
@@ -1108,7 +1108,7 @@ class Dataset(Generic[T]):
             >>> import ray
             >>> from ray.data.aggregate import Max, Mean
             >>> ray.data.range(100).aggregate(Max()) # doctest: +SKIP
-            >>> ray.data.range_arrow(100).aggregate( # doctest: +SKIP
+            >>> ray.data.range_table(100).aggregate( # doctest: +SKIP
             ...    Max("value"), Mean("value")) # doctest: +SKIP
 
         Time complexity: O(dataset size / parallelism)
@@ -1141,7 +1141,7 @@ class Dataset(Generic[T]):
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     (i, i**2) # doctest: +SKIP
             ...     for i in range(100)]).sum(lambda x: x[1]) # doctest: +SKIP
-            >>> ray.data.range_arrow(100).sum("value") # doctest: +SKIP
+            >>> ray.data.range_table(100).sum("value") # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i, "B": i**2} # doctest: +SKIP
             ...     for i in range(100)]).sum(["A", "B"]) # doctest: +SKIP
@@ -1200,7 +1200,7 @@ class Dataset(Generic[T]):
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     (i, i**2) # doctest: +SKIP
             ...     for i in range(100)]).min(lambda x: x[1]) # doctest: +SKIP
-            >>> ray.data.range_arrow(100).min("value") # doctest: +SKIP
+            >>> ray.data.range_table(100).min("value") # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i, "B": i**2} # doctest: +SKIP
             ...     for i in range(100)]).min(["A", "B"]) # doctest: +SKIP
@@ -1259,7 +1259,7 @@ class Dataset(Generic[T]):
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     (i, i**2) # doctest: +SKIP
             ...     for i in range(100)]).max(lambda x: x[1]) # doctest: +SKIP
-            >>> ray.data.range_arrow(100).max("value") # doctest: +SKIP
+            >>> ray.data.range_table(100).max("value") # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i, "B": i**2} # doctest: +SKIP
             ...     for i in range(100)]).max(["A", "B"]) # doctest: +SKIP
@@ -1318,7 +1318,7 @@ class Dataset(Generic[T]):
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     (i, i**2) # doctest: +SKIP
             ...     for i in range(100)]).mean(lambda x: x[1]) # doctest: +SKIP
-            >>> ray.data.range_arrow(100).mean("value") # doctest: +SKIP
+            >>> ray.data.range_table(100).mean("value") # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i, "B": i**2} # doctest: +SKIP
             ...     for i in range(100)]).mean(["A", "B"]) # doctest: +SKIP
@@ -1380,7 +1380,7 @@ class Dataset(Generic[T]):
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     (i, i**2) # doctest: +SKIP
             ...     for i in range(100)]).std(lambda x: x[1]) # doctest: +SKIP
-            >>> ray.data.range_arrow(100).std("value", ddof=0) # doctest: +SKIP
+            >>> ray.data.range_table(100).std("value", ddof=0) # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i, "B": i**2} # doctest: +SKIP
             ...     for i in range(100)]).std(["A", "B"]) # doctest: +SKIP
