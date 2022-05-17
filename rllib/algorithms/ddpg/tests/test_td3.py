@@ -2,7 +2,7 @@ import numpy as np
 import unittest
 
 import ray
-import ray.rllib.agents.ddpg.td3 as td3
+import ray.rllib.algorithms.ddpg.td3 as td3
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import (
     check,

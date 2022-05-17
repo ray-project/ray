@@ -2,7 +2,7 @@ import logging
 from typing import List, Optional, Type
 
 from ray.rllib.algorithms.dqn.simple_q import SimpleQConfig, SimpleQTrainer
-from ray.rllib.agents.ddpg.ddpg_tf_policy import DDPGTFPolicy
+from ray.rllib.algorithms.ddpg.ddpg_tf_policy import DDPGTFPolicy
 from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
@@ -17,7 +17,7 @@ class DDPGConfig(SimpleQConfig):
     """Defines a configuration class from which a DDPGTrainer can be built.
 
     Example:
-        >>> from ray.rllib.agents.ddpg.ddpg import DDPGConfig
+        >>> from ray.rllib.algorithms.ddpg.ddpg import DDPGConfig
         >>> config = DDPGConfig().training(lr=0.01).resources(num_gpus=1)
         >>> print(config.to_dict())
         >>> # Build a Trainer object from the config and run one training iteration.
@@ -25,7 +25,7 @@ class DDPGConfig(SimpleQConfig):
         >>> trainer.train()
 
     Example:
-        >>> from ray.rllib.agents.ddpg.ddpg import DDPGConfig
+        >>> from ray.rllib.algorithms.ddpg.ddpg import DDPGConfig
         >>> from ray import tune
         >>> config = DDPGConfig()
         >>> # Print out some default values.
@@ -264,7 +264,7 @@ class DDPGTrainer(SimpleQTrainer):
     @override(SimpleQTrainer)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
-            from ray.rllib.agents.ddpg.ddpg_torch_policy import DDPGTorchPolicy
+            from ray.rllib.algorithms.ddpg.ddpg_torch_policy import DDPGTorchPolicy
 
             return DDPGTorchPolicy
         else:
@@ -296,14 +296,14 @@ class DDPGTrainer(SimpleQTrainer):
                 config["batch_mode"] = "complete_episodes"
 
 
-# Deprecated: Use ray.rllib.agents.ddpg.DDPGConfig instead!
+# Deprecated: Use ray.rllib.algorithms.ddpg.DDPGConfig instead!
 class _deprecated_default_config(dict):
     def __init__(self):
         super().__init__(DDPGConfig().to_dict())
 
     @Deprecated(
-        old="ray.rllib.agents.ddpg.ddpg::DEFAULT_CONFIG",
-        new="ray.rllib.agents.ddpg.ddpg.DDPGConfig(...)",
+        old="ray.rllib.algorithms.ddpg.ddpg::DEFAULT_CONFIG",
+        new="ray.rllib.algorithms.ddpg.ddpg.DDPGConfig(...)",
         error=False,
     )
     def __getitem__(self, item):

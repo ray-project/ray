@@ -3,7 +3,7 @@ import gym
 from typing import Dict, Tuple
 
 import ray
-from ray.rllib.agents.ddpg.ddpg_tf_policy import (
+from ray.rllib.algorithms.ddpg.ddpg_tf_policy import (
     build_ddpg_models,
     get_distribution_inputs_and_class,
     validate_spaces,
@@ -292,7 +292,7 @@ DDPGTorchPolicy = build_policy_class(
     name="DDPGTorchPolicy",
     framework="torch",
     loss_fn=ddpg_actor_critic_loss,
-    get_default_config=lambda: ray.rllib.agents.ddpg.ddpg.DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.algorithms.ddpg.ddpg.DEFAULT_CONFIG,
     stats_fn=build_ddpg_stats,
     postprocess_fn=postprocess_nstep_and_prio,
     extra_grad_process_fn=apply_grad_clipping,

@@ -7,9 +7,9 @@ from typing import Dict, Tuple, List
 
 import ray
 import ray.experimental.tf_utils
-from ray.rllib.agents.ddpg.ddpg_tf_model import DDPGTFModel
-from ray.rllib.agents.ddpg.ddpg_torch_model import DDPGTorchModel
-from ray.rllib.agents.ddpg.noop_model import NoopModel, TorchNoopModel
+from ray.rllib.algorithms.ddpg.ddpg_tf_model import DDPGTFModel
+from ray.rllib.algorithms.ddpg.ddpg_torch_model import DDPGTorchModel
+from ray.rllib.algorithms.ddpg.noop_model import NoopModel, TorchNoopModel
 from ray.rllib.algorithms.dqn.dqn_tf_policy import postprocess_nstep_and_prio, PRIO_WEIGHTS
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.action_dist import ActionDistribution
@@ -490,7 +490,7 @@ def validate_spaces(
 
 DDPGTFPolicy = build_tf_policy(
     name="DDPGTFPolicy",
-    get_default_config=lambda: ray.rllib.agents.ddpg.ddpg.DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.algorithms.ddpg.ddpg.DEFAULT_CONFIG,
     make_model=build_ddpg_models,
     action_distribution_fn=get_distribution_inputs_and_class,
     loss_fn=ddpg_actor_critic_loss,

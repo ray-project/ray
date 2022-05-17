@@ -4,8 +4,8 @@ import unittest
 from tempfile import TemporaryDirectory
 
 import ray
-import ray.rllib.agents.ddpg as ddpg
-from ray.rllib.agents.ddpg.ddpg_torch_policy import ddpg_actor_critic_loss as loss_torch
+import ray.rllib.algorithms.ddpg as ddpg
+from ray.rllib.algorithms.ddpg.ddpg_torch_policy import ddpg_actor_critic_loss as loss_torch
 from ray.rllib.agents.sac.tests.test_sac import SimpleEnv
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch

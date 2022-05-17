@@ -663,7 +663,7 @@ py_test(
     name = "test_apex_ddpg",
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
-    srcs = ["agents/ddpg/tests/test_apex_ddpg.py"]
+    srcs = ["algorithms/ddpg/tests/test_apex_ddpg.py"]
 )
 
 # ARS
@@ -695,7 +695,7 @@ py_test(
     name = "test_ddpg",
     tags = ["team:ml", "trainers_dir"],
     size = "large",
-    srcs = ["agents/ddpg/tests/test_ddpg.py"]
+    srcs = ["algorithms/ddpg/tests/test_ddpg.py"]
 )
 
 # DQNTrainer
@@ -857,7 +857,7 @@ py_test(
     name = "test_td3",
     tags = ["team:ml", "trainers_dir"],
     size = "large",
-    srcs = ["agents/ddpg/tests/test_td3.py"]
+    srcs = ["algorithms/ddpg/tests/test_td3.py"]
 )
 
 # --------------------------------------------------------------------
