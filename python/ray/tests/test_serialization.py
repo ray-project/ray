@@ -2,14 +2,10 @@
 import collections
 import io
 import logging
-import os
 import re
 import string
 import sys
 import weakref
-import yaml
-import tempfile
-import pathlib
 
 import numpy as np
 from numpy import log
@@ -682,39 +678,6 @@ def test_serialization_before_init(shutdown_only):
     # Initialize Ray later.
     ray.init()
     ray.get(ray.put(A(1)))  # success!
-
-def test_restricted_loads(shutdown_only):
-    config_path = "/tmp/test.yaml"
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        whitelist_config = {
-            "pickle_whitelist": {
-                "module": {
-                    "numpy.core.numeric": ["*"],
-                    "numpy": ["dtype"],
-                },
-                "package": ["pathlib"]
-            }
-        }
-        yaml.safe_dump(whitelist_config, open(config_path, "wt"))
-        ray.ray_constants.RAY_PICKLE_WHITELIST_CONFIG_PATH = config_path
-        ray.serialization.patch_pickle_for_security()
-        ray.init()
-        data = np.zeros((10, 10))
-        ref1 = ray.put(data)
-        ray.get(ref1)
-
-        ref2 = ray.put([ref1])
-        ray.get(ref2)
-
-        ref3 = ray.put([pathlib.Path("/tmp/test")])
-        ray.get(ref3)
-
-        class WrongClass:
-            pass
-        ref4 = ray.put(WrongClass())
-        with pytest.raises(ray.exceptions.RaySystemError) as error:
-            ray.get(ref4)
-        assert isinstance(error.value.args[0], ray.cloudpickle.UnpicklingError)
 
 
 if __name__ == "__main__":
