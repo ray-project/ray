@@ -442,7 +442,7 @@ def render_progress_bar(tracker, object_refs):
     from tqdm import tqdm
 
     # At this time, every task should be submitted.
-    total, finished = ray.get(tracker.result.remote())
+    total, finished = ray.get(tracker.metrics.remote())
     reported_finished_so_far = 0
     pb_bar = tqdm(total=total, position=0)
     pb_bar.set_description("")
@@ -450,7 +450,7 @@ def render_progress_bar(tracker, object_refs):
     ready_refs = []
 
     while finished < total:
-        submitted, finished = ray.get(tracker.result.remote())
+        submitted, finished = ray.get(tracker.metrics.remote())
         pb_bar.update(finished - reported_finished_so_far)
         reported_finished_so_far = finished
         ready_refs, _ = ray.wait(
@@ -462,7 +462,7 @@ def render_progress_bar(tracker, object_refs):
 
         time.sleep(0.1)
     pb_bar.close()
-    submitted, finished = ray.get(tracker.result.remote())
+    submitted, finished = ray.get(tracker.metrics.remote())
     if submitted != finished:
         print("Completed. There was state inconsistency.")
     from pprint import pprint

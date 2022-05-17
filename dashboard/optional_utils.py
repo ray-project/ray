@@ -208,7 +208,7 @@ def aiohttp_cache(
 
                 def _update_cache(task):
                     try:
-                        response = task.result()
+                        response = task.metrics()
                     except Exception:
                         response = rest_response(
                             success=False, message=traceback.format_exc()

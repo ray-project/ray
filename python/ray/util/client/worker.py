@@ -216,7 +216,7 @@ class Worker:
             try:
                 # Let gRPC wait for us to see if the channel becomes ready.
                 # If it throws, we couldn't connect.
-                grpc.channel_ready_future(self.channel).result(timeout=timeout)
+                grpc.channel_ready_future(self.channel).metrics(timeout=timeout)
                 # The HTTP2 channel is ready. Wrap the channel with the
                 # RayletDriverStub, allowing for unary requests.
                 self.server = ray_client_pb2_grpc.RayletDriverStub(self.channel)

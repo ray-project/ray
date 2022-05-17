@@ -64,7 +64,7 @@ class MinimalClusterManager(ClusterManager):
                             config_json=self.cluster_env,
                         )
                     )
-                    self.cluster_env_id = result.result.id
+                    self.cluster_env_id = result.metrics.id
                 except Exception as e:
                     if _repeat:
                         logger.warning(
@@ -120,7 +120,7 @@ class MinimalClusterManager(ClusterManager):
                     cluster_environment_id=self.cluster_env_id, config_json=config_json
                 )
             )
-            build_id = result.result.id
+            build_id = result.metrics.id
 
             logger.info(
                 f"Link to cluster env build: "
@@ -150,7 +150,7 @@ class MinimalClusterManager(ClusterManager):
                 next_report = next_report + REPORT_S
 
             result = self.sdk.get_build(build_id)
-            build = result.result
+            build = result.metrics
 
             if build.status == "failed":
                 raise ClusterEnvBuildError(
@@ -185,7 +185,7 @@ class MinimalClusterManager(ClusterManager):
         assert self.cluster_env_build_id
 
         result = self.sdk.get_cluster_environment_build(self.cluster_env_build_id)
-        self.cluster_env = result.result.config_json
+        self.cluster_env = result.metrics.config_json
 
     def create_cluster_compute(self, _repeat: bool = True):
         assert self.cluster_compute_id is None
@@ -236,7 +236,7 @@ class MinimalClusterManager(ClusterManager):
                             config=self.cluster_compute,
                         )
                     )
-                    self.cluster_compute_id = result.result.id
+                    self.cluster_compute_id = result.metrics.id
                 except Exception as e:
                     if _repeat:
                         logger.warning(

@@ -246,7 +246,7 @@ class _SyncSubscriber(_SubscriberBase):
                 try:
                     # Use 1s timeout to check for subscriber closing
                     # periodically.
-                    fut.result(timeout=1)
+                    fut.metrics(timeout=1)
                     break
                 except grpc.FutureTimeoutError:
                     # Subscriber has closed. Cancel inflight request and
@@ -262,8 +262,8 @@ class _SyncSubscriber(_SubscriberBase):
                     raise
 
             if fut.done():
-                self._last_batch_size = len(fut.result().pub_messages)
-                for msg in fut.result().pub_messages:
+                self._last_batch_size = len(fut.metrics().pub_messages)
+                for msg in fut.metrics().pub_messages:
                     if msg.channel_type != self._channel:
                         logger.warn(f"Ignoring message from unsubscribed channel {msg}")
                         continue

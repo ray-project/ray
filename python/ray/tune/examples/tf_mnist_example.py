@@ -109,10 +109,10 @@ class MNISTTrainable(tune.Trainable):
         # It is important to return tf.Tensors as numpy objects.
         return {
             "epoch": self.iteration,
-            "loss": self.train_loss.result().numpy(),
-            "accuracy": self.train_accuracy.result().numpy() * 100,
-            "test_loss": self.test_loss.result().numpy(),
-            "mean_accuracy": self.test_accuracy.result().numpy() * 100,
+            "loss": self.train_loss.metrics().numpy(),
+            "accuracy": self.train_accuracy.metrics().numpy() * 100,
+            "test_loss": self.test_loss.metrics().numpy(),
+            "mean_accuracy": self.test_accuracy.metrics().numpy() * 100,
         }
 
 
