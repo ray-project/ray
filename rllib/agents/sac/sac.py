@@ -144,7 +144,7 @@ DEFAULT_CONFIG = with_common_config({
     "rollout_fragment_length": 1,
     # Size of a batched sampled from replay buffer for training.
     "train_batch_size": 256,
-    # Update the target network every `target_network_update_freq` steps.
+    # Update the target network every `target_network_update_freq` sample steps.
     "target_network_update_freq": 0,
 
     # === Parallelism ===

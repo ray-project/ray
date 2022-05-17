@@ -2658,6 +2658,14 @@ void CoreWorker::HandleDirectActorCallArgWaitComplete(
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
+void CoreWorker::HandleRayletNotifyGCSRestart(
+    const rpc::RayletNotifyGCSRestartRequest &request,
+    rpc::RayletNotifyGCSRestartReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  gcs_client_->AsyncResubscribe();
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
 void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &request,
                                        rpc::GetObjectStatusReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {

@@ -110,6 +110,7 @@ APEX_DEFAULT_CONFIG = merge_dicts(
 
         "train_batch_size": 512,
         "rollout_fragment_length": 50,
+        # Update the target network every `target_network_update_freq` sample timesteps.
         "target_network_update_freq": 500000,
         # Minimum env sampling timesteps to accumulate within a single `train()` call.
         # This value does not affect learning, only the number of times
@@ -422,13 +423,9 @@ class ApexTrainer(DQNTrainer):
             except queue.Full:
                 break
 
-    def update_replay_sample_priority(self) -> int:
+    def update_replay_sample_priority(self) -> None:
         """Update the priorities of the sample batches with new priorities that are
         computed by the learner thread.
-
-        Returns:
-            The number of samples trained by the learner thread since the last
-            training iteration.
         """
         num_samples_trained_this_itr = 0
         for _ in range(self.learner_thread.outqueue.qsize()):

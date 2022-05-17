@@ -153,7 +153,7 @@ class SlateQConfig(TrainerConfig):
             fcnet_hiddens_per_candidate: Dense-layer setup for each the n (document)
                 candidate Q-network stacks.
             target_network_update_freq: Update the target network every
-                `target_network_update_freq` steps.
+                `target_network_update_freq` sample steps.
             tau: Update the target by \tau * policy + (1-\tau) * target_policy.
             use_huber: If True, use huber loss instead of squared loss for critic
                 network. Conventionally, no need to clip gradients if using a huber

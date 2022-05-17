@@ -18,7 +18,6 @@ def report(msg: str) -> None:
 
 
 if __name__ == "__main__":
-    workflow.init()
     r1 = hello.bind("Kristof")
     r2 = report.bind(r1)
     workflow.create(r2).run()
