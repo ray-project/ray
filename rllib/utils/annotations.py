@@ -118,6 +118,7 @@ def OverrideToImplementCustomLogic(obj):
         ...     # ... w/o calling the corresponding `super().loss()` method.
         ...     ... # doctest: +SKIP
     """
+    obj.__is_overriden__ = False
     return obj
 
 
@@ -140,7 +141,16 @@ def OverrideToImplementCustomLogic_CallToSuperRecommended(obj):
         ...     super().setup(config) # doctest: +SKIP
         ...     # ... or here (after having called super()'s setup method.
     """
+    obj.__is_overriden__ = False
     return obj
+
+
+def is_overridden(obj):
+    """Check whether a function has been overridden.
+    Note, this only works for API calls decorated with OverrideToImplementCustomLogic
+    or OverrideToImplementCustomLogic_CallToSuperRecommended.
+    """
+    return getattr(obj, "__is_overriden__", True)
 
 
 # Backward compatibility.
