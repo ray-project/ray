@@ -689,7 +689,7 @@ build() {
 }
 
 test_minimal() {
-  ./ci/env/install-minimal.sh $1
+  ./ci/env/install-minimal.sh "$1"
   ./ci/env/env_info.sh
   python ./ci/env/check_minimal_install.py
   BAZEL_EXPORT_OPTIONS="$(./ci/run/bazel_export_options)"

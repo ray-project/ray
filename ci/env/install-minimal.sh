@@ -1,23 +1,23 @@
 #!/usr/bin/env bash
 
 # Python version can be specified as 3.7, 3.8, 3.9, etc..
-if [ -z $1 ]; then
+if [ -z "$1" ]; then
     PYTHON_VERSION=${PYTHON-3.7}
 else
-    if [ $1 = "3.6" ]; then
+    if [ "$1" = "3.6" ]; then
         PYTHON_VERSION=${PYTHON-3.6}
-    elif [ $1 = "3.7" ]; then
+    elif [ "$1" = "3.7" ]; then
         PYTHON_VERSION=${PYTHON-3.7}
-    elif [ $1 = "3.8" ]; then
+    elif [ "$1" = "3.8" ]; then
         PYTHON_VERSION=${PYTHON-3.8}
-    elif [ $1 = "3.9" ]; then
+    elif [ "$1" = "3.9" ]; then
         PYTHON_VERSION=${PYTHON-3.9}
     else
         echo "Unsupported Python version."
         exit 1
     fi
 fi
-echo "Python version is " ${PYTHON_VERSION}
+echo "Python version is ${PYTHON_VERSION}"
 
 ROOT_DIR=$(builtin cd "$(dirname "${BASH_SOURCE:-$0}")" || exit; pwd)
 WORKSPACE_DIR="${ROOT_DIR}/../.."
