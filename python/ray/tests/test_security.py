@@ -54,14 +54,14 @@ def test_remote_function_whitelist(shutdown_only, enable_whitelist, valid_whitel
 
 def test_restricted_loads(shutdown_only):
     config_path = "/tmp/test.yaml"
-    with tempfile.TemporaryDirectory() as tmp_dir:
+    with tempfile.TemporaryDirectory() as _:
         whitelist_config = {
             "pickle_whitelist": {
                 "module": {
                     "numpy.core.numeric": ["*"],
                     "numpy": ["dtype"],
                 },
-                "package": ["pathlib"]
+                "package": ["pathlib"],
             }
         }
         yaml.safe_dump(whitelist_config, open(config_path, "wt"))
@@ -80,6 +80,7 @@ def test_restricted_loads(shutdown_only):
 
         class WrongClass:
             pass
+
         ref4 = ray.put(WrongClass())
         with pytest.raises(ray.exceptions.RaySystemError) as error:
             ray.get(ref4)

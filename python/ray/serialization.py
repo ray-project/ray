@@ -1,14 +1,12 @@
 import logging
 import threading
 import traceback
-import yaml
-import io
 
 import ray.cloudpickle as pickle
 from ray import ray_constants
 import ray._private.utils
 from ray._private.gcs_utils import ErrorType
-import ray._private.security # noqa
+import ray._private.security  # noqa
 from ray.core.generated.common_pb2 import RayErrorInfo
 from ray.exceptions import (
     RayError,
@@ -44,6 +42,7 @@ from ray._raylet import (
 from ray import serialization_addons
 
 logger = logging.getLogger(__name__)
+
 
 class DeserializationError(Exception):
     pass
