@@ -4,14 +4,14 @@ from typing import Dict, List, Tuple
 
 import gym
 import ray
-from ray.rllib.agents.dqn.dqn_tf_policy import (
+from ray.rllib.algorithms.dqn.dqn_tf_policy import (
     PRIO_WEIGHTS,
     Q_SCOPE,
     Q_TARGET_SCOPE,
     postprocess_nstep_and_prio,
 )
-from ray.rllib.agents.dqn.dqn_torch_model import DQNTorchModel
-from ray.rllib.agents.dqn.simple_q_torch_policy import TargetNetworkMixin
+from ray.rllib.algorithms.dqn.dqn_torch_model import DQNTorchModel
+from ray.rllib.algorithms.dqn.simple_q_torch_policy import TargetNetworkMixin
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import (
@@ -469,7 +469,7 @@ DQNTorchPolicy = build_policy_class(
     name="DQNTorchPolicy",
     framework="torch",
     loss_fn=build_q_losses,
-    get_default_config=lambda: ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.algorithms.dqn.dqn.DEFAULT_CONFIG,
     make_model_and_action_dist=build_q_model_and_distribution,
     action_distribution_fn=get_distribution_inputs_and_class,
     stats_fn=build_q_stats,

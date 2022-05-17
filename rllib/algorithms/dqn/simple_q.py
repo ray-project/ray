@@ -12,8 +12,8 @@ See `simple_q_[tf|torch]_policy.py` for the definition of the policy loss.
 import logging
 from typing import List, Optional, Type, Union
 
-from ray.rllib.agents.dqn.simple_q_tf_policy import SimpleQTFPolicy
-from ray.rllib.agents.dqn.simple_q_torch_policy import SimpleQTorchPolicy
+from ray.rllib.algorithms.dqn.simple_q_tf_policy import SimpleQTFPolicy
+from ray.rllib.algorithms.dqn.simple_q_torch_policy import SimpleQTorchPolicy
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.utils.metrics import SYNCH_WORKER_WEIGHTS_TIMER
@@ -50,7 +50,7 @@ class SimpleQConfig(TrainerConfig):
     """Defines a configuration class from which a SimpleQTrainer can be built.
 
     Example:
-        >>> from ray.rllib.agents.dqn import SimpleQConfig
+        >>> from ray.rllib.algorithms.dqn import SimpleQConfig
         >>> config = SimpleQConfig()
         >>> print(config.replay_buffer_config)
         >>> replay_config = config.replay_buffer_config.update(
@@ -64,7 +64,7 @@ class SimpleQConfig(TrainerConfig):
         ...       .rollouts(num_rollout_workers=3)
 
     Example:
-        >>> from ray.rllib.agents.dqn import SimpleQConfig
+        >>> from ray.rllib.algorithms.dqn import SimpleQConfig
         >>> from ray import tune
         >>> config = SimpleQConfig()
         >>> config.training(adam_epsilon=tune.grid_search([1e-8, 5e-8, 1e-7])
@@ -76,7 +76,7 @@ class SimpleQConfig(TrainerConfig):
         >>> )
 
     Example:
-        >>> from ray.rllib.agents.dqn import SimpleQConfig
+        >>> from ray.rllib.algorithms.dqn import SimpleQConfig
         >>> config = SimpleQConfig()
         >>> print(config.exploration_config)
         >>> explore_config = config.exploration_config.update(
@@ -90,7 +90,7 @@ class SimpleQConfig(TrainerConfig):
         >>>                         .training(learning_starts=200)
 
     Example:
-        >>> from ray.rllib.agents.dqn import SimpleQConfig
+        >>> from ray.rllib.algorithms.dqn import SimpleQConfig
         >>> config = SimpleQConfig()
         >>> print(config.exploration_config)
         >>> explore_config = config.exploration_config.update(
@@ -391,14 +391,14 @@ class SimpleQTrainer(Trainer):
         return train_results
 
 
-# Deprecated: Use ray.rllib.agents.dqn.simple_q.SimpleQConfig instead!
+# Deprecated: Use ray.rllib.algorithms.dqn.simple_q.SimpleQConfig instead!
 class _deprecated_default_config(dict):
     def __init__(self):
         super().__init__(SimpleQConfig().to_dict())
 
     @Deprecated(
-        old="ray.rllib.agents.dqn.simple_q.DEFAULT_CONFIG",
-        new="ray.rllib.agents.dqn.simple_q.SimpleQConfig(...)",
+        old="ray.rllib.algorithms.dqn.simple_q.DEFAULT_CONFIG",
+        new="ray.rllib.algorithms.dqn.simple_q.SimpleQConfig(...)",
         error=False,
     )
     def __getitem__(self, item):

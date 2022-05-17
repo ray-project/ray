@@ -2,9 +2,9 @@ import numpy as np
 import unittest
 
 import ray
-from ray.rllib.agents import dqn
-from ray.rllib.agents.dqn.simple_q_tf_policy import build_q_losses as loss_tf
-from ray.rllib.agents.dqn.simple_q_torch_policy import build_q_losses as loss_torch
+from ray.rllib.algorithms import dqn
+from ray.rllib.algorithms.dqn.simple_q_tf_policy import build_q_losses as loss_tf
+from ray.rllib.algorithms.dqn.simple_q_torch_policy import build_q_losses as loss_torch
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.numpy import fc, one_hot, huber_loss

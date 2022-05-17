@@ -703,7 +703,7 @@ py_test(
     name = "test_dqn",
     tags = ["team:ml", "trainers_dir"],
     size = "large",
-    srcs = ["agents/dqn/tests/test_dqn.py"]
+    srcs = ["algorithms/dqn/tests/test_dqn.py"]
 )
 
 # Dreamer
@@ -841,7 +841,7 @@ py_test(
     name = "test_simple_q",
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
-    srcs = ["agents/dqn/tests/test_simple_q.py"]
+    srcs = ["algorithms/dqn/tests/test_simple_q.py"]
 )
 
 # SlateQTrainer

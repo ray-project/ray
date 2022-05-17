@@ -291,7 +291,7 @@ Tuned examples: `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rll
 Deep Q Networks (DQN, Rainbow, Parametric DQN)
 ----------------------------------------------
 |pytorch| |tensorflow|
-`[paper] <https://arxiv.org/abs/1312.5602>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/dqn/dqn.py>`__
+`[paper] <https://arxiv.org/abs/1312.5602>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/dqn/dqn.py>`__
 DQN can be scaled by increasing the number of workers or using Ape-X. Memory usage is reduced by compressing samples in the replay buffer with LZ4. All of the DQN improvements evaluated in `Rainbow <https://arxiv.org/abs/1710.02298>`__ are available, though not all are enabled by default. See also how to use `parametric-actions in DQN <rllib-models.html#variable-length-parametric-action-spaces>`__.
 
 .. figure:: images/dqn-arch.svg
@@ -326,7 +326,7 @@ SpaceInvaders  650                       1001                           1025    
 
 **DQN-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/agents/dqn/dqn.py
+.. literalinclude:: ../../../rllib/algorithms/dqn/dqn.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__

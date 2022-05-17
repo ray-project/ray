@@ -51,13 +51,13 @@ def _import_ars():
 
 
 def _import_bandit_lints():
-    from ray.rllib.agents.bandit.bandit import BanditLinTSTrainer
+    from ray.rllib.algorithms.bandit.bandit import BanditLinTSTrainer
 
     return BanditLinTSTrainer, BanditLinTSTrainer.get_default_config()
 
 
 def _import_bandit_linucb():
-    from ray.rllib.agents.bandit.bandit import BanditLinUCBTrainer
+    from ray.rllib.algorithms.bandit.bandit import BanditLinUCBTrainer
 
     return BanditLinUCBTrainer, BanditLinUCBTrainer.get_default_config()
 
@@ -87,7 +87,7 @@ def _import_ddppo():
 
 
 def _import_dqn():
-    from ray.rllib.agents import dqn
+    from ray.rllib.algorithms import dqn
 
     return dqn.DQNTrainer, dqn.DEFAULT_CONFIG
 
@@ -135,7 +135,7 @@ def _import_mbmpo():
 
 
 def _import_pg():
-    from ray.rllib.agents import pg
+    from ray.rllib.algorithms import pg
 
     return pg.PGTrainer, pg.DEFAULT_CONFIG
 
@@ -171,7 +171,7 @@ def _import_rnnsac():
 
 
 def _import_simple_q():
-    from ray.rllib.agents import dqn
+    from ray.rllib.algorithms import dqn
 
     return dqn.SimpleQTrainer, dqn.simple_q.DEFAULT_CONFIG
 

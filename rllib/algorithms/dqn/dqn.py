@@ -12,9 +12,9 @@ https://docs.ray.io/en/master/rllib-algorithms.html#deep-q-networks-dqn-rainbow-
 import logging
 from typing import List, Optional, Type, Callable
 
-from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
-from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
-from ray.rllib.agents.dqn.simple_q import (
+from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
+from ray.rllib.algorithms.dqn.dqn_torch_policy import DQNTorchPolicy
+from ray.rllib.algorithms.dqn.simple_q import (
     SimpleQConfig,
     SimpleQTrainer,
 )
@@ -55,7 +55,7 @@ class DQNConfig(SimpleQConfig):
     """Defines a DQNTrainer configuration class from which a DQNTrainer can be built.
 
     Example:
-        >>> from ray.rllib.agents.dqn.dqn import DQNConfig
+        >>> from ray.rllib.algorithms.dqn.dqn import DQNConfig
         >>> config = DQNConfig()
         >>> print(config.replay_buffer_config)
         >>> replay_config = config.replay_buffer_config.update(
@@ -75,7 +75,7 @@ class DQNConfig(SimpleQConfig):
         >>>     trainer.train()
 
     Example:
-        >>> from ray.rllib.agents.dqn.dqn import DQNConfig
+        >>> from ray.rllib.algorithms.dqn.dqn import DQNConfig
         >>> from ray import tune
         >>> config = DQNConfig()
         >>> config.training(num_atoms=tune.grid_search(list(range(1,11)))
@@ -87,7 +87,7 @@ class DQNConfig(SimpleQConfig):
         >>> )
 
     Example:
-        >>> from ray.rllib.agents.dqn.dqn import DQNConfig
+        >>> from ray.rllib.algorithms.dqn.dqn import DQNConfig
         >>> config = DQNConfig()
         >>> print(config.exploration_config)
         >>> explore_config = config.exploration_config.update(
@@ -101,7 +101,7 @@ class DQNConfig(SimpleQConfig):
         >>>       .exploration(exploration_config=explore_config)
 
     Example:
-        >>> from ray.rllib.agents.dqn.dqn import DQNConfig
+        >>> from ray.rllib.algorithms.dqn.dqn import DQNConfig
         >>> config = DQNConfig()
         >>> print(config.exploration_config)
         >>> explore_config = config.exploration_config.update(
@@ -284,14 +284,14 @@ class DQNConfig(SimpleQConfig):
             self.replay_buffer_config = replay_buffer_config
 
 
-# Deprecated: Use ray.rllib.agents.dqn.DQNConfig instead!
+# Deprecated: Use ray.rllib.algorithms.dqn.DQNConfig instead!
 class _deprecated_default_config(dict):
     def __init__(self):
         super().__init__(DQNConfig().to_dict())
 
     @Deprecated(
-        old="ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG",
-        new="ray.rllib.agents.dqn.dqn.DQNConfig(...)",
+        old="ray.rllib.algorithms.dqn.dqn.DEFAULT_CONFIG",
+        new="ray.rllib.algorithms.dqn.dqn.DQNConfig(...)",
         error=False,
     )
     def __getitem__(self, item):
