@@ -254,7 +254,7 @@ class _RandomAccessWorker:
         if i is None:
             return None
         acc = BlockAccessor.for_block(block)
-        return acc._create_table_row(acc.slice(i, i + 1, copy=True))
+        return acc._get_row(i, copy=True)
 
 
 def _binary_search_find(column, x):

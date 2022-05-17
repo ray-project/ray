@@ -16,7 +16,7 @@ from ray.data.block import (
 )
 from ray.data.context import DatasetContext
 from ray.data.impl.arrow_block import ArrowRow
-from ray.data.impl.table_block import TENSOR_COL_NAME
+from ray.data.impl.table_block import VALUE_COL_NAME
 from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.impl.util import _check_pyarrow_version
 from ray.util.annotations import DeveloperAPI
@@ -203,7 +203,7 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
                         tuple(range(1, 1 + len(tensor_shape))),
                     )
                 )
-                return pa.Table.from_pydict({TENSOR_COL_NAME: tensor})
+                return pa.Table.from_pydict({VALUE_COL_NAME: tensor})
             else:
                 return list(builtins.range(start, start + count))
 
@@ -226,7 +226,7 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
                         np.arange(0, 10), tuple(range(1, 1 + len(tensor_shape)))
                     )
                 )
-                schema = pa.Table.from_pydict({TENSOR_COL_NAME: tensor}).schema
+                schema = pa.Table.from_pydict({VALUE_COL_NAME: tensor}).schema
             elif block_format == "list":
                 schema = int
             else:

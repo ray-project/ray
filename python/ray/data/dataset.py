@@ -68,7 +68,7 @@ from ray.data.datasource.file_based_datasource import (
 from ray.data.row import TableRow
 from ray.data.aggregate import AggregateFn, Sum, Max, Min, Mean, Std
 from ray.data.random_access_dataset import RandomAccessDataset
-from ray.data.impl.table_block import TENSOR_COL_NAME
+from ray.data.impl.table_block import VALUE_COL_NAME
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.block_batching import batch_blocks, BatchType
 from ray.data.impl.plan import ExecutionPlan, OneToOneStage, AllToAllStage
@@ -275,9 +275,9 @@ class Dataset(Generic[T]):
             compute: The compute strategy, either "tasks" (default) to use Ray
                 tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
             batch_format: Specify "native" to use the native block format (promotes
-                tabular Arrow to Pandas), "pandas" to select ``pandas.DataFrame``,
-                "numpy" to select ``numpy.ndarray``, or "pyarrow" to select
-                ``pyarrow.Table``.
+                tables to Pandas and tensors to NumPy), "pandas" to select
+                ``pandas.DataFrame``, "numpy" to select ``numpy.ndarray``,
+                or "pyarrow" to select `pyarrow.Table``.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
@@ -306,15 +306,7 @@ class Dataset(Generic[T]):
                 # bug where we include the entire base view on serialization.
                 view = block.slice(start, end, copy=batch_size is not None)
                 if batch_format == "native":
-                    if isinstance(view, pa.Table):
-                        if view.column_names == [TENSOR_COL_NAME]:
-                            view = BlockAccessor.for_block(view).to_numpy()
-                        else:
-                            # Always promote non-tensor Arrow blocks to pandas for
-                            # consistency.
-                            view = BlockAccessor.for_block(view).to_pandas()
-                    elif isinstance(view, bytes):
-                        view = BlockAccessor.for_block(view).to_pandas()
+                    view = BlockAccessor.for_block(view).to_native()
                 elif batch_format == "pandas":
                     view = BlockAccessor.for_block(view).to_pandas()
                 elif batch_format == "pyarrow":
@@ -2050,7 +2042,7 @@ class Dataset(Generic[T]):
         self,
         path: str,
         *,
-        column: str = TENSOR_COL_NAME,
+        column: str = VALUE_COL_NAME,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
@@ -2080,7 +2072,7 @@ class Dataset(Generic[T]):
             column: The name of the table column that contains the tensor to
                 be written. The default is the column name that Datasets uses for
                 storing tensors in single-column tables. See
-                ``ray.data.impl.arrow_block.TENSOR_COL_NAME`` for the exact name.
+                ``ray.data.impl.arrow_block.VALUE_COL_NAME`` for the exact name.
             filesystem: The filesystem implementation to write to.
             try_create_dir: Try to create all directories in destination path
                 if True. Does nothing if all directories already exist.
@@ -2227,10 +2219,10 @@ class Dataset(Generic[T]):
                 current block during the scan.
             batch_size: Record batch size, or None to let the system pick.
             batch_format: The format in which to return each batch.
-                Specify "native" to use the current block format (promoting
-                Arrow to pandas automatically), "pandas" to select ``pandas.DataFrame``,
-                "numpy" to select ``numpy.ndarray``, or "pyarrow" to select
-                ``pyarrow.Table``. Default is "native".
+                Specify "native" to use the native block format (promoting
+                tables to Pandas and tensors to NumPy), "pandas" to select
+                ``pandas.DataFrame``, "numpy" to select ``numpy.ndarray``, or "pyarrow"
+                to select ``pyarrow.Table``. Default is "native".
             drop_last: Whether to drop the last batch if it's incomplete.
 
         Returns:

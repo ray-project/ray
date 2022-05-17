@@ -33,7 +33,7 @@ from ray.data.datasource import (
     WriteResult,
 )
 from ray.data.impl.arrow_block import ArrowRow
-from ray.data.impl.table_block import TENSOR_COL_NAME
+from ray.data.impl.table_block import VALUE_COL_NAME
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.datasource.parquet_datasource import PARALLELIZE_META_FETCH_THRESHOLD
 from ray.data.tests.conftest import *  # noqa
@@ -1013,7 +1013,7 @@ def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
     ds = ray.data.read_numpy(data_path, filesystem=fs)
     assert str(ds) == (
         "Dataset(num_blocks=2, num_rows=None, "
-        f"schema={{{TENSOR_COL_NAME}: <ArrowTensorType: shape=(1,), dtype=int64>}})"
+        f"schema={{{VALUE_COL_NAME}: <ArrowTensorType: shape=(1,), dtype=int64>}})"
     )
     np.testing.assert_equal(ds.take(2), [np.array([0]), np.array([1])])
 
@@ -1025,7 +1025,7 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_numpy(path)
     assert str(ds) == (
         "Dataset(num_blocks=1, num_rows=10, "
-        f"schema={{{TENSOR_COL_NAME}: <ArrowTensorType: shape=(1,), dtype=int64>}})"
+        f"schema={{{VALUE_COL_NAME}: <ArrowTensorType: shape=(1,), dtype=int64>}})"
     )
     np.testing.assert_equal(ds.take(2), [np.array([0]), np.array([1])])
 
@@ -1038,7 +1038,7 @@ def test_numpy_read_meta_provider(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_numpy(path, meta_provider=FastFileMetadataProvider())
     assert str(ds) == (
         "Dataset(num_blocks=1, num_rows=10, "
-        f"schema={{{TENSOR_COL_NAME}: <ArrowTensorType: shape=(1,), dtype=int64>}})"
+        f"schema={{{VALUE_COL_NAME}: <ArrowTensorType: shape=(1,), dtype=int64>}})"
     )
     np.testing.assert_equal(ds.take(2), [np.array([0]), np.array([1])])
 
@@ -1095,7 +1095,7 @@ def test_numpy_read_partitioned_with_filter(
         val_str = "".join(f"array({v}, dtype=int8), " for v in vals)[:-2]
         assert_base_partitioned_ds(
             ds,
-            schema=f"{{{TENSOR_COL_NAME}: <ArrowTensorType: shape=(2,), dtype=int8>}}",
+            schema=f"{{{VALUE_COL_NAME}: <ArrowTensorType: shape=(2,), dtype=int8>}}",
             sorted_values=f"[[{val_str}]]",
             ds_take_transform_fn=lambda taken: [taken],
             sorted_values_transform_fn=lambda sorted_values: str(sorted_values),

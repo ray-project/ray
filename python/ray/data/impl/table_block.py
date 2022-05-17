@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from ray.data.impl.sort import SortKeyT
 
 
-TENSOR_COL_NAME = "__RAY_TC__"
+VALUE_COL_NAME = "__value__"
 
 T = TypeVar("T")
 
@@ -38,7 +38,7 @@ class TableBlockBuilder(BlockBuilder[T]):
         if isinstance(item, TableRow):
             item = item.as_pydict()
         elif isinstance(item, np.ndarray):
-            item = {TENSOR_COL_NAME: item}
+            item = {VALUE_COL_NAME: item}
         if not isinstance(item, dict):
             raise ValueError(
                 "Returned elements of an TableBlock must be of type `dict`, "
@@ -107,14 +107,36 @@ class TableBlockBuilder(BlockBuilder[T]):
 
 
 class TableBlockAccessor(BlockAccessor):
+    ROW_TYPE: TableRow = TableRow
+
     def __init__(self, table: Any):
         self._table = table
 
-    def _create_table_row(self, row: Any) -> TableRow:
+    def _get_row(self, index: int, copy: bool = False) -> Union[TableRow, np.ndarray]:
+        row = self.slice(index, index + 1, copy=copy)
+        if self.is_tensor_wrapper():
+            row = row[VALUE_COL_NAME][0]
+        else:
+            row = self.ROW_TYPE(row)
+        return row
+
+    def to_native(self) -> Block:
+        if self.is_tensor_wrapper():
+            native = self.to_numpy()
+        else:
+            # Always promote Arrow blocks to pandas for consistency, since
+            # we lazily convert pandas->Arrow internally for efficiency.
+            native = self.to_pandas()
+        return native
+
+    def column_names(self) -> List[str]:
         raise NotImplementedError
 
     def to_block(self) -> Block:
         return self._table
+
+    def is_tensor_wrapper(self) -> bool:
+        return self.column_names() == [VALUE_COL_NAME]
 
     def iter_rows(self) -> Iterator[Union[TableRow, np.ndarray]]:
         outer = self
@@ -129,10 +151,7 @@ class TableBlockAccessor(BlockAccessor):
             def __next__(self):
                 self._cur += 1
                 if self._cur < outer.num_rows():
-                    row = outer._create_table_row(
-                        outer.slice(self._cur, self._cur + 1, copy=False)
-                    )
-                    return row
+                    return outer._get_row(self._cur)
                 raise StopIteration
 
         return Iter()

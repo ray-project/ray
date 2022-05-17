@@ -8,7 +8,7 @@ if TYPE_CHECKING:
 
 from ray.data.block import BlockAccessor
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
-from ray.data.impl.table_block import TENSOR_COL_NAME
+from ray.data.impl.table_block import VALUE_COL_NAME
 
 
 class NumpyDatasource(FileBasedDatasource):
@@ -35,7 +35,7 @@ class NumpyDatasource(FileBasedDatasource):
         buf.write(data)
         buf.seek(0)
         return pa.Table.from_pydict(
-            {TENSOR_COL_NAME: TensorArray(np.load(buf, allow_pickle=True))}
+            {VALUE_COL_NAME: TensorArray(np.load(buf, allow_pickle=True))}
         )
 
     def _write_block(

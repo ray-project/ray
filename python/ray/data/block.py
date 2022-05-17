@@ -229,6 +229,10 @@ class BlockAccessor(Generic[T]):
         """Return the base block that this accessor wraps."""
         raise NotImplementedError
 
+    def to_native(self) -> Block:
+        """Return the native data format for this accessor."""
+        return self.to_block()
+
     def size_bytes(self) -> int:
         """Return the approximate size in bytes of this block."""
         raise NotImplementedError

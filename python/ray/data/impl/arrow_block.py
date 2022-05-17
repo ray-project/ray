@@ -34,7 +34,7 @@ from ray.data.row import TableRow
 from ray.data.impl.table_block import (
     TableBlockAccessor,
     TableBlockBuilder,
-    TENSOR_COL_NAME,
+    VALUE_COL_NAME,
 )
 from ray.data.aggregate import AggregateFn
 
@@ -79,7 +79,7 @@ class ArrowBlockBuilder(TableBlockBuilder[T]):
 
     def _table_from_pydict(self, columns: Dict[str, List[Any]]) -> Block:
         for col_name, col in columns.items():
-            if col_name == TENSOR_COL_NAME or isinstance(
+            if col_name == VALUE_COL_NAME or isinstance(
                 next(iter(col), None), np.ndarray
             ):
                 from ray.data.extensions.tensor_extension import ArrowTensorArray
@@ -96,16 +96,15 @@ class ArrowBlockBuilder(TableBlockBuilder[T]):
 
 
 class ArrowBlockAccessor(TableBlockAccessor):
+    ROW_TYPE = ArrowRow
+
     def __init__(self, table: "pyarrow.Table"):
         if pyarrow is None:
             raise ImportError("Run `pip install pyarrow` for Arrow support")
         super().__init__(table)
 
-    def _create_table_row(self, row: "pyarrow.Table") -> Union[ArrowRow, np.ndarray]:
-        if row.column_names == [TENSOR_COL_NAME]:
-            return row.column(TENSOR_COL_NAME)[0]
-        else:
-            return ArrowRow(row)
+    def column_names(self) -> List[str]:
+        return self._table.column_names
 
     @classmethod
     def from_bytes(cls, data: bytes):
@@ -118,7 +117,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         from ray.data.extensions.tensor_extension import ArrowTensorArray
 
         table = pa.Table.from_pydict(
-            {TENSOR_COL_NAME: ArrowTensorArray.from_numpy(data)}
+            {VALUE_COL_NAME: ArrowTensorArray.from_numpy(data)}
         )
         return cls(table)
 

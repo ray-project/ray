@@ -20,7 +20,7 @@ from ray.data.row import TableRow
 from ray.data.impl.table_block import (
     TableBlockAccessor,
     TableBlockBuilder,
-    TENSOR_COL_NAME,
+    VALUE_COL_NAME,
 )
 from ray.data.impl.arrow_block import ArrowBlockAccessor
 from ray.data.aggregate import AggregateFn
@@ -78,9 +78,7 @@ class PandasBlockBuilder(TableBlockBuilder[T]):
     def _table_from_pydict(self, columns: Dict[str, List[Any]]) -> "pandas.DataFrame":
         pandas = lazy_import_pandas()
         for key, value in columns.items():
-            if key == TENSOR_COL_NAME or isinstance(
-                next(iter(value), None), np.ndarray
-            ):
+            if key == VALUE_COL_NAME or isinstance(next(iter(value), None), np.ndarray):
                 if len(value) == 1:
                     value = value[0]
                 columns[key] = TensorArray(value)
@@ -102,16 +100,13 @@ PandasBlockSchema = collections.namedtuple("PandasBlockSchema", ["names", "types
 
 
 class PandasBlockAccessor(TableBlockAccessor):
+    ROW_TYPE = PandasRow
+
     def __init__(self, table: "pandas.DataFrame"):
         super().__init__(table)
 
-    def _create_table_row(
-        self, row: "pandas.DataFrame"
-    ) -> Union[PandasRow, np.ndarray]:
-        if row.columns.tolist() == [TENSOR_COL_NAME]:
-            return row[TENSOR_COL_NAME][0]
-        else:
-            return PandasRow(row)
+    def column_names(self) -> List[str]:
+        return self._table.columns.tolist()
 
     def slice(self, start: int, end: int, copy: bool) -> "pandas.DataFrame":
         view = self._table[start:end]

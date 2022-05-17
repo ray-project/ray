@@ -14,7 +14,6 @@ from ray.types import ObjectRef
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DatasetContext
 from ray.data.impl.batcher import Batcher
-from ray.data.impl.table_block import TENSOR_COL_NAME
 from ray.data.impl.stats import DatasetStats, DatasetPipelineStats
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -94,23 +93,8 @@ def batch_blocks(
 
 
 def _format_batch(batch: Block, batch_format: str) -> BatchType:
-    import pandas as pd
-    import pyarrow as pa
-
     if batch_format == "native":
-        # Always promote Arrow blocks to pandas for consistency, since
-        # we lazily convert pandas->Arrow internally for efficiency.
-        if isinstance(batch, pa.Table):
-            if batch.column_names == [TENSOR_COL_NAME]:
-                batch = BlockAccessor.for_block(batch).to_numpy()
-            else:
-                batch = BlockAccessor.for_block(batch).to_pandas()
-        elif isinstance(batch, pd.DataFrame) and batch.columns.tolist() == [
-            TENSOR_COL_NAME
-        ]:
-            batch = BlockAccessor.for_block(batch).to_numpy()
-        elif isinstance(batch, bytes):
-            batch = BlockAccessor.for_block(batch).to_pandas()
+        batch = BlockAccessor.for_block(batch).to_native()
     elif batch_format == "pandas":
         batch = BlockAccessor.for_block(batch).to_pandas()
     elif batch_format == "pyarrow":
