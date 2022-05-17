@@ -257,7 +257,7 @@
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - ./ci/ci.sh test_minimal 3.7
+    - ./ci/ci.sh test_minimal
 
 - label: ":python: Minimal install 3.8"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
