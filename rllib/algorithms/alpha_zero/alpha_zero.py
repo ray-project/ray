@@ -38,7 +38,6 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
 from ray.rllib.utils.typing import ResultDict, TrainerConfigDict
-from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.util.iter import LocalIterator
 
 from ray.rllib.algorithms.alpha_zero.alpha_zero_policy import AlphaZeroPolicy

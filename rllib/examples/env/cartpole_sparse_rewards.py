@@ -6,8 +6,7 @@ from gym.spaces import Discrete, Dict, Box
 
 
 class CartPoleSparseRewards(gym.Env):
-    """Wrapper for gym CartPole environment where the reward is accumulated to the end.
-    """
+    """Wrapper for gym CartPole environment where reward is accumulated to the end."""
 
     def __init__(self, config=None):
         self.env = gym.make("CartPole-v0")
