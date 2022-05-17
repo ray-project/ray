@@ -555,7 +555,27 @@ Status NodeInfoAccessor::AsyncReportHeartbeat(
     const StatusCallback &callback) {
   rpc::ReportHeartbeatRequest request;
   request.mutable_heartbeat()->CopyFrom(*data_ptr);
-  client_impl_->GetInternalGcsRpcClient().ReportHeartbeat(
+  static auto *rpc_client = [this]() -> rpc::GcsRpcClient * {
+    // Contains a GCS RPC client, and the event loop for sending requests and receiving
+    // replies.
+    struct GcsRpcClientWithThread {
+      GcsRpcClientWithThread(const std::string &address, const int port)
+          : io_work(io_service),
+            client_call_manager(io_service),
+            gcs_rpc_client(address, port, client_call_manager),
+            thread([this]() { io_service.run(); }) {}
+
+      instrumented_io_context io_service;
+      boost::asio::io_service::work io_work;
+      rpc::ClientCallManager client_call_manager;
+      rpc::GcsRpcClient gcs_rpc_client;
+      std::thread thread;
+    };
+    const auto addr = client_impl_->GetGcsServerAddress();
+    auto client = new GcsRpcClientWithThread(addr.first, addr.second);
+    return &client->gcs_rpc_client;
+  }();
+  rpc_client->ReportHeartbeat(
       request, [callback](const Status &status, const rpc::ReportHeartbeatReply &reply) {
         if (callback) {
           callback(status);

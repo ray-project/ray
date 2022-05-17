@@ -73,22 +73,6 @@ void GcsSubscriberClient::PubsubCommandBatch(
       });
 }
 
-// Contains a GCS RPC client, and the event loop for sending requests and receiving
-// replies.
-struct GcsRpcClientWithThread {
-  GcsRpcClientWithThread(const std::string &address, const int port)
-      : io_work(io_service),
-        client_call_manager(io_service),
-        gcs_rpc_client(address, port, client_call_manager),
-        thread([this]() { io_service.run(); }) {}
-
-  instrumented_io_context io_service;
-  boost::asio::io_service::work io_work;
-  rpc::ClientCallManager client_call_manager;
-  rpc::GcsRpcClient gcs_rpc_client;
-  std::thread thread;
-};
-
 }  // namespace
 
 GcsClient::GcsClient(const GcsClientOptions &options) : options_(options) {}
@@ -153,12 +137,6 @@ void GcsClient::Disconnect() {
 
 std::pair<std::string, int> GcsClient::GetGcsServerAddress() const {
   return gcs_rpc_client_->GetAddress();
-}
-
-rpc::GcsRpcClient &GcsClient::GetInternalGcsRpcClient() {
-  static auto *client = new GcsRpcClientWithThread(GetGcsServerAddress().first,
-                                                   GetGcsServerAddress().second);
-  return client->gcs_rpc_client;
 }
 
 }  // namespace gcs

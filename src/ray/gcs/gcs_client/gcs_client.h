@@ -159,8 +159,6 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
 
   virtual rpc::GcsRpcClient &GetGcsRpcClient() { return *gcs_rpc_client_; }
 
-  virtual rpc::GcsRpcClient &GetInternalGcsRpcClient();
-
  protected:
   GcsClientOptions options_;
 
