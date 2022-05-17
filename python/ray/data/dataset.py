@@ -613,6 +613,54 @@ class Dataset(Generic[T]):
         )
         return Dataset(plan, self._epoch, self._lazy)
 
+    def random_sample(
+        self, fraction: float, *, seed: Optional[int] = None
+    ) -> "Dataset[T]":
+        """Randomly samples a fraction of the elements of this dataset.
+
+        Note that the exact number of elements returned is not guaranteed,
+        and that the number of elements being returned is roughly fraction * total_rows.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.range(100) # doctest: +SKIP
+            >>> ds.random_sample(0.1) # doctest: +SKIP
+            >>> ds.random_sample(0.2, seed=12345) # doctest: +SKIP
+
+        Args:
+            fraction: The fraction of elements to sample.
+            seed: Seeds the python random pRNG generator.
+
+        Returns:
+            Returns a Dataset containing the sampled elements.
+        """
+        import random
+        import pyarrow as pa
+        import pandas as pd
+
+        if self.num_blocks() == 0:
+            raise ValueError("Cannot sample from an empty dataset.")
+
+        if fraction < 0 or fraction > 1:
+            raise ValueError("Fraction must be between 0 and 1.")
+
+        if seed:
+            random.seed(seed)
+
+        def process_batch(batch):
+            if isinstance(batch, list):
+                return [row for row in batch if random.random() <= fraction]
+            if isinstance(batch, pa.Table):
+                # Lets the item pass if weight generated for that item <= fraction
+                return batch.filter(
+                    pa.array(random.random() <= fraction for _ in range(len(batch)))
+                )
+            if isinstance(batch, pd.DataFrame):
+                return batch.sample(frac=fraction)
+            raise ValueError(f"Unsupported batch type: {type(batch)}")
+
+        return self.map_batches(process_batch)
+
     def split(
         self, n: int, *, equal: bool = False, locality_hints: Optional[List[Any]] = None
     ) -> List["Dataset[T]"]:
