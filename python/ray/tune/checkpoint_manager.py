@@ -10,6 +10,8 @@ from ray.util.ml_utils.checkpoint_manager import (
     CheckpointManager as CommonCheckpointManager,
     TrackedCheckpoint,
 )
+from ray.util.ml_utils.dict import flatten_dict
+from ray.util.ml_utils.util import is_nan
 
 logger = logging.getLogger(__name__)
 
@@ -115,8 +117,8 @@ class CheckpointManager(CommonCheckpointManager):
 
     def best_checkpoints(self):
         """Returns best PERSISTENT checkpoints, sorted by score."""
-        checkpoints = sorted(self._best_checkpoints, key=lambda c: c.priority)
-        return [queue_item.value for queue_item in checkpoints]
+        checkpoints = sorted(self._top_persisted_checkpoints, key=lambda c: c.priority)
+        return [wrapped.tracked_checkpoint for wrapped in checkpoints]
 
     def _priority(self, checkpoint):
         result = flatten_dict(checkpoint.metrics)
@@ -132,8 +134,8 @@ class CheckpointManager(CommonCheckpointManager):
     def __getstate__(self):
         state = self.__dict__.copy()
         # Avoid serializing the memory checkpoint.
-        state["_newest_memory_checkpoint"] = _TuneCheckpoint(
-            _TuneCheckpoint.MEMORY, None
+        state["_newest_memory_checkpoint"] = TrackedCheckpoint(
+            TrackedCheckpoint.MEMORY, None
         )
         # Avoid serializing lambda since it may capture cyclical dependencies.
         state.pop("delete")
