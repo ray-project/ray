@@ -357,25 +357,33 @@ def test_py_resubscription(tmp_path, ray_start_regular_with_external_redis):
 
     script = f"""
 from filelock import FileLock
+import ray
 
 @ray.remote
 def f():
-    print("OK1)
+    print("OK1", flush=True)
     lock1 = FileLock(r"{lock_file1}")
     lock2 = FileLock(r"{lock_file2}")
 
     lock2.acquire()
     lock1.acquire()
 
-    print("OK2")
+    print("OK2", flush=True)
 
 ray.init(address='auto')
 ray.get(f.remote())
+from time import sleep
+sleep(1)
+ray.shutdown()
 """
     proc = run_string_as_driver_nonblocking(script)
 
     def condition():
-        return lock2.is_locked
+        try:
+            with lock2.acquire(blocking=False):
+                return False
+        except Exception:
+            return True
 
     # make sure the script has printed "OK1"
     wait_for_condition(condition, timeout=10)
@@ -389,7 +397,9 @@ ray.get(f.remote())
     lock1.release()
 
     proc.wait()
-    print(proc.stdout.read())
+    output = proc.stdout.read()
+    assert b"OK1" in output
+    assert b"OK2" in output
 
 
 @pytest.mark.parametrize("auto_reconnect", [True, False])
