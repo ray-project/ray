@@ -42,11 +42,12 @@ class TestRNNSAC(unittest.TestCase):
             "lstm_use_prev_reward": True,
         }
 
-        # Test with PR activated.
-        config["prioritized_replay"] = True
-
-        config["burn_in"] = 20
-        config["zero_init_states"] = True
+        # Test with MultiAgentPrioritizedReplayBuffer
+        config["replay_buffer_config"] = {
+            "type": "MultiAgentPrioritizedReplayBuffer",
+            "replay_burn_in": 20,
+            "zero_init_states": True,
+        }
 
         config["lr"] = 5e-4
 

@@ -17,7 +17,6 @@ from ray.rllib.agents.impala.vtrace_torch_policy import (
     choose_optimizer,
 )
 from ray.rllib.agents.ppo.appo_tf_policy import make_appo_model, postprocess_trajectory
-from ray.rllib.agents.a3c.a3c_torch_policy import ValueNetworkMixin
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import (
@@ -27,7 +26,11 @@ from ray.rllib.models.torch.torch_action_dist import (
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_policy import EntropyCoeffSchedule, LearningRateSchedule
+from ray.rllib.policy.torch_mixins import (
+    EntropyCoeffSchedule,
+    LearningRateSchedule,
+    ValueNetworkMixin,
+)
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import (
     apply_grad_clipping,
@@ -366,7 +369,7 @@ def setup_late_mixins(
         config (TrainerConfigDict): The Policy's config.
     """
     KLCoeffMixin.__init__(policy, config)
-    ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
+    ValueNetworkMixin.__init__(policy, config)
     TargetNetworkMixin.__init__(policy)
 
 

@@ -116,7 +116,7 @@ if __name__ == "__main__":
         assert r["model"]["foo"] == 42, result
 
     if args.run == "DQN":
-        extra_config = {"learning_starts": 0}
+        extra_config = {"replay_buffer_config": {"learning_starts": 0}}
     else:
         extra_config = {}
 

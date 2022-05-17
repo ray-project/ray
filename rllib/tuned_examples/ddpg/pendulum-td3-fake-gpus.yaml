@@ -9,7 +9,10 @@ pendulum-td3-fake-gpus:
         framework: tf
         actor_hiddens: [64, 64]
         critic_hiddens: [64, 64]
-        learning_starts: 5000
+
+        replay_buffer_config:
+          type: MultiAgentReplayBuffer
+          learning_starts: 5000
         exploration_config:
             random_timesteps: 5000
         evaluation_interval: 10
