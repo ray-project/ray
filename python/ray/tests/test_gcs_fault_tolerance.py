@@ -345,7 +345,47 @@ def test_core_worker_resubscription(tmp_path, ray_start_regular_with_external_re
 )
 def test_py_resubscription(tmp_path, ray_start_regular_with_external_redis):
     # This test is to ensure python pubsub works
-    pass
+    from filelock import FileLock
+
+    lock_file1 = str(tmp_path / "lock1")
+    lock1 = FileLock(lock_file1)
+    lock1.acquire()
+
+    lock_file2 = str(tmp_path / "lock2")
+    lock2 = FileLock(lock_file2)
+
+    script = f"""
+from filelock import FileLock
+
+@ray.remote
+def f():
+    print("OK1)
+    lock1 = FileLock(r"{lock_file1}")
+    lock2 = FileLock(r"{lock_file2}")
+
+    lock2.acquire()
+    lock1.acquire()
+
+    print("OK2")
+
+ray.init(address='auto')
+ray.get(f.remote())
+"""
+    proc = run_string_as_driver_nonblocking(script)
+    def condition():
+        return lock2.is_locked
+    # make sure the script has printed "OK1"
+    wait_for_condition(condition, timeout=10)
+
+    ray.worker._global_node.kill_gcs_server()
+    import time
+    time.sleep(2)
+    ray.worker._global_node.start_gcs_server()
+
+    lock1.release()
+
+    proc.wait()
+    print(proc.stdout.read())
 
 
 @pytest.mark.parametrize("auto_reconnect", [True, False])
