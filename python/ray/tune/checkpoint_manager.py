@@ -214,7 +214,7 @@ class CheckpointManager:
         return [queue_item.value for queue_item in checkpoints]
 
     def _priority(self, checkpoint):
-        result = flatten_dict(checkpoint.metrics)
+        result = flatten_dict(checkpoint.result)
         priority = result[self._checkpoint_score_attr]
         if self._checkpoint_score_desc:
             priority = -priority
