@@ -88,8 +88,7 @@ def test_cancel_multiple_dependents(ray_start_regular, use_force):
     for _ in range(3):
         deps2.append(wait_for.remote([head]))
 
-    for d in deps2:
-        ray.cancel(d, force=use_force)
+    ray.cancel(deps2, force=use_force)
 
     for d in deps2:
         with pytest.raises(valid_exceptions(use_force)):
@@ -193,9 +192,13 @@ def test_stress(shutdown_only, use_force):
             ray.get(done, timeout=120)
 
     # Kill all infinitely sleeping tasks (queued or not).
+    tasks_to_be_cancelled = []
     for indx, t in enumerate(tasks):
         if sleep_or_no[indx]:
-            ray.cancel(t, force=use_force)
+            tasks_to_be_cancelled.append(t)
+    ray.cancel(tasks_to_be_cancelled, force=use_force)
+    for indx, t in enumerate(tasks):
+        if sleep_or_no[indx]:
             cancelled.add(t)
     for indx, t in enumerate(tasks):
         if t in cancelled:
@@ -235,9 +238,11 @@ def test_fast(shutdown_only, use_force):
         x = wait_for.remote(sig)
         ids.append(x)
 
+    ids_to_be_cancelled = []
     for idx in range(100, 5100):
         if random.random() > 0.95:
-            ray.cancel(ids[idx], force=use_force)
+            ids_to_be_cancelled.append(ids[idx])
+    ray.cancel(ids_to_be_cancelled, force=use_force)
     signaler.send.remote()
     for i, obj_ref in enumerate(ids):
         try:
@@ -305,6 +310,32 @@ def test_recursive_cancel(shutdown_only, use_force):
 
     assert ray.get(many_fut, timeout=30)
 
+
+def test_cancel_list(ray_start_regular):
+    @ray.remote
+    def blocking_operation_1(x):
+        time.sleep(x)
+
+    @ray.remote
+    def blocking_operation_2(x):
+        time.sleep(x)
+
+    obj_ref1 = blocking_operation_1.remote(100)
+    obj_ref2 = blocking_operation_2.remote(200)
+    obj_ref3 = blocking_operation_1.remote(100)
+    obj_refs = [obj_ref1, obj_ref2, obj_ref3]
+
+    # let the tasks start properly
+    time.sleep(30)
+
+    ray.cancel(obj_refs)
+
+    for obj_ref in obj_refs:
+        try:
+            ray.get(obj_ref)
+            assert False, f"{obj_ref} isn't cancelled."
+        except (RayTaskError, TaskCancelledError):
+            assert True
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
