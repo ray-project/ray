@@ -5,7 +5,6 @@ from ray.rllib.agents.ppo.ppo_tf_policy import (
     vf_preds_fetches,
     compute_and_clip_gradients,
     setup_config,
-    ValueNetworkMixin,
 )
 from ray.rllib.evaluation.postprocessing import (
     compute_gae_for_sample_batch,
@@ -14,6 +13,7 @@ from ray.rllib.evaluation.postprocessing import (
 from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
+from ray.rllib.policy.tf_mixins import ValueNetworkMixin
 from ray.rllib.utils import try_import_tf
 
 tf1, tf, tfv = try_import_tf()
@@ -426,7 +426,7 @@ def maml_optimizer_fn(policy, config):
 
 
 def setup_mixins(policy, obs_space, action_space, config):
-    ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
+    ValueNetworkMixin.__init__(policy, config)
     KLCoeffMixin.__init__(policy, config)
 
     # Create the `split` placeholder.

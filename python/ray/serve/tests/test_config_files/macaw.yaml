@@ -1,8 +1,6 @@
 deployments:
 
   - name: Macaw
-    init_args: null
-    init_kwargs: null
     import_path: "ray.serve.tests.test_cli.Macaw"
     num_replicas: 1
     route_prefix: "/Macaw"
