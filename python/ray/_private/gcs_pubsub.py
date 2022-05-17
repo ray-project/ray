@@ -166,12 +166,19 @@ class GcsPublisher(_PublisherBase):
             error_info_message=error_info,
         )
         req = gcs_service_pb2.GcsPublishRequest(pub_messages=[msg])
-        self._gcs_publish(req)
+        try:
+            self._gcs_publish(req)
+        except Exception as e:
+            logger.error(f"Failed to publish error: {e}")
+
 
     def publish_logs(self, log_batch: dict) -> None:
         """Publishes logs to GCS."""
         req = self._create_log_request(log_batch)
-        self._gcs_publish(req)
+        try:
+            self._gcs_publish(req)
+        except Exception as e:
+            logger.error(f"Failed to publish log: {e}")
 
     def publish_function_key(self, key: bytes) -> None:
         """Publishes function key to GCS."""
@@ -227,7 +234,7 @@ class _SyncSubscriber(_SubscriberBase):
             if self._close.is_set():
                 return
             req = self._subscribe_request(self._channel)
-            self._stub.GcsSubscriberCommandBatch(req, timeout=30)
+            self._stub.GcsSubscriberCommandBatch(req)
 
     def _poll_locked(self, timeout=None) -> None:
         assert self._lock.locked()
@@ -496,11 +503,13 @@ class _AioSubscriber(_SubscriberBase):
         if self._close.is_set():
             return
         req = self._subscribe_request(self._channel)
-        await self._stub.GcsSubscriberCommandBatch(req, timeout=30)
+        await self._stub.GcsSubscriberCommandBatch(req)
 
     async def _poll_call(self, req, timeout=None):
         # Wrap GRPC _AioCall as a coroutine.
-        return await self._stub.GcsSubscriberPoll(req, timeout=timeout)
+        try:
+            return await self._stub.GcsSubscriberPoll(req, timeout=timeout)
+        except
 
     async def _poll(self, timeout=None) -> None:
         req = self._poll_request()
