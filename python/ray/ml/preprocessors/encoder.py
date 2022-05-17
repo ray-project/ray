@@ -186,6 +186,7 @@ def _get_unique_value_indices(
     limit: Optional[Dict[str, int]] = None,
 ) -> Dict[str, Dict[str, int]]:
     """If drop_na_values is True, will silently drop NA values."""
+    limit = limit or {}
     for column in limit.keys():
         if column not in columns:
             raise ValueError(
@@ -193,7 +194,13 @@ def _get_unique_value_indices(
             )
 
     def get_pd_value_counts(df: pd.DataFrame) -> List[Dict[str, Counter]]:
-        return [{col: Counter(df[col].value_counts().to_dict()) for col in columns}]
+        result = [
+            {
+                col: Counter(df[col].value_counts(dropna=False).to_dict())
+                for col in columns
+            }
+        ]
+        return result
 
     value_counts = dataset.map_batches(get_pd_value_counts, batch_format="pandas")
     final_counters = {col: Counter() for col in columns}
@@ -219,13 +226,15 @@ def _get_unique_value_indices(
     unique_values_with_indices = dict()
     for column in columns:
         if column in limit.keys():
+            # Output sorted by freq.
             unique_values_with_indices[key_format.format(column)] = {
                 k[0]: j
                 for j, k in enumerate(final_counters[column].most_common(limit[column]))
             }
         else:
+            # Output sorted by column name.
             unique_values_with_indices[key_format.format(column)] = {
-                k: j for j, k in enumerate(final_counters[column])
+                k: j for j, k in enumerate(sorted(dict(final_counters[column]).keys()))
             }
     return unique_values_with_indices
 
