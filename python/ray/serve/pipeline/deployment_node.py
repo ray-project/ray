@@ -64,11 +64,15 @@ class DeploymentNode(DAGNode):
                 return node._get_serve_deployment_handle(
                     node._deployment, node._bound_other_args_to_resolve
                 )
+            elif isinstance(node, DeploymentExecutorNode):
+                return node._deployment_handle
             elif isinstance(
                 node,
                 (
                     DeploymentMethodNode,
+                    DeploymentMethodExecutorNode,
                     DeploymentFunctionNode,
+                    DeploymentFunctionExecutorNode,
                 ),
             ):
                 from ray.serve.pipeline.json_serde import DAGNodeEncoder
@@ -89,6 +93,7 @@ class DeploymentNode(DAGNode):
                     DeploymentFunctionNode,
                     DeploymentExecutorNode,
                     DeploymentFunctionExecutorNode,
+                    DeploymentMethodExecutorNode,
                 ),
             ),
             apply_fn=replace_with_handle,
