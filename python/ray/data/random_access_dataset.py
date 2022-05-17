@@ -58,7 +58,7 @@ class RandomAccessDataset(Generic[T]):
 
         logger.info("[setup] Creating {} random access workers.".format(num_workers))
         ctx = DatasetContext.get_current()
-        if ctx.scheduling_strategy is not DEFAULT_SCHEDULING_STRATEGY:
+        if ctx.scheduling_strategy != DEFAULT_SCHEDULING_STRATEGY:
             scheduling_strategy = ctx.scheduling_strategy
         else:
             scheduling_strategy = "SPREAD"
