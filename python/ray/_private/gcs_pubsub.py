@@ -105,6 +105,9 @@ class _SubscriberBase:
         return req
 
     def _handle_polling_failure(self, e: grpc.RpcError, timeout=None):
+        import traceback
+        print("================")
+        traceback.print_stack()
         # Caller only expects polling to be terminated after deadline exceeded.
         if e.code() == grpc.StatusCode.DEADLINE_EXCEEDED and timeout is not None:
             raise e
@@ -125,6 +128,7 @@ class _SubscriberBase:
             grpc.StatusCode.DEADLINE_EXCEEDED,
         ):
             time.sleep(1)
+            self.subscribe()
         else:
             raise e
 
@@ -230,7 +234,7 @@ class _SyncSubscriber(_SubscriberBase):
         # Type of the channel.
         self._channel = pubsub_channel_type
         # Protects multi-threaded read and write of self._queue.
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         # A queue of received PubMessage.
         self._queue = deque()
         # Indicates whether the subscriber has closed.
@@ -243,14 +247,14 @@ class _SyncSubscriber(_SubscriberBase):
         saved for the subscriber.
         """
         with self._lock:
-            if self._close.is_set():
-                return
             req = self._subscribe_request(self._channel)
             start = time.time()
             from ray._raylet import Config
 
             while True:
                 try:
+                    if self._close.is_set():
+                        return
                     return self._stub.GcsSubscriberCommandBatch(req, timeout=30)
                 except grpc.RpcError as e:
                     self._handle_subscribe_failure(e)
@@ -261,7 +265,6 @@ class _SyncSubscriber(_SubscriberBase):
                         raise e
 
     def _poll_locked(self, timeout=None) -> None:
-        assert self._lock.locked()
 
         # Poll until data becomes available.
         while len(self._queue) == 0:
@@ -288,6 +291,9 @@ class _SyncSubscriber(_SubscriberBase):
                     # GRPC has not replied, continue waiting.
                     continue
                 except grpc.RpcError as e:
+                    if self._close.is_set():
+                        fut.cancel()
+                        return
                     self._handle_polling_failure(e, timeout)
 
             if fut.done():
