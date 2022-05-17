@@ -35,7 +35,6 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
@@ -1182,68 +1181,6 @@ class TorchPolicy(Policy):
                 raise output[0] from output[1]
             outputs.append(results[shard_idx])
         return outputs
-
-
-# TODO: (sven) Unify hyperparam annealing procedures across RLlib (tf/torch)
-#   and for all possible hyperparams, not just lr.
-@DeveloperAPI
-class LearningRateSchedule:
-    """Mixin for TorchPolicy that adds a learning rate schedule."""
-
-    @DeveloperAPI
-    def __init__(self, lr, lr_schedule):
-        self._lr_schedule = None
-        if lr_schedule is None:
-            self.cur_lr = lr
-        else:
-            self._lr_schedule = PiecewiseSchedule(
-                lr_schedule, outside_value=lr_schedule[-1][-1], framework=None
-            )
-            self.cur_lr = self._lr_schedule.value(0)
-
-    @override(Policy)
-    def on_global_var_update(self, global_vars):
-        super().on_global_var_update(global_vars)
-        if self._lr_schedule:
-            self.cur_lr = self._lr_schedule.value(global_vars["timestep"])
-            for opt in self._optimizers:
-                for p in opt.param_groups:
-                    p["lr"] = self.cur_lr
-
-
-@DeveloperAPI
-class EntropyCoeffSchedule:
-    """Mixin for TorchPolicy that adds entropy coeff decay."""
-
-    @DeveloperAPI
-    def __init__(self, entropy_coeff, entropy_coeff_schedule):
-        self._entropy_coeff_schedule = None
-        if entropy_coeff_schedule is None:
-            self.entropy_coeff = entropy_coeff
-        else:
-            # Allows for custom schedule similar to lr_schedule format
-            if isinstance(entropy_coeff_schedule, list):
-                self._entropy_coeff_schedule = PiecewiseSchedule(
-                    entropy_coeff_schedule,
-                    outside_value=entropy_coeff_schedule[-1][-1],
-                    framework=None,
-                )
-            else:
-                # Implements previous version but enforces outside_value
-                self._entropy_coeff_schedule = PiecewiseSchedule(
-                    [[0, entropy_coeff], [entropy_coeff_schedule, 0.0]],
-                    outside_value=0.0,
-                    framework=None,
-                )
-            self.entropy_coeff = self._entropy_coeff_schedule.value(0)
-
-    @override(Policy)
-    def on_global_var_update(self, global_vars):
-        super(EntropyCoeffSchedule, self).on_global_var_update(global_vars)
-        if self._entropy_coeff_schedule is not None:
-            self.entropy_coeff = self._entropy_coeff_schedule.value(
-                global_vars["timestep"]
-            )
 
 
 @DeveloperAPI
