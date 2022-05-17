@@ -5,7 +5,7 @@ from ray.experimental.dag import DAGNode
 from ray.serve.deployment_method_executor_node import DeploymentMethodExecutorNode
 from ray.serve.handle import RayServeSyncHandle, RayServeHandle
 from ray.serve.deployment_graph import RayServeDAGHandle
-from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
+from ray.experimental.dag.constants import DAGNODE_TYPE_KEY, PARENT_CLASS_NODE_KEY
 from ray.experimental.dag.format_utils import get_dag_node_str
 
 
@@ -63,6 +63,18 @@ class DeploymentExecutorNode(DAGNode):
         #     return self._bound_args[0]
         # else:
         return self._deployment_handle
+
+    def __getattr__(self, method_name: str):
+        return DeploymentMethodExecutorNode(
+            method_name,
+            (),
+            {},
+            {},
+            other_args_to_resolve={
+                **self._bound_other_args_to_resolve,
+                PARENT_CLASS_NODE_KEY: self,
+            },
+        )
 
     def __str__(self) -> str:
         return get_dag_node_str(self, str(self._deployment_handle))

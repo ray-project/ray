@@ -119,14 +119,20 @@ def transform_serve_dag_to_serve_executor_dag(serve_dag_root_node: DAGNode):
         )
     elif isinstance(serve_dag_root_node, DeploymentMethodNode):
         print("DeploymentMethodExecutorNode")
+        deployment_node = serve_dag_root_node._bound_other_args_to_resolve[
+            PARENT_CLASS_NODE_KEY
+        ]
+        print(f"???? deployment_node: {deployment_node}")
+        print(
+            f"???? getattr: {getattr(serve_dag_root_node._deployment.get_handle(), serve_dag_root_node._deployment_method_name)}"
+        )
+
         return DeploymentMethodExecutorNode(
             # Deployment method handle
-            getattr(
-                serve_dag_root_node._deployment.get_handle(),
-                serve_dag_root_node._deployment_method_name,
-            ),
+            serve_dag_root_node._deployment_method_name,
             serve_dag_root_node.get_args(),
             serve_dag_root_node.get_kwargs(),
+            other_args_to_resolve=serve_dag_root_node.get_other_args_to_resolve(),
         )
     elif isinstance(serve_dag_root_node, DeploymentFunctionNode):
         print("DeploymentFunctionNode")
@@ -146,15 +152,15 @@ def generate_driver_deployment(
     """a"""
 
     def replace_with_handle(node):
-        if isinstance(node, (DeploymentNode, DeploymentExecutorNode)):
+        if isinstance(node, DeploymentExecutorNode):
             return node._deployment_handle
         elif isinstance(
             node,
             (
                 DeploymentMethodExecutorNode,
                 DeploymentFunctionExecutorNode,
-                DeploymentFunctionNode,
-                DeploymentMethodNode,
+                # DeploymentFunctionNode,
+                # DeploymentMethodNode,
             ),
         ):
             from ray.serve.pipeline.json_serde import DAGNodeEncoder
@@ -173,9 +179,9 @@ def generate_driver_deployment(
         predictate_fn=lambda node: isinstance(
             node,
             (
-                DeploymentNode,
-                DeploymentFunctionNode,
-                DeploymentMethodNode,
+                # DeploymentNode,
+                # DeploymentFunctionNode,
+                # DeploymentMethodNode,
                 DeploymentExecutorNode,
                 DeploymentFunctionExecutorNode,
                 DeploymentMethodExecutorNode,
