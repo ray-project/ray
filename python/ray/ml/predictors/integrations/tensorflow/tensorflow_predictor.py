@@ -132,11 +132,12 @@ class TensorflowPredictor(Predictor):
             data = self.preprocessor.transform_batch(data)
 
         if isinstance(data, pd.DataFrame):
-            if feature_columns:
-                data = data[feature_columns]
-                data = data.to_numpy()
-            elif len(data.columns) == 1 and data.columns[0] == "value":
-                data = data["value"]
+            if len(data.columns) == 1:
+                data = data[data.columns[0]]
+            else:
+                if feature_columns:
+                    data = data[feature_columns]
+                data = data.values
         else:
             if feature_columns:
                 data = data[:, feature_columns]
