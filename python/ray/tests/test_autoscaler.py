@@ -1772,7 +1772,7 @@ class AutoscalingTest(unittest.TestCase):
         config["idle_timeout_minutes"] = 0
         config["upscaling_speed"] = config["max_workers"]
         if foreground_node_launcher:
-            config["provider"]["disable_background_launch_batch"] = True
+            config["provider"][FOREGROUND_NODE_LAUNCH_KEY] = True
         config_path = self.write_config(config)
 
         self.provider = MockProvider()
