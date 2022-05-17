@@ -520,9 +520,21 @@ class _AioSubscriber(_SubscriberBase):
 
     async def _poll_call(self, req, timeout=None):
         # Wrap GRPC _AioCall as a coroutine.
-        try:
-            return await self._stub.GcsSubscriberPoll(req, timeout=timeout)
-        except
+        while True:
+            try:
+                return await self._stub.GcsSubscriberPoll(req, timeout=timeout)
+            except grpc.RpcError as e:
+                if e.code() == grpc.StatusCode.DEADLINE_EXCEEDED and timeout is not None:
+                    raise
+                if e.code() in (
+                        grpc.StatusCode.UNAVAILABLE,
+                        grpc.StatusCode.UNKNOWN,
+                        grpc.StatusCode.DEADLINE_EXCEEDED):
+                    # do the resubscription in case of a failure
+                    await self.subscribe()
+                else:
+                    raise
+
 
     async def _poll(self, timeout=None) -> None:
         req = self._poll_request()
