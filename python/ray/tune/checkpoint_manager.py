@@ -138,9 +138,9 @@ class CheckpointManager(CommonCheckpointManager):
             TrackedCheckpoint.MEMORY, None
         )
         # Avoid serializing lambda since it may capture cyclical dependencies.
-        state.pop("delete")
+        state.pop("_delete_fn")
         return state
 
     def __setstate__(self, state):
         self.__dict__.update(state)
-        self.delete = None
+        self._delete_fn = None
