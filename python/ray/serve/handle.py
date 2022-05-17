@@ -16,6 +16,7 @@ from ray.serve.utils import (
     get_random_letters,
     DEFAULT,
 )
+from ray.serve.autoscaling_metrics import start_metrics_pusher
 from ray.serve.router import Router, RequestMetadata
 from ray.util import metrics
 
@@ -103,6 +104,15 @@ class RayServeHandle:
         )
 
         self.router: Router = _router or self._make_router()
+
+        start_metrics_pusher(
+            interval_s=10,  # Queue handle metrcis
+            collection_callback=self._collect_handle_queue_metrics,
+            metrics_process_func=self.controller_handle.record_handle_metrics,
+        )
+
+    def _collect_handle_queue_metrics(self):
+        return {self.deployment_name: self.router.get_num_queued_queries()}
 
     def _make_router(self) -> Router:
         return Router(

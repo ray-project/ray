@@ -121,6 +121,7 @@ class ServeController:
 
         # TODO(simon): move autoscaling related stuff into a manager.
         self.autoscaling_metrics_store = InMemoryMetricsStore()
+        self.handle_metrics_store = InMemoryMetricsStore()
 
         asyncio.get_event_loop().create_task(self.run_control_loop())
 
@@ -129,7 +130,12 @@ class ServeController:
         return
 
     def record_autoscaling_metrics(self, data: Dict[str, float], send_timestamp: float):
+        print("recording autoscaling metrics", data)
         self.autoscaling_metrics_store.add_metrics_point(data, send_timestamp)
+
+    def record_handle_metrics(self, data: Dict[str, float], send_timestamp: float):
+        print("recording queue handle metrics", data)
+        self.handle_metrics_store.add_metrics_point(data, send_timestamp)
 
     def _dump_autoscaling_metrics_for_testing(self):
         return self.autoscaling_metrics_store.data
@@ -201,15 +207,22 @@ class ServeController:
                 if num_ongoing_requests is not None:
                     current_num_ongoing_requests.append(num_ongoing_requests)
 
-            if len(current_num_ongoing_requests) == 0:
-                continue
+            current_handle_queued_queries = self.handle_metrics_store.max(
+                deployment_name,
+                time.time() - autoscaling_policy.config.look_back_period_s,
+            )
 
             new_deployment_config = deployment_config.copy()
 
             decision_num_replicas = autoscaling_policy.get_decision_num_replicas(
                 current_num_ongoing_requests=current_num_ongoing_requests,
                 curr_target_num_replicas=deployment_config.num_replicas,
+                current_handle_queued_queries=current_handle_queued_queries,
             )
+
+            if decision_num_replicas == deployment_config.num_replicas:
+                continue
+
             new_deployment_config.num_replicas = decision_num_replicas
 
             new_deployment_info = copy(deployment_info)

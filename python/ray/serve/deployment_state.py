@@ -1330,15 +1330,9 @@ class DeploymentState:
             )
             == 0
         ):
-            # Check for deleting.
-            if target_replica_count == 0 and all_running_replica_cnt == 0:
-                return True
-
             # Check for a non-zero number of deployments.
-            elif target_replica_count == running_at_target_version_replica_cnt:
-                self._curr_status_info = DeploymentStatusInfo(
-                    self._name, DeploymentStatus.HEALTHY
-                )
+            if target_replica_count == running_at_target_version_replica_cnt:
+                self._curr_status_info = DeploymentStatusInfo(DeploymentStatus.HEALTHY)
                 return False
 
         return False
