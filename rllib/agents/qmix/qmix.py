@@ -21,6 +21,7 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
 from ray.rllib.utils.typing import ResultDict, TrainerConfigDict
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 
 class QMixConfig(SimpleQConfig):
@@ -78,12 +79,15 @@ class QMixConfig(SimpleQConfig):
         self.train_batch_size = 32
         self.target_network_update_freq = 500
         self.replay_buffer_config = {
-            # Use the new ReplayBuffer API here
-            "_enable_replay_buffer_api": True,
             "type": "SimpleReplayBuffer",
+            # Specify prioritized replay by supplying a buffer type that supports
+            # prioritization, for example: MultiAgentPrioritizedReplayBuffer.
+            "prioritized_replay": DEPRECATED_VALUE,
             # Size of the replay buffer in batches (not timesteps!).
             "capacity": 1000,
             "learning_starts": 1000,
+            # Whether to compute priorities on workers.
+            "worker_side_prioritization": False,
         }
         self.model = {
             "lstm_cell_size": 64,

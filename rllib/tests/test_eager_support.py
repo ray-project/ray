@@ -42,10 +42,15 @@ class TestEagerSupportPG(unittest.TestCase):
         ray.shutdown()
 
     def test_simple_q(self):
-        check_support("SimpleQ", {"num_workers": 0, "learning_starts": 0})
+        check_support(
+            "SimpleQ",
+            {"num_workers": 0, "replay_buffer_config": {"learning_starts": 0}},
+        )
 
     def test_dqn(self):
-        check_support("DQN", {"num_workers": 0, "learning_starts": 0})
+        check_support(
+            "DQN", {"num_workers": 0, "replay_buffer_config": {"learning_starts": 0}}
+        )
 
     def test_ddpg(self):
         check_support("DDPG", {"num_workers": 0})
@@ -84,10 +89,15 @@ class TestEagerSupportOffPolicy(unittest.TestCase):
         ray.shutdown()
 
     def test_simple_q(self):
-        check_support("SimpleQ", {"num_workers": 0, "learning_starts": 0})
+        check_support(
+            "SimpleQ",
+            {"num_workers": 0, "replay_buffer_config": {"learning_starts": 0}},
+        )
 
     def test_dqn(self):
-        check_support("DQN", {"num_workers": 0, "learning_starts": 0})
+        check_support(
+            "DQN", {"num_workers": 0, "replay_buffer_config": {"learning_starts": 0}}
+        )
 
     def test_ddpg(self):
         check_support("DDPG", {"num_workers": 0})
@@ -103,7 +113,7 @@ class TestEagerSupportOffPolicy(unittest.TestCase):
             "APEX",
             {
                 "num_workers": 2,
-                "learning_starts": 0,
+                "replay_buffer_config": {"learning_starts": 0},
                 "num_gpus": 0,
                 "min_time_s_per_reporting": 1,
                 "min_sample_timesteps_per_reporting": 100,
@@ -114,7 +124,9 @@ class TestEagerSupportOffPolicy(unittest.TestCase):
         )
 
     def test_sac(self):
-        check_support("SAC", {"num_workers": 0, "learning_starts": 0})
+        check_support(
+            "SAC", {"num_workers": 0, "replay_buffer_config": {"learning_starts": 0}}
+        )
 
 
 if __name__ == "__main__":

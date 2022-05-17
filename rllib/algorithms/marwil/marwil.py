@@ -2,7 +2,7 @@ from typing import Type
 
 from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.algorithms.marwil.marwil_tf_policy import MARWILTFPolicy
-from ray.rllib.execution.buffers.multi_agent_replay_buffer import MultiAgentReplayBuffer
+from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
@@ -18,10 +18,10 @@ from ray.rllib.utils.metrics import (
     WORKER_UPDATE_TIMER,
 )
 from ray.rllib.utils.typing import (
-    PartialTrainerConfigDict,
     ResultDict,
     TrainerConfigDict,
 )
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 # fmt: off
 # __sphinx_doc_begin__
@@ -66,14 +66,22 @@ DEFAULT_CONFIG = with_common_config({
     # Number of (independent) timesteps pushed through the loss
     # each SGD round.
     "train_batch_size": 2000,
-    # Size of the replay buffer in (single and independent) timesteps.
-    # The buffer gets filled by reading from the input files line-by-line
-    # and adding all timesteps on one line at once. We then sample
-    # uniformly from the buffer (`train_batch_size` samples) for
-    # each training step.
-    "replay_buffer_size": 10000,
-    # Number of steps to read before learning starts.
-    "learning_starts": 0,
+
+    "replay_buffer_config": {
+        "type": "MultiAgentPrioritizedReplayBuffer",
+        # Size of the replay buffer in (single and independent) timesteps.
+        # The buffer gets filled by reading from the input files line-by-line
+        # and adding all timesteps on one line at once. We then sample
+        # uniformly from the buffer (`train_batch_size` samples) for
+        # each training step.
+        "capacity": 10000,
+        # Specify prioritized replay by supplying a buffer type that supports
+        # prioritization
+        "prioritized_replay": DEPRECATED_VALUE,
+        # Number of steps to read before learning starts.
+        "learning_starts": 0,
+        "replay_sequence_length": 1
+    },
 
     # A coeff to encourage higher action distribution entropy for exploration.
     "bc_logstd_coeff": 0.0,
@@ -96,6 +104,8 @@ class MARWILTrainer(Trainer):
         # Call super's validation method.
         super().validate_config(config)
 
+        validate_buffer_config(config)
+
         if config["num_gpus"] > 1:
             raise ValueError("`num_gpus` > 1 not yet supported for MARWIL!")
 
@@ -117,19 +127,6 @@ class MARWILTrainer(Trainer):
             return MARWILTFPolicy
 
     @override(Trainer)
-    def setup(self, config: PartialTrainerConfigDict):
-        super().setup(config)
-        # `training_iteration` implementation: Setup buffer in `setup`, not
-        # in `execution_plan` (deprecated).
-        if self.config["_disable_execution_plan_api"] is True:
-            self.local_replay_buffer = MultiAgentReplayBuffer(
-                learning_starts=self.config["learning_starts"],
-                capacity=self.config["replay_buffer_size"],
-                replay_batch_size=self.config["train_batch_size"],
-                replay_sequence_length=1,
-            )
-
-    @override(Trainer)
     def training_iteration(self) -> ResultDict:
         # Collect SampleBatches from sample workers.
         batch = synchronous_parallel_sample(worker_set=self.workers)
@@ -137,10 +134,10 @@ class MARWILTrainer(Trainer):
         self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
         self._counters[NUM_ENV_STEPS_SAMPLED] += batch.env_steps()
         # Add batch to replay buffer.
-        self.local_replay_buffer.add_batch(batch)
+        self.local_replay_buffer.add(batch)
 
         # Pull batch from replay buffer and train on it.
-        train_batch = self.local_replay_buffer.replay()
+        train_batch = self.local_replay_buffer.sample(self.config["train_batch_size"])
         # Train.
         if self.config["simple_optimizer"]:
             train_results = train_one_step(self, train_batch)
