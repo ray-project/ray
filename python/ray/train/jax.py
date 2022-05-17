@@ -36,6 +36,8 @@ def setup_jax_environment(master_addr_with_port: str, num_workers: int, index: i
     # print(master_addr_with_port, num_workers, index)
     # comment out this
     jax.distributed.initialize(master_addr_with_port, num_workers, index)
+    # cpu parallel: https://github.com/google/jax/issues/1408
+    # os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count=200"
 
 
 
