@@ -17,7 +17,3 @@ __all__ = [
     "RNNSACTorchPolicy",
     "RNNSACTrainer",
 ]
-
-from ray.rllib.utils.deprecation import deprecation_warning
-
-deprecation_warning("ray.rllib.agents.sac", "ray.rllib.algorithms.sac", error=False)

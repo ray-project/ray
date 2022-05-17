@@ -4,9 +4,9 @@ from typing import List, Optional, Tuple, Type, Union
 
 import ray
 from ray.rllib.algorithms.dqn.dqn_tf_policy import PRIO_WEIGHTS
-from ray.rllib.agents.sac import SACTorchPolicy
-from ray.rllib.agents.sac.rnnsac_torch_model import RNNSACTorchModel
-from ray.rllib.agents.sac.sac_torch_policy import _get_dist_class
+from ray.rllib.algorithms.sac import SACTorchPolicy
+from ray.rllib.algorithms.sac.rnnsac_torch_model import RNNSACTorchModel
+from ray.rllib.algorithms.sac.sac_torch_policy import _get_dist_class
 from ray.rllib.models import ModelCatalog, MODEL_DEFAULTS
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
@@ -473,7 +473,7 @@ def actor_critic_loss(
 
 RNNSACTorchPolicy = SACTorchPolicy.with_updates(
     name="RNNSACPolicy",
-    get_default_config=lambda: ray.rllib.agents.sac.rnnsac.DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.algorithms.sac.rnnsac.DEFAULT_CONFIG,
     action_distribution_fn=action_distribution_fn,
     make_model_and_action_dist=build_sac_model_and_action_dist,
     loss_fn=actor_critic_loss,

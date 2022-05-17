@@ -13,8 +13,8 @@ import ray
 import ray.experimental.tf_utils
 from ray.rllib.algorithms.ddpg.ddpg_tf_policy import ComputeTDErrorMixin, TargetNetworkMixin
 from ray.rllib.algorithms.dqn.dqn_tf_policy import postprocess_nstep_and_prio, PRIO_WEIGHTS
-from ray.rllib.agents.sac.sac_tf_model import SACTFModel
-from ray.rllib.agents.sac.sac_torch_model import SACTorchModel
+from ray.rllib.algorithms.sac.sac_tf_model import SACTFModel
+from ray.rllib.algorithms.sac.sac_torch_model import SACTorchModel
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models import ModelCatalog, MODEL_DEFAULTS
 from ray.rllib.models.modelv2 import ModelV2
@@ -746,7 +746,7 @@ def validate_spaces(
 # above.
 SACTFPolicy = build_tf_policy(
     name="SACTFPolicy",
-    get_default_config=lambda: ray.rllib.agents.sac.sac.DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.algorithms.sac.sac.DEFAULT_CONFIG,
     make_model=build_sac_model,
     postprocess_fn=postprocess_trajectory,
     action_distribution_fn=get_distribution_inputs_and_class,

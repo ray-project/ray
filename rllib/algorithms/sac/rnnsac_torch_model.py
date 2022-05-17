@@ -1,7 +1,7 @@
 import gym
 from typing import Optional, List, Dict
 
-from ray.rllib.agents.sac.sac_torch_model import (
+from ray.rllib.algorithms.sac.sac_torch_model import (
     SACTorchModel,
 )
 from ray.rllib.models.modelv2 import ModelV2

@@ -431,7 +431,7 @@ Soft Actor Critic (SAC)
 ------------------------
 |pytorch| |tensorflow|
 `[original paper] <https://arxiv.org/pdf/1801.01290>`__, `[follow up paper] <https://arxiv.org/pdf/1812.05905.pdf>`__, `[discrete actions paper] <https://arxiv.org/pdf/1910.07207v2.pdf>`__
-`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/sac/sac.py>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/sac/sac.py>`__
 
 .. figure:: images/dqn-arch.svg
 
@@ -456,7 +456,7 @@ HalfCheetah    13000       ~15000
 
 **SAC-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/agents/sac/sac.py
+.. literalinclude:: ../../../rllib/algorithms/sac/sac.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__

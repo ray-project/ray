@@ -10,7 +10,7 @@ from typing import Dict, List, Optional, Tuple, Type, Union
 
 import ray
 import ray.experimental.tf_utils
-from ray.rllib.agents.sac.sac_tf_policy import (
+from ray.rllib.algorithms.sac.sac_tf_policy import (
     build_sac_model,
     postprocess_trajectory,
     validate_spaces,
@@ -536,7 +536,7 @@ SACTorchPolicy = build_policy_class(
     name="SACTorchPolicy",
     framework="torch",
     loss_fn=actor_critic_loss,
-    get_default_config=lambda: ray.rllib.agents.sac.sac.DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.algorithms.sac.sac.DEFAULT_CONFIG,
     stats_fn=stats,
     postprocess_fn=postprocess_trajectory,
     extra_grad_process_fn=apply_grad_clipping,

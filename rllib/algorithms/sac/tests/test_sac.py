@@ -6,9 +6,9 @@ import re
 import unittest
 
 import ray
-import ray.rllib.agents.sac as sac
-from ray.rllib.agents.sac.sac_tf_policy import sac_actor_critic_loss as tf_loss
-from ray.rllib.agents.sac.sac_torch_policy import actor_critic_loss as loss_torch
+import ray.rllib.algorithms.sac as sac
+from ray.rllib.algorithms.sac.sac_tf_policy import sac_actor_critic_loss as tf_loss
+from ray.rllib.algorithms.sac.sac_torch_policy import actor_critic_loss as loss_torch
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.examples.models.batch_norm_model import (
     KerasBatchNormModel,

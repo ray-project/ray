@@ -1,7 +1,7 @@
 from typing import Type
 
-from ray.rllib.agents.sac import SACTrainer, DEFAULT_CONFIG as SAC_DEFAULT_CONFIG
-from ray.rllib.agents.sac.rnnsac_torch_policy import RNNSACTorchPolicy
+from ray.rllib.algorithms.sac import SACTrainer, DEFAULT_CONFIG as SAC_DEFAULT_CONFIG
+from ray.rllib.algorithms.sac.rnnsac_torch_policy import RNNSACTorchPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TrainerConfigDict

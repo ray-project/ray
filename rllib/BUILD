@@ -825,7 +825,7 @@ py_test(
     name = "test_rnnsac",
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
-    srcs = ["agents/sac/tests/test_rnnsac.py"]
+    srcs = ["algorithms/sac/tests/test_rnnsac.py"]
 )
 
 # SACTrainer
@@ -833,7 +833,7 @@ py_test(
     name = "test_sac",
     tags = ["team:ml", "trainers_dir"],
     size = "large",
-    srcs = ["agents/sac/tests/test_sac.py"]
+    srcs = ["algorithms/sac/tests/test_sac.py"]
 )
 
 # SimpleQTrainer

@@ -1,7 +1,7 @@
 import unittest
 
 import ray
-import ray.rllib.agents.sac as sac
+import ray.rllib.algorithms.sac as sac
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import check_compute_single_action, framework_iterator
 
