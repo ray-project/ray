@@ -537,6 +537,21 @@ class PlacementGroupManager:
             self.update_status()
         return bool(self._ready[trial.placement_group_factory])
 
+    def has_staging(self, trial: "Trial", update: bool = False) -> bool:
+        """Return True if placement group for trial is staging.
+
+        Args:
+            trial: :obj:`Trial` object.
+            update: Update status first.
+
+        Returns:
+            Boolean.
+
+        """
+        if update:
+            self.update_status()
+        return bool(self._staging[trial.placement_group_factory])
+
     def trial_in_use(self, trial: "Trial"):
         return trial in self._in_use_trials
 

@@ -15,7 +15,7 @@ from ray.tune.ray_trial_executor import (
     ExecutorEventType,
     RayTrialExecutor,
 )
-from ray.tune.registry import _global_registry, TRAINABLE_CLASS
+from ray.tune.registry import _global_registry, TRAINABLE_CLASS, register_trainable
 from ray.tune.result import PID, TRAINING_ITERATION, TRIAL_ID
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial import Trial, _TuneCheckpoint
@@ -497,65 +497,52 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
         executor._pg_manager = pgm
         executor.set_max_pending_trials(1)
 
-        trial1 = Trial("__fake", placement_group_factory=pgf1)
-        trial2 = Trial("__fake", placement_group_factory=pgf1)
-        trial3 = Trial("__fake", placement_group_factory=pgf2)
+        def train(config):
+            yield 1
+            yield 2
+            yield 3
+            yield 4
 
-        assert not pgm.has_cached_pg(pgf1)
-        assert not pgm.has_cached_pg(pgf2)
-        assert not pgm.has_ready(trial1)
-        assert not pgm.has_ready(trial2)
-        assert not pgm.has_ready(trial3)
-        assert pgm.can_stage()
+        register_trainable("resettable", train)
+
+        trial1 = Trial("resettable", placement_group_factory=pgf1)
+        trial2 = Trial("resettable", placement_group_factory=pgf1)
+        trial3 = Trial("resettable", placement_group_factory=pgf2)
+
         assert executor.has_resources_for_trial(trial1)
         assert executor.has_resources_for_trial(trial2)
         assert executor.has_resources_for_trial(trial3)
 
         executor._stage_and_update_status([trial1, trial2, trial3])
 
-        assert not pgm.has_cached_pg(pgf1)
-        assert not pgm.has_cached_pg(pgf2)
-
         while not pgm.has_ready(trial1):
             time.sleep(1)
             executor._stage_and_update_status([trial1, trial2, trial3])
 
-        # Stage more trials
-        executor._stage_and_update_status([trial2, trial3])
+        # Fill staging
+        executor._stage_and_update_status([trial1, trial2, trial3])
 
-        assert pgm.has_ready(trial2)  # Same PGF so trial2 is also ready
-        assert not pgm.has_ready(trial3)
-        assert not pgm.can_stage()  # Max staging is 1
         assert executor.has_resources_for_trial(trial1)
         assert executor.has_resources_for_trial(trial2)
         assert not executor.has_resources_for_trial(trial3)
 
         executor._start_trial(trial1)
-
-        assert not pgm.has_ready(trial2)  # PG used by trial1 now
-        assert not pgm.has_ready(trial3)
-        assert not pgm.can_stage()  # Max staging is 1
-        assert not executor.has_resources_for_trial(trial1)
-        assert executor.has_resources_for_trial(trial2)  # Trial is staged
-        assert not executor.has_resources_for_trial(trial3)
-
-        executor.pause_trial(trial1)  # Caches the PG
         executor._stage_and_update_status([trial1, trial2, trial3])
+        executor.pause_trial(trial1)  # Caches the PG and removes a PG from staging
 
-        assert not pgm.has_ready(trial1)
-        assert not pgm.has_ready(trial2)
-        assert not pgm.has_ready(trial3)
+        assert len(pgm._staging_futures) == 0
+
+        # This will re-schedule a placement group
+        pgm.reconcile_placement_groups([trial1, trial2])
+
+        assert len(pgm._staging_futures) == 1
+
         assert not pgm.can_stage()
+
+        # We should still have resources for this trial as it has a cached PG
         assert executor.has_resources_for_trial(trial1)
         assert executor.has_resources_for_trial(trial2)
         assert not executor.has_resources_for_trial(trial3)
-
-        print(
-            trial1 in executor._staged_trials,
-            trial2 in executor._staged_trials,
-            trial3 in executor._staged_trials,
-        )
-        raise RuntimeError()
 
 
 class LocalModeExecutorTest(RayTrialExecutorTest):
