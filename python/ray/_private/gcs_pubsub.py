@@ -503,7 +503,20 @@ class _AioSubscriber(_SubscriberBase):
         if self._close.is_set():
             return
         req = self._subscribe_request(self._channel)
-        await self._stub.GcsSubscriberCommandBatch(req)
+        start = time.time()
+        while True:
+            try:
+                return self._stub.GcsSubscriberCommandBatch(req, timeout=30)
+            except grpc.RpcError as e:
+                if e.code() in (
+                        grpc.StatusCode.UNAVAILABLE,
+                        grpc.StatusCode.UNKNOWN,
+                        grpc.StatusCode.DEADLINE_EXCEEDED):
+                    logger.debug(f"Failed to send request {req} to GCS: {e}")
+                time.sleep(1)
+                if time.timee() - start > ray._raylet.Config.gcs_rpc_server_reconnect_timeout_s():
+                    raise
+                continue
 
     async def _poll_call(self, req, timeout=None):
         # Wrap GRPC _AioCall as a coroutine.
