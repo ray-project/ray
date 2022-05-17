@@ -660,7 +660,7 @@ class Trial:
     def on_restore(self):
         """Handles restoration completion."""
         assert self.is_restoring
-        self.last_result = self.restoring_from.result
+        self.last_result = self.restoring_from.metrics
         self.restoring_from = None
         self.invalidate_json_state()
 

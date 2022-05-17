@@ -370,7 +370,7 @@ class ProxyManager:
         # Wait for the SpecificServer to become ready.
         server.wait_ready()
         try:
-            grpc.channel_ready_future(server.channel).result(
+            grpc.channel_ready_future(server.channel).metrics(
                 timeout=CHECK_CHANNEL_TIMEOUT_S
             )
             return server.channel
