@@ -15,7 +15,7 @@ from ray.train.utils import construct_path
 from ray.util.ml_utils.checkpoint_manager import (
     CheckpointManager as CommonCheckpointManager,
     TrackedCheckpoint,
-    CheckpointStrategy,
+    CheckpointStrategy, CheckpointStorage,
 )
 
 if TUNE_INSTALLED:
@@ -116,7 +116,7 @@ class CheckpointManager(CommonCheckpointManager):
         tracked_checkpoint = TrackedCheckpoint(
             dir_or_data=checkpoint_data,
             checkpoint_id=self._latest_checkpoint_id,
-            storage_mode=TrackedCheckpoint.MEMORY,
+            storage_mode=CheckpointStorage.MEMORY,
             metrics={score_attr: checkpoint_data.get(score_attr, 0.0)},
         )
         self.register_checkpoint(checkpoint=tracked_checkpoint)
