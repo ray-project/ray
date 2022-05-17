@@ -44,3 +44,5 @@ class RemoteFunctionWhitelist:
                 "Remote function module whitelist check failed "
                 f"for {function_descriptor}"
             )
+
+RemoteFunctionWhitelist.whitelist_init()

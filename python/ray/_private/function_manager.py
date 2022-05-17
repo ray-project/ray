@@ -103,7 +103,6 @@ class FunctionActorManager:
         self._num_exported = 0
         # This is to protect self._num_exported when doing exporting
         self._export_lock = threading.Lock()
-        RemoteFunctionWhitelist.whitelist_init()
 
     def increase_task_counter(self, function_descriptor):
         function_id = function_descriptor.function_id
