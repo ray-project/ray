@@ -233,7 +233,26 @@ class _SyncSubscriber(_SubscriberBase):
             if self._close.is_set():
                 return
             req = self._subscribe_request(self._channel)
-            self._stub.GcsSubscriberCommandBatch(req)
+            start = time.time()
+            from ray._raylet import Config
+
+            while True:
+                try:
+                    return self._stub.GcsSubscriberCommandBatch(req, timeout=30)
+                except grpc.RpcError as e:
+                    if e.code() in (
+                        grpc.StatusCode.UNAVAILABLE,
+                        grpc.StatusCode.UNKNOWN,
+                        grpc.StatusCode.DEADLINE_EXCEEDED,
+                    ):
+                        logger.debug(f"Failed to send request {req} to GCS: {e}")
+                    time.sleep(1)
+                    if (
+                        time.time() - start
+                        > Config.gcs_rpc_server_reconnect_timeout_s()
+                    ):
+                        raise
+                    continue
 
     def _poll_locked(self, timeout=None) -> None:
         assert self._lock.locked()
@@ -265,6 +284,19 @@ class _SyncSubscriber(_SubscriberBase):
                 except grpc.RpcError as e:
                     if self._should_terminate_polling(e):
                         return
+                    if (
+                        e.code() == grpc.StatusCode.DEADLINE_EXCEEDED
+                        and timeout is not None
+                    ):
+                        raise
+
+                    if e.code() in (
+                        grpc.StatusCode.UNAVAILABLE,
+                        grpc.StatusCode.UNKNOWN,
+                        grpc.StatusCode.DEADLINE_EXCEEDED,
+                    ):
+                        self.subscribe()
+                        continue
                     raise
 
             if fut.done():
@@ -507,7 +539,7 @@ class _AioSubscriber(_SubscriberBase):
 
         while True:
             try:
-                return self._stub.GcsSubscriberCommandBatch(req, timeout=30)
+                return await self._stub.GcsSubscriberCommandBatch(req, timeout=30)
             except grpc.RpcError as e:
                 if e.code() in (
                     grpc.StatusCode.UNAVAILABLE,
@@ -516,7 +548,7 @@ class _AioSubscriber(_SubscriberBase):
                 ):
                     logger.debug(f"Failed to send request {req} to GCS: {e}")
                 time.sleep(1)
-                if time.timee() - start > Config.gcs_rpc_server_reconnect_timeout_s():
+                if time.time() - start > Config.gcs_rpc_server_reconnect_timeout_s():
                     raise
                 continue
 
