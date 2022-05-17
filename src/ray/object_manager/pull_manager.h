@@ -205,7 +205,7 @@ class PullManager {
       result << ", pending creation: " << pending_object_creation;
       result << ", object size set: " << object_size_set;
       result << ", object size: " << object_size;
-      result << ", num of retries: " << num_retries;
+      result << ", num of retries: " << static_cast<uint64_t>(num_retries);
       result << "}";
       return result.str();
     }
