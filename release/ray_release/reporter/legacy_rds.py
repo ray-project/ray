@@ -10,7 +10,8 @@ from ray_release.aws import (
     RELEASE_AWS_DB_NAME,
     RELEASE_AWS_DB_TABLE,
 )
-from ray_release.config import Test, get_test_env_var
+from ray_release.config import Test
+from ray_release.template import get_test_env_var
 from ray_release.logger import logger
 from ray_release.reporter.reporter import Reporter
 from ray_release.result import Result

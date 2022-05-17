@@ -285,9 +285,11 @@ class DatasetPipeline(Generic[T]):
             # will fate-share with the coordinator anyway.
             resources["node:{}".format(ray.util.get_node_ip_address())] = 0.0001
 
+        ctx = DatasetContext.get_current()
+
         coordinator = PipelineSplitExecutorCoordinator.options(
             resources=resources,
-            placement_group=None,
+            scheduling_strategy=ctx.scheduling_strategy,
         ).remote(self, n, splitter, DatasetContext.get_current())
         if self._executed[0]:
             raise RuntimeError("Pipeline cannot be read multiple times.")

@@ -14,7 +14,7 @@ This section should help you:
 
 ### Basic Example
 
-As shown in the {ref}`serve-quickstart`, when you create a deployment, it is exposed over HTTP by default at `/{deployment_name}`. You can change the route by specifying the `route_prefix` argument to the {mod}`@serve.deployment <ray.serve.api.deployment>` decorator.
+When you create a deployment, it is exposed over HTTP by default at `/{deployment_name}`. You can change the route by specifying the `route_prefix` argument to the {mod}`@serve.deployment <ray.serve.api.deployment>` decorator.
 
 ```python
 @serve.deployment(route_prefix="/counter")
