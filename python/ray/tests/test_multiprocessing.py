@@ -16,7 +16,7 @@ from ray.util.multiprocessing import Pool, TimeoutError, JoinableQueue
 from ray.util.joblib import register_ray
 
 from joblib import parallel_backend, Parallel, delayed
-
+from ray._private.test_utils import redis_mode
 
 def teardown_function(function):
     # Delete environment variable if set.
@@ -67,7 +67,7 @@ def ray_start_4_cpu():
     # The code after the yield will run as teardown code.
     ray.shutdown()
 
-
+@pytest.mark.skipif(redis_mode(), reason="Redis is alive across clusters.")
 def test_ray_init(shutdown_only):
     def getpid(args):
         return os.getpid()
@@ -117,6 +117,7 @@ def test_ray_init(shutdown_only):
     ],
     indirect=True,
 )
+@pytest.mark.skipif(redis_mode(), reason="Redis is alive across clusters.")
 def test_connect_to_ray(ray_start_cluster):
     def getpid(args):
         return os.getpid()

@@ -64,6 +64,10 @@ def make_global_state_accessor(ray_context):
     return global_state_accessor
 
 
+def redis_mode():
+    import os
+    return os.environ.get("REDIS_MODE") == "1"
+
 def _pid_alive(pid):
     """Check if the process with this PID is alive or not.
 
