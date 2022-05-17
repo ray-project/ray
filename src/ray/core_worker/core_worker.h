@@ -1162,7 +1162,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// The currently executing task spec. We have to track this separately since
   /// we cannot access the thread-local worker contexts from GetCoreWorkerStats()
-  TaskSpecification current_task_ GUARDED_BY(mutex_);
+  absl::flat_hash_map<TaskID, TaskSpecification> current_tasks_ GUARDED_BY(mutex_);
 
   /// Key value pairs to be displayed on Web UI.
   std::unordered_map<std::string, std::string> webui_display_ GUARDED_BY(mutex_);

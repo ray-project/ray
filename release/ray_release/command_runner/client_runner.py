@@ -55,9 +55,7 @@ class ClientRunner(CommandRunner):
         self.result_output_json = tempfile.mktemp()
 
     def prepare_remote_env(self):
-        # Give 5 seconds of slack time for the cluster to start up properly.
-        # This is to avoid e.g. Ray client connection timeouts.
-        time.sleep(5)
+        pass
 
     def prepare_local_env(self, ray_wheels_url: Optional[str] = None):
         try:

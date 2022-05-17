@@ -39,6 +39,7 @@ from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.autoscaler._private.kuberay.run_autoscaler import run_autoscaler_with_retries
 from ray.internal.internal_api import memory_summary
+from ray.internal.storage import _load_class
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger, cf
 from ray.dashboard.modules.job.cli import job_cli_group
 from ray.experimental.state.state_cli import list_state_cli_group
@@ -630,6 +631,9 @@ def start(
         tracing_startup_hook=tracing_startup_hook,
         ray_debugger_external=ray_debugger_external,
     )
+
+    if ray_constants.RAY_START_HOOK in os.environ:
+        _load_class(os.environ[ray_constants.RAY_START_HOOK])(ray_params, head)
 
     if head:
         # Start head node.
@@ -1433,6 +1437,13 @@ def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes):
     default=False,
     help="If True, the usage stats collection will be disabled.",
 )
+@click.option(
+    "--extra-screen-args",
+    default=None,
+    help="if screen is enabled, add the provided args to it. A useful example "
+    "usage scenario is passing --extra-screen-args='-Logfile /full/path/blah_log.txt'"
+    " as it redirects screen output also to a custom file",
+)
 @add_click_logging_options
 def submit(
     cluster_config_file,
@@ -1447,6 +1458,7 @@ def submit(
     args,
     script_args,
     disable_usage_stats,
+    extra_screen_args: Optional[str] = None,
 ):
     """Uploads and runs a script on the specified cluster.
 
@@ -1473,6 +1485,11 @@ def submit(
 
     assert not (screen and tmux), "Can specify only one of `screen` or `tmux`."
     assert not (script_args and args), "Use -- --arg1 --arg2 for script args."
+
+    if (extra_screen_args is not None) and (not screen):
+        cli_logger.abort(
+            "To use extra_screen_args, it is required to use the --screen flag"
+        )
 
     if args:
         cli_logger.warning(
@@ -1531,6 +1548,7 @@ def submit(
         override_cluster_name=cluster_name,
         no_config_cache=no_config_cache,
         port_forward=port_forward,
+        extra_screen_args=extra_screen_args,
     )
 
 

@@ -26,7 +26,7 @@ pendulum-sac:
         prioritized_replay: true
         train_batch_size: 256
         target_network_update_freq: 1
-        timesteps_per_iteration: 1000
+        min_sample_timesteps_per_reporting: 1000
         learning_starts: 256
         optimization:
           actor_learning_rate: 0.0003

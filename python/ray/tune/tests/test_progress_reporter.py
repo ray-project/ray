@@ -694,6 +694,25 @@ class ProgressReporterTest(unittest.TestCase):
 
         tune.run(lambda config: 2, num_samples=1, progress_reporter=CustomReporter())
 
+    def testMaxLen(self):
+        trials = []
+        for i in range(5):
+            t = Mock()
+            t.status = "TERMINATED"
+            t.trial_id = "%05d" % i
+            t.local_dir = "/foo"
+            t.location = "here"
+            t.config = {"verylong" * 20: i}
+            t.evaluated_params = {"verylong" * 20: i}
+            t.last_result = {"some_metric": "evenlonger" * 100}
+            t.__str__ = lambda self: self.trial_id
+            trials.append(t)
+
+        progress_str = trial_progress_str(
+            trials, metric_columns=["some_metric"], force_table=True
+        )
+        assert any(len(row) <= 90 for row in progress_str.split("\n"))
+
 
 if __name__ == "__main__":
     import sys

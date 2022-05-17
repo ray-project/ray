@@ -48,7 +48,7 @@ run_experiments(
                 "rollout_fragment_length": 1,
                 "train_batch_size": 1,
                 "min_iter_time_s": 10,
-                "timesteps_per_iteration": 10,
+                "min_sample_timesteps_per_reporting": 10,
             },
         }
     },

@@ -1,6 +1,6 @@
 import logging
 import psutil
-from typing import Optional
+from typing import Optional, Any
 
 from ray.rllib.execution import MultiAgentReplayBuffer as Legacy_MultiAgentReplayBuffer
 from ray.rllib.execution.buffers.multi_agent_replay_buffer import (
@@ -15,7 +15,9 @@ from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.replay_buffers import (
     MultiAgentPrioritizedReplayBuffer,
     ReplayBuffer,
+    MultiAgentReplayBuffer,
 )
+from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.typing import ResultDict, SampleBatchType, TrainerConfigDict
 from ray.util import log_once
 
@@ -62,8 +64,32 @@ def update_priorities_in_replay_buffer(
             train_batch.policy_batches[policy_id].set_get_interceptor(None)
             # Get the replay buffer row indices that make up the `train_batch`.
             batch_indices = train_batch.policy_batches[policy_id].get("batch_indexes")
-            # In case the buffer stores sequences, TD-error could
-            # already be calculated per sequence chunk.
+
+            if td_error is None:
+                if log_once(
+                    "no_td_error_in_train_results_from_policy_{}".format(policy_id)
+                ):
+                    logger.warning(
+                        "Trying to update priorities for policy with id `{}` in "
+                        "prioritized replay buffer without providing td_errors in "
+                        "train_results. Priority update for this policy is being "
+                        "skipped.".format(policy_id)
+                    )
+                continue
+
+            if batch_indices is None:
+                if log_once(
+                    "no_batch_indices_in_train_result_for_policy_{}".format(policy_id)
+                ):
+                    logger.warning(
+                        "Trying to update priorities for policy with id `{}` in "
+                        "prioritized replay buffer without providing batch_indices in "
+                        "train_batch. Priority update for this policy is being "
+                        "skipped.".format(policy_id)
+                    )
+                continue
+
+            #  Try to transform batch_indices to td_error dimensions
             if len(batch_indices) != len(td_error):
                 T = replay_buffer.replay_sequence_length
                 assert (
@@ -162,7 +188,7 @@ def validate_buffer_config(config: dict):
                 error=False,
             )
             # Copy values over to new location in config to support new
-            # and old configuration style
+            # and old configuration style.
             if config.get("replay_buffer_config") is not None:
                 config["replay_buffer_config"][k] = config[k]
 
@@ -188,6 +214,16 @@ def validate_buffer_config(config: dict):
     assert (
         "type" in replay_buffer_config
     ), "Can not instantiate ReplayBuffer from config without 'type' key."
+
+    replay_burn_in = config.get("burn_in", DEPRECATED_VALUE)
+    if replay_burn_in != DEPRECATED_VALUE:
+        config["replay_buffer_config"]["replay_burn_in"] = replay_burn_in
+        deprecation_warning(
+            old="config['burn_in']",
+            help="Burn in specified at new location config["
+            "'replay_buffer_config']["
+            "'replay_burn_in'] will be overwritten.",
+        )
 
     # Check if old replay buffer should be instantiated
     buffer_type = config["replay_buffer_config"]["type"]
@@ -255,16 +291,6 @@ def validate_buffer_config(config: dict):
                 "location config['replay_buffer_config']["
                 "'replay_sequence_length'] will be overwritten.",
                 error=False,
-            )
-
-        replay_burn_in = config.get("burn_in", DEPRECATED_VALUE)
-        if replay_burn_in != DEPRECATED_VALUE:
-            config["replay_buffer_config"]["replay_burn_in"] = replay_burn_in
-            deprecation_warning(
-                old="config['burn_in']",
-                help="Burn in specified at new location config["
-                "'replay_buffer_config']["
-                "'replay_burn_in'] will be overwritten.",
             )
 
         replay_zero_init_states = config.get(
@@ -361,3 +387,39 @@ def warn_replay_buffer_capacity(*, item: SampleBatchType, capacity: int) -> None
             logger.warning(msg)
         else:
             logger.info(msg)
+
+
+def patch_buffer_with_fake_sampling_method(
+    buffer: ReplayBuffer, fake_sample_output: SampleBatchType
+) -> None:
+    """Patch a ReplayBuffer such that we always sample fake_sample_output.
+
+    Transforms fake_sample_output into a MultiAgentBatch if it is not a
+    MultiAgentBatch and the buffer is a MultiAgentBuffer. This is useful for testing
+    purposes if we need deterministic sampling.
+
+    Args:
+        buffer: The buffer to be patched
+        fake_sample_output: The output to be sampled
+
+    """
+    if isinstance(buffer, MultiAgentReplayBuffer) and not isinstance(
+        fake_sample_output, MultiAgentBatch
+    ):
+        fake_sample_output = SampleBatch(fake_sample_output).as_multi_agent()
+
+    def fake_sample(_: Any, __: Any = None, **kwargs) -> Optional[SampleBatchType]:
+        """Always returns a predefined batch.
+
+        Args:
+            _: dummy arg to match signature of sample() method
+            __: dummy arg to match signature of sample() method
+            **kwargs: dummy args to match signature of sample() method
+
+        Returns:
+            Predefined MultiAgentBatch fake_sample_output
+        """
+
+        return fake_sample_output
+
+    buffer.sample = fake_sample

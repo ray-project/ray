@@ -11,6 +11,7 @@ from typing import (
 )
 
 from ray.tune.syncer import SyncConfig
+from ray.tune.utils.log import Verbosity
 from ray.util import PublicAPI
 
 if TYPE_CHECKING:
@@ -156,6 +157,9 @@ class RunConfig:
             and thus will not take effect in resumed runs).
         failure: The failure mode configuration.
         sync_config: Configuration object for syncing. See tune.SyncConfig.
+        verbose: 0, 1, 2, or 3. Verbosity mode.
+            0 = silent, 1 = only status updates, 2 = status and brief
+            results, 3 = status and detailed results. Defaults to 2.
     """
 
     # TODO(xwjiang): Add more.
@@ -165,3 +169,4 @@ class RunConfig:
     stop: Optional[Union[Mapping, "Stopper", Callable[[str, Mapping], bool]]] = None
     failure: Optional[FailureConfig] = None
     sync_config: Optional[SyncConfig] = None
+    verbose: Union[int, Verbosity] = Verbosity.V2_TRIAL_NORM

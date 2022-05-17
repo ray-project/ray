@@ -1,12 +1,12 @@
 from ray.rllib.agents.dqn.apex import ApexTrainer
-from ray.rllib.agents.ddpg.ddpg import DDPGTrainer, DEFAULT_CONFIG as DDPG_CONFIG
+from ray.rllib.agents.ddpg.ddpg import DDPGConfig, DDPGTrainer
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.iter import LocalIterator
 
 APEX_DDPG_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
-    DDPG_CONFIG,  # see also the options in ddpg.py, which are also supported
+    DDPGConfig().to_dict(),  # see also the options in ddpg.py, which are also supported
     {
         "optimizer": {
             "max_weight_sync_delay": 400,
@@ -33,9 +33,14 @@ APEX_DDPG_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
         "train_batch_size": 512,
         "rollout_fragment_length": 50,
         "target_network_update_freq": 500000,
-        "timesteps_per_iteration": 25000,
+        "min_sample_timesteps_per_reporting": 25000,
         "worker_side_prioritization": True,
         "min_time_s_per_reporting": 30,
+        # Experimental flag.
+        # If True, the execution plan API will not be used. Instead,
+        # a Trainer's `training_iteration` method will be called as-is each
+        # training iteration.
+        "_disable_execution_plan_api": False,
     },
     _allow_unknown_configs=True,
 )

@@ -110,6 +110,16 @@ def run_bash_script(bash_script: str):
     subprocess.run(f"bash {bash_script}", shell=True, check=True)
 
 
+def reinstall_anyscale_dependencies():
+    logger.info("Re-installing `anyscale` package")
+
+    subprocess.check_output(
+        "pip install -U anyscale",
+        shell=True,
+        text=True,
+    )
+
+
 def get_pip_packages() -> List[str]:
     from pip._internal.operations import freeze
 

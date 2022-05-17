@@ -12,6 +12,10 @@ from ray.train.session import (
 )
 from ray.train.trainer import Trainer, TrainingIterator
 
+from ray._private.usage import usage_lib
+
+usage_lib.record_library_usage("train")
+
 __all__ = [
     "BackendConfig",
     "CheckpointStrategy",

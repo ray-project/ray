@@ -186,16 +186,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         gcs_server_address_.second = port;
       });
 
-  gcs_client_ = std::make_shared<gcs::GcsClient>(
-      options_.gcs_options, [this](std::pair<std::string, int> *address) {
-        absl::MutexLock lock(&gcs_server_address_mutex_);
-        if (gcs_server_address_.second != 0) {
-          address->first = gcs_server_address_.first;
-          address->second = gcs_server_address_.second;
-          return true;
-        }
-        return false;
-      });
+  gcs_client_ = std::make_shared<gcs::GcsClient>(options_.gcs_options);
 
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
   RegisterToGcs();
@@ -351,7 +342,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         new raylet::RayletClient(std::move(grpc_client)));
   };
 
-  auto on_excess_queueing = [this](const ActorID &actor_id, int64_t num_queued) {
+  auto on_excess_queueing = [this](const ActorID &actor_id, uint64_t num_queued) {
     auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(
                          std::chrono::system_clock::now().time_since_epoch())
                          .count();
@@ -1502,12 +1493,6 @@ rpc::RuntimeEnv CoreWorker::OverrideRuntimeEnv(
   return result_runtime_env;
 }
 
-// TODO(SongGuyang): This function exists in both C++ and Python. We should make this
-// logic clearly.
-static std::string encode_plugin_uri(std::string plugin, std::string uri) {
-  return plugin + "|" + uri;
-}
-
 static std::vector<std::string> GetUrisFromRuntimeEnv(
     const rpc::RuntimeEnv *runtime_env) {
   std::vector<std::string> result;
@@ -1516,21 +1501,21 @@ static std::vector<std::string> GetUrisFromRuntimeEnv(
   }
   if (!runtime_env->uris().working_dir_uri().empty()) {
     const auto &uri = runtime_env->uris().working_dir_uri();
-    result.emplace_back(encode_plugin_uri("working_dir", uri));
+    result.emplace_back(uri);
   }
   for (const auto &uri : runtime_env->uris().py_modules_uris()) {
-    result.emplace_back(encode_plugin_uri("py_modules", uri));
+    result.emplace_back(uri);
   }
   if (!runtime_env->uris().conda_uri().empty()) {
     const auto &uri = runtime_env->uris().conda_uri();
-    result.emplace_back(encode_plugin_uri("conda", uri));
+    result.emplace_back(uri);
   }
   if (!runtime_env->uris().pip_uri().empty()) {
     const auto &uri = runtime_env->uris().pip_uri();
-    result.emplace_back(encode_plugin_uri("pip", uri));
+    result.emplace_back(uri);
   }
   for (const auto &uri : runtime_env->uris().plugin_uris()) {
-    result.emplace_back(encode_plugin_uri("plugin", uri));
+    result.emplace_back(uri);
   }
   return result;
 }
@@ -2275,7 +2260,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   }
   {
     absl::MutexLock lock(&mutex_);
-    current_task_ = task_spec;
+    current_tasks_.emplace(task_spec.TaskId(), task_spec);
     if (resource_ids) {
       resource_ids_ = resource_ids;
     }
@@ -2378,7 +2363,9 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   }
   {
     absl::MutexLock lock(&mutex_);
-    current_task_ = TaskSpecification();
+    auto it = current_tasks_.find(task_spec.TaskId());
+    RAY_CHECK(it != current_tasks_.end());
+    current_tasks_.erase(it);
     if (task_spec.IsNormalTask()) {
       resource_ids_.reset(new ResourceMappingType());
     }
@@ -3035,7 +3022,7 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
     RAY_LOG(INFO) << "Cancelling a running task " << main_thread_task_id_;
     success = options_.kill_main();
   } else if (!requested_task_running) {
-    RAY_LOG(INFO) << "Cancelling a task " << main_thread_task_id_
+    RAY_LOG(INFO) << "Cancelling a task " << task_id
                   << " that's not running. Tasks will be removed from a queue.";
     // If the task is not currently running, check if it is in the worker's queue of
     // normal tasks, and remove it if found.
@@ -3043,8 +3030,9 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
   }
   if (request.recursive()) {
     auto recursive_cancel = CancelChildren(task_id, request.force_kill());
-    if (recursive_cancel.ok()) {
-      RAY_LOG(INFO) << "Recursive cancel failed for a task " << task_id;
+    if (!recursive_cancel.ok()) {
+      RAY_LOG(ERROR) << "Recursive cancel failed for a task " << task_id
+                     << " due to reason: " << recursive_cancel.ToString();
     }
   }
 
@@ -3052,6 +3040,7 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
   requested_task_running = main_thread_task_id_ == task_id;
 
   reply->set_attempt_succeeded(success);
+  reply->set_requested_task_running(requested_task_running);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 
   // Do force kill after reply callback sent
@@ -3116,8 +3105,6 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
   stats->set_task_queue_length(task_queue_length_);
   stats->set_num_executed_tasks(num_executed_tasks_);
   stats->set_num_object_refs_in_scope(reference_counter_->NumObjectIDsInScope());
-  stats->set_current_task_name(current_task_.GetName());
-  stats->set_current_task_func_desc(current_task_.FunctionDescriptor()->ToString());
   stats->set_ip_address(rpc_address_.ip_address());
   stats->set_port(rpc_address_.port());
   stats->set_pid(getpid());
@@ -3154,6 +3141,9 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
 
   if (request.include_task_info()) {
     task_manager_->FillTaskInfo(reply);
+    for (const auto &current_running_task : current_tasks_) {
+      reply->add_running_task_ids(current_running_task.second.TaskId().Binary());
+    }
   }
 
   send_reply_callback(Status::OK(), nullptr, nullptr);

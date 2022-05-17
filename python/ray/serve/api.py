@@ -44,6 +44,7 @@ from ray.serve.utils import (
     get_random_letters,
     in_interactive_shell,
     DEFAULT,
+    install_serve_encoders_to_fastapi,
 )
 from ray.util.annotations import PublicAPI
 import ray
@@ -57,6 +58,9 @@ from ray.serve.context import (
     get_internal_replica_context,
     ReplicaContext,
 )
+from ray.serve.pipeline.api import build as pipeline_build
+from ray.serve.pipeline.api import get_and_validate_ingress_deployment
+from ray._private.usage import usage_lib
 
 logger = logging.getLogger(__file__)
 
@@ -108,6 +112,8 @@ def start(
         dedicated_cpu (bool): Whether to reserve a CPU core for the internal
           Serve controller actor.  Defaults to False.
     """
+    usage_lib.record_library_usage("serve")
+
     http_deprecated_args = ["http_host", "http_port", "http_middlewares"]
     for key in http_deprecated_args:
         if key in kwargs:
@@ -176,7 +182,7 @@ def start(
             )
         except ray.exceptions.GetTimeoutError:
             raise TimeoutError(
-                "HTTP proxies not available after {HTTP_PROXY_TIMEOUT}s."
+                f"HTTP proxies not available after {HTTP_PROXY_TIMEOUT}s."
             )
 
     client = ServeControllerClient(
@@ -286,6 +292,8 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
         class ASGIAppWrapper(cls):
             async def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
+
+                install_serve_encoders_to_fastapi()
 
                 self._serve_app = frozen_app
 
@@ -586,9 +594,6 @@ def run(
         RayServeHandle: A regular ray serve handle that can be called by user
             to execute the serve DAG.
     """
-    # TODO (jiaodong): Resolve circular reference in pipeline codebase and serve
-    from ray.serve.pipeline.api import build as pipeline_build
-    from ray.serve.pipeline.api import get_and_validate_ingress_deployment
 
     client = start(detached=True, http_options={"host": host, "port": port})
 
@@ -638,10 +643,10 @@ def run(
             "route_prefix": deployment.route_prefix,
             "url": deployment.url,
         }
-
         parameter_group.append(deployment_parameters)
-
-    client.deploy_group(parameter_group, _blocking=_blocking)
+    client.deploy_group(
+        parameter_group, _blocking=_blocking, remove_past_deployments=True
+    )
 
     if ingress is not None:
         return ingress.get_handle()
@@ -662,8 +667,6 @@ def build(target: Union[ClassNode, FunctionNode]) -> Application:
     The returned Application object can be exported to a dictionary or YAML
     config.
     """
-    # TODO (jiaodong): Resolve circular reference in pipeline codebase and serve
-    from ray.serve.pipeline.api import build as pipeline_build
 
     if in_interactive_shell():
         raise RuntimeError(
