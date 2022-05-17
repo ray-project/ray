@@ -710,7 +710,7 @@ py_test(
 py_test(
     name = "test_dreamer",
     tags = ["team:ml", "trainers_dir"],
-    size = "small",
+    size = "medium",
     srcs = ["algorithms/dreamer/tests/test_dreamer.py"]
 )
 
