@@ -357,6 +357,9 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   actor_creator_ = std::make_shared<DefaultActorCreator>(gcs_client_);
 
+  object_barrier_ =
+      std::make_shared<ObjectBarrier>(io_service_, core_worker_client_pool_);
+
   direct_actor_submitter_ = std::shared_ptr<CoreWorkerDirectActorTaskSubmitter>(
       new CoreWorkerDirectActorTaskSubmitter(*core_worker_client_pool_,
                                              *memory_store_,
@@ -971,7 +974,7 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
                                        /*add_local_ref=*/true,
                                        NodeID::FromBinary(rpc_address_.raylet_id()));
   } else {
-    // Because in the remote worker's `HandleAssignObjectOwner`,
+    // Because in the remote worker's `HandleBatchAssignObjectOwner`,
     // a `WaitForRefRemoved` RPC request will be sent back to
     // the current worker. So we need to make sure ref count is > 0
     // by invoking `AddLocalReference` first. Note that in worker.py we set
@@ -982,39 +985,17 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
                                               ObjectID::Nil(),
                                               real_owner_address,
                                               /*foreign_owner_already_monitoring=*/true));
-
-    // Remote call `AssignObjectOwner()`.
-    rpc::AssignObjectOwnerRequest request;
-    request.set_object_id(object_id->Binary());
-    request.mutable_borrower_address()->CopyFrom(rpc_address_);
-    request.set_call_site(CurrentCallSite());
-
-    for (auto &contained_object_id : contained_object_ids) {
-      request.add_contained_object_ids(contained_object_id.Binary());
-    }
-    request.set_object_size(data_size + metadata->Size());
-    auto conn = core_worker_client_pool_->GetOrConnect(real_owner_address);
-    std::promise<Status> status_promise;
-    conn->AssignObjectOwner(request,
-                            [&status_promise](const Status &returned_status,
-                                              const rpc::AssignObjectOwnerReply &reply) {
-                              status_promise.set_value(returned_status);
-                            });
-    // Block until the remote call `AssignObjectOwner` returns.
-    status = status_promise.get_future().get();
   }
 
   if (options_.is_local_mode && owned_by_us && inline_small_object) {
     *data = std::make_shared<LocalMemoryBuffer>(data_size);
   } else {
-    if (status.ok()) {
-      status = plasma_store_provider_->Create(metadata,
+    auto status = plasma_store_provider_->Create(metadata,
                                               data_size,
                                               *object_id,
                                               /* owner_address = */ rpc_address_,
                                               data,
                                               created_by_worker);
-    }
     if (!status.ok()) {
       RemoveLocalReference(*object_id);
       return status;
@@ -1025,6 +1006,22 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
           memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), *object_id));
     }
   }
+
+  if (!owned_by_us) {
+    object_barrier_->AddAssignOwnerRequest(
+        *object_id, real_owner_address, rpc_address_, contained_object_ids,
+        CurrentCallSite(), data_size + metadata->Size(),
+        // Avoid object_id modify.
+        [real_owner_address, object_id_copy = ObjectID::FromBinary(object_id->Binary())](
+            const Status &status) {
+          if (status.ok()) return;
+          RAY_LOG(ERROR) << "The Owner(" << real_owner_address.worker_id()
+                         << ") is died, "
+                         << " the object(" << object_id_copy << ") will be unavailable! "
+                         << " Reply Status: " << status;
+        });
+  }
+
   return Status::OK();
 }
 
@@ -1064,18 +1061,37 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
   RAY_RETURN_NOT_OK(plasma_store_provider_->Seal(object_id));
   if (pin_object) {
     // Tell the raylet to pin the object **after** it is created.
-    RAY_LOG(DEBUG) << "Pinning sealed object " << object_id;
-    local_raylet_client_->PinObjectIDs(
-        owner_address != nullptr ? *owner_address : rpc_address_,
-        {object_id},
-        [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
-          // Only release the object once the raylet has responded to avoid the race
-          // condition that the object could be evicted before the raylet pins it.
-          if (!plasma_store_provider_->Release(object_id).ok()) {
-            RAY_LOG(ERROR) << "Failed to release ObjectID (" << object_id
-                           << "), might cause a leak in plasma.";
-          }
-        });
+    rpc::Address real_owner_address =
+        owner_address != nullptr ? *owner_address : rpc_address_;
+    // We need to pin the object after AssignOwner reply is done, if not,
+    // WaitForObjectFree will delete the object.
+    auto pin_object_callable = [this, object_id,
+                                real_owner_address](const Status &status) {
+      if (!status.ok()) {
+        // If assign owner failed(the owner is died), will continue to pin current object,
+        // and will delete this object's primary copy.
+        RAY_LOG(ERROR) << "The Owner(" << real_owner_address.worker_id() << ") is died, "
+                       << " the object(" << object_id << ") will be unavailable! "
+                       << " Reply Status: " << status;
+      }
+      local_raylet_client_->PinObjectIDs(
+          real_owner_address, {object_id},
+          [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
+            // Only release the object once the raylet has responded to avoid the
+            // race condition that the object could be evicted before the raylet
+            // pins it.
+            if (!plasma_store_provider_->Release(object_id).ok()) {
+              RAY_LOG(ERROR) << "Failed to release ObjectID (" << object_id
+                             << "), might cause a leak in plasma.";
+            }
+          });
+    };
+    io_service_.post(
+        [this, object_id, pin_object_callable = std::move(pin_object_callable)]() {
+          object_barrier_->AsyncWaitForAssignmentFinish(object_id,
+                                                        std::move(pin_object_callable));
+        },
+        "CoreWorker.PinObjectIDs");
   } else {
     RAY_RETURN_NOT_OK(plasma_store_provider_->Release(object_id));
     reference_counter_->FreePlasmaObjects({object_id});
@@ -3217,29 +3233,33 @@ void CoreWorker::HandleExit(const rpc::ExitRequest &request,
       });
 }
 
-void CoreWorker::HandleAssignObjectOwner(const rpc::AssignObjectOwnerRequest &request,
-                                         rpc::AssignObjectOwnerReply *reply,
-                                         rpc::SendReplyCallback send_reply_callback) {
-  ObjectID object_id = ObjectID::FromBinary(request.object_id());
+void CoreWorker::HandleBatchAssignObjectOwner(
+    const rpc::BatchAssignObjectOwnerRequest &request,
+    rpc::BatchAssignObjectOwnerReply *reply, rpc::SendReplyCallback send_reply_callback) {
   const auto &borrower_address = request.borrower_address();
-  std::string call_site = request.call_site();
-  // Get a list of contained object ids.
-  std::vector<ObjectID> contained_object_ids;
-  contained_object_ids.reserve(request.contained_object_ids_size());
-  for (const auto &id_binary : request.contained_object_ids()) {
-    contained_object_ids.push_back(ObjectID::FromBinary(id_binary));
+  NodeID borrower_node_id = NodeID::FromBinary(borrower_address.raylet_id());
+
+  for (int index = 0; index < request.object_ids().size(); index++) {
+    const std::string object_id_binary = request.object_ids()[index];
+    const size_t object_size = request.object_sizes()[index];
+    const rpc::ContainedObjects contained_object_binaries =
+        request.contained_objects()[index];
+    const std::string call_site = request.call_sites()[index];
+
+    ObjectID object_id = ObjectID::FromBinary(object_id_binary);
+    // Get a list of contained object ids.
+    std::vector<ObjectID> contained_object_ids;
+    for (const auto &id_binary : contained_object_binaries.object_ids()) {
+      contained_object_ids.push_back(ObjectID::FromBinary(id_binary));
+    }
+
+    reference_counter_->AddOwnedObject(object_id, contained_object_ids, rpc_address_,
+                                       call_site, object_size,
+                                       /*is_reconstructable=*/false,
+                                       /*pinned_at_raylet_id=*/borrower_node_id);
+    reference_counter_->AddBorrowerAddress(object_id, borrower_address);
+    RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
   }
-  reference_counter_->AddOwnedObject(
-      object_id,
-      contained_object_ids,
-      rpc_address_,
-      call_site,
-      request.object_size(),
-      /*is_reconstructable=*/false,
-      /*add_local_ref=*/false,
-      /*pinned_at_raylet_id=*/NodeID::FromBinary(borrower_address.raylet_id()));
-  reference_counter_->AddBorrowerAddress(object_id, borrower_address);
-  RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -3410,6 +3430,19 @@ Status CoreWorker::WaitForActorRegistered(const std::vector<ObjectID> &ids) {
     }
   }
   return Status::OK();
+}
+
+Status CoreWorker::WaitForObjectOwnerReply(const ObjectID &object_id,
+                                           const rpc::Address &owner_address) {
+  std::promise<Status> promise;
+  io_service_.post(
+      [&object_id, &promise, &owner_address, this]() {
+        object_barrier_->TrySendAssignOwnerRequest(object_id, owner_address);
+        object_barrier_->AsyncWaitForAssignmentFinish(
+            object_id, [&promise](const Status &status) { promise.set_value(status); });
+      },
+      "CoreWorker.WaitForObjectOwnerReply");
+  return promise.get_future().get();
 }
 
 std::vector<ObjectID> CoreWorker::GetCurrentReturnIds(int num_returns,

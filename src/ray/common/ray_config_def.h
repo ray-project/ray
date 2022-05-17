@@ -612,3 +612,10 @@ RAY_CONFIG(std::string, TLS_CA_CERT, "")
 //  The delay is a random number between the interval. If method equals '*',
 //  it will apply to all methods.
 RAY_CONFIG(std::string, testing_asio_delay_us, "")
+
+/// The maximum batch size for each BatchAssignObjectOwner request.
+RAY_CONFIG(size_t, assign_owner_batch_size, 1024)
+
+/// Duration to wait between the first object added to
+/// `BatchAssignObjectOwnerRequest` and sending it
+RAY_CONFIG(int64_t, delay_send_assign_owner_request_ms, 1000)

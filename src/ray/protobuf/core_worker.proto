@@ -346,20 +346,25 @@ message ExitReply {
   bool success = 1;
 }
 
-message AssignObjectOwnerRequest {
-  // The ID of added object.
-  bytes object_id = 1;
-  // The size of the object in bytes.
-  uint64 object_size = 2;
+message ContainedObjects {
   // The IDs of contained objects.
-  repeated bytes contained_object_ids = 3;
+  repeated bytes object_ids = 1;
+}
+
+message BatchAssignObjectOwnerRequest {
+  // The IDs of added objects.
+  repeated bytes object_ids = 1;
+  // The sizes of the objects in bytes.
+  repeated uint64 object_sizes = 2;
+  // The total IDs of contained objects.
+  repeated ContainedObjects contained_objects = 3;
   // The borrower address.
   Address borrower_address = 4;
   // Description of the call site where the reference was created.
-  string call_site = 5;
+  repeated string call_sites = 5;
 }
 
-message AssignObjectOwnerReply {}
+message BatchAssignObjectOwnerReply {}
 
 message RayletNotifyGCSRestartRequest {}
 
@@ -417,5 +422,6 @@ service CoreWorkerService {
   // Request for a worker to exit.
   rpc Exit(ExitRequest) returns (ExitReply);
   // Assign the owner of an object to the intended worker.
-  rpc AssignObjectOwner(AssignObjectOwnerRequest) returns (AssignObjectOwnerReply);
+  rpc BatchAssignObjectOwner(BatchAssignObjectOwnerRequest)
+      returns (BatchAssignObjectOwnerReply);
 }

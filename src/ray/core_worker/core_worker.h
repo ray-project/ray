@@ -28,6 +28,7 @@
 #include "ray/core_worker/future_resolver.h"
 #include "ray/core_worker/gcs_server_address_updater.h"
 #include "ray/core_worker/lease_policy.h"
+#include "ray/core_worker/object_barrier.h"
 #include "ray/core_worker/object_recovery_manager.h"
 #include "ray/core_worker/profiling.h"
 #include "ray/core_worker/reference_count.h"
@@ -781,9 +782,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   // Set local worker as the owner of object.
   // Request by borrower's worker, execute by owner's worker.
-  void HandleAssignObjectOwner(const rpc::AssignObjectOwnerRequest &request,
-                               rpc::AssignObjectOwnerReply *reply,
-                               rpc::SendReplyCallback send_reply_callback) override;
+  void HandleBatchAssignObjectOwner(const rpc::BatchAssignObjectOwnerRequest &request,
+                                    rpc::BatchAssignObjectOwnerReply *reply,
+                                    rpc::SendReplyCallback send_reply_callback) override;
 
   ///
   /// Public methods related to async actor call. This should only be used when
@@ -813,6 +814,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Return true if the core worker is in the exit process.
   bool IsExiting() const;
 
+  Status WaitForObjectOwnerReply(const ObjectID &object_id,
+                                 const rpc::Address &owner_address);
+								 
   /// Retrieve the current statistics about tasks being received and executing.
   /// \return an unordered_map mapping function name to list of (num_received,
   /// num_executing, num_executed). It is a std map instead of absl due to its
@@ -1150,6 +1154,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // Tracks the currently pending tasks.
   std::shared_ptr<TaskManager> task_manager_;
 
+  // A Object Barrier for Async Wait Object Request.
+  std::shared_ptr<ObjectBarrier> object_barrier_;
+  
   // A class for actor creation.
   std::shared_ptr<ActorCreatorInterface> actor_creator_;
 

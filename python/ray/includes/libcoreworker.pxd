@@ -187,6 +187,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         void GetOwnershipInfo(const CObjectID &object_id,
                               CAddress *owner_address,
                               c_string *object_status)
+        CRayStatus WaitForObjectOwnerReply(const CObjectID &object_id,
+                                           const CAddress &owner_address)
         void RegisterOwnershipInfoAndResolveFuture(
                 const CObjectID &object_id,
                 const CObjectID &outer_object_id,

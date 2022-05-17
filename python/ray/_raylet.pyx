@@ -1953,9 +1953,30 @@ cdef class CoreWorker:
         cdef:
             CObjectID c_object_id = object_ref.native()
             CAddress c_owner_address = CAddress()
+            CRayStatus status
             c_string serialized_object_status
         CCoreWorkerProcess.GetCoreWorker().GetOwnershipInfo(
                 c_object_id, &c_owner_address, &serialized_object_status)
+        # Avoid deadlocks for the GIL:
+        #     - WaitForObjectOwnerReply hold GIL, and queueing in core_worker's
+        # io_service thread.
+        #     - async_callback will run in core_worker's io_service thread,
+        # and require GIL.
+        with nogil:
+            # There is the reason why core_worker needs to wait for
+            # the owner reply in here:
+            #     - Barrier should be called as late as possible.
+            status = \
+                CCoreWorkerProcess.GetCoreWorker().WaitForObjectOwnerReply(
+                    c_object_id, c_owner_address
+                )
+
+        try:
+            check_status(status)
+        except Exception as error:
+            logger.error("The owner of object({}) reply failed!".format(
+                object_ref.hex()), exc_info=True)
+
         return (object_ref,
                 c_owner_address.SerializeAsString(),
                 serialized_object_status)
