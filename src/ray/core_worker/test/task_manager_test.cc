@@ -103,6 +103,11 @@ TEST_F(TaskManagerTest, TestTaskSuccess) {
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
   ASSERT_TRUE(reference_counter_->IsObjectPendingCreation(return_id));
 
+  manager_.MarkDependenciesResolved(spec.TaskId());
+  ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+  ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
+  manager_.MarkTaskWaitingForExecution(spec.TaskId());
+  ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
   rpc::PushTaskReply reply;
   auto return_object = reply.add_return_objects();
   return_object->set_object_id(return_id.Binary());
@@ -177,6 +182,11 @@ TEST_F(TaskManagerTest, TestPlasmaConcurrentFailure) {
   ASSERT_TRUE(reference_counter_->FlushObjectsToRecover().empty());
   all_nodes_alive_ = false;
 
+  manager_.MarkDependenciesResolved(spec.TaskId());
+  ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+  ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
+  manager_.MarkTaskWaitingForExecution(spec.TaskId());
+  ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
   rpc::PushTaskReply reply;
   auto return_object = reply.add_return_objects();
   return_object->set_object_id(return_id.Binary());
@@ -309,6 +319,11 @@ TEST_F(TaskManagerTest, TestLineageEvicted) {
   int num_retries = 3;
   manager_.AddPendingTask(caller_address, spec, "", num_retries);
 
+  manager_.MarkDependenciesResolved(spec.TaskId());
+  ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+  ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
+  manager_.MarkTaskWaitingForExecution(spec.TaskId());
+  ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
   auto return_id = spec.ReturnId(0);
   rpc::PushTaskReply reply;
   auto return_object = reply.add_return_objects();
@@ -348,6 +363,11 @@ TEST_F(TaskManagerLineageTest, TestLineagePinned) {
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
 
   // The task completes.
+  manager_.MarkDependenciesResolved(spec.TaskId());
+  ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+  ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
+  manager_.MarkTaskWaitingForExecution(spec.TaskId());
+  ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
   rpc::PushTaskReply reply;
   auto return_object = reply.add_return_objects();
   return_object->set_object_id(return_id.Binary());
@@ -386,6 +406,11 @@ TEST_F(TaskManagerLineageTest, TestDirectObjectNoLineage) {
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
 
   // The task completes.
+  manager_.MarkDependenciesResolved(spec.TaskId());
+  ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+  ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
+  manager_.MarkTaskWaitingForExecution(spec.TaskId());
+  ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
   rpc::PushTaskReply reply;
   auto return_object = reply.add_return_objects();
   return_object->set_object_id(return_id.Binary());
@@ -427,6 +452,11 @@ TEST_F(TaskManagerLineageTest, TestLineagePinnedOutOfOrder) {
   ASSERT_FALSE(reference_counter_->HasReference(return_id));
 
   // The task completes.
+  manager_.MarkDependenciesResolved(spec.TaskId());
+  ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+  ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
+  manager_.MarkTaskWaitingForExecution(spec.TaskId());
+  ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
   rpc::PushTaskReply reply;
   auto return_object = reply.add_return_objects();
   return_object->set_object_id(return_id.Binary());
@@ -455,6 +485,11 @@ TEST_F(TaskManagerLineageTest, TestRecursiveLineagePinned) {
     auto return_id = spec.ReturnId(0);
 
     // The task completes.
+    manager_.MarkDependenciesResolved(spec.TaskId());
+    ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+    ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
+    manager_.MarkTaskWaitingForExecution(spec.TaskId());
+    ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
     rpc::PushTaskReply reply;
     auto return_object = reply.add_return_objects();
     return_object->set_object_id(return_id.Binary());
@@ -496,6 +531,11 @@ TEST_F(TaskManagerLineageTest, TestRecursiveDirectObjectNoLineage) {
     reference_counter_->RemoveLocalReference(dep, nullptr);
 
     // The task completes.
+    manager_.MarkDependenciesResolved(spec.TaskId());
+    ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+    ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
+    manager_.MarkTaskWaitingForExecution(spec.TaskId());
+    ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
     rpc::PushTaskReply reply;
     auto return_object = reply.add_return_objects();
     return_object->set_object_id(return_id.Binary());
@@ -537,6 +577,9 @@ TEST_F(TaskManagerLineageTest, TestResubmitTask) {
   ASSERT_FALSE(reference_counter_->IsObjectPendingCreation(return_id));
 
   manager_.AddPendingTask(caller_address, spec, "", num_retries);
+  manager_.MarkDependenciesResolved(spec.TaskId());
+  ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+  ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
   // A task that is already pending does not get resubmitted.
   ASSERT_TRUE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps));
   ASSERT_TRUE(resubmitted_task_deps.empty());
@@ -544,6 +587,8 @@ TEST_F(TaskManagerLineageTest, TestResubmitTask) {
   ASSERT_TRUE(reference_counter_->IsObjectPendingCreation(return_id));
 
   // The task completes.
+  manager_.MarkTaskWaitingForExecution(spec.TaskId());
+  ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
   rpc::PushTaskReply reply;
   auto return_object = reply.add_return_objects();
   return_object->set_object_id(return_id.Binary());
@@ -592,9 +637,14 @@ TEST_F(TaskManagerLineageTest, TestResubmittedTaskNondeterministicReturns) {
   auto return_id1 = spec.ReturnId(0);
   auto return_id2 = spec.ReturnId(1);
   manager_.AddPendingTask(caller_address, spec, "", /*num_retries=*/1);
+  manager_.MarkDependenciesResolved(spec.TaskId());
+  ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+  ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
 
   // The task completes. Both return objects are stored in plasma.
   {
+    manager_.MarkTaskWaitingForExecution(spec.TaskId());
+    ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
     rpc::PushTaskReply reply;
     auto return_object1 = reply.add_return_objects();
     return_object1->set_object_id(return_id1.Binary());
@@ -620,6 +670,11 @@ TEST_F(TaskManagerLineageTest, TestResubmittedTaskNondeterministicReturns) {
   {
     reference_counter_->AddLocalReference(return_id1, "");
     reference_counter_->AddLocalReference(return_id2, "");
+    manager_.MarkDependenciesResolved(spec.TaskId());
+    ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+    ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
+    manager_.MarkTaskWaitingForExecution(spec.TaskId());
+    ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
     rpc::PushTaskReply reply;
     auto return_object1 = reply.add_return_objects();
     return_object1->set_object_id(return_id1.Binary());

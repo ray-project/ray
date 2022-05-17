@@ -115,7 +115,7 @@ void OutOfOrderActorSchedulingQueue::ScheduleRequests() {
       if (pool == nullptr) {
         request.Accept();
       } else {
-        pool->PostBlocking([request]() mutable { request.Accept(); });
+        pool->Post([request]() mutable { request.Accept(); });
       }
     }
     pending_actor_tasks_.pop_front();

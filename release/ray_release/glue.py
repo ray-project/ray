@@ -90,6 +90,7 @@ def run_release_test(
 
     result.wheels_url = ray_wheels_url
     result.stable = test.get("stable", True)
+    result.smoke_test = smoke_test
 
     buildkite_url = os.getenv("BUILDKITE_BUILD_URL", "")
     if buildkite_url:

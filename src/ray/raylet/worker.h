@@ -54,6 +54,7 @@ class WorkerInterface {
   virtual void SetProcess(Process proc) = 0;
   virtual Language GetLanguage() const = 0;
   virtual const std::string IpAddress() const = 0;
+  virtual void AsyncNotifyGCSRestart() = 0;
   /// Connect this worker's gRPC client.
   virtual void Connect(int port) = 0;
   /// Testing-only
@@ -150,6 +151,7 @@ class Worker : public WorkerInterface {
   void SetProcess(Process proc);
   Language GetLanguage() const;
   const std::string IpAddress() const;
+  void AsyncNotifyGCSRestart();
   /// Connect this worker's gRPC client.
   void Connect(int port);
   /// Testing-only
@@ -281,6 +283,8 @@ class Worker : public WorkerInterface {
   std::shared_ptr<TaskResourceInstances> lifetime_allocated_instances_;
   /// RayTask being assigned to this worker.
   RayTask assigned_task_;
+  /// If true, a RPC need to be sent to notify the worker about GCS restarting.
+  bool notify_gcs_restarted_ = false;
 };
 
 }  // namespace raylet
