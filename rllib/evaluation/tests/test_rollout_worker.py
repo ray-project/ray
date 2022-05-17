@@ -374,10 +374,8 @@ class TestRolloutWorker(unittest.TestCase):
 
                 curframe = inspect.currentframe()
                 called_from_check = any(
-                    [
-                        frame[3] == "check_gym_environments"
-                        for frame in inspect.getouterframes(curframe, 2)
-                    ]
+                    frame[3] == "check_gym_environments"
+                    for frame in inspect.getouterframes(curframe, 2)
                 )
                 # Check, whether the action is immutable.
                 if action.flags.writeable and not called_from_check:

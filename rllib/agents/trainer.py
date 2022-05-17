@@ -300,7 +300,7 @@ class Trainer(Trainable):
         self.config = self.merge_trainer_configs(
             self.get_default_config(), config, self._allow_unknown_configs
         )
-        #self.config["env"] = self._env_id
+        self.config["env"] = self._env_id
 
         # Validate the framework settings in config.
         self.validate_framework(self.config)
