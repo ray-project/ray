@@ -347,6 +347,7 @@ def test_py_resubscription(tmp_path, ray_start_regular_with_external_redis):
     # This test is to ensure python pubsub works
     pass
 
+
 @pytest.mark.parametrize("auto_reconnect", [True, False])
 def test_gcs_client_reconnect(ray_start_regular_with_external_redis, auto_reconnect):
     gcs_address = ray.worker.global_worker.gcs_client.address
