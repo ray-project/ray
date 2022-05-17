@@ -130,22 +130,17 @@ class TensorflowPredictor(Predictor):
         """
         if self.preprocessor:
             data = self.preprocessor.transform_batch(data)
-            import ipdb; ipdb.set_trace()
 
-        # if isinstance(data, pd.DataFrame):
-        #     if feature_columns:
-        #         data = data[feature_columns]
-        #     data = data.values
-        # else:
-        #     if feature_columns:
-        #         data = data[:, feature_columns]
-        #
-        # row, column = data.shape
-        # if column == 1 and row > 0 and isinstance(data[0][0], tf.Tensor):
-        #     tensor = tf.stack(data[:, 0].tolist())
-        # else:
-        #     tensor = tf.convert_to_tensor(data, dtype=dtype)
-        data = data.values
+        if isinstance(data, pd.DataFrame):
+            if feature_columns:
+                data = data[feature_columns]
+                data = data.to_numpy()
+            elif len(data.columns) == 1 and data.columns[0] == "value":
+                data = data["value"]
+        else:
+            if feature_columns:
+                data = data[:, feature_columns]
+
         tensor = tf.convert_to_tensor(data, dtype=dtype)
 
         # TensorFlow model objects cannot be pickled, therefore we use
@@ -156,16 +151,4 @@ class TensorflowPredictor(Predictor):
             model.set_weights(self.model_weights)
 
         result_tensor = model(tensor)
-        if (
-            tf.rank(result_tensor) < 2
-            or tf.rank(result_tensor) == 2
-            and result_tensor.shape[1] < 2
-        ):
-            return pd.DataFrame(result_tensor.numpy().ravel(), columns=["predictions"])
-        else:
-            # TODO: remove when dataset side supports ndarray.
-            if result_tensor.shape[0] > 1:
-                return tf.unstack(result_tensor)
-            else:
-                return [result_tensor[0]]
-
+        return result_tensor.numpy()
