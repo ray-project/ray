@@ -9,6 +9,7 @@ from typing import List, Any, Generic, Optional, TYPE_CHECKING
 import ray
 from ray.types import ObjectRef
 from ray.data.block import T, BlockAccessor
+from ray.data.context import DatasetContext, DEFAULT_SCHEDULING_STRATEGY
 from ray.data.impl.remote_fn import cached_remote_fn
 
 if TYPE_CHECKING:
@@ -57,8 +58,13 @@ class RandomAccessDataset(Generic[T]):
                 self._upper_bounds.append(b[1])
 
         logger.info("[setup] Creating {} random access workers.".format(num_workers))
+        ctx = DatasetContext.get_current()
+        if ctx.scheduling_strategy != DEFAULT_SCHEDULING_STRATEGY:
+            scheduling_strategy = ctx.scheduling_strategy
+        else:
+            scheduling_strategy = "SPREAD"
         self._workers = [
-            _RandomAccessWorker.options(scheduling_strategy="SPREAD").remote(
+            _RandomAccessWorker.options(scheduling_strategy=scheduling_strategy).remote(
                 key, self._format
             )
             for _ in range(num_workers)
@@ -189,7 +195,7 @@ class RandomAccessDataset(Generic[T]):
         return i
 
 
-@ray.remote(num_cpus=0, placement_group=None)
+@ray.remote(num_cpus=0)
 class _RandomAccessWorker:
     def __init__(self, key_field, dataset_format):
         self.blocks = None
