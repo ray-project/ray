@@ -17,4 +17,4 @@ General Examples
 Hugging Face Examples
 ----------------
 
-- :doc:`/ray-air/examples/gpu_examples/analyze_tuning_results`: How to run Hugging Face Transformers fine-tuning on a text classification task.
+- :doc:`/ray-air/examples/huggingface_text_classification`: How to run Hugging Face Transformers fine-tuning on a text classification task.
