@@ -82,12 +82,12 @@ class TrackedCheckpoint:
             # Do not persist memory checkpoints
             return
 
-        if not isinstance(self.dir_or_data, dict):
-            # Only persist dictionaries
-            return
-
         if not path:
             # If no path is given, skip
+            return
+
+        if not isinstance(self.dir_or_data, dict):
+            # Only persist dictionaries
             return
 
         checkpoint = Checkpoint.from_dict(self.dir_or_data)
