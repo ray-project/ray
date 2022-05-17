@@ -39,3 +39,16 @@
     - DATA_PROCESSING_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 ./ci/env/install-dependencies.sh
     - pip install -Ur ./python/requirements_ml_docker.txt
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=gpu python/ray/ml/...
+
+
+- label: ":tv: :book: Doc GPU tests and examples"
+  conditions:
+    ["RAY_CI_PYTHON_AFFECTED", "RAY_CI_TUNE_AFFECTED", "RAY_CI_DOC_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - DOC_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
+    - pip install -Ur ./python/requirements_ml_docker.txt
+    - ./ci/env/env_info.sh
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=gpu,-tf,-pytorch,-py37,-post_wheel_build doc/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=gpu,tf,-pytorch,-py37,-post_wheel_build doc/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=gpu,-tf,pytorch,-py37,-post_wheel_build doc/...

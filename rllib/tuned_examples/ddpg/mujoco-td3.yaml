@@ -18,10 +18,11 @@ mujoco-td3:
         # Works for both torch and tf.
         framework: tf
         # === Exploration ===
-        learning_starts: 10000
         exploration_config:
             random_timesteps: 10000
-
+        replay_buffer_config:
+          type: MultiAgentReplayBuffer
+          learning_starts: 10000
         # === Evaluation ===
         evaluation_interval: 10
         evaluation_num_episodes: 10

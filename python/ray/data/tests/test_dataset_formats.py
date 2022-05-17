@@ -168,7 +168,7 @@ def test_from_arrow_refs(ray_start_regular_shared):
 def test_to_pandas(ray_start_regular_shared):
     n = 5
     df = pd.DataFrame({"value": list(range(n))})
-    ds = ray.data.range_arrow(n)
+    ds = ray.data.range_table(n)
     dfds = ds.to_pandas()
     assert df.equals(dfds)
 
@@ -184,7 +184,7 @@ def test_to_pandas(ray_start_regular_shared):
 def test_to_pandas_refs(ray_start_regular_shared):
     n = 5
     df = pd.DataFrame({"value": list(range(n))})
-    ds = ray.data.range_arrow(n)
+    ds = ray.data.range_table(n)
     dfds = pd.concat(ray.get(ds.to_pandas_refs()), ignore_index=True)
     assert df.equals(dfds)
 
@@ -201,7 +201,7 @@ def test_to_numpy_refs(ray_start_regular_shared):
     np.testing.assert_equal(arr, np.expand_dims(np.arange(0, 10), 1))
 
     # Table Dataset
-    ds = ray.data.range_arrow(10)
+    ds = ray.data.range_table(10)
     arr = np.concatenate(ray.get(ds.to_numpy_refs(column="value")))
     np.testing.assert_equal(arr, np.arange(0, 10))
 
@@ -211,7 +211,7 @@ def test_to_arrow_refs(ray_start_regular_shared):
 
     # Zero-copy.
     df = pd.DataFrame({"value": list(range(n))})
-    ds = ray.data.range_arrow(n)
+    ds = ray.data.range_table(n)
     dfds = pd.concat(
         [t.to_pandas() for t in ray.get(ds.to_arrow_refs())], ignore_index=True
     )

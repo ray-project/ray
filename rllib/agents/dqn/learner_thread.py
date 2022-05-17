@@ -69,6 +69,8 @@ class LearnerThread(threading.Thread):
                         )
                     self.learner_info = learner_info_builder.finalize()
                     self.grad_timer.push_units_processed(ma_batch.count)
+                # Put tuple: replay_actor, prio-dict, env-steps, and agent-steps into
+                # the queue.
                 self.outqueue.put(
                     (replay_actor, prio_dict, ma_batch.count, ma_batch.agent_steps())
                 )
