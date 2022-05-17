@@ -31,7 +31,7 @@ from ray.data.block import (
     BlockMetadata,
     BlockExecStats,
 )
-from ray.data.context import DatasetContext
+from ray.data.context import DatasetContext, DEFAULT_SCHEDULING_STRATEGY
 from ray.data.dataset import Dataset
 from ray.data.datasource import (
     Datasource,
@@ -216,6 +216,7 @@ def read_datasource(
     Returns:
         Dataset holding the data read from the datasource.
     """
+    ctx = DatasetContext.get_current()
     # TODO(ekl) remove this feature flag.
     force_local = "RAY_DATASET_FORCE_LOCAL_METADATA" in os.environ
     pa_ds = _lazy_import_pyarrow_dataset()
@@ -233,7 +234,6 @@ def read_datasource(
     else:
         # Prepare read in a remote task so that in Ray client mode, we aren't
         # attempting metadata resolution from the client machine.
-        ctx = DatasetContext.get_current()
         prepare_read = cached_remote_fn(
             _prepare_read, retry_exceptions=False, num_cpus=0
         )
@@ -258,7 +258,10 @@ def read_datasource(
 
     if ray_remote_args is None:
         ray_remote_args = {}
-    if "scheduling_strategy" not in ray_remote_args:
+    if (
+        "scheduling_strategy" not in ray_remote_args
+        and ctx.scheduling_strategy == DEFAULT_SCHEDULING_STRATEGY
+    ):
         ray_remote_args["scheduling_strategy"] = "SPREAD"
 
     block_list = LazyBlockList(read_tasks, ray_remote_args=ray_remote_args)

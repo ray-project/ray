@@ -236,12 +236,6 @@ The list of available driver options:
   - Type: ``String``
   - Default: empty string.
 
-- ``ray.local-mode``
-
-  - If it's set to ``true``, the driver will run in :ref:`local_mode`.
-  - Type: ``Boolean``
-  - Default: ``false``
-
 - ``ray.job.code-search-path``
 
   - The paths for Java workers to load code from. Currently only directories are supported. You can specify one or more directories split by a ``:``. You don't need to configure code search path if you run a Java application in single machine mode or local mode. Code search path is also used for loading Python code if it's specified. This is required for :ref:`cross_language`. If code search path is specified, you can only run Python remote functions which can be found in the code search path.
