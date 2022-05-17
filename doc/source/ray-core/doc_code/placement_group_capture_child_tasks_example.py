@@ -8,11 +8,13 @@ ray.init(num_cpus=4)
 pg = placement_group([{"CPU": 2}, {"CPU": 2}], strategy="SPREAD")
 ray.get(pg.ready())
 
+
 @ray.remote(num_cpus=1)
 def child():
     pass
 
-@ray.remote(num_cpus=1) 
+
+@ray.remote(num_cpus=1)
 def parent():
     # The child task is scheduled with the same placement group as its parent
     # although child.options(
@@ -20,11 +22,11 @@ def parent():
     # ).remote() wasn't called if placement_group_capture_child_tasks is set to True.
     ray.get(child.remote())
 
+
 ray.get(
     parent.options(
         scheduling_strategy=PlacementGroupSchedulingStrategy(
-            placement_group=pg,
-            placement_group_capture_child_tasks=True
+            placement_group=pg, placement_group_capture_child_tasks=True
         )
     ).remote()
 )
