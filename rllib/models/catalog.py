@@ -457,7 +457,10 @@ class ModelCatalog:
 
             if isinstance(model_config["custom_model"], type):
                 model_cls = model_config["custom_model"]
-            elif isinstance(model_config["custom_model"], str) and "." in model_config["custom_model"]:
+            elif (
+                isinstance(model_config["custom_model"], str)
+                and "." in model_config["custom_model"]
+            ):
                 return from_config(
                     cls=model_config["custom_model"],
                     obs_space=obs_space,

@@ -10,9 +10,10 @@ Detailed documentation:
 https://docs.ray.io/en/master/rllib-algorithms.html#appo
 """
 from typing import Optional, Type
+import logging
 
 from ray.rllib.agents.ppo.appo_tf_policy import AsyncPPOTFPolicy
-from ray.rllib.agents.ppo.ppo import UpdateKL
+from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.agents import impala
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
@@ -28,6 +29,8 @@ from ray.rllib.utils.typing import (
     ResultDict,
     TrainerConfigDict,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class APPOConfig(impala.ImpalaConfig):
@@ -168,8 +171,6 @@ class APPOTrainer(impala.ImpalaTrainer):
     def __init__(self, config, *args, **kwargs):
         super().__init__(config, *args, **kwargs)
 
-        self.update_kl = UpdateKL(self.workers)
-
         # After init: Initialize target net.
         self.workers.local_worker().foreach_policy_to_train(
             lambda p, _: p.update_target()
@@ -207,7 +208,25 @@ class APPOTrainer(impala.ImpalaTrainer):
 
             # Also update the KL-coefficient for the APPO loss, if necessary.
             if self.config["use_kl_loss"]:
-                self.update_kl(train_results)
+
+                def update(pi, pi_id):
+                    assert LEARNER_STATS_KEY not in train_results, (
+                        "{} should be nested under policy id key".format(
+                            LEARNER_STATS_KEY
+                        ),
+                        train_results,
+                    )
+                    if pi_id in train_results:
+                        kl = train_results[pi_id][LEARNER_STATS_KEY].get("kl")
+                        assert kl is not None, (train_results, pi_id)
+                        # Make the actual `Policy.update_kl()` call.
+                        pi.update_kl(kl)
+                    else:
+                        logger.warning("No data for {}, not updating kl".format(pi_id))
+
+                # Update KL on all trainable policies within the local (trainer)
+                # Worker.
+                self.workers.local_worker().foreach_policy_to_train(update)
 
     @classmethod
     @override(impala.ImpalaTrainer)
