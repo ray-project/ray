@@ -7,7 +7,7 @@ Any Arrow-format dataset can be enabled for random access by calling ``dataset.t
 .. code-block:: python
 
     # Generate a dummy embedding table as an example.
-    ds = ray.data.range_arrow(100)
+    ds = ray.data.range_table(100)
     ds = ds.add_column("embedding", lambda b: b["value"] ** 2)
     # -> schema={value: int64, embedding: int64}
 
