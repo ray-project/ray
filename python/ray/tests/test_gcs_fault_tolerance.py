@@ -9,6 +9,7 @@ from time import sleep
 
 from ray._private.test_utils import (
     generate_system_config_map,
+    run_string_as_driver_nonblocking,
     wait_for_condition,
     wait_for_pid_to_exit,
     convert_actor_state,
@@ -372,13 +373,16 @@ ray.init(address='auto')
 ray.get(f.remote())
 """
     proc = run_string_as_driver_nonblocking(script)
+
     def condition():
         return lock2.is_locked
+
     # make sure the script has printed "OK1"
     wait_for_condition(condition, timeout=10)
 
     ray.worker._global_node.kill_gcs_server()
     import time
+
     time.sleep(2)
     ray.worker._global_node.start_gcs_server()
 
