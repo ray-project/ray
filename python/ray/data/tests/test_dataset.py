@@ -479,6 +479,79 @@ def test_tensors_basic(ray_start_regular_shared):
     np.testing.assert_equal(res, [np.array([2]), np.array([3])])
 
 
+def test_tensors_shuffle(ray_start_regular_shared):
+    # Test Arrow table representation.
+    tensor_shape = (3, 5)
+    ds = ray.data.range_tensor(6, shape=tensor_shape)
+    shuffled_ds = ds.random_shuffle()
+    shuffled = shuffled_ds.take()
+    base = ds.take()
+    np.testing.assert_raises(
+        AssertionError,
+        np.testing.assert_equal,
+        shuffled,
+        base,
+    )
+    np.testing.assert_equal(
+        sorted(shuffled, key=lambda arr: arr.min()),
+        sorted(base, key=lambda arr: arr.min()),
+    )
+
+    # Test Pandas table representation.
+    tensor_shape = (3, 5)
+    ds = ray.data.range_tensor(6, shape=tensor_shape)
+    ds = ds.map_batches(lambda df: df, batch_format="pandas")
+    shuffled_ds = ds.random_shuffle()
+    shuffled = shuffled_ds.take()
+    base = ds.take()
+    np.testing.assert_raises(
+        AssertionError,
+        np.testing.assert_equal,
+        shuffled,
+        base,
+    )
+    np.testing.assert_equal(
+        sorted(shuffled, key=lambda arr: arr.min()),
+        sorted(base, key=lambda arr: arr.min()),
+    )
+
+
+def test_tensors_sort(ray_start_regular_shared):
+    # Test Arrow table representation.
+    t = pa.table({"a": TensorArray(np.arange(32).reshape((2, 4, 4))), "b": [1, 2]})
+    ds = ray.data.from_arrow(t)
+    sorted_ds = ds.sort(key="b", descending=True)
+    sorted_arrs = [row["a"] for row in sorted_ds.take()]
+    base = [row["a"] for row in ds.take()]
+    np.testing.assert_raises(
+        AssertionError,
+        np.testing.assert_equal,
+        sorted_arrs,
+        base,
+    )
+    np.testing.assert_equal(
+        sorted_arrs,
+        sorted(base, key=lambda arr: -arr.min()),
+    )
+
+    # Test Pandas table representation.
+    df = pd.DataFrame({"a": TensorArray(np.arange(32).reshape((2, 4, 4))), "b": [1, 2]})
+    ds = ray.data.from_pandas(df)
+    sorted_ds = ds.sort(key="b", descending=True)
+    sorted_arrs = [np.asarray(row["a"]) for row in sorted_ds.take()]
+    base = [np.asarray(row["a"]) for row in ds.take()]
+    np.testing.assert_raises(
+        AssertionError,
+        np.testing.assert_equal,
+        sorted_arrs,
+        base,
+    )
+    np.testing.assert_equal(
+        sorted_arrs,
+        sorted(base, key=lambda arr: -arr.min()),
+    )
+
+
 def test_tensors_inferred_from_map(ray_start_regular_shared):
     # Test map.
     ds = ray.data.range(10).map(lambda _: np.ones((4, 4)))

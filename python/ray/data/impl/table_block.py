@@ -117,10 +117,14 @@ class TableBlockAccessor(BlockAccessor):
     def _get_row(self, index: int, copy: bool = False) -> Union[TableRow, np.ndarray]:
         row = self.slice(index, index + 1, copy=copy)
         if self.is_tensor_wrapper():
-            row = row[VALUE_COL_NAME][0]
+            row = self._build_tensor_row(row)
         else:
             row = self.ROW_TYPE(row)
         return row
+
+    @staticmethod
+    def _build_tensor_row(row: TableRow) -> np.ndarray:
+        raise NotImplementedError
 
     def to_native(self) -> Block:
         if self.is_tensor_wrapper():

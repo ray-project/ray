@@ -108,6 +108,12 @@ class PandasBlockAccessor(TableBlockAccessor):
     def column_names(self) -> List[str]:
         return self._table.columns.tolist()
 
+    @staticmethod
+    def _build_tensor_row(row: PandasRow) -> np.ndarray:
+        # Getting an item in a Pandas tensor column returns a TensorArrayElement, which
+        # we have to convert to an ndarray.
+        return row[VALUE_COL_NAME].iloc[0].to_numpy()
+
     def slice(self, start: int, end: int, copy: bool) -> "pandas.DataFrame":
         view = self._table[start:end]
         if copy:
