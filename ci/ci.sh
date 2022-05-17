@@ -131,7 +131,7 @@ test_core() {
       ;;
   esac
   # shellcheck disable=SC2046
-  bazel test --config=ci --build_tests_only "$(./ci/run/bazel_export_options)" -- "${args[@]}"
+  bazel test --config=ci --build_tests_only $(./ci/run/bazel_export_options) -- "${args[@]}"
 }
 
 # For running Python tests on Windows.
@@ -179,7 +179,7 @@ test_python() {
     # Ideally importing ray.cloudpickle should import pickle5 automatically.
     # shellcheck disable=SC2046,SC2086
     bazel test --config=ci \
-      --build_tests_only "$(./ci/run/bazel_export_options)" \
+      --build_tests_only $(./ci/run/bazel_export_options) \
       --test_env=PYTHONPATH="${PYTHONPATH-}${pathsep}${WORKSPACE_DIR}/python/ray/pickle5_files" \
       --test_env=USERPROFILE="${USERPROFILE}" \
       --test_env=CI=1 \
@@ -193,7 +193,7 @@ test_python() {
 # For running large Python tests on Linux and MacOS.
 test_large() {
   # shellcheck disable=SC2046
-  bazel test --config=ci "$(./ci/run/bazel_export_options)" --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE \
+  bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE \
       --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER \
       --test_env=CI --test_tag_filters="large_size_python_tests_shard_${BUILDKITE_PARALLEL_JOB}"  "$@" \
       -- python/ray/tests/...
@@ -205,7 +205,7 @@ test_cpp() {
   echo build --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0" >> ~/.bazelrc
   bazel build --config=ci //cpp:all
   # shellcheck disable=SC2046
-  bazel test --config=ci "$(./ci/run/bazel_export_options)" --test_strategy=exclusive //cpp:all --build_tests_only
+  bazel test --config=ci $(./ci/run/bazel_export_options) --test_strategy=exclusive //cpp:all --build_tests_only
   # run cluster mode test with external cluster
   bazel test //cpp:cluster_mode_test --test_arg=--external_cluster=true --test_arg=--redis_password="1234" \
     --test_arg=--ray_redis_password="1234"
@@ -689,53 +689,37 @@ build() {
 }
 
 test_minimal() {
-  # Accept the python version. E.g., 3.6, 3.7, 3.8, 3.9, etc..
   ./ci/env/install-minimal.sh "$1"
   ./ci/env/env_info.sh
   python ./ci/env/check_minimal_install.py
-  # Need to disable SC2046 which requires adding double quotation to $(...).
-  # It is because if we wrap $(...) to double quotation, bazel cannot recognize
-  # them as option.
-  # shellcheck disable=SC2046
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 $(./ci/run/bazel_export_options) python/ray/tests/test_basic
-  # shellcheck disable=SC2046
-  bazel test --test_output=streamed --config=ci "$(./ci/run/bazel_export_options)"
+  BAZEL_EXPORT_OPTIONS="$(./ci/run/bazel_export_options)"
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 "${BAZEL_EXPORT_OPTIONS}"
+    python/ray/tests/test_basic
+  bazel test --test_output=streamed --config=ci "${BAZEL_EXPORT_OPTIONS}"
     python/ray/tests/test_basic_2
-  # shellcheck disable=SC2046
-  bazel test --test_output=streamed --config=ci "$(./ci/run/bazel_export_options)"
+  bazel test --test_output=streamed --config=ci "${BAZEL_EXPORT_OPTIONS}"
     python/ray/tests/test_basic_3
-  # shellcheck disable=SC2046
-  bazel test --test_output=streamed --config=ci "$(./ci/run/bazel_export_options)"
+  bazel test --test_output=streamed --config=ci "${BAZEL_EXPORT_OPTIONS}"
     python/ray/tests/test_basic_4
-  # shellcheck disable=SC2046
-  bazel test --test_output=streamed --config=ci "$(./ci/run/bazel_export_options)"
+  bazel test --test_output=streamed --config=ci "${BAZEL_EXPORT_OPTIONS}"
     python/ray/tests/test_basic_5
-  # shellcheck disable=SC2046
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 "$(./ci/run/bazel_export_options)"
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 "${BAZEL_EXPORT_OPTIONS}"
     python/ray/tests/test_output
-  # shellcheck disable=SC2046
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 "$(./ci/run/bazel_export_options)"
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 "${BAZEL_EXPORT_OPTIONS}"
     python/ray/tests/test_runtime_env_ray_minimal
-  # shellcheck disable=SC2046
-  bazel test --test_output=streamed --config=ci "$(./ci/run/bazel_export_options)"
+  bazel test --test_output=streamed --config=ci "${BAZEL_EXPORT_OPTIONS}"
     python/ray/tests/test_runtime_env
-  # shellcheck disable=SC2046
-  bazel test --test_output=streamed --config=ci "$(./ci/run/bazel_export_options)"
+  bazel test --test_output=streamed --config=ci "${BAZEL_EXPORT_OPTIONS}"
     python/ray/tests/test_runtime_env_2
-  # shellcheck disable=SC2046
-  bazel test --test_output=streamed --config=ci "$(./ci/run/bazel_export_options)"
+  bazel test --test_output=streamed --config=ci "${BAZEL_EXPORT_OPTIONS}"
     python/ray/tests/test_runtime_env_complicated
-  # shellcheck disable=SC2046
-  bazel test --test_output=streamed --config=ci "$(./ci/run/bazel_export_options)"
+  bazel test --test_output=streamed --config=ci "${BAZEL_EXPORT_OPTIONS}"
     python/ray/tests/test_runtime_env_validation
-  # shellcheck disable=SC2046
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 "$(./ci/run/bazel_export_options)"
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 "${BAZEL_EXPORT_OPTIONS}"
     python/ray/tests/test_serve_ray_minimal
-  # shellcheck disable=SC2046
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 "$(./ci/run/bazel_export_options)"
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 "${BAZEL_EXPORT_OPTIONS}"
     python/ray/dashboard/test_dashboard
-  # shellcheck disable=SC2046
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 "$(./ci/run/bazel_export_options)"
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 "${BAZEL_EXPORT_OPTIONS}"
     python/ray/tests/test_usage_stats
 }
 
