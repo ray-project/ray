@@ -167,6 +167,9 @@ test_python() {
   fi
   if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
     install_ray
+    # DEBUG: are there wheels for runtime_env testing?
+    echo "${PWD}"
+    ls .whl
 
     # Shard the args.
     BUILDKITE_PARALLEL_JOB=${BUILDKITE_PARALLEL_JOB:-'0'}
@@ -341,6 +344,11 @@ install_ray() {
     cd "${WORKSPACE_DIR}"/python
     build_dashboard_front_end
     keep_alive pip install -v -e .
+  )
+  (
+    # For runtime_env tests, wheels are needed
+    cd "${WORKSPACE_DIR}"
+    keep_alive pip wheel -e python -w .whl
   )
 }
 
