@@ -15,7 +15,7 @@ environment (https://github.com/google-research/recsim).
 import logging
 from typing import Any, Dict, List, Optional, Type, Union
 
-from ray.rllib.agents.dqn.dqn import DQNTrainer
+from ray.rllib.algorithms.dqn.dqn import DQNTrainer
 from ray.rllib.agents.slateq.slateq_tf_policy import SlateQTFPolicy
 from ray.rllib.agents.slateq.slateq_torch_policy import SlateQTorchPolicy
 from ray.rllib.agents.trainer_config import TrainerConfig

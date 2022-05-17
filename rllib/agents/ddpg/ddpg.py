@@ -1,7 +1,7 @@
 import logging
 from typing import List, Optional, Type
 
-from ray.rllib.agents.dqn.simple_q import SimpleQConfig, SimpleQTrainer
+from ray.rllib.algorithms.dqn.simple_q import SimpleQConfig, SimpleQTrainer
 from ray.rllib.agents.ddpg.ddpg_tf_policy import DDPGTFPolicy
 from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.policy.policy import Policy

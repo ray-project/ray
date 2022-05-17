@@ -7,7 +7,7 @@ import numpy as np
 from typing import Dict
 
 import ray
-from ray.rllib.agents.dqn.dqn_tf_policy import clip_gradients
+from ray.rllib.algorithms.dqn.dqn_tf_policy import clip_gradients
 from ray.rllib.agents.sac.sac_tf_policy import TargetNetworkMixin
 from ray.rllib.agents.slateq.slateq_tf_model import SlateQTFModel
 from ray.rllib.models.modelv2 import ModelV2

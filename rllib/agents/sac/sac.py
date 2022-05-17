@@ -2,7 +2,7 @@ import logging
 from typing import Type
 
 from ray.rllib.agents.trainer import with_common_config
-from ray.rllib.agents.dqn.dqn import DQNTrainer
+from ray.rllib.algorithms.dqn.dqn import DQNTrainer
 from ray.rllib.agents.sac.sac_tf_policy import SACTFPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override

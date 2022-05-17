@@ -3,7 +3,7 @@ import numpy as np
 from typing import List, Optional, Tuple, Type, Union
 
 import ray
-from ray.rllib.agents.dqn.dqn_tf_policy import PRIO_WEIGHTS
+from ray.rllib.algorithms.dqn.dqn_tf_policy import PRIO_WEIGHTS
 from ray.rllib.agents.sac import SACTorchPolicy
 from ray.rllib.agents.sac.rnnsac_torch_model import RNNSACTorchModel
 from ray.rllib.agents.sac.sac_torch_policy import _get_dist_class
