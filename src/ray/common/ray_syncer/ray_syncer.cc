@@ -145,7 +145,7 @@ void ClientSyncConnection::StartLongPolling() {
   stub_->async()->LongPolling(
       client_context.get(),
       &dummy_,
-      in_message_.get(),
+      in_message.get(),
       [this, client_context, in_message](grpc::Status status) mutable {
         if (status.ok()) {
           io_context_.dispatch(
