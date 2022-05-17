@@ -4,7 +4,10 @@ from typing import Dict, Tuple
 
 import gym
 import ray
-from ray.rllib.algorithms.dqn.dqn_tf_policy import PRIO_WEIGHTS, postprocess_nstep_and_prio
+from ray.rllib.algorithms.dqn.dqn_tf_policy import (
+    PRIO_WEIGHTS,
+    postprocess_nstep_and_prio,
+)
 from ray.rllib.algorithms.dqn.dqn_torch_policy import (
     adam_optimizer,
     build_q_model_and_distribution,

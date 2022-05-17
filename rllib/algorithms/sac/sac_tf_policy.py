@@ -11,8 +11,14 @@ from typing import Dict, List, Optional, Tuple, Type, Union
 
 import ray
 import ray.experimental.tf_utils
-from ray.rllib.algorithms.ddpg.ddpg_tf_policy import ComputeTDErrorMixin, TargetNetworkMixin
-from ray.rllib.algorithms.dqn.dqn_tf_policy import postprocess_nstep_and_prio, PRIO_WEIGHTS
+from ray.rllib.algorithms.ddpg.ddpg_tf_policy import (
+    ComputeTDErrorMixin,
+    TargetNetworkMixin,
+)
+from ray.rllib.algorithms.dqn.dqn_tf_policy import (
+    postprocess_nstep_and_prio,
+    PRIO_WEIGHTS,
+)
 from ray.rllib.algorithms.sac.sac_tf_model import SACTFModel
 from ray.rllib.algorithms.sac.sac_torch_model import SACTorchModel
 from ray.rllib.evaluation.episode import Episode
