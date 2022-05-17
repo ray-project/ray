@@ -4,7 +4,7 @@
 # __create_from_python_begin__
 import ray
 
-# Create a Dataset from Python objects, which are also held as Python objects.
+# Create a Dataset of Python objects.
 ds = ray.data.range(10000)
 # -> Dataset(num_blocks=200, num_rows=10000, schema=<class 'int'>)
 
