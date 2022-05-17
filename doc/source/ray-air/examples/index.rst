@@ -30,3 +30,11 @@ Hugging Face Examples
 ---------------------
 
 - :doc:`/ray-air/examples/huggingface_text_classification`: How to use Ray AIR to run Hugging Face Transformers fine-tuning on a text classification task.
+
+.. air-tabular-training-serving-examples:
+
+Tabular data training to serving example
+---------------------
+
+- :doc:`/ray-air/examples/tfx_tabular_train_to_serve`: How to use Ray AIR to train a Keras model on tabular data and serve it.
+
