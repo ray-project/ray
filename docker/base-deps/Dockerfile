@@ -16,6 +16,11 @@ ARG PYTHON_VERSION=3.7.7
 ARG RAY_UID=1000
 ARG RAY_GID=100
 
+# GPG error "public key is not available" in Ubuntu
+# https://github.com/NVIDIA/nvidia-docker/issues/1632
+RUN rm /etc/apt/sources.list.d/cuda.list
+RUN rm /etc/apt/sources.list.d/nvidia-ml.list
+
 RUN apt-get update -y \
     && apt-get install -y sudo tzdata \
     && useradd -ms /bin/bash -d /home/ray ray --uid $RAY_UID --gid $RAY_GID \
