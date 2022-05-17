@@ -15,6 +15,10 @@ from ray._private.test_utils import (
     convert_actor_state,
 )
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 @ray.remote
 class Increase:

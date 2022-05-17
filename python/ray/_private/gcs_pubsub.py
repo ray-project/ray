@@ -104,16 +104,29 @@ class _SubscriberBase:
             )
         return req
 
-    @staticmethod
-    def _should_terminate_polling(e: grpc.RpcError) -> None:
+    def _handle_polling_failure(self, e: grpc.RpcError, timeout=None):
         # Caller only expects polling to be terminated after deadline exceeded.
-        if e.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
-            return True
-        # Could be a temporary connection issue. Suppress error.
-        # TODO: reconnect GRPC channel?
-        if e.code() == grpc.StatusCode.UNAVAILABLE:
-            return True
-        return False
+        if e.code() == grpc.StatusCode.DEADLINE_EXCEEDED and timeout is not None:
+            raise e
+
+        if e.code() in (
+            grpc.StatusCode.UNAVAILABLE,
+            grpc.StatusCode.UNKNOWN,
+            grpc.StatusCode.DEADLINE_EXCEEDED,
+        ):
+            return self.subscribe()
+
+        raise e
+
+    def _handle_subscribe_failure(self, e: grpc.RpcError):
+        if e.code() in (
+            grpc.StatusCode.UNAVAILABLE,
+            grpc.StatusCode.UNKNOWN,
+            grpc.StatusCode.DEADLINE_EXCEEDED,
+        ):
+            time.sleep(1)
+        else:
+            raise e
 
     @staticmethod
     def _pop_error_info(queue):
@@ -240,19 +253,12 @@ class _SyncSubscriber(_SubscriberBase):
                 try:
                     return self._stub.GcsSubscriberCommandBatch(req, timeout=30)
                 except grpc.RpcError as e:
-                    if e.code() in (
-                        grpc.StatusCode.UNAVAILABLE,
-                        grpc.StatusCode.UNKNOWN,
-                        grpc.StatusCode.DEADLINE_EXCEEDED,
-                    ):
-                        logger.debug(f"Failed to send request {req} to GCS: {e}")
-                    time.sleep(1)
+                    self._handle_subscribe_failure(e)
                     if (
                         time.time() - start
                         > Config.gcs_rpc_server_reconnect_timeout_s()
                     ):
-                        raise
-                    continue
+                        raise e
 
     def _poll_locked(self, timeout=None) -> None:
         assert self._lock.locked()
@@ -282,22 +288,7 @@ class _SyncSubscriber(_SubscriberBase):
                     # GRPC has not replied, continue waiting.
                     continue
                 except grpc.RpcError as e:
-                    if self._should_terminate_polling(e):
-                        return
-                    if (
-                        e.code() == grpc.StatusCode.DEADLINE_EXCEEDED
-                        and timeout is not None
-                    ):
-                        raise
-
-                    if e.code() in (
-                        grpc.StatusCode.UNAVAILABLE,
-                        grpc.StatusCode.UNKNOWN,
-                        grpc.StatusCode.DEADLINE_EXCEEDED,
-                    ):
-                        self.subscribe()
-                        continue
-                    raise
+                    self._handle_polling_failure(e, timeout)
 
             if fut.done():
                 self._last_batch_size = len(fut.result().pub_messages)
@@ -541,16 +532,9 @@ class _AioSubscriber(_SubscriberBase):
             try:
                 return await self._stub.GcsSubscriberCommandBatch(req, timeout=30)
             except grpc.RpcError as e:
-                if e.code() in (
-                    grpc.StatusCode.UNAVAILABLE,
-                    grpc.StatusCode.UNKNOWN,
-                    grpc.StatusCode.DEADLINE_EXCEEDED,
-                ):
-                    logger.debug(f"Failed to send request {req} to GCS: {e}")
-                time.sleep(1)
+                self._handle_subscribe_failure(e)
                 if time.time() - start > Config.gcs_rpc_server_reconnect_timeout_s():
                     raise
-                continue
 
     async def _poll_call(self, req, timeout=None):
         # Wrap GRPC _AioCall as a coroutine.
@@ -558,20 +542,7 @@ class _AioSubscriber(_SubscriberBase):
             try:
                 return await self._stub.GcsSubscriberPoll(req, timeout=timeout)
             except grpc.RpcError as e:
-                if (
-                    e.code() == grpc.StatusCode.DEADLINE_EXCEEDED
-                    and timeout is not None
-                ):
-                    raise
-                if e.code() in (
-                    grpc.StatusCode.UNAVAILABLE,
-                    grpc.StatusCode.UNKNOWN,
-                    grpc.StatusCode.DEADLINE_EXCEEDED,
-                ):
-                    # do the resubscription in case of a failure
-                    await self.subscribe()
-                else:
-                    raise
+                await self._handle_polling_failure(e, timeout)
 
     async def _poll(self, timeout=None) -> None:
         req = self._poll_request()
@@ -586,14 +557,9 @@ class _AioSubscriber(_SubscriberBase):
             if poll not in done or close in done:
                 # Request timed out or subscriber closed.
                 break
-            try:
-                self._last_batch_size = len(poll.result().pub_messages)
-                for msg in poll.result().pub_messages:
-                    self._queue.append(msg)
-            except grpc.RpcError as e:
-                if self._should_terminate_polling(e):
-                    return
-                raise
+            self._last_batch_size = len(poll.result().pub_messages)
+            for msg in poll.result().pub_messages:
+                self._queue.append(msg)
 
     async def close(self) -> None:
         """Closes the subscriber and its active subscription."""
