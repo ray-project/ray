@@ -17,8 +17,8 @@ from ray.experimental.internal_kv import (
 )
 from ray._private.thirdparty.pathspec import PathSpec
 from ray.ray_constants import (
-    RAY_RUNTIME_ENV_TEMP_REF_EXPIRATION_S_DEFAULT,
-    RAY_RUNTIME_ENV_TEMP_REF_EXPIRATION_S_ENV_VAR,
+    RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT,
+    RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR,
 )
 
 default_logger = logging.getLogger(__name__)
@@ -263,8 +263,8 @@ def pin_runtime_env_uri(uri: str, *, expiration_s: Optional[int] = None) -> None
     if expiration_s is None:
         expiration_s = int(
             os.environ.get(
-                RAY_RUNTIME_ENV_TEMP_REF_EXPIRATION_S_ENV_VAR,
-                RAY_RUNTIME_ENV_TEMP_REF_EXPIRATION_S_DEFAULT,
+                RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR,
+                RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT,
             )
         )
 

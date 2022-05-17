@@ -11,7 +11,7 @@ from unittest import mock
 import ray
 import ray.experimental.internal_kv as kv
 from ray.ray_constants import (
-    RAY_RUNTIME_ENV_TEMP_REF_EXPIRATION_S_ENV_VAR,
+    RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR,
 )
 from ray._private.test_utils import wait_for_condition, chdir, check_local_files_gced
 from ray._private.utils import get_directory_size_bytes
@@ -35,7 +35,7 @@ def working_dir_and_pymodules_disable_URI_cache():
         {
             "RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB": "0",
             "RAY_RUNTIME_ENV_PY_MODULES_CACHE_SIZE_GB": "0",
-            RAY_RUNTIME_ENV_TEMP_REF_EXPIRATION_S_ENV_VAR: "0",
+            RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR: "0",
         },
     ):
         print("URI caching disabled (cache size set to 0).")
@@ -49,7 +49,7 @@ def URI_cache_10_MB():
         {
             "RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB": "0.01",
             "RAY_RUNTIME_ENV_PY_MODULES_CACHE_SIZE_GB": "0.01",
-            RAY_RUNTIME_ENV_TEMP_REF_EXPIRATION_S_ENV_VAR: "0",
+            RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR: "0",
         },
     ):
         print("URI cache size set to 0.01 GB.")
@@ -61,7 +61,7 @@ def disable_temporary_uri_pinning():
     with mock.patch.dict(
         os.environ,
         {
-            RAY_RUNTIME_ENV_TEMP_REF_EXPIRATION_S_ENV_VAR: "0",
+            RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR: "0",
         },
     ):
         print("temporary URI pinning disabled.")
@@ -436,7 +436,7 @@ class TestSkipLocalGC:
 @pytest.mark.parametrize("source", [lazy_fixture("tmp_working_dir")])
 def test_pin_runtime_env_uri(start_cluster, source, expiration_s, monkeypatch):
     """Test that temporary GCS URI references are deleted after expiration_s."""
-    monkeypatch.setenv(RAY_RUNTIME_ENV_TEMP_REF_EXPIRATION_S_ENV_VAR, str(expiration_s))
+    monkeypatch.setenv(RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR, str(expiration_s))
 
     cluster, address = start_cluster
 
