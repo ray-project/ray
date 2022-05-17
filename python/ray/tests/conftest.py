@@ -82,7 +82,15 @@ def _setup_redis(request):
         processes.append(proc)
         wait_for_redis_to_start("127.0.0.1", port, ray_constants.REDIS_DEFAULT_PASSWORD)
     address_str = ",".join(map(lambda x: f"127.0.0.1:{x}", external_redis_ports))
-    yield address_str
+    import os
+
+    old_addr = os.environ.get("RAY_REDIS_ADDRESS")
+    os.environ["RAY_REDIS_ADDRESS"] = address_str
+    yield
+    if old_addr is not None:
+        os.environ["RAY_REDIS_ADDRESS"] = old_addr
+    else:
+        del os.environ["RAY_REDIS_ADDRESS"]
     for proc in processes:
         proc.process.terminate()
 
@@ -92,30 +100,13 @@ def maybe_external_redis(request):
     import os
 
     if "REDIS_MODE" in os.environ:
-        with _setup_redis(request) as addr:
-            old_addr = os.environ.get("RAY_REDIS_ADDRESS")
-            os.environ["RAY_REDIS_ADDRESS"] = addr
+        with _setup_redis(request):
             yield
-            if old_addr is not None:
-                os.environ["RAY_REDIS_ADDRESS"] = old_addr
-            else:
-                del os.environ["RAY_REDIS_ADDRESS"]
     else:
         yield
 
 
-@pytest.fixture
-def external_redis(request):
-    import os
-
-    with _setup_redis(request) as addr:
-        old_addr = os.environ.get("RAY_REDIS_ADDRESS")
-        os.environ["RAY_REDIS_ADDRESS"] = addr
-        yield
-        if old_addr is not None:
-            os.environ["RAY_REDIS_ADDRESS"] = old_addr
-        else:
-            os.environ.pop("RAY_REDIS_ADDRESS")
+external_redis = pytest.fixture(_setup_redis)
 
 
 @pytest.fixture
