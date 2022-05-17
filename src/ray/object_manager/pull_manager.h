@@ -374,6 +374,9 @@ class PullManager {
   /// If the next bundle is not ready for pulling, 0L will be returned.
   int64_t NextRequestBundleSize(const BundlePullRequestQueue &bundles) const;
 
+  const BundlePullRequestQueue &GetBundlePullRequestQueue(uint64_t request_id) const;
+  BundlePullRequestQueue &GetBundlePullRequestQueue(uint64_t request_id);
+
   /// See the constructor's arguments.
   NodeID self_node_id_;
   const std::function<bool(const ObjectID &)> object_is_local_;

@@ -312,23 +312,14 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(int64_t num_bytes_available)
 std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
   RAY_LOG(DEBUG) << "Cancel pull request " << request_id;
 
-  BundlePullRequestQueue *bundles = nullptr;
-  auto bundle_it = get_request_bundles_.requests.find(request_id);
-  if (bundle_it != get_request_bundles_.requests.end()) {
-    bundles = &get_request_bundles_;
-  } else if (bundle_it = wait_request_bundles_.requests.find(request_id);
-             bundle_it != wait_request_bundles_.requests.end()) {
-    bundles = &wait_request_bundles_;
-  } else {
-    bundle_it = task_argument_bundles_.requests.find(request_id);
-    RAY_CHECK(bundle_it != task_argument_bundles_.requests.end());
-    bundles = &task_argument_bundles_;
-  }
+  BundlePullRequestQueue &bundles = GetBundlePullRequestQueue(request_id);
+  auto bundle_it = bundles.requests.find(request_id);
+  RAY_CHECK(bundle_it != bundles.requests.end());
 
   // If the pull request was being actively pulled, deactivate it now.
-  if (bundles->active_requests.count(request_id) > 0) {
+  if (bundles.active_requests.count(request_id) > 0) {
     std::unordered_set<ObjectID> object_ids_to_cancel;
-    DeactivateBundlePullRequest(*bundles, request_id, &object_ids_to_cancel);
+    DeactivateBundlePullRequest(bundles, request_id, &object_ids_to_cancel);
     for (const auto &obj_id : object_ids_to_cancel) {
       // Call the cancellation callback outside of the lock.
       RAY_LOG(DEBUG) << "Pull cancellation requested for object " << obj_id
@@ -353,7 +344,7 @@ std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
       }
     }
   }
-  bundles->RemoveBundlePullRequest(request_id);
+  bundles.RemoveBundlePullRequest(request_id);
 
   // We need to update the pulls in case there is another request(s) after this
   // request that can now be activated. We do this after erasing the cancelled
@@ -409,36 +400,27 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
 
   if (was_pullable_before != is_pullable_after) {
     for (auto &bundle_request_id : it->second.bundle_request_ids) {
-      BundlePullRequestQueue *bundles = nullptr;
-      auto bundle_it = get_request_bundles_.requests.find(bundle_request_id);
-      if (bundle_it != get_request_bundles_.requests.end()) {
-        bundles = &get_request_bundles_;
-      } else if (bundle_it = wait_request_bundles_.requests.find(bundle_request_id);
-                 bundle_it != wait_request_bundles_.requests.end()) {
-        bundles = &wait_request_bundles_;
-      } else {
-        bundle_it = task_argument_bundles_.requests.find(bundle_request_id);
-        RAY_CHECK(bundle_it != task_argument_bundles_.requests.end());
-        bundles = &task_argument_bundles_;
-      }
+      BundlePullRequestQueue &bundles = GetBundlePullRequestQueue(bundle_request_id);
+      auto bundle_it = bundles.requests.find(bundle_request_id);
+      RAY_CHECK(bundle_it != bundles.requests.end());
       if (is_pullable_after) {
         bundle_it->second.MarkObjectAsPullable(object_id);
         if (bundle_it->second.IsPullable()) {
-          bundles->MarkBundleAsPullable(bundle_request_id);
+          bundles.MarkBundleAsPullable(bundle_request_id);
         }
       } else {
         bundle_it->second.MarkObjectAsUnpullable(object_id);
         RAY_CHECK(!bundle_it->second.IsPullable());
-        if (bundles->active_requests.count(bundle_request_id) > 0) {
+        if (bundles.active_requests.count(bundle_request_id) > 0) {
           // It's active now so we need to deactivate it
           // to free memory for other requests.
           std::unordered_set<ObjectID> objects_to_cancel;
-          DeactivateBundlePullRequest(*bundles, bundle_request_id, &objects_to_cancel);
+          DeactivateBundlePullRequest(bundles, bundle_request_id, &objects_to_cancel);
           for (const auto &obj_id : objects_to_cancel) {
             cancel_pull_request_(obj_id);
           }
         }
-        bundles->MarkBundleAsUnpullable(bundle_request_id);
+        bundles.MarkBundleAsUnpullable(bundle_request_id);
       }
     }
 
@@ -648,18 +630,30 @@ bool PullManager::IsObjectActive(const ObjectID &object_id) const {
   return active_object_pull_requests_.count(object_id) == 1;
 }
 
-bool PullManager::PullRequestActiveOrWaitingForMetadata(uint64_t request_id) const {
-  const BundlePullRequestQueue *bundles = nullptr;
+const PullManager::BundlePullRequestQueue &PullManager::GetBundlePullRequestQueue(
+    uint64_t request_id) const {
   if (get_request_bundles_.requests.contains(request_id)) {
-    bundles = &get_request_bundles_;
+    return get_request_bundles_;
   } else if (wait_request_bundles_.requests.contains(request_id)) {
-    bundles = &wait_request_bundles_;
+    return wait_request_bundles_;
   } else {
     RAY_CHECK(task_argument_bundles_.requests.contains(request_id));
-    bundles = &task_argument_bundles_;
+    return task_argument_bundles_;
   }
+}
 
-  return bundles->inactive_requests.count(request_id) == 0;
+PullManager::BundlePullRequestQueue &PullManager::GetBundlePullRequestQueue(
+    uint64_t request_id) {
+  return const_cast<BundlePullRequestQueue &>(
+      const_cast<const PullManager *>(this)->GetBundlePullRequestQueue(request_id));
+}
+
+bool PullManager::PullRequestActiveOrWaitingForMetadata(uint64_t request_id) const {
+  const BundlePullRequestQueue &bundles = GetBundlePullRequestQueue(request_id);
+
+  // If a request isn't inactive then it must be
+  // either active or unpullable (i.e. waiting for metadata).
+  return bundles.inactive_requests.count(request_id) == 0;
 }
 
 bool PullManager::HasPullsQueued() const {
