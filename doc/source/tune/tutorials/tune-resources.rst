@@ -13,8 +13,6 @@ By default, Tune automatically runs N concurrent trials, where N is the number o
     # If you have 4 CPUs on your machine, this will run 4 concurrent trials at a time.
     tune.run(trainable, num_samples=10)
 
-.. tip:: To run your code sequentially, use :ref:`Ray Local Mode <tune-debugging>`.
-
 You can override this parallelism with ``resources_per_trial``. Here you can
 specify your resource requests using either a dictionary or a
 :class:`PlacementGroupFactory <ray.tune.utils.placement_groups.PlacementGroupFactory>`
