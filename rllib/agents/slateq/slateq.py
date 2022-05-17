@@ -77,10 +77,7 @@ class SlateQConfig(TrainerConfig):
         self.rmsprop_epsilon = 1e-5
         self.grad_clip = None
         self.n_step = 1
-        self.worker_side_prioritization = False
         self.replay_buffer_config = {
-            # Enable the new ReplayBuffer API.
-            "_enable_replay_buffer_api": True,
             "type": "MultiAgentPrioritizedReplayBuffer",
             "capacity": 100000,
             "prioritized_replay_alpha": 0.6,
@@ -91,6 +88,8 @@ class SlateQConfig(TrainerConfig):
             # The number of continuous environment steps to replay at once. This may
             # be set to greater than 1 to support recurrent models.
             "replay_sequence_length": 1,
+            # Whether to compute priorities on workers.
+            "worker_side_prioritization": False,
             # How many steps of the model to sample before learning starts.
             "learning_starts": 20000,
         }

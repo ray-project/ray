@@ -108,11 +108,13 @@ class SimpleQConfig(TrainerConfig):
         # __sphinx_doc_begin__
         self.target_network_update_freq = 500
         self.replay_buffer_config = {
-            "_enable_replay_buffer_api": True,
+            # How many steps of the model to sample before learning starts.
             "learning_starts": 1000,
             "type": "MultiAgentReplayBuffer",
             "capacity": 50000,
             "replay_batch_size": 32,
+            # The number of contiguous environment steps to replay at once. This
+            # may be set to greater than 1 to support recurrent models.
             "replay_sequence_length": 1,
         }
         self.store_buffer_in_checkpoints = False
@@ -151,7 +153,8 @@ class SimpleQConfig(TrainerConfig):
         self.prioritized_replay = DEPRECATED_VALUE
         self.learning_starts = DEPRECATED_VALUE
         self.replay_batch_size = DEPRECATED_VALUE
-        self.replay_sequence_length = DEPRECATED_VALUE
+        # Can not use DEPRECATED_VALUE here because -1 is a common config value
+        self.replay_sequence_length = None
         self.prioritized_replay_alpha = DEPRECATED_VALUE
         self.prioritized_replay_beta = DEPRECATED_VALUE
         self.prioritized_replay_eps = DEPRECATED_VALUE
