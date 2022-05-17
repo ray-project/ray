@@ -128,40 +128,50 @@ If the current node's object store does not contain the object, the object is do
       assert(*results[1] == 1);
       assert(*results[2] == 2);
 
-Passing Objects by Reference
-----------------------------
+Passing Object Arguments
+------------------------
 
 Ray object references can be freely passed around a Ray application. This means that they can be passed as arguments to tasks, actor methods, and even stored in other objects. Objects are tracked via *distributed reference counting*, and their data is automatically freed once all references to the object are deleted.
 
+There are two different ways one can pass an object to a Ray task or method. Depending on the way an object is passed, Ray will decide whether to *de-reference* the object prior to task execution.
+
+**Passing an object as a top-level argmuent**: When an object is passed directly as a top-level argument to a task, Ray will de-reference the object. This means that Ray will fetch the underlying data for all top-level object reference arguments, not executing the task until the object data becomes fully available.
+
+.. literalinclude:: doc_code/obj_val.py
+
+**Passing an object as a nested argument**: When an object is passed within a nested object, for example, within a Python list, Ray will *not* de-reference it. This means that the task will need to call ``ray.get()`` on the reference to fetch the concrete value. However, if the task never calls ``ray.get()``, then the object value never needs to be transferred to the machine the task is running on. We recommend passing objects as top-level arguments where possible, but nested arguments can be useful for passing objects on to other tasks without needing to see the data.
+
+.. literalinclude:: doc_code/obj_ref.py
+
+The top-level vs not top-level passing convention also applies to actor constructors and actor method calls:
+
 .. code-block:: python
 
-    @ray.remote
-    def echo(x):
-        print(x)
+    # Examples of passing objects to actor constructors.
+    actor_handle = Actor.remote(obj)  # by-value
+    actor_handle = Actor.remote([obj])  # by-reference
 
-    # Put an object in Ray's object store.
-    object_ref = ray.put(1)
+    # Examples of passing objects to actor method calls.
+    actor_handle.method.remote(obj)  # by-value
+    actor_handle.method.remote([obj])  # by-reference
 
-    # Pass-by-value: send the object to a task as a top-level argument.
-    # The object will be de-referenced, so the task only sees its value.
-    echo.remote(object_ref)
-    # -> prints "1"
+Closure Capture of Objects
+--------------------------
 
-    # Pass-by-reference: when passed inside a Python list or other data structure,
-    # the object ref is preserved. The object data is not transferred to the worker
-    # when it is passed by reference, until ray.get() is called on the reference.
-    echo.remote({"obj": object_ref})
-    # -> prints "{"obj": ObjectRef(...)}"
+You can also pass objects to tasks via *closure-capture*. This can be convenient when you have a large object that you want to share verbatim between many tasks or actors, and don't want to pass it repeatedly as an argument. Be aware however that defining a task that closes over an object ref will pin the object via reference-counting, so the object will not be evicted until the job completes.
+
+.. literalinclude:: doc_code/obj_capture.py
+
+Nested Objects
+--------------
+
+Ray also supports nested object references. This allows you to build composite objects that themselves hold references to further sub-objects.
+
+.. code-block:: python
 
     # Objects can be nested within each other. Ray will keep the inner object
     # alive via reference counting until all outer object references are deleted.
     object_ref_2 = ray.put([object_ref])
-
-    # Examples of passing objects to actors.
-    actor_handle = Actor.remote(obj)  # by-value
-    actor_handle = Actor.remote([obj])  # by-reference
-    actor_handle.method.remote(obj)  # by-value
-    actor_handle.method.remote([obj])  # by-reference
 
 More about Ray Objects
 ----------------------

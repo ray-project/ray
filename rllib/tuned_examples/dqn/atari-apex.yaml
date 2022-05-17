@@ -15,11 +15,12 @@ apex-breakoutnoframeskip-v4:
         lr: .0001
         adam_epsilon: .00015
         hiddens: [512]
-        buffer_size: 1000000
+        replay_buffer_config:
+          capacity: 1000000
+          prioritized_replay_alpha: 0.5
         exploration_config:
             epsilon_timesteps: 200000
             final_epsilon: 0.01
-        prioritized_replay_alpha: 0.5
         num_gpus: 1
         num_workers: 8
         num_envs_per_worker: 8

@@ -9,7 +9,7 @@ from ray.rllib.policy.sample_batch import (
     SampleBatch,
     MultiAgentBatch,
 )
-from ray.rllib.utils.annotations import override, ExperimentalAPI
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.multi_agent_prioritized_replay_buffer import (
     MultiAgentPrioritizedReplayBuffer,
 )
@@ -21,13 +21,14 @@ from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import (
     ReplayMode,
 )
 from ray.rllib.utils.typing import PolicyID, SampleBatchType
-from ray.rllib.execution.buffers.replay_buffer import _ALL_POLICIES
+from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES
 from ray.util.debug import log_once
+from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
 
-@ExperimentalAPI
+@DeveloperAPI
 class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
     """This buffer adds replayed samples to a stream of new experiences.
 
@@ -168,7 +169,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
 
         self.last_added_batches = collections.defaultdict(list)
 
-    @ExperimentalAPI
+    @DeveloperAPI
     @override(MultiAgentPrioritizedReplayBuffer)
     def add(self, batch: SampleBatchType, **kwargs) -> None:
         """Adds a batch to the appropriate policy's replay buffer.
@@ -244,7 +245,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
 
         self._num_added += batch.count
 
-    @ExperimentalAPI
+    @DeveloperAPI
     @override(MultiAgentReplayBuffer)
     def sample(
         self, num_items: int, policy_id: PolicyID = DEFAULT_POLICY_ID, **kwargs
@@ -353,7 +354,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
 
             return MultiAgentBatch.concat_samples(samples)
 
-    @ExperimentalAPI
+    @DeveloperAPI
     @override(MultiAgentPrioritizedReplayBuffer)
     def get_state(self) -> Dict[str, Any]:
         """Returns all local state.
@@ -368,7 +369,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
         parent.update(data)
         return parent
 
-    @ExperimentalAPI
+    @DeveloperAPI
     @override(MultiAgentPrioritizedReplayBuffer)
     def set_state(self, state: Dict[str, Any]) -> None:
         """Restores all local state to the provided `state`.

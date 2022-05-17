@@ -28,10 +28,11 @@ using ::testing::_;
 class GcsResourceManagerTest : public ::testing::Test {
  public:
   GcsResourceManagerTest() {
-    gcs_resource_manager_ =
-        std::make_shared<gcs::GcsResourceManager>(nullptr, cluster_resource_manager_);
+    gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(
+        io_service_, nullptr, cluster_resource_manager_);
   }
 
+  instrumented_io_context io_service_;
   ClusterResourceManager cluster_resource_manager_;
   std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
 };

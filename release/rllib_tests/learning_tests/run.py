@@ -22,10 +22,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Get path of this very script to look for yaml files.
-    abs_yaml_path = Path(__file__).parent
+    abs_yaml_path = os.path.join(str(Path(__file__).parent), "yaml_files")
     print("abs_yaml_path={}".format(abs_yaml_path))
 
-    yaml_files = abs_yaml_path.rglob("*.yaml")
+    yaml_files = Path(abs_yaml_path).rglob("*.yaml")
     yaml_files = sorted(
         map(lambda path: str(path.absolute()), yaml_files), reverse=True
     )
@@ -37,7 +37,7 @@ if __name__ == "__main__":
     )
 
     test_output_json = os.environ.get(
-        "TEST_OUTPUT_JSON", "/tmp/rllib_learning_test.json"
+        "TEST_OUTPUT_JSON", "/tmp/rllib_learning_tests.json"
     )
     with open(test_output_json, "wt") as f:
         json.dump(results, f)
