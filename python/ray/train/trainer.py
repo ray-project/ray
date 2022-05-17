@@ -224,16 +224,11 @@ class Trainer:
 
         self._backend_executor = ActorWrapper(backend_executor_actor)
 
-        # Todo (krfricke): Initialize checkpoint manager here with final values
-        # rather than in `on_training_start`
         if self._is_tune_enabled():
-            self.checkpoint_manager = TuneCheckpointManager(
-                checkpoint_strategy=None, run_dir=None
-            )
+            self.checkpoint_manager = TuneCheckpointManager()
         else:
-            self.checkpoint_manager = CheckpointManager(
-                checkpoint_strategy=None, run_dir=None
-            )
+            self.checkpoint_manager = CheckpointManager()
+        self.checkpoint_manager.on_init()
 
     def create_logdir(self, log_dir: Optional[Union[str, Path]]) -> Path:
         """Create logdir for the Trainer."""
