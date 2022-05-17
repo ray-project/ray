@@ -15,6 +15,9 @@ from ray_release.wheels import (
     get_ray_wheels_url,
     find_ray_wheels_url,
     find_and_wait_for_ray_wheels_url,
+    is_wheels_url_matching_ray_verison,
+    get_wheels_filename,
+    maybe_rewrite_wheels_url,
 )
 
 
@@ -175,6 +178,45 @@ class WheelsFinderTest(unittest.TestCase):
                 url = find_and_wait_for_ray_wheels_url(commit, timeout=300.0)
 
             self.assertEqual(url, get_ray_wheels_url(repo, branch, commit, version))
+
+    def testMatchingRayWheelsURL(self):
+        assert not is_wheels_url_matching_ray_verison(
+            f"http://some/location/{get_wheels_filename('2.0.0dev0', (3, 8))}", (3, 7)
+        )
+
+        assert not is_wheels_url_matching_ray_verison(
+            f"http://some/location/{get_wheels_filename('2.0.0dev0', (3, 7))}", (3, 8)
+        )
+
+        assert is_wheels_url_matching_ray_verison(
+            f"http://some/location/{get_wheels_filename('2.0.0dev0', (3, 7))}", (3, 7)
+        )
+
+    @patch("ray_release.wheels.resolve_url", lambda url: url)
+    def testRewriteWheelsURL(self):
+        # Do not rewrite if versions match
+        assert (
+            maybe_rewrite_wheels_url(
+                f"http://some/location/{get_wheels_filename('2.0.0dev0', (3, 7))}",
+                (3, 7),
+            )
+            == f"http://some/location/{get_wheels_filename('2.0.0dev0', (3, 7))}"
+        )
+
+        # Do not rewrite if version can't be parsed
+        assert (
+            maybe_rewrite_wheels_url("http://some/location/unknown.whl", (3, 7))
+            == "http://some/location/unknown.whl"
+        )
+
+        # Rewrite when version can be parsed
+        assert (
+            maybe_rewrite_wheels_url(
+                f"http://some/location/{get_wheels_filename('2.0.0dev0', (3, 8))}",
+                (3, 7),
+            )
+            == f"http://some/location/{get_wheels_filename('2.0.0dev0', (3, 7))}"
+        )
 
     def testWheelsSanityString(self):
         this_env = {"env": None}

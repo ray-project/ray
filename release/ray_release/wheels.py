@@ -9,7 +9,7 @@ import time
 import urllib.request
 from typing import Optional, List, Tuple
 
-from ray_release.config import DEFAULT_PYTHON_VERSION
+from ray_release.config import DEFAULT_PYTHON_VERSION, parse_python_version
 from ray_release.template import set_test_env_var
 from ray_release.exception import (
     RayWheelsUnspecifiedError,
@@ -18,7 +18,7 @@ from ray_release.exception import (
     ReleaseTestSetupError,
 )
 from ray_release.logger import logger
-from ray_release.util import url_exists, python_version_str
+from ray_release.util import url_exists, python_version_str, resolve_url
 
 DEFAULT_BRANCH = "master"
 DEFAULT_GIT_OWNER = "ray-project"
@@ -106,6 +106,28 @@ def get_wheels_filename(
         f"ray-{ray_version}-cp{version_str}-cp{version_str}{suffix}-"
         f"manylinux2014_x86_64.whl"
     )
+
+
+def parse_wheels_filename(
+    filename: str,
+) -> Tuple[Optional[str], Optional[Tuple[int, int]]]:
+    """Parse filename and return Ray version + python version"""
+    matched = re.search(
+        r"ray-([0-9a-z\.]+)-cp([0-9]{2,3})-cp([0-9]{2,3})m?-manylinux2014_x86_64\.whl$",
+        filename,
+    )
+    if not matched:
+        return None, None
+
+    ray_version = matched.group(1)
+    py_version_str = matched.group(2)
+
+    try:
+        python_version = parse_python_version(py_version_str)
+    except Exception:
+        return ray_version, None
+
+    return ray_version, python_version
 
 
 def get_ray_wheels_url(
@@ -224,7 +246,10 @@ def find_ray_wheels_url(
 
     # If this is a URL, return
     if ray_wheels.startswith("https://") or ray_wheels.startswith("http://"):
-        return ray_wheels
+        ray_wheels_url = maybe_rewrite_wheels_url(
+            ray_wheels, python_version=python_version
+        )
+        return ray_wheels_url
 
     # Else, this is either a commit hash, a branch name, or a combination
     # with a repo, e.g. ray-project:master or ray-project:<commit>
@@ -291,6 +316,57 @@ def find_ray_wheels_url(
     set_test_env_var("RAY_VERSION", ray_version)
 
     return wheels_url
+
+
+def maybe_rewrite_wheels_url(
+    ray_wheels_url: str, python_version: Tuple[int, int]
+) -> str:
+    full_url = resolve_url(ray_wheels_url)
+
+    # If the version is matching, just return the full url
+    if is_wheels_url_matching_ray_verison(
+        ray_wheels_url=full_url, python_version=python_version
+    ):
+        return full_url
+
+    # Try to parse the version from the filename / URL
+    parsed_ray_version, parsed_python_version = parse_wheels_filename(full_url)
+    if not parsed_ray_version or not python_version:
+        # If we can't parse, we don't know the version, so we raise a warning
+        logger.warning(
+            f"The passed Ray wheels URL may not work with the python version "
+            f"used in this test! Got python version {python_version} and "
+            f"wheels URL: {ray_wheels_url}."
+        )
+        return full_url
+
+    # If we parsed this and the python version is different from the actual version,
+    # try to rewrite the URL
+    current_filename = get_wheels_filename(parsed_ray_version, parsed_python_version)
+    rewritten_filename = get_wheels_filename(parsed_ray_version, python_version)
+
+    new_url = full_url.replace(current_filename, rewritten_filename)
+    if new_url != full_url:
+        logger.warning(
+            f"The passed Ray wheels URL were for a different python version than "
+            f"used in this test! Found python version {parsed_python_version} "
+            f"but expected {python_version}. The wheels URL was re-written to "
+            f"{new_url}."
+        )
+
+    return new_url
+
+
+def is_wheels_url_matching_ray_verison(
+    ray_wheels_url: str, python_version: Tuple[int, int]
+) -> bool:
+    """Return True if the wheels URL wheel matches the supplied python version."""
+    expected_filename = get_wheels_filename(
+        ray_version="xxx", python_version=python_version
+    )
+    expected_filename = expected_filename[7:]  # Cut ray-xxx
+
+    return ray_wheels_url.endswith(expected_filename)
 
 
 def install_matching_ray_locally(ray_wheels: Optional[str]):
