@@ -75,7 +75,7 @@ def _import_cql():
 
 
 def _import_ddpg():
-    from ray.rllib.agents import ddpg
+    from ray.rllib.algorithms import ddpg
 
     return ddpg.DDPGTrainer, ddpg.DEFAULT_CONFIG
 
@@ -159,13 +159,13 @@ def _import_r2d2():
 
 
 def _import_sac():
-    from ray.rllib.agents import sac
+    from ray.rllib.algorithms import sac
 
     return sac.SACTrainer, sac.DEFAULT_CONFIG
 
 
 def _import_rnnsac():
-    from ray.rllib.agents import sac
+    from ray.rllib.algorithms import sac
 
     return sac.RNNSACTrainer, sac.RNNSAC_DEFAULT_CONFIG
 
@@ -183,7 +183,7 @@ def _import_slate_q():
 
 
 def _import_td3():
-    from ray.rllib.agents import ddpg
+    from ray.rllib.algorithms import ddpg
 
     return ddpg.TD3Trainer, ddpg.td3.TD3_DEFAULT_CONFIG
 
