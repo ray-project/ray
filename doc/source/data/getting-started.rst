@@ -29,14 +29,14 @@ You can create a Dataset from Python objects. These objects can be held inside D
 
 Datasets can also be created from files on local disk or remote datasources such as S3.
 Any filesystem `supported by pyarrow <http://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html>`__
-can be used to specify file locations. See more at :ref:`Creating Datasets <creating-datasets>`.
+can be used to specify file locations. See more at :ref:`Creating Datasets <creating_datasets>`.
 
 .. literalinclude:: ./doc_code/quick_start.py
    :language: python
    :start-after: __create_from_files_begin__
    :end-before: __create_from_files_end__
 
-Once you have a Dataset, you can save it to local or remote storage in desired format, using ``.write_csv()``, ``.write_json()``, and ``.write_parquet()``. See more at :ref:`Saving Datasets <saving-datasets>`.
+Once you have a Dataset, you can save it to local or remote storage in desired format, using ``.write_csv()``, ``.write_json()``, and ``.write_parquet()``. See more at :ref:`Saving Datasets <saving_datasets>`.
 
 .. literalinclude:: ./doc_code/quick_start.py
    :language: python
