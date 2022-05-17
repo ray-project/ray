@@ -1171,20 +1171,21 @@ def test_actor_mro(ray_start_regular_shared):
     assert obj.get_x() == 1
 
 
-def test_keep_calling_get_actor(ray_start_regular):
+def test_keep_calling_get_actor(ray_start_regular_shared):
     """
     Test keep calling get_actor.
     """
+
     @ray.remote
     class Actor:
         def hello(self):
             return "hello"
 
-    actor = Actor.options(name="foo").remote()
+    actor = Actor.options(name="ABC").remote()
     assert ray.get(actor.hello.remote()) == "hello"
 
     for _ in range(10):
-        actor = ray.get_actor("foo")
+        actor = ray.get_actor("ABC")
         assert ray.get(actor.hello.remote()) == "hello"
 
     del actor
@@ -1192,7 +1193,7 @@ def test_keep_calling_get_actor(ray_start_regular):
     # Verify the actor is killed
     def actor_removed():
         try:
-            ray.get_actor("foo")
+            ray.get_actor("ABC")
             return False
         except ValueError:
             return True
