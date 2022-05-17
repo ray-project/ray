@@ -26,7 +26,6 @@ def load(data_dict: dict) -> str:
 
 
 if __name__ == "__main__":
-    workflow.init()
     order_data = extract.bind()
     order_summary = transform.bind(order_data)
     etl = load.bind(order_summary)

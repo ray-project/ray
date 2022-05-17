@@ -742,15 +742,6 @@ void NodeResourceInfoAccessor::FillResourceUsageRequest(
   }
 }
 
-Status NodeResourceInfoAccessor::AsyncSubscribeToResources(
-    const ItemCallback<rpc::NodeResourceChange> &subscribe, const StatusCallback &done) {
-  RAY_CHECK(subscribe != nullptr);
-  subscribe_resource_operation_ = [this, subscribe](const StatusCallback &done) {
-    return client_impl_->GetGcsSubscriber().SubscribeAllNodeResources(subscribe, done);
-  };
-  return subscribe_resource_operation_(done);
-}
-
 void NodeResourceInfoAccessor::AsyncResubscribe() {
   RAY_LOG(DEBUG) << "Reestablishing subscription for node resource info.";
   if (subscribe_resource_operation_ != nullptr) {
