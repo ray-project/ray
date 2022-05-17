@@ -147,7 +147,7 @@ def _import_ppo():
 
 
 def _import_qmix():
-    from ray.rllib.agents import qmix
+    from ray.rllib.algorithms import qmix
 
     return qmix.QMixTrainer, qmix.DEFAULT_CONFIG
 

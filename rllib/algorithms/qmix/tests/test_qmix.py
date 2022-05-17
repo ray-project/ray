@@ -4,7 +4,7 @@ import unittest
 
 import ray
 from ray.tune import register_env
-from ray.rllib.agents.qmix import QMixConfig
+from ray.rllib.algorithms.qmix import QMixConfig
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
 

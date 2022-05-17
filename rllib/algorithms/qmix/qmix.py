@@ -1,7 +1,7 @@
 from typing import Optional, Type
 
-from ray.rllib.agents.dqn.simple_q import SimpleQConfig, SimpleQTrainer
-from ray.rllib.agents.qmix.qmix_policy import QMixTorchPolicy
+from ray.rllib.algorithms.dqn.simple_q import SimpleQConfig, SimpleQTrainer
+from ray.rllib.algorithms.qmix.qmix_policy import QMixTorchPolicy
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
@@ -29,7 +29,7 @@ class QMixConfig(SimpleQConfig):
 
     Example:
         >>> from ray.rllib.examples.env.two_step_game import TwoStepGame
-        >>> from ray.rllib.agents.qmix import QMixConfig
+        >>> from ray.rllib.algorithms.qmix import QMixConfig
         >>> config = QMixConfig().training(gamma=0.9, lr=0.01, kl_coeff=0.3)\
         ...             .resources(num_gpus=0)\
         ...             .rollouts(num_workers=4)
@@ -40,7 +40,7 @@ class QMixConfig(SimpleQConfig):
 
     Example:
         >>> from ray.rllib.examples.env.two_step_game import TwoStepGame
-        >>> from ray.rllib.agents.qmix import QMixConfig
+        >>> from ray.rllib.algorithms.qmix import QMixConfig
         >>> from ray import tune
         >>> config = QMixConfig()
         >>> # Print out some default values.
@@ -288,14 +288,14 @@ class QMixTrainer(SimpleQTrainer):
         return train_results
 
 
-# Deprecated: Use ray.rllib.agents.qmix.qmix.QMixConfig instead!
+# Deprecated: Use ray.rllib.algorithms.qmix.qmix.QMixConfig instead!
 class _deprecated_default_config(dict):
     def __init__(self):
         super().__init__(QMixConfig().to_dict())
 
     @Deprecated(
-        old="ray.rllib.agents.qmix.qmix.DEFAULT_CONFIG",
-        new="ray.rllib.agents.qmix.qmix.QMixConfig(...)",
+        old="ray.rllib.algorithms.qmix.qmix.DEFAULT_CONFIG",
+        new="ray.rllib.algorithms.qmix.qmix.QMixConfig(...)",
         error=False,
     )
     def __getitem__(self, item):

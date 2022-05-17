@@ -809,7 +809,7 @@ py_test(
     name = "test_qmix",
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
-    srcs = ["agents/qmix/tests/test_qmix.py"]
+    srcs = ["algorithms/qmix/tests/test_qmix.py"]
 )
 
 # R2D2Trainer
