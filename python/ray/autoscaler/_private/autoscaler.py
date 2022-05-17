@@ -261,8 +261,8 @@ class StandardAutoscaler:
         else:
             logger.info("Launch config checks are enabled.")
 
-        # By default, the autoscaler launches nodes in batches asynchronously in a
-        # background thread.
+        # By default, the autoscaler launches nodes in batches asynchronously in
+        # background threads.
         # When the following flag is set, that behavior is disabled, so that nodes
         # are launched in the main thread, all in one batch, blocking until all
         # NodeProvider.create_node requests have returned.
