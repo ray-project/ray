@@ -1,16 +1,15 @@
 from typing import Any, Dict, Optional, List, Union
 
-import ray
+from ray import ObjectRef
 from ray.experimental.dag import DAGNode
 from ray.serve.handle import RayServeSyncHandle, RayServeHandle
-from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
 from ray.experimental.dag.format_utils import get_dag_node_str
 
 
-class DeploymentExecutorNode(DAGNode):
-    """The lightweight executor DAGNode of DeploymentNode that optimizes for
-    efficiency.
+class DeploymentMethodExecutorNode(DAGNode):
+    """The lightweight executor DAGNode of DeploymentMethodNode that optimizes
+    for efficiency.
 
         - We need Ray DAGNode's traversal and replacement mechanism to deal
             with deeply nested nodes as args in the DAG
@@ -24,19 +23,18 @@ class DeploymentExecutorNode(DAGNode):
 
     def __init__(
         self,
-        deployment_handle,
-        dag_args,  # Not deployment init args
-        dag_kwargs,  # Not deployment init kwargs
+        deployment_method_handle: Union[RayServeSyncHandle, RayServeHandle],
+        func_args,
+        func_kwargs,
         other_args_to_resolve: Optional[Dict[str, Any]] = None,
     ):
-        print(
-            f">>>> init DeploymentExecutorNode with args: {dag_args}, kwargs: {dag_kwargs}"
-        )
-        self._deployment_handle = deployment_handle
         super().__init__(
-            dag_args, dag_kwargs, {}, other_args_to_resolve=other_args_to_resolve
+            func_args,
+            func_kwargs,
+            {},
+            other_args_to_resolve=other_args_to_resolve,
         )
-
+        self._deployment_method_handle = deployment_method_handle
 
     def _copy_impl(
         self,
@@ -45,36 +43,37 @@ class DeploymentExecutorNode(DAGNode):
         new_options: Dict[str, Any],
         new_other_args_to_resolve: Dict[str, Any],
     ):
-        return DeploymentExecutorNode(
-            self._deployment_handle,
+        return DeploymentMethodExecutorNode(
+            self._deployment_method_handle,
             new_args,
             new_kwargs,
             other_args_to_resolve=new_other_args_to_resolve,
         )
 
-    def _execute_impl(self, *args, **kwargs):
-        """Does not call into anything or produce a new value, as the time
-        this function gets called, all child nodes are already resolved to
-        ObjectRefs.
+    def _execute_impl(self, *args, **kwargs) -> ObjectRef:
+        """Executor of DeploymentNode getting called each time on dag.execute.
+
+        The execute implementation is recursive, that is, the method nodes will
+        receive whatever this method returns. We return a handle here so method
+        node can directly call upon.
         """
-        print(f"????? Executor Node - called with args: {args}, kwargs: {kwargs}")
         print(
-            f"????? Executor Node - _bound_args: {self._bound_args}, _bound_kwargs: {self._bound_kwargs}"
+            f"????? DeploymentMethodExecutorNode - args: {args}, kwargs: {kwargs}"
         )
-        # For DAGDriver -- Return object ref of the dag handle
-        # For regular deployment -- return handle
-        if self._deployment_handle.deployment_name == "DAGDriver":
-            return self._bound_args[0]
-        else:
-            return self._deployment_handle
+        print(
+            f"????? DeploymentMethodExecutorNode - _bound_args: {self._bound_args}, _bound_kwargs: {self._bound_kwargs}"
+        )
+        return self._deployment_method_handle.remote(
+            *self._bound_args, **self._bound_kwargs
+        )
 
     def __str__(self) -> str:
-        return get_dag_node_str(self, str(self._deployment_handle))
+        return get_dag_node_str(self, str(self._deployment_method_handle))
 
     def to_json(self) -> Dict[str, Any]:
         return {
-            DAGNODE_TYPE_KEY: DeploymentExecutorNode.__name__,
-            "deployment_handle": self._deployment_handle,
+            DAGNODE_TYPE_KEY: DeploymentMethodExecutorNode.__name__,
+            "deployment_method_handle": self._deployment_method_handle,
             "args": self.get_args(),
             "kwargs": self.get_kwargs(),
             "other_args_to_resolve": self.get_other_args_to_resolve(),
@@ -82,9 +81,9 @@ class DeploymentExecutorNode(DAGNode):
 
     @classmethod
     def from_json(cls, input_json):
-        assert input_json[DAGNODE_TYPE_KEY] == DeploymentExecutorNode.__name__
+        assert input_json[DAGNODE_TYPE_KEY] == DeploymentMethodExecutorNode.__name__
         return cls(
-            input_json["deployment_handle"],
+            input_json["deployment_method_handle"],
             input_json["args"],
             input_json["kwargs"],
             other_args_to_resolve=input_json["other_args_to_resolve"],

@@ -15,6 +15,7 @@ from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.pipeline.deployment_node import DeploymentNode
 from ray.serve.pipeline.deployment_function_node import DeploymentFunctionNode
 from ray.serve.deployment_executor_node import DeploymentExecutorNode
+from ray.serve.deployment_method_executor_node import DeploymentMethodExecutorNode
 from ray.serve.deployment_function_executor_node import DeploymentFunctionExecutorNode
 
 
@@ -110,9 +111,22 @@ def transform_serve_dag_to_serve_executor_dag(serve_dag_root_node: DAGNode):
         )
 
         return DeploymentExecutorNode(
-            serve_dag_root_node.get_args(), serve_dag_root_node.get_kwargs()
+            serve_dag_root_node._deployment_handle,
+            serve_dag_root_node.get_args(),
+            serve_dag_root_node.get_kwargs()
         )
-    if isinstance(serve_dag_root_node, DeploymentFunctionNode):
+    elif isinstance(serve_dag_root_node, DeploymentMethodExecutorNode):
+        print("DeploymentMethodExecutorNode")
+        return DeploymentMethodExecutorNode(
+            # Deployment method handle
+            getattr(
+                serve_dag_root_node._deployment_handle,
+                serve_dag_root_node._deployment_method_name
+            ),
+            serve_dag_root_node.get_args(),
+            serve_dag_root_node.get_kwargs(),
+        )
+    elif isinstance(serve_dag_root_node, DeploymentFunctionNode):
         print("DeploymentFunctionNode")
         return DeploymentFunctionExecutorNode(
             serve_dag_root_node._deployment_handle,

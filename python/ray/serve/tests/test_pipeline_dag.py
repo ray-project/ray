@@ -37,7 +37,7 @@ class ClassHello:
         return "hello"
 
 
-@serve.deployment
+@ray.remote
 class Model:
     def __init__(self, weight: int, ratio: float = None):
         self.weight = weight
@@ -148,49 +148,49 @@ async def json_resolver(request: starlette.requests.Request):
 #     assert requests.post("http://127.0.0.1:8000/", json=[1, 2]).json() == 4
 
 
-@pytest.mark.parametrize("use_build", [False])
-def test_chained_function(serve_instance, use_build):
-    @serve.deployment
-    def func_1(input):
-        print(f"<<<< func_1: {input}")
-        return input
+# @pytest.mark.parametrize("use_build", [False])
+# def test_chained_function(serve_instance, use_build):
+#     @serve.deployment
+#     def func_1(input):
+#         print(f"<<<< func_1: {input}")
+#         return input
 
-    @serve.deployment
-    def func_2(input):
-        print(f"<<<< func_2: {input}")
-        return input * 2
+#     @serve.deployment
+#     def func_2(input):
+#         print(f"<<<< func_2: {input}")
+#         return input * 2
 
-    @serve.deployment
-    def func_3(input):
-        print(f"<<<< func_3: {input}")
-        return input * 3
+#     @serve.deployment
+#     def func_3(input):
+#         print(f"<<<< func_3: {input}")
+#         return input * 3
 
-    with InputNode() as dag_input:
-        output_1 = func_1.bind(dag_input)
-        output_2 = func_2.bind(dag_input)
-        output_3 = func_3.bind(output_2)
-        ray_dag = combine.bind(output_1, output_2, kwargs_output=output_3)
-    with pytest.raises(ValueError, match="Please provide a driver class"):
-        _ = serve.run(ray_dag)
-
-    serve_dag = DAGDriver.bind(
-        ray_dag, http_adapter="ray.serve.tests.test_pipeline_dag.json_resolver"
-    )
-
-    handle = serve.run(serve_dag)
-    assert ray.get(handle.predict.remote(2)) == 18  # 2 + 2*2 + (2*2) * 3
-    assert requests.post("http://127.0.0.1:8000/", json=2).json() == 18
-
-
-# @pytest.mark.parametrize("use_build", [False, True])
-# def test_simple_class_with_class_method(serve_instance, use_build):
 #     with InputNode() as dag_input:
-#         model = Model.bind(2, ratio=0.3)
-#         dag = model.forward.bind(dag_input)
-#         serve_dag = DAGDriver.bind(dag, http_adapter=json_resolver)
+#         output_1 = func_1.bind(dag_input)
+#         output_2 = func_2.bind(dag_input)
+#         output_3 = func_3.bind(output_2)
+#         ray_dag = combine.bind(output_1, output_2, kwargs_output=output_3)
+#     with pytest.raises(ValueError, match="Please provide a driver class"):
+#         _ = serve.run(ray_dag)
+
+#     serve_dag = DAGDriver.bind(
+#         ray_dag, http_adapter="ray.serve.tests.test_pipeline_dag.json_resolver"
+#     )
+
 #     handle = serve.run(serve_dag)
-#     assert ray.get(handle.predict.remote(1)) == 0.6
-#     assert requests.post("http://127.0.0.1:8000/", json=1).json() == 0.6
+#     assert ray.get(handle.predict.remote(2)) == 18  # 2 + 2*2 + (2*2) * 3
+#     assert requests.post("http://127.0.0.1:8000/", json=2).json() == 18
+
+
+@pytest.mark.parametrize("use_build", [False])
+def test_simple_class_with_class_method(serve_instance, use_build):
+    with InputNode() as dag_input:
+        model = Model.bind(2, ratio=0.3)
+        dag = model.forward.bind(dag_input)
+        serve_dag = DAGDriver.bind(dag, http_adapter="ray.serve.tests.test_pipeline_dag.json_resolver")
+    handle = serve.run(serve_dag)
+    assert ray.get(handle.predict.remote(1)) == 0.6
+    assert requests.post("http://127.0.0.1:8000/", json=1).json() == 0.6
 
 
 # @pytest.mark.parametrize("use_build", [False, True])

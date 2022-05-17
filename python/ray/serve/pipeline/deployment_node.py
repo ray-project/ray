@@ -5,6 +5,7 @@ from typing import Any, Callable, Dict, Optional, List, Tuple, Union
 from ray.experimental.dag import DAGNode, InputNode
 from ray.serve.deployment_executor_node import DeploymentExecutorNode
 from ray.serve.deployment_function_executor_node import DeploymentFunctionExecutorNode
+from ray.serve.deployment_method_executor_node import DeploymentMethodExecutorNode
 from ray.serve.handle import RayServeLazySyncHandle, RayServeSyncHandle, RayServeHandle
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.pipeline.deployment_function_node import DeploymentFunctionNode
@@ -67,6 +68,7 @@ class DeploymentNode(DAGNode):
                 node,
                 (
                     DeploymentMethodNode,
+                    DeploymentMethodExecutorNode,
                     DeploymentFunctionNode,
                     DeploymentFunctionExecutorNode,
                 ),
