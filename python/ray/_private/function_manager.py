@@ -31,6 +31,7 @@ from ray.util.inspect import (
     is_class_method,
     is_static_method,
 )
+from ray._private.security import RemoteFunctionWhitelist
 
 FunctionExecutionInfo = namedtuple(
     "FunctionExecutionInfo", ["function", "function_name", "max_calls"]
@@ -316,6 +317,9 @@ class FunctionActorManager:
         Returns:
             A FunctionExecutionInfo object.
         """
+        # Remote function whitelist check
+        RemoteFunctionWhitelist.whitelist_check(function_descriptor)
+
         function_id = function_descriptor.function_id
         # If the function has already been loaded,
         # There's no need to load again
