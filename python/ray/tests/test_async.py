@@ -137,7 +137,7 @@ def test_concurrent_future(ray_start_regular_shared):
 
     def cb(fut):
         nonlocal global_result
-        global_result = fut.metrics()
+        global_result = fut.result()
 
     fut.add_done_callback(cb)
     assert global_result == 1

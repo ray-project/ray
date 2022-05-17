@@ -41,11 +41,11 @@ def get_project_name(project_id: str, sdk: Optional[AnyscaleSDK] = None) -> str:
     sdk = sdk or get_anyscale_sdk()
 
     result = sdk.get_project(project_id)
-    return result.metrics.name
+    return result.result.name
 
 
 def get_cluster_name(cluster_id: str, sdk: Optional[AnyscaleSDK] = None) -> str:
     sdk = sdk or get_anyscale_sdk()
 
     result = sdk.get_cluster(cluster_id)
-    return result.metrics.name
+    return result.result.name

@@ -260,7 +260,7 @@ class JobSupervisor:
                 # at the same time
                 assert len(finished) == 1, "Should have only one coroutine done"
                 [child_process_task] = finished
-                return_code = child_process_task.metrics()
+                return_code = child_process_task.result()
                 if return_code == 0:
                     self._job_info_client.put_status(self._job_id, JobStatus.SUCCEEDED)
                 else:
