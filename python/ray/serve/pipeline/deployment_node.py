@@ -60,7 +60,7 @@ class DeploymentNode(DAGNode):
         # TODO(jiaodong): This part does some magic for DAGDriver and will throw
         # error with weird pickle replace table error. Move this out.
         def replace_with_handle(node):
-            if isinstance(node, (DeploymentNode, DeploymentExecutorNode)):
+            if isinstance(node, (DeploymentNode)):
                 return node._get_serve_deployment_handle(
                     node._deployment, node._bound_other_args_to_resolve
                 )
@@ -68,9 +68,7 @@ class DeploymentNode(DAGNode):
                 node,
                 (
                     DeploymentMethodNode,
-                    DeploymentMethodExecutorNode,
                     DeploymentFunctionNode,
-                    DeploymentFunctionExecutorNode,
                 ),
             ):
                 from ray.serve.pipeline.json_serde import DAGNodeEncoder

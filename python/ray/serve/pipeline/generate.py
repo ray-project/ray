@@ -117,12 +117,12 @@ def transform_serve_dag_to_serve_executor_dag(serve_dag_root_node: DAGNode):
             serve_dag_root_node.get_args(),
             serve_dag_root_node.get_kwargs(),
         )
-    elif isinstance(serve_dag_root_node, DeploymentMethodExecutorNode):
+    elif isinstance(serve_dag_root_node, DeploymentMethodNode):
         print("DeploymentMethodExecutorNode")
         return DeploymentMethodExecutorNode(
             # Deployment method handle
             getattr(
-                serve_dag_root_node._deployment_handle,
+                serve_dag_root_node._deployment.get_handle(),
                 serve_dag_root_node._deployment_method_name,
             ),
             serve_dag_root_node.get_args(),
@@ -146,11 +146,16 @@ def generate_driver_deployment(
     """a"""
 
     def replace_with_handle(node):
-        if isinstance(node, (DeploymentExecutorNode)):
+        if isinstance(node, (DeploymentNode, DeploymentExecutorNode)):
             return node._deployment_handle
         elif isinstance(
             node,
-            (DeploymentMethodExecutorNode, DeploymentFunctionExecutorNode),
+            (
+                DeploymentMethodExecutorNode,
+                DeploymentFunctionExecutorNode,
+                DeploymentFunctionNode,
+                DeploymentMethodNode,
+            ),
         ):
             from ray.serve.pipeline.json_serde import DAGNodeEncoder
 
@@ -168,9 +173,12 @@ def generate_driver_deployment(
         predictate_fn=lambda node: isinstance(
             node,
             (
+                DeploymentNode,
                 DeploymentFunctionNode,
+                DeploymentMethodNode,
                 DeploymentExecutorNode,
                 DeploymentFunctionExecutorNode,
+                DeploymentMethodExecutorNode,
             ),
         ),
         apply_fn=replace_with_handle,

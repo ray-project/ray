@@ -26,13 +26,12 @@ class DeploymentFunctionExecutorNode(DAGNode):
         deployment_function_handle: Union[RayServeSyncHandle, RayServeHandle],
         func_args,
         func_kwargs,
-        other_args_to_resolve: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
             func_args,
             func_kwargs,
             {},
-            other_args_to_resolve=other_args_to_resolve,
+            {},
         )
         self._deployment_function_handle = deployment_function_handle
 
@@ -44,10 +43,7 @@ class DeploymentFunctionExecutorNode(DAGNode):
         new_other_args_to_resolve: Dict[str, Any],
     ):
         return DeploymentFunctionExecutorNode(
-            self._deployment_function_handle,
-            new_args,
-            new_kwargs,
-            other_args_to_resolve=new_other_args_to_resolve,
+            self._deployment_function_handle, new_args, new_kwargs
         )
 
     def _execute_impl(self, *args, **kwargs) -> ObjectRef:
@@ -73,7 +69,6 @@ class DeploymentFunctionExecutorNode(DAGNode):
             "deployment_function_handle": self._deployment_function_handle,
             "args": self.get_args(),
             "kwargs": self.get_kwargs(),
-            "other_args_to_resolve": self.get_other_args_to_resolve(),
         }
 
     @classmethod
@@ -83,5 +78,4 @@ class DeploymentFunctionExecutorNode(DAGNode):
             input_json["deployment_function_handle"],
             input_json["args"],
             input_json["kwargs"],
-            other_args_to_resolve=input_json["other_args_to_resolve"],
         )

@@ -24,16 +24,16 @@ class DeploymentMethodExecutorNode(DAGNode):
     def __init__(
         self,
         deployment_method_handle: Union[RayServeSyncHandle, RayServeHandle],
-        func_args,
-        func_kwargs,
-        other_args_to_resolve: Optional[Dict[str, Any]] = None,
+        dag_args,
+        dag_kwargs,
     ):
-        super().__init__(
-            func_args,
-            func_kwargs,
-            {},
-            other_args_to_resolve=other_args_to_resolve,
+        print(
+            f" <<<<< Creating DeploymentMethodExecutorNode with handle: {deployment_method_handle}"
         )
+        print(
+            f" <<<<< Creating DeploymentMethodExecutorNode with dag_args: {dag_args}, dag_kwargs: {dag_kwargs}"
+        )
+        super().__init__(dag_args, dag_kwargs, {}, {})
         self._deployment_method_handle = deployment_method_handle
 
     def _copy_impl(
@@ -47,7 +47,6 @@ class DeploymentMethodExecutorNode(DAGNode):
             self._deployment_method_handle,
             new_args,
             new_kwargs,
-            other_args_to_resolve=new_other_args_to_resolve,
         )
 
     def _execute_impl(self, *args, **kwargs) -> ObjectRef:
@@ -74,7 +73,6 @@ class DeploymentMethodExecutorNode(DAGNode):
             "deployment_method_handle": self._deployment_method_handle,
             "args": self.get_args(),
             "kwargs": self.get_kwargs(),
-            "other_args_to_resolve": self.get_other_args_to_resolve(),
         }
 
     @classmethod
@@ -84,5 +82,4 @@ class DeploymentMethodExecutorNode(DAGNode):
             input_json["deployment_method_handle"],
             input_json["args"],
             input_json["kwargs"],
-            other_args_to_resolve=input_json["other_args_to_resolve"],
         )

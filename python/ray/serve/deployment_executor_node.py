@@ -2,6 +2,7 @@ from typing import Any, Dict, Optional, List, Union
 
 import ray
 from ray.experimental.dag import DAGNode
+from ray.serve.deployment_method_executor_node import DeploymentMethodExecutorNode
 from ray.serve.handle import RayServeSyncHandle, RayServeHandle
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
@@ -27,15 +28,12 @@ class DeploymentExecutorNode(DAGNode):
         deployment_handle,
         dag_args,  # Not deployment init args
         dag_kwargs,  # Not deployment init kwargs
-        other_args_to_resolve: Optional[Dict[str, Any]] = None,
     ):
         print(
             f">>>> init DeploymentExecutorNode with args: {dag_args}, kwargs: {dag_kwargs}"
         )
         self._deployment_handle = deployment_handle
-        super().__init__(
-            dag_args, dag_kwargs, {}, other_args_to_resolve=other_args_to_resolve
-        )
+        super().__init__(dag_args, dag_kwargs, {}, {})
 
     def _copy_impl(
         self,
@@ -48,7 +46,6 @@ class DeploymentExecutorNode(DAGNode):
             self._deployment_handle,
             new_args,
             new_kwargs,
-            other_args_to_resolve=new_other_args_to_resolve,
         )
 
     def _execute_impl(self, *args, **kwargs):
@@ -76,15 +73,11 @@ class DeploymentExecutorNode(DAGNode):
             "deployment_handle": self._deployment_handle,
             "args": self.get_args(),
             "kwargs": self.get_kwargs(),
-            "other_args_to_resolve": self.get_other_args_to_resolve(),
         }
 
     @classmethod
     def from_json(cls, input_json):
         assert input_json[DAGNODE_TYPE_KEY] == DeploymentExecutorNode.__name__
         return cls(
-            input_json["deployment_handle"],
-            input_json["args"],
-            input_json["kwargs"],
-            other_args_to_resolve=input_json["other_args_to_resolve"],
+            input_json["deployment_handle"], input_json["args"], input_json["kwargs"]
         )
