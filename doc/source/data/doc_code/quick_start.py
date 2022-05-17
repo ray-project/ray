@@ -61,26 +61,23 @@ ds.repartition(2).write_parquet("/tmp/iris2")
 
 
 # __data_transform_begin__
-import pyarrow as pa
+import pandas
 
 # Create 10 blocks for parallelism.
 ds = ds.repartition(10)
 
-# Filter out the Versicolor.
-def transform_batch(batch: pa.Table) -> pa.Table:
-    return batch.filter(pa.compute.equal(batch["variety"], "Versicolor"))
+# Find rows with sepal.length < 5.5 and petal.length > 3.5.
+def transform_batch(df: pandas.DataFrame) -> pandas.DataFrame:
+    return df[(df["sepal.length"] < 5.5) & (df["petal.length"] > 3.5)]
 
-transformed_ds = ds.map_batches(transform_batch, batch_format="pyarrow")
-# -> Map Progress: 100%|███████████████████████████████████████████████████████████████████████████████████████| 10/10 [00:00<00:00, 17.65it/s]
-# -> Dataset(num_blocks=10, num_rows=50, schema={sepal.length: double, sepal.width: double, petal.length: double, petal.width: double, variety: string})
+transformed_ds = ds.map_batches(transform_batch)
+# Read->Map_Batches: 100%|██████████████████████████████████████████████████████████████████████████████████| 1/1 [00:00<00:00, 81.15it/s]
+# Dataset(num_blocks=1, num_rows=3, schema={sepal.length: float64, sepal.width: float64, petal.length: float64, petal.width: float64, variety: object})
 
 transformed_ds.show()
-# -> {'sepal.length': 7.0, 'sepal.width': 3.2, 'petal.length': 4.7, 'petal.width': 1.4, 'variety': 'Versicolor'}
-# -> {'sepal.length': 6.4, 'sepal.width': 3.2, 'petal.length': 4.5, 'petal.width': 1.5, 'variety': 'Versicolor'}
-# -> {'sepal.length': 6.9, 'sepal.width': 3.1, 'petal.length': 4.9, 'petal.width': 1.5, 'variety': 'Versicolor'}
-# -> {'sepal.length': 5.5, 'sepal.width': 2.3, 'petal.length': 4.0, 'petal.width': 1.3, 'variety': 'Versicolor'}
-# -> {'sepal.length': 6.5, 'sepal.width': 2.8, 'petal.length': 4.6, 'petal.width': 1.5, 'variety': 'Versicolor'}
-# -> {'sepal.length': 5.7, 'sepal.width': 2.8, 'petal.length': 4.5, 'petal.width': 1.3, 'variety': 'Versicolor'}
+# -> {'sepal.length': 5.2, 'sepal.width': 2.7, 'petal.length': 3.9, 'petal.width': 1.4, 'variety': 'Versicolor'}
+# -> {'sepal.length': 5.4, 'sepal.width': 3.0, 'petal.length': 4.5, 'petal.width': 1.5, 'variety': 'Versicolor'}
+# -> {'sepal.length': 4.9, 'sepal.width': 2.5, 'petal.length': 4.5, 'petal.width': 1.7, 'variety': 'Virginica'}
 # __data_transform_end__
 
 
