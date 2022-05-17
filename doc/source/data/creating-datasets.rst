@@ -14,12 +14,22 @@ Creation from existing in-memory data is enabled via Datasets' integrations
 with familiar single-node data libraries (`Pandas <https://pandas.pydata.org/>`__,
 `NumPy <https://numpy.org/>`__, `Arrow <https://arrow.apache.org/>`__) and distributed
 data processing frameworks (:ref:`Dask <dask-on-ray>`, :ref:`Spark <spark-on-ray>`,
-:ref:`Modin <modin-on-ray>`, :ref:`Mars <mars-on-ray>`), while creation from persistent
-storage is enabled by Datasets' support for reading many common file
-formats (Parquet, CSV, JSON, NPY, text, binary). 
+:ref:`Modin <modin-on-ray>`, :ref:`Mars <mars-on-ray>`). Creating datasets from
+persistent storage is enabled by Datasets' support for reading many common file
+formats (Parquet, CSV, JSON, NPY, text, binary).
 
 A :class:`Dataset <ray.data.Dataset>` can hold plain Python objects (simple datasets),
-Arrow records (Arrow datasets), or Pandas records (Pandas datasets). The method of
+Arrow records (Arrow datasets), or Pandas records (Pandas datasets). These records are
+grouped into one or more data **blocks**, and these blocks can be spread across
+multiple Ray nodes. Simple datasets are represented by simple blocks (lists of Python
+objects), Arrow datasets are represented by Arrow blocks (
+`Arrow Tables <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
+), and Pandas
+datasets are represented by Pandas blocks (
+`Pandas DataFrames <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`__
+).
+
+The method of
 creating the dataset will determine the format of its internal block representation.
 
 .. dropdown:: See more about Datasets' internal block representation
@@ -315,7 +325,10 @@ Supported File Formats
 
   Read Parquet files into a tabular ``Dataset``. The Parquet data will be read into
   `Arrow Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
-  blocks.
+  blocks. Although this simple example demonstrates reading a single file, note that
+  Datasets can also read directories of Parquet files, with one tabular block created
+  per file. For Parquet in particular, we also support reading partitioned Parquet
+  datasets with partition column values pulled from the file paths.
 
   .. literalinclude:: ./doc_code/creating_datasets.py
     :language: python
@@ -337,7 +350,9 @@ Supported File Formats
 
   Read CSV files into a tabular ``Dataset``. The CSV data will be read into
   `Arrow Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
-  blocks.
+  blocks. Although this simple example demonstrates reading a single file, note that
+  Datasets can also read directories of CSV files, with one tabular block created
+  per file.
 
   .. literalinclude:: ./doc_code/creating_datasets.py
     :language: python
@@ -350,7 +365,11 @@ Supported File Formats
 
   Read JSON files into a tabular ``Dataset``. The JSON data will be read into
   `Arrow Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
-  blocks. Currently, only newline-delimited JSON (NDJSON) is supported.
+  blocks. Although this simple example demonstrates reading a single file, note that
+  Datasets can also read directories of JSON files, with one tabular block created
+  per file.
+
+  Currently, only newline-delimited JSON (NDJSON) is supported.
 
   .. literalinclude:: ./doc_code/creating_datasets.py
     :language: python
@@ -368,7 +387,9 @@ Supported File Formats
   :class:`tensor extension type <ray.data.extensions.tensor_extension.ArrowTensorType>`,
   treating the outermost ndarray dimension as the row dimension. See our
   :ref:`tensor data guide <datasets_tensor_support>` for more information on working
-  with tensors in Datasets.
+  with tensors in Datasets. Although this simple example demonstrates reading a single
+  file, note that Datasets can also read directories of JSON files, with one tensor
+  block created per file.
 
   .. literalinclude:: ./doc_code/creating_datasets.py
     :language: python
@@ -396,6 +417,9 @@ Supported File Formats
   of opaque bytes. These bytes can be decoded into tensor, tabular, text, or any other
   kind of data using ``ds.map()`` to apply a per-row decoding UDF.
 
+  Although this simple example demonstrates reading a single file, note that Datasets
+  can also read directories of binary files, with one bytes block created per file.
+
   .. literalinclude:: ./doc_code/creating_datasets.py
     :language: python
     :start-after: __read_binary_begin__
@@ -422,6 +446,9 @@ For S3 and HDFS, the underlying `FileSystem
 implementation will be inferred from the URL scheme (``"s3://"`` and ``"hdfs://"``); if
 the default connection configuration suffices for your workload, you won't need to
 specify a ``filesystem`` argument.
+
+We use Parquet files for the below examples, but all of the aforementioned file formats
+are supported for each of these storage systems.
 
 .. tabbed:: S3
 
@@ -507,9 +534,9 @@ specify a ``filesystem`` argument.
 
 .. _dataset_from_torch_tf:
 
----------------------
-From Torch/TensorFlow
----------------------
+-------------------------
+From Torch and TensorFlow
+-------------------------
 
 .. tabbed:: PyTorch
 
