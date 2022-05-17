@@ -171,7 +171,6 @@ class GcsPublisher(_PublisherBase):
         except Exception as e:
             logger.error(f"Failed to publish error: {e}")
 
-
     def publish_logs(self, log_batch: dict) -> None:
         """Publishes logs to GCS."""
         req = self._create_log_request(log_batch)
@@ -504,17 +503,20 @@ class _AioSubscriber(_SubscriberBase):
             return
         req = self._subscribe_request(self._channel)
         start = time.time()
+        from ray._raylet import Config
+
         while True:
             try:
                 return self._stub.GcsSubscriberCommandBatch(req, timeout=30)
             except grpc.RpcError as e:
                 if e.code() in (
-                        grpc.StatusCode.UNAVAILABLE,
-                        grpc.StatusCode.UNKNOWN,
-                        grpc.StatusCode.DEADLINE_EXCEEDED):
+                    grpc.StatusCode.UNAVAILABLE,
+                    grpc.StatusCode.UNKNOWN,
+                    grpc.StatusCode.DEADLINE_EXCEEDED,
+                ):
                     logger.debug(f"Failed to send request {req} to GCS: {e}")
                 time.sleep(1)
-                if time.timee() - start > ray._raylet.Config.gcs_rpc_server_reconnect_timeout_s():
+                if time.timee() - start > Config.gcs_rpc_server_reconnect_timeout_s():
                     raise
                 continue
 
@@ -524,17 +526,20 @@ class _AioSubscriber(_SubscriberBase):
             try:
                 return await self._stub.GcsSubscriberPoll(req, timeout=timeout)
             except grpc.RpcError as e:
-                if e.code() == grpc.StatusCode.DEADLINE_EXCEEDED and timeout is not None:
+                if (
+                    e.code() == grpc.StatusCode.DEADLINE_EXCEEDED
+                    and timeout is not None
+                ):
                     raise
                 if e.code() in (
-                        grpc.StatusCode.UNAVAILABLE,
-                        grpc.StatusCode.UNKNOWN,
-                        grpc.StatusCode.DEADLINE_EXCEEDED):
+                    grpc.StatusCode.UNAVAILABLE,
+                    grpc.StatusCode.UNKNOWN,
+                    grpc.StatusCode.DEADLINE_EXCEEDED,
+                ):
                     # do the resubscription in case of a failure
                     await self.subscribe()
                 else:
                     raise
-
 
     async def _poll(self, timeout=None) -> None:
         req = self._poll_request()
