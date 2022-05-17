@@ -94,10 +94,10 @@ class SDKRunner(CommandRunner):
             dict(session_id=self.cluster_manager.cluster_id, shell_command=full_command)
         )
 
-        scd_id = result.metrics.id
+        scd_id = result.result.id
         self.last_command_scd_id = scd_id
 
-        completed = result.metrics.finished_at is not None
+        completed = result.result.finished_at is not None
 
         start_time = time.monotonic()
         timeout_at = start_time + timeout
@@ -126,9 +126,9 @@ class SDKRunner(CommandRunner):
                 initial_retry_delay_s=10,
                 max_retries=3,
             )
-            completed = result.metrics.finished_at
+            completed = result.result.finished_at
 
-        status_code = result.metrics.status_code
+        status_code = result.result.status_code
         time_taken = time.monotonic() - start_time
 
         if status_code != 0:

@@ -37,7 +37,7 @@ class FullClusterManager(MinimalClusterManager):
                     idle_timeout_minutes=self.autosuspend_minutes,
                 )
             )
-            self.cluster_id = result.metrics.id
+            self.cluster_id = result.result.id
         except Exception as e:
             raise ClusterCreationError(f"Error creating cluster: {e}") from e
 
@@ -50,8 +50,8 @@ class FullClusterManager(MinimalClusterManager):
 
         try:
             result = self.sdk.start_cluster(self.cluster_id, start_cluster_options={})
-            cop_id = result.metrics.id
-            completed = result.metrics.completed
+            cop_id = result.result.id
+            completed = result.result.completed
         except Exception as e:
             raise ClusterStartupError(
                 f"Error starting cluster with name "
@@ -88,14 +88,14 @@ class FullClusterManager(MinimalClusterManager):
                 initial_retry_delay_s=2,
                 max_retries=3,
             )
-            completed = result.metrics.completed
+            completed = result.result.completed
 
         result = self.sdk.get_cluster(self.cluster_id)
-        if result.metrics.state != "Running":
+        if result.result.state != "Running":
             raise ClusterStartupFailed(
                 f"Cluster did not come up - most likely the nodes are currently "
                 f"not available. Please check the cluster startup logs: "
-                f"{cluster_url} (cluster state: {result.metrics.state})"
+                f"{cluster_url} (cluster state: {result.result.state})"
             )
 
     def terminate_cluster(self, wait: bool = False):
@@ -109,8 +109,8 @@ class FullClusterManager(MinimalClusterManager):
                 return
 
             # Only do this when waiting
-            cop_id = result.metrics.id
-            completed = result.metrics.completed
+            cop_id = result.result.id
+            completed = result.result.completed
             while not completed:
                 # Sleep 1 sec before next check.
                 time.sleep(1)
@@ -118,10 +118,10 @@ class FullClusterManager(MinimalClusterManager):
                 cluster_operation_response = self.sdk.get_cluster_operation(
                     cop_id, _request_timeout=30
                 )
-                cluster_operation = cluster_operation_response.metrics
+                cluster_operation = cluster_operation_response.result
                 completed = cluster_operation.completed
 
             result = self.sdk.get_cluster(self.cluster_id)
-            while result.metrics.state != "Terminated":
+            while result.result.state != "Terminated":
                 time.sleep(1)
                 result = self.sdk.get_cluster(self.cluster_id)
