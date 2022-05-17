@@ -12,6 +12,8 @@ if TYPE_CHECKING:
     from ray.data.impl.sort import SortKeyT
 
 
+# The internal column name used for pure-tensor datasets, represented as
+# single-tensor-column tables.
 VALUE_COL_NAME = "__value__"
 
 T = TypeVar("T")

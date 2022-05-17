@@ -22,7 +22,6 @@ from ray.data.impl.arrow_block import ArrowRow
 from ray.data.impl.block_builder import BlockBuilder
 from ray.data.impl.lazy_block_list import LazyBlockList
 from ray.data.impl.pandas_block import PandasRow
-from ray.data.impl.table_block import VALUE_COL_NAME
 from ray.data.aggregate import AggregateFn, Count, Sum, Min, Max, Mean, Std
 from ray.data.extensions.tensor_extension import (
     TensorArray,
@@ -450,7 +449,7 @@ def test_tensors_basic(ray_start_regular_shared):
     ds = ray.data.range_tensor(6, shape=tensor_shape)
     assert str(ds) == (
         "Dataset(num_blocks=6, num_rows=6, "
-        f"schema={{{VALUE_COL_NAME}: <ArrowTensorType: shape=(3, 5), dtype=int64>}})"
+        "schema={__value__: <ArrowTensorType: shape=(3, 5), dtype=int64>})"
     )
 
     # Test row iterator yields tensors.
@@ -485,7 +484,7 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     ds = ray.data.range(10).map(lambda _: np.ones((4, 4)))
     assert str(ds) == (
         "Dataset(num_blocks=10, num_rows=10, "
-        f"schema={{{VALUE_COL_NAME}: <ArrowTensorType: shape=(4, 4), dtype=double>}})"
+        "schema={__value__: <ArrowTensorType: shape=(4, 4), dtype=double>})"
     )
 
     # Test map_batches.
@@ -496,7 +495,7 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     )
     assert str(ds) == (
         "Dataset(num_blocks=4, num_rows=24, "
-        f"schema={{{VALUE_COL_NAME}: <ArrowTensorType: shape=(4, 4), dtype=double>}})"
+        "schema={__value__: <ArrowTensorType: shape=(4, 4), dtype=double>})"
     )
 
     #  - Test list of ndarrays.
@@ -505,14 +504,14 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     )
     assert str(ds) == (
         "Dataset(num_blocks=4, num_rows=16, "
-        f"schema={{{VALUE_COL_NAME}: <ArrowTensorType: shape=(4, 4), dtype=double>}})"
+        "schema={__value__: <ArrowTensorType: shape=(4, 4), dtype=double>})"
     )
 
     # Test flat_map.
     ds = ray.data.range(10).flat_map(lambda _: [np.ones((4, 4)), np.ones((4, 4))])
     assert str(ds) == (
         "Dataset(num_blocks=10, num_rows=20, "
-        f"schema={{{VALUE_COL_NAME}: <ArrowTensorType: shape=(4, 4), dtype=double>}})"
+        "schema={__value__: <ArrowTensorType: shape=(4, 4), dtype=double>})"
     )
 
 
