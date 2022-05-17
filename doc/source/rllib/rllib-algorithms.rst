@@ -711,14 +711,14 @@ regression model and uses this confidence ellipsoid to estimate the
 uncertainty of action values.
 
 Tuned examples:
-`SimpleContextualBandit <https://github.com/ray-project/ray/blob/master/rllib/agents/bandit/tests/test_bandits.py>`__,
+`SimpleContextualBandit <https://github.com/ray-project/ray/blob/master/rllib/algorithms/bandit/tests/test_bandits.py>`__,
 `UCB Bandit on RecSim <https://github.com/ray-project/ray/blob/master/rllib/examples/bandit/tune_lin_ucb_train_recsim_env.py>`__.
 `ParametricItemRecoEnv <https://github.com/ray-project/ray/blob/master/rllib/examples/bandit/tune_lin_ucb_train_recommendation.py>`__.
 
 **LinUCB-specific configs** (see also `common configs <rllib-training
 .html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/agents/bandit/bandit.py
+.. literalinclude:: ../../../rllib/algorithms/bandit/bandit.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -730,7 +730,7 @@ Linear Thompson Sampling (BanditLinTSTrainer)
 ---------------------------------------------
 |pytorch|
 `[paper] <http://proceedings.mlr.press/v28/agrawal13.pdf>`__
-`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/bandit/bandit.py>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/bandit/bandit.py>`__
 Like LinUCB, LinTS also assumes a linear dependency between the expected
 reward of an action and its context and uses online ridge regression to
 estimate the Q values of actions given the context. It assumes a Gaussian
@@ -739,12 +739,12 @@ action to take, the agent samples weights for each arm, using
 the posterior distributions, and plays the arm that produces the highest reward.
 
 Tuned examples:
-`SimpleContextualBandit <https://github.com/ray-project/ray/blob/master/rllib/agents/bandit/tests/test_bandits.py>`__,
+`SimpleContextualBandit <https://github.com/ray-project/ray/blob/master/rllib/algorithms/bandit/tests/test_bandits.py>`__,
 `WheelBandit <https://github.com/ray-project/ray/blob/master/rllib/examples/bandit/tune_lin_ts_train_wheel_env.py>`__.
 
 **LinTS-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/agents/bandit/bandit.py
+.. literalinclude:: ../../../rllib/algorithms/bandit/bandit.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
