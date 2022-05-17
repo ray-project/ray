@@ -276,8 +276,7 @@ class Dataset(Generic[T]):
                 tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
             batch_format: Specify "native" to use the native block format (promotes
                 tables to Pandas and tensors to NumPy), "pandas" to select
-                ``pandas.DataFrame``, "numpy" to select ``numpy.ndarray``,
-                or "pyarrow" to select `pyarrow.Table``.
+                ``pandas.DataFrame``, or "pyarrow" to select `pyarrow.Table``.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
@@ -311,8 +310,6 @@ class Dataset(Generic[T]):
                     view = BlockAccessor.for_block(view).to_pandas()
                 elif batch_format == "pyarrow":
                     view = BlockAccessor.for_block(view).to_arrow()
-                elif batch_format == "numpy":
-                    view = BlockAccessor.for_block(view).to_numpy()
                 else:
                     raise ValueError(
                         "The batch format must be one of 'native', 'pandas', "
@@ -2221,8 +2218,8 @@ class Dataset(Generic[T]):
             batch_format: The format in which to return each batch.
                 Specify "native" to use the native block format (promoting
                 tables to Pandas and tensors to NumPy), "pandas" to select
-                ``pandas.DataFrame``, "numpy" to select ``numpy.ndarray``, or "pyarrow"
-                to select ``pyarrow.Table``. Default is "native".
+                ``pandas.DataFrame``, or "pyarrow" to select ``pyarrow.Table``. Default
+                is "native".
             drop_last: Whether to drop the last batch if it's incomplete.
 
         Returns:

@@ -173,7 +173,7 @@ def range_tensor(
         >>> import ray
         >>> ds = ray.data.range_tensor(1000, shape=(3, 10)) # doctest: +SKIP
         >>> ds.map_batches( # doctest: +SKIP
-        ...     lambda arr: arr * 2, batch_format="numpy").show()
+        ...     lambda arr: arr * 2).show()
 
     This is similar to range_table(), but uses the ArrowTensorArray extension
     type. The dataset elements take the form {VALUE_COL_NAME: array(N, shape=shape)}.
