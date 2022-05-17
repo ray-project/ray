@@ -2304,6 +2304,7 @@ Dict[str, List[str]]]): The names of the columns
         prefetch_blocks: int = 0,
         batch_size: int = 1,
         drop_last: bool = False,
+        unsqueeze_feature_tensors: bool = True,
     ) -> "tf.data.Dataset":
         """Return a TF Dataset over this dataset.
 
@@ -2375,6 +2376,8 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
         except ImportError:
             raise ValueError("tensorflow must be installed!")
 
+        from ray.ml.utils.tensorflow_utils import convert_pandas_to_tf_tensor
+
         # `output_signature` can be a tuple but not a list. See
         # https://stackoverflow.com/questions/59092423/what-is-a-nested-structure-in-tensorflow.
         if isinstance(output_signature, list):
@@ -2388,17 +2391,19 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
                 drop_last=drop_last,
             ):
                 if label_column:
-                    targets = batch.pop(label_column).values
+                    targets = convert_pandas_to_tf_tensor(batch[[label_column]])
+                    batch.pop(label_column)
 
                 features = None
                 if feature_columns is None:
-                    features = batch.values
+                    features = convert_pandas_to_tf_tensor(batch)
                 elif isinstance(feature_columns, list):
                     if all(isinstance(column, str) for column in feature_columns):
-                        features = batch[feature_columns].values
+                        features = convert_pandas_to_tf_tensor(batch[feature_columns])
                     elif all(isinstance(columns, list) for columns in feature_columns):
                         features = tuple(
-                            batch[columns].values for columns in feature_columns
+                            convert_pandas_to_tf_tensor(batch[columns])
+                            for columns in feature_columns
                         )
                     else:
                         raise ValueError(
@@ -2407,7 +2412,7 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
                         )
                 elif isinstance(feature_columns, dict):
                     features = {
-                        key: batch[columns].values
+                        key: convert_pandas_to_tf_tensor(batch[columns])
                         for key, columns in feature_columns.items()
                     }
                 else:
@@ -2415,6 +2420,9 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
                         "Expected `feature_columns` to be a list or a dictionary, "
                         f"but got a `{type(feature_columns).__name__}` instead."
                     )
+
+                if unsqueeze_feature_tensors:
+                    features = tf.expand_dims(features, axis=-1)
 
                 # TODO(Clark): Support batches containing our extension array
                 # TensorArray.
