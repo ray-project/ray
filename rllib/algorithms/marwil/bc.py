@@ -5,13 +5,12 @@ from ray.rllib.utils.typing import TrainerConfigDict
 
 
 class BCConfig(MARWILConfig):
-    """Defines a BCConfig configuration class based on MARWILConfig
-    from which a new configuration can be built
+    """Defines a configuration class based on MARWILConfig from which a new BCTrainer can be built
 
     Example:
         >>> from ray.rllib.agents.marwil import BCConfig
         >>> # Run this from the ray directory root.
-        >>> config = MARWILConfig().training(beta=1.0, lr=0.00001, gamma=0.99)\
+        >>> config = BCConfig().training(lr=0.00001, gamma=0.99)\
         ...             .offline_data(input_="./rllib/tests/data/cartpole/large.json")
         >>> print(config.to_dict())
         >>> # Build a Trainer object from the config and run 1 training iteration.
@@ -19,9 +18,9 @@ class BCConfig(MARWILConfig):
         >>> trainer.train()
 
     Example:
-        >>> from ray.rllib.agents.marwil import MARWILConfig
+        >>> from ray.rllib.agents.marwil import BCConfig
         >>> from ray import tune
-        >>> config = MARWILConfig()
+        >>> config = BCConfig()
         >>> # Print out some default values.
         >>> print(config.beta)
         >>> # Update the config object.
@@ -34,7 +33,7 @@ class BCConfig(MARWILConfig):
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
         >>> tune.run(
-        ...     "MARWIL",
+        ...     "BC",
         ...     config=config.to_dict(),
         ... )
     """

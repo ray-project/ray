@@ -28,7 +28,7 @@ from ray.rllib.utils.typing import (
 
 
 class MARWILConfig(TrainerConfig):
-    """Defines a MARWILTrainer configuration class from which a MARWILTrainer can be built.
+    """Defines a configuration class from which a MARWILTrainer can be built.
 
 
     Example:
