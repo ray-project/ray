@@ -48,6 +48,7 @@ TD3_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
         "tau": 5e-3,
         "train_batch_size": 100,
         "use_huber": False,
+        # Update the target network every `target_network_update_freq` sample timesteps.
         "target_network_update_freq": 0,
         "num_workers": 0,
         "num_gpus_per_worker": 0,

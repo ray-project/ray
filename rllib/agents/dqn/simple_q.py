@@ -31,7 +31,6 @@ from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
     NUM_AGENT_STEPS_SAMPLED,
-    NUM_ENV_STEPS_TRAINED,
     NUM_ENV_STEPS_SAMPLED,
     NUM_TARGET_UPDATES,
     TARGET_NET_UPDATE_TIMER,
@@ -308,7 +307,7 @@ class SimpleQTrainer(Trainer):
         - Store new samples in the replay buffer.
         - Sample one training MultiAgentBatch from the replay buffer.
         - Learn on the training batch.
-        - Update the target network every `target_network_update_freq` steps.
+        - Update the target network every `target_network_update_freq` sample steps.
         - Return all collected training metrics for the iteration.
 
         Returns:
@@ -355,8 +354,10 @@ class SimpleQTrainer(Trainer):
         # self._counters[NUM_ENV_STEPS_TRAINED] += train_batch.env_steps()
         # self._counters[NUM_AGENT_STEPS_TRAINED] += train_batch.agent_steps()
 
-        # Update target network every `target_network_update_freq` steps.
-        cur_ts = self._counters[NUM_ENV_STEPS_TRAINED]
+        # Update target network every `target_network_update_freq` sample steps.
+        cur_ts = self._counters[
+            NUM_AGENT_STEPS_SAMPLED if self._by_agent_steps else NUM_ENV_STEPS_SAMPLED
+        ]
         last_update = self._counters[LAST_TARGET_UPDATE_TS]
         if cur_ts - last_update >= self.config["target_network_update_freq"]:
             with self._timers[TARGET_NET_UPDATE_TIMER]:

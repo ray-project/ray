@@ -68,7 +68,7 @@ R2D2_DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         # if `use_h_function`=True.
         "h_function_epsilon": 1e-3,
 
-        # Update the target network every `target_network_update_freq` steps.
+        # Update the target network every `target_network_update_freq` sample steps.
         "target_network_update_freq": 2500,
 
         # Deprecated keys:
