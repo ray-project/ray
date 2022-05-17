@@ -2103,7 +2103,7 @@ def cancel(
     force: bool = False,
     recursive: bool = True,
 ):
-    """Cancels a task according to the following conditions.
+    """Cancels a task or a list of tasks according to the following conditions.
 
     If the specified task is pending execution, it will not be executed. If
     the task is currently executing, the behavior depends on the ``force``
@@ -2118,7 +2118,7 @@ def cancel(
     WorkerCrashedError if ``force=True``.
 
     Args:
-        object_ref (ObjectRef): ObjectRef returned by the task
+        object_refs: ObjectRef or a list of ObjectRefs returned by the task
             that should be canceled.
         force (boolean): Whether to force-kill a running task by killing
             the worker that is running the task.
