@@ -389,53 +389,52 @@ Now let's define an actor that uses GPU. We'll also define a task that use ``ext
 
     .. code-block:: python
 
-    gpu_bundle = {"CPU":2, "GPU": 2}
-    extra_resource_bundle = {"CPU": 2, "extra_resource": 2}
+      gpu_bundle = {"CPU":2, "GPU": 2}
+      extra_resource_bundle = {"CPU": 2, "extra_resource": 2}
 
-    # Reserve bundles with strict pack strategy.
-    # It means Ray will reserve 2 "GPU" and 2 "extra_resource" on the same node (strict pack) within a Ray cluster.
-    # Using this placement group for scheduling actors or tasks will guarantee that they will
-    # be colocated on the same node.
-    pg = placement_group([gpu_bundle, extra_resource_bundle], strategy="STRICT_PACK")
+      # Reserve bundles with strict pack strategy.
+      # It means Ray will reserve 2 "GPU" and 2 "extra_resource" on the same node (strict pack) within a Ray cluster.
+      # Using this placement group for scheduling actors or tasks will guarantee that they will
+      # be colocated on the same node.
+      pg = placement_group([gpu_bundle, extra_resource_bundle], strategy="STRICT_PACK")
 
-    # Wait until placement group is created.
-    ray.get(pg.ready())
+      # Wait until placement group is created.
+      ray.get(pg.ready())
 
-    @ray.remote(num_gpus=1)
-    class GPUActor:
+      @ray.remote(num_gpus=1)
+      class GPUActor:
         def __init__(self):
-            pass
+          pass
 
-    @ray.remote(resources={"extra_resource": 1})
-    def extra_resource_task():
+      @ray.remote(resources={"extra_resource": 1})
+      def extra_resource_task():
         import time
         # simulate long-running task.
         time.sleep(10)
 
-    # Create GPU actors on a gpu bundle.
-    gpu_actors = [
+      # Create GPU actors on a gpu bundle.
+      gpu_actors = [
         GPUActor.options(
-            scheduling_strategy=PlacementGroupSchedulingStrategy(
-                placement_group=pg,
-                # This is the index from the original list.
-                # This index is set to -1 by default, which means any available bundle.
-                placement_group_bundle_index=0 # Index of gpu_bundle is 0.
-            )
+          scheduling_strategy=PlacementGroupSchedulingStrategy(
+            placement_group=pg,
+            # This is the index from the original list.
+            # This index is set to -1 by default, which means any available bundle.
+            placement_group_bundle_index=0 # Index of gpu_bundle is 0.
+          )
         ).remote() for _ in range(2)
-    ]
+      ]
 
-    # Create extra_resource actors on a extra_resource bundle.
-    extra_resource_actors = [
+      # Create extra_resource actors on a extra_resource bundle.
+      extra_resource_actors = [
         extra_resource_task.options(
-            scheduling_strategy=PlacementGroupSchedulingStrategy(
-                placement_group=pg,
-                # This is the index from the original list.
-                # This index is set to -1 by default, which means any available bundle.
-                placement_group_bundle_index=1 # Index of extra_resource_bundle is 1.
-            )
+          scheduling_strategy=PlacementGroupSchedulingStrategy(
+            placement_group=pg,
+              # This is the index from the original list.
+              # This index is set to -1 by default, which means any available bundle.
+              placement_group_bundle_index=1 # Index of extra_resource_bundle is 1.
+          )
         ).remote() for _ in range(2)
-    ]
-
+      ]
 
 .. tabbed:: Java
 
@@ -525,45 +524,48 @@ because they are scheduled on a placement group with the STRICT_PACK strategy.
 
       .. code-block:: python
 
-      import ray
-      import ray
-      from ray.util.placement_group import placement_group
-      from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+        import ray
+        import ray
+        from ray.util.placement_group import placement_group
+        from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
-      ray.init(num_cpus=4)
+        ray.init(num_cpus=4)
 
-      # Create a placement group with the SPREAD strategy.
-      pg = placement_group([{"CPU": 2}, {"CPU": 2}], strategy="SPREAD")
-      ray.get(pg.ready())
+        # Create a placement group with the SPREAD strategy.
+        pg = placement_group([{"CPU": 2}, {"CPU": 2}], strategy="SPREAD")
+        ray.get(pg.ready())
 
-      @ray.remote(num_cpus=1)
-      def child():
-          pass
+        @ray.remote(num_cpus=1)
+        def child():
+            pass
 
-      @ray.remote(num_cpus=1)
-      def parent():
-          # The child task is scheduled with the same placement group as its parent
-          # although child.options(
-          #     scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
-          # ).remote() wasn't called if placement_group_capture_child_tasks is set to True.
-          ray.get(child.remote())
+        @ray.remote(num_cpus=1) 
+        def parent():
+            # The child task is scheduled with the same placement group as its parent
+            # although child.options(
+            #     scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+            # ).remote() wasn't called if placement_group_capture_child_tasks is set to True.
+            ray.get(child.remote())
 
-      ray.get(
-          parent.options(
-              scheduling_strategy=PlacementGroupSchedulingStrategy(
-                  placement_group=pg,
-                  placement_group_capture_child_tasks=True
-              )
-          ).remote()
-      )
+        ray.get(
+            parent.options(
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=pg,
+                    placement_group_capture_child_tasks=True
+                )
+            ).remote()
+        )
 
-      To avoid it, you should specify 
-      ```
-      options(
-          scheduling_strategy=PlacementGroupSchedulingStrategy(
-              placement_group=None))
-      ```
-      in a child task/actor remote call.
+      When ``placement_group_capture_child_tasks`` is True, and if you'd like to avoid scheduling
+      child tasks/actors, you should specify the below option when you call child tasks/actors.
+
+      .. code-block:: python
+
+        ```
+        options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=None))
+        ```
 
       .. code-block:: python
 
