@@ -361,6 +361,8 @@ Let's create a placement group. Recall that each bundle is a collection of resou
         assert(is_created);
 
 Now let's define an actor that uses GPU. We'll also define a task that use ``extra_resources``.
+You can schedule actors/tasks on the placement group using
+:ref:`options(scheduling_strategy=PlacementGroupSchedulingStrategy(...)) <scheduling-strategy-ref>`.
 
 .. tabbed:: Python
 
