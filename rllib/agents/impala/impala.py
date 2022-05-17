@@ -852,7 +852,7 @@ class ImpalaTrainer(Trainer):
 
     def update_workers_if_necessary(self) -> None:
         # Only need to update workers if there are remote workers.
-        global_vars = {"timestep": self._counters[NUM_AGENT_STEPS_TRAINED]}
+        global_vars = {"timestep": self._counters[NUM_AGENT_STEPS_SAMPLED]}
         self._counters["steps_since_broadcast"] += 1
         if (
             self.workers.remote_workers()

@@ -962,49 +962,90 @@ def test_tensors_in_tables_parquet_bytes_with_schema(
         np.testing.assert_equal(v, e)
 
 
-@pytest.mark.skip(
-    reason=(
-        "Waiting for pytorch to support tensor creation from objects that "
-        "implement the __array__ interface. See "
-        "https://github.com/pytorch/pytorch/issues/51156"
-    )
-)
 @pytest.mark.parametrize("pipelined", [False, True])
 def test_tensors_in_tables_to_torch(ray_start_regular_shared, pipelined):
-    import torch
-
     outer_dim = 3
     inner_shape = (2, 2, 2)
     shape = (outer_dim,) + inner_shape
     num_items = np.prod(np.array(shape))
     arr = np.arange(num_items).reshape(shape)
     df1 = pd.DataFrame(
-        {"one": [1, 2, 3], "two": TensorArray(arr), "label": [1.0, 2.0, 3.0]}
+        {"one": TensorArray(arr), "two": TensorArray(arr + 1), "label": [1.0, 2.0, 3.0]}
     )
     arr2 = np.arange(num_items, 2 * num_items).reshape(shape)
     df2 = pd.DataFrame(
-        {"one": [4, 5, 6], "two": TensorArray(arr2), "label": [4.0, 5.0, 6.0]}
+        {
+            "one": TensorArray(arr2),
+            "two": TensorArray(arr2 + 1),
+            "label": [4.0, 5.0, 6.0],
+        }
     )
     df = pd.concat([df1, df2])
     ds = ray.data.from_pandas([df1, df2])
     ds = maybe_pipeline(ds, pipelined)
-    torchd = ds.to_torch(label_column="label", batch_size=2)
-
-    num_epochs = 2
-    for _ in range(num_epochs):
-        iterations = []
-        for batch in iter(torchd):
-            iterations.append(torch.cat((*batch[0], batch[1]), axis=1).numpy())
-        combined_iterations = np.concatenate(iterations)
-        assert np.array_equal(np.sort(df.values), np.sort(combined_iterations))
-
-
-@pytest.mark.skip(
-    reason=(
-        "Waiting for Pandas DataFrame.values for extension arrays fix to be "
-        "released. See https://github.com/pandas-dev/pandas/pull/43160"
+    torchd = ds.to_torch(
+        label_column="label", batch_size=2, unsqueeze_label_tensor=False
     )
-)
+
+    num_epochs = 1 if pipelined else 2
+    for _ in range(num_epochs):
+        features, labels = [], []
+        for batch in iter(torchd):
+            features.append(batch[0].numpy())
+            labels.append(batch[1].numpy())
+        features, labels = np.concatenate(features), np.concatenate(labels)
+        values = np.stack([df["one"].to_numpy(), df["two"].to_numpy()], axis=1)
+        np.testing.assert_array_equal(values, features)
+        np.testing.assert_array_equal(df["label"].to_numpy(), labels)
+
+
+@pytest.mark.parametrize("pipelined", [False, True])
+def test_tensors_in_tables_to_torch_mix(ray_start_regular_shared, pipelined):
+    outer_dim = 3
+    inner_shape = (2, 2, 2)
+    shape = (outer_dim,) + inner_shape
+    num_items = np.prod(np.array(shape))
+    arr = np.arange(num_items).reshape(shape)
+    df1 = pd.DataFrame(
+        {
+            "one": TensorArray(arr),
+            "two": [1, 2, 3],
+            "label": [1.0, 2.0, 3.0],
+        }
+    )
+    arr2 = np.arange(num_items, 2 * num_items).reshape(shape)
+    df2 = pd.DataFrame(
+        {
+            "one": TensorArray(arr2),
+            "two": [4, 5, 6],
+            "label": [4.0, 5.0, 6.0],
+        }
+    )
+    df = pd.concat([df1, df2])
+    ds = ray.data.from_pandas([df1, df2])
+    ds = maybe_pipeline(ds, pipelined)
+    torchd = ds.to_torch(
+        label_column="label",
+        feature_columns=[["one"], ["two"]],
+        batch_size=2,
+        unsqueeze_label_tensor=False,
+        unsqueeze_feature_tensors=False,
+    )
+
+    num_epochs = 1 if pipelined else 2
+    for _ in range(num_epochs):
+        col1, col2, labels = [], [], []
+        for batch in iter(torchd):
+            col1.append(batch[0][0].numpy())
+            col2.append(batch[0][1].numpy())
+            labels.append(batch[1].numpy())
+        col1, col2 = np.concatenate(col1), np.concatenate(col2)
+        labels = np.concatenate(labels)
+        np.testing.assert_array_equal(col1, np.sort(df["one"].to_numpy()))
+        np.testing.assert_array_equal(col2, np.sort(df["two"].to_numpy()))
+        np.testing.assert_array_equal(labels, np.sort(df["label"].to_numpy()))
+
+
 @pytest.mark.parametrize("pipelined", [False, True])
 def test_tensors_in_tables_to_tf(ray_start_regular_shared, pipelined):
     import tensorflow as tf
@@ -1014,21 +1055,19 @@ def test_tensors_in_tables_to_tf(ray_start_regular_shared, pipelined):
     shape = (outer_dim,) + inner_shape
     num_items = np.prod(np.array(shape))
     arr = np.arange(num_items).reshape(shape).astype(np.float)
-    # TODO(Clark): Ensure that heterogeneous columns is properly supported
-    # (tf.RaggedTensorSpec)
     df1 = pd.DataFrame(
         {
             "one": TensorArray(arr),
-            "two": TensorArray(arr),
-            "label": TensorArray(arr),
+            "two": TensorArray(arr + 1),
+            "label": [1, 2, 3],
         }
     )
     arr2 = np.arange(num_items, 2 * num_items).reshape(shape).astype(np.float)
     df2 = pd.DataFrame(
         {
             "one": TensorArray(arr2),
-            "two": TensorArray(arr2),
-            "label": TensorArray(arr2),
+            "two": TensorArray(arr2 + 1),
+            "label": [4, 5, 6],
         }
     )
     df = pd.concat([df1, df2])
@@ -1038,15 +1077,70 @@ def test_tensors_in_tables_to_tf(ray_start_regular_shared, pipelined):
         label_column="label",
         output_signature=(
             tf.TensorSpec(shape=(None, 2, 2, 2, 2), dtype=tf.float32),
-            tf.TensorSpec(shape=(None, 1, 2, 2, 2), dtype=tf.float32),
+            tf.TensorSpec(shape=(None,), dtype=tf.float32),
         ),
+        batch_size=2,
     )
-    iterations = []
+    features, labels = [], []
     for batch in tfd.as_numpy_iterator():
-        iterations.append(np.concatenate((batch[0], batch[1]), axis=1))
-    combined_iterations = np.concatenate(iterations)
-    arr = np.array([[np.asarray(v) for v in values] for values in df.to_numpy()])
-    np.testing.assert_array_equal(arr, combined_iterations)
+        features.append(batch[0])
+        labels.append(batch[1])
+    features, labels = np.concatenate(features), np.concatenate(labels)
+    values = np.stack([df["one"].to_numpy(), df["two"].to_numpy()], axis=1)
+    np.testing.assert_array_equal(values, features)
+    np.testing.assert_array_equal(df["label"].to_numpy(), labels)
+
+
+@pytest.mark.parametrize("pipelined", [False, True])
+def test_tensors_in_tables_to_tf_mix(ray_start_regular_shared, pipelined):
+    import tensorflow as tf
+
+    outer_dim = 3
+    inner_shape = (2, 2, 2)
+    shape = (outer_dim,) + inner_shape
+    num_items = np.prod(np.array(shape))
+    arr = np.arange(num_items).reshape(shape).astype(np.float)
+    df1 = pd.DataFrame(
+        {
+            "one": TensorArray(arr),
+            "two": [1, 2, 3],
+            "label": [1.0, 2.0, 3.0],
+        }
+    )
+    arr2 = np.arange(num_items, 2 * num_items).reshape(shape).astype(np.float)
+    df2 = pd.DataFrame(
+        {
+            "one": TensorArray(arr2),
+            "two": [4, 5, 6],
+            "label": [4.0, 5.0, 6.0],
+        }
+    )
+    df = pd.concat([df1, df2])
+    ds = ray.data.from_pandas([df1, df2])
+    ds = maybe_pipeline(ds, pipelined)
+    tfd = ds.to_tf(
+        label_column="label",
+        feature_columns=[["one"], ["two"]],
+        output_signature=(
+            (
+                tf.TensorSpec(shape=(None, 1, 2, 2, 2), dtype=tf.float32),
+                tf.TensorSpec(shape=(None, 1), dtype=tf.float32),
+            ),
+            tf.TensorSpec(shape=(None,), dtype=tf.float32),
+        ),
+        batch_size=2,
+    )
+    col1, col2, labels = [], [], []
+    for batch in tfd.as_numpy_iterator():
+        col1.append(batch[0][0])
+        col2.append(batch[0][1])
+        labels.append(batch[1])
+    col1 = np.squeeze(np.concatenate(col1), axis=1)
+    col2 = np.squeeze(np.concatenate(col2), axis=1)
+    labels = np.concatenate(labels)
+    np.testing.assert_array_equal(col1, np.sort(df["one"].to_numpy()))
+    np.testing.assert_array_equal(col2, np.sort(df["two"].to_numpy()))
+    np.testing.assert_array_equal(labels, np.sort(df["label"].to_numpy()))
 
 
 def test_empty_shuffle(ray_start_regular_shared):

@@ -546,7 +546,7 @@ class TorchPolicy(Policy):
     def get_num_samples_loaded_into_buffer(self, buffer_index: int = 0) -> int:
         if len(self.devices) == 1 and self.devices[0] == "/cpu:0":
             assert buffer_index == 0
-        return len(self._loaded_batches[buffer_index])
+        return sum(len(b) for b in self._loaded_batches[buffer_index])
 
     @override(Policy)
     @DeveloperAPI

@@ -404,7 +404,11 @@ class DQNTrainer(SimpleQTrainer):
             )
 
             # Update target network every `target_network_update_freq` sample steps.
-            cur_ts = self._counters[NUM_AGENT_STEPS_SAMPLED if self._by_agent_steps else NUM_ENV_STEPS_SAMPLED]
+            cur_ts = self._counters[
+                NUM_AGENT_STEPS_SAMPLED
+                if self._by_agent_steps
+                else NUM_ENV_STEPS_SAMPLED
+            ]
             last_update = self._counters[LAST_TARGET_UPDATE_TS]
             if cur_ts - last_update >= self.config["target_network_update_freq"]:
                 to_update = self.workers.local_worker().get_policies_to_train()
