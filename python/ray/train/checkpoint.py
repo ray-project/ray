@@ -15,7 +15,8 @@ from ray.train.utils import construct_path
 from ray.util.ml_utils.checkpoint_manager import (
     CheckpointManager as CommonCheckpointManager,
     TrackedCheckpoint,
-    CheckpointStrategy, CheckpointStorage,
+    CheckpointStrategy,
+    CheckpointStorage,
 )
 
 if TUNE_INSTALLED:
@@ -206,7 +207,7 @@ class TuneCheckpointManager(CheckpointManager):
         checkpoint[TUNE_CHECKPOINT_ID] = self._latest_checkpoint_id
 
     def _decide_what_to_do_with_checkpoint(self, checkpoint: TrackedCheckpoint):
-        self.add_tune_checkpoint_id(checkpoint._data_to_commit)
+        self.add_tune_checkpoint_id(checkpoint.dir_or_data)
         # If inside a Tune Trainable, then checkpoint with Tune.
         with tune.checkpoint_dir(step=self._latest_checkpoint_id) as checkpoint_dir:
             path = Path(checkpoint_dir)

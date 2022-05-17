@@ -4,6 +4,7 @@ import pytest
 import ray
 import ray.train as train
 from ray import tune, cloudpickle
+from ray.ml import Checkpoint
 from ray.tune import TuneError
 from ray.train import Trainer
 from ray.train.backend import Backend, BackendConfig
@@ -117,11 +118,10 @@ def test_tune_checkpoint(ray_start_2_cpus):
     TestTrainable = trainer.to_tune_trainable(train_func)
 
     [trial] = tune.run(TestTrainable).trials
-    checkpoint_file = os.path.join(trial.checkpoint.value, TUNE_CHECKPOINT_FILE_NAME)
-    assert os.path.exists(checkpoint_file)
-    with open(checkpoint_file, "rb") as f:
-        checkpoint = cloudpickle.load(f)
-        assert checkpoint["hello"] == "world"
+    checkpoint_path = os.path.join(trial.checkpoint.value, TUNE_CHECKPOINT_FILE_NAME)
+    assert os.path.exists(checkpoint_path)
+    checkpoint = Checkpoint.from_directory(checkpoint_path).to_dict()
+    assert checkpoint["hello"] == "world"
 
 
 def test_reuse_checkpoint(ray_start_2_cpus):
