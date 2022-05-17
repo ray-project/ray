@@ -244,6 +244,8 @@ class StandardAutoscaler:
         )
         if self.disable_node_updaters:
             logger.info("Node updaters are disabled.")
+        else:
+            logger.info("Node updaters are enabled.")
 
         # Disable launch config checking if true.
         # This is set in the fake_multinode situations where there isn't any
@@ -253,6 +255,8 @@ class StandardAutoscaler:
         )
         if self.disable_launch_config_check:
             logger.info("Launch config checks are disabled.")
+        else:
+            logger.info("Launch config checks are enabled.")
 
         # By default, the autoscaler launches nodes in batches asynchronously in a
         # background thread.
@@ -263,6 +267,9 @@ class StandardAutoscaler:
         )
         if self.disable_background_launch_batch:
             logger.info("Node launch will take place in the main thread.")
+        else:
+            logger.info("Node launch will take place in background threads.")
+
 
         # Node launchers
         self.foreground_node_launcher: Optional[BaseNodeLauncher] = None
