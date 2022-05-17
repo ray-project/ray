@@ -1,4 +1,5 @@
 import copy
+import inspect
 import os
 import pickle
 import shutil
@@ -45,7 +46,12 @@ from ray.tune.result import (
     TRIAL_ID,
     EXPERIMENT_TAG,
 )
-from ray.tune.schedulers import TrialScheduler, FIFOScheduler, AsyncHyperBandScheduler
+from ray.tune.schedulers import (
+    TrialScheduler,
+    FIFOScheduler,
+    AsyncHyperBandScheduler,
+    SCHEDULER_IMPORT,
+)
 from ray.tune.stopper import (
     MaximumIterationStopper,
     TrialPlateauStopper,
@@ -1464,6 +1470,42 @@ class ShimCreationTest(unittest.TestCase):
         shim_scheduler = tune.create_scheduler(scheduler, **kwargs)
         real_scheduler = AsyncHyperBandScheduler(**kwargs)
         assert type(shim_scheduler) is type(real_scheduler)
+
+    def testCreateAllSchedulers(self):
+        # key word argument template
+        kwargs = {"metric": "metric_foo", "mode": "min"}
+
+        # get list of all schedulers to test
+        schedulers_to_test = [scheduler for scheduler in SCHEDULER_IMPORT.keys()]
+
+        for scheduler_id in schedulers_to_test:
+            kwargs_for_test = kwargs.copy()
+            if scheduler_id == "pbt_replay":
+                # using /dev/null for policy file placeholder for this test
+                # assumes existence of policy file is sufficient for this test
+                # and not the actual content
+                kwargs_for_test = {"policy_file": "/dev/null"}
+            elif scheduler_id == "pb2":
+                # add scheduler required parameter
+                kwargs_for_test["hyperparam_bounds"] = {"param1": [0, 1]}
+
+            shim_scheduler = tune.create_scheduler(scheduler_id, **kwargs_for_test)
+
+            # create scheduler with actual class
+            SchedulerClass = SCHEDULER_IMPORT[scheduler_id]
+            if inspect.isfunction(SchedulerClass):
+                # handle case of wrapping function
+                SchedulerClass = SchedulerClass()
+
+            if scheduler_id in {"fifo", "resource_changing"}:
+                # for these cases, the scheduler class does not require parameters for test
+                kwargs_for_test = {}
+
+            # create scheduler object directly from the class
+            real_scheduler = SchedulerClass(**kwargs_for_test)
+
+            # confirm shim created object is same as calling the scheduler class directly
+            assert type(shim_scheduler) is type(real_scheduler)
 
     def testCreateSearcher(self):
         kwargs = {"metric": "metric_foo", "mode": "min"}
