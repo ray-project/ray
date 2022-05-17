@@ -703,7 +703,7 @@ Linear Upper Confidence Bound (BanditLinUCBTrainer)
 ---------------------------------------------------
 |pytorch|
 `[paper] <http://rob.schapire.net/papers/www10.pdf>`__ `[implementation]
-<https://github.com/ray-project/ray/blob/master/rllib/agents/bandit/bandit.py>`__
+<https://github.com/ray-project/ray/blob/master/rllib/algorithms/bandit/bandit.py>`__
 LinUCB assumes a linear dependency between the expected reward of an action and
 its context. It estimates the Q value of each action using ridge regression.
 It constructs a confidence region around the weights of the linear

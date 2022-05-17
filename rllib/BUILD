@@ -679,7 +679,7 @@ py_test(
     name = "test_bandits",
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
-    srcs = ["agents/bandit/tests/test_bandits.py"],
+    srcs = ["algorithms/bandit/tests/test_bandits.py"],
 )
 
 # CQLTrainer

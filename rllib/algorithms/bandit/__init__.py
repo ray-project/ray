@@ -11,7 +11,3 @@ __all__ = [
     "BanditLinTSConfig",
     "BanditLinUCBConfig",
 ]
-
-from ray.rllib.utils.deprecation import deprecation_warning
-
-deprecation_warning("ray.rllib.agents.ars", "ray.rllib.algorithms.ars", error=False)

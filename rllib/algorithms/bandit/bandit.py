@@ -1,8 +1,8 @@
 import logging
 from typing import Type, Union
 
-from ray.rllib.agents.bandit.bandit_tf_policy import BanditTFPolicy
-from ray.rllib.agents.bandit.bandit_torch_policy import BanditTorchPolicy
+from ray.rllib.algorithms.bandit.bandit_tf_policy import BanditTFPolicy
+from ray.rllib.algorithms.bandit.bandit_torch_policy import BanditTorchPolicy
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
@@ -44,7 +44,7 @@ class BanditLinTSConfig(BanditConfig):
     """Defines a configuration class from which a Thompson-sampling bandit can be built.
 
     Example:
-        >>> from ray.rllib.agents.bandit import BanditLinTSConfig
+        >>> from ray.rllib.algorithms.bandit import BanditLinTSConfig
         >>> from ray.rllib.examples.env.bandit_envs_discrete import WheelBanditEnv
         >>> config = BanditLinTSConfig().rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
@@ -67,7 +67,7 @@ class BanditLinUCBConfig(BanditConfig):
     """Defines a config class from which an upper confidence bound bandit can be built.
 
     Example:
-        >>> from ray.rllib.agents.bandit import BanditLinUCBConfig
+        >>> from ray.rllib.algorithms.bandit import BanditLinUCBConfig
         >>> from ray.rllib.examples.env.bandit_envs_discrete import WheelBanditEnv
         >>> config = BanditLinUCBConfig().rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
@@ -120,14 +120,14 @@ class BanditLinUCBTrainer(Trainer):
             raise NotImplementedError("Only `framework=[torch|tf2]` supported!")
 
 
-# Deprecated: Use ray.rllib.agents.bandit.BanditLinUCBConfig instead!
+# Deprecated: Use ray.rllib.algorithms.bandit.BanditLinUCBConfig instead!
 class _deprecated_default_config(dict):
     def __init__(self):
         super().__init__(BanditLinUCBConfig().to_dict())
 
     @Deprecated(
-        old="ray.rllib.agents.bandit.bandit.DEFAULT_CONFIG",
-        new="ray.rllib.agents.bandit.bandit.BanditLin[UCB|TS]Config(...)",
+        old="ray.rllib.algorithms.bandit.bandit.DEFAULT_CONFIG",
+        new="ray.rllib.algorithms.bandit.bandit.BanditLin[UCB|TS]Config(...)",
         error=False,
     )
     def __getitem__(self, item):

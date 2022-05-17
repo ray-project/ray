@@ -5,7 +5,7 @@ from typing import Dict
 
 from gym import spaces
 import ray
-from ray.rllib.agents.bandit.bandit_tf_model import (
+from ray.rllib.algorithms.bandit.bandit_tf_model import (
     DiscreteLinearModelThompsonSampling,
     DiscreteLinearModelUCB,
     DiscreteLinearModel,
@@ -149,7 +149,7 @@ def after_init(policy, *args):
 
 BanditTFPolicy = build_tf_policy(
     name="BanditTFPolicy",
-    get_default_config=lambda: ray.rllib.agents.bandit.bandit.DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.algorithms.bandit.bandit.DEFAULT_CONFIG,
     validate_spaces=validate_spaces,
     make_model=make_model,
     loss_fn=None,

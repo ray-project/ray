@@ -1,7 +1,7 @@
 import unittest
 
 import ray
-from ray.rllib.agents.bandit import bandit
+from ray.rllib.algorithms.bandit import bandit
 from ray.rllib.examples.env.bandit_envs_discrete import SimpleContextualBandit
 from ray.rllib.utils.test_utils import check_train_results, framework_iterator
 
