@@ -632,7 +632,7 @@ class Dataset(Generic[T]):
 
         Time complexity: O(1)
 
-        See also: ``Dataset.split_at_indices``
+        See also: ``Dataset.split_at_indices``, ``Dataset.split_proportionately``
 
         Args:
             n: Number of child datasets to return.
@@ -964,7 +964,7 @@ class Dataset(Generic[T]):
 
         Time complexity: O(num splits)
 
-        See also: ``Dataset.split``
+        See also: ``Dataset.split``, ``Dataset.split_proportionately``
 
         Args:
             indices: List of sorted integers which indicate where the dataset
@@ -992,6 +992,72 @@ class Dataset(Generic[T]):
         splits.append(rest)
 
         return splits
+
+    def split_proportionately(self, proportions: List[float]) -> List["Dataset[T]"]:
+        """Split the dataset using proportions.
+
+        A common use case for this would be splitting the dataset into train
+        and test sets (equivalent to eg. scikit-learn's ``train_test_split``).
+        See also :func:`ray.ml.train_test_split` for a higher level abstraction.
+
+        The indices to split at will be calculated in such a way so that all splits
+        always contains at least one element. If that is not possible,
+        an exception will be raised.
+
+        This is equivalent to caulculating the indices manually and calling
+        ``Dataset.split_at_indices``.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.range(10) # doctest: +SKIP
+            >>> d1, d2, d3 = ds.split_proportionately([0.2, 0.5]) # doctest: +SKIP
+            >>> d1.take() # doctest: +SKIP
+            [0, 1]
+            >>> d2.take() # doctest: +SKIP
+            [2, 3, 4, 5, 6]
+            >>> d3.take() # doctest: +SKIP
+            [7, 8, 9]
+
+        Time complexity: O(num splits)
+
+        See also: ``Dataset.split``, ``Dataset.split_at_indices``,
+        :func:`ray.ml.train_test_split`
+
+        Args:
+            proportions: List of proportions to split the dataset according to.
+                Must sum up to less than 1, and each proportion has to be bigger
+                than 0.
+
+        Returns:
+            The dataset splits.
+        """
+
+        if len(proportions) < 1:
+            raise ValueError("proportions must be at least of length 1")
+        if sum(proportions) >= 1:
+            raise ValueError("proportions must sum to less than 1")
+        if any(p <= 0 for p in proportions):
+            raise ValueError("proportions must be bigger than 0")
+
+        dataset_length = self.count()
+        cumulative_proportions = np.cumsum(proportions)
+        split_indices = [
+            int(dataset_length * proportion) for proportion in cumulative_proportions
+        ]
+
+        # Ensure each split has at least one element
+        subtract = 0
+        for i in range(len(split_indices) - 2, -1, -1):
+            split_indices[i] -= subtract
+            if split_indices[i] == split_indices[i + 1]:
+                subtract += 1
+                split_indices[i] -= 1
+        if any(i <= 0 for i in split_indices):
+            raise ValueError(
+                "Couldn't create non-empty splits with the given proportions."
+            )
+
+        return self.split_at_indices(split_indices)
 
     def union(self, *other: List["Dataset[T]"]) -> "Dataset[T]":
         """Combine this dataset with others of the same type.
