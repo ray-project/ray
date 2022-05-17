@@ -247,11 +247,29 @@
       $(cat test_shard.txt)
 
 
-- label: ":python: Minimal install"
+- label: ":python: Minimal install 3.6"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - ./ci/ci.sh test_minimal
+    - ./ci/ci.sh test_minimal 3.6
+
+- label: ":python: Minimal install 3.7"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/ci.sh test_minimal 3.7
+
+- label: ":python: Minimal install 3.8"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/ci.sh test_minimal 3.8
+
+- label: ":python: Minimal install 3.9"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/ci.sh test_minimal 3.9
 
 - label: ":python: Default install"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]

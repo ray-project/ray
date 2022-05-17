@@ -689,10 +689,10 @@ build() {
 }
 
 test_minimal() {
-  ./ci/env/install-minimal.sh
+  ./ci/env/install-minimal.sh $1
   ./ci/env/env_info.sh
   python ./ci/env/check_minimal_install.py
-  BAZEL_EXPORT_OPTIONS="$(./ci/run/bazel_export_options$)"
+  BAZEL_EXPORT_OPTIONS="$(./ci/run/bazel_export_options)"
   bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 "${BAZEL_EXPORT_OPTIONS}"
     python/ray/tests/test_basic
   bazel test --test_output=streamed --config=ci "${BAZEL_EXPORT_OPTIONS}"
