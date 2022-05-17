@@ -88,14 +88,16 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   TaskManager(std::shared_ptr<CoreWorkerMemoryStore> in_memory_store,
               std::shared_ptr<ReferenceCounter> reference_counter,
               PutInLocalPlasmaCallback put_in_local_plasma_callback,
+              std::function<void()> flush_pin_requests_callback,
               RetryTaskCallback retry_task_callback,
               PushErrorCallback push_error_callback,
               int64_t max_lineage_bytes)
-      : in_memory_store_(in_memory_store),
-        reference_counter_(reference_counter),
-        put_in_local_plasma_callback_(put_in_local_plasma_callback),
-        retry_task_callback_(retry_task_callback),
-        push_error_callback_(push_error_callback),
+      : in_memory_store_(std::move(in_memory_store)),
+        reference_counter_(std::move(reference_counter)),
+        put_in_local_plasma_callback_(std::move(put_in_local_plasma_callback)),
+        flush_pin_requests_callback_(std::move(flush_pin_requests_callback)),
+        retry_task_callback_(std::move(retry_task_callback)),
+        push_error_callback_(std::move(push_error_callback)),
         max_lineage_bytes_(max_lineage_bytes) {
     reference_counter_->SetReleaseLineageCallback(
         [this](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
@@ -364,6 +366,12 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// objects get stored in plasma again so that any reference holders can
   /// retrieve them.
   const PutInLocalPlasmaCallback put_in_local_plasma_callback_;
+
+  /// Callback to flush buffered PinObjectID requests. Flushing is needed because
+  /// when Raylet is busy, single flight batching of PinObjectID requests can increase
+  /// end-to-end latency drastically. Flushing ensures the same latency with batching
+  /// enabled.
+  const std::function<void()> flush_pin_requests_callback_;
 
   /// Called when a task should be retried.
   const RetryTaskCallback retry_task_callback_;

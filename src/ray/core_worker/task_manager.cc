@@ -299,6 +299,8 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     }
   }
 
+  flush_pin_requests_callback_();
+
   TaskSpecification spec;
   bool release_lineage = true;
   int64_t min_lineage_bytes_to_evict = 0;

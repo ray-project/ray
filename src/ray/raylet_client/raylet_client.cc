@@ -44,7 +44,6 @@ AddressesToFlatbuffer(flatbuffers::FlatBufferBuilder &fbb,
   }
   return fbb.CreateVector(address_vec);
 }
-
 }  // namespace
 
 namespace ray {
@@ -470,6 +469,10 @@ void RayletClient::PinObjectID(const rpc::Address &caller_address,
   pin_batcher_->Add(caller_address, object_id, std::move(callback));
 }
 
+void RayletClient::FlushPinObjectIDRequests(const rpc::Address &caller_address) {
+  pin_batcher_->Flush(caller_address.raylet_id());
+}
+
 void RayletClient::ShutdownRaylet(
     const NodeID &node_id,
     bool graceful,
@@ -542,42 +545,55 @@ void PinBatcher::Add(const rpc::Address &address,
                      const ObjectID &object_id,
                      rpc::ClientCallback<rpc::PinObjectIDReply> callback) {
   absl::MutexLock lock(&mu_);
-  total_inflight_pins_++;
+  pending_pins_++;
   RayletDestination &raylet =
       raylets_.try_emplace(address.raylet_id(), address).first->second;
-  raylet.buffered_.emplace_back(object_id, std::move(callback));
-  Flush(address.raylet_id());
+  raylet.buffered.emplace_back(object_id, std::move(callback));
+  // Batch Pin requests with the single flight pattern.
+  if (raylet.inflight_requests == 0) {
+    FlushInternal(address.raylet_id());
+  }
+}
+
+bool PinBatcher::Flush(const std::string &raylet_id) {
+  // Always flushes buffered data, regardless of whether there is any inflight batches.
+  // So calling this method can result in multiple inflight batches.
+  absl::MutexLock lock(&mu_);
+  return FlushInternal(raylet_id);
 }
 
 int64_t PinBatcher::TotalPending() const {
   absl::MutexLock lock(&mu_);
-  return total_inflight_pins_;
+  return pending_pins_;
 }
 
-bool PinBatcher::Flush(const std::string &raylet_id) {
+bool PinBatcher::FlushInternal(const std::string &raylet_id) {
   auto &raylet = raylets_.at(raylet_id);
-  if (raylet.buffered_.empty() || !raylet.inflight_.empty()) {
+  if (raylet.buffered.empty()) {
     return false;
   }
-  raylet.inflight_ = std::move(raylet.buffered_);
-  raylet.buffered_.clear();
+  auto inflight = std::move(raylet.buffered);
+  raylet.buffered.clear();
+  raylet.inflight_requests++;
 
   rpc::PinObjectIDRequest request;
-  request.mutable_owner_address()->CopyFrom(raylet.raylet_address_);
-  for (const auto &req : raylet.inflight_) {
+  request.mutable_owner_address()->CopyFrom(raylet.raylet_address);
+  for (const auto &req : inflight) {
     request.add_object_ids(req.object_id.Binary());
   }
-  auto rpc_callback = [this, raylet_id](Status status,
-                                        const rpc::PinObjectIDReply &reply) {
-    std::vector<Request> inflight;
+  auto rpc_callback = [this, raylet_id, inflight = std::move(inflight)](
+                          Status status, const rpc::PinObjectIDReply &reply) {
     {
       absl::MutexLock lock(&mu_);
+      pending_pins_ -= inflight.size();
       auto &raylet = raylets_.at(raylet_id);
-      inflight = std::move(raylet.inflight_);
-      raylet.inflight_.clear();
-      total_inflight_pins_ -= inflight.size();
-      if (!Flush(raylet_id)) {
-        // No more buffered requests, so this RayletDestination can be dropped.
+      raylet.inflight_requests--;
+      // Flush when a request finishes and there is no other inflight request, so
+      // we can ensure all requests get flushed, while there are usually no more than 1
+      // inflight request.
+      if (raylet.inflight_requests == 0 && !FlushInternal(raylet_id)) {
+        // No more buffered or inflight requests, so this RayletDestination can be
+        // dropped.
         raylets_.erase(raylet_id);
       }
     }

@@ -54,6 +54,9 @@ class PinObjectsInterface {
                            const ObjectID &object_id,
                            rpc::ClientCallback<rpc::PinObjectIDReply> callback) = 0;
 
+  /// Flushes requests to pin object ID, if they are buffered.
+  virtual void FlushPinObjectIDRequests(const rpc::Address &caller_address) {}
+
   virtual ~PinObjectsInterface(){};
 };
 
@@ -242,13 +245,20 @@ class PinBatcher {
  public:
   PinBatcher(std::shared_ptr<rpc::NodeManagerWorkerClient> grpc_client);
 
-  /// Adds objects to be pinned at the address.
+  /// Adds objects to be pinned at the address. Flushes buffered object requests
+  /// if there is currently none inflight.
   void Add(const rpc::Address &address,
            const ObjectID &object_id,
-           rpc::ClientCallback<rpc::PinObjectIDReply> callback);
+           rpc::ClientCallback<rpc::PinObjectIDReply> callback) LOCKS_EXCLUDED(mu_);
+
+  /// Flushes buffered pin requests to the given Raylet.
+  ///
+  /// \return true if a batch is sent out, false otherwise, e.g. when
+  /// there is no buffered Object IDs.
+  bool Flush(const std::string &raylet_id) LOCKS_EXCLUDED(mu_);
 
   /// Total number of objects waiting to be pinned.
-  int64_t TotalPending() const;
+  int64_t TotalPending() const LOCKS_EXCLUDED(mu_);
 
  private:
   // Request from a single Add() call.
@@ -262,24 +272,24 @@ class PinBatcher {
 
   // Collects buffered pin object requests intended for a raylet.
   struct RayletDestination {
-    RayletDestination(const rpc::Address &address) : raylet_address_(address) {}
+    RayletDestination(const rpc::Address &address) : raylet_address(address) {}
 
-    const rpc::Address raylet_address_;
-    std::vector<Request> inflight_;
-    std::vector<Request> buffered_;
+    const rpc::Address raylet_address;
+    std::vector<Request> buffered;
+    int64_t inflight_requests = 0;
   };
 
   /// Tries sending out a batched pin request with buffered object IDs.
   ///
-  /// \return true if a request is sent out, false otherwise, e.g. when
-  /// there is already an inflight request, or there is no buffered Object IDs.
-  bool Flush(const std::string &raylet_id) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  /// \return true if a batch is sent out, false otherwise, e.g. when
+  /// there is no buffered Object IDs.
+  bool FlushInternal(const std::string &raylet_id) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   const std::shared_ptr<rpc::NodeManagerWorkerClient> grpc_client_;
   mutable absl::Mutex mu_;
   // Maps Raylet ID to the address and buffered messages for the Raylet.
   absl::flat_hash_map<std::string, RayletDestination> raylets_ ABSL_GUARDED_BY(mu_);
-  int64_t total_inflight_pins_ ABSL_GUARDED_BY(mu_) = 0;
+  int64_t pending_pins_ ABSL_GUARDED_BY(mu_) = 0;
 };
 
 class RayletClient : public RayletClientInterface {
@@ -494,6 +504,7 @@ class RayletClient : public RayletClientInterface {
   void PinObjectID(const rpc::Address &caller_address,
                    const ObjectID &object_id,
                    rpc::ClientCallback<rpc::PinObjectIDReply> callback) override;
+  void FlushPinObjectIDRequests(const rpc::Address &caller_address) override;
 
   void ShutdownRaylet(
       const NodeID &node_id,

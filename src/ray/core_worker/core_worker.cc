@@ -290,6 +290,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       [this](const RayObject &object, const ObjectID &object_id) {
         RAY_CHECK_OK(PutInLocalPlasmaStore(object, object_id, /*pin_object=*/true));
       },
+      /*flush_pin_requests_callback=*/
+      [this]() { local_raylet_client_->FlushPinObjectIDRequests(rpc_address_); },
       /* retry_task_callback= */
       [this](TaskSpecification &spec, bool delay) {
         spec.GetMutableMessage().set_attempt_number(spec.AttemptNumber() + 1);
