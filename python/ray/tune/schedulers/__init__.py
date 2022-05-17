@@ -11,12 +11,12 @@ from ray.tune.schedulers.pbt import (
 from ray.tune.schedulers.resource_changing_scheduler import ResourceChangingScheduler
 
 
-def _pb2_importer(*args, **kwargs):
+def _pb2_importer():
     # PB2 introduces a GPy dependency which can be expensive, so we import
     # lazily.
     from ray.tune.schedulers.pb2 import PB2
 
-    return PB2(*args, **kwargs)
+    return PB2
 
 
 SCHEDULER_IMPORT = {
@@ -63,7 +63,11 @@ def create_scheduler(
             f"Got: {scheduler}"
         )
 
-    SchedulerClass = SCHEDULER_IMPORT[scheduler]
+    if scheduler == "pb2":
+        # run wrapper function to get relevant class
+        SchedulerClass = SCHEDULER_IMPORT[scheduler]()
+    else:
+        SchedulerClass = SCHEDULER_IMPORT[scheduler]
 
     scheduler_args = get_function_args(SchedulerClass)
     trimmed_kwargs = {k: v for k, v in kwargs.items() if k in scheduler_args}
