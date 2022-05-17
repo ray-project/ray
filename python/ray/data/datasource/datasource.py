@@ -184,10 +184,14 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
         # from an external system instead of generating dummy data.
         def make_block(start: int, count: int) -> Block:
             if block_format == "arrow":
-                return pyarrow.Table.from_arrays(
+                import pyarrow as pa
+
+                return pa.Table.from_arrays(
                     [np.arange(start, start + count)], names=["value"]
                 )
             elif block_format == "tensor":
+                import pyarrow as pa
+
                 tensor = TensorArray(
                     np.ones(tensor_shape, dtype=np.int64)
                     * np.expand_dims(
@@ -195,7 +199,7 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
                         tuple(range(1, 1 + len(tensor_shape))),
                     )
                 )
-                return pyarrow.Table.from_pydict({"value": tensor})
+                return pa.Table.from_pydict({"value": tensor})
             else:
                 return list(builtins.range(start, start + count))
 
@@ -204,13 +208,13 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
             count = min(block_size, n - i)
             if block_format == "arrow":
                 _check_pyarrow_version()
-                import pyarrow
+                import pyarrow as pa
 
-                schema = pyarrow.Table.from_pydict({"value": [0]}).schema
+                schema = pa.Table.from_pydict({"value": [0]}).schema
             elif block_format == "tensor":
                 _check_pyarrow_version()
                 from ray.data.extensions import TensorArray
-                import pyarrow
+                import pyarrow as pa
 
                 tensor = TensorArray(
                     np.ones(tensor_shape, dtype=np.int64)
@@ -218,7 +222,7 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
                         np.arange(0, 10), tuple(range(1, 1 + len(tensor_shape)))
                     )
                 )
-                schema = pyarrow.Table.from_pydict({"value": tensor}).schema
+                schema = pa.Table.from_pydict({"value": tensor}).schema
             elif block_format == "list":
                 schema = int
             else:

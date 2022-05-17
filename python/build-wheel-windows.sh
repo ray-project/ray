@@ -5,7 +5,10 @@ set -euxo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)"
 WORKSPACE_DIR="${ROOT_DIR}/.."
 
-PY_VERSIONS=($(python -s -c "import runpy, sys; runpy.run_path(sys.argv.pop(), run_name='__api__')" python_versions "${ROOT_DIR}"/setup.py | tr -d "\r"))
+PY_VERSIONS=("3.7"
+             "3.8"
+             "3.9"
+             "3.10")
 
 bazel_preclean() {
   "${WORKSPACE_DIR}"/ci/run/bazel.py preclean "mnemonic(\"Genrule\", deps(//:*))"
@@ -97,10 +100,6 @@ build_wheel_windows() {
         echo "Expected pip for Python ${pyversion} but found Python $(get_python_version) with $(pip --version); exiting..." 1>&2
         exit 1
       fi
-
-      # Drop this pin once Python 3.6 is retired from Ray.
-      # Details in https://github.com/ray-project/ray/issues/24653.
-      pip install --upgrade setuptools==58.4
 
       unset PYTHON2_BIN_PATH PYTHON3_BIN_PATH  # make sure these aren't set by some chance
       install_ray

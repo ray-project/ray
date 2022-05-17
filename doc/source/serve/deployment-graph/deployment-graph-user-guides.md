@@ -20,4 +20,5 @@ This page is a collections of more common design patterns for using the deployme
 
 ## Patterns
 - [Chain nodes with same class and different args](./chain_nodes_same_class_different_args.md)
+- [Combine two nodes with passing same input in parallel](./combine_two_nodes_with_passing_input_parallel.md)
 

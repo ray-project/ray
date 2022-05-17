@@ -84,22 +84,23 @@ DEFAULT_CONFIG = with_common_config({
 
     # === Replay buffer ===
     "replay_buffer_config": {
-        # Enable the new ReplayBuffer API.
-        "_enable_replay_buffer_api": True,
-        "type": "MultiAgentPrioritizedReplayBuffer",
+        "type": "MultiAgentReplayBuffer",
+        # Specify prioritized replay by supplying a buffer type that supports
+        # prioritization, for example: MultiAgentPrioritizedReplayBuffer.
+        "prioritized_replay": DEPRECATED_VALUE,
         "capacity": int(1e6),
         # How many steps of the model to sample before learning starts.
         "learning_starts": 1500,
         # The number of continuous environment steps to replay at once. This may
         # be set to greater than 1 to support recurrent models.
         "replay_sequence_length": 1,
-        # If True prioritized replay buffer will be used.
-        "prioritized_replay": False,
         "prioritized_replay_alpha": 0.6,
         # Beta parameter for sampling from prioritized replay buffer.
         "prioritized_replay_beta": 0.4,
         # Epsilon to add to the TD errors when updating priorities.
         "prioritized_replay_eps": 1e-6,
+        # Whether to compute priorities on workers.
+        "worker_side_prioritization": False,
     },
     # Set this to True, if you want the contents of your buffer(s) to be
     # stored in any saved checkpoints as well.
@@ -141,7 +142,7 @@ DEFAULT_CONFIG = with_common_config({
     "rollout_fragment_length": 1,
     # Size of a batched sampled from replay buffer for training.
     "train_batch_size": 256,
-    # Update the target network every `target_network_update_freq` steps.
+    # Update the target network every `target_network_update_freq` sample steps.
     "target_network_update_freq": 0,
 
     # === Parallelism ===
@@ -155,8 +156,6 @@ DEFAULT_CONFIG = with_common_config({
     "num_gpus_per_worker": 0,
     # Whether to allocate CPUs for workers (if > 0).
     "num_cpus_per_worker": 1,
-    # Whether to compute priorities on workers.
-    "worker_side_prioritization": False,
     # Prevent reporting frequency from going lower than this time span.
     "min_time_s_per_reporting": 1,
 
@@ -167,18 +166,6 @@ DEFAULT_CONFIG = with_common_config({
     # Use a Beta-distribution instead of a SquashedGaussian for bounded,
     # continuous action spaces (not recommended, for debugging only).
     "_use_beta_distribution": False,
-
-    # Deprecated.
-    # The following values have moved because of the new ReplayBuffer API.
-    "prioritized_replay": DEPRECATED_VALUE,
-    "prioritized_replay_alpha": DEPRECATED_VALUE,
-    "prioritized_replay_beta": DEPRECATED_VALUE,
-    "prioritized_replay_eps": DEPRECATED_VALUE,
-    "learning_starts": DEPRECATED_VALUE,
-    "buffer_size": DEPRECATED_VALUE,
-    "replay_batch_size": DEPRECATED_VALUE,
-    "replay_sequence_length": DEPRECATED_VALUE,
-
 })
 # __sphinx_doc_end__
 # fmt: on

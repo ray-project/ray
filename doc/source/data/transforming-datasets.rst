@@ -16,7 +16,7 @@ Transformations are executed *eagerly* and block until the operation is finished
     def transform_batch(df: pandas.DataFrame) -> pandas.DataFrame:
         return df.applymap(lambda x: x * 2)
 
-    ds = ray.data.range_arrow(10000)
+    ds = ray.data.range_table(10000)
     ds = ds.map_batches(transform_batch, batch_format="pandas")
     # -> Map Progress: 100%|████████████████████| 200/200 [00:00<00:00, 1927.62it/s]
     ds.take(5)

@@ -10,7 +10,7 @@ import unittest
 import ray
 import ray.rllib.agents.a3c as a3c
 import ray.rllib.agents.dqn as dqn
-from ray.rllib.agents.marwil import BCTrainer
+from ray.rllib.algorithms.marwil import BCTrainer
 import ray.rllib.agents.pg as pg
 from ray.rllib.agents.trainer import COMMON_CONFIG
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole

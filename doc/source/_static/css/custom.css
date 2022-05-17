@@ -146,3 +146,8 @@ img.horizontal-scroll {
     width: 150px;
     float: right;
 }
+
+/* Wrap code blocks instead of horizontal scrolling. */
+pre {
+    white-space: pre-wrap;
+}

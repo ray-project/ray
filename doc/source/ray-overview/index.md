@@ -260,7 +260,7 @@ pip install "ray[serve]" scikit-learn
 ````
 This example runs serves a scikit-learn gradient boosting classifier.
 
-```{literalinclude} ../serve/_examples/doc_code/quick_start.py
+```{literalinclude} ../serve/doc_code/sklearn_quickstart.py
 :language: python
 :start-after: __serve_example_begin__
 :end-before: __serve_example_end__
