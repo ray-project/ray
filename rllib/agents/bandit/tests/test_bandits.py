@@ -24,7 +24,9 @@ class TestBandits(unittest.TestCase):
         )
         num_iterations = 5
 
-        for _ in framework_iterator(config, frameworks="torch"):
+        for _ in framework_iterator(
+            config, frameworks=("tf2", "torch"), with_eager_tracing=True
+        ):
             for train_batch_size in [1, 10]:
                 config.training(train_batch_size=train_batch_size)
                 trainer = config.build()
@@ -47,7 +49,9 @@ class TestBandits(unittest.TestCase):
 
         num_iterations = 5
 
-        for _ in framework_iterator(config, frameworks="torch"):
+        for _ in framework_iterator(
+            config, frameworks=("tf2", "torch"), with_eager_tracing=True
+        ):
             for train_batch_size in [1, 10]:
                 config.training(train_batch_size=train_batch_size)
                 trainer = config.build()
