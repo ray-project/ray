@@ -74,38 +74,6 @@ public class ExitActorTest extends BaseTest {
     Assert.assertThrows(RayActorException.class, obj::get);
   }
 
-  public void testExitActorInMultiWorker() {
-    Assert.assertTrue(TestUtils.getNumWorkersPerProcess() > 1);
-    ActorHandle<ExitingActor> actor1 =
-        Ray.actor(ExitingActor::new).setMaxRestarts(ActorCreationOptions.INFINITE_RESTART).remote();
-    int pid = actor1.task(ExitingActor::getPid).remote().get();
-    Assert.assertEquals(
-        1, (int) actor1.task(ExitingActor::getSizeOfActorContextMap).remote().get());
-    ActorHandle<ExitingActor> actor2;
-    while (true) {
-      // Create another actor which share the same process of actor 1.
-      actor2 =
-          Ray.actor(ExitingActor::new).setMaxRestarts(ActorCreationOptions.NO_RESTART).remote();
-      int actor2Pid = actor2.task(ExitingActor::getPid).remote().get();
-      if (actor2Pid == pid) {
-        break;
-      }
-    }
-    Assert.assertEquals(
-        2, (int) actor1.task(ExitingActor::getSizeOfActorContextMap).remote().get());
-    Assert.assertEquals(
-        2, (int) actor2.task(ExitingActor::getSizeOfActorContextMap).remote().get());
-    ObjectRef<Boolean> obj1 = actor1.task(ExitingActor::exit).remote();
-    Assert.assertThrows(RayActorException.class, obj1::get);
-    Assert.assertTrue(SystemUtil.isProcessAlive(pid));
-    // Actor 2 shouldn't exit or be reconstructed.
-    Assert.assertEquals(1, (int) actor2.task(ExitingActor::incr).remote().get());
-    Assert.assertEquals(
-        1, (int) actor2.task(ExitingActor::getSizeOfActorContextMap).remote().get());
-    Assert.assertEquals(pid, (int) actor2.task(ExitingActor::getPid).remote().get());
-    Assert.assertTrue(SystemUtil.isProcessAlive(pid));
-  }
-
   public void testExitActorWithDynamicOptions() {
     ActorHandle<ExitingActor> actor =
         Ray.actor(ExitingActor::new)
