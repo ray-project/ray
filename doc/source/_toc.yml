@@ -168,6 +168,7 @@ parts:
             sections:
               - file: ray-air/key-concepts
               - file: ray-air/deployment
+              - file: ray-air/check-ingest
               - file: ray-air/examples/index
                 sections:
                   - file: ray-air/examples/analyze_tuning_results
