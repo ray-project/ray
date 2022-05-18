@@ -57,6 +57,40 @@ Dataset Execution Model
 
 This page overviews the execution model of Datasets, which may be useful for understanding and tuning performance.
 
+Reading Data
+============
+
+Datasets uses Ray tasks to read data from remote storage. When reading from a file-based datasource (e.g., S3, GCS), it creates a number of read tasks equal to the specified read parallelism (200 by default). One or more files will be assigned to each read task. Each read task reads its assigned files and produces one or more output blocks (Ray objects):
+
+.. image:: images/dataset-read.svg
+   :width: 650px
+   :align: center
+
+..
+  https://docs.google.com/drawings/d/15B4TB8b5xN15Q9S8-s0MjW6iIvo_PrH7JtV1fL123pU/edit
+
+In the common case, each read task produces a single output block. Read tasks may split the output into multiple blocks if the data exceeds the target max block size (2GiB by default). This automatic block splitting avoids out-of-memory errors when reading very large single files (e.g., a 100-gigabyte CSV file). All of the built-in datasources except for JSON currently support automatic block splitting.
+
+.. note::
+
+  Block splitting is off by default. See the :ref:`performance section <data_performance_tips>` on how to enable block splitting (beta).
+
+.. _dataset_defeferred_reading:
+
+Deferred Read Task Execution
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When a Dataset is created using ``ray.data.read_*``, only the first read task will be executed initially. This avoids blocking Dataset creation on the reading of all data files, enabling inspection functions like ``ds.schema()`` and ``ds.show()`` to be used right away. Executing further transformations on the Dataset will trigger execution of all read tasks.
+
+Lazy Execution Mode
+===================
+
+.. note::
+
+  Lazy execution mode is experimental. If you run into any issues, please reach
+  out on `Discourse <https://discuss.ray.io/>`__ or open an issue on the
+  `Ray GitHub repo <https://github.com/ray-project/ray>`__.
+
 By default, all Datasets operations are eager (except for data reading, which is
 semi-lazy; see the :ref:`deferred reading docs <dataset_deferred_reading>`), executing
 each stage synchronously. This provides a simpler iterative development and debugging
@@ -67,9 +101,6 @@ However, this eager execution mode can result in less optimal (i.e. slower) exec
 and increased memory utilization compared to what's possible with a lazy execution mode.
 That's why Datasets offers a lazy execution mode, which you can transition to after
 you're done prototyping your Datasets pipeline.
-
-Lazy Execution Mode
-===================
 
 Lazy execution mode can be enabled by calling ``ds = ds.experimental_lazy()``, which
 returns a dataset whose all subsequent operations will be **lazy**. These operations
@@ -143,7 +174,6 @@ the user. But in lazy execution mode, we know that the outputs of the ``read()``
 ``map()`` stages are only going to be used by the downstream stages, so we can more
 aggressively release them.
 
-
 Dataset Pipelines Execution Model
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -172,32 +202,6 @@ data extra aggressively.
       # file with the reading of a single file (at most 2 file's worth of data in-flight
       # at a time).
       ray.data.read_parquet().window(blocks_per_window=1).map_batches(udf)
-
-Reading Data
-============
-
-Datasets uses Ray tasks to read data from remote storage. When reading from a file-based datasource (e.g., S3, GCS), it creates a number of read tasks equal to the specified read parallelism (200 by default). One or more files will be assigned to each read task. Each read task reads its assigned files and produces one or more output blocks (Ray objects):
-
-.. image:: images/dataset-read.svg
-   :width: 650px
-   :align: center
-
-..
-  https://docs.google.com/drawings/d/15B4TB8b5xN15Q9S8-s0MjW6iIvo_PrH7JtV1fL123pU/edit
-
-In the common case, each read task produces a single output block. Read tasks may split the output into multiple blocks if the data exceeds the target max block size (2GiB by default). This automatic block splitting avoids out-of-memory errors when reading very large single files (e.g., a 100-gigabyte CSV file). All of the built-in datasources except for JSON currently support automatic block splitting.
-
-.. note::
-
-  Block splitting is off by default. See the :ref:`performance section <data_performance_tips>` on how to enable block splitting (beta).
-
-.. _dataset_defeferred_reading:
-
-Deferred Read Task Execution
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-When a Dataset is created using ``ray.data.read_*``, only the first read task will be executed initially. This avoids blocking Dataset creation on the reading of all data files, enabling inspection functions like ``ds.schema()`` and ``ds.show()`` to be used right away. Executing further transformations on the Dataset will trigger execution of all read tasks.
-
 
 Dataset Transforms
 ==================
@@ -244,30 +248,30 @@ scheduling strategy for all Datasets tasks/actors, using the global
 
 .. code-block::
 
-  import ray
-  from ray.data.context import DatasetContext
-  from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+    import ray
+    from ray.data.context import DatasetContext
+    from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
-  # Create a single-CPU local cluster.
-  ray.init(num_cpus=1)
-  ctx = DatasetContext.get_current()
-  # Create a placement group that takes up the single core on the cluster.
-	placement_group = ray.util.placement_group(
-			name="core_hog",
-			strategy="SPREAD",
-			bundles=[
-					{"CPU": 1},
-			],
-	)
-  ray.get(placement_group.ready())
+    # Create a single-CPU local cluster.
+    ray.init(num_cpus=1)
+    ctx = DatasetContext.get_current()
+    # Create a placement group that takes up the single core on the cluster.
+    placement_group = ray.util.placement_group(
+        name="core_hog",
+        strategy="SPREAD",
+        bundles=[
+            {"CPU": 1},
+        ],
+    )
+    ray.get(placement_group.ready())
 
-  # Tell Datasets to use the placement group for all Datasets tasks.
-  ctx.scheduling_strategy = PlacementGroupSchedulingStrategy(placement_group)
-  # This Dataset workload will use that placement group for all read and map tasks.
-	ds = ray.data.range(100, parallelism=2) \
-			.map(lambda x: x + 1)
+    # Tell Datasets to use the placement group for all Datasets tasks.
+    ctx.scheduling_strategy = PlacementGroupSchedulingStrategy(placement_group)
+    # This Dataset workload will use that placement group for all read and map tasks.
+    ds = ray.data.range(100, parallelism=2) \
+        .map(lambda x: x + 1)
 
-	assert ds.take_all() == list(range(1, 101))
+    assert ds.take_all() == list(range(1, 101))
 
 Memory Management
 =================
