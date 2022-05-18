@@ -57,7 +57,7 @@ class OneHotEncoder(Preprocessor):
 
     Args:
         columns: The columns that will individually be encoded.
-        limit: Only the top "limit" number of most popular values become categorical
+        limit: If set, only the top "limit" number of most popular values become categorical
             variables. The less frequent ones will result in all the encoded column
             values being 0. This is a dict of column to its corresponding limit.
             The column in this dictionary has to be in ``columns``.
