@@ -242,6 +242,13 @@ RAY_CONFIG(uint32_t, worker_max_resource_analysis_iteration, 128);
 /// NOTE(swang): Linux only.
 RAY_CONFIG(int, worker_oom_score_adjustment, 1000)
 
+/// Sets workers' nice value on posix systems, so that the OS prioritizes CPU for other
+/// processes over worker. This makes CPU available to GCS, Raylet and user processes
+/// even when workers are busy.
+/// Valid value is [0, 19] (negative values require sudo permissions).
+/// NOTE: Linux, Unix and MacOS only.
+RAY_CONFIG(int, worker_niceness, 15)
+
 /// Allow up to 60 seconds for connecting to Redis.
 RAY_CONFIG(int64_t, redis_db_connect_retries, 600)
 RAY_CONFIG(int64_t, redis_db_connect_wait_milliseconds, 100)
