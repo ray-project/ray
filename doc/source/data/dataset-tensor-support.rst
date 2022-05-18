@@ -107,7 +107,9 @@ If your serialized tensors don't fit the above constraints (e.g. they're stored 
     # -> one: int64
     #    two: extension<arrow.py_extension_type<ArrowTensorType>>
 
-Please note that the ``tensor_column_schema`` and ``_block_udf`` parameters are both experimental developer APIs and may break in future versions.
+.. note::
+
+  The ``tensor_column_schema`` and ``_block_udf`` parameters are both experimental developer APIs and may break in future versions.
 
 Working with tensor column datasets
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -142,6 +144,167 @@ This dataset can then be written to Parquet files. The tensor column schema will
     print(read_ds.schema())
     # -> one: int64
     #    two: extension<arrow.py_extension_type<ArrowTensorType>>
+
+Converting to a Torch/TensorFlow Dataset
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This dataset can also be converted to a Torch or TensorFlow dataset via the standard
+:meth:`ds.to_torch() <ray.data.Dataset.to_torch>` and
+:meth:`ds.to_tf() <ray.data.Dataset.to_tf>` APIs for ingestion into those respective ML
+training frameworks. The tensor column will be automatically converted to a
+Torch/TensorFlow tensor without incurring any copies.
+
+.. note::
+
+  When converting to a TensorFlow Dataset, you will need to give the full tensor spec
+  for the tensor columns, including the shape of each underlying tensor element in said
+  column.
+
+
+.. tabbed:: Torch
+
+  Convert a ``Dataset`` containing a single tensor feature column to a Torch ``IterableDataset``.
+
+  .. code-block:: python
+
+    import ray
+    import numpy as np
+    import pandas as pd
+    import torch
+
+    df = pd.DataFrame({
+        "feature": TensorArray(np.arange(4096).reshape((4, 32, 32))),
+        "label": [1, 2, 3, 4],
+    })
+    ds = ray.data.from_pandas(df)
+
+    # Convert the dataset to a Torch IterableDataset.
+    torch_ds = ds.to_torch(
+        label_column="label",
+        batch_size=2,
+        unsqueeze_label_tensor=False,
+        unsqueeze_feature_tensors=False,
+    )
+
+    # A feature tensor and label tensor is yielded per batch.
+    for X, y in torch_ds:
+        # Train model(X, y)
+
+.. tabbed:: TensorFlow
+
+  Convert a ``Dataset`` containing a single tensor feature column to a TensorFlow ``tf.data.Dataset``.
+
+  .. code-block:: python
+
+    import ray
+    import numpy as np
+    import pandas as pd
+    import tensorflow as tf
+
+    tensor_element_shape = (32, 32)
+
+    df = pd.DataFrame({
+        "feature": TensorArray(np.arange(4096).reshape((4,) + tensor_element_shape)),
+        "label": [1, 2, 3, 4],
+    })
+    ds = ray.data.from_pandas(df)
+
+    # Convert the dataset to a TensorFlow Dataset.
+    tf_ds = ds.to_tf(
+        label_column="label",
+        output_signature=(
+            tf.TensorSpec(shape=(None, 1) + tensor_element_shape, dtype=tf.float32),
+            tf.TensorSpec(shape=(None,), dtype=tf.float32),
+        ),
+        batch_size=2,
+    )
+
+    # A feature tensor and label tensor is yielded per batch.
+    for X, y in tf_ds:
+        # Train model(X, y)
+
+If your columns have different types **OR** your (tensor) columns have different shapes,
+these columns are incompatible and you will not be able to stack the column tensors
+into a single tensor. Instead, you will need to group the columns by compatibility in
+the ``feature_columns`` argument.
+
+E.g., if columns ``"feature_1"`` and ``"feature_2"`` are incompatible, you should give
+``to_torch()`` a ``feature_columns=[["feature_1"], ["feature_2"]]`` argument in order to
+instruct it to return separate tensors for ``"feature_1"`` and ``"feature_2"``. For
+``to_torch()``, if isolating single columns as in the ``"feature_1"`` + ``"feature_2"``
+example, you may also want to provide ``unsqueeze_feature_tensors=False`` in order to
+remove the redundant column dimension for each of the unit column tensors.
+
+.. tabbed:: Torch
+
+  Convert a ``Dataset`` containing a tensor feature column and a scalar feature column
+  to a Torch ``IterableDataset``.
+
+  .. code-block:: python
+
+    import ray
+    import numpy as np
+    import pandas as pd
+    import torch
+
+    df = pd.DataFrame({
+        "feature_1": TensorArray(np.arange(4096).reshape((4, 32, 32))),
+        "feature_2": [5, 6, 7, 8],
+        "label": [1, 2, 3, 4],
+    })
+    ds = ray.data.from_pandas(df)
+
+    # Convert the dataset to a Torch IterableDataset.
+    torch_ds = ds.to_torch(
+        label_column="label",
+        feature_columns=[["feature_1"], ["feature_2"]],
+        batch_size=2,
+        unsqueeze_label_tensor=False,
+        unsqueeze_feature_tensors=False,
+    )
+
+    # Two feature tensors and one label tensor is yielded per batch.
+    for (feature_1, feature_2), y in torch_ds:
+        # Train model((feature_1, feature_2), y)
+
+.. tabbed:: TensorFlow
+
+  Convert a ``Dataset`` containing a tensor feature column and a scalar feature column
+  to a TensorFlow ``tf.data.Dataset``.
+
+  .. code-block:: python
+
+    import ray
+    import numpy as np
+    import pandas as pd
+    import torch
+
+    tensor_element_shape = (32, 32)
+
+    df = pd.DataFrame({
+        "feature_1": TensorArray(np.arange(4096).reshape((4,) + tensor_element_shape)),
+        "feature_2": [5, 6, 7, 8],
+        "label": [1, 2, 3, 4],
+    })
+    ds = ray.data.from_pandas(df)
+
+    # Convert the dataset to a TensorFlow Dataset.
+    tf_ds = ds.to_tf(
+        label_column="label",
+        feature_columns=[["feature_1"], ["feature_2"]],
+        output_signature=(
+            (
+                tf.TensorSpec(shape=(None, 1) + tensor_element_shape, dtype=tf.float32),
+                tf.TensorSpec(shape=(None, 1), dtype=tf.int64),
+            ),
+            tf.TensorSpec(shape=(None,), dtype=tf.float32),
+        ),
+        batch_size=2,
+    )
+
+    # Two feature tensors and one label tensor is yielded per batch.
+    for (feature_1, feature_2), y in tf_ds:
+        # Train model((feature_1, feature_2), y)
 
 End-to-end workflow with our Pandas extension type
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -246,5 +409,3 @@ This feature currently comes with a few known limitations that we are either act
 
  * All tensors in a tensor column currently must be the same shape. Please let us know if you require heterogeneous tensor shape for your tensor column! Tracking issue is `here <https://github.com/ray-project/ray/issues/18316>`__.
  * Automatic casting via specifying an override Arrow schema when reading Parquet is blocked by Arrow supporting custom ExtensionType casting kernels. See `issue <https://issues.apache.org/jira/browse/ARROW-5890>`__. An explicit ``tensor_column_schema`` parameter has been added for :func:`read_parquet() <ray.data.read_api.read_parquet>` as a stopgap solution.
- * Ingesting tables with tensor columns into pytorch via ``ds.to_torch()`` is blocked by pytorch supporting tensor creation from objects that implement the `__array__` interface. See `issue <https://github.com/pytorch/pytorch/issues/51156>`__. Workarounds are being `investigated <https://github.com/ray-project/ray/issues/18314>`__.
- * Ingesting tables with tensor columns into TensorFlow via ``ds.to_tf()`` is blocked by a Pandas fix for properly interpreting extension arrays in ``DataFrame.values`` being released. See `PR <https://github.com/pandas-dev/pandas/pull/43160>`__. Workarounds are being `investigated <https://github.com/ray-project/ray/issues/18315>`__.

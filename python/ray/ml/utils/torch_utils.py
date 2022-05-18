@@ -54,6 +54,12 @@ def convert_pandas_to_torch_tensor(
     def tensorize(vals, dtype):
         """This recursive function allows to convert pyarrow List dtypes
         to multi-dimensional tensors."""
+        if isinstance(vals, pd.api.extensions.ExtensionArray):
+            # torch.as_tensor() does not yet support the __array__ protocol, so we need
+            # to convert extension arrays to ndarrays manually before converting to a
+            # Torch tensor.
+            # See https://github.com/pytorch/pytorch/issues/51156.
+            vals = vals.to_numpy()
         try:
             return torch.as_tensor(vals, dtype=dtype)
         except TypeError:
@@ -79,8 +85,10 @@ def convert_pandas_to_torch_tensor(
             feature_tensors.append(t)
 
         if len(feature_tensors) > 1:
-            return torch.cat(feature_tensors, dim=1)
-        return feature_tensors[0]
+            feature_tensor = torch.cat(feature_tensors, dim=1)
+        else:
+            feature_tensor = feature_tensors[0]
+        return feature_tensor
 
     if multi_input:
         if type(column_dtypes) not in [list, tuple]:
