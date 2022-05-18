@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING, Union
 import ray
 from ray import ObjectRef
 from ray.actor import ActorHandle
-from ray.rllib.offline.off_policy_estimator import OffPolicyEstimate
+from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimate
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY

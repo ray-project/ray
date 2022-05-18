@@ -34,7 +34,9 @@ from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.preprocessors import Preprocessor
 from ray.rllib.offline import NoopOutput, IOContext, OutputWriter, InputReader
-from ray.rllib.offline.off_policy_estimator import OffPolicyEstimator, OffPolicyEstimate
+from ray.rllib.offline.estimators.off_policy_estimator import (
+    OffPolicyEstimator, OffPolicyEstimate
+)
 from ray.rllib.offline.estimators import ImportanceSampling, WeightedImportanceSampling
 from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID
 from ray.rllib.policy.policy import Policy, PolicySpec

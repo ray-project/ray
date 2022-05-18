@@ -4,16 +4,16 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import SampleBatchType
 
 
-class WeightedImportanceSampling(OffPolicyEstimator):
-    """The weighted step-wise IS estimator.
+class DirectMethod(OffPolicyEstimator):
+    """The Direct Method (FQE) estimator.
 
-    Step-wise WIS estimator in https://arxiv.org/pdf/1511.03722.pdf,
+    FQE estimator described in https://arxiv.org/pdf/1511.03722.pdf,
     https://arxiv.org/pdf/1911.06854.pdf"""
-
+    @override(OffPolicyEstimator)
     def __init__(self, policy: Policy, gamma: float):
         super().__init__(policy, gamma)
-        self.filter_values = []
-        self.filter_counts = []
+
+        self.model = None
 
     @override(OffPolicyEstimator)
     def estimate(self, batch: SampleBatchType) -> OffPolicyEstimate:
@@ -30,27 +30,22 @@ class WeightedImportanceSampling(OffPolicyEstimator):
             else:
                 pt_prev = p[t - 1]
             p.append(pt_prev * new_prob[t] / old_prob[t])
-        for t, v in enumerate(p):
-            if t >= len(self.filter_values):
-                self.filter_values.append(v)
-                self.filter_counts.append(1.0)
-            else:
-                self.filter_values[t] += v
-                self.filter_counts[t] += 1.0
 
-        # calculate stepwise weighted IS estimate
-        V_prev, V_step_WIS = 0.0, 0.0
+        # calculate stepwise IS estimate
+        V_prev, V_step_IS = 0.0, 0.0
         for t in range(batch.count):
             V_prev += rewards[t] * self.gamma ** t
-            w_t = self.filter_values[t] / self.filter_counts[t]
-            V_step_WIS += p[t] / w_t * rewards[t] * self.gamma ** t
+            V_step_IS += p[t] * rewards[t] * self.gamma ** t
 
         estimation = OffPolicyEstimate(
-            "weighted_importance_sampling",
+            "importance_sampling",
             {
                 "V_prev": V_prev,
-                "V_step_WIS": V_step_WIS,
-                "V_gain_est": V_step_WIS / max(1e-8, V_prev),
+                "V_step_IS": V_step_IS,
+                "V_gain_est": V_step_IS / max(1e-8, V_prev),
             },
         )
         return estimation
+    
+    def estimate_q(self, batch: SampleBatchType) -> None:
+        raise NotImplementedError

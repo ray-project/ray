@@ -1,15 +1,17 @@
-from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator, OffPolicyEstimate
+from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimate
+from ray.rllib.policy import Policy
+from ray.rllib.offline.estimators.direct_method import DirectMethod
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import SampleBatchType
 
 
-class ImportanceSampling(OffPolicyEstimator):
-    """The step-wise IS estimator.
+class DoublyRobust(DirectMethod):
+    """The Doubly Robust (DR) estimator with FQE Q-function.
 
-    Step-wise IS estimator described in https://arxiv.org/pdf/1511.03722.pdf,
-    https://arxiv.org/pdf/1911.06854.pdf"""
+    DR estimator described in https://arxiv.org/pdf/1511.03722.pdf,
+    FQE-DR in https://arxiv.org/pdf/1911.06854.pdf"""
 
-    @override(OffPolicyEstimator)
+    @override(DirectMethod)
     def estimate(self, batch: SampleBatchType) -> OffPolicyEstimate:
         self.check_can_estimate_for(batch)
 
