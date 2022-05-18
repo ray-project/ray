@@ -104,20 +104,16 @@ class _SubscriberBase:
             )
         return req
 
-    def _handle_polling_failure(self, e: grpc.RpcError, timeout=None):
+    def _handle_polling_failure(self, e: grpc.RpcError) -> bool:
         if self._close.is_set():
-            return
-        # Caller only expects polling to be terminated after deadline exceeded.
-        if e.code() == grpc.StatusCode.DEADLINE_EXCEEDED and timeout is not None:
-            raise e
+            return False
 
         if e.code() in (
             grpc.StatusCode.UNAVAILABLE,
             grpc.StatusCode.UNKNOWN,
             grpc.StatusCode.DEADLINE_EXCEEDED,
         ):
-            self.subscribe()
-            return
+            return True
 
         raise e
 
@@ -290,12 +286,15 @@ class _SyncSubscriber(_SubscriberBase):
                     # GRPC has not replied, continue waiting.
                     continue
                 except grpc.RpcError as e:
-                    if self._close.is_set():
+                    if e.code() == grpc.StatusCode.DEADLINE_EXCEEDED and timeout is not None:
                         return
-                    self._handle_polling_failure(e, timeout)
-                    fut = self._stub.GcsSubscriberPoll.future(
-                        self._poll_request(), timeout=timeout
-                    )
+                    if self._handle_polling_failure(e) is True:
+                        self.subscribe()
+                        fut = self._stub.GcsSubscriberPoll.future(
+                            self._poll_request(), timeout=timeout
+                        )
+                    else:
+                        return
 
             if fut.done():
                 self._last_batch_size = len(fut.result().pub_messages)
@@ -549,18 +548,23 @@ class _AioSubscriber(_SubscriberBase):
             try:
                 return await self._stub.GcsSubscriberPoll(req, timeout=timeout)
             except grpc.RpcError as e:
-                await self._handle_polling_failure(e, timeout)
+                if e.code() == grpc.StatusCode.DEADLINE_EXCEEDED and timeout is not None:
+                    return
+                if self._handle_polling_failure(e) is True:
+                    print("start to subscribe")
+                    await self.subscribe()
+                    print("finish subscribe")
+                else:
+                    return
 
     async def _poll(self, timeout=None) -> None:
         req = self._poll_request()
         while len(self._queue) == 0:
             # TODO: use asyncio.create_task() after Python 3.6 is no longer
             # supported.
-            poll = asyncio.ensure_future(self._poll_call(req, timeout=timeout))
+            poll = asyncio.ensure_future(self._poll_call(req))
             close = asyncio.ensure_future(self._close.wait())
-            done, _ = await asyncio.wait(
-                [poll, close], timeout=timeout, return_when=asyncio.FIRST_COMPLETED
-            )
+            done, _ = await asyncio.wait([poll, close], timeout=timeout, return_when=asyncio.FIRST_COMPLETED)
             if poll not in done or close in done:
                 # Request timed out or subscriber closed.
                 break

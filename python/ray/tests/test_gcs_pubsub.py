@@ -1,6 +1,7 @@
 import sys
 import threading
 
+import ray
 from ray._private.gcs_pubsub import (
     GcsPublisher,
     GcsErrorSubscriber,
@@ -13,7 +14,6 @@ from ray._private.gcs_pubsub import (
 )
 from ray.core.generated.gcs_pb2 import ErrorTableData
 import pytest
-
 
 def test_publish_and_subscribe_error_info(ray_start_regular):
     address_info = ray_start_regular
@@ -34,6 +34,69 @@ def test_publish_and_subscribe_error_info(ray_start_regular):
     subscriber.close()
 
 
+def test_publish_and_subscribe_error_info_ft(ray_start_regular_with_external_redis):
+    address_info = ray_start_regular_with_external_redis
+    gcs_server_addr = address_info["gcs_address"]
+    from threading import Barrier, Thread
+
+    subscriber = GcsErrorSubscriber(address=gcs_server_addr)
+    subscriber.subscribe()
+
+    publisher = GcsPublisher(address=gcs_server_addr)
+
+    err1 = ErrorTableData(error_message="test error message 1")
+    err2 = ErrorTableData(error_message="test error message 2")
+    err3 = ErrorTableData(error_message="test error message 3")
+    err4 = ErrorTableData(error_message="test error message 4")
+    b = Barrier(3)
+    def publisher_func():
+        print("Publisher HERE")
+        publisher.publish_error(b"aaa_id", err1)
+        publisher.publish_error(b"bbb_id", err2)
+
+        b.wait()
+
+        print("Publisher HERE")
+        # Wait fo subscriber to subscribe first.
+        # It's ok to loose log messages.
+        from time import sleep
+        sleep(5)
+        publisher.publish_error(b"aaa_id", err3)
+        print("pub err1")
+        publisher.publish_error(b"bbb_id", err4)
+        print("pub err2")
+        print("DONE")
+
+    def subscriber_func():
+        print("Subscriber HERE")
+        assert subscriber.poll() == (b"aaa_id", err1)
+        assert subscriber.poll() == (b"bbb_id", err2)
+
+        b.wait()
+        assert subscriber.poll() == (b"aaa_id", err3)
+        print("sub err1")
+        assert subscriber.poll() == (b"bbb_id", err4)
+        print("sub err2")
+
+        subscriber.close()
+        print("DONE")
+
+    t1 = Thread(target=publisher_func)
+    t2 = Thread(target=subscriber_func)
+    t1.start()
+    t2.start()
+    b.wait()
+
+    ray.worker._global_node.kill_gcs_server()
+    from time import sleep
+    sleep(1)
+    ray.worker._global_node.start_gcs_server()
+    sleep(1)
+
+    t1.join()
+    t2.join()
+
+
 @pytest.mark.asyncio
 async def test_aio_publish_and_subscribe_error_info(ray_start_regular):
     address_info = ray_start_regular
@@ -50,6 +113,46 @@ async def test_aio_publish_and_subscribe_error_info(ray_start_regular):
 
     assert await subscriber.poll() == (b"aaa_id", err1)
     assert await subscriber.poll() == (b"bbb_id", err2)
+
+    await subscriber.close()
+
+
+@pytest.mark.asyncio
+async def test_aio_publish_and_subscribe_error_info_ft(ray_start_regular):
+    address_info = ray_start_regular
+    gcs_server_addr = address_info["gcs_address"]
+
+    subscriber = GcsAioErrorSubscriber(address=gcs_server_addr)
+    await subscriber.subscribe()
+
+    publisher = GcsAioPublisher(address=gcs_server_addr)
+    err1 = ErrorTableData(error_message="test error message 1")
+    err2 = ErrorTableData(error_message="test error message 2")
+    err3 = ErrorTableData(error_message="test error message 3")
+    err4 = ErrorTableData(error_message="test error message 4")
+
+    await publisher.publish_error(b"aaa_id", err1)
+    await publisher.publish_error(b"bbb_id", err2)
+
+    assert await subscriber.poll() == (b"aaa_id", err1)
+    assert await subscriber.poll() == (b"bbb_id", err2)
+
+    ray.worker._global_node.kill_gcs_server()
+    from time import sleep
+    sleep(1)
+    ray.worker._global_node.start_gcs_server()
+    sleep(1)
+    import asyncio
+    r = await subscriber.poll(timeout=1)
+    print("poll done", r)
+    asyncio.sleep(2)
+    await publisher.publish_error(b"aaa_id", err3)
+    print("publish")
+    await publisher.publish_error(b"bbb_id", err4)
+    print("publish")
+
+    assert await subscriber.poll() == (b"aaa_id", err3)
+    assert await subscriber.poll() == (b"bbb_id", err4)
 
     await subscriber.close()
 
