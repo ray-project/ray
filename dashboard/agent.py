@@ -200,10 +200,20 @@ class DashboardAgent(object):
         raylet_stub = agent_manager_pb2_grpc.AgentManagerServiceStub(
             self.aiogrpc_raylet_channel
         )
-
+        agent_pid = os.getpid()
+        parent = psutil.Process(agent_pid).parent()
+        # In a virtualenv, the agent PID could be the PEP397 launcher and
+        # not the python process PID as reported by os.getpid()
+        try:
+            pid = parent.pid
+        except AttributeError:
+            pass
+        else:
+            if "python" in parent.name():
+                agent_pid = pid
         await raylet_stub.RegisterAgent(
             agent_manager_pb2.RegisterAgentRequest(
-                agent_pid=os.getpid(),
+                agent_pid=agent_pid,
                 agent_port=self.grpc_port,
                 agent_ip_address=self.ip,
             )
