@@ -49,7 +49,6 @@ from ray.tune.schedulers import (
     TrialScheduler,
     FIFOScheduler,
     AsyncHyperBandScheduler,
-    SCHEDULER_IMPORT,
 )
 from ray.tune.schedulers.pb2 import PB2
 from ray.tune.stopper import (
