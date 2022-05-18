@@ -24,7 +24,9 @@ from ray.serve.schema import (
 )
 from ray.serve.utils import parse_import_path
 from ray.serve.handle import (
+    HandleOptions,
     RayServeHandle,
+    RayServeLazySyncHandle,
     serve_handle_to_json_dict,
     serve_handle_from_json_dict,
 )
@@ -96,6 +98,12 @@ class DAGNodeEncoder(json.JSONEncoder):
                 DAGNODE_TYPE_KEY: RayServeDAGHandle.__name__,
                 "dag_node_json": obj.dag_node_json,
             }
+        elif isinstance(obj, RayServeLazySyncHandle):
+            return {
+                DAGNODE_TYPE_KEY: RayServeLazySyncHandle.__name__,
+                "deployment_name": obj.deployment_name,
+                "handle_options_method_name": obj.handle_options.method_name,
+            }
         # For all other DAGNode types.
         elif isinstance(obj, DAGNode):
             return obj.to_json()
@@ -146,6 +154,11 @@ def dagnode_from_json(input_json: Any) -> Union[DAGNode, RayServeHandle, Any]:
         return RayServeDAGHandle(input_json["dag_node_json"])
     elif input_json[DAGNODE_TYPE_KEY] == "DeploymentSchema":
         return DeploymentSchema.parse_obj(input_json["schema"])
+    elif input_json[DAGNODE_TYPE_KEY] == RayServeLazySyncHandle.__name__:
+        return RayServeLazySyncHandle(
+            input_json["deployment_name"],
+            HandleOptions(input_json["handle_options_method_name"]),
+        )
     # Deserialize DAGNode type
     elif input_json[DAGNODE_TYPE_KEY] in node_type_to_cls:
         return node_type_to_cls[input_json[DAGNODE_TYPE_KEY]].from_json(input_json)

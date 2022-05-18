@@ -4,12 +4,23 @@ from typing import Any, Callable, Dict, Optional, List, Tuple, Union
 
 from ray.experimental.dag import DAGNode, InputNode
 from ray.serve.deployment_executor_node import DeploymentExecutorNode
-from ray.serve.deployment_function_executor_node import DeploymentFunctionExecutorNode
-from ray.serve.deployment_method_executor_node import DeploymentMethodExecutorNode
-from ray.serve.handle import RayServeSyncHandle, RayServeHandle
+from ray.serve.deployment_function_executor_node import (
+    DeploymentFunctionExecutorNode,
+)
+from ray.serve.deployment_method_executor_node import (
+    DeploymentMethodExecutorNode,
+)
+from ray.serve.handle import (
+    RayServeLazySyncHandle,
+    RayServeSyncHandle,
+    RayServeHandle,
+)
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.pipeline.deployment_function_node import DeploymentFunctionNode
-from ray.experimental.dag.constants import DAGNODE_TYPE_KEY, PARENT_CLASS_NODE_KEY
+from ray.experimental.dag.constants import (
+    DAGNODE_TYPE_KEY,
+    PARENT_CLASS_NODE_KEY,
+)
 from ray.experimental.dag.format_utils import get_dag_node_str
 from ray.serve.deployment import Deployment, schema_to_deployment
 from ray.serve.deployment_graph import RayServeDAGHandle
@@ -139,9 +150,9 @@ class DeploymentNode(DAGNode):
                 ray_actor_options=ray_actor_options,
                 _internal=True,
             )
-        self._deployment_handle: Union[
-            RayServeHandle, RayServeSyncHandle
-        ] = self._get_serve_deployment_handle(self._deployment, other_args_to_resolve)
+        self._deployment_handle: RayServeLazySyncHandle = (
+            self._get_serve_deployment_handle(self._deployment, other_args_to_resolve)
+        )
 
     def _copy_impl(
         self,
@@ -188,7 +199,7 @@ class DeploymentNode(DAGNode):
                 USE_SYNC_HANDLE_KEY with value of False.
         """
         # TODO: (jiaodong) Support async handle
-        return deployment.get_handle(sync=True)
+        return RayServeLazySyncHandle(deployment.name)
 
     def _contains_input_node(self) -> bool:
         """Check if InputNode is used in children DAGNodes with current node

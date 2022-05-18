@@ -251,6 +251,51 @@ class RayServeSyncHandle(RayServeHandle):
         return RayServeSyncHandle._deserialize, (serialized_data,)
 
 
+class RayServeLazySyncHandle:
+    """Lazily initialized handle that only gets fulfilled upon first execution."""
+
+    def __init__(
+        self,
+        deployment_name: str,
+        handle_options: Optional[HandleOptions] = None,
+    ):
+        self.deployment_name = deployment_name
+        self.handle_options = handle_options or HandleOptions()
+        # For Serve DAG we need placeholder in DAG binding and building without
+        # requirement of serve.start; Thus handle is fulfilled at runtime.
+        self.handle = None
+
+    def options(self, *, method_name: str):
+        return self.__class__(
+            self.deployment_name, HandleOptions(method_name=method_name)
+        )
+
+    def remote(self, *args, **kwargs):
+        if not self.handle:
+            handle = serve.get_deployment(self.deployment_name).get_handle()
+            self.handle = handle.options(method_name=self.handle_options.method_name)
+        # TODO (jiaodong): Polish async handles later for serve pipeline
+        return self.handle.remote(*args, **kwargs)
+
+    @classmethod
+    def _deserialize(cls, kwargs):
+        """Required for this class's __reduce__ method to be picklable."""
+        return cls(**kwargs)
+
+    def __reduce__(self):
+        serialized_data = {
+            "deployment_name": self.deployment_name,
+            "handle_options": self.handle_options,
+        }
+        return RayServeLazySyncHandle._deserialize, (serialized_data,)
+
+    def __getattr__(self, name):
+        return self.options(method_name=name)
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}" f"(deployment='{self.deployment_name}')"
+
+
 def serve_handle_to_json_dict(handle: RayServeHandle) -> Dict[str, str]:
     """Converts a Serve handle to a JSON-serializable dictionary.
 
