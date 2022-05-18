@@ -1171,6 +1171,7 @@ def test_actor_mro(ray_start_regular_shared):
     assert obj.get_x() == 1
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="differing deletion behaviors")
 def test_keep_calling_get_actor(ray_start_regular_shared):
     """
     Test keep calling get_actor.
