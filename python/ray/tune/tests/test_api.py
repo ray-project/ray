@@ -51,6 +51,7 @@ from ray.tune.schedulers import (
     AsyncHyperBandScheduler,
     SCHEDULER_IMPORT,
 )
+from ray.tune.schedulers.pb2 import PB2
 from ray.tune.stopper import (
     MaximumIterationStopper,
     TrialPlateauStopper,
@@ -1470,46 +1471,15 @@ class ShimCreationTest(unittest.TestCase):
         real_scheduler = AsyncHyperBandScheduler(**kwargs)
         assert type(shim_scheduler) is type(real_scheduler)
 
-    def testCreateAllSchedulers(self):
-        # key word argument template
-        kwargs = {"metric": "metric_foo", "mode": "min"}
-
-        # get list of all schedulers to test
-        schedulers_to_test = SCHEDULER_IMPORT.keys()
-
-        for scheduler_id in schedulers_to_test:
-            kwargs_for_test = kwargs.copy()
-            if scheduler_id == "pbt_replay":
-                # using /dev/null for policy file placeholder for this test
-                # assumes existence of policy file is sufficient for this test
-                # and not the actual content
-                kwargs_for_test = {"policy_file": "/dev/null"}
-            elif scheduler_id == "pb2":
-                # add scheduler required parameter
-                kwargs_for_test["hyperparam_bounds"] = {"param1": [0, 1]}
-
-            shim_scheduler = tune.create_scheduler(scheduler_id, **kwargs_for_test)
-
-            # create scheduler with actual class
-            SchedulerClass = SCHEDULER_IMPORT[scheduler_id]
-            if scheduler_id == "pb2":
-                # handle special case of PB2 wrapping function
-                from ray.tune.schedulers.pb2 import PB2
-
-                SchedulerClass = SchedulerClass()
-                assert SchedulerClass is PB2
-
-            if scheduler_id in {"fifo", "resource_changing"}:
-                # for these cases, the scheduler class does not require
-                # parameters for test
-                kwargs_for_test = {}
-
-            # create scheduler object directly from the class
-            real_scheduler = SchedulerClass(**kwargs_for_test)
-
-            # confirm shim created object is same as calling
-            # the scheduler class directly
-            assert type(shim_scheduler) is type(real_scheduler)
+    def testCreateLazyImportScheduler(self):
+        kwargs = {
+            "metric": "metric_foo",
+            "mode": "min",
+            "hyperparam_bounds": {"param1": [0, 1]},
+        }
+        shim_scheduler_pb2 = tune.create_scheduler("pb2", **kwargs)
+        real_scheduler_pb2 = PB2(**kwargs)
+        assert type(shim_scheduler_pb2) is type(real_scheduler_pb2)
 
     def testCreateSearcher(self):
         kwargs = {"metric": "metric_foo", "mode": "min"}
