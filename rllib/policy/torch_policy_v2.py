@@ -396,20 +396,6 @@ class TorchPolicyV2(Policy):
         """
         return {}
 
-    @DeveloperAPI
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def extra_grad_info(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
-        """Return dict of extra grad info.
-
-        Args:
-            train_batch: The training batch for which to produce
-                extra grad info for.
-
-        Returns:
-            The info dict carrying grad info per str key.
-        """
-        return {}
-
     @override(Policy)
     @DeveloperAPI
     @OverrideToImplementCustomLogic_CallToSuperRecommended
@@ -795,7 +781,7 @@ class TorchPolicyV2(Policy):
         for i, (model, batch) in enumerate(zip(self.model_gpu_towers, device_batches)):
             batch_fetches[f"tower_{i}"].update(
                 {
-                    LEARNER_STATS_KEY: self.extra_grad_info(batch),
+                    LEARNER_STATS_KEY: self.stats_fn(batch),
                     "model": model.metrics(),
                 }
             )
@@ -830,7 +816,7 @@ class TorchPolicyV2(Policy):
         all_grads, grad_info = tower_outputs[0]
 
         grad_info["allreduce_latency"] /= len(self._optimizers)
-        grad_info.update(self.extra_grad_info(postprocessed_batch))
+        grad_info.update(self.stats_fn(postprocessed_batch))
 
         fetches = self.extra_compute_grad_fetches()
 
