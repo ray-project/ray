@@ -80,14 +80,11 @@ class GcsLocalTaskManager : public ILocalTaskManager {
   /// Queue task and schedule.
   void QueueAndScheduleTask(std::shared_ptr<internal::Work> work) override {
     RAY_CHECK(false)
-        << "This function should never be called by a dummy local task manager.";
+        << "This function should never be called by gcs' local task manager.";
   }
 
   // Schedule and dispatch tasks.
-  void ScheduleAndDispatchTasks() override {
-    RAY_CHECK(false)
-        << "This function should never be called by a dummy local task manager.";
-  }
+  void ScheduleAndDispatchTasks() override {}
 
   /// Attempt to cancel an already queued task.
   ///
