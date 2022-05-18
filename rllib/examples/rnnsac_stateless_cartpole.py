@@ -18,8 +18,8 @@ config = {
     "keep_checkpoints_num": 1,
     "checkpoint_score_attr": "episode_reward_mean",
     "stop": {
-        "episode_reward_mean": 65.0,
-        "timesteps_total": 50000,
+        "episode_reward_mean": 100.0,
+        "timesteps_total": 1000000,
     },
     "metric": "episode_reward_mean",
     "mode": "max",
@@ -32,7 +32,6 @@ config = {
         "num_envs_per_worker": 1,
         "num_cpus_per_worker": 1,
         "log_level": "INFO",
-        # "env": envs["RepeatAfterMeEnv"],
         "env": envs["StatelessCartPole"],
         "horizon": 1000,
         "gamma": 0.95,
