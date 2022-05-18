@@ -19,6 +19,7 @@ from ray.serve.pipeline.deployment_function_node import DeploymentFunctionNode
 from ray.serve.deployment_executor_node import DeploymentExecutorNode
 from ray.serve.deployment_method_executor_node import DeploymentMethodExecutorNode
 from ray.serve.deployment_function_executor_node import DeploymentFunctionExecutorNode
+from ray.serve.pipeline.json_serde import DAGNodeEncoder
 
 
 def transform_ray_dag_to_serve_dag(
@@ -130,10 +131,22 @@ def transform_serve_dag_to_serve_executor_dag(serve_dag_root_node: DAGNode):
         return serve_dag_root_node
 
 
-def generate_driver_deployment(
+def generate_executor_dag_driver_deployment(
     serve_executor_dag_root_node: DAGNode, original_driver_deployment: Deployment
 ):
-    """a"""
+    """Given a transformed minimal execution serve dag, and original DAGDriver
+    deployment, generate new DAGDriver deployment that uses new serve executor
+    dag as init_args.
+
+    Args:
+        serve_executor_dag_root_node (DeploymentExecutorNode): Transformed
+            executor serve dag with only barebone deployment handles.
+        original_driver_deployment (Deployment): User's original DAGDriver
+            deployment that wrapped Ray DAG as init args.
+    Returns:
+        executor_dag_driver_deployment (Deployment): New DAGDriver deployment
+            with executor serve dag as init args.
+    """
 
     def replace_with_handle(node):
         if isinstance(node, DeploymentExecutorNode):
@@ -143,12 +156,8 @@ def generate_driver_deployment(
             (
                 DeploymentMethodExecutorNode,
                 DeploymentFunctionExecutorNode,
-                # DeploymentFunctionNode,
-                # DeploymentMethodNode,
             ),
         ):
-            from ray.serve.pipeline.json_serde import DAGNodeEncoder
-
             serve_dag_root_json = json.dumps(node, cls=DAGNodeEncoder)
             return RayServeDAGHandle(serve_dag_root_json)
 
@@ -163,9 +172,6 @@ def generate_driver_deployment(
         predictate_fn=lambda node: isinstance(
             node,
             (
-                # DeploymentNode,
-                # DeploymentFunctionNode,
-                # DeploymentMethodNode,
                 DeploymentExecutorNode,
                 DeploymentFunctionExecutorNode,
                 DeploymentMethodExecutorNode,

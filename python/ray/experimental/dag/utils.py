@@ -56,16 +56,3 @@ class DAGNodeNameGenerator(object):
 
     def __exit__(self, *args):
         self.reset()
-
-
-class ApplyRecursiveCache:
-    """While calling apply_recursive() on a DAGNode, we might run into"""
-
-    def __init__(self):
-        self.visited = set()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        self.reset()

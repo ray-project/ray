@@ -129,6 +129,21 @@ def dagnode_from_json(input_json: Any) -> Union[DAGNode, RayServeHandle, Any]:
                 that we perserve the same parent node.
         - .options() does not contain any DAGNode type
     """
+    node_type_to_cls = {
+        # Ray DAG Inputs
+        InputNode.__name__: InputNode,
+        InputAttributeNode.__name__: InputAttributeNode,
+        # Ray DAG Nodes
+        ClassMethodNode.__name__: ClassMethodNode,
+        # Deployment transformation nodes
+        DeploymentNode.__name__: DeploymentNode,
+        DeploymentMethodNode.__name__: DeploymentMethodNode,
+        DeploymentFunctionNode.__name__: DeploymentFunctionNode,
+        # Deployment graph execution nodes
+        DeploymentExecutorNode.__name__: DeploymentExecutorNode,
+        DeploymentMethodExecutorNode.__name__: DeploymentMethodExecutorNode,
+        DeploymentFunctionExecutorNode.__name__: DeploymentFunctionExecutorNode,
+    }
     # Deserialize RayServeHandle type
     if SERVE_HANDLE_JSON_KEY in input_json:
         return serve_handle_from_json_dict(input_json)
@@ -145,24 +160,8 @@ def dagnode_from_json(input_json: Any) -> Union[DAGNode, RayServeHandle, Any]:
             HandleOptions(input_json["handle_options_method_name"]),
         )
     # Deserialize DAGNode type
-    elif input_json[DAGNODE_TYPE_KEY] == InputNode.__name__:
-        return InputNode.from_json(input_json)
-    elif input_json[DAGNODE_TYPE_KEY] == InputAttributeNode.__name__:
-        return InputAttributeNode.from_json(input_json)
-    elif input_json[DAGNODE_TYPE_KEY] == ClassMethodNode.__name__:
-        return ClassMethodNode.from_json(input_json)
-    elif input_json[DAGNODE_TYPE_KEY] == DeploymentNode.__name__:
-        return DeploymentNode.from_json(input_json)
-    elif input_json[DAGNODE_TYPE_KEY] == DeploymentMethodNode.__name__:
-        return DeploymentMethodNode.from_json(input_json)
-    elif input_json[DAGNODE_TYPE_KEY] == DeploymentFunctionNode.__name__:
-        return DeploymentFunctionNode.from_json(input_json)
-    elif input_json[DAGNODE_TYPE_KEY] == DeploymentExecutorNode.__name__:
-        return DeploymentExecutorNode.from_json(input_json)
-    elif input_json[DAGNODE_TYPE_KEY] == DeploymentMethodExecutorNode.__name__:
-        return DeploymentMethodExecutorNode.from_json(input_json)
-    elif input_json[DAGNODE_TYPE_KEY] == DeploymentFunctionExecutorNode.__name__:
-        return DeploymentFunctionExecutorNode.from_json(input_json)
+    elif input_json[DAGNODE_TYPE_KEY] in node_type_to_cls:
+        return node_type_to_cls[input_json[DAGNODE_TYPE_KEY]].from_json(input_json)
     else:
         # Class and Function nodes require original module as body.
         module_name, attr_name = parse_import_path(input_json["import_path"])

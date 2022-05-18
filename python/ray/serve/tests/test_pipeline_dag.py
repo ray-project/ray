@@ -37,7 +37,7 @@ class ClassHello:
         return "hello"
 
 
-@ray.remote
+@serve.deployment
 class Model:
     def __init__(self, weight: int, ratio: float = None):
         self.weight = weight
@@ -175,7 +175,7 @@ def test_chained_function(serve_instance, use_build):
     assert requests.post("http://127.0.0.1:8000/", json=2).json() == 18
 
 
-@pytest.mark.parametrize("use_build", [False])
+@pytest.mark.parametrize("use_build", [False, True])
 def test_simple_class_with_class_method(serve_instance, use_build):
     with InputNode() as dag_input:
         model = Model.bind(2, ratio=0.3)
@@ -194,10 +194,7 @@ def test_func_class_with_class_method(serve_instance, use_build):
         m1_output = m1.forward.bind(dag_input[0])
         m2_output = m2.forward.bind(dag_input[1])
         combine_output = combine.bind(m1_output, m2_output, kwargs_output=dag_input[2])
-        serve_dag = DAGDriver.bind(
-            combine_output,
-            http_adapter="ray.serve.tests.test_pipeline_dag.json_resolver",
-        )
+        serve_dag = DAGDriver.bind(combine_output, http_adapter=json_resolver)
 
     handle = serve.run(serve_dag)
     assert ray.get(handle.predict.remote([1, 2, 3])) == 8
