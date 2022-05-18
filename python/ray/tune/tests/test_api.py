@@ -1493,9 +1493,11 @@ class ShimCreationTest(unittest.TestCase):
 
             # create scheduler with actual class
             SchedulerClass = SCHEDULER_IMPORT[scheduler_id]
-            if inspect.isfunction(SchedulerClass):
-                # handle case of wrapping function
+            if scheduler_id == "pb2":
+                # handle special case of PB2 wrapping function
+                from ray.tune.schedulers.pb2 import PB2
                 SchedulerClass = SchedulerClass()
+                assert SchedulerClass == PB2
 
             if scheduler_id in {"fifo", "resource_changing"}:
                 # for these cases, the scheduler class does not require
