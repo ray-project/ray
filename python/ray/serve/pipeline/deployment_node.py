@@ -9,7 +9,6 @@ from ray.serve.deployment_method_executor_node import DeploymentMethodExecutorNo
 from ray.serve.handle import RayServeLazySyncHandle, RayServeSyncHandle, RayServeHandle
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.pipeline.deployment_function_node import DeploymentFunctionNode
-from ray.serve.pipeline.constants import USE_SYNC_HANDLE_KEY
 from ray.experimental.dag.constants import DAGNODE_TYPE_KEY, PARENT_CLASS_NODE_KEY
 from ray.experimental.dag.format_utils import get_dag_node_str
 from ray.serve.deployment import Deployment, schema_to_deployment

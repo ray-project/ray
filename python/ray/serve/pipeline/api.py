@@ -1,5 +1,4 @@
 from typing import List
-import json
 
 from ray.experimental.dag.dag_node import DAGNode
 from ray.serve.pipeline.generate import (
@@ -11,7 +10,6 @@ from ray.serve.pipeline.generate import (
 )
 from ray.serve.deployment import Deployment
 from ray.experimental.dag.utils import DAGNodeNameGenerator
-from ray.serve.deployment_graph import RayServeDAGHandle
 
 
 def build(ray_dag_root_node: DAGNode) -> List[Deployment]:

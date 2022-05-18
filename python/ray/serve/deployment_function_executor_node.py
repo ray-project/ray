@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, List, Union
+from typing import Any, Dict, List, Union
 
 from ray import ObjectRef
 from ray.experimental.dag import DAGNode
@@ -53,9 +53,6 @@ class DeploymentFunctionExecutorNode(DAGNode):
         receive whatever this method returns. We return a handle here so method
         node can directly call upon.
         """
-        print(
-            f"????? FunctionExecutorNode - _bound_args: {self._bound_args}, _bound_kwargs: {self._bound_kwargs}"
-        )
         return self._deployment_function_handle.remote(
             *self._bound_args, **self._bound_kwargs
         )

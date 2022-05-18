@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, List, Union
+from typing import Any, Dict, List
 
 from ray import ObjectRef
 from ray.experimental.dag import DAGNode
@@ -27,9 +27,6 @@ class DeploymentMethodExecutorNode(DAGNode):
         dag_kwargs,
         other_args_to_resolve=None,
     ):
-        print(
-            f" <<<<< Creating DeploymentMethodExecutorNode with dag_args: {dag_args}, dag_kwargs: {dag_kwargs}"
-        )
         super().__init__(
             dag_args, dag_kwargs, {}, other_args_to_resolve=other_args_to_resolve
         )
@@ -59,10 +56,6 @@ class DeploymentMethodExecutorNode(DAGNode):
         receive whatever this method returns. We return a handle here so method
         node can directly call upon.
         """
-        print(f"????? DeploymentMethodExecutorNode - args: {args}, kwargs: {kwargs}")
-        print(
-            f"????? DeploymentMethodExecutorNode - _bound_args: {self._bound_args}, _bound_kwargs: {self._bound_kwargs}"
-        )
         method_body = getattr(
             self._deployment_node_replaced_by_handle, self._deployment_method_name
         )

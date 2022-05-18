@@ -8,7 +8,6 @@ from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
 from ray.serve.deployment import Deployment, schema_to_deployment
 from ray.serve.config import DeploymentConfig
 from ray.serve.schema import DeploymentSchema
-from ray.serve.handle import RayServeLazySyncHandle
 from ray.serve.utils import get_deployment_import_path
 
 

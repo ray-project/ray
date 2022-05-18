@@ -1,5 +1,5 @@
 import json
-from typing import List, Set
+from typing import List
 from collections import OrderedDict
 
 from ray.experimental.dag import (
@@ -107,26 +107,12 @@ def transform_serve_dag_to_serve_executor_dag(serve_dag_root_node: DAGNode):
     execution.
     """
     if isinstance(serve_dag_root_node, DeploymentNode):
-        # TODO: (jiaodong) Do not use full Deployment init args, only the ones that connects dag.
-        print(
-            f"Creating DeploymentExecutorNode with {serve_dag_root_node.get_args()}, {serve_dag_root_node.get_kwargs()}"
-        )
-
         return DeploymentExecutorNode(
             serve_dag_root_node._deployment_handle,
             serve_dag_root_node.get_args(),
             serve_dag_root_node.get_kwargs(),
         )
     elif isinstance(serve_dag_root_node, DeploymentMethodNode):
-        print("DeploymentMethodExecutorNode")
-        deployment_node = serve_dag_root_node._bound_other_args_to_resolve[
-            PARENT_CLASS_NODE_KEY
-        ]
-        print(f"???? deployment_node: {deployment_node}")
-        print(
-            f"???? getattr: {getattr(serve_dag_root_node._deployment.get_handle(), serve_dag_root_node._deployment_method_name)}"
-        )
-
         return DeploymentMethodExecutorNode(
             # Deployment method handle
             serve_dag_root_node._deployment_method_name,
@@ -135,14 +121,12 @@ def transform_serve_dag_to_serve_executor_dag(serve_dag_root_node: DAGNode):
             other_args_to_resolve=serve_dag_root_node.get_other_args_to_resolve(),
         )
     elif isinstance(serve_dag_root_node, DeploymentFunctionNode):
-        print("DeploymentFunctionNode")
         return DeploymentFunctionExecutorNode(
             serve_dag_root_node._deployment_handle,
             serve_dag_root_node.get_args(),
             serve_dag_root_node.get_kwargs(),
         )
     else:
-        print("Other")
         return serve_dag_root_node
 
 

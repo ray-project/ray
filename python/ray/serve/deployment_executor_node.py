@@ -1,10 +1,7 @@
-from typing import Any, Dict, Optional, List, Union
+from typing import Any, Dict, List
 
-import ray
 from ray.experimental.dag import DAGNode
 from ray.serve.deployment_method_executor_node import DeploymentMethodExecutorNode
-from ray.serve.handle import RayServeSyncHandle, RayServeHandle
-from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.experimental.dag.constants import DAGNODE_TYPE_KEY, PARENT_CLASS_NODE_KEY
 from ray.experimental.dag.format_utils import get_dag_node_str
 
@@ -29,9 +26,6 @@ class DeploymentExecutorNode(DAGNode):
         dag_args,  # Not deployment init args
         dag_kwargs,  # Not deployment init kwargs
     ):
-        print(
-            f">>>> init DeploymentExecutorNode with args: {dag_args}, kwargs: {dag_kwargs}"
-        )
         self._deployment_handle = deployment_handle
         super().__init__(dag_args, dag_kwargs, {}, {})
 
@@ -53,15 +47,6 @@ class DeploymentExecutorNode(DAGNode):
         this function gets called, all child nodes are already resolved to
         ObjectRefs.
         """
-        print(f"????? Executor Node - called with args: {args}, kwargs: {kwargs}")
-        print(
-            f"????? Executor Node - _bound_args: {self._bound_args}, _bound_kwargs: {self._bound_kwargs}"
-        )
-        # For DAGDriver -- Return object ref of the dag handle
-        # For regular deployment -- return handle
-        # if self._deployment_handle.deployment_name == "DAGDriver":
-        #     return self._bound_args[0]
-        # else:
         return self._deployment_handle
 
     def __getattr__(self, method_name: str):
