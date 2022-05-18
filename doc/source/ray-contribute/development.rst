@@ -25,7 +25,8 @@ RLlib, Tune, Autoscaler, and most Python files do not require you to build and c
 
 .. code-block:: shell
 
-    pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
+    # For example, for Python 3.8:
+    pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
 
 2. Fork and clone the project to your machine. Connect your repository to the upstream (main project) ray repository.
 
@@ -74,7 +75,7 @@ For RHELv8 (Redhat EL 8.0-64 Minimal), run the following commands:
   sudo yum groupinstall 'Development Tools'
   sudo yum install psmisc
 
-Install bazel manually from link: https://docs.bazel.build/versions/main/install-redhat.html 
+Install bazel manually from link: https://docs.bazel.build/versions/main/install-redhat.html
 
 
 For MacOS, run the following commands:
