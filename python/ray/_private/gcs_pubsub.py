@@ -106,6 +106,7 @@ class _SubscriberBase:
 
     def _handle_polling_failure(self, e: grpc.RpcError, timeout=None):
         import traceback
+
         print("================")
         traceback.print_stack()
         # Caller only expects polling to be terminated after deadline exceeded.
