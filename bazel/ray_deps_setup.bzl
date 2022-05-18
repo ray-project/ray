@@ -221,10 +221,11 @@ def ray_deps_setup():
     )
 
     # OpenCensus depends on jupp0r/prometheus-cpp
+    # Todo: Revert this to use jupp0r's original repo
     auto_http_archive(
         name = "com_github_jupp0r_prometheus_cpp",
-        url = "https://github.com/jupp0r/prometheus-cpp/archive/60eaa4ea47b16751a8e8740b05fe70914c68a480.tar.gz",
-        sha256 = "ec825b802487ac18b0d98e2e8b7961487b12562f8f82e424521d0a891d9e1373",
+        url = "https://github.com/krfricke/prometheus-cpp/archive/95d9b6203dea757fb873add283ce284cc3a06783.tar.gz",
+        sha256 = "8c2d836faf2f99d434705f1da975cbe7febdc194c600a06d01d41f10cc427dbe",
         patches = [
             "@com_github_ray_project_ray//thirdparty/patches:prometheus-windows-headers.patch",
             # https://github.com/jupp0r/prometheus-cpp/pull/225
