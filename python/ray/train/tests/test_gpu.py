@@ -67,10 +67,6 @@ def test_torch_get_device(ray_start_4_cpus_2_gpus, num_gpus_per_worker):
         )
 
 
-
-ray.init('auto')
-
-
 def test_jax_get_device(ray_start_4_cpus_2_gpus):
     def _train_fn(x):
         return jax.lax.psum(x, 'i')
