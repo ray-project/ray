@@ -161,8 +161,10 @@ class CQLTrainer(SACTrainer):
     def training_iteration(self) -> ResultDict:
 
         # Sample training batch from replay buffer.
-        train_batch = self.local_replay_buffer.sample(self.config["train_batch_size"]
-                                                      // self.local_replay_buffer.replay_sequence_length)
+        train_batch = self.local_replay_buffer.sample(
+            self.config["train_batch_size"]
+            // self.local_replay_buffer.replay_sequence_length
+        )
 
         # Old-style replay buffers return None if learning has not started
         if not train_batch:
