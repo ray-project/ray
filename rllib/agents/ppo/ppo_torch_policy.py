@@ -10,11 +10,13 @@ from ray.rllib.evaluation.postprocessing import (
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_policy import (
+from ray.rllib.policy.torch_mixins import (
     EntropyCoeffSchedule,
+    KLCoeffMixin,
     LearningRateSchedule,
-    TorchPolicy,
+    ValueNetworkMixin,
 )
+from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -30,7 +32,13 @@ torch, nn = try_import_torch()
 logger = logging.getLogger(__name__)
 
 
-class PPOTorchPolicy(TorchPolicy, LearningRateSchedule, EntropyCoeffSchedule):
+class PPOTorchPolicy(
+    ValueNetworkMixin,
+    LearningRateSchedule,
+    EntropyCoeffSchedule,
+    KLCoeffMixin,
+    TorchPolicy,
+):
     """PyTorch policy class used with PPOTrainer."""
 
     def __init__(self, observation_space, action_space, config):
@@ -45,6 +53,7 @@ class PPOTorchPolicy(TorchPolicy, LearningRateSchedule, EntropyCoeffSchedule):
             max_seq_len=config["model"]["max_seq_len"],
         )
 
+        ValueNetworkMixin.__init__(self, config)
         EntropyCoeffSchedule.__init__(
             self, config["entropy_coeff"], config["entropy_coeff_schedule"]
         )
@@ -179,41 +188,6 @@ class PPOTorchPolicy(TorchPolicy, LearningRateSchedule, EntropyCoeffSchedule):
 
         return total_loss
 
-    def _value(self, **input_dict):
-        # When doing GAE, we need the value function estimate on the
-        # observation.
-        if self.config["use_gae"]:
-            # Input dict is provided to us automatically via the Model's
-            # requirements. It's a single-timestep (last one in trajectory)
-            # input_dict.
-            input_dict = self._lazy_tensor_dict(input_dict)
-            model_out, _ = self.model(input_dict)
-            # [0] = remove the batch dim.
-            return self.model.value_function()[0].item()
-        # When not doing GAE, we do not require the value function's output.
-        else:
-            return 0.0
-
-    def update_kl(self, sampled_kl):
-        # Update the current KL value based on the recently measured value.
-        if sampled_kl > 2.0 * self.kl_target:
-            self.kl_coeff *= 1.5
-        elif sampled_kl < 0.5 * self.kl_target:
-            self.kl_coeff *= 0.5
-        # Return the current KL value.
-        return self.kl_coeff
-
-    # TODO: Make this an event-style subscription (e.g.:
-    #  "after_actions_computed").
-    @override(TorchPolicy)
-    def extra_action_out(self, input_dict, state_batches, model, action_dist):
-        # Return value function outputs. VF estimates will hence be added to
-        # the SampleBatches produced by the sampler(s) to generate the train
-        # batches going into the loss function.
-        return {
-            SampleBatch.VF_PREDS: model.value_function(),
-        }
-
     # TODO: Make this an event-style subscription (e.g.:
     #  "after_gradients_computed").
     @override(TorchPolicy)
@@ -247,32 +221,3 @@ class PPOTorchPolicy(TorchPolicy, LearningRateSchedule, EntropyCoeffSchedule):
                 "entropy_coeff": self.entropy_coeff,
             }
         )
-
-    # TODO: Make lr-schedule and entropy-schedule Plugin-style functionalities
-    #  that can be added (via the config) to any Trainer/Policy.
-    @override(TorchPolicy)
-    def on_global_var_update(self, global_vars):
-        super().on_global_var_update(global_vars)
-        if self._lr_schedule:
-            self.cur_lr = self._lr_schedule.value(global_vars["timestep"])
-            for opt in self._optimizers:
-                for p in opt.param_groups:
-                    p["lr"] = self.cur_lr
-        if self._entropy_coeff_schedule is not None:
-            self.entropy_coeff = self._entropy_coeff_schedule.value(
-                global_vars["timestep"]
-            )
-
-    @override(TorchPolicy)
-    def get_state(self) -> Union[Dict[str, TensorType], List[TensorType]]:
-        state = super().get_state()
-        # Add current kl-coeff value.
-        state["current_kl_coeff"] = self.kl_coeff
-        return state
-
-    @override(TorchPolicy)
-    def set_state(self, state: dict) -> None:
-        # Set current kl-coeff value first.
-        self.kl_coeff = state.pop("current_kl_coeff", self.config["kl_coeff"])
-        # Call super's set_state with rest of the state dict.
-        super().set_state(state)

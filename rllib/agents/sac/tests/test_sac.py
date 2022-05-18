@@ -523,7 +523,7 @@ class TestSAC(unittest.TestCase):
 
         config = sac.DEFAULT_CONFIG.copy()
         config["num_workers"] = 0  # Run locally.
-        config["learning_starts"] = 0
+        config["replay_buffer_config"]["learning_starts"] = 0
         config["rollout_fragment_length"] = 5
         config["train_batch_size"] = 5
         config["replay_buffer_config"]["capacity"] = 10

@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <boost/asio/post.hpp>
 #include <boost/asio/thread_pool.hpp>
 #include <boost/thread.hpp>
 #include <list>
@@ -41,10 +42,8 @@ class BoundedExecutor {
 
   explicit BoundedExecutor(int max_concurrency);
 
-  int32_t GetMaxConcurrency() const;
-
-  /// Posts work to the pool, blocking if no free threads are available.
-  void PostBlocking(std::function<void()> fn);
+  /// Posts work to the pool
+  void Post(std::function<void()> fn) { boost::asio::post(pool_, std::move(fn)); }
 
   /// Stop the thread pool.
   void Stop();
@@ -53,14 +52,6 @@ class BoundedExecutor {
   void Join();
 
  private:
-  bool ThreadsAvailable() EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  /// Protects access to the counters below.
-  absl::Mutex mu_;
-  /// The number of currently running tasks.
-  int num_running_ GUARDED_BY(mu_);
-  /// The max number of concurrently running tasks allowed.
-  const int max_concurrency_;
   /// The underlying thread pool for running tasks.
   boost::asio::thread_pool pool_;
 };

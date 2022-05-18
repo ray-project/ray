@@ -123,7 +123,7 @@ The concurrency of the default group can be changed by setting the ``max_concurr
 
     .. code-block:: python
 
-        @ray.remote(concurrency_groups={"io": 2)
+        @ray.remote(concurrency_groups={"io": 2})
         class AsyncIOActor:
             async def f1(self):
                 pass

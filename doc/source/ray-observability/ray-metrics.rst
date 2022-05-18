@@ -183,16 +183,16 @@ If you open this in the browser, you should see the following output:
 
   # HELP ray_request_latency Latencies of requests in ms.
   # TYPE ray_request_latency histogram
-  ray_request_latency_bucket{Component="core_worker",Version="2.0.0.dev0",actor_name="my_actor",le="0.1"} 2.0
-  ray_request_latency_bucket{Component="core_worker",Version="2.0.0.dev0",actor_name="my_actor",le="1.0"} 2.0
-  ray_request_latency_bucket{Component="core_worker",Version="2.0.0.dev0",actor_name="my_actor",le="+Inf"} 2.0
-  ray_request_latency_count{Component="core_worker",Version="2.0.0.dev0",actor_name="my_actor"} 2.0
-  ray_request_latency_sum{Component="core_worker",Version="2.0.0.dev0",actor_name="my_actor"} 0.11992454528808594
+  ray_request_latency_bucket{Component="core_worker",Version="3.0.0.dev0",actor_name="my_actor",le="0.1"} 2.0
+  ray_request_latency_bucket{Component="core_worker",Version="3.0.0.dev0",actor_name="my_actor",le="1.0"} 2.0
+  ray_request_latency_bucket{Component="core_worker",Version="3.0.0.dev0",actor_name="my_actor",le="+Inf"} 2.0
+  ray_request_latency_count{Component="core_worker",Version="3.0.0.dev0",actor_name="my_actor"} 2.0
+  ray_request_latency_sum{Component="core_worker",Version="3.0.0.dev0",actor_name="my_actor"} 0.11992454528808594
   # HELP ray_curr_count Current count held by the actor. Goes up and down.
   # TYPE ray_curr_count gauge
-  ray_curr_count{Component="core_worker",Version="2.0.0.dev0",actor_name="my_actor"} -15.0
+  ray_curr_count{Component="core_worker",Version="3.0.0.dev0",actor_name="my_actor"} -15.0
   # HELP ray_num_requests_total Number of requests processed by the actor.
   # TYPE ray_num_requests_total counter
-  ray_num_requests_total{Component="core_worker",Version="2.0.0.dev0",actor_name="my_actor"} 2.0
+  ray_num_requests_total{Component="core_worker",Version="3.0.0.dev0",actor_name="my_actor"} 2.0
 
 Please see :ref:`ray.util.metrics <custom-metric-api-ref>` for more details.

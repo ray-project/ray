@@ -1,7 +1,7 @@
 import unittest
 
 import ray
-import ray.rllib.agents.bandit.bandit as bandit
+from ray.rllib.agents.bandit import bandit
 from ray.rllib.examples.env.bandit_envs_discrete import SimpleContextualBandit
 from ray.rllib.utils.test_utils import check_train_results, framework_iterator
 
@@ -17,19 +17,17 @@ class TestBandits(unittest.TestCase):
 
     def test_bandit_lin_ts_compilation(self):
         """Test whether a BanditLinTSTrainer can be built on all frameworks."""
-        config = {
-            # Use a simple bandit-friendly env.
-            "env": SimpleContextualBandit,
-            "num_envs_per_worker": 2,  # Test batched inference.
-            "num_workers": 2,  # Test distributed bandits.
-        }
-
+        config = (
+            bandit.BanditLinTSConfig()
+            .environment(env=SimpleContextualBandit)
+            .rollouts(num_rollout_workers=2, num_envs_per_worker=2)
+        )
         num_iterations = 5
 
         for _ in framework_iterator(config, frameworks="torch"):
             for train_batch_size in [1, 10]:
-                config["train_batch_size"] = train_batch_size
-                trainer = bandit.BanditLinTSTrainer(config=config)
+                config.training(train_batch_size=train_batch_size)
+                trainer = config.build()
                 results = None
                 for i in range(num_iterations):
                     results = trainer.train()
@@ -41,18 +39,18 @@ class TestBandits(unittest.TestCase):
 
     def test_bandit_lin_ucb_compilation(self):
         """Test whether a BanditLinUCBTrainer can be built on all frameworks."""
-        config = {
-            # Use a simple bandit-friendly env.
-            "env": SimpleContextualBandit,
-            "num_envs_per_worker": 2,  # Test batched inference.
-        }
+        config = (
+            bandit.BanditLinUCBConfig()
+            .environment(env=SimpleContextualBandit)
+            .rollouts(num_envs_per_worker=2)
+        )
 
         num_iterations = 5
 
         for _ in framework_iterator(config, frameworks="torch"):
             for train_batch_size in [1, 10]:
-                config["train_batch_size"] = train_batch_size
-                trainer = bandit.BanditLinUCBTrainer(config=config)
+                config.training(train_batch_size=train_batch_size)
+                trainer = config.build()
                 results = None
                 for i in range(num_iterations):
                     results = trainer.train()

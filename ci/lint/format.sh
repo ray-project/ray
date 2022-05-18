@@ -42,8 +42,17 @@ builtin cd "$(dirname "${BASH_SOURCE:-$0}")"
 ROOT="$(git rev-parse --show-toplevel)"
 builtin cd "$ROOT" || exit 1
 
+# NOTE(edoakes): black version differs based on installation method:
+#   Option 1) 'black, 21.12b0 (compiled: no)'
+#   Option 2) 'black, version 21.12b0'
+BLACK_VERSION_STR=$(black --version)
+if [[ "$BLACK_VERSION_STR" == *"compiled"* ]]
+then
+    BLACK_VERSION=$(echo "$BLACK_VERSION_STR" | awk '{print $2}')
+else
+    BLACK_VERSION=$(echo "$BLACK_VERSION_STR" | awk '{print $3}')
+fi
 FLAKE8_VERSION=$(flake8 --version | head -n 1 | awk '{print $1}')
-BLACK_VERSION=$(black --version | awk '{print $2}')
 MYPY_VERSION=$(mypy --version | awk '{print $2}')
 GOOGLE_JAVA_FORMAT_JAR=/tmp/google-java-format-1.7-all-deps.jar
 

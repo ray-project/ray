@@ -1,0 +1,26 @@
+appo-pongnoframeskip-v4:
+    env: PongNoFrameskip-v4
+    run: APPO
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 18.0
+        timesteps_total: 5000000
+    stop:
+        time_total_s: 3600
+    config:
+        vtrace: True
+        use_kl_loss: False
+        rollout_fragment_length: 50
+        train_batch_size: 750
+        num_workers: 31
+        broadcast_interval: 1
+        max_sample_requests_in_flight_per_worker: 1
+        num_multi_gpu_tower_stacks: 1
+        num_envs_per_worker: 8
+        num_sgd_iter: 2
+        vf_loss_coeff: 1.0
+        clip_param: 0.3
+        num_gpus: 1
+        grad_clip: 10
+        model:
+            dim: 42

@@ -69,6 +69,35 @@ def chunk_put(req: ray_client_pb2.DataRequest):
         yield ray_client_pb2.DataRequest(req_id=req.req_id, put=chunk)
 
 
+def chunk_task(req: ray_client_pb2.DataRequest):
+    """
+    Chunks a client task. Doing this lazily is important with large arguments,
+    since taking slices of bytes objects does a copy. This means if we
+    immediately materialized every chunk of a large argument and inserted them
+    into the result_queue, we would effectively double the memory needed
+    on the client to handle the task.
+    """
+    total_size = len(req.task.data)
+    assert total_size > 0, "Cannot chunk object with missing data"
+    total_chunks = math.ceil(total_size / OBJECT_TRANSFER_CHUNK_SIZE)
+    for chunk_id in range(0, total_chunks):
+        start = chunk_id * OBJECT_TRANSFER_CHUNK_SIZE
+        end = min(total_size, (chunk_id + 1) * OBJECT_TRANSFER_CHUNK_SIZE)
+        chunk = ray_client_pb2.ClientTask(
+            type=req.task.type,
+            name=req.task.name,
+            payload_id=req.task.payload_id,
+            client_id=req.task.client_id,
+            options=req.task.options,
+            baseline_options=req.task.baseline_options,
+            namespace=req.task.namespace,
+            data=req.task.data[start:end],
+            chunk_id=chunk_id,
+            total_chunks=total_chunks,
+        )
+        yield ray_client_pb2.DataRequest(req_id=req.req_id, task=chunk)
+
+
 class ChunkCollector:
     """
     This object collects chunks from async get requests via __call__, and
@@ -211,8 +240,11 @@ class DataClient:
             if req is None:
                 # Stop when client signals shutdown.
                 return
-            if req.WhichOneof("type") == "put":
+            req_type = req.WhichOneof("type")
+            if req_type == "put":
                 yield from chunk_put(req)
+            elif req_type == "task":
+                yield from chunk_task(req)
             else:
                 yield req
 
