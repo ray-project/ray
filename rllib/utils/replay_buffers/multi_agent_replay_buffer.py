@@ -132,8 +132,6 @@ class MultiAgentReplayBuffer(ReplayBuffer):
                     replay_sequence_length, replay_batch_size, self.replay_batch_size
                 )
             )
-        else:
-            self.replay_batch_size = replay_batch_size
 
         self.replay_starts = learning_starts // num_shards
         self.replay_mode = replay_mode

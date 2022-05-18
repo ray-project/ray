@@ -82,7 +82,7 @@ class ReplayBuffer(ParallelIteratorWorker):
         else:
             raise ValueError(
                 "storage_unit must be either 'timesteps', `sequences` or `episodes` "
-                "or `fragments`."
+                "or `fragments`, but is {}".format(storage_unit)
             )
 
         # The actual storage (list of SampleBatches or MultiAgentBatches).

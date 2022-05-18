@@ -137,7 +137,8 @@ class MARWILTrainer(Trainer):
         self.local_replay_buffer.add(batch)
 
         # Pull batch from replay buffer and train on it.
-        train_batch = self.local_replay_buffer.sample(self.config["train_batch_size"])
+        train_batch = self.local_replay_buffer.sample(self.config["train_batch_size"]
+                                                      // self.local_replay_buffer.replay_sequence_length)
         # Train.
         if self.config["simple_optimizer"]:
             train_results = train_one_step(self, train_batch)
