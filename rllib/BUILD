@@ -379,6 +379,17 @@ py_test(
     args = ["--yaml-dir=tuned_examples/impala"]
 )
 
+# MADDPG
+py_test(
+    name = "learning_tests_two_step_game_maddpg",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:ml", "tf_only", "learning_tests", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/maddpg/two-step-game-maddpg.yaml"],
+    args = ["--yaml-dir=tuned_examples/maddpg", "--framework=tf"]
+)
+
 # Working, but takes a long time to learn (>15min).
 # Removed due to Higher API conflicts with Pytorch-Import tests
 ## MB-MPO
@@ -2948,15 +2959,6 @@ py_test(
     size = "medium",
     srcs = ["examples/two_trainer_workflow.py"],
     args = ["--as-test", "--mixed-torch-tf", "--stop-reward=450.0"]
-)
-
-py_test(
-    name = "examples/two_step_game_maddpg",
-    main = "examples/two_step_game.py",
-    tags = ["team:ml", "examples", "examples_T"],
-    size = "medium",
-    srcs = ["examples/two_step_game.py"],
-    args = ["--as-test", "--stop-reward=7.1", "--run=MADDPG"]
 )
 
 py_test(
