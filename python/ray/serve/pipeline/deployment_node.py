@@ -9,6 +9,7 @@ from ray.serve.deployment_method_executor_node import DeploymentMethodExecutorNo
 from ray.serve.handle import RayServeLazySyncHandle, RayServeSyncHandle, RayServeHandle
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.pipeline.deployment_function_node import DeploymentFunctionNode
+from ray.serve.pipeline.constants import USE_SYNC_HANDLE_KEY
 from ray.experimental.dag.constants import DAGNODE_TYPE_KEY, PARENT_CLASS_NODE_KEY
 from ray.experimental.dag.format_utils import get_dag_node_str
 from ray.serve.deployment import Deployment, schema_to_deployment
@@ -187,21 +188,20 @@ class DeploymentNode(DAGNode):
                 return async handle only if user explicitly set
                 USE_SYNC_HANDLE_KEY with value of False.
         """
-        # # TODO (jiaodong): Support configurable async handle
-        # if USE_SYNC_HANDLE_KEY not in bound_other_args_to_resolve:
-        #     # Return sync RayServeLazySyncHandle
-        #     return RayServeLazySyncHandle(deployment.name)
-        # elif bound_other_args_to_resolve.get(USE_SYNC_HANDLE_KEY) is True:
-        #     # Return sync RayServeSyncHandle
-        #     return deployment.get_handle(sync=True)
-        # elif bound_other_args_to_resolve.get(USE_SYNC_HANDLE_KEY) is False:
-        #     # Return async RayServeHandle
-
-        return deployment.get_handle(sync=True)  # missing_ok default True
-        # else:
-        #     raise ValueError(
-        #         f"{USE_SYNC_HANDLE_KEY} should only be set with a boolean value."
-        #     )
+        # TODO (jiaodong): Support configurable async handle
+        if USE_SYNC_HANDLE_KEY not in bound_other_args_to_resolve:
+            # Return sync RayServeLazySyncHandle
+            return RayServeLazySyncHandle(deployment.name)
+        elif bound_other_args_to_resolve.get(USE_SYNC_HANDLE_KEY) is True:
+            # Return sync RayServeSyncHandle
+            return deployment.get_handle(sync=True)
+        elif bound_other_args_to_resolve.get(USE_SYNC_HANDLE_KEY) is False:
+            # Return async RayServeHandle
+            return deployment.get_handle(sync=True)  # missing_ok default True
+        else:
+            raise ValueError(
+                f"{USE_SYNC_HANDLE_KEY} should only be set with a boolean value."
+            )
 
     def _contains_input_node(self) -> bool:
         """Check if InputNode is used in children DAGNodes with current node
