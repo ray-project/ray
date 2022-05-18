@@ -10,6 +10,7 @@ from ray.rllib.policy.torch_mixins import ValueNetworkMixin
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import apply_grad_clipping, explained_variance
 from ray.rllib.utils.typing import TensorType
 
@@ -115,7 +116,7 @@ class MARWILTorchPolicy(ValueNetworkMixin, PostprocessAdvantages, TorchPolicyV2)
             stats["moving_average_sqd_adv_norm"] = self._moving_average_sqd_adv_norm
             stats["vf_explained_var"] = self.explained_variance
             stats["vf_loss"] = self.v_loss
-        return stats
+        return convert_to_numpy(stats)
 
     def extra_grad_process(
         self, optimizer: "torch.optim.Optimizer", loss: TensorType
