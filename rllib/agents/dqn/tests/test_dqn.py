@@ -1,3 +1,4 @@
+from copy import deepcopy
 import numpy as np
 import unittest
 
@@ -22,15 +23,13 @@ class TestDQN(unittest.TestCase):
 
     def test_dqn_compilation(self):
         """Test whether a DQNTrainer can be built on all frameworks."""
-        config = dqn.DEFAULT_CONFIG.copy()
-        config["num_workers"] = 2
-
         num_iterations = 1
+        config = dqn.dqn.DQNConfig().rollouts(num_rollout_workers=2)
 
         for _ in framework_iterator(config, with_eager_tracing=True):
             # Double-dueling DQN.
             print("Double-dueling")
-            plain_config = config.copy()
+            plain_config = deepcopy(config)
             trainer = dqn.DQNTrainer(config=plain_config, env="CartPole-v0")
             for i in range(num_iterations):
                 results = trainer.train()
@@ -42,12 +41,9 @@ class TestDQN(unittest.TestCase):
 
             # Rainbow.
             print("Rainbow")
-            rainbow_config = config.copy()
-            rainbow_config["num_atoms"] = 10
-            rainbow_config["noisy"] = True
-            rainbow_config["double_q"] = True
-            rainbow_config["dueling"] = True
-            rainbow_config["n_step"] = 5
+            rainbow_config = deepcopy(config).training(
+                num_atoms=10, noisy=True, double_q=True, dueling=True, n_step=5
+            )
             trainer = dqn.DQNTrainer(config=rainbow_config, env="CartPole-v0")
             for i in range(num_iterations):
                 results = trainer.train()
@@ -60,9 +56,11 @@ class TestDQN(unittest.TestCase):
 
     def test_dqn_exploration_and_soft_q_config(self):
         """Tests, whether a DQN Agent outputs exploration/softmaxed actions."""
-        config = dqn.DEFAULT_CONFIG.copy()
-        config["num_workers"] = 0  # Run locally.
-        config["env_config"] = {"is_slippery": False, "map_name": "4x4"}
+        config = (
+            dqn.dqn.DQNConfig()
+            .rollouts(num_rollout_workers=0)
+            .environment(env_config={"is_slippery": False, "map_name": "4x4"})
+        )
         obs = np.array(0)
 
         # Test against all frameworks.
@@ -83,7 +81,9 @@ class TestDQN(unittest.TestCase):
 
             # Low softmax temperature. Behaves like argmax
             # (but no epsilon exploration).
-            config["exploration_config"] = {"type": "SoftQ", "temperature": 0.000001}
+            config.exploration(
+                exploration_config={"type": "SoftQ", "temperature": 0.000001}
+            )
             trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v1")
             # Due to the low temp, always expect the same action.
             actions = [trainer.compute_single_action(obs)]
@@ -93,7 +93,7 @@ class TestDQN(unittest.TestCase):
             trainer.stop()
 
             # Higher softmax temperature.
-            config["exploration_config"]["temperature"] = 1.0
+            config.exploration_config["temperature"] = 1.0
             trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v1")
 
             # Even with the higher temperature, if we set explore=False, we
@@ -112,8 +112,7 @@ class TestDQN(unittest.TestCase):
             trainer.stop()
 
             # With Random exploration.
-            config["exploration_config"] = {"type": "Random"}
-            config["explore"] = True
+            config.exploration(exploration_config={"type": "Random"}, explore=True)
             trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v1")
             actions = []
             for _ in range(300):

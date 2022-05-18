@@ -18,7 +18,10 @@ def _import_a3c():
 
 
 def _import_alpha_star():
-    from ray.rllib.agents.alpha_star.alpha_star import AlphaStarTrainer, DEFAULT_CONFIG
+    from ray.rllib.algorithms.alpha_star.alpha_star import (
+        AlphaStarTrainer,
+        DEFAULT_CONFIG,
+    )
 
     return AlphaStarTrainer, DEFAULT_CONFIG
 
@@ -42,7 +45,7 @@ def _import_appo():
 
 
 def _import_ars():
-    from ray.rllib.agents import ars
+    from ray.rllib.algorithms import ars
 
     return ars.ARSTrainer, ars.DEFAULT_CONFIG
 
@@ -60,13 +63,13 @@ def _import_bandit_linucb():
 
 
 def _import_bc():
-    from ray.rllib.agents import marwil
+    from ray.rllib.algorithms import marwil
 
     return marwil.BCTrainer, marwil.DEFAULT_CONFIG
 
 
 def _import_cql():
-    from ray.rllib.agents import cql
+    from ray.rllib.algorithms import cql
 
     return cql.CQLTrainer, cql.CQL_DEFAULT_CONFIG
 
@@ -90,13 +93,13 @@ def _import_dqn():
 
 
 def _import_dreamer():
-    from ray.rllib.agents import dreamer
+    from ray.rllib.algorithms import dreamer
 
     return dreamer.DREAMERTrainer, dreamer.DEFAULT_CONFIG
 
 
 def _import_es():
-    from ray.rllib.agents import es
+    from ray.rllib.algorithms import es
 
     return es.ESTrainer, es.DEFAULT_CONFIG
 
@@ -114,19 +117,19 @@ def _import_maddpg():
 
 
 def _import_maml():
-    from ray.rllib.agents import maml
+    from ray.rllib.algorithms import maml
 
     return maml.MAMLTrainer, maml.DEFAULT_CONFIG
 
 
 def _import_marwil():
-    from ray.rllib.agents import marwil
+    from ray.rllib.algorithms import marwil
 
     return marwil.MARWILTrainer, marwil.DEFAULT_CONFIG
 
 
 def _import_mbmpo():
-    from ray.rllib.agents import mbmpo
+    from ray.rllib.algorithms import mbmpo
 
     return mbmpo.MBMPOTrainer, mbmpo.DEFAULT_CONFIG
 

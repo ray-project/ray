@@ -47,7 +47,7 @@ available_node_types:
 setup_commands:
     # This replaces the standard anaconda Ray installation
     - pip install ray[tune]
-    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
+    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
 
     # Install HuggingFace
     - git clone https://github.com/huggingface/transformers || true

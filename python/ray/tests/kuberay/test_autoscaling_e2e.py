@@ -17,14 +17,19 @@ from ray.tests.kuberay.utils import (
     ray_client_port_forward,
     ray_job_submit,
     kubectl_exec_python_script,
+    kubectl_patch,
+    kubectl_delete,
     wait_for_pods,
     wait_for_pod_to_start,
     wait_for_ray_health,
     wait_for_crd,
 )
 
-
-from ray.tests.kuberay.scripts import gpu_actor_placement, gpu_actor_validation
+from ray.tests.kuberay.scripts import (
+    gpu_actor_placement,
+    gpu_actor_validation,
+    non_terminated_nodes_count,
+)
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -49,6 +54,12 @@ logger.info(f"Using pull policy `{PULL_POLICY}` for all images.")
 RAY_PARENT = str(pathlib.Path(__file__).resolve().parents[5])
 # Path to example config rel RAY_PARENT
 EXAMPLE_CLUSTER_PATH = "ray/python/ray/autoscaler/kuberay/ray-cluster.complete.yaml"
+
+HEAD_SERVICE = "raycluster-complete-head-svc"
+HEAD_POD_PREFIX = "raycluster-complete-head"
+CPU_WORKER_PREFIX = "raycluster-complete-worker-small-group"
+RAY_CLUSTER_NAME = "raycluster-complete"
+RAY_CLUSTER_NAMESPACE = "default"
 
 
 class KubeRayAutoscalingTest(unittest.TestCase):
@@ -168,10 +179,12 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         """
         with tempfile.NamedTemporaryFile("w") as config_file:
             if validate_replicas:
-                raycluster = get_raycluster("raycluster-complete", namespace="default")
+                raycluster = get_raycluster(
+                    RAY_CLUSTER_NAME, namespace=RAY_CLUSTER_NAMESPACE
+                )
                 assert raycluster["spec"]["workerGroupSpecs"][0]["replicas"] == replicas
                 logger.info(
-                    f"Validated that worker replicas for raycluster-complete"
+                    f"Validated that worker replicas for {RAY_CLUSTER_NAME}"
                     f" is currently {replicas}."
                 )
             cr_config = self._get_ray_cr_config(
@@ -181,13 +194,19 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             config_file.flush()
             subprocess.check_call(["kubectl", "apply", "-f", config_file.name])
 
+    def _non_terminated_nodes_count(self) -> int:
+        with ray_client_port_forward(head_service=HEAD_SERVICE):
+            return non_terminated_nodes_count.main()
+
     def testAutoscaling(self):
         """Test the following behaviors:
 
         1. Spinning up a Ray cluster
-        2. Scaling up a Ray worker via autoscaler.sdk.request_resources()
+        2. Scaling up Ray workers via autoscaler.sdk.request_resources()
         3. Scaling up by updating the CRD's minReplicas
         4. Scaling down by removing the resource request and reducing maxReplicas
+        5. Autoscaler recognizes GPU annotations and Ray custom resources.
+        6. Autoscaler and operator ignore pods marked for deletion.
 
         Items 1. and 2. protect the example in the documentation.
         Items 3. and 4. protect the autoscaler's ability to respond to Ray CR update.
@@ -216,22 +235,22 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         """
         # Cluster creation
         logger.info("Creating a RayCluster with no worker pods.")
-        self._apply_ray_cr(min_replicas=0, replicas=0)
+        self._apply_ray_cr(min_replicas=0, replicas=0, max_replicas=3)
 
         logger.info("Confirming presence of head.")
-        wait_for_pods(goal_num_pods=1, namespace="default")
+        wait_for_pods(goal_num_pods=1, namespace=RAY_CLUSTER_NAMESPACE)
 
         logger.info("Waiting for head pod to start Running.")
         wait_for_pod_to_start(
-            pod_name_filter="raycluster-complete-head", namespace="default"
+            pod_name_filter=HEAD_POD_PREFIX, namespace=RAY_CLUSTER_NAMESPACE
         )
         logger.info("Confirming Ray is up on the head pod.")
         wait_for_ray_health(
-            pod_name_filter="raycluster-complete-head", namespace="default"
+            pod_name_filter=HEAD_POD_PREFIX, namespace=RAY_CLUSTER_NAMESPACE
         )
 
         head_pod = get_pod(
-            pod_name_filter="raycluster-complete-head", namespace="default"
+            pod_name_filter=HEAD_POD_PREFIX, namespace=RAY_CLUSTER_NAMESPACE
         )
         assert head_pod, "Could not find the Ray head pod."
         # Scale-up
@@ -245,8 +264,50 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             namespace="default",
         )
         logger.info("Confirming number of workers.")
-        wait_for_pods(goal_num_pods=2, namespace="default")
+        wait_for_pods(goal_num_pods=2, namespace=RAY_CLUSTER_NAMESPACE)
 
+        # Pods marked for deletion are ignored.
+        logger.info(
+            "Confirming that operator and autoscaler ignore pods marked for"
+            "termination."
+        )
+        worker_pod = get_pod(
+            pod_name_filter=CPU_WORKER_PREFIX, namespace=RAY_CLUSTER_NAMESPACE
+        )
+        logger.info("Patching finalizer onto worker pod to block termination.")
+        add_finalizer = {"metadata": {"finalizers": ["ray.io/test"]}}
+        kubectl_patch(
+            kind="pod",
+            name=worker_pod,
+            namespace=RAY_CLUSTER_NAMESPACE,
+            patch=add_finalizer,
+        )
+        logger.info("Marking worker for deletion.")
+        kubectl_delete(
+            kind="pod", name=worker_pod, namespace=RAY_CLUSTER_NAMESPACE, wait=False
+        )
+        # Deletion of the worker hangs forever because of the finalizer.
+        # We expect another pod to come up to replace it.
+        logger.info(
+            "Confirming another worker is up to replace the one marked for deletion."
+        )
+        wait_for_pods(goal_num_pods=3, namespace=RAY_CLUSTER_NAMESPACE)
+        logger.info("Confirming NodeProvider ignores terminating nodes.")
+        # 3 pods, 2 of which are not marked for deletion.
+        assert self._non_terminated_nodes_count() == 2
+        remove_finalizer = {"metadata": {"finalizers": []}}
+        logger.info("Removing finalizer to allow deletion.")
+        kubectl_patch(
+            kind="pod",
+            name=worker_pod,
+            namespace="default",
+            patch=remove_finalizer,
+            patch_type="merge",
+        )
+        logger.info("Confirming worker deletion.")
+        wait_for_pods(goal_num_pods=2, namespace=RAY_CLUSTER_NAMESPACE)
+
+        # Ray CR updates.
         logger.info("Scaling up to two workers by editing minReplicas.")
         # replicas=1 reflects the current number of workers
         # (which is what we expect to be already present in the Ray CR)
@@ -258,26 +319,27 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             validate_replicas=True,
         )
         logger.info("Confirming number of workers.")
-        wait_for_pods(goal_num_pods=3, namespace="default")
+        wait_for_pods(goal_num_pods=3, namespace=RAY_CLUSTER_NAMESPACE)
 
         # GPU upscaling.
         # 1. Check we haven't spuriously already started a fake GPU node.
         assert not any(
-            "gpu" in pod_name for pod_name in get_pod_names(namespace="default")
+            "gpu" in pod_name
+            for pod_name in get_pod_names(namespace=RAY_CLUSTER_NAMESPACE)
         )
         # 2. Trigger GPU upscaling by requesting placement of a GPU actor.
         logger.info("Scheduling an Actor with GPU demands.")
         # Use Ray Client to validate that it works against KubeRay.
         with ray_client_port_forward(  # Interaction mode #2: Ray Client
-            head_service="raycluster-complete-head-svc", ray_namespace="gpu-test"
+            head_service=HEAD_SERVICE, ray_namespace="gpu-test"
         ):
             gpu_actor_placement.main()
         # 3. Confirm new pod number and presence of fake GPU worker.
         logger.info("Confirming fake GPU worker up-scaling.")
-        wait_for_pods(goal_num_pods=4, namespace="default")
+        wait_for_pods(goal_num_pods=4, namespace=RAY_CLUSTER_NAMESPACE)
         gpu_workers = [
             pod_name
-            for pod_name in get_pod_names(namespace="default")
+            for pod_name in get_pod_names(namespace=RAY_CLUSTER_NAMESPACE)
             if "gpu" in pod_name
         ]
         assert len(gpu_workers) == 1
@@ -285,7 +347,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         # the node the actor is on has a GPU.
         logger.info("Confirming GPU actor placement.")
         with ray_client_port_forward(
-            head_service="raycluster-complete-head-svc", ray_namespace="gpu-test"
+            head_service=HEAD_SERVICE, ray_namespace="gpu-test"
         ):
             out = gpu_actor_validation.main()
         # Confirms the actor was placed on a GPU-annotated node.
@@ -313,7 +375,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             validate_replicas=True,
         )
         logger.info("Confirming workers are gone.")
-        wait_for_pods(goal_num_pods=1, namespace="default")
+        wait_for_pods(goal_num_pods=1, namespace=RAY_CLUSTER_NAMESPACE)
 
         # Check custom resource upscaling.
         # First, restore max replicas to allow worker upscaling.
@@ -331,20 +393,20 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         logger.info("Scaling up workers with request for custom resources.")
         job_logs = ray_job_submit(  # Interaction mode #3: Ray Job Submission
             script_name="scale_up_custom.py",
-            head_service="raycluster-complete-head-svc",
+            head_service=HEAD_SERVICE,
         )
         assert job_logs == "Submitted custom scale request!\n"
 
         logger.info("Confirming two workers have scaled up.")
-        wait_for_pods(goal_num_pods=3, namespace="default")
+        wait_for_pods(goal_num_pods=3, namespace=RAY_CLUSTER_NAMESPACE)
 
         # Cluster deletion
         logger.info("Deleting Ray cluster.")
-        subprocess.check_call(
-            ["kubectl", "delete", "raycluster", "raycluster-complete"]
+        kubectl_delete(
+            kind="raycluster", name=RAY_CLUSTER_NAME, namespace=RAY_CLUSTER_NAMESPACE
         )
         logger.info("Confirming Ray pods are gone.")
-        wait_for_pods(goal_num_pods=0, namespace="default")
+        wait_for_pods(goal_num_pods=0, namespace=RAY_CLUSTER_NAMESPACE)
 
     def tearDown(self):
         """Clean resources following the instructions in the docs."""
@@ -370,7 +432,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         )
 
         logger.info("Double-checking no pods left over.")
-        wait_for_pods(goal_num_pods=0, namespace="default")
+        wait_for_pods(goal_num_pods=0, namespace=RAY_CLUSTER_NAMESPACE)
         wait_for_pods(goal_num_pods=0, namespace="ray-system")
 
 
