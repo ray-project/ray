@@ -117,7 +117,6 @@ def _configure_human_version():
 
 def _get_wheel_name(minor_version_number):
     if minor_version_number:
-        import pdb;pdb.set_trace()
         matches = [
             file
             for file in glob.glob(
