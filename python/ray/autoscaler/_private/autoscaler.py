@@ -246,10 +246,6 @@ class StandardAutoscaler:
             DISABLE_NODE_UPDATERS_KEY, False
         )
         logger.info(f"{DISABLE_NODE_UPDATERS_KEY}:{self.disable_node_updaters}")
-        if self.disable_node_updaters:
-            logger.info("Node updaters are disabled.")
-        else:
-            logger.info("Node updaters are enabled.")
 
         # Disable launch config checking if true.
         # This is set in the fake_multinode situations where there isn't any
@@ -260,24 +256,16 @@ class StandardAutoscaler:
         logger.info(
             f"{DISABLE_LAUNCH_CONFIG_CHECK_KEY}:{self.disable_launch_config_check}"
         )
-        if self.disable_launch_config_check:
-            logger.info("Launch config checks are disabled.")
-        else:
-            logger.info("Launch config checks are enabled.")
 
         # By default, the autoscaler launches nodes in batches asynchronously in
         # background threads.
         # When the following flag is set, that behavior is disabled, so that nodes
         # are launched in the main thread, all in one batch, blocking until all
-        # NodeProvider.create_node requests have returned.
+        # NodeProvider.create_node calls have returned.
         self.foreground_node_launch = self.config["provider"].get(
             FOREGROUND_NODE_LAUNCH_KEY
         )
         logger.info(f"{FOREGROUND_NODE_LAUNCH_KEY}:{self.foreground_node_launch}")
-        if self.foreground_node_launch:
-            logger.info("Node launch will take place in the main thread.")
-        else:
-            logger.info("Node launch will take place in background threads.")
 
         # Node launchers
         self.foreground_node_launcher: Optional[BaseNodeLauncher] = None

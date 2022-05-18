@@ -1533,8 +1533,11 @@ class AutoscalingTest(unittest.TestCase):
         mock_node_info_stub = MockNodeInfoStub(drain_node_outcome)
 
         # Run the core of the test logic.
-        self._helperDynamicScaling(mock_metrics, mock_node_info_stub,
-                                   foreground_node_launcher=foreground_node_launcher)
+        self._helperDynamicScaling(
+            mock_metrics,
+            mock_node_info_stub,
+            foreground_node_launcher=foreground_node_launcher,
+        )
 
         # Make assertions about DrainNode error handling during scale-down.
 
