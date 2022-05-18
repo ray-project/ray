@@ -36,10 +36,9 @@ class MultiAgentPrioritizedReplayBuffer(
         capacity: int = 10000,
         storage_unit: str = "timesteps",
         num_shards: int = 1,
-        replay_batch_size: int = 1,
         learning_starts: int = 1000,
         replay_mode: str = "independent",
-        replay_sequence_length: int = 1,
+        max_sequence_length: int = 1,
         replay_burn_in: int = 0,
         replay_zero_init_states: bool = True,
         prioritized_replay_alpha: float = 0.6,
@@ -61,20 +60,14 @@ class MultiAgentPrioritizedReplayBuffer(
             learning_starts: Number of timesteps after which a call to
                 `replay()` will yield samples (before that, `replay()` will
                 return None).
-            capacity: The capacity of the buffer. Note that when
-                `replay_sequence_length` > 1, this is the number of sequences
-                (not single timesteps) stored.
-            replay_batch_size: The batch size to be sampled (in timesteps).
-                Note that if `replay_sequence_length` > 1,
-                `self.replay_batch_size` will be set to the number of
-                sequences sampled (B).
+            capacity: The capacity of the buffer, measured in `storage_unit`.
             prioritized_replay_alpha: Alpha parameter for a prioritized
                 replay buffer. Use 0.0 for no prioritization.
             prioritized_replay_beta: Beta parameter for a prioritized
                 replay buffer.
             prioritized_replay_eps: Epsilon parameter for a prioritized
                 replay buffer.
-            replay_sequence_length: The sequence length (T) of a single
+            max_sequence_length: The sequence length (T) of a single
                 sample. If > 1, we will sample B x T from this buffer.
             replay_burn_in: The burn-in length in case
                 `replay_sequence_length` > 0. This is the number of timesteps
@@ -132,10 +125,9 @@ class MultiAgentPrioritizedReplayBuffer(
             storage_unit,
             **kwargs,
             underlying_buffer_config=prioritized_replay_buffer_config,
-            replay_batch_size=replay_batch_size,
             learning_starts=learning_starts,
             replay_mode=replay_mode,
-            replay_sequence_length=replay_sequence_length,
+            max_sequence_length=max_sequence_length,
             replay_burn_in=replay_burn_in,
             replay_zero_init_states=replay_zero_init_states,
         )

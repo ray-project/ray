@@ -121,7 +121,7 @@ class ReplayBuffer(ParallelIteratorWorker):
 
         def gen_replay():
             while True:
-                yield self.replay()
+                yield self.sample(1)
 
         ParallelIteratorWorker.__init__(self, gen_replay, False)
 
@@ -355,7 +355,7 @@ class ReplayBuffer(ParallelIteratorWorker):
 
     @Deprecated(
         old="RepayBuffer.replay(num_items)",
-        new="RepayBuffer.sample(" "num_items)",
+        new="RepayBuffer.sample(num_items)",
         error=False,
     )
     def replay(self, num_items):

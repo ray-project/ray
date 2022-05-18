@@ -96,7 +96,7 @@ class CQLTrainer(SACTrainer):
                     )
                     batch[SampleBatch.DONES][-1] = True
                 self.local_replay_buffer.add_batch(batch)
-            print(
+            logger.info(
                 f"Loaded {num_batches} batches ({total_timesteps} ts) into the"
                 " replay buffer, which has capacity "
                 f"{self.local_replay_buffer.capacity}."

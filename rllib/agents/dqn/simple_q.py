@@ -56,7 +56,6 @@ class SimpleQConfig(TrainerConfig):
         >>> replay_config = config.replay_buffer_config.update(
         >>>     {
         >>>         "capacity":  40000,
-        >>>         "replay_batch_size": 64,
         >>>     }
         >>> )
         >>> config.training(replay_buffer_config=replay_config)\
@@ -115,7 +114,6 @@ class SimpleQConfig(TrainerConfig):
             "learning_starts": 1000,
             "type": "MultiAgentReplayBuffer",
             "capacity": 50000,
-            "replay_batch_size": 32,
             # The number of contiguous environment steps to replay at once. This
             # may be set to greater than 1 to support recurrent models.
             "replay_sequence_length": 1,
@@ -188,7 +186,6 @@ class SimpleQConfig(TrainerConfig):
                 "type": "MultiAgentReplayBuffer",
                 "learning_starts": 1000,
                 "capacity": 50000,
-                "replay_batch_size": 32,
                 "replay_sequence_length": 1,
                 }
                 - OR -
