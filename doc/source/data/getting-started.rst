@@ -4,10 +4,10 @@ Getting Started
 ===============
 
 A Ray :class:`Dataset <ray.data.Dataset>` is a distributed data collection. It holds
-a list of Ray object references pointing to distributed data **blocks**, and has APIs
+a list of Ray object references pointing to distributed data *blocks*, and has APIs
 for distributed data loading and processing. Each block holds an ordered collection
-of items in the format of an `Arrow table <https://arrow.apache.org/docs/python/data.html#tables>`__
-or a Python list.
+of items in either an `Arrow table <https://arrow.apache.org/docs/python/data.html#tables>`__
+(when creating from or transforming to tabular or tensor data) or a Python list (for non-tabular Python objects).
 
 In this tutorial you will learn how to:
 
