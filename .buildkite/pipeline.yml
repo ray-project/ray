@@ -255,41 +255,29 @@
       $(cat test_shard.txt)
 
 
-- label: ":python: Minimal install"
+- label: ":python: Minimal install 3.6"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - ./ci/env/install-minimal.sh
-    - ./ci/env/env_info.sh
-    - python ./ci/env/check_minimal_install.py
-    - bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 $(./ci/run/bazel_export_options)
-      python/ray/tests/test_basic
-    - bazel test --test_output=streamed --config=ci $(./ci/run/bazel_export_options)
-      python/ray/tests/test_basic_2
-    - bazel test --test_output=streamed --config=ci $(./ci/run/bazel_export_options)
-      python/ray/tests/test_basic_3
-    - bazel test --test_output=streamed --config=ci $(./ci/run/bazel_export_options)
-      python/ray/tests/test_basic_4
-    - bazel test --test_output=streamed --config=ci $(./ci/run/bazel_export_options)
-      python/ray/tests/test_basic_5
-    - bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 $(./ci/run/bazel_export_options)
-      python/ray/tests/test_output
-    - bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 $(./ci/run/bazel_export_options)
-      python/ray/tests/test_runtime_env_ray_minimal
-    - bazel test --test_output=streamed --config=ci $(./ci/run/bazel_export_options)
-      python/ray/tests/test_runtime_env
-    - bazel test --test_output=streamed --config=ci $(./ci/run/bazel_export_options)
-      python/ray/tests/test_runtime_env_2
-    - bazel test --test_output=streamed --config=ci $(./ci/run/bazel_export_options)
-      python/ray/tests/test_runtime_env_complicated
-    - bazel test --test_output=streamed --config=ci $(./ci/run/bazel_export_options)
-      python/ray/tests/test_runtime_env_validation
-    - bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 $(./ci/run/bazel_export_options)
-      python/ray/tests/test_serve_ray_minimal
-    - bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 $(./ci/run/bazel_export_options)
-      python/ray/dashboard/test_dashboard
-    - bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 $(./ci/run/bazel_export_options)
-      python/ray/tests/test_usage_stats
+    - ./ci/ci.sh test_minimal 3.6
+
+- label: ":python: Minimal install 3.7"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/ci.sh test_minimal 3.7
+
+- label: ":python: Minimal install 3.8"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/ci.sh test_minimal 3.8
+
+- label: ":python: Minimal install 3.9"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/ci.sh test_minimal 3.9
 
 - label: ":python: Default install"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
