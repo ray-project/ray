@@ -6,3 +6,10 @@ This user guide will help you navigate the Ray Serve project and show you how ac
 you will learn
 - [Create/Update/Delete Serve Deployments](managing-deployments)
 - [Handling Dependencies](handling-dependencies)
+- [Configuring HTTP and Bring Your own FastAPI app](http-guide)
+- [Using HTTP Adapters](http-adapters)
+- [Composing Deployments](handle-guide)
+- [Serving ML Models](ml-models)
+- [Deploying Ray Serve](deploying-serve)
+- [Debugging/Monitoring](monitoring)
+- [Performance Tunning](performance)

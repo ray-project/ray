@@ -120,17 +120,19 @@ parts:
             sections:
               - file: serve/managing-deployments
               - file: serve/handling-dependencies
-          - file: serve/http-servehandle
-          - file: serve/ml-models
-          - file: serve/deployment-graph
-            sections:
-              - file: serve/deployment-graph/deployment-graph-e2e-tutorial
-              - file: serve/deployment-graph/deployment-graph-user-guides
+              - file: serve/http-guide
+              - file: serve/http-adapters
+              - file: serve/handle-guide
+              - file: serve/ml-models
+              - file: serve/deploying-serve
+              - file: serve/monitoring
+              - file: serve/performance
+              - file: serve/deployment-graph
                 sections:
-                   - file: serve/deployment-graph/chain_nodes_same_class_different_args
-          - file: serve/deployment
-          - file: serve/monitoring
-          - file: serve/performance
+                  - file: serve/deployment-graph/deployment-graph-e2e-tutorial
+                  - file: serve/deployment-graph/deployment-graph-user-guides
+                    sections:
+                      - file: serve/deployment-graph/chain_nodes_same_class_different_args
           - file: serve/architecture
           - file: serve/tutorials/index
           - file: serve/faq

@@ -86,7 +86,7 @@ serve.start()
 
 :::{warning}
 When the Python script exits, Ray Serve will shut down.
-If you would rather keep Ray Serve running in the background you can use `serve.start(detached=True)` (see {doc}`deployment` for details).
+If you would rather keep Ray Serve running in the background you can use `serve.start(detached=True)` (see [doc](deploying-serve) for details).
 :::
 
 Now we will define a simple Counter class. The goal is to serve this class behind an HTTP endpoint using Ray Serve.
