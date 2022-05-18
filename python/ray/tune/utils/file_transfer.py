@@ -21,6 +21,111 @@ def sync_dir_between_nodes(
     chunk_size_bytes: int = _DEFAULT_CHUNK_SIZE_BYTES,
     max_size_bytes: Optional[int] = _DEFAULT_MAX_SIZE_BYTES,
     return_futures: bool = False,
+) -> Union[
+    None,
+    Tuple[ray.ObjectRef, ray.ActorID, ray.ObjectRef],
+    Tuple[ray.ObjectRef, None, None],
+]:
+    """Synchronize directory on source node to directory on target node.
+
+    Per default, this function will collect information about already existing
+    files in the target directory. Only files that differ in either mtime or
+    filesize will be transferred, unless ``force_all=True``.
+
+    If ``source_ip==target_ip``, shutil will be used to copy the directory. Otherwise,
+    the directory will be packed and sent through the Ray Object Store to the target
+    node.
+
+    Args:
+        source_ip: IP of source node.
+        source_path: Path to directory on source node.
+        target_ip: IP of target node.
+        target_path: Path to directory on target node.
+        force_all: If True, all files will be transferred (not just differing files).
+        chunk_size_bytes: Chunk size for data transfer. Ignored if
+            ``source_ip==target_ip``.
+        max_size_bytes: If packed data exceeds this value, raise an error before
+            transfer. If ``None``, no limit is enforced. Ignored if
+            ``source_ip==target_ip``.
+        return_futures: If True, returns a tuple of the unpack future,
+            the pack actor, and the files_stats future. If False (default) will
+            block until synchronization finished and return None.
+
+    Returns:
+        None, or Tuple of unpack future, pack actor, and files_stats future.
+        If ``source_ip==target_ip``, pack actor and files_stats future will be None.
+
+    """
+    if source_ip != target_ip:
+        return _sync_dir_between_different_nodes(
+            source_ip=source_ip,
+            source_path=source_path,
+            target_ip=target_ip,
+            target_path=target_path,
+            force_all=force_all,
+            chunk_size_bytes=chunk_size_bytes,
+            max_size_bytes=max_size_bytes,
+            return_futures=return_futures,
+        )
+    elif source_path != target_path:
+        ret = _sync_dir_on_same_node(
+            ip=source_ip,
+            source_path=source_path,
+            target_path=target_path,
+            force_all=force_all,
+            return_futures=return_futures,
+        )
+        if return_futures:
+            return ret, None, None
+        return ret
+
+
+def _sync_dir_on_same_node(
+    ip: str,
+    source_path: str,
+    target_path: str,
+    force_all: bool = False,
+    return_futures: bool = False,
+) -> Optional[ray.ObjectRef]:
+    """Synchronize directory to another directory on the same node.
+
+    Per default, this function will collect information about already existing
+    files in the target directory. Only files that differ in either mtime or
+    filesize will be transferred, unless ``force_all=True``.
+
+    Args:
+        ip: IP of the node.
+        source_path: Path to source directory.
+        target_path: Path to target directory.
+        force_all: If True, all files will be transferred (not just differing files).
+        return_futures: If True, returns a future of the copy task.
+
+    Returns:
+        None, or future of the copy task.
+
+    """
+    copy_on_node = _copy_dir.options(
+        num_cpus=0, resources={f"node:{ip}": 0.01}, placement_group=None
+    )
+    copy_future = copy_on_node.remote(
+        source_dir=source_path, target_dir=target_path, force_all=force_all
+    )
+
+    if return_futures:
+        return copy_future
+
+    return ray.get(copy_future)
+
+
+def _sync_dir_between_different_nodes(
+    source_ip: str,
+    source_path: str,
+    target_ip: str,
+    target_path: str,
+    force_all: bool = False,
+    chunk_size_bytes: int = _DEFAULT_CHUNK_SIZE_BYTES,
+    max_size_bytes: Optional[int] = _DEFAULT_MAX_SIZE_BYTES,
+    return_futures: bool = False,
 ) -> Union[None, Tuple[ray.ObjectRef, ray.ActorID, ray.ObjectRef]]:
     """Synchronize directory on source node to directory on target node.
 
@@ -262,6 +367,38 @@ def _unpack_from_actor(pack_actor: ray.ActorID, target_dir: str) -> None:
     for buffer in _iter_remote(pack_actor):
         stream.write(buffer)
     _unpack_dir(stream, target_dir=target_dir)
+
+
+@ray.remote
+def _copy_dir(source_dir: str, target_dir: str, force_all: bool = False) -> None:
+    """Copy dir with shutil on the actor."""
+    if force_all:
+        shutil.copytree(source_dir, target_dir, dirs_exist_ok=True)
+    else:
+        source_files_stats = _get_recursive_files_and_stats(source_dir)
+        target_files_stats = _get_recursive_files_and_stats(target_dir)
+        paths_to_not_copy_from_source = {
+            path
+            for path in source_files_stats
+            if not (
+                path not in target_files_stats
+                or source_files_stats[path] != target_files_stats[path]
+            )
+        }
+
+        # this runs inside source dir. needs to return a list of paths
+        # to ignore. called recursively as the dirtree is walked through
+        def ignore_unmodified_files(parent, names):
+            parent = os.path.relpath(os.path.abspath(parent), source_dir)
+            return {
+                name
+                for name in names
+                if os.path.join(parent, name) in paths_to_not_copy_from_source
+            }
+
+        shutil.copytree(
+            source_dir, target_dir, ignore=ignore_unmodified_files, dirs_exist_ok=True
+        )
 
 
 def _delete_path(target_path: str) -> bool:
