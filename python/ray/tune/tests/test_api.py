@@ -1476,7 +1476,7 @@ class ShimCreationTest(unittest.TestCase):
         kwargs = {"metric": "metric_foo", "mode": "min"}
 
         # get list of all schedulers to test
-        schedulers_to_test = [scheduler for scheduler in SCHEDULER_IMPORT.keys()]
+        schedulers_to_test = SCHEDULER_IMPORT.keys()
 
         for scheduler_id in schedulers_to_test:
             kwargs_for_test = kwargs.copy()
@@ -1498,13 +1498,15 @@ class ShimCreationTest(unittest.TestCase):
                 SchedulerClass = SchedulerClass()
 
             if scheduler_id in {"fifo", "resource_changing"}:
-                # for these cases, the scheduler class does not require parameters for test
+                # for these cases, the scheduler class does not require
+                # parameters for test
                 kwargs_for_test = {}
 
             # create scheduler object directly from the class
             real_scheduler = SchedulerClass(**kwargs_for_test)
 
-            # confirm shim created object is same as calling the scheduler class directly
+            # confirm shim created object is same as calling
+            # the scheduler class directly
             assert type(shim_scheduler) is type(real_scheduler)
 
     def testCreateSearcher(self):
