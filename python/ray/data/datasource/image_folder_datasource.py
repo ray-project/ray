@@ -72,7 +72,7 @@ class ImageFolderDatasource(BinaryDatasource):
         _block_udf: Optional[Callable[[Block], Block]] = None,
         **reader_args,
     ) -> List[ReadTask]:
-        if len(paths) > 1:
+        if len(paths) != 1:
             raise ValueError(
                 "`ImageFolderDatasource` expects 1 path representing the dataset "
                 f"root, but it got {len(paths)} paths instead. To fix this error, "
