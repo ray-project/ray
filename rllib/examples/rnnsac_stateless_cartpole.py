@@ -8,7 +8,6 @@ from ray.rllib.agents.registry import get_trainer_class
 
 from ray.rllib.examples.env.repeat_after_me_env import RepeatAfterMeEnv
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
-from ray.rllib.utils.replay_buffers.replay_buffer import StorageUnit
 
 envs = {"RepeatAfterMeEnv": RepeatAfterMeEnv, "StatelessCartPole": StatelessCartPole}
 
