@@ -273,11 +273,11 @@ class NovelD(Exploration):
     @override(Exploration)
     def get_state(
         self, 
-        sess
+        sess: Optional["tf.Session"] = None
     ):
         """Returns the main variables of NovelD.
         
-        This can be used for metrics.        
+        This can be used for metrics. See the `NovelDMetricsCallbacks`.      
         """
         return (     
             self._intrinsic_reward_np,       
@@ -323,15 +323,8 @@ class NovelD(Exploration):
             )
         
         # TODO: @simonsays1980: Add the ERIR option.
-        # This could be encapsulated into a function.
         self._update_state_counts(sample_batch[SampleBatch.NEXT_OBS])
-        state_counts = self._get_state_counts(sample_batch[SampleBatch.NEXT_OBS])                
-        self._intrinsic_reward_np = (
-            np.maximum(self._novelty_next_np \
-                - self.alpha * self._novelty_np, self.beta) \
-                    * (state_counts == 1)                    
-        )
-        
+        self._compute_intrinsic_reward(sample_batch)
         if self.normalize:
             self._intrinsic_reward_np = self._moving_mean_std(self._intrinsic_reward_np)
         
@@ -416,12 +409,7 @@ class NovelD(Exploration):
         
         # Calculate the intrinsic reward.
         self._update_state_counts(sample_batch[SampleBatch.NEXT_OBS])
-        state_counts = self._get_state_counts(sample_batch[SampleBatch.NEXT_OBS])
-        self._intrinsic_reward_np = (
-            np.maximum(self._novelty_next_np \
-                - self.alpha * self._novelty_np, self.beta) \
-                    * (state_counts == 1)                    
-        )
+        self._compute_intrinsic_reward(sample_batch)
         
         if self.normalize:
             self._intrinsic_reward_np = self._moving_mean_std(self._intrinsic_reward_np)
@@ -438,6 +426,18 @@ class NovelD(Exploration):
         self._optimizer.step()
 
         return sample_batch
+        
+    def _compute_intrinsic_reward(
+        self, 
+        sample_batch
+    ):
+        """Computes the intrinsic reward."""
+        state_counts = self._get_state_counts(sample_batch[SampleBatch.NEXT_OBS])
+        self._intrinsic_reward_np = (
+            np.maximum(self._novelty_next_np \
+                - self.alpha * self._novelty_np, self.beta) \
+                    * (state_counts == 1)                    
+        )
         
     def _defaulthash_state(
         self,

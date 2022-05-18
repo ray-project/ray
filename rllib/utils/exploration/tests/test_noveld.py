@@ -7,7 +7,7 @@ import unittest
 
 import ray
 from ray import tune
-from ray.rllib.agents.callbacks import DefaultCallbacks
+from ray.rllib.agents.callbacks import DefaultCallbacks, NovelDMetricsCallbacks
 from ray.rllib.agents.ppo import ppo
 from ray.rllib.utils.numpy import one_hot
 from ray.rllib.utils.test_utils import check_learning_achieved, framework_iterator
@@ -246,8 +246,8 @@ class TestNovelD(unittest.TestCase):
             # No actual feature net: map directly from observations to feature
             # vector (linearly).
             "feature_net_config": {
-                "fcnet_hiddens": [],
-                "fcnet_activation": "relu",
+                "post_fcnet_hiddens": [],
+                "post_fcnet_activation": "relu",
             },
             "sub_exploration": {
                 "type": "StochasticSampling",
@@ -258,14 +258,14 @@ class TestNovelD(unittest.TestCase):
             # For the distillation NN, use a non-LSTM fcnet (same as the one
             # in the policy model).
             "intrinsic_reward_coeff": .005,
-            "lr": 0.0003,  # 0.0003 or 0.0005 seem to work fine as well.
+            "lr": 0.0003,  # 0.0005 seems to work fine as well.
             "normalize": True,
             "embed_dim": 64,
             # No actual feature net: map directly from observations to feature
             # vector (linearly).
             "distill_net_config": {
-                "fcnet_hiddens": [],
-                "fcnet_activation": "relu",
+                "post_fcnet_hiddens": [],
+                "post_fcnet_activation": "relu",
             },
             "sub_exploration": {
                 "type": "StochasticSampling",
@@ -296,20 +296,8 @@ class TestNovelD(unittest.TestCase):
             iters = results.trials[0].last_result["training_iteration"]
             print("Reached in {} iterations with Curiosity.".format(iters))
 
-            # config_wo = config.copy()
-            # config_wo["exploration_config"] = {"type": "StochasticSampling"}
-            # stop_wo = stop.copy()
-            # stop_wo["training_iteration"] = iters
-            # results = tune.run(
-            #     "PPO", config=config_wo, stop=stop_wo, verbose=1)
-            # try:
-            #     check_learning_achieved(results, min_reward)
-            # except ValueError:
-            #     print("Did not learn w/o curiosity (expected).")
-            # else:
-            #     raise ValueError("Learnt w/o curiosity (not expected)!")
         config["exploration_config"] = noveld_config
-
+        #config["callbacks"] = NovelDMetricsCallbacks
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
             # To replay:
             # trainer = ppo.PPOTrainer(config=config)
@@ -326,19 +314,6 @@ class TestNovelD(unittest.TestCase):
             check_learning_achieved(results, min_reward)
             iters = results.trials[0].last_result["training_iteration"]
             print("Reached in {} iterations with NovelD.".format(iters))
-
-            # config_wo = config.copy()
-            # config_wo["exploration_config"] = {"type": "StochasticSampling"}
-            # stop_wo = stop.copy()
-            # stop_wo["training_iteration"] = iters
-            # results = tune.run(
-            #     "PPO", config=config_wo, stop=stop_wo, verbose=1)
-            # try:
-            #     check_learning_achieved(results, min_reward)
-            # except ValueError:
-            #     print("Did not learn w/o curiosity (expected).")
-            # else:
-            #     raise ValueError("Learnt w/o curiosity (not expected)!")
 
 if __name__ == "__main__":
     import pytest
