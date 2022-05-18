@@ -45,6 +45,20 @@ def test_predict():
     assert predictions.to_numpy().flatten().tolist() == [4, 8, 12]
 
 
+def test_predict_array_output():
+    """Tests if predictor works if model outputs an array instead of single value."""
+
+    predictor = TorchPredictor(model=model, preprocessor=preprocessor)
+
+    data_batch = np.array([[1, 1], [2, 2], [3, 3]])
+    predictions = predictor.predict(data_batch)
+
+    assert len(predictions) == 3
+    assert np.array_equal(
+        predictions.to_numpy().flatten().tolist(), [[4, 4], [8, 8], [12, 12]]
+    )
+
+
 def test_predict_feature_columns():
     predictor = TorchPredictor(model=model, preprocessor=preprocessor)
 
