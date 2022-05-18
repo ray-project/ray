@@ -383,7 +383,7 @@ py_test(
 py_test(
     name = "learning_tests_two_step_game_maddpg",
     main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "tf_only", "learning_tests", "learning_tests_discrete"],
+    tags = ["team:ml", "tf_only", "no_tf_eager_tracing", "learning_tests", "learning_tests_discrete"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/maddpg/two-step-game-maddpg.yaml"],
@@ -784,6 +784,14 @@ py_test(
     # Include the json data file.
     data = ["tests/data/cartpole/large.json"],
     srcs = ["algorithms/marwil/tests/test_bc.py"]
+)
+
+# MADDPGTrainer
+py_test(
+    name = "test_maddpg",
+    tags = ["team:ml", "trainers_dir"],
+    size = "medium",
+    srcs = ["agents/maddpg/tests/test_maddpg.py"]
 )
 
 # MAMLTrainer
