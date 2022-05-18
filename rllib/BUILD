@@ -124,6 +124,17 @@ py_test(
     args = ["--yaml-dir=tuned_examples/alpha_star", "--num-cpus=10"]
 )
 
+# AlphaZero
+py_test(
+    name = "learning_tests_cartpole_sparse_rewards_alpha_zero",
+    tags = ["team:ml", "torch_only", "learning_tests", "learning_tests_discrete"],
+    main = "tests/run_regression_tests.py",
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/alpha_zero/cartpole-sparse-rewards-alpha-zero.yaml"],
+    args = ["--yaml-dir=tuned_examples/alpha_zero", "--num-cpus=8"]
+)
+
 # APEX-DQN
 # py_test(
 #    name = "learning_tests_cartpole_apex",
@@ -650,6 +661,14 @@ py_test(
     srcs = ["algorithms/alpha_star/tests/test_alpha_star.py"]
 )
 
+# AlphaZero
+py_test(
+    name = "test_alpha_zero",
+    tags = ["team:ml", "trainers_dir"],
+    size = "large",
+    srcs = ["algorithms/alpha_zero/tests/test_alpha_zero.py"]
+)
+
 # APEXTrainer (DQN)
 py_test(
     name = "test_apex_dqn",
@@ -870,15 +889,6 @@ py_test(
     main = "contrib/random_agent/random_agent.py",
     size = "small",
     srcs = ["contrib/random_agent/random_agent.py"]
-)
-
-py_test(
-    name = "alpha_zero_cartpole",
-    tags = ["team:ml", "trainers_dir"],
-    main = "contrib/alpha_zero/examples/train_cartpole.py",
-    size = "large",
-    srcs = ["contrib/alpha_zero/examples/train_cartpole.py"],
-    args = ["--training-iteration=1", "--num-workers=2", "--ray-num-cpus=3"]
 )
 
 

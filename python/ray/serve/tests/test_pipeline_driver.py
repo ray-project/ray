@@ -11,7 +11,7 @@ from starlette.testclient import TestClient
 
 from ray.serve.drivers import DAGDriver, SimpleSchemaIngress, load_http_adapter
 from ray.serve.http_adapters import json_request
-from ray.experimental.dag.input_node import InputNode
+from ray.serve.dag import InputNode
 from ray import serve
 import ray
 from ray._private.test_utils import wait_for_condition
