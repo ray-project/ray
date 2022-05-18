@@ -154,7 +154,7 @@ Built-in Datasources
     :members:
 
 Table Row API
----------------------
+-------------
 
 .. autoclass:: ray.data.row.TableRow
     :members:
