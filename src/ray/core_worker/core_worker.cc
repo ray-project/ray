@@ -966,7 +966,7 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
     rpc::ForwardLineageRequest forward_request;
     std::promise<Status> status_promise;
     conn->ForwardLineage(forward_request,
-                        [&status_promise, object_id](const Status &returned_status,
+                        [&status_promise, &object_id](const Status &returned_status,
                                     const rpc::ForwardLineageReply &reply) {
                           *object_id = ObjectID::FromBinary(reply.object_id());
                           status_promise.set_value(returned_status);
@@ -3278,7 +3278,7 @@ void CoreWorker::HandleExit(const rpc::ExitRequest &request,
 void CoreWorker::HandleForwardLineage(const rpc::ForwardLineageRequest &request,
                                          rpc::ForwardLineageReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
-  reply->set_object_id(ObjectID::FromIndex(worker_context_.GetCurrentInternalTaskId(),
+  reply->set_object_id(ObjectID::FromIndex(worker_context_.GetCurrentTaskID(),
                                      worker_context_.GetNextPutIndex()).Binary());
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
