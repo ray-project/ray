@@ -226,7 +226,7 @@ def _get_unique_value_indices(
 
     unique_values_with_indices = dict()
     for column in columns:
-        if column in limit.keys():
+        if column in limit:
             # Output sorted by freq.
             unique_values_with_indices[key_format.format(column)] = {
                 k[0]: j
