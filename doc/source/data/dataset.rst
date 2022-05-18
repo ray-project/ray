@@ -10,11 +10,11 @@ Ray Datasets: Distributed Data Loading and Compute
 
 Ray Datasets are the standard way to load and exchange data in Ray libraries and applications.
 They provide basic distributed data transformations such as maps
-(:meth:`ds.map_batches() <ray.data.Dataset.map_batches>`),
+(:meth:`map_batches <ray.data.Dataset.map_batches>`),
 global and grouped aggregations (:class:`GroupedDataset <ray.data.GroupedDataset>`), and
-shuffling operations (:meth:`ds.random_shuffle() <ray.data.Dataset.random_shuffle>`,
-:meth:`ds.sort() <ray.data.Dataset.sort>`,
-:meth:`ds.repartition() <ray.data.Dataset.repartition>`),
+shuffling operations (:meth:`random_shuffle <ray.data.Dataset.random_shuffle>`,
+:meth:`sort <ray.data.Dataset.sort>`,
+:meth:`repartition <ray.data.Dataset.repartition>`),
 and are compatible with a variety of file formats, data sources, and distributed frameworks.
 
 Here's an overview of the integrations with other processing frameworks, file formats, and supported operations,
