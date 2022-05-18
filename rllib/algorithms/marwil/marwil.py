@@ -112,24 +112,26 @@ class MARWILConfig(TrainerConfig):
         **kwargs,
     ) -> "MARWILConfig":
         """Sets the training related configuration.
+
         Args:
             beta: Scaling  of advantages in exponential terms. When beta is 0.0,
-            MARWIL is reduced to behavior cloning (imitation learning);
-            see bc.py algorithm in this same directory.
+                MARWIL is reduced to behavior cloning (imitation learning);
+                see bc.py algorithm in this same directory.
             vf_coeff: Balancing value estimation loss and policy optimization loss.
-            moving_average_sqd_adv_norm_update_rate: Update rate for the
-            squared moving average advantage norm (c^2).
+                moving_average_sqd_adv_norm_update_rate: Update rate for the
+                squared moving average advantage norm (c^2).
             moving_average_sqd_adv_norm_start: Starting value for the
-            squared moving average advantage norm (c^2).
+                squared moving average advantage norm (c^2).
             replay_buffer_size: Size of the replay buffer in
-            (single and independent) timesteps.
-            The buffer gets filled by reading from the input files line-by-line and
-            adding all timesteps on one line at once. We then sample uniformly
-            from the buffer (`train_batch_size` samples) for each training step.
+                (single and independent) timesteps.
+                The buffer gets filled by reading from the input files line-by-line and
+                adding all timesteps on one line at once. We then sample uniformly
+                from the buffer (`train_batch_size` samples) for each training step.
             learning_starts: Number of steps to read before learning starts.
             bc_logstd_coeff: A coefficient to encourage higher action distribution
-            entropy for exploration.
+                entropy for exploration.
             grad_clip: If specified, clip the global norm of gradients by this amount.
+
         Returns:
             This updated TrainerConfig object.
         """
