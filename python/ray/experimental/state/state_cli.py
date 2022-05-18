@@ -41,7 +41,7 @@ def get_state_api_output_to_print(
     state_data: Union[dict, list], *, format: AvailableFormat = AvailableFormat.DEFAULT
 ):
     if len(state_data) == 0:
-        print("No resource in the cluster")
+        return "No resource in the cluster"
 
     # Default is yaml.
     if format == AvailableFormat.DEFAULT:
@@ -94,7 +94,7 @@ def actors(ctx, format: str):
     url = ctx.obj["api_server_url"]
     print(
         get_state_api_output_to_print(
-            list_actors(api_server_url=url), format=AvailableFormat[format]
+            list_actors(api_server_url=url), format=AvailableFormat(format)
         )
     )
 
@@ -109,7 +109,7 @@ def placement_groups(ctx, format: str):
     print(
         get_state_api_output_to_print(
             list_placement_groups(api_server_url=url),
-            format=AvailableFormat[format],
+            format=AvailableFormat(format),
         )
     )
 
@@ -123,7 +123,7 @@ def nodes(ctx, format: str):
     url = ctx.obj["api_server_url"]
     print(
         get_state_api_output_to_print(
-            list_nodes(api_server_url=url), format=AvailableFormat[format]
+            list_nodes(api_server_url=url), format=AvailableFormat(format)
         )
     )
 
@@ -137,7 +137,7 @@ def jobs(ctx, format: str):
     url = ctx.obj["api_server_url"]
     print(
         get_state_api_output_to_print(
-            list_jobs(api_server_url=url), format=AvailableFormat[format]
+            list_jobs(api_server_url=url), format=AvailableFormat(format)
         )
     )
 
@@ -151,7 +151,7 @@ def workers(ctx, format: str):
     url = ctx.obj["api_server_url"]
     print(
         get_state_api_output_to_print(
-            list_workers(api_server_url=url), format=AvailableFormat[format]
+            list_workers(api_server_url=url), format=AvailableFormat(format)
         )
     )
 
@@ -165,7 +165,7 @@ def tasks(ctx, format: str):
     url = ctx.obj["api_server_url"]
     print(
         get_state_api_output_to_print(
-            list_tasks(api_server_url=url), format=AvailableFormat[format]
+            list_tasks(api_server_url=url), format=AvailableFormat(format)
         )
     )
 
@@ -179,7 +179,7 @@ def objects(ctx, format: str):
     url = ctx.obj["api_server_url"]
     print(
         get_state_api_output_to_print(
-            list_objects(api_server_url=url), format=AvailableFormat[format]
+            list_objects(api_server_url=url), format=AvailableFormat(format)
         )
     )
 
@@ -194,6 +194,6 @@ def runtime_envs(ctx, format: str):
     print(
         get_state_api_output_to_print(
             list_runtime_envs(api_server_url=url),
-            format=AvailableFormat[format],
+            format=AvailableFormat(format),
         )
     )
