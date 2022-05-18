@@ -161,8 +161,10 @@ def start(
         lifetime="detached" if detached else None,
         max_restarts=-1,
         max_task_retries=-1,
-        # Pin Serve controller on the head node.
-        resources={get_current_node_resource_key(): 0.01},
+        # Schedule the controller on the head node with a soft constraint. This
+        # prefers it to run on the head node in most cases, but allows it to be
+        # restarted on other nodes in an HA cluster.
+        scheduling_strategy=ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(get_current_node_resource_key(), soft=True),
         namespace=controller_namespace,
         max_concurrency=CONTROLLER_MAX_CONCURRENCY,
     ).remote(
