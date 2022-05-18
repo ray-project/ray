@@ -43,14 +43,11 @@ from ray.autoscaler._private.local.node_provider import (
 from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler._private.updater import NodeUpdaterThread
-from ray.autoscaler._private.node_launcher import NodeLauncher
+from ray.autoscaler._private.node_launcher import BaseNodeLauncher, NodeLauncher
 from ray.autoscaler._private.node_tracker import NodeTracker
 from ray.autoscaler._private.resource_demand_scheduler import (
     get_bin_pack_residual,
     ResourceDemandScheduler,
-    NodeType,
-    NodeID,
-    NodeIP,
     ResourceDict,
 )
 from ray.autoscaler._private.util import (
@@ -60,6 +57,11 @@ from ray.autoscaler._private.util import (
     hash_launch_conf,
     hash_runtime_conf,
     format_info_string,
+    NodeCount,
+    NodeTypeConfigDict,
+    NodeType,
+    NodeID,
+    NodeIP,
 )
 from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_NUM_FAILURES,
@@ -67,6 +69,9 @@ from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
     AUTOSCALER_UPDATE_INTERVAL_S,
     AUTOSCALER_HEARTBEAT_TIMEOUT_S,
+    DISABLE_NODE_UPDATERS_KEY,
+    DISABLE_LAUNCH_CONFIG_CHECK_KEY,
+    FOREGROUND_NODE_LAUNCH_KEY,
 )
 from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
 
@@ -83,6 +88,8 @@ UpdateInstructions = namedtuple(
     "UpdateInstructions",
     ["node_id", "setup_commands", "ray_start_commands", "docker_config"],
 )
+
+NodeLaunchData = Tuple[NodeTypeConfigDict, NodeCount, NodeType]
 
 
 @dataclass
@@ -236,32 +243,57 @@ class StandardAutoscaler:
         # Should be set to true in situations where another component, such as
         # a Kubernetes operator, is responsible for Ray setup on nodes.
         self.disable_node_updaters = self.config["provider"].get(
-            "disable_node_updaters", False
+            DISABLE_NODE_UPDATERS_KEY, False
         )
+        logger.info(f"{DISABLE_NODE_UPDATERS_KEY}:{self.disable_node_updaters}")
 
         # Disable launch config checking if true.
         # This is set in the fake_multinode situations where there isn't any
         # meaningful node "type" to enforce.
         self.disable_launch_config_check = self.config["provider"].get(
-            "disable_launch_config_check", False
+            DISABLE_LAUNCH_CONFIG_CHECK_KEY, False
+        )
+        logger.info(
+            f"{DISABLE_LAUNCH_CONFIG_CHECK_KEY}:{self.disable_launch_config_check}"
         )
 
+        # By default, the autoscaler launches nodes in batches asynchronously in
+        # background threads.
+        # When the following flag is set, that behavior is disabled, so that nodes
+        # are launched in the main thread, all in one batch, blocking until all
+        # NodeProvider.create_node calls have returned.
+        self.foreground_node_launch = self.config["provider"].get(
+            FOREGROUND_NODE_LAUNCH_KEY
+        )
+        logger.info(f"{FOREGROUND_NODE_LAUNCH_KEY}:{self.foreground_node_launch}")
+
         # Node launchers
-        self.launch_queue = queue.Queue()
+        self.foreground_node_launcher: Optional[BaseNodeLauncher] = None
+        self.launch_queue: Optional[queue.Queue[NodeLaunchData]] = None
         self.pending_launches = ConcurrentCounter()
-        max_batches = math.ceil(max_concurrent_launches / float(max_launch_batch))
-        for i in range(int(max_batches)):
-            node_launcher = NodeLauncher(
+        if self.foreground_node_launch:
+            self.foreground_node_launcher = BaseNodeLauncher(
                 provider=self.provider,
-                queue=self.launch_queue,
-                index=i,
                 pending=self.pending_launches,
                 node_types=self.available_node_types,
                 prom_metrics=self.prom_metrics,
                 event_summarizer=self.event_summarizer,
             )
-            node_launcher.daemon = True
-            node_launcher.start()
+        else:
+            self.launch_queue = queue.Queue()
+            max_batches = math.ceil(max_concurrent_launches / float(max_launch_batch))
+            for i in range(int(max_batches)):
+                node_launcher = NodeLauncher(
+                    provider=self.provider,
+                    queue=self.launch_queue,
+                    index=i,
+                    pending=self.pending_launches,
+                    node_types=self.available_node_types,
+                    prom_metrics=self.prom_metrics,
+                    event_summarizer=self.event_summarizer,
+                )
+                node_launcher.daemon = True
+                node_launcher.start()
 
         # NodeTracker maintains soft state to track the number of recently
         # failed nodes. It is best effort only.
@@ -1225,12 +1257,19 @@ class StandardAutoscaler:
         self.pending_launches.inc(node_type, count)
         self.prom_metrics.pending_nodes.set(self.pending_launches.value)
         config = copy.deepcopy(self.config)
-        # Split into individual launch requests of the max batch size.
-        while count > 0:
-            self.launch_queue.put(
-                (config, min(count, self.max_launch_batch), node_type)
-            )
-            count -= self.max_launch_batch
+        if self.foreground_node_launch:
+            assert self.foreground_node_launcher is not None
+            # Launch in the main thread and block.
+            self.foreground_node_launcher.launch_node(config, count, node_type)
+        else:
+            assert self.launch_queue is not None
+            # Split into individual launch requests of the max batch size.
+            while count > 0:
+                # Enqueue launch data for the background NodeUpdater threads.
+                self.launch_queue.put(
+                    (config, min(count, self.max_launch_batch), node_type)
+                )
+                count -= self.max_launch_batch
 
     def kill_workers(self):
         logger.error("StandardAutoscaler: kill_workers triggered")
