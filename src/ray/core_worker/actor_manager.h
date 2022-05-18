@@ -134,12 +134,6 @@ class ActorManager {
   void SubscribeActorState(const ActorID &actor_id);
 
  private:
-  bool AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
-                         const std::string &cached_actor_name,
-                         const std::string &call_site,
-                         const rpc::Address &caller_address,
-                         bool is_detached);
-
   /// Give this worker a handle to an actor.
   ///
   /// This handle will remain as long as the current actor or task is
@@ -148,7 +142,6 @@ class ActorManager {
   /// they are submitted.
   ///
   /// \param actor_handle The handle to the actor.
-  /// \param cached_actor_name Actor name used to cache named actor.
   /// \param is_owner_handle Whether this is the owner's handle to the actor.
   /// The owner is the creator of the actor and is responsible for telling the
   /// actor to disconnect once all handles are out of scope.
@@ -161,7 +154,6 @@ class ActorManager {
   /// \return True if the handle was added and False if we already had a handle
   /// to the same actor.
   bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
-                      const std::string &cached_actor_name,
                       bool is_owner_handle,
                       const std::string &call_site,
                       const rpc::Address &caller_address,

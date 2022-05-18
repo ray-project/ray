@@ -31,7 +31,6 @@ ActorID ActorManager::RegisterActorHandle(std::unique_ptr<ActorHandle> actor_han
   // Note we need set `cached_actor_name` to empty string as we only cache named actors
   // when getting them from GCS.
   RAY_UNUSED(AddActorHandle(std::move(actor_handle),
-                            /*cached_actor_name=*/"",
                             /*is_owner_handle=*/false,
                             call_site,
                             caller_address,
@@ -72,8 +71,6 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> ActorManager::GetNamedActo
       auto actor_handle = std::make_unique<ActorHandle>(actor_table_data, task_spec);
       actor_id = actor_handle->GetActorID();
       AddNewActorHandle(std::move(actor_handle),
-                        GenerateCachedActorName(actor_table_data.ray_namespace(),
-                                                actor_table_data.name()),
                         call_site,
                         caller_address,
                         /*is_detached*/ true);
@@ -98,14 +95,12 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> ActorManager::GetNamedActo
     auto actor_handle = GetActorHandle(actor_id);
     actor_handle->Serialize(&serialized_actor_handle);
 
-    AddActorHandle(
-        std::make_unique<ActorHandle>(serialized_actor_handle),
-        GenerateCachedActorName(actor_handle->GetNamespace(), actor_handle->GetName()),
-        /*is_owner_handle=*/false,
-        call_site,
-        caller_address,
-        actor_id,
-        ObjectID::ForActorHandle(actor_id));
+    AddActorHandle(std::make_unique<ActorHandle>(serialized_actor_handle),
+                   /*is_owner_handle=*/false,
+                   call_site,
+                   caller_address,
+                   actor_id,
+                   ObjectID::ForActorHandle(actor_id));
   }
 
   if (actor_id.IsNil()) {
@@ -129,7 +124,6 @@ bool ActorManager::CheckActorHandleExists(const ActorID &actor_id) {
 }
 
 bool ActorManager::AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
-                                     const std::string &cached_actor_name,
                                      const std::string &call_site,
                                      const rpc::Address &caller_address,
                                      bool is_detached) {
@@ -149,7 +143,6 @@ bool ActorManager::AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
   }
 
   return AddActorHandle(std::move(actor_handle),
-                        cached_actor_name,
                         /*is_owner_handle=*/!is_detached,
                         call_site,
                         caller_address,
@@ -157,19 +150,7 @@ bool ActorManager::AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                         actor_creation_return_id);
 }
 
-bool ActorManager::AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
-                                     const std::string &call_site,
-                                     const rpc::Address &caller_address,
-                                     bool is_detached) {
-  return AddNewActorHandle(std::move(actor_handle),
-                           /*cached_actor_name=*/"",
-                           call_site,
-                           caller_address,
-                           is_detached);
-}
-
 bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
-                                  const std::string &cached_actor_name,
                                   bool is_owner_handle,
                                   const std::string &call_site,
                                   const rpc::Address &caller_address,
