@@ -609,6 +609,8 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id,
     // have to check again here because the pull manager runs in a different
     // thread and the object may have been deactivated right before creating
     // the chunk.
+    RAY_LOG(INFO) << "Aborting object creation because it is no longer actively pulled: "
+                  << object_id;
     buffer_pool_.AbortCreate(object_id);
     return false;
   }
@@ -734,8 +736,15 @@ std::string ObjectManager::DebugString() const {
 void ObjectManager::RecordMetrics() {
   pull_manager_->RecordMetrics();
   push_manager_->RecordMetrics();
-  stats::ObjectStoreAvailableMemory().Record(config_.object_store_memory - used_memory_);
-  stats::ObjectStoreUsedMemory().Record(used_memory_);
+  // used_memory_ includes the fallback allocation, so we should add it again here
+  // to calculate the exact available memory.
+  stats::ObjectStoreAvailableMemory().Record(
+      config_.object_store_memory - used_memory_ +
+      plasma::plasma_store_runner->GetFallbackAllocated());
+  // Subtract fallback allocated memory. It is tracked separately by
+  // `ObjectStoreFallbackMemory`.
+  stats::ObjectStoreUsedMemory().Record(
+      used_memory_ - plasma::plasma_store_runner->GetFallbackAllocated());
   stats::ObjectStoreFallbackMemory().Record(
       plasma::plasma_store_runner->GetFallbackAllocated());
   stats::ObjectStoreLocalObjects().Record(local_objects_.size());

@@ -191,6 +191,39 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         assert result.status_code == 200
         return result.json()
 
+    def _get_non_terminating_pods(
+        self, tag_filters: Dict[str, str]
+    ) -> List[Dict[str, Any]]:
+        """Get the list of pods in the Ray cluster, excluding pods
+        marked for deletion.
+
+        Filter by the specified tag_filters.
+
+        Return a list of pod objects, represented as dictionaries.
+
+        Details on K8s resource deletion:
+        https://kubernetes.io/docs/reference/using-api/api-concepts/#resource-deletion
+        """
+        label_filters = to_label_selector(
+            {
+                "ray.io/cluster": self.cluster_name,
+            }
+        )
+        data = self._get("pods?labelSelector=" + requests.utils.quote(label_filters))
+        result = []
+        for pod in data["items"]:
+            # Kubernetes sets metadata.deletionTimestamp immediately after admitting a
+            # request to delete an object. Full removal of the object may take some time
+            # after the deletion timestamp is set. See link in docstring for details.
+            if "deletionTimestamp" in pod["metadata"]:
+                # Ignore pods marked for termination.
+                continue
+            labels = pod["metadata"]["labels"]
+            tags = make_node_tags(labels, status_tag(pod))
+            if tag_filters.items() <= tags.items():
+                result.append(pod)
+        return result
+
     def _patch(self, path: str, payload: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Wrapper for REST PATCH of resource with proper headers."""
         url = url_from_resource(namespace=self.namespace, path=path)
@@ -237,19 +270,10 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
 
     def non_terminated_nodes(self, tag_filters: Dict[str, str]) -> List[str]:
         """Return a list of node ids filtered by the specified tags dict."""
-        label_filters = to_label_selector(
-            {
-                "ray.io/cluster": self.cluster_name,
-            }
-        )
-        data = self._get("pods?labelSelector=" + requests.utils.quote(label_filters))
-        result = []
-        for pod in data["items"]:
-            labels = pod["metadata"]["labels"]
-            tags = make_node_tags(labels, status_tag(pod))
-            if tag_filters.items() <= tags.items():
-                result.append(pod["metadata"]["name"])
-        return result
+        return [
+            pod["metadata"]["name"]
+            for pod in self._get_non_terminating_pods(tag_filters)
+        ]
 
     def terminate_node(self, node_id: str) -> None:
         """Terminates the specified node (= Kubernetes pod)."""
@@ -264,11 +288,8 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
             # optimizing this code to batch the requests to the API server.
             groups = {}
             current_replica_counts = {}
-            label_filters = to_label_selector({"ray.io/cluster": self.cluster_name})
-            pods = self._get(
-                "pods?labelSelector=" + requests.utils.quote(label_filters)
-            )
-            for pod in pods["items"]:
+            pods = self._get_non_terminating_pods(tag_filters={})
+            for pod in pods:
                 group_name = pod["metadata"]["labels"]["ray.io/group"]
                 current_replica_counts[group_name] = (
                     current_replica_counts.get(group_name, 0) + 1

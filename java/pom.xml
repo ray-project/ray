@@ -252,6 +252,8 @@
               <excludes>
                 <exclude>**/RayCall.java</exclude>
                 <exclude>**/ActorCall.java</exclude>
+                  <exclude>**/Call.java</exclude>
+                  <exclude>**/ActorCall.java</exclude>
                 <exclude>**/PyActorCall.java</exclude>
                 <exclude>**/runtime/generated/**/*.*</exclude>
                 <exclude>**/serve/generated/**/*.*</exclude>

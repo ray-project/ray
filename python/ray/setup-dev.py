@@ -77,7 +77,6 @@ if __name__ == "__main__":
     do_link("rllib", force=args.yes, local_path="../../../rllib")
     do_link("ml", force=args.yes)
     do_link("tune", force=args.yes)
-    do_link("sgd", force=args.yes)
     do_link("train", force=args.yes)
     do_link("autoscaler", force=args.yes)
     do_link("ray_operator", force=args.yes)

@@ -1,35 +1,9 @@
-import os
 import pytest
 import ray
-import re
 from filelock import FileLock
-from ray._private.test_utils import run_string_as_driver, SignalActor
+from ray._private.test_utils import SignalActor
 from ray import workflow
 from ray.tests.conftest import *  # noqa
-from unittest.mock import patch
-
-
-def test_init_twice(call_ray_start, reset_workflow, tmp_path):
-    workflow.init()
-    with pytest.raises(RuntimeError):
-        workflow.init(str(tmp_path))
-
-
-driver_script = """
-from ray import workflow
-
-if __name__ == "__main__":
-    workflow.init()
-"""
-
-
-def test_init_twice_2(call_ray_start, reset_workflow, tmp_path):
-    with patch.dict(os.environ, {"RAY_ADDRESS": call_ray_start}):
-        run_string_as_driver(driver_script)
-        with pytest.raises(
-            RuntimeError, match=".*different from the workflow manager.*"
-        ):
-            workflow.init(str(tmp_path))
 
 
 @pytest.mark.parametrize(
@@ -109,7 +83,9 @@ def test_get_output_3(workflow_start_regular, tmp_path):
         return 10
 
     with pytest.raises(ray.exceptions.RaySystemError):
-        workflow.create(incr.options(max_retries=0).bind()).run("incr")
+        workflow.create(incr.options(**workflow.options(max_retries=0)).bind()).run(
+            "incr"
+        )
 
     assert cnt_file.read_text() == "1"
 
@@ -124,20 +100,22 @@ def test_get_output_3(workflow_start_regular, tmp_path):
 
 
 def test_get_named_step_output_finished(workflow_start_regular, tmp_path):
-    @workflow.step
+    @ray.remote
     def double(v):
         return 2 * v
 
     # Get the result from named step after workflow finished
-    assert 4 == double.options(name="outer").step(
-        double.options(name="inner").step(1)
+    assert 4 == workflow.create(
+        double.options(**workflow.options(name="outer")).bind(
+            double.options(**workflow.options(name="inner")).bind(1)
+        )
     ).run("double")
     assert ray.get(workflow.get_output("double", name="inner")) == 2
     assert ray.get(workflow.get_output("double", name="outer")) == 4
 
 
 def test_get_named_step_output_running(workflow_start_regular, tmp_path):
-    @workflow.step
+    @ray.remote
     def double(v, lock=None):
         if lock is not None:
             with FileLock(lock_path):
@@ -149,11 +127,12 @@ def test_get_named_step_output_running(workflow_start_regular, tmp_path):
     lock_path = str(tmp_path / "lock")
     lock = FileLock(lock_path)
     lock.acquire()
-    output = (
-        double.options(name="outer")
-        .step(double.options(name="inner").step(1, lock_path), lock_path)
-        .run_async("double-2")
-    )
+    output = workflow.create(
+        double.options(**workflow.options(name="outer")).bind(
+            double.options(**workflow.options(name="inner")).bind(1, lock_path),
+            lock_path,
+        )
+    ).run_async("double-2")
 
     inner = workflow.get_output("double-2", name="inner")
     outer = workflow.get_output("double-2", name="outer")
@@ -190,7 +169,7 @@ def test_get_named_step_output_running(workflow_start_regular, tmp_path):
 
 
 def test_get_named_step_output_error(workflow_start_regular, tmp_path):
-    @workflow.step
+    @ray.remote
     def double(v, error):
         if error:
             raise Exception()
@@ -198,8 +177,10 @@ def test_get_named_step_output_error(workflow_start_regular, tmp_path):
 
     # Force it to fail for the outer step
     with pytest.raises(Exception):
-        double.options(name="outer").step(
-            double.options(name="inner").step(1, False), True
+        workflow.create(
+            double.options(**workflow.options(name="outer")).bind(
+                double.options(**workflow.options(name="inner")).bind(1, False), True
+            )
         ).run("double")
 
     # For the inner step, it should have already been executed.
@@ -232,13 +213,14 @@ def test_get_named_step_default(workflow_start_regular, tmp_path):
 
 
 def test_get_named_step_duplicate(workflow_start_regular):
-    @workflow.step(name="f")
+    @workflow.options(name="f")
+    @ray.remote
     def f(n, dep):
         return n
 
-    inner = f.step(10, None)
-    outer = f.step(20, inner)
-    assert 20 == outer.run("duplicate")
+    inner = f.bind(10, None)
+    outer = f.bind(20, inner)
+    assert 20 == workflow.create(outer).run("duplicate")
     # The outer will be checkpointed first. So there is no suffix for the name
     assert ray.get(workflow.get_output("duplicate", name="f")) == 20
     # The inner will be checkpointed after the outer. And there is a duplicate
@@ -246,25 +228,16 @@ def test_get_named_step_duplicate(workflow_start_regular):
     assert ray.get(workflow.get_output("duplicate", name="f_1")) == 10
 
 
-def test_no_init(shutdown_only):
+def test_no_init_run(shutdown_only):
     @ray.remote
     def f():
         pass
 
-    fail_wf_init_error_msg = re.escape(
-        "`workflow.init()` must be called prior to using the workflows API."
-    )
+    workflow.create(f.bind()).run()
 
-    with pytest.raises(RuntimeError, match=fail_wf_init_error_msg):
-        workflow.create(f.bind()).run()
-    with pytest.raises(RuntimeError, match=fail_wf_init_error_msg):
-        workflow.list_all()
-    with pytest.raises(RuntimeError, match=fail_wf_init_error_msg):
-        workflow.resume_all()
-    with pytest.raises(RuntimeError, match=fail_wf_init_error_msg):
-        workflow.cancel("wf")
-    with pytest.raises(RuntimeError, match=fail_wf_init_error_msg):
-        workflow.get_actor("wf")
+
+def test_no_init_api(shutdown_only):
+    workflow.list_all()
 
 
 if __name__ == "__main__":

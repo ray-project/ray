@@ -10,7 +10,7 @@ from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnv as ProtoRuntimeEnv,
     RuntimeEnvConfig as ProtoRuntimeEnvConfig,
 )
-from ray._private.runtime_env.plugin import RuntimeEnvPlugin, encode_plugin_uri
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.runtime_env.validation import OPTION_TO_VALIDATION_FN
 from ray._private.utils import import_attr
 from ray._private.runtime_env.conda import (
@@ -296,6 +296,7 @@ class RuntimeEnv(dict):
 
     known_fields: Set[str] = {
         "py_modules",
+        "java_jars",
         "working_dir",
         "conda",
         "pip",
@@ -346,6 +347,9 @@ class RuntimeEnv(dict):
             runtime_env["env_vars"] = env_vars
         if config is not None:
             runtime_env["config"] = config
+
+        if runtime_env.get("java_jars"):
+            runtime_env["java_jars"] = runtime_env.get("java_jars")
 
         # Blindly trust that the runtime_env has already been validated.
         # This is dangerous and should only be used internally (e.g., on the
@@ -423,18 +427,18 @@ class RuntimeEnv(dict):
         # URIs from all plugins.
         plugin_uris = []
         if "working_dir" in self:
-            plugin_uris.append(encode_plugin_uri("working_dir", self["working_dir"]))
+            plugin_uris.append(self["working_dir"])
         if "py_modules" in self:
             for uri in self["py_modules"]:
-                plugin_uris.append(encode_plugin_uri("py_modules", uri))
+                plugin_uris.append(uri)
         if "conda" in self:
             uri = get_conda_uri(self)
             if uri is not None:
-                plugin_uris.append(encode_plugin_uri("conda", uri))
+                plugin_uris.append(uri)
         if "pip" in self:
             uri = get_pip_uri(self)
             if uri is not None:
-                plugin_uris.append(encode_plugin_uri("pip", uri))
+                plugin_uris.append(uri)
 
         return plugin_uris
 
@@ -524,6 +528,10 @@ class RuntimeEnv(dict):
             initialize_dict["py_modules"] = list(
                 proto_runtime_env.python_runtime_env.py_modules
             )
+        if proto_runtime_env.java_runtime_env.dependent_jars:
+            initialize_dict["java_jars"] = list(
+                proto_runtime_env.java_runtime_env.dependent_jars
+            )
         if proto_runtime_env.working_dir:
             initialize_dict["working_dir"] = proto_runtime_env.working_dir
         if proto_runtime_env.env_vars:
@@ -575,6 +583,11 @@ class RuntimeEnv(dict):
     def py_modules(self) -> List[str]:
         if "py_modules" in self:
             return list(self["py_modules"])
+        return []
+
+    def java_jars(self) -> List[str]:
+        if "java_jars" in self:
+            return list(self["java_jars"])
         return []
 
     def env_vars(self) -> Dict:

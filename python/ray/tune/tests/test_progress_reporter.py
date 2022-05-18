@@ -11,6 +11,7 @@ from ray.tune.result import AUTO_RESULT_KEYS
 from ray.tune.progress_reporter import (
     CLIReporter,
     JupyterNotebookReporter,
+    ProgressReporter,
     _fair_filter_trials,
     best_trial_str,
     detect_reporter,
@@ -233,14 +234,23 @@ EXPECTED_SORT_RESULT_DESC = """Number of trials: 5 (1 PENDING, 1 RUNNING, 3 TERM
 VERBOSE_EXP_OUT_1 = "Number of trials: 3/3 (2 PENDING, 1 RUNNING)"
 VERBOSE_EXP_OUT_2 = "Number of trials: 3/3 (3 TERMINATED)"
 
-VERBOSE_TRIAL_NORM = (
-    "Trial train_xxxxx_00000 reported acc=5 with "
-    + """parameters={'do': 'complete'}. This trial completed.
+VERBOSE_TRIAL_NORM_1 = (
+    "Trial train_xxxxx_00000 reported acc=5 "
+    "with parameters={'do': 'complete'}. This trial completed.\n"
+)
+
+VERBOSE_TRIAL_NORM_2 = """
 Trial train_xxxxx_00001 reported _metric=6 with parameters={'do': 'once'}.
 Trial train_xxxxx_00001 completed. Last result: _metric=6
+"""
+
+VERBOSE_TRIAL_NORM_3 = """
 Trial train_xxxxx_00002 reported acc=7 with parameters={'do': 'twice'}.
-Trial train_xxxxx_00002 reported acc=8 with parameters={'do': 'twice'}. """
-    + "This trial completed."
+"""
+
+VERBOSE_TRIAL_NORM_4 = (
+    "Trial train_xxxxx_00002 reported acc=8 "
+    "with parameters={'do': 'twice'}. This trial completed.\n"
 )
 
 VERBOSE_TRIAL_DETAIL = """+-------------------+----------+-------------------+----------+
@@ -602,7 +612,10 @@ class ProgressReporterTest(unittest.TestCase):
             try:
                 self.assertNotIn(VERBOSE_EXP_OUT_1, output)
                 self.assertNotIn(VERBOSE_EXP_OUT_2, output)
-                self.assertNotIn(VERBOSE_TRIAL_NORM, output)
+                self.assertNotIn(VERBOSE_TRIAL_NORM_1, output)
+                self.assertNotIn(VERBOSE_TRIAL_NORM_2, output)
+                self.assertNotIn(VERBOSE_TRIAL_NORM_3, output)
+                self.assertNotIn(VERBOSE_TRIAL_NORM_4, output)
                 self.assertNotIn(VERBOSE_TRIAL_DETAIL, output)
             except Exception:
                 print("*** BEGIN OUTPUT ***")
@@ -615,7 +628,10 @@ class ProgressReporterTest(unittest.TestCase):
             try:
                 self.assertIn(VERBOSE_EXP_OUT_1, output)
                 self.assertIn(VERBOSE_EXP_OUT_2, output)
-                self.assertNotIn(VERBOSE_TRIAL_NORM, output)
+                self.assertNotIn(VERBOSE_TRIAL_NORM_1, output)
+                self.assertNotIn(VERBOSE_TRIAL_NORM_2, output)
+                self.assertNotIn(VERBOSE_TRIAL_NORM_3, output)
+                self.assertNotIn(VERBOSE_TRIAL_NORM_4, output)
                 self.assertNotIn(VERBOSE_TRIAL_DETAIL, output)
             except Exception:
                 print("*** BEGIN OUTPUT ***")
@@ -628,7 +644,10 @@ class ProgressReporterTest(unittest.TestCase):
             try:
                 self.assertIn(VERBOSE_EXP_OUT_1, output)
                 self.assertIn(VERBOSE_EXP_OUT_2, output)
-                self.assertIn(VERBOSE_TRIAL_NORM, output)
+                self.assertIn(VERBOSE_TRIAL_NORM_1, output)
+                self.assertIn(VERBOSE_TRIAL_NORM_2, output)
+                self.assertIn(VERBOSE_TRIAL_NORM_3, output)
+                self.assertIn(VERBOSE_TRIAL_NORM_4, output)
                 self.assertNotIn(VERBOSE_TRIAL_DETAIL, output)
             except Exception:
                 print("*** BEGIN OUTPUT ***")
@@ -641,7 +660,10 @@ class ProgressReporterTest(unittest.TestCase):
             try:
                 self.assertIn(VERBOSE_EXP_OUT_1, output)
                 self.assertIn(VERBOSE_EXP_OUT_2, output)
-                self.assertNotIn(VERBOSE_TRIAL_NORM, output)
+                self.assertNotIn(VERBOSE_TRIAL_NORM_1, output)
+                self.assertNotIn(VERBOSE_TRIAL_NORM_2, output)
+                self.assertNotIn(VERBOSE_TRIAL_NORM_3, output)
+                self.assertNotIn(VERBOSE_TRIAL_NORM_4, output)
                 self.assertIn(VERBOSE_TRIAL_DETAIL, output)
             except Exception:
                 print("*** BEGIN OUTPUT ***")
@@ -661,6 +683,35 @@ class ProgressReporterTest(unittest.TestCase):
             reporter = detect_reporter()
             self.assertFalse(isinstance(reporter, CLIReporter))
             self.assertTrue(isinstance(reporter, JupyterNotebookReporter))
+
+    def testProgressReporterAPI(self):
+        class CustomReporter(ProgressReporter):
+            def should_report(self, trials, done=False):
+                return True
+
+            def report(self, trials, done, *sys_info):
+                pass
+
+        tune.run(lambda config: 2, num_samples=1, progress_reporter=CustomReporter())
+
+    def testMaxLen(self):
+        trials = []
+        for i in range(5):
+            t = Mock()
+            t.status = "TERMINATED"
+            t.trial_id = "%05d" % i
+            t.local_dir = "/foo"
+            t.location = "here"
+            t.config = {"verylong" * 20: i}
+            t.evaluated_params = {"verylong" * 20: i}
+            t.last_result = {"some_metric": "evenlonger" * 100}
+            t.__str__ = lambda self: self.trial_id
+            trials.append(t)
+
+        progress_str = trial_progress_str(
+            trials, metric_columns=["some_metric"], force_table=True
+        )
+        assert any(len(row) <= 90 for row in progress_str.split("\n"))
 
 
 if __name__ == "__main__":

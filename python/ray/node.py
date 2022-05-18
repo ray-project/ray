@@ -27,7 +27,6 @@ from ray.internal import storage
 from ray._private.gcs_utils import GcsClient
 from ray._private.resource_spec import ResourceSpec
 from ray._private.utils import try_to_create_directory, try_to_symlink, open_log
-import ray._private.usage.usage_lib as ray_usage_lib
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray configures it by default automatically
@@ -202,7 +201,12 @@ class Node:
         self._init_temp()
 
         # Validate and initialize the persistent storage API.
-        storage._init_storage(ray_params.storage, is_head=head)
+        if head:
+            storage._init_storage(ray_params.storage, is_head=True)
+        else:
+            storage._init_storage(
+                ray._private.services.get_storage_uri_from_internal_kv(), is_head=False
+            )
 
         # If it is a head node, try validating if
         # external storage is configurable.
@@ -287,6 +291,13 @@ class Node:
                 True,
                 ray_constants.KV_NAMESPACE_SESSION,
             )
+            if ray_params.storage is not None:
+                self.get_gcs_client().internal_kv_put(
+                    b"storage",
+                    ray_params.storage.encode(),
+                    True,
+                    ray_constants.KV_NAMESPACE_SESSION,
+                )
             # Add tracing_startup_hook to redis / internal kv manually
             # since internal kv is not yet initialized.
             if ray_params.tracing_startup_hook:
@@ -329,41 +340,32 @@ class Node:
     def validate_ip_port(ip_port):
         """Validates the address is in the ip:port format"""
         _, _, port = ip_port.rpartition(":")
-        _ = int(port)
+        if port == ip_port:
+            raise ValueError(f"Port is not specified for address {ip_port}")
+        try:
+            _ = int(port)
+        except ValueError:
+            raise ValueError(
+                f"Unable to parse port number from {port} (full address = {ip_port})"
+            )
 
     def check_version_info(self):
-        """Check if various Python and Ray version of this process is correct.
+        """Check if the Python and Ray version of this process matches that in GCS.
 
         This will be used to detect if workers or drivers are started using
-        different versions of Python, or Ray. If the version information
-        is not present in KV store, then no check is done.
+        different versions of Python, or Ray.
+
         Raises:
             Exception: An exception is raised if there is a version mismatch.
         """
+        import ray._private.usage.usage_lib as ray_usage_lib
+
         cluster_metadata = ray_usage_lib.get_cluster_metadata(
             self.get_gcs_client(), num_retries=NUM_REDIS_GET_RETRIES
         )
         if cluster_metadata is None:
             return
-        true_version_info = (
-            cluster_metadata["ray_version"],
-            cluster_metadata["python_version"],
-        )
-        version_info = ray._private.utils.compute_version_info()
-        if version_info != true_version_info:
-            node_ip_address = ray._private.services.get_node_ip_address()
-            error_message = (
-                "Version mismatch: The cluster was started with:\n"
-                "    Ray: " + true_version_info[0] + "\n"
-                "    Python: " + true_version_info[1] + "\n"
-                "This process on node " + node_ip_address + " was started with:" + "\n"
-                "    Ray: " + version_info[0] + "\n"
-                "    Python: " + version_info[1] + "\n"
-            )
-            if version_info[:2] != true_version_info[:2]:
-                raise RuntimeError(error_message)
-            else:
-                logger.warning(error_message)
+        ray._private.utils.check_version_info(cluster_metadata)
 
     def _register_shutdown_hooks(self):
         # Register the atexit handler. In this case, we shouldn't call sys.exit
@@ -1005,6 +1007,7 @@ class Node:
             start_initial_python_workers_for_first_job=self._ray_params.start_initial_python_workers_for_first_job,  # noqa: E501
             ray_debugger_external=self._ray_params.ray_debugger_external,
             env_updates=self._ray_params.env_vars,
+            node_name=self._ray_params.node_name,
         )
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
@@ -1064,6 +1067,8 @@ class Node:
         Check `usage_stats_head.py` for more details.
         """
         # Make sure the cluster metadata wasn't reported before.
+        import ray._private.usage.usage_lib as ray_usage_lib
+
         ray_usage_lib.put_cluster_metadata(self.get_gcs_client(), NUM_REDIS_GET_RETRIES)
 
     def start_head_processes(self):

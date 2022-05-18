@@ -1,4 +1,5 @@
 import argparse
+import math
 from typing import Tuple
 
 import pandas as pd
@@ -6,6 +7,8 @@ import pandas as pd
 import ray
 from ray.ml.batch_predictor import BatchPredictor
 from ray.ml.predictors.integrations.lightgbm import LightGBMPredictor
+from ray.ml.preprocessors.chain import Chain
+from ray.ml.preprocessors.encoder import Categorizer
 from ray.ml.train.integrations.lightgbm import LightGBMTrainer
 from ray.data.dataset import Dataset
 from ray.ml.result import Result
@@ -18,6 +21,11 @@ def prepare_data() -> Tuple[Dataset, Dataset, Dataset]:
     data_raw = load_breast_cancer()
     dataset_df = pd.DataFrame(data_raw["data"], columns=data_raw["feature_names"])
     dataset_df["target"] = data_raw["target"]
+    # add a random categorical column
+    num_samples = len(dataset_df)
+    dataset_df["categorical_column"] = pd.Series(
+        (["A", "B"] * math.ceil(num_samples / 2))[:num_samples]
+    )
     train_df, test_df = train_test_split(dataset_df, test_size=0.3)
     train_dataset = ray.data.from_pandas(train_df)
     valid_dataset = ray.data.from_pandas(test_df)
@@ -28,9 +36,12 @@ def prepare_data() -> Tuple[Dataset, Dataset, Dataset]:
 def train_lightgbm(num_workers: int, use_gpu: bool = False) -> Result:
     train_dataset, valid_dataset, _ = prepare_data()
 
-    # Scale some random columns
+    # Scale some random columns, and categorify the categorical_column,
+    # allowing LightGBM to use its built-in categorical feature support
     columns_to_scale = ["mean radius", "mean texture"]
-    preprocessor = StandardScaler(columns=columns_to_scale)
+    preprocessor = Chain(
+        Categorizer(["categorical_column"]), StandardScaler(columns=columns_to_scale)
+    )
 
     # LightGBM specific params
     params = {

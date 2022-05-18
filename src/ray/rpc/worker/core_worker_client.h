@@ -182,9 +182,6 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
       const DeleteSpilledObjectsRequest &request,
       const ClientCallback<DeleteSpilledObjectsReply> &callback) {}
 
-  virtual void AddSpilledUrl(const AddSpilledUrlRequest &request,
-                             const ClientCallback<AddSpilledUrlReply> &callback) {}
-
   virtual void PlasmaObjectReady(const PlasmaObjectReadyRequest &request,
                                  const ClientCallback<PlasmaObjectReadyReply> &callback) {
   }
@@ -195,6 +192,10 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
   virtual void AssignObjectOwner(const AssignObjectOwnerRequest &request,
                                  const ClientCallback<AssignObjectOwnerReply> &callback) {
   }
+
+  virtual void RayletNotifyGCSRestart(
+      const RayletNotifyGCSRestartRequest &request,
+      const ClientCallback<RayletNotifyGCSRestartReply> &callback) {}
 
   /// Returns the max acked sequence number, useful for checking on progress.
   virtual int64_t ClientProcessedUpToSeqno() { return -1; }
@@ -310,13 +311,13 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
                          override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService,
-                         AddSpilledUrl,
+                         PlasmaObjectReady,
                          grpc_client_,
                          /*method_timeout_ms*/ -1,
                          override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService,
-                         PlasmaObjectReady,
+                         RayletNotifyGCSRestart,
                          grpc_client_,
                          /*method_timeout_ms*/ -1,
                          override)

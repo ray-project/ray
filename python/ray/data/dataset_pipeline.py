@@ -285,9 +285,11 @@ class DatasetPipeline(Generic[T]):
             # will fate-share with the coordinator anyway.
             resources["node:{}".format(ray.util.get_node_ip_address())] = 0.0001
 
+        ctx = DatasetContext.get_current()
+
         coordinator = PipelineSplitExecutorCoordinator.options(
             resources=resources,
-            placement_group=None,
+            scheduling_strategy=ctx.scheduling_strategy,
         ).remote(self, n, splitter, DatasetContext.get_current())
         if self._executed[0]:
             raise RuntimeError("Pipeline cannot be read multiple times.")
@@ -752,16 +754,21 @@ class DatasetPipeline(Generic[T]):
             self._optimized_stages = self._stages
             return
 
+        # This dummy dataset will be used to get a set of optimized stages.
         dummy_ds = Dataset(
             ExecutionPlan(BlockList([], []), DatasetStats(stages={}, parent=None)),
             0,
             True,
         )
+        # Apply all pipeline operations to the dummy dataset.
         for stage in self._stages:
             dummy_ds = stage(dummy_ds)
-        dummy_ds._plan._optimize()
+        # Get the optimized stages.
+        _, _, stages = dummy_ds._plan._optimize()
+        # Apply these optimized stages to the datasets underlying the pipeline.
+        # These optimized stages will be executed by the PipelineExecutor.
         optimized_stages = []
-        for stage in dummy_ds._plan._stages:
+        for stage in stages:
             optimized_stages.append(
                 lambda ds, stage=stage: Dataset(
                     ds._plan.with_stage(stage), ds._epoch, True

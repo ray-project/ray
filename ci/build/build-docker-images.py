@@ -178,7 +178,7 @@ def _build_docker_image(
         raise ValueError(
             f"The provided CUDA version {image_type} is not "
             f"recognized. CUDA version must be one of"
-            f" {image_type.keys()}"
+            f" {BASE_IMAGES.keys()}"
         )
 
     # TODO(https://github.com/ray-project/ray/issues/16599):
@@ -432,7 +432,10 @@ def push_and_tag_images(
         tag_mapping = defaultdict(list)
         for py_name in py_versions:
             for image_type in image_types:
-                if image_name == "ray-ml" and image_type != ML_CUDA_VERSION:
+                if image_name == "ray-ml" and image_type not in [
+                    ML_CUDA_VERSION,
+                    "cpu",
+                ]:
                     print(
                         "ML Docker image is not built for the following "
                         f"device type: {image_type}"
@@ -453,10 +456,9 @@ def push_and_tag_images(
 
         # If no device is specified, it should map to CPU image.
         # For ray-ml image, if no device specified, it should map to GPU image.
-        # There is no CPU image for ray-ml.
         # "-gpu" tag should refer to the ML_CUDA_VERSION
         for old_tag in tag_mapping.keys():
-            if "cpu" in old_tag:
+            if "cpu" in old_tag and image_name != "ray-ml":
                 new_tags = _create_new_tags(
                     tag_mapping[old_tag], old_str="-cpu", new_str=""
                 )
@@ -497,24 +499,33 @@ def push_and_tag_images(
             if DEFAULT_PYTHON_VERSION in old_tag:
                 if "-cpu" in old_tag:
                     assert "nightly-cpu" in tag_mapping[old_tag]
-                    assert "nightly" in tag_mapping[old_tag]
                     if "-deps" in image_name:
+                        assert "nightly" in tag_mapping[old_tag]
                         assert f"{date_tag}-cpu" in tag_mapping[old_tag]
                         assert f"{date_tag}" in tag_mapping[old_tag]
-                    else:
+                    elif image_name == "ray":
+                        assert "nightly" in tag_mapping[old_tag]
                         assert f"{sha_tag}-cpu" in tag_mapping[old_tag]
                         assert f"{sha_tag}" in tag_mapping[old_tag]
+                    # For ray-ml, nightly should refer to the GPU image.
+                    elif image_name == "ray-ml":
+                        assert f"{sha_tag}-cpu" in tag_mapping[old_tag]
+                    else:
+                        raise RuntimeError(f"Invalid image name: {image_name}")
 
                 elif ML_CUDA_VERSION in old_tag:
                     assert "nightly-gpu" in tag_mapping[old_tag]
                     if "-deps" in image_name:
                         assert f"{date_tag}-gpu" in tag_mapping[old_tag]
-                    else:
+                    elif image_name == "ray":
                         assert f"{sha_tag}-gpu" in tag_mapping[old_tag]
-
-                    if image_name == "ray-ml":
+                    # For ray-ml, nightly should refer to the GPU image.
+                    elif image_name == "ray-ml":
                         assert "nightly" in tag_mapping[old_tag]
                         assert f"{sha_tag}" in tag_mapping[old_tag]
+                        assert f"{sha_tag}-gpu" in tag_mapping[old_tag]
+                    else:
+                        raise RuntimeError(f"Invalid image name: {image_name}")
 
         print(f"These tags will be created for {image_name}: ", tag_mapping)
 
@@ -691,13 +702,17 @@ if __name__ == "__main__":
             # Build Ray Docker images.
             build_for_all_versions("ray", py_versions, image_types)
 
-            if ML_CUDA_VERSION in image_types:
-                # Build Ray ML Docker images only if ML_CUDA_VERSION is
-                # specified.
+            # Only build ML Docker images for ML_CUDA_VERSION or cpu.
+            ml_image_types = [
+                image_type
+                for image_type in image_types
+                if image_type in [ML_CUDA_VERSION, "cpu"]
+            ]
+
+            if len(ml_image_types) > 0:
                 prep_ray_ml()
-                # Only build ML Docker for the ML_CUDA_VERSION
                 build_for_all_versions(
-                    "ray-ml", py_versions, image_types=[ML_CUDA_VERSION]
+                    "ray-ml", py_versions, image_types=ml_image_types
                 )
 
             if build_type in {MERGE, PR}:

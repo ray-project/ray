@@ -791,6 +791,20 @@ def test_init_kwargs(serve_instance):
     check({"c": 10, "d": 11})
 
 
+def test_init_args_with_closure(serve_instance):
+    @serve.deployment
+    class Evaluator:
+        def __init__(self, func):
+            self.func = func
+
+        def __call__(self, inp):
+            return self.func(inp)
+
+    Evaluator.deploy(lambda a: a + 1)
+    handle = Evaluator.get_handle()
+    assert ray.get(handle.remote(41)) == 42
+
+
 def test_input_validation():
     name = "test"
 

@@ -29,27 +29,6 @@ logger = logging.getLogger(__name__)
 MAX_GCS_PUBLISH_RETRIES = 60
 
 
-def construct_error_message(job_id, error_type, message, timestamp):
-    """Construct an ErrorTableData object.
-
-    Args:
-        job_id: The ID of the job that the error should go to. If this is
-            nil, then the error will go to all drivers.
-        error_type: The type of the error.
-        message: The error message.
-        timestamp: The time of the error.
-
-    Returns:
-        The ErrorTableData object.
-    """
-    data = ErrorTableData()
-    data.job_id = job_id.binary()
-    data.type = error_type
-    data.error_message = message
-    data.timestamp = timestamp
-    return data
-
-
 class _PublisherBase:
     @staticmethod
     def _create_log_request(log_json: dict):

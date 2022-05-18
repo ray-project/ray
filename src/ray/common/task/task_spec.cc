@@ -319,6 +319,11 @@ bool TaskSpecification::IsActorTask() const {
   return message_->type() == TaskType::ACTOR_TASK;
 }
 
+bool TaskSpecification::IsSpreadSchedulingStrategy() const {
+  return message_->scheduling_strategy().scheduling_strategy_case() ==
+         rpc::SchedulingStrategy::SchedulingStrategyCase::kSpreadSchedulingStrategy;
+}
+
 // === Below are getter methods specific to actor creation tasks.
 
 ActorID TaskSpecification::ActorCreationId() const {

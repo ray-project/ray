@@ -188,6 +188,7 @@ message CheckAliveRequest {
 
 message CheckAliveReply {
   GcsStatus status = 1;
+  string ray_version = 2;
 }
 
 message GetInternalConfigRequest {

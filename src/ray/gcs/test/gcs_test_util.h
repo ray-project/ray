@@ -187,11 +187,14 @@ struct Mocker {
     return request;
   }
   static std::shared_ptr<rpc::GcsNodeInfo> GenNodeInfo(
-      uint16_t port = 0, const std::string address = "127.0.0.1") {
+      uint16_t port = 0,
+      const std::string address = "127.0.0.1",
+      const std::string node_name = "Mocker_node") {
     auto node = std::make_shared<rpc::GcsNodeInfo>();
     node->set_node_id(NodeID::FromRandom().Binary());
     node->set_node_manager_port(port);
     node->set_node_manager_address(address);
+    node->set_node_name(node_name);
     return node;
   }
 

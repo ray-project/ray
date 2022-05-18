@@ -111,8 +111,10 @@ def test_invalid_task_options(shared_ray_instance):
 
     # Ensure current DAG is executable
     assert ray.get(dag.execute()) == 4
-    invalid_dag = b.options(num_cpus=-1).bind(a_ref)
-    with pytest.raises(ValueError, match=".*Resource quantities may not be negative.*"):
+    with pytest.raises(
+        ValueError, match=r".*only accepts None, 0 or a positive number.*"
+    ):
+        invalid_dag = b.options(num_cpus=-1).bind(a_ref)
         ray.get(invalid_dag.execute())
 
 
@@ -127,14 +129,14 @@ def test_node_accessors(shared_ray_instance):
     node = a.bind(1, tmp1, x=tmp2, y={"foo": tmp3})
     assert node.get_args() == (1, tmp1)
     assert node.get_kwargs() == {"x": tmp2, "y": {"foo": tmp3}}
-    assert node._get_toplevel_child_nodes() == {tmp1, tmp2}
-    assert node._get_all_child_nodes() == {tmp1, tmp2, tmp3}
+    assert node._get_toplevel_child_nodes() == [tmp1, tmp2]
+    assert node._get_all_child_nodes() == [tmp1, tmp2, tmp3]
 
     tmp4 = a.bind()
     tmp5 = a.bind()
     replace = {tmp1: tmp4, tmp2: tmp4, tmp3: tmp5}
     n2 = node._apply_and_replace_all_child_nodes(lambda x: replace[x])
-    assert n2._get_all_child_nodes() == {tmp4, tmp5}
+    assert n2._get_all_child_nodes() == [tmp4, tmp5]
 
 
 def test_nested_args(shared_ray_instance):
@@ -168,6 +170,43 @@ def test_nested_args(shared_ray_instance):
 
     assert ray.get(dag.execute()) == 7
     assert ray.get(ct.get.remote()) == 4
+
+
+def test_dag_options(shared_ray_instance):
+    @ray.remote(num_gpus=100)
+    def foo():
+        pass
+
+    assert foo.bind().get_options() == {"num_gpus": 100}
+    assert foo.options(num_gpus=300).bind().get_options() == {"num_gpus": 300}
+    assert foo.options(num_cpus=500).bind().get_options() == {
+        "num_gpus": 100,
+        "num_cpus": 500,
+    }
+
+    @ray.remote
+    def bar():
+        pass
+
+    assert bar.bind().get_options() == {}
+    assert bar.options(num_gpus=100).bind().get_options() == {"num_gpus": 100}
+
+    @ray.remote(num_gpus=100)
+    class Foo:
+        pass
+
+    assert Foo.bind().get_options() == {"num_gpus": 100}
+    assert Foo.options(num_gpus=300).bind().get_options() == {"num_gpus": 300}
+    assert Foo.options(num_cpus=500).bind().get_options() == {
+        "num_gpus": 100,
+        "num_cpus": 500,
+    }
+
+    @ray.remote
+    class Bar:
+        pass
+
+    assert Bar.bind().get_options() == {}
 
 
 if __name__ == "__main__":

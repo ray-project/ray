@@ -43,7 +43,7 @@ class NumpyDatasource(FileBasedDatasource):
         block: BlockAccessor,
         column: str,
         writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
-        **writer_args
+        **writer_args,
     ):
         value = block.to_numpy(column)
         np.save(f, value)

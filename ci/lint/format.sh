@@ -9,20 +9,6 @@ FLAKE8_VERSION_REQUIRED="3.9.1"
 BLACK_VERSION_REQUIRED="21.12b0"
 SHELLCHECK_VERSION_REQUIRED="0.7.1"
 MYPY_VERSION_REQUIRED="0.782"
-BANNED_WORDS="RLLib Rllib"
-
-check_banned_words() {
-    echo "Checking for common mis-spellings..."
-    for word in $BANNED_WORDS; do
-        if grep -C2 -R --include="*.py" --include="*.rst" "$word" .; then
-            echo "******************************"
-            echo "*** Misspelled word found! ***"
-            echo "******************************"
-            echo "Please fix the capitalization/spelling of \"$word\" in the above files."
-            exit 1
-        fi
-    done
-}
 
 check_python_command_exist() {
     VERSION=""
@@ -49,7 +35,6 @@ check_python_command_exist() {
 check_python_command_exist black
 check_python_command_exist flake8
 check_python_command_exist mypy
-check_banned_words
 
 # this stops git rev-parse from failing if we run this from the .git directory
 builtin cd "$(dirname "${BASH_SOURCE:-$0}")"
@@ -57,8 +42,17 @@ builtin cd "$(dirname "${BASH_SOURCE:-$0}")"
 ROOT="$(git rev-parse --show-toplevel)"
 builtin cd "$ROOT" || exit 1
 
+# NOTE(edoakes): black version differs based on installation method:
+#   Option 1) 'black, 21.12b0 (compiled: no)'
+#   Option 2) 'black, version 21.12b0'
+BLACK_VERSION_STR=$(black --version)
+if [[ "$BLACK_VERSION_STR" == *"compiled"* ]]
+then
+    BLACK_VERSION=$(echo "$BLACK_VERSION_STR" | awk '{print $2}')
+else
+    BLACK_VERSION=$(echo "$BLACK_VERSION_STR" | awk '{print $3}')
+fi
 FLAKE8_VERSION=$(flake8 --version | head -n 1 | awk '{print $1}')
-BLACK_VERSION=$(black --version | awk '{print $2}')
 MYPY_VERSION=$(mypy --version | awk '{print $2}')
 GOOGLE_JAVA_FORMAT_JAR=/tmp/google-java-format-1.7-all-deps.jar
 
@@ -130,11 +124,11 @@ MYPY_FILES=(
 )
 
 BLACK_EXCLUDES=(
-    '--extend-exclude' 'python/ray/cloudpickle/*'
-    '--extend-exclude' 'python/build/*'
-    '--extend-exclude' 'python/ray/core/src/ray/gcs/*'
-    '--extend-exclude' 'python/ray/thirdparty_files/*'
-    '--extend-exclude' 'python/ray/_private/thirdparty/*'
+    '--force-exclude' 'python/ray/cloudpickle/*'
+    '--force-exclude' 'python/build/*'
+    '--force-exclude' 'python/ray/core/src/ray/gcs/*'
+    '--force-exclude' 'python/ray/thirdparty_files/*'
+    '--force-exclude' 'python/ray/_private/thirdparty/*'
 )
 
 GIT_LS_EXCLUDES=(

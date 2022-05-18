@@ -64,9 +64,9 @@ message ClientTask {
   string name = 2;
   // A reference to the payload.
   bytes payload_id = 3;
-  // Positional parameters to pass to this call.
+  // Positional parameters to pass to this call. Deprecated in favor of data field
   repeated Arg args = 4;
-  // Keyword parameters to pass to this call.
+  // Keyword parameters to pass to this call. Deprecated in favor of data field
   map<string, Arg> kwargs = 5;
   // The ID of the client namespace associated with the Datapath stream
   // making this request.
@@ -77,6 +77,13 @@ message ClientTask {
   TaskOptions baseline_options = 8;
   // A namespace parameter.
   string namespace = 9;
+  // Serialized args and kwargs. Under the hood this should just be a pickled
+  // tuple containing (args, kwargs).
+  bytes data = 10;
+  // Identifies which chunk the serialized args and kwargs belong to
+  int32 chunk_id = 11;
+  // Total number of chunks
+  int32 total_chunks = 12;
 }
 
 message ClientTaskTicket {
@@ -243,7 +250,8 @@ message KVGetRequest {
 }
 
 message KVGetResponse {
-  bytes value = 1;
+  // Not set when key does not exist.
+  optional bytes value = 1;
 }
 
 message KVPutRequest {

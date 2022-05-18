@@ -47,7 +47,7 @@ class SchedulerResourceReporter {
   ///                                     resources have been changed.
   void FillResourceUsage(
       rpc::ResourcesData &data,
-      const std::shared_ptr<SchedulingResources> &last_reported_resources) const;
+      const std::shared_ptr<NodeResources> &last_reported_resources) const;
 
   /// Populate the list of pending or infeasible actor tasks for node stats.
   ///

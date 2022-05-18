@@ -119,9 +119,9 @@ TEST_F(SchedulingPolicyTest, NodeAffinityPolicyTest) {
 TEST_F(SchedulingPolicyTest, SpreadPolicyTest) {
   ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}}, false);
 
-  nodes.emplace(local_node, CreateNodeResources(20, 20, 0, 0, 0, 0));
+  nodes.emplace(local_node, CreateNodeResources(20, 20, 0, 0, 0, 1));
   // Unavailable node
-  nodes.emplace(remote_node, CreateNodeResources(0, 20, 0, 0, 0, 0));
+  nodes.emplace(remote_node, CreateNodeResources(0, 20, 0, 0, 0, 1));
   // Infeasible node
   nodes.emplace(remote_node_2, CreateNodeResources(0, 0, 0, 0, 0, 0));
   nodes.emplace(remote_node_3, CreateNodeResources(20, 20, 0, 0, 0, 0));
@@ -137,8 +137,20 @@ TEST_F(SchedulingPolicyTest, SpreadPolicyTest) {
   ASSERT_EQ(to_schedule, remote_node_3);
 
   to_schedule = scheduling_policy.Schedule(
-      req, SchedulingOptions::Spread(/*force_spillback=*/true, false));
+      req, SchedulingOptions::Spread(/*avoid_local_node=*/true, false));
   ASSERT_EQ(to_schedule, remote_node_3);
+
+  // Spread across feasible nodes if there is no available nodes
+  req = ResourceMapToResourceRequest({{"GPU", 1}}, false);
+  to_schedule = scheduling_policy.Schedule(req, SchedulingOptions::Spread(false, false));
+  ASSERT_EQ(to_schedule, local_node);
+
+  to_schedule = scheduling_policy.Schedule(req, SchedulingOptions::Spread(false, false));
+  ASSERT_EQ(to_schedule, remote_node);
+
+  to_schedule = scheduling_policy.Schedule(
+      req, SchedulingOptions::Spread(false, /*require_node_available=*/true));
+  ASSERT_TRUE(to_schedule.IsNil());
 }
 
 TEST_F(SchedulingPolicyTest, RandomPolicyTest) {

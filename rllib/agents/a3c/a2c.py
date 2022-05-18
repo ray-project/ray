@@ -1,29 +1,19 @@
 import logging
 import math
+from typing import Optional
 
-from ray.rllib.agents.a3c.a3c import DEFAULT_CONFIG as A3C_CONFIG, A3CTrainer
+from ray.rllib.agents.a3c.a3c import A3CConfig, A3CTrainer
 from ray.rllib.agents.trainer import Trainer
-from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import (
     STEPS_TRAINED_COUNTER,
     STEPS_TRAINED_THIS_ITER_COUNTER,
 )
-from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.rollout_ops import (
-    ParallelRollouts,
-    ConcatBatches,
     synchronous_parallel_sample,
 )
-from ray.rllib.execution.train_ops import (
-    ComputeGradients,
-    AverageGradients,
-    ApplyGradients,
-    MultiGPUTrainOneStep,
-    TrainOneStep,
-)
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics import (
     APPLY_GRADS_TIMER,
     COMPUTE_GRADS_TIMER,
@@ -36,30 +26,89 @@ from ray.rllib.utils.typing import (
     ResultDict,
     TrainerConfigDict,
 )
-from ray.util.iter import LocalIterator
 
 logger = logging.getLogger(__name__)
 
-A2C_DEFAULT_CONFIG = merge_dicts(
-    A3C_CONFIG,
-    {
-        "rollout_fragment_length": 20,
-        "min_time_s_per_reporting": 10,
-        "sample_async": False,
-        # A2C supports microbatching, in which we accumulate gradients over
-        # batch of this size until the train batch size is reached. This allows
-        # training with batch sizes much larger than can fit in GPU memory.
-        # To enable, set this to a value less than the train batch size.
-        "microbatch_size": None,
-    },
-)
+
+class A2CConfig(A3CConfig):
+    """Defines a A2CTrainer configuration class from which a new Trainer can be built.
+
+    Example:
+        >>> from ray import tune
+        >>> config = A2CConfig().training(lr=0.01, grad_clip=30.0)\
+        ...     .resources(num_gpus=0)\
+        ...     .rollouts(num_rollout_workers=2)
+        >>> print(config.to_dict())
+        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> trainer = config.build(env="CartPole-v1")
+        >>> trainer.train()
+
+    Example:
+        >>> config = A2CConfig()
+        >>> # Print out some default values.
+        >>> print(config.sample_async)
+        >>> # Update the config object.
+        >>> config.training(lr=tune.grid_search([0.001, 0.0001]), use_critic=False)
+        >>> # Set the config object's env.
+        >>> config.environment(env="CartPole-v1")
+        >>> # Use to_dict() to get the old-style python config dict
+        >>> # when running with tune.
+        >>> tune.run(
+        ...     "A2C",
+        ...     stop={"episode_reward_mean": 200},
+        ...     config=config.to_dict(),
+        ... )
+    """
+
+    def __init__(self):
+        """Initializes a A2CConfig instance."""
+        super().__init__(trainer_class=A2CTrainer)
+
+        # fmt: off
+        # __sphinx_doc_begin__
+
+        # A2C specific settings:
+        self.microbatch_size = None
+
+        # Override some of A3CConfig's default values with A2C-specific values.
+        self.rollout_fragment_length = 20
+        self.sample_async = False
+        self.min_time_s_per_reporting = 10
+        # __sphinx_doc_end__
+        # fmt: on
+
+    @override(A3CConfig)
+    def training(
+        self,
+        *,
+        microbatch_size: Optional[int] = None,
+        **kwargs,
+    ) -> "A2CConfig":
+        """Sets the training related configuration.
+
+        Args:
+            microbatch_size: A2C supports microbatching, in which we accumulate
+                gradients over batch of this size until the train batch size is reached.
+                This allows training with batch sizes much larger than can fit in GPU
+                memory. To enable, set this to a value less than the train batch size.
+
+        Returns:
+            This updated TrainerConfig object.
+        """
+        # Pass kwargs onto super's `training()` method.
+        super().training(**kwargs)
+
+        if microbatch_size is not None:
+            self.microbatch_size = microbatch_size
+
+        return self
 
 
 class A2CTrainer(A3CTrainer):
     @classmethod
     @override(A3CTrainer)
     def get_default_config(cls) -> TrainerConfigDict:
-        return A2C_DEFAULT_CONFIG
+        return A2CConfig().to_dict()
 
     @override(A3CTrainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
@@ -167,56 +216,19 @@ class A2CTrainer(A3CTrainer):
 
         return train_results
 
-    @staticmethod
-    @override(Trainer)
-    def execution_plan(
-        workers: WorkerSet, config: TrainerConfigDict, **kwargs
-    ) -> LocalIterator[dict]:
-        assert (
-            len(kwargs) == 0
-        ), "A2C execution_plan does NOT take any additional parameters"
 
-        rollouts = ParallelRollouts(workers, mode="bulk_sync")
+# Deprecated: Use ray.rllib.agents.a3c.A2CConfig instead!
+class _deprecated_default_config(dict):
+    def __init__(self):
+        super().__init__(A2CConfig().to_dict())
 
-        if config["microbatch_size"]:
-            num_microbatches = math.ceil(
-                config["train_batch_size"] / config["microbatch_size"]
-            )
-            # In microbatch mode, we want to compute gradients on experience
-            # microbatches, average a number of these microbatches, and then
-            # apply the averaged gradient in one SGD step. This conserves GPU
-            # memory, allowing for extremely large experience batches to be
-            # used.
-            train_op = (
-                rollouts.combine(
-                    ConcatBatches(
-                        min_batch_size=config["microbatch_size"],
-                        count_steps_by=config["multiagent"]["count_steps_by"],
-                    )
-                )
-                .for_each(ComputeGradients(workers))  # (grads, info)
-                .batch(num_microbatches)  # List[(grads, info)]
-                .for_each(AverageGradients())  # (avg_grads, info)
-                .for_each(ApplyGradients(workers))
-            )
-        else:
-            # In normal mode, we execute one SGD step per each train batch.
-            if config["simple_optimizer"]:
-                train_step_op = TrainOneStep(workers)
-            else:
-                train_step_op = MultiGPUTrainOneStep(
-                    workers=workers,
-                    sgd_minibatch_size=config["train_batch_size"],
-                    num_sgd_iter=1,
-                    num_gpus=config["num_gpus"],
-                    _fake_gpus=config["_fake_gpus"],
-                )
+    @Deprecated(
+        old="ray.rllib.agents.a3c.a2c.A2C_DEFAULT_CONFIG",
+        new="ray.rllib.agents.a3c.a2c.A2CConfig(...)",
+        error=False,
+    )
+    def __getitem__(self, item):
+        return super().__getitem__(item)
 
-            train_op = rollouts.combine(
-                ConcatBatches(
-                    min_batch_size=config["train_batch_size"],
-                    count_steps_by=config["multiagent"]["count_steps_by"],
-                )
-            ).for_each(train_step_op)
 
-        return StandardMetricsReporting(train_op, workers, config)
+A2C_DEFAULT_CONFIG = _deprecated_default_config()

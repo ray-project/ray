@@ -83,11 +83,6 @@ def _configure_system():
     )
     sys.path.insert(0, thirdparty_files)
 
-    if sys.platform == "win32":
-        import ray._private.compat  # noqa: E402
-
-        ray._private.compat.patch_redis_empty_recv()
-
     if (
         platform.system() == "Linux"
         and "Microsoft".lower() in platform.release().lower()
@@ -115,7 +110,7 @@ del _configure_system
 
 # Replaced with the current commit when building the wheels.
 __commit__ = "{{RAY_COMMIT_SHA}}"
-__version__ = "2.0.0.dev0"
+__version__ = "3.0.0.dev0"
 
 import ray._raylet  # noqa: E402
 

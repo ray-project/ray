@@ -418,7 +418,7 @@ cdef prepare_args_internal(
                     "Could not serialize the argument "
                     f"{repr(arg)} for a task or actor "
                     f"{function_descriptor.repr}. Check "
-                    "https://docs.ray.io/en/master/serialization.html#troubleshooting " # noqa
+                    "https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting " # noqa
                     "for more information.")
                 raise TypeError(msg) from e
             metadata = serialized_arg.metadata
@@ -615,7 +615,7 @@ cdef execute_task(
 
             return function(actor, *arguments, **kwarguments)
 
-    with core_worker.profile_event(b"task", extra_data=extra_data):
+    with core_worker.profile_event(b"task::" + name, extra_data=extra_data):
         try:
             task_exception = False
             if not (<int>task_type == <int>TASK_TYPE_ACTOR_TASK

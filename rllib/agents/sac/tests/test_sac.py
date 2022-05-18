@@ -1,5 +1,6 @@
 from gym import Env
 from gym.spaces import Box, Dict, Discrete, Tuple
+from gym.envs.registration import EnvSpec
 import numpy as np
 import re
 import unittest
@@ -16,7 +17,6 @@ from ray.rllib.examples.models.batch_norm_model import (
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.tf.tf_action_dist import Dirichlet
 from ray.rllib.models.torch.torch_action_dist import TorchDirichlet
-from ray.rllib.execution.buffers.multi_agent_replay_buffer import MultiAgentReplayBuffer
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import fc, huber_loss, relu
@@ -29,6 +29,7 @@ from ray.rllib.utils.test_utils import (
 )
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray import tune
+from ray.rllib.utils.replay_buffers.utils import patch_buffer_with_fake_sampling_method
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -78,8 +79,7 @@ class TestSAC(unittest.TestCase):
         config["num_workers"] = 0  # Run locally.
         config["n_step"] = 3
         config["twin_q"] = True
-        config["learning_starts"] = 0
-        config["prioritized_replay"] = True
+        config["replay_buffer_config"]["learning_starts"] = 0
         config["rollout_fragment_length"] = 10
         config["train_batch_size"] = 10
         # If we use default buffer size (1e6), the buffer will take up
@@ -171,7 +171,7 @@ class TestSAC(unittest.TestCase):
         # Run locally.
         config["seed"] = 42
         config["num_workers"] = 0
-        config["learning_starts"] = 0
+        config["replay_buffer_config"]["learning_starts"] = 0
         config["twin_q"] = False
         config["gamma"] = 0.99
         # Switch on deterministic loss so we can compare the loss values.
@@ -434,8 +434,8 @@ class TestSAC(unittest.TestCase):
                     tf_inputs.append(in_)
                     # Set a fake-batch to use
                     # (instead of sampling from replay buffer).
-                    buf = MultiAgentReplayBuffer.get_instance_for_testing()
-                    buf._fake_batch = in_
+                    buf = trainer.local_replay_buffer
+                    patch_buffer_with_fake_sampling_method(buf, in_)
                     trainer.train()
                     updated_weights = policy.get_weights()
                     # Net must have changed.
@@ -453,8 +453,8 @@ class TestSAC(unittest.TestCase):
                     in_ = tf_inputs[update_iteration]
                     # Set a fake-batch to use
                     # (instead of sampling from replay buffer).
-                    buf = MultiAgentReplayBuffer.get_instance_for_testing()
-                    buf._fake_batch = in_
+                    buf = trainer.local_replay_buffer
+                    patch_buffer_with_fake_sampling_method(buf, in_)
                     trainer.train()
                     # Compare updated model.
                     for tf_key in sorted(tf_weights.keys()):
@@ -490,6 +490,55 @@ class TestSAC(unittest.TestCase):
                             check(tf_var, torch_var, atol=0.003)
             trainer.stop()
 
+    def test_sac_dict_obs_order(self):
+        dict_space = Dict(
+            {
+                "img": Box(low=0, high=1, shape=(42, 42, 3)),
+                "cont": Box(low=0, high=100, shape=(3,)),
+            }
+        )
+
+        # Dict space .sample() returns an ordered dict.
+        # Make sure the keys in samples are ordered differently.
+        dict_samples = [
+            {k: v for k, v in reversed(dict_space.sample().items())} for _ in range(10)
+        ]
+
+        class NestedDictEnv(Env):
+            def __init__(self):
+                self.action_space = Box(low=-1.0, high=1.0, shape=(2,))
+                self.observation_space = dict_space
+                self._spec = EnvSpec("NestedDictEnv-v0")
+                self.steps = 0
+
+            def reset(self):
+                self.steps = 0
+                return dict_samples[0]
+
+            def step(self, action):
+                self.steps += 1
+                return dict_samples[self.steps], 1, self.steps >= 5, {}
+
+        tune.register_env("nested", lambda _: NestedDictEnv())
+
+        config = sac.DEFAULT_CONFIG.copy()
+        config["num_workers"] = 0  # Run locally.
+        config["replay_buffer_config"]["learning_starts"] = 0
+        config["rollout_fragment_length"] = 5
+        config["train_batch_size"] = 5
+        config["replay_buffer_config"]["capacity"] = 10
+        # Disable preprocessors.
+        config["_disable_preprocessor_api"] = True
+        num_iterations = 1
+
+        for _ in framework_iterator(config, with_eager_tracing=True):
+            trainer = sac.SACTrainer(env="nested", config=config)
+            for _ in range(num_iterations):
+                results = trainer.train()
+                check_train_results(results)
+                print(results)
+            check_compute_single_action(trainer)
+
     def _get_batch_helper(self, obs_size, actions, batch_size):
         return SampleBatch(
             {
@@ -499,6 +548,7 @@ class TestSAC(unittest.TestCase):
                 SampleBatch.DONES: np.random.choice([True, False], size=(batch_size,)),
                 SampleBatch.NEXT_OBS: np.random.random(size=obs_size),
                 "weights": np.random.random(size=(batch_size,)),
+                "batch_indexes": [0] * batch_size,
             }
         )
 

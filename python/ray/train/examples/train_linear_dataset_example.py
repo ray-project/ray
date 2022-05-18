@@ -20,10 +20,8 @@ def get_datasets(a=5, b=10, size=1000, split=0.8) -> Dict[str, DatasetPipeline]:
 
     dataset = get_dataset(a, b, size)
 
-    split_index = int(dataset.count() * split)
-
-    train_dataset, validation_dataset = dataset.random_shuffle().split_at_indices(
-        [split_index]
+    train_dataset, validation_dataset = dataset.random_shuffle().split_proportionately(
+        [split]
     )
 
     train_dataset_pipeline = train_dataset.repeat().random_shuffle_each_window()

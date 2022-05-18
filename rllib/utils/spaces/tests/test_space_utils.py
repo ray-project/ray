@@ -4,7 +4,11 @@ import unittest
 
 import numpy as np
 from gym.spaces import Box, Discrete, MultiDiscrete, MultiBinary, Tuple, Dict
-from ray.rllib.utils.spaces.space_utils import convert_element_to_space_type
+from ray.rllib.utils.spaces.space_utils import (
+    convert_element_to_space_type,
+    get_base_struct_from_space,
+    unsquash_action,
+)
 
 
 class TestSpaceUtils(unittest.TestCase):
@@ -50,6 +54,20 @@ class TestSpaceUtils(unittest.TestCase):
             modified_element, dict_space.sample()
         )
         assert dict_space.contains(element_with_correct_types)
+
+    def test_unsquash_action(self):
+        """Test to make sure unsquash_action works for both float and int Box spaces."""
+        space = Box(low=3, high=8, shape=(2,), dtype=np.float32)
+        struct = get_base_struct_from_space(space)
+        action = unsquash_action(0.5, struct)
+        self.assertEqual(action[0], 6.75)
+        self.assertEqual(action[1], 6.75)
+
+        space = Box(low=3, high=8, shape=(2,), dtype=np.int32)
+        struct = get_base_struct_from_space(space)
+        action = unsquash_action(3, struct)
+        self.assertEqual(action[0], 6)
+        self.assertEqual(action[1], 6)
 
 
 if __name__ == "__main__":

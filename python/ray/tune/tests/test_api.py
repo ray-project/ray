@@ -28,7 +28,7 @@ from ray.tune import (
 from ray.tune.callback import Callback
 from ray.tune.experiment import Experiment
 from ray.tune.function_runner import wrap_function
-from ray.tune.logger import Logger
+from ray.tune.logger import Logger, LegacyLoggerCallback
 from ray.tune.ray_trial_executor import noop_logger_creator
 from ray.tune.resources import Resources
 from ray.tune.result import (
@@ -59,7 +59,7 @@ from ray.tune.suggest.suggestion import ConcurrencyLimiter
 from ray.tune.sync_client import CommandBasedClient
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
-from ray.tune.utils import flatten_dict, get_pinned_object, pin_in_object_store
+from ray.tune.utils import flatten_dict
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 
 
@@ -122,14 +122,14 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         [trial1] = run(
             _function_trainable,
-            loggers=[FunctionAPILogger],
+            callbacks=[LegacyLoggerCallback([FunctionAPILogger])],
             raise_on_failed_trial=False,
             scheduler=MockScheduler(),
         ).trials
 
         [trial2] = run(
             class_trainable_name,
-            loggers=[ClassAPILogger],
+            callbacks=[LegacyLoggerCallback([ClassAPILogger])],
             raise_on_failed_trial=False,
             scheduler=MockScheduler(),
         ).trials
@@ -179,33 +179,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
         )
 
         return function_output, trials
-
-    def testPinObject(self):
-        X = pin_in_object_store("hello")
-
-        @ray.remote
-        def f():
-            return get_pinned_object(X)
-
-        self.assertEqual(ray.get(f.remote()), "hello")
-
-    def testFetchPinned(self):
-        X = pin_in_object_store("hello")
-
-        def train(config, reporter):
-            get_pinned_object(X)
-            reporter(timesteps_total=100, done=True)
-
-        register_trainable("f1", train)
-        [trial] = run_experiments(
-            {
-                "foo": {
-                    "run": "f1",
-                }
-            }
-        )
-        self.assertEqual(trial.status, Trial.TERMINATED)
-        self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 100)
 
     def testRegisterEnv(self):
         register_env("foo", lambda: None)
@@ -756,7 +729,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
             },
             verbose=1,
             local_dir=tmpdir,
-            loggers=None,
         )
         trials = tune.run(test, raise_on_failed_trial=False, **config).trials
         self.assertEqual(Counter(t.status for t in trials)["ERROR"], 5)

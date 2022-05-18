@@ -1,4 +1,7 @@
+from pathlib import Path
 import urllib
+import urllib.request
+import requests
 import mock
 import sys
 from preprocess_github_markdown import preprocess_github_markdown_file
@@ -9,7 +12,7 @@ import scipy.linalg  # noqa: F401
 
 __all__ = [
     "fix_xgb_lgbm_docs",
-    "download_and_preprocess_ecosystem_docs",
+    "DownloadAndPreprocessEcosystemDocs",
     "mock_modules",
     "update_context",
 ]
@@ -89,9 +92,10 @@ def update_context(app, pagename, templatename, context, doctree):
 MOCK_MODULES = [
     "ax",
     "ax.service.ax_client",
-    "blist",
     "ConfigSpace",
     "dask.distributed",
+    "datasets",
+    "datasets.iterable_dataset",
     "gym",
     "gym.spaces",
     "horovod",
@@ -129,6 +133,18 @@ MOCK_MODULES = [
     "tensorflow",
     "tensorflow.contrib",
     "tensorflow.contrib.all_reduce",
+    "transformers",
+    "transformers.modeling_utils",
+    "transformers.models",
+    "transformers.models.auto",
+    "transformers.pipelines",
+    "transformers.pipelines.table_question_answering",
+    "transformers.trainer",
+    "transformers.training_args",
+    "transformers.trainer_callback",
+    "transformers.utils",
+    "transformers.utils.logging",
+    "transformers.utils.versions",
     "tree",
     "tensorflow.contrib.all_reduce.python",
     "tensorflow.contrib.layers",
@@ -173,9 +189,9 @@ EXTERNAL_MARKDOWN_FILES = [
 ]
 
 
-def download_and_preprocess_ecosystem_docs():
+class DownloadAndPreprocessEcosystemDocs:
     """
-    This function downloads markdown readme files for various
+    This class downloads markdown readme files for various
     ecosystem libraries, saves them in specified locations and preprocesses
     them before sphinx build starts.
 
@@ -184,25 +200,51 @@ def download_and_preprocess_ecosystem_docs():
     without the need for duplicate files. For more details, see ``doc/README.md``.
     """
 
-    import urllib.request
-    import requests
+    def __init__(self, base_path: str) -> None:
+        self.base_path = Path(base_path).absolute()
+        assert self.base_path.is_dir()
+        self.original_docs = {}
 
+    @staticmethod
     def get_latest_release_tag(repo: str) -> str:
         """repo is just the repo name, eg. ray-project/ray"""
         response = requests.get(f"https://api.github.com/repos/{repo}/releases/latest")
         return response.json()["tag_name"]
 
+    @staticmethod
     def get_file_from_github(
-        repo: str, ref: str, path_to_get: str, path_to_save_on_disk: str
+        repo: str, ref: str, path_to_get_from_repo: str, path_to_save_on_disk: str
     ) -> None:
         """If ``ref == "latest"``, use latest release"""
         if ref == "latest":
-            ref = get_latest_release_tag(repo)
+            ref = DownloadAndPreprocessEcosystemDocs.get_latest_release_tag(repo)
         urllib.request.urlretrieve(
-            f"https://raw.githubusercontent.com/{repo}/{ref}/{path_to_get}",
+            f"https://raw.githubusercontent.com/{repo}/{ref}/{path_to_get_from_repo}",
             path_to_save_on_disk,
         )
 
-    for x in EXTERNAL_MARKDOWN_FILES:
-        get_file_from_github(*x)
-        preprocess_github_markdown_file(x[-1])
+    def save_original_doc(self, path: str):
+        with open(path, "r") as f:
+            self.original_docs[path] = f.read()
+
+    def write_new_docs(self, *args, **kwargs):
+        for (
+            repo,
+            ref,
+            path_to_get_from_repo,
+            path_to_save_on_disk,
+        ) in EXTERNAL_MARKDOWN_FILES:
+            path_to_save_on_disk = self.base_path.joinpath(path_to_save_on_disk)
+            self.save_original_doc(path_to_save_on_disk)
+            self.get_file_from_github(
+                repo, ref, path_to_get_from_repo, path_to_save_on_disk
+            )
+            preprocess_github_markdown_file(path_to_save_on_disk)
+
+    def write_original_docs(self, *args, **kwargs):
+        for path, content in self.original_docs.items():
+            with open(path, "w") as f:
+                f.write(content)
+
+    def __call__(self):
+        self.write_new_docs()

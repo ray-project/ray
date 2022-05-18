@@ -9,11 +9,9 @@ from ray.tune.syncer import SyncConfig, detect_cluster_syncer
 from ray.tune.logger import (
     CSVLoggerCallback,
     CSVLogger,
-    LoggerCallback,
     JsonLoggerCallback,
     JsonLogger,
     LegacyLoggerCallback,
-    Logger,
     TBXLoggerCallback,
     TBXLogger,
 )
@@ -25,7 +23,6 @@ logger = logging.getLogger(__name__)
 def create_default_callbacks(
     callbacks: Optional[List[Callback]],
     sync_config: SyncConfig,
-    loggers: Optional[List[Logger]],
     metric: Optional[str] = None,
 ):
     """Create default callbacks for `tune.run()`.
@@ -68,23 +65,6 @@ def create_default_callbacks(
     # Track syncer obj/index to move callback after loggers
     last_logger_index = None
     syncer_index = None
-
-    # Deprecate: 1.9
-    # Create LegacyLoggerCallback for passed Logger classes
-    if loggers:
-        add_loggers = []
-        for trial_logger in loggers:
-            if isinstance(trial_logger, LoggerCallback):
-                callbacks.append(trial_logger)
-            elif isinstance(trial_logger, type) and issubclass(trial_logger, Logger):
-                add_loggers.append(trial_logger)
-            else:
-                raise ValueError(
-                    f"Invalid value passed to `loggers` argument of "
-                    f"`tune.run()`: {trial_logger}"
-                )
-        if add_loggers:
-            callbacks.append(LegacyLoggerCallback(add_loggers))
 
     # Check if we have a CSV, JSON and TensorboardX logger
     for i, callback in enumerate(callbacks):
@@ -147,12 +127,7 @@ def create_default_callbacks(
         and last_logger_index is not None
         and syncer_index < last_logger_index
     ):
-        if (
-            not has_csv_logger or not has_json_logger or not has_tbx_logger
-        ) and not loggers:
-            # Only raise the warning if the loggers were passed by the user.
-            # (I.e. don't warn if this was automatic behavior and they only
-            # passed a customer SyncerCallback).
+        if not has_csv_logger or not has_json_logger or not has_tbx_logger:
             raise ValueError(
                 "The `SyncerCallback` you passed to `tune.run()` came before "
                 "at least one `LoggerCallback`. Syncing should be done "

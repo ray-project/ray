@@ -34,9 +34,13 @@ class BlockList:
         """Erase references to the tasks tracked by the BlockList."""
         self._blocks = None
 
+    def is_cleared(self) -> bool:
+        """Whether this BlockList has been cleared."""
+        return self._blocks is None
+
     def _check_if_cleared(self) -> None:
         """Raise an error if this BlockList has been previously cleared."""
-        if self._blocks is None:
+        if self.is_cleared():
             raise ValueError(
                 "This Dataset's blocks have been moved, which means that you "
                 "can no longer use this Dataset."

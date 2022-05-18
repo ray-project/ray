@@ -379,6 +379,32 @@ def test_ray_init_using_hostname(ray_start_cluster):
     assert node_table[0].get("NodeManagerHostname", "") == hostname
 
 
+def test_redis_connect_backoff():
+    from ray import ray_constants
+    import time
+
+    unreachable_address = "127.0.0.1:65535"
+    redis_ip, redis_port = unreachable_address.split(":")
+    wait_retries = ray_constants.START_REDIS_WAIT_RETRIES
+    ray_constants.START_REDIS_WAIT_RETRIES = 12
+    try:
+        start = time.time()
+        with pytest.raises(RuntimeError):
+            ray._private.services.wait_for_redis_to_start(redis_ip, int(redis_port))
+        end = time.time()
+        duration = end - start
+        assert duration > 2
+
+        start = time.time()
+        with pytest.raises(RuntimeError):
+            ray._private.services.create_redis_client(redis_address=unreachable_address)
+        end = time.time()
+        duration = end - start
+        assert duration > 2
+    finally:
+        ray_constants.START_REDIS_WAIT_RETRIES = wait_retries
+
+
 if __name__ == "__main__":
     import pytest
     import sys

@@ -360,6 +360,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   bool ExecuteOutOfOrder() const;
 
+  bool IsSpreadSchedulingStrategy() const;
+
  private:
   void ComputeResources();
 

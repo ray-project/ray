@@ -35,7 +35,7 @@ class HTTPState:
         _start_proxies_on_init: bool = True,
     ):
         self._controller_name = controller_name
-        self._controller_namespace = ray.serve.api._get_controller_namespace(
+        self._controller_namespace = ray.serve.client.get_controller_namespace(
             detached, _override_controller_namespace=_override_controller_namespace
         )
         self._detached = detached

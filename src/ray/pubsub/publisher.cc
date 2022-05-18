@@ -22,7 +22,18 @@ namespace pubsub {
 
 namespace pub_internal {
 
-bool EntityState::Publish(const rpc::PubMessage &pub_message) {
+bool BasicEntityState::Publish(const rpc::PubMessage &pub_message) {
+  if (subscribers_.empty()) {
+    return false;
+  }
+  const auto msg = std::make_shared<rpc::PubMessage>(pub_message);
+  for (auto &[id, subscriber] : subscribers_) {
+    subscriber->QueueMessage(msg);
+  }
+  return true;
+}
+
+bool CappedEntityState::Publish(const rpc::PubMessage &pub_message) {
   if (subscribers_.empty()) {
     return false;
   }
@@ -90,24 +101,32 @@ const absl::flat_hash_map<SubscriberID, SubscriberState *> &EntityState::Subscri
   return subscribers_;
 }
 
+SubscriptionIndex::SubscriptionIndex(rpc::ChannelType channel_type)
+    : channel_type_(channel_type), subscribers_to_all_(CreateEntityState()) {}
+
 bool SubscriptionIndex::Publish(const rpc::PubMessage &pub_message) {
-  const bool publish_to_all = subscribers_to_all_.Publish(pub_message);
+  const bool publish_to_all = subscribers_to_all_->Publish(pub_message);
   bool publish_to_entity = false;
   auto it = entities_.find(pub_message.key_id());
   if (it != entities_.end()) {
-    publish_to_entity = it->second.Publish(pub_message);
+    publish_to_entity = it->second->Publish(pub_message);
   }
   return publish_to_all || publish_to_entity;
 }
 
 bool SubscriptionIndex::AddEntry(const std::string &key_id, SubscriberState *subscriber) {
   if (key_id.empty()) {
-    return subscribers_to_all_.AddSubscriber(subscriber);
+    return subscribers_to_all_->AddSubscriber(subscriber);
   }
 
   auto &subscribing_key_ids = subscribers_to_key_id_[subscriber->id()];
   const bool key_added = subscribing_key_ids.emplace(key_id).second;
-  const bool subscriber_added = entities_[key_id].AddSubscriber(subscriber);
+
+  auto sub_it = entities_.find(key_id);
+  if (sub_it == entities_.end()) {
+    sub_it = entities_.emplace(key_id, CreateEntityState()).first;
+  }
+  const bool subscriber_added = sub_it->second->AddSubscriber(subscriber);
 
   RAY_CHECK(key_added == subscriber_added);
   return key_added;
@@ -116,14 +135,14 @@ bool SubscriptionIndex::AddEntry(const std::string &key_id, SubscriberState *sub
 std::vector<SubscriberID> SubscriptionIndex::GetSubscriberIdsByKeyId(
     const std::string &key_id) const {
   std::vector<SubscriberID> subscribers;
-  if (!subscribers_to_all_.Subscribers().empty()) {
-    for (const auto &[sub_id, sub] : subscribers_to_all_.Subscribers()) {
+  if (!subscribers_to_all_->Subscribers().empty()) {
+    for (const auto &[sub_id, sub] : subscribers_to_all_->Subscribers()) {
       subscribers.push_back(sub_id);
     }
   }
   auto it = entities_.find(key_id);
   if (it != entities_.end()) {
-    for (const auto &[sub_id, sub] : it->second.Subscribers()) {
+    for (const auto &[sub_id, sub] : it->second->Subscribers()) {
       subscribers.push_back(sub_id);
     }
   }
@@ -132,7 +151,7 @@ std::vector<SubscriberID> SubscriptionIndex::GetSubscriberIdsByKeyId(
 
 bool SubscriptionIndex::EraseSubscriber(const SubscriberID &subscriber_id) {
   // Erase subscriber of all keys.
-  if (subscribers_to_all_.RemoveSubscriber(subscriber_id)) {
+  if (subscribers_to_all_->RemoveSubscriber(subscriber_id)) {
     return true;
   }
 
@@ -149,7 +168,7 @@ bool SubscriptionIndex::EraseSubscriber(const SubscriberID &subscriber_id) {
     if (entity_it == entities_.end()) {
       continue;
     }
-    auto &entity = entity_it->second;
+    auto &entity = *entity_it->second;
     entity.RemoveSubscriber(subscriber_id);
     if (entity.Subscribers().empty()) {
       entities_.erase(entity_it);
@@ -163,7 +182,7 @@ bool SubscriptionIndex::EraseEntry(const std::string &key_id,
                                    const SubscriberID &subscriber_id) {
   // Erase the subscriber of all keys.
   if (key_id.empty()) {
-    return subscribers_to_all_.RemoveSubscriber(subscriber_id);
+    return subscribers_to_all_->RemoveSubscriber(subscriber_id);
   }
 
   // Erase keys from the subscriber of individual keys.
@@ -176,7 +195,7 @@ bool SubscriptionIndex::EraseEntry(const std::string &key_id,
   if (object_it == objects.end()) {
     auto it = entities_.find(key_id);
     if (it != entities_.end()) {
-      RAY_CHECK(!it->second.Subscribers().contains(subscriber_id));
+      RAY_CHECK(!it->second->Subscribers().contains(subscriber_id));
     }
     return false;
   }
@@ -189,7 +208,7 @@ bool SubscriptionIndex::EraseEntry(const std::string &key_id,
   auto entity_it = entities_.find(key_id);
   // If code reaches this line, that means the object id was in the index.
   RAY_CHECK(entity_it != entities_.end());
-  auto &entity = entity_it->second;
+  auto &entity = *entity_it->second;
   // If code reaches this line, that means the subscriber id was in the index.
   RAY_CHECK(entity.RemoveSubscriber(subscriber_id));
   if (entity.Subscribers().empty()) {
@@ -203,7 +222,7 @@ bool SubscriptionIndex::HasKeyId(const std::string &key_id) const {
 }
 
 bool SubscriptionIndex::HasSubscriber(const SubscriberID &subscriber_id) const {
-  if (subscribers_to_all_.Subscribers().contains(subscriber_id)) {
+  if (subscribers_to_all_->Subscribers().contains(subscriber_id)) {
     return true;
   }
   return subscribers_to_key_id_.contains(subscriber_id);
@@ -211,6 +230,17 @@ bool SubscriptionIndex::HasSubscriber(const SubscriberID &subscriber_id) const {
 
 bool SubscriptionIndex::CheckNoLeaks() const {
   return entities_.empty() && subscribers_to_key_id_.empty();
+}
+
+std::unique_ptr<EntityState> SubscriptionIndex::CreateEntityState() {
+  switch (channel_type_) {
+  case rpc::ChannelType::RAY_ERROR_INFO_CHANNEL:
+  case rpc::ChannelType::RAY_LOG_CHANNEL: {
+    return std::make_unique<CappedEntityState>();
+  }
+  default:
+    return std::make_unique<BasicEntityState>();
+  }
 }
 
 void SubscriberState::ConnectToSubscriber(const rpc::PubsubLongPollingRequest &request,

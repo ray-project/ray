@@ -12,6 +12,7 @@ from typing import Optional
 
 import pytest
 import pydantic
+from ray.serve.http_util import set_socket_reuse_port
 import requests
 
 import ray
@@ -25,7 +26,7 @@ from ray._private.test_utils import (
 from ray.cluster_utils import Cluster, cluster_not_supported
 
 from ray import serve
-from ray.serve.api import internal_get_global_client
+from ray.serve.context import get_global_client
 from ray.serve.config import HTTPOptions
 from ray.serve.constants import SERVE_ROOT_URL_ENV_KEY, SERVE_PROXY_NAME
 from ray.serve.exceptions import RayServeException
@@ -58,12 +59,12 @@ def test_shutdown(ray_shutdown):
 
     f.deploy()
 
-    serve_controller_name = serve.api._global_client._controller_name
+    serve_controller_name = serve.context._global_client._controller_name
     actor_names = [
         serve_controller_name,
         format_actor_name(
             SERVE_PROXY_NAME,
-            serve.api._global_client._controller_name,
+            serve.context._global_client._controller_name,
             get_all_node_ids()[0][0],
         ),
     ]
@@ -124,7 +125,7 @@ def test_detached_deployment(ray_cluster):
     assert ray.get(f.get_handle().remote()) == "from_f"
     assert requests.get("http://localhost:8000/say_hi_f").text == "from_f"
 
-    serve.api._global_client = None
+    serve.context._global_client = None
     ray.shutdown()
 
     # Create the second job, make sure we can still create new deployments.
@@ -178,8 +179,27 @@ def test_dedicated_cpu(controller_cpu, num_proxy_cpus, ray_cluster):
     ray.shutdown()
 
 
+def test_set_socket_reuse_port():
+    sock = socket.socket()
+    if hasattr(socket, "SO_REUSEPORT"):
+        # If the flag exists, we should be able to to use it
+        assert set_socket_reuse_port(sock)
+    elif sys.platform == "linux":
+        # If the flag doesn't exist, but we are only mordern version
+        # of linux, we should be able to force set this flag.
+        assert set_socket_reuse_port(sock)
+    else:
+        # Otherwise, it should graceful fail without exception.
+        assert not set_socket_reuse_port(sock)
+
+
+def _reuse_port_is_available():
+    sock = socket.socket()
+    return set_socket_reuse_port(sock)
+
+
 @pytest.mark.skipif(
-    not hasattr(socket, "SO_REUSEPORT"),
+    not _reuse_port_is_available(),
     reason=(
         "Port sharing only works on newer verion of Linux. "
         "This test can only be ran when port sharing is supported."
@@ -200,7 +220,9 @@ def test_multiple_routers(ray_cluster):
         for node_id, _ in get_all_node_ids():
             proxy_names.append(
                 format_actor_name(
-                    SERVE_PROXY_NAME, serve.api._global_client._controller_name, node_id
+                    SERVE_PROXY_NAME,
+                    serve.context._global_client._controller_name,
+                    node_id,
                 )
             )
         return proxy_names
@@ -375,7 +397,7 @@ def test_no_http(ray_shutdown):
             if actor["State"] == convert_actor_state(gcs_utils.ActorTableData.ALIVE)
         ]
         assert len(live_actors) == 1
-        controller = serve.api._global_client._controller
+        controller = serve.context._global_client._controller
         assert len(ray.get(controller.get_http_proxies.remote())) == 0
 
         # Test that the handle still works.
@@ -446,7 +468,7 @@ def test_fixed_number_proxies(ray_cluster):
     )
 
     # Only the controller and two http proxy should be started.
-    controller_handle = internal_get_global_client()._controller
+    controller_handle = get_global_client()._controller
     node_to_http_actors = ray.get(controller_handle.get_http_proxies.remote())
     assert len(node_to_http_actors) == 2
 
@@ -507,7 +529,7 @@ def test_serve_controller_namespace(
 
     ray.init(namespace=namespace)
     serve.start(detached=detached)
-    client = serve.api._global_client
+    client = serve.context._global_client
     if namespace:
         controller_namespace = namespace
     elif detached:

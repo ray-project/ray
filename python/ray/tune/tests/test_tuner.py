@@ -21,6 +21,20 @@ from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 
 
+class DummyTrainer(Trainer):
+    _scaling_config_allowed_keys = [
+        "num_workers",
+        "num_cpus_per_worker",
+        "num_gpus_per_worker",
+        "additional_resources_per_worker",
+        "use_gpu",
+        "trainer_resources",
+    ]
+
+    def training_loop(self) -> None:
+        raise RuntimeError("There is an error in trainer!")
+
+
 class TestDatasource(Datasource):
     def __init__(self, do_shuffle: bool):
         self._shuffle = do_shuffle
@@ -70,7 +84,6 @@ class TunerTest(unittest.TestCase):
         trainer = XGBoostTrainer(
             label_column="target",
             params={},
-            # TODO(xwjiang): change when dataset out-of-band ser/des is landed.
             datasets={"train": gen_dataset_func_eager()},
         )
         # prep_v1 = StandardScaler(["worst radius", "worst area"])
@@ -79,14 +92,12 @@ class TunerTest(unittest.TestCase):
             "scaling_config": {
                 "num_workers": tune.grid_search([1, 2]),
             },
-            # TODO(xwjiang): Add when https://github.com/ray-project/ray/issues/23363
-            #  is resolved.
             # "preprocessor": tune.grid_search([prep_v1, prep_v2]),
-            # "datasets": {
-            #     "train": tune.choice(
-            #         [gen_dataset_func(), gen_dataset_func(do_shuffle=True)]
-            #     ),
-            # },
+            "datasets": {
+                "train": tune.grid_search(
+                    [gen_dataset_func(), gen_dataset_func(do_shuffle=True)]
+                ),
+            },
             "params": {
                 "objective": "binary:logistic",
                 "tree_method": "approx",
@@ -101,10 +112,13 @@ class TunerTest(unittest.TestCase):
             run_config=RunConfig(name="test_tuner"),
             param_space=param_space,
             tune_config=TuneConfig(mode="min", metric="train-error"),
+            # limiting the number of trials running at one time.
+            # As the unit test only has access to 4 CPUs on Buildkite.
+            _tuner_kwargs={"max_concurrent_trials": 1},
         )
         results = tuner.fit()
         assert not isinstance(results.get_best_result().checkpoint, TrialCheckpoint)
-        assert len(results) == 2
+        assert len(results) == 4
 
     def test_tuner_with_xgboost_trainer_driver_fail_and_resume(self):
         # So that we have some global checkpointing happening.
@@ -116,7 +130,6 @@ class TunerTest(unittest.TestCase):
         trainer = XGBoostTrainer(
             label_column="target",
             params={},
-            # TODO(xwjiang): change when dataset out-of-band ser/des is landed.
             datasets={"train": gen_dataset_func_eager()},
         )
         # prep_v1 = StandardScaler(["worst radius", "worst area"])
@@ -125,14 +138,12 @@ class TunerTest(unittest.TestCase):
             "scaling_config": {
                 "num_workers": tune.grid_search([1, 2]),
             },
-            # TODO(xwjiang): Add when https://github.com/ray-project/ray/issues/23363
-            #  is resolved.
             # "preprocessor": tune.grid_search([prep_v1, prep_v2]),
-            # "datasets": {
-            #     "train": tune.choice(
-            #         [gen_dataset_func(), gen_dataset_func(do_shuffle=True)]
-            #     ),
-            # },
+            "datasets": {
+                "train": tune.grid_search(
+                    [gen_dataset_func(), gen_dataset_func(do_shuffle=True)]
+                ),
+            },
             "params": {
                 "objective": "binary:logistic",
                 "tree_method": "approx",
@@ -161,6 +172,9 @@ class TunerTest(unittest.TestCase):
             ),
             param_space=param_space,
             tune_config=TuneConfig(mode="min", metric="train-error"),
+            # limiting the number of trials running at one time.
+            # As the unit test only has access to 4 CPUs on Buildkite.
+            _tuner_kwargs={"max_concurrent_trials": 1},
         )
         with self.assertRaises(TuneError):
             tuner.fit()
@@ -171,13 +185,9 @@ class TunerTest(unittest.TestCase):
         # A hack before we figure out RunConfig semantics across resumes.
         tuner._local_tuner._run_config.callbacks = None
         results = tuner.fit()
-        assert len(results) == 2
+        assert len(results) == 4
 
     def test_tuner_trainer_fail(self):
-        class DummyTrainer(Trainer):
-            def training_loop(self) -> None:
-                raise RuntimeError("There is an error in trainer!")
-
         trainer = DummyTrainer()
         param_space = {
             "scaling_config": {
@@ -208,20 +218,10 @@ class TunerTest(unittest.TestCase):
             train_loop_config=config,
             scaling_config=scaling_config,
         )
-        # prep_v1 = StandardScaler(["worst radius", "worst area"])
-        # prep_v2 = StandardScaler(["worst concavity", "worst smoothness"])
         param_space = {
             "scaling_config": {
                 "num_workers": tune.grid_search([1, 2]),
             },
-            # TODO(xwjiang): Add when https://github.com/ray-project/ray/issues/23363
-            #  is resolved.
-            # "preprocessor": tune.grid_search([prep_v1, prep_v2]),
-            # "datasets": {
-            #     "train": tune.choice(
-            #         [gen_dataset_func(), gen_dataset_func(do_shuffle=True)]
-            #     ),
-            # },
             "train_loop_config": {
                 "batch_size": tune.grid_search([4, 8]),
                 "epochs": tune.grid_search([5, 10]),
@@ -235,6 +235,12 @@ class TunerTest(unittest.TestCase):
         )
         results = tuner.fit()
         assert len(results) == 8
+
+    def test_tuner_run_config_override(self):
+        trainer = DummyTrainer(run_config=RunConfig(stop={"metric": 4}))
+        tuner = Tuner(trainer)
+
+        assert tuner._local_tuner._run_config.stop == {"metric": 4}
 
 
 if __name__ == "__main__":

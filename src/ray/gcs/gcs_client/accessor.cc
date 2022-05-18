@@ -347,19 +347,6 @@ Status ActorInfoAccessor::AsyncSubscribe(
     absl::MutexLock lock(&mutex_);
     resubscribe_operations_[actor_id] =
         [this, actor_id, subscribe](const StatusCallback &subscribe_done) {
-          // Unregister the previous subscription before subscribing the to new
-          // GCS instance. Otherwise, the existing long poll on the previous GCS
-          // instance could leak or access invalid memory when returned.
-          // In future if long polls can be cancelled, this might become unnecessary.
-          while (true) {
-            Status s = client_impl_->GetGcsSubscriber().UnsubscribeActor(actor_id);
-            if (s.ok()) {
-              break;
-            }
-            RAY_LOG(WARNING) << "Unsubscribing failed for " << actor_id.Hex()
-                             << ", retrying ...";
-            absl::SleepFor(absl::Seconds(1));
-          }
           return client_impl_->GetGcsSubscriber().SubscribeActor(
               actor_id, subscribe, subscribe_done);
         };
@@ -704,12 +691,9 @@ Status NodeResourceInfoAccessor::AsyncGetAllAvailableResources(
 Status NodeResourceInfoAccessor::AsyncReportResourceUsage(
     const std::shared_ptr<rpc::ResourcesData> &data_ptr, const StatusCallback &callback) {
   absl::MutexLock lock(&mutex_);
-  last_resource_usage_->SetAvailableResources(
-      ResourceSet(MapFromProtobuf(data_ptr->resources_available())));
-  last_resource_usage_->SetTotalResources(
-      ResourceSet(MapFromProtobuf(data_ptr->resources_total())));
-  last_resource_usage_->SetLoadResources(
-      ResourceSet(MapFromProtobuf(data_ptr->resource_load())));
+  last_resource_usage_ = std::make_shared<NodeResources>(
+      ResourceMapToNodeResources(MapFromProtobuf(data_ptr->resources_total()),
+                                 MapFromProtobuf(data_ptr->resources_available())));
   cached_resource_usage_.mutable_resources()->CopyFrom(*data_ptr);
   client_impl_->GetGcsRpcClient().ReportResourceUsage(
       cached_resource_usage_,
@@ -734,39 +718,28 @@ void NodeResourceInfoAccessor::AsyncReReportResourceUsage() {
 
 void NodeResourceInfoAccessor::FillResourceUsageRequest(
     rpc::ReportResourceUsageRequest &resources) {
-  SchedulingResources cached_resources = SchedulingResources(*GetLastResourceUsage());
+  NodeResources cached_resources = *GetLastResourceUsage();
 
   auto resources_data = resources.mutable_resources();
   resources_data->clear_resources_total();
-  for (const auto &resource_pair :
-       cached_resources.GetTotalResources().GetResourceMap()) {
+  for (const auto &resource_pair : cached_resources.total.ToResourceMap()) {
     (*resources_data->mutable_resources_total())[resource_pair.first] =
         resource_pair.second;
   }
 
   resources_data->clear_resources_available();
   resources_data->set_resources_available_changed(true);
-  for (const auto &resource_pair :
-       cached_resources.GetAvailableResources().GetResourceMap()) {
+  for (const auto &resource_pair : cached_resources.available.ToResourceMap()) {
     (*resources_data->mutable_resources_available())[resource_pair.first] =
         resource_pair.second;
   }
 
   resources_data->clear_resource_load();
   resources_data->set_resource_load_changed(true);
-  for (const auto &resource_pair : cached_resources.GetLoadResources().GetResourceMap()) {
+  for (const auto &resource_pair : cached_resources.load.ToResourceMap()) {
     (*resources_data->mutable_resource_load())[resource_pair.first] =
         resource_pair.second;
   }
-}
-
-Status NodeResourceInfoAccessor::AsyncSubscribeToResources(
-    const ItemCallback<rpc::NodeResourceChange> &subscribe, const StatusCallback &done) {
-  RAY_CHECK(subscribe != nullptr);
-  subscribe_resource_operation_ = [this, subscribe](const StatusCallback &done) {
-    return client_impl_->GetGcsSubscriber().SubscribeAllNodeResources(subscribe, done);
-  };
-  return subscribe_resource_operation_(done);
 }
 
 void NodeResourceInfoAccessor::AsyncResubscribe() {

@@ -7,14 +7,14 @@ from typing import (
     List,
 )
 
-from ray.serve.deployment import Deployment
+from ray.serve.deployment import (
+    Deployment,
+    schema_to_deployment,
+    deployment_to_schema,
+)
 from ray.serve.schema import (
     ServeApplicationSchema,
 )
-
-# TODO (shrekris-anyscale): remove following dependencies on api.py:
-# - serve_application_to_schema
-# - schema_to_serve_application
 
 
 class ImmutableDeploymentDict(dict):
@@ -94,9 +94,9 @@ class Application:
             Dict: The Application's deployments formatted in a dictionary.
         """
 
-        from ray.serve.api import serve_application_to_schema
-
-        return serve_application_to_schema(self._deployments.values()).dict()
+        return ServeApplicationSchema(
+            deployments=[deployment_to_schema(d) for d in self._deployments.values()]
+        ).dict()
 
     @classmethod
     def from_dict(cls, d: Dict) -> "Application":
@@ -113,9 +113,8 @@ class Application:
             Application: a new application object containing the deployments.
         """
 
-        from ray.serve.api import schema_to_serve_application
-
-        return cls(schema_to_serve_application(ServeApplicationSchema.parse_obj(d)))
+        schema = ServeApplicationSchema.parse_obj(d)
+        return cls([schema_to_deployment(s) for s in schema.deployments])
 
     def to_yaml(self, f: Optional[TextIO] = None) -> Optional[str]:
         """Returns this application's deployments as a YAML string.

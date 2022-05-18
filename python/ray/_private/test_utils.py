@@ -55,8 +55,10 @@ class RayTestTimeoutException(Exception):
     pass
 
 
-def make_global_state_accessor(address_info):
-    gcs_options = GcsClientOptions.from_gcs_address(address_info["gcs_address"])
+def make_global_state_accessor(ray_context):
+    gcs_options = GcsClientOptions.from_gcs_address(
+        ray_context.address_info["gcs_address"]
+    )
     global_state_accessor = GlobalStateAccessor(gcs_options)
     global_state_accessor.connect()
     return global_state_accessor
@@ -1238,3 +1240,44 @@ def no_resource_leaks_excluding_node_resources():
             del available_resources[r]
 
     return cluster_resources == available_resources
+
+
+@contextmanager
+def simulate_storage(storage_type, root=None):
+    if storage_type == "fs":
+        if root is None:
+            with tempfile.TemporaryDirectory() as d:
+                yield "file://" + d
+        else:
+            yield "file://" + root
+    elif storage_type == "s3":
+        import uuid
+        from moto import mock_s3
+        from ray.tests.mock_s3_server import start_service, stop_process
+
+        @contextmanager
+        def aws_credentials():
+            old_env = os.environ
+            os.environ["AWS_ACCESS_KEY_ID"] = "testing"
+            os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
+            os.environ["AWS_SECURITY_TOKEN"] = "testing"
+            os.environ["AWS_SESSION_TOKEN"] = "testing"
+            yield
+            os.environ = old_env
+
+        @contextmanager
+        def moto_s3_server():
+            host = "localhost"
+            port = 5002
+            url = f"http://{host}:{port}"
+            process = start_service("s3", host, port)
+            yield url
+            stop_process(process)
+
+        if root is None:
+            root = uuid.uuid4().hex
+        with moto_s3_server() as s3_server, aws_credentials(), mock_s3():
+            url = f"s3://{root}?region=us-west-2&endpoint_override={s3_server}"
+            yield url
+    else:
+        raise ValueError(f"Unknown storage type: {storage_type}")

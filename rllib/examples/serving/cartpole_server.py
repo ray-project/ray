@@ -180,8 +180,8 @@ if __name__ == "__main__":
         # Example of using DQN (supports off-policy actions).
         config.update(
             {
-                "learning_starts": 100,
-                "timesteps_per_iteration": 200,
+                "replay_buffer_config": {"learning_starts": 100},
+                "min_sample_timesteps_per_reporting": 200,
                 "n_step": 3,
                 "rollout_fragment_length": 4,
                 "train_batch_size": 8,

@@ -136,9 +136,9 @@ def action_distribution_fn(
     Args:
         policy (Policy): The Policy being queried for actions and calling this
             function.
-        model (TorchModelV2): The SAC specific Model to use to generate the
+        model (TorchModelV2): The SAC specific model to use to generate the
             distribution inputs (see sac_tf|torch_model.py). Must support the
-            `get_policy_output` method.
+            `get_action_model_outputs` method.
         input_dict (ModelInputDict): The input-dict to be used for the model
             call.
         state_batches (Optional[List[TensorType]]): The list of internal state
@@ -163,11 +163,11 @@ def action_distribution_fn(
     model_out, _ = model(input_dict, [], None)
     # Use the base output to get the policy outputs from the SAC model's
     # policy components.
-    distribution_inputs = model.get_policy_output(model_out)
+    action_dist_inputs, _ = model.get_action_model_outputs(model_out)
     # Get a distribution class to be used with the just calculated dist-inputs.
     action_dist_class = _get_dist_class(policy, policy.config, policy.action_space)
 
-    return distribution_inputs, action_dist_class, []
+    return action_dist_inputs, action_dist_class, []
 
 
 def actor_critic_loss(
@@ -211,17 +211,19 @@ def actor_critic_loss(
     # Discrete case.
     if model.discrete:
         # Get all action probs directly from pi and form their logp.
-        log_pis_t = F.log_softmax(model.get_policy_output(model_out_t), dim=-1)
+        action_dist_inputs_t, _ = model.get_action_model_outputs(model_out_t)
+        log_pis_t = F.log_softmax(action_dist_inputs_t, dim=-1)
         policy_t = torch.exp(log_pis_t)
-        log_pis_tp1 = F.log_softmax(model.get_policy_output(model_out_tp1), -1)
+        action_dist_inputs_tp1, _ = model.get_action_model_outputs(model_out_tp1)
+        log_pis_tp1 = F.log_softmax(action_dist_inputs_tp1, -1)
         policy_tp1 = torch.exp(log_pis_tp1)
         # Q-values.
-        q_t = model.get_q_values(model_out_t)
+        q_t, _ = model.get_q_values(model_out_t)
         # Target Q-values.
-        q_tp1 = target_model.get_q_values(target_model_out_tp1)
+        q_tp1, _ = target_model.get_q_values(target_model_out_tp1)
         if policy.config["twin_q"]:
-            twin_q_t = model.get_twin_q_values(model_out_t)
-            twin_q_tp1 = target_model.get_twin_q_values(target_model_out_tp1)
+            twin_q_t, _ = model.get_twin_q_values(model_out_t)
+            twin_q_tp1, _ = target_model.get_twin_q_values(target_model_out_tp1)
             q_tp1 = torch.min(q_tp1, twin_q_tp1)
         q_tp1 -= alpha * log_pis_tp1
 
@@ -239,16 +241,16 @@ def actor_critic_loss(
     else:
         # Sample single actions from distribution.
         action_dist_class = _get_dist_class(policy, policy.config, policy.action_space)
-        action_dist_t = action_dist_class(model.get_policy_output(model_out_t), model)
+        action_dist_inputs_t, _ = model.get_action_model_outputs(model_out_t)
+        action_dist_t = action_dist_class(action_dist_inputs_t, model)
         policy_t = (
             action_dist_t.sample()
             if not deterministic
             else action_dist_t.deterministic_sample()
         )
         log_pis_t = torch.unsqueeze(action_dist_t.logp(policy_t), -1)
-        action_dist_tp1 = action_dist_class(
-            model.get_policy_output(model_out_tp1), model
-        )
+        action_dist_inputs_tp1, _ = model.get_action_model_outputs(model_out_tp1)
+        action_dist_tp1 = action_dist_class(action_dist_inputs_tp1, model)
         policy_tp1 = (
             action_dist_tp1.sample()
             if not deterministic
@@ -257,22 +259,22 @@ def actor_critic_loss(
         log_pis_tp1 = torch.unsqueeze(action_dist_tp1.logp(policy_tp1), -1)
 
         # Q-values for the actually selected actions.
-        q_t = model.get_q_values(model_out_t, train_batch[SampleBatch.ACTIONS])
+        q_t, _ = model.get_q_values(model_out_t, train_batch[SampleBatch.ACTIONS])
         if policy.config["twin_q"]:
-            twin_q_t = model.get_twin_q_values(
+            twin_q_t, _ = model.get_twin_q_values(
                 model_out_t, train_batch[SampleBatch.ACTIONS]
             )
 
         # Q-values for current policy in given current state.
-        q_t_det_policy = model.get_q_values(model_out_t, policy_t)
+        q_t_det_policy, _ = model.get_q_values(model_out_t, policy_t)
         if policy.config["twin_q"]:
-            twin_q_t_det_policy = model.get_twin_q_values(model_out_t, policy_t)
+            twin_q_t_det_policy, _ = model.get_twin_q_values(model_out_t, policy_t)
             q_t_det_policy = torch.min(q_t_det_policy, twin_q_t_det_policy)
 
         # Target q network evaluation.
-        q_tp1 = target_model.get_q_values(target_model_out_tp1, policy_tp1)
+        q_tp1, _ = target_model.get_q_values(target_model_out_tp1, policy_tp1)
         if policy.config["twin_q"]:
-            twin_q_tp1 = target_model.get_twin_q_values(
+            twin_q_tp1, _ = target_model.get_twin_q_values(
                 target_model_out_tp1, policy_tp1
             )
             # Take min over both twin-NNs.

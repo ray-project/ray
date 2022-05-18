@@ -201,6 +201,15 @@ bool TaskManager::IsTaskPending(const TaskID &task_id) const {
   return it->second.IsPending();
 }
 
+bool TaskManager::IsTaskWaitingForExecution(const TaskID &task_id) const {
+  absl::MutexLock lock(&mu_);
+  const auto it = submissible_tasks_.find(task_id);
+  if (it == submissible_tasks_.end()) {
+    return false;
+  }
+  return it->second.IsWaitingForExecution();
+}
+
 size_t TaskManager::NumSubmissibleTasks() const {
   absl::MutexLock lock(&mu_);
   return submissible_tasks_.size();
@@ -365,6 +374,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id) {
     } else {
       RAY_CHECK(num_retries_left == 0 || num_retries_left == -1);
     }
+    it->second.status = rpc::TaskStatus::SCHEDULED;
   }
 
   // We should not hold the lock during these calls because they may trigger
@@ -637,6 +647,47 @@ void TaskManager::MarkDependenciesResolved(const TaskID &task_id) {
   }
   if (it->second.status == rpc::TaskStatus::WAITING_FOR_DEPENDENCIES) {
     it->second.status = rpc::TaskStatus::SCHEDULED;
+  }
+}
+
+void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id) {
+  absl::MutexLock lock(&mu_);
+  auto it = submissible_tasks_.find(task_id);
+  if (it == submissible_tasks_.end()) {
+    return;
+  }
+  RAY_CHECK(it->second.status == rpc::TaskStatus::SCHEDULED);
+  it->second.status = rpc::TaskStatus::WAITING_FOR_EXECUTION;
+}
+
+void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply) const {
+  absl::MutexLock lock(&mu_);
+  for (const auto &task_it : submissible_tasks_) {
+    const auto &task_entry = task_it.second;
+    auto entry = reply->add_owned_task_info_entries();
+    const auto &task_spec = task_entry.spec;
+    const auto &task_state = task_entry.status;
+    rpc::TaskType type;
+    if (task_spec.IsNormalTask()) {
+      type = rpc::TaskType::NORMAL_TASK;
+    } else if (task_spec.IsActorCreationTask()) {
+      type = rpc::TaskType::ACTOR_CREATION_TASK;
+    } else {
+      RAY_CHECK(task_spec.IsActorTask());
+      type = rpc::TaskType::ACTOR_TASK;
+    }
+    entry->set_type(type);
+    entry->set_name(task_spec.GetName());
+    entry->set_language(task_spec.GetLanguage());
+    entry->set_func_or_class_name(task_spec.FunctionDescriptor()->CallString());
+    entry->set_scheduling_state(task_state);
+    entry->set_job_id(task_spec.JobId().Binary());
+    entry->set_task_id(task_spec.TaskId().Binary());
+    entry->set_parent_task_id(task_spec.ParentTaskId().Binary());
+    const auto &resources_map = task_spec.GetRequiredResources().GetResourceMap();
+    entry->mutable_required_resources()->insert(resources_map.begin(),
+                                                resources_map.end());
+    entry->mutable_runtime_env_info()->CopyFrom(task_spec.RuntimeEnvInfo());
   }
 }
 

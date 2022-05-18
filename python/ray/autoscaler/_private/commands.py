@@ -23,6 +23,7 @@ except ImportError:  # py2
     from pipes import quote
 
 import ray
+from ray._private.usage import usage_lib
 from ray.experimental.internal_kv import _internal_kv_put
 import ray._private.services as services
 from ray.autoscaler.node_provider import NodeProvider
@@ -648,6 +649,8 @@ def get_or_create_head_node(
         cli_logger.confirm(
             yes, "No head node found. Launching a new cluster.", _abort=True
         )
+        cli_logger.newline()
+        usage_lib.show_usage_stats_prompt()
 
     if head_node:
         if restart_only:
@@ -659,6 +662,8 @@ def get_or_create_head_node(
                 cf.bold("--restart-only"),
                 _abort=True,
             )
+            cli_logger.newline()
+            usage_lib.show_usage_stats_prompt()
         elif no_restart:
             cli_logger.print(
                 "Cluster Ray runtime will not be restarted due to `{}`.",
@@ -674,6 +679,8 @@ def get_or_create_head_node(
             cli_logger.confirm(
                 yes, cf.bold("Cluster Ray runtime will be restarted."), _abort=True
             )
+            cli_logger.newline()
+            usage_lib.show_usage_stats_prompt()
 
     cli_logger.newline()
     # TODO(ekl) this logic is duplicated in node_launcher.py (keep in sync)
@@ -1014,6 +1021,7 @@ def exec_cluster(
     port_forward: Optional[Port_forward] = None,
     with_output: bool = False,
     _allow_uninitialized_state: bool = False,
+    extra_screen_args: Optional[str] = None,
 ) -> str:
     """Runs a command on the specified cluster.
 
@@ -1023,6 +1031,7 @@ def exec_cluster(
         run_env: whether to run the command on the host or in a container.
             Select between "auto", "host" and "docker"
         screen: whether to run in a screen
+        extra_screen_args: optional custom additional args to screen command
         tmux: whether to run in a tmux session
         stop: whether to stop the cluster after command run
         start: whether to start the cluster if it isn't up
@@ -1091,6 +1100,7 @@ def exec_cluster(
         with_output=with_output,
         run_env=run_env,
         shutdown_after_run=shutdown_after_run,
+        extra_screen_args=extra_screen_args,
     )
     if tmux or screen:
         attach_command_parts = ["ray attach", config_file]
@@ -1117,6 +1127,7 @@ def _exec(
     with_output: bool = False,
     run_env: str = "auto",
     shutdown_after_run: bool = False,
+    extra_screen_args: Optional[str] = None,
 ) -> str:
     if cmd:
         if screen:
@@ -1124,6 +1135,12 @@ def _exec(
                 "screen",
                 "-L",
                 "-dm",
+            ]
+
+            if extra_screen_args is not None and len(extra_screen_args) > 0:
+                wrapped_cmd += [extra_screen_args]
+
+            wrapped_cmd += [
                 "bash",
                 "-c",
                 quote(cmd + "; exec bash"),

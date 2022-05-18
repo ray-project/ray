@@ -37,8 +37,9 @@ class MockInMemoryStoreClient : public gcs::InMemoryStoreClient {
   Status AsyncPut(const std::string &table_name,
                   const std::string &key,
                   const std::string &data,
-                  const gcs::StatusCallback &callback) override {
-    callback(Status::OK());
+                  bool overwrite,
+                  std::function<void(bool)> callback) override {
+    callback(true);
     return Status::OK();
   }
 };

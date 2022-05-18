@@ -33,7 +33,7 @@ from ray.runtime_env import RuntimeEnv
 
 
 def test_get_wheel_filename():
-    ray_version = "2.0.0.dev0"
+    ray_version = "3.0.0.dev0"
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ["36", "37", "38", "39"]:
             filename = get_wheel_filename(sys_platform, ray_version, py_version)
@@ -43,7 +43,7 @@ def test_get_wheel_filename():
 
 
 def test_get_master_wheel_url():
-    ray_version = "2.0.0.dev0"
+    ray_version = "3.0.0.dev0"
     test_commit = "58a73821fbfefbf53a19b6c7ffd71e70ccf258c7"
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ["36", "37", "38", "39"]:
@@ -430,7 +430,7 @@ def test_runtime_env_log_msg(
 
     good_env = runtime_env_class(pip=["requests"])
     ray.get(f.options(runtime_env=good_env).remote())
-    sources = get_log_sources(p, 5)
+    sources = get_log_sources(p, timeout=10)
     if local_env_var_enabled:
         assert "runtime_env" in sources
     else:

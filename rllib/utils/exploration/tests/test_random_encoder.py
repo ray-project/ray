@@ -36,7 +36,6 @@ class TestRE3(unittest.TestCase):
             pass
 
         config["env"] = "Pendulum-v1"
-        config["seed"] = 12345
         config["callbacks"] = RE3Callbacks
         config["exploration_config"] = {
             "type": "RE3",

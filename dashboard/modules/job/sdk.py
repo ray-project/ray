@@ -252,7 +252,7 @@ class JobSubmissionClient(SubmissionClient):
             >>> from ray.job_submission import JobSubmissionClient
             >>> client = JobSubmissionClient("http://127.0.0.1:8265") # doctest: +SKIP
             >>> client.submit_job(entrypoint="echo hello") # doctest: +SKIP
-            >>> client.get_job_info("raysubmit_4LamXRuQpYdSMg7J") # doctest: +SKIP
+            >>> client.get_job_status("raysubmit_4LamXRuQpYdSMg7J") # doctest: +SKIP
             'SUCCEEDED'
 
         Args:

@@ -50,8 +50,7 @@ from ray.tune.utils.util import (
     get_checkpoint_from_remote_node,
     delete_external_checkpoint,
 )
-from ray.util.debug import log_once
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated, PublicAPI
 
 logger = logging.getLogger(__name__)
 
@@ -459,16 +458,10 @@ class Trainable:
             trainable_state=trainable_state,
         )
 
-        self._postprocess_checkpoint(checkpoint_dir)
-
         # Maybe sync to cloud
         self._maybe_save_to_cloud(checkpoint_dir)
 
         return checkpoint_path
-
-    def _postprocess_checkpoint(self, checkpoint_dir: str):
-        """Run extra postprocessing before the checkpoint is saved to cloud."""
-        pass
 
     def _maybe_save_to_cloud(self, checkpoint_dir: str):
         # Derived classes like the FunctionRunner might call this
@@ -912,11 +905,6 @@ class Trainable:
             A dict that describes training progress.
 
         """
-        if self._implements_method("_train") and log_once("_train"):
-            raise DeprecationWarning(
-                "Trainable._train is deprecated and is now removed. Override "
-                "Trainable.step instead."
-            )
         raise NotImplementedError
 
     def save_checkpoint(self, tmp_checkpoint_dir: str):
@@ -957,11 +945,6 @@ class Trainable:
             >>> trainable.save_checkpoint("/tmp/bad_example") # doctest: +SKIP
             "/tmp/NEW_CHECKPOINT_PATH/my_checkpoint_file" # This will error.
         """
-        if self._implements_method("_save") and log_once("_save"):
-            raise DeprecationWarning(
-                "Trainable._save is deprecated and is now removed. Override "
-                "Trainable.save_checkpoint instead."
-            )
         raise NotImplementedError
 
     def load_checkpoint(self, checkpoint: Union[Dict, str]):
@@ -1007,11 +990,6 @@ class Trainable:
                 returned by `save_checkpoint`. The directory structure
                 underneath the `checkpoint_dir` `save_checkpoint` is preserved.
         """
-        if self._implements_method("_restore") and log_once("_restore"):
-            raise DeprecationWarning(
-                "Trainable._restore is deprecated and is now removed. "
-                "Override Trainable.load_checkpoint instead."
-            )
         raise NotImplementedError
 
     def setup(self, config: Dict):
@@ -1024,11 +1002,6 @@ class Trainable:
                 Copy of `self.config`.
 
         """
-        if self._implements_method("_setup") and log_once("_setup"):
-            raise DeprecationWarning(
-                "Trainable._setup is deprecated and is now removed. Override "
-                "Trainable.setup instead."
-            )
         pass
 
     def log_result(self, result: Dict):
@@ -1043,11 +1016,6 @@ class Trainable:
         Args:
             result: Training result returned by step().
         """
-        if self._implements_method("_log_result") and log_once("_log_result"):
-            raise DeprecationWarning(
-                "Trainable._log_result is deprecated and is now removed. "
-                "Override Trainable.log_result instead."
-            )
         self._result_logger.on_result(result)
 
     def cleanup(self):
@@ -1061,11 +1029,6 @@ class Trainable:
 
         .. versionadded:: 0.8.7
         """
-        if self._implements_method("_stop") and log_once("_stop"):
-            raise DeprecationWarning(
-                "Trainable._stop is deprecated and is now removed. Override "
-                "Trainable.cleanup instead."
-            )
         pass
 
     def _export_model(self, export_formats: List[str], export_dir: str):
@@ -1084,21 +1047,15 @@ class Trainable:
         return hasattr(self, key) and callable(getattr(self, key))
 
 
-@PublicAPI
+@Deprecated
 class DistributedTrainable(Trainable):
     """Common Trainable class for distributed training."""
 
-    def build_config(self, config: Dict):
-        """Builds config for distributed training.
-
-        Builds a deep copy of the input config and populates it with
-        metadata from this Trainable.
-
-        Useful for passing this Trainable's configs to each distributed
-        Trainable instance.
-        """
-        new_config = copy.deepcopy(config)
-        new_config[TRIAL_INFO] = self._trial_info
-        new_config[STDOUT_FILE] = self._stdout_file
-        new_config[STDERR_FILE] = self._stderr_file
-        return new_config
+    def __init__(self, *args, **kwargs):
+        raise DeprecationWarning(
+            "Ray Tune's `DistributedTrainableCreator` has been deprecated as of Ray "
+            "2.0, and will be replaced by Ray AI Runtime (Ray AIR). Ray AIR ("
+            "https://docs.ray.io/en/latest/ray-air/getting-started.html) will "
+            "provide greater functionality than `DistributedTrainableCreator`, "
+            "and with a more flexible and easy-to-use API.",
+        )

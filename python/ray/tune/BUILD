@@ -57,14 +57,6 @@ py_test(
 )
 
 py_test(
-    name = "test_cloud",
-    size = "medium",
-    srcs = ["tests/test_cloud.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "tests_dir_C"],
-)
-
-py_test(
     name = "test_cluster",
     size = "large",
     srcs = ["tests/test_cluster.py"],
@@ -270,6 +262,14 @@ py_test(
     srcs = ["tests/test_soft_imports.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "soft_imports", "tests_dir_S"],
+)
+
+py_test(
+    name = "test_stopper",
+    size = "small",
+    srcs = ["tests/test_stopper.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_S"],
 )
 
 py_test(
@@ -524,48 +524,6 @@ py_test(
 )
 
 py_test(
-    name = "test_torch_trainable",
-    size = "medium",
-    srcs = ["tests/test_torch_trainable.py"],
-    tags = ["team:ml", "exclusive", "example", "pytorch"],
-    deps = [":tune_lib"],
-)
-
-py_test(
-    name = "test_tensorflow_trainable",
-    size = "medium",
-    srcs = ["tests/test_tensorflow_trainable.py"],
-    tags = ["team:ml", "exclusive", "example", "tensorflow"],
-    deps = [":tune_lib"],
-)
-
-py_test(
-    name = "test_horovod",
-    size = "medium",
-    srcs = ["tests/test_horovod.py"],
-    tags = ["team:ml", "exclusive", "example", "py37"],
-    deps = [":tune_lib"],
-)
-
-py_test(
-    name = "ddp_mnist_torch",
-    size = "small",
-    srcs = ["examples/ddp_mnist_torch.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example", "pytorch"],
-    args = ["--num-workers=2"]
-)
-
-py_test(
-    name = "tf_distributed_keras_example",
-    size = "small",
-    srcs = ["examples/tf_distributed_keras_example.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example", "tensorflow"],
-    args = ["--smoke-test"]
-)
-
-py_test(
     name = "dragonfly_example",
     size = "medium",
     srcs = ["examples/dragonfly_example.py"],
@@ -599,15 +557,6 @@ py_test(
     srcs = ["examples/hebo_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"],
-    args = ["--smoke-test"]
-)
-
-py_test(
-    name = "horovod_simple",
-    size = "medium",
-    srcs = ["examples/horovod_simple.py"],
-    tags = ["team:ml", "exclusive", "example", "py37"],
-    deps = [":tune_lib"],
     args = ["--smoke-test"]
 )
 
@@ -984,20 +933,6 @@ py_test(
     srcs = ["examples/zoopt_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"],
-    args = ["--smoke-test"]
-)
-
-# --------------------------------------------------------------------
-# Tune related tests from the ../../../../release directory.
-# Please keep these sorted alphabetically.
-# --------------------------------------------------------------------
-
-py_test(
-    name = "horovod_cifar_pbt_example",
-    size = "medium",
-    srcs = ["examples/horovod_cifar_pbt_example.py"],
-    tags = ["team:ml", "exlusive", "pytorch", "example", "release", "py37"],
-    deps = [":tune_lib"],
     args = ["--smoke-test"]
 )
 

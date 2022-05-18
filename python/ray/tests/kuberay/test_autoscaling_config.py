@@ -49,7 +49,11 @@ def _get_basic_autoscaling_config() -> dict:
                 "max_workers": 300,
                 "min_workers": 1,
                 "node_config": {},
-                "resources": {"CPU": 1},
+                "resources": {
+                    "CPU": 1,
+                    "Custom2": 5,
+                    "Custom3": 1,
+                },
             },
         },
         "auth": {},
@@ -96,7 +100,7 @@ def _get_ray_cr_memory_and_gpu() -> dict:
     """CR with memory and gpu rayStartParams."""
     cr = _get_basic_ray_cr()
     cr["spec"]["workerGroupSpecs"][0]["rayStartParams"]["memory"] = "300000000"
-    cr["spec"]["workerGroupSpecs"][0]["rayStartParams"]["num_gpus"] = "1"
+    cr["spec"]["workerGroupSpecs"][0]["rayStartParams"]["num-gpus"] = "1"
     return cr
 
 
@@ -200,6 +204,30 @@ def test_autoscaling_config(
                 mock_logger.warning.assert_called_with(expected_log_warning)
             else:
                 mock_logger.warning.assert_not_called()
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
+def test_cr_image_consistency():
+    """Verify that the example config uses the same Ray image for all Ray pods."""
+    cr = _get_basic_ray_cr()
+
+    group_specs = [cr["spec"]["headGroupSpec"]] + cr["spec"]["workerGroupSpecs"]
+    assert len(group_specs) == 2
+
+    ray_containers = [
+        group_spec["template"]["spec"]["containers"][0] for group_spec in group_specs
+    ]
+
+    # All Ray containers in the example config have "ray-" in their name.
+    assert all("ray-" in ray_container["name"] for ray_container in ray_containers)
+
+    # All Ray images are from the Ray repo.
+    assert all(
+        "rayproject/ray" in ray_container["image"] for ray_container in ray_containers
+    )
+
+    # All Ray images are the same.
+    assert len({ray_container["image"] for ray_container in ray_containers}) == 1
 
 
 if __name__ == "__main__":

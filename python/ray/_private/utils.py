@@ -28,8 +28,8 @@ from pathlib import Path
 import numpy as np
 
 import ray
+from ray.core.generated.gcs_pb2 import ErrorTableData
 import ray.ray_constants as ray_constants
-from ray._private.gcs_pubsub import construct_error_message
 from ray._private.tls_utils import load_certs_from_env
 
 # Import psutil after ray so the packaged version is used.
@@ -114,6 +114,27 @@ def push_error_to_driver(worker, error_type, message, job_id=None):
         job_id = ray.JobID.nil()
     assert isinstance(job_id, ray.JobID)
     worker.core_worker.push_error(job_id, error_type, message, time.time())
+
+
+def construct_error_message(job_id, error_type, message, timestamp):
+    """Construct an ErrorTableData object.
+
+    Args:
+        job_id: The ID of the job that the error should go to. If this is
+            nil, then the error will go to all drivers.
+        error_type: The type of the error.
+        message: The error message.
+        timestamp: The time of the error.
+
+    Returns:
+        The ErrorTableData object.
+    """
+    data = ErrorTableData()
+    data.job_id = job_id.binary()
+    data.type = error_type
+    data.error_message = message
+    data.timestamp = timestamp
+    return data
 
 
 def publish_error_to_driver(
@@ -272,7 +293,7 @@ def set_cuda_visible_devices(gpu_ids):
         gpu_ids (List[str]): List of strings representing GPU IDs.
     """
 
-    if os.environ.get("RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"):
+    if os.environ.get(ray_constants.NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR):
         return
 
     global last_set_gpu_ids
@@ -1060,13 +1081,13 @@ def get_wheel_filename(
         sys_platform (str): The platform as returned by sys.platform. Examples:
             "darwin", "linux", "win32"
         ray_version (str): The Ray version as returned by ray.__version__ or
-            `ray --version`.  Examples: "2.0.0.dev0"
+            `ray --version`.  Examples: "3.0.0.dev0"
         py_version (str):
             The major and minor Python versions concatenated.  Examples: "36",
             "37", "38", "39"
     Returns:
         The wheel file name.  Examples:
-            ray-2.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
+            ray-3.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
     """
     assert py_version in ["36", "37", "38", "39"], py_version
 
@@ -1170,6 +1191,42 @@ def check_dashboard_dependencies_installed() -> bool:
         return False
 
 
+def internal_kv_list_with_retry(gcs_client, prefix, namespace, num_retries=20):
+    result = None
+    if isinstance(prefix, str):
+        prefix = prefix.encode()
+    if isinstance(namespace, str):
+        namespace = namespace.encode()
+    for _ in range(num_retries):
+        try:
+            result = gcs_client.internal_kv_keys(prefix, namespace)
+        except Exception as e:
+            if isinstance(e, grpc.RpcError) and e.code() in (
+                grpc.StatusCode.UNAVAILABLE,
+                grpc.StatusCode.UNKNOWN,
+            ):
+                logger.warning(
+                    f"Unable to connect to GCS at {gcs_client.address}. "
+                    "Check that (1) Ray GCS with matching version started "
+                    "successfully at the specified address, and (2) there is "
+                    "no firewall setting preventing access."
+                )
+            else:
+                logger.exception("Internal KV List failed")
+            result = None
+
+        if result is not None:
+            break
+        else:
+            logger.debug(f"Fetched {prefix}=None from KV. Retrying.")
+            time.sleep(2)
+    if result is None:
+        raise RuntimeError(
+            f"Could not list '{prefix}' from GCS. Did GCS start successfully?"
+        )
+    return result
+
+
 def internal_kv_get_with_retry(gcs_client, key, namespace, num_retries=20):
     result = None
     if isinstance(key, str):
@@ -1207,6 +1264,10 @@ def internal_kv_get_with_retry(gcs_client, key, namespace, num_retries=20):
 def internal_kv_put_with_retry(gcs_client, key, value, namespace, num_retries=20):
     if isinstance(key, str):
         key = key.encode()
+    if isinstance(value, str):
+        value = value.encode()
+    if isinstance(namespace, str):
+        namespace = namespace.encode()
     error = None
     for _ in range(num_retries):
         try:
@@ -1254,3 +1315,29 @@ def get_directory_size_bytes(path: Union[str, Path] = ".") -> int:
                 total_size_bytes += os.path.getsize(fp)
 
     return total_size_bytes
+
+
+def check_version_info(cluster_metadata):
+    """Check if the Python and Ray versions stored in GCS matches this process.
+    Args:
+        cluster_metadata: Ray cluster metadata from GCS.
+
+    Raises:
+        Exception: An exception is raised if there is a version mismatch.
+    """
+    cluster_version_info = (
+        cluster_metadata["ray_version"],
+        cluster_metadata["python_version"],
+    )
+    version_info = compute_version_info()
+    if version_info != cluster_version_info:
+        node_ip_address = ray._private.services.get_node_ip_address()
+        error_message = (
+            "Version mismatch: The cluster was started with:\n"
+            "    Ray: " + cluster_version_info[0] + "\n"
+            "    Python: " + cluster_version_info[1] + "\n"
+            "This process on node " + node_ip_address + " was started with:" + "\n"
+            "    Ray: " + version_info[0] + "\n"
+            "    Python: " + version_info[1] + "\n"
+        )
+        raise RuntimeError(error_message)

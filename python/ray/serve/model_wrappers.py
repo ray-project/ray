@@ -3,7 +3,7 @@ from typing import Dict, Optional, Type, Union
 from ray._private.utils import import_attr
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.predictor import Predictor
-from ray.serve.drivers import InputSchemaFn, SimpleSchemaIngress
+from ray.serve.drivers import HTTPAdapterFn, SimpleSchemaIngress
 import ray
 from ray import serve
 
@@ -55,7 +55,7 @@ class ModelWrapper(SimpleSchemaIngress):
               Serve will then call ``MyCheckpoint.from_uri("uri_to_load_from")`` to
               instantiate the object.
 
-        input_schema(str, InputSchemaFn, None): The FastAPI input conversion
+        http_adapter(str, HTTPAdapterFn, None): The FastAPI input conversion
             function. By default, Serve will use the
             :ref:`NdArray <serve-ndarray-schema>` schema and convert to numpy array.
             You can pass in any FastAPI dependency resolver that returns
@@ -64,21 +64,24 @@ class ModelWrapper(SimpleSchemaIngress):
             documentation to learn more.
         batching_params(dict, None, False): override the default parameters to
             :func:`ray.serve.batch`. Pass ``False`` to disable batching.
+        **predictor_kwargs: Additional keyword arguments passed to the
+            ``Predictor.from_checkpoint()`` call.
     """
 
     def __init__(
         self,
         predictor_cls: Union[str, Type[Predictor]],
         checkpoint: Union[Checkpoint, Dict],
-        input_schema: Union[
-            str, InputSchemaFn
+        http_adapter: Union[
+            str, HTTPAdapterFn
         ] = "ray.serve.http_adapters.json_to_ndarray",
         batching_params: Optional[Union[Dict[str, int], bool]] = None,
+        **predictor_kwargs,
     ):
         predictor_cls = _load_predictor_cls(predictor_cls)
         checkpoint = _load_checkpoint(checkpoint)
 
-        self.model = predictor_cls.from_checkpoint(checkpoint)
+        self.model = predictor_cls.from_checkpoint(checkpoint, **predictor_kwargs)
 
         # Configure Batching
         if batching_params is False:
@@ -97,7 +100,7 @@ class ModelWrapper(SimpleSchemaIngress):
 
         self.batched_predict = batched_predict
 
-        super().__init__(input_schema)
+        super().__init__(http_adapter)
 
     async def predict(self, inp):
         """Perform inference directly without HTTP."""
