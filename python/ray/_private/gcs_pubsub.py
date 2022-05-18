@@ -105,10 +105,8 @@ class _SubscriberBase:
         return req
 
     def _handle_polling_failure(self, e: grpc.RpcError, timeout=None):
-        import traceback
-
-        print("================")
-        traceback.print_stack()
+        if self._close.is_set():
+            return
         # Caller only expects polling to be terminated after deadline exceeded.
         if e.code() == grpc.StatusCode.DEADLINE_EXCEEDED and timeout is not None:
             raise e
@@ -118,7 +116,8 @@ class _SubscriberBase:
             grpc.StatusCode.UNKNOWN,
             grpc.StatusCode.DEADLINE_EXCEEDED,
         ):
-            return self.subscribe()
+            self.subscribe()
+            return
 
         raise e
 
@@ -129,7 +128,6 @@ class _SubscriberBase:
             grpc.StatusCode.DEADLINE_EXCEEDED,
         ):
             time.sleep(1)
-            self.subscribe()
         else:
             raise e
 
@@ -293,9 +291,11 @@ class _SyncSubscriber(_SubscriberBase):
                     continue
                 except grpc.RpcError as e:
                     if self._close.is_set():
-                        fut.cancel()
                         return
                     self._handle_polling_failure(e, timeout)
+                    fut = self._stub.GcsSubscriberPoll.future(
+                        self._poll_request(), timeout=timeout
+                    )
 
             if fut.done():
                 self._last_batch_size = len(fut.result().pub_messages)
