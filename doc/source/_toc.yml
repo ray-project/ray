@@ -124,6 +124,7 @@ parts:
               - file: serve/deployment-graph/deployment-graph-user-guides
                 sections:
                    - file: serve/deployment-graph/chain_nodes_same_class_different_args
+                   - file: serve/deployment-graph/combine_two_nodes_with_passing_input_parallel
           - file: serve/deployment
           - file: serve/monitoring
           - file: serve/performance

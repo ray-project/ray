@@ -8,6 +8,7 @@ import torch.nn as nn
 import ray
 import ray.train as train
 from ray.data import Dataset
+from ray.ml import train_test_split
 from ray.ml.batch_predictor import BatchPredictor
 from ray.ml.predictors.integrations.torch import TorchPredictor
 from ray.ml.result import Result
@@ -22,12 +23,7 @@ def get_datasets(a=5, b=10, size=1000, split=0.8) -> Tuple[Dataset]:
 
     dataset = get_dataset(a, b, size)
 
-    split_index = int(dataset.count() * split)
-
-    train_dataset, validation_dataset = dataset.random_shuffle().split_at_indices(
-        [split_index]
-    )
-
+    train_dataset, validation_dataset = train_test_split(dataset, split, shuffle=True)
     return train_dataset, validation_dataset
 
 

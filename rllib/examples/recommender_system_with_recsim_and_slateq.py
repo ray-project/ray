@@ -126,7 +126,9 @@ def main():
         "num_gpus": args.num_gpus,
         "num_workers": args.num_workers,
         "env_config": env_config,
-        "learning_starts": args.learning_starts,
+        "replay_buffer_config": {
+            "learning_starts": args.learning_starts,
+        },
     }
 
     # Perform a test run on the env with a random agent to see, what

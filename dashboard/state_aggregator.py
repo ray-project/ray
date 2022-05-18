@@ -4,6 +4,7 @@ import logging
 from typing import List, Dict
 from itertools import islice
 
+from ray.core.generated.common_pb2 import TaskStatus
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.memory_utils as memory_utils
 from ray.dashboard.modules.job.common import JobInfo
@@ -21,6 +22,7 @@ from ray.experimental.state.common import (
 )
 from ray.experimental.state.state_manager import StateDataSourceClient
 from ray.runtime_env import RuntimeEnv
+from ray._private.utils import binary_to_hex
 
 logger = logging.getLogger(__name__)
 
@@ -137,14 +139,24 @@ class StateAPIManager:
             ]
         )
 
+        running_task_id = set()
+        for reply in replies:
+            for task_id in reply.running_task_ids:
+                running_task_id.add(binary_to_hex(task_id))
+
         result = []
         for reply in replies:
-            tasks = reply.task_info_entries
+            logger.info(reply)
+            tasks = reply.owned_task_info_entries
             for task in tasks:
                 data = self._message_to_dict(
                     message=task,
                     fields_to_decode=["task_id"],
                 )
+                if data["task_id"] in running_task_id:
+                    data["scheduling_state"] = TaskStatus.DESCRIPTOR.values_by_number[
+                        TaskStatus.RUNNING
+                    ].name
                 data = filter_fields(data, TaskState)
                 result.append(data)
 
