@@ -72,16 +72,22 @@ class ILocalTaskManager {
   virtual size_t GetNumUnschedulableTaskSpilled() const = 0;
 };
 
-/// Dummy local task manager, which is used by gcs node only.
-class DummyLocalTaskManager : public ILocalTaskManager {
+/// A dummy local task manager, which is used by gcs node only.
+class GcsLocalTaskManager : public ILocalTaskManager {
  public:
-  DummyLocalTaskManager() {}
+  GcsLocalTaskManager() {}
 
   /// Queue task and schedule.
-  void QueueAndScheduleTask(std::shared_ptr<internal::Work> work) override {}
+  void QueueAndScheduleTask(std::shared_ptr<internal::Work> work) override {
+    RAY_CHECK(false)
+        << "This function should never be called by a dummy local task manager.";
+  }
 
   // Schedule and dispatch tasks.
-  void ScheduleAndDispatchTasks() override {}
+  void ScheduleAndDispatchTasks() override {
+    RAY_CHECK(false)
+        << "This function should never be called by a dummy local task manager.";
+  }
 
   /// Attempt to cancel an already queued task.
   ///

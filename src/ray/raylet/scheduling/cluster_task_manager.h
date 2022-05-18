@@ -131,7 +131,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// Get the count of tasks in `tasks_to_schedule_`.
   size_t GetPendingQueueSize() const;
 
-  /// Populate the list of pending or infeasible actors. This function
+  /// Populate the info of pending and infeasible actors. This function
   /// is only called by gcs node.
   ///
   /// \param[out] data: Output parameter. `resource_load_by_shape` is the only field

@@ -36,7 +36,7 @@
 
 namespace ray {
 using raylet::ClusterTaskManager;
-using raylet::DummyLocalTaskManager;
+using raylet::GcsLocalTaskManager;
 namespace gcs {
 
 struct GcsServerConfig {

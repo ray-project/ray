@@ -205,7 +205,8 @@ void SchedulerResourceReporter::FillPendingActorInfo(
   }
 }
 
-void SchedulerResourceReporter::FillPendingActorInfo(rpc::ResourcesData &data) const {
+void SchedulerResourceReporter::FillPendingActorCountByShape(
+    rpc::ResourcesData &data) const {
   absl::flat_hash_map<SchedulingClass, std::pair<int, int>> pending_count_by_shape;
   for (const auto &[scheduling_class, queue] : infeasible_tasks_) {
     pending_count_by_shape[scheduling_class].first = queue.size();

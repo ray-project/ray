@@ -364,7 +364,7 @@ size_t ClusterTaskManager::GetPendingQueueSize() const {
 }
 
 void ClusterTaskManager::FillPendingActorInfo(rpc::ResourcesData &data) const {
-  scheduler_resource_reporter_.FillPendingActorInfo(data);
+  scheduler_resource_reporter_.FillPendingActorCountByShape(data);
 }
 
 }  // namespace raylet
