@@ -81,10 +81,11 @@ class TorchPredictor(Predictor):
 
     def _predict(self, tensor: torch.Tensor) -> pd.DataFrame:
         """Handle actual prediction."""
-        prediction = self.model(tensor).cpu().detach().numpy()
-        return pd.DataFrame(
-            {"predictions": prediction.tolist()}, columns=["predictions"]
-        )
+        from ray.data.extensions import TensorArray
+
+        print(tensor)
+        prediction = TensorArray(self.model(tensor).cpu().detach().numpy())
+        return pd.DataFrame(prediction, columns=["predictions"])
 
     def predict(
         self,
@@ -164,9 +165,10 @@ class TorchPredictor(Predictor):
 
         if isinstance(data, np.ndarray):
             # If numpy array, then convert to pandas dataframe.
-            data = pd.DataFrame(data)
+            tensor = torch.tensor(data, dtype=torch.float32)
+        else:
+            tensor = self._convert_to_tensor(
+                data, feature_columns=feature_columns, dtypes=dtype, unsqueeze=unsqueeze
+            )
 
-        tensor = self._convert_to_tensor(
-            data, feature_columns=feature_columns, dtypes=dtype, unsqueeze=unsqueeze
-        )
         return self._predict(tensor)
