@@ -50,7 +50,7 @@ def combine(m1_output, m2_output, kwargs_output=0):
     return m1_output + m2_output + kwargs_output
 
 
-def test_deploment_options_func_class_with_class_method():
+def test_deploment_options_func_class_with_class_method(serve_instance):
     with InputNode() as dag_input:
         counter = Counter.bind()
         m1 = Model.options(name="m1", max_concurrent_queries=3).bind(1)

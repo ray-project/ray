@@ -73,10 +73,7 @@ class DeploymentFunctionNode(DAGNode):
                 _internal=True,
             )
         # TODO (jiaodong): Polish with async handle support later
-        # self._deployment_handle = RayServeLazySyncHandle(deployment_name)
-        self._deployment_handle = self._deployment.get_handle(
-            sync=True
-        )  # missing_ok default True
+        self._deployment_handle = self._deployment.get_handle(sync=True)
 
     def _copy_impl(
         self,

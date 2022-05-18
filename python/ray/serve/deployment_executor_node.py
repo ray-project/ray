@@ -54,9 +54,7 @@ class DeploymentExecutorNode(DAGNode):
             method_name,
             (),
             {},
-            {},
             other_args_to_resolve={
-                **self._bound_other_args_to_resolve,
                 PARENT_CLASS_NODE_KEY: self,
             },
         )

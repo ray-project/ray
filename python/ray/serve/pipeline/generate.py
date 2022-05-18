@@ -31,7 +31,6 @@ def transform_ray_dag_to_serve_dag(
     """
     if isinstance(dag_node, ClassNode):
         deployment_name = node_name_generator.get_node_name(dag_node)
-
         return DeploymentNode(
             dag_node._body,
             deployment_name,

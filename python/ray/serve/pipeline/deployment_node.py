@@ -6,10 +6,9 @@ from ray.experimental.dag import DAGNode, InputNode
 from ray.serve.deployment_executor_node import DeploymentExecutorNode
 from ray.serve.deployment_function_executor_node import DeploymentFunctionExecutorNode
 from ray.serve.deployment_method_executor_node import DeploymentMethodExecutorNode
-from ray.serve.handle import RayServeLazySyncHandle, RayServeSyncHandle, RayServeHandle
+from ray.serve.handle import RayServeSyncHandle, RayServeHandle
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.pipeline.deployment_function_node import DeploymentFunctionNode
-from ray.serve.pipeline.constants import USE_SYNC_HANDLE_KEY
 from ray.experimental.dag.constants import DAGNODE_TYPE_KEY, PARENT_CLASS_NODE_KEY
 from ray.experimental.dag.format_utils import get_dag_node_str
 from ray.serve.deployment import Deployment, schema_to_deployment
@@ -60,7 +59,7 @@ class DeploymentNode(DAGNode):
         # TODO(jiaodong): This part does some magic for DAGDriver and will throw
         # error with weird pickle replace table error. Move this out.
         def replace_with_handle(node):
-            if isinstance(node, (DeploymentNode)):
+            if isinstance(node, DeploymentNode):
                 return node._get_serve_deployment_handle(
                     node._deployment, node._bound_other_args_to_resolve
                 )
@@ -141,7 +140,7 @@ class DeploymentNode(DAGNode):
                 _internal=True,
             )
         self._deployment_handle: Union[
-            RayServeLazySyncHandle, RayServeHandle, RayServeSyncHandle
+            RayServeHandle, RayServeSyncHandle
         ] = self._get_serve_deployment_handle(self._deployment, other_args_to_resolve)
 
     def _copy_impl(
@@ -188,20 +187,8 @@ class DeploymentNode(DAGNode):
                 return async handle only if user explicitly set
                 USE_SYNC_HANDLE_KEY with value of False.
         """
-        # TODO (jiaodong): Support configurable async handle
-        if USE_SYNC_HANDLE_KEY not in bound_other_args_to_resolve:
-            # Return sync RayServeLazySyncHandle
-            return RayServeLazySyncHandle(deployment.name)
-        elif bound_other_args_to_resolve.get(USE_SYNC_HANDLE_KEY) is True:
-            # Return sync RayServeSyncHandle
-            return deployment.get_handle(sync=True)
-        elif bound_other_args_to_resolve.get(USE_SYNC_HANDLE_KEY) is False:
-            # Return async RayServeHandle
-            return deployment.get_handle(sync=True)  # missing_ok default True
-        else:
-            raise ValueError(
-                f"{USE_SYNC_HANDLE_KEY} should only be set with a boolean value."
-            )
+        # TODO: (jiaodong) Support async handle
+        return deployment.get_handle(sync=True)
 
     def _contains_input_node(self) -> bool:
         """Check if InputNode is used in children DAGNodes with current node
