@@ -2,9 +2,8 @@ from typing import Dict
 import logging
 import numpy as np
 
-import ray
 from ray.rllib.policy.rnn_sequencing import timeslice_along_seq_lens_with_overlap
-from ray.rllib.utils.annotations import override, ExperimentalAPI
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import (
     MultiAgentReplayBuffer,
     ReplayMode,
@@ -16,12 +15,15 @@ from ray.rllib.utils.replay_buffers.replay_buffer import StorageUnit
 from ray.rllib.utils.typing import PolicyID, SampleBatchType
 from ray.rllib.utils.timer import TimerStat
 from ray.util.debug import log_once
+from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
 
-@ExperimentalAPI
-class MultiAgentPrioritizedReplayBuffer(MultiAgentReplayBuffer):
+@DeveloperAPI
+class MultiAgentPrioritizedReplayBuffer(
+    MultiAgentReplayBuffer, PrioritizedReplayBuffer
+):
     """A prioritized replay buffer shard for multiagent setups.
 
     This buffer is meant to be run in parallel to distribute experiences
@@ -141,7 +143,7 @@ class MultiAgentPrioritizedReplayBuffer(MultiAgentReplayBuffer):
         self.prioritized_replay_eps = prioritized_replay_eps
         self.update_priorities_timer = TimerStat()
 
-    @ExperimentalAPI
+    @DeveloperAPI
     @override(MultiAgentReplayBuffer)
     def _add_to_underlying_buffer(
         self, policy_id: PolicyID, batch: SampleBatchType, **kwargs
@@ -206,7 +208,8 @@ class MultiAgentPrioritizedReplayBuffer(MultiAgentReplayBuffer):
         else:
             self.replay_buffers[policy_id].add(batch, **kwargs)
 
-    @ExperimentalAPI
+    @DeveloperAPI
+    @override(PrioritizedReplayBuffer)
     def update_priorities(self, prio_dict: Dict) -> None:
         """Updates the priorities of underlying replay buffers.
 
@@ -225,7 +228,7 @@ class MultiAgentPrioritizedReplayBuffer(MultiAgentReplayBuffer):
                     batch_indexes, new_priorities
                 )
 
-    @ExperimentalAPI
+    @DeveloperAPI
     @override(MultiAgentReplayBuffer)
     def stats(self, debug: bool = False) -> Dict:
         """Returns the stats of this buffer and all underlying buffers.
@@ -249,6 +252,3 @@ class MultiAgentPrioritizedReplayBuffer(MultiAgentReplayBuffer):
                 {"policy_{}".format(policy_id): replay_buffer.stats(debug=debug)}
             )
         return stat
-
-
-ReplayActor = ray.remote(num_cpus=0)(MultiAgentPrioritizedReplayBuffer)

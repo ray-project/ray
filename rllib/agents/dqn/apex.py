@@ -23,7 +23,6 @@ from ray.actor import ActorHandle
 from ray.rllib import RolloutWorker
 from ray.rllib.agents import Trainer
 from ray.rllib.agents.dqn.dqn import (
-    calculate_rr_weights,
     DEFAULT_CONFIG as DQN_DEFAULT_CONFIG,
     DQNTrainer,
 )
@@ -35,16 +34,10 @@ from ray.rllib.execution.common import (
     _get_global_vars,
     _get_shared_metrics,
 )
-from ray.rllib.execution.concurrency_ops import Concurrently, Dequeue, Enqueue
-from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.execution.buffers.multi_agent_replay_buffer import ReplayActor
 from ray.rllib.execution.parallel_requests import (
     asynchronous_parallel_requests,
     wait_asynchronous_requests,
 )
-from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
-from ray.rllib.execution.rollout_ops import ParallelRollouts
-from ray.rllib.execution.train_ops import UpdateTargetNetwork
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.actors import create_colocated_actors
 from ray.rllib.utils.annotations import override
@@ -59,7 +52,6 @@ from ray.rllib.utils.metrics import (
     SYNCH_WORKER_WEIGHTS_TIMER,
     TARGET_NET_UPDATE_TIMER,
 )
-from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.typing import (
     SampleBatchType,
     TrainerConfigDict,
@@ -69,7 +61,7 @@ from ray.rllib.utils.typing import (
 )
 from ray.tune.trainable import Trainable
 from ray.tune.utils.placement_groups import PlacementGroupFactory
-from ray.util.iter import LocalIterator
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 # fmt: off
 # __sphinx_doc_begin__
@@ -90,31 +82,35 @@ APEX_DEFAULT_CONFIG = merge_dicts(
         # TODO(jungong) : add proper replay_buffer_config after
         #     DistributedReplayBuffer type is supported.
         "replay_buffer_config": {
-            # For now we don't use the new ReplayBuffer API here
-            "_enable_replay_buffer_api": False,
             "no_local_replay_buffer": True,
-            "type": "MultiAgentReplayBuffer",
+            # Specify prioritized replay by supplying a buffer type that supports
+            # prioritization
+            "prioritized_replay": DEPRECATED_VALUE,
+            "type": "MultiAgentPrioritizedReplayBuffer",
             "capacity": 2000000,
             "replay_batch_size": 32,
+            # Alpha parameter for prioritized replay buffer.
             "prioritized_replay_alpha": 0.6,
             # Beta parameter for sampling from prioritized replay buffer.
             "prioritized_replay_beta": 0.4,
             # Epsilon to add to the TD errors when updating priorities.
             "prioritized_replay_eps": 1e-6,
+            "learning_starts": 50000,
+            # Whether all shards of the replay buffer must be co-located
+            # with the learner process (running the execution plan).
+            # This is preferred b/c the learner process should have quick
+            # access to the data from the buffer shards, avoiding network
+            # traffic each time samples from the buffer(s) are drawn.
+            # Set this to False for relaxing this constraint and allowing
+            # replay shards to be created on node(s) other than the one
+            # on which the learner is located.
+            "replay_buffer_shards_colocated_with_driver": True,
+            "worker_side_prioritization": True,
         },
-        # Whether all shards of the replay buffer must be co-located
-        # with the learner process (running the execution plan).
-        # This is preferred b/c the learner process should have quick
-        # access to the data from the buffer shards, avoiding network
-        # traffic each time samples from the buffer(s) are drawn.
-        # Set this to False for relaxing this constraint and allowing
-        # replay shards to be created on node(s) other than the one
-        # on which the learner is located.
-        "replay_buffer_shards_colocated_with_driver": True,
 
-        "learning_starts": 50000,
         "train_batch_size": 512,
         "rollout_fragment_length": 50,
+        # Update the target network every `target_network_update_freq` sample timesteps.
         "target_network_update_freq": 500000,
         # Minimum env sampling timesteps to accumulate within a single `train()` call.
         # This value does not affect learning, only the number of times
@@ -124,7 +120,6 @@ APEX_DEFAULT_CONFIG = merge_dicts(
         # executed. Set to 0 for no minimum timesteps.
         "min_sample_timesteps_per_reporting": 25000,
         "exploration_config": {"type": "PerWorkerEpsilonGreedy"},
-        "worker_side_prioritization": True,
         "min_time_s_per_reporting": 30,
         # This will set the ratio of replayed from a buffer and learned
         # on timesteps to sampled from an environment and stored in the replay
@@ -187,26 +182,27 @@ class ApexTrainer(DQNTrainer):
             ]
 
         num_replay_buffer_shards = self.config["optimizer"]["num_replay_buffer_shards"]
-        buffer_size = (
+
+        # Create copy here so that we can modify without breaking other logic
+        replay_actor_config = copy.deepcopy(self.config["replay_buffer_config"])
+
+        replay_actor_config["capacity"] = (
             self.config["replay_buffer_config"]["capacity"] // num_replay_buffer_shards
         )
-        replay_actor_args = [
-            num_replay_buffer_shards,
-            self.config["learning_starts"],
-            buffer_size,
-            self.config["train_batch_size"],
-            self.config["replay_buffer_config"]["prioritized_replay_alpha"],
-            self.config["replay_buffer_config"]["prioritized_replay_beta"],
-            self.config["replay_buffer_config"]["prioritized_replay_eps"],
-            self.config["multiagent"]["replay_mode"],
-            self.config["replay_buffer_config"].get("replay_sequence_length", 1),
-        ]
+
+        ReplayActor = ray.remote(num_cpus=0)(replay_actor_config["type"])
+
         # Place all replay buffer shards on the same node as the learner
         # (driver process that runs this execution plan).
-        if self.config["replay_buffer_shards_colocated_with_driver"]:
+        if replay_actor_config["replay_buffer_shards_colocated_with_driver"]:
             self.replay_actors = create_colocated_actors(
                 actor_specs=[  # (class, args, kwargs={}, count)
-                    (ReplayActor, replay_actor_args, {}, num_replay_buffer_shards)
+                    (
+                        ReplayActor,
+                        None,
+                        replay_actor_config,
+                        num_replay_buffer_shards,
+                    )
                 ],
                 node=platform.node(),  # localhost
             )[
@@ -215,7 +211,7 @@ class ApexTrainer(DQNTrainer):
         # Place replay buffer shards on any node(s).
         else:
             self.replay_actors = [
-                ReplayActor.remote(*replay_actor_args)
+                ReplayActor.remote(*replay_actor_config)
                 for _ in range(num_replay_buffer_shards)
             ]
         self.learner_thread = LearnerThread(self.workers.local_worker())
@@ -272,151 +268,6 @@ class ApexTrainer(DQNTrainer):
 
         return copy.deepcopy(self.learner_thread.learner_info)
 
-    @staticmethod
-    @override(DQNTrainer)
-    def execution_plan(
-        workers: WorkerSet, config: dict, **kwargs
-    ) -> LocalIterator[dict]:
-        assert (
-            len(kwargs) == 0
-        ), "Apex execution_plan does NOT take any additional parameters"
-
-        # Create a number of replay buffer actors.
-        num_replay_buffer_shards = config["optimizer"]["num_replay_buffer_shards"]
-        buffer_size = (
-            config["replay_buffer_config"]["capacity"] // num_replay_buffer_shards
-        )
-        replay_actor_args = [
-            num_replay_buffer_shards,
-            config["learning_starts"],
-            buffer_size,
-            config["train_batch_size"],
-            config["replay_buffer_config"]["prioritized_replay_alpha"],
-            config["replay_buffer_config"]["prioritized_replay_beta"],
-            config["replay_buffer_config"]["prioritized_replay_eps"],
-            config["multiagent"]["replay_mode"],
-            config["replay_buffer_config"].get("replay_sequence_length", 1),
-        ]
-        # Place all replay buffer shards on the same node as the learner
-        # (driver process that runs this execution plan).
-        if config["replay_buffer_shards_colocated_with_driver"]:
-            replay_actors = create_colocated_actors(
-                actor_specs=[
-                    # (class, args, kwargs={}, count)
-                    (ReplayActor, replay_actor_args, {}, num_replay_buffer_shards)
-                ],
-                node=platform.node(),  # localhost
-            )[
-                0
-            ]  # [0]=only one item in `actor_specs`.
-        # Place replay buffer shards on any node(s).
-        else:
-            replay_actors = [
-                ReplayActor(*replay_actor_args) for _ in range(num_replay_buffer_shards)
-            ]
-
-        # Start the learner thread.
-        learner_thread = LearnerThread(workers.local_worker())
-        learner_thread.start()
-
-        # Update experience priorities post learning.
-        def update_prio_and_stats(item: Tuple[ActorHandle, dict, int, int]) -> None:
-            actor, prio_dict, env_count, agent_count = item
-            if config["replay_buffer_config"].get("prioritized_replay_alpha") > 0:
-                actor.update_priorities.remote(prio_dict)
-            metrics = _get_shared_metrics()
-            # Manually update the steps trained counter since the learner
-            # thread is executing outside the pipeline.
-            metrics.counters[STEPS_TRAINED_THIS_ITER_COUNTER] = env_count
-            metrics.counters[STEPS_TRAINED_COUNTER] += env_count
-            metrics.timers["learner_dequeue"] = learner_thread.queue_timer
-            metrics.timers["learner_grad"] = learner_thread.grad_timer
-            metrics.timers["learner_overall"] = learner_thread.overall_timer
-
-        # We execute the following steps concurrently:
-        # (1) Generate rollouts and store them in one of our replay buffer
-        # actors. Update the weights of the worker that generated the batch.
-        rollouts = ParallelRollouts(workers, mode="async", num_async=2)
-        store_op = rollouts.for_each(StoreToReplayBuffer(actors=replay_actors))
-        # Only need to update workers if there are remote workers.
-        if workers.remote_workers():
-            store_op = store_op.zip_with_source_actor().for_each(
-                UpdateWorkerWeights(
-                    learner_thread,
-                    workers,
-                    max_weight_sync_delay=(
-                        config["optimizer"]["max_weight_sync_delay"]
-                    ),
-                )
-            )
-
-        # (2) Read experiences from one of the replay buffer actors and send
-        # to the learner thread via its in-queue.
-        post_fn = config.get("before_learn_on_batch") or (lambda b, *a: b)
-        replay_op = (
-            Replay(actors=replay_actors, num_async=4)
-            .for_each(lambda x: post_fn(x, workers, config))
-            .zip_with_source_actor()
-            .for_each(Enqueue(learner_thread.inqueue))
-        )
-
-        # (3) Get priorities back from learner thread and apply them to the
-        # replay buffer actors.
-        update_op = (
-            Dequeue(learner_thread.outqueue, check=learner_thread.is_alive)
-            .for_each(update_prio_and_stats)
-            .for_each(
-                UpdateTargetNetwork(
-                    workers, config["target_network_update_freq"], by_steps_trained=True
-                )
-            )
-        )
-
-        if config["training_intensity"]:
-            # Execute (1), (2) with a fixed intensity ratio.
-            rr_weights = calculate_rr_weights(config) + ["*"]
-            merged_op = Concurrently(
-                [store_op, replay_op, update_op],
-                mode="round_robin",
-                output_indexes=[2],
-                round_robin_weights=rr_weights,
-            )
-        else:
-            # Execute (1), (2), (3) asynchronously as fast as possible. Only
-            # output items from (3) since metrics aren't available before
-            # then.
-            merged_op = Concurrently(
-                [store_op, replay_op, update_op], mode="async", output_indexes=[2]
-            )
-
-        # Add in extra replay and learner metrics to the training result.
-        def add_apex_metrics(result: dict) -> dict:
-            replay_stats = ray.get(
-                replay_actors[0].stats.remote(config["optimizer"].get("debug"))
-            )
-            exploration_infos = workers.foreach_policy_to_train(
-                lambda p, _: p.get_exploration_state()
-            )
-            result["info"].update(
-                {
-                    "exploration_infos": exploration_infos,
-                    "learner_queue": learner_thread.learner_queue_size.stats(),
-                    LEARNER_INFO: copy.deepcopy(learner_thread.learner_info),
-                    "replay_shard_0": replay_stats,
-                }
-            )
-            return result
-
-        # Only report metrics from the workers with the lowest 1/3 of
-        # epsilons.
-        selected_workers = workers.remote_workers()[
-            -len(workers.remote_workers()) // 3 :
-        ]
-
-        return StandardMetricsReporting(
-            merged_op, workers, config, selected_workers=selected_workers
-        ).for_each(add_apex_metrics)
-
     def get_samples_and_store_to_replay_buffers(self):
         # in the case the num_workers = 0
         if not self.workers.remote_workers():
@@ -424,7 +275,7 @@ class ApexTrainer(DQNTrainer):
                 local_sampling_worker = self.workers.local_worker()
                 batch = local_sampling_worker.sample()
                 actor = random.choice(self.replay_actors)
-                ray.get(actor.add_batch.remote(batch))
+                ray.get(actor.add.remote(batch))
                 batch_statistics = {
                     local_sampling_worker: [
                         {
@@ -436,7 +287,7 @@ class ApexTrainer(DQNTrainer):
                 return batch_statistics
 
         def remote_worker_sample_and_store(
-            worker: RolloutWorker, replay_actors: List[ReplayActor]
+            worker: RolloutWorker, replay_actors: List[ActorHandle]
         ):
             # This function is run as a remote function on sampling workers,
             # and should only be used with the RolloutWorker's apply function ever.
@@ -446,7 +297,7 @@ class ApexTrainer(DQNTrainer):
             # operation on there.
             _batch = worker.sample()
             _actor = random.choice(replay_actors)
-            _actor.add_batch.remote(_batch)
+            _actor.add.remote(_batch)
             _batch_statistics = {
                 "agent_steps": _batch.agent_steps(),
                 "env_steps": _batch.env_steps(),
@@ -549,7 +400,8 @@ class ApexTrainer(DQNTrainer):
                     actors=[rand_actor],
                     ray_wait_timeout_s=0.1,
                     max_remote_requests_in_flight_per_actor=num_requests_to_launch,
-                    remote_fn=lambda actor: actor.replay(),
+                    remote_args=[[self.config["train_batch_size"]]],
+                    remote_fn=lambda actor, num_items: actor.sample(num_items),
                 )
             for replay_actor, sample_batches in replay_samples_ready.items():
                 for sample_batch in sample_batches:
@@ -571,13 +423,9 @@ class ApexTrainer(DQNTrainer):
             except queue.Full:
                 break
 
-    def update_replay_sample_priority(self) -> int:
+    def update_replay_sample_priority(self) -> None:
         """Update the priorities of the sample batches with new priorities that are
         computed by the learner thread.
-
-        Returns:
-            The number of samples trained by the learner thread since the last
-            training iteration.
         """
         num_samples_trained_this_itr = 0
         for _ in range(self.learner_thread.outqueue.qsize()):

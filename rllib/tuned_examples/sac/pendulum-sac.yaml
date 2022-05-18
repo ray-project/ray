@@ -23,11 +23,12 @@ pendulum-sac:
         no_done_at_end: true
         n_step: 1
         rollout_fragment_length: 1
-        prioritized_replay: true
         train_batch_size: 256
         target_network_update_freq: 1
         min_sample_timesteps_per_reporting: 1000
-        learning_starts: 256
+        replay_buffer_config:
+          type: MultiAgentPrioritizedReplayBuffer
+          learning_starts: 256
         optimization:
           actor_learning_rate: 0.0003
           critic_learning_rate: 0.0003

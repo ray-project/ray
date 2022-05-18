@@ -442,7 +442,9 @@ def postprocess_nstep_and_prio(
         batch[PRIO_WEIGHTS] = np.ones_like(batch[SampleBatch.REWARDS])
 
     # Prioritize on the worker side.
-    if batch.count > 0 and policy.config["worker_side_prioritization"]:
+    if batch.count > 0 and policy.config["replay_buffer_config"].get(
+        "worker_side_prioritization", False
+    ):
         td_errors = policy.compute_td_error(
             batch[SampleBatch.OBS],
             batch[SampleBatch.ACTIONS],

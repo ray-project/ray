@@ -349,7 +349,7 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range_arrow(100) # doctest: +SKIP
+            >>> ds = ray.data.range_table(100) # doctest: +SKIP
             >>> # Add a new column equal to value * 2.
             >>> ds = ds.add_column( # doctest: +SKIP
             ...     "new_col", lambda df: df["value"] * 2)
@@ -632,7 +632,7 @@ class Dataset(Generic[T]):
 
         Time complexity: O(1)
 
-        See also: ``Dataset.split_at_indices``
+        See also: ``Dataset.split_at_indices``, ``Dataset.split_proportionately``
 
         Args:
             n: Number of child datasets to return.
@@ -964,7 +964,7 @@ class Dataset(Generic[T]):
 
         Time complexity: O(num splits)
 
-        See also: ``Dataset.split``
+        See also: ``Dataset.split``, ``Dataset.split_proportionately``
 
         Args:
             indices: List of sorted integers which indicate where the dataset
@@ -992,6 +992,72 @@ class Dataset(Generic[T]):
         splits.append(rest)
 
         return splits
+
+    def split_proportionately(self, proportions: List[float]) -> List["Dataset[T]"]:
+        """Split the dataset using proportions.
+
+        A common use case for this would be splitting the dataset into train
+        and test sets (equivalent to eg. scikit-learn's ``train_test_split``).
+        See also :func:`ray.ml.train_test_split` for a higher level abstraction.
+
+        The indices to split at will be calculated in such a way so that all splits
+        always contains at least one element. If that is not possible,
+        an exception will be raised.
+
+        This is equivalent to caulculating the indices manually and calling
+        ``Dataset.split_at_indices``.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.range(10) # doctest: +SKIP
+            >>> d1, d2, d3 = ds.split_proportionately([0.2, 0.5]) # doctest: +SKIP
+            >>> d1.take() # doctest: +SKIP
+            [0, 1]
+            >>> d2.take() # doctest: +SKIP
+            [2, 3, 4, 5, 6]
+            >>> d3.take() # doctest: +SKIP
+            [7, 8, 9]
+
+        Time complexity: O(num splits)
+
+        See also: ``Dataset.split``, ``Dataset.split_at_indices``,
+        :func:`ray.ml.train_test_split`
+
+        Args:
+            proportions: List of proportions to split the dataset according to.
+                Must sum up to less than 1, and each proportion has to be bigger
+                than 0.
+
+        Returns:
+            The dataset splits.
+        """
+
+        if len(proportions) < 1:
+            raise ValueError("proportions must be at least of length 1")
+        if sum(proportions) >= 1:
+            raise ValueError("proportions must sum to less than 1")
+        if any(p <= 0 for p in proportions):
+            raise ValueError("proportions must be bigger than 0")
+
+        dataset_length = self.count()
+        cumulative_proportions = np.cumsum(proportions)
+        split_indices = [
+            int(dataset_length * proportion) for proportion in cumulative_proportions
+        ]
+
+        # Ensure each split has at least one element
+        subtract = 0
+        for i in range(len(split_indices) - 2, -1, -1):
+            split_indices[i] -= subtract
+            if split_indices[i] == split_indices[i + 1]:
+                subtract += 1
+                split_indices[i] -= 1
+        if any(i <= 0 for i in split_indices):
+            raise ValueError(
+                "Couldn't create non-empty splits with the given proportions."
+            )
+
+        return self.split_at_indices(split_indices)
 
     def union(self, *other: List["Dataset[T]"]) -> "Dataset[T]":
         """Combine this dataset with others of the same type.
@@ -1108,7 +1174,7 @@ class Dataset(Generic[T]):
             >>> import ray
             >>> from ray.data.aggregate import Max, Mean
             >>> ray.data.range(100).aggregate(Max()) # doctest: +SKIP
-            >>> ray.data.range_arrow(100).aggregate( # doctest: +SKIP
+            >>> ray.data.range_table(100).aggregate( # doctest: +SKIP
             ...    Max("value"), Mean("value")) # doctest: +SKIP
 
         Time complexity: O(dataset size / parallelism)
@@ -1141,7 +1207,7 @@ class Dataset(Generic[T]):
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     (i, i**2) # doctest: +SKIP
             ...     for i in range(100)]).sum(lambda x: x[1]) # doctest: +SKIP
-            >>> ray.data.range_arrow(100).sum("value") # doctest: +SKIP
+            >>> ray.data.range_table(100).sum("value") # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i, "B": i**2} # doctest: +SKIP
             ...     for i in range(100)]).sum(["A", "B"]) # doctest: +SKIP
@@ -1200,7 +1266,7 @@ class Dataset(Generic[T]):
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     (i, i**2) # doctest: +SKIP
             ...     for i in range(100)]).min(lambda x: x[1]) # doctest: +SKIP
-            >>> ray.data.range_arrow(100).min("value") # doctest: +SKIP
+            >>> ray.data.range_table(100).min("value") # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i, "B": i**2} # doctest: +SKIP
             ...     for i in range(100)]).min(["A", "B"]) # doctest: +SKIP
@@ -1259,7 +1325,7 @@ class Dataset(Generic[T]):
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     (i, i**2) # doctest: +SKIP
             ...     for i in range(100)]).max(lambda x: x[1]) # doctest: +SKIP
-            >>> ray.data.range_arrow(100).max("value") # doctest: +SKIP
+            >>> ray.data.range_table(100).max("value") # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i, "B": i**2} # doctest: +SKIP
             ...     for i in range(100)]).max(["A", "B"]) # doctest: +SKIP
@@ -1318,7 +1384,7 @@ class Dataset(Generic[T]):
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     (i, i**2) # doctest: +SKIP
             ...     for i in range(100)]).mean(lambda x: x[1]) # doctest: +SKIP
-            >>> ray.data.range_arrow(100).mean("value") # doctest: +SKIP
+            >>> ray.data.range_table(100).mean("value") # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i, "B": i**2} # doctest: +SKIP
             ...     for i in range(100)]).mean(["A", "B"]) # doctest: +SKIP
@@ -1380,7 +1446,7 @@ class Dataset(Generic[T]):
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     (i, i**2) # doctest: +SKIP
             ...     for i in range(100)]).std(lambda x: x[1]) # doctest: +SKIP
-            >>> ray.data.range_arrow(100).std("value", ddof=0) # doctest: +SKIP
+            >>> ray.data.range_table(100).std("value", ddof=0) # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i, "B": i**2} # doctest: +SKIP
             ...     for i in range(100)]).std(["A", "B"]) # doctest: +SKIP
@@ -2380,6 +2446,27 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
         if isinstance(output_signature, list):
             output_signature = tuple(output_signature)
 
+        def get_df_values(df: "pandas.DataFrame") -> np.ndarray:
+            # TODO(Clark): Support unsqueezing column dimension API, similar to
+            # to_torch().
+            try:
+                values = df.values
+            except ValueError as e:
+                import pandas as pd
+
+                # Pandas DataFrame.values doesn't support extension arrays in all
+                # supported Pandas versions, so we check to see if this DataFrame
+                # contains any extensions arrays and do a manual conversion if so.
+                # See https://github.com/pandas-dev/pandas/pull/43160.
+                if any(
+                    isinstance(dtype, pd.api.extensions.ExtensionDtype)
+                    for dtype in df.dtypes
+                ):
+                    values = np.stack([col.to_numpy() for _, col in df.items()], axis=1)
+                else:
+                    raise e from None
+            return values
+
         def make_generator():
             for batch in self.iter_batches(
                 prefetch_blocks=prefetch_blocks,
@@ -2392,13 +2479,13 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
 
                 features = None
                 if feature_columns is None:
-                    features = batch.values
+                    features = get_df_values(batch)
                 elif isinstance(feature_columns, list):
                     if all(isinstance(column, str) for column in feature_columns):
-                        features = batch[feature_columns].values
+                        features = get_df_values(batch[feature_columns])
                     elif all(isinstance(columns, list) for columns in feature_columns):
                         features = tuple(
-                            batch[columns].values for columns in feature_columns
+                            get_df_values(batch[columns]) for columns in feature_columns
                         )
                     else:
                         raise ValueError(
@@ -2407,7 +2494,7 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
                         )
                 elif isinstance(feature_columns, dict):
                     features = {
-                        key: batch[columns].values
+                        key: get_df_values(batch[columns])
                         for key, columns in feature_columns.items()
                     }
                 else:
@@ -2416,8 +2503,6 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
                         f"but got a `{type(feature_columns).__name__}` instead."
                     )
 
-                # TODO(Clark): Support batches containing our extension array
-                # TensorArray.
                 if label_column:
                     yield features, targets
                 else:

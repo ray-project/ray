@@ -22,7 +22,7 @@ searchInput.addEventListener("keydown", function (e) {
         var searchForm = document.getElementsByClassName("bd-search")[0];
 
         const text = searchInput.value;
-        searchForm.action = "search.html?q=" + text;
+        searchForm.action = "https://docs.ray.io/en/latest/search.html?q=" + text;
 
         searchForm.submit();
     }

@@ -43,8 +43,10 @@ run_experiments(
             "config": {
                 "num_workers": 3,
                 "num_gpus": 0,
-                "buffer_size": 10000,
-                "learning_starts": 0,
+                "replay_buffer_config": {
+                    "capacity": 10000,
+                    "learning_starts": 0,
+                },
                 "rollout_fragment_length": 1,
                 "train_batch_size": 1,
                 "min_iter_time_s": 10,
