@@ -6,7 +6,8 @@ from unittest.mock import patch
 
 from freezegun import freeze_time
 
-from ray_release.config import Test, load_test_cluster_env
+from ray_release.config import Test
+from ray_release.template import load_test_cluster_env
 from ray_release.exception import RayWheelsNotFoundError, RayWheelsTimeoutError
 from ray_release.wheels import (
     get_ray_version,
@@ -14,6 +15,9 @@ from ray_release.wheels import (
     get_ray_wheels_url,
     find_ray_wheels_url,
     find_and_wait_for_ray_wheels_url,
+    is_wheels_url_matching_ray_verison,
+    get_wheels_filename,
+    maybe_rewrite_wheels_url,
 )
 
 
@@ -175,6 +179,45 @@ class WheelsFinderTest(unittest.TestCase):
 
             self.assertEqual(url, get_ray_wheels_url(repo, branch, commit, version))
 
+    def testMatchingRayWheelsURL(self):
+        assert not is_wheels_url_matching_ray_verison(
+            f"http://some/location/{get_wheels_filename('2.0.0dev0', (3, 8))}", (3, 7)
+        )
+
+        assert not is_wheels_url_matching_ray_verison(
+            f"http://some/location/{get_wheels_filename('2.0.0dev0', (3, 7))}", (3, 8)
+        )
+
+        assert is_wheels_url_matching_ray_verison(
+            f"http://some/location/{get_wheels_filename('2.0.0dev0', (3, 7))}", (3, 7)
+        )
+
+    @patch("ray_release.wheels.resolve_url", lambda url: url)
+    def testRewriteWheelsURL(self):
+        # Do not rewrite if versions match
+        assert (
+            maybe_rewrite_wheels_url(
+                f"http://some/location/{get_wheels_filename('2.0.0dev0', (3, 7))}",
+                (3, 7),
+            )
+            == f"http://some/location/{get_wheels_filename('2.0.0dev0', (3, 7))}"
+        )
+
+        # Do not rewrite if version can't be parsed
+        assert (
+            maybe_rewrite_wheels_url("http://some/location/unknown.whl", (3, 7))
+            == "http://some/location/unknown.whl"
+        )
+
+        # Rewrite when version can be parsed
+        assert (
+            maybe_rewrite_wheels_url(
+                f"http://some/location/{get_wheels_filename('2.0.0dev0', (3, 8))}",
+                (3, 7),
+            )
+            == f"http://some/location/{get_wheels_filename('2.0.0dev0', (3, 7))}"
+        )
+
     def testWheelsSanityString(self):
         this_env = {"env": None}
 
@@ -182,8 +225,8 @@ class WheelsFinderTest(unittest.TestCase):
             this_env["env"] = env
 
         with patch(
-            "ray_release.config.load_and_render_yaml_template", override_env
-        ), patch("ray_release.config.get_test_environment", lambda: {}):
+            "ray_release.template.load_and_render_yaml_template", override_env
+        ), patch("ray_release.template.get_test_environment", lambda: {}):
             load_test_cluster_env(
                 Test(cluster=dict(cluster_env="invalid")),
                 ray_wheels_url="https://no-commit-url",

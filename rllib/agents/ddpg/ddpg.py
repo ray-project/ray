@@ -7,6 +7,7 @@ from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.deprecation import Deprecated
 
 logger = logging.getLogger(__name__)
@@ -99,9 +100,11 @@ class DDPGConfig(SimpleQConfig):
 
         # Common DDPG buffer parameters.
         self.replay_buffer_config = {
-            "_enable_replay_buffer_api": True,
             "type": "MultiAgentPrioritizedReplayBuffer",
             "capacity": 50000,
+            # Specify prioritized replay by supplying a buffer type that supports
+            # prioritization, for example: MultiAgentPrioritizedReplayBuffer.
+            "prioritized_replay": DEPRECATED_VALUE,
             # Alpha parameter for prioritized replay buffer.
             "prioritized_replay_alpha": 0.6,
             # Beta parameter for sampling from prioritized replay buffer.
@@ -110,6 +113,8 @@ class DDPGConfig(SimpleQConfig):
             "prioritized_replay_eps": 1e-6,
             # How many steps of the model to sample before learning starts.
             "learning_starts": 1500,
+            # Whether to compute priorities on workers.
+            "worker_side_prioritization": False,
         }
 
         # .training()

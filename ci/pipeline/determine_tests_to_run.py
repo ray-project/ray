@@ -192,7 +192,11 @@ if __name__ == "__main__":
             elif changed_file.startswith("docker/"):
                 RAY_CI_DOCKER_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
-            elif changed_file.startswith("doc/") and changed_file.endswith(".py"):
+            elif changed_file.startswith("doc/") and (
+                changed_file.endswith(".py")
+                or changed_file.endswith(".ipynb")
+                or changed_file.endswith("BUILD")
+            ):
                 RAY_CI_DOC_AFFECTED = 1
             elif any(changed_file.startswith(prefix) for prefix in skip_prefix_list):
                 # nothing is run but linting in these cases

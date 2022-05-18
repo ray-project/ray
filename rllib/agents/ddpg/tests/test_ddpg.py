@@ -1,6 +1,7 @@
 import numpy as np
 import re
 import unittest
+from tempfile import TemporaryDirectory
 
 import ray
 import ray.rllib.agents.ddpg as ddpg
@@ -59,6 +60,23 @@ class TestDDPG(unittest.TestCase):
             else:
                 a = pol.global_step
             check(a, 500)
+            trainer.stop()
+
+    def test_ddpg_checkpoint_save_and_restore(self):
+        """Test whether a DDPGTrainer can save and load checkpoints."""
+        config = ddpg.DEFAULT_CONFIG.copy()
+        config["num_workers"] = 1
+        config["num_envs_per_worker"] = 2
+        config["replay_buffer_config"]["learning_starts"] = 0
+        config["exploration_config"]["random_timesteps"] = 100
+
+        # Test against all frameworks.
+        for _ in framework_iterator(config, with_eager_tracing=True):
+            trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v1")
+            trainer.train()
+            with TemporaryDirectory() as temp_dir:
+                checkpoint = trainer.save(temp_dir)
+                trainer.restore(checkpoint)
             trainer.stop()
 
     def test_ddpg_exploration_and_with_random_prerun(self):
@@ -131,7 +149,6 @@ class TestDDPG(unittest.TestCase):
         # Run locally.
         config.seed = 42
         config.num_workers = 0
-        config.learning_starts = 0
         config.twin_q = True
         config.use_huber = True
         config.huber_threshold = 1.0
@@ -139,9 +156,9 @@ class TestDDPG(unittest.TestCase):
         # Make this small (seems to introduce errors).
         config.l2_reg = 1e-10
         config.replay_buffer_config = {
-            "_enable_replay_buffer_api": True,
             "type": "MultiAgentReplayBuffer",
             "capacity": 50000,
+            "learning_starts": 0,
         }
         # Use very simple nets.
         config.actor_hiddens = [10]

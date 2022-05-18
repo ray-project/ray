@@ -26,19 +26,20 @@ ddpg-hopperbulletenv-v0:
         target_network_update_freq: 0
         tau: 0.001
         replay_buffer_config:
+          type: MultiAgentPrioritizedReplayBuffer
           capacity: 10000
           prioritized_replay_alpha: 0.6
           prioritized_replay_beta: 0.4
           prioritized_replay_eps: 0.000001
+          worker_side_prioritization: False
+          learning_starts: 500
         clip_rewards: False
         actor_lr: 0.001
         critic_lr: 0.001
         use_huber: False
         huber_threshold: 1.0
         l2_reg: 0.000001
-        learning_starts: 500
         rollout_fragment_length: 1
         train_batch_size: 48
         num_workers: 0
         num_gpus_per_worker: 0
-        worker_side_prioritization: False
