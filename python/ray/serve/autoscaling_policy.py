@@ -125,7 +125,9 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
         self,
         current_num_ongoing_requests: List[float],
         curr_target_num_replicas: int,
-        current_handle_queued_queries: List[float],
+        # Default is added for unit tests for unit test passing,
+        # no default value needed after the code settle down
+        current_handle_queued_queries: float = 0,
     ) -> int:
 
         if current_handle_queued_queries > 0 and len(current_num_ongoing_requests) == 0:
