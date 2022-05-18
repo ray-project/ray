@@ -29,8 +29,9 @@ class BaseNodeLauncher:
     in the background.
 
     By default, the subclass NodeLauncher is used to launch nodes in subthreads.
-    That behavior can be flagged off in the provider config, so that the autoscaler
-    makes blocking calls to BaseNodeLauncher.launch_node() in the main thread.
+    That behavior can be flagged off in the provider config by setting
+    `foreground_node_launch: True`; the autoscaler will then makes blocking calls to
+    BaseNodeLauncher.launch_node() in the main thread.
     """
 
     def __init__(
