@@ -15,14 +15,14 @@ logger = logging.getLogger(__name__)
 # fmt: off
 # __sphinx_doc_begin__
 R2D2_DEFAULT_CONFIG = Trainer.merge_trainer_configs(
-    DQN_DEFAULT_CONFIG,  # See keys in impala.py, which are also supported.
+    DQN_DEFAULT_CONFIG,  # See keys in dqn.py, which are also supported.
     {
         # Learning rate for adam optimizer.
         "lr": 1e-4,
         # Discount factor.
         "gamma": 0.997,
         # Train batch size (in number of single timesteps).
-        "train_batch_size": 64 * 20,
+        "train_batch_size": 64,
         # Adam epsilon hyper parameter
         "adam_epsilon": 1e-3,
         # Run in parallel by default.
@@ -32,10 +32,13 @@ R2D2_DEFAULT_CONFIG = Trainer.merge_trainer_configs(
 
         # === Replay buffer ===
         "replay_buffer_config": {
-            "_enable_replay_buffer_api": True,
             "type": "MultiAgentReplayBuffer",
+            # Specify prioritized replay by supplying a buffer type that supports
+            # prioritization, for example: MultiAgentPrioritizedReplayBuffer.
+            "prioritized_replay": DEPRECATED_VALUE,
             # Size of the replay buffer (in sequences, not timesteps).
             "capacity": 100000,
+            "storage_unit": "sequences",
             # Set automatically: The number
             # of contiguous environment steps to
             # replay at once. Will be calculated via
@@ -67,7 +70,7 @@ R2D2_DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         # if `use_h_function`=True.
         "h_function_epsilon": 1e-3,
 
-        # Update the target network every `target_network_update_freq` steps.
+        # Update the target network every `target_network_update_freq` sample steps.
         "target_network_update_freq": 2500,
 
         # Deprecated keys:

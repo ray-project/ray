@@ -278,7 +278,7 @@ for your particular problem, but tons of historic data recorded by a legacy (may
 non-RL/ML) system? This branch of reinforcement learning is for you!
 RLlib's comes with several `offline RL <https://github.com/ray-project/ray/blob/master/rllib/examples/offline_rl.py>`_
 algorithms (*CQL*, *MARWIL*, and *DQfD*), allowing you to either purely
-`behavior-clone <https://github.com/ray-project/ray/blob/master/rllib/agents/marwil/tests/test_bc.py>`_
+`behavior-clone <https://github.com/ray-project/ray/blob/master/rllib/algorithms/marwil/tests/test_bc.py>`_
 your existing system or learn how to further improve over it.
 
 

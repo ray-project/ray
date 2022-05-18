@@ -13,7 +13,11 @@ from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_policy import LearningRateSchedule, EntropyCoeffSchedule
+from ray.rllib.policy.torch_mixins import (
+    EntropyCoeffSchedule,
+    LearningRateSchedule,
+    ValueNetworkMixin,
+)
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import apply_grad_clipping, sequence_mask
@@ -148,41 +152,6 @@ def torch_optimizer(policy: Policy, config: TrainerConfigDict) -> LocalOptimizer
     return torch.optim.Adam(policy.model.parameters(), lr=config["lr"])
 
 
-class ValueNetworkMixin:
-    """Assigns the `_value()` method to the PPOPolicy.
-
-    This way, Policy can call `_value()` to get the current VF estimate on a
-    single(!) observation (as done in `postprocess_trajectory_fn`).
-    Note: When doing this, an actual forward pass is being performed.
-    This is different from only calling `model.value_function()`, where
-    the result of the most recent forward pass is being used to return an
-    already calculated tensor.
-    """
-
-    def __init__(self, obs_space, action_space, config):
-        # When doing GAE, we need the value function estimate on the
-        # observation.
-        if config["use_gae"]:
-            # Input dict is provided to us automatically via the Model's
-            # requirements. It's a single-timestep (last one in trajectory)
-            # input_dict.
-
-            def value(**input_dict):
-                input_dict = SampleBatch(input_dict)
-                input_dict = self._lazy_tensor_dict(input_dict)
-                model_out, _ = self.model(input_dict)
-                # [0] = remove the batch dim.
-                return self.model.value_function()[0].item()
-
-        # When not doing GAE, we do not require the value function's output.
-        else:
-
-            def value(*args, **kwargs):
-                return 0.0
-
-        self._value = value
-
-
 def setup_mixins(
     policy: Policy,
     obs_space: gym.spaces.Space,
@@ -201,7 +170,7 @@ def setup_mixins(
         policy, config["entropy_coeff"], config["entropy_coeff_schedule"]
     )
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
-    ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
+    ValueNetworkMixin.__init__(policy, config)
 
 
 A3CTorchPolicy = build_policy_class(

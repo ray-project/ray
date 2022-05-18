@@ -67,7 +67,7 @@ To be able to run our Atari examples, you should also install:
 
 After these quick pip installs, you can start coding against RLlib.
 
-Here is an example of running a PPO Trainer on the "`Taxi domain <https://gym.openai.com/envs/Taxi-v3/>`_"
+Here is an example of running a PPO Trainer on the "`Taxi domain <https://www.gymlibrary.ml/environments/toy_text/taxi/>`_"
 for a few training iterations, then perform a single evaluation loop
 (with rendering enabled):
 
@@ -126,7 +126,7 @@ click on the dropdowns below:
 
     *  Model-based / Meta-learning / Offline
 
-       -  |pytorch| :ref:`Single-Player AlphaZero (contrib/AlphaZero) <alphazero>`
+       -  |pytorch| :ref:`Single-Player AlphaZero (AlphaZero) <alphazero>`
 
        -  |pytorch| |tensorflow| :ref:`Model-Agnostic Meta-Learning (MAML) <maml>`
 
@@ -147,8 +147,8 @@ click on the dropdowns below:
 
     *  Contextual bandits
 
-       -  |pytorch| :ref:`Linear Upper Confidence Bound (contrib/LinUCB) <lin-ucb>`
-       -  |pytorch| :ref:`Linear Thompson Sampling (contrib/LinTS) <lints>`
+       -  |pytorch| :ref:`Linear Upper Confidence Bound (LinUCB) <lin-ucb>`
+       -  |pytorch| :ref:`Linear Thompson Sampling (LinTS) <lints>`
 
     *  Exploration-based plug-ins (can be combined with any algo)
 

@@ -182,6 +182,14 @@ py_test(
 )
 
 py_test(
+    name = "upload_to_comet_ml",
+    size = "medium",
+    srcs = ["examples/upload_to_comet_ml.py"],
+    tags = ["team:ml", "exclusive", "needs_credentials"],
+    deps = [":ml_lib"]
+)
+
+py_test(
     name = "upload_to_wandb",
     size = "medium",
     srcs = ["examples/upload_to_wandb.py"],
@@ -223,6 +231,14 @@ py_test(
     name = "test_data_parallel_trainer",
     size = "medium",
     srcs = ["tests/test_data_parallel_trainer.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_dataset_utils",
+    size = "small",
+    srcs = ["tests/test_dataset_utils.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )

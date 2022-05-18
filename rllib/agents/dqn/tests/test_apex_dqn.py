@@ -24,8 +24,9 @@ class TestApexDQN(unittest.TestCase):
         config = apex.APEX_DEFAULT_CONFIG.copy()
         config["num_workers"] = 0
         config["num_gpus"] = 0
-        config["learning_starts"] = 1000
-        config["prioritized_replay"] = True
+        config["replay_buffer_config"] = {
+            "learning_starts": 1000,
+        }
         config["min_sample_timesteps_per_reporting"] = 100
         config["min_time_s_per_reporting"] = 1
         config["optimizer"]["num_replay_buffer_shards"] = 1
@@ -41,8 +42,9 @@ class TestApexDQN(unittest.TestCase):
         config = apex.APEX_DEFAULT_CONFIG.copy()
         config["num_workers"] = 3
         config["num_gpus"] = 0
-        config["learning_starts"] = 1000
-        config["prioritized_replay"] = True
+        config["replay_buffer_config"] = {
+            "learning_starts": 1000,
+        }
         config["min_sample_timesteps_per_reporting"] = 100
         config["min_time_s_per_reporting"] = 1
         config["optimizer"]["num_replay_buffer_shards"] = 1
@@ -78,14 +80,12 @@ class TestApexDQN(unittest.TestCase):
         config = apex.APEX_DEFAULT_CONFIG.copy()
         config["num_workers"] = 1
         config["num_gpus"] = 0
-        config["learning_starts"] = 10
         config["train_batch_size"] = 10
         config["rollout_fragment_length"] = 5
         config["replay_buffer_config"] = {
-            # For now we don't use the new ReplayBuffer API here
-            "_enable_replay_buffer_api": False,
             "no_local_replay_buffer": True,
-            "type": "MultiAgentReplayBuffer",
+            "type": "MultiAgentPrioritizedReplayBuffer",
+            "learning_starts": 10,
             "capacity": 100,
             "replay_batch_size": 10,
             "prioritized_replay_alpha": 0.6,
@@ -124,7 +124,7 @@ class TestApexDQN(unittest.TestCase):
         for _ in framework_iterator(config):
             trainer = apex.ApexTrainer(config=config, env="CartPole-v0")
 
-            lr = _step_n_times(trainer, 5)  # 10 timesteps
+            lr = _step_n_times(trainer, 5)  # 50 timesteps
             # Close to 0.2
             self.assertGreaterEqual(lr, 0.1)
 

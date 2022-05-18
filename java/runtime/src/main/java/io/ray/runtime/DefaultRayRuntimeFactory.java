@@ -32,10 +32,7 @@ public class DefaultRayRuntimeFactory implements RayRuntimeFactory {
           rayConfig.runMode == RunMode.LOCAL
               ? new RayDevRuntime(rayConfig)
               : new RayNativeRuntime(rayConfig);
-      RayRuntimeInternal runtime =
-          rayConfig.numWorkersPerProcess > 1
-              ? RayRuntimeProxy.newInstance(innerRuntime)
-              : innerRuntime;
+      RayRuntimeInternal runtime = innerRuntime;
       runtime.start();
       return runtime;
     } catch (Exception e) {

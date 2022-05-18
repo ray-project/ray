@@ -32,6 +32,7 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
 
   protected final RayRuntimeInternal runtime;
 
+  // TODO(qwang): Use actorContext instead later.
   private final ConcurrentHashMap<UniqueId, T> actorContextMap = new ConcurrentHashMap<>();
 
   private final ThreadLocal<RayFunction> localRayFunction = new ThreadLocal<>();
@@ -66,7 +67,7 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
   private RayFunction getRayFunction(List<String> rayFunctionInfo) {
     JobId jobId = runtime.getWorkerContext().getCurrentJobId();
     JavaFunctionDescriptor functionDescriptor = parseFunctionDescriptor(rayFunctionInfo);
-    return runtime.getFunctionManager().getFunction(jobId, functionDescriptor);
+    return runtime.getFunctionManager().getFunction(functionDescriptor);
   }
 
   /** The return value indicates which parameters are ByteBuffer. */
@@ -93,7 +94,6 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
   }
 
   protected List<NativeRayObject> execute(List<String> rayFunctionInfo, List<Object> argsBytes) {
-    runtime.setIsContextSet(true);
     TaskType taskType = runtime.getWorkerContext().getCurrentTaskType();
     TaskId taskId = runtime.getWorkerContext().getCurrentTaskId();
     LOGGER.debug("Executing task {} {}", taskId, rayFunctionInfo);
@@ -108,7 +108,6 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
     }
 
     List<NativeRayObject> returnObjects = new ArrayList<>();
-    ClassLoader oldLoader = Thread.currentThread().getContextClassLoader();
     // Find the executable object.
 
     RayFunction rayFunction = localRayFunction.get();
@@ -121,7 +120,6 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
         rayFunction = getRayFunction(rayFunctionInfo);
       }
       Thread.currentThread().setContextClassLoader(rayFunction.classLoader);
-      runtime.getWorkerContext().setCurrentClassLoader(rayFunction.classLoader);
 
       // Get local actor object and arguments.
       Object actor = null;
@@ -215,10 +213,6 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
       } else {
         throw new RayActorException(e);
       }
-    } finally {
-      Thread.currentThread().setContextClassLoader(oldLoader);
-      runtime.getWorkerContext().setCurrentClassLoader(null);
-      runtime.setIsContextSet(false);
     }
     return returnObjects;
   }

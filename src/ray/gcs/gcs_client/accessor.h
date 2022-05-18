@@ -444,14 +444,6 @@ class NodeResourceInfoAccessor {
   virtual Status AsyncGetAllAvailableResources(
       const MultiItemCallback<rpc::AvailableResources> &callback);
 
-  /// Subscribe to node resource changes.
-  ///
-  /// \param subscribe Callback that will be called when any resource is updated.
-  /// \param done Callback that will be called when subscription is complete.
-  /// \return Status
-  virtual Status AsyncSubscribeToResources(
-      const ItemCallback<rpc::NodeResourceChange> &subscribe, const StatusCallback &done);
-
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
   /// PubSub server restart will cause GCS server restart. In this case, we need to
@@ -459,7 +451,7 @@ class NodeResourceInfoAccessor {
   /// server.
   virtual void AsyncResubscribe();
 
-  /// Report resource usage of a node to GCS asynchronously. Only used in tests.
+  /// Report resource usage of a node to GCS asynchronously.
   ///
   /// \param data_ptr The data that will be reported to GCS.
   /// \param callback Callback that will be called after report finishes.
