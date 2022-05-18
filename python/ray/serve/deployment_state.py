@@ -1284,7 +1284,6 @@ class DeploymentState:
         target_version = self._target_version
         target_replica_count = self._target_replicas
 
-        all_running_replica_cnt = self._replicas.count(states=[ReplicaState.RUNNING])
         running_at_target_version_replica_cnt = self._replicas.count(
             states=[ReplicaState.RUNNING], version=target_version
         )
