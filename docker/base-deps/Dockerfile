@@ -16,6 +16,12 @@ ARG PYTHON_VERSION=3.7.7
 ARG RAY_UID=1000
 ARG RAY_GID=100
 
+# GPG error "public key is not available" in Ubuntu
+# https://github.com/NVIDIA/nvidia-docker/issues/1632
+RUN apt-key del 7fa2af80
+RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/3bf863cc.pub
+RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu2004/x86_64/7fa2af80.pub
+
 RUN apt-get update -y \
     && apt-get install -y sudo tzdata \
     && useradd -ms /bin/bash -d /home/ray ray --uid $RAY_UID --gid $RAY_GID \
@@ -76,10 +82,5 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
     && sudo rm -rf /var/lib/apt/lists/* \
     && sudo apt-get clean
 
-# GPG error "public key is not available" in Ubuntu
-# https://github.com/NVIDIA/nvidia-docker/issues/1632
-RUN apt-key del 7fa2af80
-RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/3bf863cc.pub
-RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu2004/x86_64/7fa2af80.pub
 
 WORKDIR $HOME
