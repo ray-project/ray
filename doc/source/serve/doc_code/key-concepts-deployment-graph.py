@@ -14,13 +14,13 @@ class Model:
     def __init__(self, increment: int):
         self.increment = increment
 
-    def __call__(self, inp: int):
+    def predict(self, inp: int):
         return inp + self.increment
 
 
 with InputNode() as inp:
     model = Model.bind(increment=2)
-    output = model.bind(preprocess.bind(inp))
+    output = model.predict.bind(preprocess.bind(inp))
     serve_dag = DAGDriver.bind(output)
 
 handle = serve.run(serve_dag)
