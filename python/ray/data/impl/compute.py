@@ -187,6 +187,8 @@ class ActorPoolStrategy(ComputeStrategy):
         if not remote_args:
             remote_args["num_cpus"] = 1
 
+        remote_args["scheduling_strategy"] = context.scheduling_strategy
+
         BlockWorker = ray.remote(**remote_args)(BlockWorker)
 
         workers = [BlockWorker.remote() for _ in range(self.min_size)]
