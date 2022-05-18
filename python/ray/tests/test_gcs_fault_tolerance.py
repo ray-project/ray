@@ -366,28 +366,36 @@ import ray
 @ray.remote
 def f():
     print("OK1", flush=True)
+    # wait until log_monitor push this
+    from time import sleep
+    sleep(2)
     lock1 = FileLock(r"{lock_file1}")
     lock2 = FileLock(r"{lock_file2}")
 
     lock2.acquire()
     lock1.acquire()
 
+    # wait until log_monitor push this
+    from time import sleep
+    sleep(2)
     print("OK2", flush=True)
 
 ray.init(address='auto')
 ray.get(f.remote())
-from time import sleep
-sleep(1)
 ray.shutdown()
 """
     proc = run_string_as_driver_nonblocking(script)
 
     def condition():
+        import filelock
+
         try:
             with lock2.acquire(blocking=False):
                 return False
-        except Exception:
+        except filelock.Timeout:
             return True
+        except Exception:
+            return False
 
     # make sure the script has printed "OK1"
     wait_for_condition(condition, timeout=10)
@@ -399,9 +407,11 @@ ray.shutdown()
     ray.worker._global_node.start_gcs_server()
 
     lock1.release()
-
     proc.wait()
     output = proc.stdout.read()
+    # Print logs which are useful for debugging in CI
+    print("=================== OUTPUTS ============")
+    print(output.decode())
     assert b"OK1" in output
     assert b"OK2" in output
 
