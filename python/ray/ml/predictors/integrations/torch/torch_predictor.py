@@ -82,14 +82,11 @@ class TorchPredictor(Predictor):
     def _predict(self, tensor: torch.Tensor) -> pd.DataFrame:
         """Handle actual prediction."""
         prediction = self.model(tensor).cpu().detach().numpy()
-        # If model has multi-dimensional output (for example outputting logits),
-        # these cannot be used as values in pandas. Pandas only supports single
-        # dimensional numpy arrays as values. Have to convert to list for this to work.
-        # TODO: Don't return pandas dataframe and instead return ndarray or Dict[str,
-        #  ndarray] directly.
-        return pd.DataFrame(
-            {"predictions": prediction.tolist()}, columns=["predictions"]
-        )
+        # If model has outputs a Numpy array (for example outputting logits),
+        # these cannot be used as values in a Pandas Dataframe.
+        # We have to convert the outermost dimension to a python list (but the values
+        # in the list can still be Numpy arrays).
+        return pd.DataFrame({"predictions": list(prediction)}, columns=["predictions"])
 
     def predict(
         self,
@@ -119,8 +116,8 @@ class TorchPredictor(Predictor):
                 format of ``feature_columns``, or be a single dtype, in which
                 case it will be applied to all tensors.
                 If None, then automatically infer the dtype.
-            unsqueeze: If set to True, the features tensors will be unsqueezed (
-                reshaped to (N, 1)) before being concatenated into the final features
+            unsqueeze (bool): If set to True, the features tensors will be unsqueezed
+                (reshaped to (N, 1)) before being concatenated into the final features
                 tensor. Otherwise, they will be left as is, that is (N, ).
                 Defaults to True.
 
