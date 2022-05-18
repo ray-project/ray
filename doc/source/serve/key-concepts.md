@@ -51,9 +51,6 @@ You can also list all available deployments and dynamically get references to th
 deployment = serve.get_deployment("MyFirstDeployment")
 ```
 
-
-
-
 ## HTTP Ingress
 By default, deployments are exposed over HTTP at `http://localhost:8000/<deployment_name>`.
 The HTTP path that the deployment is available at can be changed using the `route_prefix` option.
@@ -94,47 +91,24 @@ As noted above, there are two ways to expose deployments. The first is by using 
 interface. This method allows you to access deployments within a Python script or code, making it convenient for a
 Python developer. And the second is by using the HTTP request, allowing access to deployments via a web client application.
 
+:::{note}
+  Let's look at a simple end-to-end example using both ways to expose and access deployments. Your output may
+  vary due to random nature of how the prediction is computed; however, the example illustrates two things:
+  1) how to expose and use deployments and 2) how to use replicas, to which requests are sent. Note that each pid
+  is a separate replica associated with each deployment name, `rep-1` and `rep-2` respectively.
 
-```{note}
-    Let's look at a simple end-to-end example using both ways to expose and access deployments. Your output may
-    vary due to random nature of how the prediction is computed; however, the example illustrates two things:
-    1\) how to expose and use deployments and 2) how to use replicas, to which requests are sent. Note that each pid
-    is a separate replica associated with each deployment name, `rep-1` and `rep-2` respectively.
-
-  ```{literalinclude} _examples/doc_code/create_deployment.py
+  ```{literalinclude} doc_code/create_deployment.py
   :end-before: __serve_example_end__
   :language: python
   :start-after: __serve_example_begin__
   ```
-
-  ```python
-  # Output:
-  # {'rep-1': Deployment(name=rep-1,version=None,route_prefix=/rep-1),
-  # 'rep-2': Deployment(name=rep-2,version=None,route_prefix=/rep-2)}
-  #
-  # ServerHandle API responses: ----------
-  # handle name : rep-1
-  # prediction  : (pid: 62636); path: /model/rep-1.pkl; data: 0.600; prediction: 1.292
-  # --
-  # handle name : rep-2
-  # prediction  : (pid: 62635); path: /model/rep-2.pkl; data: 0.075; prediction: 0.075
-  # --
-  # handle name : rep-1
-  # prediction  : (pid: 62634); path: /model/rep-1.pkl; data: 0.186; prediction: 0.186
-  # --
-  # handle name : rep-2
-  # prediction  : (pid: 62637); path: /model/rep-2.pkl; data: 0.751; prediction: 1.444
-  # --
-  # HTTP responses: ----------
-  # handle name : rep-1
-  # prediction  : (pid: 62636); path: /model/rep-1.pkl; data: 0.582; prediction: 1.481
-  # handle name : rep-2
-  # prediction  : (pid: 62637); path: /model/rep-2.pkl; data: 0.778; prediction: 1.678
-  # handle name : rep-1
-  # prediction  : (pid: 62634); path: /model/rep-1.pkl; data: 0.139; prediction: 0.139
-  # handle name : rep-2
-  # prediction  : (pid: 62635); path: /model/rep-2.pkl; data: 0.569; prediction: 1.262
-  ```
-```
+:::
 
 ## Deployment Graph
+
+Building on top of the Deployment concept, Ray Serve provides a first-class API for composing models into a graph structure.
+
+Here's a simple example combining a preprocess function and model.
+
+```{literalinclude} doc_code/key-concepts-deployment-graph.py
+```
