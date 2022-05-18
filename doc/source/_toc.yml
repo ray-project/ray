@@ -200,6 +200,7 @@ parts:
           - file: ray-core/examples/plot_lbfgs
           - file: ray-core/examples/plot_parameter_server
           - file: ray-core/examples/plot_pong_example
+          - file: ray-core/examples/highly_parallel
       - file: ray-core/package-ref
 
   - caption: Ray Clusters
