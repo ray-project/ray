@@ -400,6 +400,14 @@ class WorkerPoolMock : public WorkerPool {
                      const std::vector<uint8_t> &){};
 };
 
+bool HasNiceness() {
+#if (defined(__APPLE__) || defined(__unix__) || defined(__linux__))
+  return true;
+#else
+  return false;
+#endif
+}
+
 class WorkerPoolTest : public ::testing::Test {
  public:
   WorkerPoolTest() {
@@ -653,6 +661,30 @@ TEST_F(WorkerPoolTest, InitialWorkerProcessCount) {
   ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 0);
 }
 
+TEST_F(WorkerPoolTest, StartWorkerWithNiceness) {
+  if (!HasNiceness()) {
+    GTEST_SKIP();
+  }
+
+  PopWorkerStatus status;
+  worker_pool_->StartWorkerProcess(
+      Language::PYTHON, rpc::WorkerType::WORKER, JOB_ID, &status);
+  ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 1);
+  const std::vector<std::string> cmd_1 =
+      worker_pool_->GetWorkerCommand(worker_pool_->LastStartedWorkerProcess());
+  ASSERT_FALSE(cmd_1.empty());
+  ASSERT_TRUE(absl::StartsWith(cmd_1[0], "nice")) << cmd_1[0];
+
+  RayConfig::instance().worker_niceness() = 0;
+  worker_pool_->StartWorkerProcess(
+      Language::PYTHON, rpc::WorkerType::WORKER, JOB_ID, &status);
+  ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 2);
+  const std::vector<std::string> cmd_2 =
+      worker_pool_->GetWorkerCommand(worker_pool_->LastStartedWorkerProcess());
+  ASSERT_FALSE(cmd_2.empty());
+  ASSERT_FALSE(absl::StartsWith(cmd_2[0], "nice")) << cmd_2[0];
+}
+
 TEST_F(WorkerPoolTest, TestPrestartingWorkers) {
   const auto task_spec = ExampleTaskSpec();
   // Prestarts 2 workers.
@@ -738,8 +770,12 @@ TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
   worker_pool_->HandleJobStarted(job_id, job_config);
 
   ASSERT_NE(worker_pool_->PopWorkerSync(task_spec), nullptr);
-  const auto real_command =
+  std::vector<std::string> real_command =
       worker_pool_->GetWorkerCommand(worker_pool_->LastStartedWorkerProcess());
+  if (HasNiceness()) {
+    // Remove args to set niceness.
+    real_command.erase(real_command.begin(), real_command.begin() + 3);
+  }
 
   // NOTE: When adding a new parameter to Java worker command, think carefully about the
   // position of this new parameter. Do not modify the order of existing parameters.

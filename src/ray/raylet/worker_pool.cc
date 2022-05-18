@@ -40,7 +40,7 @@ namespace {
 
 // Add this prefix because the worker setup token is just a counter which is easy to
 // duplicate with other ids.
-static const std::string kWorkerSetupTokenPrefix = "worker_startup_token:";
+const std::string kWorkerSetupTokenPrefix = "worker_startup_token:";
 
 // A helper function to get a worker from a list.
 std::shared_ptr<ray::raylet::WorkerInterface> GetWorker(
@@ -62,6 +62,17 @@ bool RemoveWorker(
   return worker_pool.erase(worker) > 0;
 }
 
+std::vector<std::string> CommandArgsToAdjustWorkerNice() {
+#if (defined(__APPLE__) || defined(__unix__) || defined(__linux__))
+  int nice = RayConfig::instance().worker_niceness();
+  nice = std::max(nice, 0);
+  nice = std::min(nice, 19);
+  if (nice > 0) {
+    return {"nice", "-n", absl::StrCat(nice)};
+  }
+#endif
+  return {};
+}
 }  // namespace
 
 namespace ray {
@@ -316,7 +327,7 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
 
   // Extract pointers from the worker command to pass into execvpe.
   std::vector<std::string> worker_command_args;
-  for (auto const &token : state.worker_command) {
+  for (const auto &token : state.worker_command) {
     if (token == kWorkerDynamicOptionPlaceholder) {
       worker_command_args.insert(
           worker_command_args.end(), options.begin(), options.end());
@@ -332,10 +343,9 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
       replaced_token.replace(node_manager_port_position,
                              strlen(kNodeManagerPortPlaceholder),
                              std::to_string(node_manager_port_));
-      worker_command_args.push_back(replaced_token);
+      worker_command_args.push_back(std::move(replaced_token));
       continue;
     }
-
     worker_command_args.push_back(token);
   }
 
@@ -362,6 +372,34 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
   } else if (language == Language::CPP) {
     worker_command_args.push_back("--startup_token=" +
                                   std::to_string(worker_startup_token_counter_));
+  }
+
+  if (language == Language::PYTHON || language == Language::JAVA) {
+    if (serialized_runtime_env_context != "{}" &&
+        !serialized_runtime_env_context.empty()) {
+      worker_command_args.push_back("--language=" + Language_Name(language));
+      worker_command_args.push_back("--runtime-env-hash=" +
+                                    std::to_string(runtime_env_hash));
+      worker_command_args.push_back("--serialized-runtime-env-context=" +
+                                    serialized_runtime_env_context);
+    } else if (language == Language::PYTHON && worker_command_args.size() >= 2 &&
+               worker_command_args[1].find(kSetupWorkerFilename) != std::string::npos) {
+      // Check that the arg really is the path to the setup worker before erasing it, to
+      // prevent breaking tests that mock out the worker command args.
+      worker_command_args.erase(worker_command_args.begin() + 1,
+                                worker_command_args.begin() + 2);
+    } else if (language == Language::JAVA) {
+      worker_command_args.push_back("--language=" + Language_Name(language));
+    }
+
+    if (ray_debugger_external) {
+      worker_command_args.push_back("--ray-debugger-external");
+    }
+  }
+
+  if (const std::vector<std::string> args = CommandArgsToAdjustWorkerNice();
+      !args.empty()) {
+    worker_command_args.insert(worker_command_args.begin(), args.begin(), args.end());
   }
 
   ProcessEnvironment env;
@@ -395,30 +433,6 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
       }
       env.emplace(kLibraryPathEnvName, path_env);
 #endif
-    }
-  }
-
-  if (language == Language::PYTHON || language == Language::JAVA) {
-    if (serialized_runtime_env_context != "{}" &&
-        !serialized_runtime_env_context.empty()) {
-      worker_command_args.push_back("--language=" + Language_Name(language));
-      worker_command_args.push_back("--runtime-env-hash=" +
-                                    std::to_string(runtime_env_hash));
-
-      worker_command_args.push_back("--serialized-runtime-env-context=" +
-                                    serialized_runtime_env_context);
-    } else if (language == Language::PYTHON && worker_command_args.size() >= 2 &&
-               worker_command_args[1].find(kSetupWorkerFilename) != std::string::npos) {
-      // Check that the arg really is the path to the setup worker before erasing it, to
-      // prevent breaking tests that mock out the worker command args.
-      worker_command_args.erase(worker_command_args.begin() + 1,
-                                worker_command_args.begin() + 2);
-    } else if (language == Language::JAVA) {
-      worker_command_args.push_back("--language=" + Language_Name(language));
-    }
-
-    if (ray_debugger_external) {
-      worker_command_args.push_back("--ray-debugger-external");
     }
   }
 
