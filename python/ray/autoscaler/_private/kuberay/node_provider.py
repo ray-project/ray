@@ -1,7 +1,6 @@
 import json
 import logging
 import requests
-import threading
 from typing import Any, Dict, List, Tuple
 
 from ray.autoscaler._private.constants import (
