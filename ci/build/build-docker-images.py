@@ -195,8 +195,8 @@ def _build_docker_image(
 
     build_args = {}
     build_args["PYTHON_VERSION"] = PY_MATRIX[py_version]
-    # I.e. "py36"[-1] == 6
-    build_args["PYTHON_MINOR_VERSION"] = py_version[-1]
+    # I.e. "py310"[3:] == 10
+    build_args["PYTHON_MINOR_VERSION"] = py_version[3:]
 
     device_tag = f"{image_type}"
 
