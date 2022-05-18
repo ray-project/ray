@@ -286,7 +286,10 @@ class _SyncSubscriber(_SubscriberBase):
                     # GRPC has not replied, continue waiting.
                     continue
                 except grpc.RpcError as e:
-                    if e.code() == grpc.StatusCode.DEADLINE_EXCEEDED and timeout is not None:
+                    if (
+                        e.code() == grpc.StatusCode.DEADLINE_EXCEEDED
+                        and timeout is not None
+                    ):
                         return
                     if self._handle_polling_failure(e) is True:
                         self.subscribe()
@@ -312,11 +315,13 @@ class _SyncSubscriber(_SubscriberBase):
             return
         self._close.set()
         req = self._unsubscribe_request(channels=[self._channel])
+
         try:
             self._stub.GcsSubscriberCommandBatch(req, timeout=5)
         except Exception:
             pass
-        self._stub = None
+        with self._lock:
+            self._stub = None
 
 
 class GcsErrorSubscriber(_SyncSubscriber):
@@ -548,12 +553,13 @@ class _AioSubscriber(_SubscriberBase):
             try:
                 return await self._stub.GcsSubscriberPoll(req, timeout=timeout)
             except grpc.RpcError as e:
-                if e.code() == grpc.StatusCode.DEADLINE_EXCEEDED and timeout is not None:
+                if (
+                    e.code() == grpc.StatusCode.DEADLINE_EXCEEDED
+                    and timeout is not None
+                ):
                     return
                 if self._handle_polling_failure(e) is True:
-                    print("start to subscribe")
                     await self.subscribe()
-                    print("finish subscribe")
                 else:
                     return
 
@@ -564,7 +570,9 @@ class _AioSubscriber(_SubscriberBase):
             # supported.
             poll = asyncio.ensure_future(self._poll_call(req))
             close = asyncio.ensure_future(self._close.wait())
-            done, _ = await asyncio.wait([poll, close], timeout=timeout, return_when=asyncio.FIRST_COMPLETED)
+            done, _ = await asyncio.wait(
+                [poll, close], timeout=timeout, return_when=asyncio.FIRST_COMPLETED
+            )
             if poll not in done or close in done:
                 # Request timed out or subscriber closed.
                 break

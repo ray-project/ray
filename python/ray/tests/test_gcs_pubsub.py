@@ -15,6 +15,7 @@ from ray._private.gcs_pubsub import (
 from ray.core.generated.gcs_pb2 import ErrorTableData
 import pytest
 
+
 def test_publish_and_subscribe_error_info(ray_start_regular):
     address_info = ray_start_regular
     gcs_server_addr = address_info["gcs_address"]
@@ -49,6 +50,7 @@ def test_publish_and_subscribe_error_info_ft(ray_start_regular_with_external_red
     err3 = ErrorTableData(error_message="test error message 3")
     err4 = ErrorTableData(error_message="test error message 4")
     b = Barrier(3)
+
     def publisher_func():
         print("Publisher HERE")
         publisher.publish_error(b"aaa_id", err1)
@@ -60,6 +62,7 @@ def test_publish_and_subscribe_error_info_ft(ray_start_regular_with_external_red
         # Wait fo subscriber to subscribe first.
         # It's ok to loose log messages.
         from time import sleep
+
         sleep(5)
         publisher.publish_error(b"aaa_id", err3)
         print("pub err1")
@@ -89,6 +92,7 @@ def test_publish_and_subscribe_error_info_ft(ray_start_regular_with_external_red
 
     ray.worker._global_node.kill_gcs_server()
     from time import sleep
+
     sleep(1)
     ray.worker._global_node.start_gcs_server()
     sleep(1)
@@ -118,43 +122,58 @@ async def test_aio_publish_and_subscribe_error_info(ray_start_regular):
 
 
 @pytest.mark.asyncio
-async def test_aio_publish_and_subscribe_error_info_ft(ray_start_regular):
-    address_info = ray_start_regular
+async def test_aio_publish_and_subscribe_error_info_ft(
+    ray_start_regular_with_external_redis,
+):
+    address_info = ray_start_regular_with_external_redis
     gcs_server_addr = address_info["gcs_address"]
 
     subscriber = GcsAioErrorSubscriber(address=gcs_server_addr)
     await subscriber.subscribe()
 
-    publisher = GcsAioPublisher(address=gcs_server_addr)
     err1 = ErrorTableData(error_message="test error message 1")
     err2 = ErrorTableData(error_message="test error message 2")
     err3 = ErrorTableData(error_message="test error message 3")
     err4 = ErrorTableData(error_message="test error message 4")
 
-    await publisher.publish_error(b"aaa_id", err1)
-    await publisher.publish_error(b"bbb_id", err2)
+    def restart_gcs_server():
+        import asyncio
 
+        asyncio.set_event_loop(asyncio.new_event_loop())
+        from time import sleep
+
+        publisher = GcsAioPublisher(address=gcs_server_addr)
+        asyncio.get_event_loop().run_until_complete(
+            publisher.publish_error(b"aaa_id", err1)
+        )
+        asyncio.get_event_loop().run_until_complete(
+            publisher.publish_error(b"bbb_id", err2)
+        )
+
+        # wait until subscribe consume everything
+        sleep(5)
+        ray.worker._global_node.kill_gcs_server()
+        sleep(1)
+        ray.worker._global_node.start_gcs_server()
+        # wait until subscriber resubscribed
+        sleep(5)
+
+        asyncio.get_event_loop().run_until_complete(
+            publisher.publish_error(b"aaa_id", err3)
+        )
+        asyncio.get_event_loop().run_until_complete(
+            publisher.publish_error(b"bbb_id", err4)
+        )
+
+    t1 = threading.Thread(target=restart_gcs_server)
+    t1.start()
     assert await subscriber.poll() == (b"aaa_id", err1)
     assert await subscriber.poll() == (b"bbb_id", err2)
-
-    ray.worker._global_node.kill_gcs_server()
-    from time import sleep
-    sleep(1)
-    ray.worker._global_node.start_gcs_server()
-    sleep(1)
-    import asyncio
-    r = await subscriber.poll(timeout=1)
-    print("poll done", r)
-    asyncio.sleep(2)
-    await publisher.publish_error(b"aaa_id", err3)
-    print("publish")
-    await publisher.publish_error(b"bbb_id", err4)
-    print("publish")
-
     assert await subscriber.poll() == (b"aaa_id", err3)
     assert await subscriber.poll() == (b"bbb_id", err4)
 
     await subscriber.close()
+    t1.join()
 
 
 def test_publish_and_subscribe_logs(ray_start_regular):
