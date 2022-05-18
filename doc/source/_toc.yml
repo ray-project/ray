@@ -197,7 +197,6 @@ parts:
           - file: ray-core/examples/plot_example-a3c
           - file: ray-core/examples/plot_example-lm
           - file: ray-core/examples/plot_hyperparameter
-          - file: ray-core/examples/plot_lbfgs
           - file: ray-core/examples/plot_parameter_server
           - file: ray-core/examples/plot_pong_example
       - file: ray-core/package-ref

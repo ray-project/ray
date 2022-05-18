@@ -30,14 +30,6 @@ Machine Learning Examples
     :img-top: /ray-overview/images/ray_svg_logo.svg
 
     +++
-    .. link-button:: plot_lbfgs
-        :type: ref
-        :text: Walkthrough of parallelizing the L-BFGS algorithm
-        :classes: btn-link btn-block stretched-link
-    ---
-    :img-top: /ray-overview/images/ray_svg_logo.svg
-
-    +++
     .. link-button:: plot_example-lm
         :type: ref
         :text: Fault-Tolerant Fairseq Training
