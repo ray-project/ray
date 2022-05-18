@@ -36,7 +36,8 @@ This flexibility is a unique characteristic of Ray Datasets.
 Compared to `Spark RDDs <https://spark.apache.org/docs/latest/rdd-programming-guide.html>`__
 and `Dask Bags <https://docs.dask.org/en/latest/bag.html>`__, Ray Datasets offers a more basic set of features,
 and executes operations eagerly for simplicity.
-It is intended that users cast Datasets into more feature-rich dataframe types (e.g., ``ds.to_dask()``) for advanced operations.
+It is intended that users cast Datasets into more feature-rich dataframe types (e.g.,
+:meth:`ds.to_dask() <ray.data.Dataset.to_dask>`) for advanced operations.
 
 .. _dataset_pipeline_concept:
 
@@ -51,9 +52,9 @@ A DatasetPipeline is an unified iterator over a (potentially infinite) sequence 
 
 .. _dataset_execution_concept:
 
------------------------
-Dataset Execution Model
------------------------
+------------------------
+Datasets Execution Model
+------------------------
 
 This page overviews the execution model of Datasets, which may be useful for understanding and tuning performance.
 
@@ -80,12 +81,19 @@ In the common case, each read task produces a single output block. Read tasks ma
 Deferred Read Task Execution
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-When a Dataset is created using ``ray.data.read_*``, only the first read task will be executed initially. This avoids blocking Dataset creation on the reading of all data files, enabling inspection functions like ``ds.schema()`` and ``ds.show()`` to be used right away. Executing further transformations on the Dataset will trigger execution of all read tasks.
+When a Dataset is created using ``ray.data.read_*``, only the first read task will be
+executed initially. This avoids blocking Dataset creation on the reading of all data
+files, enabling inspection functions like :meth:`ds.schema() <ray.data.Dataset.schema>``
+and :meth:`ds.show() <ray.data.Dataset.show>` to be used right away. Executing further
+transformations on the Dataset will trigger execution of all read tasks.
 
 Dataset Transforms
 ==================
 
-Datasets use either Ray tasks or Ray actors to transform datasets (i.e., for ``.map``, ``.flat_map``, or ``.map_batches``). By default, tasks are used (``compute="tasks"``). Actors can be specified with ``compute="actors"``, in which case an autoscaling pool of Ray actors will be used to apply transformations. Using actors allows for expensive state initialization (e.g., for GPU-based tasks) to be re-used. Whichever compute strategy is used, each map task generally takes in one block and produces one or more output blocks. The output block splitting rule is the same as for file reads (blocks are split after hitting the target max block size of 2GiB):
+Datasets use either Ray tasks or Ray actors to transform datasets (i.e., for
+:meth:`ds.map_batches() <ray.data.Dataset.map_batches>`,
+:meth:`ds.map() <ray.data.Dataset.map>`, or
+:meth:`ds.flat_map() <ray.data.Dataset.flat_map>`). By default, tasks are used (``compute="tasks"``). Actors can be specified with ``compute="actors"``, in which case an autoscaling pool of Ray actors will be used to apply transformations. Using actors allows for expensive state initialization (e.g., for GPU-based tasks) to be re-used. Whichever compute strategy is used, each map task generally takes in one block and produces one or more output blocks. The output block splitting rule is the same as for file reads (blocks are split after hitting the target max block size of 2GiB):
 
 .. image:: images/dataset-map.svg
    :width: 650px
@@ -97,9 +105,12 @@ Datasets use either Ray tasks or Ray actors to transform datasets (i.e., for ``.
 Shuffling Data
 ==============
 
-Certain operations like ``.sort`` and ``.groupby`` require data blocks to be partitioned by value. Datasets executes this in three phases. First, a wave of sampling tasks determines suitable partition boundaries based on a random sample of data. Second, map tasks divide each input block into a number of output blocks equal to the number of reduce tasks. Third, reduce tasks take assigned output blocks from each map task and combines them into one block. Overall, this strategy generates ``O(n^2)`` intermediate objects where ``n`` is the number of input blocks.
+Certain operations like :meth:`ds.sort() <ray.data.Dataset.sort>` and
+:meth:`ds.groupby() <ray.data.Dataset.groupby>` require data blocks to be partitioned by value. Datasets executes this in three phases. First, a wave of sampling tasks determines suitable partition boundaries based on a random sample of data. Second, map tasks divide each input block into a number of output blocks equal to the number of reduce tasks. Third, reduce tasks take assigned output blocks from each map task and combines them into one block. Overall, this strategy generates ``O(n^2)`` intermediate objects where ``n`` is the number of input blocks.
 
-You can also change the partitioning of a Dataset using ``.random_shuffle`` or ``.repartition``. The former should be used if you want to randomize the order of elements in the dataset. The second should be used if you only want to equalize the size of the Dataset blocks (e.g., after a read or transformation that may skew the distribution of block sizes). Note that repartition has two modes, ``shuffle=False``, which performs the minimal data movement needed to equalize block sizes, and ``shuffle=True``, which performs a full (non-random) distributed shuffle:
+You can also change the partitioning of a Dataset using :meth:`ds.random_shuffle()
+<ray.data.Dataset.random_shuffle>` or
+:meth:`ds.repartition() <ray.data.Dataset.repartition>`. The former should be used if you want to randomize the order of elements in the dataset. The second should be used if you only want to equalize the size of the Dataset blocks (e.g., after a read or transformation that may skew the distribution of block sizes). Note that repartition has two modes, ``shuffle=False``, which performs the minimal data movement needed to equalize block sizes, and ``shuffle=True``, which performs a full (non-random) distributed shuffle:
 
 .. image:: images/dataset-shuffle.svg
    :width: 650px
@@ -125,32 +136,11 @@ schedule without a placement group by specifying a placement group as the global
 scheduling strategy for all Datasets tasks/actors, using the global
 :class:`DatasetContext <ray.data.DatasetContext>`:
 
-.. code-block::
 
-    import ray
-    from ray.data.context import DatasetContext
-    from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-
-    # Create a single-CPU local cluster.
-    ray.init(num_cpus=1)
-    ctx = DatasetContext.get_current()
-    # Create a placement group that takes up the single core on the cluster.
-    placement_group = ray.util.placement_group(
-        name="core_hog",
-        strategy="SPREAD",
-        bundles=[
-            {"CPU": 1},
-        ],
-    )
-    ray.get(placement_group.ready())
-
-    # Tell Datasets to use the placement group for all Datasets tasks.
-    ctx.scheduling_strategy = PlacementGroupSchedulingStrategy(placement_group)
-    # This Dataset workload will use that placement group for all read and map tasks.
-    ds = ray.data.range(100, parallelism=2) \
-        .map(lambda x: x + 1)
-
-    assert ds.take_all() == list(range(1, 101))
+.. literalinclude:: ./doc_code/key_concepts.py
+  :language: python
+  :start-after: __resource_allocation_begin__
+  :end-before: __resource_allocation_end__
 
 Memory Management
 =================
@@ -162,7 +152,13 @@ Execution Memory
 
 During execution, certain types of intermediate data must fit in memory. This includes the input block of a task, as well as at least one of the output blocks of the task (when a task has multiple output blocks, only one needs to fit in memory at any given time). The input block consumes object stored shared memory (Python heap memory for non-Arrow data). The output blocks consume Python heap memory (prior to putting in the object store) as well as object store memory (after being put in the object store).
 
-This means that large block sizes can lead to potential out-of-memory situations. To avoid OOM errors, Datasets can split blocks during map and read tasks into pieces smaller than the target max block size. In some cases, this splitting is not possible (e.g., if a single item in a block is extremely large, or the function given to ``.map_batches`` returns a very large batch). To avoid these issues, make sure no single item in your Datasets is too large, and always call ``.map_batches`` with batch size small enough such that the output batch can comfortably fit into memory.
+This means that large block sizes can lead to potential out-of-memory situations. To
+avoid OOM errors, Datasets can split blocks during map and read tasks into pieces
+smaller than the target max block size. In some cases, this splitting is not possible
+(e.g., if a single item in a block is extremely large, or the function given to
+:meth:`ds.map_batches() <ray.data.Dataset.map_batches>` returns a very large batch). To
+avoid these issues, make sure no single item in your Datasets is too large, and always
+call :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` with batch size small enough such that the output batch can comfortably fit into memory.
 
 .. note::
 
@@ -208,7 +204,8 @@ and increased memory utilization compared to what's possible with a lazy executi
 That's why Datasets offers a lazy execution mode, which you can transition to after
 you're done prototyping your Datasets pipeline.
 
-Lazy execution mode can be enabled by calling ``ds = ds.experimental_lazy()``, which
+Lazy execution mode can be enabled by calling
+:meth:`ds = ds.experimental_lazy() <ray.data.Dataset.experimental_lazy()>`, which
 returns a dataset whose all subsequent operations will be **lazy**. These operations
 won't be executed until the dataset is consumed (e.g. via
 :meth:`ds.take() <ray.data.Dataset.take>`,
@@ -266,19 +263,20 @@ In addition to fusing together stages, lazy execution mode further optimizes mem
 utilization by eagerly releasing the data produced by intermediate operations in a
 chain.
 
-For example, if you have a chain of ``read() -> map() -> filter()`` operations:
+For example, if you have a chain of ``read_parquet() -> map_batches() -> filter()`` operations:
 
-.. code-block::
-
-    ds = ds.read_parquet().experimental_lazy().map(udf).filter(filter_udf)
+.. literalinclude:: ./doc_code/key_concepts.py
+  :language: python
+  :start-after: __block_move_begin__
+  :end-before: __block_move_end__
 
 that, for the sake of this example, aren't fused together, Datasets can eagerly release
-the outputs of the ``read()`` stage and the ``map()`` stage before the subsequent stage
-(``map()`` and ``filter()``, respectively) have finished. This was not possible in eager
-mode, since every operation materialized the data and returned the references back to
-the user. But in lazy execution mode, we know that the outputs of the ``read()`` and
-``map()`` stages are only going to be used by the downstream stages, so we can more
-aggressively release them.
+the outputs of the ``read_parquet()`` stage and the ``map_batches()`` stage before the
+subsequent stage (``map_batches()`` and ``filter()``, respectively) have finished. This
+was not possible in eager mode, since every operation materialized the data and returned
+the references back to the user. But in lazy execution mode, we know that the outputs of
+the ``read_parquet()`` and ``map_batches()`` stages are only going to be used by the
+downstream stages, so we can more aggressively release them.
 
 Dataset Pipelines Execution Model
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -299,12 +297,7 @@ data extra aggressively.
   that re-read data from storage on every epoch, as well as streaming batch inference
   pipelines that window all the way down to the file reading.
 
-  .. code-block::
-
-      # ML ingest re-reading from storage on every epoch.
-      ray.data.read_parquet().repeat().random_shuffle().to_torch()
-
-      # Streaming batch inference pipeline that pipelines the transforming of a single
-      # file with the reading of a single file (at most 2 file's worth of data in-flight
-      # at a time).
-      ray.data.read_parquet().window(blocks_per_window=1).map_batches(udf)
+.. literalinclude:: ./doc_code/key_concepts.py
+  :language: python
+  :start-after: __dataset_pipelines_execution_begin__
+  :end-before: __dataset_pipelines_execution_end__
