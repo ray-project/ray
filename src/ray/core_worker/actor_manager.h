@@ -142,9 +142,6 @@ class ActorManager {
   /// they are submitted.
   ///
   /// \param actor_handle The handle to the actor.
-  /// \param is_owner_handle Whether this is the owner's handle to the actor.
-  /// The owner is the creator of the actor and is responsible for telling the
-  /// actor to disconnect once all handles are out of scope.
   /// \param[in] call_site The caller's site.
   /// \param[in] actor_id The id of an actor
   /// \param[in] actor_creation_return_id object id of this actor creation
@@ -154,7 +151,6 @@ class ActorManager {
   /// \return True if the handle was added and False if we already had a handle
   /// to the same actor.
   bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
-                      bool is_owner_handle,
                       const std::string &call_site,
                       const rpc::Address &caller_address,
                       const ActorID &actor_id,

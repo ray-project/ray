@@ -31,7 +31,6 @@ ActorID ActorManager::RegisterActorHandle(std::unique_ptr<ActorHandle> actor_han
   // Note we need set `cached_actor_name` to empty string as we only cache named actors
   // when getting them from GCS.
   RAY_UNUSED(AddActorHandle(std::move(actor_handle),
-                            /*is_owner_handle=*/false,
                             call_site,
                             caller_address,
                             actor_id,
@@ -96,7 +95,6 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> ActorManager::GetNamedActo
     actor_handle->Serialize(&serialized_actor_handle);
 
     AddActorHandle(std::make_unique<ActorHandle>(serialized_actor_handle),
-                   /*is_owner_handle=*/false,
                    call_site,
                    caller_address,
                    actor_id,
@@ -143,7 +141,6 @@ bool ActorManager::AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
   }
 
   return AddActorHandle(std::move(actor_handle),
-                        /*is_owner_handle=*/!is_detached,
                         call_site,
                         caller_address,
                         actor_id,
@@ -151,7 +148,6 @@ bool ActorManager::AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
 }
 
 bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
-                                  bool is_owner_handle,
                                   const std::string &call_site,
                                   const rpc::Address &caller_address,
                                   const ActorID &actor_id,
