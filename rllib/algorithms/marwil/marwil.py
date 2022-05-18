@@ -177,12 +177,10 @@ class MARWILTrainer(Trainer):
         # Call super's validation method.
         super().validate_config(config)
 
-<<<<<<< HEAD
+        # TODO: Move this to super()?
+        validate_buffer_config(config)
         if config["beta"] < 0.0 or config["beta"] > 1.0:
             raise ValueError("`beta` must be within 0.0 and 1.0!")
-=======
-        validate_buffer_config(config)
->>>>>>> 41b98b1b61e0749f7d4f194d39e3a2e932690b66
 
         if config["num_gpus"] > 1:
             raise ValueError("`num_gpus` > 1 not yet supported for MARWIL!")
