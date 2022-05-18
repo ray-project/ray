@@ -77,6 +77,10 @@
 /python/ray/_private/usage/ @ericl @richardliaw @rkooo567 @jjyao
 /dashboard/modules/usage_stats/ @ericl @richardliaw @rkooo567 @jjyao
 
+# ==== Documentation ====
+
+/doc/ @maxpumperla @pcmoritz @richardliaw @edoakes @simon-mo
+
 # ==== Build and CI ====
 
 # Bazel.
