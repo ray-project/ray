@@ -33,9 +33,8 @@ def setup_jax_environment(master_addr_with_port: str, num_workers: int, index: i
         num_workers (int): Total number of all the workers.
         index (int): Index (i.e. world rank) of the current worker.
     """
-    # print(master_addr_with_port, num_workers, index)
-    # comment out this
     jax.distributed.initialize(master_addr_with_port, num_workers, index)
+    # TODO
     # cpu parallel: https://github.com/google/jax/issues/1408
     # os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count=200"
 
@@ -59,24 +58,3 @@ class JaxBackend(Backend):
                 )
             )
         ray.get(setup_futures)
-
-
-# @PublicAPI(stability="beta")
-# def prepare_dataset_shard(tf_dataset_shard: tf.data.Dataset):
-#     """A utility function that disables jax autosharding.
-
-#     This should be used on a  jax ``Dataset`` created by calling ``to_tf()``
-#     on a ``ray.data.Dataset`` returned by ``ray.train.get_dataset_shard()`` since
-#     the dataset has already been sharded across the workers.
-
-#     Args:
-#         tf_dataset_shard (tf.data.Dataset): A jax Dataset.
-
-#     Returns:
-#         A jax Dataset with autosharding turned off.
-#     """
-#     options = tf.data.Options()
-#     options.experimental_distribute.auto_shard_policy = (
-#         tf.data.experimental.AutoShardPolicy.OFF
-#     )
-#     return tf_dataset_shard.with_options(options)
