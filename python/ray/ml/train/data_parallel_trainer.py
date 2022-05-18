@@ -224,7 +224,7 @@ class DataParallelTrainer(Trainer):
         TuneCheckpointManager
     ] = _DataParallelCheckpointManager
 
-    _scaling_config_allowed_keys = [
+    _scaling_config_allowed_keys = Trainer._scaling_config_allowed_keys + [
         "num_workers",
         "num_cpus_per_worker",
         "num_gpus_per_worker",
