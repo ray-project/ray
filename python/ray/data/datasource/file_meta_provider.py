@@ -196,11 +196,6 @@ class FastFileMetadataProvider(DefaultFileMetadataProvider):
         paths: List[str],
         filesystem: "pyarrow.fs.FileSystem",
     ) -> Tuple[List[str], List[Optional[int]]]:
-        logger.warning(
-            f"Skipping expansion of {len(paths)} path(s). If your paths contain "
-            f"directories or if file size collection is required, try rerunning this "
-            f"read with `meta_provider=DefaultFileMetadataProvider()`."
-        )
         import numpy as np
 
         return paths, np.empty(len(paths), dtype=object)
