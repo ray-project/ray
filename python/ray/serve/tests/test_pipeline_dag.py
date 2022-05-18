@@ -165,8 +165,8 @@ def test_chained_function(serve_instance, use_build):
         output_2 = func_2.bind(dag_input)
         output_3 = func_3.bind(output_2)
         ray_dag = combine.bind(output_1, output_2, kwargs_output=output_3)
-    # with pytest.raises(ValueError, match="Please provide a driver class"):
-    #     _ = serve.run(ray_dag)
+    with pytest.raises(ValueError, match="Please provide a driver class"):
+        _ = serve.run(ray_dag)
 
     serve_dag = DAGDriver.bind(ray_dag, http_adapter=json_resolver)
 
