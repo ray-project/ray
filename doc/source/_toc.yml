@@ -172,6 +172,8 @@ parts:
                 sections:
                   - file: ray-air/examples/analyze_tuning_results
                     title: "Analyze hyperparameter tuning results"
+                  - file: ray-air/examples/huggingface_text_classification
+                    title: "Fine-tune a 🤗 Transformers model"
               - file: ray-air/package-ref
           - file: ray-more-libs/joblib
           - file: ray-more-libs/lightgbm-ray
@@ -197,7 +199,6 @@ parts:
           - file: ray-core/examples/plot_example-a3c
           - file: ray-core/examples/plot_example-lm
           - file: ray-core/examples/plot_hyperparameter
-          - file: ray-core/examples/plot_lbfgs
           - file: ray-core/examples/plot_parameter_server
           - file: ray-core/examples/plot_pong_example
       - file: ray-core/package-ref

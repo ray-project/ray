@@ -46,6 +46,7 @@ from ray.rllib.execution.common import (
     LAST_TARGET_UPDATE_TS,
     NUM_TARGET_UPDATES,
 )
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 logger = logging.getLogger(__name__)
 
@@ -133,17 +134,26 @@ class DQNConfig(SimpleQConfig):
         self.n_step = 1
         self.before_learn_on_batch = None
         self.training_intensity = None
-        self.worker_side_prioritization = False
 
         # Changes to SimpleQConfig default
         self.replay_buffer_config = {
-            "_enable_replay_buffer_api": True,
             "type": "MultiAgentPrioritizedReplayBuffer",
+            # Specify prioritized replay by supplying a buffer type that supports
+            # prioritization, for example: MultiAgentPrioritizedReplayBuffer.
+            "prioritized_replay": DEPRECATED_VALUE,
+            # Size of the replay buffer. Note that if async_updates is set,
+            # then each worker will have a replay buffer of this size.
             "capacity": 50000,
             "prioritized_replay_alpha": 0.6,
+            # Beta parameter for sampling from prioritized replay buffer.
             "prioritized_replay_beta": 0.4,
+            # Epsilon to add to the TD errors when updating priorities.
             "prioritized_replay_eps": 1e-6,
+            # The number of continuous environment steps to replay at once. This may
+            # be set to greater than 1 to support recurrent models.
             "replay_sequence_length": 1,
+            # Whether to compute priorities on workers.
+            "worker_side_prioritization": False,
         }
         # fmt: on
         # __sphinx_doc_end__
@@ -344,7 +354,7 @@ class DQNTrainer(SimpleQTrainer):
         - Sample training batch (MultiAgentBatch) from replay buffer.
         - Learn on training batch.
         - Update remote workers' new policy weights.
-        - Update target network every target_network_update_freq steps.
+        - Update target network every `target_network_update_freq` sample steps.
         - Return all collected metrics for the iteration.
 
         Returns:
@@ -403,8 +413,12 @@ class DQNTrainer(SimpleQTrainer):
                 train_results,
             )
 
-            # Update target network every `target_network_update_freq` steps.
-            cur_ts = self._counters[NUM_ENV_STEPS_SAMPLED]
+            # Update target network every `target_network_update_freq` sample steps.
+            cur_ts = self._counters[
+                NUM_AGENT_STEPS_SAMPLED
+                if self._by_agent_steps
+                else NUM_ENV_STEPS_SAMPLED
+            ]
             last_update = self._counters[LAST_TARGET_UPDATE_TS]
             if cur_ts - last_update >= self.config["target_network_update_freq"]:
                 to_update = self.workers.local_worker().get_policies_to_train()

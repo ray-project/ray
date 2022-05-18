@@ -16,16 +16,20 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.tf_policy import LearningRateSchedule, EntropyCoeffSchedule
+from ray.rllib.policy.tf_mixins import (
+    EntropyCoeffSchedule,
+    KLCoeffMixin,
+    LearningRateSchedule,
+    ValueNetworkMixin,
+)
 from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import (
     Deprecated,
     DEPRECATED_VALUE,
     deprecation_warning,
 )
-from ray.rllib.utils.framework import try_import_tf, get_variable
-from ray.rllib.utils.tf_utils import explained_variance, make_tf_callable
+from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.tf_utils import explained_variance
 from ray.rllib.utils.typing import (
     AgentID,
     LocalOptimizer,
@@ -237,120 +241,6 @@ def compute_and_clip_gradients(
         return grads_and_vars
 
 
-class KLCoeffMixin:
-    """Assigns the `update_kl()` and other KL-related methods to the PPOPolicy.
-
-    This is used in PPO's execution plan (see ppo.py) for updating the KL
-    coefficient after each learning step based on `config.kl_target` and
-    the measured KL value (from the train_batch).
-    """
-
-    def __init__(self, config):
-        # The current KL value (as python float).
-        self.kl_coeff_val = config["kl_coeff"]
-        # The current KL value (as tf Variable for in-graph operations).
-        self.kl_coeff = get_variable(
-            float(self.kl_coeff_val),
-            tf_name="kl_coeff",
-            trainable=False,
-            framework=config["framework"],
-        )
-        # Constant target value.
-        self.kl_target = config["kl_target"]
-        if self.framework == "tf":
-            self._kl_coeff_placeholder = tf1.placeholder(
-                dtype=tf.float32, name="kl_coeff"
-            )
-            self._kl_coeff_update = self.kl_coeff.assign(
-                self._kl_coeff_placeholder, read_value=False
-            )
-
-    def update_kl(self, sampled_kl):
-        # Update the current KL value based on the recently measured value.
-        # Increase.
-        if sampled_kl > 2.0 * self.kl_target:
-            self.kl_coeff_val *= 1.5
-        # Decrease.
-        elif sampled_kl < 0.5 * self.kl_target:
-            self.kl_coeff_val *= 0.5
-        # No change.
-        else:
-            return self.kl_coeff_val
-
-        # Make sure, new value is also stored in graph/tf variable.
-        self._set_kl_coeff(self.kl_coeff_val)
-
-        # Return the current KL value.
-        return self.kl_coeff_val
-
-    def _set_kl_coeff(self, new_kl_coeff):
-        # Set the (off graph) value.
-        self.kl_coeff_val = new_kl_coeff
-
-        # Update the tf/tf2 Variable (via session call for tf or `assign`).
-        if self.framework == "tf":
-            self.get_session().run(
-                self._kl_coeff_update,
-                feed_dict={self._kl_coeff_placeholder: self.kl_coeff_val},
-            )
-        else:
-            self.kl_coeff.assign(self.kl_coeff_val, read_value=False)
-
-    @override(Policy)
-    def get_state(self) -> Union[Dict[str, TensorType], List[TensorType]]:
-        state = super().get_state()
-        # Add current kl-coeff value.
-        state["current_kl_coeff"] = self.kl_coeff_val
-        return state
-
-    @override(Policy)
-    def set_state(self, state: dict) -> None:
-        # Set current kl-coeff value first.
-        self._set_kl_coeff(state.pop("current_kl_coeff", self.config["kl_coeff"]))
-        # Call super's set_state with rest of the state dict.
-        super().set_state(state)
-
-
-class ValueNetworkMixin:
-    """Assigns the `_value()` method to the PPOPolicy.
-
-    This way, Policy can call `_value()` to get the current VF estimate on a
-    single(!) observation (as done in `postprocess_trajectory_fn`).
-    Note: When doing this, an actual forward pass is being performed.
-    This is different from only calling `model.value_function()`, where
-    the result of the most recent forward pass is being used to return an
-    already calculated tensor.
-    """
-
-    def __init__(self, obs_space, action_space, config):
-        # When doing GAE, we need the value function estimate on the
-        # observation.
-        if config["use_gae"]:
-
-            # Input dict is provided to us automatically via the Model's
-            # requirements. It's a single-timestep (last one in trajectory)
-            # input_dict.
-            @make_tf_callable(self.get_session())
-            def value(**input_dict):
-                input_dict = SampleBatch(input_dict)
-                if isinstance(self.model, tf.keras.Model):
-                    _, _, extra_outs = self.model(input_dict)
-                    return extra_outs[SampleBatch.VF_PREDS][0]
-                else:
-                    model_out, _ = self.model(input_dict)
-                    # [0] = remove the batch dim.
-                    return self.model.value_function()[0]
-
-        # When not doing GAE, we do not require the value function's output.
-        else:
-
-            @make_tf_callable(self.get_session())
-            def value(*args, **kwargs):
-                return tf.constant(0.0)
-
-        self._value = value
-
-
 def setup_config(
     policy: Policy,
     obs_space: gym.spaces.Space,
@@ -399,7 +289,7 @@ def setup_mixins(
         action_space (gym.spaces.Space): The Policy's action space.
         config (TrainerConfigDict): The Policy's config.
     """
-    ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
+    ValueNetworkMixin.__init__(policy, config)
     KLCoeffMixin.__init__(policy, config)
     EntropyCoeffSchedule.__init__(
         policy, config["entropy_coeff"], config["entropy_coeff_schedule"]

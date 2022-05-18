@@ -60,7 +60,7 @@ head_setup_commands:
   - python -m pip install --upgrade pip
   - python -m pip install --upgrade "jax[cpu]==0.2.14"
   - python -m pip install --upgrade fabric dataclasses optax==0.0.6 git+https://github.com/deepmind/dm-haiku google-api-python-client cryptography tensorboardX ray[default]
-  - python -m pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
+  - python -m pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
   - git clone https://github.com/Yard1/swarm-jax.git && cd swarm-jax && python -m pip install .
 
 # Install Jax and other dependencies on TPU
@@ -69,5 +69,5 @@ worker_setup_commands:
   - pip3 install --upgrade "jax[tpu]==0.2.14" -f https://storage.googleapis.com/jax-releases/libtpu_releases.html
   - pip3 install --upgrade fabric dataclasses optax==0.0.6 git+https://github.com/deepmind/dm-haiku tensorboardX ray[default]
   - python3 -c "import jax; jax.device_count(); jax.numpy.add(1, 1)"  # test if Jax has been installed correctly
-  - pip3 install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
+  - pip3 install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
   - git clone https://github.com/Yard1/swarm-jax.git && cd swarm-jax && sudo pip3 install .
