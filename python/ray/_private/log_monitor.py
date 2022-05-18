@@ -287,7 +287,6 @@ class LogMonitor:
                     "task_name": file_info.task_name,
                 }
                 self.publisher.publish_logs(data)
-                logger.info(f"PUBLISHED {data}")
                 anything_published = True
                 lines_to_publish = []
 
@@ -298,7 +297,6 @@ class LogMonitor:
             for _ in range(max_num_lines_to_read):
                 try:
                     next_line = file_info.file_handle.readline()
-                    logger.info(f"DBG {next_line}")
                     # Replace any characters not in UTF-8 with
                     # a replacement character, see
                     # https://stackoverflow.com/a/38565489/10891801
