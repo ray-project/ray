@@ -224,8 +224,8 @@ def ray_deps_setup():
     # Todo: Revert this to use jupp0r's original repo
     auto_http_archive(
         name = "com_github_jupp0r_prometheus_cpp",
-        url = "https://github.com/krfricke/prometheus-cpp/archive/95d9b6203dea757fb873add283ce284cc3a06783.tar.gz",
-        sha256 = "8c2d836faf2f99d434705f1da975cbe7febdc194c600a06d01d41f10cc427dbe",
+        url = "https://github.com/krfricke/prometheus-cpp/archive/3973fe6e3859cf10def7d3956ec1648dddbd9529.tar.gz",
+        sha256 = "ddc1b59bed47759a5dddc626d77a149b46c33c14930e60e7d13c9bbf05ee99c0",
         patches = [
             "@com_github_ray_project_ray//thirdparty/patches:prometheus-windows-headers.patch",
             # https://github.com/jupp0r/prometheus-cpp/pull/225
