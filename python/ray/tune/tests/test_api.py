@@ -1,5 +1,4 @@
 import copy
-import inspect
 import os
 import pickle
 import shutil
@@ -1496,6 +1495,7 @@ class ShimCreationTest(unittest.TestCase):
             if scheduler_id == "pb2":
                 # handle special case of PB2 wrapping function
                 from ray.tune.schedulers.pb2 import PB2
+
                 SchedulerClass = SchedulerClass()
                 assert SchedulerClass == PB2
 
