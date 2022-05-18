@@ -1497,7 +1497,7 @@ class ShimCreationTest(unittest.TestCase):
                 from ray.tune.schedulers.pb2 import PB2
 
                 SchedulerClass = SchedulerClass()
-                assert SchedulerClass == PB2
+                assert SchedulerClass is PB2
 
             if scheduler_id in {"fifo", "resource_changing"}:
                 # for these cases, the scheduler class does not require
