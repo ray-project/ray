@@ -2,7 +2,8 @@ import click
 import json
 import yaml
 
-from typing import Union
+from enum import Enum, unique
+from typing import Union, List
 
 import ray
 
@@ -22,27 +23,39 @@ from ray.experimental.state.api import (
     list_runtime_envs,
 )
 
-AVAILABLE_FORMAT = ["default", "yaml", "json", "table"]
+
+@unique
+class AvailableFormat(Enum):
+    DEFAULT = "default"
+    JSON = "json"
+    YAML = "yaml"
+    TABLE = "table"
+
+
+def _get_available_formats() -> List[str]:
+    """Return the available formats in a list of string"""
+    return [format_enum.value for format_enum in AvailableFormat]
 
 
 def get_state_api_output_to_print(
-    state_data: Union[dict, list], *, format: str = "default"
+    state_data: Union[dict, list], *, format: AvailableFormat = AvailableFormat.DEFAULT
 ):
     if len(state_data) == 0:
         print("No resource in the cluster")
 
     # Default is yaml.
-    if format == "default":
+    if format == AvailableFormat.DEFAULT:
         return yaml.dump(state_data, indent=4, explicit_start=True)
-    if format == "yaml":
+    if format == AvailableFormat.YAML:
         return yaml.dump(state_data, indent=4, explicit_start=True)
-    elif format == "json":
+    elif format == AvailableFormat.JSON:
         return json.dumps(state_data)
-    elif format == "table":
+    elif format == AvailableFormat.TABLE:
         raise NotImplementedError("Table formatter is not implemented yet.")
     else:
         raise ValueError(
-            f"Unexpected format: {format}. " f"Supported formatting: {AVAILABLE_FORMAT}"
+            f"Unexpected format: {format}. "
+            f"Supported formatting: {_get_available_formats()}"
         )
 
 
@@ -73,78 +86,114 @@ def list_state_cli_group(ctx):
 
 
 @list_state_cli_group.command()
-@click.option("--format", default="default", type=click.Choice(AVAILABLE_FORMAT))
+@click.option(
+    "--format", default="default", type=click.Choice(_get_available_formats())
+)
 @click.pass_context
 def actors(ctx, format: str):
     url = ctx.obj["api_server_url"]
-    print(get_state_api_output_to_print(list_actors(api_server_url=url), format=format))
+    print(
+        get_state_api_output_to_print(
+            list_actors(api_server_url=url), format=AvailableFormat[format]
+        )
+    )
 
 
 @list_state_cli_group.command()
-@click.option("--format", default="default", type=click.Choice(AVAILABLE_FORMAT))
+@click.option(
+    "--format", default="default", type=click.Choice(_get_available_formats())
+)
 @click.pass_context
 def placement_groups(ctx, format: str):
     url = ctx.obj["api_server_url"]
     print(
         get_state_api_output_to_print(
             list_placement_groups(api_server_url=url),
-            format=format,
+            format=AvailableFormat[format],
         )
     )
 
 
 @list_state_cli_group.command()
-@click.option("--format", default="default", type=click.Choice(AVAILABLE_FORMAT))
+@click.option(
+    "--format", default="default", type=click.Choice(_get_available_formats())
+)
 @click.pass_context
 def nodes(ctx, format: str):
     url = ctx.obj["api_server_url"]
-    print(get_state_api_output_to_print(list_nodes(api_server_url=url), format=format))
+    print(
+        get_state_api_output_to_print(
+            list_nodes(api_server_url=url), format=AvailableFormat[format]
+        )
+    )
 
 
 @list_state_cli_group.command()
-@click.option("--format", default="default", type=click.Choice(AVAILABLE_FORMAT))
+@click.option(
+    "--format", default="default", type=click.Choice(_get_available_formats())
+)
 @click.pass_context
 def jobs(ctx, format: str):
     url = ctx.obj["api_server_url"]
-    print(get_state_api_output_to_print(list_jobs(api_server_url=url), format=format))
+    print(
+        get_state_api_output_to_print(
+            list_jobs(api_server_url=url), format=AvailableFormat[format]
+        )
+    )
 
 
 @list_state_cli_group.command()
-@click.option("--format", default="default", type=click.Choice(AVAILABLE_FORMAT))
+@click.option(
+    "--format", default="default", type=click.Choice(_get_available_formats())
+)
 @click.pass_context
 def workers(ctx, format: str):
     url = ctx.obj["api_server_url"]
     print(
-        get_state_api_output_to_print(list_workers(api_server_url=url), format=format)
+        get_state_api_output_to_print(
+            list_workers(api_server_url=url), format=AvailableFormat[format]
+        )
     )
 
 
 @list_state_cli_group.command()
-@click.option("--format", default="default", type=click.Choice(AVAILABLE_FORMAT))
+@click.option(
+    "--format", default="default", type=click.Choice(_get_available_formats())
+)
 @click.pass_context
 def tasks(ctx, format: str):
     url = ctx.obj["api_server_url"]
-    print(get_state_api_output_to_print(list_tasks(api_server_url=url), format=format))
+    print(
+        get_state_api_output_to_print(
+            list_tasks(api_server_url=url), format=AvailableFormat[format]
+        )
+    )
 
 
 @list_state_cli_group.command()
-@click.option("--format", default="default", type=click.Choice(AVAILABLE_FORMAT))
+@click.option(
+    "--format", default="default", type=click.Choice(_get_available_formats())
+)
 @click.pass_context
 def objects(ctx, format: str):
     url = ctx.obj["api_server_url"]
     print(
-        get_state_api_output_to_print(list_objects(api_server_url=url), format=format)
+        get_state_api_output_to_print(
+            list_objects(api_server_url=url), format=AvailableFormat[format]
+        )
     )
 
 
 @list_state_cli_group.command()
-@click.option("--format", default="default", type=click.Choice(AVAILABLE_FORMAT))
+@click.option(
+    "--format", default="default", type=click.Choice(_get_available_formats())
+)
 @click.pass_context
 def runtime_envs(ctx, format: str):
     url = ctx.obj["api_server_url"]
     print(
         get_state_api_output_to_print(
             list_runtime_envs(api_server_url=url),
-            format=format,
+            format=AvailableFormat[format],
         )
     )

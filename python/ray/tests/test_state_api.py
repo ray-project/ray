@@ -71,6 +71,7 @@ from ray.experimental.state.state_manager import (
 from ray.experimental.state.state_cli import (
     list_state_cli_group,
     get_state_api_output_to_print,
+    AvailableFormat,
 )
 from ray.runtime_env import RuntimeEnv
 from ray._private.test_utils import wait_for_condition
@@ -922,15 +923,18 @@ async def test_cli_format_print(state_api_manager):
     )
     result = await state_api_manager.list_actors(option=list_api_options())
     # If the format is not yaml, it will raise an exception.
-    yaml.load(get_state_api_output_to_print(result, format="yaml"))
+    yaml.load(
+        get_state_api_output_to_print(result, format=AvailableFormat.YAML),
+        Loader=yaml.FullLoader,
+    )
     # If the format is not json, it will raise an exception.
-    json.loads(get_state_api_output_to_print(result, format="json"))
+    json.loads(get_state_api_output_to_print(result, format=AvailableFormat.JSON))
     # Verify the default format is yaml
-    yaml.load(get_state_api_output_to_print(result))
+    yaml.load(get_state_api_output_to_print(result), Loader=yaml.FullLoader)
     with pytest.raises(ValueError):
         get_state_api_output_to_print(result, format="random_format")
     with pytest.raises(NotImplementedError):
-        get_state_api_output_to_print(result, format="table")
+        get_state_api_output_to_print(result, format=AvailableFormat.TABLE)
 
 
 if __name__ == "__main__":
