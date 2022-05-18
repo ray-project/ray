@@ -336,7 +336,7 @@ void CoreWorkerProcessImpl::ShutdownDriver() {
       << "The `Shutdown` interface is for driver only.";
   auto global_worker = GetGlobalWorker();
   RAY_CHECK(global_worker);
-  global_worker->Disconnect(/*exit_type*/ rpc::WorkerExitType::INTENTIONAL_USER_EXIT,
+  global_worker->Disconnect(/*exit_type*/ rpc::WorkerExitType::INTENDED_USER_EXIT,
                             /*exit_detail*/ "Shutdown by ray.shutdown().");
   global_worker->Shutdown();
   RemoveWorker(global_worker);

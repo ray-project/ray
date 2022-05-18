@@ -1409,7 +1409,7 @@ void WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
     }
   }
   RemoveWorker(state.idle, worker);
-  if (disconnect_type != rpc::WorkerExitType::INTENTIONAL_USER_EXIT) {
+  if (disconnect_type != rpc::WorkerExitType::INTENDED_USER_EXIT) {
     // A Java worker process may have multiple workers. If one of them disconnects
     // unintentionally (which means that the worker process has died), we remove the
     // others from idle pool so that the failed actor will not be rescheduled on the same

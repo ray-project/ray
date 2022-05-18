@@ -711,7 +711,7 @@ void NodeManager::HandleReleaseUnusedBundles(
         << ", actor id: " << worker->GetActorId()
         << ", worker id: " << worker->WorkerId();
     DestroyWorker(worker,
-                  rpc::WorkerExitType::INTENTIONAL_SYSTEM_EXIT,
+                  rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
                   "Worker exits because it uses placement group bundles that are not "
                   "registered to GCS. It can happen upon GCS restart.");
   }
@@ -1252,7 +1252,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
         [this, client](const ray::Status &status) {
           if (!status.ok()) {
             DisconnectClient(client,
-                             rpc::WorkerExitType::UNEXPECTED_SYSTEM_EXIT,
+                             rpc::WorkerExitType::SYSTEM_ERROR,
                              "Worker is failed because the raylet couldn't reply the "
                              "registration request.");
           }
@@ -1419,7 +1419,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
         local_task_manager_->TaskFinished(worker, &task);
       }
 
-      if (disconnect_type == rpc::WorkerExitType::UNEXPECTED_SYSTEM_EXIT) {
+      if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR) {
         // Push the error to driver.
         const JobID &job_id = worker->GetAssignedJobId();
         // TODO(rkn): Define this constant somewhere else.
@@ -1469,7 +1469,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
     RAY_LOG(INFO) << "Driver (pid=" << worker->GetProcess().GetId()
                   << ") is disconnected. "
                   << "job_id: " << worker->GetAssignedJobId();
-    if (disconnect_type == rpc::WorkerExitType::UNEXPECTED_SYSTEM_EXIT) {
+    if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR) {
       RAY_EVENT(ERROR, EL_RAY_DRIVER_FAILURE)
               .WithField("node_id", self_node_id_.Hex())
               .WithField("job_id", worker->GetAssignedJobId().Hex())
@@ -1603,7 +1603,7 @@ void NodeManager::ProcessWaitRequestMessage(
           stream << "Failed to write WaitReply to the client. Status " << status
                  << ", message: " << status.message();
           DisconnectClient(
-              client, rpc::WorkerExitType::UNEXPECTED_SYSTEM_EXIT, stream.str());
+              client, rpc::WorkerExitType::SYSTEM_ERROR, stream.str());
         }
       });
 }
@@ -1870,7 +1870,7 @@ void NodeManager::HandleCancelResourceReserve(
         << ", worker id: " << worker->WorkerId();
     const auto &message = stream.str();
     RAY_LOG(DEBUG) << message;
-    DestroyWorker(worker, rpc::WorkerExitType::INTENTIONAL_SYSTEM_EXIT, message);
+    DestroyWorker(worker, rpc::WorkerExitType::INTENDED_SYSTEM_EXIT, message);
   }
 
   // Return bundle resources.
@@ -1898,7 +1898,7 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
       // The worker should be destroyed.
       // TODO-SANG
       DisconnectClient(
-          worker->Connection(), rpc::WorkerExitType::UNEXPECTED_SYSTEM_EXIT, "");
+          worker->Connection(), rpc::WorkerExitType::SYSTEM_ERROR, "");
     } else {
       if (worker->IsBlocked()) {
         // Handle the edge case where the worker was returned before we got the

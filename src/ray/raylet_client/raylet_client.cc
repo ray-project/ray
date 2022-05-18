@@ -156,8 +156,6 @@ raylet::RayletClient::RayletClient(
   *serialized_job_config = reply_message->serialized_job_config()->str();
 }
 
-RayletClient::~RayletClient() {}
-
 Status raylet::RayletClient::Disconnect(
     const rpc::WorkerExitType &exit_type,
     const std::string &exit_detail,

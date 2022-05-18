@@ -819,7 +819,7 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
   OnWorkerDead(node_id,
                worker_id,
                "",
-               rpc::WorkerExitType::UNEXPECTED_SYSTEM_EXIT,
+               rpc::WorkerExitType::SYSTEM_ERROR,
                "Worker exits unexpectedly.");
 }
 
@@ -837,15 +837,15 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
                                      rpc::WorkerExitType_Name(disconnect_type),
                                      ", has creation_task_exception = ",
                                      (creation_task_exception != nullptr));
-  if (disconnect_type == rpc::WorkerExitType::INTENTIONAL_USER_EXIT ||
-      disconnect_type == rpc::WorkerExitType::INTENTIONAL_SYSTEM_EXIT) {
+  if (disconnect_type == rpc::WorkerExitType::INTENDED_USER_EXIT ||
+      disconnect_type == rpc::WorkerExitType::INTENDED_SYSTEM_EXIT) {
     RAY_LOG(DEBUG) << message;
   } else {
     RAY_LOG(WARNING) << message;
   }
 
-  bool need_reconstruct = disconnect_type != rpc::WorkerExitType::INTENTIONAL_USER_EXIT &&
-                          disconnect_type != rpc::WorkerExitType::ACTOR_INIT_FAILURE_EXIT;
+  bool need_reconstruct = disconnect_type != rpc::WorkerExitType::INTENDED_USER_EXIT &&
+                          disconnect_type != rpc::WorkerExitType::USER_ERROR;
   // Destroy all actors that are owned by this worker.
   const auto it = owners_.find(node_id);
   if (it != owners_.end() && it->second.count(worker_id)) {
@@ -933,7 +933,7 @@ void GcsActorManager::OnNodeDead(const NodeID &node_id,
       DestroyActor(child_id,
                    GenOwnerDiedCause(GetActor(child_id),
                                      owner_id,
-                                     rpc::WorkerExitType::UNEXPECTED_SYSTEM_EXIT,
+                                     rpc::WorkerExitType::SYSTEM_ERROR,
                                      "Owner's node has crashed.",
                                      node_ip_address));
     }
@@ -972,7 +972,7 @@ void GcsActorManager::OnNodeDead(const NodeID &node_id,
         DestroyActor(actor_id,
                      GenOwnerDiedCause(GetActor(actor_id),
                                        owner_id,
-                                       rpc::WorkerExitType::UNEXPECTED_SYSTEM_EXIT,
+                                       rpc::WorkerExitType::SYSTEM_ERROR,
                                        "Owner's node has crashed.",
                                        node_ip_address));
       }
