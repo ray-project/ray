@@ -3,17 +3,10 @@
 .. _datasets:
 
 ==================================================
-Ray Data: Data Processing on Ray
+Ray Datasets: Distributed Data Loading and Compute
 ==================================================
 
-The Ray ecosystem offers several solutions for performant, large-scale data processing on Ray. :ref:`Ray Datasets<datasets-intro>` is Ray's first-class Ray-native offering, targeting large-scale data ingest
-for distributed training, scalable and resource-efficient batch inference, and performant last-mile preprocessing for both training and inference pipelines. Datasets is a great post-ETL data processing solution that strongly integrates with the rest of Ray's ML ecosystem.
-
 .. _datasets-intro:
-
---------------------------------------------------
-Ray Datasets: Distributed Data Loading and Compute
---------------------------------------------------
 
 Ray Datasets are the standard way to load and exchange data in Ray libraries and applications.
 They provide basic distributed data transformations such as maps
