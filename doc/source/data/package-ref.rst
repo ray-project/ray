@@ -124,7 +124,7 @@ Custom Datasource API
     :members:
 
 Datasource Partitioning API
----------------------
+---------------------------
 
 .. autoclass:: ray.data.datasource.PartitionStyle
     :members:
@@ -163,7 +163,7 @@ Built-in Datasources
 
 .. autoclass:: ray.data.datasource.RangeDatasource
     :members:
-    
+
 .. autoclass:: ray.data.datasource.SimpleTensorFlowDatasource
     :members:
 
