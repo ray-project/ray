@@ -46,6 +46,7 @@ REFERENCE_TYPE = "reference type"
 WAITING_FOR_DEPENDENCIES = "WAITING_FOR_DEPENDENCIES"
 SCHEDULED = "SCHEDULED"
 FINISHED = "FINISHED"
+WAITING_FOR_EXECUTION = "WAITING_FOR_EXECUTION"
 
 
 def data_lines(memory_str):
@@ -327,26 +328,35 @@ def test_task_status(ray_start_regular):
         ray.get(sema.acquire.remote())
         return
 
+    @ray.remote(num_gpus=1)
+    def impossible():
+        pass
+
     # Filter out actor handle refs.
     def filtered_summary():
-        return "\n".join(
+        data = "\n".join(
             [
                 line
                 for line in memory_summary(address, line_wrap=False).split("\n")
                 if "ACTOR_HANDLE" not in line
             ]
         )
+        print(data)
+        return data
 
     sema = Semaphore.remote(value=0)
     x = dep.remote(sema)
     y = dep.remote(sema, x=x)
-    # x and its semaphore task are scheduled.
-    wait_for_condition(lambda: count(filtered_summary(), SCHEDULED) == 2)
+    im = impossible.remote()  # noqa
+    # x and its semaphore task are scheduled. im cannot
+    # be scheduled, so it is pending forever.
+    wait_for_condition(lambda: count(filtered_summary(), WAITING_FOR_EXECUTION) == 2)
     wait_for_condition(lambda: count(filtered_summary(), WAITING_FOR_DEPENDENCIES) == 1)
+    wait_for_condition(lambda: count(filtered_summary(), SCHEDULED) == 1)
 
     z = dep.remote(sema, x=x)
     wait_for_condition(lambda: count(filtered_summary(), WAITING_FOR_DEPENDENCIES) == 2)
-    wait_for_condition(lambda: count(filtered_summary(), SCHEDULED) == 2)
+    wait_for_condition(lambda: count(filtered_summary(), WAITING_FOR_EXECUTION) == 2)
     wait_for_condition(lambda: count(filtered_summary(), FINISHED) == 0)
 
     sema.release.remote()
@@ -354,19 +364,20 @@ def test_task_status(ray_start_regular):
     wait_for_condition(lambda: count(filtered_summary(), FINISHED) == 1)
     wait_for_condition(lambda: count(filtered_summary(), WAITING_FOR_DEPENDENCIES) == 0)
     # y, z, and two semaphore tasks are scheduled.
-    wait_for_condition(lambda: count(filtered_summary(), SCHEDULED) == 4)
+    wait_for_condition(lambda: count(filtered_summary(), WAITING_FOR_EXECUTION) == 4)
 
     sema.release.remote()
     wait_for_condition(lambda: count(filtered_summary(), FINISHED) == 2)
     wait_for_condition(lambda: count(filtered_summary(), WAITING_FOR_DEPENDENCIES) == 0)
-    wait_for_condition(lambda: count(filtered_summary(), SCHEDULED) == 2)
+    wait_for_condition(lambda: count(filtered_summary(), WAITING_FOR_EXECUTION) == 2)
 
     sema.release.remote()
     ray.get(y)
     ray.get(z)
     wait_for_condition(lambda: count(filtered_summary(), FINISHED) == 3)
     wait_for_condition(lambda: count(filtered_summary(), WAITING_FOR_DEPENDENCIES) == 0)
-    wait_for_condition(lambda: count(filtered_summary(), SCHEDULED) == 0)
+    wait_for_condition(lambda: count(filtered_summary(), WAITING_FOR_EXECUTION) == 0)
+    wait_for_condition(lambda: count(filtered_summary(), SCHEDULED) == 1)
 
 
 if __name__ == "__main__":

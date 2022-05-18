@@ -1,6 +1,10 @@
 import os
+from typing import Optional, Tuple
 
+from ray.ml.checkpoint import Checkpoint
+from ray.ml.preprocessor import Preprocessor
 from ray.ml.train.gbdt_trainer import GBDTTrainer
+from ray.ml.utils.checkpointing import load_preprocessor_from_dir
 from ray.util.annotations import PublicAPI
 from ray.ml.constants import MODEL_KEY
 
@@ -62,11 +66,31 @@ class XGBoostTrainer(GBDTTrainer):
     _tune_callback_cls: type = TuneReportCheckpointCallback
     _init_model_arg_name: str = "xgb_model"
 
-    def _load_model_from_checkpoint(self):
-        xgb_model_path = self.resume_from_checkpoint.to_directory()
-        xgb_model = xgboost.Booster()
-        xgb_model.load_model(os.path.join(xgb_model_path, MODEL_KEY))
-        return xgb_model
-
     def _train(self, **kwargs):
         return xgboost_ray.train(**kwargs)
+
+    def _load_checkpoint(
+        self, checkpoint: Checkpoint
+    ) -> Tuple[xgboost.Booster, Optional[Preprocessor]]:
+        return load_checkpoint(checkpoint)
+
+
+def load_checkpoint(
+    checkpoint: Checkpoint,
+) -> Tuple[xgboost.Booster, Optional[Preprocessor]]:
+    """Load a Checkpoint from ``XGBoostTrainer``.
+
+    Args:
+        checkpoint: The checkpoint to load the model and
+            preprocessor from. It is expected to be from the result of a
+            ``XGBoostTrainer`` run.
+
+    Returns:
+        The model and AIR preprocessor contained within.
+    """
+    with checkpoint.as_directory() as checkpoint_path:
+        xgb_model = xgboost.Booster()
+        xgb_model.load_model(os.path.join(checkpoint_path, MODEL_KEY))
+        preprocessor = load_preprocessor_from_dir(checkpoint_path)
+
+    return xgb_model, preprocessor

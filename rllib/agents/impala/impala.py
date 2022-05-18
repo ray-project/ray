@@ -37,6 +37,7 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_SAMPLED,
+    NUM_ENV_STEPS_TRAINED,
 )
 
 # from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
@@ -59,7 +60,7 @@ logger = logging.getLogger(__name__)
 
 
 class ImpalaConfig(TrainerConfig):
-    """Defines an ARSTrainer configuration class from which an ImpalaTrainer can be built.
+    """Defines a configuration class from which an ImpalaTrainer can be built.
 
     Example:
         >>> from ray.rllib.agents.impala import ImpalaConfig
@@ -136,13 +137,10 @@ class ImpalaConfig(TrainerConfig):
         self.num_gpus = 1
         self.lr = 0.0005
         self.min_time_s_per_reporting = 10
-        # IMPALA and APPO are not on the new training_iteration API yet.
-        self._disable_execution_plan_api = False
         # __sphinx_doc_end__
         # fmt: on
 
         # Deprecated value.
-        self._disable_execution_plan_api = True
         self.num_data_loader_buffers = DEPRECATED_VALUE
 
     @override(TrainerConfig)
@@ -515,13 +513,6 @@ class ImpalaTrainer(Trainer):
         ] = defaultdict(set)
 
         if self.config["_disable_execution_plan_api"]:
-            # Setup after_train_step callback.
-            self._after_train_step = lambda *a, **k: None
-            if self.config["after_train_step"]:
-                self._after_train_step = self.config["after_train_step"](
-                    self.workers, self.config
-                )
-
             # Create extra aggregation workers and assign each rollout worker to
             # one of them.
             self.batches_to_place_on_learner = []
@@ -590,15 +581,24 @@ class ImpalaTrainer(Trainer):
 
         self.concatenate_batches_and_pre_queue(batch)
         self.place_processed_samples_on_learner_queue()
-        learner_results = self.process_trained_results()
+        train_results = self.process_trained_results()
 
         self.update_workers_if_necessary()
 
         # Callback for APPO to use to update KL, target network periodically.
         # The input to the callback is the learner fetches dict.
-        self._after_train_step(learner_results)
+        self.after_train_step(train_results)
 
-        return learner_results
+        return train_results
+
+    def after_train_step(self, train_results: ResultDict) -> None:
+        """Called by the training_iteration method after each train step.
+
+        Args:
+            train_results: The train results dict.
+        """
+        # By default, do nothing.
+        pass
 
     @staticmethod
     @override(Trainer)
@@ -769,15 +769,18 @@ class ImpalaTrainer(Trainer):
     def process_trained_results(self) -> ResultDict:
         # Get learner outputs/stats from output queue.
         learner_infos = []
+        num_env_steps_trained = 0
         num_agent_steps_trained = 0
 
         for _ in range(self._learner_thread.outqueue.qsize()):
             if self._learner_thread.is_alive():
                 (
-                    num_trained_samples,
+                    env_steps,
+                    agent_steps,
                     learner_results,
                 ) = self._learner_thread.outqueue.get(timeout=0.001)
-                num_agent_steps_trained += num_trained_samples
+                num_env_steps_trained += env_steps
+                num_agent_steps_trained += agent_steps
                 if learner_results:
                     learner_infos.append(learner_results)
             else:
@@ -786,6 +789,7 @@ class ImpalaTrainer(Trainer):
 
         # Update the steps trained counters.
         self._counters[STEPS_TRAINED_THIS_ITER_COUNTER] = num_agent_steps_trained
+        self._counters[NUM_ENV_STEPS_TRAINED] += num_env_steps_trained
         self._counters[NUM_AGENT_STEPS_TRAINED] += num_agent_steps_trained
 
         return learner_info
@@ -848,7 +852,7 @@ class ImpalaTrainer(Trainer):
 
     def update_workers_if_necessary(self) -> None:
         # Only need to update workers if there are remote workers.
-        global_vars = {"timestep": self._counters[NUM_AGENT_STEPS_TRAINED]}
+        global_vars = {"timestep": self._counters[NUM_AGENT_STEPS_SAMPLED]}
         self._counters["steps_since_broadcast"] += 1
         if (
             self.workers.remote_workers()

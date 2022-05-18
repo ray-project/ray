@@ -13,7 +13,7 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.tf_policy import LearningRateSchedule
+from ray.rllib.policy.tf_mixins import LearningRateSchedule
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.exploration import ParameterNoise
@@ -442,7 +442,9 @@ def postprocess_nstep_and_prio(
         batch[PRIO_WEIGHTS] = np.ones_like(batch[SampleBatch.REWARDS])
 
     # Prioritize on the worker side.
-    if batch.count > 0 and policy.config["worker_side_prioritization"]:
+    if batch.count > 0 and policy.config["replay_buffer_config"].get(
+        "worker_side_prioritization", False
+    ):
         td_errors = policy.compute_td_error(
             batch[SampleBatch.OBS],
             batch[SampleBatch.ACTIONS],

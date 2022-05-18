@@ -676,29 +676,6 @@ You have to specify your Kubernetes namespace explicitly:
 Please note that we strongly encourage you to use one of the other two options instead, as they will
 result in less overhead and don't require pods to SSH into each other.
 
-
-.. _tune-debugging:
-
-How can I debug Tune experiments locally?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-By default, Tune will run hyperparameter evaluations on multiple processes.
-However, if you need to debug your training process, it may be easier to do everything on a single process.
-You can force all Ray functions to occur on a single process with ``local_mode`` by calling the following
-before ``tune.run``.
-
-.. literalinclude:: doc_code/faq.py
-    :dedent:
-    :language: python
-    :start-after: __local_start__
-    :end-before: __local_end__
-
-Local mode with multiple configuration evaluations will interleave computation,
-so it is most naturally used when running a single configuration evaluation.
-
-Note that ``local_mode`` has some known issues, so please read :ref:`these tips <local-mode-tips>` for more info.
-
-
 .. _tune-default-search-space:
 
 How do I configure search spaces?
