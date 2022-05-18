@@ -171,7 +171,6 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
     // num_restarts is used for dropping out-of-order pub messages. Since we won't
     // subscribe any messages, we can set any value bigger than -1(we use 0 here).
     direct_actor_submitter_->ConnectActor(actor_id, caller_address, /*num_restarts=*/0);
-    return inserted;
   }
 
   return inserted;
