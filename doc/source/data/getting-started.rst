@@ -3,7 +3,10 @@
 Getting Started
 ===============
 
-A Ray :class:`Dataset <ray.data.Dataset>` is a distributed data collection, holding a list of Ray object references pointing to distributed data **blocks**, with APIs for distributed data loading and processing. Each block holds an ordered collection of items and can be in format of either an `Arrow table <https://arrow.apache.org/docs/python/data.html#tables>`__
+A Ray :class:`Dataset <ray.data.Dataset>` is a distributed data collection, holding
+a list of Ray object references pointing to distributed data **blocks**, with APIs
+for distributed data loading and processing. Each block holds an ordered collection
+of items and can be in format of either an `Arrow table <https://arrow.apache.org/docs/python/data.html#tables>`__
 , a `Pandas DataFrame <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`__
 , or a Python list.
 
@@ -20,7 +23,9 @@ In this tutorial you will learn how to:
 Creating and Saving Datasets
 ----------------------------
 
-You can create a Dataset from Python objects. These objects can be held inside Dataset as the plain Python objects (where the schema is a Python type), or as Arrow records (in which case their schema is Arrow).
+You can create a Dataset from Python objects. These objects can be held inside
+Dataset as the plain Python objects (where the schema is a Python type), or as
+Arrow records (in which case their schema is Arrow).
 
 .. literalinclude:: ./doc_code/quick_start.py
    :language: python
@@ -36,7 +41,9 @@ can be used to specify file locations. See more at :ref:`Creating Datasets <crea
    :start-after: __create_from_files_begin__
    :end-before: __create_from_files_end__
 
-Once you have a Dataset, you can save it to local or remote storage in desired format, using ``.write_csv()``, ``.write_json()``, and ``.write_parquet()``. See more at :ref:`Saving Datasets <saving_datasets>`.
+Once you have a Dataset (potentially after transformation), you can save it to local
+or remote storage in desired format, using ``.write_csv()``, ``.write_json()``, and
+``.write_parquet()``. See more at :ref:`Saving Datasets <saving_datasets>`.
 
 .. literalinclude:: ./doc_code/quick_start.py
    :language: python
@@ -47,7 +54,8 @@ Once you have a Dataset, you can save it to local or remote storage in desired f
 Transforming Datasets
 ---------------------
 
-Once you have a ``Dataset``, you can transform it by applying a user-defined function, which produces another ``Dataset``.
+Once you have a ``Dataset``, you can transform it by applying a user-defined function,
+which produces another ``Dataset``.
 Under the hood, the transformation is executed in parallel for performance at scale.
 
 .. literalinclude:: ./doc_code/quick_start.py
@@ -59,17 +67,24 @@ Under the hood, the transformation is executed in parallel for performance at sc
 
     Datasets also provides the convenience transformation methods :meth:`ds.map() <ray.data.Dataset.map>`, :meth:`ds.flat_map() <ray.data.Dataset.flat_map>`, and :meth:`ds.filter() <ray.data.Dataset.filter>`, which are not vectorized (slower than :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`), but may be useful for development.
 
-These transformations are composable. You can further apply transformations on the output Dataset, forming
-a chain of transformations to express more complex logic.
+These transformations are composable. You can further apply transformations on the
+output Dataset, forming a chain of transformations to express more complex logic.
 
 By default, transformations are executed using Ray tasks.
-For transformations that require setup, you may want to use Ray actors by specifying ``compute=ray.data.ActorPoolStrategy(min, max)`` and Ray will use an autoscaling actor pool of ``min`` to ``max`` actors to execute your transforms. This will cache the stateful setup at the actor creation time, which is particularly useful if the setup is expensive.
+For transformations that require setup, you may want to use Ray actors by specifying
+``compute=ray.data.ActorPoolStrategy(min, max)`` and Ray will use an autoscaling
+actor pool of ``min`` to ``max`` actors to execute your transforms. This will cache
+the stateful setup at the actor creation time, which is particularly useful if the
+setup is expensive.
 
 Passing and accessing datasets
 ------------------------------
 
-Datasets can be passed to Ray tasks or actors and accessed with :meth:`.iter_batches() <ray.data.Dataset.iter_batches>` or :meth:`.iter_rows() <>ray.data.Dataset.iter_rows`.
-This does not incur a copy, since the blocks of the Dataset are passed by reference as Ray objects:
+Datasets can be passed to Ray tasks or actors and accessed with
+:meth:`.iter_batches() <ray.data.Dataset.iter_batches>` or
+:meth:`.iter_rows() <ray.data.Dataset.iter_rows>`.
+This does not incur a copy, since the blocks of the Dataset are passed by reference
+as Ray objects:
 
 .. literalinclude:: ./doc_code/quick_start.py
    :language: python
@@ -77,8 +92,11 @@ This does not incur a copy, since the blocks of the Dataset are passed by refere
    :end-before: __data_access_end__
 
 Datasets can be split up into disjoint sub-datasets.
-Locality-aware splitting is supported if you pass in a list of actor handles to the :meth:`split() <ray.data.Dataset.split>` function along with the number of desired splits.
-This is a common pattern useful for loading and splitting data between distributed training actors:
+Locality-aware splitting is supported if you pass in a list of actor handles to the
+:meth:`split() <ray.data.Dataset.split>` function along with the number of desired
+splits.
+This is a common pattern useful for loading and splitting data between distributed
+training actors:
 
 .. literalinclude:: ./doc_code/quick_start.py
    :language: python
