@@ -82,6 +82,112 @@ Deferred Read Task Execution
 
 When a Dataset is created using ``ray.data.read_*``, only the first read task will be executed initially. This avoids blocking Dataset creation on the reading of all data files, enabling inspection functions like ``ds.schema()`` and ``ds.show()`` to be used right away. Executing further transformations on the Dataset will trigger execution of all read tasks.
 
+Dataset Transforms
+==================
+
+Datasets use either Ray tasks or Ray actors to transform datasets (i.e., for ``.map``, ``.flat_map``, or ``.map_batches``). By default, tasks are used (``compute="tasks"``). Actors can be specified with ``compute="actors"``, in which case an autoscaling pool of Ray actors will be used to apply transformations. Using actors allows for expensive state initialization (e.g., for GPU-based tasks) to be re-used. Whichever compute strategy is used, each map task generally takes in one block and produces one or more output blocks. The output block splitting rule is the same as for file reads (blocks are split after hitting the target max block size of 2GiB):
+
+.. image:: images/dataset-map.svg
+   :width: 650px
+   :align: center
+
+..
+  https://docs.google.com/drawings/d/1MGlGsPyTOgBXswJyLZemqJO1Mf7d-WiEFptIulvcfWE/edit
+
+Shuffling Data
+==============
+
+Certain operations like ``.sort`` and ``.groupby`` require data blocks to be partitioned by value. Datasets executes this in three phases. First, a wave of sampling tasks determines suitable partition boundaries based on a random sample of data. Second, map tasks divide each input block into a number of output blocks equal to the number of reduce tasks. Third, reduce tasks take assigned output blocks from each map task and combines them into one block. Overall, this strategy generates ``O(n^2)`` intermediate objects where ``n`` is the number of input blocks.
+
+You can also change the partitioning of a Dataset using ``.random_shuffle`` or ``.repartition``. The former should be used if you want to randomize the order of elements in the dataset. The second should be used if you only want to equalize the size of the Dataset blocks (e.g., after a read or transformation that may skew the distribution of block sizes). Note that repartition has two modes, ``shuffle=False``, which performs the minimal data movement needed to equalize block sizes, and ``shuffle=True``, which performs a full (non-random) distributed shuffle:
+
+.. image:: images/dataset-shuffle.svg
+   :width: 650px
+   :align: center
+
+..
+  https://docs.google.com/drawings/d/132jhE3KXZsf29ho1yUdPrCHB9uheHBWHJhDQMXqIVPA/edit
+
+Resource Allocation Model
+=========================
+
+Unlike other libraries in Ray's ML ecosystem, such as Tune and Train, Datasets does not
+natively use placement groups to allocate resources for Datasets workloads (tasks and
+actor pools). Instead, Datasets makes plain CPU/GPU resource requests to the cluster,
+and in order to not compete with Tune/Train for resources within those library's
+placement groups, Datasets **escapes placement groups by default**. Any Datasets
+tasks launched from within a placement group will be executed outside of that placement
+group by default. This can be thought of as Datasets requesting resources from the
+margins of the cluster, outside of those ML library placement groups.
+
+Although this is the default behavior, you can force all Datasets workloads to be
+schedule without a placement group by specifying a placement group as the global
+scheduling strategy for all Datasets tasks/actors, using the global
+:class:`DatasetContext <ray.data.DatasetContext>`:
+
+.. code-block::
+
+    import ray
+    from ray.data.context import DatasetContext
+    from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+
+    # Create a single-CPU local cluster.
+    ray.init(num_cpus=1)
+    ctx = DatasetContext.get_current()
+    # Create a placement group that takes up the single core on the cluster.
+    placement_group = ray.util.placement_group(
+        name="core_hog",
+        strategy="SPREAD",
+        bundles=[
+            {"CPU": 1},
+        ],
+    )
+    ray.get(placement_group.ready())
+
+    # Tell Datasets to use the placement group for all Datasets tasks.
+    ctx.scheduling_strategy = PlacementGroupSchedulingStrategy(placement_group)
+    # This Dataset workload will use that placement group for all read and map tasks.
+    ds = ray.data.range(100, parallelism=2) \
+        .map(lambda x: x + 1)
+
+    assert ds.take_all() == list(range(1, 101))
+
+Memory Management
+=================
+
+This section deals with how Datasets manages execution and object store memory.
+
+Execution Memory
+~~~~~~~~~~~~~~~~
+
+During execution, certain types of intermediate data must fit in memory. This includes the input block of a task, as well as at least one of the output blocks of the task (when a task has multiple output blocks, only one needs to fit in memory at any given time). The input block consumes object stored shared memory (Python heap memory for non-Arrow data). The output blocks consume Python heap memory (prior to putting in the object store) as well as object store memory (after being put in the object store).
+
+This means that large block sizes can lead to potential out-of-memory situations. To avoid OOM errors, Datasets can split blocks during map and read tasks into pieces smaller than the target max block size. In some cases, this splitting is not possible (e.g., if a single item in a block is extremely large, or the function given to ``.map_batches`` returns a very large batch). To avoid these issues, make sure no single item in your Datasets is too large, and always call ``.map_batches`` with batch size small enough such that the output batch can comfortably fit into memory.
+
+.. note::
+
+  Block splitting is off by default. See the :ref:`performance section <data_performance_tips>` on how to enable block splitting (beta).
+
+Object Store Memory
+~~~~~~~~~~~~~~~~~~~
+
+Datasets uses the Ray object store to store data blocks, which means it inherits the memory management features of the Ray object store. This section discusses the relevant features:
+
+**Object Spilling**: Since Datasets uses the Ray object store to store data blocks, any blocks that can't fit into object store memory are automatically spilled to disk. The objects are automatically reloaded when needed by downstream compute tasks:
+
+.. image:: images/dataset-spill.svg
+   :width: 650px
+   :align: center
+
+..
+  https://docs.google.com/drawings/d/1H_vDiaXgyLU16rVHKqM3rEl0hYdttECXfxCj8YPrbks/edit
+
+**Locality Scheduling**: Ray will preferentially schedule compute tasks on nodes that already have a local copy of the object, reducing the need to transfer objects between nodes in the cluster.
+
+**Reference Counting**: Dataset blocks are kept alive by object store reference counting as long as there is any Dataset that references them. To free memory, delete any Python references to the Dataset object.
+
+**Load Balancing**: Datasets uses Ray scheduling hints to spread read tasks out across the cluster to balance memory usage.
+
 Lazy Execution Mode
 ===================
 
@@ -202,109 +308,3 @@ data extra aggressively.
       # file with the reading of a single file (at most 2 file's worth of data in-flight
       # at a time).
       ray.data.read_parquet().window(blocks_per_window=1).map_batches(udf)
-
-Dataset Transforms
-==================
-
-Datasets use either Ray tasks or Ray actors to transform datasets (i.e., for ``.map``, ``.flat_map``, or ``.map_batches``). By default, tasks are used (``compute="tasks"``). Actors can be specified with ``compute="actors"``, in which case an autoscaling pool of Ray actors will be used to apply transformations. Using actors allows for expensive state initialization (e.g., for GPU-based tasks) to be re-used. Whichever compute strategy is used, each map task generally takes in one block and produces one or more output blocks. The output block splitting rule is the same as for file reads (blocks are split after hitting the target max block size of 2GiB):
-
-.. image:: images/dataset-map.svg
-   :width: 650px
-   :align: center
-
-..
-  https://docs.google.com/drawings/d/1MGlGsPyTOgBXswJyLZemqJO1Mf7d-WiEFptIulvcfWE/edit
-
-Shuffling Data
-==============
-
-Certain operations like ``.sort`` and ``.groupby`` require data blocks to be partitioned by value. Datasets executes this in three phases. First, a wave of sampling tasks determines suitable partition boundaries based on a random sample of data. Second, map tasks divide each input block into a number of output blocks equal to the number of reduce tasks. Third, reduce tasks take assigned output blocks from each map task and combines them into one block. Overall, this strategy generates ``O(n^2)`` intermediate objects where ``n`` is the number of input blocks.
-
-You can also change the partitioning of a Dataset using ``.random_shuffle`` or ``.repartition``. The former should be used if you want to randomize the order of elements in the dataset. The second should be used if you only want to equalize the size of the Dataset blocks (e.g., after a read or transformation that may skew the distribution of block sizes). Note that repartition has two modes, ``shuffle=False``, which performs the minimal data movement needed to equalize block sizes, and ``shuffle=True``, which performs a full (non-random) distributed shuffle:
-
-.. image:: images/dataset-shuffle.svg
-   :width: 650px
-   :align: center
-
-..
-  https://docs.google.com/drawings/d/132jhE3KXZsf29ho1yUdPrCHB9uheHBWHJhDQMXqIVPA/edit
-
-Resource Allocation Model
-=========================
-
-Unlike other libraries in Ray's ML ecosystem, such as Tune and Train, Datasets does not
-natively use placement groups to allocate resources for Datasets workloads (tasks and
-actor pools). Instead, Datasets makes plain CPU/GPU resource requests to the cluster,
-and in order to not compete with Tune/Train for resources within those library's
-placement groups, Datasets **escapes placement groups by default**. Any Datasets
-tasks launched from within a placement group will be executed outside of that placement
-group by default. This can be thought of as Datasets requesting resources from the
-margins of the cluster, outside of those ML library placement groups.
-
-Although this is the default behavior, you can force all Datasets workloads to be
-schedule without a placement group by specifying a placement group as the global
-scheduling strategy for all Datasets tasks/actors, using the global
-:class:`DatasetContext <ray.data.DatasetContext>`:
-
-.. code-block::
-
-    import ray
-    from ray.data.context import DatasetContext
-    from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-
-    # Create a single-CPU local cluster.
-    ray.init(num_cpus=1)
-    ctx = DatasetContext.get_current()
-    # Create a placement group that takes up the single core on the cluster.
-    placement_group = ray.util.placement_group(
-        name="core_hog",
-        strategy="SPREAD",
-        bundles=[
-            {"CPU": 1},
-        ],
-    )
-    ray.get(placement_group.ready())
-
-    # Tell Datasets to use the placement group for all Datasets tasks.
-    ctx.scheduling_strategy = PlacementGroupSchedulingStrategy(placement_group)
-    # This Dataset workload will use that placement group for all read and map tasks.
-    ds = ray.data.range(100, parallelism=2) \
-        .map(lambda x: x + 1)
-
-    assert ds.take_all() == list(range(1, 101))
-
-Memory Management
-=================
-
-This section deals with how Datasets manages execution and object store memory.
-
-Execution Memory
-~~~~~~~~~~~~~~~~
-
-During execution, certain types of intermediate data must fit in memory. This includes the input block of a task, as well as at least one of the output blocks of the task (when a task has multiple output blocks, only one needs to fit in memory at any given time). The input block consumes object stored shared memory (Python heap memory for non-Arrow data). The output blocks consume Python heap memory (prior to putting in the object store) as well as object store memory (after being put in the object store).
-
-This means that large block sizes can lead to potential out-of-memory situations. To avoid OOM errors, Datasets can split blocks during map and read tasks into pieces smaller than the target max block size. In some cases, this splitting is not possible (e.g., if a single item in a block is extremely large, or the function given to ``.map_batches`` returns a very large batch). To avoid these issues, make sure no single item in your Datasets is too large, and always call ``.map_batches`` with batch size small enough such that the output batch can comfortably fit into memory.
-
-.. note::
-
-  Block splitting is off by default. See the :ref:`performance section <data_performance_tips>` on how to enable block splitting (beta).
-
-Object Store Memory
-~~~~~~~~~~~~~~~~~~~
-
-Datasets uses the Ray object store to store data blocks, which means it inherits the memory management features of the Ray object store. This section discusses the relevant features:
-
-**Object Spilling**: Since Datasets uses the Ray object store to store data blocks, any blocks that can't fit into object store memory are automatically spilled to disk. The objects are automatically reloaded when needed by downstream compute tasks:
-
-.. image:: images/dataset-spill.svg
-   :width: 650px
-   :align: center
-
-..
-  https://docs.google.com/drawings/d/1H_vDiaXgyLU16rVHKqM3rEl0hYdttECXfxCj8YPrbks/edit
-
-**Locality Scheduling**: Ray will preferentially schedule compute tasks on nodes that already have a local copy of the object, reducing the need to transfer objects between nodes in the cluster.
-
-**Reference Counting**: Dataset blocks are kept alive by object store reference counting as long as there is any Dataset that references them. To free memory, delete any Python references to the Dataset object.
-
-**Load Balancing**: Datasets uses Ray scheduling hints to spread read tasks out across the cluster to balance memory usage.
