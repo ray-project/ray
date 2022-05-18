@@ -188,7 +188,7 @@ def _get_unique_value_indices(
 ) -> Dict[str, Dict[str, int]]:
     """If drop_na_values is True, will silently drop NA values."""
     limit = limit or {}
-    for column in limit.keys():
+    for column in limit:
         if column not in columns:
             raise ValueError(
                 f"You set limit for {column}, which is not present in {columns}."
