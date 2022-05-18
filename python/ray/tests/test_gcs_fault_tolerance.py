@@ -390,12 +390,12 @@ ray.shutdown()
         import filelock
 
         try:
-            with lock2.acquire(blocking=False):
-                return False
+            lock2.acquire(timeout=1)
         except filelock.Timeout:
             return True
-        except Exception:
-            return False
+
+        lock2.release()
+        return False
 
     # make sure the script has printed "OK1"
     wait_for_condition(condition, timeout=10)
