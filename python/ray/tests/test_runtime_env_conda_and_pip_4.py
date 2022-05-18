@@ -13,8 +13,8 @@ if not os.environ.get("CI"):
 
 
 @pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="Requires PR wheels built in CI, so only run on linux CI machines.",
+    os.environ.get("CI") and sys.platform not in ("linux", "win32"),
+    reason="Requires PR wheels built in CI",
 )
 def test_in_virtualenv(start_cluster):
     assert (
@@ -60,7 +60,7 @@ class TestGC:
         ray.shutdown()
 
         # It should be OK if cluster ray meets the installing ray version.
-        ray.init(address, runtime_env={"pip": ["pip-install-test==0.5", "ray>1.6.0"]})
+        ray.init(address, runtime_env={"pip": ["pip-install-test==0.5", "ray>=1.12.0"]})
 
         @ray.remote
         def f():
