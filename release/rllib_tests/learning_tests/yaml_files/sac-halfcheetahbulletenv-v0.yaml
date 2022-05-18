@@ -21,11 +21,12 @@ sac-halfcheetahbulletenv-v0:
         no_done_at_end: false
         n_step: 3
         rollout_fragment_length: 1
-        prioritized_replay: true
         train_batch_size: 256
         target_network_update_freq: 1
         min_sample_timesteps_per_reporting: 1000
-        learning_starts: 10000
+        replay_buffer_config:
+          learning_starts: 10000
+          type: MultiAgentPrioritizedReplayBuffer
         optimization:
             actor_learning_rate: 0.0003
             critic_learning_rate: 0.0003

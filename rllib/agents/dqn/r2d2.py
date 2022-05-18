@@ -32,8 +32,10 @@ R2D2_DEFAULT_CONFIG = Trainer.merge_trainer_configs(
 
         # === Replay buffer ===
         "replay_buffer_config": {
-            "_enable_replay_buffer_api": True,
             "type": "MultiAgentReplayBuffer",
+            # Specify prioritized replay by supplying a buffer type that supports
+            # prioritization, for example: MultiAgentPrioritizedReplayBuffer.
+            "prioritized_replay": DEPRECATED_VALUE,
             # Size of the replay buffer (in sequences, not timesteps).
             "capacity": 100000,
             "storage_unit": "sequences",
@@ -68,7 +70,7 @@ R2D2_DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         # if `use_h_function`=True.
         "h_function_epsilon": 1e-3,
 
-        # Update the target network every `target_network_update_freq` steps.
+        # Update the target network every `target_network_update_freq` sample steps.
         "target_network_update_freq": 2500,
 
         # Deprecated keys:

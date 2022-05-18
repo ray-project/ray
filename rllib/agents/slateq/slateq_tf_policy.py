@@ -13,7 +13,7 @@ from ray.rllib.agents.slateq.slateq_tf_model import SlateQTFModel
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import SlateMultiCategorical
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.tf_policy import LearningRateSchedule
+from ray.rllib.policy.tf_mixins import LearningRateSchedule
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf

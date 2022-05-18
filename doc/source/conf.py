@@ -69,6 +69,9 @@ jupyter_execute_notebooks = os.getenv("RUN_NOTEBOOKS", "off")
 external_toc_exclude_missing = False
 external_toc_path = "_toc.yml"
 
+html_extra_path = ["robots.txt"]
+
+
 # There's a flaky autodoc import for "TensorFlowVariables" that fails depending on the doc structure / order
 # of imports.
 # autodoc_mock_imports = ["ray.experimental.tf_utils"]

@@ -88,7 +88,7 @@ import asyncio
 from ray import serve
 # We will later move Ray DAG related components
 # out of experimental in later stable release
-from ray.experimental.dag.input_node import InputNode
+from ray.serve.dag import InputNode
 
 @serve.deployment
 async def preprocessor(input_data: str):
@@ -429,7 +429,7 @@ import starlette
 
 import ray
 from ray import serve
-from ray.experimental.dag.input_node import InputNode
+from ray.serve.dag import InputNode
 from ray.serve.drivers import DAGDriver
 from ray.serve.http_adapters import json_request
 

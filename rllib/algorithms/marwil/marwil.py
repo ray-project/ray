@@ -3,7 +3,7 @@ from typing import Optional, Type
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.algorithms.marwil.marwil_tf_policy import MARWILTFPolicy
-from ray.rllib.execution.buffers.multi_agent_replay_buffer import MultiAgentReplayBuffer
+from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
@@ -21,10 +21,10 @@ from ray.rllib.utils.metrics import (
     WORKER_UPDATE_TIMER,
 )
 from ray.rllib.utils.typing import (
-    PartialTrainerConfigDict,
     ResultDict,
     TrainerConfigDict,
 )
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 
 class MARWILConfig(TrainerConfig):
@@ -177,8 +177,12 @@ class MARWILTrainer(Trainer):
         # Call super's validation method.
         super().validate_config(config)
 
+<<<<<<< HEAD
         if config["beta"] < 0.0 or config["beta"] > 1.0:
             raise ValueError("`beta` must be within 0.0 and 1.0!")
+=======
+        validate_buffer_config(config)
+>>>>>>> 41b98b1b61e0749f7d4f194d39e3a2e932690b66
 
         if config["num_gpus"] > 1:
             raise ValueError("`num_gpus` > 1 not yet supported for MARWIL!")
@@ -201,19 +205,6 @@ class MARWILTrainer(Trainer):
             return MARWILTFPolicy
 
     @override(Trainer)
-    def setup(self, config: PartialTrainerConfigDict):
-        super().setup(config)
-        # `training_iteration` implementation: Setup buffer in `setup`, not
-        # in `execution_plan` (deprecated).
-        if self.config["_disable_execution_plan_api"] is True:
-            self.local_replay_buffer = MultiAgentReplayBuffer(
-                learning_starts=self.config["learning_starts"],
-                capacity=self.config["replay_buffer_size"],
-                replay_batch_size=self.config["train_batch_size"],
-                replay_sequence_length=1,
-            )
-
-    @override(Trainer)
     def training_iteration(self) -> ResultDict:
         # Collect SampleBatches from sample workers.
         batch = synchronous_parallel_sample(worker_set=self.workers)
@@ -221,10 +212,10 @@ class MARWILTrainer(Trainer):
         self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
         self._counters[NUM_ENV_STEPS_SAMPLED] += batch.env_steps()
         # Add batch to replay buffer.
-        self.local_replay_buffer.add_batch(batch)
+        self.local_replay_buffer.add(batch)
 
         # Pull batch from replay buffer and train on it.
-        train_batch = self.local_replay_buffer.replay()
+        train_batch = self.local_replay_buffer.sample(self.config["train_batch_size"])
         # Train.
         if self.config["simple_optimizer"]:
             train_results = train_one_step(self, train_batch)

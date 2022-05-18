@@ -3,11 +3,10 @@ import collections
 from typing import Any, Dict, Optional
 from enum import Enum
 
-import ray
 from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES
 from ray.rllib.policy.rnn_sequencing import timeslice_along_seq_lens_with_overlap
 from ray.rllib.policy.sample_batch import MultiAgentBatch
-from ray.rllib.utils.annotations import override, ExperimentalAPI
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.typing import PolicyID, SampleBatchType
@@ -15,17 +14,18 @@ from ray.rllib.utils.replay_buffers.replay_buffer import StorageUnit
 from ray.rllib.utils.from_config import from_config
 from ray.util.debug import log_once
 from ray.rllib.utils.deprecation import Deprecated
+from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
 
-@ExperimentalAPI
+@DeveloperAPI
 class ReplayMode(Enum):
     LOCKSTEP = "lockstep"
     INDEPENDENT = "independent"
 
 
-@ExperimentalAPI
+@DeveloperAPI
 def merge_dicts_with_warning(args_on_init, args_on_call):
     """Merge argument dicts, overwriting args_on_call with warning.
 
@@ -50,7 +50,7 @@ def merge_dicts_with_warning(args_on_init, args_on_call):
     return {**args_on_init, **args_on_call}
 
 
-@ExperimentalAPI
+@DeveloperAPI
 class MultiAgentReplayBuffer(ReplayBuffer):
     """A replay buffer shard for multiagent setups.
 
@@ -183,7 +183,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         """Returns the number of items currently stored in this buffer."""
         return sum(len(buffer._storage) for buffer in self.replay_buffers.values())
 
-    @ExperimentalAPI
+    @DeveloperAPI
     @Deprecated(old="replay", new="sample", error=False)
     def replay(self, num_items: int = None, **kwargs) -> Optional[SampleBatchType]:
         """Deprecated in favor of new ReplayBuffer API."""
@@ -191,7 +191,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
             num_items = self.replay_batch_size
         return self.sample(num_items, **kwargs)
 
-    @ExperimentalAPI
+    @DeveloperAPI
     @override(ReplayBuffer)
     def add(self, batch: SampleBatchType, **kwargs) -> None:
         """Adds a batch to the appropriate policy's replay buffer.
@@ -229,7 +229,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
                     self._add_to_underlying_buffer(policy_id, sample_batch, **kwargs)
         self._num_added += batch.count
 
-    @ExperimentalAPI
+    @DeveloperAPI
     def _add_to_underlying_buffer(
         self, policy_id: PolicyID, batch: SampleBatchType, **kwargs
     ) -> None:
@@ -266,7 +266,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         else:
             self.replay_buffers[policy_id].add(batch, **kwargs)
 
-    @ExperimentalAPI
+    @DeveloperAPI
     @override(ReplayBuffer)
     def sample(
         self, num_items: int, policy_id: Optional[PolicyID] = None, **kwargs
@@ -310,7 +310,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
                     samples[policy_id] = replay_buffer.sample(num_items, **kwargs)
                 return MultiAgentBatch(samples, sum(s.count for s in samples.values()))
 
-    @ExperimentalAPI
+    @DeveloperAPI
     @override(ReplayBuffer)
     def stats(self, debug: bool = False) -> Dict:
         """Returns the stats of this buffer and all underlying buffers.
@@ -332,7 +332,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
             )
         return stat
 
-    @ExperimentalAPI
+    @DeveloperAPI
     @override(ReplayBuffer)
     def get_state(self) -> Dict[str, Any]:
         """Returns all local state.
@@ -345,7 +345,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
             state["replay_buffers"][policy_id] = replay_buffer.get_state()
         return state
 
-    @ExperimentalAPI
+    @DeveloperAPI
     @override(ReplayBuffer)
     def set_state(self, state: Dict[str, Any]) -> None:
         """Restores all local state to the provided `state`.
@@ -358,6 +358,3 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         buffer_states = state["replay_buffers"]
         for policy_id in buffer_states.keys():
             self.replay_buffers[policy_id].set_state(buffer_states[policy_id])
-
-
-ReplayActor = ray.remote(num_cpus=0)(MultiAgentReplayBuffer)

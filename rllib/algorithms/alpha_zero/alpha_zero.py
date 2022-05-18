@@ -11,23 +11,38 @@ from ray.rllib.execution.replay_ops import (
     StoreToReplayBuffer,
     WaitUntilTimestepsElapsed,
 )
-from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
+from ray.rllib.execution.rollout_ops import (
+    ParallelRollouts,
+    ConcatBatches,
+    synchronous_parallel_sample,
+)
 from ray.rllib.execution.concurrency_ops import Concurrently
-from ray.rllib.execution.train_ops import TrainOneStep
+from ray.rllib.execution.train_ops import (
+    multi_gpu_train_one_step,
+    train_one_step,
+    TrainOneStep,
+)
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import restore_original_dimensions
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.typing import TrainerConfigDict
-from ray.tune.registry import ENV_CREATOR, _global_registry
+from ray.rllib.utils.metrics import (
+    NUM_AGENT_STEPS_SAMPLED,
+    NUM_ENV_STEPS_SAMPLED,
+    SYNCH_WORKER_WEIGHTS_TIMER,
+)
+from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
+from ray.rllib.utils.typing import ResultDict, TrainerConfigDict
 from ray.util.iter import LocalIterator
 
-from ray.rllib.contrib.alpha_zero.core.alpha_zero_policy import AlphaZeroPolicy
-from ray.rllib.contrib.alpha_zero.core.mcts import MCTS
-from ray.rllib.contrib.alpha_zero.core.ranked_rewards import get_r2_env_wrapper
+from ray.rllib.algorithms.alpha_zero.alpha_zero_policy import AlphaZeroPolicy
+from ray.rllib.algorithms.alpha_zero.mcts import MCTS
+from ray.rllib.algorithms.alpha_zero.ranked_rewards import get_r2_env_wrapper
 
 torch, nn = try_import_torch()
 
@@ -61,10 +76,18 @@ DEFAULT_CONFIG = with_common_config({
     "shuffle_sequences": True,
     # Number of SGD iterations in each outer loop
     "num_sgd_iter": 30,
-    # IN case a buffer optimizer is used
+    # In case a buffer optimizer is used
     "learning_starts": 1000,
     # Size of the replay buffer in batches (not timesteps!).
-    "buffer_size": 1000,
+    "buffer_size": DEPRECATED_VALUE,
+    "replay_buffer_config": {
+        "_enable_replay_buffer_api": True,
+        "type": "SimpleReplayBuffer",
+        # Size of the replay buffer in batches (not timesteps!).
+        "capacity": 1000,
+        # When to start returning samples (in batches, not timesteps!).
+        "learning_starts": 500,
+    },
     # Stepsize of SGD
     "lr": 5e-5,
     # Learning rate schedule
@@ -76,9 +99,6 @@ DEFAULT_CONFIG = with_common_config({
     "batch_mode": "complete_episodes",
     # Which observation filter to apply to the observation
     "observation_filter": "NoFilter",
-    # Uses the sync samples optimizer instead of the multi-gpu one. This does
-    # not support minibatches.
-    "simple_optimizer": True,
 
     # === MCTS ===
     "mcts_config": {
@@ -118,8 +138,6 @@ DEFAULT_CONFIG = with_common_config({
 
     "framework": "torch",  # Only PyTorch supported so far.
 })
-
-
 # __sphinx_doc_end__
 # fmt: on
 
@@ -150,7 +168,7 @@ class AlphaZeroPolicyWrapperClass(AlphaZeroPolicy):
         model = ModelCatalog.get_model_v2(
             obs_space, action_space, action_space.n, config["model"], "torch"
         )
-        env_creator = _global_registry.get(ENV_CREATOR, config["env"])
+        env_creator = Trainer._get_env_creator_from_env_id(None, config["env"])
         if config["ranked_rewards"]["enable"]:
             # if r2 is enabled, tne env is wrapped to include a rewards buffer
             # used to normalize rewards
@@ -187,9 +205,70 @@ class AlphaZeroTrainer(Trainer):
     def get_default_config(cls) -> TrainerConfigDict:
         return DEFAULT_CONFIG
 
+    def validate_config(self, config: TrainerConfigDict) -> None:
+        """Checks and updates the config based on settings."""
+        # Call super's validation method.
+        super().validate_config(config)
+        validate_buffer_config(config)
+
     @override(Trainer)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         return AlphaZeroPolicyWrapperClass
+
+    @override(Trainer)
+    def training_iteration(self) -> ResultDict:
+        """TODO:
+
+        Returns:
+            The results dict from executing the training iteration.
+        """
+
+        # Sample n MultiAgentBatches from n workers.
+        new_sample_batches = synchronous_parallel_sample(
+            worker_set=self.workers, concat=False
+        )
+
+        for batch in new_sample_batches:
+            # Update sampling step counters.
+            self._counters[NUM_ENV_STEPS_SAMPLED] += batch.env_steps()
+            self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
+            # Store new samples in the replay buffer
+            # Use deprecated add_batch() to support old replay buffers for now
+            if self.local_replay_buffer is not None:
+                self.local_replay_buffer.add(batch)
+
+        if self.local_replay_buffer is not None:
+            train_batch = self.local_replay_buffer.sample(
+                self.config["train_batch_size"]
+            )
+        else:
+            train_batch = SampleBatch.concat_samples(new_sample_batches)
+
+        # Learn on the training batch.
+        # Use simple optimizer (only for multi-agent or tf-eager; all other
+        # cases should use the multi-GPU optimizer, even if only using 1 GPU)
+        train_results = {}
+        if train_batch is not None:
+            if self.config.get("simple_optimizer") is True:
+                train_results = train_one_step(self, train_batch)
+            else:
+                train_results = multi_gpu_train_one_step(self, train_batch)
+
+        # TODO: Move training steps counter update outside of `train_one_step()` method.
+        # # Update train step counters.
+        # self._counters[NUM_ENV_STEPS_TRAINED] += train_batch.env_steps()
+        # self._counters[NUM_AGENT_STEPS_TRAINED] += train_batch.agent_steps()
+
+        # Update weights and global_vars - after learning on the local worker - on all
+        # remote workers.
+        global_vars = {
+            "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
+        }
+        with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+            self.workers.sync_weights(global_vars=global_vars)
+
+        # Return all collected metrics for the iteration.
+        return train_results
 
     @staticmethod
     @override(Trainer)

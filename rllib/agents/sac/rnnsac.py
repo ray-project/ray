@@ -58,7 +58,8 @@ class RNNSACTrainer(SACTrainer):
         )
         # Check if user tries to set replay_sequence_length (to anything
         # other than the proper value)
-        if config["replay_buffer_config"]["replay_sequence_length"] not in [
+        if config["replay_buffer_config"].get("replay_sequence_length", None) not in [
+            None,
             -1,
             replay_sequence_length,
         ]:
