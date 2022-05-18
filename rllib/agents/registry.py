@@ -33,7 +33,7 @@ def _import_apex():
 
 
 def _import_apex_ddpg():
-    from ray.rllib.agents import ddpg
+    from ray.rllib.algorithms import ddpg
 
     return ddpg.ApexDDPGTrainer, ddpg.apex.APEX_DDPG_DEFAULT_CONFIG
 
