@@ -1776,14 +1776,18 @@ cdef class CoreWorker:
                     c_bool recursive):
         cdef:
             CObjectID c_object_id
-            CRayStatus status
+            CRayStatus curr_status
+            c_vector[CRayStatus] statuses
 
         for object_ref in object_refs:
             c_object_id = (<ObjectRef>object_ref).native()
-            status = CCoreWorkerProcess.GetCoreWorker().CancelTask(
-                        c_object_id, force_kill, recursive)
-            if not status.ok():
-                raise TypeError(status.message().decode())
+            curr_status = CCoreWorkerProcess.GetCoreWorker().CancelTask(
+                          c_object_id, force_kill, recursive)
+            statuses.push_back(curr_status)
+
+        for i in range(len(object_refs)):
+            if not statuses[i].ok():
+                raise TypeError(statuses[i].message().decode())
 
     def resource_ids(self):
         cdef:
