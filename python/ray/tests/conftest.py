@@ -106,7 +106,10 @@ def maybe_external_redis(request):
         yield
 
 
-external_redis = pytest.fixture(_setup_redis)
+@pytest.fixture
+def external_redis(request):
+    with _setup_redis(request):
+        yield
 
 
 @pytest.fixture
