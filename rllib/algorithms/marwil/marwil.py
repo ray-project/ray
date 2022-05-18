@@ -24,7 +24,6 @@ from ray.rllib.utils.typing import (
     ResultDict,
     TrainerConfigDict,
 )
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 
 class MARWILConfig(TrainerConfig):
@@ -88,9 +87,6 @@ class MARWILConfig(TrainerConfig):
         self.replay_buffer_size = 10000
         self.learning_starts = 0
         self.vf_coeff = 1.0
-        self.use_gae = True
-        # TODO (rohan): Check if MARWIL actually uses GAE anywhere,
-        # if yes, add lambda_ and use_critic?
         self.grad_clip = None
 
         # Override some of TrainerConfig's default values with MARWIL-specific values.
@@ -113,7 +109,6 @@ class MARWILConfig(TrainerConfig):
         learning_starts: Optional[int] = None,
         vf_coeff: Optional[float] = None,
         grad_clip: Optional[float] = None,
-        use_gae: Optional[bool] = None,
         **kwargs,
     ) -> "MARWILConfig":
         """Sets the training related configuration.
@@ -135,9 +130,6 @@ class MARWILConfig(TrainerConfig):
             bc_logstd_coeff: A coefficient to encourage higher action distribution
             entropy for exploration.
             grad_clip: If specified, clip the global norm of gradients by this amount.
-            use_gae: If true, use the Generalized Advantage Estimator (GAE)
-            with a value function, see https://arxiv.org/pdf/1506.02438.pdf
-            in case an input line ends with a non-terminal timestep.
         Returns:
             This updated TrainerConfig object.
         """
@@ -161,8 +153,6 @@ class MARWILConfig(TrainerConfig):
             self.vf_coeff = vf_coeff
         if grad_clip is not None:
             self.grad_clip = grad_clip
-        if use_gae is not None:
-            self.use_gae = use_gae
         return self
 
 

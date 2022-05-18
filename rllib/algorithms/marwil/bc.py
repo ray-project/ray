@@ -5,7 +5,7 @@ from ray.rllib.utils.typing import TrainerConfigDict
 
 
 class BCConfig(MARWILConfig):
-    """Defines a configuration class based on MARWILConfig from which a new BCTrainer can be built
+    """Defines a configuration class from which a new BCTrainer can be built
 
     Example:
         >>> from ray.rllib.agents.marwil import BCConfig
