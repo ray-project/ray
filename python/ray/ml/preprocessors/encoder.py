@@ -1,6 +1,7 @@
+from typing import List, Dict, Optional, Union
+
 from collections import Counter
 import pandas as pd
-from typing import List, Dict, Optional, Union
 
 from ray.data import Dataset
 from ray.ml.preprocessor import Preprocessor
@@ -214,7 +215,7 @@ def _get_unique_value_indices(
         if drop_na_values:
             counter = final_counters[col]
             counter_dict = dict(counter)
-            sanitized_dict = {k: v for k, v in counter_dict if not pd.isnull(k)}
+            sanitized_dict = {k: v for k, v in counter_dict.items() if not pd.isnull(k)}
             final_counters[col] = Counter(sanitized_dict)
         else:
             if any(pd.isnull(k) for k in final_counters[col]):
