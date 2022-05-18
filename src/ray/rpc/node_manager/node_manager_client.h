@@ -97,6 +97,12 @@ class NodeManagerWorkerClient
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
+  /// Get a resource load
+  VOID_RPC_CLIENT_METHOD(NodeManagerService,
+                         NotifyGCSRestart,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1, )
+
   /// Request a worker lease.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          RequestWorkerLease,
@@ -153,7 +159,7 @@ class NodeManagerWorkerClient
 
   /// Notify the raylet to pin the provided object IDs.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
-                         PinObjectID,
+                         PinObjectIDs,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 

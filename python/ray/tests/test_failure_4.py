@@ -24,6 +24,7 @@ from ray._private.test_utils import (
     run_string_as_driver,
     wait_for_condition,
 )
+from ray._private.test_utils import SignalActor
 from ray.exceptions import LocalRayletDiedError
 import ray.experimental.internal_kv as internal_kv
 
@@ -573,6 +574,38 @@ def test_locality_aware_scheduling_for_dead_nodes(shutdown_only):
     time.sleep(1)
     target_node = ray.get(func.remote(obj1, obj2))
     assert target_node == node3.unique_id or target_node == node4.unique_id
+
+
+def test_actor_task_fast_fail(ray_start_cluster):
+    # Explicitly set `max_task_retries=0` here to show the test scenario.
+    @ray.remote(max_restarts=1, max_task_retries=0)
+    class SlowActor:
+        def __init__(self, signal_actor):
+            if ray.get_runtime_context().was_current_actor_reconstructed:
+                ray.get(signal_actor.wait.remote())
+
+        def ping(self):
+            return "pong"
+
+    signal = SignalActor.remote()
+    actor = SlowActor.remote(signal)
+    ray.get(actor.ping.remote())
+    ray.kill(actor, no_restart=False)
+
+    # Wait for a while so that now the driver knows the actor is in
+    # RESTARTING state.
+    time.sleep(1)
+    # An actor task should fail quickly until the actor is restarted if
+    # `max_task_retries` is 0.
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(actor.ping.remote())
+
+    signal.send.remote()
+    # Wait for a while so that now the driver knows the actor is in
+    # ALIVE state.
+    time.sleep(1)
+    # An actor task should succeed.
+    ray.get(actor.ping.remote())
 
 
 if __name__ == "__main__":

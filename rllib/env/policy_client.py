@@ -8,6 +8,7 @@ import logging
 import threading
 import time
 from typing import Union, Optional
+from enum import Enum
 
 import ray.cloudpickle as pickle
 from ray.rllib.env.external_env import ExternalEnv
@@ -36,9 +37,7 @@ except ImportError:
 
 
 @PublicAPI
-class PolicyClient:
-    """REST client to interact with a RLlib policy server."""
-
+class Commands(Enum):
     # Generic commands (for both modes).
     ACTION_SPACE = "ACTION_SPACE"
     OBSERVATION_SPACE = "OBSERVATION_SPACE"
@@ -54,6 +53,11 @@ class PolicyClient:
     LOG_ACTION = "LOG_ACTION"
     LOG_RETURNS = "LOG_RETURNS"
     END_EPISODE = "END_EPISODE"
+
+
+@PublicAPI
+class PolicyClient:
+    """REST client to interact with an RLlib policy server."""
 
     @PublicAPI
     def __init__(
@@ -102,7 +106,7 @@ class PolicyClient:
         return self._send(
             {
                 "episode_id": episode_id,
-                "command": PolicyClient.START_EPISODE,
+                "command": Commands.START_EPISODE,
                 "training_enabled": training_enabled,
             }
         )["episode_id"]
@@ -134,7 +138,7 @@ class PolicyClient:
         else:
             return self._send(
                 {
-                    "command": PolicyClient.GET_ACTION,
+                    "command": Commands.GET_ACTION,
                     "observation": observation,
                     "episode_id": episode_id,
                 }
@@ -161,7 +165,7 @@ class PolicyClient:
 
         self._send(
             {
-                "command": PolicyClient.LOG_ACTION,
+                "command": Commands.LOG_ACTION,
                 "observation": observation,
                 "action": action,
                 "episode_id": episode_id,
@@ -200,7 +204,7 @@ class PolicyClient:
 
         self._send(
             {
-                "command": PolicyClient.LOG_RETURNS,
+                "command": Commands.LOG_RETURNS,
                 "reward": reward,
                 "info": info,
                 "episode_id": episode_id,
@@ -225,7 +229,7 @@ class PolicyClient:
 
         self._send(
             {
-                "command": PolicyClient.END_EPISODE,
+                "command": Commands.END_EPISODE,
                 "observation": observation,
                 "episode_id": episode_id,
             }
@@ -252,7 +256,7 @@ class PolicyClient:
         logger.info("Querying server for rollout worker settings.")
         kwargs = self._send(
             {
-                "command": PolicyClient.GET_WORKER_ARGS,
+                "command": Commands.GET_WORKER_ARGS,
             }
         )["worker_args"]
         (self.rollout_worker, self.inference_thread) = _create_embedded_rollout_worker(
@@ -269,7 +273,7 @@ class PolicyClient:
             logger.info("Querying server for new policy weights.")
             resp = self._send(
                 {
-                    "command": PolicyClient.GET_WEIGHTS,
+                    "command": Commands.GET_WEIGHTS,
                 }
             )
             weights = resp["weights"]
@@ -311,7 +315,7 @@ class _LocalInferenceThread(threading.Thread):
                     )
                 self.send_fn(
                     {
-                        "command": PolicyClient.REPORT_SAMPLES,
+                        "command": Commands.REPORT_SAMPLES,
                         "samples": samples,
                         "metrics": metrics,
                     }

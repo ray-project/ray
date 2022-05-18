@@ -236,6 +236,14 @@ py_test(
 )
 
 py_test(
+    name = "test_dataset_utils",
+    size = "small",
+    srcs = ["tests/test_dataset_utils.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
     name = "test_horovod_trainer",
     size = "large",
     srcs = ["tests/test_horovod_trainer.py"],

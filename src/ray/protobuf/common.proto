@@ -528,6 +528,12 @@ enum TaskStatus {
   SCHEDULED = 2;
   // The task finished successfully.
   FINISHED = 3;
+  // The task is scheduled properly and waiting for execution.
+  // It includes time to deliver the task to the remote worker + queueing time
+  // from the execution side.
+  WAITING_FOR_EXECUTION = 5;
+  // The task that is running.
+  RUNNING = 6;
 }
 
 // Debug info for a referenced object.
@@ -572,10 +578,6 @@ message CoreWorkerStats {
   int32 num_pending_tasks = 2;
   // Number of object refs in local scope.
   int32 num_object_refs_in_scope = 3;
-  // Name of the currently executing task.
-  string current_task_name = 4;
-  // String representation of the function descriptor of the currently executing task.
-  string current_task_func_desc = 5;
   // IP address of the core worker.
   string ip_address = 7;
   // Port of the core worker.
