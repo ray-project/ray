@@ -19,6 +19,8 @@ Preprocessors
     :members:
     :show-inheritance:
 
+.. autofunction:: ray.ml.train_test_split
+
 
 .. _air-trainer-ref:
 

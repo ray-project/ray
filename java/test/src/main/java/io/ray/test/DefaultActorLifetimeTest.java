@@ -55,7 +55,6 @@ public class DefaultActorLifetimeTest {
       System.setProperty("ray.job.default-actor-lifetime", defaultActorLifetime.name());
     }
     try {
-      System.setProperty("ray.job.num-java-workers-per-process", "1");
       Ray.init();
 
       /// 1. create owner and invoke createChildActor.
