@@ -150,7 +150,7 @@ class TFPolicy(Policy):
         super().__init__(observation_space, action_space, config)
 
         # Get devices to build the graph on.
-        worker_idx = self.config.get("worker_index", 0)
+        worker_idx = config.get("worker_index", 0)
         if not config["_fake_gpus"] and ray.worker._mode() == ray.worker.LOCAL_MODE:
             num_gpus = 0
         elif worker_idx == 0:
@@ -237,7 +237,7 @@ class TFPolicy(Policy):
         self._action_input = action_input  # For logp calculations.
         self._dist_inputs = dist_inputs
         self.dist_class = dist_class
-
+        self._cached_extra_action_out = None
         self._state_inputs = state_inputs or []
         self._state_outputs = state_outputs or []
         self._seq_lens = seq_lens
@@ -784,6 +784,15 @@ class TFPolicy(Policy):
 
     @DeveloperAPI
     def extra_compute_action_fetches(self) -> Dict[str, TensorType]:
+        # It is pretty important to cache this, since action_fetches are
+        # called every single iteration. Things will be really slow if
+        # we try to compute the fetches live every time.
+        if not self._cached_extra_action_out:
+            self._cached_extra_action_out = self.extra_action_out_fn()
+        return self._cached_extra_action_out
+
+    @DeveloperAPI
+    def extra_action_out_fn(self) -> Dict[str, TensorType]:
         """Extra values to fetch and return from compute_actions().
 
         By default we return action probability/log-likelihood info

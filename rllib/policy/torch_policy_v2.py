@@ -230,7 +230,7 @@ class TorchPolicyV2(Policy):
         dist_class: Type[TorchDistributionWrapper],
         train_batch: SampleBatch,
     ) -> Union[TensorType, List[TensorType]]:
-        """Constructs the loss for Proximal Policy Objective.
+        """Constructs the loss function.
 
         Args:
             model: The Model to calculate the loss for.
@@ -418,8 +418,28 @@ class TorchPolicyV2(Policy):
         sample_batch: SampleBatch,
         other_agent_batches: Optional[Dict[Any, SampleBatch]] = None,
         episode: Optional["Episode"] = None,
-    ):
-        """Additional custom postprocessing of SampleBatch."""
+    ) -> SampleBatch:
+        """Postprocesses a trajectory and returns the processed trajectory.
+
+        The trajectory contains only data from one episode and from one agent.
+        - If  `config.batch_mode=truncate_episodes` (default), sample_batch may
+        contain a truncated (at-the-end) episode, in case the
+        `config.rollout_fragment_length` was reached by the sampler.
+        - If `config.batch_mode=complete_episodes`, sample_batch will contain
+        exactly one episode (no matter how long).
+        New columns can be added to sample_batch and existing ones may be altered.
+
+        Args:
+            sample_batch (SampleBatch): The SampleBatch to postprocess.
+            other_agent_batches (Optional[Dict[PolicyID, SampleBatch]]): Optional
+                dict of AgentIDs mapping to other agents' trajectory data (from the
+                same episode). NOTE: The other agents use the same policy.
+            episode (Optional[Episode]): Optional multi-agent episode
+                object in which the agents operated.
+
+        Returns:
+            SampleBatch: The postprocessed, modified SampleBatch (or a new one).
+        """
         return sample_batch
 
     @DeveloperAPI

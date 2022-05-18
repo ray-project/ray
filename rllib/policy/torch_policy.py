@@ -626,7 +626,7 @@ class TorchPolicy(Policy):
         for i, (model, batch) in enumerate(zip(self.model_gpu_towers, device_batches)):
             batch_fetches[f"tower_{i}"].update(
                 {
-                    LEARNER_STATS_KEY: self.extra_grad_info(batch),
+                    LEARNER_STATS_KEY: self.stats_fn(batch),
                     "model": model.metrics(),
                 }
             )
@@ -661,7 +661,7 @@ class TorchPolicy(Policy):
         all_grads, grad_info = tower_outputs[0]
 
         grad_info["allreduce_latency"] /= len(self._optimizers)
-        grad_info.update(self.extra_grad_info(postprocessed_batch))
+        grad_info.update(self.stats_fn(postprocessed_batch))
 
         fetches = self.extra_compute_grad_fetches()
 
@@ -823,7 +823,7 @@ class TorchPolicy(Policy):
         return {}
 
     @DeveloperAPI
-    def extra_grad_info(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
+    def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
         """Return dict of extra grad info.
 
         Args:
