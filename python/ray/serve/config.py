@@ -108,7 +108,7 @@ class DeploymentConfig(BaseModel):
             replica's health check before marking it unhealthy.
     """
 
-    num_replicas: NonNegativeInt = 0
+    num_replicas: NonNegativeInt = 1
     max_concurrent_queries: Optional[int] = None
     user_config: Any = None
 

@@ -130,11 +130,9 @@ class ServeController:
         return
 
     def record_autoscaling_metrics(self, data: Dict[str, float], send_timestamp: float):
-        print("recording autoscaling metrics", data)
         self.autoscaling_metrics_store.add_metrics_point(data, send_timestamp)
 
     def record_handle_metrics(self, data: Dict[str, float], send_timestamp: float):
-        print("recording queue handle metrics", data)
         self.handle_metrics_store.add_metrics_point(data, send_timestamp)
 
     def _dump_autoscaling_metrics_for_testing(self):

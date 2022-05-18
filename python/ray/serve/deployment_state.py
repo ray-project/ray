@@ -943,6 +943,7 @@ class DeploymentState:
         self._curr_status_info: DeploymentStatusInfo = DeploymentStatusInfo(
             self._name, DeploymentStatus.UPDATING
         )
+        self._deployment_to_delete = False
 
     def get_target_state_checkpoint_data(self):
         """
@@ -1044,6 +1045,7 @@ class DeploymentState:
 
         else:
             self._target_replicas = 0
+            self._deployment_to_delete = True
 
         self._curr_status_info = DeploymentStatusInfo(
             self._name, DeploymentStatus.UPDATING
@@ -1330,6 +1332,9 @@ class DeploymentState:
             )
             == 0
         ):
+            if self._deployment_to_delete:
+                return True
+
             # Check for a non-zero number of deployments.
             if target_replica_count == running_at_target_version_replica_cnt:
                 self._curr_status_info = DeploymentStatusInfo(DeploymentStatus.HEALTHY)
