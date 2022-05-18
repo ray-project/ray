@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import torch
 
+from ray.data.extensions import TensorArray
 from ray.ml.predictor import Predictor, DataBatchType
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
@@ -81,9 +82,6 @@ class TorchPredictor(Predictor):
 
     def _predict(self, tensor: torch.Tensor) -> pd.DataFrame:
         """Handle actual prediction."""
-        from ray.data.extensions import TensorArray
-
-        print(tensor)
         prediction = TensorArray(self.model(tensor).cpu().detach().numpy())
         return pd.DataFrame(prediction, columns=["predictions"])
 
@@ -128,14 +126,11 @@ class TorchPredictor(Predictor):
             import torch
             from ray.ml.predictors.torch import TorchPredictor
 
-            model = torch.nn.Linear(1, 1)
+            model = torch.nn.Linear(3, 1)
             predictor = TorchPredictor(model=model)
 
-            data = np.array([[1, 2], [3, 4]])
+            data = np.array([[1, 2, 3], [4, 5, 6]])
             predictions = predictor.predict(data)
-
-            # Only use first column as the feature
-            predictions = predictor.predict(data, feature_columns=[0])
 
         .. code-block:: python
 
@@ -164,7 +159,6 @@ class TorchPredictor(Predictor):
             data = self.preprocessor.transform_batch(data)
 
         if isinstance(data, np.ndarray):
-            # If numpy array, then convert to pandas dataframe.
             tensor = torch.tensor(data, dtype=torch.float32)
         else:
             tensor = self._convert_to_tensor(

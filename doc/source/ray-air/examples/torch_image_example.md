@@ -113,6 +113,11 @@ class Net(nn.Module):
 
 We define our training logic in a function called `train_loop_per_worker`.
 
+`train_loop_per_worker` contains regular PyTorch code with a few notable exceptions:
+* We wrap our model with `train.torch.prepare_model`.
+* We call `get_dataset_shard` and `to_torch` to convert a subset of our training data to a Torch dataset.
+* We save model state using `train.save_checkpoint`.
+
 ```{code-cell} python3
 from ray import train
 import torch.optim as optim
