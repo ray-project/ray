@@ -450,10 +450,13 @@ def push_and_tag_images(
 
                 # TODO(https://github.com/ray-project/ray/issues/16599):
                 # remove below after supporting ray-ml images with Python 3.9
-                if image_name in ["ray-ml"] and PY_MATRIX[py_name].startswith("3.9"):
+                if image_name in ["ray-ml"] and (
+                    PY_MATRIX[py_name].startswith("3.9")
+                    or PY_MATRIX[py_name].startswith("3.10")
+                ):
                     print(
                         f"{image_name} image is currently "
-                        f"unsupported with Python 3.9"
+                        f"unsupported with Python 3.9/3.10"
                     )
                     continue
 
