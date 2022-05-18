@@ -250,7 +250,7 @@ def test_unsupported_bind():
 
     with pytest.raises(
         AttributeError,
-        match=r"\.bind\(\) cannot be used again on",
+        match=r"\.bind\(\) cannot be called again on",
     ):
         actor = Actor.bind()
         _ = actor.bind()

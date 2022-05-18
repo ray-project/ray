@@ -415,7 +415,7 @@ def test_unsupported_bind():
         def ping(self):
             return "hello"
 
-    with pytest.raises(AttributeError, match=r"\.bind\(\) cannot be used again on"):
+    with pytest.raises(AttributeError, match=r"\.bind\(\) cannot be called again on"):
         _ = Actor.bind().bind()
 
     with pytest.raises(AttributeError, match=r"\.bind\(\) cannot be used again on"):
