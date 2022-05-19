@@ -145,6 +145,8 @@ This dataset can then be written to Parquet files. The tensor column schema will
     # -> one: int64
     #    two: extension<arrow.py_extension_type<ArrowTensorType>>
 
+.. _datasets_tensor_ml_exchange:
+
 Converting to a Torch/TensorFlow Dataset
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -223,7 +225,7 @@ Torch/TensorFlow tensor without incurring any copies.
     for X, y in tf_ds:
         # Train model(X, y)
 
-If your columns have different types **OR** your (tensor) columns have different shapes,
+If your (tensor) columns have different shapes,
 these columns are incompatible and you will not be able to stack the column tensors
 into a single tensor. Instead, you will need to group the columns by compatibility in
 the ``feature_columns`` argument.
