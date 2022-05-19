@@ -103,7 +103,6 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
                                                       jstring rayletSocket,
                                                       jbyteArray jobId,
                                                       jobject gcsClientOptions,
-                                                      jint numWorkersPerProcess,
                                                       jstring logDir,
                                                       jbyteArray jobConfig,
                                                       jint startupToken,
@@ -289,7 +288,6 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
   options.task_execution_callback = task_execution_callback;
   options.on_worker_shutdown = on_worker_shutdown;
   options.gc_collect = gc_collect;
-  options.num_workers = static_cast<int>(numWorkersPerProcess);
   options.serialized_job_config = serialized_job_config;
   options.metrics_agent_port = -1;
   options.startup_token = startupToken;

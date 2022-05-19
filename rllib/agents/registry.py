@@ -26,6 +26,15 @@ def _import_alpha_star():
     return AlphaStarTrainer, DEFAULT_CONFIG
 
 
+def _import_alpha_zero():
+    from ray.rllib.algorithms.alpha_zero.alpha_zero import (
+        AlphaZeroTrainer,
+        DEFAULT_CONFIG,
+    )
+
+    return AlphaZeroTrainer, DEFAULT_CONFIG
+
+
 def _import_apex():
     from ray.rllib.agents import dqn
 
@@ -191,6 +200,8 @@ def _import_td3():
 ALGORITHMS = {
     "A2C": _import_a2c,
     "A3C": _import_a3c,
+    "AlphaStar": _import_alpha_star,
+    "AlphaZero": _import_alpha_zero,
     "APPO": _import_appo,
     "APEX": _import_apex,
     "APEX_DDPG": _import_apex_ddpg,
@@ -218,7 +229,6 @@ ALGORITHMS = {
     "SimpleQ": _import_simple_q,
     "SlateQ": _import_slate_q,
     "TD3": _import_td3,
-    "AlphaStar": _import_alpha_star,
 }
 
 

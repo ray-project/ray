@@ -3113,15 +3113,6 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
   if (request.force_kill()) {
     RAY_LOG(INFO) << "Force kill actor request has received. exiting immediately... "
                   << kill_actor_reason;
-    if (options_.num_workers > 1) {
-      // TODO (kfstorm): Should we add some kind of check before sending the killing
-      // request?
-      RAY_LOG(ERROR)
-          << "Killing an actor which is running in a worker process with multiple "
-             "workers will also kill other actors in this process. To avoid this, "
-             "please create the Java actor with some dynamic options to make it being "
-             "hosted in a dedicated worker process.";
-    }
     // If we don't need to restart this actor, we notify raylet before force killing it.
     ForceExit(
         exit_type,

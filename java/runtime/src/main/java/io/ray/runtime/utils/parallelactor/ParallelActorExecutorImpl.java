@@ -23,9 +23,7 @@ public class ParallelActorExecutorImpl {
       throws InvocationTargetException, IllegalAccessException {
 
     functionManager = ((RayRuntimeInternal) Ray.internal()).getFunctionManager();
-    RayFunction init =
-        functionManager.getFunction(
-            Ray.getRuntimeContext().getCurrentJobId(), javaFunctionDescriptor);
+    RayFunction init = functionManager.getFunction(javaFunctionDescriptor);
     Thread.currentThread().setContextClassLoader(init.classLoader);
     for (int i = 0; i < parallelism; ++i) {
       Object instance = init.getMethod().invoke(null, null);
@@ -35,8 +33,7 @@ public class ParallelActorExecutorImpl {
 
   public Object execute(int instanceId, JavaFunctionDescriptor functionDescriptor, Object[] args)
       throws IllegalAccessException, InvocationTargetException {
-    RayFunction func =
-        functionManager.getFunction(Ray.getRuntimeContext().getCurrentJobId(), functionDescriptor);
+    RayFunction func = functionManager.getFunction(functionDescriptor);
     Preconditions.checkState(instances.containsKey(instanceId));
     return func.getMethod().invoke(instances.get(instanceId), args);
   }

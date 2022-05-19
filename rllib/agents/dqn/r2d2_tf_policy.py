@@ -19,7 +19,7 @@ from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.tf_policy import LearningRateSchedule
+from ray.rllib.policy.tf_mixins import LearningRateSchedule
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import huber_loss
 from ray.rllib.utils.typing import ModelInputDict, TensorType, TrainerConfigDict

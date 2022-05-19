@@ -3531,6 +3531,48 @@ def test_column_name_type_check(ray_start_regular_shared):
         ray.data.from_pandas(df)
 
 
+def test_random_sample(ray_start_regular_shared):
+    import math
+
+    def ensure_sample_size_close(dataset, sample_percent=0.5):
+        r1 = ds.random_sample(sample_percent)
+        assert math.isclose(
+            r1.count(), int(ds.count() * sample_percent), rel_tol=2, abs_tol=2
+        )
+
+    ds = ray.data.range(10, parallelism=2)
+    ensure_sample_size_close(ds)
+
+    ds = ray.data.range_table(10, parallelism=2)
+    ensure_sample_size_close(ds)
+
+    ds = ray.data.range_tensor(5, parallelism=2, shape=(2, 2))
+    ensure_sample_size_close(ds)
+
+    # imbalanced datasets
+    ds1 = ray.data.range(1, parallelism=1)
+    ds2 = ray.data.range(2, parallelism=1)
+    ds3 = ray.data.range(3, parallelism=1)
+    # noinspection PyTypeChecker
+    ds = ds1.union(ds2).union(ds3)
+    ensure_sample_size_close(ds)
+    # Small datasets
+    ds1 = ray.data.range(5, parallelism=5)
+    ensure_sample_size_close(ds1)
+
+
+def test_random_sample_checks(ray_start_regular_shared):
+    with pytest.raises(ValueError):
+        # Cannot sample -1
+        ray.data.range(1).random_sample(-1)
+    with pytest.raises(ValueError):
+        # Cannot sample from empty dataset
+        ray.data.range(0).random_sample(0.2)
+    with pytest.raises(ValueError):
+        # Cannot sample fraction > 1
+        ray.data.range(1).random_sample(10)
+
+
 @pytest.mark.parametrize("pipelined", [False, True])
 @pytest.mark.parametrize("use_push_based_shuffle", [False, True])
 def test_random_shuffle(shutdown_only, pipelined, use_push_based_shuffle):

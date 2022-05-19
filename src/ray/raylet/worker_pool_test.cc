@@ -26,8 +26,7 @@ namespace ray {
 
 namespace raylet {
 
-int NUM_WORKERS_PER_PROCESS_JAVA = 3;
-int MAXIMUM_STARTUP_CONCURRENCY = 5;
+int MAXIMUM_STARTUP_CONCURRENCY = 15;
 int MAX_IO_WORKER_SIZE = 2;
 int POOL_SIZE_SOFT_LIMIT = 5;
 int WORKER_REGISTER_TIMEOUT_SECONDS = 3;
@@ -36,10 +35,6 @@ std::string BAD_RUNTIME_ENV = "bad runtime env";
 const std::string BAD_RUNTIME_ENV_ERROR_MSG = "bad runtime env";
 
 std::vector<Language> LANGUAGES = {Language::PYTHON, Language::JAVA};
-
-static inline std::string GetNumJavaWorkersPerProcessSystemProperty(int num) {
-  return std::string("-Dray.job.num-java-workers-per-process=") + std::to_string(num);
-}
 
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
@@ -194,7 +189,7 @@ class WorkerPoolMock : public WorkerPool {
     int total = 0;
     for (auto &state_entry : states_by_lang_) {
       for (auto &process_entry : state_entry.second.worker_processes) {
-        total += process_entry.second.num_starting_workers;
+        total += process_entry.second.is_pending_registration ? 1 : 0;
       }
     }
     return total;
@@ -204,7 +199,7 @@ class WorkerPoolMock : public WorkerPool {
     int total = 0;
     for (auto &entry : states_by_lang_) {
       for (auto process : entry.second.worker_processes) {
-        if (process.second.num_starting_workers != 0) {
+        if (process.second.is_pending_registration) {
           total += 1;
         }
       }
@@ -313,7 +308,6 @@ class WorkerPoolMock : public WorkerPool {
       if (pushed_it == pushedProcesses_.end()) {
         int runtime_env_hash = 0;
         bool is_java = false;
-        bool has_dynamic_options = false;
         // Parses runtime env hash to make sure the pushed workers can be popped out.
         for (auto command_args : it->second) {
           std::string runtime_env_key = "--runtime-env-hash=";
@@ -326,14 +320,9 @@ class WorkerPoolMock : public WorkerPool {
           if (pos != std::string::npos) {
             is_java = true;
           }
-          pos = command_args.find("-X");
-          if (pos != std::string::npos) {
-            has_dynamic_options = true;
-          }
         }
         // TODO(SongGuyang): support C++ language workers.
-        int num_workers =
-            (is_java && !has_dynamic_options) ? NUM_WORKERS_PER_PROCESS_JAVA : 1;
+        int num_workers = 1;
         RAY_CHECK(timeout_worker_number <= num_workers)
             << "The timeout worker number cannot exceed the total number of workers";
         auto register_workers = num_workers - timeout_worker_number;
@@ -471,7 +460,6 @@ class WorkerPoolTest : public ::testing::Test {
     worker_pool_ = std::make_unique<WorkerPoolMock>(
         io_service_, worker_commands, mock_worker_rpc_clients_);
     rpc::JobConfig job_config;
-    job_config.set_num_java_workers_per_process(NUM_WORKERS_PER_PROCESS_JAVA);
     RegisterDriver(Language::PYTHON, JOB_ID, job_config);
   }
 
@@ -489,18 +477,7 @@ class WorkerPoolTest : public ::testing::Test {
       ASSERT_TRUE(worker_pool_->NumWorkerProcessesStarting() <=
                   expected_worker_process_count);
       Process prev = worker_pool_->LastStartedWorkerProcess();
-      if (!std::equal_to<Process>()(last_started_worker_process, prev)) {
-        last_started_worker_process = prev;
-        const auto &real_command =
-            worker_pool_->GetWorkerCommand(last_started_worker_process);
-        if (language == Language::JAVA) {
-          auto it = std::find(
-              real_command.begin(),
-              real_command.end(),
-              GetNumJavaWorkersPerProcessSystemProperty(num_workers_per_process));
-          ASSERT_NE(it, real_command.end());
-        }
-      } else {
+      if (std::equal_to<Process>()(last_started_worker_process, prev)) {
         ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(),
                   expected_worker_process_count);
         ASSERT_TRUE(i >= expected_worker_process_count);
@@ -618,9 +595,7 @@ TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
   auto [proc, token] = worker_pool_->StartWorkerProcess(
       Language::JAVA, rpc::WorkerType::WORKER, JOB_ID, &status);
   std::vector<std::shared_ptr<WorkerInterface>> workers;
-  for (int i = 0; i < NUM_WORKERS_PER_PROCESS_JAVA; i++) {
-    workers.push_back(worker_pool_->CreateWorker(Process(), Language::JAVA));
-  }
+  workers.push_back(worker_pool_->CreateWorker(Process(), Language::JAVA));
   for (const auto &worker : workers) {
     // Check that there's still a starting worker process
     // before all workers have been registered
@@ -670,7 +645,7 @@ TEST_F(WorkerPoolTest, StartupPythonWorkerProcessCount) {
 }
 
 TEST_F(WorkerPoolTest, StartupJavaWorkerProcessCount) {
-  TestStartupWorkerProcessCount(Language::JAVA, NUM_WORKERS_PER_PROCESS_JAVA);
+  TestStartupWorkerProcessCount(Language::JAVA, 1);
 }
 
 TEST_F(WorkerPoolTest, InitialWorkerProcessCount) {
@@ -756,7 +731,6 @@ TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
 
   rpc::JobConfig job_config = rpc::JobConfig();
   job_config.add_code_search_path("/test/code_search_path");
-  job_config.set_num_java_workers_per_process(NUM_WORKERS_PER_PROCESS_JAVA);
   job_config.add_jvm_options("-Xmx1g");
   job_config.add_jvm_options("-Xms500m");
   job_config.add_jvm_options("-Dmy-job.hello=world");
@@ -779,7 +753,6 @@ TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
       expected_command.end(),
       {"-Xmx1g", "-Xms500m", "-Dmy-job.hello=world", "-Dmy-job.foo=bar"});
   // Ray-defined per-process options
-  expected_command.push_back(GetNumJavaWorkersPerProcessSystemProperty(1));
   expected_command.push_back("-Dray.raylet.startup-token=0");
   expected_command.push_back("-Dray.internal.runtime-env-hash=1");
   // User-defined per-process options
@@ -1423,8 +1396,7 @@ TEST_F(WorkerPoolTest, TestWorkerCappingWithExitDelay) {
       PopWorkerStatus status;
       auto [proc, token] = worker_pool_->StartWorkerProcess(
           language, rpc::WorkerType::WORKER, JOB_ID, &status);
-      int workers_to_start =
-          language == Language::JAVA ? NUM_WORKERS_PER_PROCESS_JAVA : 1;
+      int workers_to_start = 1;
       for (int j = 0; j < workers_to_start; j++) {
         auto worker = worker_pool_->CreateWorker(Process(), language);
         worker->SetStartupToken(worker_pool_->GetStartupToken(proc));
