@@ -115,7 +115,7 @@ if __name__ == "__main__":
             "env_config": {
                 "actions_are_logits": True,
             },
-            "learning_starts": 100,
+            "replay_buffer_config": {"learning_starts": 100},
             "multiagent": {
                 "policies": {
                     "pol1": PolicySpec(

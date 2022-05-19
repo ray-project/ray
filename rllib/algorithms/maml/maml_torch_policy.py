@@ -7,7 +7,8 @@ from ray.rllib.evaluation.postprocessing import (
 )
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.agents.a3c.a3c_torch_policy import ValueNetworkMixin, vf_preds_fetches
+from ray.rllib.policy.torch_mixins import ValueNetworkMixin
+from ray.rllib.agents.a3c.a3c_torch_policy import vf_preds_fetches
 from ray.rllib.agents.ppo.ppo_tf_policy import setup_config
 from ray.rllib.utils.torch_utils import apply_grad_clipping
 from ray.rllib.utils.framework import try_import_torch
@@ -375,7 +376,7 @@ def maml_optimizer_fn(policy, config):
 
 
 def setup_mixins(policy, obs_space, action_space, config):
-    ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
+    ValueNetworkMixin.__init__(policy, config)
     KLCoeffMixin.__init__(policy, config)
 
 

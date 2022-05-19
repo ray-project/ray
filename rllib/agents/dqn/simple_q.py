@@ -17,7 +17,10 @@ from ray.rllib.agents.dqn.simple_q_torch_policy import SimpleQTorchPolicy
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.utils.metrics import SYNCH_WORKER_WEIGHTS_TIMER
-from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
+from ray.rllib.utils.replay_buffers.utils import (
+    validate_buffer_config,
+    update_priorities_in_replay_buffer,
+)
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
@@ -31,7 +34,6 @@ from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
     NUM_AGENT_STEPS_SAMPLED,
-    NUM_ENV_STEPS_TRAINED,
     NUM_ENV_STEPS_SAMPLED,
     NUM_TARGET_UPDATES,
     TARGET_NET_UPDATE_TIMER,
@@ -109,11 +111,13 @@ class SimpleQConfig(TrainerConfig):
         # __sphinx_doc_begin__
         self.target_network_update_freq = 500
         self.replay_buffer_config = {
-            "_enable_replay_buffer_api": True,
+            # How many steps of the model to sample before learning starts.
             "learning_starts": 1000,
             "type": "MultiAgentReplayBuffer",
             "capacity": 50000,
             "replay_batch_size": 32,
+            # The number of contiguous environment steps to replay at once. This
+            # may be set to greater than 1 to support recurrent models.
             "replay_sequence_length": 1,
         }
         self.store_buffer_in_checkpoints = False
@@ -152,7 +156,8 @@ class SimpleQConfig(TrainerConfig):
         self.prioritized_replay = DEPRECATED_VALUE
         self.learning_starts = DEPRECATED_VALUE
         self.replay_batch_size = DEPRECATED_VALUE
-        self.replay_sequence_length = DEPRECATED_VALUE
+        # Can not use DEPRECATED_VALUE here because -1 is a common config value
+        self.replay_sequence_length = None
         self.prioritized_replay_alpha = DEPRECATED_VALUE
         self.prioritized_replay_beta = DEPRECATED_VALUE
         self.prioritized_replay_eps = DEPRECATED_VALUE
@@ -308,7 +313,7 @@ class SimpleQTrainer(Trainer):
         - Store new samples in the replay buffer.
         - Sample one training MultiAgentBatch from the replay buffer.
         - Learn on the training batch.
-        - Update the target network every `target_network_update_freq` steps.
+        - Update the target network every `target_network_update_freq` sample steps.
         - Return all collected training metrics for the iteration.
 
         Returns:
@@ -350,13 +355,23 @@ class SimpleQTrainer(Trainer):
         else:
             train_results = multi_gpu_train_one_step(self, train_batch)
 
+        # Update replay buffer priorities.
+        update_priorities_in_replay_buffer(
+            self.local_replay_buffer,
+            self.config,
+            train_batch,
+            train_results,
+        )
+
         # TODO: Move training steps counter update outside of `train_one_step()` method.
         # # Update train step counters.
         # self._counters[NUM_ENV_STEPS_TRAINED] += train_batch.env_steps()
         # self._counters[NUM_AGENT_STEPS_TRAINED] += train_batch.agent_steps()
 
-        # Update target network every `target_network_update_freq` steps.
-        cur_ts = self._counters[NUM_ENV_STEPS_TRAINED]
+        # Update target network every `target_network_update_freq` sample steps.
+        cur_ts = self._counters[
+            NUM_AGENT_STEPS_SAMPLED if self._by_agent_steps else NUM_ENV_STEPS_SAMPLED
+        ]
         last_update = self._counters[LAST_TARGET_UPDATE_TS]
         if cur_ts - last_update >= self.config["target_network_update_freq"]:
             with self._timers[TARGET_NET_UPDATE_TIMER]:

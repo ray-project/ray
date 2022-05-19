@@ -40,9 +40,6 @@ from ray.rllib.evaluation.metrics import (
 )
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.execution.buffers.multi_agent_replay_buffer import (
-    MultiAgentReplayBuffer as Legacy_MultiAgentReplayBuffer,
-)
 from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer
 from ray.rllib.execution.common import WORKER_UPDATE_TIMER
 from ray.rllib.execution.rollout_ops import (
@@ -2127,7 +2124,7 @@ class Trainer(Trainable):
     @DeveloperAPI
     def _create_local_replay_buffer_if_necessary(
         self, config: PartialTrainerConfigDict
-    ) -> Optional[Union[MultiAgentReplayBuffer, Legacy_MultiAgentReplayBuffer]]:
+    ) -> Optional[MultiAgentReplayBuffer]:
         """Create a MultiAgentReplayBuffer instance if necessary.
 
         Args:
@@ -2138,7 +2135,7 @@ class Trainer(Trainable):
             None, if local replay buffer is not needed.
         """
         if not config.get("replay_buffer_config") or config["replay_buffer_config"].get(
-            "no_local_replay_buffer" or config.get("no_local_replay_buffer"), False
+            "no_local_replay_buffer" or config.get("no_local_replay_buffer")
         ):
             return
 
