@@ -16,6 +16,7 @@ from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics.window_stat import WindowStat
 from ray.rllib.utils.typing import SampleBatchType, T
 from ray.util.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.util.iter import ParallelIteratorWorker
 
 # Constant that represents all policies in lockstep replay mode.
@@ -118,12 +119,6 @@ class ReplayBuffer(ParallelIteratorWorker):
         self._est_size_bytes = 0
 
         self.batch_size = None
-
-        def gen_replay():
-            while True:
-                yield self.sample(1)
-
-        ParallelIteratorWorker.__init__(self, gen_replay, False)
 
     def __len__(self) -> int:
         """Returns the number of items currently stored in this buffer."""
@@ -362,3 +357,24 @@ class ReplayBuffer(ParallelIteratorWorker):
     )
     def replay(self, num_items):
         return self.sample(num_items)
+
+    @ExperimentalAPI
+    @Deprecated(
+        help="ReplayBuffers could be iterated over by default before. "
+        "Making a buffer an iterator will soon "
+        "be deprecated altogether. Consider switching to the training "
+        "iteration API to resolve this.",
+        error=False,
+    )
+    def make_iterator(self, num_items_to_replay: int):
+        """Make this buffer a ParallelIteratorWorker to retain compatibility.
+
+        Execution plans have made heavy use of buffers as ParallelIteratorWorkers.
+        This method provides an easy way to support this for now.
+        """
+
+        def gen_replay():
+            while True:
+                yield self.sample(num_items_to_replay)
+
+        ParallelIteratorWorker.__init__(self, gen_replay, False)

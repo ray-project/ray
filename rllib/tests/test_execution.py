@@ -249,7 +249,7 @@ class TestExecution(unittest.TestCase):
         next(b)
         assert ray.get(actor.sample.remote(100)).count == 100
 
-        replay_op = Replay(actors=[actor])
+        replay_op = Replay(actors=[actor], num_items_to_replay=100)
         assert next(replay_op).count == 100
 
 
