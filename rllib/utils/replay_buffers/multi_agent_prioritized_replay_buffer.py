@@ -38,7 +38,7 @@ class MultiAgentPrioritizedReplayBuffer(
         num_shards: int = 1,
         learning_starts: int = 1000,
         replay_mode: str = "independent",
-        max_sequence_length: int = 1,
+        replay_sequence_length: int = 1,
         replay_burn_in: int = 0,
         replay_zero_init_states: bool = True,
         prioritized_replay_alpha: float = 0.6,
@@ -67,7 +67,7 @@ class MultiAgentPrioritizedReplayBuffer(
                 replay buffer.
             prioritized_replay_eps: Epsilon parameter for a prioritized
                 replay buffer.
-            max_sequence_length: The sequence length (T) of a single
+            replay_sequence_length: The sequence length (T) of a single
                 sample. If > 1, we will sample B x T from this buffer.
             replay_burn_in: The burn-in length in case
                 `replay_sequence_length` > 0. This is the number of timesteps
@@ -127,7 +127,7 @@ class MultiAgentPrioritizedReplayBuffer(
             underlying_buffer_config=prioritized_replay_buffer_config,
             learning_starts=learning_starts,
             replay_mode=replay_mode,
-            max_sequence_length=max_sequence_length,
+            replay_sequence_length=replay_sequence_length,
             replay_burn_in=replay_burn_in,
             replay_zero_init_states=replay_zero_init_states,
         )

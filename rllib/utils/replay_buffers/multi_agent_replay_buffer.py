@@ -66,7 +66,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         num_shards: int = 1,
         learning_starts: int = 1000,
         replay_mode: str = "independent",
-        max_sequence_length: int = 1,
+        replay_sequence_length: int = 1,
         replay_burn_in: int = 0,
         replay_zero_init_states: bool = True,
         underlying_buffer_config: dict = None,
@@ -87,15 +87,14 @@ class MultiAgentReplayBuffer(ReplayBuffer):
             replay_mode: One of "independent" or "lockstep". Determines,
                 whether batches are sampled independently or to an equal
                 amount.
-            max_sequence_length: The sequence length (T) of a single
+            replay_sequence_length: The sequence length (T) of a single
                 sample. If > 1, we will sample B x T from this buffer. This
                 only has an effect if storage_unit is 'timesteps'.
-            replay_burn_in: The burn-in length in case
-                `replay_sequence_length` > 0. This is the number of timesteps
+            replay_burn_in: This is the number of timesteps
                 each sequence overlaps with the previous one to generate a
                 better internal state (=state after the burn-in), instead of
                 starting from 0.0 each RNN rollout. This only has an effect
-                if storage_unit is 'timesteps'.
+                if storage_unit is `sequences`.
             replay_zero_init_states: Whether the initial states in the
                 buffer (if replay_sequence_length > 0) are alwayas 0.0 or
                 should be updated with the previous train_batch state outputs.
@@ -117,7 +116,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
 
         self.replay_starts = learning_starts // num_shards
         self.replay_mode = replay_mode
-        self.replay_sequence_length = max_sequence_length
+        self.replay_sequence_length = replay_sequence_length
         self.replay_burn_in = replay_burn_in
         self.replay_zero_init_states = replay_zero_init_states
 
