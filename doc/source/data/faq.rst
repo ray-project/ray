@@ -83,7 +83,7 @@ What should I not use Ray Datasets for?
 
 Ray Datasets is not meant to be used for generic ETL pipelines (like Spark) or
 scalable data science (like Dask, Modin, or Mars). However, each of these frameworks
-are :ref:`runnable on Ray <data_integrations>`, and Datasts integrates tightly with
+are :ref:`runnable on Ray <data_integrations>`, and Datasets integrates tightly with
 these frameworks, allowing for efficient exchange of distributed data partitions often
 with zero-copy. Check out the
 :ref:`dataset creation feature guide <dataset_from_in_memory_data_distributed>` to learn
