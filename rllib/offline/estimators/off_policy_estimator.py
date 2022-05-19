@@ -44,13 +44,27 @@ class OffPolicyEstimator:
             The off-policy estimates (OPE) calculated on the given batch.
         """
         raise NotImplementedError
+    
+    @DeveloperAPI
+    def train(self, batch: SampleBatchType, reset_weights=True) -> None:
+        """Trains a Direct Off-Policy Estimator on the given batch of episodes.
+        A model-based or model-free estimator should override this and train
+        a transition, value, or reward model.
+        
+        Args:
+            batch: The batch to train the model on
+            reset_weights: Whether to reinitialize the model weights; this is True
+            if, for example, you update your policy between calls to train(),
+            but False if you want to run OPE on a fixed policy and offline dataset.
+        """
+        pass
 
     @DeveloperAPI
-    def action_log_likelihood(self, batch: SampleBatchType) -> TensorType:
-        """Returns log likelihoods for actions in given batch for policy.
+    def action_prob(self, batch: SampleBatchType) -> TensorType:
+        """Returns probabilities for actions in given batch for policy.
 
         Computes likelihoods by passing the observations through the current
-        policy's `compute_log_likelihoods()` method.
+        policy's `compute_log_likelihoods()` method, then calls np.exp()
 
         Args:
             batch: The SampleBatch or MultiAgentBatch to calculate action
@@ -58,7 +72,7 @@ class OffPolicyEstimator:
                 and ACTIONS keys.
 
         Returns:
-            The log likelihoods of the actions in the batch, given the
+            The probabilities of the actions in the batch, given the
             observations and the policy.
         """
         num_state_inputs = 0
@@ -135,7 +149,3 @@ class OffPolicyEstimator:
     @Deprecated(new="OffPolicyEstimator.create_from_io_context", error=True)
     def create(self, *args, **kwargs):
         return self.create_from_io_context(*args, **kwargs)
-
-    @Deprecated(new="OffPolicyEstimator.action_log_likelihood", error=True)
-    def action_prob(self, *args, **kwargs):
-        return self.action_log_likelihood(*args, **kwargs)
