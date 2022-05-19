@@ -1,4 +1,4 @@
-package io.ray.runtime.exception;
+package io.ray.api.exception;
 
 /** Indicate that there are some thing have timed out, including `Ray.get()` or others. */
 public class RayTimeoutException extends RayException {
