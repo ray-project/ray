@@ -279,7 +279,7 @@ def test_raylet_resubscription(tmp_path, ray_start_regular_with_external_redis):
         long_run_pid = int((tmp_path / "long_run.pid").read_text())
         return True
 
-    wait_for_condition(condition, timeout=5)
+    wait_for_condition(condition, timeout=10)
 
     # kill the gcs
     ray.worker._global_node.kill_gcs_server()
@@ -291,7 +291,7 @@ def test_raylet_resubscription(tmp_path, ray_start_regular_with_external_redis):
     ray.worker._global_node.start_gcs_server()
 
     # The long_run_pid should exit
-    wait_for_pid_to_exit(long_run_pid, 5)
+    wait_for_pid_to_exit(long_run_pid, 10)
 
 
 @pytest.mark.parametrize(
@@ -331,7 +331,7 @@ def test_core_worker_resubscription(tmp_path, ray_start_regular_with_external_re
     ray.worker._global_node.start_gcs_server()
     # Test the resubscribe works: if not, it'll timeout because worker
     # will think the actor is not ready.
-    ray.get(r, timeout=5)
+    ray.get(r, timeout=10)
 
 
 @pytest.mark.parametrize("auto_reconnect", [True, False])
