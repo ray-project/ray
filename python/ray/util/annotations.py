@@ -48,6 +48,7 @@ def PublicAPI(*args, **kwargs):
             )
         else:
             obj.__doc__ += "\n    PublicAPI: This API is stable across Ray releases."
+        obj._annotated = obj
         return obj
 
     return wrap
@@ -70,6 +71,7 @@ def DeveloperAPI(obj):
     if not obj.__doc__:
         obj.__doc__ = ""
     obj.__doc__ += "\n    DeveloperAPI: This API may change across minor Ray releases."
+    obj._annotated = obj
     return obj
 
 
@@ -111,6 +113,7 @@ def Deprecated(*args, **kwargs):
         if not obj.__doc__:
             obj.__doc__ = ""
         obj.__doc__ += f"{message}"
+        obj._annotated = obj
         return obj
 
     return inner

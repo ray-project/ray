@@ -402,6 +402,7 @@ class PathPartitionParser:
         return {field_names[i]: d for i, d in enumerate(dirs)} if dirs else {}
 
 
+@DeveloperAPI
 class PathPartitionFilter:
     """Partition filter for path-based partition formats.
 

@@ -50,6 +50,7 @@ def PublicAPI(obj):
         ...     ... # doctest: +SKIP
     """
 
+    obj._annotated = obj
     return obj
 
 
@@ -74,6 +75,7 @@ def DeveloperAPI(obj):
         ...     ... # doctest: +SKIP
     """
 
+    obj._annotated = obj
     return obj
 
 
@@ -100,6 +102,7 @@ def ExperimentalAPI(obj):
         ...         ... # doctest: +SKIP
     """
 
+    obj._annotated = obj
     return obj
 
 
