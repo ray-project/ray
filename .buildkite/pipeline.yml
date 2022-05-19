@@ -338,7 +338,7 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
-    - pip install "grpcio >= 1.28.1, != 1.44.0"
+    - pip install "grpcio >= 1.28.1, <= 1.43.0"
     - bazel test --config=ci --config=asan $(./ci/run/bazel_export_options)
       --config=asan-buildkite
       --test_tag_filters=-kubernetes,asan_tests
