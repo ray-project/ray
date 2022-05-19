@@ -104,7 +104,7 @@ class Dataset(Generic[T]):
     """A Dataset is a distributed data collection for data loading and processing.
 
     Datasets are implemented as a list of `ObjectRef[Block]`, where each block
-    holds an ordered collection of items, representing a segment of the overall
+    holds an ordered collection of items, representing a shard of the overall
     data collection. The block can be either a `pyarrow.Table`, or Python list.
     The block also determines the unit of parallelism.
 
