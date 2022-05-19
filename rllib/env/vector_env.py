@@ -44,6 +44,7 @@ class VectorEnv:
         num_envs: int = 1,
         action_space: Optional[gym.Space] = None,
         observation_space: Optional[gym.Space] = None,
+        restart_failed_sub_environments: bool = False,
         # Deprecated. These seem to have never been used.
         env_config=None,
         policy_config=None,
@@ -61,6 +62,11 @@ class VectorEnv:
                 action space.
             observation_space: The observation space. If None, use
                 existing_envs[0]'s observation space.
+            restart_failed_sub_environments: If True and any sub-environment (within
+                a vectorized env) throws any error during env stepping, the
+                Sampler will try to restart the faulty sub-environment. This is done
+                without disturbing the other (still intact) sub-environment and without
+                the RolloutWorker crashing.
 
         Returns:
             The resulting _VectorizedGymEnv object (subclass of VectorEnv).
@@ -71,6 +77,7 @@ class VectorEnv:
             num_envs=num_envs,
             observation_space=observation_space,
             action_space=action_space,
+            restart_failed_sub_environments=restart_failed_sub_environments,
         )
 
     @PublicAPI
@@ -200,6 +207,7 @@ class _VectorizedGymEnv(VectorEnv):
         *,
         observation_space: Optional[gym.Space] = None,
         action_space: Optional[gym.Space] = None,
+        restart_failed_sub_environments: bool = False,
         # Deprecated. These seem to have never been used.
         env_config=None,
         policy_config=None,
@@ -217,9 +225,15 @@ class _VectorizedGymEnv(VectorEnv):
                 action space.
             observation_space: The observation space. If None, use
                 existing_envs[0]'s observation space.
+            restart_failed_sub_environments: If True and any sub-environment (within
+                a vectorized env) throws any error during env stepping, the
+                Sampler will try to restart the faulty sub-environment. This is done
+                without disturbing the other (still intact) sub-environment and without
+                the RolloutWorker crashing.
         """
         self.envs = existing_envs
         self.make_env = make_env
+        self.restart_failed_sub_environments = restart_failed_sub_environments
 
         # Fill up missing envs (so we have exactly num_envs sub-envs in this
         # VectorEnv.
@@ -259,7 +273,17 @@ class _VectorizedGymEnv(VectorEnv):
     def vector_step(self, actions):
         obs_batch, rew_batch, done_batch, info_batch = [], [], [], []
         for i in range(self.num_envs):
-            obs, r, done, info = self.envs[i].step(actions[i])
+            try:
+                obs, r, done, info = self.envs[i].step(actions[i])
+            except Exception as e:
+                if self.restart_failed_sub_environments:
+                    self.restart_at(i)
+                    obs = self.envs[i].observation_space.sample()
+                    r = 0.0
+                    done = True
+                    info = {"episode_faulty": True}
+                else:
+                    raise e
             if not isinstance(info, dict):
                 raise ValueError(
                     "Info should be a dict, got {} ({})".format(info, type(info))

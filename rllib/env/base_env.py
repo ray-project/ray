@@ -386,6 +386,7 @@ def convert_to_base_env(
     remote_envs: bool = False,
     remote_env_batch_wait_ms: int = 0,
     worker: Optional["RolloutWorker"] = None,
+    restart_failed_sub_environments: bool = False,
 ) -> "BaseEnv":
     """Converts an RLlib-supported env into a BaseEnv object.
 
@@ -421,6 +422,11 @@ def convert_to_base_env(
             used if `remote_worker_envs` is True in your config and the
             `on_sub_environment_created` custom callback needs to be called
             on each created actor.
+        restart_failed_sub_environments: If True and any sub-environment (within
+            a vectorized env) throws any error during env stepping, the
+            Sampler will try to restart the faulty sub-environment. This is done
+            without disturbing the other (still intact) sub-environment and without
+            the RolloutWorker crashing.
 
     Returns:
         The resulting BaseEnv object.
@@ -437,7 +443,7 @@ def convert_to_base_env(
             "(i.e. environment vectorization is enabled)."
         )
 
-    # Given `env` is already a BaseEnv -> Return as is.
+    # Given `env` has a `to_base_env` method -> Call that to convert to a BaseEnv type.
     if isinstance(env, (BaseEnv, MultiAgentEnv, VectorEnv, ExternalEnv)):
         return env.to_base_env(
             make_env=make_env,
@@ -473,6 +479,7 @@ def convert_to_base_env(
                 num_envs=num_envs,
                 action_space=env.action_space,
                 observation_space=env.observation_space,
+                restart_failed_sub_environments=restart_failed_sub_environments,
             )
             # ... then the resulting VectorEnv to a BaseEnv.
             env = VectorEnvWrapper(env)

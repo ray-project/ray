@@ -124,9 +124,10 @@ class TrainerConfig:
         self.batch_mode = "truncate_episodes"
         self.remote_worker_envs = False
         self.remote_env_batch_wait_ms = 0
+        self.validate_workers_after_creation = True
         self.ignore_worker_failures = False
         self.recreate_failed_workers = False
-        self.validate_workers_after_creation = True
+        self.restart_failed_sub_environments = False
         self.horizon = None
         self.soft_horizon = False
         self.no_done_at_end = False
@@ -550,9 +551,10 @@ class TrainerConfig:
         batch_mode: Optional[str] = None,
         remote_worker_envs: Optional[bool] = None,
         remote_env_batch_wait_ms: Optional[float] = None,
+        validate_workers_after_creation: Optional[bool] = None,
         ignore_worker_failures: Optional[bool] = None,
         recreate_failed_workers: Optional[bool] = None,
-        validate_workers_after_creation: Optional[bool] = None,
+        restart_failed_sub_environments: Optional[bool] = None,
         horizon: Optional[int] = None,
         soft_horizon: Optional[bool] = None,
         no_done_at_end: Optional[bool] = None,
@@ -617,6 +619,8 @@ class TrainerConfig:
                 polling environments. 0 (continue when at least one env is ready) is
                 a reasonable default, but optimal value could be obtained by measuring
                 your environment step / reset and model inference perf.
+            validate_workers_after_creation: Whether to validate that each created
+                remote worker is healthy after its creation process.
             ignore_worker_failures: Whether to attempt to continue training if a worker
                 crashes. The number of currently healthy workers is reported as the
                 "num_healthy_workers" metric.
@@ -626,8 +630,11 @@ class TrainerConfig:
                 `self.recreated_worker=True` property value. It will have the same
                 `worker_index` as the original one. If True, the
                 `ignore_worker_failures` setting will be ignored.
-            validate_workers_after_creation: Whether to validate that each created
-                remote worker is healthy after its creation process.
+            restart_failed_sub_environments: If True and any sub-environment (within
+                a vectorized env) throws any error during env stepping, the
+                Sampler will try to restart the faulty sub-environment. This is done
+                without disturbing the other (still intact) sub-environment and without
+                the RolloutWorker crashing.
             horizon: Number of steps after which the episode is forced to terminate.
                 Defaults to `env.spec.max_episode_steps` (if present) for Gym envs.
             soft_horizon: Calculate rewards but don't reset the environment when the
@@ -676,10 +683,14 @@ class TrainerConfig:
             self.remote_worker_envs = remote_worker_envs
         if remote_env_batch_wait_ms is not None:
             self.remote_env_batch_wait_ms = remote_env_batch_wait_ms
+        if validate_workers_after_creation is not None:
+            self.validate_workers_after_creation = validate_workers_after_creation
         if ignore_worker_failures is not None:
             self.ignore_worker_failures = ignore_worker_failures
         if recreate_failed_workers is not None:
             self.recreate_failed_workers = recreate_failed_workers
+        if restart_failed_sub_environments is not None:
+            self.restart_failed_sub_environments = restart_failed_sub_environments
         if horizon is not None:
             self.horizon = horizon
         if soft_horizon is not None:

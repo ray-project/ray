@@ -657,7 +657,7 @@ def _env_runner(
         t0 = time.time()
         # Get observations from all ready agents.
         # types: MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, ...
-        try:
+        try:#TODO
             unfiltered_obs, rewards, dones, infos, off_policy_actions = base_env.poll()
         except Exception as e:
             raise e
@@ -823,6 +823,7 @@ def _process_observations(
     for env_id, all_agents_obs in unfiltered_obs.items():
         is_new_episode: bool = env_id not in active_episodes
         episode: Episode = active_episodes[env_id]
+        episode_faulty = any(isinstance(i, dict) and "episode_faulty" in i for i in infos[env_id].values())
 
         if not is_new_episode:
             sample_collector.episode_step(episode)
@@ -833,21 +834,22 @@ def _process_observations(
             hit_horizon = episode.length >= horizon and not dones[env_id]["__all__"]
             all_agents_done = True
             atari_metrics: List[RolloutMetrics] = _fetch_atari_metrics(base_env)
-            if atari_metrics is not None:
-                for m in atari_metrics:
-                    outputs.append(m._replace(custom_metrics=episode.custom_metrics))
-            else:
-                outputs.append(
-                    RolloutMetrics(
-                        episode.length,
-                        episode.total_reward,
-                        dict(episode.agent_rewards),
-                        episode.custom_metrics,
-                        {},
-                        episode.hist_data,
-                        episode.media,
+            if not episode_faulty:
+                if atari_metrics is not None:
+                    for m in atari_metrics:
+                        outputs.append(m._replace(custom_metrics=episode.custom_metrics))
+                else:
+                    outputs.append(
+                        RolloutMetrics(
+                            episode.length,
+                            episode.total_reward,
+                            dict(episode.agent_rewards),
+                            episode.custom_metrics,
+                            {},
+                            episode.hist_data,
+                            episode.media,
+                        )
                     )
-                )
             # Check whether we have to create a fake-last observation
             # for some agents (the environment is not required to do so if
             # dones[__all__]=True).
@@ -982,7 +984,7 @@ def _process_observations(
         # Exception: The very first env.poll() call causes the env to get reset
         # (no step taken yet, just a single starting observation logged).
         # We need to skip this callback in this case.
-        if episode.length > 0:
+        if not episode_faulty and episode.length > 0:
             callbacks.on_episode_step(
                 worker=worker,
                 base_env=base_env,
@@ -1006,36 +1008,37 @@ def _process_observations(
                 episode,
                 is_done=is_done or (hit_horizon and not soft_horizon),
                 check_dones=check_dones,
-                build=not multiple_episodes_in_batch,
+                build=episode_faulty or not multiple_episodes_in_batch,
             )
-            if ma_sample_batch:
-                outputs.append(ma_sample_batch)
-
-            # Call each (in-memory) policy's Exploration.on_episode_end
-            # method.
-            # Note: This may break the exploration (e.g. ParameterNoise) of
-            # policies in the `policy_map` that have not been recently used
-            # (and are therefore stashed to disk). However, we certainly do not
-            # want to loop through all (even stashed) policies here as that
-            # would counter the purpose of the LRU policy caching.
-            for p in worker.policy_map.cache.values():
-                if getattr(p, "exploration", None) is not None:
-                    p.exploration.on_episode_end(
-                        policy=p,
-                        environment=base_env,
-                        episode=episode,
-                        tf_sess=p.get_session(),
-                    )
-            # Call custom on_episode_end callback.
-            callbacks.on_episode_end(
-                worker=worker,
-                base_env=base_env,
-                policies=worker.policy_map,
-                episode=episode,
-                env_index=env_id,
-            )
+            if not episode_faulty:
+                if ma_sample_batch:
+                    outputs.append(ma_sample_batch)
+    
+                # Call each (in-memory) policy's Exploration.on_episode_end
+                # method.
+                # Note: This may break the exploration (e.g. ParameterNoise) of
+                # policies in the `policy_map` that have not been recently used
+                # (and are therefore stashed to disk). However, we certainly do not
+                # want to loop through all (even stashed) policies here as that
+                # would counter the purpose of the LRU policy caching.
+                for p in worker.policy_map.cache.values():
+                    if getattr(p, "exploration", None) is not None:
+                        p.exploration.on_episode_end(
+                            policy=p,
+                            environment=base_env,
+                            episode=episode,
+                            tf_sess=p.get_session(),
+                        )
+                # Call custom on_episode_end callback.
+                callbacks.on_episode_end(
+                    worker=worker,
+                    base_env=base_env,
+                    policies=worker.policy_map,
+                    episode=episode,
+                    env_index=env_id,
+                )
             # Horizon hit and we have a soft horizon (no hard env reset).
-            if hit_horizon and soft_horizon:
+            if not episode_faulty and hit_horizon and soft_horizon:
                 episode.soft_reset()
                 resetted_obs: Dict[EnvID, Dict[AgentID, EnvObsType]] = {
                     env_id: all_agents_obs

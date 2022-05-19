@@ -3,7 +3,6 @@ import unittest
 import ray
 from ray.exceptions import RayError
 from ray.rllib.agents.pg import pg
-
 from ray.rllib.examples.env.env_that_crashes import EnvThatCrashes
 from ray.rllib.utils.error import EnvError
 
@@ -11,7 +10,7 @@ from ray.rllib.utils.error import EnvError
 class TestEnvsThatCrash(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(num_cpus=4)
+        ray.init(num_cpus=4, local_mode=True)#TODO
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -121,6 +120,43 @@ class TestEnvsThatCrash(unittest.TestCase):
             # as we recover from all worker failures.
             trainer.train()
             # One worker has been removed, then re-created -> Still 2 left.
+            self.assertTrue(len(trainer.workers.remote_workers()) == 2)
+        trainer.stop()
+
+    def test_crash_sub_envs_during_sampling_but_restart_sub_envs(self):
+        """Expect sub-envs to fail (and not recover), but re-start them individually.
+        """
+        config = pg.PGConfig()\
+            .rollouts(
+                num_rollout_workers=2,
+                num_envs_per_worker=3,
+                # Re-start failed individual sub-envs (then continue).
+                # This means no workers will ever fail due to individual env errors
+                # (only maybe for reasons other than the env).
+                restart_failed_sub_environments=True,
+                # If the worker was affected by an error (other than the env error),
+                # allow it to be removed, but training will continue.
+                ignore_worker_failures=True,
+            )\
+            .environment(
+                env=EnvThatCrashes,
+                env_config={
+                    # Crash prob=1%.
+                    "p_crash": 0.01,
+                    # Make sure nothing happens during pre-checks.
+                    "skip_env_checking": True,
+                }
+            )
+        # Pre-checking disables, so building the Trainer is save.
+        trainer = config.build()
+        # Try to re-create the sub-env for infinite amount of times.
+        # The worker recreation/ignore tolerance used to be hard-coded to 3, but this
+        # has now been
+        for _ in range(10):
+            # Expect some errors being logged here, but in general, should continue
+            # as we recover from all sub-env failures.
+            trainer.train()
+            # No worker has been removed. Still 2 left.
             self.assertTrue(len(trainer.workers.remote_workers()) == 2)
         trainer.stop()
 

@@ -692,6 +692,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 remote_envs=remote_worker_envs,
                 remote_env_batch_wait_ms=remote_env_batch_wait_ms,
                 worker=self,
+                restart_failed_sub_environments=self.policy_config["restart_failed_sub_environments"],
             )
 
         # `truncate_episodes`: Allow a batch to contain more than one episode
