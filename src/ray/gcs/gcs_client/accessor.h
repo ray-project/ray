@@ -26,11 +26,9 @@
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
-
 namespace gcs {
 
 using SubscribeOperation = std::function<Status(const StatusCallback &done)>;
-
 using FetchDataOperation = std::function<void(const StatusCallback &done)>;
 
 class GcsClient;
@@ -443,14 +441,6 @@ class NodeResourceInfoAccessor {
   /// \return Status
   virtual Status AsyncGetAllAvailableResources(
       const MultiItemCallback<rpc::AvailableResources> &callback);
-
-  /// Subscribe to node resource changes.
-  ///
-  /// \param subscribe Callback that will be called when any resource is updated.
-  /// \param done Callback that will be called when subscription is complete.
-  /// \return Status
-  virtual Status AsyncSubscribeToResources(
-      const ItemCallback<rpc::NodeResourceChange> &subscribe, const StatusCallback &done);
 
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.

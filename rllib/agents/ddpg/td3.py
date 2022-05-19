@@ -3,12 +3,13 @@
 By default, this uses a near-identical configuration to that reported in the
 TD3 paper.
 """
-from ray.rllib.agents.ddpg.ddpg import DDPGTrainer, DEFAULT_CONFIG as DDPG_CONFIG
+from ray.rllib.agents.ddpg.ddpg import DDPGConfig, DDPGTrainer
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 TD3_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
-    DDPG_CONFIG,
+    DDPGConfig().to_dict(),
     {
         # largest changes: twin Q functions, delayed policy updates, and target
         # smoothing
@@ -36,7 +37,6 @@ TD3_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
         },
         # other changes & things we want to keep fixed:
         # larger actor learning rate, no l2 regularisation, no Huber loss, etc.
-        "learning_starts": 10000,
         "actor_hiddens": [400, 300],
         "critic_hiddens": [400, 300],
         "n_step": 1,
@@ -47,14 +47,21 @@ TD3_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
         "tau": 5e-3,
         "train_batch_size": 100,
         "use_huber": False,
+        # Update the target network every `target_network_update_freq` sample timesteps.
         "target_network_update_freq": 0,
         "num_workers": 0,
         "num_gpus_per_worker": 0,
-        "worker_side_prioritization": False,
-        "buffer_size": 1000000,
-        "prioritized_replay": False,
         "clip_rewards": False,
         "use_state_preprocessor": False,
+        "replay_buffer_config": {
+            "type": "MultiAgentReplayBuffer",
+            # Specify prioritized replay by supplying a buffer type that supports
+            # prioritization, for example: MultiAgentPrioritizedReplayBuffer.
+            "prioritized_replay": DEPRECATED_VALUE,
+            "capacity": 1000000,
+            "learning_starts": 10000,
+            "worker_side_prioritization": False,
+        },
     },
 )
 

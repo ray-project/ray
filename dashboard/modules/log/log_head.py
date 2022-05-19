@@ -126,7 +126,7 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
             node_id, ports = change.new
             ip = DataSource.node_id_to_ip[node_id]
 
-            options = (("grpc.enable_http_proxy", 0),)
+            options = ray_constants.GLOBAL_GRPC_OPTIONS
             channel = init_grpc_channel(
                 f"{ip}:{ports[1]}", options=options, asynchronous=True
             )

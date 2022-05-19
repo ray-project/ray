@@ -16,10 +16,11 @@ invertedpendulum-td3:
         critic_hiddens: [32, 32]
 
         # === Exploration ===
-        learning_starts: 1000
+        replay_buffer_config:
+          learning_starts: 1000
         exploration_config:
             random_timesteps: 1000
 
         # === Evaluation ===
-        evaluation_interval: 1
-        evaluation_num_episodes: 5
+        evaluation_interval: 10
+        evaluation_duration: 5

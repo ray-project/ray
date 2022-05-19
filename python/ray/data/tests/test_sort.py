@@ -151,7 +151,7 @@ def test_sort_arrow_with_empty_blocks(ray_start_regular, use_push_based_shuffle)
         ]
 
         # Test empty dataset.
-        ds = ray.data.range_arrow(10).filter(lambda r: r["value"] > 10)
+        ds = ray.data.range_table(10).filter(lambda r: r["value"] > 10)
         assert (
             len(
                 ray.data.impl.sort.sample_boundaries(

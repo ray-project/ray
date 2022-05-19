@@ -156,11 +156,12 @@ class WorkflowManagementActor:
             return None
 
     def run_or_resume(
-        self, workflow_id: str, ignore_existing: bool = False
+        self, job_id: str, workflow_id: str, ignore_existing: bool = False
     ) -> "WorkflowExecutionResult":
         """Run or resume a workflow.
 
         Args:
+            job_id: The ID of the job that submits the workflow execution.
             workflow_id: The ID of the workflow.
             ignore_existing: Ignore we already have an existing output. When
             set false, raise an exception if there has already been a workflow
@@ -181,7 +182,9 @@ class WorkflowManagementActor:
             current_output = self._workflow_outputs[workflow_id].output
         except KeyError:
             current_output = None
-        result = recovery.resume_workflow_step(workflow_id, step_id, current_output)
+        result = recovery.resume_workflow_step(
+            job_id, workflow_id, step_id, current_output
+        )
         latest_output = LatestWorkflowOutput(
             result.persisted_output, workflow_id, step_id
         )

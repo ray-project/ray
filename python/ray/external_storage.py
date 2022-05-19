@@ -145,15 +145,19 @@ class ExternalStorage(metaclass=abc.ABCMeta):
                 + memoryview(buf)
             )
             # 24 bytes to store owner address, metadata, and buffer lengths.
-            assert self.HEADER_LENGTH + address_len + metadata_len + buf_len == len(
-                payload
+            payload_len = len(payload)
+            assert (
+                self.HEADER_LENGTH + address_len + metadata_len + buf_len == payload_len
             )
             written_bytes = f.write(payload)
+            assert written_bytes == payload_len
             url_with_offset = create_url_with_offset(
                 url=url, offset=offset, size=written_bytes
             )
             keys.append(url_with_offset.encode())
-            offset = f.tell()
+            offset += written_bytes
+        # Necessary because pyarrow.io.NativeFile does not flush() on close().
+        f.flush()
         return keys
 
     def _size_check(self, address_len, metadata_len, buffer_len, obtained_data_size):

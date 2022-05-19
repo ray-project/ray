@@ -20,9 +20,11 @@ default_logger = logging.getLogger(__name__)
 
 # If an individual file is beyond this size, print a warning.
 FILE_SIZE_WARNING = 10 * 1024 * 1024  # 10MiB
-# NOTE(edoakes): we should be able to support up to 512 MiB based on the GCS'
-# limit, but for some reason that causes failures when downloading.
-GCS_STORAGE_MAX_SIZE = 100 * 1024 * 1024  # 100MiB
+# The size is bounded by the max gRPC message size.
+# Keep in sync with max_grpc_message_size in ray_config_def.h.
+GCS_STORAGE_MAX_SIZE = int(
+    os.environ.get("RAY_max_grpc_message_size", 250 * 1024 * 1024)
+)
 RAY_PKG_PREFIX = "_ray_pkg_"
 
 
@@ -192,11 +194,20 @@ def is_zip_uri(uri: str) -> bool:
 
 def is_whl_uri(uri: str) -> bool:
     try:
-        protocol, path = parse_uri(uri)
+        _, path = parse_uri(uri)
     except ValueError:
         return False
 
     return Path(path).suffix == ".whl"
+
+
+def is_jar_uri(uri: str) -> bool:
+    try:
+        _, path = parse_uri(uri)
+    except ValueError:
+        return False
+
+    return Path(path).suffix == ".jar"
 
 
 def _get_excludes(path: Path, excludes: List[str]) -> Callable:
