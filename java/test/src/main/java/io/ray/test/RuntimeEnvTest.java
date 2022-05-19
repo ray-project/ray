@@ -58,8 +58,6 @@ public class RuntimeEnvTest {
   public void testPerActorEnvVars() {
     try {
       Ray.init();
-      int pid1 = 0;
-      int pid2 = 0;
       {
         RuntimeEnv runtimeEnv =
             new RuntimeEnv.Builder()
@@ -73,8 +71,6 @@ public class RuntimeEnvTest {
         Assert.assertEquals(val, "C");
         val = actor1.task(A::getEnv, "KEY2").remote().get();
         Assert.assertEquals(val, "B");
-
-        pid1 = actor1.task(A::getPid).remote().get();
       }
 
       {
@@ -84,12 +80,8 @@ public class RuntimeEnvTest {
         Assert.assertNull(val);
         val = actor2.task(A::getEnv, "KEY2").remote().get();
         Assert.assertNull(val);
-        pid2 = actor2.task(A::getPid).remote().get();
       }
 
-      // actor1 and actor2 shouldn't be in one process because they have
-      // different runtime env.
-      Assert.assertNotEquals(pid1, pid2);
     } finally {
       Ray.shutdown();
     }
@@ -99,8 +91,6 @@ public class RuntimeEnvTest {
     System.setProperty("ray.job.runtime-env.env-vars.KEY1", "A");
     System.setProperty("ray.job.runtime-env.env-vars.KEY2", "B");
 
-    int pid1 = 0;
-    int pid2 = 0;
     try {
       Ray.init();
       {
@@ -111,7 +101,6 @@ public class RuntimeEnvTest {
         Assert.assertEquals(val, "C");
         val = actor1.task(A::getEnv, "KEY2").remote().get();
         Assert.assertNull(val);
-        pid1 = actor1.task(A::getPid).remote().get();
       }
 
       {
@@ -122,12 +111,8 @@ public class RuntimeEnvTest {
         Assert.assertEquals(val, "A");
         val = actor2.task(A::getEnv, "KEY2").remote().get();
         Assert.assertEquals(val, "B");
-        pid2 = actor2.task(A::getPid).remote().get();
       }
 
-      // actor1 and actor2 shouldn't be in one process because they have
-      // different runtime env.
-      Assert.assertNotEquals(pid1, pid2);
     } finally {
       Ray.shutdown();
     }
