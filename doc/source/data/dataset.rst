@@ -64,7 +64,7 @@ Advanced users can refer directly to the Ray Datasets :ref:`API reference <data_
     :column: col-lg-6 px-2 py-2
     :card:
 
-    Getting Started
+    **Getting Started**
     ^^^
 
     Start with our quick start tutorials for :ref:`working with Datasets<datasets_getting_started>`
@@ -78,7 +78,7 @@ Advanced users can refer directly to the Ray Datasets :ref:`API reference <data_
         :classes: btn-outline-info btn-block
     ---
 
-    Key Concepts
+    **Key Concepts**
     ^^^
 
     Understand the key concepts behind Ray Datasets.
@@ -92,7 +92,7 @@ Advanced users can refer directly to the Ray Datasets :ref:`API reference <data_
         :classes: btn-outline-info btn-block
     ---
 
-    User Guide
+    **User Guide**
     ^^^
 
     Learn how to :ref:`create datasets<creating_datasets>`, :ref:`save
@@ -105,6 +105,19 @@ Advanced users can refer directly to the Ray Datasets :ref:`API reference <data_
     .. link-button:: data_user_guide
         :type: ref
         :text: Start Using Ray Datasets
+        :classes: btn-outline-info btn-block
+    ---
+    
+    **Examples**
+    ^^^
+
+    Find both simple and scaling-out examples of using Ray Datasets for data
+    processing and ML ingest.
+
+    +++
+    .. link-button:: datasets-recipes
+        :type: ref
+        :text: Ray Datasets Examples
         :classes: btn-outline-info btn-block
     ---
 
