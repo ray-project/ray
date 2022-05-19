@@ -16,6 +16,7 @@ Trainers
 --------
 
 - :doc:`/ray-air/examples/lightgbm_example`
+- :doc:`/ray-air/examples/sklearn_example`
 - :doc:`/ray-air/examples/xgboost_example`
 
 .. air-huggingface-examples:
