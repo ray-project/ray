@@ -108,12 +108,13 @@ class Dataset(Generic[T]):
     data collection. The block can be either a ``pyarrow.Table``, or Python list.
     The block also determines the unit of parallelism.
 
-    Datasets can be created in multiple ways: from synthetic data via range_.*() APIs,
-    from existing memory data via from_*() APIs, or from external storage systems
-    such as local disk, S3, HDFS etc. via the read_*() APIs. The (potentially processed)
-    Dataset can be saved back to external storage systems via the write_*() APIs.
+    Datasets can be created in multiple ways: from synthetic data via ``range_.*()``
+    APIs, from existing memory data via ``from_*()`` APIs, or from external storage
+    systems such as local disk, S3, HDFS etc. via the ``read_*()`` APIs. The
+    (potentially processed) Dataset can be saved back to external storage systems via
+    the ``write_*()`` APIs.
 
-    Dataset supports parallel processing at scale: transformations such as
+    Datasets supports parallel processing at scale: transformations such as
     .map_batches(), aggregations such as .min()/.max()/.groupby(), sorting, shuffling,
     and repartition etc.
 
