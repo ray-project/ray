@@ -8,7 +8,6 @@ import numpy as np
 import pytest
 import time
 
-from ray.experimental.state.api import list_workers
 from ray._private.test_utils import (
     SignalActor,
     wait_for_pid_to_exit,
