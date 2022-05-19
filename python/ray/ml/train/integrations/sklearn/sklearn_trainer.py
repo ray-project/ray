@@ -156,8 +156,6 @@ class SklearnTrainer(Trainer):
             method.
     """
 
-    _scaling_config_allowed_keys = ["trainer_resources"]
-
     def __init__(
         self,
         *,
