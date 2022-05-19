@@ -1895,7 +1895,10 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
   if (worker) {
     if (request.disconnect_worker()) {
       // The worker should be destroyed.
-      DisconnectClient(worker->Connection(), rpc::WorkerExitType::SYSTEM_ERROR, "The leased worker has unrecoverable failure. Worker is requested to be destroyed when it is returned.");
+      DisconnectClient(worker->Connection(),
+                       rpc::WorkerExitType::SYSTEM_ERROR,
+                       "The leased worker has unrecoverable failure. Worker is requested "
+                       "to be destroyed when it is returned.");
     } else {
       if (worker->IsBlocked()) {
         // Handle the edge case where the worker was returned before we got the

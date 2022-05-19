@@ -169,7 +169,7 @@ ray.shutdown()
         worker = get_worker_by_pid(pid)
         type = worker["exit_type"]
         detail = worker["exit_detail"]
-        return type == "INTENDED_USER_EXIT" and "ray.kill" in detail
+        return type == "INTENDED_SYSTEM_EXIT" and "ray.kill" in detail
 
     wait_for_condition(verify_exit_by_ray_kill)
 
