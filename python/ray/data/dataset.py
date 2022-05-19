@@ -669,6 +669,8 @@ class Dataset(Generic[T]):
                 )
             if isinstance(batch, pd.DataFrame):
                 return batch.sample(frac=fraction)
+            if isinstance(batch, np.ndarray):
+                return np.array([row for row in batch if random.random() <= fraction])
             raise ValueError(f"Unsupported batch type: {type(batch)}")
 
         return self.map_batches(process_batch)
