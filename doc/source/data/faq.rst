@@ -38,9 +38,8 @@ management.
 Who is using Ray Datasets?
 ==========================
 
-We're happy to say that we know of several Ray Datasets users that are running their
-Datasets integrations in production, both via OSS Ray and Anyscale. We give a few
-notable integrations below:
+To give an idea of Datasets use cases, we list a few notable users running Datasets
+integrations in production below:
 
 * Predibase is using Ray Datasets for ML ingest and batch inference in their OSS
   declarative ML framework, `Ludwig <https://github.com/ludwig-ai/ludwig>`__, and
@@ -75,9 +74,9 @@ What should I not use Ray Datasets for?
 =======================================
 
 Ray Datasets is not meant to be used for generic ETL pipelines (like Spark) or
-scalable data science (like Dask, Modin, or Mars). Ray Datasets has great integration
-with these frameworks, allowing for efficient exchange of distributed data partitions
-often involving no data movement or even data copying!
+scalable data science (like Dask, Modin, or Mars). Datasets integrates with these
+frameworks, allowing for efficient exchange of distributed data partitions often with
+zero-copy.
 
 See our :ref:`ML preprocessing docs <datasets-ml-preprocessing>` for more information on
 how we see Ray Datasets fitting into a larger ML pipeline picture.
@@ -86,8 +85,8 @@ For data loading for training, how does Ray Datasets compare to other solutions?
 ================================================================================
 
 There are several ML framework-specific and general solutions for loading data into
-model trainers. Below, we briefly summarize where we think Ray Datasets is different
-and/or adds value.
+model trainers. Below, we summarize some advantages Datasets offers over these more
+specific ingest frameworks.
 
 Torch datasets (and data loaders)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -304,7 +303,7 @@ uses Arrow.
 How much performance tuning does Ray Datasets require?
 ======================================================
 
-Ray Datasets doesn't (yet) have a featureful query compiler, so some manual performance
+Ray Datasets doesn't perform query optimization, so some manual performance
 tuning may be necessary depending on your use case and data scale. Please see our
 :ref:`performance tuning guide <data_performance_tips>` for more information.
 
