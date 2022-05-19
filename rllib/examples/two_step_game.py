@@ -16,7 +16,7 @@ import os
 import ray
 from ray import tune
 from ray.tune import register_env
-from ray.rllib.agents.qmix import QMixConfig
+from ray.rllib.algorithms.qmix import QMixConfig
 from ray.rllib.env.multi_agent_env import ENV_STATE
 from ray.rllib.examples.env.two_step_game import TwoStepGame
 from ray.rllib.policy.policy import PolicySpec
@@ -115,7 +115,7 @@ if __name__ == "__main__":
             "env_config": {
                 "actions_are_logits": True,
             },
-            "learning_starts": 100,
+            "replay_buffer_config": {"learning_starts": 100},
             "multiagent": {
                 "policies": {
                     "pol1": PolicySpec(

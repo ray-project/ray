@@ -3,7 +3,6 @@ from typing import Optional, Dict
 import gym
 
 import ray
-from ray.rllib.agents.ppo.ppo_tf_policy import ValueNetworkMixin
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import (
@@ -13,7 +12,11 @@ from ray.rllib.evaluation.postprocessing import (
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.tf_policy import LearningRateSchedule, EntropyCoeffSchedule
+from ray.rllib.policy.tf_mixins import (
+    EntropyCoeffSchedule,
+    LearningRateSchedule,
+    ValueNetworkMixin,
+)
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_tf
@@ -154,7 +157,7 @@ def setup_mixins(
     action_space: gym.spaces.Space,
     config: TrainerConfigDict,
 ) -> None:
-    ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
+    ValueNetworkMixin.__init__(policy, config)
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
     EntropyCoeffSchedule.__init__(
         policy, config["entropy_coeff"], config["entropy_coeff_schedule"]

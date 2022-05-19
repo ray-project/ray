@@ -1,6 +1,7 @@
 import json
 import sys
 import pytest
+import yaml
 
 from typing import List
 from dataclasses import fields
@@ -67,7 +68,11 @@ from ray.experimental.state.state_manager import (
     StateDataSourceClient,
     StateSourceNetworkException,
 )
-from ray.experimental.state.state_cli import list_state_cli_group
+from ray.experimental.state.state_cli import (
+    list_state_cli_group,
+    get_state_api_output_to_print,
+    AvailableFormat,
+)
 from ray.runtime_env import RuntimeEnv
 from ray._private.test_utils import wait_for_condition
 from ray.job_submission import JobSubmissionClient
@@ -136,7 +141,7 @@ def generate_worker_data(id):
 
 def generate_task_data(id, name):
     return GetTasksInfoReply(
-        task_info_entries=[
+        owned_task_info_entries=[
             TaskInfoEntry(
                 task_id=id,
                 name=name,
@@ -722,12 +727,25 @@ def test_list_tasks(shutdown_only):
 
         time.sleep(30)
 
+    @ray.remote(num_gpus=1)
+    def impossible():
+        pass
+
     out = [f.remote() for _ in range(2)]  # noqa
     g_out = g.remote(f.remote())  # noqa
+    im = impossible.remote()  # noqa
 
     def verify():
         tasks = list(list_tasks().values())
-        correct_num_tasks = len(tasks) == 4
+        correct_num_tasks = len(tasks) == 5
+        waiting_for_execution = len(
+            list(
+                filter(
+                    lambda task: task["scheduling_state"] == "WAITING_FOR_EXECUTION",
+                    tasks,
+                )
+            )
+        )
         scheduled = len(
             list(filter(lambda task: task["scheduling_state"] == "SCHEDULED", tasks))
         )
@@ -739,8 +757,80 @@ def test_list_tasks(shutdown_only):
                 )
             )
         )
+        running = len(
+            list(
+                filter(
+                    lambda task: task["scheduling_state"] == "RUNNING",
+                    tasks,
+                )
+            )
+        )
 
-        return correct_num_tasks and scheduled == 3 and waiting_for_dep == 1
+        return (
+            correct_num_tasks
+            and running == 2
+            and waiting_for_dep == 1
+            and waiting_for_execution == 0
+            and scheduled == 2
+        )
+
+    wait_for_condition(verify)
+    print(list_tasks())
+
+
+def test_list_actor_tasks(shutdown_only):
+    ray.init(num_cpus=2)
+
+    @ray.remote
+    class Actor:
+        def call(self):
+            import time
+
+            time.sleep(30)
+
+    a = Actor.remote()
+    calls = [a.call.remote() for _ in range(10)]  # noqa
+
+    def verify():
+        tasks = list(list_tasks().values())
+        # Actor.__init__: 1 finished
+        # Actor.call: 1 running, 9 waiting for execution (queued).
+        correct_num_tasks = len(tasks) == 11
+        waiting_for_execution = len(
+            list(
+                filter(
+                    lambda task: task["scheduling_state"] == "WAITING_FOR_EXECUTION",
+                    tasks,
+                )
+            )
+        )
+        scheduled = len(
+            list(filter(lambda task: task["scheduling_state"] == "SCHEDULED", tasks))
+        )
+        waiting_for_dep = len(
+            list(
+                filter(
+                    lambda task: task["scheduling_state"] == "WAITING_FOR_DEPENDENCIES",
+                    tasks,
+                )
+            )
+        )
+        running = len(
+            list(
+                filter(
+                    lambda task: task["scheduling_state"] == "RUNNING",
+                    tasks,
+                )
+            )
+        )
+
+        return (
+            correct_num_tasks
+            and running == 1
+            and waiting_for_dep == 0
+            and waiting_for_execution == 9
+            and scheduled == 0
+        )
 
     wait_for_condition(verify)
     print(list_tasks())
@@ -822,6 +912,29 @@ def test_limit(shutdown_only):
 
     # Make sure the output is deterministic.
     assert output == list_actors(limit=2)
+
+
+@pytest.mark.asyncio
+async def test_cli_format_print(state_api_manager):
+    data_source_client = state_api_manager.data_source_client
+    actor_id = b"1234"
+    data_source_client.get_all_actor_info.return_value = GetAllActorInfoReply(
+        actor_table_data=[generate_actor_data(actor_id), generate_actor_data(b"12345")]
+    )
+    result = await state_api_manager.list_actors(option=list_api_options())
+    # If the format is not yaml, it will raise an exception.
+    yaml.load(
+        get_state_api_output_to_print(result, format=AvailableFormat.YAML),
+        Loader=yaml.FullLoader,
+    )
+    # If the format is not json, it will raise an exception.
+    json.loads(get_state_api_output_to_print(result, format=AvailableFormat.JSON))
+    # Verify the default format is yaml
+    yaml.load(get_state_api_output_to_print(result), Loader=yaml.FullLoader)
+    with pytest.raises(ValueError):
+        get_state_api_output_to_print(result, format="random_format")
+    with pytest.raises(NotImplementedError):
+        get_state_api_output_to_print(result, format=AvailableFormat.TABLE)
 
 
 if __name__ == "__main__":

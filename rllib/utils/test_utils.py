@@ -561,22 +561,6 @@ def check_train_results(train_results):
     for pid, policy_stats in learner_info.items():
         if pid == "batch_count":
             continue
-        # Expect td-errors to be per batch-item.
-        if "td_error" in policy_stats:
-            configured_b = train_results["config"]["train_batch_size"]
-            actual_b = policy_stats["td_error"].shape[0]
-            # R2D2 case.
-            if (configured_b - actual_b) / actual_b > 0.1:
-                assert (
-                    configured_b
-                    / (
-                        train_results["config"]["model"]["max_seq_len"]
-                        + train_results["config"]["replay_buffer_config"][
-                            "replay_burn_in"
-                        ]
-                    )
-                    == actual_b
-                )
 
         # Make sure each policy has the LEARNER_STATS_KEY under it.
         assert LEARNER_STATS_KEY in policy_stats

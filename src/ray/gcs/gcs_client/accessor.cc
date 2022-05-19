@@ -16,6 +16,7 @@
 
 #include <future>
 
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 
 namespace {
@@ -555,7 +556,15 @@ Status NodeInfoAccessor::AsyncReportHeartbeat(
     const StatusCallback &callback) {
   rpc::ReportHeartbeatRequest request;
   request.mutable_heartbeat()->CopyFrom(*data_ptr);
-  client_impl_->GetGcsRpcClient().ReportHeartbeat(
+  static auto *rpc_client = [this]() -> rpc::GcsRpcClient * {
+    auto io_service = new instrumented_io_context;
+    auto client_call_manager = new rpc::ClientCallManager(*io_service);
+    new boost::asio::io_service::work(*io_service);
+    new std::thread([io_service]() { io_service->run(); });
+    const auto addr = client_impl_->GetGcsServerAddress();
+    return new rpc::GcsRpcClient(addr.first, addr.second, *client_call_manager);
+  }();
+  rpc_client->ReportHeartbeat(
       request, [callback](const Status &status, const rpc::ReportHeartbeatReply &reply) {
         if (callback) {
           callback(status);
@@ -740,15 +749,6 @@ void NodeResourceInfoAccessor::FillResourceUsageRequest(
     (*resources_data->mutable_resource_load())[resource_pair.first] =
         resource_pair.second;
   }
-}
-
-Status NodeResourceInfoAccessor::AsyncSubscribeToResources(
-    const ItemCallback<rpc::NodeResourceChange> &subscribe, const StatusCallback &done) {
-  RAY_CHECK(subscribe != nullptr);
-  subscribe_resource_operation_ = [this, subscribe](const StatusCallback &done) {
-    return client_impl_->GetGcsSubscriber().SubscribeAllNodeResources(subscribe, done);
-  };
-  return subscribe_resource_operation_(done);
 }
 
 void NodeResourceInfoAccessor::AsyncResubscribe() {

@@ -182,7 +182,7 @@ class ActorBlockPrefetcher(BlockPrefetcher):
         self.prefetch_actor.prefetch.remote(*blocks)
 
 
-@ray.remote(num_cpus=0, placement_group=None)
+@ray.remote(num_cpus=0)
 class _BlockPretcher:
     """Helper actor that prefetches blocks asynchronously."""
 
