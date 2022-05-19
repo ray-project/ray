@@ -481,10 +481,9 @@ def test_parse_cluster_info(scheme: str, host: str, port: Optional[int]):
     if port is not None:
         address += f":{port}"
 
-    final_port = port if port is not None else DEFAULT_DASHBOARD_PORT
     if scheme in {"http", "https"}:
         assert parse_cluster_info(address, False) == ClusterInfo(
-            address=f"{scheme}://{host}:{final_port}",
+            address=address,
             cookies=None,
             metadata=None,
             headers=None,
