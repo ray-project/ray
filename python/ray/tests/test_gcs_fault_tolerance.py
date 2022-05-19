@@ -285,6 +285,9 @@ def test_worker_raylet_resubscription(tmp_path, ray_start_regular_with_external_
     ray.worker._global_node.kill_gcs_server()
     ray.worker._global_node.start_gcs_server()
     # make sure resubscription is done
+    # TODO(iycheng): The current way of resubscription potentially will lose
+    # worker failure message because we don't ask for the snapshot of worker
+    # status for now. We need to fix it.
     sleep(4)
 
     # then kill the owner
