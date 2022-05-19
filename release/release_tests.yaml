@@ -1925,31 +1925,6 @@
 
   alert: default
 
-- name: serve_serve_micro_benchmark_k8s
-  group: Serve tests
-  working_dir: serve_tests
-
-  legacy:
-    test_name: serve_micro_benchmark_k8s
-    test_suite: serve_tests
-
-  # TODO(architkulkarni) Reenable after K8s migration.  Currently failing
-  frequency: disabled
-  team: serve
-
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: compute_tpl_single_node_k8s.yaml
-
-  run:
-    timeout: 7200
-    long_running: false
-    script: python workloads/serve_micro_benchmark.py
-    type: sdk_command
-    file_manager: job
-
-  alert: default
-
 - name: serve_serve_cluster_fault_tolerance
   group: Serve tests
   working_dir: serve_tests
