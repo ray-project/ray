@@ -178,7 +178,7 @@ def test_e2e_basic_scale_up_down(serve_instance):
     @serve.deployment(
         _autoscaling_config={
             "metrics_interval_s": 0.1,
-            "min_replicas": 1,
+            "min_replicas": 0,
             "max_replicas": 2,
             "look_back_period_s": 0.2,
             "downscale_delay_s": 0,
@@ -206,7 +206,7 @@ def test_e2e_basic_scale_up_down(serve_instance):
     signal.send.remote()
 
     # As the queue is drained, we should scale back down.
-    wait_for_condition(lambda: get_num_running_replicas(controller, A) <= 1)
+    wait_for_condition(lambda: get_num_running_replicas(controller, A) < 1)
 
     # Make sure start time did not change for the deployment
     assert get_deployment_start_time(controller, A) == start_time
@@ -559,7 +559,7 @@ def test_e2e_intermediate_downscaling(serve_instance):
     @serve.deployment(
         _autoscaling_config={
             "metrics_interval_s": 0.1,
-            "min_replicas": 1,
+            "min_replicas": 0,
             "max_replicas": 20,
             "look_back_period_s": 0.2,
             "downscale_delay_s": 0.2,
@@ -598,7 +598,7 @@ def test_e2e_intermediate_downscaling(serve_instance):
 
     signal.send.remote()
     # As the queue is drained, we should scale back down.
-    wait_for_condition(lambda: get_num_running_replicas(controller, A) <= 1, timeout=30)
+    wait_for_condition(lambda: get_num_running_replicas(controller, A) < 1, timeout=30)
 
     # Make sure start time did not change for the deployment
     assert get_deployment_start_time(controller, A) == start_time
@@ -614,7 +614,7 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
     @serve.deployment(
         _autoscaling_config={
             "metrics_interval_s": 0.1,
-            "min_replicas": 1,
+            "min_replicas": 0,
             "max_replicas": 10,
             "look_back_period_s": 0.2,
             "downscale_delay_s": 0.2,
@@ -636,7 +636,7 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
     controller = serve_instance._controller
     start_time = get_deployment_start_time(controller, A)
 
-    assert get_num_running_replicas(controller, A) == 1
+    assert get_num_running_replicas(controller, A) == 0
 
     handle = A.get_handle()
     [handle.remote() for _ in range(400)]
@@ -683,6 +683,23 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
     # Make sure start time did not change for the deployment
     assert get_deployment_start_time(controller, A) == start_time
 
+    # scale down to 0
+    A.options(
+        _autoscaling_config={
+            "metrics_interval_s": 0.1,
+            "min_replicas": 0,
+            "max_replicas": 20,
+            "look_back_period_s": 0.2,
+            "downscale_delay_s": 0.2,
+            "upscale_delay_s": 0.2,
+        },
+        version="v1",
+    ).deploy()
+    print("Redeployed A.")
+
+    wait_for_condition(lambda: get_num_running_replicas(controller, A) < 1)
+    assert get_num_running_replicas(controller, A) == 0
+
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_e2e_raise_min_replicas(serve_instance):
@@ -691,7 +708,7 @@ def test_e2e_raise_min_replicas(serve_instance):
     @serve.deployment(
         _autoscaling_config={
             "metrics_interval_s": 0.1,
-            "min_replicas": 1,
+            "min_replicas": 0,
             "max_replicas": 10,
             "look_back_period_s": 0.2,
             "downscale_delay_s": 0.2,
@@ -713,13 +730,15 @@ def test_e2e_raise_min_replicas(serve_instance):
     controller = serve_instance._controller
     start_time = get_deployment_start_time(controller, A)
 
+    assert get_num_running_replicas(controller, A) == 0
+
     handle = A.get_handle()
     [handle.remote() for _ in range(1)]
     print("Issued one request.")
 
     time.sleep(2)
     assert get_num_running_replicas(controller, A) == 1
-    print("Stayed at 1 replica.")
+    print("Scale up to 1 replica.")
 
     first_deployment_replicas = get_running_replica_tags(controller, A)
 

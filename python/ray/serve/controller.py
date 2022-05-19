@@ -210,6 +210,9 @@ class ServeController:
                 time.time() - autoscaling_policy.config.look_back_period_s,
             )
 
+            if current_handle_queued_queries is None:
+                current_handle_queued_queries = 0
+
             new_deployment_config = deployment_config.copy()
 
             decision_num_replicas = autoscaling_policy.get_decision_num_replicas(
