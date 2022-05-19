@@ -46,7 +46,7 @@ class JaxBackend(Backend):
         master_addr, master_port = worker_group.execute_single(
             0, get_address_and_port
         )
-        master_addr_with_port = master_addr + ':' + str(master_port)
+        master_addr_with_port = f"{master_addr}:{master_port}"
         num_workers = len(worker_group)
 
         # Get setup tasks in order to throw errors on failure.
