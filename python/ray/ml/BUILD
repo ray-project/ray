@@ -57,34 +57,6 @@ py_test (
     deps = [":ml_lib"]
 )
 
-py_test (
-    name = "rl_example_offline",
-    main = "examples/rl_example.py",
-    size = "medium",
-    srcs = ["examples/rl_example.py"],
-    args = ["--offline"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test (
-    name = "rl_example_online",
-    main = "examples/rl_example.py",
-    size = "medium",
-    srcs = ["examples/rl_example.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test (
-    name = "rl_serving_example",
-    main = "examples/rl_serving_example.py",
-    size = "medium",
-    srcs = ["examples/rl_serving_example.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
 py_test(
     name = "tensorflow_linear_dataset_example",
     size = "medium",
