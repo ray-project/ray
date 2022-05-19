@@ -279,6 +279,12 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/ci.sh test_minimal 3.9
 
+- label: ":python: Minimal install 3.10"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/ci.sh test_minimal 3.10
+
 - label: ":python: Default install"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
