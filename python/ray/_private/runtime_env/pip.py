@@ -1,3 +1,4 @@
+import asyncio
 import os
 import sys
 import json
@@ -369,6 +370,9 @@ class PipManager:
     def __init__(self, resources_dir: str):
         self._pip_resources_dir = os.path.join(resources_dir, "pip")
         self._creating_task = {}
+        # Maps a URI to a lock that is used to prevent multiple concurrent
+        # installs of the same virtualenv, see #24513
+        self._create_locks: Dict[str, asyncio.Lock] = {}
         try_to_create_directory(self._pip_resources_dir)
 
     def _get_path_from_hash(self, hash: str) -> str:
@@ -406,6 +410,7 @@ class PipManager:
 
         pip_env_path = self._get_path_from_hash(hash)
         local_dir_size = get_directory_size_bytes(pip_env_path)
+        del self._create_locks[uri]
         try:
             shutil.rmtree(pip_env_path)
         except OSError as e:
@@ -428,16 +433,25 @@ class PipManager:
         target_dir = self._get_path_from_hash(hash)
 
         async def _create_for_hash():
-            await PipProcessor(target_dir, runtime_env, logger)
+            await PipProcessor(
+                target_dir,
+                runtime_env,
+                logger,
+            )
 
             loop = get_running_loop()
             return await loop.run_in_executor(
                 None, get_directory_size_bytes, target_dir
             )
 
-        self._creating_task[hash] = task = create_task(_create_for_hash())
-        task.add_done_callback(lambda _: self._creating_task.pop(hash, None))
-        return await task
+        if uri not in self._create_locks:
+            # async lock to prevent the same virtualenv being concurrently installed
+            self._create_locks[uri] = asyncio.Lock()
+
+        async with self._create_locks[uri]:
+            self._creating_task[hash] = task = create_task(_create_for_hash())
+            task.add_done_callback(lambda _: self._creating_task.pop(hash, None))
+            return await task
 
     def modify_context(
         self,

@@ -188,10 +188,15 @@ class RayletClientInterface : public PinObjectsInterface,
   virtual void GetGcsServerAddress(
       const rpc::ClientCallback<rpc::GetGcsServerAddressReply> &callback) = 0;
 
+  virtual void NotifyGCSRestart(
+      const rpc::ClientCallback<rpc::NotifyGCSRestartReply> &callback) = 0;
+
   virtual void ShutdownRaylet(
       const NodeID &node_id,
       bool graceful,
       const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback) = 0;
+
+  virtual std::shared_ptr<grpc::Channel> GetChannel() const = 0;
 };
 
 namespace raylet {
@@ -385,6 +390,8 @@ class RayletClient : public RayletClientInterface {
       const ObjectID &object_id,
       const rpc::ClientCallback<rpc::RequestObjectSpillageReply> &callback);
 
+  std::shared_ptr<grpc::Channel> GetChannel() const override;
+
   /// Implements WorkerLeaseInterface.
   void RequestWorkerLease(
       const rpc::TaskSpec &resource_spec,
@@ -463,6 +470,9 @@ class RayletClient : public RayletClientInterface {
 
   void GetResourceLoad(
       const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback) override;
+
+  void NotifyGCSRestart(
+      const rpc::ClientCallback<rpc::NotifyGCSRestartReply> &callback) override;
 
   // Subscribe to receive notification on plasma object
   void SubscribeToPlasma(const ObjectID &object_id, const rpc::Address &owner_address);

@@ -72,6 +72,8 @@ struct GcsServerMocker {
       return Status::OK();
     }
 
+    std::shared_ptr<grpc::Channel> GetChannel() const override { return nullptr; }
+
     void ReportWorkerBacklog(
         const WorkerID &worker_id,
         const std::vector<rpc::WorkerBacklogReport> &backlog_reports) override {}
@@ -288,6 +290,9 @@ struct GcsServerMocker {
         const NodeID &node_id,
         bool graceful,
         const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback) override{};
+
+    void NotifyGCSRestart(
+        const rpc::ClientCallback<rpc::NotifyGCSRestartReply> &callback) override{};
 
     ~MockRayletClient() {}
 

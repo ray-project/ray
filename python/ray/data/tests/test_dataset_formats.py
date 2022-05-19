@@ -168,7 +168,7 @@ def test_from_arrow_refs(ray_start_regular_shared):
 def test_to_pandas(ray_start_regular_shared):
     n = 5
     df = pd.DataFrame({"value": list(range(n))})
-    ds = ray.data.range_arrow(n)
+    ds = ray.data.range_table(n)
     dfds = ds.to_pandas()
     assert df.equals(dfds)
 
@@ -184,7 +184,7 @@ def test_to_pandas(ray_start_regular_shared):
 def test_to_pandas_refs(ray_start_regular_shared):
     n = 5
     df = pd.DataFrame({"value": list(range(n))})
-    ds = ray.data.range_arrow(n)
+    ds = ray.data.range_table(n)
     dfds = pd.concat(ray.get(ds.to_pandas_refs()), ignore_index=True)
     assert df.equals(dfds)
 
@@ -201,7 +201,7 @@ def test_to_numpy_refs(ray_start_regular_shared):
     np.testing.assert_equal(arr, np.expand_dims(np.arange(0, 10), 1))
 
     # Table Dataset
-    ds = ray.data.range_arrow(10)
+    ds = ray.data.range_table(10)
     arr = np.concatenate(ray.get(ds.to_numpy_refs(column="value")))
     np.testing.assert_equal(arr, np.arange(0, 10))
 
@@ -211,7 +211,7 @@ def test_to_arrow_refs(ray_start_regular_shared):
 
     # Zero-copy.
     df = pd.DataFrame({"value": list(range(n))})
-    ds = ray.data.range_arrow(n)
+    ds = ray.data.range_table(n)
     dfds = pd.concat(
         [t.to_pandas() for t in ray.get(ds.to_arrow_refs())], ignore_index=True
     )
@@ -279,6 +279,20 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     ds_df = pd.concat([ds_df1, ds_df2])
     df = pd.concat([df1, df2])
     assert ds_df.equals(df)
+
+
+def test_read_example_data(ray_start_regular_shared, tmp_path):
+    ds = ray.data.read_csv("example://iris.csv")
+    assert ds.count() == 150
+    assert ds.take(1) == [
+        {
+            "sepal.length": 5.1,
+            "sepal.width": 3.5,
+            "petal.length": 1.4,
+            "petal.width": 0.2,
+            "variety": "Setosa",
+        }
+    ]
 
 
 @pytest.mark.parametrize(
@@ -2401,6 +2415,34 @@ def test_csv_read_no_header(shutdown_only, tmp_path):
     )
     out_df = ds.to_pandas()
     assert df.equals(out_df)
+
+
+def test_csv_read_with_column_type_specified(shutdown_only, tmp_path):
+    from pyarrow import csv
+
+    file_path = os.path.join(tmp_path, "test.csv")
+    df = pd.DataFrame({"one": [1, 2, 3e1], "two": ["a", "b", "c"]})
+    df.to_csv(file_path, index=False)
+
+    # Incorrect to parse scientific notation in int64 as PyArrow represents
+    # it as double.
+    with pytest.raises(pa.lib.ArrowInvalid):
+        ray.data.read_csv(
+            file_path,
+            convert_options=csv.ConvertOptions(
+                column_types={"one": "int64", "two": "string"}
+            ),
+        )
+
+    # Parsing scientific notation in double shoud work.
+    ds = ray.data.read_csv(
+        file_path,
+        convert_options=csv.ConvertOptions(
+            column_types={"one": "float64", "two": "string"}
+        ),
+    )
+    expected_df = pd.DataFrame({"one": [1.0, 2.0, 30.0], "two": ["a", "b", "c"]})
+    assert ds.to_pandas().equals(expected_df)
 
 
 class NodeLoggerOutputDatasource(Datasource[Union[ArrowRow, int]]):

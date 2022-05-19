@@ -3,7 +3,7 @@ package io.ray.test;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
-import io.ray.runtime.exception.RayTimeoutException;
+import io.ray.api.exception.RayTimeoutException;
 import java.util.ArrayList;
 import java.util.List;
 import org.testng.Assert;

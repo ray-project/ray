@@ -186,16 +186,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         gcs_server_address_.second = port;
       });
 
-  gcs_client_ = std::make_shared<gcs::GcsClient>(
-      options_.gcs_options, [this](std::pair<std::string, int> *address) {
-        absl::MutexLock lock(&gcs_server_address_mutex_);
-        if (gcs_server_address_.second != 0) {
-          address->first = gcs_server_address_.first;
-          address->second = gcs_server_address_.second;
-          return true;
-        }
-        return false;
-      });
+  gcs_client_ = std::make_shared<gcs::GcsClient>(options_.gcs_options);
 
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
   RegisterToGcs();
@@ -1502,12 +1493,6 @@ rpc::RuntimeEnv CoreWorker::OverrideRuntimeEnv(
   return result_runtime_env;
 }
 
-// TODO(SongGuyang): This function exists in both C++ and Python. We should make this
-// logic clearly.
-static std::string encode_plugin_uri(std::string plugin, std::string uri) {
-  return plugin + "|" + uri;
-}
-
 static std::vector<std::string> GetUrisFromRuntimeEnv(
     const rpc::RuntimeEnv *runtime_env) {
   std::vector<std::string> result;
@@ -1516,21 +1501,21 @@ static std::vector<std::string> GetUrisFromRuntimeEnv(
   }
   if (!runtime_env->uris().working_dir_uri().empty()) {
     const auto &uri = runtime_env->uris().working_dir_uri();
-    result.emplace_back(encode_plugin_uri("working_dir", uri));
+    result.emplace_back(uri);
   }
   for (const auto &uri : runtime_env->uris().py_modules_uris()) {
-    result.emplace_back(encode_plugin_uri("py_modules", uri));
+    result.emplace_back(uri);
   }
   if (!runtime_env->uris().conda_uri().empty()) {
     const auto &uri = runtime_env->uris().conda_uri();
-    result.emplace_back(encode_plugin_uri("conda", uri));
+    result.emplace_back(uri);
   }
   if (!runtime_env->uris().pip_uri().empty()) {
     const auto &uri = runtime_env->uris().pip_uri();
-    result.emplace_back(encode_plugin_uri("pip", uri));
+    result.emplace_back(uri);
   }
   for (const auto &uri : runtime_env->uris().plugin_uris()) {
-    result.emplace_back(encode_plugin_uri("plugin", uri));
+    result.emplace_back(uri);
   }
   return result;
 }
@@ -2275,7 +2260,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   }
   {
     absl::MutexLock lock(&mutex_);
-    current_task_ = task_spec;
+    current_tasks_.emplace(task_spec.TaskId(), task_spec);
     if (resource_ids) {
       resource_ids_ = resource_ids;
     }
@@ -2378,7 +2363,9 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   }
   {
     absl::MutexLock lock(&mutex_);
-    current_task_ = TaskSpecification();
+    auto it = current_tasks_.find(task_spec.TaskId());
+    RAY_CHECK(it != current_tasks_.end());
+    current_tasks_.erase(it);
     if (task_spec.IsNormalTask()) {
       resource_ids_.reset(new ResourceMappingType());
     }
@@ -2668,6 +2655,14 @@ void CoreWorker::HandleDirectActorCallArgWaitComplete(
       },
       "CoreWorker.ArgWaitComplete");
 
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void CoreWorker::HandleRayletNotifyGCSRestart(
+    const rpc::RayletNotifyGCSRestartRequest &request,
+    rpc::RayletNotifyGCSRestartReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  gcs_client_->AsyncResubscribe();
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -3089,15 +3084,6 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
     if (request.no_restart()) {
       Disconnect();
     }
-    if (options_.num_workers > 1) {
-      // TODO (kfstorm): Should we add some kind of check before sending the killing
-      // request?
-      RAY_LOG(ERROR)
-          << "Killing an actor which is running in a worker process with multiple "
-             "workers will also kill other actors in this process. To avoid this, "
-             "please create the Java actor with some dynamic options to make it being "
-             "hosted in a dedicated worker process.";
-    }
     // NOTE(hchen): Use `QuickExit()` to force-exit this process without doing cleanup.
     // `exit()` will destruct static objects in an incorrect order, which will lead to
     // core dumps.
@@ -3118,8 +3104,6 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
   stats->set_task_queue_length(task_queue_length_);
   stats->set_num_executed_tasks(num_executed_tasks_);
   stats->set_num_object_refs_in_scope(reference_counter_->NumObjectIDsInScope());
-  stats->set_current_task_name(current_task_.GetName());
-  stats->set_current_task_func_desc(current_task_.FunctionDescriptor()->ToString());
   stats->set_ip_address(rpc_address_.ip_address());
   stats->set_port(rpc_address_.port());
   stats->set_pid(getpid());
@@ -3156,6 +3140,9 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
 
   if (request.include_task_info()) {
     task_manager_->FillTaskInfo(reply);
+    for (const auto &current_running_task : current_tasks_) {
+      reply->add_running_task_ids(current_running_task.second.TaskId().Binary());
+    }
   }
 
   send_reply_callback(Status::OK(), nullptr, nullptr);

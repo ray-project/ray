@@ -1,0 +1,27 @@
+cartpole-sparse-rewards-alpha-zero:
+    env: ray.rllib.examples.env.cartpole_sparse_rewards.CartPoleSparseRewards
+    run: AlphaZero
+    stop:
+        episode_reward_mean: 30.0
+        timesteps_total: 100000
+    config:
+        # Only supported for torch right now.
+        framework: torch
+        num_workers: 6
+        rollout_fragment_length: 50
+        train_batch_size: 500
+        sgd_minibatch_size: 64
+        lr: 0.0001
+        num_sgd_iter: 1
+        mcts_config:
+           puct_coefficient: 1.5
+           num_simulations: 100
+           temperature: 1.0
+           dirichlet_epsilon: 0.20
+           dirichlet_noise: 0.03
+           argmax_tree_policy: false
+           add_dirichlet_noise: true
+        ranked_rewards:
+           enable: true
+        model:
+           custom_model: ray.rllib.algorithms.alpha_zero.models.custom_torch_models.DenseModel

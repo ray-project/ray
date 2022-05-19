@@ -11,7 +11,7 @@ from ray.rllib.agents.impala import vtrace_tf as vtrace
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.policy.tf_policy import LearningRateSchedule, EntropyCoeffSchedule
+from ray.rllib.policy.tf_mixins import LearningRateSchedule, EntropyCoeffSchedule
 from ray.rllib.utils import force_list
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import explained_variance

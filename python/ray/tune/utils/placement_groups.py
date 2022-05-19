@@ -537,6 +537,21 @@ class PlacementGroupManager:
             self.update_status()
         return bool(self._ready[trial.placement_group_factory])
 
+    def has_staging(self, trial: "Trial", update: bool = False) -> bool:
+        """Return True if placement group for trial is staging.
+
+        Args:
+            trial: :obj:`Trial` object.
+            update: Update status first.
+
+        Returns:
+            Boolean.
+
+        """
+        if update:
+            self.update_status()
+        return bool(self._staging[trial.placement_group_factory])
+
     def trial_in_use(self, trial: "Trial"):
         return trial in self._in_use_trials
 
@@ -603,6 +618,10 @@ class PlacementGroupManager:
 
     def clean_cached_pg(self, pg: PlacementGroup):
         self._cached_pgs.pop(pg)
+
+    def has_cached_pg(self, pgf: PlacementGroupFactory):
+        """Check if a placement group for given factory has been cached"""
+        return any(cached_pgf == pgf for cached_pgf in self._cached_pgs.values())
 
     def remove_from_in_use(self, trial: "Trial") -> PlacementGroup:
         """Return pg back to Core scheduling.

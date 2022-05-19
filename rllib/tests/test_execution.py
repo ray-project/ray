@@ -23,9 +23,8 @@ from ray.rllib.execution.train_ops import (
     ComputeGradients,
     AverageGradients,
 )
-from ray.rllib.execution.buffers.multi_agent_replay_buffer import (
+from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import (
     MultiAgentReplayBuffer,
-    ReplayActor,
 )
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.util.iter import LocalIterator, from_range
@@ -216,40 +215,41 @@ class TestExecution(unittest.TestCase):
             prioritized_replay_beta=0.4,
             prioritized_replay_eps=0.0001,
         )
-        assert buf.replay() is None
+        assert len(buf.sample(100)) == 0
 
         workers = make_workers(0)
         a = ParallelRollouts(workers, mode="bulk_sync")
         b = a.for_each(StoreToReplayBuffer(local_buffer=buf))
 
         next(b)
-        assert buf.replay() is None  # learning hasn't started yet
+        assert len(buf.sample(100)) == 0  # learning hasn't started yet
         next(b)
-        assert buf.replay().count == 100
+        assert buf.sample(100).count == 100
 
         replay_op = Replay(local_buffer=buf)
         assert next(replay_op).count == 100
 
     def test_store_to_replay_actor(self):
+        ReplayActor = ray.remote(num_cpus=0)(MultiAgentReplayBuffer)
         actor = ReplayActor.remote(
             num_shards=1,
             learning_starts=200,
-            buffer_size=1000,
+            capacity=1000,
             replay_batch_size=100,
             prioritized_replay_alpha=0.6,
             prioritized_replay_beta=0.4,
             prioritized_replay_eps=0.0001,
         )
-        assert ray.get(actor.replay.remote()) is None
+        assert len(ray.get(actor.sample.remote(100))) == 0
 
         workers = make_workers(0)
         a = ParallelRollouts(workers, mode="bulk_sync")
         b = a.for_each(StoreToReplayBuffer(actors=[actor]))
 
         next(b)
-        assert ray.get(actor.replay.remote()) is None  # learning hasn't started
+        assert len(ray.get(actor.sample.remote(100))) == 0  # learning hasn't started
         next(b)
-        assert ray.get(actor.replay.remote()).count == 100
+        assert ray.get(actor.sample.remote(100)).count == 100
 
         replay_op = Replay(actors=[actor])
         assert next(replay_op).count == 100
