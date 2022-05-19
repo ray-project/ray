@@ -105,10 +105,10 @@ class Dataset(Generic[T]):
 
     Datasets are implemented as a list of ``ObjectRef[Block]``, where each block
     holds an ordered collection of items, representing a segment of the overall
-    data collection. The block can be either a ``pyarrow.Table``, ``pandas.DataFrame``
-    or Python list. The block also determines the unit of parallelism.
+    data collection. The block can be either a ``pyarrow.Table``, or Python list.
+    The block also determines the unit of parallelism.
 
-    Datasets can be created in multiple ways: from sythetic data via range_.*() APIs,
+    Datasets can be created in multiple ways: from synthetic data via range_.*() APIs,
     from existing memory data via from_*() APIs, or from external storage systems
     such as local disk, S3, HDFS etc. via the read_*() APIs. The (potentially processed)
     Dataset can be saved back to external storage systems via the write_*() APIs.
@@ -1592,7 +1592,7 @@ class Dataset(Generic[T]):
 
         Args:
             key:
-                - For Arrow tables or Pandas DataFrame, key must be a single column name.
+                - For Arrow tables, key must be a single column name.
                 - For datasets of Python objects, key can be either a lambda
                   function that returns a comparison key to sort by, or None
                   to sort by the original value.
