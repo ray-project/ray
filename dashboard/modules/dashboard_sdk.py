@@ -31,6 +31,9 @@ from ray.autoscaler._private.cli_logger import cli_logger
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+# By default, connect to local cluster.
+DEFAULT_DASHBOARD_ADDRESS = "http://localhost:8265"
+
 
 def parse_runtime_env_args(
     runtime_env: Optional[str] = None,
@@ -116,12 +119,16 @@ def get_job_submission_client_cluster_info(
 
 
 def parse_cluster_info(
-    address: str,
+    address: Optional[str] = None,
     create_cluster_if_needed: bool = False,
     cookies: Optional[Dict[str, Any]] = None,
     metadata: Optional[Dict[str, Any]] = None,
     headers: Optional[Dict[str, Any]] = None,
 ) -> ClusterInfo:
+    if address is None:
+        logger.info(f"No address provided, defaulting to {DEFAULT_DASHBOARD_ADDRESS}.")
+        address = DEFAULT_DASHBOARD_ADDRESS
+
     module_string, inner_address = _split_address(address)
 
     # If user passes in ray://, raise error. Dashboard submission should
@@ -172,8 +179,8 @@ def parse_cluster_info(
 class SubmissionClient:
     def __init__(
         self,
-        address: str,
-        create_cluster_if_needed=False,
+        address: Optional[str] = None,
+        create_cluster_if_needed: bool = False,
         cookies: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, Any]] = None,

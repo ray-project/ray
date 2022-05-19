@@ -3,7 +3,11 @@ import sys
 from typing import Dict, Optional, Tuple
 from unittest.mock import Mock, patch
 
-from ray.dashboard.modules.dashboard_sdk import parse_cluster_info
+from ray.dashboard.modules.dashboard_sdk import (
+    ClusterInfo,
+    DEFAULT_DASHBOARD_ADDRESS,
+    parse_cluster_info,
+)
 
 
 @pytest.mark.parametrize(
@@ -70,6 +74,15 @@ def test_parse_cluster_info(
                 metadata=metadata,
                 headers=headers,
             )
+
+
+def test_parse_cluster_info_default_address():
+    assert (
+        parse_cluster_info(
+            address=None,
+        )
+        == ClusterInfo(address=DEFAULT_DASHBOARD_ADDRESS)
+    )
 
 
 if __name__ == "__main__":
