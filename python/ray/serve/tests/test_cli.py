@@ -107,11 +107,18 @@ def test_deploy(ray_start_stop):
             assert success_message_fragment in deploy_response
 
             for name, deployment_config in expected_deployments.items():
+                # New deployments must be deployed
                 wait_for_condition(
                     lambda: (
                         requests.get(f"{request_url}{name}").text
                         == deployment_config["response"]
                     ),
+                    timeout=15,
+                )
+
+                # Outdated deployments should be deleted
+                wait_for_condition(
+                    lambda: len(serve.list_deployments()) == len(expected_deployments),
                     timeout=15,
                 )
 
