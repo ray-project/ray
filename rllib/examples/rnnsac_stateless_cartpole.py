@@ -18,8 +18,8 @@ config = {
     "keep_checkpoints_num": 1,
     "checkpoint_score_attr": "episode_reward_mean",
     "stop": {
-        "episode_reward_mean": 100.0,
-        "timesteps_total": 1000000,
+        "episode_reward_mean": 80.0,
+        "timesteps_total": 500000,
     },
     "metric": "episode_reward_mean",
     "mode": "max",
