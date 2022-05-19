@@ -27,6 +27,7 @@ PullManager::PullManager(
     const std::function<void(const ObjectID &)> cancel_pull_request,
     const std::function<void(const ObjectID &)> fail_pull_request,
     const RestoreSpilledObjectCallback restore_spilled_object,
+    const std::function<void(const ObjectID &)> restore_object_failed,
     const std::function<double()> get_time_seconds,
     int pull_timeout_ms,
     int64_t num_bytes_available,
@@ -37,6 +38,7 @@ PullManager::PullManager(
       send_pull_request_(send_pull_request),
       cancel_pull_request_(cancel_pull_request),
       restore_spilled_object_(restore_spilled_object),
+      restore_object_failed_(restore_object_failed),
       get_time_seconds_(get_time_seconds),
       pull_timeout_ms_(pull_timeout_ms),
       num_bytes_available_(num_bytes_available),
@@ -474,13 +476,15 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
   if (!direct_restore_url.empty()) {
     // Select an url from the object directory update
     UpdateRetryTimer(request, object_id);
+    int num_retries = request.num_retries;
     restore_spilled_object_(object_id,
                             request.object_size,
                             direct_restore_url,
-                            [object_id](const ray::Status &status) {
+                            [object_id, num_retries, this](const ray::Status &status) {
                               if (!status.ok()) {
                                 RAY_LOG(ERROR) << "Object restore for " << object_id
-                                               << " failed, will retry later: " << status;
+                                               << " failed, will retry later: " << status;    
+                                if (num_retries > 1) restore_object_failed_(object_id);    
                               }
                             });
     return;

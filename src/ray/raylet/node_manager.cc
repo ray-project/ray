@@ -232,12 +232,20 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
           self_node_id,
           object_manager_config,
           object_directory_.get(),
+          /*restore_spilled_object=*/
           [this](const ObjectID &object_id,
                  int64_t object_size,
                  const std::string &object_url,
                  std::function<void(const ray::Status &)> callback) {
             GetLocalObjectManager().AsyncRestoreSpilledObject(
                 object_id, object_size, object_url, callback);
+          },
+          /*restore_object_failed=*/
+          [this](const ObjectID &object_id) {
+            rpc::ObjectReference ref;
+            ref.set_object_id(object_id.Binary());
+            MarkObjectsAsFailed(
+                rpc::ErrorType::OBJECT_FETCH_TIMED_OUT, {ref}, JobID::Nil());
           },
           /*get_spilled_object_url=*/
           [this](const ObjectID &object_id) {

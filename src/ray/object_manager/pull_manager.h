@@ -59,6 +59,8 @@ class PullManager {
   /// cancel pulling an object.
   /// \param restore_spilled_object A callback which should
   /// retrieve an spilled object from the external store.
+  /// \param restore_object_failed A callback which should
+  /// mark an object as failed if restoring fails.
   PullManager(
       NodeID &self_node_id,
       const std::function<bool(const ObjectID &)> object_is_local,
@@ -66,6 +68,7 @@ class PullManager {
       const std::function<void(const ObjectID &)> cancel_pull_request,
       const std::function<void(const ObjectID &)> fail_pull_request,
       const RestoreSpilledObjectCallback restore_spilled_object,
+      const std::function<void(const ObjectID &)> restore_object_failed,
       const std::function<double()> get_time_seconds,
       int pull_timeout_ms,
       int64_t num_bytes_available,
@@ -397,6 +400,7 @@ class PullManager {
   const std::function<void(const ObjectID &, const NodeID &)> send_pull_request_;
   const std::function<void(const ObjectID &)> cancel_pull_request_;
   const RestoreSpilledObjectCallback restore_spilled_object_;
+  const std::function<void(const ObjectID &)> restore_object_failed_;
   const std::function<double()> get_time_seconds_;
   uint64_t pull_timeout_ms_;
 
