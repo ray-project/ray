@@ -19,7 +19,6 @@ from ray.dashboard.modules.dashboard_sdk import (
     parse_cluster_info,
 )
 from ray.dashboard.tests.conftest import *  # noqa
-from ray.ray_constants import DEFAULT_DASHBOARD_PORT
 from ray.tests.conftest import _ray_start
 from ray._private.test_utils import (
     chdir,
