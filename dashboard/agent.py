@@ -205,6 +205,9 @@ class DashboardAgent(object):
         # In a virtualenv, the agent PID could be the PEP397 launcher and
         # not the python process PID as reported by os.getpid()
         try:
+            # No launcher and process started via a service
+            # In normal ray operation, this will not happen since the agent
+            # is started by the raylet.exe process
             pid = parent.pid
         except AttributeError:
             pass
