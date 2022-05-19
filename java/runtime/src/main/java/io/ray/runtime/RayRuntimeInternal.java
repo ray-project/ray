@@ -26,7 +26,5 @@ public interface RayRuntimeInternal extends RayRuntime {
 
   GcsClient getGcsClient();
 
-  void setIsContextSet(boolean isContextSet);
-
   void run();
 }

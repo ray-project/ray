@@ -303,6 +303,8 @@ This default parallelism can be overridden via the ``parallelism`` argument; see
 :ref:`performance guide <data_performance_tips>`  for tips on how to tune this read
 parallelism.
 
+.. _dataset_deferred_reading:
+
 Deferred Read Task Execution
 ============================
 
