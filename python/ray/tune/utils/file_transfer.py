@@ -42,6 +42,7 @@ def sync_dir_between_nodes(
         target_ip: IP of target node.
         target_path: Path to directory on target node.
         force_all: If True, all files will be transferred (not just differing files).
+            Ignored if ``source_ip==target_ip``.
         chunk_size_bytes: Chunk size for data transfer. Ignored if
             ``source_ip==target_ip``.
         max_size_bytes: If packed data exceeds this value, raise an error before
@@ -72,7 +73,6 @@ def sync_dir_between_nodes(
             ip=source_ip,
             source_path=source_path,
             target_path=target_path,
-            force_all=force_all,
             return_futures=return_futures,
         )
         if return_futures:
@@ -84,20 +84,17 @@ def _sync_dir_on_same_node(
     ip: str,
     source_path: str,
     target_path: str,
-    force_all: bool = False,
     return_futures: bool = False,
 ) -> Optional[ray.ObjectRef]:
     """Synchronize directory to another directory on the same node.
 
     Per default, this function will collect information about already existing
-    files in the target directory. Only files that differ in either mtime or
-    filesize will be transferred, unless ``force_all=True``.
+    files in the target directory. All files will be copied over.
 
     Args:
         ip: IP of the node.
         source_path: Path to source directory.
         target_path: Path to target directory.
-        force_all: If True, all files will be transferred (not just differing files).
         return_futures: If True, returns a future of the copy task.
 
     Returns:
@@ -107,9 +104,7 @@ def _sync_dir_on_same_node(
     copy_on_node = _copy_dir.options(
         num_cpus=0, resources={f"node:{ip}": 0.01}, placement_group=None
     )
-    copy_future = copy_on_node.remote(
-        source_dir=source_path, target_dir=target_path, force_all=force_all
-    )
+    copy_future = copy_on_node.remote(source_dir=source_path, target_dir=target_path)
 
     if return_futures:
         return copy_future
@@ -370,35 +365,10 @@ def _unpack_from_actor(pack_actor: ray.ActorID, target_dir: str) -> None:
 
 
 @ray.remote
-def _copy_dir(source_dir: str, target_dir: str, force_all: bool = False) -> None:
+def _copy_dir(source_dir: str, target_dir: str) -> None:
     """Copy dir with shutil on the actor."""
-    if force_all:
-        shutil.copytree(source_dir, target_dir, dirs_exist_ok=True)
-    else:
-        source_files_stats = _get_recursive_files_and_stats(source_dir)
-        target_files_stats = _get_recursive_files_and_stats(target_dir)
-        paths_to_not_copy_from_source = {
-            path
-            for path in source_files_stats
-            if not (
-                path not in target_files_stats
-                or source_files_stats[path] != target_files_stats[path]
-            )
-        }
-
-        # this runs inside source dir. needs to return a list of paths
-        # to ignore. called recursively as the dirtree is walked through
-        def ignore_unmodified_files(parent, names):
-            parent = os.path.relpath(os.path.abspath(parent), source_dir)
-            return {
-                name
-                for name in names
-                if os.path.join(parent, name) in paths_to_not_copy_from_source
-            }
-
-        shutil.copytree(
-            source_dir, target_dir, ignore=ignore_unmodified_files, dirs_exist_ok=True
-        )
+    _delete_path(target_dir)
+    shutil.copytree(source_dir, target_dir)
 
 
 def _delete_path(target_path: str) -> bool:
