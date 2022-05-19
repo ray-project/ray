@@ -1,6 +1,7 @@
 import json
 import sys
 import pytest
+import yaml
 
 from typing import List
 from dataclasses import fields
@@ -67,7 +68,11 @@ from ray.experimental.state.state_manager import (
     StateDataSourceClient,
     StateSourceNetworkException,
 )
-from ray.experimental.state.state_cli import list_state_cli_group
+from ray.experimental.state.state_cli import (
+    list_state_cli_group,
+    get_state_api_output_to_print,
+    AvailableFormat,
+)
 from ray.runtime_env import RuntimeEnv
 from ray._private.test_utils import wait_for_condition
 from ray.job_submission import JobSubmissionClient
@@ -907,6 +912,29 @@ def test_limit(shutdown_only):
 
     # Make sure the output is deterministic.
     assert output == list_actors(limit=2)
+
+
+@pytest.mark.asyncio
+async def test_cli_format_print(state_api_manager):
+    data_source_client = state_api_manager.data_source_client
+    actor_id = b"1234"
+    data_source_client.get_all_actor_info.return_value = GetAllActorInfoReply(
+        actor_table_data=[generate_actor_data(actor_id), generate_actor_data(b"12345")]
+    )
+    result = await state_api_manager.list_actors(option=list_api_options())
+    # If the format is not yaml, it will raise an exception.
+    yaml.load(
+        get_state_api_output_to_print(result, format=AvailableFormat.YAML),
+        Loader=yaml.FullLoader,
+    )
+    # If the format is not json, it will raise an exception.
+    json.loads(get_state_api_output_to_print(result, format=AvailableFormat.JSON))
+    # Verify the default format is yaml
+    yaml.load(get_state_api_output_to_print(result), Loader=yaml.FullLoader)
+    with pytest.raises(ValueError):
+        get_state_api_output_to_print(result, format="random_format")
+    with pytest.raises(NotImplementedError):
+        get_state_api_output_to_print(result, format=AvailableFormat.TABLE)
 
 
 if __name__ == "__main__":

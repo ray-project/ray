@@ -1977,6 +1977,7 @@ cc_library(
         ":gcs_pub_sub_lib",
         ":gcs_service_rpc",
         ":pubsub_lib",
+        ":ray_common",
         ":redis_store_client",
     ],
 )
