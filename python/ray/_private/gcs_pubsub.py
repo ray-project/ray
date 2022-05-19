@@ -178,18 +178,12 @@ class GcsPublisher(_PublisherBase):
             error_info_message=error_info,
         )
         req = gcs_service_pb2.GcsPublishRequest(pub_messages=[msg])
-        try:
-            self._gcs_publish(req)
-        except Exception as e:
-            logger.error(f"Failed to publish error: {e}")
+        self._gcs_publish(req)
 
     def publish_logs(self, log_batch: dict) -> None:
         """Publishes logs to GCS."""
         req = self._create_log_request(log_batch)
-        try:
-            self._gcs_publish(req)
-        except Exception as e:
-            logger.error(f"Failed to publish log: {e}")
+        self._gcs_publish(req)
 
     def publish_function_key(self, key: bytes) -> None:
         """Publishes function key to GCS."""
