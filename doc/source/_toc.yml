@@ -15,7 +15,13 @@ parts:
           - file: data/getting-started
           - file: data/key-concepts
           - file: data/user-guide
-          - file: data/examples/big_data_ingestion
+          - file: data/examples/index
+            sections:
+              - file: data/examples/nyc_taxi_basic_processing
+                title: Processing the NYC taxi dataset
+              - file: data/examples/big_data_ingestion
+                title: Large-scale ML Ingest
+          - file: data/faq
           - file: data/package-ref
           - file: data/integrations
 
