@@ -11,7 +11,7 @@ import java.util.Map;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-public class SingleProcessModeTest extends BaseTest {
+public class LocalModeTest extends BaseTest {
 
   private static final int NUM_ACTOR_INSTANCE = 10;
 
@@ -25,7 +25,7 @@ public class SingleProcessModeTest extends BaseTest {
     }
   }
 
-  @Test(groups = {"singleProcess"})
+  @Test(groups = {"local"})
   public void testActorTasksInOneThread() {
     List<ActorHandle<MyActor>> actors = new ArrayList<>();
     Map<ActorId, Long> actorThreadIds = new HashMap<>();

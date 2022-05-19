@@ -585,20 +585,7 @@ class ImpalaTrainer(Trainer):
 
         self.update_workers_if_necessary()
 
-        # Callback for APPO to use to update KL, target network periodically.
-        # The input to the callback is the learner fetches dict.
-        self.after_train_step(train_results)
-
         return train_results
-
-    def after_train_step(self, train_results: ResultDict) -> None:
-        """Called by the training_iteration method after each train step.
-
-        Args:
-            train_results: The train results dict.
-        """
-        # By default, do nothing.
-        pass
 
     @staticmethod
     @override(Trainer)

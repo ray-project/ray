@@ -1,4 +1,4 @@
-package io.ray.runtime.exception;
+package io.ray.api.exception;
 
 /** The exception represents that there is an intentional system exit. */
 public class RayIntentionalSystemExitException extends RuntimeException {

@@ -44,7 +44,7 @@ class OnlineLinearRegression(tf.Module if tf else object):
         x = tf.squeeze(x, axis=0)
         y = y[0]
         self.time += 1
-        self.delta_f += y * x
+        self.delta_f += tf.cast(y, tf.float32) * x
         self.delta_b += tf.tensordot(x, x, axes=0)
         # Can follow an update schedule if not doing sherman morison updates
         if self.time % self.update_schedule == 0:
