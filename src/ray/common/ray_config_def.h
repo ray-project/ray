@@ -371,7 +371,7 @@ RAY_CONFIG(uint64_t, gcs_grpc_max_request_queued_max_bytes, 1024UL * 1024 * 1024
 RAY_CONFIG(int32_t, gcs_client_check_connection_status_interval_milliseconds, 1000)
 
 /// Feature flag to use the ray syncer for resource synchronization
-RAY_CONFIG(bool, use_ray_syncer, true)
+RAY_CONFIG(bool, use_ray_syncer, false)
 
 /// The queuing buffer of ray syncer. This indicates how many concurrent
 /// requests can run in flight for syncing.
