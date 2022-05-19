@@ -107,6 +107,15 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         shard_capacity = capacity // num_shards
         ReplayBuffer.__init__(self, capacity, storage_unit)
 
+        if max_sequence_length > 1 and not self.storage_unit != StorageUnit.SEQUENCES:
+            logger.warning(
+                "MultiAgentReplayBuffer configured with "
+                "`max_sequence_length={}`, but `storage_unit={}`. "
+                "max_sequence_length with be ignored.".format(
+                    max_sequence_length, storage_unit
+                )
+            )
+
         # If the user provides an underlying buffer config, we use to
         # instantiate and interact with underlying buffers
         self.underlying_buffer_config = underlying_buffer_config
