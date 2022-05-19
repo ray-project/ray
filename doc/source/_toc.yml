@@ -124,6 +124,7 @@ parts:
               - file: serve/deployment-graph/deployment-graph-user-guides
                 sections:
                    - file: serve/deployment-graph/chain_nodes_same_class_different_args
+                   - file: serve/deployment-graph/combine_two_nodes_with_passing_input_parallel
           - file: serve/deployment
           - file: serve/monitoring
           - file: serve/performance
@@ -171,6 +172,11 @@ parts:
                 sections:
                   - file: ray-air/examples/analyze_tuning_results
                     title: "Analyze hyperparameter tuning results"
+                  - file: ray-air/examples/lightgbm_example
+                  - file: ray-air/examples/sklearn_example
+                  - file: ray-air/examples/xgboost_example
+                  - file: ray-air/examples/huggingface_text_classification
+                    title: "Fine-tune a 🤗 Transformers model"
               - file: ray-air/package-ref
           - file: ray-more-libs/joblib
           - file: ray-more-libs/lightgbm-ray
@@ -196,7 +202,6 @@ parts:
           - file: ray-core/examples/plot_example-a3c
           - file: ray-core/examples/plot_example-lm
           - file: ray-core/examples/plot_hyperparameter
-          - file: ray-core/examples/plot_lbfgs
           - file: ray-core/examples/plot_parameter_server
           - file: ray-core/examples/plot_pong_example
       - file: ray-core/package-ref

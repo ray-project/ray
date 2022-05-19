@@ -12,7 +12,7 @@ cloudpickle
 filelock
 frozenlist
 gpustat >= 1.0.0b1
-grpcio >= 1.28.1, != 1.44.0
+grpcio >= 1.28.1, <= 1.43.0
 jsonschema
 msgpack >= 1.0.0, < 2.0.0
 numpy >= 1.16

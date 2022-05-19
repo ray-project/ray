@@ -23,7 +23,7 @@ class TestApexDDPG(unittest.TestCase):
         config = apex_ddpg.APEX_DDPG_DEFAULT_CONFIG.copy()
         config["num_workers"] = 2
         config["min_sample_timesteps_per_reporting"] = 100
-        config["learning_starts"] = 0
+        config["replay_buffer_config"]["learning_starts"] = 0
         config["optimizer"]["num_replay_buffer_shards"] = 1
         num_iterations = 1
         for _ in framework_iterator(config, with_eager_tracing=True):

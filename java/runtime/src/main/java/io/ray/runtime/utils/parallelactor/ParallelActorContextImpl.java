@@ -28,9 +28,7 @@ public class ParallelActorContextImpl implements ParallelActorContext {
 
     FunctionManager functionManager = ((RayRuntimeInternal) Ray.internal()).getFunctionManager();
     JavaFunctionDescriptor functionDescriptor =
-        functionManager
-            .getFunction(Ray.getRuntimeContext().getCurrentJobId(), ctorFunc)
-            .getFunctionDescriptor();
+        functionManager.getFunction(ctorFunc).getFunctionDescriptor();
     ActorHandle<ParallelActorExecutorImpl> parallelExecutorHandle =
         Ray.actor(ParallelActorExecutorImpl::new, parallelism, functionDescriptor)
             .setConcurrencyGroups(concurrencyGroups)
@@ -46,9 +44,7 @@ public class ParallelActorContextImpl implements ParallelActorContext {
         ((ParallelActorHandleImpl) parallelActorHandle).getExecutor();
     FunctionManager functionManager = ((RayRuntimeInternal) Ray.internal()).getFunctionManager();
     JavaFunctionDescriptor functionDescriptor =
-        functionManager
-            .getFunction(Ray.getRuntimeContext().getCurrentJobId(), func)
-            .getFunctionDescriptor();
+        functionManager.getFunction(func).getFunctionDescriptor();
     ObjectRef<Object> ret =
         parallelExecutor
             .task(ParallelActorExecutorImpl::execute, instanceId, functionDescriptor, args)

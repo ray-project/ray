@@ -1,4 +1,4 @@
-base_image: "anyscale/ray:nightly-py37"
+base_image: {{ env["RAY_IMAGE_NIGHTLY_CPU"] | default("anyscale/ray:nightly-py37") }}
 env_vars: {}
 debian_packages: []
 
