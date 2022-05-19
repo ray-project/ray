@@ -15,7 +15,6 @@ import collections
 import numpy as np
 
 from ray.data.block import BlockAccessor, BlockMetadata, KeyFn, U
-from ray.data.extensions.tensor_extension import TensorArray
 from ray.data.row import TableRow
 from ray.data.impl.table_block import (
     TableBlockAccessor,
@@ -79,6 +78,8 @@ class PandasBlockBuilder(TableBlockBuilder[T]):
         pandas = lazy_import_pandas()
         for key, value in columns.items():
             if key == VALUE_COL_NAME or isinstance(next(iter(value), None), np.ndarray):
+                from ray.data.extensions.tensor_extension import TensorArray
+
                 if len(value) == 1:
                     value = value[0]
                 columns[key] = TensorArray(value)
