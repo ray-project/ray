@@ -1019,11 +1019,11 @@ def _df_to_block(df: "pandas.DataFrame") -> Block[ArrowRow]:
 
 def _ndarray_to_block(ndarray: np.ndarray) -> Block[np.ndarray]:
     stats = BlockExecStats.builder()
-    accessor = BlockAccessor.for_block(ndarray)
-    return (
-        accessor.to_block(),
-        accessor.get_metadata(input_files=None, exec_stats=stats.build()),
+    block = BlockAccessor.batch_to_block(ndarray)
+    metadata = BlockAccessor.for_block(block).get_metadata(
+        input_files=None, exec_stats=stats.build()
     )
+    return block, metadata
 
 
 def _get_metadata(table: Union["pyarrow.Table", "pandas.DataFrame"]) -> BlockMetadata:

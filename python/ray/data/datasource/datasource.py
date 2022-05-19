@@ -144,8 +144,7 @@ class ReadTask(Callable[[], BlockPartition]):
         if context.block_splitting_enabled:
             partition: BlockPartition = []
             for block in result:
-                accessor = BlockAccessor.for_block(block)
-                metadata = accessor.get_metadata(
+                metadata = BlockAccessor.for_block(block).get_metadata(
                     input_files=self._metadata.input_files, exec_stats=None
                 )  # No exec stats for the block splits.
                 assert context.block_owner
