@@ -1,11 +1,11 @@
-import yaml
-import json
 import os
-import subprocess
 import sys
+import time
+import yaml
 import signal
 import pytest
 import requests
+import subprocess
 from tempfile import NamedTemporaryFile
 
 import ray
@@ -209,14 +209,20 @@ def test_status(ray_start_stop):
 
     subprocess.check_output(["serve", "deploy", config_file_name])
     status_response = subprocess.check_output(["serve", "status"])
-    statuses = json.loads(status_response)
+    serve_status = yaml.safe_load(status_response)
 
     expected_deployments = {"shallow", "deep", "one"}
-    for status in statuses:
+    for status in serve_status["deployment_statuses"]:
         expected_deployments.remove(status["name"])
         assert status["status"] in {"HEALTHY", "UPDATING"}
         assert "message" in status
     assert len(expected_deployments) == 0
+
+    assert serve_status["app_status"]["status"] in {"DEPLOYING", "RUNNING"}
+    wait_for_condition(
+        lambda: str(time.time()) > serve_status["app_status"]["deployment_timestamp"],
+        timeout=2,
+    )
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
