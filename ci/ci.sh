@@ -167,9 +167,6 @@ test_python() {
   fi
   if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
     install_ray
-    # DEBUG: are there wheels for runtime_env testing?
-    echo "${PWD}"
-    ls .whl
 
     # Shard the args.
     BUILDKITE_PARALLEL_JOB=${BUILDKITE_PARALLEL_JOB:-'0'}
@@ -184,9 +181,9 @@ test_python() {
     bazel test --config=ci \
       --build_tests_only $(./ci/run/bazel_export_options) \
       --test_env=PYTHONPATH="${PYTHONPATH-}${pathsep}${WORKSPACE_DIR}/python/ray/pickle5_files" \
+      --test_env=CI="1" \
+      --test_env=RAY_CI_POST_WHEEL_TESTS="1" \
       --test_env=USERPROFILE="${USERPROFILE}" \
-      --test_env=CI=1 \
-      --test_env=RAY_CI_POST_WHEEL_TESTS=1 \
       --test_output=streamed \
       -- \
       ${test_shard_selection};

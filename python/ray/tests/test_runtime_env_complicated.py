@@ -181,10 +181,6 @@ def test_client_tasks_and_actors_inherit_from_driver(conda_envs, call_ray_start)
     os.environ.get("CONDA_DEFAULT_ENV") is None,
     reason="must be run from within a conda environment",
 )
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="This test is only run on linux CI machines.",
-)
 def test_task_actor_conda_env(conda_envs, shutdown_only):
     ray.init()
 
@@ -221,10 +217,6 @@ def test_task_actor_conda_env(conda_envs, shutdown_only):
 @pytest.mark.skipif(
     os.environ.get("CONDA_DEFAULT_ENV") is None,
     reason="must be run from within a conda environment",
-)
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="This test is only run on linux CI machines.",
 )
 def test_job_config_conda_env(conda_envs, shutdown_only):
     for package_version in REQUEST_VERSIONS:
@@ -301,10 +293,6 @@ def test_get_conda_env_dir(tmp_path):
         assert env_dir == str(tmp_path / "envs" / "tf2")
 
 
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="This test is only run on linux CI machines.",
-)
 @pytest.mark.skipif(
     os.environ.get("CONDA_EXE") is None,
     reason="Requires properly set-up conda shell",
@@ -399,8 +387,8 @@ def test_inject_dependencies():
 
 
 @pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform == "win32",
-    reason=r"Requires wheel in .whl\ray-2.0.0.dev0-cp38-cp38-win_amd64.whl",
+    os.environ.get("CI") and sys.platform != "linux",
+    reason="This test is only run on linux CI machines.",
 )
 @pytest.mark.parametrize(
     "call_ray_start",

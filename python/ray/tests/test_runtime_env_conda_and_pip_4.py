@@ -12,10 +12,6 @@ if not os.environ.get("CI"):
     os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"] = "1"
 
 
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform not in ("linux", "win32"),
-    reason="Requires PR wheels built in CI",
-)
 def test_in_virtualenv(start_cluster):
     assert (
         PipProcessor._is_in_virtualenv() is False and "IN_VIRTUALENV" not in os.environ

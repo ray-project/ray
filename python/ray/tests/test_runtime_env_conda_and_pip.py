@@ -19,7 +19,7 @@ import subprocess
 
 import ray
 
-if sys.platform == "win32" or not os.environ.get("CI"):
+if not os.environ.get("CI"):
     # This flags turns on the local development that link against current ray
     # packages and fall back all the dependencies to current python's site.
     os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"] = "1"
@@ -106,6 +106,10 @@ def test_requirements_files(start_cluster, field):
 
 
 class TestGC:
+    @pytest.mark.skipif(
+        os.environ.get("CI") and sys.platform != "linux",
+        reason="Needs PR wheels built in CI, so only run on linux CI machines.",
+    )
     @pytest.mark.parametrize("field", ["conda", "pip"])
     @pytest.mark.parametrize("spec_format", ["file", "python_object"])
     def test_job_level_gc(
