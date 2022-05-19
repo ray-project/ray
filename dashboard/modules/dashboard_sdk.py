@@ -24,7 +24,6 @@ from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray.dashboard.modules.job.common import uri_to_http_components
 
-from ray.ray_constants import DEFAULT_DASHBOARD_PORT
 from ray.util.annotations import PublicAPI
 from ray.client_builder import _split_address
 from ray.autoscaler._private.cli_logger import cli_logger
@@ -108,18 +107,8 @@ def get_job_submission_client_cluster_info(
     """
 
     scheme = "https" if _use_tls else "http"
-
-    split = address.split(":")
-    host = split[0]
-    if len(split) == 1:
-        port = DEFAULT_DASHBOARD_PORT
-    elif len(split) == 2:
-        port = int(split[1])
-    else:
-        raise ValueError(f"Invalid address: {address}.")
-
     return ClusterInfo(
-        address=f"{scheme}://{host}:{port}",
+        address=f"{scheme}://{address}",
         cookies=cookies,
         metadata=metadata,
         headers=headers,
