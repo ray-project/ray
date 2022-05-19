@@ -156,49 +156,49 @@ class MultiAgentPrioritizedReplayBuffer(
         # simply store the samples how they arrive. For sequences and
         # episodes, the underlying buffer may split them itself.
         if self._storage_unit is StorageUnit.TIMESTEPS:
-            if self.replay_sequence_length == 1:
-                timeslices = batch.timeslices(1)
-            else:
-                timeslices = timeslice_along_seq_lens_with_overlap(
-                    sample_batch=batch,
-                    zero_pad_max_seq_len=self.replay_sequence_length,
-                    pre_overlap=self.replay_burn_in,
-                    zero_init_states=self.replay_zero_init_states,
-                )
-            for time_slice in timeslices:
-                # If SampleBatch has prio-replay weights, average
-                # over these to use as a weight for the entire
-                # sequence.
-                if self.replay_mode is ReplayMode.INDEPENDENT:
-                    if "weights" in time_slice and len(time_slice["weights"]):
-                        weight = np.mean(time_slice["weights"])
-                    else:
-                        weight = None
-
-                    if "weight" in kwargs and weight is not None:
-                        if log_once("overwrite_weight"):
-                            logger.warning(
-                                "Adding batches with column "
-                                "`weights` to this buffer while "
-                                "providing weights as a call argument "
-                                "to the add method results in the "
-                                "column being overwritten."
-                            )
-
-                    kwargs = {"weight": weight, **kwargs}
-                else:
-                    if "weight" in kwargs:
-                        if log_once("lockstep_no_weight_allowed"):
-                            logger.warning(
-                                "Settings weights for batches in "
-                                "lockstep mode is not allowed."
-                                "Weights are being ignored."
-                            )
-
-                    kwargs = {**kwargs, "weight": None}
-                self.replay_buffers[policy_id].add(time_slice, **kwargs)
+            timeslices = batch.timeslices(1)
+        elif self._storage_unit is StorageUnit.SEQUENCES:
+            timeslices = timeslice_along_seq_lens_with_overlap(
+                sample_batch=batch,
+                zero_pad_max_seq_len=self.replay_sequence_length,
+                pre_overlap=self.replay_burn_in,
+                zero_init_states=self.replay_zero_init_states,
+            )
         else:
-            self.replay_buffers[policy_id].add(batch, **kwargs)
+            timeslices = [batch]
+
+        for time_slice in timeslices:
+            # If SampleBatch has prio-replay weights, average
+            # over these to use as a weight for the entire
+            # sequence.
+            if self.replay_mode is ReplayMode.INDEPENDENT:
+                if "weights" in time_slice and len(time_slice["weights"]):
+                    weight = np.mean(time_slice["weights"])
+                else:
+                    weight = None
+
+                if "weight" in kwargs and weight is not None:
+                    if log_once("overwrite_weight"):
+                        logger.warning(
+                            "Adding batches with column "
+                            "`weights` to this buffer while "
+                            "providing weights as a call argument "
+                            "to the add method results in the "
+                            "column being overwritten."
+                        )
+
+                kwargs = {"weight": weight, **kwargs}
+            else:
+                if "weight" in kwargs:
+                    if log_once("lockstep_no_weight_allowed"):
+                        logger.warning(
+                            "Settings weights for batches in "
+                            "lockstep mode is not allowed."
+                            "Weights are being ignored."
+                        )
+
+                kwargs = {**kwargs, "weight": None}
+            self.replay_buffers[policy_id].add(time_slice, **kwargs)
 
     @DeveloperAPI
     @override(PrioritizedReplayBuffer)
