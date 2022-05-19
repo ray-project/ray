@@ -288,7 +288,7 @@ class GcsClient:
         req = gcs_service_pb2.PinRuntimeEnvURIRequest(
             uri=uri, expiration_s=expiration_s
         )
-        reply = self._runtime_env_stub.PinRuntimeEnvURIRequest(req)
+        reply = self._runtime_env_stub.PinRuntimeEnvURI(req)
         if reply.status.code == GcsCode.GrpcUnavailable:
             raise RuntimeError(
                 f"Failed to pin URI reference {uri} due to the GCS being "
