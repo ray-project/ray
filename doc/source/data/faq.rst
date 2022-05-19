@@ -21,13 +21,12 @@ If you still have questions after reading this FAQ,  please reach out on
 What problems does Ray Datasets solve?
 ======================================
 
-Ray Datasets aims to solve the problems of:
+Ray Datasets aims to solve the problems of slow, resource-inefficient, unscalable data
+loading and preprocessing pipelines for two core uses cases:
 
-1. Slow, unpipelined, and/or unscalable preprocessing and ingestion pipelines for
-   **model training**, resulting in poor training throughput and low GPU utilization as
+1. **Model training:** resulting in poor training throughput and low GPU utilization as
    the trainers are bottlenecked on preprocessing and data loading.
-2. Slow, unpipelined, and/or unscalable preprocessing and ingestion pipelines for
-   **batch inference**, resulting in poor batch inference throughput and low GPU
+2. **Batch inference:** resulting in poor batch inference throughput and low GPU
    utilization.
 
 In order to solve these problems without sacrificing usability, Ray Datasets simplifies
@@ -68,7 +67,7 @@ two core uses cases:
 
 * **ML (training) ingest:** Loading, preprocessing, and ingesting data into one or more
   (possibly distributed) model trainers.
-* **batch inference:** Loading, preprocessing, and performing parallel batch
+* **Batch inference:** Loading, preprocessing, and performing parallel batch
   inference on data.
 
 We have designed the Datasets APIs, data model, execution model, and
@@ -76,19 +75,25 @@ integrations with these use cases in mind, and have captured these use cases in
 large-scale nightly tests to ensure that we're hitting our scalability, performance,
 and efficiency marks for these use cases.
 
-See our :ref:`ML preprocessing docs <datasets-ml-preprocessing>` for more information on
-this positioning.
+See our :ref:`ML preprocessing feature guide <datasets-ml-preprocessing>` for more
+information on this positioning.
 
 What should I not use Ray Datasets for?
 =======================================
 
 Ray Datasets is not meant to be used for generic ETL pipelines (like Spark) or
-scalable data science (like Dask, Modin, or Mars). Datasets integrates with these
-frameworks, allowing for efficient exchange of distributed data partitions often with
-zero-copy.
+scalable data science (like Dask, Modin, or Mars). However, each of these frameworks
+are :ref:`runnable on Ray <data_integrations>`, and Datasts integrates tightly with
+these frameworks, allowing for efficient exchange of distributed data partitions often
+with zero-copy. Check out the
+:ref:`dataset creation feature guide <dataset_from_in_memory_data_distributed>` to learn
+more about these integrations.
 
-See our :ref:`ML preprocessing docs <datasets-ml-preprocessing>` for more information on
-how we see Ray Datasets fitting into a larger ML pipeline picture.
+Datasets is specifically targeting
+the ML ingest and batch inference use cases, with focus on data loading and last-mile
+preprocessing for ML pipelines. For more information on this distinction, what we
+mean by last-mile preprocessing, and how Ray Datasets fits into a larger ML pipeline
+picture, please see our :ref:`ML preprocessing feature guide <datasets-ml-preprocessing>`.
 
 For data loading for training, how does Ray Datasets compare to other solutions?
 ================================================================================
@@ -166,6 +171,8 @@ NVTabular
 * **ML-specific ops:** NVTabular has a bunch of great ML-specific preprocessing
   operations; this is currently WIP for Ray Datasets:
   :ref:`Ray AIR preprocessors <air-key-concepts>`.
+
+.. _datasets_streaming_faq:
 
 For batch (offline) inference, why should I use Ray Datasets instead of an actor pool?
 ======================================================================================
@@ -245,8 +252,8 @@ Pipelining is useful in a few scenarios:
   GPU-based training) and batch inference (CPU-based preprocessing and GPU-based batch
   inference).
 * You want to do streaming data loading and processing in order to keep the size of the
-  working set small; see previous FAQ on how to do streaming data loading and
-  processing.
+  working set small; see previous FAQ on
+  :ref:`how to do streaming data loading and processing <datasets_streaming_faq>`.
 * You want to decrease the time-to-first-batch (latency) for a certain operation at the
   end of your workload. This is the case for training and inference since this prevents
   GPUs from being idle (which is costly), and can be advantageous for some other
@@ -255,16 +262,36 @@ Pipelining is useful in a few scenarios:
 When should I use global per-epoch shuffling?
 =============================================
 
+Background
+~~~~~~~~~~
+
+When training a machine learning model, shuffling your training dataset is important in
+general in order to ensure that your model isn't overfitting on some unintended pattern
+in your data, e.g. sorting on the label column, or time-correlated samples. Per-epoch
+shuffling in particular can improve your model's precision gain per epoch by reducing
+the likelihood of bad (unrepresentative) batches getting you permanently stuck in local
+minima: if you get unlucky and your last few batches have noisy labels that pull your
+learned weights in the wrong direction, shuffling before the next epoch lets you bounce
+out of such a gradient rut. In the distributed data-parallel training case, the current
+status quo solution is typically to have a per-shard in-memory shuffle buffer that you
+fill up and pop random batches from, without mixing data across shards between epochs.
+Ray Datasets also offers fully global random shuffling via
+:meth:`ds.random_shuffle() <ray.data.Dataset.random_shuffle()`, and doing so on an
+epoch-repeated dataset pipeline to provide global per-epoch shuffling is as simple as
+``ray.data.read().repeat().random_shuffle_each_window()``. But when should you opt for
+global per-epoch shuffling instead of local shuffle buffer shuffling?
+
+How to choose a shuffling policy
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 Global per-epoch shuffling should only be used if your model is sensitive to the
-randomness of the training data. The current status quo is typically to have a per-shard
-in-memory shuffle buffer that you periodically pop random batches from, without mixing
-data across shards between epochs. There is
+randomness of the training data. There is
 `theoretical foundation <https://arxiv.org/abs/1709.10432>`__ for all
-gradient-descent-based model trainers benefiting from improved shuffle quality, and we've
-found that this is particular pronounced for tabular data/models in practice. However,
-the more global your shuffle is, the expensive the shuffling operation, and this
-compounds when doing distributed data-parallel training on a multi-node cluster due to
-data transfer costs, and this cost can be prohibitive when using very large datasets.
+gradient-descent-based model trainers benefiting from improved (global) shuffle quality,
+and we've found that this is particular pronounced for tabular data/models in practice.
+However, the more global your shuffle is, the expensive the shuffling operation, and
+this compounds when doing distributed data-parallel training on a multi-node cluster due
+to data transfer costs, and this cost can be prohibitive when using very large datasets.
 
 The best route for determining the best tradeoff between preprocessing time + cost and
 per-epoch shuffle quality is to measure the precision gain per training step for your
@@ -305,4 +332,5 @@ We're always happy to accept external contributions! If you have a question, a f
 request, or want to contibute to Ray Datasets or tell us about your use case, please
 reach out to us on `Discourse <https://discuss.ray.io/>`__; if you have a you're
 confident that you've found a bug, please open an issue on the
-`Ray GitHub repo <https://github.com/ray-project/ray>`__.
+`Ray GitHub repo <https://github.com/ray-project/ray>`__. Please see our
+:ref:`contributing guide <getting-involved>` for more information!
