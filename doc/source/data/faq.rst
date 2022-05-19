@@ -61,11 +61,20 @@ If you're using Ray Datasets, please let us know about your experience on the
 What should I use Ray Datasets for?
 ===================================
 
-Ray Datasets is designed for two core uses cases: **ML (training) ingest** and **batch
-inference**. Specifically, we have designed the APIs, data model, execution model, and
+Ray Datasets is the standard way to load, process, and exchange data in Ray libraries
+and applications, with a particular emphasis on ease-of-use, performance, and
+scalability in both data size and cluster size. Within that, Datasets is designed for
+two core uses cases:
+
+* **ML (training) ingest:** Loading, preprocessing, and ingesting data into one or more
+  (possibly distributed) model trainers.
+* **batch inference:** Loading, preprocessing, and performing parallel batch
+  inference on data.
+
+We have designed the Datasets APIs, data model, execution model, and
 integrations with these use cases in mind, and have captured these use cases in
-large-scale nightly tests to ensure that we're hitting our performance and efficiency
-marks for these use cases.
+large-scale nightly tests to ensure that we're hitting our scalability, performance,
+and efficiency marks for these use cases.
 
 See our :ref:`ML preprocessing docs <datasets-ml-preprocessing>` for more information on
 this positioning.
@@ -91,100 +100,72 @@ specific ingest frameworks.
 Torch datasets (and data loaders)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-* `Torch datasets <https://pytorch.org/docs/stable/data.html>`__ are specific to Torch,
-  while Datasets is generic and supports integrations with both Torch and TensorFlow.
-* Torch datasets parallel data loading and last-mile preprocessing is limited to Python
-  multi-processing, which has many issues that
-  `Ray solves
-  <https://towardsdatascience.com/modern-parallel-and-distributed-python-a-quick-tutorial-on-ray-99f8d70369b8>`__
-  , in particular zero-copy exchange between the same-node transforming/prefetching
-  process and the trainer process is particularly valuable. Ray Datasets exposes these
-  core Ray advantages in convenient parallelization APIs and adds additional
-  optimizations around data batching and memory management.
-* Anything beyond basic/cheap per-batch preprocessing requires stitching together another
-  framework like Spark or Dask with this Torch dataset, which adds infrastructure
-  complexity and can break pipelining of loading + preprocessing + training. With Ray
-  Datasets, you can express complex last-mile preprocessing operations that are optimally
-  pipelined with training.
-* Torch datasets do not have an I/O layer for common file formats or in-memory exchange
+* **Framework-agnostic:** Datasets is framework-agnostic and portable between different
+  distributed training frameworks, while
+  `Torch datasets <https://pytorch.org/docs/stable/data.html>`__ are specific to Torch.
+* **No built-in IO layer:** Torch datasets do not have an I/O layer for common file formats or in-memory exchange
   with other frameworks; users need to bring in other libraries and roll this
   integration themselves.
-* When doing data-parallel training, Torch datasets do not support shuffling across
-  worker shards on every epoch, while Datasets supports this both in the single-node
-  case and the distributed data-parallel case.
+* **Generic distributed data processing:** Datasets is more general: it can handle
+  generic distributed operations, including global per-epoch shuffling,
+  which would otherwise have to be implemented by stitching together two separate
+  systems. Torch datasets would require such stitching for anything more involved
+  than batch-based preprocessing, and does not natively support shuffling across worker
+  shards. See our
+  `blog post <https://www.anyscale.com/blog/deep-dive-data-ingest-in-a-third-generation-ml-architecture>`__
+  on why this shared infrastructure is important for 3rd generation ML architectures.
+* **Lower overhead:** Datasets is lower overhead: it supports zero-copy exchange between
+  processes, in contrast to the multi-processing-based pipelines of Torch datasets.
 
 TensorFlow datasets
 ~~~~~~~~~~~~~~~~~~~
 
-* `TensorFlow datasets <https://www.tensorflow.org/api_docs/python/tf/data/Dataset>`__
-  are specific to TensorFlow, while Datasets is generic and supports integrations with
-  both TensorFlow and Torch.
-* TensorFlow datasets are lazy by default, while Ray Datasets are eager by default; the
-  latter provides easier iterative development and debuggability.
-* There's a delineation between single-node and
-  `distributed TensorFlow datasets <https://www.tensorflow.org/api_docs/python/tf/distribute/DistributedDataset>`__,
-  where the former must be
-  `converted <https://www.tensorflow.org/tutorials/distribute/input#tfdistributestrategyexperimental_distribute_dataset>`__
-  to the latter, and specifying custom sharding and batching requires a different
-  creation method. There's also other concepts to grok, such as
-  `distributed iterators <https://www.tensorflow.org/api_docs/python/tf/distribute/DistributedIterator>`__.
-  For Ray Datasets, the same dataset abstraction is used for single-node training and
-  multi-node training, and consumption is always done via a simple (local) Python iterator.
-* Stateful data transformations on distributed TensorFlow datasets are not supported
-  (see `caveats <https://www.tensorflow.org/tutorials/distribute/input#caveats>`__),
-  while Ray Datasets has first-class support for stateful transformations via
-  :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` with the actor pool strategy.
-* In TensorFlow datasets, transformations are not supported on the
-  `distributed dataset abstraction <https://www.tensorflow.org/api_docs/python/tf/distribute/DistributedDataset>`__;
-  instead, parallel data transformations must be orchestrated on a
-  per-worker basis. Ray Datasets allows you to orchestrate distributed + parallel
-  transformations directly on the distributed dataset, giving you greater control of
-  distribution and parallelism.
-* TensorFlow distributed datasets provide
-  `minimal data sharding control <https://www.tensorflow.org/tutorials/distribute/input#sharding>`__,
-  only providing file-based sharding and naive pull-all-and-drop sharding; meanwhile,
-  Ray Datasets allows you to perform arbitrary sharding logic.
-* TensorFlow datasets parallel data loading and last-mile preprocessing is limited to
-  single-node multi-processing, which has many issues that
-  `Ray solves
-  <https://towardsdatascience.com/modern-parallel-and-distributed-python-a-quick-tutorial-on-ray-99f8d70369b8>`__
-  , in particular zero-copy exchange between the same-node transforming/prefetching
-  process and the trainer process is particularly valuable. Ray Datasets exposes these
-  core Ray advantages in convenient parallelization APIs and adds additional
-  optimizations around data batching and memory management.
-* Anything beyond basic/cheap preprocessing requires stitching together another
-  framework like Spark or Dask with this TensorFlow dataset, which adds infrastructure
-  complexity and can break pipelining of loading + preprocessing + training. With Ray
-  Datasets, you can express complex last-mile preprocessing operations that are optimally
-  pipelined with training.
-* When doing data-parallel training, TensorFlow datasets do not support full-shuffling
-  across worker shards on every epoch (only file interleaving is supported, not full
-  data mixing), while Ray Datasets supports this both in the single-node case and the
-  distributed data-parallel case.
+* **Framework-agnostic:** Datasets is framework-agnostic and portable between different
+  distributed training frameworks, while
+  `TensorFlow datasets <https://www.tensorflow.org/api_docs/python/tf/data/Dataset>`__
+  is specific to TensorFlow.
+* **Unified single-node and distributed:** Datasets unifies single and multi-node training under
+  the same abstraction. TensorFlow datasets presents
+  `separate concepts <https://www.tensorflow.org/api_docs/python/tf/distribute/DistributedDataset>`__
+  for distributed data loading and prevents code from being seamlessly scaled to larger
+  clusters.
+* **Lazy execution:** Datasets executed operations eagerly by default, while TensorFlow
+  datasets are lazy by default. The formter provides easier iterative development and
+  debuggability, and when needing the optimizations that become available with lazy execution,
+  Ray Datasets has a lazy execution mode that you can turn on when productionizing your
+  integration.
+* **Generic distributed data processing:** Datasets is more general: it can handle
+  generic distributed operations, including global per-epoch shuffling,
+  which would otherwise have to be implemented by stitching together two separate
+  systems. TensorFlow datasets would require such stitching for anything more involved
+  than basic preprocessing, and does not natively support full-shuffling across worker
+  shards; only file interleaving is supported. See our
+  `blog post <https://www.anyscale.com/blog/deep-dive-data-ingest-in-a-third-generation-ml-architecture>`__
+  on why this shared infrastructure is important for 3rd generation ML architectures.
+* **Lower overhead:** Datasets is lower overhead: it supports zero-copy exchange between
+  processes, in contrast to the multi-processing-based pipelines of TensorFlow datasets.
 
 Petastorm
 ~~~~~~~~~
 
-* `Petastorm <https://github.com/uber/petastorm>`__ only supports Parquet data, while
+* **Supported data types:** `Petastorm <https://github.com/uber/petastorm>`__ only supports Parquet data, while
   Ray Datasets supports many file formats.
-* Petastorm uses a multi-processing data loader, which has many issues that
-  `Ray solves
-  <https://towardsdatascience.com/modern-parallel-and-distributed-python-a-quick-tutorial-on-ray-99f8d70369b8>`__
-  , in particular zero-copy exchange between the same-node prefetching
-  process and the trainer process is particularly valuable. Ray Datasets exposes these
-  core Ray advantages in convenient parallelization APIs and adds additional
-  optimizations around data batching and memory management.
-* Petastorm does not expose any data processing APIs.
+* **Lower overhead:** Datasets is lower overhead: it supports zero-copy exchange between
+  processes, in contrast to the multi-processing-based pipelines used by Petastorm.
+* **No data processing:** Petastorm does not expose any data processing APIs.
 
 NVTabular
 ~~~~~~~~~
 
-* `NVTabular <https://github.com/NVIDIA-Merlin/NVTabular>`__ only supports tabular
+* **Supported data types:** `NVTabular <https://github.com/NVIDIA-Merlin/NVTabular>`__ only supports tabular
   (Parquet, CSV, Avro) data, while Ray Datasets supports many other file formats.
-* NVTabular doesn't support mixing heterogeneous resources in dataset transforms (e.g.
+* **Lower overhead:** Datasets is lower overhead: it supports zero-copy exchange between
+  processes, in contrast to the multi-processing-based pipelines used by Petastorm.
+* **Heterogeneous compute:** NVTabular doesn't support mixing heterogeneous resources in dataset transforms (e.g.
   both CPU and GPU transformations), while Ray Datasets supports this.
-* NVTabular has a bunch of great ML-specific preprocessing operations; this is current
-  WIP for Ray Datasets via the :ref:`Ray AIR preprocessors <air-key-concepts>`.
+* **ML-specific ops:** NVTabular has a bunch of great ML-specific preprocessing
+  operations; this is currently WIP for Ray Datasets:
+  :ref:`Ray AIR preprocessors <air-key-concepts>`.
 
 For batch (offline) inference, why should I use Ray Datasets instead of an actor pool?
 ======================================================================================
@@ -221,14 +202,18 @@ for more information on this benchmarking.
 Does all of my data need to fit into memory?
 ============================================
 
-No, with Ray's support for fallback allocation to disk and proactive object spilling to
-disk, you only need to be able to fit your data into memory OR disk.
+No, with Ray's support for :ref:`spilling objects to disk <object-spilling>`, you only
+need to be able to fit your data into memory OR disk. However, keeping your data in
+distributed memory may speed up your workload, which can be done on arbitrarily large
+datasets by windowing them, creating :ref:`pipelines <dataset_pipeline_concept>`.
 
 How much data can Ray Datasets handle?
 ======================================
 
 Ray Datasets has been tested at multi-petabyte scale for I/O and multi-terabyte scale for
-shuffling, and we're continuously working on improving this scalability.
+shuffling, and we're continuously working on improving this scalability. If you have a
+very large dataset that you'd like to process and you're running into scalability
+issues, please reach out to us on our `Discourse <https://discuss.ray.io/>`__.
 
 How do I get my data into Ray Datasets?
 =======================================
@@ -237,7 +222,8 @@ Ray Datasets supports creating a ``Dataset`` from local and distributed in-memor
 via integrations with common data libraries, as well as from local and remote storage
 systems via our support for many common file formats and storage backends.
 
-Check out our :ref:`feature guide for creating datasets <creating_datasets>` for details!
+Check out our :ref:`feature guide for creating datasets <creating_datasets>` for
+details.
 
 How do I do streaming/online data loading and processing?
 =========================================================
@@ -245,7 +231,7 @@ How do I do streaming/online data loading and processing?
 Streaming data loading and data processing can be accomplished by using
 :ref:`DatasetPipelines <dataset_pipeline_concept>`. By windowing a dataset, you can
 stream data transformations across subsets of the data, even windowing down to the
-reading of each file!
+reading of each file.
 
 See the :ref:`pipelining feature guide <data_pipeline_usage>` for more information.
 
@@ -262,9 +248,9 @@ Pipelining is useful in a few scenarios:
   working set small; see previous FAQ on how to do streaming data loading and
   processing.
 * You want to decrease the time-to-first-batch (latency) for a certain operation at the
-  end of your workload. This is the case for training and inference since these prevents
-  GPUs from being idle (which is costly), and can be the case for some latency-sensitive
-  consumers of datasets.
+  end of your workload. This is the case for training and inference since this prevents
+  GPUs from being idle (which is costly), and can be advantageous for some other
+  latency-sensitive consumers of datasets.
 
 When should I use global per-epoch shuffling?
 =============================================
@@ -281,14 +267,19 @@ compounds when doing distributed data-parallel training on a multi-node cluster 
 data transfer costs, and this cost can be prohibitive when using very large datasets.
 
 The best route for determining the best tradeoff between preprocessing time + cost and
-shuffle quality is to measure the precision gain per training step for your particular
-model under different shuffling policies: no shuffling, local (per-shard)
-limited-memory shuffle buffer, local (per-shard) shuffling, windowed (psuedo-global)
-shuffling, and fully global shuffling. From the perspective of keeping preprocessing
-time in check, as long as your data loading + shuffling throughput is higher than your
-training throughput, your GPU should be saturated, so we like to recommend users with
-shuffle-sensitive models to push their shuffle quality higher until this threshold is
-hit.
+per-epoch shuffle quality is to measure the precision gain per training step for your
+particular model under different shuffling policies:
+
+* no shuffling,
+* local (per-shard) limited-memory shuffle buffer,
+* local (per-shard) shuffling,
+* windowed (psuedo-global) shuffling, and
+* fully global shuffling.
+
+From the perspective of keeping preprocessing time in check, as long as your data
+loading + shuffling throughput is higher than your training throughput, your GPU should
+be saturated, so we like to recommend users with shuffle-sensitive models to push their
+shuffle quality higher until this threshold is hit.
 
 What is Arrow and how does Ray Datasets use it?
 ===============================================
