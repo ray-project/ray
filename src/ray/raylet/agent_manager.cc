@@ -56,30 +56,38 @@ void AgentManager::StartAgent() {
     return;
   }
 
-  if (RAY_LOG_ENABLED(DEBUG)) {
-    std::stringstream stream;
-    stream << "Starting agent process with command:";
-    for (const auto &arg : options_.agent_commands) {
-      stream << " " << arg;
-    }
-    RAY_LOG(DEBUG) << stream.str();
-  }
-
-  // Launch the process to create the agent.
-  std::error_code ec;
+  // Create a random agent_id to pass to the child process
+  int agent_id = rand();
+  const std::string agent_id_str = std::to_string(agent_id);
   std::vector<const char *> argv;
   for (const std::string &arg : options_.agent_commands) {
     argv.push_back(arg.c_str());
   }
+  argv.push_back("--agent-id");
+  argv.push_back(agent_id_str.c_str());
+
   // Disable metrics report if needed.
   if (!RayConfig::instance().enable_metrics_collection()) {
     argv.push_back("--disable-metrics-collection");
   }
   argv.push_back(NULL);
+
+  if (RAY_LOG_ENABLED(DEBUG)) {
+    std::stringstream stream;
+    stream << "Starting agent process with command:";
+    for (const auto &arg : argv) {
+      stream << " " << arg;
+    }
+    RAY_LOG(DEBUG) << stream.str();
+  }
+
   // Set node id to agent.
   ProcessEnvironment env;
   env.insert({"RAY_NODE_ID", options_.node_id.Hex()});
   env.insert({"RAY_RAYLET_PID", std::to_string(getpid())});
+
+  // Launch the process to create the agent.
+  std::error_code ec;
   Process child(argv.data(), nullptr, ec, false, env);
   if (!child.IsValid() || ec) {
     // The worker failed to start. This is a fatal error.
@@ -87,17 +95,16 @@ void AgentManager::StartAgent() {
                    << ec.message();
   }
 
-  std::thread monitor_thread([this, child]() mutable {
+  std::thread monitor_thread([this, child, agent_id]() mutable {
     SetThreadName("agent.monitor");
-    RAY_LOG(INFO) << "Monitor agent process with pid " << child.GetId()
-                  << ", register timeout "
+    RAY_LOG(INFO) << "Monitor agent process with id " << agent_id << ", register timeout "
                   << RayConfig::instance().agent_register_timeout_ms() << "ms.";
     auto timer = delay_executor_(
-        [this, child]() mutable {
-          if (agent_pid_ != child.GetId()) {
-            RAY_LOG(WARNING) << "Agent process with pid " << child.GetId()
-                             << " has not registered. ip " << agent_ip_address_
-                             << ", pid " << agent_pid_;
+        [this, child, agent_id]() mutable {
+          if (agent_pid_ != agent_id) {
+            RAY_LOG(WARNING) << "Agent process with id " << agent_id
+                             << " has not registered. ip " << agent_ip_address_ << ", id "
+                             << agent_pid_;
             child.Kill();
           }
         },
@@ -105,9 +112,9 @@ void AgentManager::StartAgent() {
 
     int exit_code = child.Wait();
     timer->cancel();
-    RAY_LOG(WARNING) << "Agent process with pid " << child.GetId()
-                     << " exit, return value " << exit_code << ". ip "
-                     << agent_ip_address_ << ". pid " << agent_pid_;
+    RAY_LOG(WARNING) << "Agent process with id " << agent_id << " exit, return value "
+                     << exit_code << ". ip " << agent_ip_address_ << ". pid "
+                     << agent_pid_;
     RAY_LOG(ERROR)
         << "The raylet exited immediately because the Ray agent failed. "
            "The raylet fate shares with the agent. This can happen because the "
