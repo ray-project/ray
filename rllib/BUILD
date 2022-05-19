@@ -1612,6 +1612,13 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
+    name = "tests/test_algorithm_imports",
+    tags = ["team:ml", "tests_dir", "tests_dir_C"],
+    size = "small",
+    srcs = ["tests/test_algorithm_imports.py"]
+)
+
+py_test(
     name = "tests/test_catalog",
     tags = ["team:ml", "tests_dir", "tests_dir_C"],
     size = "medium",
