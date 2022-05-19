@@ -95,7 +95,8 @@ def actors(ctx, format: str):
     url = ctx.obj["api_server_url"]
     print(
         get_state_api_output_to_print(
-            list_actors(api_server_url=url, _print_api_stats=True), format=AvailableFormat(format)
+            list_actors(api_server_url=url, _print_api_stats=True),
+            format=AvailableFormat(format),
         )
     )
 
@@ -124,7 +125,8 @@ def nodes(ctx, format: str):
     url = ctx.obj["api_server_url"]
     print(
         get_state_api_output_to_print(
-            list_nodes(api_server_url=url, _print_api_stats=True), format=AvailableFormat(format)
+            list_nodes(api_server_url=url, _print_api_stats=True),
+            format=AvailableFormat(format),
         )
     )
 
@@ -138,7 +140,8 @@ def jobs(ctx, format: str):
     url = ctx.obj["api_server_url"]
     print(
         get_state_api_output_to_print(
-            list_jobs(api_server_url=url, _print_api_stats=True), format=AvailableFormat(format)
+            list_jobs(api_server_url=url, _print_api_stats=True),
+            format=AvailableFormat(format),
         )
     )
 
@@ -152,7 +155,8 @@ def workers(ctx, format: str):
     url = ctx.obj["api_server_url"]
     print(
         get_state_api_output_to_print(
-            list_workers(api_server_url=url, _print_api_stats=True), format=AvailableFormat(format)
+            list_workers(api_server_url=url, _print_api_stats=True),
+            format=AvailableFormat(format),
         )
     )
 
@@ -166,7 +170,8 @@ def tasks(ctx, format: str):
     url = ctx.obj["api_server_url"]
     print(
         get_state_api_output_to_print(
-            list_tasks(api_server_url=url, _print_api_stats=True), format=AvailableFormat(format)
+            list_tasks(api_server_url=url, _print_api_stats=True),
+            format=AvailableFormat(format),
         )
     )
 
@@ -180,7 +185,8 @@ def objects(ctx, format: str):
     url = ctx.obj["api_server_url"]
     print(
         get_state_api_output_to_print(
-            list_objects(api_server_url=url, _print_api_stats=True), format=AvailableFormat(format)
+            list_objects(api_server_url=url, _print_api_stats=True),
+            format=AvailableFormat(format),
         )
     )
 
