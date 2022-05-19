@@ -67,7 +67,7 @@ def make_global_state_accessor(ray_context):
 def test_external_redis():
     import os
 
-    return os.environ.get("REDIS_MODE") == "1"
+    return os.environ.get("TEST_EXTERNAL_REDIS") == "1"
 
 
 def _pid_alive(pid):
