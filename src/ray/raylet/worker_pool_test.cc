@@ -1135,46 +1135,6 @@ TEST_F(WorkerPoolTest, DeleteWorkerPushPop) {
   });
 }
 
-TEST_F(WorkerPoolTest, NoPopOnCrashedWorkerProcess) {
-  // Start a Java worker process.
-  PopWorkerStatus status;
-  auto [proc, token] = worker_pool_->StartWorkerProcess(
-      Language::JAVA, rpc::WorkerType::WORKER, JOB_ID, &status);
-  auto worker1 = worker_pool_->CreateWorker(Process(), Language::JAVA);
-  auto worker2 = worker_pool_->CreateWorker(Process(), Language::JAVA);
-
-  // We now imitate worker process crashing while core worker initializing.
-
-  // 1. we register both workers.
-  RAY_CHECK_OK(worker_pool_->RegisterWorker(
-      worker1, proc.GetId(), worker_pool_->GetStartupToken(proc), [](Status, int) {}));
-  RAY_CHECK_OK(worker_pool_->RegisterWorker(
-      worker2, proc.GetId(), worker_pool_->GetStartupToken(proc), [](Status, int) {}));
-
-  // 2. announce worker port for worker 1. When interacting with worker pool, it's
-  // PushWorker.
-  worker_pool_->PushWorker(worker1);
-
-  // 3. kill the worker process. Now let's assume that Raylet found that the connection
-  // with worker 1 disconnected first.
-  worker_pool_->DisconnectWorker(worker1,
-                                 /*disconnect_type=*/rpc::WorkerExitType::SYSTEM_ERROR);
-
-  // 4. but the RPC for announcing worker port for worker 2 is already in Raylet input
-  // buffer. So now Raylet needs to handle worker 2.
-  worker_pool_->PushWorker(worker2);
-
-  // 5. Let's try to pop a worker to execute a task. Worker 2 shouldn't be popped because
-  // the process has crashed.
-  const auto task_spec = ExampleTaskSpec();
-  ASSERT_NE(worker_pool_->PopWorkerSync(task_spec), worker1);
-  ASSERT_NE(worker_pool_->PopWorkerSync(task_spec), worker2);
-
-  // 6. Now Raylet disconnects with worker 2.
-  worker_pool_->DisconnectWorker(worker2,
-                                 /*disconnect_type=*/rpc::WorkerExitType::SYSTEM_ERROR);
-}
-
 TEST_F(WorkerPoolTest, TestWorkerCapping) {
   auto job_id = JOB_ID;
 
@@ -1618,78 +1578,6 @@ TEST_F(WorkerPoolTest, RuntimeEnvUriReferenceWorkerLevel) {
     worker_pool_->HandleJobFinished(job_id);
     ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 0);
   }
-}
-
-TEST_F(WorkerPoolTest, RuntimeEnvUriReferenceWithMultipleWorkers) {
-  auto job_id = JOB_ID;
-  std::string uri = "s3://567";
-  auto runtime_env_info = ExampleRuntimeEnvInfo({uri}, false);
-  rpc::JobConfig job_config;
-  job_config.set_num_java_workers_per_process(NUM_WORKERS_PER_PROCESS_JAVA);
-  job_config.mutable_runtime_env_info()->CopyFrom(runtime_env_info);
-  // Start job without eager installed runtime env.
-  worker_pool_->HandleJobStarted(job_id, job_config);
-  ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 0);
-
-  // First part, test normal case with all worker registered.
-  {
-    // Start actors with runtime env. The Java actors will trigger a multi-worker process.
-    std::vector<std::shared_ptr<WorkerInterface>> workers;
-    for (int i = 0; i < NUM_WORKERS_PER_PROCESS_JAVA; i++) {
-      auto actor_creation_id = ActorID::Of(job_id, TaskID::ForDriverTask(job_id), i + 1);
-      const auto actor_creation_task_spec =
-          ExampleTaskSpec(ActorID::Nil(),
-                          Language::JAVA,
-                          job_id,
-                          actor_creation_id,
-                          {},
-                          TaskID::FromRandom(JobID::Nil()),
-                          runtime_env_info);
-      auto popped_actor_worker = worker_pool_->PopWorkerSync(actor_creation_task_spec);
-      ASSERT_NE(popped_actor_worker, nullptr);
-      workers.push_back(popped_actor_worker);
-      ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 1);
-    }
-    // Make sure only one worker process has been started.
-    ASSERT_EQ(worker_pool_->GetProcessSize(), 1);
-    // Disconnect all actor workers.
-    for (auto &worker : workers) {
-      worker_pool_->DisconnectWorker(worker, rpc::WorkerExitType::INTENDED_USER_EXIT);
-    }
-    ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 0);
-  }
-
-  // Second part, test corner case with some worker registration timeout.
-  {
-    // Start one actor with runtime env. The Java actor will trigger a multi-worker
-    // process.
-    auto actor_creation_id = ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1);
-    const auto actor_creation_task_spec =
-        ExampleTaskSpec(ActorID::Nil(),
-                        Language::JAVA,
-                        job_id,
-                        actor_creation_id,
-                        {},
-                        TaskID::FromRandom(JobID::Nil()),
-                        runtime_env_info);
-    PopWorkerStatus status;
-    // Only one worker registration. All the other worker registration times out.
-    auto popped_actor_worker = worker_pool_->PopWorkerSync(
-        actor_creation_task_spec, true, &status, NUM_WORKERS_PER_PROCESS_JAVA - 1);
-    ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 1);
-    // Disconnect actor worker.
-    worker_pool_->DisconnectWorker(popped_actor_worker,
-                                   rpc::WorkerExitType::INTENDED_USER_EXIT);
-    ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 1);
-    // Sleep for a while to wait worker registration timeout.
-    std::this_thread::sleep_for(
-        std::chrono::seconds(WORKER_REGISTER_TIMEOUT_SECONDS + 1));
-    ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 0);
-  }
-
-  // Finish the job.
-  worker_pool_->HandleJobFinished(job_id);
-  ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 0);
 }
 
 TEST_F(WorkerPoolTest, CacheWorkersByRuntimeEnvHash) {
