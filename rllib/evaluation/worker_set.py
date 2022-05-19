@@ -126,6 +126,12 @@ class WorkerSet:
             self._remote_workers = []
             self.add_workers(num_workers)
 
+            # TODO
+            if trainer_config.get("check_workers_after_creation"):
+                self.foreach_worker_with_index(
+                    lambda w, i: w.policy_map and w.input_reader and w.output_writer
+                )
+
             # Create a local worker, if needed.
             # If num_workers > 0 and we don't have an env on the local worker,
             # get the observation- and action spaces for each policy from

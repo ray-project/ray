@@ -84,13 +84,22 @@ class VectorEnv:
 
     @PublicAPI
     def reset_at(self, index: Optional[int] = None) -> EnvObsType:
-        """Resets a single environment.
+        """Resets a single sub-environment.
 
         Args:
             index: An optional sub-env index to reset.
 
         Returns:
             Observations from the reset sub environment.
+        """
+        raise NotImplementedError
+
+    @PublicAPI
+    def restart_at(self, index: Optional[int] = None) -> None:
+        """Restarts a single sub-environment.
+
+        Args:
+            index: An optional sub-env index to restart.
         """
         raise NotImplementedError
 
@@ -210,6 +219,7 @@ class _VectorizedGymEnv(VectorEnv):
                 existing_envs[0]'s observation space.
         """
         self.envs = existing_envs
+        self.make_env = make_env
 
         # Fill up missing envs (so we have exactly num_envs sub-envs in this
         # VectorEnv.
@@ -231,6 +241,19 @@ class _VectorizedGymEnv(VectorEnv):
         if index is None:
             index = 0
         return self.envs[index].reset()
+
+    @override(VectorEnv)
+    def restart_at(self, index: Optional[int] = None) -> None:
+        if index is None:
+            index = 0
+        old_env = self.envs[index]
+        # Re-create the sub-env at the new index.
+        self.envs[index] = self.make_env(index)
+        # Try closing down the old (possibly faulty) sub-env, but ignore errors.
+        try:
+            old_env.close()
+        except Exception:
+            pass
 
     @override(VectorEnv)
     def vector_step(self, actions):
@@ -324,6 +347,18 @@ class VectorEnvWrapper(BaseEnv):
             if env_id is not None
             else 0: {_DUMMY_AGENT_ID: self.vector_env.reset_at(env_id)}
         }
+
+    @override(BaseEnv)
+    def try_restart(self, env_id: Optional[EnvID] = None) -> None:
+        assert env_id is None or isinstance(env_id, int)
+        # Restart the sub-env at the index.
+        self.vector_env.restart_at(env_id)
+        # Auto-reset (get ready for next `poll()`).
+        self.new_obs[env_id] = self.vector_env.reset_at(env_id)
+        # Reset all other states to null values.
+        self.cur_rewards[env_id] = None
+        self.cur_dones[env_id] = False
+        self.cur_infos[env_id] = None
 
     @override(BaseEnv)
     def get_sub_environments(self, as_dict: bool = False) -> Union[List[EnvType], dict]:

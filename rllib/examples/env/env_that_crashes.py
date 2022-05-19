@@ -1,0 +1,70 @@
+import logging
+import numpy as np
+import time
+
+from ray.rllib.examples.env.random_env import RandomEnv
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.error import EnvError
+
+logger = logging.getLogger(__name__)
+
+
+class EnvThatCrashes(RandomEnv):
+    """An env that crashes from time to time.
+
+    Useful for testing faulty sub-env (within a vectorized env) handling by
+    RolloutWorkers.
+
+    After crashing, the env expects a `reset()` call next (calling `step()` will
+    result in yet another error), which may or may not take a very long time to
+    complete. This simulates the env having to reinitialize some sub-processes, e.g.
+    an external connection.
+    """
+
+    def __init__(self, config=None):
+        super().__init__(config)
+
+        # Crash probability (in each `step()`).
+        self.p_crash = config.get("p_crash", 0.005)
+        # Only crash (with prob=p_crash) if on certain worker indices.
+        faulty_indices = config.get("crash_on_worker_indices", None)
+        if faulty_indices and config.worker_index not in faulty_indices:
+            self.p_crash = 0.0
+
+        # Time in seconds to initialize (in this c'tor).
+        init_time_s = config.get("init_time_s", 0)
+        time.sleep(init_time_s)
+
+        # Time in seconds to re-initialize, while `reset()` is called after a crash.
+        self.re_init_time_s = config.get("re_init_time_s", 10)
+
+        # Are we currently in crashed state and expect `reset()` call next?
+        self.in_crashed_state = False
+
+        # No env pre-checking?
+        self._skip_env_checking = config.get("skip_env_checking", False)
+
+    @override(RandomEnv)
+    def reset(self):
+        if self.in_crashed_state:
+            logger.info(
+                f"Env had crashed ... resetting (for {self.re_init_time_s} sec)"
+            )
+            time.sleep(self.re_init_time_s)
+            self.in_crashed_state = False
+        return super().reset()
+
+    @override(RandomEnv)
+    def step(self, action):
+        # Still in crashed state -> Must call `reset()` first.
+        if self.in_crashed_state:
+            raise EnvError("Env had crashed before! Must call `reset()` first.")
+        # Should we crash?
+        elif np.random.random() < self.p_crash:
+            self.in_crashed_state = True
+            raise EnvError(
+                "Simulated env crash! Feel free to use any "
+                "other exception type here instead."
+            )
+        # No crash.
+        return super().step(action)

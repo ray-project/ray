@@ -1255,6 +1255,20 @@ py_test(
 # Tag: env
 # --------------------------------------------------------------------
 
+py_test(
+    name = "env/tests/test_external_env",
+    tags = ["team:ml", "env"],
+    size = "large",
+    srcs = ["env/tests/test_external_env.py"]
+)
+
+py_test(
+    name = "env/tests/test_external_multi_agent_env",
+    tags = ["team:ml", "env"],
+    size = "medium",
+    srcs = ["env/tests/test_external_multi_agent_env.py"]
+)
+
 sh_test(
     name = "env/tests/test_local_inference_cartpole",
     tags = ["team:ml", "env"],
@@ -1330,6 +1344,13 @@ py_test(
     tags = ["team:ml", "env"],
     size = "medium",
     srcs = ["env/tests/test_remote_worker_envs.py"]
+)
+
+py_test(
+    name = "env/tests/test_env_with_subprocess",
+    tags = ["team:ml", "env"],
+    size = "medium",
+    srcs = ["env/tests/test_env_with_subprocess.py"]
 )
 
 py_test(
@@ -1688,14 +1709,6 @@ py_test(
 )
 
 py_test(
-    name = "test_env_with_subprocess",
-    main = "tests/test_env_with_subprocess.py",
-    tags = ["team:ml", "tests_dir", "tests_dir_E"],
-    size = "medium",
-    srcs = ["tests/test_env_with_subprocess.py"]
-)
-
-py_test(
     name = "tests/test_execution",
     tags = ["team:ml", "tests_dir", "tests_dir_E"],
     size = "medium",
@@ -1707,20 +1720,6 @@ py_test(
     tags = ["team:ml", "tests_dir", "tests_dir_E"],
     size = "medium",
     srcs = ["tests/test_export.py"]
-)
-
-py_test(
-    name = "tests/test_external_env",
-    tags = ["team:ml", "tests_dir", "tests_dir_E"],
-    size = "large",
-    srcs = ["tests/test_external_env.py"]
-)
-
-py_test(
-    name = "tests/test_external_multi_agent_env",
-    tags = ["team:ml", "tests_dir", "tests_dir_E"],
-    size = "medium",
-    srcs = ["tests/test_external_multi_agent_env.py"]
 )
 
 py_test(

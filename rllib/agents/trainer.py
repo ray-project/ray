@@ -26,7 +26,7 @@ from typing import (
 
 import ray
 from ray.actor import ActorHandle
-from ray.exceptions import RayError
+from ray.exceptions import RayActorError, RayError
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.env.env_context import EnvContext
@@ -106,10 +106,6 @@ from ray.util.timer import _Timer
 tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
-
-# Max number of times to retry a worker failure. We shouldn't try too many
-# times in a row since that would indicate a persistent cluster issue.
-MAX_WORKER_FAILURE_RETRIES = 3
 
 
 @DeveloperAPI
@@ -353,6 +349,7 @@ class Trainer(Trainable):
         # point.
         # Old design: Override `Trainer._init` (or use `build_trainer()`, which
         # will do this for you).
+        _init = True
         try:
             self._init(self.config, self.env_creator)
         # New design: Override `Trainable.setup()` (as indented by Trainable)
@@ -363,21 +360,30 @@ class Trainer(Trainable):
         # parallel to training.
         # TODO: Deprecate `_init()` and remove this try/except block.
         except NotImplementedError:
-            # Only if user did not override `_init()`:
+            _init = False
+
+        # Only if user did not override `_init()`:
+        if not _init:
             # - Create rollout workers here automatically.
             # - Run the execution plan to create the local iterator to `next()`
             #   in each training iteration.
             # This matches the behavior of using `build_trainer()`, which
             # has been deprecated.
-            self.workers = WorkerSet(
-                env_creator=self.env_creator,
-                validate_env=self.validate_env,
-                policy_class=self.get_default_policy_class(self.config),
-                trainer_config=self.config,
-                num_workers=self.config["num_workers"],
-                local_worker=True,
-                logdir=self.logdir,
-            )
+            try:
+                self.workers = WorkerSet(
+                    env_creator=self.env_creator,
+                    validate_env=self.validate_env,
+                    policy_class=self.get_default_policy_class(self.config),
+                    trainer_config=self.config,
+                    num_workers=self.config["num_workers"],
+                    local_worker=True,
+                    logdir=self.logdir,
+                )
+            except RayActorError as e:
+                if e.actor_init_failed:
+                    raise e.args[0].args[2]
+                else:
+                    raise e
             # By default, collect metrics for all remote workers.
             self._remote_workers_for_metrics = self.workers.remote_workers()
 
@@ -2184,11 +2190,6 @@ class Trainer(Trainable):
     def _step_context(trainer):
         class StepCtx:
             def __enter__(self):
-                # First call to stop, `result` is expected to be None ->
-                # Start with self.failures=-1 -> set to 0 the very first call
-                # to `self.stop()`.
-                self.failures = -1
-
                 self.time_start = time.time()
                 self.sampled = 0
                 self.trained = 0
@@ -2207,13 +2208,10 @@ class Trainer(Trainable):
 
             def should_stop(self, result):
 
-                # First call to stop, `result` is expected to be None ->
-                # self.failures=0.
+                # First call to stop, `result` is expected to be None.
+                # Return False (meaning: do continue and perform first step).
                 if result is None:
-                    # Fail after n retries.
-                    self.failures += 1
-                    if self.failures > MAX_WORKER_FAILURE_RETRIES:
-                        raise RuntimeError("Failed to recover from worker crash.")
+                    return False
 
                 # Stopping criteria: Only when using the `training_iteration`
                 # API, b/c for the `exec_plan` API, the logic to stop is
@@ -2252,11 +2250,12 @@ class Trainer(Trainable):
                         and (not min_train_ts or self.trained >= min_train_ts)
                     ):
                         return True
-                # No errors (we got results) -> Break.
-                elif result is not None:
+                    else:
+                        return False
+                # No errors (we got results != None) -> Return True
+                # (meaning: yes, should stop -> no further step attempts).
+                else:
                     return True
-
-                return False
 
         return StepCtx()
 

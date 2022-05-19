@@ -556,6 +556,21 @@ class MultiAgentEnvWrapper(BaseEnv):
         return ret
 
     @override(BaseEnv)
+    def try_restart(self, env_id: Optional[EnvID] = None) -> None:
+        if isinstance(env_id, int):
+            env_id = [env_id]
+        if env_id is None:
+            env_id = list(range(len(self.envs)))
+        for idx in env_id:
+            # Recreate the sub-env.
+            self.envs[idx] = self.make_env(idx)
+            # Replace the multi-agent env state at the index.
+            self.env_states[idx] = _MultiAgentEnvState(self.envs[idx])
+            # Remove done flag at index.
+            if idx in self.dones:
+                self.dones.remove(idx)
+
+    @override(BaseEnv)
     def get_sub_environments(self, as_dict: bool = False) -> List[EnvType]:
         if as_dict:
             return {_id: env_state for _id, env_state in enumerate(self.env_states)}

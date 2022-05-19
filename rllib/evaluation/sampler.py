@@ -657,7 +657,10 @@ def _env_runner(
         t0 = time.time()
         # Get observations from all ready agents.
         # types: MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, ...
-        unfiltered_obs, rewards, dones, infos, off_policy_actions = base_env.poll()
+        try:
+            unfiltered_obs, rewards, dones, infos, off_policy_actions = base_env.poll()
+        except Exception as e:
+            raise e
         perf_stats.env_wait_time += time.time() - t0
 
         if log_once("env_returns"):

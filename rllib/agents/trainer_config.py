@@ -126,6 +126,7 @@ class TrainerConfig:
         self.remote_env_batch_wait_ms = 0
         self.ignore_worker_failures = False
         self.recreate_failed_workers = False
+        self.validate_workers_after_creation = True
         self.horizon = None
         self.soft_horizon = False
         self.no_done_at_end = False
@@ -551,6 +552,7 @@ class TrainerConfig:
         remote_env_batch_wait_ms: Optional[float] = None,
         ignore_worker_failures: Optional[bool] = None,
         recreate_failed_workers: Optional[bool] = None,
+        validate_workers_after_creation: Optional[bool] = None,
         horizon: Optional[int] = None,
         soft_horizon: Optional[bool] = None,
         no_done_at_end: Optional[bool] = None,
@@ -624,6 +626,8 @@ class TrainerConfig:
                 `self.recreated_worker=True` property value. It will have the same
                 `worker_index` as the original one. If True, the
                 `ignore_worker_failures` setting will be ignored.
+            validate_workers_after_creation: Whether to validate that each created
+                remote worker is healthy after its creation process.
             horizon: Number of steps after which the episode is forced to terminate.
                 Defaults to `env.spec.max_episode_steps` (if present) for Gym envs.
             soft_horizon: Calculate rewards but don't reset the environment when the
