@@ -1602,8 +1602,7 @@ void NodeManager::ProcessWaitRequestMessage(
           std::ostringstream stream;
           stream << "Failed to write WaitReply to the client. Status " << status
                  << ", message: " << status.message();
-          DisconnectClient(
-              client, rpc::WorkerExitType::SYSTEM_ERROR, stream.str());
+          DisconnectClient(client, rpc::WorkerExitType::SYSTEM_ERROR, stream.str());
         }
       });
 }
@@ -1897,8 +1896,7 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
     if (request.disconnect_worker()) {
       // The worker should be destroyed.
       // TODO-SANG
-      DisconnectClient(
-          worker->Connection(), rpc::WorkerExitType::SYSTEM_ERROR, "");
+      DisconnectClient(worker->Connection(), rpc::WorkerExitType::SYSTEM_ERROR, "");
     } else {
       if (worker->IsBlocked()) {
         // Handle the edge case where the worker was returned before we got the

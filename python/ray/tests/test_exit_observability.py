@@ -7,10 +7,14 @@ import ray
 import pytest
 
 from ray.experimental.state.api import list_workers
-from ray._private.test_utils import (
-    wait_for_condition,
-    run_string_as_driver
-)
+from ray._private.test_utils import wait_for_condition, run_string_as_driver
+
+
+def get_worker_by_pid(pid):
+    for w in list_workers().values():
+        if w["pid"] == pid:
+            return w
+    assert False
 
 
 def test_worker_failure_information_system_error(ray_start_cluster):
@@ -51,12 +55,6 @@ def test_worker_failure_information_system_error(ray_start_cluster):
 
         def exit(self, exit_code):
             sys.exit(exit_code)
-
-    def get_worker_by_pid(pid):
-        for w in list_workers().values():
-            if w["pid"] == pid:
-                return w
-        assert False
 
     """
     Failure from the connection
@@ -115,9 +113,20 @@ import ray
 import os
 ray.init(address="{address}")
 print(os.getpid())
-# ray.shutdown()
-""".format(address=cluster.address)
-    print(run_string_as_driver(driver))
+ray.shutdown()
+""".format(
+        address=cluster.address
+    )
+    a = run_string_as_driver(driver)
+    driver_pid = int(a.strip("\n"))
+
+    def verify_worker_exit_by_shutdown():
+        worker = get_worker_by_pid(driver_pid)
+        type = worker["exit_type"]
+        detail = worker["exit_detail"]
+        return type == "INTENDED_USER_EXIT" and "ray.shutdown()" in detail
+
+    wait_for_condition(verify_worker_exit_by_shutdown)
 
 
 if __name__ == "__main__":

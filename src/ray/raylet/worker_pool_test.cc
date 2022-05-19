@@ -1184,8 +1184,8 @@ TEST_F(WorkerPoolTest, NoPopOnCrashedWorkerProcess) {
 
   // 3. kill the worker process. Now let's assume that Raylet found that the connection
   // with worker 1 disconnected first.
-  worker_pool_->DisconnectWorker(
-      worker1, /*disconnect_type=*/rpc::WorkerExitType::SYSTEM_ERROR);
+  worker_pool_->DisconnectWorker(worker1,
+                                 /*disconnect_type=*/rpc::WorkerExitType::SYSTEM_ERROR);
 
   // 4. but the RPC for announcing worker port for worker 2 is already in Raylet input
   // buffer. So now Raylet needs to handle worker 2.
@@ -1198,8 +1198,8 @@ TEST_F(WorkerPoolTest, NoPopOnCrashedWorkerProcess) {
   ASSERT_NE(worker_pool_->PopWorkerSync(task_spec), worker2);
 
   // 6. Now Raylet disconnects with worker 2.
-  worker_pool_->DisconnectWorker(
-      worker2, /*disconnect_type=*/rpc::WorkerExitType::SYSTEM_ERROR);
+  worker_pool_->DisconnectWorker(worker2,
+                                 /*disconnect_type=*/rpc::WorkerExitType::SYSTEM_ERROR);
 }
 
 TEST_F(WorkerPoolTest, TestWorkerCapping) {
@@ -1962,8 +1962,8 @@ TEST_F(WorkerPoolTest, TestIOWorkerFailureAndSpawn) {
     RAY_CHECK_OK(
         worker_pool_->RegisterWorker(worker, proc.GetId(), token, [](Status, int) {}));
     // The worker failed before announcing the worker port (i.e. OnworkerStarted)
-    worker_pool_->DisconnectWorker(
-        worker, /*disconnect_type=*/rpc::WorkerExitType::SYSTEM_ERROR);
+    worker_pool_->DisconnectWorker(worker,
+                                   /*disconnect_type=*/rpc::WorkerExitType::SYSTEM_ERROR);
   }
 
   ASSERT_EQ(worker_pool_->NumSpillWorkerStarting(), 0);
@@ -1985,8 +1985,8 @@ TEST_F(WorkerPoolTest, TestIOWorkerFailureAndSpawn) {
 
   for (const auto &worker : spill_worker_set) {
     worker_pool_->PushSpillWorker(worker);
-    worker_pool_->DisconnectWorker(
-        worker, /*disconnect_type=*/rpc::WorkerExitType::SYSTEM_ERROR);
+    worker_pool_->DisconnectWorker(worker,
+                                   /*disconnect_type=*/rpc::WorkerExitType::SYSTEM_ERROR);
   }
   spill_worker_set.clear();
 
@@ -2012,8 +2012,8 @@ TEST_F(WorkerPoolTest, TestIOWorkerFailureAndSpawn) {
 
   // This time, we mock worker failure before it's returning to worker pool.
 
-  worker_pool_->DisconnectWorker(
-      worker2, /*disconnect_type=*/rpc::WorkerExitType::SYSTEM_ERROR);
+  worker_pool_->DisconnectWorker(worker2,
+                                 /*disconnect_type=*/rpc::WorkerExitType::SYSTEM_ERROR);
   worker_pool_->PushSpillWorker(worker2);
   spill_worker_set.clear();
 

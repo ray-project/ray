@@ -37,10 +37,8 @@ void GcsWorkerManager::HandleReportWorkerFailure(
                    rpc::WorkerExitType_Name(request.worker_failure().exit_type()),
                    ", exit_detail = ",
                    request.worker_failure().exit_detail());
-  if (request.worker_failure().exit_type() ==
-          rpc::WorkerExitType::INTENDED_USER_EXIT ||
-      request.worker_failure().exit_type() ==
-          rpc::WorkerExitType::INTENDED_SYSTEM_EXIT) {
+  if (request.worker_failure().exit_type() == rpc::WorkerExitType::INTENDED_USER_EXIT ||
+      request.worker_failure().exit_type() == rpc::WorkerExitType::INTENDED_SYSTEM_EXIT) {
     RAY_LOG(DEBUG) << message;
   } else {
     RAY_LOG(WARNING) << message
