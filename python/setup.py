@@ -21,7 +21,7 @@ import urllib.request
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_PYTHONS = [(3, 6), (3, 7), (3, 8), (3, 9)]
+SUPPORTED_PYTHONS = [(3, 6), (3, 7), (3, 8), (3, 9), (3, 10)]
 # When the bazel version is updated, make sure to update it
 # in WORKSPACE file as well.
 SUPPORTED_BAZEL = (4, 2, 1)
@@ -254,6 +254,15 @@ if setup_spec.type == SetupType.RAY:
         "pyyaml",
         "scipy",
     ]
+
+    # Ray AI Runtime should encompass Data, Tune, and Serve.
+    setup_spec.extras["air"] = list(
+        set(
+            setup_spec.extras["tune"]
+            + setup_spec.extras["data"]
+            + setup_spec.extras["serve"]
+        )
+    )
 
     setup_spec.extras["all"] = list(
         set(chain.from_iterable(setup_spec.extras.values()))

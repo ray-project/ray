@@ -5,17 +5,11 @@ More Ray ML Libraries
     Going forward, make sure that all "Ray Lightning" and XGBoost topics are in one document or group,
     and not next to each other.
 
-.. toctree::
-    :maxdepth: 1
-    :caption: Other Libraries
+Ray has a variety of different extra integrations with ecosystem libraries.
 
-    ../ray-air/getting-started
-    joblib
-    lightgbm-ray
-    multiprocessing
-    ray-collective
-    ray-lightning
-    ../ray-core/examples/using-ray-with-pytorch-lightning
-    xgboost-ray
-    ../ray-core/examples/dask_xgboost/dask_xgboost
-    ../ray-core/examples/modin_xgboost/modin_xgboost
+- :ref:`ray-joblib`
+- :ref:`lightgbm-ray`
+- :ref:`ray-multiprocessing`
+- :ref:`ray-collective`
+- :ref:`ray-lightning`
+- :ref:`xgboost-ray`

@@ -9,7 +9,7 @@ from ray.rllib.policy.sample_batch import (
     SampleBatch,
     MultiAgentBatch,
 )
-from ray.rllib.utils.annotations import override, ExperimentalAPI
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.multi_agent_prioritized_replay_buffer import (
     MultiAgentPrioritizedReplayBuffer,
 )
@@ -21,17 +21,18 @@ from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import (
     ReplayMode,
 )
 from ray.rllib.utils.typing import PolicyID, SampleBatchType
-from ray.rllib.execution.buffers.replay_buffer import _ALL_POLICIES
+from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES
 from ray.util.debug import log_once
+from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
 
-@ExperimentalAPI
+@DeveloperAPI
 class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
     """This buffer adds replayed samples to a stream of new experiences.
 
-    - Any newly added batch (`add_batch()`) is immediately returned upon
+    - Any newly added batch (`add()`) is immediately returned upon
     the next `sample` call (close to on-policy) as well as being moved
     into the buffer.
     - Additionally, a certain number of old samples is mixed into the
@@ -57,6 +58,8 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
         >>> buffer.add(<D>)
         >>> buffer.sample()
         ... [<D>, <A>, <C>]
+        >>> # or: [<D>, <A>, <A>], [<D>, <B>, <A>] or [<D>, <B>, <C>], etc..
+        >>> # but always <D> as it is the newest sample
 
         # replay proportion 0.0 -> replay disabled:
         >>> buffer = MixInReplay(capacity=100, replay_ratio=0.0)
@@ -166,7 +169,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
 
         self.last_added_batches = collections.defaultdict(list)
 
-    @ExperimentalAPI
+    @DeveloperAPI
     @override(MultiAgentPrioritizedReplayBuffer)
     def add(self, batch: SampleBatchType, **kwargs) -> None:
         """Adds a batch to the appropriate policy's replay buffer.
@@ -235,10 +238,14 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
                                     "to be added to it. Some samples may be "
                                     "dropped."
                                 )
+            elif self._storage_unit == StorageUnit.FRAGMENTS:
+                for policy_id, sample_batch in batch.policy_batches.items():
+                    self.replay_buffers[policy_id].add(sample_batch, **kwargs)
+                    self.last_added_batches[policy_id].append(sample_batch)
 
         self._num_added += batch.count
 
-    @ExperimentalAPI
+    @DeveloperAPI
     @override(MultiAgentReplayBuffer)
     def sample(
         self, num_items: int, policy_id: PolicyID = DEFAULT_POLICY_ID, **kwargs
@@ -251,7 +258,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
         an empty batch if there are no items in the buffer.
 
         Args:
-            num_items: Number of items to sample fromM this buffer.
+            num_items: Number of items to sample from this buffer.
             policy_id: ID of the policy that produced the experiences to be
             sampled.
             **kwargs: Forward compatibility kwargs.
@@ -347,7 +354,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
 
             return MultiAgentBatch.concat_samples(samples)
 
-    @ExperimentalAPI
+    @DeveloperAPI
     @override(MultiAgentPrioritizedReplayBuffer)
     def get_state(self) -> Dict[str, Any]:
         """Returns all local state.
@@ -362,7 +369,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
         parent.update(data)
         return parent
 
-    @ExperimentalAPI
+    @DeveloperAPI
     @override(MultiAgentPrioritizedReplayBuffer)
     def set_state(self, state: Dict[str, Any]) -> None:
         """Restores all local state to the provided `state`.

@@ -7,7 +7,6 @@ import pytest
 import ray
 from ray import workflow
 from ray.workflow import workflow_access
-from ray.workflow.tests.utils import update_workflow_options
 
 
 def test_basic_workflows(workflow_start_regular_shared):
@@ -208,29 +207,31 @@ def test_step_failure(workflow_start_regular_shared, tmp_path):
         return v
 
     with pytest.raises(Exception):
-        workflow.create(update_workflow_options(unstable_step, max_retries=-2).bind())
+        workflow.create(
+            unstable_step.options(**workflow.options(max_retries=-2).bind())
+        )
 
     with pytest.raises(Exception):
         workflow.create(
-            update_workflow_options(unstable_step, max_retries=2).bind()
+            unstable_step.options(**workflow.options(max_retries=2)).bind()
         ).run()
     assert (
         10
         == workflow.create(
-            update_workflow_options(unstable_step, max_retries=7).bind()
+            unstable_step.options(**workflow.options(max_retries=7)).bind()
         ).run()
     )
     (tmp_path / "test").write_text("0")
     (ret, err) = workflow.create(
-        update_workflow_options(
-            unstable_step, max_retries=2, catch_exceptions=True
+        unstable_step.options(
+            **workflow.options(max_retries=2, catch_exceptions=True)
         ).bind()
     ).run()
     assert ret is None
     assert isinstance(err, ValueError)
     (ret, err) = workflow.create(
-        update_workflow_options(
-            unstable_step, max_retries=7, catch_exceptions=True
+        unstable_step.options(
+            **workflow.options(max_retries=7, catch_exceptions=True)
         ).bind()
     ).run()
     assert ret == 10
@@ -293,7 +294,7 @@ def test_nested_catch_exception(workflow_start_regular_shared, tmp_path):
         return workflow.continuation(f2.bind())
 
     assert (10, None) == workflow.create(
-        update_workflow_options(f1, catch_exceptions=True).bind()
+        f1.options(**workflow.options(catch_exceptions=True)).bind()
     ).run()
 
 
@@ -306,7 +307,7 @@ def test_nested_catch_exception_2(workflow_start_regular_shared, tmp_path):
             return workflow.continuation(f1.bind(n - 1))
 
     ret, err = workflow.create(
-        update_workflow_options(f1, catch_exceptions=True).bind(5)
+        f1.options(**workflow.options(catch_exceptions=True)).bind(5)
     ).run()
     assert ret is None
     assert isinstance(err, ValueError)
@@ -319,7 +320,7 @@ def test_dynamic_output(workflow_start_regular_shared):
             if n < 3:
                 raise Exception("Failed intentionally")
             return workflow.continuation(
-                update_workflow_options(exponential_fail, name=f"step_{n}").bind(
+                exponential_fail.options(**workflow.options(name=f"step_{n}")).bind(
                     k * 2, n - 1
                 )
             )
@@ -329,7 +330,7 @@ def test_dynamic_output(workflow_start_regular_shared):
     # latest successful step.
     try:
         workflow.create(
-            update_workflow_options(exponential_fail, name="step_0").bind(3, 10)
+            exponential_fail.options(**workflow.options(name="step_0")).bind(3, 10)
         ).run(workflow_id="dynamic_output")
     except Exception:
         pass
@@ -357,7 +358,7 @@ def test_workflow_error_message():
     assert str(e.value) == expected_error_msg
 
 
-def test_options_update(workflow_start_regular_shared):
+def test_options_update():
     from ray.workflow.common import WORKFLOW_OPTIONS
 
     # Options are given in decorator first, then in the first .options()
@@ -371,18 +372,19 @@ def test_options_update(workflow_start_regular_shared):
     # .options(), then preserved in the second options.
     # metadata and ray_options are "updated"
     # max_retries only defined in the decorator and it got preserved all the way
-    new_f = update_workflow_options(
-        f, name="new_name", num_returns=2, metadata={"extra_k2": "extra_v2"}
+    new_f = f.options(
+        num_returns=2,
+        **workflow.options(name="new_name", metadata={"extra_k2": "extra_v2"}),
     )
     options = new_f.bind().get_options()
     assert options == {
         "num_cpus": 2,
+        "num_returns": 2,
         "_metadata": {
             WORKFLOW_OPTIONS: {
                 "name": "new_name",
                 "metadata": {"extra_k2": "extra_v2"},
                 "max_retries": 1,
-                "num_returns": 2,
             }
         },
     }

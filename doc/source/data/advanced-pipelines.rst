@@ -140,6 +140,14 @@ Transformations made prior to the Dataset prior to the call to ``.repeat()`` are
 
 For example, in the following pipeline, the ``map(func)`` transformation only occurs once. However, the random shuffle is applied to each repetition in the pipeline.
 
+.. note::
+  Global per-epoch shuffling is an expensive operation that will slow down your ML
+  ingest pipeline, prevents you from using a fully-streaming ML ingest pipeline, and
+  can cause large increases in memory utilization and spilling to disk; only use
+  global per-epoch shuffling if your model benefits from it! If your model doesn't
+  benefit from global per-epoch shuffling and/or you run into performance or stability
+  issues, you should try out windowed or local per-epoch shuffling.
+
 **Code**:
 
 .. code-block:: python

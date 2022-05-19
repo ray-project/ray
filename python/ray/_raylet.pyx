@@ -418,7 +418,7 @@ cdef prepare_args_internal(
                     "Could not serialize the argument "
                     f"{repr(arg)} for a task or actor "
                     f"{function_descriptor.repr}. Check "
-                    "https://docs.ray.io/en/master/serialization.html#troubleshooting " # noqa
+                    "https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting " # noqa
                     "for more information.")
                 raise TypeError(msg) from e
             metadata = serialized_arg.metadata
@@ -1116,7 +1116,6 @@ cdef class CoreWorker:
         options.unhandled_exception_handler = unhandled_exception_handler
         options.get_lang_stack = get_py_stack
         options.is_local_mode = local_mode
-        options.num_workers = 1
         options.kill_main = kill_main_task
         options.terminate_asyncio_thread = terminate_asyncio_thread
         options.serialized_job_config = serialized_job_config

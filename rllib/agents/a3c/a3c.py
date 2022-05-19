@@ -6,11 +6,7 @@ from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.parallel_requests import asynchronous_parallel_requests
-from ray.rllib.execution.rollout_ops import AsyncGradients
-from ray.rllib.execution.train_ops import ApplyGradients
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
@@ -25,7 +21,6 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.typing import ResultDict, TrainerConfigDict
-from ray.util.iter import LocalIterator
 
 logger = logging.getLogger(__name__)
 
@@ -247,25 +242,6 @@ class A3CTrainer(Trainer):
             local_worker.set_global_vars(global_vars)
 
         return learner_info_builder.finalize()
-
-    @staticmethod
-    @override(Trainer)
-    def execution_plan(
-        workers: WorkerSet, config: TrainerConfigDict, **kwargs
-    ) -> LocalIterator[dict]:
-        assert (
-            len(kwargs) == 0
-        ), "A3C execution_plan does NOT take any additional parameters"
-
-        # For A3C, compute policy gradients remotely on the rollout workers.
-        grads = AsyncGradients(workers)
-
-        # Apply the gradients as they arrive. We set update_all to False so
-        # that only the worker sending the gradient is updated with new
-        # weights.
-        train_op = grads.for_each(ApplyGradients(workers, update_all=False))
-
-        return StandardMetricsReporting(train_op, workers, config)
 
 
 # Deprecated: Use ray.rllib.agents.a3c.A3CConfig instead!

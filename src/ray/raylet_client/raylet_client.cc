@@ -345,6 +345,10 @@ void raylet::RayletClient::RequestObjectSpillage(
   grpc_client_->RequestObjectSpillage(request, callback);
 }
 
+std::shared_ptr<grpc::Channel> raylet::RayletClient::GetChannel() const {
+  return grpc_client_->Channel();
+}
+
 void raylet::RayletClient::ReportWorkerBacklog(
     const WorkerID &worker_id,
     const std::vector<rpc::WorkerBacklogReport> &backlog_reports) {
@@ -511,6 +515,12 @@ void raylet::RayletClient::GetResourceLoad(
     const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback) {
   rpc::GetResourceLoadRequest request;
   grpc_client_->GetResourceLoad(request, callback);
+}
+
+void raylet::RayletClient::NotifyGCSRestart(
+    const rpc::ClientCallback<rpc::NotifyGCSRestartReply> &callback) {
+  rpc::NotifyGCSRestartRequest request;
+  grpc_client_->NotifyGCSRestart(request, callback);
 }
 
 void raylet::RayletClient::SubscribeToPlasma(const ObjectID &object_id,

@@ -19,7 +19,7 @@ from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.tf_policy import LearningRateSchedule
+from ray.rllib.policy.tf_mixins import LearningRateSchedule
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import huber_loss
 from ray.rllib.utils.typing import ModelInputDict, TensorType, TrainerConfigDict
@@ -159,7 +159,7 @@ def r2d2_loss(policy: Policy, model, _, train_batch: SampleBatch) -> TensorType:
         # Seq-mask all loss-related terms.
         seq_mask = tf.sequence_mask(train_batch[SampleBatch.SEQ_LENS], T)[:, :-1]
         # Mask away also the burn-in sequence at the beginning.
-        burn_in = policy.config["burn_in"]
+        burn_in = policy.config["replay_buffer_config"]["replay_burn_in"]
         # Making sure, this works for both static graph and eager.
         if burn_in > 0:
             seq_mask = tf.cond(
