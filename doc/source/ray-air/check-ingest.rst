@@ -9,7 +9,7 @@ Data ingest is the process of loading data from storage, apply preprocessing ste
 For datasets that are small, ingest is usually not an issue. However, ingest can be tricky to set up when datasets grow
 large enough so that they may not fit fully in memory on a single node, or even in aggregate cluster memory.
 
-AIR builds its ingest pipeline on Ray Datasets, which is a framework-agnostic distributed data loading library. If you have
+AIR builds its ingest pipeline on :ref:`Ray Datasets <datasets>`, which is a framework-agnostic distributed data loading library. If you have
 an existing ingest pipeline (e.g., based on TF data), there is some upfront effort porting your loading code to Datasets.
 In return, AIR provides portability across ML frameworks as well as advanced capabilities such as global random shuffles,
 which are not possible in less general ML data preprocessing libraries.
@@ -34,7 +34,7 @@ not loaded until ``fit`` is called.
 
 **Preprocessing**: Next, if a preprocessor is defined, AIR will ``fit`` the preprocessor (e.g., for stateful preprocessors) on the
 ``"train"`` dataset, and then ``transform`` all given datasets with the fitted preprocessor. This is done by calling ``prep.fit_transform()``
-on the train dataset passed to the Trainer, followed by ``prep.fit()`` on remaining datasets. Preprocessors use Dataset APIs to execute
+on the train dataset passed to the Trainer, followed by ``prep.transform()`` on remaining datasets. Preprocessors use Dataset APIs to execute
 preprocessing in a parallelized way across the cluster. Both read and preprocessing stages use Ray tasks under the hood.
 
 **Training**: Finally, AIR passes a reference to the preprocessed dataset to Train workers (Ray actors) launched by the Trainer. Each worker then
