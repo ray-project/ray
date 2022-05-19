@@ -1,22 +1,23 @@
-import ray.train as train
-from ray.train.trainer import Trainer
-from ray.train.callbacks import JsonLoggerCallback
-
-from typing import Dict
 import argparse
+import functools
 import time
-from flax import linen as nn
-from flax.training import train_state
+from typing import Dict
+
+import einops
 import jax
 import jax.numpy as jnp
 import numpy as np
 import optax
-import functools
+import ray.train as train
 import tensorflow_datasets as tfds
-from jax import lax
 from flax import jax_utils
+from flax import linen as nn
+from flax.training import train_state
 from flax.training.common_utils import shard
-import einops
+from jax import lax
+from ray.train.callbacks import JsonLoggerCallback
+from ray.train.trainer import Trainer
+
 
 def get_datasets():
     """Load MNIST train and test datasets into memory."""
@@ -29,33 +30,42 @@ def get_datasets():
     # Hide any GPUs from TensorFlow. Otherwise TF might reserve memory and make
     # it unavailable to JAX.
     import tensorflow as tf
+
     tf.config.experimental.set_visible_devices([], "GPU")
 
     ds_builder = tfds.builder("mnist")
     ds_builder.download_and_prepare()
     test_ds = tfds.as_numpy(ds_builder.as_dataset(split="test", batch_size=-1))
     train_ds = tfds.as_numpy(ds_builder.as_dataset(split="train", batch_size=-1))
-    
-    train_ds['image'] = train_ds['image'][: len(train_ds['image']) // jax.device_count() * jax.device_count()]
-    train_ds['label'] = train_ds['label'][: len(train_ds['label']) // jax.device_count() * jax.device_count()]
-    test_ds['image'] = test_ds['image'][: len(test_ds['image']) // jax.device_count() * jax.device_count()]
-    test_ds['label'] = test_ds['label'][: len(test_ds['label']) // jax.device_count() * jax.device_count()]
+
+    train_ds["image"] = train_ds["image"][
+        : len(train_ds["image"]) // jax.device_count() * jax.device_count()
+    ]
+    train_ds["label"] = train_ds["label"][
+        : len(train_ds["label"]) // jax.device_count() * jax.device_count()
+    ]
+    test_ds["image"] = test_ds["image"][
+        : len(test_ds["image"]) // jax.device_count() * jax.device_count()
+    ]
+    test_ds["label"] = test_ds["label"][
+        : len(test_ds["label"]) // jax.device_count() * jax.device_count()
+    ]
 
     train_ds["image"] = np.float32(shard_fn(train_ds["image"])) / 255.0
     test_ds["image"] = np.float32(shard_fn(test_ds["image"])) / 255.0
     train_ds["label"] = np.int32(shard_fn(train_ds["label"]))
     test_ds["label"] = np.int32(shard_fn(test_ds["label"]))
     return train_ds, test_ds
-    
 
 
 def train_func(config: Dict):
 
-    # NOTE: the flax nn module has to define inside 
+    # NOTE: the flax nn module has to define inside
     # otherwise, the error message `ValueError: parent must be None, Module or Scope`
     # see: https://github.com/google/flax/discussions/1390
     class MLP(nn.Module):
         """A simple mlp model."""
+
         @nn.compact
         def __call__(self, x):
             x = x.reshape((x.shape[0], -1))  # flatten
@@ -112,7 +122,6 @@ def train_func(config: Dict):
         accuracy = lax.pmean(accuracy, axis_name="ensemble")
         return state, loss, accuracy
 
-
     def train_epoch(state, train_ds, batch_size, rng):
         """Train for a single epoch."""
         train_ds_size = len(train_ds["image"])
@@ -133,13 +142,12 @@ def train_func(config: Dict):
         train_accuracy = np.mean(epoch_accuracy)
         return state, train_loss, train_accuracy
 
-
     """Execute model training"""
     # get the configuration
-    learning_rate = config['learning_rate']
-    momentum = config['momentum']
-    batch_size = config['batch_size']
-    num_epochs = config['num_epochs']
+    learning_rate = config["learning_rate"]
+    momentum = config["momentum"]
+    batch_size = config["batch_size"]
+    num_epochs = config["num_epochs"]
     worker_batch_size = batch_size // train.world_size()
 
     # Create datasets
@@ -167,8 +175,9 @@ def train_func(config: Dict):
 
         train.report(train_loss=train_loss, train_accuracy=train_accuracy)
         acc_results.append(train_accuracy)
-    
+
     return acc_results
+
 
 def train_mnist(num_workers=4, use_gpu=True):
     trainer = Trainer(backend="jax", num_workers=num_workers, use_gpu=use_gpu)
@@ -176,12 +185,18 @@ def train_mnist(num_workers=4, use_gpu=True):
     trainer.start()
     result = trainer.run(
         train_func=train_func,
-        config={'learning_rate': 0.1, 'momentum': 0.9, "batch_size": 8192, "num_epochs": 10},
+        config={
+            "learning_rate": 0.1,
+            "momentum": 0.9,
+            "batch_size": 8192,
+            "num_epochs": 10,
+        },
         callbacks=[JsonLoggerCallback()],
     )
     trainer.shutdown()
     print()
     print(f"Loss results: {result}")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -202,5 +217,6 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     import ray
+
     ray.init(address=args.address)
     train_mnist(num_workers=args.num_workers, use_gpu=args.use_gpu)
