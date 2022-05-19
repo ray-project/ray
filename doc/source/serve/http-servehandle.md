@@ -236,7 +236,7 @@ For example, the json request adapters parse JSON in HTTP body:
 ```python
 from ray.serve.drivers import DAGDriver
 from ray.serve.http_adapters import json_request
-from ray.experimental.dag.input_node import InputNode
+from ray.serve.dag import InputNode
 
 with InputNode() as input_node:
     ...

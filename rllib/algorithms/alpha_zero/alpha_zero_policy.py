@@ -1,8 +1,8 @@
 import numpy as np
 
+from ray.rllib.algorithms.alpha_zero.mcts import Node, RootParentNode
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.torch_policy import TorchPolicy
-from ray.rllib.contrib.alpha_zero.core.mcts import Node, RootParentNode
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
