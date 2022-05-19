@@ -720,11 +720,9 @@ void CoreWorker::ExitIfParentRayletDies() {
   auto raylet_pid = static_cast<pid_t>(std::stoi(RayConfig::instance().RAYLET_PID()));
   bool should_shutdown = !IsProcessAlive(raylet_pid);
   if (should_shutdown) {
-    std::ostringstream stream;
-    stream << "Shutting down the core worker because the local raylet failed. "
-           << "Check out the raylet.out log file. Raylet pid: " << raylet_pid;
-    RAY_LOG(WARNING) << stream.str();
-    task_execution_service_.post([this]() { Shutdown(); }, "CoreWorker.Shutdown");
+    RAY_LOG(WARNING) << "Shutting down the core worker because the local raylet failed. "
+                     << "Check out the raylet.out log file. Raylet pid: " << raylet_pid;
+    QuickExit();
   }
 }
 
