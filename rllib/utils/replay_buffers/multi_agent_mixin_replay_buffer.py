@@ -80,7 +80,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
         prioritized_replay_beta: float = 0.4,
         prioritized_replay_eps: float = 1e-6,
         learning_starts: int = 1000,
-        max_sequence_length: int = 1,
+        replay_sequence_length: int = 1,
         replay_burn_in: int = 0,
         replay_zero_init_states: bool = True,
         replay_ratio: float = 0.66,
@@ -100,7 +100,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
                 `replay()` will yield samples (before that, `replay()` will
                 return None).
             capacity: The capacity of the buffer, measured in `storage_unit`.
-            max_sequence_length: The sequence length (T) of a single
+            replay_sequence_length: The sequence length (T) of a single
                 sample. If > 1, we will sample B x T from this buffer.
             replay_burn_in: The burn-in length in case
                 `replay_sequence_length` > 0. This is the number of timesteps
@@ -150,7 +150,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
             num_shards=num_shards,
             replay_mode="independent",
             learning_starts=learning_starts,
-            max_sequence_length=max_sequence_length,
+            replay_sequence_length=replay_sequence_length,
             replay_burn_in=replay_burn_in,
             replay_zero_init_states=replay_zero_init_states,
             underlying_buffer_config=underlying_buffer_config,
