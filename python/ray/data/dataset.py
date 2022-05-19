@@ -114,10 +114,36 @@ class Dataset(Generic[T]):
     (potentially processed) Dataset can be saved back to external storage systems via
     the `write_*()` APIs.
 
+    Examples:
+        >>> import ray
+        >>> # Create dataset from synthetic data.
+        >>> ds = ray.data.range(1000) # doctest: +SKIP
+        >>> # Create dataset from in-memory data.
+        >>> ds = ray.data.from_items( # doctest: +SKIP
+        ...     [{"col1": i, "col2": i * 2} for i in range(1000)])
+        >>> # Create dataset from external storage system.
+        >>> ds = ray.data.read_parquet("s3://bucket/path") # doctest: +SKIP
+        >>> # Save dataset back to external storage system.
+        >>> ds.write_csv("s3//bucket/output") # doctest: +SKIP
+
     Datasets supports parallel processing at scale: transformations such as
     `.map_batches()`, aggregations such as `.min()`/`.max()`/`.mean()`, grouping via
     `.groupby()`, shuffling operations such as `.sort()`, `.random_shuffle()`, and
     `.repartition()`.
+
+    Examples:
+        >>> import ray
+        >>> ds = ray.data.range(1000) # doctest: +SKIP
+        >>> # Transform in parallel with map_batches().
+        >>> ds.map_batches(lambda batch: [v * 2 for v in batch]) # doctest: +SKIP
+        >>> # Compute max.
+        >>> ds.max() # doctest: +SKIP
+        >>> # Group the data.
+        >>> ds.groupby(lambda x: x % 3).count() # doctest: +SKIP
+        >>> # Shuffle this dataset randomly.
+        >>> ds.random_shuffle() # doctest: +SKIP
+        >>> # Sort it back in order.
+        >>> ds.sort()
 
     Since Datasets are just lists of Ray object refs, they can be passed
     between Ray tasks and actors without incurring a copy. Datasets support
