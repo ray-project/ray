@@ -166,14 +166,6 @@ py_test(
 )
 
 py_test(
-    name = "sklearn_example",
-    size = "medium",
-    srcs = ["examples/sklearn_example.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
     name = "upload_to_comet_ml",
     size = "medium",
     srcs = ["examples/upload_to_comet_ml.py"],
