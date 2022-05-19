@@ -57,6 +57,7 @@ __all__ = [
     "PathPartitionEncoder",
     "PathPartitionFilter",
     "PathPartitionParser",
+    "PathPartitionScheme",
     "RandomIntRowDatasource",
     "RangeDatasource",
     "ReadTask",
