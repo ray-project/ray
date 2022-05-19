@@ -144,7 +144,7 @@ class Dataset(Generic[T]):
         >>> # Shuffle this dataset randomly.
         >>> ds.random_shuffle() # doctest: +SKIP
         >>> # Sort it back in order.
-        >>> ds.sort()
+        >>> ds.sort() # doctest: +SKIP
 
     Since Datasets are just lists of Ray object refs, they can be passed
     between Ray tasks and actors without incurring a copy. Datasets support
