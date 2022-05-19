@@ -21,6 +21,10 @@
 #  # Owning team. This field will be persisted to the database
 #  team: ml
 #
+#  # Python version. This optional field determines which Python version to run tests
+#  # on. This must be a string!
+#  python: "3.7"
+#
 #  # Optional location of a bash setup script to run on the driver
 #  # when setting up the local environment. Relative to working_dir
 #  driver_setup: setup_driver.sh
@@ -2553,9 +2557,27 @@
   frequency: nightly
   working_dir: microbenchmark
 
+  python: "3.7"
+
   legacy:
     test_name: microbenchmark
     test_suite: microbenchmark
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_64.yaml
+
+  run:
+    timeout: 1800
+    script: OMP_NUM_THREADS=64 RAY_ADDRESS= python run_microbenchmark.py
+
+- name: microbenchmark_38
+  group: core-daily-test
+  team: core
+  frequency: nightly
+  working_dir: microbenchmark
+
+  python: "3.8"
 
   cluster:
     cluster_env: app_config.yaml
@@ -3448,8 +3470,6 @@
   legacy:
     test_name: dataset_shuffle_random_shuffle_1tb_small_instances
     test_suite: dataset_test
-
-  stable: false
 
   frequency: nightly
   team: core

@@ -58,14 +58,6 @@ py_test (
 )
 
 py_test (
-    name = "lightgbm_example",
-    size = "medium",
-    srcs = ["examples/lightgbm_example.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test (
     name = "rl_example_offline",
     main = "examples/rl_example.py",
     size = "medium",
@@ -174,14 +166,6 @@ py_test(
 )
 
 py_test(
-    name = "sklearn_example",
-    size = "medium",
-    srcs = ["examples/sklearn_example.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
     name = "upload_to_comet_ml",
     size = "medium",
     srcs = ["examples/upload_to_comet_ml.py"],
@@ -194,14 +178,6 @@ py_test(
     size = "medium",
     srcs = ["examples/upload_to_wandb.py"],
     tags = ["team:ml", "exclusive", "needs_credentials"],
-    deps = [":ml_lib"]
-)
-
-py_test(
-    name = "xgboost_example",
-    size = "medium",
-    srcs = ["examples/xgboost_example.py"],
-    tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
 
@@ -231,6 +207,14 @@ py_test(
     name = "test_data_parallel_trainer",
     size = "medium",
     srcs = ["tests/test_data_parallel_trainer.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_dataset_utils",
+    size = "small",
+    srcs = ["tests/test_dataset_utils.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )

@@ -10,6 +10,7 @@ stateless-cartpole-r2d2:
         num_workers: 0
         # R2D2 settings.
         replay_buffer_config:
+          type: MultiAgentReplayBuffer
           replay_burn_in: 20
         zero_init_states: true
         #dueling: false

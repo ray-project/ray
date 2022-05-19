@@ -38,6 +38,7 @@ from ray.rllib.utils.deprecation import (
 )
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.spaces.space_utils import flatten_space
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
@@ -436,7 +437,7 @@ class ModelCatalog:
             model_interface (cls): Interface required for the model
             default_model (cls): Override the default class for the model. This
                 only has an effect when not using a custom model
-            model_kwargs (dict): args to pass to the ModelV2 constructor
+            model_kwargs (dict): Args to pass to the ModelV2 constructor
 
         Returns:
             model (ModelV2): Model to use for the policy.
@@ -456,6 +457,18 @@ class ModelCatalog:
 
             if isinstance(model_config["custom_model"], type):
                 model_cls = model_config["custom_model"]
+            elif (
+                isinstance(model_config["custom_model"], str)
+                and "." in model_config["custom_model"]
+            ):
+                return from_config(
+                    cls=model_config["custom_model"],
+                    obs_space=obs_space,
+                    action_space=action_space,
+                    num_outputs=num_outputs,
+                    model_config=customized_model_kwargs,
+                    name=name,
+                )
             else:
                 model_cls = _global_registry.get(
                     RLLIB_MODEL, model_config["custom_model"]

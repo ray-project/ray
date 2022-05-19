@@ -37,6 +37,7 @@ class TaskPoolStrategy(ComputeStrategy):
         remote_args: dict,
         block_list: BlockList,
         clear_input_blocks: bool,
+        name: Optional[str] = None,
     ) -> BlockList:
         context = DatasetContext.get_current()
 
@@ -45,7 +46,10 @@ class TaskPoolStrategy(ComputeStrategy):
             return block_list
 
         blocks = block_list.get_blocks_with_metadata()
-        map_bar = ProgressBar("Map Progress", total=len(blocks))
+        if name is None:
+            name = "map"
+        name = name.title()
+        map_bar = ProgressBar(name, total=len(blocks))
 
         if context.block_splitting_enabled:
             map_block = cached_remote_fn(_map_block_split).options(**remote_args)
@@ -147,6 +151,7 @@ class ActorPoolStrategy(ComputeStrategy):
         remote_args: dict,
         block_list: BlockList,
         clear_input_blocks: bool,
+        name: Optional[str] = None,
     ) -> BlockList:
         """Note: this is not part of the Dataset public API."""
         context = DatasetContext.get_current()
@@ -159,7 +164,10 @@ class ActorPoolStrategy(ComputeStrategy):
 
         orig_num_blocks = len(blocks_in)
         results = []
-        map_bar = ProgressBar("Map Progress", total=orig_num_blocks)
+        if name is None:
+            name = "map"
+        name = name.title()
+        map_bar = ProgressBar(name, total=orig_num_blocks)
 
         class BlockWorker:
             def ready(self):
@@ -178,6 +186,8 @@ class ActorPoolStrategy(ComputeStrategy):
 
         if not remote_args:
             remote_args["num_cpus"] = 1
+
+        remote_args["scheduling_strategy"] = context.scheduling_strategy
 
         BlockWorker = ray.remote(**remote_args)(BlockWorker)
 

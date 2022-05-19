@@ -1,7 +1,7 @@
 import logging
 from typing import Type
 
-from ray.rllib.agents.dqn import DQNTrainer, DEFAULT_CONFIG as DQN_DEFAULT_CONFIG
+from ray.rllib.algorithms.dqn import DQNTrainer, DEFAULT_CONFIG as DQN_DEFAULT_CONFIG
 from ray.rllib.agents.dqn.r2d2_tf_policy import R2D2TFPolicy
 from ray.rllib.agents.dqn.r2d2_torch_policy import R2D2TorchPolicy
 from ray.rllib.agents.trainer import Trainer
@@ -32,8 +32,10 @@ R2D2_DEFAULT_CONFIG = Trainer.merge_trainer_configs(
 
         # === Replay buffer ===
         "replay_buffer_config": {
-            "_enable_replay_buffer_api": True,
             "type": "MultiAgentReplayBuffer",
+            # Specify prioritized replay by supplying a buffer type that supports
+            # prioritization, for example: MultiAgentPrioritizedReplayBuffer.
+            "prioritized_replay": DEPRECATED_VALUE,
             # Size of the replay buffer (in sequences, not timesteps).
             "capacity": 100000,
             "storage_unit": "sequences",
@@ -68,7 +70,7 @@ R2D2_DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         # if `use_h_function`=True.
         "h_function_epsilon": 1e-3,
 
-        # Update the target network every `target_network_update_freq` steps.
+        # Update the target network every `target_network_update_freq` sample steps.
         "target_network_update_freq": 2500,
 
         # Deprecated keys:

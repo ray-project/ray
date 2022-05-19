@@ -687,6 +687,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
+  void HandleRayletNotifyGCSRestart(const rpc::RayletNotifyGCSRestartRequest &request,
+                                    rpc::RayletNotifyGCSRestartReply *reply,
+                                    rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Implements gRPC server handler.
   void HandleGetObjectStatus(const rpc::GetObjectStatusRequest &request,
                              rpc::GetObjectStatusReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;

@@ -770,6 +770,17 @@ def start(
                 cf.bold("  ray start --address='{}'"),
                 bootstrap_addresses,
             )
+            if bootstrap_addresses.startswith("127.0.0.1:"):
+                cli_logger.print(
+                    "This Ray runtime only accepts connections from local host."
+                )
+                cli_logger.print(
+                    "To accept connections from remote hosts, "
+                    "specify a public ip when starting"
+                )
+                cli_logger.print(
+                    "the head node: ray start --head --node-ip-address=<public-ip>."
+                )
             cli_logger.newline()
             cli_logger.print("Alternatively, use the following Python code:")
             with cli_logger.indented():
