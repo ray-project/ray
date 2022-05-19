@@ -10,6 +10,7 @@ you will learn
 - [Using HTTP Adapters](http-adapters)
 - [Composing Deployments](handle-guide)
 - [Serving ML Models](ml-models)
+- [Using Deployment Graph](deployment-graph)
 - [Deploying Ray Serve](deploying-serve)
 - [Debugging/Monitoring](monitoring)
 - [Performance Tunning](performance)
