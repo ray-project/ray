@@ -103,16 +103,16 @@ TensorflowFeatureTypeSpec = Union[
 class Dataset(Generic[T]):
     """A Dataset is a distributed data collection for data loading and processing.
 
-    Datasets are implemented as a list of `ObjectRef[Block]`, where each block
+    Datasets are implemented as a list of ``ObjectRef[Block]``, where each block
     holds an ordered collection of items, representing a shard of the overall
-    data collection. The block can be either a `pyarrow.Table`, or Python list.
+    data collection. The block can be either a ``pyarrow.Table``, or Python list.
     The block also determines the unit of parallelism.
 
-    Datasets can be created in multiple ways: from synthetic data via `range_.*()`
-    APIs, from existing memory data via `from_*()` APIs, or from external storage
-    systems such as local disk, S3, HDFS etc. via the `read_*()` APIs. The
+    Datasets can be created in multiple ways: from synthetic data via ``range_*()``
+    APIs, from existing memory data via ``from_*()`` APIs, or from external storage
+    systems such as local disk, S3, HDFS etc. via the ``read_*()`` APIs. The
     (potentially processed) Dataset can be saved back to external storage systems via
-    the `write_*()` APIs.
+    the ``write_*()`` APIs.
 
     Examples:
         >>> import ray
@@ -127,9 +127,10 @@ class Dataset(Generic[T]):
         >>> ds.write_csv("s3//bucket/output") # doctest: +SKIP
 
     Datasets supports parallel processing at scale: transformations such as
-    `.map_batches()`, aggregations such as `.min()`/`.max()`/`.mean()`, grouping via
-    `.groupby()`, shuffling operations such as `.sort()`, `.random_shuffle()`, and
-    `.repartition()`.
+    :py:meth:`.map_batches()`, aggregations such as
+    :py:meth:`.min()`/:py:meth:`.max()`/:py:meth:`.mean()`, grouping via
+    :py:meth:`.groupby()`, shuffling operations such as :py:meth:`.sort()`,
+    :py:meth:`.random_shuffle()`, and :py:meth:`.repartition()`.
 
     Examples:
         >>> import ray
