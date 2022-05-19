@@ -29,7 +29,13 @@ DOCKER_HUB_DESCRIPTION = {
     "ray-worker-container": "Internal Image for CI test",
 }
 
-PY_MATRIX = {"py36": "3.6.12", "py37": "3.7.7", "py38": "3.8.5", "py39": "3.9.5"}
+PY_MATRIX = {
+    "py36": "3.6.12",
+    "py37": "3.7.7",
+    "py38": "3.8.5",
+    "py39": "3.9.5",
+    "py310": "3.10.4",
+}
 
 BASE_IMAGES = {
     "cu112": "nvidia/cuda:11.2.0-cudnn8-devel-ubuntu18.04",
@@ -182,15 +188,15 @@ def _build_docker_image(
         )
 
     # TODO(https://github.com/ray-project/ray/issues/16599):
-    # remove below after supporting ray-ml images with Python 3.9
-    if image_name == "ray-ml" and py_version == "py39":
-        print(f"{image_name} image is currently unsupported with " "Python 3.9")
+    # remove below after supporting ray-ml images with Python 3.9+
+    if image_name == "ray-ml" and py_version in {"py39", "py310"}:
+        print(f"{image_name} image is currently unsupported with " "Python 3.9/3.10")
         return
 
     build_args = {}
     build_args["PYTHON_VERSION"] = PY_MATRIX[py_version]
-    # I.e. "py36"[-1] == 6
-    build_args["PYTHON_MINOR_VERSION"] = py_version[-1]
+    # I.e. "py310"[3:] == 10
+    build_args["PYTHON_MINOR_VERSION"] = py_version[3:]
 
     device_tag = f"{image_type}"
 
@@ -444,10 +450,13 @@ def push_and_tag_images(
 
                 # TODO(https://github.com/ray-project/ray/issues/16599):
                 # remove below after supporting ray-ml images with Python 3.9
-                if image_name in ["ray-ml"] and PY_MATRIX[py_name].startswith("3.9"):
+                if image_name in ["ray-ml"] and (
+                    PY_MATRIX[py_name].startswith("3.9")
+                    or PY_MATRIX[py_name].startswith("3.10")
+                ):
                     print(
                         f"{image_name} image is currently "
-                        f"unsupported with Python 3.9"
+                        f"unsupported with Python 3.9/3.10"
                     )
                     continue
 

@@ -47,7 +47,7 @@ public final class MethodUtils {
         /// This code path indicates that here might be in another thread of a worker.
         /// So try to load the class from URLClassLoader of this worker.
         ClassLoader cl =
-            ((RayRuntimeInternal) Ray.internal()).getWorkerContext().getCurrentClassLoader();
+            ((RayRuntimeInternal) Ray.internal()).getFunctionManager().getClassLoader();
         actorClz = Class.forName(className, true, cl);
       }
     } catch (Exception e) {
