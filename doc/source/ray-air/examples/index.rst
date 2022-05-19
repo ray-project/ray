@@ -6,11 +6,18 @@ Examples
 
 .. air-general-examples:
 
-General Examples
-----------------
+Guides
+------
 
 - :doc:`/ray-air/examples/analyze_tuning_results`: How to analyze trial results (e.g. find the best trial) of a hyperparameter tuning run.
 
+
+Trainers
+--------
+
+- :doc:`/ray-air/examples/lightgbm_example`
+- :doc:`/ray-air/examples/sklearn_example`
+- :doc:`/ray-air/examples/xgboost_example`
 
 .. air-huggingface-examples:
 

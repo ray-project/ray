@@ -1,4 +1,4 @@
-package io.ray.runtime.exception;
+package io.ray.api.exception;
 
 /** Indicates that the worker died unexpectedly while executing a task. */
 public class RayWorkerException extends RayException {

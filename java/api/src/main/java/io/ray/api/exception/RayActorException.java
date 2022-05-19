@@ -1,8 +1,6 @@
-package io.ray.runtime.exception;
+package io.ray.api.exception;
 
 import io.ray.api.id.ActorId;
-import io.ray.runtime.util.NetworkUtil;
-import io.ray.runtime.util.SystemUtil;
 
 /**
  * Indicates that the actor died unexpectedly before finishing a task.
@@ -26,20 +24,19 @@ public class RayActorException extends RayException {
     this.actorId = actorId;
   }
 
-  public RayActorException(ActorId actorId, Throwable cause) {
+  public RayActorException(int pid, String ipAddress, ActorId actorId, Throwable cause) {
     super(
         String.format(
             "(pid=%d, ip=%s) The actor %s died because of it's creation task failed",
-            SystemUtil.pid(), NetworkUtil.getIpAddress(null), actorId.toString()),
+            pid, ipAddress, actorId.toString()),
         cause);
     this.actorId = actorId;
   }
 
-  public RayActorException(Throwable cause) {
+  public RayActorException(int pid, String ipAddress, Throwable cause) {
     super(
         String.format(
-            "(pid=%d, ip=%s) The actor died because of it's creation task failed",
-            SystemUtil.pid(), NetworkUtil.getIpAddress(null)),
+            "(pid=%d, ip=%s) The actor died because of it's creation task failed", pid, ipAddress),
         cause);
   }
 }

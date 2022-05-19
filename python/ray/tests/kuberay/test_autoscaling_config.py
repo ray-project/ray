@@ -31,6 +31,7 @@ def _get_basic_autoscaling_config() -> dict:
         "provider": {
             "disable_launch_config_check": True,
             "disable_node_updaters": True,
+            "foreground_node_launch": True,
             "namespace": "default",
             "type": "kuberay",
         },
