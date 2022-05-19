@@ -101,20 +101,27 @@ TensorflowFeatureTypeSpec = Union[
 
 @PublicAPI
 class Dataset(Generic[T]):
-    """Implements a distributed Arrow dataset.
+    """A Dataset is a distributed data collection for data loading and processing.
 
-    Datasets are implemented as a list of ``ObjectRef[Block]``. The block
-    also determines the unit of parallelism. The default block type is the
-    ``pyarrow.Table``. Arrow-incompatible objects are held in ``list`` blocks.
+    Datasets are implemented as a list of ``ObjectRef[Block]``, where each block
+    holds an ordered collection of items, representing a segment of the overall
+    data collection. The block can be either a ``pyarrow.Table``, ``pandas.DataFrame``
+    or Python list. The block also determines the unit of parallelism.
+
+    Datasets can be created in multiple ways: from sythetic data via range_.*() APIs,
+    from existing memory data via from_*() APIs, or from external storage systems
+    such as local disk, S3, HDFS etc. via the read_*() APIs. The (potentially processed)
+    Dataset can be saved back to external storage systems via the write_*() APIs.
+
+    Dataset supports parallel processing at scale: transformations such as
+    .map_batches(), aggregations such as .min()/.max()/.groupby(), sorting, shuffling,
+    and repartition etc.
 
     Since Datasets are just lists of Ray object refs, they can be passed
-    between Ray tasks and actors just like any other object. Datasets support
+    between Ray tasks and actors without incurring a copy. Datasets support
     conversion to/from several more featureful dataframe libraries
     (e.g., Spark, Dask, Modin, MARS), and are also compatible with distributed
     TensorFlow / PyTorch.
-
-    Dataset supports parallel transformations such as .map(), .map_batches(),
-    and simple repartition, but currently not aggregations and joins.
     """
 
     def __init__(
@@ -344,8 +351,6 @@ class Dataset(Generic[T]):
         This is only supported for datasets convertible to pandas format.
         A function generating the new column values given the batch in pandas
         format must be specified.
-
-        This is a convenience wrapper over ``.map_batches()``.
 
         Examples:
             >>> import ray
@@ -688,8 +693,8 @@ class Dataset(Generic[T]):
                 number of records. This may drop records if they cannot be
                 divided equally among the splits.
             locality_hints: A list of Ray actor handles of size ``n``. The
-                system will try to co-locate the blocks of the ith dataset
-                with the ith actor to maximize data locality.
+                system will try to co-locate the blocks of the i-th dataset
+                with the i-th actor to maximize data locality.
 
         Returns:
             A list of ``n`` disjoint dataset splits.
@@ -1577,7 +1582,7 @@ class Dataset(Generic[T]):
 
         Args:
             key:
-                - For Arrow tables, key must be a single column name.
+                - For Arrow tables or Pandas DataFrame, key must be a single column name.
                 - For datasets of Python objects, key can be either a lambda
                   function that returns a comparison key to sort by, or None
                   to sort by the original value.
