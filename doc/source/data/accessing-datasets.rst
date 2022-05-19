@@ -9,7 +9,7 @@ The data underlying a ``Dataset`` can be accessed in several ways:
 * Retrieving a limited prefix of rows.
 * Iterating over rows and batches.
 * Converting into a Torch dataset or a TensorFlow dataset.
-* Converting into a RandomAccessDataset for random access.
+* Converting into a RandomAccessDataset for random access (experimental).
 
 Retrieving limited set of rows
 ==============================
@@ -174,13 +174,18 @@ Locality-aware splitting is supported if you pass in a list of actor handles to 
 :meth:`ds.split() <ray.data.Dataset.split>` function along with the number of desired splits.
 This is a common pattern useful for loading and sharding data between distributed training actors:
 
+.. note::
+
+  If using :ref:`Ray Train <train-docs>` for distributed training, you do not need to split the dataset; Ray
+  Train will automatically do locality-aware splitting into per-trainer shards for you!
+
 .. literalinclude:: ./doc_code/accessing_datasets.py
   :language: python
   :start-after: __split_begin__
   :end-before: __split_end__
 
-Random Access Datasets
-======================
+Random Access Datasets (Experimental)
+=====================================
 
 Datasets can be converted to a format that supports efficient random access with
 :meth:`ds.to_random_access_dataset() API <ray.data.Dataset.to_random_access_dataset>`,
