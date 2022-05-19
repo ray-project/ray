@@ -738,14 +738,24 @@ class RolloutWorker(ParallelIteratorWorker):
                 )
                 sample_async = True
             elif isinstance(method, type) and issubclass(method, OffPolicyEstimator):
+                gamma = self.io_context.worker.policy_config["gamma"]
+                # Grab a reference to the current model
+                keys = list(self.io_context.worker.policy_map.keys())
+                if len(keys) > 1:
+                    raise NotImplementedError(
+                        "Off-policy estimation is not implemented for multi-agent. "
+                        "You can set `input_evaluation: []` to resolve this."
+                    )
+                policy = self.io_context.worker.get_policy(keys[0])
+                estimator_config = self.io_context.input_config.get("estimator_config", {})
                 self.reward_estimators.append(
-                    method.create_from_io_context(self.io_context)
+                    method(policy=policy, gamma=gamma, config=estimator_config)
                 )
             else:
                 raise ValueError(
                     f"Unknown evaluation method: {method}! Must be "
                     "either `simulation` or a sub-class of ray.rllib.offline."
-                    "off_policy_estimator::OffPolicyEstimator"
+                    "estimators.off_policy_estimator::OffPolicyEstimator"
                 )
 
         render = False
@@ -875,9 +885,8 @@ class RolloutWorker(ParallelIteratorWorker):
 
         # Do off-policy estimation, if needed.
         if self.reward_estimators:
-            for sub_batch in batch.split_by_episode():
-                for estimator in self.reward_estimators:
-                    estimator.process(sub_batch)
+            for estimator in self.reward_estimators:
+                    estimator.process(batch)
 
         if log_once("sample_end"):
             logger.info("Completed sample batch:\n\n{}\n".format(summarize(batch)))
@@ -1147,7 +1156,7 @@ class RolloutWorker(ParallelIteratorWorker):
             out = self.sampler.get_metrics()
         else:
             out = []
-        # Get metrics from our reward-estimators (if any).
+        # Get metrics from our reward estimators (if any).
         for m in self.reward_estimators:
             out.extend(m.get_metrics())
 

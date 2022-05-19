@@ -10,7 +10,7 @@ from ray.rllib.offline.io_context import IOContext
 from ray.rllib.utils.annotations import Deprecated
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import TensorType, SampleBatchType
-from typing import List
+from typing import Dict, List
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +21,8 @@ OffPolicyEstimate = namedtuple("OffPolicyEstimate", ["estimator_name", "metrics"
 class OffPolicyEstimator:
     """Interface for an off policy reward estimator."""
 
-    def __init__(self, policy: Policy, gamma: float):
+    @DeveloperAPI
+    def __init__(self, policy: Policy, gamma: float, config: Dict = {}):
         """Initializes an OffPolicyEstimator instance.
 
         Args:
@@ -29,44 +30,15 @@ class OffPolicyEstimator:
             gamma: Discount factor of the environment.
         """
         self.policy = policy
-        self.gamma = gamma
-        self.new_estimates = []
+        self.gamma = policy.config["gamma"]
+        self.config = config
 
     @DeveloperAPI
-    @classmethod
-    def create_from_io_context(cls, ioctx: IOContext) -> "OffPolicyEstimator":
-        """Creates an off-policy estimator from an IOContext object.
-
-        Extracts Policy and gamma (discount factor) information from the
-        IOContext.
+    def estimate(self, batch: SampleBatchType) -> List[OffPolicyEstimate]:
+        """Returns a list of off policy estimates for the given batch of episodes.
 
         Args:
-            ioctx: The IOContext object to create the OffPolicyEstimator
-                from.
-
-        Returns:
-            The OffPolicyEstimator object created from the IOContext object.
-        """
-        gamma = ioctx.worker.policy_config["gamma"]
-        # Grab a reference to the current model
-        keys = list(ioctx.worker.policy_map.keys())
-        if len(keys) > 1:
-            raise NotImplementedError(
-                "Off-policy estimation is not implemented for multi-agent. "
-                "You can set `input_evaluation: []` to resolve this."
-            )
-        policy = ioctx.worker.get_policy(keys[0])
-        return cls(policy, gamma)
-
-    @DeveloperAPI
-    def estimate(self, batch: SampleBatchType) -> OffPolicyEstimate:
-        """Returns an off policy estimate for the given batch of experiences.
-
-        The batch will at most only contain data from one episode,
-        but it may also only be a fragment of an episode.
-
-        Args:
-            batch: The batch to calculate the off policy estimate (OPE) on.
+            batch: The batch to calculate the off policy estimates (OPE) on.
 
         Returns:
             The off-policy estimates (OPE) calculated on the given batch.
@@ -106,19 +78,6 @@ class OffPolicyEstimator:
         return np.exp(log_likelihoods)
 
     @DeveloperAPI
-    def process(self, batch: SampleBatchType) -> None:
-        """Computes off policy estimates (OPE) on batch and stores results.
-
-        Thus-far collected results can be retrieved then by calling
-        `self.get_metrics` (which flushes the internal results storage).
-
-        Args:
-            batch: The batch to process (call `self.estimate()` on) and
-                store results (OPEs) for.
-        """
-        self.new_estimates.append(self.estimate(batch))
-
-    @DeveloperAPI
     def check_can_estimate_for(self, batch: SampleBatchType) -> None:
         """Checks if we support off policy estimation (OPE) on given batch.
 
@@ -146,9 +105,19 @@ class OffPolicyEstimator:
             )
 
     @DeveloperAPI
+    def process(self, batch: SampleBatchType) -> None:
+        """Computes off policy estimates (OPE) on batch and stores results.
+        Thus-far collected results can be retrieved then by calling
+        `self.get_metrics` (which flushes the internal results storage).
+        Args:
+            batch: The batch to process (call `self.estimate()` on) and
+                store results (OPEs) for.
+        """
+        self.new_estimates.extend(self.estimate(batch))
+
+    @DeveloperAPI
     def get_metrics(self) -> List[OffPolicyEstimate]:
         """Returns list of new episode metric estimates since the last call.
-
         Returns:
             List of OffPolicyEstimate objects.
         """
@@ -156,10 +125,17 @@ class OffPolicyEstimator:
         self.new_estimates = []
         return out
 
-    @Deprecated(new="OffPolicyEstimator.create_from_io_context", error=False)
+    # TODO(rohan): Remove deprecated methods; all are set to error=True because changing
+    # from one episode per SampleBatch to full SampleBatch is a breaking change anyway
+
+    @Deprecated(help="OffPolicyEstimator.__init__(policy, gamma, config)", error=True)
+    def create_from_io_context(cls, ioctx: IOContext) -> "OffPolicyEstimator":
+        pass
+
+    @Deprecated(new="OffPolicyEstimator.create_from_io_context", error=True)
     def create(self, *args, **kwargs):
         return self.create_from_io_context(*args, **kwargs)
 
-    @Deprecated(new="OffPolicyEstimator.action_log_likelihood", error=False)
+    @Deprecated(new="OffPolicyEstimator.action_log_likelihood", error=True)
     def action_prob(self, *args, **kwargs):
         return self.action_log_likelihood(*args, **kwargs)
