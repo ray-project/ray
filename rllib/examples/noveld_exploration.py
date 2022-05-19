@@ -28,13 +28,14 @@ from ray.rllib.agents.ppo import ppo
 from ray import tune
 from ray.tune.registry import register_env
 
-        
-def env_creator(config=None):    
+
+def env_creator(config=None):
     name = config.get("name", "MiniGrid-MultiRoom-N4-S5-v0")
     env = gym.make(name)
     env = gym_minigrid.wrappers.ImgObsWrapper(env)
-    
+
     return env
+
 
 register_env("mini-grid", env_creator)
 
@@ -49,10 +50,10 @@ config["env"] = "mini-grid"
 config["num_envs_per_worker"] = 4
 config["model"]["post_fcnet_hiddens"] = [256, 256]
 config["model"]["post_fcnet_activation"] = "relu"
-config["gamma"] = .999
+config["gamma"] = 0.999
 config["num_sgd_iter"] = 8
-config["entropy_coeff"] = .0005
-# This is important: NovelD (as of now) does not work 
+config["entropy_coeff"] = 0.0005
+# This is important: NovelD (as of now) does not work
 # asynchronously.
 config["num_workers"] = 0
 # In practice using standardized observations in the distillation
@@ -61,14 +62,14 @@ config["observation_filter"] = tune.grid_search(["NoFilter", "MeanStdFilter"])
 config["lr"] = 1e-5
 config["model"]["conv_filters"] = CONV_FILTERS
 config["record_env"] = "videos"
-config["exploration_config"] =  {
+config["exploration_config"] = {
     "type": "NovelD",
     "embed_dim": 128,
-    "lr": .0001,
-    "intrinsic_reward_coeff": .005,
+    "lr": 0.0001,
+    "intrinsic_reward_coeff": 0.005,
     "sub_exploration": {
-        "type": "StochasticSampling",        
-    }
+        "type": "StochasticSampling",
+    },
 }
 # Use the callbacks for the NovelD metrics in TensorBoard.
 config["callbacks"] = NovelDMetricsCallbacks
@@ -78,11 +79,11 @@ tune.run(
     "PPO",
     config=config,
     stop={
-        #"training_iteration": 10000,
+        # "training_iteration": 10000,
         "num_env_steps_sampled": 10000,
-    }, 
+    },
     verbose=1,
-    num_samples = 1,
+    num_samples=1,
     checkpoint_freq=200,
     checkpoint_at_end=True,
 )

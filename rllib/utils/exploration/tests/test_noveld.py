@@ -13,6 +13,7 @@ from ray.rllib.utils.numpy import one_hot
 from ray.rllib.utils.test_utils import check_learning_achieved, framework_iterator
 from ray.tune import register_env
 
+
 class MyCallBack(DefaultCallbacks):
     def __init__(self):
         super().__init__()
@@ -37,7 +38,8 @@ class MyCallBack(DefaultCallbacks):
     def on_sample_end(self, *, worker, samples, **kwargs):
         print("mean. distance from origin={}".format(np.mean(self.deltas)))
         self.deltas = []
-        
+
+
 class OneHotWrapper(gym.core.ObservationWrapper):
     def __init__(self, env, vector_index, framestack):
         super().__init__(env)
@@ -58,7 +60,7 @@ class OneHotWrapper(gym.core.ObservationWrapper):
         self.observation_space = gym.spaces.Box(
             0.0, 1.0, shape=(self.single_frame_dim * self.framestack,), dtype=np.float32
         )
-        
+
     def observation(self, obs):
         # Debug output: max-x/y positions to watch exploration progress.
         if self.step_count == 0:
@@ -125,6 +127,7 @@ def env_maker(config):
 register_env("mini-grid", env_maker)
 CONV_FILTERS = [[16, [11, 11], 3], [32, [9, 9], 3], [64, [5, 5], 3]]
 
+
 class TestNovelD(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -179,9 +182,9 @@ class TestNovelD(unittest.TestCase):
                 },
             }
             noveld_config = {
-                "type": "NovelD",                
+                "type": "NovelD",
                 "lr": 0.001,
-                "intrinsic_reward_coeff": .05,
+                "intrinsic_reward_coeff": 0.05,
                 "normalize": True,
                 "embed_dim": 128,
                 "distill_net_config": {
@@ -194,7 +197,7 @@ class TestNovelD(unittest.TestCase):
             }
             config["exploration_config"] = curiosity_config
             trainer = ppo.PPOTrainer(config=config)
-            learnt = False        
+            learnt = False
             for i in range(num_iterations):
                 result = trainer.train()
                 print(result)
@@ -204,7 +207,7 @@ class TestNovelD(unittest.TestCase):
                     break
             trainer.stop()
             self.assertTrue(learnt)
-            
+
             config["exploration_config"] = noveld_config
             trainer = ppo.PPOTrainer(config=config)
             learnt = False
@@ -257,7 +260,7 @@ class TestNovelD(unittest.TestCase):
             "type": "NovelD",
             # For the distillation NN, use a non-LSTM fcnet (same as the one
             # in the policy model).
-            "intrinsic_reward_coeff": .005,
+            "intrinsic_reward_coeff": 0.005,
             "lr": 0.0003,  # 0.0005 seems to work fine as well.
             "normalize": True,
             "embed_dim": 64,
@@ -297,7 +300,7 @@ class TestNovelD(unittest.TestCase):
             print("Reached in {} iterations with Curiosity.".format(iters))
 
         config["exploration_config"] = noveld_config
-        #config["callbacks"] = NovelDMetricsCallbacks
+        # config["callbacks"] = NovelDMetricsCallbacks
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
             # To replay:
             # trainer = ppo.PPOTrainer(config=config)
@@ -315,7 +318,8 @@ class TestNovelD(unittest.TestCase):
             iters = results.trials[0].last_result["training_iteration"]
             print("Reached in {} iterations with NovelD.".format(iters))
 
+
 if __name__ == "__main__":
     import pytest
-    
+
     sys.exit(pytest.main(["-v", __file__]))
