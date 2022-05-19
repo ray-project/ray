@@ -4,7 +4,7 @@ import unittest
 
 import ray
 from ray.tune import register_env
-from ray.rllib.agents.qmix import QMixTrainer
+from ray.rllib.agents.qmix import QMixConfig
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
 
@@ -95,18 +95,21 @@ class TestQMix(unittest.TestCase):
             ),
         )
 
-        trainer = QMixTrainer(
-            env="action_mask_test",
-            config={
-                "num_envs_per_worker": 5,  # test with vectorization on
-                "env_config": {
-                    "avail_actions": [3, 4, 8],
-                },
-                "framework": "torch",
-            },
-        )
+        config = (
+            QMixConfig()
+            .framework(framework="torch")
+            .environment(
+                env="action_mask_test",
+                env_config={"avail_actions": [3, 4, 8]},
+            )
+            .rollouts(num_envs_per_worker=5)
+        )  # Test with vectorization on.
+
+        trainer = config.build()
+
         for _ in range(4):
             trainer.train()  # OK if it doesn't trip the action assertion error
+
         assert trainer.train()["episode_reward_mean"] == 30.0
         trainer.stop()
         ray.shutdown()

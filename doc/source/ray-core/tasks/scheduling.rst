@@ -16,7 +16,7 @@ If all nodes are infeasible, the task cannot be scheduled until feasible nodes a
 
 Placement Group
 ---------------
-If ``placement_group`` option is set then the task will be scheduled where the placement group is located.
+If :ref:`scheduling_strategy=PlacementGroupSchedulingStrategy <scheduling-strategy-ref>` option is set then the task will be scheduled where the placement group is located.
 See :ref:`Placement Group <ray-placement-group-doc-ref>` for more details.
 
 Scheduling Strategy
@@ -87,35 +87,16 @@ especially in a multi-tenant cluster: for example, an application won't know wha
 
 Locality-Aware Scheduling
 -------------------------
-When the scheduling strategy is ``"DEFAULT"``, Ray also prefers nodes that have large task arguments locally
-to avoid transferring data over the network.
-If there are multiple large task arguments, the node with most object bytes local is preferred.
+By default, Ray prefers available nodes that have large task arguments local
+to avoid transferring data over the network. If there are multiple large task arguments,
+the node with most object bytes local is preferred.
+This takes precedence over the ``"DEFAULT"`` scheduling strategy,
+which means we will try to run the task on the locality preferred node regardless of the node resource utilization.
+However, if the locality preferred node is not available, we may run the task somewhere else.
+When ``"SPREAD"`` and ``NodeAffinitySchedulingStrategy`` scheduling strategies are specified,
+they have higher precedence and data locality is no longer considered.
 Note: Locality-aware scheduling is only for tasks not actors.
 
 .. tabbed:: Python
 
-    .. code-block:: python
-
-        @ray.remote
-        def large_object_function():
-            # Large object is stored in the local object store
-            # and available in the distributed memory,
-            # instead of returning inline directly to the caller.
-            return [1] * (1024 * 1024)
-
-        @ray.remote
-        def small_object_function():
-            # Small object is returned inline directly to the caller,
-            # instead of storing in the distributed memory.
-            return [1]
-
-        @ray.remote
-        def consume_function(data):
-            return len(data)
-
-        # Ray will try to run consume_function on the same node where large_object_function runs.
-        consume_function.remote(large_object_function.remote())
-
-        # Ray won't consider locality for scheduling consume_function
-        # since the argument is small and will be sent to the worker node inline directly.
-        consume_function.remote(small_object_function.remote())
+    .. literalinclude:: ../doc_code/task_locality_aware_scheduling.py

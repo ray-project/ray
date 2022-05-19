@@ -17,7 +17,7 @@ from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_policy import LearningRateSchedule
+from ray.rllib.policy.torch_mixins import LearningRateSchedule
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import (
     apply_grad_clipping,
@@ -170,7 +170,7 @@ def r2d2_loss(policy: Policy, model, _, train_batch: SampleBatch) -> TensorType:
         # Seq-mask all loss-related terms.
         seq_mask = sequence_mask(train_batch[SampleBatch.SEQ_LENS], T)[:, :-1]
         # Mask away also the burn-in sequence at the beginning.
-        burn_in = policy.config["burn_in"]
+        burn_in = policy.config["replay_buffer_config"]["replay_burn_in"]
         if burn_in > 0 and burn_in < T:
             seq_mask[:, :burn_in] = False
 

@@ -7,7 +7,7 @@ Creating Datasets
 -----------------
 
 .. autofunction:: ray.data.range
-.. autofunction:: ray.data.range_arrow
+.. autofunction:: ray.data.range_table
 .. autofunction:: ray.data.range_tensor
 .. autofunction:: ray.data.read_csv
 .. autofunction:: ray.data.read_json
@@ -19,6 +19,7 @@ Creating Datasets
 .. autofunction:: ray.data.from_items
 .. autofunction:: ray.data.from_arrow
 .. autofunction:: ray.data.from_arrow_refs
+.. autofunction:: ray.data.from_huggingface
 .. autofunction:: ray.data.from_spark
 .. autofunction:: ray.data.from_dask
 .. autofunction:: ray.data.from_modin

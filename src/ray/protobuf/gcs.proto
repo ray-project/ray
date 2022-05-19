@@ -260,8 +260,6 @@ message JobConfig {
     NON_DETACHED = 1;
   }
 
-  // The number of java workers per worker process.
-  uint32 num_java_workers_per_process = 1;
   // The jvm options for java workers of the job.
   repeated string jvm_options = 2;
   // A list of directories or files (jar files or dynamic libraries) that specify the

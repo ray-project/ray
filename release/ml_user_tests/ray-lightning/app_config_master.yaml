@@ -1,4 +1,4 @@
-base_image: "anyscale/ray-ml:nightly-py37-gpu"
+base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_GPU"] | default("anyscale/ray-ml:nightly-py37-gpu") }}
 
 debian_packages:
   - curl

@@ -2,7 +2,7 @@ import pytest
 
 import ray
 from ray import serve
-from ray.experimental.dag.input_node import InputNode
+from ray.serve.dag import InputNode
 from ray.serve.pipeline.deployment_node import (
     DeploymentNode,
 )

@@ -85,7 +85,7 @@ class DashboardAgent(object):
             logger.info("Parent pid is %s", self.ppid)
 
         # Setup raylet channel
-        options = (("grpc.enable_http_proxy", 0),)
+        options = ray_constants.GLOBAL_GRPC_OPTIONS
         self.aiogrpc_raylet_channel = ray._private.utils.init_grpc_channel(
             f"{self.ip}:{self.node_manager_port}", options, asynchronous=True
         )

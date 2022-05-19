@@ -25,7 +25,6 @@ class CoreWorker;
 ///     CoreWorkerOptions options = {
 ///         WorkerType::DRIVER,             // worker_type
 ///         ...,                            // other arguments
-///         1,                              // num_workers
 ///     };
 ///     CoreWorkerProcess::Initialize(options);
 ///
@@ -36,7 +35,6 @@ class CoreWorker;
 ///     CoreWorkerOptions options = {
 ///         WorkerType::WORKER,             // worker_type
 ///         ...,                            // other arguments
-///         num_workers,                    // num_workers
 ///     };
 ///     CoreWorkerProcess::Initialize(options);
 ///     ...                                 // Do other stuff
@@ -52,14 +50,7 @@ class CoreWorker;
 /// threads, remember to call `CoreWorkerProcess::SetCurrentThreadWorkerId(worker_id)`
 /// once in the new thread before calling core worker APIs, to associate the current
 /// thread with a worker. You can obtain the worker ID via
-/// `CoreWorkerProcess::GetCoreWorker()->GetWorkerID()`. Currently a Java worker process
-/// starts multiple workers by default, but can be configured to start only 1 worker by
-/// speicifying `num_java_workers_per_process` in the job config.
-///
-/// If only 1 worker is started (either because the worker type is driver, or the
-/// `num_workers` in `CoreWorkerOptions` is set to 1), all threads will be automatically
-/// associated to the only worker. Then no need to call `SetCurrentThreadWorkerId` in
-/// your own threads. Currently a Python worker process starts only 1 worker.
+/// `CoreWorkerProcess::GetCoreWorker()->GetWorkerID()`.
 ///
 /// How does core worker process dealloation work?
 ///
@@ -194,9 +185,6 @@ class CoreWorkerProcessImpl {
 
   /// The worker ID of the global worker, if the number of workers is 1.
   const WorkerID global_worker_id_;
-
-  /// Map from worker ID to worker.
-  absl::flat_hash_map<WorkerID, std::shared_ptr<CoreWorker>> workers_ GUARDED_BY(mutex_);
 
   /// To protect access to workers_ and global_worker_
   mutable absl::Mutex mutex_;

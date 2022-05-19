@@ -15,17 +15,6 @@ tfp = try_import_tfp()
 
 logger = logging.getLogger(__name__)
 
-OPTIMIZER_SHARED_CONFIGS = [
-    "buffer_size",
-    "prioritized_replay",
-    "prioritized_replay_alpha",
-    "prioritized_replay_beta",
-    "prioritized_replay_eps",
-    "rollout_fragment_length",
-    "train_batch_size",
-    "learning_starts",
-]
-
 # fmt: off
 # __sphinx_doc_begin__
 
@@ -94,12 +83,24 @@ DEFAULT_CONFIG = with_common_config({
     "min_sample_timesteps_per_reporting": 100,
 
     # === Replay buffer ===
-    # Size of the replay buffer (in time steps).
-    "buffer_size": DEPRECATED_VALUE,
     "replay_buffer_config": {
-        "_enable_replay_buffer_api": False,
         "type": "MultiAgentReplayBuffer",
+        # Specify prioritized replay by supplying a buffer type that supports
+        # prioritization, for example: MultiAgentPrioritizedReplayBuffer.
+        "prioritized_replay": DEPRECATED_VALUE,
         "capacity": int(1e6),
+        # How many steps of the model to sample before learning starts.
+        "learning_starts": 1500,
+        # The number of continuous environment steps to replay at once. This may
+        # be set to greater than 1 to support recurrent models.
+        "replay_sequence_length": 1,
+        "prioritized_replay_alpha": 0.6,
+        # Beta parameter for sampling from prioritized replay buffer.
+        "prioritized_replay_beta": 0.4,
+        # Epsilon to add to the TD errors when updating priorities.
+        "prioritized_replay_eps": 1e-6,
+        # Whether to compute priorities on workers.
+        "worker_side_prioritization": False,
     },
     # Set this to True, if you want the contents of your buffer(s) to be
     # stored in any saved checkpoints as well.
@@ -109,11 +110,6 @@ DEFAULT_CONFIG = with_common_config({
     # - This is False AND restoring from a checkpoint that does contain
     #   buffer data.
     "store_buffer_in_checkpoints": False,
-    # If True prioritized replay buffer will be used.
-    "prioritized_replay": False,
-    "prioritized_replay_alpha": 0.6,
-    "prioritized_replay_beta": 0.4,
-    "prioritized_replay_eps": 1e-6,
     # Whether to LZ4 compress observations
     "compress_observations": False,
 
@@ -141,14 +137,12 @@ DEFAULT_CONFIG = with_common_config({
     },
     # If not None, clip gradients during optimization at this value.
     "grad_clip": None,
-    # How many steps of the model to sample before learning starts.
-    "learning_starts": 1500,
     # Update the replay buffer with this many samples at once. Note that this
     # setting applies per-worker if num_workers > 1.
     "rollout_fragment_length": 1,
     # Size of a batched sampled from replay buffer for training.
     "train_batch_size": 256,
-    # Update the target network every `target_network_update_freq` steps.
+    # Update the target network every `target_network_update_freq` sample steps.
     "target_network_update_freq": 0,
 
     # === Parallelism ===
@@ -162,8 +156,6 @@ DEFAULT_CONFIG = with_common_config({
     "num_gpus_per_worker": 0,
     # Whether to allocate CPUs for workers (if > 0).
     "num_cpus_per_worker": 1,
-    # Whether to compute priorities on workers.
-    "worker_side_prioritization": False,
     # Prevent reporting frequency from going lower than this time span.
     "min_time_s_per_reporting": 1,
 
