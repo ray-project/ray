@@ -26,11 +26,9 @@
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
-
 namespace gcs {
 
 using SubscribeOperation = std::function<Status(const StatusCallback &done)>;
-
 using FetchDataOperation = std::function<void(const StatusCallback &done)>;
 
 class GcsClient;

@@ -49,7 +49,7 @@ You can install the nightly Ray wheels via the following links. These daily rele
 `Linux Python 3.9`_  `MacOS Python 3.9`_  `Windows Python 3.9`_
 `Linux Python 3.8`_  `MacOS Python 3.8`_  `Windows Python 3.8`_
 `Linux Python 3.7`_  `MacOS Python 3.7`_  `Windows Python 3.7`_
-`Linux Python 3.6`_  `MacOS Python 3.6`_  `Windows Python 3.6`_
+`Linux Python 3.6`_  `MacOS Python 3.6`_
 ===================  ===================  ======================
 
 .. note::
@@ -70,8 +70,6 @@ You can install the nightly Ray wheels via the following links. These daily rele
 .. _`Windows Python 3.9`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp39-cp39-win_amd64.whl
 .. _`Windows Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp38-cp38-win_amd64.whl
 .. _`Windows Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp37-cp37m-win_amd64.whl
-.. _`Windows Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp36-cp36m-win_amd64.whl
-
 
 Installing from a specific commit
 ---------------------------------

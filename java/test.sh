@@ -29,7 +29,7 @@ run_testng() {
     # exit_code == 2 means there are skipped tests.
     if [ $exit_code -ne 2 ] && [ $exit_code -ne 0 ] ; then
         # Only print log files if it ran in cluster mode
-        if [[ ! "$*" =~ SINGLE_PROCESS ]]; then
+        if [[ ! "$*" =~ LOCAL ]]; then
           if [ $exit_code -gt 128 ] ; then
               # Test crashed. Print the driver log for diagnosis.
               cat /tmp/ray/session_latest/logs/java-core-driver-*$pid*
@@ -101,9 +101,8 @@ while true; do
   fi
 done
 
-echo "Running tests under single-process mode."
-# bazel test //java:all_tests --jvmopt="-Dray.run-mode=SINGLE_PROCESS" --config=ci || single_exit_code=$?
-run_testng java -Dray.run-mode="SINGLE_PROCESS" -cp "$ROOT_DIR"/../bazel-bin/java/all_tests_shaded.jar org.testng.TestNG -d /tmp/ray_java_test_output "$ROOT_DIR"/testng.xml
+echo "Running tests under local mode."
+run_testng java -Dray.run-mode="LOCAL" -cp "$ROOT_DIR"/../bazel-bin/java/all_tests_shaded.jar org.testng.TestNG -d /tmp/ray_java_test_output "$ROOT_DIR"/testng.xml
 
 echo "Running connecting existing cluster tests."
 case "${OSTYPE}" in
@@ -122,8 +121,7 @@ for file in "$docdemo_path"*.java; do
   file=${file#"$docdemo_path"}
   class=${file%".java"}
   echo "Running $class"
-  java -cp bazel-bin/java/all_tests_shaded.jar -Dray.job.num-java-workers-per-process=1\
-   -Dray.raylet.startup-token=0 "io.ray.docdemo.$class"
+  java -cp bazel-bin/java/all_tests_shaded.jar -Dray.raylet.startup-token=0 "io.ray.docdemo.$class"
 done
 popd
 

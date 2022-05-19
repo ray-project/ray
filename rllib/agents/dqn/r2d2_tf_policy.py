@@ -4,14 +4,14 @@ from typing import Dict, List, Optional, Tuple
 
 import gym
 import ray
-from ray.rllib.agents.dqn.dqn_tf_policy import (
+from ray.rllib.algorithms.dqn.dqn_tf_policy import (
     clip_gradients,
     compute_q_values,
     PRIO_WEIGHTS,
     postprocess_nstep_and_prio,
 )
-from ray.rllib.agents.dqn.dqn_tf_policy import build_q_model
-from ray.rllib.agents.dqn.simple_q_tf_policy import TargetNetworkMixin
+from ray.rllib.algorithms.dqn.dqn_tf_policy import build_q_model
+from ray.rllib.algorithms.dqn.simple_q_tf_policy import TargetNetworkMixin
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Categorical

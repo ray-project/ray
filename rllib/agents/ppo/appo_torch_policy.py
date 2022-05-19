@@ -10,7 +10,7 @@ import numpy as np
 import logging
 from typing import Type
 
-from ray.rllib.agents.dqn.simple_q_torch_policy import TargetNetworkMixin
+from ray.rllib.algorithms.dqn.simple_q_torch_policy import TargetNetworkMixin
 import ray.rllib.agents.impala.vtrace_torch as vtrace
 from ray.rllib.agents.impala.vtrace_torch_policy import (
     make_time_major,

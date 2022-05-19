@@ -7,7 +7,7 @@ import os
 
 import ray
 from ray import tune
-from ray.rllib.agents.pg import PGTrainer
+from ray.rllib.algorithms.pg import PGTrainer
 from ray.rllib.examples.env.matrix_sequential_social_dilemma import (
     IteratedPrisonersDilemma,
 )
