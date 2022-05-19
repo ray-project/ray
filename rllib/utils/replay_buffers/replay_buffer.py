@@ -141,7 +141,9 @@ class ReplayBuffer(ParallelIteratorWorker):
             batch: Batch to add to this buffer's storage.
             **kwargs: Forward compatibility kwargs.
         """
-        assert batch.count > 0, batch
+        if not batch.count > 0:
+            return
+
         warn_replay_capacity(item=batch, num_items=self.capacity / batch.count)
 
         if (
