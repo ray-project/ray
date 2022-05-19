@@ -283,12 +283,13 @@ def test_raylet_resubscription(tmp_path, ray_start_regular_with_external_redis):
 
     # kill the gcs
     ray.worker._global_node.kill_gcs_server()
+    sleep(1)
+    ray.worker._global_node.start_gcs_server()
+    sleep(1)
 
     # then kill the owner
     p = psutil.Process(pid)
     p.kill()
-
-    ray.worker._global_node.start_gcs_server()
 
     # The long_run_pid should exit
     wait_for_pid_to_exit(long_run_pid, 10)
