@@ -15,7 +15,8 @@ Guides
 Trainers
 --------
 
-- :doc:`/ray-air/examples/lightgbm_example`: Distributed LightGBM
+- :doc:`/ray-air/examples/lightgbm_example`
+- :doc:`/ray-air/examples/xgboost_example`
 
 .. air-huggingface-examples:
 
