@@ -810,9 +810,14 @@ std::vector<rpc::ObjectReference> CoreWorker::GetObjectRefs(
     rpc::ObjectReference ref;
     ref.set_object_id(object_id.Binary());
     rpc::Address owner_address;
-    if (reference_counter_->GetOwner(object_id, &owner_address)) {
+    std::string spilled_url;
+    NodeID spilled_node_id;
+    if (reference_counter_->GetOwner(
+            object_id, &owner_address, &spilled_url, &spilled_node_id)) {
       // NOTE(swang): Detached actors do not have an owner address set.
       ref.mutable_owner_address()->CopyFrom(owner_address);
+      ref.set_spilled_url(spilled_url);
+      ref.set_spilled_node_id(spilled_node_id.Binary());
     }
     refs.push_back(std::move(ref));
   }
@@ -821,8 +826,11 @@ std::vector<rpc::ObjectReference> CoreWorker::GetObjectRefs(
 
 void CoreWorker::GetOwnershipInfo(const ObjectID &object_id,
                                   rpc::Address *owner_address,
+                                  std::string *spilled_url,
+                                  NodeID *spilled_node_id,
                                   std::string *serialized_object_status) {
-  auto has_owner = reference_counter_->GetOwner(object_id, owner_address);
+  auto has_owner = reference_counter_->GetOwner(
+      object_id, owner_address, spilled_url, spilled_node_id);
   RAY_CHECK(has_owner)
       << "Object IDs generated randomly (ObjectID.from_random()) or out-of-band "
          "(ObjectID.from_binary(...)) cannot be serialized because Ray does not know "
@@ -847,10 +855,13 @@ void CoreWorker::RegisterOwnershipInfoAndResolveFuture(
     const ObjectID &object_id,
     const ObjectID &outer_object_id,
     const rpc::Address &owner_address,
+    const std::string &spilled_url,
+    const NodeID &spilled_node_id,
     const std::string &serialized_object_status) {
   // Add the object's owner to the local metadata in case it gets serialized
   // again.
-  reference_counter_->AddBorrowedObject(object_id, outer_object_id, owner_address);
+  reference_counter_->AddBorrowedObject(
+      object_id, outer_object_id, owner_address, spilled_url, spilled_node_id);
 
   rpc::GetObjectStatusReply object_status;
   object_status.ParseFromString(serialized_object_status);
@@ -966,6 +977,9 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
         reference_counter_->AddBorrowedObject(*object_id,
                                               ObjectID::Nil(),
                                               real_owner_address,
+                                              // TODO(kfstorm): We need to update this.
+                                              /*spilled_url=*/"",
+                                              /*spilled_node_id=*/NodeID::Nil(),
                                               /*foreign_owner_already_monitoring=*/true));
 
     // Remote call `AssignObjectOwner()`.
@@ -2423,7 +2437,12 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
   // Temporarily set the return object's owner's address. This is needed to retrieve the
   // value from plasma.
   reference_counter_->AddLocalReference(return_id, "<temporary (pin return object)>");
-  reference_counter_->AddBorrowedObject(return_id, ObjectID::Nil(), owner_address);
+  reference_counter_->AddBorrowedObject(return_id,
+                                        ObjectID::Nil(),
+                                        owner_address,
+                                        // TODO(kfstorm): We need to update this.
+                                        /*spilled_url=*/"",
+                                        /*spilled_node_id=*/NodeID::Nil());
 
   auto status = plasma_store_provider_->Get(
       {return_id}, 0, worker_context_, &result_map, &got_exception);
@@ -2537,7 +2556,11 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
       // Attach the argument's owner's address. This is needed to retrieve the
       // value from plasma.
       reference_counter_->AddBorrowedObject(
-          arg_id, ObjectID::Nil(), task.ArgRef(i).owner_address());
+          arg_id,
+          ObjectID::Nil(),
+          task.ArgRef(i).owner_address(),
+          task.ArgRef(i).spilled_url(),
+          NodeID::FromBinary(task.ArgRef(i).spilled_node_id()));
       borrowed_ids->push_back(arg_id);
     } else {
       // A pass-by-value argument.

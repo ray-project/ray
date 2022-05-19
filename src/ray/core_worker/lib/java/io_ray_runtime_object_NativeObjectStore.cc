@@ -225,10 +225,13 @@ Java_io_ray_runtime_object_NativeObjectStore_nativeGetOwnershipInfo(JNIEnv *env,
                                                                     jbyteArray objectId) {
   auto object_id = JavaByteArrayToId<ObjectID>(env, objectId);
   rpc::Address address;
+  // TODO(kfstorm): Use these fields.
+  std::string spilled_url;
+  NodeID spilled_node_id;
   // TODO(ekl) send serialized object status to Java land.
   std::string serialized_object_status;
   CoreWorkerProcess::GetCoreWorker().GetOwnershipInfo(
-      object_id, &address, &serialized_object_status);
+      object_id, &address, &spilled_url, &spilled_node_id, &serialized_object_status);
   auto address_str = address.SerializeAsString();
   auto arr = NativeStringToJavaByteArray(env, address_str);
   return arr;
@@ -249,11 +252,19 @@ Java_io_ray_runtime_object_NativeObjectStore_nativeRegisterOwnershipInfoAndResol
   auto ownerAddressStr = JavaByteArrayToNativeString(env, ownerAddress);
   rpc::Address address;
   address.ParseFromString(ownerAddressStr);
+  // TODO(kfstorm): Fill these fields.
+  std::string spilled_url;
+  NodeID spilled_node_id;
   // TODO(ekl) populate serialized object status from Java land.
   rpc::GetObjectStatusReply object_status;
   auto serialized_status = object_status.SerializeAsString();
   CoreWorkerProcess::GetCoreWorker().RegisterOwnershipInfoAndResolveFuture(
-      object_id, outer_objectId, address, serialized_status);
+      object_id,
+      outer_objectId,
+      address,
+      spilled_url,
+      spilled_node_id,
+      serialized_status);
 }
 
 #ifdef __cplusplus

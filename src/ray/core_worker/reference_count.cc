@@ -88,15 +88,23 @@ void ReferenceCounter::ReferenceTableToProto(ReferenceProtoTable &table,
 bool ReferenceCounter::AddBorrowedObject(const ObjectID &object_id,
                                          const ObjectID &outer_id,
                                          const rpc::Address &owner_address,
+                                         const std::string &spilled_url,
+                                         const NodeID &spilled_node_id,
                                          bool foreign_owner_already_monitoring) {
   absl::MutexLock lock(&mutex_);
-  return AddBorrowedObjectInternal(
-      object_id, outer_id, owner_address, foreign_owner_already_monitoring);
+  return AddBorrowedObjectInternal(object_id,
+                                   outer_id,
+                                   owner_address,
+                                   spilled_url,
+                                   spilled_node_id,
+                                   foreign_owner_already_monitoring);
 }
 
 bool ReferenceCounter::AddBorrowedObjectInternal(const ObjectID &object_id,
                                                  const ObjectID &outer_id,
                                                  const rpc::Address &owner_address,
+                                                 const std::string &spilled_url,
+                                                 const NodeID &spilled_node_id,
                                                  bool foreign_owner_already_monitoring) {
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
@@ -105,6 +113,8 @@ bool ReferenceCounter::AddBorrowedObjectInternal(const ObjectID &object_id,
 
   RAY_LOG(DEBUG) << "Adding borrowed object " << object_id;
   it->second.owner_address = owner_address;
+  it->second.spilled_url = spilled_url;
+  it->second.spilled_node_id = spilled_node_id;
   it->second.foreign_owner_already_monitoring |= foreign_owner_already_monitoring;
 
   if (!outer_id.IsNil()) {
@@ -445,18 +455,24 @@ void ReferenceCounter::RemoveSubmittedTaskReferences(
 }
 
 bool ReferenceCounter::GetOwner(const ObjectID &object_id,
-                                rpc::Address *owner_address) const {
+                                rpc::Address *owner_address,
+                                std::string *spilled_url,
+                                NodeID *spilled_node_id) const {
   absl::MutexLock lock(&mutex_);
-  return GetOwnerInternal(object_id, owner_address);
+  return GetOwnerInternal(object_id, owner_address, spilled_url, spilled_node_id);
 }
 
 bool ReferenceCounter::GetOwnerInternal(const ObjectID &object_id,
-                                        rpc::Address *owner_address) const {
+                                        rpc::Address *owner_address,
+                                        std::string *spilled_url,
+                                        NodeID *spilled_node_id) const {
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     return false;
   }
 
+  *spilled_url = it->second.spilled_url;
+  *spilled_node_id = it->second.spilled_node_id;
   if (it->second.owner_address) {
     *owner_address = *it->second.owner_address;
     return true;
@@ -896,6 +912,8 @@ void ReferenceCounter::MergeRemoteBorrowers(const ObjectID &object_id,
     AddBorrowedObjectInternal(object_id,
                               contained_in_borrowed_id,
                               *borrower_ref.owner_address,
+                              borrower_ref.spilled_url,
+                              borrower_ref.spilled_node_id,
                               /*foreign_owner_already_monitoring=*/false);
   }
 

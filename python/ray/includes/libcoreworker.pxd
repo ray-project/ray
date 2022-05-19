@@ -186,11 +186,15 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         void GetOwnershipInfo(const CObjectID &object_id,
                               CAddress *owner_address,
+                              c_string *spilled_url,
+                              CNodeID *spilled_node_id,
                               c_string *object_status)
         void RegisterOwnershipInfoAndResolveFuture(
                 const CObjectID &object_id,
                 const CObjectID &outer_object_id,
                 const CAddress &owner_address,
+                const c_string &spilled_url,
+                const CNodeID &spilled_node_id,
                 const c_string &object_status)
 
         CRayStatus Put(const CRayObject &object,

@@ -39,7 +39,11 @@ ActorID ActorManager::RegisterActorHandle(std::unique_ptr<ActorHandle> actor_han
                             actor_creation_return_id,
                             is_self));
   ObjectID actor_handle_id = ObjectID::ForActorHandle(actor_id);
-  reference_counter_->AddBorrowedObject(actor_handle_id, outer_object_id, owner_address);
+  reference_counter_->AddBorrowedObject(actor_handle_id,
+                                        outer_object_id,
+                                        owner_address,
+                                        /*spilled_url=*/"",
+                                        /*spilled_object_id=*/NodeID::Nil());
   return actor_id;
 }
 

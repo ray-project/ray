@@ -215,6 +215,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[out] serialized_object_status The serialized object status protobuf.
   void GetOwnershipInfo(const ObjectID &object_id,
                         rpc::Address *owner_address,
+                        std::string *spilled_url,
+                        NodeID *spilled_node_id,
                         std::string *serialized_object_status);
 
   /// Add a reference to an ObjectID that was deserialized by the language
@@ -234,6 +236,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void RegisterOwnershipInfoAndResolveFuture(const ObjectID &object_id,
                                              const ObjectID &outer_object_id,
                                              const rpc::Address &owner_address,
+                                             const std::string &spilled_url,
+                                             const NodeID &spilled_node_id,
                                              const std::string &serialized_object_status);
 
   ///

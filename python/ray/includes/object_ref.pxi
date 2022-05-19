@@ -42,11 +42,14 @@ cdef class ObjectRef(BaseID):
 
     def __init__(
             self, id, owner_addr="", call_site_data="",
+            spilled_url="", spilled_node_id=NodeID.nil(),
             skip_adding_local_ref=False):
         self._set_id(id)
         self.owner_addr = owner_addr
         self.in_core_worker = False
         self.call_site_data = call_site_data
+        self.spilled_url = spilled_url
+        self.spilled_node_id = spilled_node_id
 
         worker = ray.worker.global_worker
         # TODO(edoakes): We should be able to remove the in_core_worker flag.

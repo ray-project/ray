@@ -39,6 +39,8 @@ class ReferenceCounterInterface {
   virtual bool AddBorrowedObject(const ObjectID &object_id,
                                  const ObjectID &outer_id,
                                  const rpc::Address &owner_address,
+                                 const std::string &spilled_url,
+                                 const NodeID &spilled_node_id,
                                  bool foreign_owner_already_monitoring = false) = 0;
   virtual void AddOwnedObject(
       const ObjectID &object_id,
@@ -209,6 +211,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   bool AddBorrowedObject(const ObjectID &object_id,
                          const ObjectID &outer_id,
                          const rpc::Address &owner_address,
+                         const std::string &spilled_url,
+                         const NodeID &spilled_node_id,
                          bool foreign_owner_already_monitoring = false)
       LOCKS_EXCLUDED(mutex_);
 
@@ -219,8 +223,10 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \return false if the object is out of scope or we do not yet have
   /// ownership information. The latter can happen when object IDs are pasesd
   /// out of band.
-  bool GetOwner(const ObjectID &object_id, rpc::Address *owner_address = nullptr) const
-      LOCKS_EXCLUDED(mutex_);
+  bool GetOwner(const ObjectID &object_id,
+                rpc::Address *owner_address = nullptr,
+                std::string *spilled_url = nullptr,
+                NodeID *spilled_node_id = nullptr) const LOCKS_EXCLUDED(mutex_);
 
   /// Get the owner addresses of the given objects. The owner address
   /// must be registered for these objects.
@@ -729,7 +735,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   bool GetOwnerInternal(const ObjectID &object_id,
-                        rpc::Address *owner_address = nullptr) const
+                        rpc::Address *owner_address = nullptr,
+                        std::string *spilled_url = nullptr,
+                        NodeID *spilled_node_id = nullptr) const
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Release the pinned plasma object, if any. Also unsets the raylet address
@@ -838,6 +846,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   bool AddBorrowedObjectInternal(const ObjectID &object_id,
                                  const ObjectID &outer_id,
                                  const rpc::Address &owner_address,
+                                 const std::string &spilled_url,
+                                 const NodeID &spilled_node_id,
                                  bool foreign_owner_already_monitoring)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 

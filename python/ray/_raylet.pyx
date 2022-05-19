@@ -202,6 +202,8 @@ cdef VectorToObjectRefs(const c_vector[CObjectReference] &object_refs,
             object_refs[i].object_id(),
             object_refs[i].owner_address().SerializeAsString(),
             object_refs[i].call_site(),
+            object_refs[i].spilled_url(),
+            object_refs[i].spilled_node_id(),
             skip_adding_local_ref=skip_adding_local_ref))
     return result
 
@@ -1942,17 +1944,27 @@ cdef class CoreWorker:
         cdef:
             CObjectID c_object_id = object_ref.native()
             CAddress c_owner_address = CAddress()
+            c_string c_spilled_url
+            CNodeID c_spilled_node_id
             c_string serialized_object_status
         CCoreWorkerProcess.GetCoreWorker().GetOwnershipInfo(
-                c_object_id, &c_owner_address, &serialized_object_status)
+                c_object_id,
+                &c_owner_address,
+                &c_spilled_url,
+                &c_spilled_node_id,
+                &serialized_object_status)
         return (object_ref,
                 c_owner_address.SerializeAsString(),
+                c_spilled_url,
+                c_spilled_node_id.Binary(),
                 serialized_object_status)
 
     def deserialize_and_register_object_ref(
             self, const c_string &object_ref_binary,
             ObjectRef outer_object_ref,
             const c_string &serialized_owner_address,
+            const c_string &spilled_url,
+            const c_string &spilled_node_id,
             const c_string &serialized_object_status,
     ):
         cdef:
@@ -1961,6 +1973,7 @@ cdef class CoreWorker:
                                            outer_object_ref else
                                            CObjectID.Nil())
             CAddress c_owner_address = CAddress()
+            CNodeID c_spilled_node_id = CNodeID.FromBinary(spilled_node_id)
 
         c_owner_address.ParseFromString(serialized_owner_address)
         (CCoreWorkerProcess.GetCoreWorker()
@@ -1968,6 +1981,8 @@ cdef class CoreWorker:
                 c_object_id,
                 c_outer_object_id,
                 c_owner_address,
+                spilled_url,
+                c_spilled_node_id,
                 serialized_object_status))
 
     cdef store_task_output(self, serialized_object, const CObjectID &return_id,

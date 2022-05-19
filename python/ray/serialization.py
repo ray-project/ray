@@ -47,7 +47,9 @@ class DeserializationError(Exception):
     pass
 
 
-def _object_ref_deserializer(binary, call_site, owner_address, object_status):
+def _object_ref_deserializer(
+    binary, call_site, owner_address, spilled_url, spilled_node_id, object_status
+):
     # NOTE(suquark): This function should be a global function so
     # cloudpickle can access it directly. Otherwise cloudpickle
     # has to dump the whole function definition, which is inefficient.
@@ -56,7 +58,9 @@ def _object_ref_deserializer(binary, call_site, owner_address, object_status):
     # the core worker to resolve the value. This is to make sure
     # that the ref count for the ObjectRef is greater than 0 by the
     # time the core worker resolves the value of the object.
-    obj_ref = ray.ObjectRef(binary, owner_address, call_site)
+    obj_ref = ray.ObjectRef(
+        binary, owner_address, call_site, spilled_url, spilled_node_id
+    )
 
     # TODO(edoakes): we should be able to just capture a reference
     # to 'self' here instead, but this function is itself pickled
@@ -71,7 +75,12 @@ def _object_ref_deserializer(binary, call_site, owner_address, object_status):
         if outer_id is None:
             outer_id = ray.ObjectRef.nil()
         worker.core_worker.deserialize_and_register_object_ref(
-            obj_ref.binary(), outer_id, owner_address, object_status
+            obj_ref.binary(),
+            outer_id,
+            owner_address,
+            spilled_url,
+            spilled_node_id.binary(),
+            object_status,
         )
     return obj_ref
 
@@ -108,13 +117,19 @@ class SerializationContext:
             worker = ray.worker.global_worker
             worker.check_connected()
             self.add_contained_object_ref(obj)
-            obj, owner_address, object_status = worker.core_worker.serialize_object_ref(
-                obj
-            )
+            (
+                obj,
+                owner_address,
+                spilled_url,
+                spilled_node_id,
+                object_status,
+            ) = worker.core_worker.serialize_object_ref(obj)
             return _object_ref_deserializer, (
                 obj.binary(),
                 obj.call_site(),
                 owner_address,
+                spilled_url,
+                spilled_node_id,
                 object_status,
             )
 

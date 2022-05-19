@@ -87,6 +87,8 @@ message Address {
   int32 port = 3;
   // Optional unique id for the worker.
   bytes worker_id = 4;
+  // Optional name of the actor. Used by global owners.
+  string actor_name = 5;
 }
 
 /// Function descriptor for Java.
@@ -383,6 +385,11 @@ message ObjectReference {
   // Used to print debugging information if there is an error retrieving the
   // object.
   string call_site = 3;
+  // For objects that have been spilled to external storage, the URL from which
+  // they can be retrieved.
+  string spilled_url = 4;
+  // The node id of a node where the object is spilled.
+  bytes spilled_node_id = 5;
 }
 
 message ObjectReferenceCount {

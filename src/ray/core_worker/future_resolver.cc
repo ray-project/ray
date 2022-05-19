@@ -99,7 +99,9 @@ void FutureResolver::ProcessResolvedObject(const ObjectID &object_id,
     for (const auto &inlined_ref : inlined_refs) {
       reference_counter_->AddBorrowedObject(ObjectID::FromBinary(inlined_ref.object_id()),
                                             object_id,
-                                            inlined_ref.owner_address());
+                                            inlined_ref.owner_address(),
+                                            inlined_ref.spilled_url(),
+                                            NodeID::FromBinary(inlined_ref.spilled_node_id()));
     }
     RAY_UNUSED(in_memory_store_->Put(
         RayObject(data_buffer, metadata_buffer, inlined_refs), object_id));
