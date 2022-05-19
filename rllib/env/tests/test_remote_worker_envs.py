@@ -5,7 +5,7 @@ from supersuit import normalize_obs_v0, dtype_v0, color_reduction_v0
 import unittest
 
 import ray
-from ray.rllib.agents.pg import pg
+from ray.rllib.algorithms.pg import pg
 from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
 from ray.rllib.examples.env.random_env import RandomEnv, RandomMultiAgentEnv
 from ray.rllib.examples.remote_base_env_with_custom_api import (

@@ -106,3 +106,7 @@ RAY_PROCESSES = [
 
 # Max Concurrent SSH Calls to stop Docker
 MAX_PARALLEL_SHUTDOWN_WORKERS = env_integer("MAX_PARALLEL_SHUTDOWN_WORKERS", 50)
+
+DISABLE_NODE_UPDATERS_KEY = "disable_node_updaters"
+DISABLE_LAUNCH_CONFIG_CHECK_KEY = "disable_launch_config_check"
+FOREGROUND_NODE_LAUNCH_KEY = "foreground_node_launch"

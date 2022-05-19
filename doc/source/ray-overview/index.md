@@ -60,8 +60,8 @@ Datasets can hold either plain Python objects (schema is a Python type), or Arro
 
 ```{literalinclude} ../data/doc_code/quick_start.py
 :language: python
-:start-after: __data_setup_begin__
-:end-before: __data_setup_end__
+:start-after: __create_from_python_begin__
+:end-before: __create_from_python_end__
 ```
 
 Datasets can be created from files on local disk or remote datasources such as S3. Any filesystem 
@@ -70,8 +70,8 @@ You can also create a ``Dataset`` from existing data in the Ray object store or 
 
 ```{literalinclude} ../data/doc_code/quick_start.py
 :language: python
-:start-after: __data_load_begin__
-:end-before: __data_load_end__
+:start-after: __create_from_files_begin__
+:end-before: __create_from_files_end__
 ```
 Datasets can be transformed in parallel using ``.map()``. 
 Transformations are executed *eagerly* and block until the operation is finished.

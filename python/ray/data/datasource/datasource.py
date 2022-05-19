@@ -254,9 +254,11 @@ class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):
     """
 
     def __init__(self):
+        ctx = DatasetContext.get_current()
+
         # Setup a dummy actor to send the data. In a real datasource, write
         # tasks would send data to an external system instead of a Ray actor.
-        @ray.remote
+        @ray.remote(scheduling_strategy=ctx.scheduling_strategy)
         class DataSink:
             def __init__(self):
                 self.rows_written = 0

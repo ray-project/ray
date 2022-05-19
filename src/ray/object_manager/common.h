@@ -39,8 +39,8 @@ using RestoreSpilledObjectCallback =
 /// A struct that includes info about the object.
 struct ObjectInfo {
   ObjectID object_id;
-  int64_t data_size;
-  int64_t metadata_size;
+  int64_t data_size = 0;
+  int64_t metadata_size = 0;
   /// Owner's raylet ID.
   NodeID owner_raylet_id;
   /// Owner's IP address.

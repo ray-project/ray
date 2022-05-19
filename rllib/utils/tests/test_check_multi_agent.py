@@ -1,6 +1,6 @@
 import unittest
 
-from ray.rllib.agents.pg import PGTrainer
+from ray.rllib.algorithms.pg import PGTrainer
 
 
 class TestCheckMultiAgent(unittest.TestCase):

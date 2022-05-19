@@ -39,7 +39,7 @@ logging.basicConfig(
 
 # This image will be used for both the Ray nodes and the autoscaler.
 # The CI should pass an image built from the test branch.
-RAY_IMAGE = os.environ.get("RAY_IMAGE", "rayproject/ray:8c5fe4")
+RAY_IMAGE = os.environ.get("RAY_IMAGE", "rayproject/ray:c6d3ff")
 # By default, use the same image for the autoscaler and Ray containers.
 AUTOSCALER_IMAGE = os.environ.get("AUTOSCALER_IMAGE", RAY_IMAGE)
 # Set to IfNotPresent in kind CI.
