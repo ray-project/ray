@@ -24,7 +24,7 @@ DEFAULT_AUTOSUSPEND_MINS = 120
 
 DEFAULT_CLOUD_ID = "cld_4F7k8814aZzGG8TNUGPKnc"
 
-DEFAULT_PYTHON_VERSION = (3, 7)
+DEFAULT_PYTHON_VERSION = (3, 10)
 
 RELEASE_PACKAGE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
