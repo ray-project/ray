@@ -853,7 +853,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       int64_t depth,
       const std::string &serialized_runtime_env_info,
       const std::string &concurrency_group_name = "");
-  void SetCurrentTaskId(const TaskID &task_id, uint64_t attempt_number);
+  void SetCurrentTaskId(const TaskID &task_id,
+                        uint64_t attempt_number,
+                        const std::string &task_name);
 
   void SetActorId(const ActorID &actor_id);
 
@@ -1081,6 +1083,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// are multiple threads, they will have a thread-local task ID stored in the
   /// worker context.
   TaskID main_thread_task_id_ GUARDED_BY(mutex_);
+
+  std::string main_thread_task_name_ GUARDED_BY(mutex_);
 
   /// Event loop where the IO events are handled. e.g. async GCS operations.
   instrumented_io_context io_service_;

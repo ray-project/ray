@@ -841,7 +841,7 @@ cdef CRayStatus task_execution_handler(
                 return CRayStatus.IntentionalSystemExit(e.ray_terminate_msg)
             elif hasattr(e, "is_creation_task_error"):
                 return CRayStatus.CreationTaskError(e.init_error_message)
-            elif e.code and e.code == 0:
+            elif e.code is not None and e.code == 0:
                 # This means the system exit was
                 # normal based on the python convention.
                 # https://docs.python.org/3/library/sys.html#sys.exit

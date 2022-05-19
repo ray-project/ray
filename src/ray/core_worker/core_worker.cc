@@ -332,7 +332,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                               GetCallerId(),
                               rpc_address_);
     // Drivers are never re-executed.
-    SetCurrentTaskId(task_id, /*attempt_number=*/0);
+    SetCurrentTaskId(task_id, /*attempt_number=*/0, "driver");
   }
 
   auto raylet_client_factory = [this](const std::string ip_address, int port) {
@@ -693,11 +693,14 @@ void CoreWorker::OnNodeRemoved(const NodeID &node_id) {
 
 const WorkerID &CoreWorker::GetWorkerID() const { return worker_context_.GetWorkerID(); }
 
-void CoreWorker::SetCurrentTaskId(const TaskID &task_id, uint64_t attempt_number) {
+void CoreWorker::SetCurrentTaskId(const TaskID &task_id,
+                                  uint64_t attempt_number,
+                                  const std::string &task_name) {
   worker_context_.SetCurrentTaskId(task_id, attempt_number);
   {
     absl::MutexLock lock(&mutex_);
     main_thread_task_id_ = task_id;
+    main_thread_task_name_ = task_name;
   }
 }
 
@@ -2268,7 +2271,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
 
   if (!options_.is_local_mode) {
     worker_context_.SetCurrentTask(task_spec);
-    SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber());
+    SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber(), task_spec.GetName());
   }
   {
     absl::MutexLock lock(&mutex_);
@@ -2370,7 +2373,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   }
 
   if (!options_.is_local_mode) {
-    SetCurrentTaskId(TaskID::Nil(), /*attempt_number=*/0);
+    SetCurrentTaskId(TaskID::Nil(), /*attempt_number=*/0, "");
     worker_context_.ResetCurrentTask();
   }
   {
@@ -3051,7 +3054,8 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
 
   // Try non-force kill
   if (requested_task_running && !request.force_kill()) {
-    RAY_LOG(INFO) << "Cancelling a running task " << main_thread_task_id_;
+    RAY_LOG(INFO) << "Cancelling a running task " << main_thread_task_name_
+                  << " thread id: " << main_thread_task_id_;
     success = options_.kill_main();
   } else if (!requested_task_running) {
     RAY_LOG(INFO) << "Cancelling a task " << task_id
@@ -3077,15 +3081,10 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
 
   // Do force kill after reply callback sent
   if (requested_task_running && request.force_kill()) {
-    std::ostringstream stream;
-    const auto spec = task_manager_->GetTaskSpec(task_id);
-    RAY_CHECK(spec.has_value());
-    const auto task_name = spec.value().GetName();
-    stream << "A task " << task_name
-           << " has received a force kill request after the cancellation. Killing "
-              "a worker... thread id: "
-           << main_thread_task_id_;
-    ForceExit(rpc::WorkerExitType::INTENDED_USER_EXIT, stream.str());
+    ForceExit(rpc::WorkerExitType::INTENDED_USER_EXIT,
+              absl::StrCat("The worker exits because the task ",
+                           main_thread_task_name_,
+                           " has received a force ray.cancel request."));
   }
 }
 
@@ -3098,7 +3097,7 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
     stream << "Mismatched ActorID: ignoring KillActor for previous actor "
            << intended_actor_id
            << ", current actor ID: " << worker_context_.GetCurrentActorID();
-    auto msg = stream.str();
+    const auto &msg = stream.str();
     RAY_LOG(ERROR) << msg;
     send_reply_callback(Status::Invalid(msg), nullptr, nullptr);
     return;
@@ -3106,6 +3105,10 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
 
   const auto &kill_actor_reason =
       gcs::GenErrorMessageFromDeathCause(request.death_cause());
+  // If the actor is killed by ray.kill, it is an intended user exit.
+  const auto exit_type = (kill_actor_reason.find("ray.kill") != std::string::npos)
+                             ? rpc::WorkerExitType::INTENDED_USER_EXIT
+                             : rpc::WorkerExitType::INTENDED_SYSTEM_EXIT;
 
   if (request.force_kill()) {
     RAY_LOG(INFO) << "Force kill actor request has received. exiting immediately... "
@@ -3121,10 +3124,10 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
     }
     // If we don't need to restart this actor, we notify raylet before force killing it.
     ForceExit(
-        rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
+        exit_type,
         absl::StrCat("Worker exits because the actor is killed. ", kill_actor_reason));
   } else {
-    Exit(rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
+    Exit(exit_type,
          absl::StrCat("Worker exits because the actor is killed. ", kill_actor_reason));
   }
 }
