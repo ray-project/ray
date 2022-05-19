@@ -300,15 +300,18 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
         lease_status_tracker->MarkCommitRequestReturned(node_id, bundle, status);
 
         auto resources = bundle->GetFormattedResources();
-        // Placement group's wildcard resources have to be updated incrementally.
+        // For gcs actor scheduler, placement group's wildcard resources have to be
+        // updated incrementally.
         // TODO(Chong-Li): This part should be removed when PG scheduling is refactored.
-        auto wildcard_resources = bundle->GetWildcardResources();
-        for (const auto &resource_entry : wildcard_resources) {
-          auto capacity =
-              gcs_resource_manager_.GetNodeResources(scheduling::NodeID(node_id.Binary()))
-                  .total.Get(scheduling::ResourceID(resource_entry.first))
-                  .Double();
-          resources[resource_entry.first] += capacity;
+        if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
+          auto wildcard_resources = bundle->GetWildcardResources();
+          for (const auto &resource_entry : wildcard_resources) {
+            auto capacity = gcs_resource_manager_
+                                .GetNodeResources(scheduling::NodeID(node_id.Binary()))
+                                .total.Get(scheduling::ResourceID(resource_entry.first))
+                                .Double();
+            resources[resource_entry.first] += capacity;
+          }
         }
         // Update the resource in gcs resource manager
         gcs_resource_manager_.UpdateResources(node_id, resources);

@@ -24,7 +24,7 @@
 // clang-format on
 
 namespace ray {
-using raylet::GcsLocalTaskManager;
+using raylet::NoopLocalTaskManager;
 namespace gcs {
 
 class GcsActorSchedulerTest : public ::testing::Test {
@@ -60,7 +60,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
         /*announce_infeasible_task=*/
         nullptr,
         /*local_task_manager=*/
-        std::make_shared<GcsLocalTaskManager>());
+        std::make_shared<NoopLocalTaskManager>());
     auto gcs_resource_manager = std::make_shared<gcs::GcsResourceManager>(
         io_service_,
         gcs_table_storage_,

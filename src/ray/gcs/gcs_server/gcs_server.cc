@@ -326,7 +326,7 @@ void GcsServer::InitClusterTaskManager() {
       /*announce_infeasible_task=*/
       nullptr,
       /*local_task_manager=*/
-      std::make_shared<GcsLocalTaskManager>());
+      std::make_shared<NoopLocalTaskManager>());
 }
 
 void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {

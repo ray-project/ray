@@ -72,10 +72,10 @@ class ILocalTaskManager {
   virtual size_t GetNumUnschedulableTaskSpilled() const = 0;
 };
 
-/// A dummy local task manager, which is used by gcs node only.
-class GcsLocalTaskManager : public ILocalTaskManager {
+/// A noop local task manager, which is used by gcs node only.
+class NoopLocalTaskManager : public ILocalTaskManager {
  public:
-  GcsLocalTaskManager() {}
+  NoopLocalTaskManager() {}
 
   /// Queue task and schedule.
   void QueueAndScheduleTask(std::shared_ptr<internal::Work> work) override {
