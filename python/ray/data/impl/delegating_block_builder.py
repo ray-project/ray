@@ -2,7 +2,7 @@ from typing import Any
 
 import numpy as np
 
-from ray.data.block import Block, T, BlockAccessor
+from ray.data.block import Block, DataBatch, T, BlockAccessor
 from ray.data.impl.block_builder import BlockBuilder
 from ray.data.impl.simple_block import SimpleBlockBuilder
 from ray.data.impl.arrow_block import ArrowRow, ArrowBlockBuilder
@@ -15,7 +15,6 @@ class DelegatingBlockBuilder(BlockBuilder[T]):
         self._empty_block = None
 
     def add(self, item: Any) -> None:
-
         if self._builder is None:
             # TODO (kfstorm): Maybe we can use Pandas block format for dict.
             if isinstance(item, dict) or isinstance(item, ArrowRow):
@@ -36,9 +35,17 @@ class DelegatingBlockBuilder(BlockBuilder[T]):
                 self._builder = SimpleBlockBuilder()
         self._builder.add(item)
 
-    def add_block(self, block: Block) -> None:
+    def add_batch(self, batch: DataBatch):
+        """Add a user-facing data batch to the builder.
+
+        This data batch will be converted to an internal block and then added to the
+        underlying builder.
+        """
+        block = BlockAccessor.batch_to_block(batch)
+        return self.add_block(block)
+
+    def add_block(self, block: Block):
         accessor = BlockAccessor.for_block(block)
-        block = accessor.to_block()
         if accessor.num_rows() == 0:
             # Don't infer types of empty lists. Store the block and use it if no
             # other data is added. https://github.com/ray-project/ray/issues/20290

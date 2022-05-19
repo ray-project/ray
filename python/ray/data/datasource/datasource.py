@@ -16,7 +16,6 @@ from ray.data.block import (
 )
 from ray.data.context import DatasetContext
 from ray.data.impl.arrow_block import ArrowRow
-from ray.data.impl.table_block import VALUE_COL_NAME
 from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.impl.util import _check_pyarrow_version
 from ray.util.annotations import DeveloperAPI
@@ -150,9 +149,7 @@ class ReadTask(Callable[[], BlockPartition]):
                     input_files=self._metadata.input_files, exec_stats=None
                 )  # No exec stats for the block splits.
                 assert context.block_owner
-                partition.append(
-                    (ray.put(accessor.to_block(), _owner=context.block_owner), metadata)
-                )
+                partition.append((ray.put(block, _owner=context.block_owner), metadata))
             if len(partition) == 0:
                 raise ValueError("Read task must return non-empty list.")
             return partition
@@ -196,14 +193,11 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
             elif block_format == "tensor":
                 import pyarrow as pa
 
-                tensor = TensorArray(
-                    np.ones(tensor_shape, dtype=np.int64)
-                    * np.expand_dims(
-                        np.arange(start, start + count),
-                        tuple(range(1, 1 + len(tensor_shape))),
-                    )
+                tensor = np.ones(tensor_shape, dtype=np.int64) * np.expand_dims(
+                    np.arange(start, start + count),
+                    tuple(range(1, 1 + len(tensor_shape))),
                 )
-                return pa.Table.from_pydict({VALUE_COL_NAME: tensor})
+                return BlockAccessor.batch_to_block(tensor)
             else:
                 return list(builtins.range(start, start + count))
 
@@ -217,16 +211,12 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
                 schema = pa.Table.from_pydict({"value": [0]}).schema
             elif block_format == "tensor":
                 _check_pyarrow_version()
-                from ray.data.extensions import TensorArray
                 import pyarrow as pa
 
-                tensor = TensorArray(
-                    np.ones(tensor_shape, dtype=np.int64)
-                    * np.expand_dims(
-                        np.arange(0, 10), tuple(range(1, 1 + len(tensor_shape)))
-                    )
+                tensor = np.ones(tensor_shape, dtype=np.int64) * np.expand_dims(
+                    np.arange(0, 10), tuple(range(1, 1 + len(tensor_shape)))
                 )
-                schema = pa.Table.from_pydict({VALUE_COL_NAME: tensor}).schema
+                schema = BlockAccessor.batch_to_block(tensor).schema
             elif block_format == "list":
                 schema = int
             else:

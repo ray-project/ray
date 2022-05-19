@@ -107,19 +107,18 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return self._table.column_names
 
     @classmethod
-    def from_bytes(cls, data: bytes):
+    def from_bytes(cls, data: bytes) -> "ArrowBlockAccessor":
         reader = pyarrow.ipc.open_stream(data)
         return cls(reader.read_all())
 
-    @classmethod
-    def from_numpy(cls, data: Union[np.ndarray, List[np.ndarray]]):
+    @staticmethod
+    def numpy_to_block(batch: np.ndarray) -> "pyarrow.Table":
         import pyarrow as pa
         from ray.data.extensions.tensor_extension import ArrowTensorArray
 
-        table = pa.Table.from_pydict(
-            {VALUE_COL_NAME: ArrowTensorArray.from_numpy(data)}
+        return pa.Table.from_pydict(
+            {VALUE_COL_NAME: ArrowTensorArray.from_numpy(batch)}
         )
-        return cls(table)
 
     @staticmethod
     def _build_tensor_row(row: ArrowRow) -> np.ndarray:

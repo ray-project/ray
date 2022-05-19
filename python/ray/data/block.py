@@ -83,6 +83,10 @@ def _validate_key_fn(ds: "Dataset", key: KeyFn) -> None:
 # ``SimpleBlockAccessor`` and ``ArrowBlockAccessor``.
 Block = Union[List[T], "pyarrow.Table", "pandas.DataFrame", bytes]
 
+# User-facing data batch type. This is the data type for data that is supplied to and
+# returned from batch UDFs.
+DataBatch = Union[Block, np.ndarray]
+
 # A list of block references pending computation by a single task. For example,
 # this may be the output of a task reading a file.
 BlockPartition = List[Tuple[ObjectRef[Block], "BlockMetadata"]]
@@ -263,6 +267,15 @@ class BlockAccessor(Generic[T]):
         raise NotImplementedError
 
     @staticmethod
+    def batch_to_block(batch: DataBatch) -> Block:
+        """Create a block from user-facing data formats."""
+        if isinstance(batch, np.ndarray):
+            from ray.data.impl.arrow_block import ArrowBlockAccessor
+
+            return ArrowBlockAccessor.numpy_to_block(batch)
+        return batch
+
+    @staticmethod
     def for_block(block: Block) -> "BlockAccessor[T]":
         """Create a block accessor for the given block."""
         _check_pyarrow_version()
@@ -281,16 +294,7 @@ class BlockAccessor(Generic[T]):
             from ray.data.impl.arrow_block import ArrowBlockAccessor
 
             return ArrowBlockAccessor.from_bytes(block)
-        elif isinstance(block, np.ndarray):
-            from ray.data.impl.arrow_block import ArrowBlockAccessor
-
-            return ArrowBlockAccessor.from_numpy(block)
         elif isinstance(block, list):
-            if block and all(isinstance(item, np.ndarray) for item in block):
-                from ray.data.impl.arrow_block import ArrowBlockAccessor
-
-                return ArrowBlockAccessor.from_numpy(block)
-
             from ray.data.impl.simple_block import SimpleBlockAccessor
 
             return SimpleBlockAccessor(block)

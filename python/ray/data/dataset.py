@@ -330,7 +330,7 @@ class Dataset(Generic[T]):
                         "The return type must be either list, "
                         "pandas.DataFrame, or pyarrow.Table"
                     )
-                output_buffer.add_block(applied)
+                output_buffer.add_batch(applied)
                 if output_buffer.has_next():
                     yield output_buffer.next()
 

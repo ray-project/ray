@@ -561,22 +561,11 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     )
 
     # Test map_batches.
-
-    #  - Test top-level ndarray.
     ds = ray.data.range(16, parallelism=4).map_batches(
         lambda _: np.ones((3, 4, 4)), batch_size=2
     )
     assert str(ds) == (
         "Dataset(num_blocks=4, num_rows=24, "
-        "schema={__value__: <ArrowTensorType: shape=(4, 4), dtype=double>})"
-    )
-
-    #  - Test list of ndarrays.
-    ds = ray.data.range(16, parallelism=4).map_batches(
-        lambda _: [np.ones((4, 4)), np.ones((4, 4))], batch_size=2
-    )
-    assert str(ds) == (
-        "Dataset(num_blocks=4, num_rows=16, "
         "schema={__value__: <ArrowTensorType: shape=(4, 4), dtype=double>})"
     )
 

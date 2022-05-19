@@ -61,7 +61,6 @@ class TableBlockBuilder(BlockBuilder[T]):
                 f"{block}"
             )
         accessor = BlockAccessor.for_block(block)
-        block = accessor.to_block()
         self._tables.append(block)
         self._tables_size_bytes += accessor.size_bytes()
         self._num_rows += accessor.num_rows()
