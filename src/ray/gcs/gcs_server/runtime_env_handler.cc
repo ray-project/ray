@@ -35,7 +35,6 @@ void RuntimeEnvHandler::HandlePinRuntimeEnvURI(
                        << "with URI:" << request.uri();
       },
       /* expiration_ms= */ request.expiration_s() * 1000);
-  return;
 }
 }  // namespace gcs
 }  // namespace ray

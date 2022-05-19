@@ -267,8 +267,12 @@ def pin_runtime_env_uri(uri: str, *, expiration_s: Optional[int] = None) -> None
                 RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT,
             )
         )
+    elif not isinstance(expiration_s, int):
+        raise ValueError(f"expiration_s must be an int, got {type(expiration_s)}.")
 
-    if expiration_s > 0:
+    if expiration_s < 0:
+        raise ValueError(f"expiration_s must be >= 0, got {expiration_s}.")
+    elif expiration_s > 0:
         _pin_runtime_env_uri(uri, expiration_s=expiration_s)
 
 

@@ -284,14 +284,20 @@ class GcsClient:
 
     @_auto_reconnect
     def pin_runtime_env_uri(self, uri: str, expiration_s: int) -> None:
+        """Makes a synchronous call to the GCS to temporarily pin the URI."""
         req = gcs_service_pb2.PinRuntimeEnvURIRequest(
             uri=uri, expiration_s=expiration_s
         )
         reply = self._runtime_env_stub.PinRuntimeEnvURIRequest(req)
-        if reply.status.code != GcsCode.OK:
+        if reply.status.code == GcsCode.GrpcUnavailable:
+            raise RuntimeError(
+                f"Failed to pin URI reference {uri} due to the GCS being "
+                f"unavailable, most likely it has crashed: {reply.status.message}."
+            )
+        elif reply.status.code != GcsCode.OK:
             raise RuntimeError(
                 f"Failed to pin URI reference for {uri} "
-                f"due to error {reply.status.message}."
+                f"due to unexpected error {reply.status.message}."
             )
 
 
