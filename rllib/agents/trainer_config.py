@@ -124,7 +124,7 @@ class TrainerConfig:
         self.batch_mode = "truncate_episodes"
         self.remote_worker_envs = False
         self.remote_env_batch_wait_ms = 0
-        self.validate_workers_after_creation = True
+        self.validate_workers_after_construction = True
         self.ignore_worker_failures = False
         self.recreate_failed_workers = False
         self.restart_failed_sub_environments = False
@@ -551,7 +551,7 @@ class TrainerConfig:
         batch_mode: Optional[str] = None,
         remote_worker_envs: Optional[bool] = None,
         remote_env_batch_wait_ms: Optional[float] = None,
-        validate_workers_after_creation: Optional[bool] = None,
+        validate_workers_after_construction: Optional[bool] = None,
         ignore_worker_failures: Optional[bool] = None,
         recreate_failed_workers: Optional[bool] = None,
         restart_failed_sub_environments: Optional[bool] = None,
@@ -619,8 +619,8 @@ class TrainerConfig:
                 polling environments. 0 (continue when at least one env is ready) is
                 a reasonable default, but optimal value could be obtained by measuring
                 your environment step / reset and model inference perf.
-            validate_workers_after_creation: Whether to validate that each created
-                remote worker is healthy after its creation process.
+            validate_workers_after_construction: Whether to validate that each created
+                remote worker is healthy after its construction process.
             ignore_worker_failures: Whether to attempt to continue training if a worker
                 crashes. The number of currently healthy workers is reported as the
                 "num_healthy_workers" metric.
@@ -683,8 +683,8 @@ class TrainerConfig:
             self.remote_worker_envs = remote_worker_envs
         if remote_env_batch_wait_ms is not None:
             self.remote_env_batch_wait_ms = remote_env_batch_wait_ms
-        if validate_workers_after_creation is not None:
-            self.validate_workers_after_creation = validate_workers_after_creation
+        if validate_workers_after_construction is not None:
+            self.validate_workers_after_construction = validate_workers_after_construction
         if ignore_worker_failures is not None:
             self.ignore_worker_failures = ignore_worker_failures
         if recreate_failed_workers is not None:
