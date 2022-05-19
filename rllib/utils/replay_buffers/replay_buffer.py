@@ -82,7 +82,7 @@ class ReplayBuffer(ParallelIteratorWorker):
         else:
             raise ValueError(
                 "storage_unit must be either 'timesteps', `sequences` or `episodes` "
-                "or `fragments`."
+                "or `fragments`, but is {}".format(storage_unit)
             )
 
         # The actual storage (list of SampleBatches or MultiAgentBatches).
@@ -121,7 +121,7 @@ class ReplayBuffer(ParallelIteratorWorker):
 
         def gen_replay():
             while True:
-                yield self.replay()
+                yield self.sample(1)
 
         ParallelIteratorWorker.__init__(self, gen_replay, False)
 
@@ -141,7 +141,9 @@ class ReplayBuffer(ParallelIteratorWorker):
             batch: Batch to add to this buffer's storage.
             **kwargs: Forward compatibility kwargs.
         """
-        assert batch.count > 0, batch
+        if not batch.count > 0:
+            return
+
         warn_replay_capacity(item=batch, num_items=self.capacity / batch.count)
 
         if (
@@ -355,7 +357,7 @@ class ReplayBuffer(ParallelIteratorWorker):
 
     @Deprecated(
         old="RepayBuffer.replay(num_items)",
-        new="RepayBuffer.sample(" "num_items)",
+        new="RepayBuffer.sample(num_items)",
         error=False,
     )
     def replay(self, num_items):

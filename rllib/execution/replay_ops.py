@@ -71,6 +71,7 @@ class StoreToReplayBuffer:
 def Replay(
     *,
     local_buffer: Optional[MultiAgentReplayBuffer] = None,
+    num_items_to_replay: 1,
     actors: Optional[List[ActorHandle]] = None,
     num_async: int = 4,
 ) -> LocalIterator[SampleBatchType]:
@@ -82,6 +83,7 @@ def Replay(
     Args:
         local_buffer: Local buffer to use. Only one of this and replay_actors
             can be specified.
+        num_items_to_replay: Number of items to sample from buffer
         actors: List of replay actors. Only one of this and local_buffer
             can be specified.
         num_async: In async mode, the max number of async requests in flight
@@ -105,7 +107,7 @@ def Replay(
 
     def gen_replay(_):
         while True:
-            item = local_buffer.replay()
+            item = local_buffer.sample(num_items=num_items_to_replay)
             if item is None:
                 yield _NextValueNotReady()
             else:

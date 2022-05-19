@@ -221,7 +221,6 @@ class DQNConfig(SimpleQConfig):
                 "type": "MultiAgentReplayBuffer",
                 "learning_starts": 1000,
                 "capacity": 50000,
-                "replay_batch_size": 32,
                 "replay_sequence_length": 1,
                 }
                 - OR -
@@ -386,6 +385,7 @@ class DQNTrainer(SimpleQTrainer):
             # Sample training batch (MultiAgentBatch) from replay buffer.
             train_batch = self.local_replay_buffer.sample(
                 self.config["train_batch_size"]
+                // self.local_replay_buffer.replay_sequence_length
             )
 
             # Old-style replay buffers return None if learning has not started

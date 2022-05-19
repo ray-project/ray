@@ -64,10 +64,9 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         capacity: int = 10000,
         storage_unit: str = "timesteps",
         num_shards: int = 1,
-        replay_batch_size: int = 1,
         learning_starts: int = 1000,
         replay_mode: str = "independent",
-        replay_sequence_length: int = 1,
+        max_sequence_length: int = 1,
         replay_burn_in: int = 0,
         replay_zero_init_states: bool = True,
         underlying_buffer_config: dict = None,
@@ -84,17 +83,11 @@ class MultiAgentReplayBuffer(ReplayBuffer):
             learning_starts: Number of timesteps after which a call to
                 `sample()` will yield samples (before that, `sample()` will
                 return None).
-            capacity: Max number of total timesteps in all policy buffers.
-                After reaching this number, older samples will be
-                dropped to make space for new ones.
-            replay_batch_size: The batch size to be sampled (in timesteps).
-                Note that if `replay_sequence_length` > 1,
-                `self.replay_batch_size` will be set to the number of
-                sequences sampled (B).
+            capacity: The capacity of the buffer, measured in `storage_unit`.
             replay_mode: One of "independent" or "lockstep". Determines,
                 whether batches are sampled independently or to an equal
                 amount.
-            replay_sequence_length: The sequence length (T) of a single
+            max_sequence_length: The sequence length (T) of a single
                 sample. If > 1, we will sample B x T from this buffer. This
                 only has an effect if storage_unit is 'timesteps'.
             replay_burn_in: The burn-in length in case
@@ -122,22 +115,9 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         else:
             self.underlying_buffer_call_args = {}
 
-        if replay_sequence_length > 1 and self._storage_unit == "timesteps":
-            self.replay_batch_size = int(
-                max(1, replay_batch_size // replay_sequence_length)
-            )
-            logger.info(
-                "Since replay_sequence_length={} and replay_batch_size={}, "
-                "we will replay {} sequences at a time.".format(
-                    replay_sequence_length, replay_batch_size, self.replay_batch_size
-                )
-            )
-        else:
-            self.replay_batch_size = replay_batch_size
-
         self.replay_starts = learning_starts // num_shards
         self.replay_mode = replay_mode
-        self.replay_sequence_length = replay_sequence_length
+        self.replay_sequence_length = max_sequence_length
         self.replay_burn_in = replay_burn_in
         self.replay_zero_init_states = replay_zero_init_states
 
@@ -184,12 +164,14 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         return sum(len(buffer._storage) for buffer in self.replay_buffers.values())
 
     @DeveloperAPI
-    @Deprecated(old="replay", new="sample", error=False)
+    @Deprecated(
+        old="RepayBuffer.replay()",
+        new="RepayBuffer.sample(num_items)",
+        error=True,
+    )
     def replay(self, num_items: int = None, **kwargs) -> Optional[SampleBatchType]:
         """Deprecated in favor of new ReplayBuffer API."""
-        if num_items is None:
-            num_items = self.replay_batch_size
-        return self.sample(num_items, **kwargs)
+        pass
 
     @DeveloperAPI
     @override(ReplayBuffer)

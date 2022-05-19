@@ -89,9 +89,9 @@ class TestCQL(unittest.TestCase):
             # Example on how to do evaluation on the trained Trainer
             # using the data from CQL's global replay buffer.
             # Get a sample (MultiAgentBatch -> SampleBatch).
-            batch = trainer.local_replay_buffer.replay().policy_batches[
-                "default_policy"
-            ]
+            batch = trainer.local_replay_buffer.sample(
+                num_items=config["train_batch_size"]
+            ).policy_batches["default_policy"]
 
             if fw == "torch":
                 obs = torch.from_numpy(batch["obs"])
