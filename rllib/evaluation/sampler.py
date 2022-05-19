@@ -657,10 +657,7 @@ def _env_runner(
         t0 = time.time()
         # Get observations from all ready agents.
         # types: MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, ...
-        try:#TODO
-            unfiltered_obs, rewards, dones, infos, off_policy_actions = base_env.poll()
-        except Exception as e:
-            raise e
+        unfiltered_obs, rewards, dones, infos, off_policy_actions = base_env.poll()
         perf_stats.env_wait_time += time.time() - t0
 
         if log_once("env_returns"):
@@ -823,7 +820,10 @@ def _process_observations(
     for env_id, all_agents_obs in unfiltered_obs.items():
         is_new_episode: bool = env_id not in active_episodes
         episode: Episode = active_episodes[env_id]
-        episode_faulty = any(isinstance(i, dict) and "episode_faulty" in i for i in infos[env_id].values())
+        episode_faulty = any(
+            isinstance(i, dict) and "episode_faulty" in i
+            for i in infos[env_id].values()
+        )
 
         if not is_new_episode:
             sample_collector.episode_step(episode)
@@ -837,7 +837,9 @@ def _process_observations(
             if not episode_faulty:
                 if atari_metrics is not None:
                     for m in atari_metrics:
-                        outputs.append(m._replace(custom_metrics=episode.custom_metrics))
+                        outputs.append(
+                            m._replace(custom_metrics=episode.custom_metrics)
+                        )
                 else:
                     outputs.append(
                         RolloutMetrics(
@@ -1013,7 +1015,7 @@ def _process_observations(
             if not episode_faulty:
                 if ma_sample_batch:
                     outputs.append(ma_sample_batch)
-    
+
                 # Call each (in-memory) policy's Exploration.on_episode_end
                 # method.
                 # Note: This may break the exploration (e.g. ParameterNoise) of

@@ -3,14 +3,10 @@ from typing import Callable, Tuple, Optional, List, Dict, Any, TYPE_CHECKING, Un
 
 import gym
 import ray
-from ray.rllib.utils.annotations import Deprecated, ExperimentalAPI, override, PublicAPI
+from ray.rllib.utils.annotations import Deprecated, ExperimentalAPI, PublicAPI
 from ray.rllib.utils.typing import AgentID, EnvID, EnvType, MultiAgentDict, MultiEnvDict
 
 if TYPE_CHECKING:
-    from ray.rllib.models.preprocessors import Preprocessor
-    from ray.rllib.env.external_env import ExternalEnv
-    from ray.rllib.env.multi_agent_env import MultiAgentEnv
-    from ray.rllib.env.vector_env import VectorEnv
     from ray.rllib.evaluation.rollout_worker import RolloutWorker
 
 ASYNC_RESET_RETURN = "async_reset_return"
@@ -373,10 +369,7 @@ _DUMMY_AGENT_ID = "agent0"
 def with_dummy_agent_id(
     env_id_to_values: Dict[EnvID, Any], dummy_id: "AgentID" = _DUMMY_AGENT_ID
 ) -> MultiEnvDict:
-    return {
-        env_id: {dummy_id: value}
-        for (env_id, value) in env_id_to_values.items()
-    }
+    return {env_id: {dummy_id: value} for (env_id, value) in env_id_to_values.items()}
 
 
 def convert_to_base_env(

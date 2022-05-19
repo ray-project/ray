@@ -39,7 +39,8 @@ def check_env(env: EnvType) -> None:
     if hasattr(env, "_skip_env_checking") and env._skip_env_checking:
         # This is a work around for some environments that we already have in RLlb
         # that we want to skip checking for now until we have the time to fix them.
-        logger.warning("Skipping env checking for this experiment")
+        if log_once("skip_env_checking"):
+            logger.warning("Skipping env checking for this experiment")
         return
 
     try:

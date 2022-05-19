@@ -1,16 +1,16 @@
 import logging
+from gym.envs.classic_control import CartPoleEnv
 import numpy as np
 import time
 
-from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import EnvError
 
 logger = logging.getLogger(__name__)
 
 
-class EnvThatCrashes(RandomEnv):
-    """An env that crashes from time to time.
+class CartPoleCrashing(CartPoleEnv):
+    """A CartPole env that crashes from time to time.
 
     Useful for testing faulty sub-env (within a vectorized env) handling by
     RolloutWorkers.
@@ -22,7 +22,7 @@ class EnvThatCrashes(RandomEnv):
     """
 
     def __init__(self, config=None):
-        super().__init__(config)
+        super().__init__()
 
         # Crash probability (in each `step()`).
         self.p_crash = config.get("p_crash", 0.005)
@@ -44,7 +44,7 @@ class EnvThatCrashes(RandomEnv):
         # No env pre-checking?
         self._skip_env_checking = config.get("skip_env_checking", False)
 
-    @override(RandomEnv)
+    @override(CartPoleEnv)
     def reset(self):
         if self.in_crashed_state:
             logger.info(
@@ -54,7 +54,7 @@ class EnvThatCrashes(RandomEnv):
             self.in_crashed_state = False
         return super().reset()
 
-    @override(RandomEnv)
+    @override(CartPoleEnv)
     def step(self, action):
         # Still in crashed state -> Must call `reset()` first.
         if self.in_crashed_state:
