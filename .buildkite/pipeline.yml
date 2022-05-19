@@ -151,13 +151,6 @@
     - ./ci/ci.sh lint
     - ./ci/ci.sh build
 
-- label: ":book: LinkCheck"
-  commands:
-    - export LINT=1
-    - ./ci/env/install-dependencies.sh
-    - ./ci/ci.sh check_sphinx_links
-  soft_fail: True
-
 - label: ":java: Java"
   conditions: ["RAY_CI_JAVA_AFFECTED"]
   commands:
