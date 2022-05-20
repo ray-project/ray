@@ -3,6 +3,7 @@
 import time
 import numpy as np
 from typing import Optional
+import sys
 
 import ray
 from ray import train
@@ -59,6 +60,8 @@ class DummyTrainer(DataParallelTrainer):
         """Make a debug train loop that runs for the given amount of runtime."""
 
         def train_loop_per_worker():
+            import pandas as pd
+
             rank = train.world_rank()
             data_shard = train.get_dataset_shard("train")
             start = time.perf_counter()
@@ -75,7 +78,16 @@ class DummyTrainer(DataParallelTrainer):
                     batch_delay = time.perf_counter() - batch_start
                     batch_delays.append(batch_delay)
                     num_batches += 1
-                    num_bytes += int(batch.memory_usage(index=True, deep=True).sum())
+                    if isinstance(batch, pd.DataFrame):
+                        num_bytes += int(
+                            batch.memory_usage(index=True, deep=True).sum()
+                        )
+                    elif isinstance(batch, np.ndarray):
+                        num_bytes += batch.nbytes
+                    else:
+                        # NOTE: This isn't recursive and will just return the size of
+                        # the object pointers if list of non-primitive types.
+                        num_bytes += sys.getsizeof(batch)
                     train.report(
                         bytes_read=num_bytes,
                         num_batches=num_batches,
