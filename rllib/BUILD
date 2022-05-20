@@ -1504,7 +1504,7 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "test_utils_serialization",
+    name = "test_serialization",
     tags = ["team:ml", "utils"],
     size = "large",
     srcs = ["utils/tests/test_serialization.py"]

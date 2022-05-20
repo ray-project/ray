@@ -9,12 +9,8 @@ from ray.rllib.utils.serialization import (
 
 
 def _assert_array_equal(eq, a1, a2, margin=None):
-    if margin:
-        for a in zip(a1, a2):
-            eq(a[0], a[1], margin)
-    else:
-        for a in zip(a1, a2):
-            eq(a[0], a[1])
+    for a in zip(a1, a2):
+        eq(a[0], a[1], margin)
 
 
 class TestGymCheckEnv(unittest.TestCase):
