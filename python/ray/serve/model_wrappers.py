@@ -11,7 +11,7 @@ from ray.serve.utils import require_packages
 
 try:
     import pandas as pd
-except:
+except ImportError:
     pd = None
 
 
@@ -52,7 +52,7 @@ def collate_array(
             f"The output array should have shape of ({batch_size}, ...) "
             f"but Serve got {output_arr.shape}"
         )
-        return np.split(output_arr, batch_size, axis=0)
+        return [arr.squeeze(axis=0) for arr in np.split(output_arr, batch_size, axis=0)]
 
     return batched, unpack
 
@@ -144,7 +144,8 @@ class ModelWrapper(SimpleSchemaIngress):
                     collate_func = collate_dataframe
                 else:
                     raise ValueError(
-                        "ModelWrapper only accepts numpy array or dataframe as input."
+                        "ModelWrapper only accepts numpy array or dataframe as input "
+                        f"but got types {set(type(i) for i in inp)}"
                     )
 
                 batched, unpack = collate_func(inp)

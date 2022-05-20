@@ -28,7 +28,8 @@ class TestCollationFunctions:
 
         batched, unpack = collate_array(list_of_arr)
         assert np.array_equal(batched, batched_arr)
-        assert unpack(batched) == list_of_arr
+        for i, j in zip(unpack(batched), list_of_arr):
+            assert np.array_equal(i, j)
 
     def test_array_error(self):
         list_of_arr = [np.array([i]) for i in range(4)]

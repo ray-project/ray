@@ -1,7 +1,7 @@
 from io import BytesIO
 from typing import Any, Dict, List, Optional, Union
 
-from fastapi import File
+from fastapi import Body, File, Request
 from pydantic import BaseModel, Field
 import numpy as np
 
@@ -72,3 +72,13 @@ def image_to_ndarray(img: bytes = File(...)) -> np.ndarray:
 
     image = Image.open(BytesIO(img))
     return np.array(image)
+
+
+@require_packages(["pandas"])
+async def pandas_read_json(raw_request: Request):
+    """Accept JSON body and converts into pandas DataFrame using
+    `pandas.read_json(body, **query_params)`"""
+    import pandas as pd
+
+    raw_json = await raw_request.body()
+    return pd.read_json(raw_json, **raw_request.query_params)
