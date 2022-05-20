@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+import abc
+
 import ray
 
 IGNORE_PATHS = {".impl.", ".backend.", ".experimental.", ".internal.", ".generated."}
@@ -44,7 +46,8 @@ def verify(symbol, scanned, ok, output, prefix=None):
         attr = getattr(symbol, child)
         if _ignore(attr):
             continue
-        if type(attr) == type and prefix in _fullname(attr):
+        if type(attr) in [type, abc.ABCMeta] and prefix in _fullname(attr):
+            print("Scanning class", attr)
             # Check for magic token added by API annotation decorators.
             av = getattr(attr, "_annotated", None)
             # If not equal, this means the subclass was not annotated but the
@@ -58,6 +61,7 @@ def verify(symbol, scanned, ok, output, prefix=None):
             verify(attr, scanned, ok, output, prefix)
             scanned.add(attr)
         elif type(attr) == type(ray):
+            print("Scanning module", attr)
             verify(attr, scanned, ok, output, prefix)
 
 
