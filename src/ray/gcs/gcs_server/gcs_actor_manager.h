@@ -329,6 +329,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
                     const WorkerID &worker_id,
                     const std::string &worker_ip,
                     const rpc::WorkerExitType disconnect_type,
+                    const std::string &disconnect_detail,
                     const rpc::RayException *creation_task_exception = nullptr);
 
   /// Testing only.
@@ -453,9 +454,11 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// Notify CoreWorker to kill the specified actor.
   ///
   /// \param actor The actor to be killed.
+  /// \param death_cause Context about why this actor is dead.
   /// \param force_kill Whether to force kill an actor by killing the worker.
   /// \param no_restart If set to true, the killed actor will not be restarted anymore.
   void NotifyCoreWorkerToKillActor(const std::shared_ptr<GcsActor> &actor,
+                                   const rpc::ActorDeathCause &death_cause,
                                    bool force_kill = true,
                                    bool no_restart = true);
 
