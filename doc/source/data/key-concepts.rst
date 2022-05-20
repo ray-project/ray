@@ -132,10 +132,14 @@ group by default. This can be thought of as Datasets requesting resources from t
 margins of the cluster, outside of those ML library placement groups.
 
 Although this is the default behavior, you can force all Datasets workloads to be
-schedule without a placement group by specifying a placement group as the global
+scheduled within a placement group by specifying a placement group as the global
 scheduling strategy for all Datasets tasks/actors, using the global
-:class:`DatasetContext <ray.data.DatasetContext>`:
+:class:`DatasetContext <ray.data.DatasetContext>`.
 
+.. note::
+
+  This is an experimental feature subject to change as we work to improve our
+  resource allocation model for Datasets.
 
 .. literalinclude:: ./doc_code/key_concepts.py
   :language: python
