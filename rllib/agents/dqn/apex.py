@@ -208,7 +208,7 @@ class ApexTrainer(DQNTrainer):
         # Place all replay buffer shards on the same node as the learner
         # (driver process that runs this execution plan).
         if replay_actor_config["replay_buffer_shards_colocated_with_driver"]:
-            self.replay_actors = create_colocated_actors(
+            self._replay_actors = create_colocated_actors(
                 actor_specs=[  # (class, args, kwargs={}, count)
                     (
                         ReplayActor,
