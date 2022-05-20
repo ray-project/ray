@@ -81,6 +81,7 @@ ds.groupby("variety").count().show()
 import ray
 import pandas
 import numpy
+from ray.data import ActorPoolStrategy
 
 # Dummy model to predict Iris variety.
 def predict_iris(df: pandas.DataFrame) -> pandas.DataFrame:
@@ -90,7 +91,7 @@ def predict_iris(df: pandas.DataFrame) -> pandas.DataFrame:
         (df["sepal.length"] >= 6.0)
     ]
     values = ["Setosa", "Versicolor", "Virginica"]
-    return pandas.DataFrame({"predicted_variety": np.select(conditions, values)})
+    return pandas.DataFrame({"predicted_variety": numpy.select(conditions, values)})
 
 class IrisInferModel:
     def __init__(self):
@@ -104,10 +105,8 @@ ds = ray.data.read_csv("example://iris.csv").repartition(10)
 # Batch inference processing with Ray tasks (the default compute strategy).
 predicted = ds.map_batches(predict_iris)
 
-# Batch inference processing with Ray actors.
-# Autoscale the actors between 3 and 10, and assign each actor a GPU using
-# ``num_gpus=1``.
+# Batch inference processing with Ray actors. Autoscale the actors between 3 and 10.
 predicted = ds.map_batches(
-    IrisInferModel, compute=ActorPoolStrategy(3, 10), batch_size=256, num_gpus=1)
+    IrisInferModel, compute=ActorPoolStrategy(3, 10), batch_size=256)
 # __dataset_compute_strategy_end__
 # fmt: on
