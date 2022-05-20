@@ -429,11 +429,12 @@ Are environments installed on every node?
 """""""""""""""""""""""""""""""""""""""""
 
 If a runtime environment is specified in ``ray.init(runtime_env=...)``, then the environment will be installed on every node.  See :ref:`Per-Job <rte-per-job>` for more details.
+If you don't want to install the environment on every node, add ``"eager_install": False`` to the ``runtime_env``. It means that the environment will be installed on demand on the nodes which your tasks or actors are scheduled to.
 
 When is the environment installed?
 """"""""""""""""""""""""""""""""""
 
-When specified per-job, the environment is installed when you call ``ray.init()``.  
+When specified per-job, the environment is installed when you call ``ray.init()`` unless that ``"eager_install": False`` is set.
 When specified per-task or per-actor, the environment is installed when the task is invoked or the actor is instantiated (i.e. when you call ``my_task.remote()`` or ``my_actor.remote()``.)
 See :ref:`Per-Job <rte-per-job>` :ref:`Per-Task/Actor, within a job <rte-per-task-actor>` for more details.
 
@@ -454,6 +455,7 @@ On the other hand, loading a runtime environment from the cache should be nearly
 (Note that loading a cached ``conda`` environment could still be slow, since the ``conda activate`` command sometimes takes a few seconds.)
 
 
+You can set ``setup_timeout_seconds`` config to avoid the installation hanging for a long time.
 
 .. _remote-uris:
 
