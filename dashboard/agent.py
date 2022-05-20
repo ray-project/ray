@@ -43,18 +43,19 @@ class DashboardAgent(object):
         dashboard_agent_port,
         gcs_address,
         minimal,
-        temp_dir=None,
-        session_dir=None,
-        runtime_env_dir=None,
-        log_dir=None,
         metrics_export_port=None,
         node_manager_port=None,
         listen_port=0,
-        object_store_name=None,
-        raylet_name=None,
-        logging_params=None,
         disable_metrics_collection: bool = False,
-        agent_id: int = os.getpid(),
+        *,  # the following are required kwargs
+        object_store_name: str,
+        raylet_name: str,
+        log_dir: str,
+        temp_dir: str,
+        session_dir: str,
+        runtime_env_dir: str,
+        logging_params: dict,
+        agent_id: int,
     ):
         """Initialize the DashboardAgent object."""
         # Public attributes are accessible for all agent modules.

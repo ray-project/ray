@@ -57,6 +57,10 @@ void AgentManager::StartAgent() {
   }
 
   // Create a non-zero random agent_id to pass to the child process
+  // We cannot use pid an id because os.getpid() from the python process is not
+  // reliable when using a launcher.
+  // See https://github.com/ray-project/ray/issues/24361 and Python issue
+  // https://github.com/python/cpython/issues/83086
   int agent_id = 0;
   while (agent_id == 0) {
     agent_id = rand();
