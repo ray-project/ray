@@ -68,7 +68,7 @@ def verify(symbol, scanned, ok, output, prefix=None):
             else:
                 output.add(attr)
             scanned.add(attr)
-        elif isinstance(type(attr), types.ModuleType):
+        elif isinstance(attr, types.ModuleType):
             print("Scanning module", attr)
             verify(attr, scanned, ok, output, prefix)
         else:
@@ -86,7 +86,7 @@ if __name__ == "__main__":
     ok = set()
     verify(ray.data, set(), ok, output)
     # Sanity check the lint logic.
-    assert len(ok) >= 35, len(ok)
+    assert len(ok) >= 60, len(ok)
     # TODO(ekl) enable it for all modules.
     #    verify(ray.ml, set(), ok, output)
     #    verify(ray.train, set(), ok, output)
