@@ -62,7 +62,6 @@ def verify(symbol, scanned, ok, output, prefix=None):
 
 
 if __name__ == "__main__":
-    import ray
     import ray.data
     import ray.rllib
     import ray.serve
