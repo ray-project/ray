@@ -429,7 +429,7 @@ Are environments installed on every node?
 """""""""""""""""""""""""""""""""""""""""
 
 If a runtime environment is specified in ``ray.init(runtime_env=...)``, then the environment will be installed on every node.  See :ref:`Per-Job <rte-per-job>` for more details.
-If you don't want to install the environment on every node, add ``"eager_install": False`` to the ``runtime_env``. It means that the environment will be installed on demand on the nodes which your tasks or actors are scheduled to.
+(Note, by default the runtime environment will be installed eagerly on every node in the cluster. If you want to lazily install the runtime environment on demand, set the ``eager_install`` option to false: ``ray.init(runtime_env={..., "eager_install": True}``.)
 
 When is the environment installed?
 """"""""""""""""""""""""""""""""""
@@ -454,7 +454,7 @@ This could take seconds or minutes.
 On the other hand, loading a runtime environment from the cache should be nearly as fast as the ordinary Ray worker startup time, which is on the order of a few seconds. A new Ray worker is started for every Ray actor or task that requires a new runtime environment.
 (Note that loading a cached ``conda`` environment could still be slow, since the ``conda activate`` command sometimes takes a few seconds.)
 
-You can set ``setup_timeout_seconds`` config to avoid the installation hanging for a long time.
+You can set ``setup_timeout_seconds`` config to avoid the installation hanging for a long time. If the installation is not finished within this time, your tasks or actors will fail.
 
 
 .. _remote-uris:
