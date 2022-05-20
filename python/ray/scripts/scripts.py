@@ -339,7 +339,7 @@ def debug(address):
     "--ray-client-server-port",
     required=False,
     type=int,
-    default=10001,
+    default=None,
     help="the port number the ray client server will bind on. If not set, "
     "the ray client server will not be started.",
 )
