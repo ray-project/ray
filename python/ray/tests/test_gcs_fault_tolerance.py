@@ -243,7 +243,7 @@ def test_del_actor_after_gcs_server_restart(ray_start_regular_with_external_redi
     ],
     indirect=True,
 )
-def test_raylet_resubscription(tmp_path, ray_start_regular_with_external_redis):
+def test_worker_raylet_resubscription(tmp_path, ray_start_regular_with_external_redis):
     # This test is to make sure resubscription in raylet is working.
     # When subscription failed, raylet will not get worker failure error
     # and thus, it won't kill the worker which is fate sharing with the failed
@@ -283,12 +283,16 @@ def test_raylet_resubscription(tmp_path, ray_start_regular_with_external_redis):
 
     # kill the gcs
     ray.worker._global_node.kill_gcs_server()
+    ray.worker._global_node.start_gcs_server()
+    # make sure resubscription is done
+    # TODO(iycheng): The current way of resubscription potentially will lose
+    # worker failure message because we don't ask for the snapshot of worker
+    # status for now. We need to fix it.
+    sleep(4)
 
     # then kill the owner
     p = psutil.Process(pid)
     p.kill()
-
-    ray.worker._global_node.start_gcs_server()
 
     # The long_run_pid should exit
     wait_for_pid_to_exit(long_run_pid, 5)
