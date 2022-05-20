@@ -201,10 +201,17 @@ class _WandbLoggingProcess(Process):
     """
 
     def __init__(
-        self, queue: Queue, exclude: List[str], to_config: List[str], *args, **kwargs
+        self,
+        logdir: str,
+        queue: Queue,
+        exclude: List[str],
+        to_config: List[str],
+        *args,
+        **kwargs,
     ):
         super(_WandbLoggingProcess, self).__init__()
 
+        os.chdir(logdir)
         self.queue = queue
         self._exclude = set(exclude)
         self._to_config = set(to_config)
@@ -400,6 +407,7 @@ class WandbLoggerCallback(LoggerCallback):
 
         self._trial_queues[trial] = Queue()
         self._trial_processes[trial] = self._logger_process_cls(
+            logdir=trial.logdir,
             queue=self._trial_queues[trial],
             exclude=exclude_results,
             to_config=self._config_results,
