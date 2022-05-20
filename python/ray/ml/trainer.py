@@ -160,7 +160,7 @@ class Trainer(abc.ABC):
         self.run_config = run_config if run_config is not None else RunConfig()
         self.datasets = datasets if datasets is not None else {}
         self.preprocessor = preprocessor
-        self.ingest = ingest,
+        self.ingest = (ingest,)
         self.resume_from_checkpoint = resume_from_checkpoint
 
         self._validate_attributes()
@@ -282,7 +282,8 @@ class Trainer(abc.ABC):
 
         if self.preprocessor:
             self.datasets = self.ingest.preprocess_datasets(
-                self.preprocessor, self.datasets)
+                self.preprocessor, self.datasets
+            )
 
     @abc.abstractmethod
     def training_loop(self) -> None:
