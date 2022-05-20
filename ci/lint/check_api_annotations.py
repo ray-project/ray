@@ -63,6 +63,8 @@ def verify(symbol, scanned, ok, output, prefix=None):
         elif type(attr) == type(ray):
             print("Scanning module", attr)
             verify(attr, scanned, ok, output, prefix)
+        else:
+            print("Not scanning", attr, type(attr))
 
 
 if __name__ == "__main__":
