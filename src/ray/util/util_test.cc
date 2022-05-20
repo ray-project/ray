@@ -13,16 +13,17 @@
 // limitations under the License.
 
 #include "ray/util/util.h"
-#include "ray/util/process.h"
+
 #include <stdio.h>
-#include <chrono>
-#include <thread>
 
 #include <boost/asio/generic/basic_endpoint.hpp>
 #include <boost/process/child.hpp>
+#include <chrono>
+#include <thread>
 
 #include "gtest/gtest.h"
 #include "ray/util/logging.h"
+#include "ray/util/process.h"
 
 using namespace std::chrono_literals;
 
@@ -189,13 +190,12 @@ TEST(UtilTest, CreateCommandLineTest) {
   }
 }
 
-
 TEST(UtilTest, IsProcessAlive) {
   namespace bp = boost::process;
   bp::child c("no_such_cmd");
   auto pid = c.id();
-  for(int i = 0; i < 5; ++i) {
-    if(IsProcessAlive(pid)) {
+  for (int i = 0; i < 5; ++i) {
+    if (IsProcessAlive(pid)) {
       std::this_thread::sleep_for(1s);
     } else {
       break;
