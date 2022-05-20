@@ -66,6 +66,9 @@ class Preprocessor(abc.ABC):
         Calling it more than once will overwrite all previously fitted state:
         ``preprocessor.fit(A).fit(B)`` is equivalent to ``preprocessor.fit(B)``.
 
+        To fit a preprocessor on the union of multiple subsets of Dataset, use
+        ``preprocessor.fit(A).update(B)``.
+
         Args:
             dataset: Input dataset.
 
@@ -88,6 +91,20 @@ class Preprocessor(abc.ABC):
             )
 
         return self._fit(dataset)
+
+    def update(self, dataset: Dataset) -> "Preprocessor":
+        """Update the fit of this Preprocessor taking into account a new Dataset.
+
+        Calling ``p.fit(A).update(B)`` is the equivalent of ``p.fit(A.union(B))``
+        but done incrementally.
+
+        Args:
+            dataset: Input dataset to update the dataset with.
+
+        Returns:
+            Preprocessor: The updated Preprocessor with state attributes.
+        """
+        # TODO(ekl)
 
     def fit_transform(self, dataset: Dataset) -> Dataset:
         """Fit this Preprocessor to the Dataset and then transform the Dataset.
