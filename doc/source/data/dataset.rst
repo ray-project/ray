@@ -108,6 +108,18 @@ Advanced users can refer directly to the Ray Datasets :ref:`API reference <data_
         :classes: btn-outline-info btn-block
     ---
 
+    **Ray Datasets FAQ**
+    ^^^
+
+    Find answers to commonly asked questions in our detailed FAQ.
+
+    +++
+    .. link-button:: datasets_faq
+        :type: ref
+        :text: Ray Datasets FAQ
+        :classes: btn-outline-info btn-block
+    ---
+
     API
     ^^^
 
