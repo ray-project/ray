@@ -72,6 +72,14 @@ class TrackedCheckpoint:
         self.metrics = metrics or {}
         self.node_ip = node_ip or self.metrics.get(NODE_IP, None)
 
+        if storage_mode == CheckpointStorage.MEMORY and not isinstance(
+            dir_or_data, (dict, ray.ObjectRef)
+        ):
+            raise ValueError(
+                f"Memory checkpoints only support Ray object references and dicts "
+                f"as their data. Got: {dir_or_data}"
+            )
+
     def commit(self, path: Optional[Path] = None) -> None:
         """Commit checkpoint to disk, if needed.
 
