@@ -42,9 +42,9 @@ class Trial(
 
 
 class _MockWandbLoggingProcess(_WandbLoggingProcess):
-    def __init__(self, queue, exclude, to_config, *args, **kwargs):
+    def __init__(self, logdir, queue, exclude, to_config, *args, **kwargs):
         super(_MockWandbLoggingProcess, self).__init__(
-            queue, exclude, to_config, *args, **kwargs
+            logdir, queue, exclude, to_config, *args, **kwargs
         )
 
         self.logs = Queue()
