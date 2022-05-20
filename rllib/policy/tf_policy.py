@@ -784,9 +784,10 @@ class TFPolicy(Policy):
 
     @DeveloperAPI
     def extra_compute_action_fetches(self) -> Dict[str, TensorType]:
-        # It is pretty important to cache this, since action_fetches are
-        # called every single iteration. Things will be really slow if
-        # we try to compute the fetches live every time.
+        # Cache graph fetches for action computation for better
+        # performance.
+        # This function is called every time the static graph is run
+        # to compute actions.
         if not self._cached_extra_action_out:
             self._cached_extra_action_out = self.extra_action_out_fn()
         return self._cached_extra_action_out
