@@ -22,11 +22,11 @@ import ray
 from ray.actor import ActorHandle
 from ray.rllib import RolloutWorker
 from ray.rllib.agents import Trainer
-from ray.rllib.agents.dqn.dqn import (
+from ray.rllib.algorithms.dqn.dqn import (
     DEFAULT_CONFIG as DQN_DEFAULT_CONFIG,
     DQNTrainer,
 )
-from ray.rllib.agents.dqn.learner_thread import LearnerThread
+from ray.rllib.algorithms.dqn.learner_thread import LearnerThread
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import (
     STEPS_TRAINED_COUNTER,

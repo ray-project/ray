@@ -153,7 +153,7 @@ class Trainer(Trainable):
     This allows you to override the `execution_plan` method to implement
     your own algorithm logic. You can find the different built-in
     algorithms' execution plans in their respective main py files,
-    e.g. rllib.agents.dqn.dqn.py or rllib.agents.impala.impala.py.
+    e.g. rllib.algorithms.dqn.dqn.py or rllib.agents.impala.impala.py.
 
     The most important API methods a Trainer exposes are `train()`,
     `evaluate()`, `save()` and `restore()`. Trainer objects retain internal

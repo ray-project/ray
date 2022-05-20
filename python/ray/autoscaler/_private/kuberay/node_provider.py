@@ -1,9 +1,13 @@
 import json
 import logging
 import requests
-import threading
 from typing import Any, Dict, List, Tuple
 
+from ray.autoscaler._private.constants import (
+    DISABLE_NODE_UPDATERS_KEY,
+    DISABLE_LAUNCH_CONFIG_CHECK_KEY,
+    FOREGROUND_NODE_LAUNCH_KEY,
+)
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import (
     NODE_KIND_HEAD,
@@ -148,7 +152,6 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         logger.info("Creating KuberayNodeProvider.")
         self.namespace = provider_config["namespace"]
         self.cluster_name = cluster_name
-        self._lock = threading.RLock()
 
         self.headers, self.verify = load_k8s_secrets()
 
@@ -159,8 +162,15 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
                 not provider_exists
             ), "Only one KuberayNodeProvider allowed per process."
         assert (
-            provider_config.get("disable_node_updaters", False) is True
-        ), "Must disable node updaters to use KuberayNodeProvider."
+            provider_config.get(DISABLE_NODE_UPDATERS_KEY, False) is True
+        ), f"To use KuberayNodeProvider, must set `{DISABLE_NODE_UPDATERS_KEY}:True`."
+        assert provider_config.get(DISABLE_LAUNCH_CONFIG_CHECK_KEY, False) is True, (
+            "To use KuberayNodeProvider, must set "
+            f"`{DISABLE_LAUNCH_CONFIG_CHECK_KEY}:True`."
+        )
+        assert (
+            provider_config.get(FOREGROUND_NODE_LAUNCH_KEY, False) is True
+        ), f"To use KuberayNodeProvider, must set `{FOREGROUND_NODE_LAUNCH_KEY}:True`."
         provider_exists = True
 
         super().__init__(provider_config, cluster_name)
@@ -240,22 +250,21 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         self, node_config: Dict[str, Any], tags: Dict[str, str], count: int
     ) -> Dict[str, Dict[str, str]]:
         """Creates a number of nodes within the namespace."""
-        with self._lock:
-            url = "rayclusters/{}".format(self.cluster_name)
-            raycluster = self._get(url)
-            group_name = tags["ray-user-node-type"]
-            group_index = _worker_group_index(raycluster, group_name)
-            tag_filters = {TAG_RAY_USER_NODE_TYPE: group_name}
-            current_replica_count = len(self.non_terminated_nodes(tag_filters))
-            path = f"/spec/workerGroupSpecs/{group_index}/replicas"
-            payload = [
-                {
-                    "op": "replace",
-                    "path": path,
-                    "value": current_replica_count + count,
-                },
-            ]
-            self._patch(url, payload)
+        url = "rayclusters/{}".format(self.cluster_name)
+        raycluster = self._get(url)
+        group_name = tags["ray-user-node-type"]
+        group_index = _worker_group_index(raycluster, group_name)
+        tag_filters = {TAG_RAY_USER_NODE_TYPE: group_name}
+        current_replica_count = len(self.non_terminated_nodes(tag_filters))
+        path = f"/spec/workerGroupSpecs/{group_index}/replicas"
+        payload = [
+            {
+                "op": "replace",
+                "path": path,
+                "value": current_replica_count + count,
+            },
+        ]
+        self._patch(url, payload)
         return {}
 
     def internal_ip(self, node_id: str) -> str:
@@ -281,39 +290,39 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
 
     def terminate_nodes(self, node_ids: List[str]) -> Dict[str, Dict[str, str]]:
         """Batch terminates the specified nodes (= Kubernetes pods)."""
-        with self._lock:
-            # Split node_ids into groups according to node type and terminate
-            # them individually. Note that in most cases, node_ids contains
-            # a single element and therefore it is most likely not worth
-            # optimizing this code to batch the requests to the API server.
-            groups = {}
-            current_replica_counts = {}
-            pods = self._get_non_terminating_pods(tag_filters={})
-            for pod in pods:
-                group_name = pod["metadata"]["labels"]["ray.io/group"]
-                current_replica_counts[group_name] = (
-                    current_replica_counts.get(group_name, 0) + 1
-                )
-                if pod["metadata"]["name"] in node_ids:
-                    groups.setdefault(group_name, []).append(pod["metadata"]["name"])
+        # Split node_ids into groups according to node type and terminate
+        # them individually. Note that in most cases, node_ids contains
+        # a single element and therefore it is most likely not worth
+        # optimizing this code to batch the requests to the API server.
+        groups = {}
+        current_replica_counts = {}
+        label_filters = to_label_selector({"ray.io/cluster": self.cluster_name})
+        pods = self._get("pods?labelSelector=" + requests.utils.quote(label_filters))
+        for pod in pods["items"]:
+            group_name = pod["metadata"]["labels"]["ray.io/group"]
+            current_replica_counts[group_name] = (
+                current_replica_counts.get(group_name, 0) + 1
+            )
+            if pod["metadata"]["name"] in node_ids:
+                groups.setdefault(group_name, []).append(pod["metadata"]["name"])
 
-            url = "rayclusters/{}".format(self.cluster_name)
-            raycluster = self._get(url)
+        url = "rayclusters/{}".format(self.cluster_name)
+        raycluster = self._get(url)
 
-            for group_name, nodes in groups.items():
-                group_index = _worker_group_index(raycluster, group_name)
-                prefix = f"/spec/workerGroupSpecs/{group_index}"
-                payload = [
-                    {
-                        "op": "replace",
-                        "path": prefix + "/replicas",
-                        "value": current_replica_counts[group_name] - len(nodes),
-                    },
-                    {
-                        "op": "replace",
-                        "path": prefix + "/scaleStrategy",
-                        "value": {"workersToDelete": nodes},
-                    },
-                ]
-                self._patch(url, payload)
+        for group_name, nodes in groups.items():
+            group_index = _worker_group_index(raycluster, group_name)
+            prefix = f"/spec/workerGroupSpecs/{group_index}"
+            payload = [
+                {
+                    "op": "replace",
+                    "path": prefix + "/replicas",
+                    "value": current_replica_counts[group_name] - len(nodes),
+                },
+                {
+                    "op": "replace",
+                    "path": prefix + "/scaleStrategy",
+                    "value": {"workersToDelete": nodes},
+                },
+            ]
+            self._patch(url, payload)
         return {}

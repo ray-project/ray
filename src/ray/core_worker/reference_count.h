@@ -448,7 +448,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   ///
   /// \param[in] object_id Object whose locality data we want.
   /// \return Locality data.
-  absl::optional<LocalityData> GetLocalityData(const ObjectID &object_id);
+  absl::optional<LocalityData> GetLocalityData(const ObjectID &object_id) const;
 
   /// Report locality data for object. This is used by the FutureResolver to report
   /// locality data for borrowed refs.
