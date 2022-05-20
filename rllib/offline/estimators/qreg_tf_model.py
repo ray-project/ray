@@ -1,26 +1,49 @@
+from ray.rllib.models.utils import get_initializer
 from ray.rllib.policy import Policy
-from typing import Dict, List
-import gym
-from gym.spaces import Box, Discrete
-import numpy as np
+from ray.rllib.policy.sample_batch import SampleBatch
+from typing import Dict, List, Union
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
-from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.typing import SampleBatchType, TensorType, TensorStructType
+from ray.rllib.utils.typing import TensorType
 
 tf1, tf, tfv = try_import_tf()
 
+
 class QRegTFModel:
     def __init__(self, policy: Policy, gamma: float, config: Dict) -> None:
-        raise NotImplementedError
-    
+        self.policy = policy
+        self.gamma = gamma
+        self.observation_space = policy.observation_space
+        self.action_space = policy.action_space
+
+        self.q_model: TFModelV2 = ModelCatalog.get_model_v2(
+            self.observation_space,
+            self.action_space,
+            self.action_space.n,
+            config["model"],
+            framework=policy.config[""],
+            name="TFQModel",
+        )
+        self.device = self.q_model.device
+        self.n_iters = config.get("n_iters", 80)
+        self.lr = config.get("lr", 1e-3)
+        self.delta = config.get("delta", 1e-4)
+        self.initializer = get_initializer("xavier_uniform", framework="tf")
+
     def reset(self) -> None:
         raise NotImplementedError
 
-    def train_q(self, batch: SampleBatchType) -> None:
+    def train_q(self, batch: SampleBatch) -> TensorType:
         raise NotImplementedError
 
-    def estimate_q(self, batch: SampleBatchType) -> TensorType:
+    def estimate_q(
+        self,
+        obs: Union[TensorType, List[TensorType]],
+        actions: Union[TensorType, List[TensorType]] = None,
+    ) -> TensorType:
+        raise NotImplementedError
+
+    def estimate_v(self, obs: Union[TensorType, List[TensorType]]) -> TensorType:
         raise NotImplementedError

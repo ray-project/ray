@@ -1,7 +1,11 @@
-from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator, OffPolicyEstimate
+from ray.rllib.offline.estimators.off_policy_estimator import (
+    OffPolicyEstimator,
+    OffPolicyEstimate,
+)
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import SampleBatchType
 from typing import List
+import numpy as np
 
 
 class ImportanceSampling(OffPolicyEstimator):
@@ -17,7 +21,7 @@ class ImportanceSampling(OffPolicyEstimator):
         # TODO (rohan) : Optimize this to use matmul instead of for loop
         for sub_batch in batch.split_by_episode():
             rewards, old_prob = sub_batch["rewards"], sub_batch["action_prob"]
-            new_prob = self.action_prob(sub_batch)
+            new_prob = np.exp(self.compute_log_likelihoods(sub_batch))
 
             # calculate importance ratios
             p = []
@@ -34,12 +38,14 @@ class ImportanceSampling(OffPolicyEstimator):
                 V_prev += rewards[t] * self.gamma ** t
                 V_step_IS += p[t] * rewards[t] * self.gamma ** t
 
-            estimates.append(OffPolicyEstimate(
-                "importance_sampling",
-                {
-                    "V_prev": V_prev,
-                    "V_step_IS": V_step_IS,
-                    "V_gain_est": V_step_IS / max(1e-8, V_prev),
-                },
-            ))
+            estimates.append(
+                OffPolicyEstimate(
+                    "importance_sampling",
+                    {
+                        "V_prev": V_prev,
+                        "V_step_IS": V_step_IS,
+                        "V_gain_est": V_step_IS / max(1e-8, V_prev),
+                    },
+                )
+            )
         return estimates

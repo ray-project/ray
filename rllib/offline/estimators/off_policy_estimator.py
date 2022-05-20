@@ -1,8 +1,5 @@
 from collections import namedtuple
 import logging
-
-import numpy as np
-
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.policy import Policy
 from ray.rllib.utils.annotations import DeveloperAPI
@@ -22,7 +19,7 @@ class OffPolicyEstimator:
     """Interface for an off policy reward estimator."""
 
     @DeveloperAPI
-    def __init__(self, policy: Policy, gamma: float, config: Dict = {}):
+    def __init__(self, policy: Policy, gamma: float, config: Dict):
         """Initializes an OffPolicyEstimator instance.
 
         Args:
@@ -30,8 +27,9 @@ class OffPolicyEstimator:
             gamma: Discount factor of the environment.
         """
         self.policy = policy
-        self.gamma = policy.config["gamma"]
+        self.gamma = gamma
         self.config = config
+        self.new_estimates = []
 
     @DeveloperAPI
     def estimate(self, batch: SampleBatchType) -> List[OffPolicyEstimate]:
@@ -44,27 +42,24 @@ class OffPolicyEstimator:
             The off-policy estimates (OPE) calculated on the given batch.
         """
         raise NotImplementedError
-    
+
     @DeveloperAPI
-    def train(self, batch: SampleBatchType, reset_weights=True) -> None:
-        """Trains a Direct Off-Policy Estimator on the given batch of episodes.
-        A model-based or model-free estimator should override this and train
+    def train(self, batch: SampleBatchType) -> None:
+        """Trains an Off-Policy Estimator on the given batch of episodes.
+        A model-based estimator should override this and train
         a transition, value, or reward model.
-        
+
         Args:
             batch: The batch to train the model on
-            reset_weights: Whether to reinitialize the model weights; this is True
-            if, for example, you update your policy between calls to train(),
-            but False if you want to run OPE on a fixed policy and offline dataset.
         """
         pass
 
     @DeveloperAPI
-    def action_prob(self, batch: SampleBatchType) -> TensorType:
-        """Returns probabilities for actions in given batch for policy.
+    def compute_log_likelihoods(self, batch: SampleBatchType) -> TensorType:
+        """Returns log likelihood for actions in given batch for policy.
 
         Computes likelihoods by passing the observations through the current
-        policy's `compute_log_likelihoods()` method, then calls np.exp()
+        policy's `compute_log_likelihoods()` method
 
         Args:
             batch: The SampleBatch or MultiAgentBatch to calculate action
@@ -89,7 +84,7 @@ class OffPolicyEstimator:
             actions_normalized=True,
         )
         log_likelihoods = convert_to_numpy(log_likelihoods)
-        return np.exp(log_likelihoods)
+        return log_likelihoods
 
     @DeveloperAPI
     def check_can_estimate_for(self, batch: SampleBatchType) -> None:

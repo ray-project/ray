@@ -35,13 +35,12 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.models.preprocessors import Preprocessor
 from ray.rllib.offline import NoopOutput, IOContext, OutputWriter, InputReader
 from ray.rllib.offline.estimators.off_policy_estimator import (
-    OffPolicyEstimator, OffPolicyEstimate
+    OffPolicyEstimator,
+    OffPolicyEstimate,
 )
 from ray.rllib.offline.estimators import (
     ImportanceSampling,
     WeightedImportanceSampling,
-    DirectMethod,
-    DoublyRobust,
 )
 from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID
 from ray.rllib.policy.policy import Policy, PolicySpec
@@ -752,7 +751,9 @@ class RolloutWorker(ParallelIteratorWorker):
                         "You can set `input_evaluation: []` to resolve this."
                     )
                 policy = self.io_context.worker.get_policy(keys[0])
-                estimator_config = self.io_context.input_config.get("estimator_config", {})
+                estimator_config = self.io_context.input_config.get(
+                    "estimator_config", {}
+                )
                 self.reward_estimators.append(
                     method(policy=policy, gamma=gamma, config=estimator_config)
                 )
@@ -891,7 +892,7 @@ class RolloutWorker(ParallelIteratorWorker):
         # Do off-policy estimation, if needed.
         if self.reward_estimators:
             for estimator in self.reward_estimators:
-                    estimator.process(batch)
+                estimator.process(batch)
 
         if log_once("sample_end"):
             logger.info("Completed sample batch:\n\n{}\n".format(summarize(batch)))

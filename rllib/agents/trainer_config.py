@@ -19,7 +19,7 @@ from ray.rllib.offline.estimators import (
     ImportanceSampling,
     WeightedImportanceSampling,
     DirectMethod,
-    DoublyRobust
+    DoublyRobust,
 )
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.typing import (
