@@ -5,6 +5,7 @@ import os
 import sys
 import time
 import pytest
+import numpy as np
 
 import ray.cluster_utils
 from ray._private.test_utils import (
@@ -161,6 +162,65 @@ ray.get(ready.remote())
     run_string_as_driver(driver_script)
     run_string_as_driver(driver_script)
     run_string_as_driver(driver_script)
+
+
+def test_generator_oom(ray_start_regular):
+    @ray.remote(max_retries=0)
+    def large_values(num_returns):
+        return [
+            np.random.randint(
+                np.iinfo(np.int8).max, size=(100_000_000, 1), dtype=np.int8
+            )
+            for _ in range(num_returns)
+        ]
+
+    @ray.remote(max_retries=0)
+    def large_values_generator(num_returns):
+        for _ in range(num_returns):
+            yield np.random.randint(
+                np.iinfo(np.int8).max, size=(100_000_000, 1), dtype=np.int8
+            )
+
+    num_returns = 100
+    with pytest.raises(ray.exceptions.WorkerCrashedError):
+        # Worker will OOM using normal returns.
+        ray.get(large_values.options(num_returns=num_returns).remote(num_returns)[0])
+
+    # Using a generator will allow the worker to finish.
+    ray.get(
+        large_values_generator.options(num_returns=num_returns).remote(num_returns)[0]
+    )
+
+
+def test_generator_returns(ray_start_regular):
+    @ray.remote(max_retries=0)
+    def generator(num_returns):
+        for i in range(num_returns):
+            yield i
+
+    # Check cases when num_returns does not match the number of values returned
+    # by the generator.
+    try:
+        ray.get(generator.remote(2))
+    except ray.exceptions.RayTaskError as e:
+        assert isinstance(e.as_instanceof_cause(), ValueError)
+
+    num_returns = 3
+
+    try:
+        ray.get(generator.options(num_returns=num_returns).remote(num_returns - 1))
+    except ray.exceptions.RayTaskError as e:
+        assert isinstance(e.as_instanceof_cause(), ValueError)
+
+    try:
+        ray.get(generator.options(num_returns=num_returns).remote(num_returns + 1))
+    except ray.exceptions.RayTaskError as e:
+        assert isinstance(e.as_instanceof_cause(), ValueError)
+
+    # Check return values.
+    ray.get(generator.options(num_returns=num_returns).remote(num_returns)) == list(
+        range(num_returns)
+    )
 
 
 if __name__ == "__main__":
