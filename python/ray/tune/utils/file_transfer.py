@@ -370,7 +370,7 @@ def _unpack_from_actor(pack_actor: ray.ActorID, target_dir: str) -> None:
 def _copy_dir(source_dir: str, target_dir: str) -> None:
     """Copy dir with shutil on the actor."""
     with FileLock(f"{target_dir}.lock"):
-        _delete_path_unsafe(target_dir, filelock=False)
+        _delete_path_unsafe(target_dir)
         shutil.copytree(source_dir, target_dir)
 
 
