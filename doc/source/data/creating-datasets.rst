@@ -74,7 +74,7 @@ serving as pointers to a collection of distributed data blocks.
     :start-after: __gen_synth_int_range_begin__
     :end-before: __gen_synth_int_range_end__
 
-.. tabbed:: Arrow Range
+.. tabbed:: Tabular Range
 
   Create an Arrow (tabular) ``Dataset`` from a range of integers,
   with a single column containing this integer range.
