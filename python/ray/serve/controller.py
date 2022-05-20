@@ -8,6 +8,7 @@ import os
 from typing import Dict, Iterable, List, Optional, Tuple, Any
 
 import ray
+from ray.types import ObjectRef
 from ray.actor import ActorHandle
 
 from ray.serve.autoscaling_metrics import InMemoryMetricsStore
@@ -115,6 +116,9 @@ class ServeController:
             all_current_actor_names,
             _override_controller_namespace=_override_controller_namespace,
         )
+
+        # Reference to Ray task executing most recent deployment request
+        self.config_deployment_request_ref: ObjectRef = None
 
         # TODO(simon): move autoscaling related stuff into a manager.
         self.autoscaling_metrics_store = InMemoryMetricsStore()
