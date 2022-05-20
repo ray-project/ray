@@ -50,6 +50,13 @@ class ServeApplicationStatusInfo:
             and self.deployment_timestamp == other.deployment_timestamp
         )
 
+    def __str__(self):
+        return (
+            f"Status: {self.status}\n"
+            f"Deployment Timestamp: {self.deployment_timestamp}\n"
+            f"Message: {self.message}"
+        )
+
     def to_proto(self):
         return ServeApplicationStatusInfoProto(
             status=self.status,
@@ -90,6 +97,11 @@ class DeploymentStatusInfo:
             and self.message == other.message
         )
 
+    def __str__(self):
+        return (
+            f"Name: {self.name}\n" f"Status: {self.status}\n" f"Message: {self.message}"
+        )
+
     def to_proto(self):
         return DeploymentStatusInfoProto(
             name=self.name, status=self.status, message=self.message
@@ -109,21 +121,22 @@ class StatusInfo:
     app_status: ServeApplicationStatusInfo
     deployment_statuses: List[DeploymentStatusInfo] = field(default_factory=list)
 
-    def get_deployment_status(self, name: str) -> Optional[DeploymentStatusInfo]:
-        """Get a deployment's status by name.
-
-        Args:
-            name (str): Deployment's name.
-
-        Return (Optional[DeploymentStatusInfo]): Status with a name matching
-            the argument, if one exists. Otherwise, returns None.
-        """
-
+    def __str__(self):
+        deployment_status_str = ""
         for deployment_status in self.deployment_statuses:
-            if name == deployment_status.name:
-                return deployment_status
+            deployment_status_str += str(deployment_status)
+            deployment_status_str += "\n----------------------------------------\n"
 
-        return None
+        return (
+            "========================================\n"
+            "        Serve Application Status:       \n"
+            "----------------------------------------\n"
+            f"{str(self.app_status)}\n"
+            "========================================\n"
+            "        Serve Deployment Statuses:      \n"
+            "----------------------------------------\n"
+            f"{deployment_status_str}"
+        )
 
     def __eq__(self, other):
         if not isinstance(other, StatusInfo):
@@ -140,6 +153,22 @@ class StatusInfo:
             return True
         else:
             return False
+
+    def get_deployment_status(self, name: str) -> Optional[DeploymentStatusInfo]:
+        """Get a deployment's status by name.
+
+        Args:
+            name (str): Deployment's name.
+
+        Return (Optional[DeploymentStatusInfo]): Status with a name matching
+            the argument, if one exists. Otherwise, returns None.
+        """
+
+        for deployment_status in self.deployment_statuses:
+            if name == deployment_status.name:
+                return deployment_status
+
+        return None
 
     def to_proto(self):
 
