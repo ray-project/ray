@@ -1,6 +1,6 @@
 import logging
 import platform
-from typing import Any, Dict, List, Optional, Callable
+from typing import Any, Dict, List, Optional, Callable, Union
 
 import numpy as np
 import random
@@ -58,7 +58,8 @@ def warn_replay_capacity(*, item: SampleBatchType, num_items: int) -> None:
 @DeveloperAPI
 class ReplayBuffer(ParallelIteratorWorker):
     def __init__(
-        self, capacity: int = 10000, storage_unit: str = "timesteps", **kwargs
+        self, capacity: int = 10000, storage_unit: Union[str, StorageUnit] =
+        "timesteps", **kwargs
     ):
         """Initializes a (FIFO) ReplayBuffer instance.
 

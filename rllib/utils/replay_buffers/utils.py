@@ -171,6 +171,19 @@ def validate_buffer_config(config: dict):
             help="config['replay_buffer_config']['replay_burn_in']",
         )
 
+    replay_batch_size = config.get("replay_batch_size", DEPRECATED_VALUE)
+    if replay_batch_size == DEPRECATED_VALUE:
+        replay_batch_size = config["replay_buffer_config"].get("replay_batch_size", DEPRECATED_VALUE)
+    if replay_batch_size != DEPRECATED_VALUE:
+        deprecation_warning(
+            old="config['replay_batch_size'] or config['replay_buffer_config']["
+            "'replay_batch_size']",
+            help="Specification of replay_batch_size is not needed anymore for most "
+                 "replay buffers and will be ignored. Specify the number of items you "
+                 "want to replay upon calling sample().",
+            error=False
+        )
+
     # Deprecation of old-style replay buffer args
     # Warnings before checking of we need local buffer so that algorithms
     # Without local buffer also get warned
@@ -179,7 +192,6 @@ def validate_buffer_config(config: dict):
         "prioritized_replay_beta",
         "prioritized_replay_eps",
         "no_local_replay_buffer",
-        "replay_batch_size",
         "replay_zero_init_states",
         "learning_starts",
         "replay_buffer_shards_colocated_with_driver",
@@ -234,15 +246,6 @@ def validate_buffer_config(config: dict):
         config["replay_buffer_config"]["type"] = (
             "ray.rllib.utils.replay_buffers." + buffer_type
         )
-
-    if config["replay_buffer_config"].get("replay_batch_size", None) is None:
-        # Fall back to train batch size if no replay batch size was provided
-        logger.info(
-            "No value for key `replay_batch_size` in replay_buffer_config. "
-            "config['replay_buffer_config']['replay_batch_size'] will be "
-            "automatically set to config['train_batch_size']"
-        )
-        config["replay_buffer_config"]["replay_batch_size"] = config["train_batch_size"]
 
     # Instantiate a dummy buffer to fail early on misconfiguration and find out about
     # inferred buffer class

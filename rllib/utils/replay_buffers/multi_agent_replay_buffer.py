@@ -157,7 +157,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
 
         if self.underlying_buffer_config:
             ctor_args = {
-                **{"capacity": shard_capacity, "storage_unit": storage_unit},
+                **{"capacity": shard_capacity, "storage_unit": StorageUnit.FRAGMENTS},
                 **self.underlying_buffer_config,
             }
 
@@ -170,7 +170,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
                 self.underlying_buffer_call_args = {}
                 return ReplayBuffer(
                     self.capacity,
-                    storage_unit=storage_unit,
+                    storage_unit=StorageUnit.FRAGMENTS,
                 )
 
         self.replay_buffers = collections.defaultdict(new_buffer)
