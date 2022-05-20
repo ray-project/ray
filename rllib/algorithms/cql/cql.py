@@ -4,7 +4,7 @@ from typing import Type
 
 from ray.rllib.algorithms.cql.cql_tf_policy import CQLTFPolicy
 from ray.rllib.algorithms.cql.cql_torch_policy import CQLTorchPolicy
-from ray.rllib.agents.sac.sac import SACTrainer, DEFAULT_CONFIG as SAC_CONFIG
+from ray.rllib.algorithms.sac.sac import SACTrainer, DEFAULT_CONFIG as SAC_CONFIG
 from ray.rllib.execution.train_ops import (
     multi_gpu_train_one_step,
     train_one_step,

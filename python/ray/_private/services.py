@@ -1377,7 +1377,6 @@ def start_dashboard(
 
         # Make sure the process can start.
         minimal = not ray._private.utils.check_dashboard_dependencies_installed()
-
         # Start the dashboard process.
         dashboard_dir = "dashboard"
         dashboard_filepath = os.path.join(RAY_PATH, dashboard_dir, "dashboard.py")
@@ -1487,7 +1486,6 @@ def start_dashboard(
             # If it is the minimal installation, the web url (dashboard url)
             # shouldn't be configured because it doesn't start a server.
             dashboard_url = ""
-
         return dashboard_url, process_info
     except Exception as e:
         if require_dashboard:

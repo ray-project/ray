@@ -225,6 +225,7 @@ py_test_module_list(
     "test_failure_3.py",
     "test_chaos.py",
     "test_reference_counting_2.py",
+    "test_exit_observability.py",
   ],
   size = "large",
   extra_srcs = SRCS,
