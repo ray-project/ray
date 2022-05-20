@@ -35,7 +35,7 @@ class JobSubmissionClient(SubmissionClient):
 
     def __init__(
         self,
-        address: str,
+        address: Optional[str] = None,
         create_cluster_if_needed: bool = False,
         cookies: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, Any]] = None,
@@ -44,7 +44,8 @@ class JobSubmissionClient(SubmissionClient):
         """Initialize a JobSubmissionClient and check the connection to the cluster.
 
         Args:
-            address: The IP address and port of the head node.
+            address: The IP address and port of the head node. Defaults to
+                http://localhost:8265.
             create_cluster_if_needed: Indicates whether the cluster at the specified
                 address needs to already be running. Ray doesn't start a cluster
                 before interacting with jobs, but external job managers may do so.

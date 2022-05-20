@@ -2,6 +2,7 @@ from pathlib import Path
 import tempfile
 import time
 import pytest
+import sys
 from typing import Dict, Optional, Tuple
 from unittest.mock import Mock, patch
 from ray._private.test_utils import (
@@ -10,7 +11,11 @@ from ray._private.test_utils import (
     wait_until_server_available,
 )
 
-from ray.dashboard.modules.dashboard_sdk import parse_cluster_info
+from ray.dashboard.modules.dashboard_sdk import (
+    ClusterInfo,
+    DEFAULT_DASHBOARD_ADDRESS,
+    parse_cluster_info,
+)
 from ray.dashboard.modules.job.sdk import JobSubmissionClient
 from ray.tests.conftest import _ray_start
 import ray.experimental.internal_kv as kv
@@ -57,7 +62,7 @@ def test_parse_cluster_info(
         get_job_submission_client_cluster_info=mock_get_job_submission_client_cluster,
     ), patch.multiple("importlib", import_module=mock_import_module):
         if module_string == "ray":
-            assert (
+            with pytest.raises(ValueError, match="ray://"):
                 parse_cluster_info(
                     address,
                     create_cluster_if_needed=create_cluster_if_needed,
@@ -65,15 +70,6 @@ def test_parse_cluster_info(
                     metadata=metadata,
                     headers=headers,
                 )
-                == "Ray ClusterInfo"
-            )
-            mock_get_job_submission_client_cluster.assert_called_once_with(
-                inner_address,
-                create_cluster_if_needed=create_cluster_if_needed,
-                cookies=cookies,
-                metadata=metadata,
-                headers=headers,
-            )
         elif module_string == "other_module":
             assert (
                 parse_cluster_info(
@@ -93,6 +89,15 @@ def test_parse_cluster_info(
                 metadata=metadata,
                 headers=headers,
             )
+
+
+def test_parse_cluster_info_default_address():
+    assert (
+        parse_cluster_info(
+            address=None,
+        )
+        == ClusterInfo(address=DEFAULT_DASHBOARD_ADDRESS)
+    )
 
 
 @pytest.mark.parametrize("expiration_s", [0, 10])
@@ -135,3 +140,7 @@ def test_temporary_uri_reference(monkeypatch, expiration_s):
             else:
                 wait_for_condition(check_internal_kv_gced)
                 print("Internal KV was GC'ed at time ", time.time() - start)
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
