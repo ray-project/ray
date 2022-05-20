@@ -404,7 +404,7 @@ class ApexTrainer(DQNTrainer):
             for _ in range(num_requests_to_launch):
                 self._replay_actor_manager.call(
                     lambda actor, num_items: actor.sample(num_items),
-                    remote_args=[self.config["train_batch_size"]],
+                    fn_args=[self.config["train_batch_size"]],
                 )
             wait_on_replay_actors()
 
