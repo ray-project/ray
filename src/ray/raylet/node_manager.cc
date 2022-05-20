@@ -2346,8 +2346,9 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
   for (const auto &object_id_binary : request.object_ids()) {
     object_ids.push_back(ObjectID::FromBinary(object_id_binary));
   }
+  RAY_CHECK_EQ(object_ids.size(), 1u);
   std::vector<std::unique_ptr<RayObject>> results;
-  if (!GetObjectsFromPlasma(object_ids, &results)) {
+  if (!GetObjectsFromPlasma(object_ids, &results) || (results[0] == nullptr)) {
     RAY_LOG(WARNING)
         << "Failed to get objects that should have been in the object store. These "
            "objects may have been evicted while there are still references in scope.";
