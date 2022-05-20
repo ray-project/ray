@@ -13,7 +13,6 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.multi_agent_prioritized_replay_buffer import (
     MultiAgentPrioritizedReplayBuffer,
 )
-from ray.rllib.policy.rnn_sequencing import timeslice_along_seq_lens_with_overlap
 from ray.rllib.utils.replay_buffers.replay_buffer import StorageUnit
 from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import (
     merge_dicts_with_warning,

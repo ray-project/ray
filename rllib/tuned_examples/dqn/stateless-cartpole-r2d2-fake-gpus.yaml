@@ -25,7 +25,7 @@ stateless-cartpole-r2d2:
             fcnet_activation: linear
             use_lstm: true
             lstm_cell_size: 64
-            max_seq_len: 20
+            max_seq_len: 44
 
         # Fake 2 GPUs.
         num_gpus: 2
