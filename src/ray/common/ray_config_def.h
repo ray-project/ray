@@ -375,7 +375,7 @@ RAY_CONFIG(bool, use_ray_syncer, false)
 
 /// The queuing buffer of ray syncer. This indicates how many concurrent
 /// requests can run in flight for syncing.
-RAY_CONFIG(int64_t, ray_syncer_polling_buffer, 10)
+RAY_CONFIG(int64_t, ray_syncer_polling_buffer, 5)
 
 /// The interval at which the gcs client will check if the address of gcs service has
 /// changed. When the address changed, we will resubscribe again.
