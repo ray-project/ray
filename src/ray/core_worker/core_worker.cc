@@ -24,6 +24,7 @@
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/gcs/pb_util.h"
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
 #include "ray/util/util.h"
@@ -136,7 +137,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     // Avoid using FATAL log or RAY_CHECK here because they may create a core dump file.
     RAY_LOG(ERROR) << "Failed to register worker " << worker_id << " to Raylet. "
                    << raylet_client_status;
-    // Quit the process immediately.
     QuickExit();
   }
 
@@ -332,7 +332,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                               GetCallerId(),
                               rpc_address_);
     // Drivers are never re-executed.
-    SetCurrentTaskId(task_id, /*attempt_number=*/0);
+    SetCurrentTaskId(task_id, /*attempt_number=*/0, "driver");
   }
 
   auto raylet_client_factory = [this](const std::string ip_address, int port) {
@@ -576,20 +576,22 @@ void CoreWorker::ConnectToRaylet() {
 }
 
 void CoreWorker::Disconnect(
-    rpc::WorkerExitType exit_type,
+    const rpc::WorkerExitType &exit_type,
+    const std::string &exit_detail,
     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
   if (connected_) {
     RAY_LOG(INFO) << "Disconnecting to the raylet.";
     connected_ = false;
     if (local_raylet_client_) {
-      RAY_IGNORE_EXPR(
-          local_raylet_client_->Disconnect(exit_type, creation_task_exception_pb_bytes));
+      RAY_IGNORE_EXPR(local_raylet_client_->Disconnect(
+          exit_type, exit_detail, creation_task_exception_pb_bytes));
     }
   }
 }
 
 void CoreWorker::Exit(
-    rpc::WorkerExitType exit_type,
+    const rpc::WorkerExitType exit_type,
+    const std::string &detail,
     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
   RAY_LOG(INFO) << "Exit signal received, this process will exit after all outstanding "
                    "tasks have finished"
@@ -604,20 +606,17 @@ void CoreWorker::Exit(
   /// otherwise the frontend code may not release its references and this worker will be
   /// leaked. See https://github.com/ray-project/ray/issues/19639.
   reference_counter_->ReleaseAllLocalReferences();
+
   // Callback to shutdown.
-  auto shutdown = [this, exit_type, creation_task_exception_pb_bytes]() {
+  auto shutdown = [this, exit_type, detail, creation_task_exception_pb_bytes]() {
     // To avoid problems, make sure shutdown is always called from the same
     // event loop each time.
     task_execution_service_.post(
-        [this, exit_type, creation_task_exception_pb_bytes]() {
-          if (exit_type == rpc::WorkerExitType::CREATION_TASK_ERROR ||
-              exit_type == rpc::WorkerExitType::INTENDED_EXIT ||
-              exit_type == rpc::WorkerExitType::IDLE_EXIT) {
-            // Notify the raylet about this exit.
-            // Only CREATION_TASK_ERROR and INTENDED_EXIT needs to disconnect
-            // manually.
-            Disconnect(exit_type, creation_task_exception_pb_bytes);
-          }
+        [this,
+         exit_type,
+         detail = std::move(detail),
+         creation_task_exception_pb_bytes]() {
+          Disconnect(exit_type, detail, creation_task_exception_pb_bytes);
           Shutdown();
         },
         "CoreWorker.Shutdown");
@@ -656,6 +655,18 @@ void CoreWorker::Exit(
 
   task_manager_->DrainAndShutdown(drain_references_callback);
 }
+
+void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type,
+                           const std::string &detail) {
+  RAY_LOG(WARNING) << "Force exit the process. "
+                   << " Details: " << detail;
+  Disconnect(exit_type, detail);
+  // NOTE(hchen): Use `QuickExit()` to force-exit this process without doing cleanup.
+  // `exit()` will destruct static objects in an incorrect order, which will lead to
+  // core dumps.
+  QuickExit();
+}
+
 void CoreWorker::RunIOService() {
 #ifndef _WIN32
   // Block SIGINT and SIGTERM so they will be handled by the main thread.
@@ -682,11 +693,14 @@ void CoreWorker::OnNodeRemoved(const NodeID &node_id) {
 
 const WorkerID &CoreWorker::GetWorkerID() const { return worker_context_.GetWorkerID(); }
 
-void CoreWorker::SetCurrentTaskId(const TaskID &task_id, uint64_t attempt_number) {
+void CoreWorker::SetCurrentTaskId(const TaskID &task_id,
+                                  uint64_t attempt_number,
+                                  const std::string &task_name) {
   worker_context_.SetCurrentTaskId(task_id, attempt_number);
   {
     absl::MutexLock lock(&mutex_);
     main_thread_task_id_ = task_id;
+    main_thread_task_name_ = task_name;
   }
 }
 
@@ -720,6 +734,7 @@ void CoreWorker::RegisterToGcs() {
   worker_data->set_worker_type(options_.worker_type);
   worker_data->mutable_worker_info()->insert(worker_info.begin(), worker_info.end());
   worker_data->set_is_alive(true);
+  worker_data->set_pid(getpid());
 
   RAY_CHECK_OK(gcs_client_->Workers().AsyncAdd(worker_data, nullptr));
 }
@@ -2256,7 +2271,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
 
   if (!options_.is_local_mode) {
     worker_context_.SetCurrentTask(task_spec);
-    SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber());
+    SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber(), task_spec.GetName());
   }
   {
     absl::MutexLock lock(&mutex_);
@@ -2358,7 +2373,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   }
 
   if (!options_.is_local_mode) {
-    SetCurrentTaskId(TaskID::Nil(), /*attempt_number=*/0);
+    SetCurrentTaskId(TaskID::Nil(), /*attempt_number=*/0, "");
     worker_context_.ResetCurrentTask();
   }
   {
@@ -2380,12 +2395,24 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
 
   RAY_LOG(DEBUG) << "Finished executing task " << task_spec.TaskId()
                  << ", status=" << status;
+
+  std::ostringstream stream;
   if (status.IsCreationTaskError()) {
-    Exit(rpc::WorkerExitType::CREATION_TASK_ERROR, creation_task_exception_pb_bytes);
+    Exit(rpc::WorkerExitType::USER_ERROR,
+         absl::StrCat(
+             "Worker exits because there was an exception in the initialization method "
+             "(e.g., __init__). Fix the exceptions from the initialization to resolve "
+             "the issue. ",
+             status.message()),
+         creation_task_exception_pb_bytes);
   } else if (status.IsIntentionalSystemExit()) {
-    Exit(rpc::WorkerExitType::INTENDED_EXIT, creation_task_exception_pb_bytes);
+    Exit(rpc::WorkerExitType::INTENDED_USER_EXIT,
+         absl::StrCat("Worker exits by an user request. ", status.message()),
+         creation_task_exception_pb_bytes);
   } else if (status.IsUnexpectedSystemExit()) {
-    Exit(rpc::WorkerExitType::SYSTEM_ERROR_EXIT, creation_task_exception_pb_bytes);
+    Exit(rpc::WorkerExitType::SYSTEM_ERROR,
+         absl::StrCat("Worker exits unexpectedly. ", status.message()),
+         creation_task_exception_pb_bytes);
   } else if (!status.ok()) {
     RAY_LOG(FATAL) << "Unexpected task status type : " << status;
   }
@@ -3027,7 +3054,8 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
 
   // Try non-force kill
   if (requested_task_running && !request.force_kill()) {
-    RAY_LOG(INFO) << "Cancelling a running task " << main_thread_task_id_;
+    RAY_LOG(INFO) << "Cancelling a running task " << main_thread_task_name_
+                  << " thread id: " << main_thread_task_id_;
     success = options_.kill_main();
   } else if (!requested_task_running) {
     RAY_LOG(INFO) << "Cancelling a task " << task_id
@@ -3053,14 +3081,10 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
 
   // Do force kill after reply callback sent
   if (requested_task_running && request.force_kill()) {
-    RAY_LOG(INFO) << "A task " << main_thread_task_id_
-                  << " has received a force kill request after the cancellation. Killing "
-                     "a worker...";
-    Disconnect();
-    // NOTE(hchen): Use `QuickExit()` to force-exit this process without doing cleanup.
-    // `exit()` will destruct static objects in an incorrect order, which will lead to
-    // core dumps.
-    QuickExit();
+    ForceExit(rpc::WorkerExitType::INTENDED_USER_EXIT,
+              absl::StrCat("The worker exits because the task ",
+                           main_thread_task_name_,
+                           " has received a force ray.cancel request."));
   }
 }
 
@@ -3073,23 +3097,25 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
     stream << "Mismatched ActorID: ignoring KillActor for previous actor "
            << intended_actor_id
            << ", current actor ID: " << worker_context_.GetCurrentActorID();
-    auto msg = stream.str();
+    const auto &msg = stream.str();
     RAY_LOG(ERROR) << msg;
     send_reply_callback(Status::Invalid(msg), nullptr, nullptr);
     return;
   }
 
+  const auto &kill_actor_reason =
+      gcs::GenErrorMessageFromDeathCause(request.death_cause());
+
   if (request.force_kill()) {
-    RAY_LOG(INFO) << "Force kill actor request has received. exiting immediately...";
-    if (request.no_restart()) {
-      Disconnect();
-    }
-    // NOTE(hchen): Use `QuickExit()` to force-exit this process without doing cleanup.
-    // `exit()` will destruct static objects in an incorrect order, which will lead to
-    // core dumps.
-    QuickExit();
+    RAY_LOG(INFO) << "Force kill actor request has received. exiting immediately... "
+                  << kill_actor_reason;
+    // If we don't need to restart this actor, we notify raylet before force killing it.
+    ForceExit(
+        rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
+        absl::StrCat("Worker exits because the actor is killed. ", kill_actor_reason));
   } else {
-    Exit(rpc::WorkerExitType::INTENDED_EXIT);
+    Exit(rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
+         absl::StrCat("Worker exits because the actor is killed. ", kill_actor_reason));
   }
 }
 
@@ -3242,11 +3268,17 @@ void CoreWorker::HandleExit(const rpc::ExitRequest &request,
       [this, is_idle]() {
         // If the worker is idle, we exit.
         if (is_idle) {
-          Exit(rpc::WorkerExitType::IDLE_EXIT);
+          Exit(rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
+               "Worker exits because it was idle (it doesn't have objects it owns while "
+               "no task or actor has been scheduled) for a long time.");
         }
       },
       // We need to kill it regardless if the RPC failed.
-      [this]() { Exit(rpc::WorkerExitType::INTENDED_EXIT); });
+      [this]() {
+        Exit(rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
+             "Worker exits because it was idle (it doesn't have objects it owns while "
+             "no task or actor has been scheduled) for a long time.");
+      });
 }
 
 void CoreWorker::HandleAssignObjectOwner(const rpc::AssignObjectOwnerRequest &request,

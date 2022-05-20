@@ -636,6 +636,7 @@ void GcsServer::InstallEventListeners() {
                                          worker_id,
                                          worker_ip,
                                          worker_failure_data->exit_type(),
+                                         worker_failure_data->exit_detail(),
                                          creation_task_exception);
       });
 
