@@ -382,7 +382,7 @@
     ["RAY_CI_PYTHON_AFFECTED", "RAY_CI_TUNE_AFFECTED", "RAY_CI_DOC_AFFECTED", "RAY_CI_SERVE_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - python ./ci/env/setup_credentials.py wandb comet_ml
     - DOC_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
+    - python ./ci/env/setup_credentials.py wandb comet_ml
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_air,-gpu,-py37,-post_wheel_build doc/...
     - python ./ci/env/cleanup_test_state.py wandb comet_ml
