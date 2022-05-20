@@ -57,7 +57,7 @@ if __name__ == "__main__":
     ok = set()
     verify(ray.data, set(), ok, output)
     # Sanity check the lint logic.
-    assert len(ok) >= 35
+    assert len(ok) >= 35, len(ok)
     # TODO(ekl) enable it for all modules.
     #    verify(ray.ml, set(), ok, output)
     #    verify(ray.train, set(), ok, output)
