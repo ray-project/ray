@@ -182,11 +182,13 @@ class RuntimeContext(object):
         current runtime env by this API and modify it by yourself.
 
         Example:
-        >>> # Inherit current runtime env, except `env_vars`
-        >>> Actor.options( # doctest: +SKIP
-        ...     runtime_env=ray.get_runtime_context().runtime_env.update(
-        ...     {"env_vars": {"A": "a", "B": "b"}})
-        ... ) # doctest: +SKIP
+
+            >>> # Inherit current runtime env, except `env_vars`
+            >>> Actor.options( # doctest: +SKIP
+            ...     runtime_env=ray.get_runtime_context().runtime_env.update(
+            ...     {"env_vars": {"A": "a", "B": "b"}})
+            ... )
+
         """
 
         return RuntimeEnv.deserialize(self._get_runtime_env_string())
@@ -226,11 +228,13 @@ def get_runtime_context():
     """Get the runtime context of the current driver/worker.
 
     Example:
-    >>> import ray
-    >>> # Get the job id.
-    >>> ray.get_runtime_context().job_id # doctest: +SKIP
-    >>> # Get all the metadata.
-    >>> ray.get_runtime_context().get() # doctest: +SKIP
+
+        >>> import ray
+        >>> # Get the job id.
+        >>> ray.get_runtime_context().job_id # doctest: +SKIP
+        >>> # Get all the metadata.
+        >>> ray.get_runtime_context().get() # doctest: +SKIP
+
     """
     global _runtime_context
     if _runtime_context is None:
