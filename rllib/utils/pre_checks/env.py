@@ -131,16 +131,17 @@ def check_gym_environments(env: gym.Env) -> None:
     if not isinstance(env.action_space, gym.spaces.Space):
         raise ValueError("Action space must be a gym.space")
 
-    # raise a warning if there isn't a max_episode_steps attribute
-    if not hasattr(env, "spec") or not hasattr(env.spec, "max_episode_steps"):
-        logger.warning(
-            "Your env doesn't have a .spec.max_episode_steps "
-            "attribute. This is fine if you have set 'horizon' "
-            "in your config dictionary, or `soft_horizon`. "
-            "However, if you haven't, 'horizon' will default "
-            "to infinity, and your environment will not be "
-            "reset."
-        )
+    # Raise a warning if there isn't a max_episode_steps attribute.
+    if not hasattr(env,"spec") or not hasattr(env.spec, "max_episode_steps"):
+        if log_once("max_episode_steps"):
+            logger.warning(
+                "Your env doesn't have a .spec.max_episode_steps "
+                "attribute. This is fine if you have set 'horizon' "
+                "in your config dictionary, or `soft_horizon`. "
+                "However, if you haven't, 'horizon' will default "
+                "to infinity, and your environment will not be "
+                "reset."
+            )
     # check if sampled actions and observations are contained within their
     # respective action and observation spaces.
 

@@ -24,6 +24,8 @@ class CartPoleCrashing(CartPoleEnv):
     def __init__(self, config=None):
         super().__init__()
 
+        config = config or {}
+
         # Crash probability (in each `step()`).
         self.p_crash = config.get("p_crash", 0.005)
         # Only crash (with prob=p_crash) if on certain worker indices.

@@ -404,6 +404,16 @@ py_test(
 )
 
 py_test(
+    name = "learning_tests_cartpole_crashing_pg",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/pg/cartpole-crashing-pg.yaml"],
+    args = ["--yaml-dir=tuned_examples/pg"]
+)
+
+py_test(
     name = "learning_tests_cartpole_pg_fake_gpus",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
