@@ -239,8 +239,12 @@ class CheckpointManager:
         self._latest_persisted_checkpoint: Optional[TrackedCheckpoint] = None
         self._latest_memory_checkpoint: Optional[TrackedCheckpoint] = None
 
-        # Checkpoints that are not immediately removed
+        # Deletion of some checkpoints should be deferred. Specifically, if the
+        # latest persisted checkpoint should be deleted, we will only delete it
+        # once a new checkpoint came in (so that `_latest_persisted_checkpoint` is
+        # always available).
         self._checkpoints_to_clean_up = set()
+
         self._delete_fn = delete_fn
 
     def set_delete_fn(self, delete_fn: Optional[Callable[["TrackedCheckpoint"], None]]):
@@ -277,7 +281,7 @@ class CheckpointManager:
             persisted_checkpoint = checkpoint
 
         if persisted_checkpoint and self._checkpoint_strategy.num_to_keep != 0:
-            self._decide_what_to_do_with_checkpoint(persisted_checkpoint)
+            self._process_persistent_checkpoint(persisted_checkpoint)
 
         self._latest_checkpoint_id += 1
 
@@ -348,7 +352,7 @@ class CheckpointManager:
             checkpoint.id,
         )
 
-    def _decide_what_to_do_with_checkpoint(self, checkpoint: TrackedCheckpoint):
+    def _process_persistent_checkpoint(self, checkpoint: TrackedCheckpoint):
         assert checkpoint.storage_mode == CheckpointStorage.PERSISTENT
 
         checkpoint_score = self._get_checkpoint_score(checkpoint)
