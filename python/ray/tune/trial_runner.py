@@ -1,4 +1,3 @@
-import enum
 from typing import Any, List, Mapping, Optional, Union
 
 import click
@@ -199,12 +198,6 @@ class _ExperimentCheckpointManager:
 
         self._last_checkpoint_time = time.time()
         return self._checkpoint_dir
-
-
-class ResumeMode(enum.Enum):
-    CONTINUE_LIVE = enum.auto()
-    CONTINUE_ALL = enum.auto()
-    CONTINUE_ERRORED
 
 
 class TrialRunner:
@@ -629,7 +622,7 @@ class TrialRunner:
                 force=force,
             )
 
-    def resume(self, mode: bool = True, run_errored_only=False):
+    def resume(self, run_errored_only=False):
         """Resumes all checkpointed trials from previous run.
 
         Requires user to manually re-register their objects. Also stops
