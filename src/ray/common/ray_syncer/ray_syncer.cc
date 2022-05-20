@@ -205,25 +205,25 @@ ServerSyncConnection::ServerSyncConnection(
 ServerSyncConnection::~ServerSyncConnection() {
   // If there is a pending request, we need to cancel it. Otherwise, rpc will
   // hang there forever.
-  while (!unary_reactor_.empty()) {
-    unary_reactor_.back()->Finish(grpc::Status::CANCELLED);
-    unary_reactor_.pop_back();
+  while (!unary_reactors_.empty()) {
+    unary_reactors_.back()->Finish(grpc::Status::CANCELLED);
+    unary_reactors_.pop_back();
   }
 }
 
 void ServerSyncConnection::HandleLongPollingRequest(grpc::ServerUnaryReactor *reactor,
                                                     RaySyncMessages *response) {
-  unary_reactor_.push_back(reactor);
-  response_.push_back(response);
+  unary_reactors_.push_back(reactor);
+  responses_.push_back(response);
 }
 
 void ServerSyncConnection::DoSend() {
   // There is no receive request
-  if (unary_reactor_.empty() || sending_buffer_.empty()) {
+  if (unary_reactors_.empty() || sending_buffer_.empty()) {
     return;
   }
 
-  RAY_CHECK(!response_.empty());
+  RAY_CHECK(!responses_.empty());
 
   size_t message_bytes = 0;
   auto iter = sending_buffer_.begin();
@@ -231,14 +231,14 @@ void ServerSyncConnection::DoSend() {
          iter != sending_buffer_.end()) {
     message_bytes += iter->second->sync_message().size();
     // TODO (iycheng): Use arena allocator for optimization
-    response_.back()->add_sync_messages()->CopyFrom(*iter->second);
+    responses_.back()->add_sync_messages()->CopyFrom(*iter->second);
     sending_buffer_.erase(iter++);
   }
 
-  if (response_.back()->sync_messages_size() != 0) {
-    unary_reactor_.back()->Finish(grpc::Status::OK);
-    response_.pop_back();
-    unary_reactor_.pop_back();
+  if (responses_.back()->sync_messages_size() != 0) {
+    unary_reactors_.back()->Finish(grpc::Status::OK);
+    responses_.pop_back();
+    unary_reactors_.pop_back();
   }
 }
 
