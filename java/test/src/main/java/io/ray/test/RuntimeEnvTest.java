@@ -55,6 +55,69 @@ public class RuntimeEnvTest {
     }
   }
 
+  public void testPerActorEnvVars() {
+    try {
+      Ray.init();
+      {
+        RuntimeEnv runtimeEnv =
+            new RuntimeEnv.Builder()
+                .addEnvVar("KEY1", "A")
+                .addEnvVar("KEY2", "B")
+                .addEnvVar("KEY1", "C")
+                .build();
+
+        ActorHandle<A> actor1 = Ray.actor(A::new).setRuntimeEnv(runtimeEnv).remote();
+        String val = actor1.task(A::getEnv, "KEY1").remote().get();
+        Assert.assertEquals(val, "C");
+        val = actor1.task(A::getEnv, "KEY2").remote().get();
+        Assert.assertEquals(val, "B");
+      }
+
+      {
+        /// Because we didn't set them for actor2 , all should be null.
+        ActorHandle<A> actor2 = Ray.actor(A::new).remote();
+        String val = actor2.task(A::getEnv, "KEY1").remote().get();
+        Assert.assertNull(val);
+        val = actor2.task(A::getEnv, "KEY2").remote().get();
+        Assert.assertNull(val);
+      }
+
+    } finally {
+      Ray.shutdown();
+    }
+  }
+
+  public void testPerActorEnvVarsOverwritePerJobEnvVars() {
+    System.setProperty("ray.job.runtime-env.env-vars.KEY1", "A");
+    System.setProperty("ray.job.runtime-env.env-vars.KEY2", "B");
+
+    try {
+      Ray.init();
+      {
+        RuntimeEnv runtimeEnv = new RuntimeEnv.Builder().addEnvVar("KEY1", "C").build();
+
+        ActorHandle<A> actor1 = Ray.actor(A::new).setRuntimeEnv(runtimeEnv).remote();
+        String val = actor1.task(A::getEnv, "KEY1").remote().get();
+        Assert.assertEquals(val, "C");
+        val = actor1.task(A::getEnv, "KEY2").remote().get();
+        Assert.assertNull(val);
+      }
+
+      {
+        /// Because we didn't set them for actor2 explicitly, it should use the per job
+        /// runtime env.
+        ActorHandle<A> actor2 = Ray.actor(A::new).remote();
+        String val = actor2.task(A::getEnv, "KEY1").remote().get();
+        Assert.assertEquals(val, "A");
+        val = actor2.task(A::getEnv, "KEY2").remote().get();
+        Assert.assertEquals(val, "B");
+      }
+
+    } finally {
+      Ray.shutdown();
+    }
+  }
+
   private static String getEnvVar(String key) {
     return System.getenv(key);
   }
@@ -92,7 +155,7 @@ public class RuntimeEnvTest {
           Ray.task(RuntimeEnvTest::getEnvVar, "KEY1").setRuntimeEnv(runtimeEnv).remote().get();
       Assert.assertEquals(val, "C");
       val = Ray.task(RuntimeEnvTest::getEnvVar, "KEY2").setRuntimeEnv(runtimeEnv).remote().get();
-      Assert.assertEquals(val, "B");
+      Assert.assertNull(val);
     } finally {
       Ray.shutdown();
     }

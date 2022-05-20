@@ -12,6 +12,16 @@ py_test(
 )
 
 py_test(
+    name = "check_ingest",
+    size = "large",
+    main = "utils/check_ingest.py",
+    srcs = ["utils/check_ingest.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+
+py_test(
     name = "distributed_sage_example",
     size = "large",
     main = "examples/pytorch_geometric/distributed_sage_example.py",
