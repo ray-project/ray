@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+import os
+
 IGNORE_PATHS = {".impl.", ".backend.", ".experimental.", ".internal.", ".generated."}
 
 
@@ -13,6 +15,7 @@ def _ignore(attr):
     return False
 
 
+# TODO(ekl) also check function and constant definitions.
 def verify(symbol, scanned, ok, output, prefix=None):
     if not prefix:
         prefix = symbol.__name__ + "."
@@ -49,16 +52,18 @@ if __name__ == "__main__":
 
     output = set()
     ok = set()
-#    verify(ray.data, set(), ok, output)
+    verify(ray.data, set(), ok, output)
 #    verify(ray.ml, set(), ok, output)
 #    verify(ray.train, set(), ok, output)
 #    verify(ray.serve, set(), ok, output)
 #    verify(ray.rllib, set(), ok, output)
 #    verify(ray.tune, set(), ok, output)
-    verify(ray, set(), ok, output)
+#    verify(ray, set(), ok, output)
 
     print("Num ok", len(ok))
     print("Num bad", len(output))
     print("!!! No API stability annotation found for:")
     for x in sorted([str(x) for x in output]):
         print(x.split("'")[1])
+    if output:
+        exit(1)
