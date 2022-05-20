@@ -7,7 +7,7 @@ Transforming Datasets
 The Ray Datasets transformations take in datasets and produce new datasets.
 For example, *map* is a transformation that applies a user-defined function (UDF)
 on each row of input dataset and returns a new dataset as result. The Datasets
-transformations are **composable**. Operations can be further applied on result
+transformations are **composable**. Operations can be further applied on the result
 dataset, forming a chain of transformations to express more complex computations.
 Transformations are the core for expressing business logic in Datasets.
 
@@ -16,10 +16,10 @@ Transformations
 
 In general, we have two types of transformations:
 
-* One-to-one transformations: each input block will contribute to only one output
+* **One-to-one transformations:** each input block will contribute to only one output
   block, such as :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`. In other
   systems this may be called narrow transformations.
-* All-to-all transformations: input blocks can contribute to multiple output blocks,
+* **All-to-all transformations:** input blocks can contribute to multiple output blocks,
   such as :meth:`ds.random_shuffle() <ray.data.Dataset.random_shuffle>`. In other
   systems this may be called wide transformations.
 
@@ -74,7 +74,7 @@ Compute Strategy
 Datasets transformations are executed by either :ref:`Ray tasks <ray-remote-functions>`
 or :ref:`Ray actors <actor-guide>` across a Ray cluster. By default, Ray tasks are
 used (with ``compute="tasks"``). For transformations that require expensive setup,
-it's preferrable to use Ray actors, which is stateful and allows setup to be reused
+it's preferrable to use Ray actors, which are stateful and allows setup to be reused
 for efficiency. You can specify ``compute=ray.data.ActorPoolStrategy(min, max)`` and
 Ray will use an autoscaling actor pool of ``min`` to ``max`` actors to execute your
 transforms. For a fixed-size actor pool, just specify ``ActorPoolStrategy(n, n)``.
