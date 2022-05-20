@@ -1,11 +1,27 @@
 #!/usr/bin/env python
 
+import ray
+
 IGNORE_PATHS = {".impl.", ".backend.", ".experimental.", ".internal.", ".generated."}
+
+
+def _fullname(attr):
+    """Fully qualified name of an attribute."""
+    if isinstance(attr, type(ray)):
+        fullname = attr.__name__
+    elif isinstance(attr, type):
+        module = attr.__module__
+        if module == "builtins":
+            return attr.__qualname__
+        fullname = module + "." + attr.__qualname__
+    else:
+        fullname = str(attr)
+    return fullname
 
 
 def _ignore(attr):
     """Whether an attr should be ignored from annotation checking."""
-    attr = str(attr)
+    attr = _fullname(attr)
     if "ray." not in attr or "._" in attr:
         return True
     for path in IGNORE_PATHS:
@@ -28,14 +44,14 @@ def verify(symbol, scanned, ok, output, prefix=None):
         attr = getattr(symbol, child)
         if _ignore(attr):
             continue
-        if type(attr) == type and prefix in str(attr):
+        if type(attr) == type and prefix in _fullname(attr):
             # Check for magic token added by API annotation decorators.
             av = getattr(attr, "_annotated", None)
             # If not equal, this means the subclass was not annotated but the
             # parent class was.
             if av == attr:
                 if attr not in scanned:
-                    print("OK:", attr)
+                    print("OK:", _fullname(attr))
                     ok.add(attr)
             else:
                 output.add(attr)
@@ -69,7 +85,7 @@ if __name__ == "__main__":
     print("Num ok", len(ok))
     print("Num bad", len(output))
     print("!!! No API stability annotation found for:")
-    for x in sorted([str(x) for x in output]):
-        print(x.split("'")[1])
+    for x in sorted([_fullname(x) for x in output]):
+        print(x)
     if output:
         exit(1)
