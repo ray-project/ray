@@ -454,8 +454,8 @@ This could take seconds or minutes.
 On the other hand, loading a runtime environment from the cache should be nearly as fast as the ordinary Ray worker startup time, which is on the order of a few seconds. A new Ray worker is started for every Ray actor or task that requires a new runtime environment.
 (Note that loading a cached ``conda`` environment could still be slow, since the ``conda activate`` command sometimes takes a few seconds.)
 
-
 You can set ``setup_timeout_seconds`` config to avoid the installation hanging for a long time.
+
 
 .. _remote-uris:
 
