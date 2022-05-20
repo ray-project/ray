@@ -44,6 +44,22 @@ APEX_DDPG_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
         "target_network_update_freq": 500000,
         "min_sample_timesteps_per_reporting": 25000,
         "min_time_s_per_reporting": 30,
+        "training_intensity": 1,
+        # max number of inflight requests to each sampling worker
+        # see the AsyncRequestsManager class for more details
+        # Tuning these values is important when running experimens with large sample
+        # batches. If the sample batches are large in size, then there is the risk that
+        # the object store may fill up, causing the store to spill objects to disk.
+        # This can cause any asynchronous requests to become very slow, making your
+        # experiment run slowly. You can inspect the object store during your
+        # experiment via a call to ray memory on your headnode, and by using the ray
+        # dashboard. If you're seeing that the object store is filling up, turn down
+        # the number of remote requests in flight, or enable compression in your
+        # experiment of timesteps.
+        "max_requests_in_flight_per_sampler_worker": 2,
+        "max_requests_in_flight_per_aggregator_worker": float("inf"),
+        "timeout_s_sampler_manager": 0.0,
+        "timeout_s_replay_manager": 0.0,
     },
     _allow_unknown_configs=True,
 )
