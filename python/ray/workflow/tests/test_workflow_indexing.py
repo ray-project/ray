@@ -9,10 +9,7 @@ def test_workflow_status_update(workflow_start_regular):
     store = WorkflowIndexingStorage()
     assert not store.list_workflow()
     for i in range(100):
-        assert (
-            store.load_and_fix_workflow_status(workflow_id=str(i))
-            == WorkflowStatus.NONE
-        )
+        assert store.load_workflow_status(workflow_id=str(i)) == WorkflowStatus.NONE
 
     for i in range(100):
         store.update_workflow_status(str(i), WorkflowStatus.RUNNING)
@@ -51,21 +48,19 @@ def test_workflow_auto_fix_status(workflow_start_regular):
 
     store._key_workflow_with_status = _key_workflow_with_status
 
-    # when list workflow, we recovery failed status automatically
     assert sorted(store.list_workflow()) == sorted(
         [(str(i), WorkflowStatus.RUNNING) for i in range(100)]
     )
 
-    store._key_workflow_with_status = None
     for i in range(100):
         try:
+            # when update workflow, we fix failed status
             store.update_workflow_status(str(i), WorkflowStatus.RESUMABLE)
         except Exception:
             pass
 
-    store._key_workflow_with_status = _key_workflow_with_status
     for i in range(100):
-        assert store.load_and_fix_workflow_status(str(i)) == WorkflowStatus.RESUMABLE
+        assert store.load_workflow_status(str(i)) == WorkflowStatus.RESUMABLE
 
 
 if __name__ == "__main__":

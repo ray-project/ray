@@ -127,10 +127,15 @@ def get_output(workflow_id: str, name: Optional[str]) -> ray.ObjectRef:
 def cancel(workflow_id: str) -> None:
     try:
         workflow_manager = get_management_actor()
-        ray.get(workflow_manager.cancel_workflow.remote(workflow_id))
     except ValueError:
         wf_store = workflow_storage.get_workflow_storage(workflow_id)
+        # TODO(suquark): Here we update workflow status "offline", so it is likely
+        # thread-safe because there is no workflow management actor updating the
+        # workflow concurrently. But we should be careful if we are going to
+        # update more workflow status offline in the future.
         wf_store.update_workflow_status(WorkflowStatus.CANCELED)
+        return
+    ray.get(workflow_manager.cancel_workflow.remote(workflow_id))
 
 
 def get_status(workflow_id: str) -> Optional[WorkflowStatus]:

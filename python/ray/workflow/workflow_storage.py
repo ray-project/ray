@@ -91,44 +91,63 @@ class WorkflowIndexingStorage:
     """Access and maintenance the indexing of workflow status.
 
     It runs a protocol that guarantees we can recover from any interrupted
-    status updating. This protocol is **not thread-safe** for a workflow, currently
-    it is executed by workflow management actor with a single thread.
+    status updating. This protocol is **not thread-safe** for updating the
+    status of the same workflow, currently it is executed by workflow management
+    actor with a single thread.
 
     Here is how the protocol works:
 
-    Loading a status of a workflow
-    1. Read the status of the workflow from the workflow metadata.
-    2. Check if the status updating is dirty with "_key_workflow_status_dirty".
-    3. If it is dirty, fix the workflow status indices according to the status
-       in the metadata. Then delete "_key_workflow_status_dirty".
-    4. Return the status.
-
-    Updating the status of a workflow
-    1. Load the status of a workflow. This fixes dirty status and gives us the previous
-       status. Return if previous and new status are the same.
-    2. Mark the workflow status updating dirty.
+    Update the status of a workflow
+    1. Load workflow status from workflow data. If it is the same as the new status,
+       return.
+    2. Check if the workflow status updating is dirty. If it is, fix the
+       workflow status; otherwise, mark the workflow status updating dirty.
     3. Update status in the workflow metadata.
     4. Insert the workflow ID key in the status indexing directory of the new status.
     5. Delete the workflow ID key in the status indexing directory of
        the previous status.
     6. Remove the workflow status updating dirty mark.
 
-    Listing the status of all workflows
-    1. Listing all workflows with dirty updating status.
-       Fix them by loading their status.
-    2. Get status of all workflows by listing workflow ID keys in each workflow
+    Load a status of a workflow
+    1. Read the status of the workflow from the workflow metadata.
+    2. Return the status.
+
+    List the status of all workflows
+    1. Get status of all workflows by listing workflow ID keys in each workflow
        status indexing directory.
+    2. List all workflows with dirty updating status. Get their status from
+       workflow data. Override the status of the corresponding workflow.
+    3. Return all the status.
     """
 
     def __init__(self):
         self._storage = storage.get_client(WORKFLOW_ROOT)
 
     def update_workflow_status(self, workflow_id: str, status: WorkflowStatus):
-        """Update the status of the workflow."""
-        prev_status = self.load_and_fix_workflow_status(workflow_id)
+        """Update the status of the workflow.
+        Try fixing indexing if workflow status updating was marked dirty.
+
+        This method is NOT thread-safe. It is handled by the workflow management actor.
+        """
+        prev_status = self.load_workflow_status(workflow_id)
         if prev_status != status:
+            # Try fixing indexing if workflow status updating was marked dirty.
+            if (
+                self._storage.get_info(self._key_workflow_status_dirty(workflow_id))
+                is not None
+            ):
+                # This means the previous status update failed. Fix it.
+                self._storage.put(
+                    self._key_workflow_with_status(workflow_id, prev_status), b""
+                )
+                for s in WorkflowStatus:
+                    if s != prev_status:
+                        self._storage.delete(
+                            self._key_workflow_with_status(workflow_id, s)
+                        )
+            else:
+                self._storage.put(self._key_workflow_status_dirty(workflow_id), b"")
             # Transactional update of workflow status
-            self._storage.put(self._key_workflow_status_dirty(workflow_id), b"")
             self._storage.put(
                 self._key_workflow_metadata(workflow_id),
                 json.dumps({"status": status.value}).encode(),
@@ -140,40 +159,18 @@ class WorkflowIndexingStorage:
                 )
             self._storage.delete(self._key_workflow_status_dirty(workflow_id))
 
-    def load_and_fix_workflow_status(self, workflow_id: str):
-        """Load workflow status. If we find the previous status updating failed,
-        fix it with redo-log transaction recovery."""
+    def load_workflow_status(self, workflow_id: str):
+        """Load the committed workflow status."""
         raw_data = self._storage.get(self._key_workflow_metadata(workflow_id))
         if raw_data is not None:
             metadata = json.loads(raw_data)
-            prev_status = WorkflowStatus(metadata["status"])
-        else:
-            prev_status = WorkflowStatus.NONE
-
-        if (
-            self._storage.get_info(self._key_workflow_status_dirty(workflow_id))
-            is not None
-        ):
-            # This means the previous status update failed. Fix it.
-            self._storage.put(
-                self._key_workflow_with_status(workflow_id, prev_status), b""
-            )
-            for s in WorkflowStatus:
-                if s != prev_status:
-                    self._storage.delete(self._key_workflow_with_status(workflow_id, s))
-            assert self._storage.delete(self._key_workflow_status_dirty(workflow_id))
-
-        return prev_status
+            return WorkflowStatus(metadata["status"])
+        return WorkflowStatus.NONE
 
     def list_workflow(self) -> List[Tuple[str, WorkflowStatus]]:
-        """List workflow status. Fix workflow status that failed to be updated."""
-        try:
-            for p in self._storage.list(self._key_workflow_status_dirty("")):
-                workflow_id = p.base_name
-                self.load_and_fix_workflow_status(workflow_id)
-        except FileNotFoundError:
-            pass
-        results = []
+        """List workflow status. Override status of the workflows whose status updating
+        were marked dirty with the workflow status from workflow metadata."""
+        results = {}
         for status in WorkflowStatus:
             if status != WorkflowStatus.NONE:
                 try:
@@ -182,16 +179,24 @@ class WorkflowIndexingStorage:
                         self._key_workflow_with_status("", status)
                     ):
                         workflow_id = p.base_name
-                        results.append((workflow_id, status))
+                        results[workflow_id] = status
                 except FileNotFoundError:
                     pass
-        return results
+        # Get "correct" status of workflows
+        try:
+            for p in self._storage.list(self._key_workflow_status_dirty("")):
+                workflow_id = p.base_name
+                # overwrite status
+                results[workflow_id] = self.load_workflow_status(workflow_id)
+        except FileNotFoundError:
+            pass
+        return list(results.items())
 
     def delete_workflow_status(self, workflow_id: str):
         """Delete status indexing for the workflow."""
-        status = self.load_and_fix_workflow_status(workflow_id)
-        if status != WorkflowStatus.NONE:
+        for status in WorkflowStatus:
             self._storage.delete(self._key_workflow_with_status(workflow_id, status))
+        self._storage.delete(self._key_workflow_status_dirty(workflow_id))
 
     def _key_workflow_with_status(self, workflow_id: str, status: WorkflowStatus):
         """A key whose existence marks the status of the workflow."""
@@ -706,13 +711,15 @@ class WorkflowStorage:
             raise WorkflowNotFoundError(self._workflow_id)
 
     def update_workflow_status(self, status: WorkflowStatus):
-        """Update the status of the workflow."""
+        """Update the status of the workflow.
+        This method is NOT thread-safe. It is handled by the workflow management actor.
+        """
         self._status_storage.update_workflow_status(self._workflow_id, status)
 
     def load_workflow_status(self):
         """Load workflow status. If we find the previous status updating failed,
         fix it with redo-log transaction recovery."""
-        return self._status_storage.load_and_fix_workflow_status(self._workflow_id)
+        return self._status_storage.load_workflow_status(self._workflow_id)
 
     def _put(self, key: str, data: Any, is_json: bool = False) -> str:
         """Serialize and put an object in the object store.
