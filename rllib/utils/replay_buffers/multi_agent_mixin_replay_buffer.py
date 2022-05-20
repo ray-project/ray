@@ -187,15 +187,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
         with self.add_batch_timer:
             if self._storage_unit == StorageUnit.TIMESTEPS:
                 for policy_id, sample_batch in batch.policy_batches.items():
-                    if self.replay_sequence_length == 1:
-                        timeslices = sample_batch.timeslices(1)
-                    else:
-                        timeslices = timeslice_along_seq_lens_with_overlap(
-                            sample_batch=sample_batch,
-                            zero_pad_max_seq_len=self.replay_sequence_length,
-                            pre_overlap=self.replay_burn_in,
-                            zero_init_states=self.replay_zero_init_states,
-                        )
+                    timeslices = sample_batch.timeslices(1)
                     for time_slice in timeslices:
                         self.replay_buffers[policy_id].add(time_slice, **kwargs)
                         self.last_added_batches[policy_id].append(time_slice)
