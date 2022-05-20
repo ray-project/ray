@@ -526,12 +526,18 @@ class Trainer(Trainable):
             and - if required - evaluation.
         """
         step_attempt_results = None
-
+        self._rollout_worker_metrics = []
         with self._step_context() as step_ctx:
             while not step_ctx.should_stop(step_attempt_results):
                 # Try to train one step.
                 try:
                     step_attempt_results = self.step_attempt()
+                    # Collect rollout worker metrics.
+                    episodes, self._episodes_to_be_collected = collect_episodes(
+                        self.workers.local_worker(), self._remote_workers_for_metrics,
+                        self._episodes_to_be_collected, timeout_seconds=self.config[
+                            "metrics_episode_collection_timeout_s"], )
+                    self._rollout_worker_metrics.extend(episodes)
                 # @ray.remote RolloutWorker failure.
                 except RayError as e:
                     # Try to recover w/o the failed worker.
@@ -2276,13 +2282,7 @@ class Trainer(Trainable):
         # Learner info.
         results["info"] = {LEARNER_INFO: step_attempt_results}
 
-        # Collect rollout worker metrics.
-        episodes, self._episodes_to_be_collected = collect_episodes(
-            self.workers.local_worker(),
-            self._remote_workers_for_metrics,
-            self._episodes_to_be_collected,
-            timeout_seconds=self.config["metrics_episode_collection_timeout_s"],
-        )
+        episodes = self._rollout_worker_metrics
         orig_episodes = list(episodes)
         missing = self.config["metrics_num_episodes_for_smoothing"] - len(episodes)
         if missing > 0:
