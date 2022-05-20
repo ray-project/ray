@@ -112,8 +112,8 @@ class ImpalaConfig(TrainerConfig):
         self.learner_queue_timeout = 300
         self.max_requests_in_flight_per_sampler_worker = 2
         self.max_requests_in_flight_per_aggregator_worker = 2
-        self.timeout_s_sampler_manager = 0.03
-        self.timeout_s_aggregator_manager = 0.03
+        self.timeout_s_sampler_manager = 0.0
+        self.timeout_s_aggregator_manager = 0.0
         self.broadcast_interval = 1
         self.num_aggregation_workers = 0
         self.grad_clip = 40.0

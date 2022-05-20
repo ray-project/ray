@@ -95,8 +95,8 @@ class AlphaStarConfig(appo.APPOConfig):
         self.max_requests_in_flight_per_sampler_worker = 2
         self.max_requests_in_flight_per_learner_worker = 2
 
-        self.timeout_s_sampler_manager = 0.02
-        self.timeout_s_learner_manager = 0.02
+        self.timeout_s_sampler_manager = 0.0
+        self.timeout_s_learner_manager = 0.0
 
         # League-building parameters.
         # The LeagueBuilder class to be used for league building logic.

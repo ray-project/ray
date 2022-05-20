@@ -138,10 +138,8 @@ APEX_DEFAULT_CONFIG = merge_dicts(
         # experiment of timesteps.
         "max_requests_in_flight_per_sampler_worker": 2,
         "max_requests_in_flight_per_aggregator_worker": float("inf"),
-        # The timeout for waiting for replay and sampling worker results -- typically
-        # if this is too low, the manager won't be able to retrieve ready results.
-        "timeout_s_sampler_manager": 0.02,
-        "timeout_s_replay_manager": 0.02,
+        "timeout_s_sampler_manager": 0.0,
+        "timeout_s_replay_manager": 0.0,
     },
 )
 # __sphinx_doc_end__

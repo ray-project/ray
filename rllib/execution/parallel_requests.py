@@ -230,7 +230,7 @@ class AsyncRequestsManager:
         self,
         workers: List[ActorHandle],
         max_remote_requests_in_flight_per_worker: int = 2,
-        ray_wait_timeout_s: Optional[float] = 0.03,
+        ray_wait_timeout_s: Optional[float] = 0.0,
         return_object_refs: bool = False,
     ):
         self._ray_wait_timeout_s = ray_wait_timeout_s
