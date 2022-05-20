@@ -472,3 +472,24 @@
       --test_env=PULL_POLICY=IfNotPresent
       --test_env=KUBECONFIG=/root/.kube/config
       python/ray/tests/...
+
+- label: ":up: Ray multinode tests"
+  conditions: [ "RAY_CI_PYTHON_AFFECTED" ]
+  commands:
+    - LINUX_WHEELS=1 ./ci/ci.sh build
+    - mkdir -p ~/.docker/cli-plugins/ && curl -SL https://github.com/docker/compose/releases/download/v2.0.1/docker-compose-linux-x86_64 -o ~/.docker/cli-plugins/docker-compose && chmod +x ~/.docker/cli-plugins/docker-compose
+    - pip install -U docker aws_requests_auth boto3
+    - python ./ci/build/build-docker-images.py --py-versions py37 --device-types cpu --build-type LOCAL --build-base
+    - python ./ci/build/build-multinode-image.py rayproject/ray:nightly-py37-cpu rayproject/ray:multinode-py37
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
+      --test_tag_filters=multinode
+      python/ray/tests/...
+      --test_env=RAY_HAS_SSH="1"
+      --test_env=RAY_DOCKER_IMAGE="rayproject/ray:multinode-py37"
+      --test_env=RAY_TEMPDIR="/ray-mount"
+      --test_env=RAY_HOSTDIR="/ray"
+      --test_env=RAY_TESTHOST="dind-daemon"
+      --test_env=DOCKER_HOST=tcp://docker:2376
+      --test_env=DOCKER_TLS_VERIFY=1
+      --test_env=DOCKER_CERT_PATH=/certs/client
+      --test_env=DOCKER_TLS_CERTDIR=/certs
