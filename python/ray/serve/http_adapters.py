@@ -1,7 +1,7 @@
 from io import BytesIO
 from typing import Any, Dict, List, Optional, Union
 
-from fastapi import Body, File, Request
+from fastapi import File, Request
 from pydantic import BaseModel, Field
 import numpy as np
 

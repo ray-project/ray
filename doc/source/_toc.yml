@@ -184,6 +184,7 @@ parts:
                   - file: ray-air/examples/analyze_tuning_results
                     title: "Analyze hyperparameter tuning results"
                   - file: ray-air/examples/rl_serving_example
+                  - file: ray-air/examples/serving_guide
                   - file: ray-air/examples/lightgbm_example
                   - file: ray-air/examples/rl_online_example
                   - file: ray-air/examples/rl_offline_example

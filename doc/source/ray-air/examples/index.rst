@@ -11,6 +11,7 @@ Guides
 
 - :doc:`/ray-air/examples/analyze_tuning_results`: How to analyze trial results (e.g. find the best trial) of a hyperparameter tuning run.
 - :doc:`/ray-air/examples/rl_serving_example`
+- :doc:`/ray-air/examples/serving_guide`
 
 
 Trainers

@@ -145,7 +145,7 @@ class ModelWrapper(SimpleSchemaIngress):
                 else:
                     raise ValueError(
                         "ModelWrapper only accepts numpy array or dataframe as input "
-                        f"but got types {set(type(i) for i in inp)}"
+                        f"but got types {[type(i) for i in inp]}"
                     )
 
                 batched, unpack = collate_func(inp)
