@@ -205,7 +205,7 @@ class DashboardAgent(object):
 
         await raylet_stub.RegisterAgent(
             agent_manager_pb2.RegisterAgentRequest(
-                agent_pid=self.agent_id,
+                agent_id=self.agent_id,
                 agent_port=self.grpc_port,
                 agent_ip_address=self.ip,
             )
@@ -358,10 +358,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--agent-id",
-        required=False,
+        required=True,
         type=int,
-        default=os.getpid(),
-        help="ID to report register with raylet, default is {}.".format(os.getpid()),
+        help="ID to report when registering with raylet",
     )
 
     args = parser.parse_args()
