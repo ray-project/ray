@@ -132,7 +132,7 @@ public class MultiThreadingTest extends BaseTest {
     testMultiThreading();
   }
 
-  // Single-process mode doesn't have real workers.
+  // Local mode doesn't have real workers.
   @Test(groups = {"cluster"})
   public void testInWorker() {
     ObjectRef<String> obj = Ray.task(MultiThreadingTest::testMultiThreading).remote();
