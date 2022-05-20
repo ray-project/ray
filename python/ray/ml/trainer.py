@@ -8,6 +8,7 @@ from ray.util import PublicAPI
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.config import RunConfig, ScalingConfig, ScalingConfigDataClass
 from ray.ml.constants import TRAIN_DATASET_KEY
+from ray.ml.ingest import _choose_ingest_strategy, IngestStrategy
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.result import Result
 from ray.ml.utils.config import (
@@ -54,6 +55,7 @@ class Trainer(abc.ABC):
           called in sequence on the remote actor.
         - ``trainer.setup()``: Any heavyweight Trainer setup should be
           specified here.
+        - ``trainer.setup_ingest()``
         - ``trainer.preprocess_datasets()``: The provided
           ray.data.Dataset are preprocessed with the provided
           ray.ml.preprocessor.
@@ -133,6 +135,11 @@ class Trainer(abc.ABC):
             it will be fit on the training dataset. All datasets will be transformed
             by the ``preprocessor`` if one is provided.
         preprocessor: A preprocessor to preprocess the provided datasets.
+        ingest: The ingest strategy to use for data loading and preprocessing. By
+            default, an ingest strategy will be picked automatically based on the
+            Dataset size and available object store memory. If the Dataset is small
+            enough to be loaded comfortably in memory, a simple bulk loading strategy
+            will be used. Otherwise, a streaming ingest strategy will be chosen.
         resume_from_checkpoint: A checkpoint to resume training from.
     """
 
@@ -145,6 +152,7 @@ class Trainer(abc.ABC):
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
         preprocessor: Optional[Preprocessor] = None,
+        ingest: Optional[IngestConfig] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
 
@@ -152,6 +160,7 @@ class Trainer(abc.ABC):
         self.run_config = run_config if run_config is not None else RunConfig()
         self.datasets = datasets if datasets is not None else {}
         self.preprocessor = preprocessor
+        self.ingest = ingest,
         self.resume_from_checkpoint = resume_from_checkpoint
 
         self._validate_attributes()
@@ -247,6 +256,12 @@ class Trainer(abc.ABC):
         """
         pass
 
+    def setup_ingest(self) -> None:
+        # Evaluate all datasets first.
+        self.datasets = {k: d() if callable(d) else d for k, d in self.datasets.items()}
+        if self.ingest is None:
+            self.ingest = _choose_ingest_strategy(self.datasets)
+
     def preprocess_datasets(self) -> None:
         """Called during fit() to preprocess dataset attributes with preprocessor.
 
@@ -264,23 +279,10 @@ class Trainer(abc.ABC):
         The transformed datasets will be set back in the ``self.datasets`` attribute
         of the Trainer to be used when overriding ``training_loop``.
         """
-        # Evaluate all datasets.
-        self.datasets = {k: d() if callable(d) else d for k, d in self.datasets.items()}
 
         if self.preprocessor:
-            train_dataset = self.datasets.get(TRAIN_DATASET_KEY, None)
-            if train_dataset:
-                self.preprocessor.fit(train_dataset)
-
-            # Execute dataset transformations serially for now.
-            # Cannot execute them in remote tasks due to dataset ownership model:
-            # if datasets are created on a remote node, then if that node fails,
-            # we cannot recover the dataset.
-            new_datasets = {}
-            for key, dataset in self.datasets.items():
-                new_datasets[key] = self.preprocessor.transform(dataset)
-
-            self.datasets = new_datasets
+            self.datasets = self.ingest.preprocess_datasets(
+                self.preprocessor, self.datasets)
 
     @abc.abstractmethod
     def training_loop(self) -> None:
@@ -352,6 +354,7 @@ class Trainer(abc.ABC):
                 )
 
             trainer.setup()
+            trainer.setup_ingest()
             trainer.preprocess_datasets()
             trainer.training_loop()
 
