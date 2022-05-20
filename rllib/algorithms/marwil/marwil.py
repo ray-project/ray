@@ -13,7 +13,7 @@ from ray.rllib.execution.train_ops import (
 from ray.rllib.offline.estimators import ImportanceSampling, WeightedImportanceSampling
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
@@ -66,6 +66,32 @@ class MARWILConfig(TrainerConfig):
 
         # fmt: off
         # __sphinx_doc_begin__
+        # MARWIL specific settings:
+        self.beta = 1.0
+        self.bc_logstd_coeff = 0.0
+        self.moving_average_sqd_adv_norm_update_rate = 1e-8
+        self.moving_average_sqd_adv_norm_start = 100.0
+        self.replay_buffer_config = {
+            "type": "MultiAgentPrioritizedReplayBuffer",
+            # Size of the replay buffer in (single and independent) timesteps.
+            # The buffer gets filled by reading from the input files line-by-line
+            # and adding all timesteps on one line at once. We then sample
+            # uniformly from the buffer (`train_batch_size` samples) for
+            # each training step.
+            "capacity": 10000,
+            # Specify prioritized replay by supplying a buffer type that supports
+            # prioritization
+            "prioritized_replay": DEPRECATED_VALUE,
+            # Number of steps to read before learning starts.
+            "learning_starts": 0,
+            "replay_sequence_length": 1
+        }
+        self.use_gae = True
+        self.vf_coeff = 1.0
+        self.grad_clip = None
+
+        # Override some of TrainerConfig's default values with MARWIL-specific values.
+
         # You should override input_ to point to an offline dataset
         # (see trainer.py and trainer_config.py).
         # The dataset may have an arbitrary number of timesteps
@@ -77,18 +103,6 @@ class MARWILConfig(TrainerConfig):
         self.input_ = "sampler"
         # Use importance sampling estimators for reward.
         self.input_evaluation = [ImportanceSampling, WeightedImportanceSampling]
-
-        # MARWIL specific settings:
-        self.beta = 1.0
-        self.bc_logstd_coeff = 0.0
-        self.moving_average_sqd_adv_norm_update_rate = 1e-8
-        self.moving_average_sqd_adv_norm_start = 100.0
-        self.replay_buffer_size = 10000
-        self.learning_starts = 0
-        self.vf_coeff = 1.0
-        self.grad_clip = None
-
-        # Override some of TrainerConfig's default values with MARWIL-specific values.
         self.postprocess_inputs = True
         self.lr = 1e-4
         self.train_batch_size = 2000
@@ -104,8 +118,8 @@ class MARWILConfig(TrainerConfig):
         bc_logstd_coeff: Optional[float] = None,
         moving_average_sqd_adv_norm_update_rate: Optional[float] = None,
         moving_average_sqd_adv_norm_start: Optional[float] = None,
-        replay_buffer_size: Optional[int] = None,
-        learning_starts: Optional[int] = None,
+        replay_buffer_config: Optional[dict] = None,
+        use_gae: Optional[bool] = True,
         vf_coeff: Optional[float] = None,
         grad_clip: Optional[float] = None,
         **kwargs,
@@ -116,19 +130,51 @@ class MARWILConfig(TrainerConfig):
             beta: Scaling  of advantages in exponential terms. When beta is 0.0,
                 MARWIL is reduced to behavior cloning (imitation learning);
                 see bc.py algorithm in this same directory.
+            bc_logstd_coeff: A coefficient to encourage higher action distribution
+                entropy for exploration.
+            moving_average_sqd_adv_norm_start: Starting value for the
+                squared moving average advantage norm (c^2).
+            replay_buffer_config: Replay buffer config.
+                Examples:
+                {
+                "_enable_replay_buffer_api": True,
+                "type": "MultiAgentReplayBuffer",
+                "learning_starts": 1000,
+                "capacity": 50000,
+                "replay_batch_size": 32,
+                "replay_sequence_length": 1,
+                }
+                - OR -
+                {
+                "_enable_replay_buffer_api": True,
+                "type": "MultiAgentPrioritizedReplayBuffer",
+                "capacity": 50000,
+                "prioritized_replay_alpha": 0.6,
+                "prioritized_replay_beta": 0.4,
+                "prioritized_replay_eps": 1e-6,
+                "replay_sequence_length": 1,
+                }
+                - Where -
+                prioritized_replay_alpha: Alpha parameter controls the degree of
+                prioritization in the buffer. In other words, when a buffer sample has
+                a higher temporal-difference error, with how much more probability
+                should it drawn to use to update the parametrized Q-network. 0.0
+                corresponds to uniform probability. Setting much above 1.0 may quickly
+                result as the sampling distribution could become heavily “pointy” with
+                low entropy.
+                prioritized_replay_beta: Beta parameter controls the degree of
+                importance sampling which suppresses the influence of gradient updates
+                from samples that have higher probability of being sampled via alpha
+                parameter and the temporal-difference error.
+                prioritized_replay_eps: Epsilon parameter sets the baseline probability
+                for sampling so that when the temporal-difference error of a sample is
+                zero, there is still a chance of drawing the sample.
+            use_gae: If true, use the Generalized Advantage Estimator (GAE)
+                with a value function, see https://arxiv.org/pdf/1506.02438.pdf in
+                case an input line ends with a non-terminal timestep.
             vf_coeff: Balancing value estimation loss and policy optimization loss.
                 moving_average_sqd_adv_norm_update_rate: Update rate for the
                 squared moving average advantage norm (c^2).
-            moving_average_sqd_adv_norm_start: Starting value for the
-                squared moving average advantage norm (c^2).
-            replay_buffer_size: Size of the replay buffer in
-                (single and independent) timesteps.
-                The buffer gets filled by reading from the input files line-by-line and
-                adding all timesteps on one line at once. We then sample uniformly
-                from the buffer (`train_batch_size` samples) for each training step.
-            learning_starts: Number of steps to read before learning starts.
-            bc_logstd_coeff: A coefficient to encourage higher action distribution
-                entropy for exploration.
             grad_clip: If specified, clip the global norm of gradients by this amount.
 
         Returns:
@@ -146,10 +192,10 @@ class MARWILConfig(TrainerConfig):
             )
         if moving_average_sqd_adv_norm_start is not None:
             self.moving_average_sqd_adv_norm_start = moving_average_sqd_adv_norm_start
-        if replay_buffer_size is not None:
-            self.replay_buffer_size = replay_buffer_size
-        if learning_starts is not None:
-            self.learning_starts = learning_starts
+        if replay_buffer_config is not None:
+            self.replay_buffer_config = replay_buffer_config
+        if use_gae is not None:
+            self.use_gae = use_gae
         if vf_coeff is not None:
             self.vf_coeff = vf_coeff
         if grad_clip is not None:
