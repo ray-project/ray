@@ -155,6 +155,18 @@ py_test_run_all_subdirectory(
 )
 
 # --------------------------------------------------------------------
+# Test all doc/source/rllib/doc_code code included in rst/md files.
+# --------------------------------------------------------------------
+
+py_test_run_all_subdirectory(
+    size = "medium",
+    include = ["source/rllib/doc_code/*.py"],
+    exclude = [],
+    extra_srcs = [],
+    tags = ["exclusive", "team:ml"],
+)
+
+# --------------------------------------------------------------------
 # Test all doc/source/ray-air/doc_code code included in rst/md files.
 # --------------------------------------------------------------------
 
@@ -165,7 +177,6 @@ py_test_run_all_subdirectory(
     extra_srcs = [],
     tags = ["exclusive", "team:ml"],
 )
-
 
 # --------------------------------------------------------------------
 # Test all doc/source/ray-overview/doc_test snippets, used on ray.io

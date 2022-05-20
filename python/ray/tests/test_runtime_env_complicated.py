@@ -887,16 +887,16 @@ def test_e2e_complex(call_ray_start, tmp_path):
 
                 return Path("./test").read_text()
 
-        a = TestActor.options(runtime_env={"pip": str(requirement_path)}).remote()
+        a = TestActor.remote()
         assert ray.get(a.test.remote()) == "Hello"
 
         # Check that per-task pip specification works and that the job's
-        # working_dir is still inherited.
+        # working_dir is not inherited.
         @ray.remote
         def test_pip():
             import pip_install_test  # noqa
 
-            return Path("./test").read_text()
+            return "Hello"
 
         assert (
             ray.get(
@@ -905,22 +905,44 @@ def test_e2e_complex(call_ray_start, tmp_path):
             == "Hello"
         )
 
+        @ray.remote
+        def test_working_dir():
+            import pip_install_test  # noqa
+
+            return Path("./test").read_text()
+
+        with pytest.raises(ray.exceptions.RayTaskError) as excinfo:
+            ray.get(
+                test_working_dir.options(
+                    runtime_env={"pip": ["pip-install-test"]}
+                ).remote()
+            )
+        assert "FileNotFoundError" in str(excinfo.value)
+
         # Check that pip_install_test is not in the job's pip requirements.
         with pytest.raises(ray.exceptions.RayTaskError) as excinfo:
             ray.get(test_pip.remote())
         assert "ModuleNotFoundError" in str(excinfo.value)
 
         # Check that per-actor pip specification works and that the job's
-        # working_dir is still inherited.
+        # working_dir is not inherited.
         @ray.remote
         class TestActor:
             def test(self):
+                import pip_install_test  # noqa
+
+                return "Hello"
+
+            def test_working_dir(self):
                 import pip_install_test  # noqa
 
                 return Path("./test").read_text()
 
         a = TestActor.options(runtime_env={"pip": ["pip-install-test"]}).remote()
         assert ray.get(a.test.remote()) == "Hello"
+        with pytest.raises(ray.exceptions.RayTaskError) as excinfo:
+            ray.get(a.test_working_dir.remote())
+        assert "FileNotFoundError" in str(excinfo.value)
 
 
 @pytest.mark.skipif(_WIN32, reason="Fails on windows")
