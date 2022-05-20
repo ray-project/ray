@@ -48,6 +48,7 @@ def PublicAPI(*args, **kwargs):
             )
         else:
             obj.__doc__ += "\n    PublicAPI: This API is stable across Ray releases."
+        # Set magic token for check_api_annotations linter.
         obj._annotated = obj
         return obj
 
@@ -71,6 +72,7 @@ def DeveloperAPI(obj):
     if not obj.__doc__:
         obj.__doc__ = ""
     obj.__doc__ += "\n    DeveloperAPI: This API may change across minor Ray releases."
+    # Set magic token for check_api_annotations linter.
     obj._annotated = obj
     return obj
 
@@ -113,6 +115,7 @@ def Deprecated(*args, **kwargs):
         if not obj.__doc__:
             obj.__doc__ = ""
         obj.__doc__ += f"{message}"
+        # Set magic token for check_api_annotations linter.
         obj._annotated = obj
         return obj
 

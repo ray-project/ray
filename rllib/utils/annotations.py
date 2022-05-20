@@ -50,6 +50,7 @@ def PublicAPI(obj):
         ...     ... # doctest: +SKIP
     """
 
+    # Set magic token for check_api_annotations linter.
     obj._annotated = obj
     return obj
 
@@ -75,6 +76,7 @@ def DeveloperAPI(obj):
         ...     ... # doctest: +SKIP
     """
 
+    # Set magic token for check_api_annotations linter.
     obj._annotated = obj
     return obj
 
@@ -102,6 +104,7 @@ def ExperimentalAPI(obj):
         ...         ... # doctest: +SKIP
     """
 
+    # Set magic token for check_api_annotations linter.
     obj._annotated = obj
     return obj
 
