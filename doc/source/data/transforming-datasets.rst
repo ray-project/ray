@@ -56,9 +56,9 @@ Here is a table listing some common transformations supported by Ray Datasets.
 .. tip::
 
     Datasets also provides the convenience transformation methods :meth:`ds.map() <ray.data.Dataset.map>`,
-    :meth:`ds.flat_map() <ray.data.Dataset.flat_map>`, :meth:`ds.filter() <ray.data.Dataset.filter>`, and
-    :meth:`ds.add_column() <ray.data.Dataset.add_column>` which are not vectorized (slower than
-    :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`), but may be useful for development.
+    :meth:`ds.flat_map() <ray.data.Dataset.flat_map>`, and :meth:`ds.filter() <ray.data.Dataset.filter>`,
+    which are not vectorized (slower than :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`), but
+    may be useful for development.
 
 The following is an example to make use of those transformation APIs for processing
 the Iris dataset.
