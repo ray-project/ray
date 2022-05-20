@@ -11,7 +11,7 @@ from typing import (
 if TYPE_CHECKING:
     import pyarrow
 
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
 @DeveloperAPI
@@ -402,7 +402,7 @@ class PathPartitionParser:
         return {field_names[i]: d for i, d in enumerate(dirs)} if dirs else {}
 
 
-@DeveloperAPI
+@PublicAPI(stability="beta")
 class PathPartitionFilter:
     """Partition filter for path-based partition formats.
 
