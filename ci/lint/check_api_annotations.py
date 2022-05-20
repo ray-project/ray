@@ -47,11 +47,15 @@ def verify(symbol, scanned, ok, output, prefix=None):
         attr = getattr(symbol, child)
         if _ignore(attr):
             continue
-        if type(attr) in [
-            type,
-            abc.ABCMeta,
-            types.FunctionType,
-        ] and prefix in _fullname(attr):
+        if (
+            type(attr)
+            in [
+                type,
+                abc.ABCMeta,
+                types.FunctionType,
+            ]
+            and prefix in _fullname(attr)
+        ):
             print("Scanning class", attr)
             # Check for magic token added by API annotation decorators.
             av = getattr(attr, "_annotated", None)
@@ -64,7 +68,7 @@ def verify(symbol, scanned, ok, output, prefix=None):
             else:
                 output.add(attr)
             scanned.add(attr)
-        elif type(attr) == types.ModuleType:
+        elif isinstance(type(attr), types.ModuleType):
             print("Scanning module", attr)
             verify(attr, scanned, ok, output, prefix)
         else:
