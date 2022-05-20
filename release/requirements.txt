@@ -1,4 +1,4 @@
-click
+click >= 7.0, <= 8.0.4
 anyscale>0.5.0
 slackclient
 boto3

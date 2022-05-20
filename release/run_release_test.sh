@@ -33,18 +33,24 @@ RELEASE_RESULTS_DIR=${RELEASE_RESULTS_DIR-/tmp/artifacts}
 
 export RAY_TEST_REPO RAY_TEST_BRANCH RELEASE_RESULTS_DIR
 
+sudo apt-get update
+sudo apt-get -y install gcc mono-mcs
+
+echo "hahah"
 if [ -z "${NO_INSTALL}" ]; then
-  pip uninstall -q -y ray
+  # pip uninstall -q -y ray
   pip install  --no-deps -r requirements.txt
   pip install -q -U boto3 botocore
 fi
 
+echo "hgohoho"
 if [ -z "${NO_CLONE}" ]; then
   TMPDIR=$(mktemp -d -t release-XXXXXXXXXX)
   git clone --depth 1 -b "${RAY_TEST_BRANCH}" "${RAY_TEST_REPO}" "${TMPDIR}"
   pushd "${TMPDIR}/release" || true
 fi
 
+echo "abcabc"
 if [ -z "${NO_INSTALL}" ]; then
   pip install -e .
 fi
