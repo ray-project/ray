@@ -179,7 +179,7 @@ class TestAsyncRequestsManager(unittest.TestCase):
             == 1
         ):
             raise ValueError("We should have 1 worker and 1 pending request")
-        time.sleep(1)
+        time.sleep(3)
         manager.get_ready()
         # test worker removal
         for i in range(2):
