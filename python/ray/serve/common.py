@@ -122,12 +122,7 @@ class StatusInfo:
     deployment_statuses: List[DeploymentStatusInfo] = field(default_factory=list)
 
     def __str__(self):
-        deployment_status_str = ""
-        for deployment_status in self.deployment_statuses:
-            deployment_status_str += str(deployment_status)
-            deployment_status_str += "\n----------------------------------------\n"
-
-        return (
+        status_info_str = (
             "========================================\n"
             "        Serve Application Status:       \n"
             "----------------------------------------\n"
@@ -135,8 +130,13 @@ class StatusInfo:
             "========================================\n"
             "        Serve Deployment Statuses:      \n"
             "----------------------------------------\n"
-            f"{deployment_status_str}"
         )
+        
+        for deployment_status in self.deployment_statuses:
+            status_info_str += str(deployment_status)
+            status_info_str += "\n----------------------------------------\n"
+
+        return status_info_str
 
     def __eq__(self, other):
         if not isinstance(other, StatusInfo):
