@@ -72,7 +72,9 @@ class ILocalTaskManager {
   virtual size_t GetNumUnschedulableTaskSpilled() const = 0;
 };
 
-/// A noop local task manager, which is used by gcs node only.
+/// A noop local task manager. It is a no-op class. We need this because there's no
+/// "LocalTaskManager" when the `ClusterTaskManager` is used within GCS. In the long term,
+/// we should make `ClusterTaskManager` not aware of `LocalTaskManager`.
 class NoopLocalTaskManager : public ILocalTaskManager {
  public:
   NoopLocalTaskManager() {}
