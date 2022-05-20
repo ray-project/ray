@@ -131,7 +131,7 @@ class StatusInfo:
             "        Serve Deployment Statuses:      \n"
             "----------------------------------------\n"
         )
-        
+
         for deployment_status in self.deployment_statuses:
             status_info_str += str(deployment_status)
             status_info_str += "\n----------------------------------------\n"
