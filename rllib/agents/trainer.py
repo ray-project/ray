@@ -534,9 +534,13 @@ class Trainer(Trainable):
                     step_attempt_results = self.step_attempt()
                     # Collect rollout worker metrics.
                     episodes, self._episodes_to_be_collected = collect_episodes(
-                        self.workers.local_worker(), self._remote_workers_for_metrics,
-                        self._episodes_to_be_collected, timeout_seconds=self.config[
-                            "metrics_episode_collection_timeout_s"], )
+                        self.workers.local_worker(),
+                        self._remote_workers_for_metrics,
+                        self._episodes_to_be_collected,
+                        timeout_seconds=self.config[
+                            "metrics_episode_collection_timeout_s"
+                        ],
+                    )
                     self._rollout_worker_metrics.extend(episodes)
                 # @ray.remote RolloutWorker failure.
                 except RayError as e:

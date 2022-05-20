@@ -402,10 +402,10 @@ class ApexTrainer(DQNTrainer):
             num_requests_to_launch = max(1, round(num_requests_to_launch))
             self.curr_num_samples_collected = 0
             for _ in range(num_requests_to_launch):
-                self._replay_actor_manager.call(lambda actor, num_items:
-                                                actor.sample(num_items),
-                                                remote_args=[self.config[
-                                                                 "train_batch_size"]],)
+                self._replay_actor_manager.call(
+                    lambda actor, num_items: actor.sample(num_items),
+                    remote_args=[self.config["train_batch_size"]],
+                )
             wait_on_replay_actors()
 
         # add the sample batches to the learner queue
