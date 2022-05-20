@@ -2,7 +2,6 @@ from typing import Optional, Type
 
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.agents.trainer_config import TrainerConfig
-from ray.rllib.algorithms.marwil.marwil_tf_policy import MARWILTFPolicy
 from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
@@ -191,8 +190,16 @@ class MARWILTrainer(Trainer):
             )
 
             return MARWILTorchPolicy
+        elif config["framework"] == "tf":
+            from ray.rllib.algorithms.marwil.marwil_tf_policy import (
+                MARWILDynamicTFPolicy,
+            )
+
+            return MARWILDynamicTFPolicy
         else:
-            return MARWILTFPolicy
+            from ray.rllib.algorithms.marwil.marwil_tf_policy import MARWILEagerTFPolicy
+
+            return MARWILEagerTFPolicy
 
     @override(Trainer)
     def training_iteration(self) -> ResultDict:

@@ -13,7 +13,7 @@ import gym
 import os
 
 import ray
-from ray.rllib.agents.dqn import DQNTrainer, DQNTFPolicy, DQNTorchPolicy
+from ray.rllib.algorithms.dqn import DQNTrainer, DQNTFPolicy, DQNTorchPolicy
 from ray.rllib.agents.ppo import PPOTrainer, PPOTFPolicy, PPOTorchPolicy
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.tune.logger import pretty_print

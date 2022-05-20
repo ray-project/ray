@@ -188,7 +188,7 @@ class GcsPublisher(_PublisherBase):
                 pass
             time.sleep(1)
             count -= 1
-        raise
+        raise TimeoutError(f"Failed to publish after retries: {req}")
 
 
 class _SyncSubscriber(_SubscriberBase):

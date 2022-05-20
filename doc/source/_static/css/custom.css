@@ -151,3 +151,14 @@ img.horizontal-scroll {
 pre {
     white-space: pre-wrap;
 }
+
+/* notebook formatting */
+.cell .cell_output {
+    max-height: 250px;
+    overflow-y: auto;
+}
+
+/* Yellow doesn't render well on light background */
+.cell .cell_output pre .-Color-Yellow {
+    color: #785840;
+}
