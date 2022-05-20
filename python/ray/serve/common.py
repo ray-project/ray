@@ -40,6 +40,16 @@ class ServeApplicationStatusInfo:
     message: str = ""
     deployment_timestamp: str = ""
 
+    def __eq__(self, other):
+        if not isinstance(other, ServeApplicationStatusInfo):
+            return False
+
+        return (
+            self.status == other.status
+            and self.message == other.message
+            and self.deployment_timestamp == other.deployment_timestamp
+        )
+
     def to_proto(self):
         return ServeApplicationStatusInfoProto(
             status=self.status,
@@ -69,6 +79,16 @@ class DeploymentStatusInfo:
     name: str
     status: DeploymentStatus
     message: str = ""
+
+    def __eq__(self, other):
+        if not isinstance(other, DeploymentStatusInfo):
+            return False
+
+        return (
+            self.name == other.name
+            and self.status == other.status
+            and self.message == other.message
+        )
 
     def to_proto(self):
         return DeploymentStatusInfoProto(
@@ -104,6 +124,22 @@ class StatusInfo:
                 return deployment_status
 
         return None
+
+    def __eq__(self, other):
+        if not isinstance(other, StatusInfo):
+            return False
+
+        if self.app_status == other.app_status and len(self.deployment_statuses) == len(
+            other.deployment_statuses
+        ):
+            for self_status, other_status in zip(
+                self.deployment_statuses, other.deployment_statuses
+            ):
+                if self_status != other_status:
+                    return False
+            return True
+        else:
+            return False
 
     def to_proto(self):
 
