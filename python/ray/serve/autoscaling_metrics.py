@@ -14,6 +14,7 @@ def start_metrics_pusher(
     interval_s: float,
     collection_callback: Callable[[], Dict[str, float]],
     metrics_process_func,
+    stop_event=None,
 ):
     """Start a background thread to push metrics to controller.
 
@@ -35,12 +36,15 @@ def start_metrics_pusher(
         # TODO(simon): maybe wait for ack or handle controller failure?
         return metrics_process_func.remote(data=data, send_timestamp=time.time())
 
-    def send_forever():
+    def send_forever(stop_event):
         last_ref: Optional[ray.ObjectRef] = None
         last_send_succeeded: bool = True
 
         while True:
             start = time.time()
+
+            if stop_event and stop_event.is_set():
+                return
 
             if last_ref:
                 ready_refs, _ = ray.wait([last_ref], timeout=0)
@@ -53,11 +57,12 @@ def start_metrics_pusher(
             if remaining_time > 0:
                 time.sleep(remaining_time)
 
-    timer = threading.Thread(target=send_forever)
+    timer = threading.Thread(target=send_forever, args=[stop_event])
     # Making this a daemon thread so it doesn't leak upon shutdown, and it
     # doesn't need to block the replica's shutdown.
     timer.setDaemon(True)
     timer.start()
+    return timer
 
 
 @dataclass(order=True)

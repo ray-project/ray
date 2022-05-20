@@ -195,6 +195,9 @@ def test_intelligent_scale_down(ray_cluster):
     f.options(num_replicas=2).deploy()
     assert get_actor_distributions() == {2}
 
+    f.options(num_replicas=0).deploy()
+    assert get_actor_distributions() == set()
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

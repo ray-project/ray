@@ -105,10 +105,12 @@ class RayServeHandle:
 
         self.router: Router = _router or self._make_router()
 
-        start_metrics_pusher(
+        self._stop_event = threading.Event()
+        self._pusher = start_metrics_pusher(
             interval_s=10,  # Queue handle metrcis
             collection_callback=self._collect_handle_queue_metrics,
             metrics_process_func=self.controller_handle.record_handle_metrics,
+            stop_event=self._stop_event,
         )
 
     def _collect_handle_queue_metrics(self):
@@ -120,6 +122,9 @@ class RayServeHandle:
             self.deployment_name,
             event_loop=asyncio.get_event_loop(),
         )
+
+    def stop_metrics_pusher(self):
+        self._stop_event.set()
 
     @property
     def is_polling(self) -> bool:
@@ -210,6 +215,9 @@ class RayServeHandle:
 
     def __getattr__(self, name):
         return self.options(method_name=name)
+
+    def __del__(self):
+        self.stop_metrics_pusher()
 
 
 class RayServeSyncHandle(RayServeHandle):

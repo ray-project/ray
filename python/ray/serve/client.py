@@ -120,6 +120,12 @@ class ServeControllerClient:
         Shuts down all processes and deletes all state associated with the
         instance.
         """
+
+        # shutdown handles
+        for k in list(self.handle_cache):
+            self.handle_cache[k].stop_metrics_pusher()
+            del self.handle_cache[k]
+
         if ray.is_initialized() and not self._shutdown:
             ray.get(self._controller.shutdown.remote())
             self._wait_for_deployments_shutdown()

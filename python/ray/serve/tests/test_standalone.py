@@ -107,42 +107,6 @@ def test_shutdown(ray_shutdown):
     wait_for_condition(check_dead)
 
 
-def test_detached_deployment(ray_cluster):
-    # https://github.com/ray-project/ray/issues/11437
-
-    cluster = ray_cluster
-    head_node = cluster.add_node(num_cpus=6)
-
-    # Create first job, check we can run a simple serve endpoint
-    ray.init(head_node.address, namespace="serve")
-    first_job_id = ray.get_runtime_context().job_id
-    serve.start(detached=True)
-
-    @serve.deployment(route_prefix="/say_hi_f")
-    def f(*args):
-        return "from_f"
-
-    f.deploy()
-    assert ray.get(f.get_handle().remote()) == "from_f"
-    assert requests.get("http://localhost:8000/say_hi_f").text == "from_f"
-
-    serve.context._global_client = None
-    ray.shutdown()
-
-    # Create the second job, make sure we can still create new deployments.
-    ray.init(head_node.address, namespace="serve")
-    assert ray.get_runtime_context().job_id != first_job_id
-
-    @serve.deployment(route_prefix="/say_hi_g")
-    def g(*args):
-        return "from_g"
-
-    g.deploy()
-    assert ray.get(g.get_handle().remote()) == "from_g"
-    assert requests.get("http://localhost:8000/say_hi_g").text == "from_g"
-    assert requests.get("http://localhost:8000/say_hi_f").text == "from_f"
-
-
 @pytest.mark.parametrize("detached", [True, False])
 def test_connect(detached, ray_shutdown):
     # Check that you can make API calls from within a deployment for both
@@ -698,6 +662,42 @@ def test_serve_start_different_http_checkpoint_options_warning(caplog):
 
     serve.shutdown()
     ray.shutdown()
+
+
+def test_detached_deployment(ray_cluster):
+    # https://github.com/ray-project/ray/issues/11437
+
+    cluster = ray_cluster
+    head_node = cluster.add_node(num_cpus=6)
+
+    # Create first job, check we can run a simple serve endpoint
+    ray.init(head_node.address, namespace="serve")
+    first_job_id = ray.get_runtime_context().job_id
+    serve.start(detached=True)
+
+    @serve.deployment(route_prefix="/say_hi_f")
+    def f(*args):
+        return "from_f"
+
+    f.deploy()
+    assert ray.get(f.get_handle().remote()) == "from_f"
+    assert requests.get("http://localhost:8000/say_hi_f").text == "from_f"
+
+    serve.context._global_client = None
+    ray.shutdown()
+
+    # Create the second job, make sure we can still create new deployments.
+    ray.init(head_node.address, namespace="serve")
+    assert ray.get_runtime_context().job_id != first_job_id
+
+    @serve.deployment(route_prefix="/say_hi_g")
+    def g(*args):
+        return "from_g"
+
+    g.deploy()
+    assert ray.get(g.get_handle().remote()) == "from_g"
+    assert requests.get("http://localhost:8000/say_hi_g").text == "from_g"
+    assert requests.get("http://localhost:8000/say_hi_f").text == "from_f"
 
 
 if __name__ == "__main__":
