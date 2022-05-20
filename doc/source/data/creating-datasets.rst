@@ -81,8 +81,8 @@ serving as pointers to a collection of distributed data blocks.
 
   .. literalinclude:: ./doc_code/creating_datasets.py
     :language: python
-    :start-after: __gen_synth_arrow_range_begin__
-    :end-before: __gen_synth_arrow_range_end__
+    :start-after: __gen_synth_tabular_range_begin__
+    :end-before: __gen_synth_tabular_range_end__
 
 .. tabbed:: Tensor Range
 
