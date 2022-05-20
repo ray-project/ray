@@ -1252,7 +1252,7 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
 }
 
 absl::optional<LocalityData> ReferenceCounter::GetLocalityData(
-    const ObjectID &object_id) {
+    const ObjectID &object_id) const {
   absl::MutexLock lock(&mutex_);
   // Uses the reference table to return locality data for an object.
   auto it = object_id_refs_.find(object_id);
@@ -1280,6 +1280,9 @@ absl::optional<LocalityData> ReferenceCounter::GetLocalityData(
   // - If we don't own this object, this will contain a snapshot of the object locations
   //   at future resolution time.
   auto node_ids = it->second.locations;
+  if (!it->second.spilled_node_id.IsNil()) {
+    node_ids.emplace(it->second.spilled_node_id);
+  }
   // Add location of the primary copy since the object must be there: either in memory or
   // spilled.
   if (it->second.pinned_at_raylet_id.has_value()) {

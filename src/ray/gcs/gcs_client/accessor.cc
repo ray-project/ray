@@ -847,6 +847,8 @@ Status WorkerInfoAccessor::AsyncSubscribeToWorkerFailures(
 }
 
 void WorkerInfoAccessor::AsyncResubscribe() {
+  // TODO(iycheng): Fix the case where messages has been pushed to GCS but
+  // resubscribe hasn't been done yet. In this case, we'll lose that message.
   RAY_LOG(DEBUG) << "Reestablishing subscription for worker failures.";
   // The pub-sub server has restarted, we need to resubscribe to the pub-sub server.
   if (subscribe_operation_ != nullptr) {

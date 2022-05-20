@@ -57,7 +57,6 @@ _OUTPUT_ITER_OPS = ["take", "take_all", "show", "to_tf", "to_torch"]
 class DatasetPipeline(Generic[T]):
     """Implements a pipeline of Datasets.
 
-    Unlike Datasets, which execute all transformations synchronously,
     DatasetPipelines implement pipelined execution. This allows for the
     overlapped execution of data input (e.g., reading files), computation
     (e.g. feature preprocessing), and output (e.g., distributed ML training).
