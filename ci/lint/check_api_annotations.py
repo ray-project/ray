@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import abc
+import types
 
 import ray
 
@@ -9,14 +10,14 @@ IGNORE_PATHS = {".impl.", ".backend.", ".experimental.", ".internal.", ".generat
 
 def _fullname(attr):
     """Fully qualified name of an attribute."""
-    if isinstance(attr, type(ray)):
-        fullname = attr.__name__
-    elif isinstance(attr, type):
-        module = attr.__module__
-        if module == "builtins":
-            return attr.__qualname__
-        fullname = module + "." + attr.__qualname__
-    else:
+    fullname = ""
+    if hasattr(attr, "__module__"):
+        fullname += attr.__module__
+    if hasattr(attr, "__name__"):
+        if fullname:
+            fullname += "."
+        fullname += attr.__name__
+    if not fullname:
         fullname = str(attr)
     return fullname
 
@@ -46,7 +47,7 @@ def verify(symbol, scanned, ok, output, prefix=None):
         attr = getattr(symbol, child)
         if _ignore(attr):
             continue
-        if type(attr) in [type, abc.ABCMeta] and prefix in _fullname(attr):
+        if type(attr) in [type, abc.ABCMeta, types.FunctionType] and prefix in _fullname(attr):
             print("Scanning class", attr)
             # Check for magic token added by API annotation decorators.
             av = getattr(attr, "_annotated", None)
@@ -58,9 +59,8 @@ def verify(symbol, scanned, ok, output, prefix=None):
                     ok.add(attr)
             else:
                 output.add(attr)
-            verify(attr, scanned, ok, output, prefix)
             scanned.add(attr)
-        elif type(attr) == type(ray):
+        elif type(attr) == types.ModuleType:
             print("Scanning module", attr)
             verify(attr, scanned, ok, output, prefix)
         else:
