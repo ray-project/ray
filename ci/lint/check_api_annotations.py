@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
-import abc
-import types
+import inspect
 
 import ray
 
@@ -47,14 +46,8 @@ def verify(symbol, scanned, ok, output, prefix=None):
         attr = getattr(symbol, child)
         if _ignore(attr):
             continue
-        if (
-            type(attr)
-            in [
-                type,
-                abc.ABCMeta,
-                types.FunctionType,
-            ]
-            and prefix in _fullname(attr)
+        if (inspect.isclass(attr) or inspect.isfunction(attr)) and prefix in _fullname(
+            attr
         ):
             print("Scanning class", attr)
             # Check for magic token added by API annotation decorators.
@@ -68,7 +61,7 @@ def verify(symbol, scanned, ok, output, prefix=None):
             else:
                 output.add(attr)
             scanned.add(attr)
-        elif isinstance(attr, types.ModuleType):
+        elif inspect.ismodule(attr):
             print("Scanning module", attr)
             verify(attr, scanned, ok, output, prefix)
         else:
