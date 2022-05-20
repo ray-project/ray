@@ -14,6 +14,10 @@
 
 #include "ray/core_worker/core_worker.h"
 
+#ifndef _WIN32
+#include <unistd.h>
+#endif
+
 #include <google/protobuf/util/json_util.h>
 
 #include "boost/fiber/all.hpp"
@@ -516,6 +520,13 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         }
       },
       100);
+
+#ifndef _WIN32
+  // nice() increments the niceness of this process, so this assumes one CoreWorker object
+  // per process.
+  const auto niceness = nice(RayConfig::instance().worker_niceness());
+  RAY_LOG(INFO) << "Adjusted worker niceness to " << niceness;
+#endif
 }
 
 CoreWorker::~CoreWorker() { RAY_LOG(INFO) << "Core worker is destructed"; }

@@ -23,7 +23,7 @@ def run_mini_integration_test(cluster, pg_removal=True, num_pgs=999):
     # When 999 resource quantity is used, it fails about every other time
     # when the test was written.
     resource_quantity = num_pgs
-    num_nodes = 4
+    num_nodes = 5
     custom_resources = {"pg_custom": resource_quantity}
     # Create pg that uses 1 resource of cpu & custom resource.
     num_pg = resource_quantity

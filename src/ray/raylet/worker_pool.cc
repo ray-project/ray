@@ -61,18 +61,6 @@ bool RemoveWorker(
     const std::shared_ptr<ray::raylet::WorkerInterface> &worker) {
   return worker_pool.erase(worker) > 0;
 }
-
-std::vector<std::string> CommandArgsToAdjustWorkerNice() {
-#if (defined(__APPLE__) || defined(__unix__) || defined(__linux__))
-  int nice = RayConfig::instance().worker_niceness();
-  nice = std::max(nice, 0);
-  nice = std::min(nice, 19);
-  if (nice > 0) {
-    return {"nice", "-n", absl::StrCat(nice)};
-  }
-#endif
-  return {};
-}
 }  // namespace
 
 namespace ray {
@@ -395,11 +383,6 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
     if (ray_debugger_external) {
       worker_command_args.push_back("--ray-debugger-external");
     }
-  }
-
-  if (const std::vector<std::string> args = CommandArgsToAdjustWorkerNice();
-      !args.empty()) {
-    worker_command_args.insert(worker_command_args.begin(), args.begin(), args.end());
   }
 
   ProcessEnvironment env;
