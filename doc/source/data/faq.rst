@@ -50,7 +50,7 @@ integrations in production below:
 * Ray Datasets is used as the data processing engine for the 
   `Ray-based Apache Beam runner <https://github.com/ray-project/ray_beam_runner>`__.
 * Ray Datasets is used as the preprocessing and batch inference engine for
-  :ref:`Ray AIR <air>`.
+  :ref:`Ray AIR <air>` (alpha).
 
 
 If you're using Ray Datasets, please let us know about your experience on the
@@ -169,8 +169,8 @@ NVTabular
 * **Heterogeneous compute:** NVTabular doesn't support mixing heterogeneous resources in dataset transforms (e.g.
   both CPU and GPU transformations), while Ray Datasets supports this.
 * **ML-specific ops:** NVTabular has a bunch of great ML-specific preprocessing
-  operations; this is currently WIP for Ray Datasets:
-  :ref:`Ray AIR preprocessors <air-key-concepts>`.
+  operations; this is currently in-progress for Ray Datasets:
+  :ref:`Ray AIR preprocessors <air>` (alpha).
 
 .. _datasets_streaming_faq:
 
