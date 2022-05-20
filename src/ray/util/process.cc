@@ -25,10 +25,10 @@
 #include <poll.h>
 #include <signal.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
-#include <stdio.h>
 #endif
 
 #include <string.h>
@@ -627,13 +627,15 @@ bool IsProcessAlive(pid_t pid) {
   bool iszombie = false;
   // open the /proc/*/stat file
   char pbuf[32];
-  snprintf(pbuf, sizeof(pbuf), "/proc/%d/stat", (int) pid);
-  FILE* fpstat = fopen(pbuf, "r");
+  snprintf(pbuf, sizeof(pbuf), "/proc/%d/stat", (int)pid);
+  FILE *fpstat = fopen(pbuf, "r");
   if (!fpstat) {
     return false;
   }
 
-  int rpid =0; char rcmd[32]; char rstatc = 0;
+  int rpid = 0;
+  char rcmd[32];
+  char rstatc = 0;
   RAY_CHECK(fscanf(fpstat, "%d %30s %c", &rpid, rcmd, &rstatc) == 3);
   iszombie = rstatc == 'Z';
   fclose(fpstat);
