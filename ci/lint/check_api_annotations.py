@@ -4,6 +4,7 @@ IGNORE_PATHS = {".impl.", ".backend.", ".experimental.", ".internal.", ".generat
 
 
 def _ignore(attr):
+    """Whether an attr should be ignored from annotation checking."""
     attr = str(attr)
     if "ray." not in attr or "._" in attr:
         return True
@@ -15,6 +16,7 @@ def _ignore(attr):
 
 # TODO(ekl) also check function and constant definitions.
 def verify(symbol, scanned, ok, output, prefix=None):
+    """Recursively verify all child symbols of a given module."""
     if not prefix:
         prefix = symbol.__name__ + "."
     if symbol in scanned:
@@ -27,7 +29,10 @@ def verify(symbol, scanned, ok, output, prefix=None):
         if _ignore(attr):
             continue
         if type(attr) == type and prefix in str(attr):
+            # Check for magic token added by API annotation decorators.
             av = getattr(attr, "_annotated", None)
+            # If not equal, this means the subclass was not annotated but the
+            # parent class was.
             if av == attr:
                 if attr not in scanned:
                     print("OK:", attr)
@@ -51,6 +56,7 @@ if __name__ == "__main__":
     output = set()
     ok = set()
     verify(ray.data, set(), ok, output)
+    # TODO(ekl) enable it for all modules.
     #    verify(ray.ml, set(), ok, output)
     #    verify(ray.train, set(), ok, output)
     #    verify(ray.serve, set(), ok, output)
