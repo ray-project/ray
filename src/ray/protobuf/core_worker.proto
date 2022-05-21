@@ -230,6 +230,8 @@ message KillActorRequest {
   bool force_kill = 2;
   // If set to true, the killed actor will not be restarted anymore.
   bool no_restart = 3;
+  // The precise reason why this actor receives a kill request.
+  ActorDeathCause death_cause = 4;
 }
 
 message KillActorReply {

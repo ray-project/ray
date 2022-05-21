@@ -1295,6 +1295,7 @@ def exit_actor():
         # reduces log verbosity.
         exit = SystemExit(0)
         exit.is_ray_terminate = True
+        exit.ray_terminate_msg = "exit_actor() is called."
         raise exit
         assert False, "This process should have terminated."
     else:

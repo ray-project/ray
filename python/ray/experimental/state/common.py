@@ -58,6 +58,9 @@ class WorkerState:
     worker_id: str
     is_alive: str
     worker_type: str
+    exit_type: str
+    exit_detail: str
+    pid: str
 
 
 @dataclass(init=True)

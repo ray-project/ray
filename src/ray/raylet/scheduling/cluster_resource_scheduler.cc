@@ -237,14 +237,22 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
                              &_unused,
                              is_infeasible);
 
-  // If there is no other available nodes, prefer waiting on the local node
-  // since the local node is chosen for a reason (e.g. spread).
-  if (prioritize_local_node && !best_node.IsNil() &&
+  // There is no other available nodes.
+  if (!best_node.IsNil() &&
       !IsSchedulableOnNode(best_node,
                            task_spec.GetRequiredResources().GetResourceMap(),
                            requires_object_store_memory)) {
-    *is_infeasible = false;
-    return local_node_id_;
+    // Prefer waiting on the local node since the local node is chosen for a reason (e.g.
+    // spread).
+    if (prioritize_local_node) {
+      *is_infeasible = false;
+      return local_node_id_;
+    }
+    // If the task is being scheduled by gcs, return nil to make it stay in the
+    // `cluster_task_manager`'s queue.
+    if (!is_local_node_with_raylet_) {
+      return scheduling::NodeID::Nil();
+    }
   }
 
   return best_node;
