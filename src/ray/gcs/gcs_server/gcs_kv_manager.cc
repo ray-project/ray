@@ -23,14 +23,6 @@ namespace ray {
 namespace gcs {
 namespace {
 constexpr std::string_view kNamespacePrefix = "@namespace_";
-constexpr std::string_view kNamespaceSep = ":";
-
-std::string MakeKey(const std::string &ns, const std::string &key) {
-  if (ns.empty()) {
-    return key;
-  }
-  return absl::StrCat(kNamespacePrefix, ns, ":", key);
-}
 
 Status ValidateKey(const std::string &key) {
   if (absl::StartsWith(key, kNamespacePrefix)) {
@@ -39,16 +31,6 @@ Status ValidateKey(const std::string &key) {
   return Status::OK();
 }
 
-std::string ExtractKey(const std::string &key) {
-  if (absl::StartsWith(key, kNamespacePrefix)) {
-    std::vector<std::string> parts =
-        absl::StrSplit(key, absl::MaxSplits(kNamespaceSep, 1));
-    RAY_CHECK(parts.size() == 2) << "Invalid key: " << key;
-
-    return parts[1];
-  }
-  return key;
-}
 }  // namespace
 
 void GcsInternalKVManager::HandleInternalKVGet(
