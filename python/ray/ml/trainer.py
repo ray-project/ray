@@ -160,7 +160,7 @@ class Trainer(abc.ABC):
         self.run_config = run_config if run_config is not None else RunConfig()
         self.datasets = datasets if datasets is not None else {}
         self.preprocessor = preprocessor
-        self.ingest = (ingest,)
+        self.ingest = ingest
         self.resume_from_checkpoint = resume_from_checkpoint
 
         self._validate_attributes()

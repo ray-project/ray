@@ -17,6 +17,32 @@ class IngestStrategy:
         raise NotImplementedError
 
 
+class StreamIngest(IngestStrategy):
+    def __init__(self):
+        self._window_size_bytes = 0.25 * local_object_store_memory()
+
+    def preprocess_datasets(self, preprocessor, datasets):
+        train_dataset = datasets.get(TRAIN_DATASET_KEY, None)
+        if train_dataset:
+            preprocessor.fit_pipeline(train_dataset)
+
+#        new_datasets = {}
+#        for key, dataset in datasets.items():
+#            # TODO exclude train one for streaming read
+#            new_datasets[key] = preprocessor.transform(dataset)
+
+        # Return original datasets? Transforms will be applied on the fly at read time?
+        return datasets
+
+    def prepare_readers(self, datasets, worker_handles) -> None:
+        """Must be called before get_reader"""
+        raise NotImplementedError
+
+    def get_reader_for_rank(self, dataset, i) -> DatasetPipeline:
+        """Called in start of train loop of trainer."""
+        raise NotImplementedError
+
+
 class BulkIngest(IngestStrategy):
     def __init__(
         self,
@@ -68,6 +94,8 @@ class BulkIngest(IngestStrategy):
 
 def _choose_ingest_strategy(dataset: Dict[str, Dataset]) -> IngestStrategy:
     # TODO: if small enough, use bulk ingest
+    # if train dataset < max(1gb, 0.25 * object_store_memory)
+    # else stream with window = 0.25 * object_store_memory
     return BulkIngest()
 
 
