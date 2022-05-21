@@ -15,7 +15,8 @@ from typing import List
 logger = logging.getLogger(__name__)
 
 OffPolicyEstimate = DeveloperAPI(
-    namedtuple("OffPolicyEstimate", ["estimator_name", "metrics"]))
+    namedtuple("OffPolicyEstimate", ["estimator_name", "metrics"])
+)
 
 
 @DeveloperAPI

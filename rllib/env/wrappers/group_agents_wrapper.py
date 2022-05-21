@@ -22,6 +22,7 @@ GROUP_REWARDS = "_group_rewards"
 # }
 GROUP_INFO = "_group_info"
 
+
 @DeveloperAPI
 class GroupAgentsWrapper(MultiAgentEnv):
     """Wraps a MultiAgentEnv environment with agents grouped as specified.

@@ -70,23 +70,25 @@ logger = logging.getLogger(__name__)
 #       "pol1": PolicySpec(None, Box, Discrete(2), {"lr": 0.0001}),
 #       "pol2": PolicySpec(config={"lr": 0.001}),
 #     }
-PolicySpec = PublicAPI(namedtuple(
-    "PolicySpec",
-    [
-        # If None, use the Trainer's default policy class stored under
-        # `Trainer._policy_class`.
-        "policy_class",
-        # If None, use the env's observation space. If None and there is no Env
-        # (e.g. offline RL), an error is thrown.
-        "observation_space",
-        # If None, use the env's action space. If None and there is no Env
-        # (e.g. offline RL), an error is thrown.
-        "action_space",
-        # Overrides defined keys in the main Trainer config.
-        # If None, use {}.
-        "config",
-    ],
-))  # defaults=(None, None, None, None)
+PolicySpec = PublicAPI(
+    namedtuple(
+        "PolicySpec",
+        [
+            # If None, use the Trainer's default policy class stored under
+            # `Trainer._policy_class`.
+            "policy_class",
+            # If None, use the env's observation space. If None and there is no Env
+            # (e.g. offline RL), an error is thrown.
+            "observation_space",
+            # If None, use the env's action space. If None and there is no Env
+            # (e.g. offline RL), an error is thrown.
+            "action_space",
+            # Overrides defined keys in the main Trainer config.
+            # If None, use {}.
+            "config",
+        ],
+    )
+)  # defaults=(None, None, None, None)
 # TODO: From 3.7 on, we could pass `defaults` into the above constructor.
 #  We still support py3.6.
 PolicySpec.__new__.__defaults__ = (None, None, None, None)

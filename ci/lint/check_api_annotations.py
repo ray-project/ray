@@ -5,7 +5,16 @@ import inspect
 import ray
 from ray.util.annotations import _is_annotated
 
-IGNORE_PATHS = {".impl.", ".backend.", ".experimental.", ".internal.", ".generated.", ".test_utils.", ".annotations.", ".deprecation"}
+IGNORE_PATHS = {
+    ".impl.",
+    ".backend.",
+    ".experimental.",
+    ".internal.",
+    ".generated.",
+    ".test_utils.",
+    ".annotations.",
+    ".deprecation",
+}
 
 
 def _fullname(attr):

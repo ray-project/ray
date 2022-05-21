@@ -433,6 +433,7 @@ def reduce_mean_ignore_inf(x: TensorType, axis: Optional[int] = None) -> TensorT
     x_zeroed = torch.where(mask, x, torch.zeros_like(x))
     return torch.sum(x_zeroed, axis) / torch.sum(mask.float(), axis)
 
+
 @PublicAPI
 def sequence_mask(
     lengths: TensorType,
