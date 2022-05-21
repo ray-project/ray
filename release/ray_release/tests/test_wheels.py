@@ -32,7 +32,7 @@ class WheelsFinderTest(unittest.TestCase):
 
         with patch("urllib.request.urlopen", lambda _: content):
             version = get_ray_version(DEFAULT_REPO, commit="fake")
-            self.assertEqual(version, "2.0.0.dev0")
+            self.assertEqual(version, "1.13.0")
 
         with patch("urllib.request.urlopen", lambda _: []), self.assertRaises(
             RayWheelsNotFoundError
