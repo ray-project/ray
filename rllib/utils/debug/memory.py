@@ -7,12 +7,13 @@ import tracemalloc
 import tree  # pip install dm_tree
 from typing import Callable, DefaultDict, List, Optional, Set
 
+from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 
 
 # A suspicious memory-allocating stack-trace that we should re-test
 # to make sure it's not a false positive.
-Suspect = namedtuple(
+Suspect = DeveloperAPI(namedtuple(
     "Suspect",
     [
         # The stack trace of the allocation, going back n frames, depending
@@ -28,9 +29,10 @@ Suspect = namedtuple(
         # The memory size history (list of all memory sizes over all iterations).
         "hist",
     ],
-)
+))
 
 
+@DeveloperAPI
 def check_memory_leaks(
     trainer,
     to_check: Optional[Set[str]] = None,
