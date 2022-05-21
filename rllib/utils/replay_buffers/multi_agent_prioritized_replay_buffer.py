@@ -2,7 +2,6 @@ from typing import Dict
 import logging
 import numpy as np
 
-from ray.rllib.policy.rnn_sequencing import timeslice_along_seq_lens_with_overlap
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import (
     MultiAgentReplayBuffer,
@@ -11,8 +10,12 @@ from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import (
 from ray.rllib.utils.replay_buffers.prioritized_replay_buffer import (
     PrioritizedReplayBuffer,
 )
-from ray.rllib.utils.replay_buffers.replay_buffer import StorageUnit
+from ray.rllib.utils.replay_buffers.replay_buffer import (
+    StorageUnit,
+    sequence_timeslicing_helper,
+)
 from ray.rllib.utils.typing import PolicyID, SampleBatchType
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.timer import TimerStat
 from ray.util.debug import log_once
 from ray.util.annotations import DeveloperAPI
@@ -158,22 +161,44 @@ class MultiAgentPrioritizedReplayBuffer(
         if self._storage_unit is StorageUnit.TIMESTEPS:
             timeslices = batch.timeslices(1)
         elif self._storage_unit is StorageUnit.SEQUENCES:
-            timeslices = timeslice_along_seq_lens_with_overlap(
-                sample_batch=batch,
-                zero_pad_max_seq_len=self.replay_sequence_length,
-                pre_overlap=self.replay_burn_in,
-                zero_init_states=self.replay_zero_init_states,
+            timeslices = sequence_timeslicing_helper(
+                self.replay_sequence_override,
+                batch,
+                self.replay_sequence_length,
+                self.replay_burn_in,
+                self.replay_zero_init_states,
             )
-        else:
+            for slice in timeslices:
+                self.replay_buffers[policy_id].add(slice, **kwargs)
+        elif self._storage_unit == StorageUnit.EPISODES:
+            timeslices = []
+            for eps in batch.split_by_episode():
+                if (
+                    eps.get(SampleBatch.T)[0] == 0
+                    and eps.get(SampleBatch.DONES)[-1] == True  # noqa E712
+                ):
+                    # Only add full episodes to the buffer
+                    timeslices.append(eps)
+                else:
+                    if log_once("only_full_episodes"):
+                        logger.info(
+                            "This buffer uses episodes as a storage "
+                            "unit and thus allows only full episodes "
+                            "to be added to it. Some samples may be "
+                            "dropped."
+                        )
+        elif self._storage_unit == StorageUnit.FRAGMENTS:
             timeslices = [batch]
+        else:
+            raise ValueError("Unknown `storage_unit={}`".format(self._storage_unit))
 
-        for time_slice in timeslices:
+        for slice in timeslices:
             # If SampleBatch has prio-replay weights, average
             # over these to use as a weight for the entire
             # sequence.
             if self.replay_mode is ReplayMode.INDEPENDENT:
-                if "weights" in time_slice and len(time_slice["weights"]):
-                    weight = np.mean(time_slice["weights"])
+                if "weights" in slice and len(slice["weights"]):
+                    weight = np.mean(slice["weights"])
                 else:
                     weight = None
 
@@ -198,7 +223,7 @@ class MultiAgentPrioritizedReplayBuffer(
                         )
 
                 kwargs = {**kwargs, "weight": None}
-            self.replay_buffers[policy_id].add(time_slice, **kwargs)
+            self.replay_buffers[policy_id].add(slice, **kwargs)
 
     @DeveloperAPI
     @override(PrioritizedReplayBuffer)

@@ -10,6 +10,8 @@ from enum import Enum
 import ray  # noqa F401
 import psutil  # noqa E402
 
+from ray.rllib.policy.rnn_sequencing import timeslice_along_seq_lens_with_overlap
+
 from ray.util.debug import log_once
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.deprecation import Deprecated
@@ -57,10 +59,79 @@ def warn_replay_capacity(*, item: SampleBatchType, num_items: int) -> None:
 
 
 @DeveloperAPI
+def sequence_timeslicing_helper(
+    replay_sequence_override: bool,
+    batch: SampleBatchType,
+    replay_sequence_length: int = None,
+    replay_burn_in: int = None,
+    replay_zero_init_states: bool = None,
+) -> List["SampleBatch"]:
+    """Helps with slicing a batch into sequences in buffers.
+
+    This method slices batches into sequences, possibly disobeying existing
+    sequencing information, depending on `replay_sequence_override`.
+
+    Args:
+        replay_sequence_override: If True, ignore sequence length
+            found under `batch[SampleBatch.SEQ_LENS]` and slice according to the given
+            call args.
+        batch: The batch to be sliced.
+        replay_sequence_length: If overriding, the sequence length including the
+            burn-in-sequence.
+        replay_burn_in: Length of the burn-in-sequence.
+        replay_zero_init_states: Whether initial states should always be
+            zero'd. If False, will use the state_outs of the batch to
+            populate state_in values.
+
+    Returns:
+        A list of timeslices of the given batch.
+    """
+    if replay_sequence_override:
+        # Slice batch according to replay_sequence_length
+        if batch.get(SampleBatch.SEQ_LENS) is not None and log_once(
+            "overriding_sequencing_information"
+        ):
+            logger.warning(
+                "Found sequencing information in a batch that will be "
+                "ignored when slicing. Ignore this warning if you know "
+                "what you are doing."
+            )
+        if replay_sequence_length == 1:
+            timeslices = batch.timeslices(1)
+        else:
+            timeslices = timeslice_along_seq_lens_with_overlap(
+                sample_batch=batch,
+                zero_pad_max_seq_len=replay_sequence_length,
+                pre_overlap=replay_burn_in,
+                zero_init_states=replay_zero_init_states,
+            )
+    else:
+        # Slice batches to sequence lengths found in the batch itself
+        timestep_count = 0
+        timeslices = []
+        seq_lens = batch.get(SampleBatch.SEQ_LENS)
+        if seq_lens is not None:
+            raise ValueError(
+                "Trying to timeslice batch without overriding existing "
+                "sequencing information, but no sequencing information "
+                "is present in batch {}.".format(batch)
+            )
+        for seq_len in seq_lens:
+            start_seq = timestep_count
+            end_seq = timestep_count + seq_len
+            timeslices.append(batch[start_seq:end_seq])
+            timestep_count = end_seq
+
+    return timeslices
+
+
+@DeveloperAPI
 class ReplayBuffer(ParallelIteratorWorker):
     def __init__(
-        self, capacity: int = 10000, storage_unit: Union[str, StorageUnit] =
-        "timesteps", **kwargs
+        self,
+        capacity: int = 10000,
+        storage_unit: Union[str, StorageUnit] = "timesteps",
+        **kwargs,
     ):
         """Initializes a (FIFO) ReplayBuffer instance.
 

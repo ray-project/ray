@@ -3,9 +3,11 @@ import collections
 from typing import Any, Dict, Optional
 from enum import Enum
 
-from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES
-from ray.rllib.policy.rnn_sequencing import timeslice_along_seq_lens_with_overlap
-from ray.rllib.policy.sample_batch import MultiAgentBatch
+from ray.rllib.utils.replay_buffers.replay_buffer import (
+    _ALL_POLICIES,
+    sequence_timeslicing_helper,
+)
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer
 from ray.rllib.utils.timer import TimerStat
@@ -66,6 +68,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         num_shards: int = 1,
         learning_starts: int = 1000,
         replay_mode: str = "independent",
+        replay_sequence_override: bool = None,
         replay_sequence_length: int = 1,
         replay_burn_in: int = 0,
         replay_zero_init_states: bool = True,
@@ -84,6 +87,10 @@ class MultiAgentReplayBuffer(ReplayBuffer):
                 `sample()` will yield samples (before that, `sample()` will
                 return None).
             capacity: The capacity of the buffer, measured in `storage_unit`.
+            replay_sequence_override: If True, ignore sequences found in incoming
+                batches, slicing them into sequences as specified by
+                `replay_sequence_length` and `replay_sequence_burn_in`. This only has
+                an effect if storage_unit is `sequences`.
             replay_mode: One of "independent" or "lockstep". Determines,
                 whether batches are sampled independently or to an equal
                 amount.
@@ -113,12 +120,13 @@ class MultiAgentReplayBuffer(ReplayBuffer):
             self.underlying_buffer_call_args = self.underlying_buffer_config
         else:
             self.underlying_buffer_call_args = {}
-
+        self.replay_sequence_override = replay_sequence_override
         self.replay_starts = learning_starts // num_shards
         self.replay_mode = replay_mode
         self.replay_sequence_length = replay_sequence_length
         self.replay_burn_in = replay_burn_in
         self.replay_zero_init_states = replay_zero_init_states
+        self.replay_sequence_override = replay_sequence_override
 
         if (
             replay_sequence_length > 1
@@ -259,18 +267,32 @@ class MultiAgentReplayBuffer(ReplayBuffer):
             for time_slice in timeslices:
                 self.replay_buffers[policy_id].add(time_slice, **kwargs)
         elif self._storage_unit is StorageUnit.SEQUENCES:
-            if self.replay_sequence_length == 1:
-                timeslices = batch.timeslices(1)
-            else:
-                timeslices = timeslice_along_seq_lens_with_overlap(
-                    sample_batch=batch,
-                    zero_pad_max_seq_len=self.replay_sequence_length,
-                    pre_overlap=self.replay_burn_in,
-                    zero_init_states=self.replay_zero_init_states,
-                )
+            timeslices = sequence_timeslicing_helper(
+                self.replay_sequence_override,
+                batch,
+                self.replay_sequence_length,
+                self.replay_burn_in,
+                self.replay_zero_init_states,
+            )
             for time_slice in timeslices:
                 self.replay_buffers[policy_id].add(time_slice, **kwargs)
-        elif self._storage_unit in [StorageUnit.FRAGMENTS, StorageUnit.EPISODES]:
+        elif self._storage_unit == StorageUnit.EPISODES:
+            for eps in batch.split_by_episode():
+                if (
+                    eps.get(SampleBatch.T)[0] == 0
+                    and eps.get(SampleBatch.DONES)[-1] == True  # noqa E712
+                ):
+                    # Only add full episodes to the buffer
+                    self.replay_buffers[policy_id].add(eps, **kwargs)
+                else:
+                    if log_once("only_full_episodes"):
+                        logger.info(
+                            "This buffer uses episodes as a storage "
+                            "unit and thus allows only full episodes "
+                            "to be added to it. Some samples may be "
+                            "dropped."
+                        )
+        elif self._storage_unit == StorageUnit.FRAGMENTS:
             self.replay_buffers[policy_id].add(batch, **kwargs)
         else:
             raise ValueError("Unknown `storage_unit={}`".format(self._storage_unit))
