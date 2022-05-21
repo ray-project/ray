@@ -2,11 +2,13 @@ import gym
 import numpy as np
 from typing import List, Optional, Union
 
+from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.framework import try_import_torch
 
 torch, _ = try_import_torch()
 
 
+@PublicAPI
 class ViewRequirement:
     """Single view requirement (for one column in an SampleBatch/input_dict).
 

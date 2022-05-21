@@ -26,6 +26,7 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import (
+    PublicAPI,
     DeveloperAPI,
     ExperimentalAPI,
     OverrideToImplementCustomLogic,
@@ -69,7 +70,7 @@ logger = logging.getLogger(__name__)
 #       "pol1": PolicySpec(None, Box, Discrete(2), {"lr": 0.0001}),
 #       "pol2": PolicySpec(config={"lr": 0.001}),
 #     }
-PolicySpec = namedtuple(
+PolicySpec = PublicAPI(namedtuple(
     "PolicySpec",
     [
         # If None, use the Trainer's default policy class stored under
@@ -85,7 +86,7 @@ PolicySpec = namedtuple(
         # If None, use {}.
         "config",
     ],
-)  # defaults=(None, None, None, None)
+))  # defaults=(None, None, None, None)
 # TODO: From 3.7 on, we could pass `defaults` into the above constructor.
 #  We still support py3.6.
 PolicySpec.__new__.__defaults__ = (None, None, None, None)
