@@ -89,7 +89,7 @@ class SACTFModel(TFModelV2):
             q_outs = 1
 
         self.action_model = self.build_policy_model(
-            self.obs_space, action_outs, policy_model_config, "policy_model_config"
+            self.obs_space, action_outs, policy_model_config, "policy_model"
         )
 
         self.q_net = self.build_q_model(
