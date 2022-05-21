@@ -1,3 +1,5 @@
+load("@bazel_skylib//lib:paths.bzl", "paths")
+
 # py_test_module_list creates a py_test target for each
 # Python file in `files`
 def py_test_module_list(files, size, deps, extra_srcs, name_suffix="", **kwargs):
@@ -25,13 +27,15 @@ def py_test_run_all_subdirectory(include, exclude, extra_srcs, **kwargs):
 
 # Runs all included notebooks as py_test targets, by first converting them to .py files with "test_myst_doc.py".
 def py_test_run_all_notebooks(include, exclude, **kwargs):
-    for file in native.glob(include = include, exclude = exclude):
+    for file in native.glob(include = include, exclude = exclude, allow_empty=False):
         print(file)
-        basename = file.rpartition("/")[-1]
+        basename = paths.split_extension(file)[0]
+        if basename == file:
+            basename = basename + "_test"
         native.py_test(
-            name = basename[:-3],
+            name = basename,
             main = "test_myst_doc.py",
-            srcs = ["//doc:test_myst_doc.py"],
-            args = ["--path", file],
+	    srcs = ["//doc:test_myst_doc.py"],
+            args = ["--find-recursively", "--path", file],
             **kwargs
         )
