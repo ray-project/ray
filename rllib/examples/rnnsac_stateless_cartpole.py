@@ -55,14 +55,14 @@ config = {
         "model": {
             "max_seq_len": 20,
         },
-        "policy_model": {
+        "policy_model_config": {
             "use_lstm": True,
             "lstm_cell_size": 64,
             "fcnet_hiddens": [64, 64],
             "lstm_use_prev_action": True,
             "lstm_use_prev_reward": True,
         },
-        "Q_model": {
+        "q_model_config": {
             "use_lstm": True,
             "lstm_cell_size": 64,
             "fcnet_hiddens": [64, 64],
