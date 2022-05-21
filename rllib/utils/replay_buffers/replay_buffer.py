@@ -11,7 +11,7 @@ import ray  # noqa F401
 import psutil  # noqa E402
 
 from ray.util.debug import log_once
-from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics.window_stat import WindowStat
 from ray.rllib.utils.typing import SampleBatchType, T
@@ -59,8 +59,10 @@ def warn_replay_capacity(*, item: SampleBatchType, num_items: int) -> None:
 @DeveloperAPI
 class ReplayBuffer(ParallelIteratorWorker):
     def __init__(
-        self, capacity: int = 10000, storage_unit: Union[str, StorageUnit] =
-        "timesteps", **kwargs
+        self,
+        capacity: int = 10000,
+        storage_unit: Union[str, StorageUnit] = "timesteps",
+        **kwargs,
     ):
         """Initializes a (FIFO) ReplayBuffer instance.
 
@@ -141,16 +143,6 @@ class ReplayBuffer(ParallelIteratorWorker):
             return
 
         warn_replay_capacity(item=batch, num_items=self.capacity / batch.count)
-
-        if (
-            type(batch) == MultiAgentBatch
-            and self._storage_unit != StorageUnit.TIMESTEPS
-        ):
-            raise ValueError(
-                "Can not add MultiAgentBatch to ReplayBuffer "
-                "with storage_unit {}"
-                "".format(str(self._storage_unit))
-            )
 
         if self._storage_unit == StorageUnit.TIMESTEPS:
             self._add_single_batch(batch, **kwargs)
