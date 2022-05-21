@@ -524,14 +524,16 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 #ifndef _WIN32
   // Doing this last during CoreWorker initialization, so initialization logic like
   // registering with Raylet can finish with higher priority.
-  //
-  // nice() increments the niceness of this process, so if there are multiple CoreWorker
-  // objects in the process, or if this is the driver, the eventual niceness of workers
-  // can be higher then what is set in worker_niceness.
-  if (options_.worker_type != WorkerType::DRIVER) {
-    const auto niceness = nice(RayConfig::instance().worker_niceness());
-    RAY_LOG(INFO) << "Adjusted worker niceness to " << niceness;
-  }
+  static const bool niced = [this]() {
+    if (options_.worker_type != WorkerType::DRIVER) {
+      const auto niceness = nice(RayConfig::instance().worker_niceness());
+      RAY_LOG(INFO) << "Adjusted worker niceness to " << niceness;
+      return true;
+    }
+    return false;
+  }();
+  // Verify driver and worker are never mixed in the same process.
+  RAY_CHECK_EQ(options_.worker_type != WorkerType::DRIVER, niced);
 #endif
 }
 
@@ -1901,6 +1903,9 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
   }
 
   auto actor_handle = actor_manager_->GetActorHandle(actor_id);
+  // Subscribe the actor state when we first submit the actor task. It is to reduce the
+  // number of connections. The method is idempotent.
+  actor_manager_->SubscribeActorState(actor_id);
 
   // Add one for actor cursor object id for tasks.
   const int num_returns = task_options.num_returns + 1;
