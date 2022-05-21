@@ -177,8 +177,8 @@ class TestComputeLogLikelihood(unittest.TestCase):
         """Tests SAC's (cont. actions) compute_log_likelihoods method."""
         config = sac.DEFAULT_CONFIG.copy()
         config["seed"] = 42
-        config["policy_model"]["fcnet_hiddens"] = [10]
-        config["policy_model"]["fcnet_activation"] = "linear"
+        config["policy_model_config"]["fcnet_hiddens"] = [10]
+        config["policy_model_config"]["fcnet_activation"] = "linear"
         prev_a = np.array([0.0])
 
         # SAC cont uses a squashed normal distribution. Implement it's logp
