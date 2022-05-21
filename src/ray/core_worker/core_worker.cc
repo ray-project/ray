@@ -522,10 +522,16 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       100);
 
 #ifndef _WIN32
-  // nice() increments the niceness of this process, so this assumes one CoreWorker object
-  // per process.
-  const auto niceness = nice(RayConfig::instance().worker_niceness());
-  RAY_LOG(INFO) << "Adjusted worker niceness to " << niceness;
+  // Doing this last during CoreWorker initialization, so initialization logic like
+  // registering with Raylet can finish with higher priority.
+  //
+  // nice() increments the niceness of this process, so if there are multiple CoreWorker
+  // objects in the process, or if this is the driver, the eventual niceness of workers
+  // can be higher then what is set in worker_niceness.
+  if (options_.worker_type != WorkerType::DRIVER) {
+    const auto niceness = nice(RayConfig::instance().worker_niceness());
+    RAY_LOG(INFO) << "Adjusted worker niceness to " << niceness;
+  }
 #endif
 }
 
