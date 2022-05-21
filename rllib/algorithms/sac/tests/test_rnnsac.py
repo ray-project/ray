@@ -48,38 +48,6 @@ class TestRNNSAC(unittest.TestCase):
                 lr=5e-4,
             )
         )
-        """
-        config["num_workers"] = 0  # Run locally.
-
-        # Wrap with an LSTM and use a very simple base-model.
-        config["model"] = {
-            "max_seq_len": 20,
-        }
-        config["policy_model_config"] = {
-            "use_lstm": True,
-            "lstm_cell_size": 64,
-            "fcnet_hiddens": [10],
-            "lstm_use_prev_action": True,
-            "lstm_use_prev_reward": True,
-        }
-        config["q_model_config"] = {
-            "use_lstm": True,
-            "lstm_cell_size": 64,
-            "fcnet_hiddens": [10],
-            "lstm_use_prev_action": True,
-            "lstm_use_prev_reward": True,
-        }
-
-        # Test with MultiAgentPrioritizedReplayBuffer
-        config["replay_buffer_config"] = {
-            "type": "MultiAgentPrioritizedReplayBuffer",
-            "replay_burn_in": 20,
-            "zero_init_states": True,
-        }
-
-        config["lr"] = 5e-4
-        """
-
         num_iterations = 1
 
         # Test building an RNNSAC agent in all frameworks.
