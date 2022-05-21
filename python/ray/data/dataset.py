@@ -2533,7 +2533,8 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
                     features = get_df_values(batch)
                 elif isinstance(feature_columns, list):
                     if all(isinstance(column, str) for column in feature_columns):
-                        features = get_df_values(batch[feature_columns])
+                        # features = get_df_values(batch[feature_columns])
+                        features = np.stack(batch[feature_columns[0]])
                     elif all(isinstance(columns, list) for columns in feature_columns):
                         features = tuple(
                             get_df_values(batch[columns]) for columns in feature_columns
