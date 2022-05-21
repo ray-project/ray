@@ -1571,7 +1571,7 @@ class Trainer(Trainable):
                 )
 
         elif isinstance(env_specifier, type):
-            env_id = env_specifier.__name__
+            env_id = env_specifier#.__name__
 
             if config.get("remote_worker_envs"):
                 # Check gym version (0.22 or higher?).
