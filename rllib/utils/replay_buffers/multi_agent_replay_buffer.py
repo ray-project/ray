@@ -120,6 +120,28 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         self.replay_burn_in = replay_burn_in
         self.replay_zero_init_states = replay_zero_init_states
 
+        if (
+            replay_sequence_length > 1
+            and self._storage_unit is not StorageUnit.SEQUENCES
+        ):
+            logger.warning(
+                "MultiAgentReplayBuffer configured with "
+                "`replay_sequence_length={}`, but `storage_unit={}`. "
+                "replay_sequence_length will be ignored and set to 1.".format(
+                    replay_sequence_length, storage_unit
+                )
+            )
+            self.replay_sequence_length = 1
+
+        if replay_sequence_length == 1 and self._storage_unit is StorageUnit.SEQUENCES:
+            logger.warning(
+                "MultiAgentReplayBuffer configured with "
+                "`replay_sequence_length={}`, but `storage_unit={}`. "
+                "This will result in sequences equal to timesteps.".format(
+                    replay_sequence_length, storage_unit
+                )
+            )
+
         if replay_mode in ["lockstep", ReplayMode.LOCKSTEP]:
             self.replay_mode = ReplayMode.LOCKSTEP
             if self._storage_unit in [StorageUnit.EPISODES, StorageUnit.SEQUENCES]:
@@ -135,7 +157,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
 
         if self.underlying_buffer_config:
             ctor_args = {
-                **{"capacity": shard_capacity, "storage_unit": storage_unit},
+                **{"capacity": shard_capacity, "storage_unit": StorageUnit.FRAGMENTS},
                 **self.underlying_buffer_config,
             }
 
@@ -148,7 +170,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
                 self.underlying_buffer_call_args = {}
                 return ReplayBuffer(
                     self.capacity,
-                    storage_unit=storage_unit,
+                    storage_unit=StorageUnit.FRAGMENTS,
                 )
 
         self.replay_buffers = collections.defaultdict(new_buffer)
@@ -233,6 +255,10 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         # simply store the samples how they arrive. For sequences and
         # episodes, the underlying buffer may split them itself.
         if self._storage_unit is StorageUnit.TIMESTEPS:
+            timeslices = batch.timeslices(1)
+            for time_slice in timeslices:
+                self.replay_buffers[policy_id].add(time_slice, **kwargs)
+        elif self._storage_unit is StorageUnit.SEQUENCES:
             if self.replay_sequence_length == 1:
                 timeslices = batch.timeslices(1)
             else:
@@ -244,8 +270,10 @@ class MultiAgentReplayBuffer(ReplayBuffer):
                 )
             for time_slice in timeslices:
                 self.replay_buffers[policy_id].add(time_slice, **kwargs)
-        else:
+        elif self._storage_unit in [StorageUnit.FRAGMENTS, StorageUnit.EPISODES]:
             self.replay_buffers[policy_id].add(batch, **kwargs)
+        else:
+            raise ValueError("Unknown `storage_unit={}`".format(self._storage_unit))
 
     @DeveloperAPI
     @override(ReplayBuffer)
