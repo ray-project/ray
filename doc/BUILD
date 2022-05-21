@@ -1,6 +1,8 @@
 load("//bazel:python.bzl", "py_test_run_all_subdirectory")
 load("//bazel:python.bzl", "py_test_run_all_notebooks")
 
+exports_files(["test_myst_doc.py"])
+
 # --------------------------------------------------------------------
 # Tests from the doc directory.
 # Please keep these sorted alphabetically, but start with the
