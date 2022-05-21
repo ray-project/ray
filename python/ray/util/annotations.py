@@ -121,7 +121,8 @@ def Deprecated(*args, **kwargs):
 
 def _mark_annotated(obj) -> None:
     # Set magic token for check_api_annotations linter.
-    obj._annotated = obj.__name__
+    if hasattr(obj, "__name__"):
+        obj._annotated = obj.__name__
 
 
 def _is_annotated(obj) -> bool:
