@@ -198,14 +198,12 @@ void WorkerPool::update_worker_startup_token_counter() {
 
 void WorkerPool::AddWorkerProcess(
     State &state,
-    const int workers_to_start,
     const rpc::WorkerType worker_type,
     const Process &proc,
     const std::chrono::high_resolution_clock::time_point &start,
     const rpc::RuntimeEnvInfo &runtime_env_info) {
   state.worker_processes.emplace(worker_startup_token_counter_,
-                                 WorkerProcessInfo{workers_to_start,
-                                                   workers_to_start,
+                                 WorkerProcessInfo{/*is_pending_registration=*/true,
                                                    {},
                                                    worker_type,
                                                    proc,
@@ -248,7 +246,7 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
   int starting_workers = 0;
   for (auto &entry : state.worker_processes) {
     if (entry.second.worker_type == worker_type) {
-      starting_workers += entry.second.num_starting_workers;
+      starting_workers += entry.second.is_pending_registration ? 1 : 0;
     }
   }
 
@@ -267,13 +265,6 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
                  << rpc::Language_Name(language) << " and type "
                  << rpc::WorkerType_Name(worker_type) << ", current pool has "
                  << state.idle.size() << " workers";
-
-  int workers_to_start = 1;
-  if (dynamic_options.empty()) {
-    if (language == Language::JAVA) {
-      workers_to_start = job_config->num_java_workers_per_process();
-    }
-  }
 
   std::vector<std::string> options;
 
@@ -310,12 +301,6 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
                      job_config->jvm_options().begin(),
                      job_config->jvm_options().end());
     }
-  }
-
-  // Append Ray-defined per-process options here
-  if (language == Language::JAVA) {
-    options.push_back("-Dray.job.num-java-workers-per-process=" +
-                      std::to_string(workers_to_start));
   }
 
   // Append startup-token for JAVA here
@@ -460,13 +445,12 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
   stats::ProcessStartupTimeMs.Record(duration.count());
   stats::NumWorkersStarted.Record(1);
-  RAY_LOG(INFO) << "Started worker process of " << workers_to_start
-                << " worker(s) with pid " << proc.GetId() << ", the token "
+  RAY_LOG(INFO) << "Started worker process with pid " << proc.GetId() << ", the token is "
                 << worker_startup_token_counter_;
   AdjustWorkerOomScore(proc.GetId());
   MonitorStartingWorkerProcess(
       proc, worker_startup_token_counter_, language, worker_type);
-  AddWorkerProcess(state, workers_to_start, worker_type, proc, start, runtime_env_info);
+  AddWorkerProcess(state, worker_type, proc, start, runtime_env_info);
   StartupToken worker_startup_token = worker_startup_token_counter_;
   update_worker_startup_token_counter();
   if (IsIOWorkerType(worker_type)) {
@@ -513,7 +497,7 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
     // Since this process times out to start, remove it from worker_processes
     // to avoid the zombie worker.
     auto it = state.worker_processes.find(proc_startup_token);
-    if (it != state.worker_processes.end() && it->second.num_starting_workers != 0) {
+    if (it != state.worker_processes.end() && it->second.is_pending_registration) {
       RAY_LOG(ERROR)
           << "Some workers of the worker process(" << proc.GetId()
           << ") have not registered within the timeout. "
@@ -747,12 +731,10 @@ void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker)
 
   auto it = state.worker_processes.find(worker_startup_token);
   if (it != state.worker_processes.end()) {
-    it->second.num_starting_workers--;
+    it->second.is_pending_registration = false;
     it->second.alive_started_workers.insert(worker);
-    if (it->second.num_starting_workers == 0) {
-      // We may have slots to start more workers now.
-      TryStartIOWorkers(worker->GetLanguage());
-    }
+    // We may have slots to start more workers now.
+    TryStartIOWorkers(worker->GetLanguage());
   }
   const auto &worker_type = worker->GetWorkerType();
   if (IsIOWorkerType(worker_type)) {
@@ -1044,8 +1026,7 @@ void WorkerPool::TryKillingIdleWorkers() {
     auto &worker_state = GetStateForLanguage(idle_worker->GetLanguage());
 
     auto it = worker_state.worker_processes.find(worker_startup_token);
-    if (it != worker_state.worker_processes.end() &&
-        it->second.num_starting_workers > 0) {
+    if (it != worker_state.worker_processes.end() && it->second.is_pending_registration) {
       // A Java worker process may hold multiple workers.
       // Some workers of this process are pending registration. Skip killing this worker.
       continue;
@@ -1349,7 +1330,7 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
   // The number of available workers that can be used for this task spec.
   int num_usable_workers = state.idle.size();
   for (auto &entry : state.worker_processes) {
-    num_usable_workers += entry.second.num_starting_workers;
+    num_usable_workers += entry.second.is_pending_registration ? 1 : 0;
   }
   // Some existing workers may be holding less than 1 CPU each, so we should
   // start as many workers as needed to fill up the remaining CPUs.
@@ -1376,10 +1357,10 @@ void WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
     if (!RemoveWorker(it->second.alive_started_workers, worker)) {
       // Worker is either starting or started,
       // if it's not started, we should remove it from starting.
-      it->second.num_starting_workers--;
+      it->second.is_pending_registration = false;
     }
     if (it->second.alive_started_workers.size() == 0 &&
-        it->second.num_starting_workers == 0) {
+        !it->second.is_pending_registration) {
       DeleteRuntimeEnvIfPossible(it->second.runtime_env_info.serialized_runtime_env());
       RemoveWorkerProcess(state, worker->GetStartupToken());
     }
@@ -1409,7 +1390,7 @@ void WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
     }
   }
   RemoveWorker(state.idle, worker);
-  if (disconnect_type != rpc::WorkerExitType::INTENDED_EXIT) {
+  if (disconnect_type != rpc::WorkerExitType::INTENDED_USER_EXIT) {
     // A Java worker process may have multiple workers. If one of them disconnects
     // unintentionally (which means that the worker process has died), we remove the
     // others from idle pool so that the failed actor will not be rescheduled on the same
@@ -1508,7 +1489,8 @@ void WorkerPool::WarnAboutSize() {
     num_workers_started_or_registered +=
         static_cast<int64_t>(state.registered_workers.size());
     for (const auto &starting_process : state.worker_processes) {
-      num_workers_started_or_registered += starting_process.second.num_starting_workers;
+      num_workers_started_or_registered +=
+          starting_process.second.is_pending_registration ? 0 : 1;
     }
     // Don't count IO workers towards the warning message threshold.
     num_workers_started_or_registered -= RayConfig::instance().max_io_workers() * 2;
