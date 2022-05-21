@@ -172,14 +172,10 @@ def create_logdir(dirname, local_dir):
         )
         logdir = os.path.join(local_dir, dirname)
     os.makedirs(logdir, exist_ok=True)
-    # Return also a relative path to ensure later changes 
+    # Return also a relative path to ensure later changes
     # in the local_base_dir.
-    local_base_dir = os.path.abspath(
-        os.path.join(os.path.dirname(logdir), "..")
-    )
-    rel_logdir = os.path.relpath(
-        logdir, os.path.commonprefix([logdir, local_base_dir])
-    )
+    local_base_dir = os.path.abspath(os.path.join(os.path.dirname(logdir), ".."))
+    rel_logdir = os.path.relpath(logdir, os.path.commonprefix([logdir, local_base_dir]))
     return logdir, rel_logdir
 
 
@@ -535,7 +531,9 @@ class Trial:
     def init_logdir(self):
         """Init logdir."""
         if not self.logdir:
-            self.logdir, self.rel_logdir = create_logdir(self._generate_dirname(), self.local_dir)
+            self.logdir, self.rel_logdir = create_logdir(
+                self._generate_dirname(), self.local_dir
+            )
         else:
             os.makedirs(self.logdir, exist_ok=True)
 

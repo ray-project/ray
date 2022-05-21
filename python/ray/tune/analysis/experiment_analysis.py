@@ -118,7 +118,7 @@ class ExperimentAnalysis:
         self._local_base_dir = os.path.abspath(
             os.path.join(os.path.dirname(experiment_checkpoint_path), "..")
         )
-        
+
         if not pd:
             logger.warning(
                 "pandas not installed. Run `pip install pandas` for "
@@ -757,12 +757,11 @@ class ExperimentAnalysis:
             }
 
     def _get_trial_paths(self) -> List[str]:
-        if self.trials:  
+        if self.trials:
             # Get the relative paths from the trials to allow
-            # for changes in the local_base_dir.        
+            # for changes in the local_base_dir.
             _trial_paths = [
-                os.path.join(self._local_base_dir, t.rel_logdir) 
-                for t in self.trials
+                os.path.join(self._local_base_dir, t.rel_logdir) for t in self.trials
             ]
         else:
             logger.info(
