@@ -4,7 +4,7 @@
 
 This section should help you:
 
-- understand how Ray Serve runs on a Ray cluster beyond the basics mentioned in {doc}`core-apis`
+- understand how Ray Serve runs on a Ray cluster beyond the basics
 - deploy and update your Serve application over time
 - monitor your Serve application using the Ray Dashboard and logging
 

@@ -632,19 +632,16 @@ message MetricPoint {
 // Type of a worker exit.
 enum WorkerExitType {
   // Worker exit due to system level failures (i.e. worker crash).
-  SYSTEM_ERROR_EXIT = 0;
-  // Intended, initiated worker exit via raylet API.
-  INTENDED_EXIT = 1;
-  // Worker exit due to resource bundle release.
-  UNUSED_RESOURCE_RELEASED = 2;
-  // Worker exit due to placement group removal.
-  PLACEMENT_GROUP_REMOVED = 3;
-  // Worker exit due to exceptions in creation task.
-  CREATION_TASK_ERROR = 4;
-  // Worker killed by raylet if it has been idle for too long.
-  IDLE_EXIT = 5;
-  // Worker killed because its node is dead.
-  NODE_DIED = 6;
+  SYSTEM_ERROR = 0;
+  // System-level exit that is intended. E.g.,
+  // Workers that are killed because they are idle for a long time.
+  INTENDED_SYSTEM_EXIT = 1;
+  // Worker exits because of user error.
+  // E.g., execptions from the actor initialization.
+  USER_ERROR = 2;
+  // Intended exit from users (e.g., users exit workers with exit code 0
+  // or exit initated by Ray API such as ray.kill).
+  INTENDED_USER_EXIT = 3;
 }
 
 ///////////////////////////////////////////////////////////////////////////////

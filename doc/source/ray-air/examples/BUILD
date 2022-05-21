@@ -15,7 +15,7 @@ py_test_run_all_notebooks(
     include = ["*.ipynb"],
     exclude = ["huggingface_text_classification.ipynb"],
     data = ["//doc/source/ray-air/examples:air_examples"],
-    tags = ["exclusive", "team:ml"],
+    tags = ["exclusive", "team:ml", "ray_air"],
 )
 
 
@@ -26,5 +26,5 @@ py_test_run_all_notebooks(
     include = ["huggingface_text_classification.ipynb"],
     exclude = [],
     data = ["//doc/source/ray-air/examples:air_examples"],
-    tags = ["exclusive", "team:ml", "gpu"],
+    tags = ["exclusive", "team:ml", "gpu", "ray_air"],
 )

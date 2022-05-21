@@ -253,12 +253,13 @@ void GcsServer::InitGcsHeartbeatManager(const GcsInitData &gcs_init_data) {
 }
 
 void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
-  RAY_CHECK(gcs_table_storage_ && cluster_resource_scheduler_);
+  RAY_CHECK(gcs_table_storage_ && cluster_resource_scheduler_ && cluster_task_manager_);
   gcs_resource_manager_ = std::make_shared<GcsResourceManager>(
       main_service_,
       gcs_table_storage_,
       cluster_resource_scheduler_->GetClusterResourceManager(),
-      scheduling::NodeID(local_node_id_.Binary()));
+      local_node_id_,
+      cluster_task_manager_);
 
   // Initialize by gcs tables data.
   gcs_resource_manager_->Initialize(gcs_init_data);
@@ -324,7 +325,7 @@ void GcsServer::InitClusterTaskManager() {
       /*announce_infeasible_task=*/
       nullptr,
       /*local_task_manager=*/
-      nullptr);
+      std::make_shared<NoopLocalTaskManager>());
 }
 
 void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
@@ -636,6 +637,7 @@ void GcsServer::InstallEventListeners() {
                                          worker_id,
                                          worker_ip,
                                          worker_failure_data->exit_type(),
+                                         worker_failure_data->exit_detail(),
                                          creation_task_exception);
       });
 
