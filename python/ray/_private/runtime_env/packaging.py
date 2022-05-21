@@ -195,11 +195,20 @@ def is_zip_uri(uri: str) -> bool:
 
 def is_whl_uri(uri: str) -> bool:
     try:
-        protocol, path = parse_uri(uri)
+        _, path = parse_uri(uri)
     except ValueError:
         return False
 
     return Path(path).suffix == ".whl"
+
+
+def is_jar_uri(uri: str) -> bool:
+    try:
+        _, path = parse_uri(uri)
+    except ValueError:
+        return False
+
+    return Path(path).suffix == ".jar"
 
 
 def _get_excludes(path: Path, excludes: List[str]) -> Callable:
