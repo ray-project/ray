@@ -31,7 +31,7 @@ from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
-from ray.rllib.env.utils import gym_env_creator
+from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.metrics import (
     collect_episodes,
@@ -1568,7 +1568,7 @@ class Trainer(Trainable):
                 return env_creator_from_classpath
             # Try gym/PyBullet/Vizdoom.
             else:
-                return functools.partial(gym_env_creator, env_descriptor=env_id)
+                return functools.partial(_gym_env_creator, env_descriptor=env_id)
         # No env -> Env creator always returns None.
         else:
             return lambda env_config: None

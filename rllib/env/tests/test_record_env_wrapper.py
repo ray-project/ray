@@ -5,7 +5,7 @@ import os
 import shutil
 import unittest
 
-from ray.rllib.env.utils import VideoMonitor, record_env_wrapper
+from ray.rllib.env.utils import VideoMonitor, _record_env_wrapper
 from ray.rllib.examples.env.mock_env import MockEnv2
 from ray.rllib.examples.env.multi_agent import BasicMultiAgent
 from ray.rllib.utils.test_utils import check
@@ -20,7 +20,7 @@ class TestRecordEnvWrapper(unittest.TestCase):
             sys.exit(1)
 
         num_steps_per_episode = 10
-        wrapped = record_env_wrapper(
+        wrapped = _record_env_wrapper(
             env=MockEnv2(num_steps_per_episode),
             record_env=record_env_dir,
             log_dir="",
@@ -65,7 +65,7 @@ class TestRecordEnvWrapper(unittest.TestCase):
         if not os.path.exists(record_env_dir):
             sys.exit(1)
 
-        wrapped = record_env_wrapper(
+        wrapped = _record_env_wrapper(
             env=BasicMultiAgent(3),
             record_env=record_env_dir,
             log_dir="",

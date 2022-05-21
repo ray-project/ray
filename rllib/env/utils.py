@@ -6,9 +6,10 @@ from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.error import ERR_MSG_INVALID_ENV_DESCRIPTOR, EnvError
+from ray.rllib.utils.annotations import Deprecated
 
 
-def gym_env_creator(env_context: EnvContext, env_descriptor: str) -> gym.Env:
+def _gym_env_creator(env_context: EnvContext, env_descriptor: str) -> gym.Env:
     """Tries to create a gym env given an EnvContext object and descriptor.
 
     Note: This function tries to construct the env from a string descriptor
@@ -56,6 +57,7 @@ def gym_env_creator(env_context: EnvContext, env_descriptor: str) -> gym.Env:
         raise EnvError(ERR_MSG_INVALID_ENV_DESCRIPTOR.format(env_descriptor))
 
 
+@Deprecated(error="No longer supported by gym.")
 class VideoMonitor(wrappers.Monitor):
     # Same as original method, but doesn't use the StatsRecorder as it will
     # try to add up multi-agent rewards dicts, which throws errors.
@@ -77,7 +79,7 @@ class VideoMonitor(wrappers.Monitor):
         return done
 
 
-def record_env_wrapper(env, record_env, log_dir, policy_config):
+def _record_env_wrapper(env, record_env, log_dir, policy_config):
     if record_env:
         path_ = record_env if isinstance(record_env, str) else log_dir
         # Relative path: Add logdir here, otherwise, this would

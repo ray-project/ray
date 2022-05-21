@@ -9,7 +9,7 @@ tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
-class TFRunBuilder:
+class _TFRunBuilder:
     """Used to incrementally build up a TensorFlow run.
 
     This is particularly useful for batching ops from multiple different

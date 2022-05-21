@@ -27,7 +27,7 @@ from ray.rllib.env.base_env import BaseEnv, convert_to_base_env
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
-from ray.rllib.env.utils import record_env_wrapper
+from ray.rllib.env.utils import _record_env_wrapper
 from ray.rllib.env.wrappers.atari_wrappers import wrap_deepmind, is_atari
 from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
 from ray.rllib.evaluation.metrics import RolloutMetrics
@@ -49,7 +49,7 @@ from ray.rllib.utils.filter import get_filter, Filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.tf_utils import get_gpu_devices as get_tf_gpu_devices
-from ray.rllib.utils.tf_run_builder import TFRunBuilder
+from ray.rllib.utils.tf_run_builder import _TFRunBuilder
 from ray.rllib.utils.typing import (
     AgentID,
     EnvConfigDict,
@@ -541,14 +541,14 @@ class RolloutWorker(ParallelIteratorWorker):
                     env = wrap_deepmind(
                         env, dim=model_config.get("dim"), framestack=use_framestack
                     )
-                    env = record_env_wrapper(env, record_env, log_dir, policy_config)
+                    env = _record_env_wrapper(env, record_env, log_dir, policy_config)
                     return env
 
             # gym.Env -> Wrap with gym Monitor.
             else:
 
                 def wrap(env):
-                    return record_env_wrapper(env, record_env, log_dir, policy_config)
+                    return _record_env_wrapper(env, record_env, log_dir, policy_config)
 
             # Wrap env through the correct wrapper.
             self.env: EnvType = wrap(self.env)
@@ -951,7 +951,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 policy = self.policy_map[pid]
                 tf_session = policy.get_session()
                 if tf_session and hasattr(policy, "_build_learn_on_batch"):
-                    builders[pid] = TFRunBuilder(tf_session, "learn_on_batch")
+                    builders[pid] = _TFRunBuilder(tf_session, "learn_on_batch")
                     to_fetch[pid] = policy._build_learn_on_batch(builders[pid], batch)
                 else:
                     info_out[pid] = policy.learn_on_batch(batch)
@@ -1073,7 +1073,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 if not self.is_policy_to_train(pid, samples):
                     continue
                 policy = self.policy_map[pid]
-                builder = TFRunBuilder(policy.get_session(), "compute_gradients")
+                builder = _TFRunBuilder(policy.get_session(), "compute_gradients")
                 grad_out[pid], info_out[pid] = policy._build_compute_gradients(
                     builder, batch
                 )
