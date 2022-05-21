@@ -1,4 +1,5 @@
 import copy
+import time
 import gym
 from gym.spaces import Discrete, MultiDiscrete, Space
 import logging
@@ -21,6 +22,8 @@ from typing import (
 )
 
 import ray
+import ray.util.collective as collective
+from ray.util.collective.types import Backend
 from ray import ObjectRef
 from ray import cloudpickle as pickle
 from ray.rllib.env.base_env import BaseEnv, convert_to_base_env
@@ -1561,6 +1564,16 @@ class RolloutWorker(ParallelIteratorWorker):
             else:
                 self.policy_map[pid].set_state(state)
 
+    def init_group(self, world_size, rank, backend=Backend.NCCL, group_name="default"):
+        collective.init_collective_group(world_size, rank, backend, group_name)
+        return True
+
+    def set_policy_map_buffer(self, data):
+        self.policy_map_buffer = data
+
+    def get_policy_map_buffer(self):
+        return self.policy_map_buffer
+
     @DeveloperAPI
     def get_weights(
         self,
@@ -1618,6 +1631,7 @@ class RolloutWorker(ParallelIteratorWorker):
             >>> # Set `global_vars` (timestep) as well.
             >>> worker.set_weights(weights, {"timestep": 42}) # doctest: +SKIP
         """
+        start = time.time()
         # If per-policy weights are object refs, `ray.get()` them first.
         if weights and isinstance(next(iter(weights.values())), ObjectRef):
             actual_weights = ray.get(list(weights.values()))
@@ -1627,6 +1641,7 @@ class RolloutWorker(ParallelIteratorWorker):
             self.policy_map[pid].set_weights(w)
         if global_vars:
             self.set_global_vars(global_vars)
+        print(f">>> Set weights on worker {self.worker_index} took: {(time.time() - start)*1000}ms")
 
     @DeveloperAPI
     def get_global_vars(self) -> dict:
@@ -1774,6 +1789,15 @@ class RolloutWorker(ParallelIteratorWorker):
 
         # If our policy_map does not exist yet, create it here.
         self.policy_map = self.policy_map or PolicyMap(
+            worker_index=self.worker_index,
+            num_workers=self.num_workers,
+            capacity=ma_config.get("policy_map_capacity"),
+            path=ma_config.get("policy_map_cache"),
+            policy_config=policy_config,
+            session_creator=session_creator,
+            seed=seed,
+        )
+        self.policy_map_buffer = PolicyMap(
             worker_index=self.worker_index,
             num_workers=self.num_workers,
             capacity=ma_config.get("policy_map_capacity"),

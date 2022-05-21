@@ -367,6 +367,7 @@ class Trainable:
         result = result.copy()
 
         self._iteration += 1
+        print(f">>>> Iteration: {self._iteration}")
         self._iterations_since_restore += 1
 
         if result.get(TIME_THIS_ITER_S) is not None:

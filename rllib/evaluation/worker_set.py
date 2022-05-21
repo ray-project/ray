@@ -7,6 +7,8 @@ from types import FunctionType
 from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 import ray
+import ray.util.collective as collective
+from ray.util.collective.types import Backend
 from ray.actor import ActorHandle
 from ray.exceptions import RayError
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -179,6 +181,9 @@ class WorkerSet:
                     spaces=spaces,
                 )
 
+            print(f">>>> Creating collective group for {self.remote_workers()}")
+            print(f">>>>> {self.create_collective_group()}")
+
     def local_worker(self) -> RolloutWorker:
         """Returns the local rollout worker."""
         return self._local_worker
@@ -186,6 +191,18 @@ class WorkerSet:
     def remote_workers(self) -> List[ActorHandle]:
         """Returns a list of remote rollout workers."""
         return self._remote_workers
+
+    def create_collective_group(self):
+        local_worker = self.local_worker()
+        remote_workers = self.remote_workers()
+
+        init_results = ray.get(
+            [
+                worker.init_group.remote(len(remote_workers), i, Backend.NCCL, "device_mesh")
+                for i, worker in enumerate(remote_workers)
+            ]
+        )
+        return init_results
 
     def sync_weights(
         self,
@@ -225,17 +242,14 @@ class WorkerSet:
             weights_ref = ray.put(weights)
             print(f">>> Putting weights to object store: {(time.time() - start)*1000}ms")
             # Sync to all remote workers in this WorkerSet.
-            start = time.time()
             for to_worker in self.remote_workers():
                 to_worker.set_weights.remote(weights_ref, global_vars=global_vars)
-            print(f">>> Syncing weights to all workers from object store: {(time.time() - start)*1000}ms")
 
         # If `from_worker` is provided, also sync to this WorkerSet's
         # local worker.
         if from_worker is not None and self.local_worker() is not None:
             start = time.time()
             self.local_worker().set_weights(weights, global_vars=global_vars)
-            print(f">>> Set weights on local worker took: {(time.time() - start)*1000}ms")
         # If `global_vars` is provided and local worker exists  -> Update its
         # global_vars.
         elif self.local_worker() is not None and global_vars is not None:
@@ -266,6 +280,23 @@ class WorkerSet:
                 for i in range(num_workers)
             ]
         )
+
+    # def create_worker_device_mesh(self):
+    #     remote_workers = self.remote_workers()
+
+    #     actors = [None] * len(remote_workers)
+    #     for i in range(remote_workers):
+    #         actor = Worker.remote()
+    #         ray.get([actor.init_tensors.remote()])
+    #         actors[i] = actor
+    #     world_size = num_workers
+    #     init_results = ray.get(
+    #         [
+    #             actor.init_group.remote(world_size, i, backend, group_name)
+    #             for i, actor in enumerate(actors)
+    #         ]
+    #     )
+    #     return actors, init_results
 
     def reset(self, new_remote_workers: List[ActorHandle]) -> None:
         """Hard overrides the remote workers in this set with the given one.

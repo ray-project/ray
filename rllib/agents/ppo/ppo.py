@@ -391,8 +391,10 @@ class PPOTrainer(Trainer):
         train_batch = standardize_fields(train_batch, ["advantages"])
         # Train
         if self.config["simple_optimizer"]:
+            print(f">>>>> train_one_step on batch: {train_batch}")
             train_results = train_one_step(self, train_batch)
         else:
+            print(f">>>>> multi_gpu_train_one_step on batch: {train_batch}")
             train_results = multi_gpu_train_one_step(self, train_batch)
 
         global_vars = {
