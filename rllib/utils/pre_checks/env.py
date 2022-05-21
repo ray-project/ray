@@ -132,7 +132,7 @@ def check_gym_environments(env: gym.Env) -> None:
         raise ValueError("Action space must be a gym.space")
 
     # Raise a warning if there isn't a max_episode_steps attribute.
-    if not hasattr(env,"spec") or not hasattr(env.spec, "max_episode_steps"):
+    if not hasattr(env, "spec") or not hasattr(env.spec, "max_episode_steps"):
         if log_once("max_episode_steps"):
             logger.warning(
                 "Your env doesn't have a .spec.max_episode_steps "

@@ -347,23 +347,23 @@ class Trainer(Trainable):
         # Instead, sub-classes should override the Trainable's `setup()`
         # method and call super().setup() from within that override at some
         # point.
-        # Old design: Override `Trainer._init` (or use `build_trainer()`, which
-        # will do this for you).
-        _init = True
+        # Old design: Override `Trainer._init`.
+        _init = False
         try:
             self._init(self.config, self.env_creator)
-        # New design: Override `Trainable.setup()` (as indented by Trainable)
-        # and do or don't call super().setup() from within your override.
+            _init = True
+        # New design: Override `Trainable.setup()` (as indented by tune.Trainable)
+        # and do or don't call `super().setup()` from within your override.
         # By default, `super().setup()` will create both worker sets:
         # "rollout workers" for collecting samples for training and - if
         # applicable - "evaluation workers" for evaluation runs in between or
         # parallel to training.
         # TODO: Deprecate `_init()` and remove this try/except block.
         except NotImplementedError:
-            _init = False
+            pass
 
         # Only if user did not override `_init()`:
-        if not _init:
+        if _init is False:
             # - Create rollout workers here automatically.
             # - Run the execution plan to create the local iterator to `next()`
             #   in each training iteration.
@@ -379,9 +379,19 @@ class Trainer(Trainable):
                     local_worker=True,
                     logdir=self.logdir,
                 )
+            # WorkerSet creation possibly fails, if some (remote) workers cannot
+            # be initialized properly (due to some errors in the RolloutWorker's
+            # constructor).
             except RayActorError as e:
+                # In case of an actor (remote worker) init failure, the remote worker
+                # may still exist and will be accessbile, however, e.g. calling
+                # `sample.remote()` on it would result to strange "property not found"
+                # errors.
                 if e.actor_init_failed:
+                    # Raise the original error here that the RolloutWorker raised
+                    # during its construction process.
                     raise e.args[0].args[2]
+                # In any other case, raise the RayActorError as-is.
                 else:
                     raise e
             # By default, collect metrics for all remote workers.

@@ -684,7 +684,9 @@ class TrainerConfig:
         if remote_env_batch_wait_ms is not None:
             self.remote_env_batch_wait_ms = remote_env_batch_wait_ms
         if validate_workers_after_construction is not None:
-            self.validate_workers_after_construction = validate_workers_after_construction
+            self.validate_workers_after_construction = (
+                validate_workers_after_construction
+            )
         if ignore_worker_failures is not None:
             self.ignore_worker_failures = ignore_worker_failures
         if recreate_failed_workers is not None:

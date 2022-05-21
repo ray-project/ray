@@ -14,6 +14,7 @@ from ray.rllib.utils.typing import (
     MultiEnvDict,
     AgentID,
 )
+from ray.util import log_once
 
 logger = logging.getLogger(__name__)
 
@@ -266,8 +267,12 @@ class _VectorizedGymEnv(VectorEnv):
         # Try closing down the old (possibly faulty) sub-env, but ignore errors.
         try:
             old_env.close()
-        except Exception:
-            pass
+        except Exception as e:
+            if log_once("close_sub_env"):
+                logger.warning(
+                    "Trying to close old and replaced sub-environment (at vector "
+                    f"index={index}), but closing resulted in error:\n{e}"
+                )
 
     @override(VectorEnv)
     def vector_step(self, actions):
