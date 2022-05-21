@@ -171,8 +171,8 @@ class RolloutWorker(ParallelIteratorWorker):
             "traffic_light_policy": SampleBatch(...)})
     """
 
-    @DeveloperAPI
     @classmethod
+    @DeveloperAPI
     def as_remote(
         cls,
         num_cpus: Optional[int] = None,

@@ -1,4 +1,5 @@
 from ray.rllib.utils.deprecation import Deprecated
+from ray.util.annotations import _mark_annotated
 
 
 def override(cls):
@@ -50,8 +51,7 @@ def PublicAPI(obj):
         ...     ... # doctest: +SKIP
     """
 
-    # Set magic token for check_api_annotations linter.
-    obj._annotated = obj
+    _mark_annotated(obj)
     return obj
 
 
@@ -76,8 +76,7 @@ def DeveloperAPI(obj):
         ...     ... # doctest: +SKIP
     """
 
-    # Set magic token for check_api_annotations linter.
-    obj._annotated = obj
+    _mark_annotated(obj)
     return obj
 
 
@@ -104,8 +103,7 @@ def ExperimentalAPI(obj):
         ...         ... # doctest: +SKIP
     """
 
-    # Set magic token for check_api_annotations linter.
-    obj._annotated = obj
+    _mark_annotated(obj)
     return obj
 
 

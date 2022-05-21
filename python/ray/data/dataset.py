@@ -3159,8 +3159,8 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
             context._unregister_cloudpickle_reducer(ray.remote_function.RemoteFunction)
         return serialized
 
-    @DeveloperAPI
     @staticmethod
+    @DeveloperAPI
     def deserialize_lineage(serialized_ds: bytes) -> "Dataset":
         """
         Deserialize the provided lineage-serialized Dataset.

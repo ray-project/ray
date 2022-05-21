@@ -3,6 +3,7 @@
 import inspect
 
 import ray
+from ray.util.annotations import _is_annotated
 
 IGNORE_PATHS = {".impl.", ".backend.", ".experimental.", ".internal.", ".generated."}
 
@@ -50,11 +51,7 @@ def verify(symbol, scanned, ok, output, prefix=None):
             attr
         ):
             print("Scanning class", attr)
-            # Check for magic token added by API annotation decorators.
-            av = getattr(attr, "_annotated", None)
-            # If not equal, this means the subclass was not annotated but the
-            # parent class was.
-            if av == attr:
+            if _is_annotated(attr):
                 if attr not in scanned:
                     print("OK:", _fullname(attr))
                     ok.add(attr)
