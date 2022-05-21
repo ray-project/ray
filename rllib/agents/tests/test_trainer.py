@@ -1,6 +1,4 @@
 import copy
-
-from ray.rllib.agents.marwil.bc import BCConfig
 import gym
 import numpy as np
 import os
@@ -12,7 +10,7 @@ import unittest
 import ray
 import ray.rllib.agents.a3c as a3c
 import ray.rllib.algorithms.dqn as dqn
-from ray.rllib.algorithms.marwil import BCTrainer
+from ray.rllib.algorithms.marwil import BCConfig, BCTrainer
 import ray.rllib.algorithms.pg as pg
 from ray.rllib.agents.trainer import COMMON_CONFIG
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
