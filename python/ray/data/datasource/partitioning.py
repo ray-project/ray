@@ -22,10 +22,12 @@ class PartitionStyle(str, Enum):
 
     Examples:
         >>> # Serialize to JSON text.
-        >>> json.dumps(PartitionStyle.HIVE)  # "hive"
+        >>> json.dumps(PartitionStyle.HIVE)  # doctest: +SKIP
+        '"hive"'
 
         >>> # Deserialize from JSON text.
-        >>> PartitionStyle(json.loads('"hive"'))  # PartitionStyle.HIVE
+        >>> PartitionStyle(json.loads('"hive"'))  # doctest: +SKIP
+        <PartitionStyle.HIVE: 'hive'>
     """
 
     HIVE = "hive"
