@@ -16,13 +16,13 @@ from ray.rllib.agents.trainer import COMMON_CONFIG
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.parallel_evaluation_and_training import AssertEvalCallback
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
-from ray.rllib.utils.test_utils import framework_iterator
+from ray.rllib.utils.test_utils import check, framework_iterator
 
 
 class TestTrainer(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init()
+        ray.init(num_cpus=6)
 
     @classmethod
     def tearDownClass(cls):
@@ -258,23 +258,25 @@ class TestTrainer(unittest.TestCase):
 
         env = gym.make("CartPole-v0")
 
-        config = pg.DEFAULT_CONFIG.copy()
-        config["env"] = "CartPole-v0"
-        config["num_workers"] = 1
+        config = (
+            pg.PGConfig()
+            .rollouts(num_rollout_workers=1, validate_workers_after_construction=False)
+            .environment(env="CartPole-v0")
+        )
 
         # No env on driver -> expect longer build time due to space
         # lookup from remote worker.
         t0 = time.time()
-        trainer = pg.PGTrainer(config=config)
+        trainer = config.build()
         w_lookup = time.time() - t0
         print(f"No env on learner: {w_lookup}sec")
         trainer.stop()
 
         # Env on driver -> expect shorted build time due to no space
         # lookup required from remote worker.
-        config["create_env_on_driver"] = True
+        config.create_env_on_local_worker = True
         t0 = time.time()
-        trainer = pg.PGTrainer(config=config)
+        trainer = config.build()
         wo_lookup = time.time() - t0
         print(f"Env on learner: {wo_lookup}sec")
         self.assertLess(wo_lookup, w_lookup)
@@ -282,15 +284,41 @@ class TestTrainer(unittest.TestCase):
 
         # Spaces given -> expect shorter build time due to no space
         # lookup required from remote worker.
-        config["create_env_on_driver"] = False
-        config["observation_space"] = env.observation_space
-        config["action_space"] = env.action_space
+        config.create_env_on_driver = False
+        config.environment(
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+        )
         t0 = time.time()
-        trainer = pg.PGTrainer(config=config)
+        trainer = config.build()
         wo_lookup = time.time() - t0
         print(f"Spaces given manually in config: {wo_lookup}sec")
         self.assertLess(wo_lookup, w_lookup)
         trainer.stop()
+
+    def test_worker_validation_time(self):
+        """Tests the time taken by `validate_workers_after_construction=True`."""
+        config = pg.PGConfig()
+        config.env = "CartPole-v0"
+        config.validate_workers_after_construction = True
+
+        # Test, whether validating one worker takes just as long as validating
+        # >> 1 workers.
+        config.num_workers = 1
+        t0 = time.time()
+        trainer = pg.PGTrainer(config=config)
+        total_time_1 = time.time() - t0
+        print(f"Validating w/ 1 worker: {total_time_1}sec")
+        trainer.stop()
+
+        config.num_workers = 5
+        t0 = time.time()
+        trainer = pg.PGTrainer(config=config)
+        total_time_5 = time.time() - t0
+        print(f"Validating w/ 5 workers: {total_time_5}sec")
+        trainer.stop()
+
+        check(total_time_5 / total_time_1, 1.0, rtol=0.3)
 
     def test_no_env_but_eval_workers_do_have_env(self):
         """Tests whether no env on workers, but env on eval workers works ok."""

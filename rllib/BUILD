@@ -1399,6 +1399,20 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
+    name = "evaluation/tests/test_envs_that_crash",
+    tags = ["team:ml", "evaluation"],
+    size = "medium",
+    srcs = ["evaluation/tests/test_envs_that_crash.py"]
+)
+
+py_test(
+    name = "evaluation/tests/test_episode",
+    tags = ["team:ml", "evaluation"],
+    size = "small",
+    srcs = ["evaluation/tests/test_episode.py"]
+)
+
+py_test(
     name = "evaluation/tests/test_postprocessing",
     tags = ["team:ml", "evaluation"],
     size = "small",
@@ -1417,13 +1431,6 @@ py_test(
     tags = ["team:ml", "evaluation"],
     size = "medium",
     srcs = ["evaluation/tests/test_trajectory_view_api.py"]
-)
-
-py_test(
-    name = "evaluation/tests/test_episode",
-    tags = ["team:ml", "evaluation"],
-    size = "small",
-    srcs = ["evaluation/tests/test_episode.py"]
 )
 
 # --------------------------------------------------------------------
