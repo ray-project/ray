@@ -114,6 +114,7 @@ class SACConfig(TrainerConfig):
         store_buffer_in_checkpoints: Optional[bool] = None,
         replay_buffer_config: Optional[Dict[str, Any]] = None,
         training_intensity: Optional[float] = None,
+        clip_actions: Optional[bool] = None,
         grad_clip: Optional[float] = None,
         optimization_config: Optional[Dict[str, Any]] = None,
         target_network_update_freq: Optional[int] = None,
@@ -208,6 +209,8 @@ class SACConfig(TrainerConfig):
                 -> will make sure that replay+train op will be executed 4x asoften as
                 rollout+insert op (4 * 250 = 1000).
                 See: rllib/agents/dqn/dqn.py::calculate_rr_weights for further details.
+            clip_actions: Whether to clip actions. If actions are already normalized,
+                this should be set to False.
             grad_clip: If not None, clip gradients during optimization at this value.
             optimization_config: Config dict for optimization. Set "actor_learning_rate",
                 "critic_learning_rate", and "entropy_learning_rate".
@@ -246,6 +249,8 @@ class SACConfig(TrainerConfig):
             self.replay_buffer_config = replay_buffer_config
         if training_intensity is not None:
             self.training_intensity = training_intensity
+        if clip_actions is not None:
+            self.clip_actions = clip_actions
         if grad_clip is not None:
             self.grad_clip = grad_clip
         if optimization_config is not None:

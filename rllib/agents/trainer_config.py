@@ -849,7 +849,7 @@ class TrainerConfig:
             self.evaluation_num_workers = evaluation_num_workers
         if custom_evaluation_function is not None:
             self.custom_evaluation_function = custom_evaluation_function
-        if self.always_attach_evaluation_results:
+        if always_attach_evaluation_results:
             self.always_attach_evaluation_results = always_attach_evaluation_results
 
         return self
