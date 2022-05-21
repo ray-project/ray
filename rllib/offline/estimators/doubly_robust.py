@@ -23,9 +23,10 @@ class DoublyRobust(DirectMethod):
             self.model.reset()
 
             # Train Q-function
-            train_batch = train_episodes[0].concat_samples(train_episodes)
-            # TODO (rohan): log the training loss somewhere
-            losses = self.train(train_batch)  # noqa: F841
+            if train_episodes:
+                train_batch = train_episodes[0].concat_samples(train_episodes)
+                # TODO (rohan): log the training loss somewhere
+                losses = self.train(train_batch)  # noqa: F841
 
             # Calculate doubly robust OPE estimates
             for episode in test_episodes:
@@ -33,13 +34,21 @@ class DoublyRobust(DirectMethod):
                 new_prob = np.exp(self.compute_log_likelihoods(episode))
 
                 V_prev, V_DR = 0.0, 0.0
-                v_values = self.model.estimate_v(episode[SampleBatch.OBS])
-                v_values = convert_to_numpy(v_values)
                 q_values = self.model.estimate_q(
                     episode[SampleBatch.OBS], episode[SampleBatch.ACTIONS]
                 )
                 q_values = convert_to_numpy(q_values)
-                for t in range(episode.count, -1, -1):
+
+                all_actions = np.zeros([episode.count, self.policy.action_space.n])
+                all_actions[:] = np.arange(self.policy.action_space.n)
+                # Two transposes required for torch.distributions to work
+                tmp_episode = episode.copy()
+                tmp_episode[SampleBatch.ACTIONS] = all_actions.T
+                action_probs = np.exp(self.compute_log_likelihoods(tmp_episode)).T
+                v_values = self.model.estimate_v(episode[SampleBatch.OBS], action_probs)
+                v_values = convert_to_numpy(v_values)
+
+                for t in range(episode.count - 1, -1, -1):
                     V_prev = rewards[t] + self.gamma * V_prev
                     V_DR = v_values[t] + (new_prob[t] / old_prob[t]) * (
                         rewards[t] + self.gamma * V_DR - q_values[t]

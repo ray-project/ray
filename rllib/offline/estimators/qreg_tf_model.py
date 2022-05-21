@@ -22,11 +22,10 @@ class QRegTFModel:
             self.observation_space,
             self.action_space,
             self.action_space.n,
-            config["model"],
-            framework=policy.config[""],
+            config.get("model", {}),
+            framework=policy.config["framework"],
             name="TFQModel",
         )
-        self.device = self.q_model.device
         self.n_iters = config.get("n_iters", 80)
         self.lr = config.get("lr", 1e-3)
         self.delta = config.get("delta", 1e-4)
@@ -35,7 +34,9 @@ class QRegTFModel:
     def reset(self) -> None:
         raise NotImplementedError
 
-    def train_q(self, batch: SampleBatch) -> TensorType:
+    def train_q(
+        self, batch: SampleBatch, new_action_probs: List[TensorType]
+    ) -> TensorType:
         raise NotImplementedError
 
     def estimate_q(
@@ -45,5 +46,9 @@ class QRegTFModel:
     ) -> TensorType:
         raise NotImplementedError
 
-    def estimate_v(self, obs: Union[TensorType, List[TensorType]]) -> TensorType:
+    def estimate_v(
+        self,
+        obs: Union[TensorType, List[TensorType]],
+        action_probs: Union[TensorType, List[TensorType]],
+    ) -> TensorType:
         raise NotImplementedError

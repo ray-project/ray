@@ -45,7 +45,7 @@ class DirectMethod(OffPolicyEstimator):
 
     @override(OffPolicyEstimator)
     def __init__(self, policy: Policy, gamma: float, config: Dict):
-        super().__init__(policy, gamma)
+        super().__init__(policy, gamma, config)
         assert isinstance(
             policy.action_space, Discrete
         ), "DM Estimator only supports discrete action spaces!"
@@ -67,9 +67,10 @@ class DirectMethod(OffPolicyEstimator):
             self.model.reset()
 
             # Train Q-function
-            train_batch = train_episodes[0].concat_samples(train_episodes)
-            # TODO (rohan): log the training losses somewhere
-            losses = self.train(train_batch)  # noqa: F841
+            if train_episodes:
+                train_batch = train_episodes[0].concat_samples(train_episodes)
+                # TODO (rohan): log the training losses somewhere
+                losses = self.train(train_batch)  # noqa: F841
 
             # Calculate direct method OPE estimates
             for episode in test_episodes:
@@ -78,8 +79,14 @@ class DirectMethod(OffPolicyEstimator):
                 for t in range(episode.count):
                     V_prev += rewards[t] * self.gamma ** t
 
-                init_obs = np.array([episode[0][SampleBatch.OBS]])
-                v_value = self.model.estimate_v(init_obs)
+                init_step = episode[0:1]
+                init_obs = np.array([init_step[SampleBatch.OBS]])
+                all_actions = np.array(
+                    [a for a in range(self.policy.action_space.n)], dtype=float
+                )
+                init_step[SampleBatch.ACTIONS] = all_actions
+                action_probs = np.exp(self.compute_log_likelihoods(init_step))
+                v_value = self.model.estimate_v(init_obs, action_probs)
                 V_DM = convert_to_numpy(v_value).item()
 
                 estimates.append(
@@ -96,4 +103,8 @@ class DirectMethod(OffPolicyEstimator):
 
     @override(OffPolicyEstimator)
     def train(self, batch: SampleBatchType) -> None:
-        self.model.train_q(batch)
+        new_action_probs = []
+        # TODO (rohan): This feels hacky, figure out a better way
+        for episode in batch.split_by_episode():
+            new_action_probs.append(np.exp(self.compute_log_likelihoods(episode)))
+        self.model.train_q(batch, new_action_probs)

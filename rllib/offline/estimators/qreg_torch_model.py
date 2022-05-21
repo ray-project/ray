@@ -23,31 +23,37 @@ class QRegTorchModel(TorchModelV2):
             self.observation_space,
             self.action_space,
             self.action_space.n,
-            config["model"],
+            config.get("model", {}),
             framework="torch",
             name="TorchQModel",
         )
-        self.device = self.q_model.device
+        self.device = self.policy.device
         self.n_iters = config.get("n_iters", 80)
         self.lr = config.get("lr", 1e-3)
         self.delta = config.get("delta", 1e-4)
-        self.optimizer = torch.optim.Adam(self.q_model.variables(), self.lr).to(
-            self.device
-        )
-        self.initializer = get_initializer("xavier_uniform", framework="torch")
+        self.optimizer = torch.optim.Adam(self.q_model.variables(), self.lr)
+        initializer = get_initializer("xavier_uniform", framework="torch")
+
+        def f(m):
+            if isinstance(m, nn.Linear):
+                initializer(m.weight)
+
+        self.initializer = f
 
     def reset(self) -> None:
         self.q_model.apply(self.initializer)
 
-    def train_q(self, batch: SampleBatch) -> TensorType:
+    def train_q(
+        self, batch: SampleBatch, new_action_probs: List[TensorType]
+    ) -> TensorType:
         batch_obs = []
         batch_actions = []
         batch_ps = []
         batch_returns = []
         batch_discounts = []
-        for episode in batch.split_by_episode():
+        for idx, episode in enumerate(batch.split_by_episode()):
             rewards, old_prob = episode["rewards"], episode["action_prob"]
-            new_prob = self.action_prob(episode)
+            new_prob = new_action_probs[idx]
             # calculate importance ratios and returns
             p = np.zeros_like(rewards)
             returns = np.zeros_like(rewards)
@@ -60,6 +66,10 @@ class QRegTorchModel(TorchModelV2):
                 else:
                     pt_prev = p[t - 1]
                     pt_next = pt_next * new_prob[-t] / old_prob[-t]
+                try:
+                    assert isinstance(new_prob[t], np.float32)
+                except:
+                    breakpoint()
                 p[t] = pt_prev * new_prob[t] / old_prob[t]
                 # Trick: returns[0] is already 0 when t = T
                 returns[-t - 1] = rewards[-t - 1] + self.gamma * pt_next * returns[-t]
@@ -68,7 +78,7 @@ class QRegTorchModel(TorchModelV2):
             batch_ps.extend(p)
             batch_returns.extend(returns)
             batch_discounts.extend(discounts)
-
+        
         obs = torch.tensor(batch_obs, device=self.device)
         actions = torch.tensor(batch_actions, device=self.device)
         ps = torch.tensor(batch_ps, device=self.device)
@@ -76,8 +86,8 @@ class QRegTorchModel(TorchModelV2):
         discounts = torch.tensor(batch_discounts, device=self.device)
         losses = []
         for _ in range(self.n_iters):
-            q_values = self.q_model({"obs": obs}, [], None)
-            q_acts = torch.gather(q_values, actions, dim=-1)
+            q_values, _ = self.q_model({"obs": obs}, [], None)
+            q_acts = torch.gather(q_values, -1, actions.unsqueeze(-1))
             loss = discounts * ps * (returns - q_acts) ** 2
             loss = torch.mean(loss)
             self.optimizer.zero_grad()
@@ -93,16 +103,18 @@ class QRegTorchModel(TorchModelV2):
         actions: Union[TensorType, List[TensorType]] = None,
     ) -> TensorType:
         obs = torch.tensor(obs, device=self.device)
-        actions = torch.tensor(actions, device=self.device)
-        q_values = self.q_model.forward({"obs": obs}, [], None)
-        q_acts = torch.gather(q_values, actions, dim=-1) if actions else q_values
-        return q_acts
+        q_values, _ = self.q_model({"obs": obs}, [], None)
+        if actions is not None:
+            actions = torch.tensor(actions, device=self.device, dtype=int)
+            q_values = torch.gather(q_values, -1, actions.unsqueeze(-1))
+        return q_values.detach()
 
-    def estimate_v(self, obs: Union[TensorType, List[TensorType]]) -> TensorType:
+    def estimate_v(
+        self,
+        obs: Union[TensorType, List[TensorType]],
+        action_probs: Union[TensorType, List[TensorType]],
+    ) -> TensorType:
         obs = torch.tensor(obs, device=self.device)
         q_values = self.estimate_q(obs)
-        actions = torch.zeros_like(q_values, device=self.device)
-        actions[:] = torch.arange(0, self.action_space.n)
-        act_probs = self.compute_log_likelihoods(actions)
-        v_values = torch.sum(q_values * act_probs, axis=-1)
-        return v_values
+        v_values = torch.sum(q_values * action_probs, axis=-1)
+        return v_values.detach()
