@@ -20,6 +20,7 @@ def k_fold_cv(batch: SampleBatchType, k: int):
     if n_episodes < k:
         # Raise warning
         yield [], episodes
+        return
     n_fold = n_episodes // k
     for i in range(k):
         train_episodes = episodes[: i * n_fold] + episodes[(i + 1) * n_fold :]
