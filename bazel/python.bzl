@@ -27,7 +27,7 @@ def py_test_run_all_subdirectory(include, exclude, extra_srcs, **kwargs):
 
 # Runs all included notebooks as py_test targets, by first converting them to .py files with "test_myst_doc.py".
 def py_test_run_all_notebooks(include, exclude, **kwargs):
-    for file in native.glob(include = include, exclude = exclude, allow_empty=False):
+    for file in native.glob(include = include, exclude = exclude):
         print(file)
         basename = paths.split_extension(file)[0]
         if basename == file:
@@ -36,6 +36,11 @@ def py_test_run_all_notebooks(include, exclude, **kwargs):
             name = basename,
             main = "test_myst_doc.py",
             srcs = ["//doc:test_myst_doc.py"],
+            # --find-recursively will look for file in all
+            # directories inside cwd recursively if it cannot
+            # find it right away. This allows to deal with
+            # mismatches between `name` and `data` args.
             args = ["--find-recursively", "--path", file],
             **kwargs
         )
+
