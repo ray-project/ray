@@ -35,7 +35,7 @@ def py_test_run_all_notebooks(include, exclude, **kwargs):
         native.py_test(
             name = basename,
             main = "test_myst_doc.py",
-	    srcs = ["//doc:test_myst_doc.py"],
+            srcs = ["//doc:test_myst_doc.py"],
             args = ["--find-recursively", "--path", file],
             **kwargs
         )
