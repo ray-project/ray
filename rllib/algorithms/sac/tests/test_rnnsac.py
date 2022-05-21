@@ -1,7 +1,7 @@
 import unittest
 
 import ray
-import ray.rllib.algorithms.sac as sac
+from ray.rllib.algorithms import sac
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import check_compute_single_action, framework_iterator
 
@@ -20,21 +20,49 @@ class TestRNNSAC(unittest.TestCase):
 
     def test_rnnsac_compilation(self):
         """Test whether a R2D2Trainer can be built on all frameworks."""
-        config = sac.RNNSAC_DEFAULT_CONFIG.copy()
+        config = (
+            sac.RNNSACConfig()
+            .rollouts(num_rollout_workers=0)
+            .training(
+                # Wrap with an LSTM and use a very simple base-model.
+                model={"max_seq_len": 20},
+                policy_model_config={
+                    "use_lstm": True,
+                    "lstm_cell_size": 64,
+                    "fcnet_hiddens": [10],
+                    "lstm_use_prev_action": True,
+                    "lstm_use_prev_reward": True,
+                },
+                q_model_config={
+                    "use_lstm": True,
+                    "lstm_cell_size": 64,
+                    "fcnet_hiddens": [10],
+                    "lstm_use_prev_action": True,
+                    "lstm_use_prev_reward": True,
+                },
+                replay_buffer_config={
+                    "type": "MultiAgentPrioritizedReplayBuffer",
+                    "replay_burn_in": 20,
+                    "zero_init_states": True,
+                },
+                lr=5e-4,
+            )
+        )
+        """
         config["num_workers"] = 0  # Run locally.
 
         # Wrap with an LSTM and use a very simple base-model.
         config["model"] = {
             "max_seq_len": 20,
         }
-        config["policy_model"] = {
+        config["policy_model_config"] = {
             "use_lstm": True,
             "lstm_cell_size": 64,
             "fcnet_hiddens": [10],
             "lstm_use_prev_action": True,
             "lstm_use_prev_reward": True,
         }
-        config["Q_model"] = {
+        config["q_model_config"] = {
             "use_lstm": True,
             "lstm_cell_size": 64,
             "fcnet_hiddens": [10],
@@ -50,6 +78,7 @@ class TestRNNSAC(unittest.TestCase):
         }
 
         config["lr"] = 5e-4
+        """
 
         num_iterations = 1
 

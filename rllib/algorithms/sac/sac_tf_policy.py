@@ -72,12 +72,12 @@ def build_sac_model(
             `policy.target_model`.
     """
     # Force-ignore any additionally provided hidden layer sizes.
-    # Everything should be configured using SAC's "Q_model" and "policy_model"
+    # Everything should be configured using SAC's "q_model_config" and "policy_model_config"
     # settings.
     policy_model_config = copy.deepcopy(MODEL_DEFAULTS)
-    policy_model_config.update(config["policy_model"])
+    policy_model_config.update(config["policy_model_config"])
     q_model_config = copy.deepcopy(MODEL_DEFAULTS)
-    q_model_config.update(config["Q_model"])
+    q_model_config.update(config["q_model_config"])
 
     default_model_cls = SACTorchModel if config["framework"] == "torch" else SACTFModel
 
