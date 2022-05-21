@@ -194,6 +194,11 @@ TEST(UtilTest, IsProcessAlive) {
   namespace bp = boost::process;
   bp::child c("bash");
   auto pid = c.id();
+  // Zombie process is not detected in mac right now.
+#if defined __APPLE__
+  c.join();
+#endif
+
   for (int i = 0; i < 5; ++i) {
     if (IsProcessAlive(pid)) {
       std::this_thread::sleep_for(1s);
