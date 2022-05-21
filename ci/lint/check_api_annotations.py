@@ -33,7 +33,6 @@ def _ignore(attr):
     return False
 
 
-# TODO(ekl) also check function and constant definitions.
 def verify(symbol, scanned, ok, output, prefix=None):
     """Recursively verify all child symbols of a given module."""
     if not prefix:
