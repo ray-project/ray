@@ -216,6 +216,7 @@ class Trial:
         trial_id: Unique identifier for the trial.
         local_dir: Local_dir as passed to tune.run.
         logdir: Directory where the trial logs are saved.
+        rel_logdir: Same as ``logdir``, but relative to the ``local_dir``.
         evaluated_params: Evaluated parameters by search algorithm,
         experiment_tag: Identifying trial name to show in the console
         status: One of PENDING, RUNNING, PAUSED, TERMINATED, ERROR/
@@ -349,6 +350,7 @@ class Trial:
         self.status = Trial.PENDING
         self.start_time = None
         self.logdir = None
+        self.rel_logdir = None
         self.runner = None
         self.last_debug = 0
         self.error_file = None
