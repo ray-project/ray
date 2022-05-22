@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import pathlib
 import warnings
 import traceback
 from numbers import Number
@@ -115,9 +116,7 @@ class ExperimentAnalysis:
             # If only a mode was passed, use anonymous metric
             self.default_metric = DEFAULT_METRIC
 
-        self._local_base_dir = os.path.abspath(
-            os.path.join(os.path.dirname(experiment_checkpoint_path), "..")
-        )
+        self._local_base_dir = str(pathlib.Path(experiment_checkpoint_path).parents[1])
 
         if not pd:
             logger.warning(
@@ -757,11 +756,12 @@ class ExperimentAnalysis:
             }
 
     def _get_trial_paths(self) -> List[str]:
+        local_base_dir = pathlib.Path(self._local_base_dir)
         if self.trials:
             # Get the relative paths from the trials to allow
             # for changes in the local_base_dir.
             _trial_paths = [
-                os.path.join(self._local_base_dir, t.rel_logdir) for t in self.trials
+                str(local_base_dir.joinpath(t.rel_logdir)) for t in self.trials
             ]
         else:
             logger.info(
@@ -769,7 +769,11 @@ class ExperimentAnalysis:
                 "file. This may result in some information that is "
                 "out of sync, as checkpointing is periodic."
             )
-            _trial_paths = [checkpoint["logdir"] for checkpoint in self._checkpoints]
+
+            _trial_paths = [
+                str(local_base_dir.joinpath(checkpoint["rel_logdir"]))
+                for checkpoint in self._checkpoints
+            ]
             self.trials = []
             for experiment_state in self._experiment_states:
                 try:

@@ -4,6 +4,7 @@ import json
 import logging
 from numbers import Number
 import os
+import pathlib
 import platform
 import re
 import shutil
@@ -161,22 +162,22 @@ class TrialInfo:
 
 
 def create_logdir(dirname, local_dir):
-    local_dir = os.path.expanduser(local_dir)
-    logdir = os.path.join(local_dir, dirname)
-    if os.path.exists(logdir):
+    local_dir = pathlib.Path(local_dir).expanduser()
+    logdir = local_dir.joinpath(dirname)
+    if logdir.exists():
         old_dirname = dirname
         dirname += "_" + uuid.uuid4().hex[:4]
         logger.info(
             f"Creating a new dirname {dirname} because "
             f"trial dirname '{old_dirname}' already exists."
         )
-        logdir = os.path.join(local_dir, dirname)
-    os.makedirs(logdir, exist_ok=True)
+        logdir = local_dir.joinpath(dirname)
+
+    logdir.mkdir(parents=True, exist_ok=True)
     # Return also a relative path to ensure later changes
     # in the local_base_dir.
-    local_base_dir = os.path.abspath(os.path.join(os.path.dirname(logdir), ".."))
-    rel_logdir = os.path.relpath(logdir, os.path.commonprefix([logdir, local_base_dir]))
-    return logdir, rel_logdir
+    rel_logdir = logdir.relative_to(logdir.parents[1])
+    return str(logdir), str(rel_logdir)
 
 
 def _to_pg_factory(
@@ -535,7 +536,8 @@ class Trial:
                 self._generate_dirname(), self.local_dir
             )
         else:
-            os.makedirs(self.logdir, exist_ok=True)
+            pathlib.Path(self.logdir).mkdir(parents=True, exist_ok=True)
+            # os.makedirs(self.logdir, exist_ok=True)
 
         self.invalidate_json_state()
 
