@@ -8,7 +8,7 @@ from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import TensorType, List, ModelConfigDict
-from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
+from ray.rllib.utils.annotations import DeveloperAPI
 
 tf1, tf, tfv = try_import_tf()
 

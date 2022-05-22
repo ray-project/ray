@@ -124,7 +124,7 @@ def do_minibatch_sgd(
             )
 
         for i in range(num_sgd_iter):
-            for minibatch in _minibatches(batch, sgd_minibatch_size):
+            for minibatch in minibatches(batch, sgd_minibatch_size):
                 results = (
                     local_worker.learn_on_batch(
                         MultiAgentBatch({policy_id: minibatch}, minibatch.count)

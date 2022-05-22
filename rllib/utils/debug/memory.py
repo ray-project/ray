@@ -13,23 +13,25 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 
 # A suspicious memory-allocating stack-trace that we should re-test
 # to make sure it's not a false positive.
-Suspect = DeveloperAPI(namedtuple(
-    "Suspect",
-    [
-        # The stack trace of the allocation, going back n frames, depending
-        # on the tracemalloc.start(n) call.
-        "traceback",
-        # The amount of memory taken by this particular stack trace
-        # over the course of the experiment.
-        "memory_increase",
-        # The slope of the scipy linear regression (x=iteration; y=memory size).
-        "slope",
-        # The rvalue of the scipy linear regression.
-        "rvalue",
-        # The memory size history (list of all memory sizes over all iterations).
-        "hist",
-    ],
-))
+Suspect = DeveloperAPI(
+    namedtuple(
+        "Suspect",
+        [
+            # The stack trace of the allocation, going back n frames, depending
+            # on the tracemalloc.start(n) call.
+            "traceback",
+            # The amount of memory taken by this particular stack trace
+            # over the course of the experiment.
+            "memory_increase",
+            # The slope of the scipy linear regression (x=iteration; y=memory size).
+            "slope",
+            # The rvalue of the scipy linear regression.
+            "rvalue",
+            # The memory size history (list of all memory sizes over all iterations).
+            "hist",
+        ],
+    )
+)
 
 
 @DeveloperAPI
