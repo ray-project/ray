@@ -318,7 +318,7 @@ class TestTrainer(unittest.TestCase):
         print(f"Validating w/ 5 workers: {total_time_5}sec")
         trainer.stop()
 
-        check(total_time_5 / total_time_1, 1.0, rtol=0.3)
+        check(total_time_5 / total_time_1, 1.0, atol=1.0)
 
     def test_no_env_but_eval_workers_do_have_env(self):
         """Tests whether no env on workers, but env on eval workers works ok."""
