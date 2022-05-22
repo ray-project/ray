@@ -57,9 +57,9 @@ class MAMLConfig(TrainerConfig):
         ... )
     """
 
-    def __init__(self):
+    def __init__(self, trainer_class=None):
         """Initializes a PGConfig instance."""
-        super().__init__(trainer_class=MAMLTrainer)
+        super().__init__(trainer_class=trainer_class or MAMLTrainer)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -80,7 +80,7 @@ class MAMLConfig(TrainerConfig):
 
         # Override some of TrainerConfig's default values with MAML-specific values.
         self.rollout_fragment_length = 200
-        self.create_env_on_driver = True
+        self.create_env_on_local_worker = True
         self.lr = 1e-3
 
         # Share layers for value function.
