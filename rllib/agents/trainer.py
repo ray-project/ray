@@ -1992,8 +1992,8 @@ class Trainer(Trainable):
                 ">0!".format(config["evaluation_duration"])
             )
 
-    @ExperimentalAPI
     @staticmethod
+    @ExperimentalAPI
     def validate_env(env: EnvType, env_context: EnvContext) -> None:
         """Env validator function for this Trainer class.
 

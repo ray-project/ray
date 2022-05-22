@@ -79,8 +79,8 @@ class ActionDistribution:
         """
         return self.entropy()
 
-    @DeveloperAPI
     @staticmethod
+    @DeveloperAPI
     def required_model_output_shape(
         action_space: gym.Space, model_config: ModelConfigDict
     ) -> Union[int, np.ndarray]:

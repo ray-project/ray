@@ -239,8 +239,8 @@ class BaseEnv:
     def get_unwrapped(self) -> List[EnvType]:
         return self.get_sub_environments()
 
-    @PublicAPI
     @property
+    @PublicAPI
     def observation_space(self) -> gym.Space:
         """Returns the observation space for each agent.
 
@@ -252,8 +252,8 @@ class BaseEnv:
         """
         raise NotImplementedError
 
-    @PublicAPI
     @property
+    @PublicAPI
     def action_space(self) -> gym.Space:
         """Returns the action space for each agent.
 
