@@ -241,7 +241,7 @@ def compute_and_clip_gradients(
         return grads_and_vars
 
 
-def setup_config(
+def validate_config(
     policy: Policy,
     obs_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
@@ -324,7 +324,7 @@ PPOTFPolicy = build_tf_policy(
     stats_fn=kl_and_loss_stats,
     compute_gradients_fn=compute_and_clip_gradients,
     extra_action_out_fn=vf_preds_fetches,
-    before_init=setup_config,
+    before_init=validate_config,
     before_loss_init=setup_mixins,
     mixins=[
         LearningRateSchedule,

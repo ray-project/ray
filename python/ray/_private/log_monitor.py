@@ -286,7 +286,10 @@ class LogMonitor:
                     "actor_name": file_info.actor_name,
                     "task_name": file_info.task_name,
                 }
-                self.publisher.publish_logs(data)
+                try:
+                    self.publisher.publish_logs(data)
+                except Exception:
+                    logger.exception(f"Failed to publish log messages {data}")
                 anything_published = True
                 lines_to_publish = []
 

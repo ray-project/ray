@@ -1,5 +1,5 @@
 import ray
-from ray.rllib.agents.dqn.dqn_tf_policy import minimize_and_clip
+from ray.rllib.algorithms.dqn.dqn_tf_policy import minimize_and_clip
 from ray.rllib.evaluation.postprocessing import adjust_nstep
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch

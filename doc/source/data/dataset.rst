@@ -67,7 +67,7 @@ Advanced users can refer directly to the Ray Datasets :ref:`API reference <data_
     Getting Started
     ^^^
 
-    Start with our quick start tutorials for :ref:`working with Datasets<ray_datasets_quick_start>`
+    Start with our quick start tutorials for :ref:`working with Datasets<datasets_getting_started>`
     and :ref:`Dataset Pipelines<pipelining_datasets>`.
     These concrete examples will give you an idea of how to use Ray Datasets.
 
@@ -105,6 +105,18 @@ Advanced users can refer directly to the Ray Datasets :ref:`API reference <data_
     .. link-button:: data_user_guide
         :type: ref
         :text: Start Using Ray Datasets
+        :classes: btn-outline-info btn-block
+    ---
+
+    **Ray Datasets FAQ**
+    ^^^
+
+    Find answers to commonly asked questions in our detailed FAQ.
+
+    +++
+    .. link-button:: datasets_faq
+        :type: ref
+        :text: Ray Datasets FAQ
         :classes: btn-outline-info btn-block
     ---
 

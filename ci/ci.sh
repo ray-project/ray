@@ -478,6 +478,10 @@ lint_banned_words() {
   "${ROOT_DIR}"/lint/check-banned-words.sh
 }
 
+lint_annotations() {
+  "${ROOT_DIR}"/lint/check_api_annotations.py
+}
+
 lint_bazel() {
   # Run buildifier without affecting external environment variables
   (
@@ -547,6 +551,9 @@ _lint() {
 
   # Run banned words check.
   lint_banned_words
+
+  # Run annotations check.
+  lint_annotations
 
   # Make sure that the README is formatted properly.
   lint_readme
@@ -686,6 +693,43 @@ build() {
   if need_wheels; then
     build_wheels
   fi
+}
+
+test_minimal() {
+  ./ci/env/install-minimal.sh "$1"
+  ./ci/env/env_info.sh
+  python ./ci/env/check_minimal_install.py
+  BAZEL_EXPORT_OPTIONS="$(./ci/run/bazel_export_options)"
+  # Ignoring shellcheck is necessary because if ${BAZEL_EXPORT_OPTIONS} is wrapped by the double quotation,
+  # bazel test cannot recognize the option.
+  # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic
+  # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic_2
+  # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic_3
+  # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic_4
+  # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic_5
+  # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_output
+  # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env_ray_minimal
+  # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env
+  # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env_2
+  # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env_complicated
+  # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env_validation
+  # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_serve_ray_minimal
+  # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/dashboard/test_dashboard
+  # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_usage_stats
 }
 
 _main() {

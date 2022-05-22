@@ -937,7 +937,7 @@ class TrainerConfig:
         Returns:
             This updated TrainerConfig object.
         """
-        if input is not None:
+        if input_ is not None:
             self.input_ = input_
         if input_config is not None:
             self.input_config = input_config

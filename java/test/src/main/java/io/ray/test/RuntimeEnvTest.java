@@ -4,7 +4,6 @@ import com.google.common.collect.ImmutableList;
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.runtimeenv.RuntimeEnv;
-import io.ray.runtime.util.SystemUtil;
 import java.util.List;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -30,10 +29,6 @@ public class RuntimeEnvTest {
       return System.getenv(key);
     }
 
-    public int getPid() {
-      return SystemUtil.pid();
-    }
-
     public boolean findClass(String className) {
       try {
         Class.forName(className);
@@ -45,7 +40,6 @@ public class RuntimeEnvTest {
   }
 
   public void testPerJobEnvVars() {
-    System.setProperty("ray.job.num-java-workers-per-process", "1");
     System.setProperty("ray.job.runtime-env.env-vars.KEY1", "A");
     System.setProperty("ray.job.runtime-env.env-vars.KEY2", "B");
 
@@ -62,12 +56,8 @@ public class RuntimeEnvTest {
   }
 
   public void testPerActorEnvVars() {
-    /// This is used to test that actors with runtime envs will not reuse worker process.
-    System.setProperty("ray.job.num-java-workers-per-process", "2");
     try {
       Ray.init();
-      int pid1 = 0;
-      int pid2 = 0;
       {
         RuntimeEnv runtimeEnv =
             new RuntimeEnv.Builder()
@@ -81,8 +71,6 @@ public class RuntimeEnvTest {
         Assert.assertEquals(val, "C");
         val = actor1.task(A::getEnv, "KEY2").remote().get();
         Assert.assertEquals(val, "B");
-
-        pid1 = actor1.task(A::getPid).remote().get();
       }
 
       {
@@ -92,24 +80,17 @@ public class RuntimeEnvTest {
         Assert.assertNull(val);
         val = actor2.task(A::getEnv, "KEY2").remote().get();
         Assert.assertNull(val);
-        pid2 = actor2.task(A::getPid).remote().get();
       }
 
-      // actor1 and actor2 shouldn't be in one process because they have
-      // different runtime env.
-      Assert.assertNotEquals(pid1, pid2);
     } finally {
       Ray.shutdown();
     }
   }
 
   public void testPerActorEnvVarsOverwritePerJobEnvVars() {
-    System.setProperty("ray.job.num-java-workers-per-process", "2");
     System.setProperty("ray.job.runtime-env.env-vars.KEY1", "A");
     System.setProperty("ray.job.runtime-env.env-vars.KEY2", "B");
 
-    int pid1 = 0;
-    int pid2 = 0;
     try {
       Ray.init();
       {
@@ -119,8 +100,7 @@ public class RuntimeEnvTest {
         String val = actor1.task(A::getEnv, "KEY1").remote().get();
         Assert.assertEquals(val, "C");
         val = actor1.task(A::getEnv, "KEY2").remote().get();
-        Assert.assertEquals(val, "B");
-        pid1 = actor1.task(A::getPid).remote().get();
+        Assert.assertNull(val);
       }
 
       {
@@ -131,12 +111,8 @@ public class RuntimeEnvTest {
         Assert.assertEquals(val, "A");
         val = actor2.task(A::getEnv, "KEY2").remote().get();
         Assert.assertEquals(val, "B");
-        pid2 = actor2.task(A::getPid).remote().get();
       }
 
-      // actor1 and actor2 shouldn't be in one process because they have
-      // different runtime env.
-      Assert.assertNotEquals(pid1, pid2);
     } finally {
       Ray.shutdown();
     }
@@ -179,7 +155,7 @@ public class RuntimeEnvTest {
           Ray.task(RuntimeEnvTest::getEnvVar, "KEY1").setRuntimeEnv(runtimeEnv).remote().get();
       Assert.assertEquals(val, "C");
       val = Ray.task(RuntimeEnvTest::getEnvVar, "KEY2").setRuntimeEnv(runtimeEnv).remote().get();
-      Assert.assertEquals(val, "B");
+      Assert.assertNull(val);
     } finally {
       Ray.shutdown();
     }

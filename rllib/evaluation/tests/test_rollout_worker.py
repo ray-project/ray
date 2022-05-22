@@ -9,7 +9,7 @@ import time
 import unittest
 
 import ray
-from ray.rllib.agents.pg import PGTrainer
+from ray.rllib.algorithms.pg import PGTrainer
 from ray.rllib.agents.a3c import A2CTrainer
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.utils import VideoMonitor
