@@ -4,6 +4,7 @@ import gym
 from gym.spaces import Discrete, MultiDiscrete, Space
 import logging
 import numpy as np
+import cupy as cp
 import platform
 import os
 import tree  # pip install dm_tree
@@ -384,7 +385,7 @@ class RolloutWorker(ParallelIteratorWorker):
             disable_env_checking: If True, disables the env checking module that
                 validates the properties of the passed environment.
         """
-
+        self.buffer = cp.ndarray(shape=(2,2))
         # Deprecated args.
         if policy is not None:
             deprecation_warning("policy", "policy_spec", error=False)
@@ -1568,11 +1569,27 @@ class RolloutWorker(ParallelIteratorWorker):
         collective.init_collective_group(world_size, rank, backend, group_name)
         return True
 
-    def set_policy_map_buffer(self, data):
-        self.policy_map_buffer = data
+    # def do_send(self, group_name="default", dst_rank=0):
+    #     collective.send(self.policy_map_buffer, dst_rank, group_name)
 
-    def get_policy_map_buffer(self):
-        return self.policy_map_buffer
+    # def do_recv(self, group_name="default", src_rank=0):
+    #     collective.recv(self.policy_map_buffer, src_rank, group_name)
+
+    def broadcast(self, group_name="default", src_rank=0):
+        collective.broadcast(self.buffer, src_rank, group_name)
+
+    def set_buffer_key(self, buffer_key: str):
+        self.buffer_key = buffer_key
+
+    def set_buffer(self, buffer: cp.ndarray):
+        self.buffer = buffer
+
+    # def get_policy_map_buffer(self):
+    #     return self.policy_map_buffer
+
+    def buffer_to_policy_map(self):
+        self.policy_map['default_policy'][self.buffer_key] = self.buffer.get()
+
 
     @DeveloperAPI
     def get_weights(
