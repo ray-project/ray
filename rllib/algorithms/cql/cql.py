@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 
 class CQLConfig(SACConfig):
-    """Defines an CQLTrainer configuration class from which a CQLTrainer can be built.
+    """Defines a configuration class from which a CQLTrainer can be built.
 
     Example:
         >>> config = CQLConfig().training(gamma=0.9, lr=0.01)\
@@ -52,23 +52,30 @@ class CQLConfig(SACConfig):
         >>> trainer.train()
     """
 
-    def __init__(self):
-        super().__init__(trainer_class=CQLTrainer)
+    def __init__(self, trainer_class=None):
+        super().__init__(trainer_class=trainer_class or CQLTrainer)
+
         # fmt: off
         # __sphinx_doc_begin__
-        self.input_ = "sampler"
-        self.input_evaluation = []
+        # CQL-specific config settings:
         self.bc_iters = 20000
         self.temperature = 1.0
         self.num_actions = 10
         self.lagrangian = False
         self.lagrangian_thresh = 5.0
         self.min_q_weight = 5.0
+
+        # Changes to Trainer's/SACConfig's default:
+        # .offline_data()
+        self.input_evaluation = []
+
+        # .reporting()
         self.min_sample_timesteps_per_reporting = 0
         self.min_train_timesteps_per_reporting = 100
-        self.timesteps_per_iteration = DEPRECATED_VALUE
         # fmt: on
         # __sphinx_doc_end__
+
+        self.timesteps_per_iteration = DEPRECATED_VALUE
 
     def training(
         self,
@@ -81,10 +88,10 @@ class CQLConfig(SACConfig):
         min_q_weight: Optional[float] = None,
         **kwargs,
     ) -> "CQLConfig":
-        """Sets the training-related configuration
+        """Sets the training-related configuration.
 
         Args:
-            bc_iters: Number of iterations with Behavior Cloning Pretraining.
+            bc_iters: Number of iterations with Behavior Cloning pretraining.
             temperature: CQL loss temperature.
             num_actions: Number of actions to sample for CQL loss
             lagrangian: Whether to use the Lagrangian for Alpha Prime (in CQL loss).
@@ -92,9 +99,11 @@ class CQLConfig(SACConfig):
             min_q_weight: in Q weight multiplier.
 
         Returns:
-            An updated CQLConfig
+            This updated TrainerConfig object.
         """
+        # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
+
         if bc_iters is not None:
             self.bc_iters = bc_iters
         if temperature is not None:
@@ -261,8 +270,8 @@ class _deprecated_default_config(dict):
         super().__init__(CQLConfig().to_dict())
 
     @Deprecated(
-        old="ray.rllib.agents.cql.cql.DEFAULT_CONFIG",
-        new="ray.rllib.agents.cql.cql.CQLConfig(...)",
+        old="ray.rllib.algorithms.cql.cql.DEFAULT_CONFIG",
+        new="ray.rllib.algorithms.cql.cql.CQLConfig(...)",
         error=False,
     )
     def __getitem__(self, item):
@@ -270,3 +279,4 @@ class _deprecated_default_config(dict):
 
 
 DEFAULT_CONFIG = _deprecated_default_config()
+CQL_DEFAULT_CONFIG = DEFAULT_CONFIG

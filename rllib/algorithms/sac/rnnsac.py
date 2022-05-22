@@ -12,7 +12,7 @@ from ray.rllib.utils.deprecation import DEPRECATED_VALUE, Deprecated
 
 
 class RNNSACConfig(SACConfig):
-    """Defines an RNNSACTrainer configuration class from which an RNNSACTrainer can be built.
+    """Defines a configuration class from which an RNNSACTrainer can be built.
 
     Example:
         >>> config = RNNSACConfig().training(gamma=0.9, lr=0.01)\
@@ -24,8 +24,8 @@ class RNNSACConfig(SACConfig):
         >>> trainer.train()
     """
 
-    def __init__(self):
-        super().__init__(trainer_class=RNNSACTrainer)
+    def __init__(self, trainer_class=None):
+        super().__init__(trainer_class=trainer_class or RNNSACTrainer)
         # fmt: off
         # __sphinx_doc_begin__
         self.burn_in = DEPRECATED_VALUE
@@ -57,6 +57,9 @@ class RNNSACConfig(SACConfig):
                 it (as initial state when running through the network for training),
                 and update that initial state during training (from the internal
                 state outputs of the immediately preceding sequence).
+
+        Returns:
+            This updated TrainerConfig object.
         """
         super().training(**kwargs)
         if zero_init_states is not None:
@@ -113,8 +116,8 @@ class _deprecated_default_config(dict):
         super().__init__(RNNSACConfig().to_dict())
 
     @Deprecated(
-        old="ray.rllib.agents.sac.rnnsac.DEFAULT_CONFIG",
-        new="ray.rllib.agents.sac.rnnsac.RNNSACConfig(...)",
+        old="ray.rllib.algorithms.sac.rnnsac.DEFAULT_CONFIG",
+        new="ray.rllib.algorithms.sac.rnnsac.RNNSACConfig(...)",
         error=False,
     )
     def __getitem__(self, item):

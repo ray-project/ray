@@ -138,6 +138,13 @@ def validate_buffer_config(config: dict):
     if config.get("replay_buffer_config", None) is None:
         config["replay_buffer_config"] = {}
 
+    if config.get("worker_side_prioritization", DEPRECATED_VALUE) != DEPRECATED_VALUE:
+        deprecation_warning(
+            old="config['worker_side_prioritization']",
+            new="config['replay_buffer_config']['worker_side_prioritization']",
+            error=True,
+        )
+
     prioritized_replay = config.get("prioritized_replay", DEPRECATED_VALUE)
     if prioritized_replay != DEPRECATED_VALUE:
         deprecation_warning(

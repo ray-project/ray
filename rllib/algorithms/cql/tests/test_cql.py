@@ -38,26 +38,6 @@ class TestCQL(unittest.TestCase):
         data_file = os.path.join(rllib_dir, "tests/data/pendulum/small.json")
         print("data_file={} exists={}".format(data_file, os.path.isfile(data_file)))
 
-        config = {
-            "env": "Pendulum-v1",
-            "input": [data_file],
-            "actions_in_input_normalized": False,
-            "clip_actions": True,
-            "train_batch_size": 2000,
-            "twin_q": True,
-            "replay_buffer_config": {"learning_starts": 0},
-            "bc_iters": 2,  # 2 BC iters, 2 CQL iters.
-            "rollout_fragment_length": 1,
-            "input_evaluation": ["is"],
-            "always_attach_evaluation_results": True,
-            "evaluation_interval": 2,
-            "evaluation_duration": 10,
-            "evaluation_config": {
-                "input": "sampler",
-            },
-            "evaluation_parallel_to_training": False,
-            "evaluation_num_workers": 2,
-        }
         config = (
             cql.CQLConfig()
             .environment(
@@ -83,7 +63,7 @@ class TestCQL(unittest.TestCase):
             .evaluation(
                 always_attach_evaluation_results=True,
                 evaluation_interval=2,
-                evaluation_duration=2,
+                evaluation_duration=10,
                 evaluation_config={"input": "sampler"},
                 evaluation_parallel_to_training=False,
                 evaluation_num_workers=2,
@@ -94,7 +74,7 @@ class TestCQL(unittest.TestCase):
 
         # Test for tf/torch frameworks.
         for fw in framework_iterator(config, with_eager_tracing=True):
-            trainer = cql.CQLTrainer(config=config)
+            trainer = config.build()
             for i in range(num_iterations):
                 results = trainer.train()
                 check_train_results(results)

@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 class SACConfig(TrainerConfig):
-    """Defines an SACTrainer configuration class from which an SACTrainer can be built.
+    """Defines a configuration class from which an SACTrainer can be built.
 
     Example:
         >>> config = SACConfig().training(gamma=0.9, lr=0.01)\
@@ -37,9 +37,8 @@ class SACConfig(TrainerConfig):
         super().__init__(trainer_class=trainer_class or SACTrainer)
         # fmt: off
         # __sphinx_doc_begin__
-        # SAC-specific options
+        # SAC-specific config settings.
         self.twin_q = True
-        self.use_state_preprocessor = DEPRECATED_VALUE
         self.q_model_config = {
             "fcnet_hiddens": [256, 256],
             "fcnet_activation": "relu",
@@ -57,12 +56,10 @@ class SACConfig(TrainerConfig):
             "custom_model_config": {},
         }
         self.clip_actions = False
-        # === Learning ===
         self.tau = 5e-3
         self.initial_alpha = 1.0
         self.target_entropy = "auto"
         self.n_step = 1
-        self.min_sample_timesteps_per_reporting = 100
         self.replay_buffer_config = {
             "_enable_replay_buffer_api": True,
             "type": "MultiAgentPrioritizedReplayBuffer",
@@ -74,8 +71,10 @@ class SACConfig(TrainerConfig):
             "prioritized_replay_alpha": 0.6,
             "prioritized_replay_beta": 0.4,
             "prioritized_replay_eps": 1e-6,
+            # Whether to compute priorities already on the remote worker side.
+            "worker_side_prioritization": False,
         }
-        self.compress_observations = False
+        self.store_buffer_in_checkpoints = False
         self.training_intensity = None
         self.optimization = {
             "actor_learning_rate": 3e-4,
@@ -83,21 +82,26 @@ class SACConfig(TrainerConfig):
             "entropy_learning_rate": 3e-4,
         }
         self.grad_clip = None
-        # Update the replay buffer with this many samples at once. Note that this
-        # setting applies per-worker if num_workers > 1.
-        self.rollout_fragment_length = 1
-        self.train_batch_size = 256
         self.target_network_update_freq = 0
 
-        self.store_buffer_in_checkpoints = False
-        self.worker_side_prioritization = False
-        # Prevent reporting frequency from going lower than this time span.
+        # .rollout()
+        self.rollout_fragment_length = 1
+        self.compress_observations = False
+
+        # .training()
+        self.train_batch_size = 256
+
+        # .reporting()
         self.min_time_s_per_reporting = 1
+        self.min_sample_timesteps_per_reporting = 100
+        # __sphinx_doc_end__
+        # fmt: on
 
         self._deterministic_loss = False
         self._use_beta_distribution = False
-        # __sphinx_doc_end__
-        # fmt: on
+
+        self.use_state_preprocessor = DEPRECATED_VALUE
+        self.worker_side_prioritization = DEPRECATED_VALUE
 
     @override(TrainerConfig)
     def training(
@@ -110,7 +114,6 @@ class SACConfig(TrainerConfig):
         initial_alpha: Optional[float] = None,
         target_entropy: Optional[Union[str, float]] = None,
         n_step: Optional[int] = None,
-        worker_side_prioritization: Optional[bool] = None,
         store_buffer_in_checkpoints: Optional[bool] = None,
         replay_buffer_config: Optional[Dict[str, Any]] = None,
         training_intensity: Optional[float] = None,
@@ -149,7 +152,6 @@ class SACConfig(TrainerConfig):
                 This is the inverse of reward scale, and will be optimized automatically.
             n_step: N-step target updates. If >1, sars' tuples in trajectories will be
                 postprocessed to become sa[discounted sum of R][s t+n] tuples.
-            worker_side_prioritization: Whether to compute replay priorities on the rollout workers.
             store_buffer_in_checkpoints: Set this to True, if you want the contents of your buffer(s) to be
                 stored in any saved checkpoints as well.
                 Warnings will be created if:
@@ -227,6 +229,7 @@ class SACConfig(TrainerConfig):
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
+
         if twin_q is not None:
             self.twin_q = twin_q
         if q_model_config is not None:
@@ -241,8 +244,6 @@ class SACConfig(TrainerConfig):
             self.target_entropy = target_entropy
         if n_step is not None:
             self.n_step = n_step
-        if worker_side_prioritization is not None:
-            self.worker_side_prioritization = worker_side_prioritization
         if store_buffer_in_checkpoints is not None:
             self.store_buffer_in_checkpoints = store_buffer_in_checkpoints
         if replay_buffer_config is not None:
@@ -294,6 +295,22 @@ class SACTrainer(DQNTrainer):
             deprecation_warning(old="config['use_state_preprocessor']", error=False)
             config["use_state_preprocessor"] = DEPRECATED_VALUE
 
+        if config.get("policy_model", DEPRECATED_VALUE) != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="config['policy_model']",
+                new="config['policy_model_config']",
+                error=False,
+            )
+            config["policy_model_config"] = config["policy_model"]
+
+        if config.get("Q_model", DEPRECATED_VALUE) != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="config['Q_model']",
+                new="config['q_model_config']",
+                error=False,
+            )
+            config["q_model_config"] = config["Q_model"]
+
         if config["grad_clip"] is not None and config["grad_clip"] <= 0.0:
             raise ValueError("`grad_clip` value must be > 0.0!")
 
@@ -316,14 +333,14 @@ class SACTrainer(DQNTrainer):
             return SACTFPolicy
 
 
-# Deprecated: Use ray.rllib.agents.sac.SACConfig instead!
+# Deprecated: Use ray.rllib.algorithms.sac.SACConfig instead!
 class _deprecated_default_config(dict):
     def __init__(self):
         super().__init__(SACConfig().to_dict())
 
     @Deprecated(
-        old="ray.rllib.agents.sac.sac.DEFAULT_CONFIG",
-        new="ray.rllib.agents.sac.sac.SACConfig(...)",
+        old="ray.rllib.algorithms.sac.sac.DEFAULT_CONFIG",
+        new="ray.rllib.algorithms.sac.sac.SACConfig(...)",
         error=False,
     )
     def __getitem__(self, item):

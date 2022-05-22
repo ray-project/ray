@@ -52,7 +52,7 @@ class TestRNNSAC(unittest.TestCase):
 
         # Test building an RNNSAC agent in all frameworks.
         for _ in framework_iterator(config, frameworks="torch"):
-            trainer = sac.RNNSACTrainer(config=config, env="CartPole-v0")
+            trainer = config.build(env="CartPole-v0")
             for i in range(num_iterations):
                 results = trainer.train()
                 print(results)

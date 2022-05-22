@@ -136,7 +136,7 @@ class TestSAC(unittest.TestCase):
                     if env == "CartPole-v0"
                     else None
                 )
-                trainer = sac.SACTrainer(config=config, env=env)
+                trainer = config.build(env=env)
                 for i in range(num_iterations):
                     results = trainer.train()
                     check_train_results(results)
@@ -247,7 +247,7 @@ class TestSAC(unittest.TestCase):
             config, frameworks=("tf", "torch"), session=True
         ):
             # Generate Trainer and get its default Policy object.
-            trainer = sac.SACTrainer(config=config, env=env)
+            trainer = config.build(env=env)
             policy = trainer.get_policy()
             p_sess = None
             if sess:
@@ -535,7 +535,7 @@ class TestSAC(unittest.TestCase):
         num_iterations = 1
 
         for _ in framework_iterator(config, with_eager_tracing=True):
-            trainer = sac.SACTrainer(env="nested", config=config)
+            trainer = config.build(env="nested")
             for _ in range(num_iterations):
                 results = trainer.train()
                 check_train_results(results)
