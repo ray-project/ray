@@ -124,8 +124,10 @@ class DDPGConfig(SimpleQConfig):
 
         # .rollouts()
         self.rollout_fragment_length = 1
-        self.worker_side_prioritization = False
         self.compress_observations = False
+
+        # Deprecated.
+        self.worker_side_prioritization = DEPRECATED_VALUE
 
     @override(TrainerConfig)
     def training(
@@ -148,7 +150,6 @@ class DDPGConfig(SimpleQConfig):
         use_huber: Optional[bool] = None,
         huber_threshold: Optional[float] = None,
         l2_reg: Optional[float] = None,
-        worker_side_prioritization: Optional[bool] = None,
         training_intensity: Optional[float] = None,
         **kwargs,
     ) -> "DDPGConfig":
@@ -190,7 +191,6 @@ class DDPGConfig(SimpleQConfig):
             use_huber: Conventionally, no need to clip gradients if using a huber loss
             huber_threshold: Threshold of a huber loss
             l2_reg: Weights for L2 regularization
-            worker_side_prioritization: Whether to compute priorities on workers.
             training_intensity: The intensity with which to update the model
                 (vs collecting samples from
                 the env). If None, uses the "natural" value of:
@@ -246,8 +246,6 @@ class DDPGConfig(SimpleQConfig):
             self.huber_threshold = huber_threshold
         if l2_reg is not None:
             self.l2_reg = l2_reg
-        if worker_side_prioritization is not None:
-            self.worker_side_prioritization = worker_side_prioritization
         if training_intensity is not None:
             self.training_intensity = training_intensity
 

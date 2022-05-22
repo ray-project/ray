@@ -32,8 +32,8 @@ class OffPolicyEstimator:
         self.gamma = gamma
         self.new_estimates = []
 
-    @DeveloperAPI
     @classmethod
+    @DeveloperAPI
     def create_from_io_context(cls, ioctx: IOContext) -> "OffPolicyEstimator":
         """Creates an off-policy estimator from an IOContext object.
 
