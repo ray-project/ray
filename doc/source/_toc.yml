@@ -15,7 +15,13 @@ parts:
           - file: data/getting-started
           - file: data/key-concepts
           - file: data/user-guide
-          - file: data/examples/big_data_ingestion
+          - file: data/examples/index
+            sections:
+              - file: data/examples/nyc_taxi_basic_processing
+                title: Processing the NYC taxi dataset
+              - file: data/examples/big_data_ingestion
+                title: Large-scale ML Ingest
+          - file: data/faq
           - file: data/package-ref
           - file: data/integrations
 
@@ -115,19 +121,23 @@ parts:
         title: Ray Serve
         sections:
           - file: serve/getting_started
-          - file: serve/core-apis
-          - file: serve/http-servehandle
-          - file: serve/ml-models
-          - file: serve/deployment-graph
+          - file: serve/key-concepts
+          - file: serve/user-guide
             sections:
-              - file: serve/deployment-graph/deployment-graph-e2e-tutorial
-              - file: serve/deployment-graph/deployment-graph-user-guides
+              - file: serve/managing-deployments
+              - file: serve/handling-dependencies
+              - file: serve/http-guide
+              - file: serve/http-adapters
+              - file: serve/handle-guide
+              - file: serve/ml-models
+              - file: serve/deploying-serve
+              - file: serve/monitoring
+              - file: serve/performance
+              - file: serve/deployment-graph
                 sections:
-                   - file: serve/deployment-graph/chain_nodes_same_class_different_args
-                   - file: serve/deployment-graph/combine_two_nodes_with_passing_input_parallel
-          - file: serve/deployment
-          - file: serve/monitoring
-          - file: serve/performance
+                  - file: serve/deployment-graph/deployment-graph-e2e-tutorial
+                  - file: serve/deployment-graph/chain_nodes_same_class_different_args
+                  - file: serve/deployment-graph/combine_two_nodes_with_passing_input_parallel
           - file: serve/architecture
           - file: serve/tutorials/index
           - file: serve/faq
@@ -168,11 +178,17 @@ parts:
             sections:
               - file: ray-air/key-concepts
               - file: ray-air/deployment
+              - file: ray-air/check-ingest
               - file: ray-air/examples/index
                 sections:
                   - file: ray-air/examples/analyze_tuning_results
                     title: "Analyze hyperparameter tuning results"
+                  - file: ray-air/examples/rl_serving_example
+                  - file: ray-air/examples/upload_to_comet_ml
+                  - file: ray-air/examples/upload_to_wandb
                   - file: ray-air/examples/lightgbm_example
+                  - file: ray-air/examples/rl_online_example
+                  - file: ray-air/examples/rl_offline_example
                   - file: ray-air/examples/sklearn_example
                   - file: ray-air/examples/xgboost_example
                   - file: ray-air/examples/huggingface_text_classification

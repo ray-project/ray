@@ -88,13 +88,13 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         CRayStatus Interrupted(const c_string &msg)
 
         @staticmethod
-        CRayStatus IntentionalSystemExit()
+        CRayStatus IntentionalSystemExit(const c_string &msg)
 
         @staticmethod
-        CRayStatus UnexpectedSystemExit()
+        CRayStatus UnexpectedSystemExit(const c_string &msg)
 
         @staticmethod
-        CRayStatus CreationTaskError()
+        CRayStatus CreationTaskError(const c_string &msg)
 
         @staticmethod
         CRayStatus NotFound()
