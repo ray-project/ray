@@ -25,12 +25,11 @@ class TestTD3(unittest.TestCase):
 
     def test_td3_compilation(self):
         """Test whether a TD3Trainer can be built with both frameworks."""
-        config = td3.TD3_DEFAULT_CONFIG.copy()
-        config["num_workers"] = 0  # Run locally.
+        config = td3.TD3Config()
 
         # Test against all frameworks.
         for _ in framework_iterator(config, with_eager_tracing=True):
-            trainer = td3.TD3Trainer(config=config, env="Pendulum-v1")
+            trainer = config.build(env="Pendulum-v1")
             num_iterations = 1
             for i in range(num_iterations):
                 results = trainer.train()
@@ -41,15 +40,22 @@ class TestTD3(unittest.TestCase):
 
     def test_td3_exploration_and_with_random_prerun(self):
         """Tests TD3's Exploration (w/ random actions for n timesteps)."""
-        config = td3.TD3_DEFAULT_CONFIG.copy()
-        config["num_workers"] = 0  # Run locally.
+        config = td3.TD3Config().envoronment(env="Pendulum-v1")
+        random_init_exploration_config = {
+            # Act randomly at beginning ...
+            "random_timesteps": 30,
+            # Then act very closely to deterministic actions thereafter.
+            "stddev": 0.001,
+            "initial_scale": 0.001,
+            "final_scale": 0.001,
+        }
         obs = np.array([0.0, 0.1, -0.1])
 
         # Test against all frameworks.
         for _ in framework_iterator(config, with_eager_tracing=True):
-            lcl_config = config.copy()
+            #lcl_config = config.copy()
             # Default GaussianNoise setup.
-            trainer = td3.TD3Trainer(config=lcl_config, env="Pendulum-v1")
+            trainer = config.build()
             # Setting explore=False should always return the same action.
             a_ = trainer.compute_single_action(obs, explore=False)
             check(trainer.get_policy().global_timestep, 1)
@@ -66,15 +72,8 @@ class TestTD3(unittest.TestCase):
             trainer.stop()
 
             # Check randomness at beginning.
-            lcl_config["exploration_config"] = {
-                # Act randomly at beginning ...
-                "random_timesteps": 30,
-                # Then act very closely to deterministic actions thereafter.
-                "stddev": 0.001,
-                "initial_scale": 0.001,
-                "final_scale": 0.001,
-            }
-            trainer = td3.TD3Trainer(config=lcl_config, env="Pendulum-v1")
+            config.exploration(exploration_config=random_init_exploration_config)
+            trainer = config.build()
             # ts=0 (get a deterministic action as per explore=False).
             deterministic_action = trainer.compute_single_action(obs, explore=False)
             check(trainer.get_policy().global_timestep, 1)
