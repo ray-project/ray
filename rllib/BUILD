@@ -791,7 +791,7 @@ py_test(
     name = "test_maddpg",
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
-    srcs = ["agents/maddpg/tests/test_maddpg.py"]
+    srcs = ["algorithms/maddpg/tests/test_maddpg.py"]
 )
 
 # MAMLTrainer

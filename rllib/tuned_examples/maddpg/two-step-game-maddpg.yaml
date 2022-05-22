@@ -1,4 +1,4 @@
-two-step-game-qmix-with-qmix-mixer:
+two-step-game-maddpg:
     env: ray.rllib.examples.env.two_step_game.TwoStepGame
     run: MADDPG
     stop:
