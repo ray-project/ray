@@ -116,7 +116,8 @@ class ExperimentAnalysis:
             # If only a mode was passed, use anonymous metric
             self.default_metric = DEFAULT_METRIC
 
-        self._local_base_dir = str(pathlib.Path(experiment_checkpoint_path).parents[1])
+        # get the <local_dir> from <local_dir>/<exp_name>/experiment_state.json
+        self._local_base_dir = pathlib.Path(latest_checkpoint[0]).parents[1]
 
         if not pd:
             logger.warning(
@@ -137,7 +138,9 @@ class ExperimentAnalysis:
         if not self._sync_config or not self._sync_config.upload_dir:
             return None
 
-        return local_path.replace(self._local_base_dir, self._sync_config.upload_dir)
+        return local_path.replace(
+            str(self._local_base_dir), self._sync_config.upload_dir
+        )
 
     def _get_latest_checkpoint(self, experiment_checkpoint_path: str) -> List[str]:
         if os.path.isdir(experiment_checkpoint_path):
@@ -661,7 +664,11 @@ class ExperimentAnalysis:
                 based on `mode`, and compare trials based on `mode=[min,max]`.
         """
         best_trial = self.get_best_trial(metric, mode, scope)
-        return best_trial.logdir if best_trial else None
+        return (
+            str(self._local_base_dir.joinpath(best_trial.rel_logdir))
+            if (best_trial and best_trial.rel_logdir)
+            else None
+        )
 
     def get_last_checkpoint(self, trial=None, metric="training_iteration", mode="max"):
         """Gets the last persistent checkpoint path of the provided trial,
@@ -756,12 +763,14 @@ class ExperimentAnalysis:
             }
 
     def _get_trial_paths(self) -> List[str]:
-        local_base_dir = pathlib.Path(self._local_base_dir)
         if self.trials:
             # Get the relative paths from the trials to allow
-            # for changes in the local_base_dir.
+            # for changes in the self._local_base_dir.
             _trial_paths = [
-                str(local_base_dir.joinpath(t.rel_logdir)) if t.rel_logdir else t.rel_logdir for t in self.trials
+                str(self._local_base_dir.joinpath(t.rel_logdir))
+                if t.rel_logdir
+                else t.rel_logdir
+                for t in self.trials
             ]
         else:
             logger.info(
@@ -771,10 +780,12 @@ class ExperimentAnalysis:
             )
 
             _trial_paths = [
-                str(local_base_dir.joinpath(checkpoint["rel_logdir"]))
-                if checkpoint["rel_logdir"] else checkpoint["rel_logdir"]
+                str(self._local_base_dir.joinpath(checkpoint["rel_logdir"]))
+                if checkpoint["rel_logdir"]
+                else checkpoint["rel_logdir"]
                 for checkpoint in self._checkpoints
             ]
+
             self.trials = []
             for experiment_state in self._experiment_states:
                 try:

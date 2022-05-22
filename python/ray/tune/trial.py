@@ -176,7 +176,7 @@ def create_logdir(dirname, local_dir):
     logdir.mkdir(parents=True, exist_ok=True)
     # Return also a relative path to ensure later changes
     # in the local_base_dir.
-    rel_logdir = logdir.relative_to(logdir.parents[1])
+    rel_logdir = logdir.relative_to(local_dir.parent)
     return str(logdir), str(rel_logdir)
 
 
@@ -214,9 +214,12 @@ class Trial:
         trainable_name: Name of the trainable object to be executed.
         config: Provided configuration dictionary with evaluated params.
         trial_id: Unique identifier for the trial.
-        local_dir: Local_dir as passed to tune.run.
+        local_dir: ``local_dir`` as passed to ``tune.run`` joined
+            with the name of the experiment.
         logdir: Directory where the trial logs are saved.
-        rel_logdir: Same as ``logdir``, but relative to the ``local_dir``.
+        rel_logdir: Same as ``logdir``, but relative to the parent of
+            the ``local_dir`` (equal to ``local_dir`` argument passed
+            to ``tune.run``).
         evaluated_params: Evaluated parameters by search algorithm,
         experiment_tag: Identifying trial name to show in the console
         status: One of PENDING, RUNNING, PAUSED, TERMINATED, ERROR/
