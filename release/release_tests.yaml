@@ -3506,11 +3506,11 @@
     type: sdk_command
     file_manager: sdk
 
-- name: dataset_shuffle_push_based_random_shuffle_1tb
+- name: dataset_shuffle_push_based_random_shuffle_100tb
   group: core-dataset-tests
   working_dir: nightly_tests
   legacy:
-    test_name: dataset_shuffle_push_based_random_shuffle_1tb
+    test_name: dataset_shuffle_push_based_random_shuffle_100tb
     test_suite: dataset_test
 
   stable: false
@@ -3523,9 +3523,9 @@
 
   run:
     timeout: 7200
-    script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
+    script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=200000 --partition-size=5e8 --shuffle
     wait_for_nodes:
-      num_nodes: 20
+      num_nodes: 100
     type: sdk_command
     file_manager: sdk
 

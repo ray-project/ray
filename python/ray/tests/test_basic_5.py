@@ -222,6 +222,7 @@ def test_generator_returns(ray_start_regular):
         range(num_returns)
     )
 
+
 def test_dynamic_generator(ray_start_regular):
     @ray.remote
     def dynamic_generator(num_returns):
@@ -229,6 +230,7 @@ def test_dynamic_generator(ray_start_regular):
             yield np.random.randint(
                 np.iinfo(np.int8).max, size=(100_000_000, 1), dtype=np.int8
             )
+
     gen = ray.get(dynamic_generator.remote(10))
     print(gen)
     for i, ref in enumerate(gen):

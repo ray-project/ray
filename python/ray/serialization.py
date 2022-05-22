@@ -124,7 +124,9 @@ class SerializationContext:
         def object_ref_generator_reducer(obj):
             return ObjectRefGenerator, (obj.refs,)
 
-        self._register_cloudpickle_reducer(ObjectRefGenerator, object_ref_generator_reducer)
+        self._register_cloudpickle_reducer(
+            ObjectRefGenerator, object_ref_generator_reducer
+        )
 
         serialization_addons.apply(self)
 
