@@ -240,7 +240,7 @@ class WarpFrame(gym.ObservationWrapper):
         return frame[:, :, None]
 
 
-@Deprecated(error="Use trajectory view API instead.")
+@Deprecated(error=False)
 class FrameStack(gym.Wrapper):
     def __init__(self, env, k):
         """Stack k last frames."""

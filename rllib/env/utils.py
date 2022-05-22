@@ -57,7 +57,7 @@ def _gym_env_creator(env_context: EnvContext, env_descriptor: str) -> gym.Env:
         raise EnvError(ERR_MSG_INVALID_ENV_DESCRIPTOR.format(env_descriptor))
 
 
-@Deprecated(error="No longer supported by gym.")
+@Deprecated(error=False)
 class VideoMonitor(wrappers.Monitor):
     # Same as original method, but doesn't use the StatsRecorder as it will
     # try to add up multi-agent rewards dicts, which throws errors.
