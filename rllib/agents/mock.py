@@ -79,7 +79,7 @@ class _MockTrainer(Trainer):
     @override(Trainer)
     def _get_env_id_and_creator(env_specifier, config):
         # No env to register.
-        pass
+        return None, None
 
     def set_info(self, info):
         self.info = info
