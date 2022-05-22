@@ -176,6 +176,12 @@ result = trainer.fit()
 latest_checkpoint = result.checkpoint
 ```
 
+To scale your training script, create a [Ray Cluster](deployment-guide) and increase the number of workers. If your cluster contains GPUs, add `"use_gpu": True` to your scaling config.
+
+```{code-block} python
+scaling_config={"num_workers": 8, "use_gpu": True}
+```
+
 ## Test the network on the test data
 
 Let's see how our model performs.
