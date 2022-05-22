@@ -15,8 +15,7 @@ python:
   conda_packages: [ ]
 
 post_build_cmds:
-  - pip uninstall -y ray || true
-  - pip install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - pip uninstall -y ray || true && pip install -U {{ env["RAY_WHEELS"] | default("ray") }}
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
   # Upgrade the XGBoost-Ray version in post build commands, otherwise it will be cached in the Anyscale Docker image.
   - echo {{ env["TIMESTAMP"] }}

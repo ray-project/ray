@@ -68,6 +68,7 @@ from ray.data.datasource.file_based_datasource import (
 from ray.data.row import TableRow
 from ray.data.aggregate import AggregateFn, Sum, Max, Min, Mean, Std
 from ray.data.random_access_dataset import RandomAccessDataset
+from ray.data.impl.table_block import VALUE_COL_NAME
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.block_batching import batch_blocks, BatchType
 from ray.data.impl.plan import ExecutionPlan, OneToOneStage, AllToAllStage
@@ -101,20 +102,56 @@ TensorflowFeatureTypeSpec = Union[
 
 @PublicAPI
 class Dataset(Generic[T]):
-    """Implements a distributed Arrow dataset.
+    """A Dataset is a distributed data collection for data loading and processing.
 
-    Datasets are implemented as a list of ``ObjectRef[Block]``. The block
-    also determines the unit of parallelism. The default block type is the
-    ``pyarrow.Table``. Arrow-incompatible objects are held in ``list`` blocks.
+    Datasets are implemented as a list of ``ObjectRef[Block]``, where each block
+    holds an ordered collection of items, representing a shard of the overall
+    data collection. The block can be either a ``pyarrow.Table``, or Python list.
+    The block also determines the unit of parallelism.
+
+    Datasets can be created in multiple ways: from synthetic data via ``range_*()``
+    APIs, from existing memory data via ``from_*()`` APIs, or from external storage
+    systems such as local disk, S3, HDFS etc. via the ``read_*()`` APIs. The
+    (potentially processed) Dataset can be saved back to external storage systems via
+    the ``write_*()`` APIs.
+
+    Examples:
+        >>> import ray
+        >>> # Create dataset from synthetic data.
+        >>> ds = ray.data.range(1000) # doctest: +SKIP
+        >>> # Create dataset from in-memory data.
+        >>> ds = ray.data.from_items( # doctest: +SKIP
+        ...     [{"col1": i, "col2": i * 2} for i in range(1000)])
+        >>> # Create dataset from external storage system.
+        >>> ds = ray.data.read_parquet("s3://bucket/path") # doctest: +SKIP
+        >>> # Save dataset back to external storage system.
+        >>> ds.write_csv("s3//bucket/output") # doctest: +SKIP
+
+    Datasets supports parallel processing at scale: transformations such as
+    :py:meth:`.map_batches()`, aggregations such as
+    :py:meth:`.min()`/:py:meth:`.max()`/:py:meth:`.mean()`, grouping via
+    :py:meth:`.groupby()`, shuffling operations such as :py:meth:`.sort()`,
+    :py:meth:`.random_shuffle()`, and :py:meth:`.repartition()`.
+
+    Examples:
+        >>> import ray
+        >>> ds = ray.data.range(1000) # doctest: +SKIP
+        >>> # Transform in parallel with map_batches().
+        >>> ds.map_batches(lambda batch: [v * 2 for v in batch]) # doctest: +SKIP
+        >>> # Compute max.
+        >>> ds.max() # doctest: +SKIP
+        >>> # Group the data.
+        >>> ds.groupby(lambda x: x % 3).count() # doctest: +SKIP
+        >>> # Shuffle this dataset randomly.
+        >>> ds.random_shuffle() # doctest: +SKIP
+        >>> # Sort it back in order.
+        >>> ds.sort() # doctest: +SKIP
 
     Since Datasets are just lists of Ray object refs, they can be passed
-    between Ray tasks and actors just like any other object. Datasets support
+    between Ray tasks and actors without incurring a copy. Datasets support
     conversion to/from several more featureful dataframe libraries
     (e.g., Spark, Dask, Modin, MARS), and are also compatible with distributed
     TensorFlow / PyTorch.
-
-    Dataset supports parallel transformations such as .map(), .map_batches(),
-    and simple repartition, but currently not aggregations and joins.
     """
 
     def __init__(
@@ -198,8 +235,8 @@ class Dataset(Generic[T]):
 
         def transform(block: Block) -> Iterable[Block]:
             DatasetContext._set_current(context)
-            block = BlockAccessor.for_block(block)
             output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
+            block = BlockAccessor.for_block(block)
             for row in block.iter_rows():
                 output_buffer.add(fn(row))
                 if output_buffer.has_next():
@@ -223,6 +260,9 @@ class Dataset(Generic[T]):
         **ray_remote_args,
     ) -> "Dataset[Any]":
         """Apply the given function to batches of records of this dataset.
+
+        The format of the data batch provided to ``fn`` can be controlled via the
+        ``batch_format`` argument, and the output of the UDF can be any batch type.
 
         This is a blocking operation.
 
@@ -270,10 +310,9 @@ class Dataset(Generic[T]):
                 blocks as batches. Defaults to a system-chosen batch size.
             compute: The compute strategy, either "tasks" (default) to use Ray
                 tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
-            batch_format: Specify "native" to use the native block format
-                (promotes Arrow to pandas), "pandas" to select
-                ``pandas.DataFrame`` as the batch format,
-                or "pyarrow" to select ``pyarrow.Table``.
+            batch_format: Specify "native" to use the native block format (promotes
+                tables to Pandas and tensors to NumPy), "pandas" to select
+                ``pandas.DataFrame``, or "pyarrow" to select `pyarrow.Table``.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
@@ -302,9 +341,7 @@ class Dataset(Generic[T]):
                 # bug where we include the entire base view on serialization.
                 view = block.slice(start, end, copy=batch_size is not None)
                 if batch_format == "native":
-                    # Always promote Arrow blocks to pandas for consistency.
-                    if isinstance(view, pa.Table) or isinstance(view, bytes):
-                        view = BlockAccessor.for_block(view).to_pandas()
+                    view = BlockAccessor.for_block(view).to_native()
                 elif batch_format == "pandas":
                     view = BlockAccessor.for_block(view).to_pandas()
                 elif batch_format == "pyarrow":
@@ -319,6 +356,7 @@ class Dataset(Generic[T]):
                 if not (
                     isinstance(applied, list)
                     or isinstance(applied, pa.Table)
+                    or isinstance(applied, np.ndarray)
                     or isinstance(applied, pd.core.frame.DataFrame)
                 ):
                     raise ValueError(
@@ -328,7 +366,7 @@ class Dataset(Generic[T]):
                         "The return type must be either list, "
                         "pandas.DataFrame, or pyarrow.Table"
                     )
-                output_buffer.add_block(applied)
+                output_buffer.add_batch(applied)
                 if output_buffer.has_next():
                     yield output_buffer.next()
 
@@ -354,8 +392,6 @@ class Dataset(Generic[T]):
         This is only supported for datasets convertible to pandas format.
         A function generating the new column values given the batch in pandas
         format must be specified.
-
-        This is a convenience wrapper over ``.map_batches()``.
 
         Examples:
             >>> import ray
@@ -667,6 +703,8 @@ class Dataset(Generic[T]):
                 )
             if isinstance(batch, pd.DataFrame):
                 return batch.sample(frac=fraction)
+            if isinstance(batch, np.ndarray):
+                return np.array([row for row in batch if random.random() <= fraction])
             raise ValueError(f"Unsupported batch type: {type(batch)}")
 
         return self.map_batches(process_batch)
@@ -698,8 +736,8 @@ class Dataset(Generic[T]):
                 number of records. This may drop records if they cannot be
                 divided equally among the splits.
             locality_hints: A list of Ray actor handles of size ``n``. The
-                system will try to co-locate the blocks of the ith dataset
-                with the ith actor to maximize data locality.
+                system will try to co-locate the blocks of the i-th dataset
+                with the i-th actor to maximize data locality.
 
         Returns:
             A list of ``n`` disjoint dataset splits.
@@ -2037,7 +2075,7 @@ class Dataset(Generic[T]):
         self,
         path: str,
         *,
-        column: str = "value",
+        column: str = VALUE_COL_NAME,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
@@ -2065,7 +2103,8 @@ class Dataset(Generic[T]):
             path: The path to the destination root directory, where npy
                 files will be written to.
             column: The name of the table column that contains the tensor to
-                be written. This defaults to "value".
+                be written. The default is ``"__value__"``, the column name that
+                Datasets uses for storing tensors in single-column tables.
             filesystem: The filesystem implementation to write to.
             try_create_dir: Try to create all directories in destination path
                 if True. Does nothing if all directories already exist.
@@ -2212,10 +2251,10 @@ class Dataset(Generic[T]):
                 current block during the scan.
             batch_size: Record batch size, or None to let the system pick.
             batch_format: The format in which to return each batch.
-                Specify "native" to use the current block format (promoting
-                Arrow to pandas automatically), "pandas" to
-                select ``pandas.DataFrame`` or "pyarrow" to select
-                ``pyarrow.Table``. Default is "native".
+                Specify "native" to use the native block format (promoting
+                tables to Pandas and tensors to NumPy), "pandas" to select
+                ``pandas.DataFrame``, or "pyarrow" to select ``pyarrow.Table``. Default
+                is "native".
             drop_last: Whether to drop the last batch if it's incomplete.
 
         Returns:
@@ -2737,8 +2776,9 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            column: The name of the column to convert to numpy, or None to
-                specify the entire row. Required for Arrow tables.
+            column: The name of the column to convert to numpy, or None to specify the
+            entire row. If not specified for Arrow or Pandas blocks, each returned
+            future will represent a dict of column ndarrays.
 
         Returns:
             A list of remote NumPy ndarrays created from this dataset.
@@ -3159,8 +3199,8 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
             context._unregister_cloudpickle_reducer(ray.remote_function.RemoteFunction)
         return serialized
 
-    @DeveloperAPI
     @staticmethod
+    @DeveloperAPI
     def deserialize_lineage(serialized_ds: bytes) -> "Dataset":
         """
         Deserialize the provided lineage-serialized Dataset.

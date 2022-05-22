@@ -93,11 +93,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void ConnectToRaylet();
 
   /// Gracefully disconnect the worker from Raylet.
-  /// If this function is called during shutdown, Raylet will treat it as an intentional
-  /// disconnect.
+  /// Once the method is returned, it is guaranteed that raylet is
+  /// notified that this worker is disconnected from a raylet.
   ///
+  /// \param exit_type The reason why this worker process is disconnected.
+  /// \param exit_detail The detailed reason for a given exit.
+  /// \param creation_task_exception_pb_bytes It is given when the worker is
+  /// disconnected because the actor is failed due to its exception in its init method.
   /// \return Void.
-  void Disconnect(rpc::WorkerExitType exit_type = rpc::WorkerExitType::INTENDED_EXIT,
+  void Disconnect(const rpc::WorkerExitType &exit_type,
+                  const std::string &exit_detail,
                   const std::shared_ptr<LocalMemoryBuffer>
                       &creation_task_exception_pb_bytes = nullptr);
 
@@ -848,18 +853,32 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       int64_t depth,
       const std::string &serialized_runtime_env_info,
       const std::string &concurrency_group_name = "");
-  void SetCurrentTaskId(const TaskID &task_id, uint64_t attempt_number);
+  void SetCurrentTaskId(const TaskID &task_id,
+                        uint64_t attempt_number,
+                        const std::string &task_name);
 
   void SetActorId(const ActorID &actor_id);
 
   /// Run the io_service_ event loop. This should be called in a background thread.
   void RunIOService();
 
-  /// (WORKER mode only) Exit the worker. This is the entrypoint used to shutdown a
-  /// worker.
-  void Exit(rpc::WorkerExitType exit_type,
+  /// (WORKER mode only) Gracefully exit the worker. `Graceful` means the worker will
+  /// exit when it drains all tasks and cleans all owned objects.
+  ///
+  /// \param exit_type The reason why this worker process is disconnected.
+  /// \param exit_detail The detailed reason for a given exit.
+  /// \param creation_task_exception_pb_bytes It is given when the worker is
+  /// disconnected because the actor is failed due to its exception in its init method.
+  void Exit(const rpc::WorkerExitType exit_type,
+            const std::string &detail,
             const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes =
                 nullptr);
+
+  /// Forcefully exit the worker. `Force` means it will exit actor without draining
+  /// or cleaning any resources.
+  /// \param exit_type The reason why this worker process is disconnected.
+  /// \param exit_detail The detailed reason for a given exit.
+  void ForceExit(const rpc::WorkerExitType exit_type, const std::string &detail);
 
   /// Register this worker or driver to GCS.
   void RegisterToGcs();
@@ -1064,6 +1083,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// are multiple threads, they will have a thread-local task ID stored in the
   /// worker context.
   TaskID main_thread_task_id_ GUARDED_BY(mutex_);
+
+  std::string main_thread_task_name_ GUARDED_BY(mutex_);
 
   /// Event loop where the IO events are handled. e.g. async GCS operations.
   instrumented_io_context io_service_;
