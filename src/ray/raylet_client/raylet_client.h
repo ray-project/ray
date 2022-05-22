@@ -53,7 +53,8 @@ class PinObjectsInterface {
   virtual void PinObjectIDs(
       const rpc::Address &caller_address,
       const std::vector<ObjectID> &object_ids,
-      const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) = 0;
+      const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback,
+      bool dynamic_return = false) = 0;
 
   virtual ~PinObjectsInterface(){};
 };
@@ -451,7 +452,8 @@ class RayletClient : public RayletClientInterface {
   void PinObjectIDs(
       const rpc::Address &caller_address,
       const std::vector<ObjectID> &object_ids,
-      const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override;
+      const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback,
+      bool dynamic_return = false) override;
 
   void ShutdownRaylet(
       const NodeID &node_id,

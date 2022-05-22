@@ -33,6 +33,7 @@ struct CoreWorkerOptions {
   // Callback that must be implemented and provided by the language-specific worker
   // frontend to execute tasks and return their results.
   using TaskExecutionCallback = std::function<Status(
+      const rpc::Address &caller_address,
       TaskType task_type,
       const std::string task_name,
       const RayFunction &ray_function,

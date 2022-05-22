@@ -216,7 +216,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus SealOwned(const CObjectID &object_id, c_bool pin_object,
                              const unique_ptr[CAddress] &owner_address)
         CRayStatus SealExisting(const CObjectID &object_id, c_bool pin_object,
-                                const unique_ptr[CAddress] &owner_address)
+                                const unique_ptr[CAddress] &owner_address,
+                                c_bool dynamic_return = false)
         CRayStatus Get(const c_vector[CObjectID] &ids, int64_t timeout_ms,
                        c_vector[shared_ptr[CRayObject]] *results)
         CRayStatus GetIfLocal(
@@ -261,6 +262,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         unordered_map[c_string, c_vector[uint64_t]] GetActorCallStats() const
 
+        CObjectID AllocateDynamicReturnId();
+
     cdef cppclass CCoreWorkerOptions "ray::core::CoreWorkerOptions":
         CWorkerType worker_type
         CLanguage language
@@ -279,6 +282,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_string stdout_file
         c_string stderr_file
         (CRayStatus(
+            const CAddress &caller_address,
             CTaskType task_type,
             const c_string name,
             const CRayFunction &ray_function,

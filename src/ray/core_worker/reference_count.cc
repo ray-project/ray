@@ -182,6 +182,18 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
                                       const absl::optional<NodeID> &pinned_at_raylet_id) {
   RAY_LOG(DEBUG) << "Adding owned object " << object_id;
   absl::MutexLock lock(&mutex_);
+  AddOwnedObjectInternal(object_id, inner_ids, owner_address, call_site, object_size,
+      is_reconstructable, add_local_ref, pinned_at_raylet_id);
+}
+
+void ReferenceCounter::AddOwnedObjectInternal(const ObjectID &object_id,
+                                      const std::vector<ObjectID> &inner_ids,
+                                      const rpc::Address &owner_address,
+                                      const std::string &call_site,
+                                      const int64_t object_size,
+                                      bool is_reconstructable,
+                                      bool add_local_ref,
+                                      const absl::optional<NodeID> &pinned_at_raylet_id) {
   RAY_CHECK(object_id_refs_.count(object_id) == 0)
       << "Tried to create an owned object that already exists: " << object_id;
   // If the entry doesn't exist, we initialize the direct reference count to zero
@@ -458,7 +470,9 @@ bool ReferenceCounter::GetOwnerInternal(const ObjectID &object_id,
   }
 
   if (it->second.owner_address) {
-    *owner_address = *it->second.owner_address;
+    if (owner_address) {
+      *owner_address = *it->second.owner_address;
+    }
     return true;
   } else {
     return false;
@@ -685,10 +699,14 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
     // The object is still in scope. Track the raylet location until the object
     // has gone out of scope or the raylet fails, whichever happens first.
     if (it->second.pinned_at_raylet_id.has_value()) {
-      RAY_LOG(INFO) << "Updating primary location for object " << object_id << " to node "
-                    << raylet_id << ", but it already has a primary location "
-                    << *it->second.pinned_at_raylet_id
-                    << ". This should only happen during reconstruction";
+      if (it->second.pinned_at_raylet_id.value_or(NodeID::Nil()) == raylet_id) {
+        return;
+      } else {
+        RAY_LOG(INFO) << "Updating primary location for object " << object_id << " to node "
+                      << raylet_id << ", but it already has a primary location "
+                      << *it->second.pinned_at_raylet_id
+                      << ". This should only happen during reconstruction";
+      }
     }
     // Only the owner tracks the location.
     RAY_CHECK(it->second.owned_by_us);
@@ -1000,6 +1018,32 @@ void ReferenceCounter::AddNestedObjectIds(const ObjectID &object_id,
                                           const rpc::WorkerAddress &owner_address) {
   absl::MutexLock lock(&mutex_);
   AddNestedObjectIdsInternal(object_id, inner_ids, owner_address);
+}
+
+void ReferenceCounter::AddDynamicReturn(const ObjectID &object_id,
+                      const ObjectID &generator_object_id) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it != object_id_refs_.end()) {
+    return;
+  }
+
+  auto generator_it = object_id_refs_.find(generator_object_id);
+  if (generator_it == object_id_refs_.end()) {
+    return;
+  }
+  RAY_CHECK(generator_it->second.owned_by_us);
+
+  AddOwnedObjectInternal(object_id,
+                 /*inner_ids=*/{},
+                 *generator_it->second.owner_address,
+                 generator_it->second.call_site,
+                 -1,
+                 generator_it->second.is_reconstructable,
+                 /*add_local_ref=*/true,
+                 generator_it->second.pinned_at_raylet_id);
+  AddNestedObjectIdsInternal(
+      generator_object_id, {object_id}, rpc_address_);
 }
 
 void ReferenceCounter::AddNestedObjectIdsInternal(

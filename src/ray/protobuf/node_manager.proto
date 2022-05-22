@@ -167,6 +167,7 @@ message PinObjectIDsRequest {
   Address owner_address = 1;
   // ObjectIDs to pin.
   repeated bytes object_ids = 2;
+  bool dynamic_return = 3;
 }
 
 message PinObjectIDsReply {}

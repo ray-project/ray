@@ -169,6 +169,7 @@ message WorkerObjectEvictionSubMessage {
   bytes object_id = 2;
   // Address of the subscriber.
   Address subscriber_address = 3;
+  bool dynamic_return = 4;
 }
 
 message WorkerRefRemovedSubMessage {

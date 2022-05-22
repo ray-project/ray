@@ -84,7 +84,8 @@ class LocalObjectManager {
   /// \param owner_address The owner of the objects to be pinned.
   void PinObjectsAndWaitForFree(const std::vector<ObjectID> &object_ids,
                                 std::vector<std::unique_ptr<RayObject>> &&objects,
-                                const rpc::Address &owner_address);
+                                const rpc::Address &owner_address,
+                                bool dynamic_return);
 
   /// Spill objects as much as possible as fast as possible up to the max throughput.
   ///

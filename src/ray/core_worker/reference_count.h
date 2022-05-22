@@ -337,6 +337,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
                           const std::vector<ObjectID> &inner_ids,
                           const rpc::WorkerAddress &owner_address) LOCKS_EXCLUDED(mutex_);
 
+  void AddDynamicReturn(const ObjectID &object_id,
+                        const ObjectID &generator_object_id) LOCKS_EXCLUDED(mutex_);
+
   /// Update the pinned location of an object stored in plasma.
   ///
   /// \param[in] object_id The object to update.
@@ -770,6 +773,15 @@ class ReferenceCounter : public ReferenceCounterInterface,
                                   const std::vector<ObjectID> &inner_ids,
                                   const rpc::WorkerAddress &owner_address)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  void AddOwnedObjectInternal(const ObjectID &object_id,
+                                      const std::vector<ObjectID> &inner_ids,
+                                      const rpc::Address &owner_address,
+                                      const std::string &call_site,
+                                      const int64_t object_size,
+                                      bool is_reconstructable,
+                                      bool add_local_ref,
+                                      const absl::optional<NodeID> &pinned_at_raylet_id) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Populates the table with the ObjectID that we were or are still
   /// borrowing. The table also includes any IDs that we discovered were

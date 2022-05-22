@@ -78,18 +78,11 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
   }
 
   auto accept_callback = [this, reply, task_spec, resource_ids](
-                             rpc::SendReplyCallback send_reply_callback) {
+                             rpc::SendReplyCallback send_reply_callback) mutable {
     if (task_spec.GetMessage().skip_execution()) {
       send_reply_callback(Status::OK(), nullptr, nullptr);
       return;
     }
-
-    auto num_returns = task_spec.NumReturns();
-    if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) {
-      // Decrease to account for the dummy object id.
-      num_returns--;
-    }
-    RAY_CHECK(num_returns >= 0);
 
     std::vector<std::shared_ptr<RayObject>> return_objects;
     bool is_application_level_error = false;
@@ -100,21 +93,28 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
                                 &is_application_level_error);
     reply->set_is_application_level_error(is_application_level_error);
 
+    auto num_returns = task_spec.NumReturns();
+    if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) {
+      // Decrease to account for the dummy object id.
+      num_returns--;
+    }
+    RAY_CHECK(num_returns >= 0);
+
     bool objects_valid = return_objects.size() == num_returns;
     if (objects_valid) {
-      for (size_t i = 0; i < return_objects.size(); i++) {
+      for (size_t i = return_objects.size(); i >= 1; i--) {
         auto return_object = reply->add_return_objects();
-        ObjectID id = ObjectID::FromIndex(task_spec.TaskId(), /*index=*/i + 1);
+        ObjectID id = ObjectID::FromIndex(task_spec.TaskId(), /*index=*/i);
         return_object->set_object_id(id.Binary());
 
-        if (!return_objects[i]) {
+        if (!return_objects[i - 1]) {
           // This should only happen if the local raylet died. Caller should
           // retry the task.
           RAY_LOG(WARNING) << "Failed to create task return object " << id
                            << " in the object store, exiting.";
           QuickExit();
         }
-        const auto &result = return_objects[i];
+        const auto &result = return_objects[i - 1];
         return_object->set_size(result->GetSize());
         if (result->GetData() != nullptr && result->GetData()->IsPlasmaBuffer()) {
           return_object->set_in_plasma(true);

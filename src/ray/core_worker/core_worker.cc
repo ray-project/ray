@@ -1060,7 +1060,8 @@ Status CoreWorker::SealOwned(const ObjectID &object_id,
 
 Status CoreWorker::SealExisting(const ObjectID &object_id,
                                 bool pin_object,
-                                const std::unique_ptr<rpc::Address> &owner_address) {
+                                const std::unique_ptr<rpc::Address> &owner_address,
+                                bool dynamic_return) {
   RAY_RETURN_NOT_OK(plasma_store_provider_->Seal(object_id));
   if (pin_object) {
     // Tell the raylet to pin the object **after** it is created.
@@ -1075,7 +1076,8 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
             RAY_LOG(ERROR) << "Failed to release ObjectID (" << object_id
                            << "), might cause a leak in plasma.";
           }
-        });
+        },
+        dynamic_return);
   } else {
     RAY_RETURN_NOT_OK(plasma_store_provider_->Release(object_id));
     reference_counter_->FreePlasmaObjects({object_id});
@@ -2188,7 +2190,7 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
   return Status::OK();
 }
 
-Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
+Status CoreWorker::ExecuteTask(TaskSpecification &task_spec,
                                const std::shared_ptr<ResourceMappingType> &resource_ids,
                                std::vector<std::shared_ptr<RayObject>> *return_objects,
                                ReferenceCounter::ReferenceTableProto *borrowed_refs,
@@ -2272,6 +2274,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   }
 
   status = options_.task_execution_callback(
+      task_spec.CallerAddress(),
       task_type,
       task_spec.GetName(),
       func,
@@ -2285,6 +2288,12 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
       is_application_level_error,
       defined_concurrency_groups,
       name_of_concurrency_group_to_execute);
+
+  ObjectIDIndexType num_returns = worker_context_.GetNextPutIndex();
+  RAY_LOG(INFO) << "num put returns " << num_returns << " num returns prev" << task_spec.NumReturns();
+  if (task_spec.NumReturns() + 1 != num_returns) {
+    task_spec.GetMutableMessage().set_num_returns(num_returns - 1);
+  }
 
   // Get the reference counts for any IDs that we borrowed during this task,
   // remove the local reference for these IDs, and return the ref count info to
@@ -2356,6 +2365,14 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   return status;
 }
 
+ObjectID CoreWorker::AllocateDynamicReturnId() {
+  const auto &task_spec = worker_context_.GetCurrentTask();
+  const auto return_id = ObjectID::FromIndex(task_spec->TaskId(), worker_context_.GetNextPutIndex());
+  AddLocalReference(return_id, "<temporary (ObjectRefGenerator)>");
+  reference_counter_->AddBorrowedObject(return_id, ObjectID::Nil(), worker_context_.GetCurrentTask()->CallerAddress());
+  return return_id;
+}
+
 Status CoreWorker::SealReturnObject(const ObjectID &return_id,
                                     std::shared_ptr<RayObject> return_object) {
   RAY_LOG(DEBUG) << "Sealing return object " << return_id;
@@ -2364,8 +2381,10 @@ Status CoreWorker::SealReturnObject(const ObjectID &return_id,
   RAY_CHECK(!options_.is_local_mode);
   std::unique_ptr<rpc::Address> caller_address =
       std::make_unique<rpc::Address>(worker_context_.GetCurrentTask()->CallerAddress());
+
+  bool dynamic_return = return_id.ObjectIndex() > worker_context_.GetCurrentTask()->NumReturns();
   if (return_object->GetData() != nullptr && return_object->GetData()->IsPlasmaBuffer()) {
-    status = SealExisting(return_id, /*pin_object=*/true, std::move(caller_address));
+    status = SealExisting(return_id, /*pin_object=*/true, std::move(caller_address), dynamic_return);
     if (!status.ok()) {
       RAY_LOG(FATAL) << "Failed to seal object " << return_id
                      << " in store: " << status.message();
@@ -2426,7 +2445,7 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
 }
 
 std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
-    const TaskSpecification &task_spec, const ActorID &actor_id) {
+    TaskSpecification &task_spec, const ActorID &actor_id) {
   auto resource_ids = std::make_shared<ResourceMappingType>();
   auto return_objects = std::vector<std::shared_ptr<RayObject>>();
   auto borrowed_refs = ReferenceCounter::ReferenceTableProto();
@@ -2764,6 +2783,11 @@ void CoreWorker::ProcessSubscribeForObjectEviction(
                   << worker_context_.GetWorkerID() << ". The RPC will be no-op.";
     unpin_object(object_id);
     return;
+  }
+
+  if (message.dynamic_return()) {
+    auto generator_id = ObjectID::FromIndex(object_id.TaskId(), 1);
+    reference_counter_->AddDynamicReturn(object_id, generator_id);
   }
 
   // Returns true if the object was present and the callback was added. It might have

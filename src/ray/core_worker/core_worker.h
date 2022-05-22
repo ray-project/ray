@@ -344,7 +344,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status SealExisting(const ObjectID &object_id,
                       bool pin_object,
-                      const std::unique_ptr<rpc::Address> &owner_address = nullptr);
+                      const std::unique_ptr<rpc::Address> &owner_address = nullptr,
+                      bool dynamic_return = false);
 
   /// Get a list of objects from the object store. Objects that failed to be retrieved
   /// will be returned as nullptrs.
@@ -819,6 +820,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// interface with language bindings.
   std::unordered_map<std::string, std::vector<uint64_t>> GetActorCallStats() const;
 
+  ObjectID AllocateDynamicReturnId();
+
  private:
   static rpc::RuntimeEnv OverrideRuntimeEnv(
       const rpc::RuntimeEnv &child, const std::shared_ptr<rpc::RuntimeEnv> parent);
@@ -931,7 +934,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///                     arguments and recursively, any object IDs that were
   ///                     contained in those objects.
   /// \return Status.
-  Status ExecuteTask(const TaskSpecification &task_spec,
+  Status ExecuteTask(TaskSpecification &task_spec,
                      const std::shared_ptr<ResourceMappingType> &resource_ids,
                      std::vector<std::shared_ptr<RayObject>> *return_objects,
                      ReferenceCounter::ReferenceTableProto *borrowed_refs,
@@ -946,7 +949,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param spec[in] task_spec Task specification.
   std::vector<rpc::ObjectReference> ExecuteTaskLocalMode(
-      const TaskSpecification &task_spec, const ActorID &actor_id = ActorID::Nil());
+      TaskSpecification &task_spec, const ActorID &actor_id = ActorID::Nil());
 
   /// KillActor API for a local mode.
   Status KillActorLocalMode(const ActorID &actor_id);

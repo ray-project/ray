@@ -2382,7 +2382,8 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
   }
   // Wait for the object to be freed by the owner, which keeps the ref count.
   local_object_manager_.PinObjectsAndWaitForFree(
-      object_ids, std::move(results), owner_address);
+      object_ids, std::move(results), owner_address,
+      request.dynamic_return());
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

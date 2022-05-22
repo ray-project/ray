@@ -37,6 +37,7 @@ from ray._raylet import (
     MessagePackSerializer,
     MessagePackSerializedObject,
     RawSerializedObject,
+    ObjectRefGenerator,
 )
 from ray import serialization_addons
 
@@ -119,6 +120,12 @@ class SerializationContext:
             )
 
         self._register_cloudpickle_reducer(ray.ObjectRef, object_ref_reducer)
+
+        def object_ref_generator_reducer(obj):
+            return ObjectRefGenerator, (obj.refs,)
+
+        self._register_cloudpickle_reducer(ObjectRefGenerator, object_ref_generator_reducer)
+
         serialization_addons.apply(self)
 
     def _register_cloudpickle_reducer(self, cls, reducer):

@@ -231,20 +231,30 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   // reference holders that are already scheduled at the raylet can retrieve
   // these objects through plasma.
   absl::flat_hash_set<ObjectID> store_in_plasma_ids = {};
+  TaskSpecification spec;
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
     RAY_CHECK(it != submissible_tasks_.end())
         << "Tried to complete task that was not pending " << task_id;
+    spec = it->second.spec;
     if (it->second.num_successful_executions > 0) {
       store_in_plasma_ids = it->second.reconstructable_return_ids;
     }
   }
 
   std::vector<ObjectID> direct_return_ids;
+  std::vector<ObjectID> dynamic_return_ids;
   for (int i = 0; i < reply.return_objects_size(); i++) {
     const auto &return_object = reply.return_objects(i);
     ObjectID object_id = ObjectID::FromBinary(return_object.object_id());
+    RAY_LOG(DEBUG) << "Task return object " << i << " object ID " << object_id;
+
+    if (static_cast<size_t>(i) >= spec.NumReturns()) {
+      dynamic_return_ids.push_back(object_id);
+      auto generator_id = ObjectID::FromIndex(object_id.TaskId(), 1);
+      reference_counter_->AddDynamicReturn(object_id, generator_id);
+    }
     reference_counter_->UpdateObjectSize(object_id, return_object.size());
     RAY_LOG(DEBUG) << "Task return object " << object_id << " has size "
                    << return_object.size();
@@ -299,7 +309,10 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     }
   }
 
-  TaskSpecification spec;
+  if (static_cast<size_t>(reply.return_objects_size()) > spec.NumReturns()) {
+    spec.GetMutableMessage().set_num_returns(reply.return_objects_size());
+  }
+
   bool release_lineage = true;
   int64_t min_lineage_bytes_to_evict = 0;
   {
@@ -307,7 +320,10 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     auto it = submissible_tasks_.find(task_id);
     RAY_CHECK(it != submissible_tasks_.end())
         << "Tried to complete task that was not pending " << task_id;
-    spec = it->second.spec;
+
+    for (const auto &dynamic_return_id : dynamic_return_ids) {
+      it->second.reconstructable_return_ids.insert(dynamic_return_id);
+    }
 
     // Release the lineage for any non-plasma return objects.
     for (const auto &direct_return_id : direct_return_ids) {

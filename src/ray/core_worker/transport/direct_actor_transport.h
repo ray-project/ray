@@ -50,7 +50,7 @@ namespace core {
 class CoreWorkerDirectTaskReceiver {
  public:
   using TaskHandler =
-      std::function<Status(const TaskSpecification &task_spec,
+      std::function<Status(TaskSpecification &task_spec,
                            const std::shared_ptr<ResourceMappingType> resource_ids,
                            std::vector<std::shared_ptr<RayObject>> *return_objects,
                            ReferenceCounter::ReferenceTableProto *borrower_refs,

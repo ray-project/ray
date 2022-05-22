@@ -151,6 +151,16 @@ include "includes/libcoreworker.pxi"
 include "includes/global_state_accessor.pxi"
 include "includes/metric.pxi"
 
+
+class ObjectRefGenerator:
+    def __init__(self, refs):
+        self.refs = refs
+
+    def __iter__(self):
+        while self.refs:
+            yield self.refs.pop(0)
+
+
 # Expose GCC & Clang macro to report
 # whether C++ optimizations were enabled during compilation.
 OPTIMIZED = __OPTIMIZE__
@@ -482,6 +492,7 @@ cdef raise_if_dependency_failed(arg):
 
 
 cdef execute_task(
+        const CAddress &caller_address,
         CTaskType task_type,
         const c_string name,
         const CRayFunction &ray_function,
@@ -733,8 +744,25 @@ cdef execute_task(
 
             # Store the outputs in the object store.
             with core_worker.profile_event(b"task:store_outputs"):
+                if c_return_ids.size() == 1 and inspect.isgenerator(outputs):
+                    dynamic_return_ids = []
+                else:
+                    dynamic_return_ids = None
                 core_worker.store_task_outputs(
-                    worker, outputs, c_return_ids, returns)
+                    worker, outputs, c_return_ids,
+                    returns,
+                    dynamic_return_ids)
+                if dynamic_return_ids:
+                    dynamic_return_refs = []
+                    for dynamic_return_id in dynamic_return_ids:
+
+                        dynamic_return_refs.append(ObjectRef(dynamic_return_id,
+                                caller_address.SerializeAsString(),
+                                skip_adding_local_ref=True))
+                    core_worker.store_task_outputs(
+                        worker, [ObjectRefGenerator(dynamic_return_refs)], c_return_ids,
+                        returns,
+                        None)
         except Exception as error:
             # If the debugger is enabled, drop into the remote pdb here.
             if "RAY_PDB" in os.environ:
@@ -759,7 +787,7 @@ cdef execute_task(
             for _ in range(c_return_ids.size()):
                 errors.append(failure_object)
             core_worker.store_task_outputs(
-                worker, errors, c_return_ids, returns)
+                worker, errors, c_return_ids, returns, dynamic_return_ids=None)
             ray._private.utils.push_error_to_driver(
                 worker,
                 ray_constants.TASK_PUSH_ERROR,
@@ -788,6 +816,7 @@ cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
         <uint8_t*>py_bytes, len(py_bytes), True)
 
 cdef CRayStatus task_execution_handler(
+        const CAddress &caller_address,
         CTaskType task_type,
         const c_string task_name,
         const CRayFunction &ray_function,
@@ -806,7 +835,7 @@ cdef CRayStatus task_execution_handler(
             try:
                 # The call to execute_task should never raise an exception. If
                 # it does, that indicates that there was an internal error.
-                execute_task(task_type, task_name, ray_function, c_resources,
+                execute_task(caller_address, task_type, task_name, ray_function, c_resources,
                              c_args, c_arg_refs, c_return_ids,
                              debugger_breakpoint, returns,
                              is_application_level_error,
@@ -2024,27 +2053,42 @@ cdef class CoreWorker:
 
     cdef store_task_outputs(
             self, worker, outputs, const c_vector[CObjectID] return_ids,
-            c_vector[shared_ptr[CRayObject]] *returns):
+            c_vector[shared_ptr[CRayObject]] *returns,
+            dynamic_return_ids):
         cdef:
             CObjectID return_id
             size_t data_size
             shared_ptr[CBuffer] metadata
             c_vector[CObjectID] contained_id
             int64_t task_output_inlined_bytes
+            shared_ptr[CRayObject] *return_obj
 
         if return_ids.size() == 0:
             return
 
         n_returns = return_ids.size()
-        returns.resize(n_returns)
         task_output_inlined_bytes = 0
+        if returns.size() < n_returns:
+            returns.resize(n_returns)
         for i, output in enumerate(outputs):
-            if i >= n_returns:
+            # Allocate return ID, add to list to return.
+            # Return these to the owner.
+            # Owner registers in ref counting.
+            # Owner stores an ObjectRefGenerator as the return
+            # value.
+            if dynamic_return_ids is not None:
+                return_id = CCoreWorkerProcess.GetCoreWorker().AllocateDynamicReturnId()
+                dynamic_return_ids.append(return_id.Binary())
+                returns.push_back(shared_ptr[CRayObject]())
+                return_obj = &returns.back()
+            elif i >= n_returns:
                 raise ValueError(
                     "Task returned more than num_returns={} objects.".format(
                         n_returns))
+            else:
+                return_id = return_ids[i]
+                return_obj = &returns[0][i]
 
-            return_id = return_ids[i]
             context = worker.get_serialization_context()
             serialized_object = context.serialize(output)
             data_size = serialized_object.total_bytes
@@ -2064,14 +2108,14 @@ cdef class CoreWorker:
             if not self.store_task_output(
                     serialized_object, return_id,
                     data_size, metadata, contained_id,
-                    &task_output_inlined_bytes, &returns[0][i]):
+                    &task_output_inlined_bytes, return_obj):
                 # If the object already exists, but we fail to pin the copy, it
                 # means the existing copy might've gotten evicted. Try to
                 # create another copy.
                 self.store_task_output(
                         serialized_object, return_id, data_size, metadata,
                         contained_id, &task_output_inlined_bytes,
-                        &returns[0][i])
+                        return_obj)
 
         i += 1
         if i < n_returns:

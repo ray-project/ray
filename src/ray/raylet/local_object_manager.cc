@@ -25,7 +25,8 @@ namespace raylet {
 void LocalObjectManager::PinObjectsAndWaitForFree(
     const std::vector<ObjectID> &object_ids,
     std::vector<std::unique_ptr<RayObject>> &&objects,
-    const rpc::Address &owner_address) {
+    const rpc::Address &owner_address,
+    bool dynamic_return) {
   for (size_t i = 0; i < object_ids.size(); i++) {
     const auto &object_id = object_ids[i];
     auto &object = objects[i];
@@ -61,6 +62,7 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
     auto wait_request = std::make_unique<rpc::WorkerObjectEvictionSubMessage>();
     wait_request->set_object_id(object_id.Binary());
     wait_request->set_intended_worker_id(owner_address.worker_id());
+    wait_request->set_dynamic_return(dynamic_return);
     rpc::Address subscriber_address;
     subscriber_address.set_raylet_id(self_node_id_.Binary());
     subscriber_address.set_ip_address(self_node_address_);
