@@ -77,6 +77,8 @@ DEFAULT_CONFIG = with_common_config({
         "capacity": int(1e6),
         # How many steps of the model to sample before learning starts.
         "learning_starts": 1024 * 25,
+        # Force lockstep replay mode for MADDPG.
+        "replay_mode": "lockstep",
     },
     # Observation compression. Note that compression makes simulation slow in
     # MPE.
@@ -86,10 +88,6 @@ DEFAULT_CONFIG = with_common_config({
     # timesteps. Otherwise, the replay will proceed at the native ratio
     # determined by (train_batch_size / rollout_fragment_length).
     "training_intensity": None,
-    # Force lockstep replay mode for MADDPG.
-    "multiagent": merge_dicts(COMMON_CONFIG["multiagent"], {
-        "replay_mode": "lockstep",
-    }),
 
     # === Optimization ===
     # Learning rate for the critic (Q-function) optimizer.
