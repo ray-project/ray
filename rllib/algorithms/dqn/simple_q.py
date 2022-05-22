@@ -111,10 +111,10 @@ class SimpleQConfig(TrainerConfig):
         # __sphinx_doc_begin__
         self.target_network_update_freq = 500
         self.replay_buffer_config = {
-            # How many steps of the model to sample before learning starts.
-            "learning_starts": 1000,
             "type": "MultiAgentReplayBuffer",
             "capacity": 50000,
+            # How many steps of the model to sample before learning starts.
+            "learning_starts": 1000,
             "replay_batch_size": 32,
             # The number of contiguous environment steps to replay at once. This
             # may be set to greater than 1 to support recurrent models.
