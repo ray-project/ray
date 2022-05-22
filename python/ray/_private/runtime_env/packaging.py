@@ -180,6 +180,11 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
             protocol,
             f"https_{uri.netloc.replace('.', '_')}{uri.path.replace('/', '_')}",
         )
+    elif protocol == Protocol.EFS:
+        return (
+            protocol,
+            f"efs_{uri.path.replace('/', '_')}",
+        )
     else:
         return (protocol, uri.netloc)
 
