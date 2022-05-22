@@ -186,6 +186,10 @@ scaling_config={"num_workers": 8, "use_gpu": True}
 
 Let's see how our model performs.
 
+To classify images in the test dataset, we'll need to create a {py:class}`Predictor <ray.ml.predictor.Predictor>`.
+
+{py:class}`Predictors <ray.ml.predictor.Predictor>` load data from checkpoints and efficiently perform inference. In contrast to {py:class}`TorchPredictor <ray.ml.predictors.integrations.torch.TorchPredictor>`, which performs inference on a single batch, {py:class}`BatchPredictor <ray.ml.batch_predictor.BatchPredictor>` performs inference on an entire dataset. Because we want to classify all of the images in the test dataset, we'll use a {py:class}`BatchPredictor <ray.ml.batch_predictor.BatchPredictor>`.
+
 ```{code-cell} python3
 from ray.ml.predictors.integrations.torch import TorchPredictor
 from ray.ml.batch_predictor import BatchPredictor
