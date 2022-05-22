@@ -761,7 +761,7 @@ class ExperimentAnalysis:
             # Get the relative paths from the trials to allow
             # for changes in the local_base_dir.
             _trial_paths = [
-                str(local_base_dir.joinpath(t.rel_logdir)) for t in self.trials
+                str(local_base_dir.joinpath(t.rel_logdir)) if t.rel_logdir else t.rel_logdir for t in self.trials
             ]
         else:
             logger.info(
@@ -772,6 +772,7 @@ class ExperimentAnalysis:
 
             _trial_paths = [
                 str(local_base_dir.joinpath(checkpoint["rel_logdir"]))
+                if checkpoint["rel_logdir"] else checkpoint["rel_logdir"]
                 for checkpoint in self._checkpoints
             ]
             self.trials = []
