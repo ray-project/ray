@@ -7,7 +7,6 @@ from ray.rllib.algorithms.cql.cql_torch_policy import CQLTorchPolicy
 from ray.rllib.algorithms.sac.sac import (
     SACTrainer,
     SACConfig,
-    DEFAULT_CONFIG as SAC_CONFIG,
 )
 from ray.rllib.execution.train_ops import (
     multi_gpu_train_one_step,

@@ -130,8 +130,8 @@ class SACConfig(TrainerConfig):
         Args:
             twin_q: Use two Q-networks (instead of one) for action-value estimation.
                 Note: Each Q-network will have its own target network.
-            q_model_config: Model configs for the Q network(s). These will override MODEL_DEFAULTS.
-                This is treated just as the top-level `model` dict in
+            q_model_config: Model configs for the Q network(s). These will override
+                MODEL_DEFAULTS. This is treated just as the top-level `model` dict in
                 setting up the Q-network(s) (2 if twin_q=True).
                 That means, you can do for different observation spaces:
                 obs=Box(1D) -> Tuple(Box(1D) + Action) -> concat -> post_fcnet
@@ -142,18 +142,20 @@ class SACConfig(TrainerConfig):
                 You can also have SAC use your custom_model as Q-model(s), by simply
                 specifying the `custom_model` sub-key in below dict (just like you would
                 do in the top-level `model` dict.
-            policy_model_config: Model options for the policy function (see `q_model_config` above for details).
-                The difference to `q_model_config` above is that no action concat'ing is
-                performed before the post_fcnet stack.
+            policy_model_config: Model options for the policy function (see
+                `q_model_config` above for details). The difference to `q_model_config`
+                above is that no action concat'ing is performed before the post_fcnet
+                stack.
             tau: Update the target by \tau * policy + (1-\tau) * target_policy.
             initial_alpha: Initial value to use for the entropy weight alpha.
-            target_entropy: Target entropy lower bound. If "auto", will be set to -|A| (e.g. -2.0 for
-                Discrete(2), -3.0 for Box(shape=(3,))).
-                This is the inverse of reward scale, and will be optimized automatically.
+            target_entropy: Target entropy lower bound. If "auto", will be set
+                to -|A| (e.g. -2.0 for Discrete(2), -3.0 for Box(shape=(3,))).
+                This is the inverse of reward scale, and will be optimized
+                automatically.
             n_step: N-step target updates. If >1, sars' tuples in trajectories will be
                 postprocessed to become sa[discounted sum of R][s t+n] tuples.
-            store_buffer_in_checkpoints: Set this to True, if you want the contents of your buffer(s) to be
-                stored in any saved checkpoints as well.
+            store_buffer_in_checkpoints: Set this to True, if you want the contents of
+                your buffer(s) to be stored in any saved checkpoints as well.
                 Warnings will be created if:
                 - This is True AND restoring from a checkpoint that contains no buffer
                     data.
@@ -214,15 +216,17 @@ class SACConfig(TrainerConfig):
             clip_actions: Whether to clip actions. If actions are already normalized,
                 this should be set to False.
             grad_clip: If not None, clip gradients during optimization at this value.
-            optimization_config: Config dict for optimization. Set "actor_learning_rate",
-                "critic_learning_rate", and "entropy_learning_rate".
+            optimization_config: Config dict for optimization. Set the supported keys
+                `actor_learning_rate`, `critic_learning_rate`, and
+                `entropy_learning_rate` in here.
             target_network_update_freq: Update the target network every
                 `target_network_update_freq` steps.
-            _deterministic_loss: Whether the loss should be calculated deterministically (w/o the
-                stochastic action sampling step). True only useful for cont. actions and
-                for debugging!
-            _use_beta_distribution: Use a Beta-distribution instead of a SquashedGaussian for bounded,
-                continuous action spaces (not recommended, for debugging only).
+            _deterministic_loss: Whether the loss should be calculated deterministically
+                (w/o the stochastic action sampling step). True only useful for
+                continuous actions and for debugging.
+            _use_beta_distribution: Use a Beta-distribution instead of a
+                `SquashedGaussian` for bounded, continuous action spaces (not
+                recommended; for debugging only).
 
         Returns:
             This updated TrainerConfig object.

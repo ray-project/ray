@@ -45,8 +45,8 @@ def build_rnnsac_model(
     num_outputs = int(np.product(obs_space.shape))
 
     # Force-ignore any additionally provided hidden layer sizes.
-    # Everything should be configured using SAC's "q_model_config" and "policy_model_config"
-    # settings.
+    # Everything should be configured using SAC's `q_model_config` and
+    # `policy_model_config` config settings.
     policy_model_config = MODEL_DEFAULTS.copy()
     policy_model_config.update(config["policy_model_config"])
     q_model_config = MODEL_DEFAULTS.copy()
