@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 import ray
 from ray.types import ObjectRef
-from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.util.annotations import PublicAPI, DeveloperAPI, Deprecated
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -159,6 +159,7 @@ def range_table(n: int, *, parallelism: int = 200) -> Dataset[ArrowRow]:
     )
 
 
+@Deprecated
 def range_arrow(*args, **kwargs):
     raise DeprecationWarning("range_arrow() is deprecated, use range_table() instead.")
 
