@@ -170,5 +170,6 @@ class TensorflowPredictor(Predictor):
             model.build(input_shape=(None, 1, 32, 32, 3))
             model.set_weights(self.model_weights)
 
-        prediction = model(tensor).numpy().ravel()
+        from ray.data.extensions import TensorArray
+        prediction = TensorArray(model(tensor).numpy())
         return pd.DataFrame(prediction, columns=["predictions"])
