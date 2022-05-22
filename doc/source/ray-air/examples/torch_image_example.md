@@ -12,13 +12,13 @@ kernelspec:
 
 # Training a Torch Classifier
 
-This tutorial demonstrates how to train an image classifier using the [Ray AI Runtime](https://docs.ray.io/en/latest/ray-air/getting-started.html) (AIR).
+This tutorial demonstrates how to train an image classifier using the [Ray AI Runtime](air) (AIR).
 
 You should be familiar with [PyTorch](https://pytorch.org/) before starting the tutorial. If you need a refresher, read PyTorch's [training a classifier](https://pytorch.org/tutorials/beginner/blitz/cifar10_tutorial.html) tutorial.
 
 ## Before you begin
 
-* Install the [Ray AI Runtime](https://docs.ray.io/en/latest/ray-air/getting-started.html). You'll need Ray 1.13 later to run this example.
+* Install the [Ray AI Runtime](air). You'll need Ray 1.13 later to run this example.
 
 ```{code-cell} python3
 !pip install 'ray[data,serve,tune]'
@@ -34,9 +34,9 @@ You should be familiar with [PyTorch](https://pytorch.org/) before starting the 
 
 We'll train our classifier on a popular image dataset called [CIFAR-10](https://www.cs.toronto.edu/~kriz/cifar.html).
 
-First, let's load CIFAR-10 into a Ray Dataset. 
+First, let's load CIFAR-10 into a Ray Dataset.
 
-```{code-cell} python3
+```{code-cell} ipython3
 import ray
 from ray.data.datasource import SimpleTorchDatasource
 import torchvision
@@ -58,9 +58,9 @@ test_dataset: ray.data.Dataset = ray.data.read_datasource(SimpleTorchDatasource(
 train_dataset
 ```
 
-Note that [`SimpleTorchDatasource`](https://docs.ray.io/en/master/data/package-ref.html#ray.data.datasource.SimpleTorchDatasource) loads all data into memory, so you shouldn't use it with larger datasets.
+Note that {py:class}`SimpleTorchDatasource <ray.data.datasource.SimpleTorchDatasource>` loads all data into memory, so you shouldn't use it with larger datasets.
 
-Next, let's represent our data using pandas dataframes instead of tuples. This lets us call methods like [`Dataset.to_torch`](https://docs.ray.io/en/master/data/package-ref.html#ray.data.Dataset.to_torch) later in the tutorial.
+Next, let's represent our data using pandas dataframes instead of tuples. This lets us call methods like {py:meth}`Dataset.to_torch <ray.data.Dataset.to_torch>` later in the tutorial.
 
 ```{code-cell} python3
 from typing import Tuple
@@ -75,7 +75,7 @@ def convert_batch_to_pandas(batch: Tuple[torch.Tensor, int]) -> pd.DataFrame:
     df = pd.DataFrame({"image": images, "label": labels})
 
     return df
-    
+
 
 train_dataset = train_dataset.map_batches(convert_batch_to_pandas)
 test_dataset = test_dataset.map_batches(convert_batch_to_pandas)
@@ -114,9 +114,9 @@ class Net(nn.Module):
 We define our training logic in a function called `train_loop_per_worker`.
 
 `train_loop_per_worker` contains regular PyTorch code with a few notable exceptions:
-* We wrap our model with `train.torch.prepare_model`.
-* We call `get_dataset_shard` and `to_torch` to convert a subset of our training data to a Torch dataset.
-* We save model state using `train.save_checkpoint`.
+* We wrap our model with {py:func}`train.torch.prepare_model <ray.train.torch.prepare_model>`.
+* We call {py:func}`train.get_dataset_shard <ray.train.get_dataset_shard>` and {py:meth}`Dataset.to_torch <ray.data.Dataset.to_torch>` to convert a subset of our training data to a Torch dataset.
+* We save model state using {py:func}`train.save_checkpoint <ray.train.save_checkpoint>`.
 
 ```{code-cell} python3
 from ray import train
@@ -125,7 +125,7 @@ import torch.optim as optim
 
 def train_loop_per_worker(config):
     model = train.torch.prepare_model(Net())
-    
+
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
 
@@ -189,7 +189,7 @@ batch_predictor = BatchPredictor.from_checkpoint(
     predictor_cls=TorchPredictor,
     model=Net(),
 )
-    
+
 outputs: ray.data.Dataset = batch_predictor.predict(
     data=test_dataset, feature_columns=["image"], unsqueeze=False
 )
@@ -241,10 +241,10 @@ Let's classify a test image.
 
 ```{code-cell} python3
 batch = test_dataset.take(1)
-array = np.array(batch[0]["image"]).tolist()
+array = np.array(batch[0]["image"])
 ```
 
-You can perform inference against a deployed model by posting a dictionary with an `"array"` key. To learn more about the default input schema, read the [NdArray documentation](https://docs.ray.io/en/latest/serve/http-servehandle.html#ray.serve.http_adapters.NdArray).
+You can perform inference against a deployed model by posting a dictionary with an `"array"` key. To learn more about the default input schema, read the {py:class}`NdArray <ray.serve.http_adapters.NdArray>` documentation.
 
 ```{code-cell} python3
 import requests
