@@ -21,7 +21,7 @@ You should be familiar with [PyTorch](https://pytorch.org/) before starting the 
 * Install the [Ray AI Runtime](air). You'll need Ray 1.13 later to run this example.
 
 ```{code-cell} python3
-!pip install 'ray[data,serve,tune]'
+!pip install 'ray[air]'
 ```
 
 * Install `requests`, `torch`, and `torchvision`
