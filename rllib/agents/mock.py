@@ -75,8 +75,9 @@ class _MockTrainer(Trainer):
         self.info = info
         self.restored = True
 
+    @staticmethod
     @override(Trainer)
-    def _get_env_id_and_creator(self, env_specifier, config):
+    def _get_env_id_and_creator(env_specifier, config):
         # No env to register.
         pass
 

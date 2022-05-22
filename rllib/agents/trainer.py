@@ -1533,14 +1533,16 @@ class Trainer(Trainable):
         """Pre-evaluation callback."""
         pass
 
+    @staticmethod
     def _get_env_id_and_creator(
-        self, env_specifier: Union[str, EnvType, None], config
+        env_specifier: Union[str, EnvType, None], config: PartialTrainerConfigDict
     ) -> Tuple[Optional[str], EnvCreator]:
         """Returns env_id and creator callable given original env id from config.
 
         Args:
             env_specifier: An env class, an already tune registered env ID, a known
                 gym env name, or None (if no env is used).
+            config: The Trainer's (maybe partial) config dict.
 
         Returns:
             Tuple consisting of a) env ID string and b) env creator callable.
@@ -1571,7 +1573,7 @@ class Trainer(Trainable):
                 )
 
         elif isinstance(env_specifier, type):
-            env_id = env_specifier#.__name__
+            env_id = env_specifier  # .__name__
 
             if config.get("remote_worker_envs"):
                 # Check gym version (0.22 or higher?).
