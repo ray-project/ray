@@ -98,7 +98,7 @@ if __name__ == "__main__":
     eps = 0
     ep_reward = 0
     while eps < 10:
-        action, state, info_trainer = agent.compute_action(
+        action, state, info_trainer = agent.compute_single_action(
             obs,
             state=state,
             prev_action=prev_action,
