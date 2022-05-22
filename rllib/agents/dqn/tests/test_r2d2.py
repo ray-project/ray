@@ -51,7 +51,7 @@ class TestR2D2(unittest.TestCase):
         config["num_workers"] = 0  # Run locally.
         # Wrap with an LSTM and use a very simple base-model.
         config["model"]["use_lstm"] = True
-        config["model"]["max_seq_len"] = 44
+        config["model"]["max_seq_len"] = 20
         config["model"]["fcnet_hiddens"] = [32]
         config["model"]["lstm_cell_size"] = 64
 

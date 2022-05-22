@@ -9,6 +9,7 @@ from ray.rllib.execution.train_ops import (
     multi_gpu_train_one_step,
     train_one_step,
 )
+from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
 from ray.rllib.offline.shuffled_input import ShuffledInput
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -161,9 +162,10 @@ class CQLTrainer(SACTrainer):
     def training_iteration(self) -> ResultDict:
 
         # Sample training batch from replay buffer.
-        train_batch = self.local_replay_buffer.sample(
-            self.config["train_batch_size"]
-            // self.local_replay_buffer.replay_sequence_length
+        train_batch = sample_min_n_steps_from_buffer(
+            self.local_replay_buffer,
+            self.config["train_batch_size"],
+            count_by_agent_steps=self._by_agent_steps,
         )
 
         # Old-style replay buffers return None if learning has not started

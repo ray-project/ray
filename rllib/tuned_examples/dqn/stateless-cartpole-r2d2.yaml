@@ -6,7 +6,7 @@ stateless-cartpole-r2d2:
         timesteps_total: 500000
     config:
         # Works for both torch and tf.
-        framework: torch
+        framework: tf
         num_workers: 0
         # R2D2 settings.
         replay_buffer_config:
@@ -25,4 +25,4 @@ stateless-cartpole-r2d2:
             fcnet_activation: linear
             use_lstm: true
             lstm_cell_size: 64
-            max_seq_len: 44
+            max_seq_len: 20

@@ -47,6 +47,7 @@ from ray.rllib.execution.common import (
     NUM_TARGET_UPDATES,
 )
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
 
 logger = logging.getLogger(__name__)
 
@@ -383,9 +384,10 @@ class DQNTrainer(SimpleQTrainer):
 
         for _ in range(sample_and_train_weight):
             # Sample training batch (MultiAgentBatch) from replay buffer.
-            train_batch = self.local_replay_buffer.sample(
-                self.config["train_batch_size"]
-                // self.local_replay_buffer.replay_sequence_length
+            train_batch = sample_min_n_steps_from_buffer(
+                self.local_replay_buffer,
+                self.config["train_batch_size"],
+                count_by_agent_steps=self._by_agent_steps,
             )
 
             # Old-style replay buffers return None if learning has not started
