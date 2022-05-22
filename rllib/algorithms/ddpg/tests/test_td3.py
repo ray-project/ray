@@ -40,8 +40,9 @@ class TestTD3(unittest.TestCase):
 
     def test_td3_exploration_and_with_random_prerun(self):
         """Tests TD3's Exploration (w/ random actions for n timesteps)."""
-        config = td3.TD3Config().envoronment(env="Pendulum-v1")
-        random_init_exploration_config = {
+        config = td3.TD3Config().environment(env="Pendulum-v1")
+        no_random_init = config.exploration_config.copy()
+        random_init = {
             # Act randomly at beginning ...
             "random_timesteps": 30,
             # Then act very closely to deterministic actions thereafter.
@@ -53,7 +54,7 @@ class TestTD3(unittest.TestCase):
 
         # Test against all frameworks.
         for _ in framework_iterator(config, with_eager_tracing=True):
-            #lcl_config = config.copy()
+            config.exploration(exploration_config=no_random_init)
             # Default GaussianNoise setup.
             trainer = config.build()
             # Setting explore=False should always return the same action.
@@ -72,7 +73,7 @@ class TestTD3(unittest.TestCase):
             trainer.stop()
 
             # Check randomness at beginning.
-            config.exploration(exploration_config=random_init_exploration_config)
+            config.exploration(exploration_config=random_init)
             trainer = config.build()
             # ts=0 (get a deterministic action as per explore=False).
             deterministic_action = trainer.compute_single_action(obs, explore=False)
