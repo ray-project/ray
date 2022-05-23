@@ -10,7 +10,6 @@ from typing import Optional, Type, List, Dict, Union, DefaultDict, Set, Callable
 import ray
 from ray.actor import ActorHandle
 from ray.rllib import SampleBatch
-from ray.rllib.agents.impala.vtrace_tf_policy import VTraceTFPolicy
 from ray.rllib.agents.trainer import Trainer, TrainerConfig
 from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
 from ray.rllib.execution.learner_thread import LearnerThread
@@ -449,9 +448,22 @@ class ImpalaTrainer(Trainer):
                 from ray.rllib.agents.a3c.a3c_torch_policy import A3CTorchPolicy
 
                 return A3CTorchPolicy
+        elif config["framework"] == "tf":
+            if config["vtrace"]:
+                from ray.rllib.agents.impala.vtrace_tf_policy import (
+                    VTraceDynamicTFPolicy,
+                )
+
+                return VTraceDynamicTFPolicy
+            else:
+                from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
+
+                return A3CTFPolicy
         else:
             if config["vtrace"]:
-                return VTraceTFPolicy
+                from ray.rllib.agents.impala.vtrace_tf_policy import VTraceEagerTFPolicy
+
+                return VTraceEagerTFPolicy
             else:
                 from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
 

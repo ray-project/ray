@@ -249,8 +249,14 @@ class APPOTrainer(ImpalaTrainer):
             from ray.rllib.agents.ppo.appo_torch_policy import AsyncPPOTorchPolicy
 
             return AsyncPPOTorchPolicy
+        elif config["framework"] == "tf":
+            from ray.rllib.agents.ppo.appo_tf_policy import AsyncPPODynamicTFPolicy
+
+            return AsyncPPODynamicTFPolicy
         else:
-            return AsyncPPOTFPolicy
+            from ray.rllib.agents.ppo.appo_tf_policy import AsyncPPOEagerTFPolicy
+
+            return AsyncPPOEagerTFPolicy
 
 
 # Deprecated: Use ray.rllib.agents.ppo.APPOConfig instead!

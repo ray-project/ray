@@ -3,20 +3,18 @@ from typing import Dict, List, Type, Union
 
 import ray
 from ray.rllib.agents.ppo.ppo_tf_policy import validate_config
-from ray.rllib.evaluation.postprocessing import (
-    compute_gae_for_sample_batch,
-    Postprocessing,
-)
+from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_mixins import (
+    ComputeGAEMixIn,
     EntropyCoeffSchedule,
     KLCoeffMixin,
     LearningRateSchedule,
     ValueNetworkMixin,
 )
-from ray.rllib.policy.torch_policy import TorchPolicy
+from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -33,19 +31,20 @@ logger = logging.getLogger(__name__)
 
 
 class PPOTorchPolicy(
+    ComputeGAEMixIn,
     ValueNetworkMixin,
     LearningRateSchedule,
     EntropyCoeffSchedule,
     KLCoeffMixin,
-    TorchPolicy,
+    TorchPolicyV2,
 ):
     """PyTorch policy class used with PPOTrainer."""
 
     def __init__(self, observation_space, action_space, config):
         config = dict(ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG, **config)
-        validate_config(self, observation_space, action_space, config)
+        validate_config(config)
 
-        TorchPolicy.__init__(
+        TorchPolicyV2.__init__(
             self,
             observation_space,
             action_space,
@@ -53,43 +52,25 @@ class PPOTorchPolicy(
             max_seq_len=config["model"]["max_seq_len"],
         )
 
+        ComputeGAEMixIn.__init__(self)
         ValueNetworkMixin.__init__(self, config)
+        LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
         EntropyCoeffSchedule.__init__(
             self, config["entropy_coeff"], config["entropy_coeff_schedule"]
         )
-        LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
-
-        # The current KL value (as python float).
-        self.kl_coeff = self.config["kl_coeff"]
-        # Constant target value.
-        self.kl_target = self.config["kl_target"]
+        KLCoeffMixin.__init__(self, config)
 
         # TODO: Don't require users to call this manually.
         self._initialize_loss_from_dummy_batch()
 
-    @override(TorchPolicy)
-    def postprocess_trajectory(
-        self, sample_batch, other_agent_batches=None, episode=None
-    ):
-        # Do all post-processing always with no_grad().
-        # Not using this here will introduce a memory leak
-        # in torch (issue #6962).
-        # TODO: no_grad still necessary?
-        with torch.no_grad():
-            return compute_gae_for_sample_batch(
-                self, sample_batch, other_agent_batches, episode
-            )
-
-    # TODO: Add method to Policy base class (as the new way of defining loss
-    #  functions (instead of passing 'loss` to the super's constructor)).
-    @override(TorchPolicy)
+    @override(TorchPolicyV2)
     def loss(
         self,
         model: ModelV2,
         dist_class: Type[ActionDistribution],
         train_batch: SampleBatch,
     ) -> Union[TensorType, List[TensorType]]:
-        """Constructs the loss for Proximal Policy Objective.
+        """Compute loss for Proximal Policy Objective.
 
         Args:
             model: The Model to calculate the loss for.
@@ -190,14 +171,12 @@ class PPOTorchPolicy(
 
     # TODO: Make this an event-style subscription (e.g.:
     #  "after_gradients_computed").
-    @override(TorchPolicy)
+    @override(TorchPolicyV2)
     def extra_grad_process(self, local_optimizer, loss):
         return apply_grad_clipping(self, local_optimizer, loss)
 
-    # TODO: Make this an event-style subscription (e.g.:
-    #  "after_losses_computed").
-    @override(TorchPolicy)
-    def extra_grad_info(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
+    @override(TorchPolicyV2)
+    def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
         return convert_to_numpy(
             {
                 "cur_kl_coeff": self.kl_coeff,

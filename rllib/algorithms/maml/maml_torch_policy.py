@@ -289,7 +289,7 @@ class MAMLTorchPolicy(ComputeGAEMixIn, ValueNetworkMixin, KLCoeffMixin, TorchPol
 
     def __init__(self, observation_space, action_space, config):
         config = dict(ray.rllib.algorithms.maml.maml.DEFAULT_CONFIG, **config)
-        validate_config(self, observation_space, action_space, config)
+        validate_config(self, config)
 
         TorchPolicyV2.__init__(
             self,

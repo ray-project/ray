@@ -242,6 +242,7 @@ def get_tf_eager_cls_if_necessary(
 
         from ray.rllib.policy.tf_policy import TFPolicy
         from ray.rllib.policy.eager_tf_policy import EagerTFPolicy
+        from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
 
         # Create eager-class (if not already one).
         if hasattr(orig_cls, "as_eager") and not issubclass(orig_cls, EagerTFPolicy):
@@ -256,7 +257,9 @@ def get_tf_eager_cls_if_necessary(
             )
 
         # Now that we know, policy is an eager one, add tracing, if necessary.
-        if config.get("eager_tracing") and issubclass(cls, EagerTFPolicy):
+        if config.get("eager_tracing") and issubclass(
+            cls, (EagerTFPolicy, EagerTFPolicyV2)
+        ):
             cls = cls.with_tracing()
     return cls
 
