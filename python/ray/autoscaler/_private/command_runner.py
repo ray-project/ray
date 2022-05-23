@@ -466,21 +466,9 @@ class SSHCommandRunner(CommandRunnerInterface):
                     use_login_shells=is_using_login_shells(),
                 )
             else:
-                out = self.process_runner.check_output(final_cmd)
+                return self.process_runner.check_output(final_cmd)
 
-                # Do our best to flush output to terminal.
-                # See https://github.com/ray-project/ray/pull/19473.
-                sys.stderr.flush()
-                # We don't need to flush stdout, as stdout is captured in the
-                # output of `check_output`.
-
-                return out
         except subprocess.CalledProcessError as e:
-            # Do our best to flush output to terminal.
-            # See https://github.com/ray-project/ray/pull/19473.
-            sys.stdout.flush()
-            sys.stderr.flush()
-
             joined_cmd = " ".join(final_cmd)
             if not is_using_login_shells():
                 raise ProcessRunnerError(
@@ -499,6 +487,11 @@ class SSHCommandRunner(CommandRunnerInterface):
                 if is_output_redirected():
                     fail_msg += " See above for the output from the failure."
                 raise click.ClickException(fail_msg) from None
+        finally:
+            # Do our best to flush output to terminal.
+            # See https://github.com/ray-project/ray/pull/19473.
+            sys.stdout.flush()
+            sys.stderr.flush()
 
     def run(
         self,
