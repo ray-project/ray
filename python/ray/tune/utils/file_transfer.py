@@ -360,6 +360,8 @@ def _unpack_dir(stream: io.BytesIO, target_dir: str) -> None:
         # wait, but do not do anything
         with FileLock(f"{target_dir}.lock"):
             pass
+        # if the dir was locked due to being deleted,
+        # recreate
         if not os.path.exists(target_dir):
             _unpack_dir(stream, target_dir)
 
@@ -383,6 +385,8 @@ def _copy_dir(source_dir: str, target_dir: str) -> None:
         # wait, but do not do anything
         with FileLock(f"{target_dir}.lock"):
             pass
+        # if the dir was locked due to being deleted,
+        # recreate
         if not os.path.exists(target_dir):
             _copy_dir(source_dir, target_dir)
 

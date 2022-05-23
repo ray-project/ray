@@ -44,7 +44,18 @@ def load_preprocessor_from_dir(
 
 @DeveloperAPI
 class SyncCheckpoint(Checkpoint):
-    """Checkpoint with special sync logic for dirs."""
+    """Checkpoint with special sync logic for dirs.
+
+    If the data is represented by a local directory,
+    the IP of the node and the path will be persisted during serialization.
+    Then, when ``to_directory`` is called, the local directory will
+    be downloaded from the source node.
+
+    This class contains a ``_tmp_dir_name`` attribute set
+    on initailization, used to provide the same temporary
+    directory name for all workers, in order to avoid
+    multiple workers on the same node using separate
+    but equal temporary directories."""
 
     def __init__(
         self,
@@ -116,7 +127,6 @@ class SyncCheckpoint(Checkpoint):
 
     def _to_sync(self) -> dict:
         assert self._local_path
-        print("SyncCheckpoint._to_sync")
         state = self.__dict__.copy()
         state["_remote_ip"] = get_node_ip_address()
         return state
