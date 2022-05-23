@@ -157,8 +157,6 @@ class TorchPredictor(Predictor):
         """
         self.model.eval()
 
-        print(data)
-
         if self.preprocessor:
             data = self.preprocessor.transform_batch(data)
 
