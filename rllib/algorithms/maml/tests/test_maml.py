@@ -20,9 +20,8 @@ class TestMAML(unittest.TestCase):
 
     def test_maml_compilation(self):
         """Test whether a MAMLTrainer can be built with all frameworks."""
-        config = maml.DEFAULT_CONFIG.copy()
-        config["num_workers"] = 1
-        config["horizon"] = 200
+        config = maml.MAMLConfig().rollouts(num_rollout_workers=1, horizon=200)
+
         num_iterations = 1
 
         # Test for tf framework (torch not implemented yet).
@@ -35,7 +34,7 @@ class TestMAML(unittest.TestCase):
                     continue
                 print("env={}".format(env))
                 env_ = "ray.rllib.examples.env.{}".format(env)
-                trainer = maml.MAMLTrainer(config=config, env=env_)
+                trainer = config.build(env=env_)
                 for i in range(num_iterations):
                     results = trainer.train()
                     check_train_results(results)
