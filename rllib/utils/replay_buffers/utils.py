@@ -336,7 +336,7 @@ def patch_buffer_with_fake_sampling_method(
     ):
         fake_sample_output = SampleBatch(fake_sample_output).as_multi_agent()
 
-    def fake_sample(_: Any, __: Any = None, **kwargs) -> Optional[SampleBatchType]:
+    def fake_sample(_: Any = None, **kwargs) -> Optional[SampleBatchType]:
         """Always returns a predefined batch.
 
         Args:
