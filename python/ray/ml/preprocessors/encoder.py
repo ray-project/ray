@@ -56,6 +56,9 @@ class OneHotEncoder(Preprocessor):
     values being 0.
 
     Example:
+
+    .. code-block:: python
+
         ohe = OneHotEncoder(
             columns=[
                 "trip_start_hour",
