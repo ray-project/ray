@@ -15,10 +15,6 @@ from ray.rllib.env.env_context import EnvContext
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
 from ray.rllib.evaluation.collectors.simple_list_collector import SimpleListCollector
 from ray.rllib.models import MODEL_DEFAULTS
-from ray.rllib.offline.estimators.importance_sampling import ImportanceSampling
-from ray.rllib.offline.estimators.weighted_importance_sampling import (
-    WeightedImportanceSampling,
-)
 from ray.rllib.utils import deep_update, merge_dicts
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.typing import (
@@ -170,10 +166,7 @@ class TrainerConfig:
         self.input_ = "sampler"
         self.input_config = {}
         self.actions_in_input_normalized = False
-        self.off_policy_estimation_methods = [
-            ImportanceSampling,
-            WeightedImportanceSampling,
-        ]
+        self.off_policy_estimation_methods = []
         self.postprocess_inputs = False
         self.shuffle_buffer_size = 0
         self.output = None
