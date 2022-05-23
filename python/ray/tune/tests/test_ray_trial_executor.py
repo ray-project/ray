@@ -21,7 +21,10 @@ from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial import Trial, _TuneCheckpoint
 from ray.tune.resources import Resources
 from ray.cluster_utils import Cluster
-from ray.tune.utils.placement_groups import PlacementGroupFactory, PlacementGroupManager
+from ray.tune.utils.placement_groups import (
+    PlacementGroupFactory,
+    _PlacementGroupManager,
+)
 from unittest.mock import patch
 
 
@@ -489,7 +492,7 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
         self.assertEqual(counter[pgf_3], 3)
 
     def testHasResourcesForTrialWithCaching(self):
-        pgm = PlacementGroupManager()
+        pgm = _PlacementGroupManager()
         pgf1 = PlacementGroupFactory([{"CPU": self.head_cpus}])
         pgf2 = PlacementGroupFactory([{"CPU": self.head_cpus - 1}])
 

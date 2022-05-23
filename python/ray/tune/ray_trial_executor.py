@@ -30,7 +30,7 @@ from ray.tune.error import (
 )
 from ray.tune.logger import NoopLogger
 from ray.tune.result import TRIAL_INFO, STDOUT_FILE, STDERR_FILE
-from ray.tune.utils.placement_groups import PlacementGroupManager, get_tune_pg_prefix
+from ray.tune.utils.placement_groups import _PlacementGroupManager, get_tune_pg_prefix
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.trial import Trial, _TuneCheckpoint, _Location, _TrialInfo
 from ray.tune.trial_executor import TrialExecutor
@@ -222,7 +222,7 @@ class RayTrialExecutor(TrialExecutor):
         self._reuse_actors = reuse_actors
         # The maxlen will be updated when `set_max_pending_trials()` is called
         self._cached_actor_pg = deque(maxlen=1)
-        self._pg_manager = PlacementGroupManager(prefix=get_tune_pg_prefix())
+        self._pg_manager = _PlacementGroupManager(prefix=get_tune_pg_prefix())
         self._staged_trials = set()
         self._trial_just_finished = False
         self._trial_just_finished_before = False
