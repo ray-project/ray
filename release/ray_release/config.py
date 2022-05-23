@@ -25,7 +25,7 @@ DEFAULT_WAIT_FOR_NODES_TIMEOUT = 3000
 
 DEFAULT_CLOUD_ID = "cld_401TPoxgB8MM6A0NNQauOV"
 
-DEFAULT_PYTHON_VERSION = (3, 7)
+DEFAULT_PYTHON_VERSION = (3, 10)
 
 RELEASE_PACKAGE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
