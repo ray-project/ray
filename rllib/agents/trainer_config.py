@@ -19,6 +19,7 @@ from ray.rllib.offline.estimators.importance_sampling import ImportanceSampling
 from ray.rllib.offline.estimators.weighted_importance_sampling import (
     WeightedImportanceSampling,
 )
+from ray.rllib.utils import deep_update
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.typing import (
     EnvConfigDict,
@@ -754,7 +755,16 @@ class TrainerConfig:
         if explore is not None:
             self.explore = explore
         if exploration_config is not None:
-            self.exploration_config = exploration_config
+            # Override entire `exploration_config` if `type` key changes.
+            # Update, if `type` key remains the same or is not specified.
+            new_exploration_config = deep_update(
+                {"exploration_config": self.exploration_config},
+                {"exploration_config": exploration_config},
+                False,
+                ["exploration_config"],
+                ["exploration_config"],
+            )
+            self.exploration_config = new_exploration_config["exploration_config"]
 
         return self
 
