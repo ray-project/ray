@@ -220,7 +220,7 @@ def test_push(init):
             return 2 * x
 
     a1, a2, a3 = MyActor.remote(), MyActor.remote(), MyActor.remote()
-    pool = ActorPoolCustom([a1])
+    pool = ActorPool([a1])
 
     pool.submit(lambda a, v: a.double.remote(v), 1)
     assert pool.has_free() is False  # actor is busy
