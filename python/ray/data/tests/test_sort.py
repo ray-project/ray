@@ -239,7 +239,13 @@ def test_push_based_shuffle_stats(ray_start_cluster):
         # Check all merge tasks are included in stats.
         internal_stats = ds._plan.stats()
         num_merge_tasks = len(internal_stats.stages["random_shuffle_merge"])
-        assert parallelism // 3 <= num_merge_tasks <= parallelism // 2
+        # Merge factor is 2 for random_shuffle ops.
+        merge_factor = 2
+        assert (
+            parallelism // (merge_factor + 1)
+            <= num_merge_tasks
+            <= parallelism // merge_factor
+        )
 
     finally:
         ctx.use_push_based_shuffle = original
