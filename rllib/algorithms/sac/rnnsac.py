@@ -20,6 +20,10 @@ DEFAULT_CONFIG = SACTrainer.merge_trainer_configs(
         # state outputs of the immediately preceding sequence).
         "zero_init_states": True,
         "replay_buffer_config": {
+            # This algorithm learns on sequences. We therefore require the replay buffer
+            # to slice sampled batches into sequences before replay. How sequences
+            # are sliced depends on the parameters `replay_sequence_length`,
+            # `replay_burn_in`, and `replay_zero_init_states`.
             "storage_unit": "sequences",
             # If > 0, use the `burn_in` first steps of each replay-sampled sequence
             # (starting either from all 0.0-values if `zero_init_state=True` or

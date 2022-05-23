@@ -38,6 +38,10 @@ R2D2_DEFAULT_CONFIG = Trainer.merge_trainer_configs(
             "prioritized_replay": DEPRECATED_VALUE,
             # Size of the replay buffer (in sequences, not timesteps).
             "capacity": 100000,
+            # This algorithm learns on sequences. We therefore require the replay buffer
+            # to slice sampled batches into sequences before replay. How sequences
+            # are sliced depends on the parameters `replay_sequence_length`,
+            # `replay_burn_in`, and `replay_zero_init_states`.
             "storage_unit": "sequences",
             # Set automatically: The number
             # of contiguous environment steps to
