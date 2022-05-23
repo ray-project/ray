@@ -1,5 +1,3 @@
-# [WIP] RENAME THE FILE TO metrics.py
-
 import threading
 import bisect
 from collections import defaultdict
