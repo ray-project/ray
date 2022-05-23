@@ -21,7 +21,7 @@ from ray.actor import ActorHandle
 from ray.serve.common import (
     DeploymentInfo,
     DeploymentStatus,
-    StatusInfo,
+    StatusOverview,
 )
 from ray.serve.config import (
     DeploymentConfig,
@@ -38,7 +38,7 @@ from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import (
     DeploymentRoute,
     DeploymentRouteList,
-    StatusInfo as StatusInfoProto,
+    StatusOverview as StatusOverviewProto,
 )
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 
@@ -350,11 +350,11 @@ class ServeControllerClient:
         }
 
     @_ensure_connected
-    def get_serve_status(self) -> StatusInfo:
-        proto = StatusInfoProto.FromString(
+    def get_serve_status(self) -> StatusOverview:
+        proto = StatusOverviewProto.FromString(
             ray.get(self._controller.get_serve_status.remote())
         )
-        return StatusInfo.from_proto(proto)
+        return StatusOverview.from_proto(proto)
 
     @_ensure_connected
     def get_handle(

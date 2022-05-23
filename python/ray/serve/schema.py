@@ -4,7 +4,7 @@ from ray._private.runtime_env.packaging import parse_uri
 from ray.serve.common import (
     DeploymentStatusInfo,
     ApplicationStatusInfo,
-    StatusInfo,
+    StatusOverview,
 )
 from ray.serve.utils import DEFAULT
 
@@ -417,7 +417,7 @@ class ServeStatusSchema(BaseModel, extra=Extra.forbid):
     )
 
 
-def serve_status_to_schema(serve_status: StatusInfo) -> ServeStatusSchema:
+def serve_status_to_schema(serve_status: StatusOverview) -> ServeStatusSchema:
 
     return ServeStatusSchema(
         app_status=serve_status.app_status,

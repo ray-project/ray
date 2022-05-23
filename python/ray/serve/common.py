@@ -13,7 +13,7 @@ from ray.serve.generated.serve_pb2 import (
     DeploymentStatusInfoList as DeploymentStatusInfoListProto,
     ApplicationStatus as ApplicationStatusProto,
     ApplicationStatusInfo as ApplicationStatusInfoProto,
-    StatusInfo as StatusInfoProto,
+    StatusOverview as StatusOverviewProto,
     DeploymentLanguage,
 )
 
@@ -115,7 +115,7 @@ class DeploymentStatusInfo:
 
 
 @dataclass
-class StatusInfo:
+class StatusOverview:
     app_status: ApplicationStatusInfo
     deployment_statuses: List[DeploymentStatusInfo] = field(default_factory=list)
 
@@ -137,7 +137,7 @@ class StatusInfo:
         return status_info_str
 
     def __eq__(self, other):
-        if not isinstance(other, StatusInfo):
+        if not isinstance(other, StatusOverview):
             return False
 
         if self.app_status == other.app_status and len(self.deployment_statuses) == len(
@@ -185,13 +185,13 @@ class StatusInfo:
         )
 
         # Return protobuf encapsulating application and deployment protos
-        return StatusInfoProto(
+        return StatusOverviewProto(
             app_status=app_status_proto,
             deployment_statuses=deployment_status_proto_list,
         )
 
     @classmethod
-    def from_proto(cls, proto: StatusInfoProto):
+    def from_proto(cls, proto: StatusOverviewProto):
 
         # Recreate Serve Application info
         app_status = ApplicationStatusInfo.from_proto(proto.app_status)

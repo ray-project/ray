@@ -8,7 +8,7 @@ from typing import List, Dict
 import ray
 from ray import serve
 from ray.serve.common import (
-    StatusInfo,
+    StatusOverview,
     DeploymentStatusInfo,
     ApplicationStatusInfo,
 )
@@ -507,7 +507,7 @@ class TestServeApplicationSchema:
 
 class TestServeStatusSchema:
     def get_valid_serve_status_schema(self):
-        return StatusInfo(
+        return StatusOverview(
             app_status=ApplicationStatusInfo(
                 status="DEPLOYING",
                 message="",

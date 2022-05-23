@@ -211,7 +211,7 @@ message ApplicationStatusInfo {
   double deployment_timestamp = 3;
 }
 
-message StatusInfo {
+message StatusOverview {
   ApplicationStatusInfo app_status = 1;
   DeploymentStatusInfoList deployment_statuses = 2;
 }

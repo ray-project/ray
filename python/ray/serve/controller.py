@@ -20,7 +20,7 @@ from ray.serve.common import (
     RunningReplicaInfo,
     ApplicationStatus,
     ApplicationStatusInfo,
-    StatusInfo,
+    StatusOverview,
 )
 from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
 from ray.serve.constants import (
@@ -492,7 +492,7 @@ class ServeController:
         )
         deployment_statuses = self.deployment_state_manager.get_deployment_statuses()
 
-        status_info = StatusInfo(
+        status_info = StatusOverview(
             app_status=app_status,
             deployment_statuses=deployment_statuses,
         )

@@ -4,14 +4,14 @@ import pytest
 from ray.serve.utils import get_random_letters
 from ray.serve.common import (
     ReplicaName,
-    StatusInfo,
+    StatusOverview,
     DeploymentStatus,
     DeploymentStatusInfo,
     ApplicationStatus,
     ApplicationStatusInfo,
 )
 from ray.serve.generated.serve_pb2 import (
-    StatusInfo as StatusInfoProto,
+    StatusOverview as StatusOverviewProto,
     DeploymentStatusInfo as DeploymentStatusInfoProto,
     ApplicationStatusInfo as ApplicationStatusInfoProto,
 )
@@ -103,7 +103,7 @@ class TestApplicationStatusInfo:
         assert serve_application_status_info == reconstructed_info
 
 
-class TestStatusInfo:
+class TestStatusOverview:
     def get_valid_serve_application_status_info(self):
         return ApplicationStatusInfo(
             status=ApplicationStatus.RUNNING,
@@ -113,28 +113,28 @@ class TestStatusInfo:
 
     def test_app_status_required(self):
         with pytest.raises(TypeError):
-            StatusInfo(deployment_statuses=[])
+            StatusOverview(deployment_statuses=[])
 
     def test_empty_list_valid(self):
-        """Should be able to create StatusInfo with no deployment statuses."""
+        """Should be able to create StatusOverview with no deployment statuses."""
 
         # Check default is empty list
-        status_info = StatusInfo(
+        status_info = StatusOverview(
             app_status=self.get_valid_serve_application_status_info()
         )
         status_info.deployment_statuses == []
 
         # Ensure empty list can be passed in explicitly
-        status_info = StatusInfo(
+        status_info = StatusOverview(
             app_status=self.get_valid_serve_application_status_info(),
             deployment_statuses=[],
         )
         status_info.deployment_statuses == []
 
     def test_equality_mismatched_deployment_statuses(self):
-        """Check that StatusInfos with different numbers of statuses are unequal."""
+        """Check that StatusOverviews with different numbers of statuses are unequal."""
 
-        status_info_few_deployments = StatusInfo(
+        status_info_few_deployments = StatusOverview(
             app_status=self.get_valid_serve_application_status_info(),
             deployment_statuses=[
                 DeploymentStatusInfo(name="1", status=DeploymentStatus.HEALTHY),
@@ -142,7 +142,7 @@ class TestStatusInfo:
             ],
         )
 
-        status_info_many_deployments = StatusInfo(
+        status_info_many_deployments = StatusOverview(
             app_status=self.get_valid_serve_application_status_info(),
             deployment_statuses=[
                 DeploymentStatusInfo(name="1", status=DeploymentStatus.HEALTHY),
@@ -156,7 +156,7 @@ class TestStatusInfo:
 
     @pytest.mark.parametrize("application_status", list(ApplicationStatus))
     def test_proto(self, application_status):
-        status_info = StatusInfo(
+        status_info = StatusOverview(
             app_status=ApplicationStatusInfo(
                 status=application_status,
                 message="context about this status",
@@ -179,8 +179,8 @@ class TestStatusInfo:
             ],
         )
         serialized_proto = status_info.to_proto().SerializeToString()
-        deserialized_proto = StatusInfoProto.FromString(serialized_proto)
-        reconstructed_info = StatusInfo.from_proto(deserialized_proto)
+        deserialized_proto = StatusOverviewProto.FromString(serialized_proto)
+        reconstructed_info = StatusOverview.from_proto(deserialized_proto)
 
         assert status_info == reconstructed_info
 
