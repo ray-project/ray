@@ -13,12 +13,11 @@ import psutil  # noqa E402
 from ray.rllib.policy.rnn_sequencing import timeslice_along_seq_lens_with_overlap
 
 from ray.util.debug import log_once
-from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics.window_stat import WindowStat
 from ray.rllib.utils.typing import SampleBatchType, T
 from ray.util.annotations import DeveloperAPI
-from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.util.iter import ParallelIteratorWorker
 
 # Constant that represents all policies in lockstep replay mode.
@@ -213,16 +212,6 @@ class ReplayBuffer(ParallelIteratorWorker):
 
         warn_replay_capacity(item=batch, num_items=self.capacity / batch.count)
 
-        if (
-            type(batch) == MultiAgentBatch
-            and self._storage_unit != StorageUnit.TIMESTEPS
-        ):
-            raise ValueError(
-                "Can not add MultiAgentBatch to ReplayBuffer "
-                "with storage_unit {}"
-                "".format(str(self._storage_unit))
-            )
-
         if self._storage_unit == StorageUnit.TIMESTEPS:
             self._add_single_batch(batch, **kwargs)
 
@@ -272,7 +261,10 @@ class ReplayBuffer(ParallelIteratorWorker):
             self._storage.append(item)
             self._est_size_bytes += item.size_bytes()
         else:
+            item_to_be_removed = self._storage[self._next_idx]
+            self._est_size_bytes -= item_to_be_removed.size_bytes()
             self._storage[self._next_idx] = item
+            self._est_size_bytes += item.size_bytes()
 
         # Eviction of older samples has already started (buffer is "full").
         if self._eviction_started:
@@ -418,19 +410,18 @@ class ReplayBuffer(ParallelIteratorWorker):
         """
         return func(self, *_args, **kwargs)
 
-    @Deprecated(old="ReplayBuffer.add_batch()", new="RepayBuffer.add()", error=False)
+    @Deprecated(old="ReplayBuffer.add_batch()", new="ReplayBuffer.add()", error=False)
     def add_batch(self, *args, **kwargs):
         return self.add(*args, **kwargs)
 
     @Deprecated(
-        old="RepayBuffer.replay(num_items)",
-        new="RepayBuffer.sample(num_items)",
+        old="ReplayBuffer.replay(num_items)",
+        new="ReplayBuffer.sample(num_items)",
         error=False,
     )
     def replay(self, num_items):
         return self.sample(num_items)
 
-    @ExperimentalAPI
     @Deprecated(
         help="ReplayBuffers could be iterated over by default before. "
         "Making a buffer an iterator will soon "

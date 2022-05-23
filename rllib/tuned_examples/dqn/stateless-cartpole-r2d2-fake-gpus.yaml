@@ -2,8 +2,8 @@ stateless-cartpole-r2d2:
     env: ray.rllib.examples.env.stateless_cartpole.StatelessCartPole
     run: R2D2
     stop:
-        episode_reward_mean: 150
-        timesteps_total: 1000000
+        episode_reward_mean: 100
+        timesteps_total: 50000
     config:
         # Works for both torch and tf.
         framework: tf
@@ -25,7 +25,7 @@ stateless-cartpole-r2d2:
             fcnet_activation: linear
             use_lstm: true
             lstm_cell_size: 64
-            max_seq_len: 44
+            max_seq_len: 20
 
         # Fake 2 GPUs.
         num_gpus: 2

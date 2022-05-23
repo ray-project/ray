@@ -47,6 +47,7 @@ from ray.rllib.execution.common import (
     NUM_TARGET_UPDATES,
 )
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
 
 logger = logging.getLogger(__name__)
 
@@ -114,15 +115,13 @@ class DQNConfig(SimpleQConfig):
         >>>       .exploration(exploration_config=explore_config)
     """
 
-    def __init__(self):
+    def __init__(self, trainer_class=None):
         """Initializes a DQNConfig instance."""
-        super().__init__()
+        super().__init__(trainer_class=trainer_class or DQNTrainer)
 
-        # DQN specific
+        # DQN specific config settings.
         # fmt: off
         # __sphinx_doc_begin__
-        #
-        self.trainer_class = DQNTrainer
         self.num_atoms = 1
         self.v_min = -10.0
         self.v_max = 10.0
@@ -135,7 +134,7 @@ class DQNConfig(SimpleQConfig):
         self.before_learn_on_batch = None
         self.training_intensity = None
 
-        # Changes to SimpleQConfig default
+        # Changes to SimpleQConfig's default:
         self.replay_buffer_config = {
             "type": "MultiAgentPrioritizedReplayBuffer",
             # Specify prioritized replay by supplying a buffer type that supports
@@ -176,7 +175,6 @@ class DQNConfig(SimpleQConfig):
             Type[MultiAgentBatch],
         ] = None,
         training_intensity: Optional[float] = None,
-        worker_side_prioritization: Optional[bool] = None,
         replay_buffer_config: Optional[dict] = None,
         **kwargs,
     ) -> "DQNConfig":
@@ -213,7 +211,6 @@ class DQNConfig(SimpleQConfig):
                 -> will make sure that replay+train op will be executed 4x asoften as
                 rollout+insert op (4 * 250 = 1000).
                 See: rllib/agents/dqn/dqn.py::calculate_rr_weights for further details.
-            worker_side_prioritization: Whether to compute priorities on workers.
             replay_buffer_config: Replay buffer config.
                 Examples:
                 {
@@ -277,24 +274,10 @@ class DQNConfig(SimpleQConfig):
             self.before_learn_on_batch = before_learn_on_batch
         if training_intensity is not None:
             self.training_intensity = training_intensity
-        if worker_side_prioritization is not None:
-            self.worker_side_priorizatiion = worker_side_prioritization
         if replay_buffer_config is not None:
             self.replay_buffer_config = replay_buffer_config
 
-
-# Deprecated: Use ray.rllib.algorithms.dqn.DQNConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(DQNConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.dqn.dqn.DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.dqn.dqn.DQNConfig(...)",
-        error=False,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
+        return self
 
 
 def calculate_rr_weights(config: TrainerConfigDict) -> List[float]:
@@ -383,9 +366,10 @@ class DQNTrainer(SimpleQTrainer):
 
         for _ in range(sample_and_train_weight):
             # Sample training batch (MultiAgentBatch) from replay buffer.
-            train_batch = self.local_replay_buffer.sample(
-                self.config["train_batch_size"]
-                // self.local_replay_buffer.replay_sequence_length
+            train_batch = sample_min_n_steps_from_buffer(
+                self.local_replay_buffer,
+                self.config["train_batch_size"],
+                count_by_agent_steps=self._by_agent_steps,
             )
 
             # Old-style replay buffers return None if learning has not started
@@ -435,6 +419,20 @@ class DQNTrainer(SimpleQTrainer):
 
         # Return all collected metrics for the iteration.
         return train_results
+
+
+# Deprecated: Use ray.rllib.algorithms.dqn.DQNConfig instead!
+class _deprecated_default_config(dict):
+    def __init__(self):
+        super().__init__(DQNConfig().to_dict())
+
+    @Deprecated(
+        old="ray.rllib.algorithms.dqn.dqn.DEFAULT_CONFIG",
+        new="ray.rllib.algorithms.dqn.dqn.DQNConfig(...)",
+        error=False,
+    )
+    def __getitem__(self, item):
+        return super().__getitem__(item)
 
 
 DEFAULT_CONFIG = _deprecated_default_config()

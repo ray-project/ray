@@ -121,14 +121,12 @@ def sample_min_n_steps_from_buffer(
     train_batches = []
     while train_batch_size < min_steps:
         batch = replay_buffer.sample(num_items=1)
-        if batch is None:
-            return None
+        batch_len = batch.agent_steps() if count_by_agent_steps else batch.env_steps()
+        if batch_len == 0:
+            # Replay has not started, so we can't accumulate timesteps here
+            return batch
         train_batches.append(batch)
-        train_batch_size += (
-            train_batches[-1].agent_steps()
-            if count_by_agent_steps
-            else train_batches[-1].env_steps()
-        )
+        train_batch_size += batch_len
     # All batch types are the same type, hence we can use any concat_samples()
     train_batch = SampleBatch.concat_samples(train_batches)
     return train_batch
@@ -138,6 +136,13 @@ def sample_min_n_steps_from_buffer(
 def validate_buffer_config(config: dict):
     if config.get("replay_buffer_config", None) is None:
         config["replay_buffer_config"] = {}
+
+    if config.get("worker_side_prioritization", DEPRECATED_VALUE) != DEPRECATED_VALUE:
+        deprecation_warning(
+            old="config['worker_side_prioritization']",
+            new="config['replay_buffer_config']['worker_side_prioritization']",
+            error=True,
+        )
 
     prioritized_replay = config.get("prioritized_replay", DEPRECATED_VALUE)
     if prioritized_replay != DEPRECATED_VALUE:
@@ -181,10 +186,11 @@ def validate_buffer_config(config: dict):
         deprecation_warning(
             old="config['replay_batch_size'] or config['replay_buffer_config']["
             "'replay_batch_size']",
-            help="Specification of replay_batch_size is not needed anymore for most "
-            "replay buffers and will be ignored. Specify the number of items you "
-            "want to replay upon calling sample().",
-            error=False,
+            help="Specification of replay_batch_size is not supported anymore but is "
+            "derived from `train_batch_size`. Specify the number of "
+            "items you want to replay upon calling the sample() method of replay "
+            "buffers if this does not work for you.",
+            error=True,
         )
 
     # Deprecation of old-style replay buffer args

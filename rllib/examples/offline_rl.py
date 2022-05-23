@@ -29,7 +29,7 @@ if __name__ == "__main__":
 
     # See rllib/tuned_examples/cql/pendulum-cql.yaml for comparison.
 
-    config = cql.CQL_DEFAULT_CONFIG.copy()
+    config = cql.DEFAULT_CONFIG.copy()
     config["num_workers"] = 0  # Run locally.
     config["horizon"] = 200
     config["soft_horizon"] = True
@@ -45,11 +45,11 @@ if __name__ == "__main__":
     config["replay_buffer_config"]["capacity"] = int(1e6)
     config["tau"] = 0.005
     config["target_entropy"] = "auto"
-    config["Q_model"] = {
+    config["q_model_config"] = {
         "fcnet_hiddens": [256, 256],
         "fcnet_activation": "relu",
     }
-    config["policy_model"] = {
+    config["policy_model_config"] = {
         "fcnet_hiddens": [256, 256],
         "fcnet_activation": "relu",
     }
@@ -118,10 +118,10 @@ if __name__ == "__main__":
 
     # Example on how to do evaluation on the trained Trainer
     # using the data from our buffer.
-    # Get a sample (MultiAgentBatch -> SampleBatch).
-    batch = replay_buffer.sample(num_items=config["train_batch_size"]).policy_batches[
-        "default_policy"
-    ]
+    # Get a sample (MultiAgentBatch).
+    multi_agent_batch = replay_buffer.sample(num_items=config["train_batch_size"])
+    # All experiences have been buffered for `default_policy`
+    batch = multi_agent_batch.policy_batches["default_policy"]
     obs = torch.from_numpy(batch["obs"])
     # Pass the observations through our model to get the
     # features, which then to pass through the Q-head.

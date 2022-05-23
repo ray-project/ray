@@ -101,6 +101,7 @@ class BlockWritePathProvider:
         )
 
 
+@DeveloperAPI
 class DefaultBlockWritePathProvider(BlockWritePathProvider):
     """Default block write path provider implementation that writes each
     dataset block out to a file of the form:
