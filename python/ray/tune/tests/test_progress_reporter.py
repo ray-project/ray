@@ -595,6 +595,7 @@ class ProgressReporterTest(unittest.TestCase):
             try:
                 assert EXPECTED_END_TO_END_START in output
                 assert EXPECTED_END_TO_END_END in output
+                assert "(raylet)" not in output
             except Exception:
                 print("*** BEGIN OUTPUT ***")
                 print(output)
