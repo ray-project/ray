@@ -156,7 +156,7 @@ def start(
     if http_options is None:
         http_options = HTTPOptions()
 
-    # Used for scheduling things to hte head node explicitly.
+    # Used for scheduling things to the head node explicitly.
     head_node_id = ray.get_runtime_context().node_id
     controller = ServeController.options(
         num_cpus=1 if dedicated_cpu else 0,
