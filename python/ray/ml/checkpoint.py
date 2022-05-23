@@ -220,7 +220,26 @@ class Checkpoint:
         Returns:
             Checkpoint: checkpoint object.
         """
-        return Checkpoint(data_dict=data)
+        return cls(data_dict=data)
+
+    def _to_dict_from_obj_ref(self):
+        return ray.get(self._obj_ref)
+
+    def _to_dict_from_path_or_uri(self):
+        with self.as_directory() as local_path:
+            checkpoint_data_path = os.path.join(local_path, _DICT_CHECKPOINT_FILE_NAME)
+            if os.path.exists(checkpoint_data_path):
+                # If we are restoring a dict checkpoint, load the dict
+                # from the checkpoint file.
+                with open(checkpoint_data_path, "rb") as f:
+                    checkpoint_data = pickle.load(f)
+            else:
+                data = _pack(local_path)
+
+                checkpoint_data = {
+                    _FS_CHECKPOINT_KEY: data,
+                }
+            return checkpoint_data
 
     def to_dict(self) -> dict:
         """Return checkpoint data as dictionary.
@@ -233,26 +252,10 @@ class Checkpoint:
             return self._data_dict
         elif self._obj_ref:
             # If the checkpoint data is an object reference, resolve
-            return ray.get(self._obj_ref)
+            return self._to_dict_from_obj_ref()
         elif self._local_path or self._uri:
             # Else, checkpoint is either on FS or external storage
-            with self.as_directory() as local_path:
-                checkpoint_data_path = os.path.join(
-                    local_path, _DICT_CHECKPOINT_FILE_NAME
-                )
-                if os.path.exists(checkpoint_data_path):
-                    # If we are restoring a dict checkpoint, load the dict
-                    # from the checkpoint file.
-                    with open(checkpoint_data_path, "rb") as f:
-                        checkpoint_data = pickle.load(f)
-                else:
-                    data = _pack(local_path)
-
-                    checkpoint_data = {
-                        _FS_CHECKPOINT_KEY: data,
-                    }
-
-            return checkpoint_data
+            return self._to_dict_from_path_or_uri()
         else:
             raise RuntimeError(f"Empty data for checkpoint {self}")
 
@@ -266,7 +269,7 @@ class Checkpoint:
         Returns:
             Checkpoint: checkpoint object.
         """
-        return Checkpoint(obj_ref=obj_ref)
+        return cls(obj_ref=obj_ref)
 
     def to_object_ref(self) -> ray.ObjectRef:
         """Return checkpoint data as object reference.
@@ -289,7 +292,48 @@ class Checkpoint:
         Returns:
             Checkpoint: checkpoint object.
         """
-        return Checkpoint(local_path=path)
+        return cls(local_path=path)
+
+    def _handle_local_path(self, local_path: str, path: str):
+        if local_path != path:
+            # If this exists on the local path, just copy over
+            if path and os.path.exists(path):
+                shutil.rmtree(path)
+            shutil.copytree(local_path, path)
+
+    def _handle_external_path(self, external_path: str, path: str):
+        # If this exists on external storage (e.g. cloud), download
+        download_from_uri(uri=external_path, local_path=path)
+
+    def _to_directory_from_dict(self, data_dict: dict, path: str):
+        if _FS_CHECKPOINT_KEY in data_dict:
+            # This used to be a true fs checkpoint, so restore
+            _unpack(data_dict[_FS_CHECKPOINT_KEY], path)
+        else:
+            # This is a dict checkpoint. Dump data into checkpoint.pkl
+            checkpoint_data_path = os.path.join(path, _DICT_CHECKPOINT_FILE_NAME)
+            with open(checkpoint_data_path, "wb") as f:
+                pickle.dump(data_dict, f)
+
+    def _to_directory_from_local_path_or_uri(self, path: str):
+        local_path = self._local_path
+        external_path = _get_external_path(self._uri)
+        if local_path:
+            self._handle_local_path(local_path, path)
+        elif external_path:
+            self._handle_external_path(external_path, path)
+        else:
+            raise RuntimeError(
+                f"No valid location found for checkpoint {self}: {self._uri}"
+            )
+
+    def _get_temporary_checkpoint_dir(self) -> str:
+        return _temporary_checkpoint_dir()
+
+    def _make_dir(self, path: str) -> None:
+        os.makedirs(path, exist_ok=True)
+        # Drop marker
+        open(os.path.join(path, ".is_checkpoint"), "a").close()
 
     def to_directory(self, path: Optional[str] = None) -> str:
         """Write checkpoint data to directory.
@@ -300,41 +344,17 @@ class Checkpoint:
         Returns:
             str: Directory containing checkpoint data.
         """
-        path = path if path is not None else _temporary_checkpoint_dir()
+        path = path if path is not None else self._get_temporary_checkpoint_dir()
 
-        os.makedirs(path, exist_ok=True)
-        # Drop marker
-        open(os.path.join(path, ".is_checkpoint"), "a").close()
+        self._make_dir(path)
 
         if self._data_dict or self._obj_ref:
             # This is a object ref or dict
             data_dict = self.to_dict()
-
-            if _FS_CHECKPOINT_KEY in data_dict:
-                # This used to be a true fs checkpoint, so restore
-                _unpack(data_dict[_FS_CHECKPOINT_KEY], path)
-            else:
-                # This is a dict checkpoint. Dump data into checkpoint.pkl
-                checkpoint_data_path = os.path.join(path, _DICT_CHECKPOINT_FILE_NAME)
-                with open(checkpoint_data_path, "wb") as f:
-                    pickle.dump(data_dict, f)
+            self._to_directory_from_dict(data_dict, path)
         else:
             # This is either a local fs, remote node fs, or external fs
-            local_path = self._local_path
-            external_path = _get_external_path(self._uri)
-            if local_path:
-                if local_path != path:
-                    # If this exists on the local path, just copy over
-                    if path and os.path.exists(path):
-                        shutil.rmtree(path)
-                    shutil.copytree(local_path, path)
-            elif external_path:
-                # If this exists on external storage (e.g. cloud), download
-                download_from_uri(uri=external_path, local_path=path)
-            else:
-                raise RuntimeError(
-                    f"No valid location found for checkpoint {self}: {self._uri}"
-                )
+            self._to_directory_from_local_path_or_uri(path)
 
         return path
 
@@ -383,7 +403,7 @@ class Checkpoint:
         Returns:
             Checkpoint: checkpoint object.
         """
-        return Checkpoint(uri=uri)
+        return cls(uri=uri)
 
     def to_uri(self, uri: str) -> str:
         """Write checkpoint data to location URI (e.g. cloud storage).
@@ -446,11 +466,15 @@ class Checkpoint:
     def __getstate__(self):
         if self._local_path:
             blob = self.to_bytes()
-            return Checkpoint.from_bytes(blob).__getstate__()
+            return self.__class__.from_bytes(blob).__getstate__()
         return self.__dict__
 
     def __setstate__(self, state):
         self.__dict__.update(state)
+
+    def __copy__(self) -> "Checkpoint":
+        attribute = self.get_internal_representation()
+        return self.__class__(**{attribute[0]: attribute[1]})
 
 
 def _get_local_path(path: Optional[str]) -> Optional[str]:

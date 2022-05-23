@@ -102,7 +102,7 @@ def _sync_dir_on_same_node(
         None, or future of the copy task.
 
     """
-    copy_on_node = _copy_dir.options(
+    copy_on_node = _remote_copy_dir.options(
         num_cpus=0, resources={f"node:{ip}": 0.01}, placement_group=None
     )
     copy_future = copy_on_node.remote(source_dir=source_path, target_dir=target_path)
@@ -352,9 +352,16 @@ def _iter_remote(actor: ray.ActorID) -> Generator[bytes, None, None]:
 def _unpack_dir(stream: io.BytesIO, target_dir: str) -> None:
     """Unpack tarfile stream into target directory."""
     stream.seek(0)
-    with FileLock(f"{target_dir}.lock"):
-        with tarfile.open(fileobj=stream) as tar:
-            tar.extractall(target_dir)
+    try:
+        with FileLock(f"{target_dir}.lock", timeout=0):
+            with tarfile.open(fileobj=stream) as tar:
+                tar.extractall(target_dir)
+    except TimeoutError:
+        # wait, but do not do anything
+        with FileLock(f"{target_dir}.lock"):
+            pass
+        if not os.path.exists(target_dir):
+            _unpack_dir(stream, target_dir)
 
 
 @ray.remote
@@ -366,12 +373,22 @@ def _unpack_from_actor(pack_actor: ray.ActorID, target_dir: str) -> None:
     _unpack_dir(stream, target_dir=target_dir)
 
 
-@ray.remote
 def _copy_dir(source_dir: str, target_dir: str) -> None:
     """Copy dir with shutil on the actor."""
-    with FileLock(f"{target_dir}.lock"):
-        _delete_path_unsafe(target_dir)
-        shutil.copytree(source_dir, target_dir)
+    try:
+        with FileLock(f"{target_dir}.lock"):
+            _delete_path_unsafe(target_dir)
+            shutil.copytree(source_dir, target_dir)
+    except TimeoutError:
+        # wait, but do not do anything
+        with FileLock(f"{target_dir}.lock"):
+            pass
+        if not os.path.exists(target_dir):
+            _copy_dir(source_dir, target_dir)
+
+
+# Only export once
+_remote_copy_dir = ray.remote(_copy_dir)
 
 
 def _delete_path(target_path: str, filelock: bool = True) -> bool:
