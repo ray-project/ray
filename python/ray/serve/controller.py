@@ -10,6 +10,7 @@ from typing import Dict, Iterable, List, Optional, Tuple, Any
 import ray
 from ray.types import ObjectRef
 from ray.actor import ActorHandle
+from ray._private.utils import import_attr
 
 from ray.serve.autoscaling_metrics import InMemoryMetricsStore
 from ray.serve.autoscaling_policy import BasicAutoscalingPolicy
@@ -394,6 +395,52 @@ class ServeController:
         """
 
         return [self.deploy(**args) for args in deployment_args_list]
+
+    def deploy_app(
+        self,
+        import_path: str,
+        runtime_env: str,
+        deployment_override_options: List[Dict],
+    ) -> None:
+        """Kicks off a task that deploys a Serve application.
+
+        Cancels any previous in-progress task that is deploying a Serve
+        application.
+
+        Args:
+            import_path (str): Serve deployment graph's import path
+            runtime_env (str): runtime_env to run the deployment graph in
+            deployment_override_options (List[Dict]): All dictionaries should
+                contain argument-value options that can be passed directly
+                into a set_options() call. Overrides deployment options set
+                in the graph itself.
+        """
+
+        if self.config_deployment_request_ref is not None:
+            ray.cancel(self.config_deployment_request_ref)
+
+        @ray.remote(runtime_env=runtime_env, max_calls=1)
+        def run_graph(import_path: str, deployment_override_options: List[Dict]):
+            """Deploys a Serve application to the controller's Ray cluster."""
+            from ray import serve
+            from ray.serve.api import build
+
+            # Import and build the graph
+            graph = import_attr(import_path)
+            app = build(graph)
+
+            # Override options for each deployment
+            for options_dict in deployment_override_options:
+                name = options_dict["name"]
+                app.deployments[name].set_options(**options_dict)
+
+            # Run the graph locally on the cluster
+            serve.start(_override_controller_namespace="serve")
+            serve.run(app)
+
+        self.config_deployment_request_ref = run_graph.remote(
+            import_path, deployment_override_options
+        )
 
     def delete_deployment(self, name: str):
         self.endpoint_state.delete_endpoint(name)
