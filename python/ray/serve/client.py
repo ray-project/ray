@@ -319,7 +319,7 @@ class ServeControllerClient:
     @_ensure_connected
     def deploy_app(self, config: ServeApplicationSchema) -> None:
         ray.get(
-            self._controller.deploy_app(
+            self._controller.deploy_app.remote(
                 config.import_path, config.runtime_env, config.deployment_dicts()
             )
         )

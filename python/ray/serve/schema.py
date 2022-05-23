@@ -374,7 +374,10 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
             "and py_modules may contain only remote URIs."
         ),
     )
-    deployments: List[DeploymentSchema] = Field(...)
+    deployments: List[DeploymentSchema] = Field(
+        default=[],
+        description=("Deployment options that override options specified in the code."),
+    )
 
     @validator("runtime_env")
     def runtime_env_contains_remote_uris(cls, v):
@@ -424,6 +427,8 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
                     f'Got invalid import path "{v}". An '
                     "import path may not start or end with a dot."
                 )
+
+        return v
 
     def deployment_dicts(self, exclude_unset: bool = True) -> List[Dict]:
         """Gets deployment options dictionaries for all deployments.
