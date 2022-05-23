@@ -54,10 +54,10 @@ class BasicMultiAgentMultiSpaces(MultiAgentEnv):
     def step(self, action_dict):
         obs, rew, done, info = {}, {}, {}, {}
         for i, action in action_dict.items():
-            obs[i], rew[i], done[i], info[i] = self.observation_space[
-                                                   i].sample(), 0.0, False, {}
-            if done[i]:
-                self.dones.add(i)
+            obs[i] = self.observation_space[i].sample()
+            rew[i] = 0.0
+            done[i] = False
+            info[i] = {}
         done["__all__"] = len(self.dones) == len(self.agents)
         return obs, rew, done, info
 
