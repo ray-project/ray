@@ -68,7 +68,7 @@ def get_step(
     if ray_wheels:
         cmd += f" --ray-wheels {ray_wheels}"
 
-    step["command"] = cmd
+    step["command"] = f"sudo apt update && sudo apt install -y gcc && {cmd}"
     step["env"].update(env)
 
     if "python" in test:
