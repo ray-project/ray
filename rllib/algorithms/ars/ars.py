@@ -355,8 +355,6 @@ class ARSTrainer(Trainer):
         # Validate our config dict.
         self.validate_config(self.config)
 
-        # Generate `self.env_creator` callable to create an env instance.
-        self.env_creator = self._get_env_creator_from_env_id(self._env_id)
         # Generate the local env.
         env_context = EnvContext(self.config["env_config"] or {}, worker_index=0)
         env = self.env_creator(env_context)
