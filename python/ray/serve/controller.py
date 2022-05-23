@@ -485,7 +485,7 @@ class ServeController:
         # TODO (shrekris-anyscale): Replace defaults with actual REST API status
         serve_app_status = ServeApplicationStatus.RUNNING
         serve_app_message = ""
-        deployment_timestamp = str(time.time())
+        deployment_timestamp = time.time()
 
         app_status = ServeApplicationStatusInfo(
             serve_app_status, serve_app_message, deployment_timestamp

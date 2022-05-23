@@ -38,7 +38,7 @@ class ServeApplicationStatus(str, Enum):
 class ServeApplicationStatusInfo:
     status: ServeApplicationStatus
     message: str = ""
-    deployment_timestamp: str = ""
+    deployment_timestamp: float = 0
 
     def __eq__(self, other):
         if not isinstance(other, ServeApplicationStatusInfo):

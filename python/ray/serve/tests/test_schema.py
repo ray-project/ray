@@ -511,7 +511,7 @@ class TestServeStatusSchema:
             app_status=ServeApplicationStatusInfo(
                 status="DEPLOYING",
                 message="",
-                deployment_timestamp=str(time.time()),
+                deployment_timestamp=time.time(),
             ),
             deployment_statuses=[
                 DeploymentStatusInfo(

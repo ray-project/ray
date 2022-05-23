@@ -86,7 +86,7 @@ class TestServeApplicationStatusInfo:
     def test_application_status_required(self):
         with pytest.raises(TypeError):
             ServeApplicationStatusInfo(
-                message="context about status", deployment_timestamp=str(time.time())
+                message="context about status", deployment_timestamp=time.time()
             )
 
     @pytest.mark.parametrize("status", list(ServeApplicationStatus))
@@ -94,7 +94,7 @@ class TestServeApplicationStatusInfo:
         serve_application_status_info = ServeApplicationStatusInfo(
             status=status,
             message="context about status",
-            deployment_timestamp=str(time.time()),
+            deployment_timestamp=time.time(),
         )
         serialized_proto = serve_application_status_info.to_proto().SerializeToString()
         deserialized_proto = ServeApplicationStatusInfoProto.FromString(
@@ -110,7 +110,7 @@ class TestStatusInfo:
         return ServeApplicationStatusInfo(
             status=ServeApplicationStatus.RUNNING,
             message="",
-            deployment_timestamp=str(time.time()),
+            deployment_timestamp=time.time(),
         )
 
     def test_app_status_required(self):
@@ -162,7 +162,7 @@ class TestStatusInfo:
             app_status=ServeApplicationStatusInfo(
                 status=application_status,
                 message="context about this status",
-                deployment_timestamp=str(time.time()),
+                deployment_timestamp=time.time(),
             ),
             deployment_statuses=[
                 DeploymentStatusInfo(

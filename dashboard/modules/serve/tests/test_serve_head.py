@@ -242,7 +242,7 @@ def test_get_status_info(ray_start_stop):
 
     assert serve_status["app_status"]["status"] in {"DEPLOYING", "RUNNING"}
     wait_for_condition(
-        lambda: str(time.time()) > serve_status["app_status"]["deployment_timestamp"],
+        lambda: time.time() > serve_status["app_status"]["deployment_timestamp"],
         timeout=2,
     )
 

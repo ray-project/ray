@@ -208,7 +208,7 @@ enum ServeApplicationStatus {
 message ServeApplicationStatusInfo {
   ServeApplicationStatus status = 1;
   string message = 2;
-  string deployment_timestamp = 3;
+  double deployment_timestamp = 3;
 }
 
 message StatusInfo {
