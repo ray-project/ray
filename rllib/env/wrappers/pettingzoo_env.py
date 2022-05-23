@@ -1,8 +1,8 @@
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import PublicAPI
 
 
-@DeveloperAPI
+@PublicAPI
 class PettingZooEnv(MultiAgentEnv):
     """An interface to the PettingZoo MARL environment library.
 
@@ -143,7 +143,7 @@ class PettingZooEnv(MultiAgentEnv):
         return self.env.unwrapped
 
 
-@DeveloperAPI
+@PublicAPI
 class ParallelPettingZooEnv(MultiAgentEnv):
     def __init__(self, env):
         super().__init__()

@@ -7,13 +7,13 @@ from typing import Callable, Optional, Tuple
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.policy.policy import PolicySpec
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.typing import MultiAgentDict, PolicyID, AgentID
 
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
+@PublicAPI
 class Unity3DEnv(MultiAgentEnv):
     """A MultiAgentEnv representing a single Unity3D game instance.
 

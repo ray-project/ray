@@ -4,14 +4,14 @@ import os
 import sys
 from typing import Any, Optional
 
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.typing import TensorShape, TensorType
 
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
+@PublicAPI
 def try_import_jax(error: bool = False):
     """Tries importing JAX and FLAX and returns both modules (or Nones).
 
@@ -43,7 +43,7 @@ def try_import_jax(error: bool = False):
     return jax, flax
 
 
-@DeveloperAPI
+@PublicAPI
 def try_import_tf(error: bool = False):
     """Tries importing tf and returns the module (or None).
 
@@ -125,7 +125,7 @@ def tf_function(tf_module):
     return decorator
 
 
-@DeveloperAPI
+@PublicAPI
 def try_import_tfp(error: bool = False):
     """Tries importing tfp and returns the module (or None).
 

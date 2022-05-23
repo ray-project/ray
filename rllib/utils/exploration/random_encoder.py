@@ -17,8 +17,7 @@ from ray.rllib.utils.typing import FromConfigSpec, ModelConfigDict, TensorType
 tf1, tf, tfv = try_import_tf()
 
 
-@PublicAPI
-class MovingMeanStd:
+class _MovingMeanStd:
     """Track moving mean, std and count."""
 
     def __init__(self, epsilon: float = 1e-4, shape: Optional[List[int]] = None):
