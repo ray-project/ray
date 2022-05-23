@@ -1,3 +1,7 @@
+from typing import List
+
+from ray.actor import ActorHandle
+from ray.rllib.agents import Trainer
 from ray.rllib.agents.dqn.apex import ApexTrainer
 from ray.rllib.algorithms.ddpg.ddpg import DDPGConfig, DDPGTrainer
 from ray.rllib.evaluation.worker_set import WorkerSet
@@ -79,6 +83,19 @@ class ApexDDPGTrainer(DDPGTrainer, ApexTrainer):
     def training_iteration(self) -> ResultDict:
         """Use APEX-DQN's training iteration function."""
         return ApexTrainer.training_iteration(self)
+
+    @override(Trainer)
+    def on_worker_failures(
+        self, removed_workers: List[ActorHandle], new_workers: List[ActorHandle]
+    ):
+        """Handle the failures of remote sampling workers
+
+        Args:
+            removed_workers: removed worker ids.
+            new_workers: ids of newly created workers.
+        """
+        self._sampling_actor_manager.remove_workers(removed_workers)
+        self._sampling_actor_manager.add_workers(new_workers)
 
     @staticmethod
     @override(DDPGTrainer)

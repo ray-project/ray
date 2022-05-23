@@ -1,6 +1,6 @@
 import logging
 from collections import defaultdict, OrderedDict
-from typing import Any, Callable, DefaultDict, Dict, List, Optional, Set
+from typing import Any, Callable, DefaultDict, Dict, List, Optional, Set, Union
 
 import ray
 from ray.actor import ActorHandle
@@ -236,13 +236,15 @@ class AsyncRequestsManager:
         self._ray_wait_timeout_s = ray_wait_timeout_s
         self._return_object_refs = return_object_refs
         self._max_remote_requests_in_flight = max_remote_requests_in_flight_per_worker
-        self._all_workers = set(workers)
         self._pending_to_actor = {}
         self._pending_remotes = []
-        self._worker_queue = OrderedDict.fromkeys(workers)
         self._remote_requests_in_flight = defaultdict(set)
-        self._unavailable_workers = set()
-        self._workers_to_remove = set()
+
+        self._all_workers = (
+            list(workers) if not isinstance(workers, list) else workers.copy()
+        )
+        self._actor_to_ptr = {worker: i for i, worker in enumerate(self._all_workers)}
+        self._curr_actor_ptr = 0
 
     def call(
         self,
@@ -279,10 +281,27 @@ class AsyncRequestsManager:
         if fn_kwargs is None:
             fn_kwargs = {}
 
+        def actor_available(a):
+            return (
+                len(self._remote_requests_in_flight[a])
+                < self._max_remote_requests_in_flight
+            )
+
+        num_workers = len(self._all_workers)
+
         if not actor:  # If no actor is specified, use a random actor.
-            actor = self._get_actor_and_mark_availability()
+            for _ in range(num_workers):
+                if actor_available(self._all_workers[self._curr_actor_ptr]):
+                    actor = self._all_workers[self._curr_actor_ptr]
+                    self._curr_actor_ptr = (self._curr_actor_ptr + 1) % num_workers
+                    break
+                self._curr_actor_ptr = (self._curr_actor_ptr + 1) % num_workers
             if not actor:  # No actors available to schedule the request on.
                 return False
+        else:
+            if not actor_available(actor):
+                return False
+            self._curr_actor_ptr = self._actor_to_ptr[actor]
         req = actor.apply.remote(remote_fn, *fn_args, **fn_kwargs)
         self._remote_requests_in_flight[actor].add(req)
         self._pending_to_actor[req] = actor
@@ -314,25 +333,6 @@ class AsyncRequestsManager:
             num_launched += int(launched)
         return num_launched
 
-    def _get_actor_and_mark_availability(self, actor=None) -> Optional[ActorHandle]:
-        """Get an actor if no actor is specified, and track that actor's availbility"""
-        if not actor:
-            actor = next(iter(self._worker_queue), None)
-        elif actor not in self._worker_queue:
-            actor = None
-        # No actors available to schedule this request on.
-        # or the actor is not available to schedule this request on.
-        if not actor:
-            return None
-        if len(self._remote_requests_in_flight[actor]) == (
-            self._max_remote_requests_in_flight - 1
-        ):
-            del self._worker_queue[actor]
-            self._unavailable_workers.add(actor)
-        else:
-            self._worker_queue.move_to_end(actor)
-        return actor
-
     def get_ready(self) -> Dict[ActorHandle, List[Any]]:
         """Get results that are ready to be returned
 
@@ -357,37 +357,40 @@ class AsyncRequestsManager:
             self._remote_requests_in_flight[actor].remove(req)
             ready_requests_dict[actor].append(obj)
             del self._pending_to_actor[req]
-            if actor in self._unavailable_workers:
-                self._worker_queue[actor] = None
-                self._unavailable_workers.remove(actor)
         del ready_requests
         return dict(ready_requests_dict)
 
-    def add_worker(self, new_worker: ActorHandle) -> None:
+    def add_workers(self, new_workers: Union[List[ActorHandle], ActorHandle]) -> None:
         """Add a new worker to the manager
 
         Args:
-            new_worker: The actor to add
+            new_workers: The actors to add
 
         """
-        if new_worker in self._all_workers:
-            return
-        self._all_workers.add(new_worker)
-        self._worker_queue[new_worker] = None
+        if isinstance(new_workers, ActorHandle):
+            new_workers = [new_workers]
+        for new_worker in new_workers:
+            if new_worker not in self._all_workers:
+                self._all_workers.append(new_worker)
+                self._actor_to_ptr[new_worker] = len(self._all_workers) - 1
 
-    def remove_worker(self, worker: ActorHandle) -> None:
-        """Mark worker to be removed from the manager.
+    def remove_workers(self, workers: Union[List[ActorHandle], ActorHandle]) -> None:
+        """Make workers unschedulable and remove them from this manager.
+
+        Note:
+            This will not stop their inflight requests. ray.kill can be used to kill
+                the workers and their inflight requests.
 
         Args:
-            worker: The actor to remove
+            workers: The actors to remove
         """
-        if worker not in self._all_workers:
-            return
-        self._all_workers.remove(worker)
-        if worker in self._worker_queue:
-            del self._worker_queue[worker]
-        if worker in self._unavailable_workers:
-            self._unavailable_workers.remove(worker)
+        if isinstance(workers, ActorHandle):
+            workers = [workers]
+        for worker in workers:
+            if worker in self._all_workers:
+                del self._all_workers[self._actor_to_ptr[worker]]
+        self._curr_actor_ptr = 0
+        self._actor_to_ptr = {worker: i for i, worker in enumerate(self._all_workers)}
 
     def get_manager_statistics(self) -> Dict[str, Any]:
         """Get statistics about the the manager

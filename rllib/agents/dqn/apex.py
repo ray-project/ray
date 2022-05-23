@@ -261,9 +261,6 @@ class ApexTrainer(DQNTrainer):
             raise ValueError("`num_gpus` > 1 not yet supported for APEX-DQN!")
         # Call DQN's validation method.
         super().validate_config(config)
-        # if config["_disable_execution_plan_api"]:
-        #     if not config.get("training_intensity", 1.0) > 0:
-        #         raise ValueError("training_intensity must be > 0")
 
     @override(Trainable)
     def training_iteration(self) -> ResultDict:
@@ -472,6 +469,19 @@ class ApexTrainer(DQNTrainer):
             self._counters[LAST_TARGET_UPDATE_TS] = self._counters[
                 STEPS_TRAINED_COUNTER
             ]
+
+    @override(Trainer)
+    def on_worker_failures(
+        self, removed_workers: List[ActorHandle], new_workers: List[ActorHandle]
+    ):
+        """Handle the failures of remote sampling workers
+
+        Args:
+            removed_workers: removed worker ids.
+            new_workers: ids of newly created workers.
+        """
+        self._sampling_actor_manager.remove_workers(removed_workers)
+        self._sampling_actor_manager.add_workers(new_workers)
 
     @override(Trainer)
     def _compile_step_results(self, *, step_ctx, step_attempt_results=None):

@@ -1,6 +1,7 @@
 import logging
 from typing import Any, Dict, List, Optional, Type, Union
 
+from ray.actor import ActorHandle
 from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.agents.trainer_config import TrainerConfig
@@ -249,6 +250,19 @@ class A3CTrainer(Trainer):
             local_worker.set_global_vars(global_vars)
 
         return learner_info_builder.finalize()
+
+    @override(Trainer)
+    def on_worker_failures(
+        self, removed_workers: List[ActorHandle], new_workers: List[ActorHandle]
+    ):
+        """Handle failures on remote A3C workers.
+
+        Args:
+            removed_workers: removed worker ids.
+            new_workers: ids of newly created workers.
+        """
+        self._worker_manager.remove_workers(removed_workers)
+        self._worker_manager.add_workers(new_workers)
 
 
 # Deprecated: Use ray.rllib.agents.a3c.A3CConfig instead!

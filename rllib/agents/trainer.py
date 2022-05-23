@@ -2024,12 +2024,14 @@ class Trainer(Trainable):
         workers = getattr(self, "workers", None)
         if not isinstance(workers, WorkerSet):
             return
+        removed_workers, new_workers = [], []
 
         # Search for failed workers and try to recover (restart) them.
         if self.config["recreate_failed_workers"] is True:
-            workers.recreate_failed_workers()
+            removed_workers, new_workers = workers.recreate_failed_workers()
         elif self.config["ignore_worker_failures"] is True:
             workers.remove_failed_workers()
+        self.on_worker_failures(removed_workers, new_workers)
 
         if not self.config.get("_disable_execution_plan_api") and callable(
             self.execution_plan
@@ -2038,6 +2040,17 @@ class Trainer(Trainable):
             self.train_exec_impl = self.execution_plan(
                 workers, self.config, **self._kwargs_for_execution_plan()
             )
+
+    def on_worker_failures(
+        self, removed_workers: List[ActorHandle], new_workers: List[ActorHandle]
+    ):
+        """Called after a worker failure is detected.
+
+        Args:
+            removed_workers: List of removed workers.
+            new_workers: List of new workers.
+        """
+        pass
 
     @override(Trainable)
     def _export_model(

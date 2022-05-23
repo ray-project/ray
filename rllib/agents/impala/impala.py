@@ -528,9 +528,6 @@ class ImpalaTrainer(Trainer):
     @override(Trainer)
     def setup(self, config: PartialTrainerConfigDict):
         super().setup(config)
-        self.remote_sampling_requests_in_flight: DefaultDict[
-            ActorHandle, Set[ray.ObjectRef]
-        ] = defaultdict(set)
 
         if self.config["_disable_execution_plan_api"]:
             # Create extra aggregation workers and assign each rollout worker to
@@ -873,6 +870,18 @@ class ImpalaTrainer(Trainer):
 
         # Update global vars of the local worker.
         self.workers.local_worker().set_global_vars(global_vars)
+
+    @override(Trainer)
+    def on_worker_failures(self, removed_workers: List[ActorHandle],
+        new_workers: List[ActorHandle]):
+        """Handle the failures of remote sampling workers
+
+        Args:
+            removed_workers: removed worker ids.
+            new_workers: ids of newly created workers.
+        """
+        self._sampling_actor_manager.remove_workers(removed_workers)
+        self._sampling_actor_manager.add_workers(new_workers)
 
     @override(Trainer)
     def _compile_step_results(self, *, step_ctx, step_attempt_results=None):

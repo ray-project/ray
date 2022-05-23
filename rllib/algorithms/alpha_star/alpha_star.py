@@ -440,7 +440,7 @@ class AlphaStarTrainer(appo.APPOTrainer):
         with self._timers[LEARN_ON_BATCH_TIMER]:
             for pid, pol_actor, repl_actor in self.distributed_learners:
                 if pol_actor not in self._learner_worker_manager.workers:
-                    self._learner_worker_manager.add_worker(pol_actor)
+                    self._learner_worker_manager.add_workers(pol_actor)
                 self._learner_worker_manager.call(
                     self._update_policy, actor=pol_actor, fn_args=[repl_actor, pid]
                 )

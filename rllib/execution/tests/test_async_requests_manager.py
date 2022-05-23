@@ -97,9 +97,6 @@ class TestAsyncRequestsManager(unittest.TestCase):
                     "We should not have scheduled the task because"
                     " all workers are busy."
                 )
-        assert (
-            len(manager._worker_queue) == 0 and len(manager._unavailable_workers) == 2
-        ), "We should have no available workers"
         assert len(manager._pending_remotes) == 4, "We should have 4 pending requests"
         time.sleep(3)
         ready_requests = manager.get_ready()
@@ -169,7 +166,7 @@ class TestAsyncRequestsManager(unittest.TestCase):
             "workers in the manager."
         )
         worker = RemoteRLlibActor.remote(sleep_time=0.1)
-        manager.add_worker(worker)
+        manager.add_workers(worker)
         manager.call(lambda w: w.task())
         if not (
             len(manager._remote_requests_in_flight[worker])
@@ -185,12 +182,10 @@ class TestAsyncRequestsManager(unittest.TestCase):
         for i in range(2):
             manager.call(lambda w: w.task())
             assert len(manager._pending_remotes) == i + 1
-        manager.remove_worker(worker)
+        manager.remove_workers(worker)
         if not (
             (
                 len(manager._all_workers)
-                == len(manager._unavailable_workers)
-                == len(manager._worker_queue)
                 == 0
             )
         ):
