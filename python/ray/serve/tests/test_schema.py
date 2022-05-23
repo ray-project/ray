@@ -384,6 +384,88 @@ class TestDeploymentSchema:
         with pytest.raises(ValidationError):
             DeploymentSchema.parse_obj(deployment_schema)
 
+    def test_deployment_dict_basic(self):
+        deployment_dict = {
+            "name": "basic",
+            "import_path": "example.path",
+            "num_replicas": 2,
+            "max_concurrent_queries": 10,
+        }
+
+        assert (
+            deployment_dict
+            == DeploymentSchema.parse_obj(deployment_dict).deployment_dict()
+        )
+
+    def test_deployment_dict_partially_unset_ray_actor_options(self):
+        deployment_dict = {
+            "name": "defaults",
+            "import_path": "example.path",
+            "num_replicas": 5,
+            "ray_actor_options": {},
+        }
+
+        assert (
+            deployment_dict
+            == DeploymentSchema.parse_obj(deployment_dict).deployment_dict()
+        )
+
+        deployment_dict["ray_actor_options"] = {
+            "num_gpus": 2,
+            "runtime_env": {
+                "packages": ["tensorflow", "requests"],
+                "env_vars": {"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"},
+            },
+        }
+
+        assert (
+            deployment_dict
+            == DeploymentSchema.parse_obj(deployment_dict).deployment_dict()
+        )
+
+    def test_deployment_dict_private_fields(self):
+        schema_dict = {
+            "name": "defaults",
+            "import_path": "example.path",
+            "graceful_shutdown_wait_loop_s": 12,
+            "health_check_period_s": 5,
+        }
+
+        deployment_dict = DeploymentSchema.parse_obj(schema_dict).deployment_dict()
+
+        assert deployment_dict == {
+            "name": "defaults",
+            "import_path": "example.path",
+            "_graceful_shutdown_wait_loop_s": 12,
+            "_health_check_period_s": 5,
+        }
+
+    def test_deployment_dict_exclude_unset(self):
+        schema_dict = {
+            "name": "defaults",
+            "import_path": "example.path",
+            "graceful_shutdown_wait_loop_s": 5,
+            "health_check_period_s": 4,
+        }
+
+        deployment_dict = DeploymentSchema.parse_obj(schema_dict).deployment_dict(
+            exclude_unset=False
+        )
+
+        # Check that underscore is prepended to private fields
+        assert deployment_dict["_graceful_shutdown_wait_loop_s"] == 5
+        assert "graceful_shutdown_wait_loop_s" not in deployment_dict
+
+        assert deployment_dict["_health_check_period_s"] == 4
+        assert "health_check_period_s" not in deployment_dict
+
+        # Spot check that other fields were added with their defaults
+        assert deployment_dict["user_config"] is None
+        assert deployment_dict["max_concurrent_queries"] is None
+
+        # Check that dictionary is long enought to contain all options
+        assert len(deployment_dict) == 14
+
 
 class TestServeApplicationSchema:
     def get_valid_serve_application_schema(self):
@@ -501,6 +583,37 @@ class TestServeApplicationSchema:
         serve_application_schema["import_path"] = path
         with pytest.raises(ValidationError):
             ServeApplicationSchema.parse_obj(serve_application_schema)
+
+    def test_deployment_dicts_basic(self):
+        app_dict = {
+            "import_path": "module.graph",
+            "runtime_env": {},
+            "deployments": [
+                {
+                    "name": "defaults",
+                    "import_path": "example.path",
+                    "num_replicas": 2,
+                    "max_concurrent_queries": 10,
+                },
+                {
+                    "name": "defaults",
+                    "import_path": "example.path",
+                    "num_replicas": 5,
+                    "ray_actor_options": {
+                        "num_gpus": 2,
+                        "runtime_env": {
+                            "packages": ["tensorflow", "requests"],
+                            "env_vars": {"OMP_NUM_THREADS": "32"},
+                        },
+                    },
+                },
+            ],
+        }
+
+        assert (
+            app_dict["deployments"]
+            == ServeApplicationSchema.parse_obj(app_dict).deployment_dicts()
+        )
 
 
 class TestDeploymentStatusSchema:
