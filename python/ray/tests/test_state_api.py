@@ -6,7 +6,7 @@ import yaml
 from typing import List
 from dataclasses import fields
 
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import MagicMock
 
 if sys.version_info > (3, 7, 0):
     from unittest.mock import AsyncMock
