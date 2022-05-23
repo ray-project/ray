@@ -54,12 +54,12 @@ class PostprocessAdvantages:
             last_r = self._value(**input_dict)
 
         # Adds the "advantages" (which in the case of MARWIL are simply the
-        # discounted cummulative rewards) to the SampleBatch.
+        # discounted cumulative rewards) to the SampleBatch.
         return compute_advantages(
             sample_batch,
             last_r,
             self.config["gamma"],
-            # We just want the discounted cummulative rewards, so we won't need
+            # We just want the discounted cumulative rewards, so we won't need
             # GAE nor critic (use_critic=True: Subtract vf-estimates from returns).
             use_gae=False,
             use_critic=False,
