@@ -71,8 +71,10 @@ class ServeController:
     async def __init__(
         self,
         controller_name: str,
+        *,
         http_config: HTTPOptions,
         checkpoint_path: str,
+        head_node_id: str,
         detached: bool = False,
         _override_controller_namespace: Optional[str] = None,
     ):
@@ -101,6 +103,7 @@ class ServeController:
             controller_name,
             detached,
             http_config,
+            head_node_id,
             _override_controller_namespace=_override_controller_namespace,
         )
         self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)

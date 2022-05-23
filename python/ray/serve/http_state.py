@@ -5,13 +5,14 @@ from typing import Dict, List, Tuple, Optional
 
 import ray
 from ray.actor import ActorHandle
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
 from ray.serve.config import HTTPOptions, DeploymentMode
 from ray.serve.constants import ASYNC_CONCURRENCY, SERVE_LOGGER_NAME, SERVE_PROXY_NAME
 from ray.serve.http_proxy import HTTPProxyActor
 from ray.serve.utils import (
     format_actor_name,
     get_all_node_ids,
-    get_current_node_resource_key,
 )
 from ray.serve.common import EndpointTag, NodeId
 
@@ -30,6 +31,7 @@ class HTTPState:
         controller_name: str,
         detached: bool,
         config: HTTPOptions,
+        head_node_id: str,
         _override_controller_namespace: Optional[str] = None,
         # Used by unit testing
         _start_proxies_on_init: bool = True,
@@ -43,6 +45,7 @@ class HTTPState:
         self._override_controller_namespace = _override_controller_namespace
         self._proxy_actors: Dict[NodeId, ActorHandle] = dict()
         self._proxy_actor_names: Dict[NodeId, str] = dict()
+        self._head_node_id: str = head_node_id
 
         # Will populate self.proxy_actors with existing actors.
         if _start_proxies_on_init:
@@ -74,11 +77,10 @@ class HTTPState:
             return []
 
         if location == DeploymentMode.HeadOnly:
-            head_node_resource_key = get_current_node_resource_key()
             return [
                 (node_id, node_resource)
                 for node_id, node_resource in target_nodes
-                if node_resource == head_node_resource_key
+                if node_id == self._head_node_id
             ][:1]
 
         if location == DeploymentMode.FixedNumber:
@@ -124,6 +126,9 @@ class HTTPState:
                     max_restarts=-1,
                     max_task_retries=-1,
                     resources={node_resource: 0.01},
+                    scheduling_strategy=NodeAffinitySchedulingStrategy(
+                        node_id, soft=False
+                    ),
                 ).remote(
                     self._config.host,
                     self._config.port,

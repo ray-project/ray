@@ -156,6 +156,8 @@ def start(
     if http_options is None:
         http_options = HTTPOptions()
 
+    # Used for scheduling things to hte head node explicitly.
+    head_node_id = ray.get_runtime_context().node_id
     controller = ServeController.options(
         num_cpus=1 if dedicated_cpu else 0,
         name=controller_name,
@@ -165,15 +167,14 @@ def start(
         # Schedule the controller on the head node with a soft constraint. This
         # prefers it to run on the head node in most cases, but allows it to be
         # restarted on other nodes in an HA cluster.
-        scheduling_strategy=NodeAffinitySchedulingStrategy(
-            ray.get_runtime_context().node_id, soft=True
-        ),
+        scheduling_strategy=NodeAffinitySchedulingStrategy(head_node_id, soft=True),
         namespace=controller_namespace,
         max_concurrency=CONTROLLER_MAX_CONCURRENCY,
     ).remote(
         controller_name,
-        http_options,
-        _checkpoint_path,
+        http_config=http_options,
+        checkpoint_path=_checkpoint_path,
+        head_node_id=head_node_id,
         detached=detached,
         _override_controller_namespace=_override_controller_namespace,
     )
