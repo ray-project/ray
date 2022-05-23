@@ -32,7 +32,6 @@ from ray.exceptions import RayError
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.env.env_context import EnvContext
-from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.metrics import (
