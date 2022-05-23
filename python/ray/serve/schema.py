@@ -3,7 +3,7 @@ from typing import Union, Tuple, List, Dict
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve.common import (
     DeploymentStatusInfo,
-    ServeApplicationStatusInfo,
+    ApplicationStatusInfo,
     StatusInfo,
 )
 from ray.serve.utils import DEFAULT
@@ -398,7 +398,7 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
 
 
 class ServeStatusSchema(BaseModel, extra=Extra.forbid):
-    app_status: ServeApplicationStatusInfo = Field(
+    app_status: ApplicationStatusInfo = Field(
         ...,
         description=(
             "Describes if the Serve application is DEPLOYING, if the "

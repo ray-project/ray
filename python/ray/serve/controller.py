@@ -18,8 +18,8 @@ from ray.serve.common import (
     EndpointInfo,
     NodeId,
     RunningReplicaInfo,
-    ServeApplicationStatus,
-    ServeApplicationStatusInfo,
+    ApplicationStatus,
+    ApplicationStatusInfo,
     StatusInfo,
 )
 from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
@@ -483,11 +483,11 @@ class ServeController:
     def get_serve_status(self) -> bytes:
 
         # TODO (shrekris-anyscale): Replace defaults with actual REST API status
-        serve_app_status = ServeApplicationStatus.RUNNING
+        serve_app_status = ApplicationStatus.RUNNING
         serve_app_message = ""
         deployment_timestamp = time.time()
 
-        app_status = ServeApplicationStatusInfo(
+        app_status = ApplicationStatusInfo(
             serve_app_status, serve_app_message, deployment_timestamp
         )
         deployment_statuses = self.deployment_state_manager.get_deployment_statuses()

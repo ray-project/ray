@@ -10,7 +10,7 @@ from ray import serve
 from ray.serve.common import (
     StatusInfo,
     DeploymentStatusInfo,
-    ServeApplicationStatusInfo,
+    ApplicationStatusInfo,
 )
 from ray.serve.schema import (
     RayActorOptionsSchema,
@@ -508,7 +508,7 @@ class TestServeApplicationSchema:
 class TestServeStatusSchema:
     def get_valid_serve_status_schema(self):
         return StatusInfo(
-            app_status=ServeApplicationStatusInfo(
+            app_status=ApplicationStatusInfo(
                 status="DEPLOYING",
                 message="",
                 deployment_timestamp=time.time(),

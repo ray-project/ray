@@ -11,8 +11,8 @@ from ray.serve.generated.serve_pb2 import (
     DeploymentStatusInfo as DeploymentStatusInfoProto,
     DeploymentStatus as DeploymentStatusProto,
     DeploymentStatusInfoList as DeploymentStatusInfoListProto,
-    ServeApplicationStatus as ServeApplicationStatusProto,
-    ServeApplicationStatusInfo as ServeApplicationStatusInfoProto,
+    ApplicationStatus as ApplicationStatusProto,
+    ApplicationStatusInfo as ApplicationStatusInfoProto,
     StatusInfo as StatusInfoProto,
     DeploymentLanguage,
 )
@@ -28,20 +28,20 @@ class EndpointInfo:
     route: str
 
 
-class ServeApplicationStatus(str, Enum):
+class ApplicationStatus(str, Enum):
     DEPLOYING = "DEPLOYING"
     RUNNING = "RUNNING"
     DEPLOY_FAILED = "DEPLOY_FAILED"
 
 
 @dataclass
-class ServeApplicationStatusInfo:
-    status: ServeApplicationStatus
+class ApplicationStatusInfo:
+    status: ApplicationStatus
     message: str = ""
     deployment_timestamp: float = 0
 
     def __eq__(self, other):
-        if not isinstance(other, ServeApplicationStatusInfo):
+        if not isinstance(other, ApplicationStatusInfo):
             return False
 
         return (
@@ -58,18 +58,16 @@ class ServeApplicationStatusInfo:
         )
 
     def to_proto(self):
-        return ServeApplicationStatusInfoProto(
+        return ApplicationStatusInfoProto(
             status=self.status,
             message=self.message,
             deployment_timestamp=self.deployment_timestamp,
         )
 
     @classmethod
-    def from_proto(cls, proto: ServeApplicationStatusInfoProto):
+    def from_proto(cls, proto: ApplicationStatusInfoProto):
         return cls(
-            status=ServeApplicationStatus(
-                ServeApplicationStatusProto.Name(proto.status)
-            ),
+            status=ApplicationStatus(ApplicationStatusProto.Name(proto.status)),
             message=proto.message,
             deployment_timestamp=proto.deployment_timestamp,
         )
@@ -118,7 +116,7 @@ class DeploymentStatusInfo:
 
 @dataclass
 class StatusInfo:
-    app_status: ServeApplicationStatusInfo
+    app_status: ApplicationStatusInfo
     deployment_statuses: List[DeploymentStatusInfo] = field(default_factory=list)
 
     def __str__(self):
@@ -196,7 +194,7 @@ class StatusInfo:
     def from_proto(cls, proto: StatusInfoProto):
 
         # Recreate Serve Application info
-        app_status = ServeApplicationStatusInfo.from_proto(proto.app_status)
+        app_status = ApplicationStatusInfo.from_proto(proto.app_status)
 
         # Recreate deployment statuses
         deployment_statuses = []

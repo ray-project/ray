@@ -7,13 +7,13 @@ from ray.serve.common import (
     StatusInfo,
     DeploymentStatus,
     DeploymentStatusInfo,
-    ServeApplicationStatus,
-    ServeApplicationStatusInfo,
+    ApplicationStatus,
+    ApplicationStatusInfo,
 )
 from ray.serve.generated.serve_pb2 import (
     StatusInfo as StatusInfoProto,
     DeploymentStatusInfo as DeploymentStatusInfoProto,
-    ServeApplicationStatusInfo as ServeApplicationStatusInfoProto,
+    ApplicationStatusInfo as ApplicationStatusInfoProto,
 )
 
 
@@ -82,33 +82,31 @@ class TestDeploymentStatusInfo:
         assert deployment_status_info == reconstructed_info
 
 
-class TestServeApplicationStatusInfo:
+class TestApplicationStatusInfo:
     def test_application_status_required(self):
         with pytest.raises(TypeError):
-            ServeApplicationStatusInfo(
+            ApplicationStatusInfo(
                 message="context about status", deployment_timestamp=time.time()
             )
 
-    @pytest.mark.parametrize("status", list(ServeApplicationStatus))
+    @pytest.mark.parametrize("status", list(ApplicationStatus))
     def test_proto(self, status):
-        serve_application_status_info = ServeApplicationStatusInfo(
+        serve_application_status_info = ApplicationStatusInfo(
             status=status,
             message="context about status",
             deployment_timestamp=time.time(),
         )
         serialized_proto = serve_application_status_info.to_proto().SerializeToString()
-        deserialized_proto = ServeApplicationStatusInfoProto.FromString(
-            serialized_proto
-        )
-        reconstructed_info = ServeApplicationStatusInfo.from_proto(deserialized_proto)
+        deserialized_proto = ApplicationStatusInfoProto.FromString(serialized_proto)
+        reconstructed_info = ApplicationStatusInfo.from_proto(deserialized_proto)
 
         assert serve_application_status_info == reconstructed_info
 
 
 class TestStatusInfo:
     def get_valid_serve_application_status_info(self):
-        return ServeApplicationStatusInfo(
-            status=ServeApplicationStatus.RUNNING,
+        return ApplicationStatusInfo(
+            status=ApplicationStatus.RUNNING,
             message="",
             deployment_timestamp=time.time(),
         )
@@ -156,10 +154,10 @@ class TestStatusInfo:
 
         assert status_info_few_deployments != status_info_many_deployments
 
-    @pytest.mark.parametrize("application_status", list(ServeApplicationStatus))
+    @pytest.mark.parametrize("application_status", list(ApplicationStatus))
     def test_proto(self, application_status):
         status_info = StatusInfo(
-            app_status=ServeApplicationStatusInfo(
+            app_status=ApplicationStatusInfo(
                 status=application_status,
                 message="context about this status",
                 deployment_timestamp=time.time(),
