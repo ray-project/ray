@@ -18,12 +18,20 @@ def test_workflow_status_update(workflow_start_regular):
         [(str(i), WorkflowStatus.RUNNING) for i in range(100)]
     )
 
+    assert sorted(store.list_workflow({WorkflowStatus.RUNNING})) == sorted(
+        [(str(i), WorkflowStatus.RUNNING) for i in range(100)]
+    )
+
+    assert sorted(store.list_workflow({WorkflowStatus.RESUMABLE})) == []
+
     for i in range(100):
         store.update_workflow_status(str(i), WorkflowStatus.RESUMABLE)
 
-    assert sorted(store.list_workflow()) == sorted(
+    assert sorted(store.list_workflow({WorkflowStatus.RESUMABLE})) == sorted(
         [(str(i), WorkflowStatus.RESUMABLE) for i in range(100)]
     )
+
+    assert sorted(store.list_workflow({WorkflowStatus.FAILED})) == []
 
     for i in range(100):
         store.update_workflow_status(str(i), WorkflowStatus.FAILED)
@@ -31,6 +39,12 @@ def test_workflow_status_update(workflow_start_regular):
     assert sorted(store.list_workflow()) == sorted(
         [(str(i), WorkflowStatus.FAILED) for i in range(100)]
     )
+
+    assert sorted(store.list_workflow({WorkflowStatus.FAILED})) == sorted(
+        [(str(i), WorkflowStatus.FAILED) for i in range(100)]
+    )
+
+    assert sorted(store.list_workflow({WorkflowStatus.RUNNING})) == []
 
 
 def test_workflow_auto_fix_status(workflow_start_regular):
@@ -43,7 +57,7 @@ def test_workflow_auto_fix_status(workflow_start_regular):
     for i in range(100):
         try:
             store.update_workflow_status(str(i), WorkflowStatus.RUNNING)
-        except Exception:
+        except TypeError:
             pass
 
     store._key_workflow_with_status = _key_workflow_with_status
@@ -56,7 +70,7 @@ def test_workflow_auto_fix_status(workflow_start_regular):
         try:
             # when update workflow, we fix failed status
             store.update_workflow_status(str(i), WorkflowStatus.RESUMABLE)
-        except Exception:
+        except TypeError:
             pass
 
     for i in range(100):

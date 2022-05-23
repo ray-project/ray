@@ -5,7 +5,7 @@ workflows.
 
 import json
 import os
-from typing import Dict, List, Optional, Any, Callable, Tuple, Union
+from typing import Dict, List, Optional, Any, Callable, Tuple, Union, Set
 from dataclasses import dataclass
 import logging
 
@@ -167,27 +167,38 @@ class WorkflowIndexingStorage:
             return WorkflowStatus(metadata["status"])
         return WorkflowStatus.NONE
 
-    def list_workflow(self) -> List[Tuple[str, WorkflowStatus]]:
+    def list_workflow(
+        self, status_filter: Optional[Set[WorkflowStatus]] = None
+    ) -> List[Tuple[str, WorkflowStatus]]:
         """List workflow status. Override status of the workflows whose status updating
-        were marked dirty with the workflow status from workflow metadata."""
+        were marked dirty with the workflow status from workflow metadata.
+
+        Args:
+            status_filter: If given, only returns workflow with that status. This can
+                be a single status or set of statuses.
+        """
+        if status_filter is None:
+            status_filter = set(WorkflowStatus)
+        status_filter.discard(WorkflowStatus.NONE)
+
         results = {}
-        for status in WorkflowStatus:
-            if status != WorkflowStatus.NONE:
-                try:
-                    # empty string points the key to the dir
-                    for p in self._storage.list(
-                        self._key_workflow_with_status("", status)
-                    ):
-                        workflow_id = p.base_name
-                        results[workflow_id] = status
-                except FileNotFoundError:
-                    pass
+        for status in status_filter:
+            try:
+                # empty string points the key to the dir
+                for p in self._storage.list(self._key_workflow_with_status("", status)):
+                    workflow_id = p.base_name
+                    results[workflow_id] = status
+            except FileNotFoundError:
+                pass
         # Get "correct" status of workflows
         try:
             for p in self._storage.list(self._key_workflow_status_dirty("")):
                 workflow_id = p.base_name
                 # overwrite status
-                results[workflow_id] = self.load_workflow_status(workflow_id)
+                results.pop(workflow_id, None)
+                status = self.load_workflow_status(workflow_id)
+                if status in status_filter:
+                    results[workflow_id] = status
         except FileNotFoundError:
             pass
         return list(results.items())
@@ -670,8 +681,16 @@ class WorkflowStorage:
 
         return _load_workflow_metadata()
 
-    def list_workflow(self) -> List[Tuple[str, WorkflowStatus]]:
-        return self._status_storage.list_workflow()
+    def list_workflow(
+        self, status_filter: Optional[Set[WorkflowStatus]] = None
+    ) -> List[Tuple[str, WorkflowStatus]]:
+        """List all workflows matching a given status filter.
+
+        Args:
+            status_filter: If given, only returns workflow with that status. This can
+                be a single status or set of statuses.
+        """
+        return self._status_storage.list_workflow(status_filter)
 
     def advance_progress(self, finished_step_id: "StepID") -> None:
         """Save the latest progress of a workflow. This is used by a

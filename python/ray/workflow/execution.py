@@ -182,10 +182,24 @@ def list_all(status_filter: Set[WorkflowStatus]) -> List[Tuple[str, WorkflowStat
     runnings = set(runnings)
     # Here we don't have workflow id, so use empty one instead
     store = workflow_storage.get_workflow_storage("")
+
+    exclude_running = False
+    if (
+        WorkflowStatus.RESUMABLE in status_filter
+        and WorkflowStatus.RUNNING not in status_filter
+    ):
+        # Here we have to add "RUNNING" to the status filter, because some "RESUMABLE"
+        # workflows are converted from "RUNNING" workflows below.
+        exclude_running = True
+        status_filter.add(WorkflowStatus.RUNNING)
+    status_from_storage = store.list_workflow(status_filter)
     ret = []
-    for (k, s) in store.list_workflow():
-        if s == WorkflowStatus.RUNNING and k not in runnings:
-            s = WorkflowStatus.RESUMABLE
+    for (k, s) in status_from_storage:
+        if s == WorkflowStatus.RUNNING:
+            if k not in runnings:
+                s = WorkflowStatus.RESUMABLE
+            elif exclude_running:
+                continue
         if s in status_filter:
             ret.append((k, s))
     return ret
