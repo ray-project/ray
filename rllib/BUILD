@@ -2590,7 +2590,7 @@ py_test(
     main = "examples/multi_agent_different_spaces_for_agents.py",
     tags = ["team:ml", "examples", "examples_M"],
     size = "small",
-    srcs = ["examples/multi_agent_cartpole.py"],
+    srcs = ["examples/multi_agent_different_spaces_for_agents.py"],
     args = ["--stop-iters=4", "--framework=tf2", "--eager-tracing=True"]
 )
 
@@ -2599,7 +2599,7 @@ py_test(
     main = "examples/multi_agent_different_spaces_for_agents.py",
     tags = ["team:ml", "examples", "examples_M"],
     size = "small",
-    srcs = ["examples/multi_agent_cartpole.py"],
+    srcs = ["examples/multi_agent_different_spaces_for_agents.py"],
     args = ["--stop-iters=4", "--framework=torch"]
 )
 
