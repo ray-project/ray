@@ -38,7 +38,7 @@ class GcsPlacementGroupManagerMockTest : public Test {
     gcs_placement_group_scheduler_ =
         std::make_shared<MockGcsPlacementGroupSchedulerInterface>();
     resource_manager_ = std::make_shared<MockGcsResourceManager>(
-        io_context_, nullptr, cluster_resource_manager_);
+        io_context_, nullptr, cluster_resource_manager_, NodeID::FromRandom());
 
     gcs_placement_group_manager_ =
         std::make_unique<GcsPlacementGroupManager>(io_context_,

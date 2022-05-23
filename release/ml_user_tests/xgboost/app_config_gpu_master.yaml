@@ -12,8 +12,7 @@ python:
   conda_packages: []
 
 post_build_cmds:
-  - pip uninstall -y ray || true
-  - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - pip uninstall -y ray || true && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
   - pip install -U "git+https://github.com/ray-project/xgboost_ray@master#egg=xgboost_ray" petastorm
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
   - sudo mkdir -p /data || true

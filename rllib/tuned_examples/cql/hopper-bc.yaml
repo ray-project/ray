@@ -15,10 +15,10 @@ hopper_bc:
         framework: torch
         soft_horizon: False
         horizon: 1000
-        Q_model:
+        q_model_config:
           fcnet_activation: relu
           fcnet_hiddens: [256, 256, 256]
-        policy_model:
+        policy_model_config:
           fcnet_activation: relu
           fcnet_hiddens: [256, 256, 256]
         tau: 0.005

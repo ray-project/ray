@@ -10,10 +10,11 @@ Detailed documentation:
 https://docs.ray.io/en/master/rllib-algorithms.html#appo
 """
 from typing import Optional, Type
+import logging
 
 from ray.rllib.agents.ppo.appo_tf_policy import AsyncPPOTFPolicy
-from ray.rllib.agents.ppo.ppo import UpdateKL
-from ray.rllib.agents import impala
+from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
+from ray.rllib.agents.impala import ImpalaTrainer, ImpalaConfig
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
@@ -29,8 +30,10 @@ from ray.rllib.utils.typing import (
     TrainerConfigDict,
 )
 
+logger = logging.getLogger(__name__)
 
-class APPOConfig(impala.ImpalaConfig):
+
+class APPOConfig(ImpalaConfig):
     """Defines a APPOTrainer configuration class from which a new Trainer can be built.
 
     Example:
@@ -107,7 +110,7 @@ class APPOConfig(impala.ImpalaConfig):
         # __sphinx_doc_end__
         # fmt: on
 
-    @override(impala.ImpalaConfig)
+    @override(ImpalaConfig)
     def training(
         self,
         *,
@@ -164,18 +167,15 @@ class APPOConfig(impala.ImpalaConfig):
         return self
 
 
-class APPOTrainer(impala.ImpalaTrainer):
+class APPOTrainer(ImpalaTrainer):
     def __init__(self, config, *args, **kwargs):
         super().__init__(config, *args, **kwargs)
-
-        self.update_kl = UpdateKL(self.workers)
 
         # After init: Initialize target net.
         self.workers.local_worker().foreach_policy_to_train(
             lambda p, _: p.update_target()
         )
 
-    @override(impala.ImpalaTrainer)
     def after_train_step(self, train_results: ResultDict) -> None:
         """Updates the target network and the KL coefficient for the APPO-loss.
 
@@ -207,14 +207,41 @@ class APPOTrainer(impala.ImpalaTrainer):
 
             # Also update the KL-coefficient for the APPO loss, if necessary.
             if self.config["use_kl_loss"]:
-                self.update_kl(train_results)
+
+                def update(pi, pi_id):
+                    assert LEARNER_STATS_KEY not in train_results, (
+                        "{} should be nested under policy id key".format(
+                            LEARNER_STATS_KEY
+                        ),
+                        train_results,
+                    )
+                    if pi_id in train_results:
+                        kl = train_results[pi_id][LEARNER_STATS_KEY].get("kl")
+                        assert kl is not None, (train_results, pi_id)
+                        # Make the actual `Policy.update_kl()` call.
+                        pi.update_kl(kl)
+                    else:
+                        logger.warning("No data for {}, not updating kl".format(pi_id))
+
+                # Update KL on all trainable policies within the local (trainer)
+                # Worker.
+                self.workers.local_worker().foreach_policy_to_train(update)
+
+    @override(ImpalaTrainer)
+    def training_iteration(self) -> ResultDict:
+        train_results = super().training_iteration()
+
+        # Update KL, target network periodically.
+        self.after_train_step(train_results)
+
+        return train_results
 
     @classmethod
-    @override(impala.ImpalaTrainer)
+    @override(ImpalaTrainer)
     def get_default_config(cls) -> TrainerConfigDict:
         return APPOConfig().to_dict()
 
-    @override(impala.ImpalaTrainer)
+    @override(ImpalaTrainer)
     def get_default_policy_class(
         self, config: PartialTrainerConfigDict
     ) -> Optional[Type[Policy]]:

@@ -10,7 +10,7 @@ from typing import Dict, List, Type, Union
 
 import ray
 import ray.experimental.tf_utils
-from ray.rllib.agents.sac.sac_tf_policy import (
+from ray.rllib.algorithms.sac.sac_tf_policy import (
     apply_gradients as sac_apply_gradients,
     compute_and_clip_gradients as sac_compute_and_clip_gradients,
     get_distribution_inputs_and_class,
@@ -411,7 +411,7 @@ def apply_gradients_fn(policy, optimizer, grads_and_vars):
 CQLTFPolicy = build_tf_policy(
     name="CQLTFPolicy",
     loss_fn=cql_loss,
-    get_default_config=lambda: ray.rllib.algorithms.cql.cql.CQL_DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.algorithms.cql.cql.DEFAULT_CONFIG,
     validate_spaces=validate_spaces,
     stats_fn=cql_stats,
     postprocess_fn=postprocess_trajectory,

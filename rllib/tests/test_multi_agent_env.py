@@ -5,8 +5,8 @@ import unittest
 
 import ray
 from ray.tune.registry import register_env
-from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
-from ray.rllib.agents.pg import PGTrainer
+from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
+from ray.rllib.algorithms.pg import PGTrainer
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.rollout_worker import get_global_worker
 from ray.rllib.examples.policy.random_policy import RandomPolicy

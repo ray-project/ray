@@ -9,7 +9,8 @@ tensorboardX==2.4.1
 # `python/ray/train/examples/transformers/transformers_example.py`
 # `python/ray/ml/examples/huggingface/huggingface_basic_language_modeling_example.py`
 # `python/ray/ml/tests/test_huggingface_trainer.py`
-transformers==4.18.0
+transformers==4.18.0; python_version <= '3.6'
+transformers==4.19.1; python_version > '3.6'
 accelerate==0.5.1
 datasets==2.0.0
 sentencepiece==0.1.96
