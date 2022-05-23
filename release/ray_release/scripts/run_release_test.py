@@ -148,9 +148,6 @@ def main(
         logger.exception(e)
         return_code = e.exit_code
 
-        print(os.environ.get("ANYSCALE_HOST"))
-        print(os.environ.get("ANYSCALE_API_TOKEN", "xxxxxxx")[0:6])
-
     logger.info(
         f"Release test pipeline for test {test['name']} completed. "
         f"Returning with exit code = {return_code}"
