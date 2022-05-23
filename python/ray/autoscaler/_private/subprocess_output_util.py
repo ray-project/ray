@@ -338,18 +338,19 @@ def run_cmd_redirected(
         )
 
     if not is_output_redirected():
-        return _run_and_process_output(
-            cmd,
-            process_runner=process_runner,
-            stdout_file=sys.stdout,
-            stderr_file=sys.stderr,
-            use_login_shells=use_login_shells,
-        )
-
-        # Do our best to flush output to terminal.
-        # See https://github.com/ray-project/ray/pull/19473.
-        sys.stdout.flush()
-        sys.stderr.flush()
+        try:
+            return _run_and_process_output(
+                cmd,
+                process_runner=process_runner,
+                stdout_file=sys.stdout,
+                stderr_file=sys.stderr,
+                use_login_shells=use_login_shells,
+            )
+        finally:
+            # Do our best to flush output to terminal.
+            # See https://github.com/ray-project/ray/pull/19473.
+            sys.stdout.flush()
+            sys.stderr.flush()
 
     else:
         tmpfile_path = os.path.join(
