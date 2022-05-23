@@ -41,7 +41,7 @@ class ApplicationStatusInfo:
     message: str = ""
     deployment_timestamp: float = 0
 
-    def debug_str(self):
+    def debug_string(self):
         return json.dumps(asdict(self), indent=4)
 
     def to_proto(self):
@@ -72,7 +72,7 @@ class DeploymentStatusInfo:
     status: DeploymentStatus
     message: str = ""
 
-    def debug_str(self):
+    def debug_string(self):
         return json.dumps(asdict(self), indent=4)
 
     def to_proto(self):
@@ -94,7 +94,7 @@ class StatusOverview:
     app_status: ApplicationStatusInfo
     deployment_statuses: List[DeploymentStatusInfo] = field(default_factory=list)
 
-    def debug_str(self):
+    def debug_string(self):
         return json.dumps(asdict(self), indent=4)
 
     def get_deployment_status(self, name: str) -> Optional[DeploymentStatusInfo]:
