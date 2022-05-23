@@ -33,6 +33,7 @@ public class RayDevRuntime extends AbstractRayRuntime {
     super(rayConfig);
   }
 
+  @Override
   public void start() {
     if (rayConfig.getJobId().isNil()) {
       rayConfig.setJobId(nextJobId());
@@ -56,6 +57,7 @@ public class RayDevRuntime extends AbstractRayRuntime {
             });
   }
 
+  @Override
   public void run() {
     throw new UnsupportedOperationException();
   }
