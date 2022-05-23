@@ -16,6 +16,8 @@
 
 #include <boost/asio.hpp>
 
+#include "ray/common/asio/instrumented_io_context.h"
+
 inline std::shared_ptr<boost::asio::deadline_timer> execute_after_us(
     instrumented_io_context &io_context,
     std::function<void()> fn,

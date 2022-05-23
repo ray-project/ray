@@ -17,26 +17,12 @@
 namespace ray {
 
 void ObjectBarrier::AddAssignOwnerRequest(
-    const ObjectID object_id, const rpc::Address &owner_address,
+    const ObjectID &object_id,
+    const rpc::Address &owner_address,
     const rpc::Address &current_address,
     const std::vector<ObjectID> &contained_object_ids,
-    const std::string &current_call_site, const size_t data_size,
-    AssignOwnerReplyCallback callback) {
-  io_service_.post(
-      [this, object_id, owner_address, current_address, contained_object_ids,
-       current_call_site, data_size, callback = std::move(callback)]() {
-        AddAssignOwnerRequestInternal(object_id, owner_address, current_address,
-                                      contained_object_ids, current_call_site, data_size,
-                                      std::move(callback));
-      },
-      "ObjectBarrier.AddAssignOwnerRequest");
-}
-
-void ObjectBarrier::AddAssignOwnerRequestInternal(
-    const ObjectID &object_id, const rpc::Address &owner_address,
-    const rpc::Address &current_address,
-    const std::vector<ObjectID> &contained_object_ids,
-    const std::string &current_call_site, const size_t data_size,
+    const std::string &current_call_site,
+    const size_t data_size,
     AssignOwnerReplyCallback callback) {
   rpc::WorkerAddress owner_worker_address(owner_address);
   auto it = assign_requests_->find(owner_worker_address);
@@ -44,12 +30,12 @@ void ObjectBarrier::AddAssignOwnerRequestInternal(
     rpc::BatchAssignObjectOwnerRequest request;
     request.mutable_borrower_address()->CopyFrom(current_address);
 
-    auto timer =
-        execute_after(io_service_,
-                      [this, object_id, owner_address]() {
-                        TrySendAssignOwnerRequest(object_id, owner_address);
-                      },
-                      ::RayConfig::instance().delay_send_assign_owner_request_ms());
+    auto timer = execute_after(
+        io_service_,
+        [this, object_id, owner_address]() {
+          TrySendAssignOwnerRequest(object_id, owner_address);
+        },
+        ::RayConfig::instance().delay_send_assign_owner_request_ms());
 
     absl::flat_hash_set<ObjectID> objects_set = {};
     auto emplace_result = assign_requests_->try_emplace(
@@ -69,7 +55,8 @@ void ObjectBarrier::AddAssignOwnerRequestInternal(
     contained_objects.add_object_ids(contained_object_id.Binary());
   }
   request.add_contained_objects()->CopyFrom(contained_objects);
-  RAY_CHECK(object_set.insert(object_id).second);
+
+  RAY_CHECK(object_set.insert(object_id).second) << "duplicate object id: " << object_id;
 
   (*object_callbacks_)[object_id].emplace_back(std::move(callback));
 

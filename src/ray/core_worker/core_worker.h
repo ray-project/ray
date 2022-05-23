@@ -816,7 +816,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   Status WaitForObjectOwnerReply(const ObjectID &object_id,
                                  const rpc::Address &owner_address);
-								 
+
   /// Retrieve the current statistics about tasks being received and executing.
   /// \return an unordered_map mapping function name to list of (num_received,
   /// num_executing, num_executed). It is a std map instead of absl due to its
@@ -1156,7 +1156,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   // A Object Barrier for Async Wait Object Request.
   std::shared_ptr<ObjectBarrier> object_barrier_;
-  
+
   // A class for actor creation.
   std::shared_ptr<ActorCreatorInterface> actor_creator_;
 

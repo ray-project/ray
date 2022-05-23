@@ -14,7 +14,6 @@
 
 #pragma once
 
-#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
@@ -46,10 +45,12 @@ class ObjectBarrier {
   /// \param current_call_site The caller ID used to submit tasks from this worker to an
   /// actor. \param data_size The data size of the adding object. \param callback The
   /// callback will invoke when the request reply. \return void
-  void AddAssignOwnerRequest(const ObjectID object_id, const rpc::Address &owner_address,
+  void AddAssignOwnerRequest(const ObjectID &object_id,
+                             const rpc::Address &owner_address,
                              const rpc::Address &current_address,
                              const std::vector<ObjectID> &contained_object_ids,
-                             const std::string &current_call_site, const size_t data_size,
+                             const std::string &current_call_site,
+                             const size_t data_size,
                              AssignOwnerReplyCallback callback);
 
   /// Send the BatchAssignObjectOwnerRequest which contain the object to the owner.
@@ -69,14 +70,6 @@ class ObjectBarrier {
                                     AssignOwnerReplyCallback callback);
 
  private:
-  void AddAssignOwnerRequestInternal(const ObjectID &object_id,
-                                     const rpc::Address &owner_address,
-                                     const rpc::Address &current_address,
-                                     const std::vector<ObjectID> &contained_object_ids,
-                                     const std::string &current_call_site,
-                                     const size_t data_size,
-                                     AssignOwnerReplyCallback callback);
-
   void InvokeAllReplyCallbacks(const ObjectID &object_id, const Status &status);
 
   void SendAssignOwnerRequest(const rpc::Address &owner_address);
@@ -87,10 +80,11 @@ class ObjectBarrier {
 
   ThreadPrivate<absl::flat_hash_map<ObjectID, std::vector<AssignOwnerReplyCallback>>>
       object_callbacks_;
-  ThreadPrivate<absl::flat_hash_map<
-      rpc::WorkerAddress,
-      std::tuple<rpc::BatchAssignObjectOwnerRequest, absl::flat_hash_set<ObjectID>,
-                 std::shared_ptr<boost::asio::deadline_timer>>>>
+  ThreadPrivate<
+      absl::flat_hash_map<rpc::WorkerAddress,
+                          std::tuple<rpc::BatchAssignObjectOwnerRequest,
+                                     absl::flat_hash_set<ObjectID>,
+                                     std::shared_ptr<boost::asio::deadline_timer>>>>
       assign_requests_;
 };
 

@@ -991,11 +991,11 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
     *data = std::make_shared<LocalMemoryBuffer>(data_size);
   } else {
     auto status = plasma_store_provider_->Create(metadata,
-                                              data_size,
-                                              *object_id,
-                                              /* owner_address = */ real_owner_address,
-                                              data,
-                                              created_by_worker);
+                                                 data_size,
+                                                 *object_id,
+                                                 /* owner_address = */ real_owner_address,
+                                                 data,
+                                                 created_by_worker);
     if (!status.ok()) {
       RemoveLocalReference(*object_id);
       return status;
@@ -1008,18 +1008,30 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
   }
 
   if (!owned_by_us) {
-    object_barrier_->AddAssignOwnerRequest(
-        *object_id, real_owner_address, rpc_address_, contained_object_ids,
-        CurrentCallSite(), data_size + metadata->Size(),
-        // Avoid object_id modify.
-        [real_owner_address, object_id_copy = ObjectID::FromBinary(object_id->Binary())](
-            const Status &status) {
-          if (status.ok()) return;
-          RAY_LOG(ERROR) << "The Owner(" << real_owner_address.worker_id()
-                         << ") is died, "
-                         << " the object(" << object_id_copy << ") will be unavailable! "
-                         << " Reply Status: " << status;
-        });
+    io_service_.post(
+        [this,
+         object_id_copy = ObjectID::FromBinary(object_id->Binary()),
+         real_owner_address,
+         contained_object_ids = std::move(contained_object_ids),
+         data_size,
+         metadata]() {
+          object_barrier_->AddAssignOwnerRequest(
+              object_id_copy,
+              real_owner_address,
+              rpc_address_,
+              contained_object_ids,
+              CurrentCallSite(),
+              data_size + metadata->Size(),
+              [real_owner_address, object_id_copy](const Status &status) {
+                if (status.ok()) return;
+                RAY_LOG(ERROR) << "The Owner(" << real_owner_address.worker_id()
+                               << ") is died, "
+                               << " the object(" << object_id_copy
+                               << ") will be unavailable! "
+                               << " Reply Status: " << status;
+              });
+        },
+        "CoreWorker.AddAssignOwnerRequest");
   }
 
   return Status::OK();
@@ -1065,8 +1077,8 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
         owner_address != nullptr ? *owner_address : rpc_address_;
     // We need to pin the object after AssignOwner reply is done, if not,
     // WaitForObjectFree will delete the object.
-    auto pin_object_callable = [this, object_id,
-                                real_owner_address](const Status &status) {
+    auto pin_object_callable = [this, object_id, real_owner_address](
+                                   const Status &status) {
       if (!status.ok()) {
         // If assign owner failed(the owner is died), will continue to pin current object,
         // and will delete this object's primary copy.
@@ -1075,7 +1087,8 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
                        << " Reply Status: " << status;
       }
       local_raylet_client_->PinObjectIDs(
-          real_owner_address, {object_id},
+          real_owner_address,
+          {object_id},
           [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
             // Only release the object once the raylet has responded to avoid the
             // race condition that the object could be evicted before the raylet
@@ -3235,7 +3248,8 @@ void CoreWorker::HandleExit(const rpc::ExitRequest &request,
 
 void CoreWorker::HandleBatchAssignObjectOwner(
     const rpc::BatchAssignObjectOwnerRequest &request,
-    rpc::BatchAssignObjectOwnerReply *reply, rpc::SendReplyCallback send_reply_callback) {
+    rpc::BatchAssignObjectOwnerReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
   const auto &borrower_address = request.borrower_address();
   NodeID borrower_node_id = NodeID::FromBinary(borrower_address.raylet_id());
 
@@ -3253,8 +3267,11 @@ void CoreWorker::HandleBatchAssignObjectOwner(
       contained_object_ids.push_back(ObjectID::FromBinary(id_binary));
     }
 
-    reference_counter_->AddOwnedObject(object_id, contained_object_ids, rpc_address_,
-                                       call_site, object_size,
+    reference_counter_->AddOwnedObject(object_id,
+                                       contained_object_ids,
+                                       rpc_address_,
+                                       call_site,
+                                       object_size,
                                        /*is_reconstructable=*/false,
                                        /*add_local_ref=*/false,
                                        /*pinned_at_raylet_id=*/borrower_node_id);
