@@ -183,12 +183,7 @@ class TestAsyncRequestsManager(unittest.TestCase):
             manager.call(lambda w: w.task())
             assert len(manager._pending_remotes) == i + 1
         manager.remove_workers(worker)
-        if not (
-            (
-                len(manager._all_workers)
-                == 0
-            )
-        ):
+        if not ((len(manager._all_workers) == 0)):
             raise ValueError("We should have no workers that we can schedule tasks to")
         if not (
             (len(manager._pending_remotes) == 2 and len(manager._pending_to_actor) == 2)

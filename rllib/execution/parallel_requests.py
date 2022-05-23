@@ -1,5 +1,5 @@
 import logging
-from collections import defaultdict, OrderedDict
+from collections import defaultdict
 from typing import Any, Callable, DefaultDict, Dict, List, Optional, Set, Union
 
 import ray

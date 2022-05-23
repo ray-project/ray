@@ -1,10 +1,9 @@
 import copy
 import logging
 import platform
-from collections import defaultdict
 
 import queue
-from typing import Optional, Type, List, Dict, Union, DefaultDict, Set, Callable, Any
+from typing import Optional, Type, List, Dict, Union, Callable, Any
 
 import ray
 from ray.actor import ActorHandle
@@ -872,8 +871,9 @@ class ImpalaTrainer(Trainer):
         self.workers.local_worker().set_global_vars(global_vars)
 
     @override(Trainer)
-    def on_worker_failures(self, removed_workers: List[ActorHandle],
-        new_workers: List[ActorHandle]):
+    def on_worker_failures(
+        self, removed_workers: List[ActorHandle], new_workers: List[ActorHandle]
+    ):
         """Handle the failures of remote sampling workers
 
         Args:
