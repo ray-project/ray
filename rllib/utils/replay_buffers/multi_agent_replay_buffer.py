@@ -5,8 +5,8 @@ from enum import Enum
 
 from ray.rllib.utils.replay_buffers.replay_buffer import (
     _ALL_POLICIES,
-    sequence_timeslicing_helper,
 )
+from ray.rllib.policy.rnn_sequencing import timeslice_along_seq_lens_with_overlap
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer
@@ -264,26 +264,25 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         # episodes, the underlying buffer may split them itself.
         if self._storage_unit is StorageUnit.TIMESTEPS:
             timeslices = batch.timeslices(1)
-            for time_slice in timeslices:
-                self.replay_buffers[policy_id].add(time_slice, **kwargs)
         elif self._storage_unit is StorageUnit.SEQUENCES:
-            timeslices = sequence_timeslicing_helper(
-                self.replay_sequence_override,
-                batch,
-                self.replay_sequence_length,
-                self.replay_burn_in,
-                self.replay_zero_init_states,
+            timeslices = timeslice_along_seq_lens_with_overlap(
+                sample_batch=batch,
+                seq_lens=batch.get(SampleBatch.SEQ_LENS)
+                if self.replay_sequence_override
+                else None,
+                zero_pad_max_seq_len=self.replay_sequence_length,
+                pre_overlap=self.replay_burn_in,
+                zero_init_states=self.replay_zero_init_states,
             )
-            for time_slice in timeslices:
-                self.replay_buffers[policy_id].add(time_slice, **kwargs)
         elif self._storage_unit == StorageUnit.EPISODES:
+            timeslices = []
             for eps in batch.split_by_episode():
                 if (
                     eps.get(SampleBatch.T)[0] == 0
                     and eps.get(SampleBatch.DONES)[-1] == True  # noqa E712
                 ):
                     # Only add full episodes to the buffer
-                    self.replay_buffers[policy_id].add(eps, **kwargs)
+                    timeslices.append(eps)
                 else:
                     if log_once("only_full_episodes"):
                         logger.info(
@@ -293,9 +292,12 @@ class MultiAgentReplayBuffer(ReplayBuffer):
                             "dropped."
                         )
         elif self._storage_unit == StorageUnit.FRAGMENTS:
-            self.replay_buffers[policy_id].add(batch, **kwargs)
+            timeslices = [batch]
         else:
             raise ValueError("Unknown `storage_unit={}`".format(self._storage_unit))
+
+        for slice in timeslices:
+            self.replay_buffers[policy_id].add(slice, **kwargs)
 
     @DeveloperAPI
     @override(ReplayBuffer)

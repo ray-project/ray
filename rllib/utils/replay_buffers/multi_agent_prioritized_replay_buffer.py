@@ -6,19 +6,20 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import (
     MultiAgentReplayBuffer,
     ReplayMode,
+    merge_dicts_with_warning,
 )
 from ray.rllib.utils.replay_buffers.prioritized_replay_buffer import (
     PrioritizedReplayBuffer,
 )
 from ray.rllib.utils.replay_buffers.replay_buffer import (
     StorageUnit,
-    sequence_timeslicing_helper,
 )
 from ray.rllib.utils.typing import PolicyID, SampleBatchType
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.timer import TimerStat
 from ray.util.debug import log_once
 from ray.util.annotations import DeveloperAPI
+from ray.rllib.policy.rnn_sequencing import timeslice_along_seq_lens_with_overlap
 
 logger = logging.getLogger(__name__)
 
@@ -155,21 +156,24 @@ class MultiAgentPrioritizedReplayBuffer(
             batch: SampleBatch to add to the underlying buffer
             **kwargs: Forward compatibility kwargs.
         """
+        # Merge kwargs, overwriting standard call arguments
+        kwargs = merge_dicts_with_warning(self.underlying_buffer_call_args, kwargs)
+
         # For the storage unit `timesteps`, the underlying buffer will
         # simply store the samples how they arrive. For sequences and
         # episodes, the underlying buffer may split them itself.
         if self._storage_unit is StorageUnit.TIMESTEPS:
             timeslices = batch.timeslices(1)
         elif self._storage_unit is StorageUnit.SEQUENCES:
-            timeslices = sequence_timeslicing_helper(
-                self.replay_sequence_override,
-                batch,
-                self.replay_sequence_length,
-                self.replay_burn_in,
-                self.replay_zero_init_states,
+            timeslices = timeslice_along_seq_lens_with_overlap(
+                sample_batch=batch,
+                seq_lens=batch.get(SampleBatch.SEQ_LENS)
+                if self.replay_sequence_override
+                else None,
+                zero_pad_max_seq_len=self.replay_sequence_length,
+                pre_overlap=self.replay_burn_in,
+                zero_init_states=self.replay_zero_init_states,
             )
-            for slice in timeslices:
-                self.replay_buffers[policy_id].add(slice, **kwargs)
         elif self._storage_unit == StorageUnit.EPISODES:
             timeslices = []
             for eps in batch.split_by_episode():

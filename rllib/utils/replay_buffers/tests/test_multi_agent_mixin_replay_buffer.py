@@ -76,6 +76,7 @@ class TestMixInMultiAgentReplayBuffer(unittest.TestCase):
             storage_unit="sequences",
             replay_ratio=0.5,
             learning_starts=0,
+            replay_sequence_length=2,
             replay_sequence_override=True,
         )
 

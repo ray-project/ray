@@ -141,6 +141,7 @@ class TestMultiAgentReplayBuffer(unittest.TestCase):
             capacity=buffer_size,
             replay_mode="independent",
             storage_unit="sequences",
+            replay_sequence_length=2,
             learning_starts=0,
             num_shards=1,
         )

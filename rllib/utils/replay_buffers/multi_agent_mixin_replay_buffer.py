@@ -15,7 +15,6 @@ from ray.rllib.utils.replay_buffers.multi_agent_prioritized_replay_buffer import
 )
 from ray.rllib.utils.replay_buffers.replay_buffer import (
     StorageUnit,
-    sequence_timeslicing_helper,
 )
 from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import (
     merge_dicts_with_warning,
@@ -26,6 +25,7 @@ from ray.rllib.utils.typing import PolicyID, SampleBatchType
 from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES
 from ray.util.debug import log_once
 from ray.util.annotations import DeveloperAPI
+from ray.rllib.policy.rnn_sequencing import timeslice_along_seq_lens_with_overlap
 
 logger = logging.getLogger(__name__)
 
@@ -196,12 +196,14 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
 
             elif self._storage_unit == StorageUnit.SEQUENCES:
                 for policy_id, sample_batch in batch.policy_batches.items():
-                    timeslices = sequence_timeslicing_helper(
-                        self.replay_sequence_override,
-                        sample_batch,
-                        self.replay_sequence_length,
-                        self.replay_burn_in,
-                        self.replay_zero_init_states,
+                    timeslices = timeslice_along_seq_lens_with_overlap(
+                        sample_batch=sample_batch,
+                        seq_lens=sample_batch.get(SampleBatch.SEQ_LENS)
+                        if self.replay_sequence_override
+                        else None,
+                        zero_pad_max_seq_len=self.replay_sequence_length,
+                        pre_overlap=self.replay_burn_in,
+                        zero_init_states=self.replay_zero_init_states,
                     )
                     for slice in timeslices:
                         self.replay_buffers[policy_id].add(slice, **kwargs)
