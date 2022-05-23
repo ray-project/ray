@@ -1,7 +1,6 @@
 from ray.rllib.models.utils import get_initializer
 from ray.rllib.policy import Policy
 from typing import Dict, List, Union
-import numpy as np
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
@@ -43,47 +42,52 @@ class QRegTorchModel(TorchModelV2):
     def reset(self) -> None:
         self.q_model.apply(self.initializer)
 
-    def train_q(
-        self, batch: SampleBatch, new_action_probs: List[TensorType]
-    ) -> TensorType:
-        batch_obs = []
-        batch_actions = []
-        batch_ps = []
-        batch_returns = []
-        batch_discounts = []
-        for idx, episode in enumerate(batch.split_by_episode()):
-            rewards, old_prob = episode["rewards"], episode["action_prob"]
-            new_prob = new_action_probs[idx]
+    def train_q(self, batch: SampleBatch) -> TensorType:
+        obs = torch.tensor(batch[SampleBatch.OBS], device=self.device)
+        actions = torch.tensor(batch[SampleBatch.ACTIONS], device=self.device)
+        ps = torch.zeros([batch.count], device=self.device)
+        returns = torch.zeros([batch.count], device=self.device)
+        discounts = torch.zeros([batch.count], device=self.device)
+        num_state_inputs = 0
+        for k in batch.keys():
+            if k.startswith("state_in_"):
+                num_state_inputs += 1
+        state_keys = ["state_in_{}".format(i) for i in range(num_state_inputs)]
+        eps_begin = 0
+        for episode in batch.split_by_episode():
+            eps_end = eps_begin + episode.count
+
+            # get rewards, old_prob, new_prob
+            rewards = episode[SampleBatch.REWARDS]
+            old_prob = episode[SampleBatch.ACTION_PROB]
+            new_prob = self.policy.compute_log_likelihoods(
+            actions=episode[SampleBatch.ACTIONS],
+            obs_batch=episode[SampleBatch.OBS],
+            state_batches=[episode[k] for k in state_keys],
+            prev_action_batch=episode.get(SampleBatch.PREV_ACTIONS),
+            prev_reward_batch=episode.get(SampleBatch.PREV_REWARDS),
+            actions_normalized=True,
+            )
+
             # calculate importance ratios and returns
-            p = np.zeros_like(rewards)
-            returns = np.zeros_like(rewards)
-            discounts = np.zeros_like(rewards)
             for t in range(episode.count):
-                discounts[t] = self.gamma ** t
+                discounts[eps_begin + t] = self.gamma ** t
                 if t == 0:
                     pt_prev = 1.0
                     pt_next = 1.0
+                    returns[eps_end - 1] = rewards[-1]
                 else:
-                    pt_prev = p[t - 1]
+                    pt_prev = ps[eps_begin + t - 1]
                     pt_next = pt_next * new_prob[-t] / old_prob[-t]
-                try:
-                    assert isinstance(new_prob[t], np.float32)
-                except:
-                    breakpoint()
-                p[t] = pt_prev * new_prob[t] / old_prob[t]
-                # Trick: returns[0] is already 0 when t = T
-                returns[-t - 1] = rewards[-t - 1] + self.gamma * pt_next * returns[-t]
-            batch_obs.extend(episode[SampleBatch.OBS])
-            batch_actions.extend(episode[SampleBatch.ACTIONS])
-            batch_ps.extend(p)
-            batch_returns.extend(returns)
-            batch_discounts.extend(discounts)
-        
-        obs = torch.tensor(batch_obs, device=self.device)
-        actions = torch.tensor(batch_actions, device=self.device)
-        ps = torch.tensor(batch_ps, device=self.device)
-        returns = torch.tensor(batch_returns, device=self.device)
-        discounts = torch.tensor(batch_discounts, device=self.device)
+                    returns[eps_end - t - 1] = (
+                        rewards[-t - 1]
+                        + self.gamma * pt_next * returns[eps_end - t]
+                        )
+                ps[eps_begin + t] = pt_prev * new_prob[t] / old_prob[t]
+            
+            # Update before next episode
+            eps_begin = eps_end
+
         losses = []
         for _ in range(self.n_iters):
             q_values, _ = self.q_model({"obs": obs}, [], None)
@@ -95,7 +99,7 @@ class QRegTorchModel(TorchModelV2):
             losses.append(loss.item())
             if loss < self.delta:
                 break
-        return np.array(losses, dtype=float)
+        return losses
 
     def estimate_q(
         self,

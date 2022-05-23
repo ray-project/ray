@@ -21,7 +21,7 @@ class ImportanceSampling(OffPolicyEstimator):
         # TODO (rohan) : Optimize this to use matmul instead of for loop
         for sub_batch in batch.split_by_episode():
             rewards, old_prob = sub_batch["rewards"], sub_batch["action_prob"]
-            new_prob = np.exp(self.compute_log_likelihoods(sub_batch))
+            new_prob = np.exp(self.action_log_likelihood(sub_batch))
 
             # calculate importance ratios
             p = []

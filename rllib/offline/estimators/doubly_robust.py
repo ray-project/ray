@@ -31,7 +31,7 @@ class DoublyRobust(DirectMethod):
             # Calculate doubly robust OPE estimates
             for episode in test_episodes:
                 rewards, old_prob = episode["rewards"], episode["action_prob"]
-                new_prob = np.exp(self.compute_log_likelihoods(episode))
+                new_prob = np.exp(self.action_log_likelihood(episode))
 
                 V_prev, V_DR = 0.0, 0.0
                 q_values = self.model.estimate_q(
@@ -44,7 +44,7 @@ class DoublyRobust(DirectMethod):
                 # Two transposes required for torch.distributions to work
                 tmp_episode = episode.copy()
                 tmp_episode[SampleBatch.ACTIONS] = all_actions.T
-                action_probs = np.exp(self.compute_log_likelihoods(tmp_episode)).T
+                action_probs = np.exp(self.action_log_likelihood(tmp_episode)).T
                 v_values = self.model.estimate_v(episode[SampleBatch.OBS], action_probs)
                 v_values = convert_to_numpy(v_values)
 

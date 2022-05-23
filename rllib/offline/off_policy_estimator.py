@@ -1,14 +1,10 @@
 from ray.rllib.offline.estimators.off_policy_estimator import (  # noqa: F401
-    OffPolicyEstimate,
+    OffPolicyEstimator, OffPolicyEstimate,
 )
-from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.deprecation import deprecation_warning
 
-# TODO (rohan): Fix deprecation warnings
-
-
-@Deprecated(
-    new="ray.rllib.offline.estimators.off_policy_estimator::" "OffPolicyEstimator",
-    error=True,
+deprecation_warning(
+    old = "ray.rllib.offline.off_policy_estimator",
+    new = "ray.rllib.offline.estimators.off_policy_estimator",
+    error = False,
 )
-class OffPolicyEstimator:
-    pass

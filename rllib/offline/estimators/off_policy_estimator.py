@@ -44,18 +44,21 @@ class OffPolicyEstimator:
         raise NotImplementedError
 
     @DeveloperAPI
-    def train(self, batch: SampleBatchType) -> None:
+    def train(self, batch: SampleBatchType):
         """Trains an Off-Policy Estimator on the given batch of episodes.
         A model-based estimator should override this and train
         a transition, value, or reward model.
 
         Args:
             batch: The batch to train the model on
+        
+        Returns:
+            any optional training/loss metrics from the model
         """
         pass
 
     @DeveloperAPI
-    def compute_log_likelihoods(self, batch: SampleBatchType) -> TensorType:
+    def action_log_likelihood(self, batch: SampleBatchType) -> TensorType:
         """Returns log likelihood for actions in given batch for policy.
 
         Computes likelihoods by passing the observations through the current
@@ -137,10 +140,34 @@ class OffPolicyEstimator:
     # TODO(rohan): Remove deprecated methods; all are set to error=True because changing
     # from one episode per SampleBatch to full SampleBatch is a breaking change anyway
 
-    @Deprecated(help="OffPolicyEstimator.__init__(policy, gamma, config)", error=True)
+    @Deprecated(help="OffPolicyEstimator.__init__(policy, gamma, config)", error=False)
+    @classmethod
     def create_from_io_context(cls, ioctx: IOContext) -> "OffPolicyEstimator":
-        pass
+        """Creates an off-policy estimator from an IOContext object.
+        Extracts Policy and gamma (discount factor) information from the
+        IOContext.
+        Args:
+            ioctx: The IOContext object to create the OffPolicyEstimator
+                from.
+        Returns:
+            The OffPolicyEstimator object created from the IOContext object.
+        """
+        gamma = ioctx.worker.policy_config["gamma"]
+        # Grab a reference to the current model
+        keys = list(ioctx.worker.policy_map.keys())
+        if len(keys) > 1:
+            raise NotImplementedError(
+                "Off-policy estimation is not implemented for multi-agent. "
+                "You can set `input_evaluation: []` to resolve this."
+            )
+        policy = ioctx.worker.get_policy(keys[0])
+        config = ioctx.input_config.get("estimator_config", {})
+        return cls(policy, gamma, config)
 
     @Deprecated(new="OffPolicyEstimator.create_from_io_context", error=True)
     def create(self, *args, **kwargs):
         return self.create_from_io_context(*args, **kwargs)
+
+    @Deprecated(new="OffPolicyEstimator.compute_log_likelihoods", error=False)
+    def action_prob(self, *args, **kwargs):
+        return self.compute_log_likelihoods(*args, **kwargs)

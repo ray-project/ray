@@ -34,9 +34,7 @@ class QRegTFModel:
     def reset(self) -> None:
         raise NotImplementedError
 
-    def train_q(
-        self, batch: SampleBatch, new_action_probs: List[TensorType]
-    ) -> TensorType:
+    def train_q(self, batch: SampleBatch) -> TensorType:
         raise NotImplementedError
 
     def estimate_q(

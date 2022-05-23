@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, List
 from ray.rllib.offline.estimators.off_policy_estimator import (
     OffPolicyEstimator,
     OffPolicyEstimate,
@@ -86,7 +86,7 @@ class DirectMethod(OffPolicyEstimator):
                     [a for a in range(self.policy.action_space.n)], dtype=float
                 )
                 init_step[SampleBatch.ACTIONS] = all_actions
-                action_probs = np.exp(self.compute_log_likelihoods(init_step))
+                action_probs = np.exp(self.action_log_likelihood(init_step))
                 v_value = self.model.estimate_v(init_obs, action_probs)
                 V_DM = convert_to_numpy(v_value).item()
 
@@ -103,9 +103,5 @@ class DirectMethod(OffPolicyEstimator):
         return estimates
 
     @override(OffPolicyEstimator)
-    def train(self, batch: SampleBatchType) -> None:
-        new_action_probs = []
-        # TODO (rohan): This feels hacky, figure out a better way
-        for episode in batch.split_by_episode():
-            new_action_probs.append(np.exp(self.compute_log_likelihoods(episode)))
-        self.model.train_q(batch, new_action_probs)
+    def train(self, batch: SampleBatchType):
+        return self.model.train_q(batch)
