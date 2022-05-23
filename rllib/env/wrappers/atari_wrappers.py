@@ -7,9 +7,11 @@ from ray.rllib.utils.images import rgb2gray, resize
 
 
 def is_atari(env):
-    if (hasattr(env.observation_space, "shape")
-            and env.observation_space.shape is not None
-            and len(env.observation_space.shape) <= 2):
+    if (
+        hasattr(env.observation_space, "shape")
+        and env.observation_space.shape is not None
+        and len(env.observation_space.shape) <= 2
+    ):
         return False
     return hasattr(env, "unwrapped") and hasattr(env.unwrapped, "ale")
 
@@ -88,12 +90,18 @@ class NoopResetEnv(gym.Wrapper):
         assert env.unwrapped.get_action_meanings()[0] == "NOOP"
 
     def reset(self, **kwargs):
-        """ Do no-op action for a number of steps in [1, noop_max]."""
+        """Do no-op action for a number of steps in [1, noop_max]."""
         self.env.reset(**kwargs)
         if self.override_num_noops is not None:
             noops = self.override_num_noops
         else:
-            noops = self.unwrapped.np_random.randint(1, self.noop_max + 1)
+            # This environment now uses the pcg64 random number generator which
+            # does not have randint as an attribute only has integers.
+            try:
+                noops = self.unwrapped.np_random.integers(1, self.noop_max + 1)
+            # Also still support older versions.
+            except AttributeError:
+                noops = self.unwrapped.np_random.randint(1, self.noop_max + 1)
         assert noops > 0
         obs = None
         for _ in range(noops):
@@ -180,8 +188,7 @@ class MaxAndSkipEnv(gym.Wrapper):
         """Return only every `skip`-th frame"""
         gym.Wrapper.__init__(self, env)
         # most recent raw observations (for max pooling across time steps)
-        self._obs_buffer = np.zeros(
-            (2, ) + env.observation_space.shape, dtype=np.uint8)
+        self._obs_buffer = np.zeros((2,) + env.observation_space.shape, dtype=np.uint8)
         self._skip = skip
 
     def step(self, action):
@@ -214,10 +221,8 @@ class WarpFrame(gym.ObservationWrapper):
         self.width = dim
         self.height = dim
         self.observation_space = spaces.Box(
-            low=0,
-            high=255,
-            shape=(self.height, self.width, 1),
-            dtype=np.uint8)
+            low=0, high=255, shape=(self.height, self.width, 1), dtype=np.uint8
+        )
 
     def observation(self, frame):
         frame = rgb2gray(frame)
@@ -237,7 +242,8 @@ class FrameStack(gym.Wrapper):
             low=0,
             high=255,
             shape=(shp[0], shp[1], shp[2] * k),
-            dtype=env.observation_space.dtype)
+            dtype=env.observation_space.dtype,
+        )
 
     def reset(self):
         ob = self.env.reset()
@@ -262,10 +268,8 @@ class FrameStackTrajectoryView(gym.ObservationWrapper):
         shp = env.observation_space.shape
         assert shp[2] == 1
         self.observation_space = spaces.Box(
-            low=0,
-            high=255,
-            shape=(shp[0], shp[1]),
-            dtype=env.observation_space.dtype)
+            low=0, high=255, shape=(shp[0], shp[1]), dtype=env.observation_space.dtype
+        )
 
     def observation(self, observation):
         return np.squeeze(observation, axis=-1)
@@ -275,7 +279,8 @@ class ScaledFloatFrame(gym.ObservationWrapper):
     def __init__(self, env):
         gym.ObservationWrapper.__init__(self, env)
         self.observation_space = gym.spaces.Box(
-            low=0, high=1, shape=env.observation_space.shape, dtype=np.float32)
+            low=0, high=1, shape=env.observation_space.shape, dtype=np.float32
+        )
 
     def observation(self, observation):
         # careful! This undoes the memory optimization, use

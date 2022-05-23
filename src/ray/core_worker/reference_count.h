@@ -36,12 +36,18 @@ class ReferenceCounterInterface {
  public:
   virtual void AddLocalReference(const ObjectID &object_id,
                                  const std::string &call_site) = 0;
-  virtual bool AddBorrowedObject(const ObjectID &object_id, const ObjectID &outer_id,
-                                 const rpc::Address &owner_address) = 0;
+  virtual bool AddBorrowedObject(const ObjectID &object_id,
+                                 const ObjectID &outer_id,
+                                 const rpc::Address &owner_address,
+                                 bool foreign_owner_already_monitoring = false) = 0;
   virtual void AddOwnedObject(
-      const ObjectID &object_id, const std::vector<ObjectID> &contained_ids,
-      const rpc::Address &owner_address, const std::string &call_site,
-      const int64_t object_size, bool is_reconstructable,
+      const ObjectID &object_id,
+      const std::vector<ObjectID> &contained_ids,
+      const rpc::Address &owner_address,
+      const std::string &call_site,
+      const int64_t object_size,
+      bool is_reconstructable,
+      bool add_local_ref,
       const absl::optional<NodeID> &pinned_at_raylet_id = absl::optional<NodeID>()) = 0;
   virtual bool SetDeleteCallback(
       const ObjectID &object_id,
@@ -58,19 +64,22 @@ class ReferenceCounter : public ReferenceCounterInterface,
   using ReferenceTableProto =
       ::google::protobuf::RepeatedPtrField<rpc::ObjectReferenceCount>;
   using ReferenceRemovedCallback = std::function<void(const ObjectID &)>;
+  // Returns the amount of lineage in bytes released.
   using LineageReleasedCallback =
-      std::function<void(const ObjectID &, std::vector<ObjectID> *)>;
+      std::function<int64_t(const ObjectID &, std::vector<ObjectID> *)>;
 
   ReferenceCounter(const rpc::WorkerAddress &rpc_address,
                    pubsub::PublisherInterface *object_info_publisher,
                    pubsub::SubscriberInterface *object_info_subscriber,
+                   const std::function<bool(const NodeID &node_id)> &check_node_alive,
                    bool lineage_pinning_enabled = false,
                    rpc::ClientFactoryFn client_factory = nullptr)
       : rpc_address_(rpc_address),
         lineage_pinning_enabled_(lineage_pinning_enabled),
         borrower_pool_(client_factory),
         object_info_publisher_(object_info_publisher),
-        object_info_subscriber_(object_info_subscriber) {}
+        object_info_subscriber_(object_info_subscriber),
+        check_node_alive_(check_node_alive) {}
 
   ~ReferenceCounter() {}
 
@@ -112,6 +121,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[out] deleted Any objects that are newly out of scope after this
   /// function call.
   void UpdateSubmittedTaskReferences(
+      const std::vector<ObjectID> return_ids,
       const std::vector<ObjectID> &argument_ids_to_add,
       const std::vector<ObjectID> &argument_ids_to_remove = std::vector<ObjectID>(),
       std::vector<ObjectID> *deleted = nullptr) LOCKS_EXCLUDED(mutex_);
@@ -121,13 +131,13 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// have already incremented them when the task was first submitted.
   ///
   /// \param[in] argument_ids The arguments of the task to add references for.
-  void UpdateResubmittedTaskReferences(const std::vector<ObjectID> &argument_ids)
+  void UpdateResubmittedTaskReferences(const std::vector<ObjectID> return_ids,
+                                       const std::vector<ObjectID> &argument_ids)
       LOCKS_EXCLUDED(mutex_);
 
   /// Update object references that were given to a submitted task. The task
   /// may still be borrowing any object IDs that were contained in its
-  /// arguments. This should be called when inlined dependencies are inlined or
-  /// when the task finishes for plasma dependencies.
+  /// arguments. This should be called when the task finishes.
   ///
   /// \param[in] object_ids The object IDs to remove references for.
   /// \param[in] release_lineage Whether to decrement the arguments' lineage
@@ -139,21 +149,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// arguments. Some references in this table may still be borrowed by the
   /// worker and/or a task that the worker submitted.
   /// \param[out] deleted The object IDs whos reference counts reached zero.
-  void UpdateFinishedTaskReferences(const std::vector<ObjectID> &argument_ids,
-                                    bool release_lineage, const rpc::Address &worker_addr,
+  void UpdateFinishedTaskReferences(const std::vector<ObjectID> return_ids,
+                                    const std::vector<ObjectID> &argument_ids,
+                                    bool release_lineage,
+                                    const rpc::Address &worker_addr,
                                     const ReferenceTableProto &borrowed_refs,
                                     std::vector<ObjectID> *deleted)
-      LOCKS_EXCLUDED(mutex_);
-
-  /// Release the lineage ref count for this list of object IDs. An object's
-  /// lineage ref count is the number of tasks that depend on the object that
-  /// may be retried in the future (pending execution or finished but
-  /// retryable). If the object is direct (not stored in plasma), then its
-  /// lineage ref count is 0.
-  ///
-  /// \param[in] argument_ids The list of objects whose lineage ref counts we
-  /// should decrement.
-  void ReleaseLineageReferences(const std::vector<ObjectID> &argument_ids)
       LOCKS_EXCLUDED(mutex_);
 
   /// Add an object that we own. The object may depend on other objects.
@@ -174,21 +175,20 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[in] object_size Object size if known, otherwise -1;
   /// \param[in] is_reconstructable Whether the object can be reconstructed
   /// through lineage re-execution.
-  void AddOwnedObject(
-      const ObjectID &object_id, const std::vector<ObjectID> &contained_ids,
-      const rpc::Address &owner_address, const std::string &call_site,
-      const int64_t object_size, bool is_reconstructable,
-      const absl::optional<NodeID> &pinned_at_raylet_id = absl::optional<NodeID>())
-      LOCKS_EXCLUDED(mutex_);
-
-  /// Remove reference for an object that we own. The reference will only be
-  /// removed if the object's ref count is 0. This should only be used when
-  /// speculatively adding an owned reference that may need to be rolled back, e.g. if
-  /// the creation of the corresponding Plasma object fails. All other references will
-  /// be cleaned up via the reference counting protocol.
-  ///
-  /// \param[in] object_id The ID of the object that we own and wish to remove.
-  void RemoveOwnedObject(const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
+  /// \param[in] add_local_ref Whether to initialize the local ref count to 1.
+  /// This is used to ensure that the ref is considered in scope before the
+  /// corresponding ObjectRef has been returned to the language frontend.
+  /// \param[in] pinned_at_raylet_id The primary location for the object, if it
+  /// is already known. This is only used for ray.put calls.
+  void AddOwnedObject(const ObjectID &object_id,
+                      const std::vector<ObjectID> &contained_ids,
+                      const rpc::Address &owner_address,
+                      const std::string &call_site,
+                      const int64_t object_size,
+                      bool is_reconstructable,
+                      bool add_local_ref,
+                      const absl::optional<NodeID> &pinned_at_raylet_id =
+                          absl::optional<NodeID>()) LOCKS_EXCLUDED(mutex_);
 
   /// Update the size of the object.
   ///
@@ -206,8 +206,11 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// out-of-band.
   /// task ID (for non-actors) or the actor ID of the owner.
   /// \param[in] owner_address The owner's address.
-  bool AddBorrowedObject(const ObjectID &object_id, const ObjectID &outer_id,
-                         const rpc::Address &owner_address) LOCKS_EXCLUDED(mutex_);
+  bool AddBorrowedObject(const ObjectID &object_id,
+                         const ObjectID &outer_id,
+                         const rpc::Address &owner_address,
+                         bool foreign_owner_already_monitoring = false)
+      LOCKS_EXCLUDED(mutex_);
 
   /// Get the owner address of the given object.
   ///
@@ -258,7 +261,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[in] owner_address The owner of object_id's address.
   /// \param[in] ref_removed_callback The callback to call when we are no
   /// longer borrowing the object.
-  void SetRefRemovedCallback(const ObjectID &object_id, const ObjectID &contained_in_id,
+  void SetRefRemovedCallback(const ObjectID &object_id,
+                             const ObjectID &contained_in_id,
                              const rpc::Address &owner_address,
                              const ReferenceRemovedCallback &ref_removed_callback)
       LOCKS_EXCLUDED(mutex_);
@@ -351,18 +355,23 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[out] spilled Whether this object has been spilled.
   /// pinned. Set to nil if the object is not pinned.
   /// \return True if the reference exists, false otherwise.
-  bool IsPlasmaObjectPinnedOrSpilled(const ObjectID &object_id, bool *owned_by_us,
-                                     NodeID *pinned_at, bool *spilled) const
-      LOCKS_EXCLUDED(mutex_);
+  bool IsPlasmaObjectPinnedOrSpilled(const ObjectID &object_id,
+                                     bool *owned_by_us,
+                                     NodeID *pinned_at,
+                                     bool *spilled) const LOCKS_EXCLUDED(mutex_);
 
-  /// Get and reset the objects that were pinned on the given node.  This
-  /// method should be called upon a node failure, to determine which plasma
-  /// objects were lost. If a deletion callback was set for a lost object, it
-  /// will be invoked and reset.
+  /// Get and reset the objects that were pinned or spilled on the given node.
+  /// This method should be called upon a node failure, to trigger
+  /// reconstruction for any lost objects that are still in scope.
+  ///
+  /// If a deletion callback was set for a lost object, it will be invoked and
+  /// reset.
   ///
   /// \param[in] node_id The node whose object store has been removed.
   /// \return The set of objects that were pinned on the given node.
-  std::vector<ObjectID> ResetObjectsOnRemovedNode(const NodeID &raylet_id);
+  void ResetObjectsOnRemovedNode(const NodeID &raylet_id);
+
+  std::vector<ObjectID> FlushObjectsToRecover();
 
   /// Whether we have a reference to a particular ObjectID.
   ///
@@ -422,12 +431,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
                                rpc::WorkerObjectLocationsPubMessage *object_info)
       LOCKS_EXCLUDED(mutex_);
 
-  /// Get an object's size. This will return 0 if the object is out of scope.
-  ///
-  /// \param[in] object_id The object whose size to get.
-  /// \return Object size, or 0 if the object is out of scope.
-  size_t GetObjectSize(const ObjectID &object_id) const;
-
   /// Handle an object has been spilled to external storage.
   ///
   /// This notifies the primary raylet that the object is safe to release and
@@ -435,11 +438,10 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[in] object_id The object that has been spilled.
   /// \param[in] spilled_url The URL to which the object has been spilled.
   /// \param[in] spilled_node_id The ID of the node on which the object was spilled.
-  /// \param[in] size The size of the object.
-  /// \param[in] release Whether to release the reference.
-  /// \return True if the reference exists, false otherwise.
-  bool HandleObjectSpilled(const ObjectID &object_id, const std::string spilled_url,
-                           const NodeID &spilled_node_id, int64_t size, bool release);
+  /// \return True if the reference exists and is in scope, false otherwise.
+  bool HandleObjectSpilled(const ObjectID &object_id,
+                           const std::string spilled_url,
+                           const NodeID &spilled_node_id);
 
   /// Get locality data for object. This is used by the leasing policy to implement
   /// locality-aware leasing.
@@ -468,28 +470,95 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void AddBorrowerAddress(const ObjectID &object_id, const rpc::Address &borrower_address)
       LOCKS_EXCLUDED(mutex_);
 
+  bool IsObjectReconstructable(const ObjectID &object_id, bool *lineage_evicted) const;
+
+  /// Evict lineage of objects that are still in scope. This evicts lineage in
+  /// FIFO order, based on when the ObjectRef was created.
+  ///
+  /// \param[in] min_bytes_to_evict The minimum number of bytes to evict.
+  int64_t EvictLineage(int64_t min_bytes_to_evict);
+
+  /// Whether the object is pending creation (the task that creates it is
+  /// scheduled/executing).
+  bool IsObjectPendingCreation(const ObjectID &object_id) const;
+
+  /// Release all local references which registered on this local.
+  void ReleaseAllLocalReferences();
+
  private:
+  /// Contains information related to nested object refs only.
+  struct NestedReferenceCount {
+    /// Object IDs that we own and that contain this object ID.
+    /// ObjectIDs are added to this field when we discover that this object
+    /// contains other IDs. This can happen in 2 cases:
+    ///  1. We call ray.put() and store the inner ID(s) in the outer object.
+    ///  2. A task that we submitted returned an ID(s).
+    /// ObjectIDs are erased from this field when their Reference is deleted.
+    absl::flat_hash_set<ObjectID> contained_in_owned;
+    /// Object IDs that we borrowed and that contain this object ID.
+    /// ObjectIDs are added to this field when we get the value of an ObjectRef
+    /// (either by deserializing the object or receiving the GetObjectStatus
+    /// reply for inlined objects) and it contains another ObjectRef.
+    absl::flat_hash_set<ObjectID> contained_in_borrowed_ids;
+    /// Reverse pointer for contained_in_owned and contained_in_borrowed_ids.
+    /// The object IDs contained in this object. These could be objects that we
+    /// own or are borrowing. This field is updated in 2 cases:
+    ///  1. We call ray.put() on this ID and store the contained IDs.
+    ///  2. We call ray.get() on an ID whose contents we do not know and we
+    ///     discover that it contains these IDs.
+    absl::flat_hash_set<ObjectID> contains;
+  };
+
+  /// Contains information related to borrowing only.
+  struct BorrowInfo {
+    /// When a process that is borrowing an object ID stores the ID inside the
+    /// return value of a task that it executes, the caller of the task is also
+    /// considered a borrower for as long as its reference to the task's return
+    /// ID stays in scope. Thus, the borrower must notify the owner that the
+    /// task's caller is also a borrower. The key is the task's return ID, and
+    /// the value is the task ID and address of the task's caller.
+    absl::flat_hash_map<ObjectID, rpc::WorkerAddress> stored_in_objects;
+    /// A list of processes that are we gave a reference to that are still
+    /// borrowing the ID. This field is updated in 2 cases:
+    ///  1. If we are a borrower of the ID, then we add a process to this list
+    ///     if we passed that process a copy of the ID via task submission and
+    ///     the process is still using the ID by the time it finishes its task.
+    ///     Borrowers are removed from the list when we recursively merge our
+    ///     list into the owner.
+    ///  2. If we are the owner of the ID, then either the above case, or when
+    ///     we hear from a borrower that it has passed the ID to other
+    ///     borrowers. A borrower is removed from the list when it responds
+    ///     that it is no longer using the reference.
+    absl::flat_hash_set<rpc::WorkerAddress> borrowers;
+  };
+
   struct Reference {
     /// Constructor for a reference whose origin is unknown.
     Reference() {}
     Reference(std::string call_site, const int64_t object_size)
         : call_site(call_site), object_size(object_size) {}
     /// Constructor for a reference that we created.
-    Reference(const rpc::Address &owner_address, std::string call_site,
-              const int64_t object_size, bool is_reconstructable,
+    Reference(const rpc::Address &owner_address,
+              std::string call_site,
+              const int64_t object_size,
+              bool is_reconstructable,
               const absl::optional<NodeID> &pinned_at_raylet_id)
         : call_site(call_site),
           object_size(object_size),
-          owned_by_us(true),
           owner_address(owner_address),
           pinned_at_raylet_id(pinned_at_raylet_id),
-          is_reconstructable(is_reconstructable) {}
+          owned_by_us(true),
+          is_reconstructable(is_reconstructable),
+          foreign_owner_already_monitoring(false),
+          pending_creation(!pinned_at_raylet_id.has_value()) {}
 
     /// Constructor from a protobuf. This is assumed to be a message from
     /// another process, so the object defaults to not being owned by us.
     static Reference FromProto(const rpc::ObjectReferenceCount &ref_count);
     /// Serialize to a protobuf.
-    void ToProto(rpc::ObjectReferenceCount *ref) const;
+    /// When `deduct_local_ref` is true, one local ref should be removed
+    /// when determining if the object has actual local references.
+    void ToProto(rpc::ObjectReferenceCount *ref, bool deduct_local_ref = false) const;
 
     /// The reference count. This number includes:
     /// - Python references to the ObjectID.
@@ -497,7 +566,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// - ObjectIDs containing this ObjectID that we own and that are still in
     /// scope.
     size_t RefCount() const {
-      return local_ref_count + submitted_task_ref_count + contained_in_owned.size();
+      return local_ref_count + submitted_task_ref_count +
+             nested().contained_in_owned.size();
     }
 
     /// Whether this reference is no longer in scope. A reference is in scope
@@ -508,9 +578,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// - We gave the reference to at least one other process.
     bool OutOfScope(bool lineage_pinning_enabled) const {
       bool in_scope = RefCount() > 0;
-      bool is_nested = contained_in_borrowed_ids.size();
-      bool has_borrowers = borrowers.size() > 0;
-      bool was_stored_in_objects = stored_in_objects.size() > 0;
+      bool is_nested = nested().contained_in_borrowed_ids.size();
+      bool has_borrowers = borrow().borrowers.size() > 0;
+      bool was_stored_in_objects = borrow().stored_in_objects.size() > 0;
 
       bool has_lineage_references = false;
       if (lineage_pinning_enabled && owned_by_us && !is_reconstructable) {
@@ -534,15 +604,51 @@ class ReferenceCounter : public ReferenceCounterInterface,
       }
     }
 
+    /// Access BorrowInfo without modifications.
+    /// Returns the default value of the struct if it is not set.
+    const BorrowInfo &borrow() const {
+      if (borrow_info == nullptr) {
+        static auto *default_info = new BorrowInfo();
+        return *default_info;
+      }
+      return *borrow_info;
+    }
+
+    /// Returns the borrow info for updates.
+    /// Creates the underlying field if it is not set.
+    BorrowInfo *mutable_borrow() {
+      if (borrow_info == nullptr) {
+        borrow_info = std::make_unique<BorrowInfo>();
+      }
+      return borrow_info.get();
+    }
+
+    /// Access NestedReferenceCount without modifications.
+    /// Returns the default value of the struct if it is not set.
+    const NestedReferenceCount &nested() const {
+      if (nested_reference_count == nullptr) {
+        static auto *default_refs = new NestedReferenceCount();
+        return *default_refs;
+      }
+      return *nested_reference_count;
+    }
+
+    /// Returns the containing references for updates.
+    /// Creates the underlying field if it is not set.
+    NestedReferenceCount *mutable_nested() {
+      if (nested_reference_count == nullptr) {
+        nested_reference_count = std::make_unique<NestedReferenceCount>();
+      }
+      return nested_reference_count.get();
+    }
+
     /// Description of the call site where the reference was created.
     std::string call_site = "<unknown>";
     /// Object size if known, otherwise -1;
     int64_t object_size = -1;
-
-    /// Whether we own the object. If we own the object, then we are
-    /// responsible for tracking the state of the task that creates the object
-    /// (see task_manager.h).
-    bool owned_by_us = false;
+    /// If this object is owned by us and stored in plasma, this contains all
+    /// object locations.
+    absl::flat_hash_set<NodeID> locations;
     /// The object's owner's address, if we know it. If this process is the
     /// owner, then this is added during creation of the Reference. If this is
     /// process is a borrower, the borrower must add the owner's address before
@@ -552,68 +658,43 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// counting is enabled, then some raylet must be pinning the object value.
     /// This is the address of that raylet.
     absl::optional<NodeID> pinned_at_raylet_id;
-    /// If this object is owned by us and stored in plasma, this contains all
-    /// object locations.
-    absl::flat_hash_set<NodeID> locations;
+    /// Whether we own the object. If we own the object, then we are
+    /// responsible for tracking the state of the task that creates the object
+    /// (see task_manager.h).
+    bool owned_by_us = false;
+
     // Whether this object can be reconstructed via lineage. If false, then the
     // object's value will be pinned as long as it is referenced by any other
-    // object's lineage.
-    const bool is_reconstructable = false;
-
-    /// The local ref count for the ObjectID in the language frontend.
-    size_t local_ref_count = 0;
-    /// The ref count for submitted tasks that depend on the ObjectID.
-    size_t submitted_task_ref_count = 0;
-    /// Object IDs that we own and that contain this object ID.
-    /// ObjectIDs are added to this field when we discover that this object
-    /// contains other IDs. This can happen in 2 cases:
-    ///  1. We call ray.put() and store the inner ID(s) in the outer object.
-    ///  2. A task that we submitted returned an ID(s).
-    /// ObjectIDs are erased from this field when their Reference is deleted.
-    absl::flat_hash_set<ObjectID> contained_in_owned;
-    /// Object IDs that we borrowed and that contain this object ID.
-    /// ObjectIDs are added to this field when we get the value of an ObjectRef
-    /// (either by deserializing the object or receiving the GetObjectStatus
-    /// reply for inlined objects) and it contains another ObjectRef.
-    absl::flat_hash_set<ObjectID> contained_in_borrowed_ids;
-    /// Reverse pointer for contained_in_owned and contained_in_borrowed_ids.
-    /// The object IDs contained in this object. These could be objects that we
-    /// own or are borrowing. This field is updated in 2 cases:
-    ///  1. We call ray.put() on this ID and store the contained IDs.
-    ///  2. We call ray.get() on an ID whose contents we do not know and we
-    ///     discover that it contains these IDs.
-    absl::flat_hash_set<ObjectID> contains;
-    /// ObjectRefs nested in this object that are or were in use. These objects
-    /// are not owned by us, and we need to report that we are borrowing them
-    /// to their owner. Nesting is transitive, so this flag is set as long as
-    /// any child object is in scope.
-    bool has_nested_refs_to_report = false;
-    /// A list of processes that are we gave a reference to that are still
-    /// borrowing the ID. This field is updated in 2 cases:
-    ///  1. If we are a borrower of the ID, then we add a process to this list
-    ///     if we passed that process a copy of the ID via task submission and
-    ///     the process is still using the ID by the time it finishes its task.
-    ///     Borrowers are removed from the list when we recursively merge our
-    ///     list into the owner.
-    ///  2. If we are the owner of the ID, then either the above case, or when
-    ///     we hear from a borrower that it has passed the ID to other
-    ///     borrowers. A borrower is removed from the list when it responds
-    ///     that it is no longer using the reference.
-    absl::flat_hash_set<rpc::WorkerAddress> borrowers;
-    /// When a process that is borrowing an object ID stores the ID inside the
-    /// return value of a task that it executes, the caller of the task is also
-    /// considered a borrower for as long as its reference to the task's return
-    /// ID stays in scope. Thus, the borrower must notify the owner that the
-    /// task's caller is also a borrower. The key is the task's return ID, and
-    /// the value is the task ID and address of the task's caller.
-    absl::flat_hash_map<ObjectID, rpc::WorkerAddress> stored_in_objects;
+    // object's lineage. This should be set to false if the object was created
+    // by ray.put(), a task that cannot be retried, or its lineage was evicted.
+    bool is_reconstructable = false;
+    /// Whether the lineage of this object was evicted due to memory pressure.
+    bool lineage_evicted = false;
     /// The number of tasks that depend on this object that may be retried in
     /// the future (pending execution or finished but retryable). If the object
     /// is inlined (not stored in plasma), then its lineage ref count is 0
     /// because any dependent task will already have the value of the object.
     size_t lineage_ref_count = 0;
-    /// Whether this object has been spilled to external storage.
-    bool spilled = false;
+
+    /// The local ref count for the ObjectID in the language frontend.
+    size_t local_ref_count = 0;
+    /// The ref count for submitted tasks that depend on the ObjectID.
+    size_t submitted_task_ref_count = 0;
+
+    /// Metadata related to nesting, including references that contain this
+    /// reference, and references contained by this reference.
+    std::unique_ptr<NestedReferenceCount> nested_reference_count;
+
+    /// Metadata related to borrowing.
+    std::unique_ptr<BorrowInfo> borrow_info;
+
+    /// Callback that will be called when this ObjectID no longer has
+    /// references.
+    std::function<void(const ObjectID &)> on_delete;
+    /// Callback that is called when this process is no longer a borrower
+    /// (RefCount() == 0).
+    std::function<void(const ObjectID &)> on_ref_removed;
+
     /// For objects that have been spilled to external storage, the URL from which
     /// they can be retrieved.
     std::string spilled_url = "";
@@ -621,15 +702,28 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// This will be Nil if the object has not been spilled or if it is spilled
     /// distributed external storage.
     NodeID spilled_node_id = NodeID::Nil();
-    /// Callback that will be called when this ObjectID no longer has
-    /// references.
-    std::function<void(const ObjectID &)> on_delete;
-    /// Callback that is called when this process is no longer a borrower
-    /// (RefCount() == 0).
-    std::function<void(const ObjectID &)> on_ref_removed;
+    /// Whether this object has been spilled to external storage.
+    bool spilled = false;
+
+    /// Whether the object was created with a foreign owner (i.e., _owner set).
+    /// In this case, the owner is already monitoring this reference with a
+    /// WaitForRefRemoved() call, and it is an error to return borrower
+    /// metadata to the parent of the current task.
+    /// See https://github.com/ray-project/ray/pull/19910 for more context.
+    bool foreign_owner_already_monitoring = false;
+
+    /// ObjectRefs nested in this object that are or were in use. These objects
+    /// are not owned by us, and we need to report that we are borrowing them
+    /// to their owner. Nesting is transitive, so this flag is set as long as
+    /// any child object is in scope.
+    bool has_nested_refs_to_report = false;
+
+    /// Whether the task that creates this object is scheduled/executing.
+    bool pending_creation = false;
   };
 
   using ReferenceTable = absl::flat_hash_map<ObjectID, Reference>;
+  using ReferenceProtoTable = absl::flat_hash_map<ObjectID, rpc::ObjectReferenceCount>;
 
   void SetNestedRefInUseRecursive(ReferenceTable::iterator inner_ref_it)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
@@ -649,8 +743,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Deserialize a ReferenceTable.
   static ReferenceTable ReferenceTableFromProto(const ReferenceTableProto &proto);
 
-  /// Serialize a ReferenceTable.
-  static void ReferenceTableToProto(const ReferenceTable &table,
+  /// Packs an object ID to ObjectReferenceCount map, into an array of
+  /// ObjectReferenceCount. Consumes the input proto table.
+  static void ReferenceTableToProto(ReferenceProtoTable &table,
                                     ReferenceTableProto *proto);
 
   /// Remove references for the provided object IDs that correspond to them
@@ -658,7 +753,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// inlined dependencies are inlined or when the task finishes for plasma
   /// dependencies.
   void RemoveSubmittedTaskReferences(const std::vector<ObjectID> &argument_ids,
-                                     bool release_lineage, std::vector<ObjectID> *deleted)
+                                     bool release_lineage,
+                                     std::vector<ObjectID> *deleted)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Helper method to mark that this ObjectID contains another ObjectID(s).
@@ -677,9 +773,10 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   /// Populates the table with the ObjectID that we were or are still
   /// borrowing. The table also includes any IDs that we discovered were
-  /// contained in the ID. For each borrowed ID, we will return:
+  /// contained in the ID. For each borrowed ID, we will return in proto:
   /// - The borrowed ID's owner's address.
-  /// - Whether we are still using the ID or not (RefCount() > 0).
+  /// - Whether we are still using the ID or not:
+  ///     RefCount() > 1 when deduct_local_ref, and RefCount() > 0 when not.
   /// - Addresses of new borrowers that we passed the ID to.
   /// - Whether the borrowed ID was contained in another ID that we borrowed.
   ///
@@ -695,7 +792,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   ///   that the borrowed ID contained another ID in the returned
   ///   borrowed_refs.
   bool GetAndClearLocalBorrowersInternal(const ObjectID &object_id,
-                                         ReferenceTable *borrowed_refs)
+                                         bool for_ref_removed,
+                                         bool deduct_local_ref,
+                                         ReferenceProtoTable *borrowed_refs)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Merge remote borrowers into our local ref count. This will add any
@@ -732,8 +831,14 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Helper method to add an object that we are borrowing. This is used when
   /// deserializing IDs from a task's arguments, or when deserializing an ID
   /// during ray.get().
-  bool AddBorrowedObjectInternal(const ObjectID &object_id, const ObjectID &outer_id,
-                                 const rpc::Address &owner_address)
+  ///
+  /// \param[in] foreign_owner_already_monitoring Whether to set the bit that an
+  ///            externally assigned owner is monitoring the lifetime of this
+  ///            object. This is the case for `ray.put(..., _owner=ZZZ)`.
+  bool AddBorrowedObjectInternal(const ObjectID &object_id,
+                                 const ObjectID &outer_id,
+                                 const rpc::Address &owner_address,
+                                 bool foreign_owner_already_monitoring)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Helper method to delete an entry from the reference map and run any necessary
@@ -743,8 +848,13 @@ class ReferenceCounter : public ReferenceCounterInterface,
                                std::vector<ObjectID> *deleted)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  /// Helper method to decrement the lineage ref count for a list of objects.
-  void ReleaseLineageReferencesInternal(const std::vector<ObjectID> &argument_ids)
+  /// Erase the Reference from the table. Assumes that the entry has no more
+  /// references, normal or lineage.
+  void EraseReference(ReferenceTable::iterator entry) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  /// Helper method to garbage-collect all out-of-scope References in the
+  /// lineage for this object.
+  int64_t ReleaseLineageReferences(ReferenceTable::iterator entry)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Add a new location for the given object. The owner must have the object ref in
@@ -753,6 +863,17 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[in] it The reference iterator for the object.
   /// \param[in] node_id The new object location to be added.
   void AddObjectLocationInternal(ReferenceTable::iterator it, const NodeID &node_id)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  /// Remove a location for the given object. The owner must have the object ref in
+  /// scope, and the caller must have already acquired mutex_.
+  ///
+  /// \param[in] it The reference iterator for the object.
+  /// \param[in] node_id The object location to be removed.
+  void RemoveObjectLocationInternal(ReferenceTable::iterator it, const NodeID &node_id)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  void UpdateObjectPendingCreation(const ObjectID &object_id, bool pending_creation)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Publish object locations to all subscribers.
@@ -771,6 +892,13 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void CleanupBorrowersOnRefRemoved(const ReferenceTable &new_borrower_refs,
                                     const ObjectID &object_id,
                                     const rpc::WorkerAddress &borrower_addr);
+
+  /// Decrease the local reference count for the ObjectID by one.
+  /// This method is internal and not thread-safe. mutex_ lock must be held before
+  /// calling this method.
+  void RemoveLocalReferenceInternal(const ObjectID &object_id,
+                                    std::vector<ObjectID> *deleted)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Address of our RPC server. This is used to determine whether we own a
   /// given object or not, by comparing our WorkerID with the WorkerID of the
@@ -806,6 +934,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// The callback to call once an object ID that we own is no longer in scope
   /// and it has no tasks that depend on it that may be retried in the future.
   /// The object's Reference will be erased after this callback.
+  // Returns the amount of lineage in bytes released.
   LineageReleasedCallback on_lineage_released_;
   /// Optional shutdown hook to call when all references have gone
   /// out of scope.
@@ -819,6 +948,28 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Object status subscriber. It is used to subscribe the ref removed information from
   /// other workers.
   pubsub::SubscriberInterface *object_info_subscriber_;
+
+  /// Objects that we own that are still in scope at the application level and
+  /// that may be reconstructed. These objects may have pinned lineage that
+  /// should be evicted on memory pressure. The queue is in FIFO order, based
+  /// on ObjectRef creation time.
+  std::list<ObjectID> reconstructable_owned_objects_ GUARDED_BY(mutex_);
+
+  /// We keep a FIFO queue of objects in scope so that we can choose lineage to
+  /// evict under memory pressure. This is an index from ObjectID to the
+  /// object's place in the queue.
+  absl::flat_hash_map<ObjectID, std::list<ObjectID>::iterator>
+      reconstructable_owned_objects_index_ GUARDED_BY(mutex_);
+
+  /// Called to check whether a raylet is still alive. This is used when adding
+  /// the primary or spilled location of an object. If the node is dead, then
+  /// the object will be added to the buffer objects to recover.
+  const std::function<bool(const NodeID &node_id)> check_node_alive_;
+
+  /// A buffer of the objects whose primary or spilled locations have been lost
+  /// due to node failure. These objects are still in scope and need to be
+  /// recovered.
+  std::vector<ObjectID> objects_to_recover_ GUARDED_BY(mutex_);
 };
 
 }  // namespace core

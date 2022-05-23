@@ -18,13 +18,18 @@ namespace gcs {
 template <typename Key, typename Data>
 class MockGcsTable : public GcsTable<Key, Data> {
  public:
-  MOCK_METHOD(Status, Put,
+  MOCK_METHOD(Status,
+              Put,
               (const Key &key, const Data &value, const StatusCallback &callback),
               (override));
-  MOCK_METHOD(Status, Delete, (const Key &key, const StatusCallback &callback),
+  MOCK_METHOD(Status,
+              Delete,
+              (const Key &key, const StatusCallback &callback),
               (override));
-  MOCK_METHOD(Status, BatchDelete,
-              (const std::vector<Key> &keys, const StatusCallback &callback), (override));
+  MOCK_METHOD(Status,
+              BatchDelete,
+              (const std::vector<Key> &keys, const StatusCallback &callback),
+              (override));
 };
 
 }  // namespace gcs
@@ -36,13 +41,18 @@ namespace gcs {
 template <typename Key, typename Data>
 class MockGcsTableWithJobId : public GcsTableWithJobId<Key, Data> {
  public:
-  MOCK_METHOD(Status, Put,
+  MOCK_METHOD(Status,
+              Put,
               (const Key &key, const Data &value, const StatusCallback &callback),
               (override));
-  MOCK_METHOD(Status, Delete, (const Key &key, const StatusCallback &callback),
+  MOCK_METHOD(Status,
+              Delete,
+              (const Key &key, const StatusCallback &callback),
               (override));
-  MOCK_METHOD(Status, BatchDelete,
-              (const std::vector<Key> &keys, const StatusCallback &callback), (override));
+  MOCK_METHOD(Status,
+              BatchDelete,
+              (const std::vector<Key> &keys, const StatusCallback &callback),
+              (override));
   MOCK_METHOD(JobID, GetJobIdFromKey, (const Key &key), (override));
 };
 
@@ -75,50 +85,6 @@ namespace gcs {
 
 class MockGcsPlacementGroupTable : public GcsPlacementGroupTable {
  public:
-};
-
-}  // namespace gcs
-}  // namespace ray
-
-namespace ray {
-namespace gcs {
-
-class MockGcsTaskTable : public GcsTaskTable {
- public:
-  MOCK_METHOD(JobID, GetJobIdFromKey, (const TaskID &key), (override));
-};
-
-}  // namespace gcs
-}  // namespace ray
-
-namespace ray {
-namespace gcs {
-
-class MockGcsTaskLeaseTable : public GcsTaskLeaseTable {
- public:
-  MOCK_METHOD(JobID, GetJobIdFromKey, (const TaskID &key), (override));
-};
-
-}  // namespace gcs
-}  // namespace ray
-
-namespace ray {
-namespace gcs {
-
-class MockGcsTaskReconstructionTable : public GcsTaskReconstructionTable {
- public:
-  MOCK_METHOD(JobID, GetJobIdFromKey, (const TaskID &key), (override));
-};
-
-}  // namespace gcs
-}  // namespace ray
-
-namespace ray {
-namespace gcs {
-
-class MockGcsObjectTable : public GcsObjectTable {
- public:
-  MOCK_METHOD(JobID, GetJobIdFromKey, (const ObjectID &key), (override));
 };
 
 }  // namespace gcs

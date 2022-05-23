@@ -6,10 +6,8 @@ import time
 import traceback
 import ray
 import pytest
-import redis
 import ray.dashboard.utils as dashboard_utils
-import ray.ray_constants as ray_constants
-import ray._private.gcs_utils as gcs_utils
+import ray._private.gcs_pubsub as gcs_pubsub
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.dashboard.modules.actor import actor_consts
 from ray._private.test_utils import (
@@ -49,8 +47,7 @@ def test_actor_groups(ray_start_with_dashboard):
             response = requests.get(webui_url + "/logical/actor_groups")
             response.raise_for_status()
             actor_groups_resp = response.json()
-            assert actor_groups_resp["result"] is True, actor_groups_resp[
-                "msg"]
+            assert actor_groups_resp["result"] is True, actor_groups_resp["msg"]
             actor_groups = actor_groups_resp["data"]["actorGroups"]
             assert "Foo" in actor_groups
             summary = actor_groups["Foo"]["summary"]
@@ -77,9 +74,13 @@ def test_actor_groups(ray_start_with_dashboard):
             last_ex = ex
         finally:
             if time.time() > start_time + timeout_seconds:
-                ex_stack = traceback.format_exception(
-                    type(last_ex), last_ex,
-                    last_ex.__traceback__) if last_ex else []
+                ex_stack = (
+                    traceback.format_exception(
+                        type(last_ex), last_ex, last_ex.__traceback__
+                    )
+                    if last_ex
+                    else []
+                )
                 ex_stack = "".join(ex_stack)
                 raise Exception(f"Timed out while testing, {ex_stack}")
 
@@ -117,9 +118,8 @@ def test_actors(disable_aiohttp_cache, ray_start_with_dashboard):
             assert len(actors) == 3
             one_entry = list(actors.values())[0]
             assert "jobId" in one_entry
-            assert "taskSpec" in one_entry
-            assert "functionDescriptor" in one_entry["taskSpec"]
-            assert type(one_entry["taskSpec"]["functionDescriptor"]) is dict
+            assert "functionDescriptor" in one_entry
+            assert type(one_entry["functionDescriptor"]) is dict
             assert "address" in one_entry
             assert type(one_entry["address"]) is dict
             assert "state" in one_entry
@@ -134,9 +134,13 @@ def test_actors(disable_aiohttp_cache, ray_start_with_dashboard):
             last_ex = ex
         finally:
             if time.time() > start_time + timeout_seconds:
-                ex_stack = traceback.format_exception(
-                    type(last_ex), last_ex,
-                    last_ex.__traceback__) if last_ex else []
+                ex_stack = (
+                    traceback.format_exception(
+                        type(last_ex), last_ex, last_ex.__traceback__
+                    )
+                    if last_ex
+                    else []
+                )
                 ex_stack = "".join(ex_stack)
                 raise Exception(f"Timed out while testing, {ex_stack}")
 
@@ -182,8 +186,9 @@ def test_kill_actor(ray_start_with_dashboard):
             params={
                 "actorId": actor["actorId"],
                 "ipAddress": actor["ipAddress"],
-                "port": actor["port"]
-            })
+                "port": actor["port"],
+            },
+        )
         resp.raise_for_status()
         resp_json = resp.json()
         assert resp_json["result"] is True, "msg" in resp_json
@@ -198,26 +203,17 @@ def test_kill_actor(ray_start_with_dashboard):
             break
         except (KeyError, AssertionError) as e:
             last_exc = e
-            time.sleep(.1)
+            time.sleep(0.1)
     assert last_exc is None
 
 
 def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
     timeout = 5
-    assert (wait_until_server_available(ray_start_with_dashboard["webui_url"])
-            is True)
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     address_info = ray_start_with_dashboard
-    address = address_info["redis_address"]
-    address = address.split(":")
-    assert len(address) == 2
 
-    client = redis.StrictRedis(
-        host=address[0],
-        port=int(address[1]),
-        password=ray_constants.REDIS_DEFAULT_PASSWORD)
-
-    p = client.pubsub(ignore_subscribe_messages=True)
-    p.psubscribe(gcs_utils.RAY_ACTOR_PUBSUB_PATTERN)
+    sub = gcs_pubsub.GcsActorSubscriber(address=address_info["gcs_address"])
+    sub.subscribe()
 
     @ray.remote
     class DummyActor:
@@ -227,40 +223,47 @@ def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
     # Create a dummy actor.
     a = DummyActor.remote()
 
-    def handle_pub_messages(client, msgs, timeout, expect_num):
+    def handle_pub_messages(msgs, timeout, expect_num):
         start_time = time.time()
         while time.time() - start_time < timeout and len(msgs) < expect_num:
-            msg = client.get_message()
-            if msg is None:
-                time.sleep(0.01)
+            _, actor_data = sub.poll(timeout=timeout)
+            if actor_data is None:
                 continue
-            pubsub_msg = gcs_utils.PubSubMessage.FromString(msg["data"])
-            actor_data = gcs_utils.ActorTableData.FromString(pubsub_msg.data)
             msgs.append(actor_data)
 
     msgs = []
-    handle_pub_messages(p, msgs, timeout, 3)
+    handle_pub_messages(msgs, timeout, 3)
     # Assert we received published actor messages with state
     # DEPENDENCIES_UNREADY, PENDING_CREATION and ALIVE.
-    assert len(msgs) == 3
+    assert len(msgs) == 3, msgs
 
     # Kill actor.
     ray.kill(a)
-    handle_pub_messages(p, msgs, timeout, 4)
+    handle_pub_messages(msgs, timeout, 4)
 
     # Assert we received published actor messages with state DEAD.
     assert len(msgs) == 4
 
     def actor_table_data_to_dict(message):
         return dashboard_utils.message_to_dict(
-            message, {
-                "actorId", "parentId", "jobId", "workerId", "rayletId",
-                "actorCreationDummyObjectId", "callerId", "taskId",
-                "parentTaskId", "sourceActorId", "placementGroupId"
+            message,
+            {
+                "actorId",
+                "parentId",
+                "jobId",
+                "workerId",
+                "rayletId",
+                "actorCreationDummyObjectId",
+                "callerId",
+                "taskId",
+                "parentTaskId",
+                "sourceActorId",
+                "placementGroupId",
             },
-            including_default_value_fields=False)
+            including_default_value_fields=False,
+        )
 
-    non_state_keys = ("actorId", "jobId", "taskSpec")
+    non_state_keys = ("actorId", "jobId")
 
     for msg in msgs:
         actor_data_dict = actor_table_data_to_dict(msg)
@@ -273,25 +276,32 @@ def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
         # For status that is not DEPENDENCIES_UNREADY, only states fields will
         # be published.
         elif actor_data_dict["state"] in ("ALIVE", "DEAD"):
-            assert actor_data_dict.keys() == {
-                "state", "address", "timestamp", "pid",
-                "creationTaskException", "rayNamespace"
+            assert actor_data_dict.keys() >= {
+                "state",
+                "address",
+                "timestamp",
+                "pid",
+                "rayNamespace",
             }
         elif actor_data_dict["state"] == "PENDING_CREATION":
             assert actor_data_dict.keys() == {
-                "state", "address", "actorId", "actorCreationDummyObjectId",
-                "jobId", "ownerAddress", "taskSpec", "className",
-                "serializedRuntimeEnv", "rayNamespace"
+                "state",
+                "address",
+                "actorId",
+                "actorCreationDummyObjectId",
+                "jobId",
+                "ownerAddress",
+                "className",
+                "serializedRuntimeEnv",
+                "functionDescriptor",
+                "rayNamespace",
             }
         else:
-            raise Exception("Unknown state: {}".format(
-                actor_data_dict["state"]))
+            raise Exception("Unknown state: {}".format(actor_data_dict["state"]))
 
 
-def test_nil_node(enable_test_module, disable_aiohttp_cache,
-                  ray_start_with_dashboard):
-    assert (wait_until_server_available(ray_start_with_dashboard["webui_url"])
-            is True)
+def test_nil_node(enable_test_module, disable_aiohttp_cache, ray_start_with_dashboard):
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     webui_url = ray_start_with_dashboard["webui_url"]
     assert wait_until_server_available(webui_url)
     webui_url = format_web_url(webui_url)
@@ -322,9 +332,13 @@ def test_nil_node(enable_test_module, disable_aiohttp_cache,
             last_ex = ex
         finally:
             if time.time() > start_time + timeout_seconds:
-                ex_stack = traceback.format_exception(
-                    type(last_ex), last_ex,
-                    last_ex.__traceback__) if last_ex else []
+                ex_stack = (
+                    traceback.format_exception(
+                        type(last_ex), last_ex, last_ex.__traceback__
+                    )
+                    if last_ex
+                    else []
+                )
                 ex_stack = "".join(ex_stack)
                 raise Exception(f"Timed out while testing, {ex_stack}")
 

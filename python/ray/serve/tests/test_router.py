@@ -20,8 +20,8 @@ def ray_instance():
     # This line should be not turned on on master because it leads to very
     # spammy and not useful log in case of a failure in CI.
     # To run locally, please use this instead.
-    # SERVE_LOG_DEBUG=1 pytest -v -s test_api.py
-    # os.environ["SERVE_LOG_DEBUG"] = "1" <- Do not uncomment this.
+    # SERVE_DEBUG_LOG=1 pytest -v -s test_api.py
+    # os.environ["SERVE_DEBUG_LOG"] = "1" <- Do not uncomment this.
     ray.init(num_cpus=16)
     yield
     ray.shutdown()
@@ -78,15 +78,17 @@ async def test_replica_set(ray_instance):
 
     # We will test a scenario with two replicas in the replica set.
     rs = ReplicaSet(
-        "my_backend",
+        "my_deployment",
         asyncio.get_event_loop(),
     )
     replicas = [
         RunningReplicaInfo(
-            backend_tag="my_backend",
+            deployment_name="my_deployment",
             replica_tag=str(i),
             actor_handle=MockWorker.remote(),
-            max_concurrent_queries=1) for i in range(2)
+            max_concurrent_queries=1,
+        )
+        for i in range(2)
     ]
     rs.update_running_replicas(replicas)
 
@@ -108,7 +110,8 @@ async def test_replica_set(ray_instance):
 
     # Let's try to send another query.
     third_ref_pending_task = asyncio.get_event_loop().create_task(
-        rs.assign_replica(query))
+        rs.assign_replica(query)
+    )
     # We should fail to assign a replica, so this coroutine should still be
     # pending after some time.
     await asyncio.sleep(0.2)
@@ -128,11 +131,13 @@ async def test_replica_set(ray_instance):
     assert await third_ref == "DONE"
 
     # Finally, make sure that one of the replica processed the third query.
-    num_queries_set = {(await replica.actor_handle.num_queries.remote())
-                       for replica in replicas}
+    num_queries_set = {
+        (await replica.actor_handle.num_queries.remote()) for replica in replicas
+    }
     assert num_queries_set == {2, 1}
 
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", "-s", __file__]))

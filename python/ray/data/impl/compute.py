@@ -1,8 +1,17 @@
-from typing import TypeVar, Iterable, Any, Union, Callable
+import collections
+from typing import TypeVar, Any, Union, Callable, List, Tuple, Optional
 
 import ray
-from ray.types import ObjectRef
-from ray.data.block import Block, BlockAccessor, BlockMetadata
+from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.data.block import (
+    Block,
+    BlockAccessor,
+    BlockMetadata,
+    BlockPartition,
+    BlockExecStats,
+)
+from ray.data.context import DatasetContext
+from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.remote_fn import cached_remote_fn
@@ -14,142 +23,254 @@ U = TypeVar("U")
 CallableClass = type
 
 
+@DeveloperAPI
 class ComputeStrategy:
-    def apply(self, fn: Any,
-              blocks: Iterable[Block]) -> Iterable[ObjectRef[Block]]:
+    def _apply(self, fn: Any, blocks: BlockList, clear_input_blocks: bool) -> BlockList:
         raise NotImplementedError
 
 
-def _map_block(block: Block, meta: BlockMetadata,
-               fn: Any) -> (Block, BlockMetadata):
-    new_block = fn(block)
-    accessor = BlockAccessor.for_block(new_block)
-    new_meta = BlockMetadata(
-        num_rows=accessor.num_rows(),
-        size_bytes=accessor.size_bytes(),
-        schema=accessor.schema(),
-        input_files=meta.input_files)
-    return new_block, new_meta
+@DeveloperAPI
+class TaskPoolStrategy(ComputeStrategy):
+    def _apply(
+        self,
+        fn: Any,
+        remote_args: dict,
+        block_list: BlockList,
+        clear_input_blocks: bool,
+        name: Optional[str] = None,
+    ) -> BlockList:
+        context = DatasetContext.get_current()
 
-
-class TaskPool(ComputeStrategy):
-    def apply(self, fn: Any, remote_args: dict,
-              blocks: BlockList[Any]) -> BlockList[Any]:
         # Handle empty datasets.
-        if len(blocks) == 0:
-            return blocks
+        if block_list.initial_num_blocks() == 0:
+            return block_list
 
-        map_bar = ProgressBar("Map Progress", total=len(blocks))
+        blocks = block_list.get_blocks_with_metadata()
+        if name is None:
+            name = "map"
+        name = name.title()
+        map_bar = ProgressBar(name, total=len(blocks))
 
-        kwargs = remote_args.copy()
-        kwargs["num_returns"] = 2
+        if context.block_splitting_enabled:
+            map_block = cached_remote_fn(_map_block_split).options(**remote_args)
+            refs = [map_block.remote(b, fn, m.input_files) for b, m in blocks]
+        else:
+            map_block = cached_remote_fn(_map_block_nosplit).options(
+                **dict(remote_args, num_returns=2)
+            )
+            all_refs = [map_block.remote(b, fn, m.input_files) for b, m in blocks]
+            data_refs = [r[0] for r in all_refs]
+            refs = [r[1] for r in all_refs]
 
-        map_block = cached_remote_fn(_map_block)
-        refs = [
-            map_block.options(**kwargs).remote(b, m, fn)
-            for b, m in zip(blocks, blocks.get_metadata())
-        ]
-        new_blocks, new_metadata = zip(*refs)
+        # Release input block references.
+        if clear_input_blocks:
+            del blocks
+            block_list.clear()
 
-        new_metadata = list(new_metadata)
+        # Common wait for non-data refs.
         try:
-            new_metadata = map_bar.fetch_until_complete(new_metadata)
+            results = map_bar.fetch_until_complete(refs)
         except (ray.exceptions.RayTaskError, KeyboardInterrupt) as e:
             # One or more mapper tasks failed, or we received a SIGINT signal
             # while waiting; either way, we cancel all map tasks.
-            for ref in new_metadata:
+            for ref in refs:
                 ray.cancel(ref)
             # Wait until all tasks have failed or been cancelled.
-            for ref in new_metadata:
+            for ref in refs:
                 try:
                     ray.get(ref)
-                except (ray.exceptions.RayTaskError,
-                        ray.exceptions.TaskCancelledError):
+                except (ray.exceptions.RayTaskError, ray.exceptions.TaskCancelledError):
                     pass
             # Reraise the original task failure exception.
             raise e from None
+
+        new_blocks, new_metadata = [], []
+        if context.block_splitting_enabled:
+            for result in results:
+                for block, metadata in result:
+                    new_blocks.append(block)
+                    new_metadata.append(metadata)
+        else:
+            for block, metadata in zip(data_refs, results):
+                new_blocks.append(block)
+                new_metadata.append(metadata)
         return BlockList(list(new_blocks), list(new_metadata))
 
 
-class ActorPool(ComputeStrategy):
-    def __init__(self):
-        self.workers = []
+@PublicAPI
+class ActorPoolStrategy(ComputeStrategy):
+    """Specify the compute strategy for a Dataset transform.
 
-    def __del__(self):
-        for w in self.workers:
-            w.__ray_terminate__.remote()
+    ActorPoolStrategy specifies that an autoscaling pool of actors should be used
+    for a given Dataset transform. This is useful for stateful setup of callable
+    classes.
 
-    def apply(self, fn: Any, remote_args: dict,
-              blocks: Iterable[Block]) -> Iterable[ObjectRef[Block]]:
+    To autoscale from ``m`` to ``n`` actors, specify
+    ``compute=ActorPoolStrategy(m, n)``.
+    For a fixed-sized pool of size ``n``, specify ``compute=ActorPoolStrategy(n, n)``.
 
-        map_bar = ProgressBar("Map Progress", total=len(blocks))
+    To increase opportunities for pipelining task dependency prefetching with
+    computation and avoiding actor startup delays, set max_tasks_in_flight_per_actor
+    to 2 or greater; to try to decrease the delay due to queueing of tasks on the worker
+    actors, set max_tasks_in_flight_per_actor to 1.
+    """
+
+    def __init__(
+        self,
+        min_size: int = 1,
+        max_size: Optional[int] = None,
+        max_tasks_in_flight_per_actor: Optional[int] = 2,
+    ):
+        """Construct ActorPoolStrategy for a Dataset transform.
+
+        Args:
+            min_size: The minimize size of the actor pool.
+            max_size: The maximum size of the actor pool.
+            max_tasks_in_flight_per_actor: The maximum number of tasks to concurrently
+                send to a single actor worker. Increasing this will increase
+                opportunities for pipelining task dependency prefetching with
+                computation and avoiding actor startup delays, but will also increase
+                queueing delay.
+        """
+        if min_size < 1:
+            raise ValueError("min_size must be > 1", min_size)
+        if max_size is not None and min_size > max_size:
+            raise ValueError("min_size must be <= max_size", min_size, max_size)
+        if max_tasks_in_flight_per_actor < 1:
+            raise ValueError(
+                "max_tasks_in_flight_per_actor must be >= 1, got: ",
+                max_tasks_in_flight_per_actor,
+            )
+        self.min_size = min_size
+        self.max_size = max_size or float("inf")
+        self.max_tasks_in_flight_per_actor = max_tasks_in_flight_per_actor
+
+    def _apply(
+        self,
+        fn: Any,
+        remote_args: dict,
+        block_list: BlockList,
+        clear_input_blocks: bool,
+        name: Optional[str] = None,
+    ) -> BlockList:
+        """Note: this is not part of the Dataset public API."""
+        context = DatasetContext.get_current()
+
+        blocks_in = block_list.get_blocks_with_metadata()
+
+        # Early release block references.
+        if clear_input_blocks:
+            block_list.clear()
+
+        orig_num_blocks = len(blocks_in)
+        results = []
+        if name is None:
+            name = "map"
+        name = name.title()
+        map_bar = ProgressBar(name, total=orig_num_blocks)
 
         class BlockWorker:
             def ready(self):
                 return "ok"
 
+            def map_block_split(
+                self, block: Block, input_files: List[str]
+            ) -> BlockPartition:
+                return _map_block_split(block, fn, input_files)
+
             @ray.method(num_returns=2)
-            def process_block(self, block: Block,
-                              meta: BlockMetadata) -> (Block, BlockMetadata):
-                new_block = fn(block)
-                accessor = BlockAccessor.for_block(new_block)
-                new_metadata = BlockMetadata(
-                    num_rows=accessor.num_rows(),
-                    size_bytes=accessor.size_bytes(),
-                    schema=accessor.schema(),
-                    input_files=meta.input_files)
-                return new_block, new_metadata
+            def map_block_nosplit(
+                self, block: Block, input_files: List[str]
+            ) -> Tuple[Block, BlockMetadata]:
+                return _map_block_nosplit(block, fn, input_files)
 
         if not remote_args:
             remote_args["num_cpus"] = 1
+
+        remote_args["scheduling_strategy"] = context.scheduling_strategy
+
         BlockWorker = ray.remote(**remote_args)(BlockWorker)
 
-        self.workers = [BlockWorker.remote()]
+        workers = [BlockWorker.remote() for _ in range(self.min_size)]
+        tasks = {w.ready.remote(): w for w in workers}
+        tasks_in_flight = collections.defaultdict(int)
         metadata_mapping = {}
-        tasks = {w.ready.remote(): w for w in self.workers}
+        block_indices = {}
         ready_workers = set()
-        blocks_in = [(b, m) for (b, m) in zip(blocks, blocks.get_metadata())]
-        blocks_out = []
 
-        while len(blocks_out) < len(blocks):
+        while len(results) < orig_num_blocks:
             ready, _ = ray.wait(
-                list(tasks), timeout=0.01, num_returns=1, fetch_local=False)
+                list(tasks.keys()), timeout=0.01, num_returns=1, fetch_local=False
+            )
             if not ready:
-                if len(ready_workers) / len(self.workers) > 0.8:
+                if (
+                    len(workers) < self.max_size
+                    and len(ready_workers) / len(workers) > 0.8
+                ):
                     w = BlockWorker.remote()
-                    self.workers.append(w)
+                    workers.append(w)
                     tasks[w.ready.remote()] = w
                     map_bar.set_description(
                         "Map Progress ({} actors {} pending)".format(
-                            len(ready_workers),
-                            len(self.workers) - len(ready_workers)))
+                            len(ready_workers), len(workers) - len(ready_workers)
+                        )
+                    )
                 continue
 
             [obj_id] = ready
-            worker = tasks[obj_id]
-            del tasks[obj_id]
+            worker = tasks.pop(obj_id)
 
             # Process task result.
             if worker in ready_workers:
-                blocks_out.append(obj_id)
+                results.append(obj_id)
+                tasks_in_flight[worker] -= 1
                 map_bar.update(1)
             else:
                 ready_workers.add(worker)
+                map_bar.set_description(
+                    "Map Progress ({} actors {} pending)".format(
+                        len(ready_workers), len(workers) - len(ready_workers)
+                    )
+                )
 
             # Schedule a new task.
-            if blocks_in:
-                block_ref, meta_ref = worker.process_block.remote(
-                    *blocks_in.pop())
-                metadata_mapping[block_ref] = meta_ref
-                tasks[block_ref] = worker
+            while (
+                blocks_in
+                and tasks_in_flight[worker] < self.max_tasks_in_flight_per_actor
+            ):
+                block, meta = blocks_in.pop()
+                if context.block_splitting_enabled:
+                    ref = worker.map_block_split.remote(block, meta.input_files)
+                else:
+                    ref, meta_ref = worker.map_block_nosplit.remote(
+                        block, meta.input_files
+                    )
+                    metadata_mapping[ref] = meta_ref
+                tasks[ref] = worker
+                block_indices[ref] = len(blocks_in)
+                tasks_in_flight[worker] += 1
 
-        new_metadata = ray.get([metadata_mapping[b] for b in blocks_out])
         map_bar.close()
-        return BlockList(blocks_out, new_metadata)
+        new_blocks, new_metadata = [], []
+        # Put blocks in input order.
+        results.sort(key=block_indices.get)
+        if context.block_splitting_enabled:
+            for result in ray.get(results):
+                for block, metadata in result:
+                    new_blocks.append(block)
+                    new_metadata.append(metadata)
+        else:
+            for block in results:
+                new_blocks.append(block)
+                new_metadata.append(metadata_mapping[block])
+            new_metadata = ray.get(new_metadata)
+        return BlockList(new_blocks, new_metadata)
 
 
-def cache_wrapper(fn: Union[CallableClass, Callable[[Any], Any]]
-                  ) -> Callable[[Any], Any]:
+def cache_wrapper(
+    fn: Union[CallableClass, Callable[[Any], Any]],
+    compute: Optional[Union[str, ComputeStrategy]],
+) -> Callable[[Any], Any]:
     """Implements caching of stateful callables.
 
     Args:
@@ -159,6 +280,18 @@ def cache_wrapper(fn: Union[CallableClass, Callable[[Any], Any]]
         A plain function with per-process initialization cached as needed.
     """
     if isinstance(fn, CallableClass):
+
+        if (
+            compute is None
+            or compute == "tasks"
+            or isinstance(compute, TaskPoolStrategy)
+        ):
+            raise ValueError(
+                "``compute`` must be specified when using a callable class, and must "
+                "specify the actor compute strategy. "
+                'For example, use ``compute="actors"`` or '
+                "``compute=ActorPoolStrategy(min, max)``."
+            )
 
         def _fn(item: Any) -> Any:
             if ray.data._cached_fn is None or ray.data._cached_cls != fn:
@@ -173,10 +306,42 @@ def cache_wrapper(fn: Union[CallableClass, Callable[[Any], Any]]
 
 def get_compute(compute_spec: Union[str, ComputeStrategy]) -> ComputeStrategy:
     if not compute_spec or compute_spec == "tasks":
-        return TaskPool()
+        return TaskPoolStrategy()
     elif compute_spec == "actors":
-        return ActorPool()
+        return ActorPoolStrategy()
     elif isinstance(compute_spec, ComputeStrategy):
         return compute_spec
     else:
-        raise ValueError("compute must be one of [`tasks`, `actors`]")
+        raise ValueError("compute must be one of [`tasks`, `actors`, ComputeStrategy]")
+
+
+def _map_block_split(block: Block, fn: Any, input_files: List[str]) -> BlockPartition:
+    output = []
+    stats = BlockExecStats.builder()
+    for new_block in fn(block):
+        accessor = BlockAccessor.for_block(new_block)
+        new_meta = BlockMetadata(
+            num_rows=accessor.num_rows(),
+            size_bytes=accessor.size_bytes(),
+            schema=accessor.schema(),
+            input_files=input_files,
+            exec_stats=stats.build(),
+        )
+        owner = DatasetContext.get_current().block_owner
+        output.append((ray.put(new_block, _owner=owner), new_meta))
+        stats = BlockExecStats.builder()
+    return output
+
+
+def _map_block_nosplit(
+    block: Block, fn: Any, input_files: List[str]
+) -> Tuple[Block, BlockMetadata]:
+    stats = BlockExecStats.builder()
+    builder = DelegatingBlockBuilder()
+    for new_block in fn(block):
+        builder.add_block(new_block)
+    new_block = builder.build()
+    accessor = BlockAccessor.for_block(new_block)
+    return new_block, accessor.get_metadata(
+        input_files=input_files, exec_stats=stats.build()
+    )

@@ -7,8 +7,7 @@ import kubernetes
 import pytest
 import yaml
 
-from ray.autoscaler._private._kubernetes.node_provider import \
-    KubernetesNodeProvider
+from ray.autoscaler._private._kubernetes.node_provider import KubernetesNodeProvider
 from ray.autoscaler import sdk
 
 IMAGE_ENV = "KUBERNETES_CLUSTER_LAUNCHER_TEST_IMAGE"
@@ -68,9 +67,9 @@ class KubernetesTest(unittest.TestCase):
         log_cmd = "tail -n 100 /tmp/ray/session_latest/logs/monitor*"
         while True:
             monitor_output = sdk.run_on_cluster(
-                config, cmd=log_cmd, with_output=True).decode()
-            if ("head-node" in monitor_output
-                    and "worker-node" in monitor_output):
+                config, cmd=log_cmd, with_output=True
+            ).decode()
+            if "head-node" in monitor_output and "worker-node" in monitor_output:
                 break
             else:
                 time.sleep(1)
@@ -79,11 +78,9 @@ class KubernetesTest(unittest.TestCase):
         with tempfile.NamedTemporaryFile("w") as test_file:
             test_file.write("test")
             test_file.flush()
-            sdk.rsync(
-                config, source=test_file.name, target="~/in_pod", down=False)
+            sdk.rsync(config, source=test_file.name, target="~/in_pod", down=False)
         with tempfile.NamedTemporaryFile() as test_file:
-            sdk.rsync(
-                config, target=test_file.name, source="~/in_pod", down=True)
+            sdk.rsync(config, target=test_file.name, source="~/in_pod", down=True)
             contents = open(test_file.name).read()
         assert contents == "test"
 
@@ -107,4 +104,5 @@ class KubernetesTest(unittest.TestCase):
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

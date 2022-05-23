@@ -1,18 +1,20 @@
 import copy
 import gym
 import numpy as np
+import os
+from pathlib import Path
 from random import choice
 import time
 import unittest
 
 import ray
 import ray.rllib.agents.a3c as a3c
-import ray.rllib.agents.dqn as dqn
-import ray.rllib.agents.pg as pg
-from ray.rllib.agents.trainer import Trainer, COMMON_CONFIG
+import ray.rllib.algorithms.dqn as dqn
+from ray.rllib.algorithms.marwil import BCConfig, BCTrainer
+import ray.rllib.algorithms.pg as pg
+from ray.rllib.agents.trainer import COMMON_CONFIG
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
-from ray.rllib.examples.parallel_evaluation_and_training import \
-    AssertNumEvalEpisodesCallback
+from ray.rllib.examples.parallel_evaluation_and_training import AssertEvalCallback
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.test_utils import framework_iterator
 
@@ -33,41 +35,53 @@ class TestTrainer(unittest.TestCase):
         """
         # Given:
         standard_config = copy.deepcopy(COMMON_CONFIG)
+        trainer = pg.PGTrainer(env="CartPole-v0", config=standard_config)
 
-        # When (we validate config 2 times), ...
-        Trainer._validate_config(standard_config)
+        # When (we validate config 2 times).
+        # Try deprecated `Trainer._validate_config()` method (static).
+        trainer._validate_config(standard_config, trainer)
         config_v1 = copy.deepcopy(standard_config)
-        Trainer._validate_config(standard_config)
+        # Try new method: `Trainer.validate_config()` (non-static).
+        trainer.validate_config(standard_config)
         config_v2 = copy.deepcopy(standard_config)
 
-        # ... then ...
+        # Make sure nothing changed.
         self.assertEqual(config_v1, config_v2)
+
+        trainer.stop()
 
     def test_add_delete_policy(self):
         config = pg.DEFAULT_CONFIG.copy()
-        config.update({
-            "env": MultiAgentCartPole,
-            "env_config": {
-                "config": {
-                    "num_agents": 4,
+        config.update(
+            {
+                "env": MultiAgentCartPole,
+                "env_config": {
+                    "config": {
+                        "num_agents": 4,
+                    },
                 },
-            },
-            "num_workers": 2,  # Test on remote workers as well.
-            "model": {
-                "fcnet_hiddens": [5],
-                "fcnet_activation": "linear",
-            },
-            "train_batch_size": 100,
-            "rollout_fragment_length": 50,
-            "multiagent": {
-                # Start with a single policy.
-                "policies": {"p0"},
-                "policy_mapping_fn": lambda aid, eps, worker, **kwargs: "p0",
-                # And only two policies that can be stored in memory at a
-                # time.
-                "policy_map_capacity": 2,
-            },
-        })
+                "num_workers": 2,  # Test on remote workers as well.
+                "num_cpus_per_worker": 0.1,
+                "model": {
+                    "fcnet_hiddens": [5],
+                    "fcnet_activation": "linear",
+                },
+                "train_batch_size": 100,
+                "rollout_fragment_length": 50,
+                "multiagent": {
+                    # Start with a single policy.
+                    "policies": {"p0"},
+                    "policy_mapping_fn": lambda aid, eps, worker, **kwargs: "p0",
+                    # And only two policies that can be stored in memory at a
+                    # time.
+                    "policy_map_capacity": 2,
+                },
+                "evaluation_num_workers": 1,
+                "evaluation_config": {
+                    "num_cpus_per_worker": 0.1,
+                },
+            }
+        )
 
         for _ in framework_iterator(config):
             trainer = pg.PGTrainer(config=config)
@@ -83,7 +97,7 @@ class TestTrainer(unittest.TestCase):
                 pid = f"p{i}"
                 new_pol = trainer.add_policy(
                     pid,
-                    trainer._policy_class,
+                    trainer.get_default_policy_class(config),
                     # Test changing the mapping fn.
                     policy_mapping_fn=new_mapping_fn,
                     # Change the list of policies to train.
@@ -101,12 +115,22 @@ class TestTrainer(unittest.TestCase):
                 # than what's defined in the config dict).
                 test = pg.PGTrainer(config=config)
                 test.restore(checkpoint)
+
+                # Make sure evaluation worker also gets the restored policy.
+                def _has_policy(w):
+                    return w.get_policy("p0") is not None
+
+                self.assertTrue(
+                    all(test.evaluation_workers.foreach_worker(_has_policy))
+                )
+
+                # Make sure trainer can continue training the restored policy.
                 pol0 = test.get_policy("p0")
                 test.train()
                 # Test creating an action with the added (and restored) policy.
                 a = test.compute_single_action(
-                    np.zeros_like(pol0.observation_space.sample()),
-                    policy_id=pid)
+                    np.zeros_like(pol0.observation_space.sample()), policy_id=pid
+                )
                 self.assertTrue(pol0.action_space.contains(a))
                 test.stop()
 
@@ -117,23 +141,26 @@ class TestTrainer(unittest.TestCase):
                     # Note that the complete signature of a policy_mapping_fn
                     # is: `agent_id, episode, worker, **kwargs`.
                     policy_mapping_fn=lambda aid, eps, **kwargs: f"p{i - 1}",
-                    policies_to_train=[f"p{i - 1}"])
+                    policies_to_train=[f"p{i - 1}"],
+                )
 
             trainer.stop()
 
     def test_evaluation_option(self):
         config = dqn.DEFAULT_CONFIG.copy()
-        config.update({
-            "env": "CartPole-v0",
-            "evaluation_interval": 2,
-            "evaluation_num_episodes": 2,
-            "evaluation_config": {
-                "gamma": 0.98,
-            },
-            # Use a custom callback that asserts that we are running the
-            # configured exact number of episodes per evaluation.
-            "callbacks": AssertNumEvalEpisodesCallback,
-        })
+        config.update(
+            {
+                "env": "CartPole-v0",
+                "evaluation_interval": 2,
+                "evaluation_duration": 2,
+                "evaluation_config": {
+                    "gamma": 0.98,
+                },
+                # Use a custom callback that asserts that we are running the
+                # configured exact number of episodes per evaluation.
+                "callbacks": AssertEvalCallback,
+            }
+        )
 
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
             trainer = dqn.DQNTrainer(config=config)
@@ -156,23 +183,62 @@ class TestTrainer(unittest.TestCase):
             self.assertTrue("episode_reward_mean" in r1["evaluation"])
             self.assertNotEqual(r1["evaluation"], r3["evaluation"])
 
+    def test_evaluation_option_always_attach_eval_metrics(self):
+        config = dqn.DEFAULT_CONFIG.copy()
+        config.update(
+            {
+                "env": "CartPole-v0",
+                "evaluation_interval": 2,
+                "evaluation_duration": 2,
+                "evaluation_duration_unit": "episodes",
+                "evaluation_config": {
+                    "gamma": 0.98,
+                },
+                "always_attach_evaluation_results": True,
+                # Use a custom callback that asserts that we are running the
+                # configured exact number of episodes per evaluation.
+                "callbacks": AssertEvalCallback,
+            }
+        )
+
+        for _ in framework_iterator(config, frameworks=("tf", "torch")):
+            trainer = dqn.DQNTrainer(config=config)
+            # Should always see latest available eval results.
+            r0 = trainer.train()
+            r1 = trainer.train()
+            r2 = trainer.train()
+            r3 = trainer.train()
+            trainer.stop()
+
+            # Eval results are not available at step 0.
+            # But step 3 should still have it, even though no eval was
+            # run during that step.
+            self.assertTrue("evaluation" in r0)
+            self.assertTrue("evaluation" in r1)
+            self.assertTrue("evaluation" in r2)
+            self.assertTrue("evaluation" in r3)
+
     def test_evaluation_wo_evaluation_worker_set(self):
         config = a3c.DEFAULT_CONFIG.copy()
-        config.update({
-            "env": "CartPole-v0",
-            # Switch off evaluation (this should already be the default).
-            "evaluation_interval": None,
-            # Use a custom callback that asserts that we are running the
-            # configured exact number of episodes per evaluation.
-            "callbacks": AssertNumEvalEpisodesCallback,
-        })
+        config.update(
+            {
+                "env": "CartPole-v0",
+                # Switch off evaluation (this should already be the default).
+                "evaluation_interval": None,
+                # Use a custom callback that asserts that we are running the
+                # configured exact number of episodes per evaluation.
+                "callbacks": AssertEvalCallback,
+            }
+        )
         for _ in framework_iterator(frameworks=("tf", "torch")):
             # Setup trainer w/o evaluation worker set and still call
             # evaluate() -> Expect error.
             trainer_wo_env_on_driver = a3c.A3CTrainer(config=config)
-            self.assertRaisesRegexp(
-                ValueError, "Cannot evaluate w/o an evaluation worker set",
-                trainer_wo_env_on_driver.evaluate)
+            self.assertRaisesRegex(
+                ValueError,
+                "Cannot evaluate w/o an evaluation worker set",
+                trainer_wo_env_on_driver.evaluate,
+            )
             trainer_wo_env_on_driver.stop()
 
             # Try again using `create_env_on_driver=True`.
@@ -197,15 +263,15 @@ class TestTrainer(unittest.TestCase):
         config["num_workers"] = 1
 
         # No env on driver -> expect longer build time due to space
-        # "lookup" from remote worker.
+        # lookup from remote worker.
         t0 = time.time()
         trainer = pg.PGTrainer(config=config)
         w_lookup = time.time() - t0
         print(f"No env on learner: {w_lookup}sec")
         trainer.stop()
 
-        # Env on driver -> expect longer build time due to space
-        # "lookup" from remote worker.
+        # Env on driver -> expect shorted build time due to no space
+        # lookup required from remote worker.
         config["create_env_on_driver"] = True
         t0 = time.time()
         trainer = pg.PGTrainer(config=config)
@@ -215,7 +281,7 @@ class TestTrainer(unittest.TestCase):
         trainer.stop()
 
         # Spaces given -> expect shorter build time due to no space
-        # "lookup" from remote worker.
+        # lookup required from remote worker.
         config["create_env_on_driver"] = False
         config["observation_space"] = env.observation_space
         config["action_space"] = env.action_space
@@ -226,8 +292,40 @@ class TestTrainer(unittest.TestCase):
         self.assertLess(wo_lookup, w_lookup)
         trainer.stop()
 
+    def test_no_env_but_eval_workers_do_have_env(self):
+        """Tests whether no env on workers, but env on eval workers works ok."""
+        script_path = Path(__file__)
+        input_file = os.path.join(
+            script_path.parent.parent.parent, "tests/data/cartpole/small.json"
+        )
+
+        env = gym.make("CartPole-v0")
+
+        offline_rl_config = (
+            BCConfig()
+            .environment(
+                observation_space=env.observation_space, action_space=env.action_space
+            )
+            .evaluation(
+                evaluation_interval=1,
+                evaluation_num_workers=1,
+                evaluation_config={
+                    "env": "CartPole-v0",
+                    "input": "sampler",
+                    "observation_space": None,  # Test, whether this is inferred.
+                    "action_space": None,  # Test, whether this is inferred.
+                },
+            )
+            .offline_data(input_=[input_file])
+        )
+
+        bc_trainer = BCTrainer(config=offline_rl_config)
+        bc_trainer.train()
+        bc_trainer.stop()
+
 
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

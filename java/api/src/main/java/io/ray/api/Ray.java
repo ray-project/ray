@@ -1,16 +1,10 @@
 package io.ray.api;
 
-import io.ray.api.id.PlacementGroupId;
-import io.ray.api.options.PlacementGroupCreationOptions;
-import io.ray.api.placementgroup.PlacementGroup;
-import io.ray.api.placementgroup.PlacementStrategy;
 import io.ray.api.runtime.RayRuntime;
 import io.ray.api.runtime.RayRuntimeFactory;
 import io.ray.api.runtimecontext.RuntimeContext;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.Callable;
 
 /** This class contains all public APIs of Ray. */
 public final class Ray extends RayCall {
@@ -86,10 +80,34 @@ public final class Ray extends RayCall {
    * Get an object by `ObjectRef` from the object store.
    *
    * @param objectRef The reference of the object to get.
+   * @param timeoutMs The maximum amount of time in miliseconds to wait before returning.
+   * @return The Java object.
+   * @throws RayTimeoutException If it's timeout to get the object.
+   */
+  public static <T> T get(ObjectRef<T> objectRef, long timeoutMs) {
+    return internal().get(objectRef, timeoutMs);
+  }
+
+  /**
+   * Get an object by `ObjectRef` from the object store.
+   *
+   * @param objectRef The reference of the object to get.
    * @return The Java object.
    */
   public static <T> T get(ObjectRef<T> objectRef) {
     return internal().get(objectRef);
+  }
+
+  /**
+   * Get a list of objects by `ObjectRef`s from the object store.
+   *
+   * @param objectList A list of object references.
+   * @param timeoutMs The maximum amount of time in miliseconds to wait before returning.
+   * @return A list of Java objects.
+   * @throws RayTimeoutException If it's timeout to get the object.
+   */
+  public static <T> List<T> get(List<ObjectRef<T>> objectList, long timeoutMs) {
+    return internal().get(objectList, timeoutMs);
   }
 
   /**
@@ -156,79 +174,34 @@ public final class Ray extends RayCall {
   }
 
   /**
-   * Get a handle to a named actor of current job.
+   * Get a handle to a named actor in current namespace.
    *
-   * <p>Gets a handle to a named actor with the given name. The actor must have been created with
-   * name specified.
+   * <p>Gets a handle to a named actor with the given name of current namespace. The actor must have
+   * been created with name specified.
    *
    * @param name The name of the named actor.
-   * @return an ActorHandle to the actor if the actor of specified name exists or an
-   *     Optional.empty()
+   * @return an ActorHandle to the actor if the actor of specified name exists in current namespace
+   *     or an Optional.empty()
    * @throws RayException An exception is raised if timed out.
    */
   public static <T extends BaseActorHandle> Optional<T> getActor(String name) {
-    return internal().getActor(name, false);
+    return internal().getActor(name, null);
   }
 
   /**
-   * Get a handle to a global named actor.
+   * Get a handle to a named actor in the given namespace.
    *
-   * <p>Gets a handle to a global named actor with the given name. The actor must have been created
-   * with global name specified.
+   * <p>Gets a handle to a named actor with the given name of the given namespace. The actor must
+   * have been created with name specified.
    *
-   * @param name The global name of the named actor.
-   * @return an ActorHandle to the actor if the actor of specified name exists or an
-   *     Optional.empty()
+   * @param name The name of the named actor.
+   * @param namespace The namespace of the actor.
+   * @return an ActorHandle to the actor if the actor of specified name exists in current namespace
+   *     or an Optional.empty()
    * @throws RayException An exception is raised if timed out.
    */
-  public static <T extends BaseActorHandle> Optional<T> getGlobalActor(String name) {
-    return internal().getActor(name, true);
-  }
-
-  /**
-   * If users want to use Ray API in their own threads, call this method to get the async context
-   * and then call {@link #setAsyncContext} at the beginning of the new thread.
-   *
-   * @return The async context.
-   */
-  public static Object getAsyncContext() {
-    return internal().getAsyncContext();
-  }
-
-  /**
-   * Set the async context for the current thread.
-   *
-   * @param asyncContext The async context to set.
-   */
-  public static void setAsyncContext(Object asyncContext) {
-    internal().setAsyncContext(asyncContext);
-  }
-
-  // TODO (kfstorm): add the `rollbackAsyncContext` API to allow rollbacking the async context of
-  // the current thread to the one before `setAsyncContext` is called.
-
-  // TODO (kfstorm): unify the `wrap*` methods.
-
-  /**
-   * If users want to use Ray API in their own threads, they should wrap their {@link Runnable}
-   * objects with this method.
-   *
-   * @param runnable The runnable to wrap.
-   * @return The wrapped runnable.
-   */
-  public static Runnable wrapRunnable(Runnable runnable) {
-    return internal().wrapRunnable(runnable);
-  }
-
-  /**
-   * If users want to use Ray API in their own threads, they should wrap their {@link Callable}
-   * objects with this method.
-   *
-   * @param callable The callable to wrap.
-   * @return The wrapped callable.
-   */
-  public static <T> Callable<T> wrapCallable(Callable<T> callable) {
-    return internal().wrapCallable(callable);
+  public static <T extends BaseActorHandle> Optional<T> getActor(String name, String namespace) {
+    return internal().getActor(name, namespace);
   }
 
   /** Get the underlying runtime instance. */
@@ -246,59 +219,6 @@ public final class Ray extends RayCall {
   }
 
   /**
-   * Create a placement group. A placement group is used to place actors according to a specific
-   * strategy and resource constraints. It will sends a request to GCS to preallocate the specified
-   * resources, which is asynchronous. If the specified resource cannot be allocated, it will wait
-   * for the resource to be updated and rescheduled.
-   *
-   * @deprecated This method is no longer recommended to create a new placement group, use {@link
-   *     PlacementGroups#createPlacementGroup(PlacementGroupCreationOptions)} instead.
-   * @param name Name of the placement group.
-   * @param bundles Pre-allocated resource list.
-   * @param strategy Actor placement strategy.
-   * @return A handle to the created placement group.
-   */
-  @Deprecated
-  public static PlacementGroup createPlacementGroup(
-      String name, List<Map<String, Double>> bundles, PlacementStrategy strategy) {
-    PlacementGroupCreationOptions creationOptions =
-        new PlacementGroupCreationOptions.Builder()
-            .setName(name)
-            .setBundles(bundles)
-            .setStrategy(strategy)
-            .build();
-    return PlacementGroups.createPlacementGroup(creationOptions);
-  }
-
-  /**
-   * Create a placement group with an empty name.
-   *
-   * @deprecated This method is no longer recommended to create a new placement group, use {@link
-   *     PlacementGroups#createPlacementGroup(PlacementGroupCreationOptions)} instead.
-   */
-  @Deprecated
-  public static PlacementGroup createPlacementGroup(
-      List<Map<String, Double>> bundles, PlacementStrategy strategy) {
-    return createPlacementGroup(null, bundles, strategy);
-  }
-
-  /**
-   * Create a placement group. A placement group is used to place actors according to a specific
-   * strategy and resource constraints. It will sends a request to GCS to preallocate the specified
-   * resources, which is asynchronous. If the specified resource cannot be allocated, it will wait
-   * for the resource to be updated and rescheduled.
-   *
-   * @deprecated This method is no longer recommended to create a new placement group, use {@link
-   *     PlacementGroups#createPlacementGroup(PlacementGroupCreationOptions)} instead.
-   * @param creationOptions Creation options of the placement group.
-   * @return A handle to the created placement group.
-   */
-  @Deprecated
-  public static PlacementGroup createPlacementGroup(PlacementGroupCreationOptions creationOptions) {
-    return PlacementGroups.createPlacementGroup(creationOptions);
-  }
-
-  /**
    * Intentionally exit the current actor.
    *
    * <p>This method is used to disconnect an actor and exit the worker.
@@ -308,67 +228,5 @@ public final class Ray extends RayCall {
    */
   public static void exitActor() {
     runtime.exitActor();
-  }
-
-  /**
-   * Get a placement group by placement group Id.
-   *
-   * @deprecated This method is no longer recommended, use {@link
-   *     PlacementGroups#getPlacementGroup(PlacementGroupId)} instead.
-   * @param id placement group id.
-   * @return The placement group.
-   */
-  @Deprecated
-  public static PlacementGroup getPlacementGroup(PlacementGroupId id) {
-    return PlacementGroups.getPlacementGroup(id);
-  }
-
-  /**
-   * Get a placement group by placement group name from current job.
-   *
-   * @deprecated This method is no longer recommended to create a new placement group, use {@link
-   *     PlacementGroups#getPlacementGroup(String)} instead.
-   * @param name The placement group name.
-   * @return The placement group.
-   */
-  @Deprecated
-  public static PlacementGroup getPlacementGroup(String name) {
-    return PlacementGroups.getPlacementGroup(name);
-  }
-
-  /**
-   * Get a placement group by placement group name from all jobs.
-   *
-   * @deprecated This method is no longer recommended to create a new placement group, use {@link
-   *     PlacementGroups#getGlobalPlacementGroup(String)} instead.
-   * @param name The placement group name.
-   * @return The placement group.
-   */
-  @Deprecated
-  public static PlacementGroup getGlobalPlacementGroup(String name) {
-    return PlacementGroups.getGlobalPlacementGroup(name);
-  }
-
-  /**
-   * Get all placement groups in this cluster.
-   *
-   * @deprecated This method is no longer recommended to create a new placement group, use {@link
-   *     PlacementGroups#getAllPlacementGroups()} instead.
-   * @return All placement groups.
-   */
-  @Deprecated
-  public static List<PlacementGroup> getAllPlacementGroups() {
-    return PlacementGroups.getAllPlacementGroups();
-  }
-
-  /**
-   * Remove a placement group by id. Throw RayException if remove failed.
-   *
-   * @param id Id of the placement group.
-   * @deprecated This method is no longer recommended to create a new placement group, use {@link
-   *     PlacementGroups#removePlacementGroup(PlacementGroupId)} instead.
-   */
-  public static void removePlacementGroup(PlacementGroupId id) {
-    PlacementGroups.removePlacementGroup(id);
   }
 }

@@ -6,10 +6,9 @@ from typing import Dict, Optional
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.minibatch_buffer import MinibatchBuffer
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder, \
-    LEARNER_INFO, LEARNER_STATS_KEY
+from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder, LEARNER_INFO
 from ray.rllib.utils.timer import TimerStat
-from ray.rllib.utils.window_stat import WindowStat
+from ray.rllib.utils.metrics.window_stat import WindowStat
 from ray.util.iter import _NextValueNotReady
 
 tf1, tf, tfv = try_import_tf()
@@ -24,9 +23,14 @@ class LearnerThread(threading.Thread):
     improves overall throughput.
     """
 
-    def __init__(self, local_worker: RolloutWorker, minibatch_buffer_size: int,
-                 num_sgd_iter: int, learner_queue_size: int,
-                 learner_queue_timeout: int):
+    def __init__(
+        self,
+        local_worker: RolloutWorker,
+        minibatch_buffer_size: int,
+        num_sgd_iter: int,
+        learner_queue_size: int,
+        learner_queue_timeout: int,
+    ):
         """Initialize the learner thread.
 
         Args:
@@ -50,7 +54,8 @@ class LearnerThread(threading.Thread):
             size=minibatch_buffer_size,
             timeout=learner_queue_timeout,
             num_passes=num_sgd_iter,
-            init_num_passes=num_sgd_iter)
+            init_num_passes=num_sgd_iter,
+        )
         self.queue_timer = TimerStat()
         self.grad_timer = TimerStat()
         self.load_timer = TimerStat()
@@ -74,7 +79,6 @@ class LearnerThread(threading.Thread):
                 batch, _ = self.minibatch_buffer.get()
             except queue.Empty:
                 return _NextValueNotReady()
-
         with self.grad_timer:
             # Use LearnerInfoBuilder as a unified way to build the final
             # results dict from `learn_on_loaded_batch` call(s).
@@ -86,30 +90,42 @@ class LearnerThread(threading.Thread):
             for pid, results in multi_agent_results.items():
                 learner_info_builder.add_learn_on_batch_results(results, pid)
             self.learner_info = learner_info_builder.finalize()
-            learner_stats = {
-                pid: info[LEARNER_STATS_KEY]
-                for pid, info in self.learner_info.items()
-            }
             self.weights_updated = True
 
         self.num_steps += 1
-        self.outqueue.put((batch.count, learner_stats))
+        # Put tuple: env-steps, agent-steps, and learner info into the queue.
+        self.outqueue.put((batch.count, batch.agent_steps(), self.learner_info))
         self.learner_queue_size.push(self.inqueue.qsize())
 
-    def add_learner_metrics(self, result: Dict) -> Dict:
+    def add_learner_metrics(self, result: Dict, overwrite_learner_info=True) -> Dict:
         """Add internal metrics to a trainer result dict."""
 
         def timer_to_ms(timer):
             return round(1000 * timer.mean, 3)
 
-        result["info"].update({
-            "learner_queue": self.learner_queue_size.stats(),
-            LEARNER_INFO: copy.deepcopy(self.learner_info),
-            "timing_breakdown": {
-                "learner_grad_time_ms": timer_to_ms(self.grad_timer),
-                "learner_load_time_ms": timer_to_ms(self.load_timer),
-                "learner_load_wait_time_ms": timer_to_ms(self.load_wait_timer),
-                "learner_dequeue_time_ms": timer_to_ms(self.queue_timer),
-            }
-        })
+        if overwrite_learner_info:
+            result["info"].update(
+                {
+                    "learner_queue": self.learner_queue_size.stats(),
+                    LEARNER_INFO: copy.deepcopy(self.learner_info),
+                    "timing_breakdown": {
+                        "learner_grad_time_ms": timer_to_ms(self.grad_timer),
+                        "learner_load_time_ms": timer_to_ms(self.load_timer),
+                        "learner_load_wait_time_ms": timer_to_ms(self.load_wait_timer),
+                        "learner_dequeue_time_ms": timer_to_ms(self.queue_timer),
+                    },
+                }
+            )
+        else:
+            result["info"].update(
+                {
+                    "learner_queue": self.learner_queue_size.stats(),
+                    "timing_breakdown": {
+                        "learner_grad_time_ms": timer_to_ms(self.grad_timer),
+                        "learner_load_time_ms": timer_to_ms(self.load_timer),
+                        "learner_load_wait_time_ms": timer_to_ms(self.load_wait_timer),
+                        "learner_dequeue_time_ms": timer_to_ms(self.queue_timer),
+                    },
+                }
+            )
         return result

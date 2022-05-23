@@ -25,8 +25,7 @@ class TaskPoolTest(unittest.TestCase):
         self.assertListEqual(fetched, [task2])
 
     @patch("ray.wait")
-    def test_completed_prefetch_yieldsAllCompleteUpToDefaultLimit(
-            self, rayWaitMock):
+    def test_completed_prefetch_yieldsAllCompleteUpToDefaultLimit(self, rayWaitMock):
         # Load the pool with 1000 tasks, mock them all as complete and then
         # check that the first call to completed_prefetch only yields 999
         # items and the second call yields the final one
@@ -46,8 +45,7 @@ class TaskPoolTest(unittest.TestCase):
         self.assertListEqual(fetched, [999])
 
     @patch("ray.wait")
-    def test_completed_prefetch_yieldsAllCompleteUpToSpecifiedLimit(
-            self, rayWaitMock):
+    def test_completed_prefetch_yieldsAllCompleteUpToSpecifiedLimit(self, rayWaitMock):
         # Load the pool with 1000 tasks, mock them all as complete and then
         # check that the first call to completed_prefetch only yield 999 items
         # and the second call yields the final one
@@ -68,8 +66,7 @@ class TaskPoolTest(unittest.TestCase):
         self.assertListEqual(fetched, list(range(500, 1000)))
 
     @patch("ray.wait")
-    def test_completed_prefetch_yieldsRemainingIfIterationStops(
-            self, rayWaitMock):
+    def test_completed_prefetch_yieldsRemainingIfIterationStops(self, rayWaitMock):
         # Test for issue #7106
         # In versions of Ray up to 0.8.1, if the pre-fetch generator failed to
         # run to completion, then the TaskPool would fail to clear up already
@@ -94,8 +91,7 @@ class TaskPoolTest(unittest.TestCase):
         self.assertListEqual(fetched, list(range(1, 10)))
 
     @patch("ray.wait")
-    def test_reset_workers_pendingFetchesFromFailedWorkersRemoved(
-            self, rayWaitMock):
+    def test_reset_workers_pendingFetchesFromFailedWorkersRemoved(self, rayWaitMock):
         pool = TaskPool()
         # We need to hold onto the tasks for this test so that we can fail a
         # specific worker
@@ -115,18 +111,20 @@ class TaskPoolTest(unittest.TestCase):
         # completion states to remove the completed tasks
         rayWaitMock.return_value = ([], [6, 7, 8, 9])
 
-        pool.reset_workers([
-            tasks[0][0],
-            tasks[1][0],
-            tasks[2][0],
-            tasks[3][0],
-            # OH NO! WORKER 4 HAS CRASHED!
-            tasks[5][0],
-            tasks[6][0],
-            tasks[7][0],
-            tasks[8][0],
-            tasks[9][0]
-        ])
+        pool.reset_workers(
+            [
+                tasks[0][0],
+                tasks[1][0],
+                tasks[2][0],
+                tasks[3][0],
+                # OH NO! WORKER 4 HAS CRASHED!
+                tasks[5][0],
+                tasks[6][0],
+                tasks[7][0],
+                tasks[8][0],
+                tasks[9][0],
+            ]
+        )
 
         # Fetch the remaining tasks which should already be in the _fetching
         # queue
@@ -137,4 +135,5 @@ class TaskPoolTest(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

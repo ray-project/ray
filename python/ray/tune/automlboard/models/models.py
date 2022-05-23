@@ -22,7 +22,8 @@ class JobRecord(models.Model):
             name=json_info["job_name"],
             user=json_info["user"],
             type=json_info["type"],
-            start_time=json_info["start_time"])
+            start_time=json_info["start_time"],
+        )
 
     def is_finished(self):
         """Judge whether this is a record for a finished job."""
@@ -50,7 +51,8 @@ class TrialRecord(models.Model):
             job_id=json_info["job_id"],
             trial_status=json_info["status"],
             start_time=json_info["start_time"],
-            params=json_info["params"])
+            params=json_info["params"],
+        )
 
 
 class ResultRecord(models.Model):
@@ -59,8 +61,7 @@ class ResultRecord(models.Model):
     trial_id = models.CharField(max_length=50)
     timesteps_total = models.BigIntegerField(blank=True, null=True)
     done = models.CharField(max_length=30, blank=True, null=True)
-    episode_reward_mean = models.CharField(
-        max_length=30, blank=True, null=True)
+    episode_reward_mean = models.CharField(max_length=30, blank=True, null=True)
     mean_accuracy = models.FloatField(blank=True, null=True)
     mean_loss = models.FloatField(blank=True, null=True)
     trainning_iteration = models.BigIntegerField(blank=True, null=True)
@@ -91,4 +92,5 @@ class ResultRecord(models.Model):
             date=json_info.get("date", None),
             hostname=json_info.get("hostname", None),
             node_ip=json_info.get("node_ip", None),
-            config=json_info.get("config", None))
+            config=json_info.get("config", None),
+        )

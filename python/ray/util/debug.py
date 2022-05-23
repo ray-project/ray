@@ -44,3 +44,9 @@ def enable_periodic_logging():
 
     global _periodic_log
     _periodic_log = True
+
+
+def reset_log_once(key):
+    """Resets log_once for the provided key."""
+
+    _logged.discard(key)

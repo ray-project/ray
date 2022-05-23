@@ -5,7 +5,7 @@ from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.policy_client import PolicyClient
 from ray.rllib.env.policy_server_input import PolicyServerInput
-from ray.rllib.env.remote_vector_env import RemoteVectorEnv
+from ray.rllib.env.remote_base_env import RemoteBaseEnv
 from ray.rllib.env.vector_env import VectorEnv
 
 from ray.rllib.env.wrappers.dm_env_wrapper import DMEnv
@@ -28,7 +28,7 @@ __all__ = [
     "ParallelPettingZooEnv",
     "PolicyClient",
     "PolicyServerInput",
-    "RemoteVectorEnv",
+    "RemoteBaseEnv",
     "Unity3DEnv",
     "VectorEnv",
 ]

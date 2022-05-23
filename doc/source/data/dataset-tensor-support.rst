@@ -1,10 +1,10 @@
 .. _datasets_tensor_support:
 
-Dataset Tensor Support
-======================
+Working with Tensors
+====================
 
 Tables with tensor columns
---------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Datasets supports tables with fixed-shape tensor columns, where each element in the column is a tensor (n-dimensional array) with the same shape. As an example, this allows you to use Pandas and Ray Datasets to read, write, and manipulate e.g., images. All conversions between Pandas, Arrow, and Parquet, and all application of aggregations/operations to the underlying image ndarrays are taken care of by Ray Datasets.
 
@@ -15,22 +15,57 @@ Automatic conversion between the Pandas and Arrow extension types/arrays keeps t
 Single-column tensor datasets
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The most basic case is when a dataset only has a single column, which is of tensor type. This kind of dataset can be created with ``.range_tensor()``, and can be read from and written to ``.npy`` files. Here are some examples:
+The most basic case is when a dataset only has a single column, which is of tensor
+type. This kind of dataset can be:
+
+* created with :func:`range_tensor() <ray.data.range_tensor>`
+  or :func:`from_numpy() <ray.data.from_numpy>`,
+* transformed with NumPy UDFs via
+  :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`,
+* consumed with :meth:`ds.iter_rows() <ray.data.Dataset.iter_rows>` and
+  :meth:`ds.iter_batches() <ray.data.Dataset.iter_batches>`, and
+* can be read from and written to ``.npy`` files.
+
+Here is an end-to-end example:
 
 .. code-block:: python
 
-    # Create a Dataset of tensor-typed values.
-    ds = ray.data.range_tensor(10000, shape=(3, 5))
-    # -> Dataset(num_blocks=200, num_rows=10000,
-    #            schema={value: <ArrowTensorType: shape=(3, 5), dtype=int64>})
+    # Create a synthetic pure-tensor Dataset.
+    ds = ray.data.range_tensor(10, shape=(3, 5))
+    # -> Dataset(num_blocks=10, num_rows=10,
+    #            schema={__value__: <ArrowTensorType: shape=(3, 5), dtype=int64>})
 
-    # Save to storage.
-    ds.write_numpy("/tmp/tensor_out", column="value")
+    # Create a pure-tensor Dataset from an existing NumPy ndarray.
+    arr = np.arange(10 * 3 * 5).reshape((10, 3, 5))
+    ds = ray.data.from_numpy(arr)
+    # -> Dataset(num_blocks=1, num_rows=10,
+    #            schema={__value__: <ArrowTensorType: shape=(3, 5), dtype=int64>})
 
-    # Read from storage.
+    # Transform the tensors. Datasets will automatically unpack the single-column Arrow
+    # table into a NumPy ndarray, provide that ndarray to your UDF, and then repack it
+    # into a single-column Arrow table; this will be a zero-copy conversion in both
+    # cases.
+    ds = ds.map_batches(lambda arr: arr / arr.max())
+    # -> Dataset(num_blocks=1, num_rows=10,
+    #            schema={__value__: <ArrowTensorType: shape=(3, 5), dtype=double>})
+
+    # Consume the tensor. This will yield the underlying (3, 5) ndarrays.
+    for arr in ds.iter_rows():
+        assert isinstance(arr, np.ndarray)
+        assert arr.shape == (3, 5)
+
+    # Consume the tensor in batches.
+    for arr in ds.iter_batches(batch_size=2):
+        assert isinstance(arr, np.ndarray)
+        assert arr.shape == (2, 3, 5)
+
+    # Save to storage. This will write out the blocks of the tensor column as NPY files.
+    ds.write_numpy("/tmp/tensor_out")
+
+    # Read back from storage.
     ray.data.read_numpy("/tmp/tensor_out")
-    # -> Dataset(num_blocks=200, num_rows=?,
-    #            schema={value: <ArrowTensorType: shape=(3, 5), dtype=int64>})
+    # -> Dataset(num_blocks=1, num_rows=?,
+    #            schema={__value__: <ArrowTensorType: shape=(3, 5), dtype=double>})
 
 Reading existing serialized tensor columns
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -61,7 +96,7 @@ If you already have a Parquet dataset with columns containing serialized tensors
     # Read the Parquet files into a new Dataset, with the serialized tensors
     # automatically cast to our tensor column extension type.
     ds = ray.data.read_parquet(
-        path, _tensor_column_schema={"two": (np.int, (2, 2, 2))})
+        path, tensor_column_schema={"two": (np.int, (2, 2, 2))})
 
     # Internally, this column is represented with our Arrow tensor extension
     # type.
@@ -107,7 +142,9 @@ If your serialized tensors don't fit the above constraints (e.g. they're stored 
     # -> one: int64
     #    two: extension<arrow.py_extension_type<ArrowTensorType>>
 
-Please note that the ``_tensor_column_schema`` and ``_block_udf`` parameters are both experimental developer APIs and may break in future versions.
+.. note::
+
+  The ``tensor_column_schema`` and ``_block_udf`` parameters are both experimental developer APIs and may break in future versions.
 
 Working with tensor column datasets
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -142,6 +179,169 @@ This dataset can then be written to Parquet files. The tensor column schema will
     print(read_ds.schema())
     # -> one: int64
     #    two: extension<arrow.py_extension_type<ArrowTensorType>>
+
+.. _datasets_tensor_ml_exchange:
+
+Converting to a Torch/TensorFlow Dataset
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This dataset can also be converted to a Torch or TensorFlow dataset via the standard
+:meth:`ds.to_torch() <ray.data.Dataset.to_torch>` and
+:meth:`ds.to_tf() <ray.data.Dataset.to_tf>` APIs for ingestion into those respective ML
+training frameworks. The tensor column will be automatically converted to a
+Torch/TensorFlow tensor without incurring any copies.
+
+.. note::
+
+  When converting to a TensorFlow Dataset, you will need to give the full tensor spec
+  for the tensor columns, including the shape of each underlying tensor element in said
+  column.
+
+
+.. tabbed:: Torch
+
+  Convert a ``Dataset`` containing a single tensor feature column to a Torch ``IterableDataset``.
+
+  .. code-block:: python
+
+    import ray
+    import numpy as np
+    import pandas as pd
+    import torch
+
+    df = pd.DataFrame({
+        "feature": TensorArray(np.arange(4096).reshape((4, 32, 32))),
+        "label": [1, 2, 3, 4],
+    })
+    ds = ray.data.from_pandas(df)
+
+    # Convert the dataset to a Torch IterableDataset.
+    torch_ds = ds.to_torch(
+        label_column="label",
+        batch_size=2,
+        unsqueeze_label_tensor=False,
+        unsqueeze_feature_tensors=False,
+    )
+
+    # A feature tensor and label tensor is yielded per batch.
+    for X, y in torch_ds:
+        # Train model(X, y)
+
+.. tabbed:: TensorFlow
+
+  Convert a ``Dataset`` containing a single tensor feature column to a TensorFlow ``tf.data.Dataset``.
+
+  .. code-block:: python
+
+    import ray
+    import numpy as np
+    import pandas as pd
+    import tensorflow as tf
+
+    tensor_element_shape = (32, 32)
+
+    df = pd.DataFrame({
+        "feature": TensorArray(np.arange(4096).reshape((4,) + tensor_element_shape)),
+        "label": [1, 2, 3, 4],
+    })
+    ds = ray.data.from_pandas(df)
+
+    # Convert the dataset to a TensorFlow Dataset.
+    tf_ds = ds.to_tf(
+        label_column="label",
+        output_signature=(
+            tf.TensorSpec(shape=(None, 1) + tensor_element_shape, dtype=tf.float32),
+            tf.TensorSpec(shape=(None,), dtype=tf.float32),
+        ),
+        batch_size=2,
+    )
+
+    # A feature tensor and label tensor is yielded per batch.
+    for X, y in tf_ds:
+        # Train model(X, y)
+
+If your (tensor) columns have different shapes,
+these columns are incompatible and you will not be able to stack the column tensors
+into a single tensor. Instead, you will need to group the columns by compatibility in
+the ``feature_columns`` argument.
+
+E.g., if columns ``"feature_1"`` and ``"feature_2"`` are incompatible, you should give
+``to_torch()`` a ``feature_columns=[["feature_1"], ["feature_2"]]`` argument in order to
+instruct it to return separate tensors for ``"feature_1"`` and ``"feature_2"``. For
+``to_torch()``, if isolating single columns as in the ``"feature_1"`` + ``"feature_2"``
+example, you may also want to provide ``unsqueeze_feature_tensors=False`` in order to
+remove the redundant column dimension for each of the unit column tensors.
+
+.. tabbed:: Torch
+
+  Convert a ``Dataset`` containing a tensor feature column and a scalar feature column
+  to a Torch ``IterableDataset``.
+
+  .. code-block:: python
+
+    import ray
+    import numpy as np
+    import pandas as pd
+    import torch
+
+    df = pd.DataFrame({
+        "feature_1": TensorArray(np.arange(4096).reshape((4, 32, 32))),
+        "feature_2": [5, 6, 7, 8],
+        "label": [1, 2, 3, 4],
+    })
+    ds = ray.data.from_pandas(df)
+
+    # Convert the dataset to a Torch IterableDataset.
+    torch_ds = ds.to_torch(
+        label_column="label",
+        feature_columns=[["feature_1"], ["feature_2"]],
+        batch_size=2,
+        unsqueeze_label_tensor=False,
+        unsqueeze_feature_tensors=False,
+    )
+
+    # Two feature tensors and one label tensor is yielded per batch.
+    for (feature_1, feature_2), y in torch_ds:
+        # Train model((feature_1, feature_2), y)
+
+.. tabbed:: TensorFlow
+
+  Convert a ``Dataset`` containing a tensor feature column and a scalar feature column
+  to a TensorFlow ``tf.data.Dataset``.
+
+  .. code-block:: python
+
+    import ray
+    import numpy as np
+    import pandas as pd
+    import torch
+
+    tensor_element_shape = (32, 32)
+
+    df = pd.DataFrame({
+        "feature_1": TensorArray(np.arange(4096).reshape((4,) + tensor_element_shape)),
+        "feature_2": [5, 6, 7, 8],
+        "label": [1, 2, 3, 4],
+    })
+    ds = ray.data.from_pandas(df)
+
+    # Convert the dataset to a TensorFlow Dataset.
+    tf_ds = ds.to_tf(
+        label_column="label",
+        feature_columns=[["feature_1"], ["feature_2"]],
+        output_signature=(
+            (
+                tf.TensorSpec(shape=(None, 1) + tensor_element_shape, dtype=tf.float32),
+                tf.TensorSpec(shape=(None, 1), dtype=tf.int64),
+            ),
+            tf.TensorSpec(shape=(None,), dtype=tf.float32),
+        ),
+        batch_size=2,
+    )
+
+    # Two feature tensors and one label tensor is yielded per batch.
+    for (feature_1, feature_2), y in tf_ds:
+        # Train model((feature_1, feature_2), y)
 
 End-to-end workflow with our Pandas extension type
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -245,6 +445,4 @@ Limitations
 This feature currently comes with a few known limitations that we are either actively working on addressing or have already implemented workarounds for.
 
  * All tensors in a tensor column currently must be the same shape. Please let us know if you require heterogeneous tensor shape for your tensor column! Tracking issue is `here <https://github.com/ray-project/ray/issues/18316>`__.
- * Automatic casting via specifying an override Arrow schema when reading Parquet is blocked by Arrow supporting custom ExtensionType casting kernels. See `issue <https://issues.apache.org/jira/browse/ARROW-5890>`__. An explicit ``_tensor_column_schema`` parameter has been added for :func:`read_parquet() <ray.data.read_api.read_parquet>` as a stopgap solution.
- * Ingesting tables with tensor columns into pytorch via ``ds.to_torch()`` is blocked by pytorch supporting tensor creation from objects that implement the `__array__` interface. See `issue <https://github.com/pytorch/pytorch/issues/51156>`__. Workarounds are being `investigated <https://github.com/ray-project/ray/issues/18314>`__.
- * Ingesting tables with tensor columns into TensorFlow via ``ds.to_tf()`` is blocked by a Pandas fix for properly interpreting extension arrays in ``DataFrame.values`` being released. See `PR <https://github.com/pandas-dev/pandas/pull/43160>`__. Workarounds are being `investigated <https://github.com/ray-project/ray/issues/18315>`__.
+ * Automatic casting via specifying an override Arrow schema when reading Parquet is blocked by Arrow supporting custom ExtensionType casting kernels. See `issue <https://issues.apache.org/jira/browse/ARROW-5890>`__. An explicit ``tensor_column_schema`` parameter has been added for :func:`read_parquet() <ray.data.read_api.read_parquet>` as a stopgap solution.

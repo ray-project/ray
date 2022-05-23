@@ -9,14 +9,14 @@ from cupy.cuda import Device
 class Worker:
     def __init__(self):
         with Device(0):
-            self.send1 = cp.ones((4, ), dtype=cp.float32)
+            self.send1 = cp.ones((4,), dtype=cp.float32)
         with Device(1):
-            self.send2 = cp.ones((4, ), dtype=cp.float32) * 2
+            self.send2 = cp.ones((4,), dtype=cp.float32) * 2
 
         with Device(0):
-            self.recv1 = cp.zeros((4, ), dtype=cp.float32)
+            self.recv1 = cp.zeros((4,), dtype=cp.float32)
         with Device(1):
-            self.recv2 = cp.zeros((4, ), dtype=cp.float32)
+            self.recv2 = cp.zeros((4,), dtype=cp.float32)
         self.rank = -1
 
     def setup(self, world_size, rank):

@@ -29,7 +29,7 @@
     "react-dom": "^16.13.1",
     "react-redux": "^7.2.0",
     "react-router-dom": "^5.1.2",
-    "react-scripts": "^3.4.3",
+    "react-scripts": "^4.0.3",
     "react-window": "^1.8.5",
     "typeface-roboto": "0.0.75",
     "typescript": "3.8.3",
@@ -39,6 +39,9 @@
     "eslint-plugin-import": "2.20.1",
     "eslint-plugin-prefer-arrow": "1.1.7",
     "prettier": "2.3.0"
+  },
+  "resolutions": {
+    "@types/react": "16.9.26"
   },
   "scripts": {
     "start": "react-scripts start",

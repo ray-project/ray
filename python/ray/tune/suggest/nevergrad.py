@@ -4,10 +4,12 @@ import pickle
 from typing import Dict, Optional, Type, Union, List, Sequence
 
 from ray.tune.result import DEFAULT_METRIC
-from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, \
-    Quantized
-from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
-    UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
+from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, Quantized
+from ray.tune.suggest.suggestion import (
+    UNRESOLVED_SEARCH_SPACE,
+    UNDEFINED_METRIC_MODE,
+    UNDEFINED_SEARCH_SPACE,
+)
 from ray.tune.suggest.variant_generator import parse_spec_vars
 from ray.tune.utils.util import flatten_dict, unflatten_dict
 
@@ -15,6 +17,7 @@ try:
     import nevergrad as ng
     from nevergrad.optimization import Optimizer
     from nevergrad.optimization.base import ConfiguredOptimizer
+
     Parameter = ng.p.Parameter
 except ImportError:
     ng = None
@@ -41,23 +44,21 @@ class NevergradSearch(Searcher):
         $ pip install nevergrad
 
     Parameters:
-        optimizer (nevergrad.optimization.Optimizer|class): Optimizer provided
+        optimizer: Optimizer provided
             from Nevergrad. Alter
-        space (list|nevergrad.parameter.Parameter): Nevergrad parametrization
+        space: Nevergrad parametrization
             to be passed to optimizer on instantiation, or list of parameter
             names if you passed an optimizer object.
-        metric (str): The training result objective value attribute. If None
+        metric: The training result objective value attribute. If None
             but a mode was passed, the anonymous metric `_metric` will be used
             per default.
-        mode (str): One of {min, max}. Determines whether objective is
+        mode: One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
-        points_to_evaluate (list): Initial parameter suggestions to be run
+        points_to_evaluate: Initial parameter suggestions to be run
             first. This is for when you already have some good parameters
             you want to run first to help the algorithm make better suggestions
             for future parameters. Needs to be a list of dicts containing the
             configurations.
-        use_early_stopped_trials: Deprecated.
-        max_concurrent: Deprecated.
 
     Tune automatically converts search spaces to Nevergrad's format:
 
@@ -108,23 +109,26 @@ class NevergradSearch(Searcher):
 
     """
 
-    def __init__(self,
-                 optimizer: Union[None, Optimizer, Type[Optimizer],
-                                  ConfiguredOptimizer] = None,
-                 space: Optional[Union[Dict, Parameter]] = None,
-                 metric: Optional[str] = None,
-                 mode: Optional[str] = None,
-                 points_to_evaluate: Optional[List[Dict]] = None,
-                 max_concurrent: Optional[int] = None,
-                 **kwargs):
-        assert ng is not None, """Nevergrad must be installed!
+    def __init__(
+        self,
+        optimizer: Optional[
+            Union[Optimizer, Type[Optimizer], ConfiguredOptimizer]
+        ] = None,
+        space: Optional[Union[Dict, Parameter]] = None,
+        metric: Optional[str] = None,
+        mode: Optional[str] = None,
+        points_to_evaluate: Optional[List[Dict]] = None,
+        **kwargs,
+    ):
+        assert (
+            ng is not None
+        ), """Nevergrad must be installed!
             You can install Nevergrad with the command:
             `pip install nevergrad`."""
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
 
-        super(NevergradSearch, self).__init__(
-            metric=metric, mode=mode, max_concurrent=max_concurrent, **kwargs)
+        super(NevergradSearch, self).__init__(metric=metric, mode=mode, **kwargs)
 
         self._space = None
         self._opt_factory = None
@@ -136,7 +140,8 @@ class NevergradSearch(Searcher):
             raise ValueError(
                 "Invalid object type passed for `points_to_evaluate`: "
                 f"{type(points_to_evaluate)}. "
-                "Please pass a list of points (dictionaries) instead.")
+                "Please pass a list of points (dictionaries) instead."
+            )
         else:
             self._points_to_evaluate = list(points_to_evaluate)
 
@@ -144,8 +149,8 @@ class NevergradSearch(Searcher):
             resolved_vars, domain_vars, grid_vars = parse_spec_vars(space)
             if domain_vars or grid_vars:
                 logger.warning(
-                    UNRESOLVED_SEARCH_SPACE.format(
-                        par="space", cls=type(self)))
+                    UNRESOLVED_SEARCH_SPACE.format(par="space", cls=type(self))
+                )
                 space = self.convert_search_space(space)
 
         if isinstance(optimizer, Optimizer):
@@ -153,22 +158,23 @@ class NevergradSearch(Searcher):
                 raise ValueError(
                     "If you pass a configured optimizer to Nevergrad, either "
                     "pass a list of parameter names or None as the `space` "
-                    "parameter.")
+                    "parameter."
+                )
             self._parameters = space
             self._nevergrad_opt = optimizer
-        elif (inspect.isclass(optimizer)
-              and issubclass(optimizer, Optimizer)) or isinstance(
-                  optimizer, ConfiguredOptimizer):
+        elif (
+            inspect.isclass(optimizer) and issubclass(optimizer, Optimizer)
+        ) or isinstance(optimizer, ConfiguredOptimizer):
             self._opt_factory = optimizer
             self._parameters = None
             self._space = space
         else:
             raise ValueError(
                 "The `optimizer` argument passed to NevergradSearch must be "
-                "either an `Optimizer` or a `ConfiguredOptimizer`.")
+                "either an `Optimizer` or a `ConfiguredOptimizer`."
+            )
 
         self._live_trial_mapping = {}
-        self.max_concurrent = max_concurrent
 
         if self._nevergrad_opt or self._space:
             self._setup_nevergrad()
@@ -179,9 +185,9 @@ class NevergradSearch(Searcher):
 
         # nevergrad.tell internally minimizes, so "max" => -1
         if self._mode == "max":
-            self._metric_op = -1.
+            self._metric_op = -1.0
         elif self._mode == "min":
-            self._metric_op = 1.
+            self._metric_op = 1.0
 
         if self._metric is None and self._mode:
             # If only a mode was passed, use anonymous metric
@@ -190,22 +196,27 @@ class NevergradSearch(Searcher):
         if hasattr(self._nevergrad_opt, "instrumentation"):  # added in v0.2.0
             if self._nevergrad_opt.instrumentation.kwargs:
                 if self._nevergrad_opt.instrumentation.args:
-                    raise ValueError(
-                        "Instrumented optimizers should use kwargs only")
+                    raise ValueError("Instrumented optimizers should use kwargs only")
                 if self._parameters is not None:
-                    raise ValueError("Instrumented optimizers should provide "
-                                     "None as parameter_names")
+                    raise ValueError(
+                        "Instrumented optimizers should provide "
+                        "None as parameter_names"
+                    )
             else:
                 if self._parameters is None:
-                    raise ValueError("Non-instrumented optimizers should have "
-                                     "a list of parameter_names")
-                if len(self._nevergrad_opt.instrumentation.args) != 1:
                     raise ValueError(
-                        "Instrumented optimizers should use kwargs only")
-        if self._parameters is not None and \
-           self._nevergrad_opt.dimension != len(self._parameters):
-            raise ValueError("len(parameters_names) must match optimizer "
-                             "dimension for non-instrumented optimizers")
+                        "Non-instrumented optimizers should have "
+                        "a list of parameter_names"
+                    )
+                if len(self._nevergrad_opt.instrumentation.args) != 1:
+                    raise ValueError("Instrumented optimizers should use kwargs only")
+        if self._parameters is not None and self._nevergrad_opt.dimension != len(
+            self._parameters
+        ):
+            raise ValueError(
+                "len(parameters_names) must match optimizer "
+                "dimension for non-instrumented optimizers"
+            )
 
         if self._points_to_evaluate:
             # Nevergrad is LIFO, so we add the points to evaluate in reverse
@@ -213,8 +224,9 @@ class NevergradSearch(Searcher):
             for i in range(len(self._points_to_evaluate) - 1, -1, -1):
                 self._nevergrad_opt.suggest(self._points_to_evaluate[i])
 
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict, **spec) -> bool:
+    def set_search_properties(
+        self, metric: Optional[str], mode: Optional[str], config: Dict, **spec
+    ) -> bool:
         if self._nevergrad_opt or self._space:
             return False
         space = self.convert_search_space(config)
@@ -232,17 +244,15 @@ class NevergradSearch(Searcher):
         if not self._nevergrad_opt:
             raise RuntimeError(
                 UNDEFINED_SEARCH_SPACE.format(
-                    cls=self.__class__.__name__, space="space"))
+                    cls=self.__class__.__name__, space="space"
+                )
+            )
         if not self._metric or not self._mode:
             raise RuntimeError(
                 UNDEFINED_METRIC_MODE.format(
-                    cls=self.__class__.__name__,
-                    metric=self._metric,
-                    mode=self._mode))
-
-        if self.max_concurrent:
-            if len(self._live_trial_mapping) >= self.max_concurrent:
-                return None
+                    cls=self.__class__.__name__, metric=self._metric, mode=self._mode
+                )
+            )
 
         suggested_config = self._nevergrad_opt.ask()
 
@@ -252,15 +262,15 @@ class NevergradSearch(Searcher):
         if not suggested_config.kwargs:
             if self._parameters:
                 return unflatten_dict(
-                    dict(zip(self._parameters, suggested_config.args[0])))
+                    dict(zip(self._parameters, suggested_config.args[0]))
+                )
             return unflatten_dict(suggested_config.value)
         else:
             return unflatten_dict(suggested_config.kwargs)
 
-    def on_trial_complete(self,
-                          trial_id: str,
-                          result: Optional[Dict] = None,
-                          error: bool = False):
+    def on_trial_complete(
+        self, trial_id: str, result: Optional[Dict] = None, error: bool = False
+    ):
         """Notification for the completion of trial.
 
         The result is internally negated when interacting with Nevergrad
@@ -274,8 +284,7 @@ class NevergradSearch(Searcher):
 
     def _process_result(self, trial_id: str, result: Dict):
         ng_trial_info = self._live_trial_mapping[trial_id]
-        self._nevergrad_opt.tell(ng_trial_info,
-                                 self._metric_op * result[self._metric])
+        self._nevergrad_opt.tell(ng_trial_info, self._metric_op * result[self._metric])
 
     def save(self, checkpoint_path: str):
         save_object = self.__dict__
@@ -298,7 +307,8 @@ class NevergradSearch(Searcher):
         if grid_vars:
             raise ValueError(
                 "Grid search parameters cannot be automatically converted "
-                "to a Nevergrad search space.")
+                "to a Nevergrad search space."
+            )
 
         # Flatten and resolve again after checking for grid search.
         spec = flatten_dict(spec, prevent_delimiter=True)
@@ -307,16 +317,16 @@ class NevergradSearch(Searcher):
         def resolve_value(domain: Domain) -> Parameter:
             sampler = domain.get_sampler()
             if isinstance(sampler, Quantized):
-                logger.warning("Nevergrad does not support quantization. "
-                               "Dropped quantization.")
+                logger.warning(
+                    "Nevergrad does not support quantization. Dropped quantization."
+                )
                 sampler = sampler.get_sampler()
 
             if isinstance(domain, Float):
                 if isinstance(sampler, LogUniform):
                     return ng.p.Log(
-                        lower=domain.lower,
-                        upper=domain.upper,
-                        exponent=sampler.base)
+                        lower=domain.lower, upper=domain.upper, exponent=sampler.base
+                    )
                 return ng.p.Scalar(lower=domain.lower, upper=domain.upper)
 
             elif isinstance(domain, Integer):
@@ -324,7 +334,8 @@ class NevergradSearch(Searcher):
                     return ng.p.Log(
                         lower=domain.lower,
                         upper=domain.upper - 1,  # Upper bound exclusive
-                        exponent=sampler.base).set_integer_casting()
+                        exponent=sampler.base,
+                    ).set_integer_casting()
                 return ng.p.Scalar(
                     lower=domain.lower,
                     upper=domain.upper - 1,  # Upper bound exclusive
@@ -333,15 +344,14 @@ class NevergradSearch(Searcher):
             elif isinstance(domain, Categorical):
                 return ng.p.Choice(choices=domain.categories)
 
-            raise ValueError("Nevergrad does not support parameters of type "
-                             "`{}` with samplers of type `{}`".format(
-                                 type(domain).__name__,
-                                 type(domain.sampler).__name__))
+            raise ValueError(
+                "Nevergrad does not support parameters of type "
+                "`{}` with samplers of type `{}`".format(
+                    type(domain).__name__, type(domain.sampler).__name__
+                )
+            )
 
         # Parameter name is e.g. "a/b/c" for nested dicts
-        space = {
-            "/".join(path): resolve_value(domain)
-            for path, domain in domain_vars
-        }
+        space = {"/".join(path): resolve_value(domain) for path, domain in domain_vars}
 
         return ng.p.Dict(**space)

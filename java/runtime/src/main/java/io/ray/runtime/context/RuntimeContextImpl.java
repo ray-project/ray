@@ -47,15 +47,15 @@ public class RuntimeContextImpl implements RuntimeContext {
 
   @Override
   public boolean wasCurrentActorRestarted() {
-    if (isSingleProcess()) {
+    if (isLocalMode()) {
       return false;
     }
     return runtime.getGcsClient().wasCurrentActorRestarted(getCurrentActorId());
   }
 
   @Override
-  public boolean isSingleProcess() {
-    return RunMode.SINGLE_PROCESS == runtime.getRayConfig().runMode;
+  public boolean isLocalMode() {
+    return RunMode.LOCAL == runtime.getRayConfig().runMode;
   }
 
   @Override
@@ -90,5 +90,10 @@ public class RuntimeContextImpl implements RuntimeContext {
       gpuIds = new ArrayList<>(assignedIds);
     }
     return gpuIds;
+  }
+
+  @Override
+  public String getNamespace() {
+    return runtime.getNamespace();
   }
 }

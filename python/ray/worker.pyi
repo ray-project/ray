@@ -1,4 +1,4 @@
-# yapf: disable
+# fmt: off
 from typing import Any, Callable, Generic, Optional, TypeVar, Union, overload, Sequence, List
 
 from ray._raylet import ObjectRef

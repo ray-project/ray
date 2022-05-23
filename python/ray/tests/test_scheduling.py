@@ -14,28 +14,27 @@ import ray
 from ray.internal.internal_api import memory_summary
 import ray.util.accelerators
 import ray.cluster_utils
+from ray._private.test_utils import fetch_prometheus
 
-from ray._private.test_utils import (wait_for_condition, new_scheduler_enabled,
-                                     Semaphore, object_memory_usage,
-                                     SignalActor)
+from ray._private.test_utils import (
+    wait_for_condition,
+    Semaphore,
+    object_memory_usage,
+    SignalActor,
+)
 
 logger = logging.getLogger(__name__)
 
 
-def attempt_to_load_balance(remote_function,
-                            args,
-                            total_tasks,
-                            num_nodes,
-                            minimum_count,
-                            num_attempts=100):
+def attempt_to_load_balance(
+    remote_function, args, total_tasks, num_nodes, minimum_count, num_attempts=100
+):
     attempts = 0
     while attempts < num_attempts:
-        locations = ray.get(
-            [remote_function.remote(*args) for _ in range(total_tasks)])
+        locations = ray.get([remote_function.remote(*args) for _ in range(total_tasks)])
         counts = collections.Counter(locations)
-        logger.info(f"Counts are {counts}")
-        if (len(counts) == num_nodes
-                and counts.most_common()[-1][1] >= minimum_count):
+        print(f"Counts are {counts}")
+        if len(counts) == num_nodes and counts.most_common()[-1][1] >= minimum_count:
             break
         attempts += 1
     assert attempts < num_attempts
@@ -54,7 +53,7 @@ def test_load_balancing(ray_start_cluster):
 
     @ray.remote
     def f():
-        time.sleep(0.01)
+        time.sleep(0.10)
         return ray.worker.global_worker.node.unique_id
 
     attempt_to_load_balance(f, [], 100, num_nodes, 10)
@@ -120,9 +119,11 @@ def test_legacy_spillback_distribution(ray_start_cluster):
     cluster = ray_start_cluster
     # Create a head node and wait until it is up.
     cluster.add_node(
-        num_cpus=0, _system_config={
+        num_cpus=0,
+        _system_config={
             "scheduler_spread_threshold": 0,
-        })
+        },
+    )
     ray.init(address=cluster.address)
     cluster.wait_for_nodes()
 
@@ -172,7 +173,8 @@ def test_local_scheduling_first(ray_start_cluster):
         num_cpus=num_cpus,
         _system_config={
             "worker_lease_timeout_milliseconds": 0,
-        })
+        },
+    )
     cluster.add_node(num_cpus=num_cpus)
     ray.init(address=cluster.address)
 
@@ -192,13 +194,7 @@ def test_local_scheduling_first(ray_start_cluster):
         assert local()
 
 
-@pytest.mark.parametrize("fast", [True, False])
-def test_load_balancing_with_dependencies(ray_start_cluster, fast):
-    if fast and new_scheduler_enabled:
-        # Load-balancing on new scheduler can be inefficient if (task
-        # duration:heartbeat interval) is small enough.
-        pytest.skip()
-
+def test_load_balancing_with_dependencies(ray_start_cluster):
     # This test ensures that tasks are being assigned to all raylets in a
     # roughly equal manner even when the tasks have dependencies.
     cluster = ray_start_cluster
@@ -209,67 +205,19 @@ def test_load_balancing_with_dependencies(ray_start_cluster, fast):
 
     @ray.remote
     def f(x):
-        if fast:
-            time.sleep(0.010)
-        else:
-            time.sleep(0.1)
+        time.sleep(0.1)
         return ray.worker.global_worker.node.unique_id
 
     # This object will be local to one of the raylets. Make sure
     # this doesn't prevent tasks from being scheduled on other raylets.
     x = ray.put(np.zeros(1000000))
 
-    attempt_to_load_balance(f, [x], 100, num_nodes, 25)
+    attempt_to_load_balance(f, [x], 100, num_nodes, 20)
 
 
 @pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows. Multi node.")
-def test_load_balancing_under_constrained_memory(ray_start_cluster):
-    # This test ensures that tasks are being assigned to all raylets in a
-    # roughly equal manner even when the tasks have dependencies.
-    cluster = ray_start_cluster
-    num_nodes = 3
-    num_cpus = 4
-    object_size = 4e7
-    num_tasks = 100
-    for _ in range(num_nodes):
-        cluster.add_node(
-            num_cpus=num_cpus,
-            memory=(num_cpus - 2) * object_size,
-            object_store_memory=(num_cpus - 2) * object_size)
-    cluster.add_node(
-        num_cpus=0,
-        resources={"custom": 1},
-        memory=(num_tasks + 1) * object_size,
-        object_store_memory=(num_tasks + 1) * object_size)
-    ray.init(address=cluster.address)
-
-    @ray.remote(num_cpus=0, resources={"custom": 1})
-    def create_object():
-        return np.zeros(int(object_size), dtype=np.uint8)
-
-    @ray.remote
-    def f(i, x):
-        print(i, ray.worker.global_worker.node.unique_id)
-        time.sleep(0.1)
-        return ray.worker.global_worker.node.unique_id
-
-    deps = [create_object.remote() for _ in range(num_tasks)]
-    for i, dep in enumerate(deps):
-        print(i, dep)
-
-    # TODO(swang): Actually test load balancing. Load balancing is currently
-    # flaky on Travis, probably due to the scheduling policy ping-ponging
-    # waiting tasks.
-    deps = [create_object.remote() for _ in range(num_tasks)]
-    tasks = [f.remote(i, dep) for i, dep in enumerate(deps)]
-    for i, dep in enumerate(deps):
-        print(i, dep)
-    ray.get(tasks)
-
-
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows. Multi node.")
+    platform.system() == "Windows", reason="Failing on Windows. Multi node."
+)
 def test_spillback_waiting_task_on_oom(ray_start_cluster):
     # This test ensures that tasks are spilled if they are not schedulable due
     # to lack of object store memory.
@@ -282,13 +230,15 @@ def test_spillback_waiting_task_on_oom(ray_start_cluster):
         _system_config={
             "automatic_object_spilling_enabled": False,
             "locality_aware_leasing_enabled": False,
-        })
+        },
+    )
     ray.init(address=cluster.address)
     cluster.add_node(
         num_cpus=1,
         resources={"custom": 1},
         memory=1e9,
-        object_store_memory=object_size * 2)
+        object_store_memory=object_size * 2,
+    )
 
     @ray.remote(resources={"custom": 1})
     def create_remote_object():
@@ -310,6 +260,40 @@ def test_spillback_waiting_task_on_oom(ray_start_cluster):
     ray.get(f.remote(dep), timeout=30)
 
 
+def test_spread_scheduling_overrides_locality_aware_scheduling(ray_start_cluster):
+    # This test ensures that explicit spread scheduling strategy has higher
+    # priority than locality aware scheduling which means the lease request
+    # will be sent to local raylet instead of locality favored raylet.
+    cluster = ray_start_cluster
+    local_node = cluster.add_node(
+        num_cpus=8,
+        _system_config={
+            "worker_lease_timeout_milliseconds": 0,
+            "max_direct_call_object_size": 0,
+        },
+    )
+    ray.init(address=cluster.address)
+    remote_node = cluster.add_node(num_cpus=8, resources={"pin": 1})
+    cluster.wait_for_nodes()
+
+    @ray.remote(resources={"pin": 1})
+    def non_local():
+        return ray.worker.global_worker.node.unique_id
+
+    @ray.remote(scheduling_strategy="SPREAD")
+    def f(x):
+        return ray.worker.global_worker.node.unique_id
+
+    # Test that task f() runs on the local node as well
+    # even though remote node has the dependencies.
+    obj1 = non_local.remote()
+    obj2 = non_local.remote()
+    assert {ray.get(f.remote(obj1)), ray.get(f.remote(obj2))} == {
+        local_node.unique_id,
+        remote_node.unique_id,
+    }
+
+
 def test_locality_aware_leasing(ray_start_cluster):
     # This test ensures that a task will run where its task dependencies are
     # located. We run an initial non_local() task that is pinned to a
@@ -325,12 +309,21 @@ def test_locality_aware_leasing(ray_start_cluster):
         _system_config={
             "worker_lease_timeout_milliseconds": 0,
             "max_direct_call_object_size": 0,
-            # Needed because the above test sets this to False.
-            "locality_aware_leasing_enabled": True,
-        })
-    # Use a custom resource for pinning tasks to a node.
-    non_local_node = cluster.add_node(num_cpus=1, resources={"pin": 1})
+            "scheduler_spread_threshold": 0.1,
+        },
+    )
     ray.init(address=cluster.address)
+    # Use a custom resource for pinning tasks to a node.
+    non_local_node = cluster.add_node(num_cpus=2, resources={"pin": 2})
+    cluster.wait_for_nodes()
+
+    @ray.remote(num_cpus=1, resources={"pin": 1})
+    class Actor:
+        def ping(self):
+            pass
+
+    actor = Actor.remote()
+    ray.get(actor.ping.remote())
 
     @ray.remote(resources={"pin": 1})
     def non_local():
@@ -340,7 +333,8 @@ def test_locality_aware_leasing(ray_start_cluster):
     def f(x):
         return ray.worker.global_worker.node.unique_id
 
-    # Test that task f() runs on the same node as non_local().
+    # Test that task f() runs on the same node as non_local()
+    # even though local node is lower critical resource utilization.
     assert ray.get(f.remote(non_local.remote())) == non_local_node.unique_id
 
 
@@ -356,7 +350,8 @@ def test_locality_aware_leasing_cached_objects(ray_start_cluster):
         _system_config={
             "worker_lease_timeout_milliseconds": 0,
             "max_direct_call_object_size": 0,
-        })
+        },
+    )
     # Use a custom resource for pinning tasks to a node.
     cluster.add_node(num_cpus=1, resources={"pin_worker1": 1})
     worker2 = cluster.add_node(num_cpus=1, resources={"pin_worker2": 1})
@@ -398,7 +393,8 @@ def test_locality_aware_leasing_borrowed_objects(ray_start_cluster):
         _system_config={
             "worker_lease_timeout_milliseconds": 0,
             "max_direct_call_object_size": 0,
-        })
+        },
+    )
     # Use a custom resource for pinning tasks to a node.
     worker_node = cluster.add_node(num_cpus=1, resources={"pin_worker": 1})
     ray.init(address=cluster.address)
@@ -417,11 +413,16 @@ def test_locality_aware_leasing_borrowed_objects(ray_start_cluster):
 
     # f will run on worker, f_obj will be pinned on worker.
     f_obj = f.options(resources={"pin_worker": 1}).remote()
+    # Make sure owner has the location information for f_obj,
+    # before we launch g so g worker can get the locality information
+    # from the owner.
+    ray.wait([f_obj], fetch_local=False)
     # g will run on head, f_obj will be borrowed by head, and we confirm that
     # h(f_obj) is scheduled onto worker, the node that has f_obj.
-    assert ray.get(g.options(resources={
-        "pin_head": 1
-    }).remote([f_obj])) == worker_node.unique_id
+    assert (
+        ray.get(g.options(resources={"pin_head": 1}).remote([f_obj]))
+        == worker_node.unique_id
+    )
 
 
 @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
@@ -457,7 +458,8 @@ def test_many_args(ray_start_cluster):
             "object_manager_pull_timeout_ms": 100,
             "debug_dump_period_milliseconds": 1000,
         },
-        object_store_memory=int(1e8))
+        object_store_memory=int(1e8),
+    )
     for _ in range(3):
         cluster.add_node(num_cpus=1, object_store_memory=int(1e8))
     ray.init(address=cluster.address)
@@ -473,20 +475,23 @@ def test_many_args(ray_start_cluster):
 
     xs = [put.remote() for _ in range(200)]
     ray.wait(xs, num_returns=len(xs), fetch_local=False)
-    num_tasks_submitted_before, num_leases_requested_before = (
-        ray.worker.global_worker.core_worker.get_task_submission_stats())
+    (
+        num_tasks_submitted_before,
+        num_leases_requested_before,
+    ) = ray.worker.global_worker.core_worker.get_task_submission_stats()
     tasks = []
     for i in range(100):
         args = [np.random.choice(xs) for _ in range(10)]
         tasks.append(f.remote(i, *args))
     ray.get(tasks, timeout=30)
 
-    num_tasks_submitted, num_leases_requested = (
-        ray.worker.global_worker.core_worker.get_task_submission_stats())
+    (
+        num_tasks_submitted,
+        num_leases_requested,
+    ) = ray.worker.global_worker.core_worker.get_task_submission_stats()
     num_tasks_submitted -= num_tasks_submitted_before
     num_leases_requested -= num_leases_requested_before
-    print("submitted:", num_tasks_submitted, "leases requested:",
-          num_leases_requested)
+    print("submitted:", num_tasks_submitted, "leases requested:", num_leases_requested)
     assert num_tasks_submitted == 100
     assert num_leases_requested <= 10 * num_tasks_submitted
 
@@ -520,15 +525,15 @@ def test_pull_manager_at_capacity_reports(ray_start_cluster):
     wait_for_condition(lambda: not fetches_queued())
 
 
+@pytest.mark.xfail(
+    ray.cluster_utils.cluster_not_supported, reason="cluster not supported"
+)
 def build_cluster(num_cpu_nodes, num_gpu_nodes):
     cluster = ray.cluster_utils.Cluster()
     gpu_ids = [
-        cluster.add_node(num_cpus=2, num_gpus=1).unique_id
-        for _ in range(num_gpu_nodes)
+        cluster.add_node(num_cpus=2, num_gpus=1).unique_id for _ in range(num_gpu_nodes)
     ]
-    cpu_ids = [
-        cluster.add_node(num_cpus=1).unique_id for _ in range(num_cpu_nodes)
-    ]
+    cpu_ids = [cluster.add_node(num_cpus=1).unique_id for _ in range(num_cpu_nodes)]
     cluster.wait_for_nodes()
     return cluster, cpu_ids, gpu_ids
 
@@ -550,7 +555,7 @@ def test_gpu(monkeypatch):
             def get_location(self):
                 return ray.worker.global_worker.node.unique_id
 
-        @ray.remote(num_cpus=0.5)
+        @ray.remote(num_cpus=1)
         def task_cpu():
             time.sleep(10)
             return ray.worker.global_worker.node.unique_id
@@ -558,32 +563,41 @@ def test_gpu(monkeypatch):
         @ray.remote(num_returns=2, num_gpus=0.5)
         def launcher():
             a = Actor1.remote()
-            task_results = [task_cpu.remote() for _ in range(n)]
+            # Leave one cpu for the actor.
+            task_results = [task_cpu.remote() for _ in range(n - 1)]
             actor_results = [a.get_location.remote() for _ in range(n)]
-            return ray.get(task_results + actor_results
-                           ), ray.worker.global_worker.node.unique_id
+            return (
+                ray.get(task_results + actor_results),
+                ray.worker.global_worker.node.unique_id,
+            )
 
         r = launcher.remote()
 
         ids, launcher_id = ray.get(r)
 
-        assert launcher_id in gpu_node_ids, \
-            "expected launcher task to be scheduled on GPU nodes"
+        assert (
+            launcher_id in gpu_node_ids
+        ), "expected launcher task to be scheduled on GPU nodes"
 
         for node_id in ids:
-            assert node_id in cpu_node_ids, \
-                "expected non-GPU tasks/actors to be scheduled on" \
-                "non-GPU nodes."
+            assert (
+                node_id in cpu_node_ids
+            ), "expected non-GPU tasks/actors to be scheduled on non-GPU nodes."
     finally:
         ray.shutdown()
         cluster.shutdown()
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster", [{
-        "num_cpus": 0,
-        "num_nodes": 1,
-    }], indirect=True)
+    "ray_start_cluster",
+    [
+        {
+            "num_cpus": 0,
+            "num_nodes": 1,
+        }
+    ],
+    indirect=True,
+)
 def test_head_node_without_cpu(ray_start_cluster):
     @ray.remote(num_cpus=1)
     def f():
@@ -621,8 +635,8 @@ def test_head_node_without_cpu(ray_start_cluster):
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
 def test_gpu_scheduling_liveness(ray_start_cluster):
     """Check if the GPU scheduling is in progress when
-        it is used with the placement group
-        Issue: https://github.com/ray-project/ray/issues/19130
+    it is used with the placement group
+    Issue: https://github.com/ray-project/ray/issues/19130
     """
     cluster = ray_start_cluster
     # Start a node without a gpu.
@@ -661,18 +675,71 @@ def test_gpu_scheduling_liveness(ray_start_cluster):
     ray.get(o)
 
     workers = [
-        Worker.options(placement_group=pg).remote(i)
-        for i in range(NUM_CPU_BUNDLES)
+        Worker.options(placement_group=pg).remote(i) for i in range(NUM_CPU_BUNDLES)
     ]
     trainer = Trainer.options(placement_group=pg).remote(0)
 
     # If the gpu scheduling doesn't properly work, the below
     # code will hang.
-    ray.get(
-        [workers[i].work.remote() for i in range(NUM_CPU_BUNDLES)], timeout=30)
+    ray.get([workers[i].work.remote() for i in range(NUM_CPU_BUNDLES)], timeout=30)
     ray.get(trainer.train.remote(), timeout=30)
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular",
+    [
+        {
+            "_system_config": {
+                "metrics_report_interval_ms": 1000,
+            }
+        }
+    ],
+    indirect=True,
+)
+def test_scheduling_class_depth(ray_start_regular):
+
+    node_info = ray.nodes()[0]
+    metrics_export_port = node_info["MetricsExportPort"]
+    addr = node_info["NodeManagerAddress"]
+    prom_addr = f"{addr}:{metrics_export_port}"
+
+    @ray.remote(num_cpus=1000)
+    def infeasible():
+        pass
+
+    @ray.remote(num_cpus=0)
+    def start_infeasible(n):
+        if n == 1:
+            ray.get(infeasible.remote())
+        ray.get(start_infeasible.remote(n - 1))
+
+    start_infeasible.remote(1)
+    infeasible.remote()
+
+    # We expect the 2 calls to `infeasible` to be separate scheduling classes
+    # because one has depth=1, and the other has depth=2.
+
+    metric_name = "ray_internal_num_infeasible_scheduling_classes"
+
+    def make_condition(n):
+        def condition():
+            _, metric_names, metric_samples = fetch_prometheus([prom_addr])
+            if metric_name in metric_names:
+                for sample in metric_samples:
+                    if sample.name == metric_name and sample.value == n:
+                        return True
+            return False
+
+        return condition
+
+    wait_for_condition(make_condition(2))
+    start_infeasible.remote(2)
+    wait_for_condition(make_condition(3))
+    start_infeasible.remote(4)
+    wait_for_condition(make_condition(4))
 
 
 if __name__ == "__main__":
     import pytest
+
     sys.exit(pytest.main(["-v", __file__]))

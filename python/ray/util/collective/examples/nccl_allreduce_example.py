@@ -7,8 +7,8 @@ import ray.util.collective as collective
 @ray.remote(num_gpus=1)
 class Worker:
     def __init__(self):
-        self.send = cp.ones((4, ), dtype=cp.float32)
-        self.recv = cp.zeros((4, ), dtype=cp.float32)
+        self.send = cp.ones((4,), dtype=cp.float32)
+        self.recv = cp.zeros((4,), dtype=cp.float32)
 
     def setup(self, world_size, rank):
         collective.init_collective_group(world_size, rank, "nccl", "default")
@@ -23,7 +23,7 @@ class Worker:
 
 
 if __name__ == "__main__":
-    send = cp.ones((4, ), dtype=cp.float32)
+    send = cp.ones((4,), dtype=cp.float32)
     ray.init(num_gpus=2)
     num_workers = 2
     workers = []

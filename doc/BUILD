@@ -1,5 +1,10 @@
+load("//bazel:python.bzl", "py_test_run_all_subdirectory")
+load("//bazel:python.bzl", "py_test_run_all_notebooks")
+
+exports_files(["test_myst_doc.py"])
+
 # --------------------------------------------------------------------
-# Tests from the doc/examples directory.
+# Tests from the doc directory.
 # Please keep these sorted alphabetically, but start with the
 # root directory.
 # --------------------------------------------------------------------
@@ -8,114 +13,179 @@
 py_test(
     name = "dask_xgboost",
     size = "medium",
-    main = "examples/dask_xgboost/dask_xgboost.py",
-    srcs = ["examples/dask_xgboost/dask_xgboost.py"],
+    main = "test_myst_doc.py",
+    srcs = ["test_myst_doc.py"],
     tags = ["exclusive", "team:ml", "py37"],
-    args = ["--smoke-test", "--address ''", "--num-actors 4",
-            "--cpus-per-actor 1", "--num-actors-inference 4",
-             "--cpus-per-actor-inference 1"]
+    data = ["//doc/source/ray-core/examples:core_examples"],
+    args = ["--path", "doc/source/ray-core/examples/dask_xgboost/dask_xgboost.ipynb",
+            "--smoke-test", "--address ''", "--num-actors 4", "--cpus-per-actor 1", "--num-actors-inference 4",
+            "--cpus-per-actor-inference 1"]
 )
 
 # Support for Modin has been dropped in 3.6.
 py_test(
     name = "modin_xgboost",
     size = "medium",
-    main = "examples/modin_xgboost/modin_xgboost.py",
-    srcs = ["examples/modin_xgboost/modin_xgboost.py"],
+    main = "test_myst_doc.py",
+    srcs = ["test_myst_doc.py"],
     tags = ["exclusive", "team:ml", "py37"],
-    args = ["--smoke-test", "--address ''", "--num-actors 4",
+    data = ["//doc/source/ray-core/examples:core_examples"],
+    args = ["--path", "doc/source/ray-core/examples/modin_xgboost/modin_xgboost.ipynb",
+            "--smoke-test", "--address ''", "--num-actors 4",
             "--cpus-per-actor 1", "--num-actors-inference 4",
-             "--cpus-per-actor-inference 1"]
+            "--cpus-per-actor-inference 1"]
+)
+
+### Ray Data
+py_test(
+    name = "quick_start",
+    size = "small",
+    srcs = ["source/data/doc_code/quick_start.py"],
+    tags = ["exclusive", "team:ml"]
 )
 
 py_test(
     name = "big_data_ingestion",
     size = "small",
-    srcs = ["source/data/_examples/big_data_ingestion.py"],
+    main = "test_myst_doc.py",
+    srcs = ["test_myst_doc.py"],
+    args = ["--path", "doc/source/data/examples/big_data_ingestion.ipynb"],
+    data = ["//doc/source/data/examples:data_examples"],
     tags = ["exclusive", "team:core", "py37"]
+)
+
+py_test(
+    name = "datasets_train",
+    size = "medium",
+    srcs = ["source/ray-core/_examples/datasets_train/datasets_train.py"],
+    tags = ["exclusive", "team:ml", "py37", "datasets_train"],
+    args = ["--smoke-test", "--num-workers=2", "--use-gpu"]
 )
 
 py_test(
     name = "plot_hyperparameter",
     size = "small",
-    srcs = ["examples/plot_hyperparameter.py"],
+    main = "test_myst_doc.py",
+    srcs = ["test_myst_doc.py"],
+    args = ["--path", "doc/source/ray-core/examples/plot_hyperparameter.ipynb"],
+    data = ["//doc/source/ray-core/examples:core_examples"],
     tags = ["exclusive", "team:ml"]
 )
 
 py_test(
     name = "plot_parameter_server",
     size = "medium",
-    srcs = ["examples/plot_parameter_server.py"],
+    main = "test_myst_doc.py",
+    srcs = ["test_myst_doc.py"],
+    args = ["--path", "doc/source/ray-core/examples/plot_parameter_server.ipynb"],
+    data = ["//doc/source/ray-core/examples:core_examples"],
     tags = ["exclusive", "team:ml"]
 )
 
 py_test(
     name = "plot_pong_example",
     size = "large",
-    srcs = ["examples/plot_pong_example.py"],
+    main = "test_myst_doc.py",
+    srcs = ["test_myst_doc.py"],
+    args = ["--path", "doc/source/ray-core/examples/plot_pong_example.ipynb"],
+    data = ["//doc/source/ray-core/examples:core_examples"],
     tags = ["exclusive", "team:ml"]
 )
 
-py_test(
-    name = "progress_bar",
-    size = "small",
-    srcs = ["examples/progress_bar.py"],
-    tags = ["exclusive", "team:ml"]
-)
+# --------------------------------------------------------------------
+# Test all doc/source/ray-core/doc_code code included in rst/md files.
+# --------------------------------------------------------------------
 
-
-# Directory: examples/doc_code
 py_test(
     name = "doc_code_tf_example",
     size = "small",
-    main = "examples/doc_code/tf_example.py",
-    srcs = ["examples/doc_code/tf_example.py"],
+    main = "source/ray-core/doc_code/tf_example.py",
+    srcs = ["source/ray-core/doc_code/tf_example.py"],
     tags = ["exclusive", "tf", "team:ml"]
 )
 
 py_test(
     name = "doc_code_torch_example",
     size = "small",
-    main = "examples/doc_code/torch_example.py",
-    srcs = ["examples/doc_code/torch_example.py"],
+    main = "source/ray-core/doc_code/torch_example.py",
+    srcs = ["source/ray-core/doc_code/torch_example.py"],
     tags = ["exclusive", "pytorch", "team:ml"]
 )
 
 py_test(
     name = "doc_code_metrics_example",
     size = "small",
-    main = "examples/doc_code/metrics_example.py",
-    srcs = ["examples/doc_code/metrics_example.py"],
+    main = "source/ray-core/doc_code/metrics_example.py",
+    srcs = ["source/ray-core/doc_code/metrics_example.py"],
     tags = ["exclusive", "team:serve"]
 )
 
 py_test(
     name = "doc_code_runtime_env_example",
     size = "small",
-    main = "examples/doc_code/runtime_env_example.py",
-    srcs = ["examples/doc_code/runtime_env_example.py"],
+    main = "source/ray-core/doc_code/runtime_env_example.py",
+    srcs = ["source/ray-core/doc_code/runtime_env_example.py"],
     tags = ["exclusive", "post_wheel_build", "team:serve"]
 )
 
 # --------------------------------------------------------------------
-# Tests from the doc/source/tune/_tutorials directory.
-# Please keep these sorted alphabetically.
+# Test all doc/source/serve/doc_code code included in rst/md files.
 # --------------------------------------------------------------------
 
-py_test(
-    name = "tune_sklearn",
+py_test_run_all_subdirectory(
     size = "medium",
-    main = "source/tune/_tutorials/tune-sklearn.py",
-    srcs = ["source/tune/_tutorials/tune-sklearn.py"],
-    tags = ["exclusive", "example", "team:ml"],
-    args = ["--smoke-test"]
+    include = ["source/serve/doc_code/*.py"],
+    exclude = [],
+    extra_srcs = [],
+    tags = ["exclusive", "team:serve"],
 )
 
-py_test(
-    name = "tune_serve_integration_mnist",
+
+
+# --------------------------------------------------------------------
+# Test all doc/source/tune/doc_code code included in rst/md files.
+# --------------------------------------------------------------------
+
+py_test_run_all_subdirectory(
     size = "medium",
-    main = "source/tune/_tutorials/tune-serve-integration-mnist.py",
-    srcs = ["source/tune/_tutorials/tune-serve-integration-mnist.py"],
-    tags = ["exclusive", "example", "team:ml"],
-    args = ["--smoke-test", "--from_scratch", "--day 0"]
+    include = ["source/tune/doc_code/*.py"],
+    exclude = [],
+    extra_srcs = [],
+    tags = ["exclusive", "team:ml"],
+)
+
+# --------------------------------------------------------------------
+# Test all doc/source/rllib/doc_code code included in rst/md files.
+# --------------------------------------------------------------------
+
+py_test_run_all_subdirectory(
+    size = "medium",
+    include = ["source/rllib/doc_code/*.py"],
+    exclude = [],
+    extra_srcs = [],
+    tags = ["exclusive", "team:ml"],
+)
+
+# --------------------------------------------------------------------
+# Test all doc/source/ray-air/doc_code code included in rst/md files.
+# --------------------------------------------------------------------
+
+py_test_run_all_subdirectory(
+    size = "large",
+    include = ["source/ray-air/doc_code/*.py"],
+    exclude = [],
+    extra_srcs = [],
+    tags = ["exclusive", "team:ml"],
+)
+
+# --------------------------------------------------------------------
+# Test all doc/source/ray-overview/doc_test snippets, used on ray.io
+# --------------------------------------------------------------------
+
+py_test_run_all_subdirectory(
+    size = "small",
+    include = ["source/ray-overview/doc_test/*.py"],
+    exclude = ["source/ray-overview/doc_test/ray_data.py"],
+    extra_srcs = [],
+    tags = ["exclusive", "team:ml"],
 )

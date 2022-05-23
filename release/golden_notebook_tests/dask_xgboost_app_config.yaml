@@ -1,4 +1,4 @@
-base_image: "anyscale/ray-ml:pinned-nightly-py37"
+base_image: {{ env["RAY_IMAGE_NIGHTLY_CPU"] | default("anyscale/ray:nightly-py37") }}
 env_vars: { }
 debian_packages:
   - curl
@@ -6,7 +6,7 @@ debian_packages:
 python:
   pip_packages:
     - pandas>=1.3.0  # otherwise, a version mismatch between local and remote will cause an exception
-    - "git+https://github.com/ray-project/xgboost_ray.git#egg=xgboost_ray"
+    - git+https://github.com/ray-project/xgboost_ray.git#egg=xgboost_ray
     - dask
     - fastapi
     - uvicorn
@@ -14,6 +14,10 @@ python:
   conda_packages: [ ]
 
 post_build_cmds:
-  - pip uninstall -y ray || true
-  - pip install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - pip uninstall -y ray || true && pip install -U {{ env["RAY_WHEELS"] | default("ray") }}
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
+  # Upgrade the XGBoost-Ray version in post build commands, otherwise it will be cached in the Anyscale Docker image.
+  - echo {{ env["TIMESTAMP"] }}
+  - pip install -U xgboost # Upgrade to latest xgboost version so cached version is not used.
+  - pip uninstall xgboost_ray -y # Uninstall first so pip does a reinstall.
+  - pip install -U --no-cache-dir git+https://github.com/ray-project/xgboost_ray.git#egg=xgboost_ray

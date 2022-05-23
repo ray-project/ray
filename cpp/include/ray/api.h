@@ -82,7 +82,8 @@ std::vector<std::shared_ptr<T>> Get(const std::vector<ray::ObjectRef<T>> &object
 /// \return Two arrays, one containing locally available objects, one containing the
 /// rest.
 template <typename T>
-WaitResult<T> Wait(const std::vector<ray::ObjectRef<T>> &objects, int num_objects,
+WaitResult<T> Wait(const std::vector<ray::ObjectRef<T>> &objects,
+                   int num_objects,
                    int timeout_ms);
 
 /// Create a `TaskCaller` for calling remote function.
@@ -93,23 +94,18 @@ WaitResult<T> Wait(const std::vector<ray::ObjectRef<T>> &objects, int num_object
 template <typename F>
 ray::internal::TaskCaller<F> Task(F func);
 
+template <typename R>
+ray::internal::TaskCaller<PyFunction<R>> Task(PyFunction<R> func);
+
 /// Generic version of creating an actor
 /// It is used for creating an actor, such as: ActorCreator<Counter> creator =
 /// ray::Actor(Counter::FactoryCreate<int>).Remote(1);
 template <typename F>
 ray::internal::ActorCreator<F> Actor(F create_func);
 
-/// Get a handle to a global named actor.
-/// Gets a handle to a global named actor with the given name. The actor must have been
-/// created with global name specified.
-///
-/// \param[in] name The global name of the named actor.
-/// \return An ActorHandle to the actor if the actor of specified name exists or an
-/// empty optional object.
-template <typename T>
-boost::optional<ActorHandle<T>> GetGlobalActor(const std::string &actor_name);
+ray::internal::ActorCreator<PyActorClass> Actor(PyActorClass func);
 
-/// Get a handle to a named actor of current job.
+/// Get a handle to a named actor in current namespace.
 /// Gets a handle to a named actor with the given name. The actor must have been created
 /// with name specified.
 ///
@@ -148,9 +144,6 @@ PlacementGroup GetPlacementGroupById(const std::string &id);
 /// Get a placement group by name.
 PlacementGroup GetPlacementGroup(const std::string &name);
 
-/// Get a placement group by placement group name from all jobs.
-PlacementGroup GetGlobalPlacementGroup(const std::string &name);
-
 /// Returns true if the current actor was restarted, otherwise false.
 bool WasCurrentActorRestarted();
 
@@ -171,7 +164,12 @@ inline ray::ObjectRef<T> Put(const T &obj) {
   auto buffer =
       std::make_shared<msgpack::sbuffer>(ray::internal::Serializer::Serialize(obj));
   auto id = ray::internal::GetRayRuntime()->Put(buffer);
-  return ray::ObjectRef<T>(id);
+  auto ref = ObjectRef<T>(id);
+  // The core worker will add an initial ref to the put ID to
+  // keep it in scope. Now that we've created the frontend
+  // ObjectRef, remove this initial ref.
+  ray::internal::GetRayRuntime()->RemoveLocalReference(id);
+  return ref;
 }
 
 template <typename T>
@@ -199,7 +197,8 @@ inline std::vector<std::shared_ptr<T>> Get(const std::vector<ray::ObjectRef<T>> 
 }
 
 template <typename T>
-inline WaitResult<T> Wait(const std::vector<ray::ObjectRef<T>> &objects, int num_objects,
+inline WaitResult<T> Wait(const std::vector<ray::ObjectRef<T>> &objects,
+                          int num_objects,
                           int timeout_ms) {
   auto object_ids = ObjectRefsToObjectIDs<T>(objects);
   auto results =
@@ -216,55 +215,52 @@ inline WaitResult<T> Wait(const std::vector<ray::ObjectRef<T>> &objects, int num
   return WaitResult<T>(std::move(readys), std::move(unreadys));
 }
 
-template <typename FuncType>
-inline ray::internal::TaskCaller<FuncType> TaskInternal(FuncType &func) {
-  ray::internal::RemoteFunctionHolder remote_func_holder(func);
-  return ray::internal::TaskCaller<FuncType>(ray::internal::GetRayRuntime().get(),
-                                             std::move(remote_func_holder));
+inline ray::internal::ActorCreator<PyActorClass> Actor(PyActorClass func) {
+  ray::internal::RemoteFunctionHolder remote_func_holder(func.module_name,
+                                                         func.function_name,
+                                                         func.class_name,
+                                                         ray::internal::LangType::PYTHON);
+  return {ray::internal::GetRayRuntime().get(), std::move(remote_func_holder)};
 }
 
-template <typename FuncType>
-inline ray::internal::ActorCreator<FuncType> CreateActorInternal(FuncType &create_func) {
-  ray::internal::RemoteFunctionHolder remote_func_holder(create_func);
-  return ray::internal::ActorCreator<FuncType>(ray::internal::GetRayRuntime().get(),
-                                               std::move(remote_func_holder));
+template <typename R>
+inline ray::internal::TaskCaller<PyFunction<R>> Task(PyFunction<R> func) {
+  ray::internal::RemoteFunctionHolder remote_func_holder(
+      func.module_name, func.function_name, "", ray::internal::LangType::PYTHON);
+  return {ray::internal::GetRayRuntime().get(), std::move(remote_func_holder)};
 }
 
 /// Normal task.
 template <typename F>
-ray::internal::TaskCaller<F> Task(F func) {
-  return TaskInternal<F>(func);
+inline ray::internal::TaskCaller<F> Task(F func) {
+  static_assert(!ray::internal::is_python_v<F>, "Must be a cpp function.");
+  static_assert(!std::is_member_function_pointer_v<F>,
+                "Incompatible type: member function cannot be called with ray::Task.");
+  ray::internal::RemoteFunctionHolder remote_func_holder(std::move(func));
+  return ray::internal::TaskCaller<F>(ray::internal::GetRayRuntime().get(),
+                                      std::move(remote_func_holder));
 }
 
 /// Creating an actor.
 template <typename F>
-ray::internal::ActorCreator<F> Actor(F create_func) {
-  return CreateActorInternal<F>(create_func);
+inline ray::internal::ActorCreator<F> Actor(F create_func) {
+  ray::internal::RemoteFunctionHolder remote_func_holder(std::move(create_func));
+  return ray::internal::ActorCreator<F>(ray::internal::GetRayRuntime().get(),
+                                        std::move(remote_func_holder));
 }
 
 template <typename T>
-inline boost::optional<ActorHandle<T>> GetActorInternal(bool global,
-                                                        const std::string &actor_name) {
+boost::optional<ActorHandle<T>> GetActor(const std::string &actor_name) {
   if (actor_name.empty()) {
     return {};
   }
 
-  auto actor_id = ray::internal::GetRayRuntime()->GetActorId(global, actor_name);
+  auto actor_id = ray::internal::GetRayRuntime()->GetActorId(actor_name);
   if (actor_id.empty()) {
     return {};
   }
 
   return ActorHandle<T>(actor_id);
-}
-
-template <typename T>
-boost::optional<ActorHandle<T>> GetGlobalActor(const std::string &actor_name) {
-  return GetActorInternal<T>(true, actor_name);
-}
-
-template <typename T>
-boost::optional<ActorHandle<T>> GetActor(const std::string &actor_name) {
-  return GetActorInternal<T>(false, actor_name);
 }
 
 inline PlacementGroup CreatePlacementGroup(
@@ -285,11 +281,7 @@ inline PlacementGroup GetPlacementGroupById(const std::string &id) {
 }
 
 inline PlacementGroup GetPlacementGroup(const std::string &name) {
-  return ray::internal::GetRayRuntime()->GetPlacementGroup(name, false);
-}
-
-inline PlacementGroup GetGlobalPlacementGroup(const std::string &name) {
-  return ray::internal::GetRayRuntime()->GetPlacementGroup(name, true);
+  return ray::internal::GetRayRuntime()->GetPlacementGroup(name);
 }
 
 inline bool WasCurrentActorRestarted() {

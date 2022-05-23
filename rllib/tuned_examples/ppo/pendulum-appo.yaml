@@ -1,5 +1,5 @@
 pendulum-appo-vtrace:
-    env: Pendulum-v0
+    env: Pendulum-v1
     run: APPO
     stop:
         episode_reward_mean: -1000  # just check it learns a bit

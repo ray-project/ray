@@ -32,7 +32,9 @@ def get_session():
             logger.warning(
                 "Session not detected. You should not be calling `{}` "
                 "outside `tune.run` or while using the class API. ".format(
-                    function_name))
+                    function_name
+                )
+            )
             logger.warning(stack_trace_str)
     return _session
 
@@ -51,7 +53,8 @@ def init(reporter, ignore_reinit_error=True):
             "you must set ray.init(..., num_cpus=1, num_gpus=1) to limit "
             "available concurrency. If you are supplying a wrapped "
             "Searcher(concurrency, repeating) or customized SearchAlgo. "
-            "Please try limiting the concurrency to 1 there.")
+            "Please try limiting the concurrency to 1 there."
+        )
         if ignore_reinit_error:
             logger.warning(reinit_msg)
             return
@@ -59,8 +62,10 @@ def init(reporter, ignore_reinit_error=True):
             raise ValueError(reinit_msg)
 
     if reporter is None:
-        logger.warning("You are using a Tune session outside of Tune. "
-                       "Most session commands will have no effect.")
+        logger.warning(
+            "You are using a Tune session outside of Tune. "
+            "Most session commands will have no effect."
+        )
 
     _session = reporter
 
@@ -98,33 +103,9 @@ def report(_metric=None, **kwargs):
         return _session(_metric, **kwargs)
 
 
-def make_checkpoint_dir(step=None):
-    """Gets the next checkpoint dir.
-
-    .. versionadded:: 0.8.6
-
-    .. deprecated:: 0.8.7
-        Use tune.checkpoint_dir instead.
-    """
-    raise DeprecationWarning(
-        "Deprecated method. Use `tune.checkpoint_dir` instead.")
-
-
-def save_checkpoint(checkpoint):
-    """Register the given checkpoint.
-
-    .. versionadded:: 0.8.6
-
-    .. deprecated:: 0.8.7
-        Use tune.checkpoint_dir instead.
-    """
-    raise DeprecationWarning(
-        "Deprecated method. Use `tune.checkpoint_dir` instead.")
-
-
 @PublicAPI
 @contextmanager
-def checkpoint_dir(step):
+def checkpoint_dir(step: int):
     """Returns a checkpoint dir inside a context.
 
     Store any files related to restoring state within the
@@ -139,7 +120,7 @@ def checkpoint_dir(step):
     inconsistencies.
 
     Args:
-        step (int): Index for the checkpoint. Expected to be a
+        step: Index for the checkpoint. Expected to be a
             monotonically increasing quantity.
 
     .. code-block:: python
@@ -168,7 +149,7 @@ def checkpoint_dir(step):
                 tune.report(hello="world", ray="tune")
 
     Yields:
-        checkpoint_dir (str): Directory for checkpointing.
+        checkpoint_dir: Directory for checkpointing.
 
     .. versionadded:: 0.8.7
     """
@@ -236,6 +217,9 @@ def get_trial_resources():
 
 
 __all__ = [
-    "report", "get_trial_dir", "get_trial_name", "get_trial_id",
-    "get_trial_resources"
+    "report",
+    "get_trial_dir",
+    "get_trial_name",
+    "get_trial_id",
+    "get_trial_resources",
 ]

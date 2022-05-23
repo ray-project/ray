@@ -5,11 +5,13 @@ set -euxo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)"
 WORKSPACE_DIR="${ROOT_DIR}/.."
 
-PY_VERSIONS=($(python -s -c "import runpy, sys; runpy.run_path(sys.argv.pop(), run_name='__api__')" python_versions "${ROOT_DIR}"/setup.py | tr -d "\r"))
-PY_SCRIPT_SUBDIR=Scripts  # 'bin' for UNIX, 'Scripts' for Windows
+PY_VERSIONS=("3.7"
+             "3.8"
+             "3.9"
+             "3.10")
 
 bazel_preclean() {
-  "${WORKSPACE_DIR}"/ci/travis/bazel.py preclean "mnemonic(\"Genrule\", deps(//:*))"
+  "${WORKSPACE_DIR}"/ci/run/bazel.py preclean "mnemonic(\"Genrule\", deps(//:*))"
 }
 
 get_python_version() {
@@ -30,10 +32,42 @@ is_python_version() {
   return "${result}"
 }
 
+refreshenv() {
+  # https://gist.github.com/jayvdb/1daf8c60e20d64024f51ec333f5ce806
+  powershell -NonInteractive - <<\EOF
+Import-Module "$env:ChocolateyInstall\helpers\chocolateyProfile.psm1"
+
+Update-SessionEnvironment
+
+# Round brackets in variable names cause problems with bash
+Get-ChildItem env:* | %{
+  if (!($_.Name.Contains('('))) {
+    $value = $_.Value
+    if ($_.Name -eq 'PATH') {
+      $value = $value -replace ';',':'
+    }
+    Write-Output ("export " + $_.Name + "='" + $value + "'")
+  }
+} | Out-File -Encoding ascii $env:TEMP\refreshenv.sh
+
+EOF
+
+  source "$TEMP/refreshenv.sh"
+}
+
 install_ray() {
-  # TODO(mehrdadn): This function should be unified with the one in ci/travis/ci.sh.
+  # TODO(mehrdadn): This function should be unified with the one in ci/ci.sh.
   (
     pip install wheel
+
+    pushd dashboard/client
+      choco install nodejs  -y
+      refreshenv
+      # https://stackoverflow.com/questions/69692842/error-message-error0308010cdigital-envelope-routinesunsupported
+      export NODE_OPTIONS=--openssl-legacy-provider
+      npm install
+      npm run build
+    popd
 
     cd "${WORKSPACE_DIR}"/python
     "${WORKSPACE_DIR}"/ci/keep_alive pip install -v -e .
@@ -50,15 +84,8 @@ build_wheel_windows() {
   local ray_uninstall_status=0
   uninstall_ray || ray_uninstall_status=1
 
-  local pyversion pyversions=()
-  for pyversion in "${PY_VERSIONS[@]}"; do
-    if [ "${pyversion}" = "${PYTHON-}" ]; then continue; fi  # we'll build ${PYTHON} last
-    pyversions+=("${pyversion}")
-  done
-  pyversions+=("${PYTHON-}")  # build this last so any subsequent steps use the right version
-
   local local_dir="python/dist"
-  for pyversion in "${pyversions[@]}"; do
+  for pyversion in "${PY_VERSIONS[@]}"; do
     if [ -z "${pyversion}" ]; then continue; fi
     bazel_preclean
     git clean -q -f -f -x -d -e "${local_dir}" -e python/ray/dashboard/client
@@ -67,11 +94,7 @@ build_wheel_windows() {
     # Start a subshell to prevent PATH and cd from affecting our shell environment
     (
       if ! is_python_version "${pyversion}"; then
-        local pydirs=("${RUNNER_TOOL_CACHE}/Python/${pyversion}".*/x64)
-        local pydir="${pydirs[-1]}"
-        pydir="$(cygpath -u "${pydir}")"  # Translate Windows path
-        test -d "${pydir}"
-        export PATH="${pydir}:${pydir}/${PY_SCRIPT_SUBDIR}:${PATH}"
+        conda install -y python="${pyversion}"
       fi
       if ! is_python_version "${pyversion}"; then
         echo "Expected pip for Python ${pyversion} but found Python $(get_python_version) with $(pip --version); exiting..." 1>&2
@@ -82,10 +105,10 @@ build_wheel_windows() {
       install_ray
       cd "${WORKSPACE_DIR}"/python
       # Set the commit SHA in __init__.py.
-      if [ -n "$TRAVIS_COMMIT" ]; then
-        sed -i.bak "s/{{RAY_COMMIT_SHA}}/$TRAVIS_COMMIT/g" ray/__init__.py && rm ray/__init__.py.bak
+      if [ -n "$BUILDKITE_COMMIT" ]; then
+        sed -i.bak "s/{{RAY_COMMIT_SHA}}/$BUILDKITE_COMMIT/g" ray/__init__.py && rm ray/__init__.py.bak
       else
-        echo "TRAVIS_COMMIT variable not set - required to populated ray.__commit__."
+        echo "BUILDKITE_COMMIT variable not set - required to populated ray.__commit__."
         exit 1
       fi
       # build ray wheel

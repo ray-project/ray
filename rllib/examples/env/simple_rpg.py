@@ -27,19 +27,20 @@ class SimpleRPG(gym.Env):
         self.item_space = Discrete(5)
 
         # Represents an effect on the player.
-        self.effect_space = Box(9000, 9999, shape=(4, ))
+        self.effect_space = Box(9000, 9999, shape=(4,))
 
         # Represents a player.
-        self.player_space = Dict({
-            "location": Box(-100, 100, shape=(2, )),
-            "status": Box(-1, 1, shape=(10, )),
-            "items": Repeated(self.item_space, max_len=MAX_ITEMS),
-            "effects": Repeated(self.effect_space, max_len=MAX_EFFECTS),
-        })
+        self.player_space = Dict(
+            {
+                "location": Box(-100, 100, shape=(2,)),
+                "status": Box(-1, 1, shape=(10,)),
+                "items": Repeated(self.item_space, max_len=MAX_ITEMS),
+                "effects": Repeated(self.effect_space, max_len=MAX_EFFECTS),
+            }
+        )
 
         # Observation is a list of players.
-        self.observation_space = Repeated(
-            self.player_space, max_len=MAX_PLAYERS)
+        self.observation_space = Repeated(self.player_space, max_len=MAX_PLAYERS)
 
     def reset(self):
         return self.observation_space.sample()

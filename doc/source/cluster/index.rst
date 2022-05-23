@@ -1,3 +1,7 @@
+.. include:: /_includes/clusters/announcement.rst
+
+.. include:: we_are_hiring.rst
+
 .. _cluster-index:
 
 Ray Cluster Overview
@@ -31,9 +35,11 @@ Next steps
 ----------
 
 To get started with Ray Clusters, we recommend that you check out the :ref:`Ray
-Cluster quick start <ref-cluster-quick-start>`. For more advanced examples of
+Cluster Quick Start <ref-cluster-quick-start>`. For more advanced examples of
 use, you can also refer to the :ref:`full specification for Ray Cluster
 configuration <cluster-config>`.
 
 To learn about best practices for deploying a Ray cluster, :ref:`check out the
 deployment guide <deployment-guide>`.
+
+.. include:: /_includes/clusters/announcement_bottom.rst

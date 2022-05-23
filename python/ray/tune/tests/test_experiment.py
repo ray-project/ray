@@ -22,13 +22,9 @@ class ExperimentTest(unittest.TestCase):
         register_trainable("f1", train)
 
     def testConvertExperimentFromExperiment(self):
-        exp1 = Experiment(**{
-            "name": "foo",
-            "run": "f1",
-            "config": {
-                "script_min_iter_time_s": 0
-            }
-        })
+        exp1 = Experiment(
+            **{"name": "foo", "run": "f1", "config": {"script_min_iter_time_s": 0}}
+        )
         result = convert_to_experiment_list(exp1)
         self.assertEqual(len(result), 1)
         self.assertEqual(type(result), list)
@@ -39,31 +35,17 @@ class ExperimentTest(unittest.TestCase):
         self.assertEqual(type(result), list)
 
     def testConvertExperimentList(self):
-        exp1 = Experiment(**{
-            "name": "foo",
-            "run": "f1",
-            "config": {
-                "script_min_iter_time_s": 0
-            }
-        })
+        exp1 = Experiment(
+            **{"name": "foo", "run": "f1", "config": {"script_min_iter_time_s": 0}}
+        )
         result = convert_to_experiment_list([exp1, exp1])
         self.assertEqual(len(result), 2)
         self.assertEqual(type(result), list)
 
     def testConvertExperimentJSON(self):
         experiment = {
-            "name": {
-                "run": "f1",
-                "config": {
-                    "script_min_iter_time_s": 0
-                }
-            },
-            "named": {
-                "run": "f1",
-                "config": {
-                    "script_min_iter_time_s": 0
-                }
-            }
+            "name": {"run": "f1", "config": {"script_min_iter_time_s": 0}},
+            "named": {"run": "f1", "config": {"script_min_iter_time_s": 0}},
         }
         result = convert_to_experiment_list(experiment)
         self.assertEqual(len(result), 2)
@@ -98,4 +80,5 @@ class ValidateUtilTest(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

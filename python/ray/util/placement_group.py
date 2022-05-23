@@ -1,7 +1,4 @@
-from typing import Dict
-from typing import List
-from typing import Optional
-from typing import Union
+from typing import Dict, Union, List, Optional
 
 import ray
 from ray._raylet import ObjectRef
@@ -13,6 +10,7 @@ from ray._private.client_mode_hook import client_mode_should_convert
 from ray._private.client_mode_hook import client_mode_wrap
 
 bundle_reservation_check = None
+BUNDLE_RESOURCE_LABEL = "bundle"
 
 
 # We need to import this method to use for ready API.
@@ -40,11 +38,13 @@ class PlacementGroup:
     def empty() -> "PlacementGroup":
         return PlacementGroup(PlacementGroupID.nil())
 
-    def __init__(self,
-                 id: PlacementGroupID,
-                 bundle_cache: Optional[List[Dict]] = None):
+    def __init__(self, id: PlacementGroupID, bundle_cache: Optional[List[Dict]] = None):
         self.id = id
         self.bundle_cache = bundle_cache
+
+    @property
+    def is_empty(self):
+        return self.id.is_nil()
 
     def ready(self) -> ObjectRef:
         """Returns an ObjectRef to check ready status.
@@ -54,11 +54,13 @@ class PlacementGroup:
 
         Example:
 
-        >>> pg = placement_group([{"CPU": 1}])
-            ray.get(pg.ready())
+            >>> import ray
+            >>> from ray.util.placement_group import PlacementGroup
+            >>> pg = PlacementGroup([{"CPU": 1}]) # doctest: +SKIP
+            >>> ray.get(pg.ready()) # doctest: +SKIP
+            >>> pg = PlacementGroup([{"CPU": 1}]) # doctest: +SKIP
+            >>> ray.wait([pg.ready()], timeout=0) # doctest: +SKIP
 
-        >>> pg = placement_group([{"CPU": 1}])
-            ray.wait([pg.ready()], timeout=0)
         """
         self._fill_bundle_cache_if_needed()
 
@@ -67,12 +69,12 @@ class PlacementGroup:
         assert len(self.bundle_cache) != 0, (
             "ready() cannot be called on placement group object with a "
             "bundle length == 0, current bundle length: "
-            f"{len(self.bundle_cache)}")
+            f"{len(self.bundle_cache)}"
+        )
 
         return bundle_reservation_check.options(
-            placement_group=self, resources={
-                "bundle": 0.001
-            }).remote(self)
+            placement_group=self, resources={BUNDLE_RESOURCE_LABEL: 0.001}
+        ).remote(self)
 
     def wait(self, timeout_seconds: Union[float, int]) -> bool:
         """Wait for the placement group to be ready within the specified time.
@@ -94,61 +96,17 @@ class PlacementGroup:
         self._fill_bundle_cache_if_needed()
         return len(self.bundle_cache)
 
-    def to_dict(self) -> dict:
-        """Convert this placement group into a dict for purposes of json
-        serialization.
-
-        Used when passing a placement group as an option to a Ray client remote
-        function. See set_task_options in util/client/common.py.
-
-        Return:
-            Dictionary with json-serializable keys representing the placemnent
-            group.
-        """
-        # Placement group id is converted to a hex /string/ to make it
-        # serializable.
-        return {"id": self.id.hex(), "bundle_cache": self.bundle_cache}
-
-    @staticmethod
-    def from_dict(pg_dict: dict) -> "PlacementGroup":
-        """Instantiate and return a PlacementGroup from its json-serializable
-        dict representation.
-
-        Used by Ray Client on server-side to deserialize placement group
-        option. See decode_options in util/client/server/server.py.
-
-        Args:
-            serializable_form(dict): Dictionary representing a placement group.
-        Return:
-            A placement group made from the data in the input dict.
-        """
-        # Validate serialized dict
-        assert isinstance(pg_dict, dict)
-        assert pg_dict.keys() == {"id", "bundle_cache"}
-        # The value associated to key "id" is a hex string.
-        assert isinstance(pg_dict["id"], str)
-        if pg_dict["bundle_cache"] is not None:
-            assert isinstance(pg_dict["bundle_cache"], list)
-
-        # Deserialize and return a Placement Group.
-        id_bytes = bytes.fromhex(pg_dict["id"])
-        pg_id = PlacementGroupID(id_bytes)
-        bundle_cache = pg_dict["bundle_cache"]
-        return PlacementGroup(pg_id, bundle_cache)
-
     def _fill_bundle_cache_if_needed(self) -> None:
         if not self.bundle_cache:
             self.bundle_cache = _get_bundle_cache(self.id)
 
 
 @client_mode_wrap
-def _call_placement_group_ready(pg_id: PlacementGroupID,
-                                timeout_seconds: int) -> bool:
+def _call_placement_group_ready(pg_id: PlacementGroupID, timeout_seconds: int) -> bool:
     worker = ray.worker.global_worker
     worker.check_connected()
 
-    return worker.core_worker.wait_placement_group_ready(
-        pg_id, timeout_seconds)
+    return worker.core_worker.wait_placement_group_ready(pg_id, timeout_seconds)
 
 
 @client_mode_wrap
@@ -156,16 +114,17 @@ def _get_bundle_cache(pg_id: PlacementGroupID) -> List[Dict]:
     worker = ray.worker.global_worker
     worker.check_connected()
 
-    return list(
-        ray.state.state.placement_group_table(pg_id)["bundles"].values())
+    return list(ray.state.state.placement_group_table(pg_id)["bundles"].values())
 
 
 @PublicAPI
 @client_mode_wrap
-def placement_group(bundles: List[Dict[str, float]],
-                    strategy: str = "PACK",
-                    name: str = "",
-                    lifetime=None) -> PlacementGroup:
+def placement_group(
+    bundles: List[Dict[str, float]],
+    strategy: str = "PACK",
+    name: str = "",
+    lifetime=None,
+) -> PlacementGroup:
     """Asynchronously creates a PlacementGroup.
 
     Args:
@@ -185,6 +144,11 @@ def placement_group(bundles: List[Dict[str, float]],
             creator is dead, or "detached", which means the placement group
             will live as a global object independent of the creator.
 
+    Raises:
+        ValueError if bundle type is not a list.
+        ValueError if empty bundle or empty resource bundles are given.
+        ValueError if the wrong lifetime arguments are given.
+
     Return:
         PlacementGroup: Placement group object.
     """
@@ -192,16 +156,17 @@ def placement_group(bundles: List[Dict[str, float]],
     worker.check_connected()
 
     if not isinstance(bundles, list):
-        raise ValueError(
-            "The type of bundles must be list, got {}".format(bundles))
+        raise ValueError("The type of bundles must be list, got {}".format(bundles))
 
     # Validate bundles
     for bundle in bundles:
-        if (len(bundle) == 0 or all(resource_value == 0
-                                    for resource_value in bundle.values())):
+        if len(bundle) == 0 or all(
+            resource_value == 0 for resource_value in bundle.values()
+        ):
             raise ValueError(
                 "Bundles cannot be an empty dictionary or "
-                f"resources with only 0 values. Bundles: {bundles}")
+                f"resources with only 0 values. Bundles: {bundles}"
+            )
 
         if "memory" in bundle.keys() and bundle["memory"] > 0:
             # Make sure the memory resource can be
@@ -213,11 +178,13 @@ def placement_group(bundles: List[Dict[str, float]],
     elif lifetime == "detached":
         detached = True
     else:
-        raise ValueError("placement group `lifetime` argument must be either"
-                         " `None` or 'detached'")
+        raise ValueError(
+            "placement group `lifetime` argument must be either `None` or 'detached'"
+        )
 
     placement_group_id = worker.core_worker.create_placement_group(
-        name, bundles, strategy, detached)
+        name, bundles, strategy, detached
+    )
 
     return PlacementGroup(placement_group_id)
 
@@ -247,19 +214,18 @@ def get_placement_group(placement_group_name: str) -> PlacementGroup:
         The placement group object otherwise.
     """
     if not placement_group_name:
-        raise ValueError(
-            "Please supply a non-empty value to get_placement_group")
+        raise ValueError("Please supply a non-empty value to get_placement_group")
     worker = ray.worker.global_worker
     worker.check_connected()
     placement_group_info = ray.state.state.get_placement_group_by_name(
-        placement_group_name, worker.namespace)
+        placement_group_name, worker.namespace
+    )
     if placement_group_info is None:
-        raise ValueError(
-            f"Failed to look up actor with name: {placement_group_name}")
+        raise ValueError(f"Failed to look up actor with name: {placement_group_name}")
     else:
         return PlacementGroup(
-            PlacementGroupID(
-                hex_to_binary(placement_group_info["placement_group_id"])))
+            PlacementGroupID(hex_to_binary(placement_group_info["placement_group_id"]))
+        )
 
 
 @DeveloperAPI
@@ -273,8 +239,7 @@ def placement_group_table(placement_group: PlacementGroup = None) -> dict:
     """
     worker = ray.worker.global_worker
     worker.check_connected()
-    placement_group_id = placement_group.id if (placement_group is
-                                                not None) else None
+    placement_group_id = placement_group.id if (placement_group is not None) else None
     return ray.state.state.placement_group_table(placement_group_id)
 
 
@@ -287,20 +252,22 @@ def get_current_placement_group() -> Optional[PlacementGroup]:
     (because drivers never belong to any placement group).
 
     Examples:
-
-        >>> @ray.remote
-        >>> def f():
-        >>>     # This will return the placement group the task f belongs to.
-        >>>     # It means this pg will be identical to the pg created below.
-        >>>     pg = get_current_placement_group()
-        >>> pg = placement_group([{"CPU": 2}])
-        >>> f.options(placement_group=pg).remote()
+        >>> import ray
+        >>> from ray.util.placement_group import PlacementGroup
+        >>> from ray.util.placement_group import get_current_placement_group
+        >>> @ray.remote # doctest: +SKIP
+        ... def f(): # doctest: +SKIP
+        ...     # This will return the placement group the task f belongs to.
+        ...     # It means this pg will be identical to the pg created below.
+        ...     pg = get_current_placement_group() # doctest: +SKIP
+        >>> pg = PlacementGroup([{"CPU": 2}]) # doctest: +SKIP
+        >>> f.options(placement_group=pg).remote() # doctest: +SKIP
 
         >>> # New script.
-        >>> ray.init()
+        >>> ray.init() # doctest: +SKIP
         >>> # New script doesn't belong to any placement group,
         >>> # so it returns None.
-        >>> assert get_current_placement_group() is None
+        >>> assert get_current_placement_group() is None # doctest: +SKIP
 
     Return:
         PlacementGroup: Placement group object.
@@ -318,15 +285,138 @@ def get_current_placement_group() -> Optional[PlacementGroup]:
     return PlacementGroup(pg_id)
 
 
-def check_placement_group_index(placement_group: PlacementGroup,
-                                bundle_index: int) -> None:
+def check_placement_group_index(
+    placement_group: PlacementGroup, bundle_index: int
+) -> None:
     assert placement_group is not None
     if placement_group.id.is_nil():
         if bundle_index != -1:
-            raise ValueError("If placement group is not set, "
-                             "the value of bundle index must be -1.")
-    elif bundle_index >= placement_group.bundle_count \
-            or bundle_index < -1:
-        raise ValueError(f"placement group bundle index {bundle_index} "
-                         f"is invalid. Valid placement group indexes: "
-                         f"0-{placement_group.bundle_count}")
+            raise ValueError(
+                "If placement group is not set, "
+                "the value of bundle index must be -1."
+            )
+    elif bundle_index >= placement_group.bundle_count or bundle_index < -1:
+        raise ValueError(
+            f"placement group bundle index {bundle_index} "
+            f"is invalid. Valid placement group indexes: "
+            f"0-{placement_group.bundle_count}"
+        )
+
+
+def _validate_resource_shape(
+    placement_group, resources, placement_resources, task_or_actor_repr
+):
+    def valid_resource_shape(resources, bundle_specs):
+        """
+        If the resource shape cannot fit into every
+        bundle spec, return False
+        """
+        for bundle in bundle_specs:
+            fit_in_bundle = True
+            for resource, requested_val in resources.items():
+                # Skip "bundle" resource as it is automatically added
+                # to all nodes with bundles by the placement group.
+                if resource == BUNDLE_RESOURCE_LABEL:
+                    continue
+                if bundle.get(resource, 0) < requested_val:
+                    fit_in_bundle = False
+                    break
+            if fit_in_bundle:
+                # If resource request fits in any bundle, it is valid.
+                return True
+        return False
+
+    bundles = placement_group.bundle_specs
+    resources_valid = valid_resource_shape(resources, bundles)
+    placement_resources_valid = valid_resource_shape(placement_resources, bundles)
+
+    if not resources_valid:
+        raise ValueError(
+            f"Cannot schedule {task_or_actor_repr} with "
+            "the placement group because the resource request "
+            f"{resources} cannot fit into any bundles for "
+            f"the placement group, {bundles}."
+        )
+    if not placement_resources_valid:
+        # Happens for the default actor case.
+        # placement_resources is not an exposed concept to users,
+        # so we should write more specialized error messages.
+        raise ValueError(
+            f"Cannot schedule {task_or_actor_repr} with "
+            "the placement group because the actor requires "
+            f"{placement_resources.get('CPU', 0)} CPU for "
+            "creation, but it cannot "
+            f"fit into any bundles for the placement group, "
+            f"{bundles}. Consider "
+            "creating a placement group with CPU resources."
+        )
+
+
+def configure_placement_group_based_on_context(
+    placement_group_capture_child_tasks: bool,
+    bundle_index: int,
+    resources: Dict,
+    placement_resources: Dict,
+    task_or_actor_repr: str,
+    placement_group: Union[PlacementGroup, str, None] = "default",
+) -> PlacementGroup:
+    """Configure the placement group based on the given context.
+
+    Based on the given context, this API returns the placement group instance
+    for task/actor scheduling.
+
+    Params:
+        placement_group_capture_child_tasks: Whether or not the
+            placement group needs to be captured from the global
+            context.
+        bundle_index: The bundle index for tasks/actor scheduling.
+        resources: The scheduling resources.
+        placement_resources: The scheduling placement resources for
+            actors.
+        task_or_actor_repr: The repr of task or actor
+            function/class descriptor.
+        placement_group: The placement group instance.
+            - "default": Default placement group argument. Currently,
+                the default behavior is to capture the parent task'
+                placement group if placement_group_capture_child_tasks
+                is set.
+            - None: means placement group is explicitly not configured.
+            - Placement group instance: In this case, do nothing.
+
+    Returns:
+        Placement group instance based on the given context.
+
+    Raises:
+        ValueError: If the bundle index is invalid for the placement group
+            or the requested resources shape doesn't fit to any
+            bundles.
+    """
+    # Validate inputs.
+    assert placement_group_capture_child_tasks is not None
+    assert resources is not None
+
+    # Validate and get the PlacementGroup instance.
+    # Placement group could be None, default, or placement group.
+    # Default behavior is "do not capture child tasks".
+    if placement_group != "default":
+        if not placement_group:
+            placement_group = PlacementGroup.empty()
+    elif placement_group == "default":
+        if placement_group_capture_child_tasks:
+            placement_group = get_current_placement_group()
+        else:
+            placement_group = PlacementGroup.empty()
+
+    if not placement_group:
+        placement_group = PlacementGroup.empty()
+    assert isinstance(placement_group, PlacementGroup)
+
+    # Validate the index.
+    check_placement_group_index(placement_group, bundle_index)
+
+    # Validate the shape.
+    if not placement_group.is_empty:
+        _validate_resource_shape(
+            placement_group, resources, placement_resources, task_or_actor_repr
+        )
+    return placement_group

@@ -3,25 +3,30 @@ import logging
 import aiohttp.web
 
 import ray.dashboard.utils as dashboard_utils
+import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.modules.test.test_utils as test_utils
 import ray.dashboard.modules.test.test_consts as test_consts
 from ray.ray_constants import env_bool
 
 logger = logging.getLogger(__name__)
-routes = dashboard_utils.ClassMethodRouteTable
+routes = dashboard_optional_utils.ClassMethodRouteTable
 
 
 @dashboard_utils.dashboard_module(
-    enable=env_bool(test_consts.TEST_MODULE_ENVIRONMENT_KEY, False))
+    enable=env_bool(test_consts.TEST_MODULE_ENVIRONMENT_KEY, False)
+)
 class TestAgent(dashboard_utils.DashboardAgentModule):
     def __init__(self, dashboard_agent):
         super().__init__(dashboard_agent)
 
+    @staticmethod
+    def is_minimal_module():
+        return False
+
     @routes.get("/test/http_get_from_agent")
     async def get_url(self, req) -> aiohttp.web.Response:
         url = req.query.get("url")
-        result = await test_utils.http_get(self._dashboard_agent.http_session,
-                                           url)
+        result = await test_utils.http_get(self._dashboard_agent.http_session, url)
         return aiohttp.web.json_response(result)
 
     @routes.head("/test/route_head")

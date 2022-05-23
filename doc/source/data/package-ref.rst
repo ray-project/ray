@@ -1,10 +1,13 @@
-Dataset API Reference
-=====================
+.. _data_api:
 
-Creating a Dataset
-------------------
+Ray Datasets API
+================
+
+Creating Datasets
+-----------------
+
 .. autofunction:: ray.data.range
-.. autofunction:: ray.data.range_arrow
+.. autofunction:: ray.data.range_table
 .. autofunction:: ray.data.range_tensor
 .. autofunction:: ray.data.read_csv
 .. autofunction:: ray.data.read_json
@@ -16,6 +19,7 @@ Creating a Dataset
 .. autofunction:: ray.data.from_items
 .. autofunction:: ray.data.from_arrow
 .. autofunction:: ray.data.from_arrow_refs
+.. autofunction:: ray.data.from_huggingface
 .. autofunction:: ray.data.from_spark
 .. autofunction:: ray.data.from_dask
 .. autofunction:: ray.data.from_modin
@@ -23,6 +27,7 @@ Creating a Dataset
 .. autofunction:: ray.data.from_pandas
 .. autofunction:: ray.data.from_pandas_refs
 .. autofunction:: ray.data.from_numpy
+.. autofunction:: ray.data.from_numpy_refs
 
 .. _dataset-api:
 
@@ -34,10 +39,64 @@ Dataset API
 
 .. _dataset-pipeline-api:
 
+Block API
+---------
+
+.. autoclass:: ray.data.block.BlockExecStats
+    :members:
+
+.. autoclass:: ray.data.block.BlockMetadata
+    :members:
+
+.. autoclass:: ray.data.block.BlockAccessor
+    :members:
+
+DatasetContext API
+------------------
+
+.. autoclass:: ray.data.context.DatasetContext
+    :members:
+
 DatasetPipeline API
 -------------------
 
 .. autoclass:: ray.data.dataset_pipeline.DatasetPipeline
+    :members:
+
+GroupedDataset API
+------------------
+
+.. autoclass:: ray.data.grouped_dataset.GroupedDataset
+    :members:
+
+Aggregate API
+-------------
+
+.. autoclass:: ray.data.aggregate.AggregateFn
+    :members:
+
+.. autoclass:: ray.data.aggregate.Count
+    :members:
+
+.. autoclass:: ray.data.aggregate.Sum
+    :members:
+
+.. autoclass:: ray.data.aggregate.Max
+    :members:
+
+.. autoclass:: ray.data.aggregate.Mean
+    :members:
+
+.. autoclass:: ray.data.aggregate.Std
+    :members:
+
+.. autoclass:: ray.data.aggregate.AbsMax
+    :members:
+
+RandomAccessDataset API
+-----------------------
+
+.. autoclass:: ray.data.random_access_dataset.RandomAccessDataset
     :members:
 
 Tensor Column Extension API
@@ -62,6 +121,59 @@ Custom Datasource API
     :members:
 
 .. autoclass:: ray.data.ReadTask
+    :members:
+
+Datasource Partitioning API
+---------------------------
+
+.. autoclass:: ray.data.datasource.PartitionStyle
+    :members:
+
+.. autoclass:: ray.data.datasource.PathPartitionScheme
+    :members:
+
+.. autoclass:: ray.data.datasource.PathPartitionEncoder
+    :members:
+
+.. autoclass:: ray.data.datasource.PathPartitionParser
+    :members:
+
+.. autoclass:: ray.data.datasource.PathPartitionFilter
+
+Built-in Datasources
+--------------------
+
+.. autoclass:: ray.data.datasource.BinaryDatasource
+    :members:
+
+.. autoclass:: ray.data.datasource.CSVDatasource
+    :members:
+
+.. autoclass:: ray.data.datasource.FileBasedDatasource
+    :members:
+
+.. autoclass:: ray.data.datasource.JSONDatasource
+    :members:
+
+.. autoclass:: ray.data.datasource.NumpyDatasource
+    :members:
+
+.. autoclass:: ray.data.datasource.ParquetDatasource
+    :members:
+
+.. autoclass:: ray.data.datasource.RangeDatasource
+    :members:
+
+.. autoclass:: ray.data.datasource.SimpleTensorFlowDatasource
+    :members:
+
+.. autoclass:: ray.data.datasource.SimpleTorchDatasource
+    :members:
+
+Table Row API
+---------------------
+
+.. autoclass:: ray.data.row.TableRow
     :members:
 
 Utility

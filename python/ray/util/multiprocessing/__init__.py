@@ -1,5 +1,5 @@
-from multiprocessing import TimeoutError
+from multiprocessing import TimeoutError, JoinableQueue
 
 from .pool import Pool
 
-__all__ = ["Pool", "TimeoutError"]
+__all__ = ["Pool", "TimeoutError", "JoinableQueue"]

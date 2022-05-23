@@ -2,9 +2,13 @@ import os
 import sys
 
 from ray.ray_constants import (  # noqa F401
-    AUTOSCALER_RESOURCE_REQUEST_CHANNEL, DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES,
-    DEFAULT_OBJECT_STORE_MEMORY_PROPORTION, LOGGER_FORMAT,
-    MEMORY_RESOURCE_UNIT_BYTES, RESOURCES_ENVIRONMENT_VARIABLE)
+    AUTOSCALER_RESOURCE_REQUEST_CHANNEL,
+    DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES,
+    DEFAULT_OBJECT_STORE_MEMORY_PROPORTION,
+    LOGGER_FORMAT,
+    MEMORY_RESOURCE_UNIT_BYTES,
+    RESOURCES_ENVIRONMENT_VARIABLE,
+)
 
 
 def env_integer(key, default):
@@ -17,9 +21,6 @@ def env_integer(key, default):
     return default
 
 
-# Whether event logging to driver is enabled. Set to 0 to disable.
-AUTOSCALER_EVENTS = env_integer("RAY_SCHEDULER_EVENTS", 1)
-
 # Whether to avoid launching GPU nodes for CPU only tasks.
 AUTOSCALER_CONSERVE_GPU_NODES = env_integer("AUTOSCALER_CONSERVE_GPU_NODES", 1)
 
@@ -27,8 +28,7 @@ AUTOSCALER_CONSERVE_GPU_NODES = env_integer("AUTOSCALER_CONSERVE_GPU_NODES", 1)
 AUTOSCALER_NODE_START_WAIT_S = env_integer("AUTOSCALER_NODE_START_WAIT_S", 900)
 
 # Interval at which to check if node SSH became available.
-AUTOSCALER_NODE_SSH_INTERVAL_S = env_integer("AUTOSCALER_NODE_SSH_INTERVAL_S",
-                                             5)
+AUTOSCALER_NODE_SSH_INTERVAL_S = env_integer("AUTOSCALER_NODE_SSH_INTERVAL_S", 5)
 
 # Abort autoscaling if more than this number of errors are encountered. This
 # is a safety feature to prevent e.g. runaway node launches.
@@ -41,15 +41,15 @@ AUTOSCALER_MAX_LAUNCH_BATCH = env_integer("AUTOSCALER_MAX_LAUNCH_BATCH", 5)
 
 # Max number of nodes to launch at a time.
 AUTOSCALER_MAX_CONCURRENT_LAUNCHES = env_integer(
-    "AUTOSCALER_MAX_CONCURRENT_LAUNCHES", 10)
+    "AUTOSCALER_MAX_CONCURRENT_LAUNCHES", 10
+)
 
 # Interval at which to perform autoscaling updates.
 AUTOSCALER_UPDATE_INTERVAL_S = env_integer("AUTOSCALER_UPDATE_INTERVAL_S", 5)
 
 # The autoscaler will attempt to restart Ray on nodes it hasn't heard from
 # in more than this interval.
-AUTOSCALER_HEARTBEAT_TIMEOUT_S = env_integer("AUTOSCALER_HEARTBEAT_TIMEOUT_S",
-                                             30)
+AUTOSCALER_HEARTBEAT_TIMEOUT_S = env_integer("AUTOSCALER_HEARTBEAT_TIMEOUT_S", 30)
 # The maximum number of nodes (including failed nodes) that the autoscaler will
 # track for logging purposes.
 AUTOSCALER_MAX_NODES_TRACKED = 1500
@@ -87,10 +87,14 @@ RAY_PROCESSES = [
     ["gcs_server", True],
     ["monitor.py", False],
     ["ray.util.client.server", False],
-    ["redis-server", False],
     ["default_worker.py", False],  # Python worker.
     ["setup_worker.py", False],  # Python environment setup worker.
-    ["ray::", True],  # Python worker. TODO(mehrdadn): Fix for Windows
+    # For mac osx, setproctitle doesn't change the process name returned
+    # by psutil but only cmdline.
+    [
+        "ray::",
+        sys.platform != "darwin",
+    ],  # Python worker. TODO(mehrdadn): Fix for Windows
     ["io.ray.runtime.runner.worker.DefaultWorker", False],  # Java worker.
     ["log_monitor.py", False],
     ["reporter.py", False],
@@ -100,5 +104,8 @@ RAY_PROCESSES = [
 ]
 
 # Max Concurrent SSH Calls to stop Docker
-MAX_PARALLEL_SHUTDOWN_WORKERS = env_integer("MAX_PARALLEL_SHUTDOWN_WORKERS",
-                                            50)
+MAX_PARALLEL_SHUTDOWN_WORKERS = env_integer("MAX_PARALLEL_SHUTDOWN_WORKERS", 50)
+
+DISABLE_NODE_UPDATERS_KEY = "disable_node_updaters"
+DISABLE_LAUNCH_CONFIG_CHECK_KEY = "disable_launch_config_check"
+FOREGROUND_NODE_LAUNCH_KEY = "foreground_node_launch"

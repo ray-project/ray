@@ -36,7 +36,8 @@ uint64_t CreateRequestQueue::AddRequest(const ObjectID &object_id,
   return req_id;
 }
 
-bool CreateRequestQueue::GetRequestResult(uint64_t req_id, PlasmaObject *result,
+bool CreateRequestQueue::GetRequestResult(uint64_t req_id,
+                                          PlasmaObject *result,
                                           PlasmaError *error) {
   auto it = fulfilled_requests_.find(req_id);
   if (it == fulfilled_requests_.end()) {
@@ -59,12 +60,15 @@ bool CreateRequestQueue::GetRequestResult(uint64_t req_id, PlasmaObject *result,
 }
 
 std::pair<PlasmaObject, PlasmaError> CreateRequestQueue::TryRequestImmediately(
-    const ObjectID &object_id, const std::shared_ptr<ClientInterface> &client,
-    const CreateObjectCallback &create_callback, size_t object_size) {
+    const ObjectID &object_id,
+    const std::shared_ptr<ClientInterface> &client,
+    const CreateObjectCallback &create_callback,
+    size_t object_size) {
   PlasmaObject result = {};
 
   // Immediately fulfill it using the fallback allocator.
-  PlasmaError error = create_callback(/*fallback_allocator=*/true, &result,
+  PlasmaError error = create_callback(/*fallback_allocator=*/true,
+                                      &result,
                                       /*spilling_required=*/nullptr);
   return {result, error};
 }
@@ -119,7 +123,8 @@ Status CreateRequestQueue::ProcessRequests() {
         return Status::ObjectStoreFull("Waiting for grace period.");
       } else {
         // Trigger the fallback allocator.
-        status = ProcessRequest(/*fallback_allocator=*/true, *request_it,
+        status = ProcessRequest(/*fallback_allocator=*/true,
+                                *request_it,
                                 /*spilling_required=*/nullptr);
         if (!status.ok()) {
           std::string dump = "";

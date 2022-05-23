@@ -342,8 +342,8 @@ std::string CreateCommandLine(const std::vector<std::string> &args,
   return result;
 }
 
-std::shared_ptr<std::unordered_map<std::string, std::string>> ParseURL(std::string url) {
-  auto result = std::make_shared<std::unordered_map<std::string, std::string>>();
+std::shared_ptr<absl::flat_hash_map<std::string, std::string>> ParseURL(std::string url) {
+  auto result = std::make_shared<absl::flat_hash_map<std::string, std::string>>();
   std::string delimiter = "?";
   size_t pos = 0;
   pos = url.find(delimiter);
@@ -376,3 +376,25 @@ std::shared_ptr<std::unordered_map<std::string, std::string>> ParseURL(std::stri
   result->emplace(key_value_pair.first, key_value_pair.second);
   return result;
 }
+
+namespace ray {
+
+bool IsRayletFailed(const std::string &raylet_pid) {
+  auto should_shutdown = false;
+  if (!raylet_pid.empty()) {
+    auto pid = static_cast<pid_t>(std::stoi(raylet_pid));
+    if (!IsProcessAlive(pid)) {
+      should_shutdown = true;
+    }
+  } else if (!IsParentProcessAlive()) {
+    should_shutdown = true;
+  }
+  return should_shutdown;
+}
+
+void QuickExit() {
+  ray::RayLog::ShutDownRayLog();
+  _Exit(1);
+}
+
+}  // namespace ray

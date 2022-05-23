@@ -15,25 +15,30 @@ import ray
 from ray import tune
 from ray.tune import Trainable
 from ray.tune.result import TRAINING_ITERATION
-from ray.tune.schedulers import (FIFOScheduler, HyperBandScheduler,
-                                 AsyncHyperBandScheduler,
-                                 PopulationBasedTraining, MedianStoppingRule,
-                                 TrialScheduler, HyperBandForBOHB)
+from ray.tune.schedulers import (
+    FIFOScheduler,
+    HyperBandScheduler,
+    AsyncHyperBandScheduler,
+    PopulationBasedTraining,
+    MedianStoppingRule,
+    TrialScheduler,
+    HyperBandForBOHB,
+)
 
 from ray.tune.schedulers.pbt import explore, PopulationBasedTrainingReplay
 from ray.tune.suggest._mock import _MockSearcher
 from ray.tune.suggest.suggestion import ConcurrencyLimiter
-from ray.tune.trial import Trial, Checkpoint
+from ray.tune.trial import Trial, _TuneCheckpoint
 from ray.tune.trial_executor import TrialExecutor
 from ray.tune.resources import Resources
 
 from ray.rllib import _register_all
+
 _register_all()
 
 
 def result(t, rew):
-    return dict(
-        time_total_s=t, episode_reward_mean=rew, training_iteration=int(t))
+    return dict(time_total_s=t, episode_reward_mean=rew, training_iteration=int(t))
 
 
 def mock_trial_runner(trials=None):
@@ -58,11 +63,13 @@ class EarlyStoppingSuite(unittest.TestCase):
             r1 = result(i, i * 100)
             print("basicSetup:", i)
             self.assertEqual(
-                rule.on_trial_result(runner, t1, r1), TrialScheduler.CONTINUE)
+                rule.on_trial_result(runner, t1, r1), TrialScheduler.CONTINUE
+            )
         for i in range(5):
             r2 = result(i, 450)
             self.assertEqual(
-                rule.on_trial_result(runner, t2, r2), TrialScheduler.CONTINUE)
+                rule.on_trial_result(runner, t2, r2), TrialScheduler.CONTINUE
+            )
         return t1, t2
 
     def testMedianStoppingConstantPerf(self):
@@ -70,94 +77,99 @@ class EarlyStoppingSuite(unittest.TestCase):
             metric="episode_reward_mean",
             mode="max",
             grace_period=0,
-            min_samples_required=1)
+            min_samples_required=1,
+        )
         t1, t2 = self.basicSetup(rule)
         runner = mock_trial_runner()
         rule.on_trial_complete(runner, t1, result(10, 1000))
         self.assertEqual(
-            rule.on_trial_result(runner, t2, result(5, 450)),
-            TrialScheduler.CONTINUE)
+            rule.on_trial_result(runner, t2, result(5, 450)), TrialScheduler.CONTINUE
+        )
         self.assertEqual(
-            rule.on_trial_result(runner, t2, result(6, 0)),
-            TrialScheduler.CONTINUE)
+            rule.on_trial_result(runner, t2, result(6, 0)), TrialScheduler.CONTINUE
+        )
         self.assertEqual(
-            rule.on_trial_result(runner, t2, result(10, 450)),
-            TrialScheduler.STOP)
+            rule.on_trial_result(runner, t2, result(10, 450)), TrialScheduler.STOP
+        )
 
     def testMedianStoppingOnCompleteOnly(self):
         rule = MedianStoppingRule(
             metric="episode_reward_mean",
             mode="max",
             grace_period=0,
-            min_samples_required=1)
+            min_samples_required=1,
+        )
         t1, t2 = self.basicSetup(rule)
         runner = mock_trial_runner()
         self.assertEqual(
-            rule.on_trial_result(runner, t2, result(100, 0)),
-            TrialScheduler.CONTINUE)
+            rule.on_trial_result(runner, t2, result(100, 0)), TrialScheduler.CONTINUE
+        )
         rule.on_trial_complete(runner, t1, result(101, 1000))
         self.assertEqual(
-            rule.on_trial_result(runner, t2, result(101, 0)),
-            TrialScheduler.STOP)
+            rule.on_trial_result(runner, t2, result(101, 0)), TrialScheduler.STOP
+        )
 
     def testMedianStoppingGracePeriod(self):
         rule = MedianStoppingRule(
             metric="episode_reward_mean",
             mode="max",
             grace_period=2.5,
-            min_samples_required=1)
+            min_samples_required=1,
+        )
         t1, t2 = self.basicSetup(rule)
         runner = mock_trial_runner()
         rule.on_trial_complete(runner, t1, result(10, 1000))
         rule.on_trial_complete(runner, t2, result(10, 1000))
         t3 = Trial("PPO")
         self.assertEqual(
-            rule.on_trial_result(runner, t3, result(1, 10)),
-            TrialScheduler.CONTINUE)
+            rule.on_trial_result(runner, t3, result(1, 10)), TrialScheduler.CONTINUE
+        )
         self.assertEqual(
-            rule.on_trial_result(runner, t3, result(2, 10)),
-            TrialScheduler.CONTINUE)
+            rule.on_trial_result(runner, t3, result(2, 10)), TrialScheduler.CONTINUE
+        )
         self.assertEqual(
-            rule.on_trial_result(runner, t3, result(3, 10)),
-            TrialScheduler.STOP)
+            rule.on_trial_result(runner, t3, result(3, 10)), TrialScheduler.STOP
+        )
 
     def testMedianStoppingMinSamples(self):
         rule = MedianStoppingRule(
             metric="episode_reward_mean",
             mode="max",
             grace_period=0,
-            min_samples_required=2)
+            min_samples_required=2,
+        )
         t1, t2 = self.basicSetup(rule)
         runner = mock_trial_runner()
         rule.on_trial_complete(runner, t1, result(10, 1000))
         t3 = Trial("PPO")
         # Insufficient samples to evaluate t3
         self.assertEqual(
-            rule.on_trial_result(runner, t3, result(5, 10)),
-            TrialScheduler.CONTINUE)
+            rule.on_trial_result(runner, t3, result(5, 10)), TrialScheduler.CONTINUE
+        )
         rule.on_trial_complete(runner, t2, result(5, 1000))
         # Sufficient samples to evaluate t3
         self.assertEqual(
-            rule.on_trial_result(runner, t3, result(5, 10)),
-            TrialScheduler.STOP)
+            rule.on_trial_result(runner, t3, result(5, 10)), TrialScheduler.STOP
+        )
 
     def testMedianStoppingUsesMedian(self):
         rule = MedianStoppingRule(
             metric="episode_reward_mean",
             mode="max",
             grace_period=0,
-            min_samples_required=1)
+            min_samples_required=1,
+        )
         t1, t2 = self.basicSetup(rule)
         runner = mock_trial_runner()
         rule.on_trial_complete(runner, t1, result(10, 1000))
         rule.on_trial_complete(runner, t2, result(10, 1000))
         t3 = Trial("PPO")
         self.assertEqual(
-            rule.on_trial_result(runner, t3, result(1, 260)),
-            TrialScheduler.CONTINUE)
+            rule.on_trial_result(runner, t3, result(1, 260)), TrialScheduler.CONTINUE
+        )
         self.assertEqual(
-            rule.on_trial_result(runner, t3, result(2, 260)),
-            TrialScheduler.STOP)
+            rule.on_trial_result(runner, t3, result(2, 260)), TrialScheduler.STOP
+        )
 
     def testMedianStoppingSoftStop(self):
         rule = MedianStoppingRule(
@@ -165,18 +177,19 @@ class EarlyStoppingSuite(unittest.TestCase):
             mode="max",
             grace_period=0,
             min_samples_required=1,
-            hard_stop=False)
+            hard_stop=False,
+        )
         t1, t2 = self.basicSetup(rule)
         runner = mock_trial_runner()
         rule.on_trial_complete(runner, t1, result(10, 1000))
         rule.on_trial_complete(runner, t2, result(10, 1000))
         t3 = Trial("PPO")
         self.assertEqual(
-            rule.on_trial_result(runner, t3, result(1, 260)),
-            TrialScheduler.CONTINUE)
+            rule.on_trial_result(runner, t3, result(1, 260)), TrialScheduler.CONTINUE
+        )
         self.assertEqual(
-            rule.on_trial_result(runner, t3, result(2, 260)),
-            TrialScheduler.PAUSE)
+            rule.on_trial_result(runner, t3, result(2, 260)), TrialScheduler.PAUSE
+        )
 
     def _test_metrics(self, result_func, metric, mode):
         rule = MedianStoppingRule(
@@ -184,25 +197,29 @@ class EarlyStoppingSuite(unittest.TestCase):
             min_samples_required=1,
             time_attr="training_iteration",
             metric=metric,
-            mode=mode)
+            mode=mode,
+        )
         t1 = Trial("PPO")  # mean is 450, max 900, t_max=10
         t2 = Trial("PPO")  # mean is 450, max 450, t_max=5
         runner = mock_trial_runner()
         for i in range(10):
             self.assertEqual(
                 rule.on_trial_result(runner, t1, result_func(i, i * 100)),
-                TrialScheduler.CONTINUE)
+                TrialScheduler.CONTINUE,
+            )
         for i in range(5):
             self.assertEqual(
                 rule.on_trial_result(runner, t2, result_func(i, 450)),
-                TrialScheduler.CONTINUE)
+                TrialScheduler.CONTINUE,
+            )
         rule.on_trial_complete(runner, t1, result_func(10, 1000))
         self.assertEqual(
             rule.on_trial_result(runner, t2, result_func(5, 450)),
-            TrialScheduler.CONTINUE)
+            TrialScheduler.CONTINUE,
+        )
         self.assertEqual(
-            rule.on_trial_result(runner, t2, result_func(6, 0)),
-            TrialScheduler.CONTINUE)
+            rule.on_trial_result(runner, t2, result_func(6, 0)), TrialScheduler.CONTINUE
+        )
 
     def testAlternateMetrics(self):
         def result2(t, rew):
@@ -225,18 +242,14 @@ class _MockTrialExecutor(TrialExecutor):
         trial.status = Trial.RUNNING
         return True
 
-    def stop_trial(self,
-                   trial,
-                   error=False,
-                   error_msg=None,
-                   destroy_pg_if_cannot_replace=True):
+    def stop_trial(self, trial, error=False, error_msg=None):
         trial.status = Trial.ERROR if error else Trial.TERMINATED
 
     def restore(self, trial, checkpoint=None, block=False):
         pass
 
-    def save(self, trial, type=Checkpoint.PERSISTENT, result=None):
-        return Checkpoint(Checkpoint.PERSISTENT, trial.trainable_name, result)
+    def save(self, trial, type=_TuneCheckpoint.PERSISTENT, result=None):
+        return _TuneCheckpoint(_TuneCheckpoint.PERSISTENT, trial.trainable_name, result)
 
     def reset_trial(self, trial, new_config, new_experiment_tag):
         return False
@@ -253,20 +266,14 @@ class _MockTrialExecutor(TrialExecutor):
     def get_next_available_trial(self):
         return None
 
-    def get_next_failed_trial(self):
-        return None
-
     def get_running_trials(self):
         return []
 
-    def has_resources(self):
-        return False
-
-    def resource_string(self):
-        return "This is a mock resource_string."
+    def has_resources_for_trial(self, trial: Trial):
+        return True
 
 
-class _MockTrialRunner():
+class _MockTrialRunner:
     def __init__(self, scheduler):
         self._scheduler_alg = scheduler
         self.search_alg = None
@@ -296,14 +303,11 @@ class _MockTrialRunner():
     def get_trials(self):
         return self.trials
 
-    def has_resources_for_trial(self, trial):
-        return True
-
-    def has_resources(self, resources):
-        return True
+    def get_live_trials(self):
+        return {t for t in self.trials if t.status != Trial.TERMINATED}
 
     def _pause_trial(self, trial):
-        self.trial_executor.save(trial, Checkpoint.MEMORY, None)
+        self.trial_executor.save(trial, _TuneCheckpoint.MEMORY, None)
         trial.status = Trial.PAUSED
 
     def _launch_trial(self, trial):
@@ -328,7 +332,8 @@ class HyperbandSuite(unittest.TestCase):
         (34, 3) -> (12, 9) -> (4, 27) -> (2, 42);
         (81, 1) -> (27, 3) -> (9, 9) -> (3, 27) -> (1, 41);"""
         sched = HyperBandScheduler(
-            metric="episode_reward_mean", mode="max", max_t=max_t)
+            metric="episode_reward_mean", mode="max", max_t=max_t
+        )
         for i in range(num_trials):
             t = Trial("__fake")
             sched.on_trial_add(None, t)
@@ -339,10 +344,7 @@ class HyperbandSuite(unittest.TestCase):
         """Default statistics for HyperBand."""
         sched = HyperBandScheduler()
         res = {
-            str(s): {
-                "n": sched._get_n0(s),
-                "r": sched._get_r0(s)
-            }
+            str(s): {"n": sched._get_n0(s), "r": sched._get_r0(s)}
             for s in range(sched._s_max_1)
         }
         res["max_trials"] = sum(v["n"] for v in res.values())
@@ -401,7 +403,8 @@ class HyperbandSuite(unittest.TestCase):
             metric="episode_reward_mean",
             mode="max",
             max_t=1000,
-            reduction_factor=reduction_factor)
+            reduction_factor=reduction_factor,
+        )
         i = 0
         while not sched._cur_band_filled():
             t = Trial("__fake")
@@ -414,8 +417,7 @@ class HyperbandSuite(unittest.TestCase):
         self.assertEqual(sched._hyperbands[0][-1]._r, 1)
 
     def testConfigSameEtaSmall(self):
-        sched = HyperBandScheduler(
-            metric="episode_reward_mean", mode="max", max_t=1)
+        sched = HyperBandScheduler(metric="episode_reward_mean", mode="max", max_t=1)
         i = 0
         while len(sched._hyperbands) < 2:
             t = Trial("__fake")
@@ -440,8 +442,7 @@ class HyperbandSuite(unittest.TestCase):
 
             # Provides results from 0 to 8 in order, keeping last one running
             for i, trl in enumerate(trials):
-                action = sched.on_trial_result(mock_runner, trl,
-                                               result(cur_units, i))
+                action = sched.on_trial_result(mock_runner, trl, result(cur_units, i))
                 if i < current_length - 1:
                     self.assertEqual(action, TrialScheduler.PAUSE)
                 mock_runner.process_action(trl, action)
@@ -463,8 +464,7 @@ class HyperbandSuite(unittest.TestCase):
         # # Provides result in reverse order, killing the last one
         cur_units = stats[str(1)]["r"]
         for i, trl in reversed(list(enumerate(big_bracket.current_trials()))):
-            action = sched.on_trial_result(mock_runner, trl,
-                                           result(cur_units, i))
+            action = sched.on_trial_result(mock_runner, trl, result(cur_units, i))
             mock_runner.process_action(trl, action)
 
         self.assertEqual(action, TrialScheduler.STOP)
@@ -480,8 +480,7 @@ class HyperbandSuite(unittest.TestCase):
         # # Provides result in reverse order, killing the last one
         cur_units = stats[str(0)]["r"]
         for i, trl in enumerate(big_bracket.current_trials()):
-            action = sched.on_trial_result(mock_runner, trl,
-                                           result(cur_units, i))
+            action = sched.on_trial_result(mock_runner, trl, result(cur_units, i))
             mock_runner.process_action(trl, action)
 
         self.assertEqual(action, TrialScheduler.STOP)
@@ -499,12 +498,12 @@ class HyperbandSuite(unittest.TestCase):
         sched.on_trial_error(mock_runner, t3)
         self.assertEqual(
             TrialScheduler.PAUSE,
-            sched.on_trial_result(mock_runner, t1,
-                                  result(stats[str(1)]["r"], 10)))
+            sched.on_trial_result(mock_runner, t1, result(stats[str(1)]["r"], 10)),
+        )
         self.assertEqual(
             TrialScheduler.CONTINUE,
-            sched.on_trial_result(mock_runner, t2,
-                                  result(stats[str(1)]["r"], 10)))
+            sched.on_trial_result(mock_runner, t2, result(stats[str(1)]["r"], 10)),
+        )
 
     def testTrialErrored2(self):
         """Check successive halving happened even when last trial failed"""
@@ -514,14 +513,14 @@ class HyperbandSuite(unittest.TestCase):
         trials = sched._state["bracket"].current_trials()
         for t in trials[:-1]:
             mock_runner._launch_trial(t)
-            sched.on_trial_result(mock_runner, t, result(
-                stats[str(1)]["r"], 10))
+            sched.on_trial_result(mock_runner, t, result(stats[str(1)]["r"], 10))
 
         mock_runner._launch_trial(trials[-1])
         sched.on_trial_error(mock_runner, trials[-1])
         self.assertEqual(
             len(sched._state["bracket"].current_trials()),
-            self.downscale(stats[str(1)]["n"], sched))
+            self.downscale(stats[str(1)]["n"], sched),
+        )
 
     def testTrialEndedEarly(self):
         """Check successive halving happened even when one trial failed"""
@@ -536,12 +535,12 @@ class HyperbandSuite(unittest.TestCase):
         sched.on_trial_complete(mock_runner, t3, result(1, 12))
         self.assertEqual(
             TrialScheduler.PAUSE,
-            sched.on_trial_result(mock_runner, t1,
-                                  result(stats[str(1)]["r"], 10)))
+            sched.on_trial_result(mock_runner, t1, result(stats[str(1)]["r"], 10)),
+        )
         self.assertEqual(
             TrialScheduler.CONTINUE,
-            sched.on_trial_result(mock_runner, t2,
-                                  result(stats[str(1)]["r"], 10)))
+            sched.on_trial_result(mock_runner, t2, result(stats[str(1)]["r"], 10)),
+        )
 
     def testTrialEndedEarly2(self):
         """Check successive halving happened even when last trial failed"""
@@ -551,14 +550,14 @@ class HyperbandSuite(unittest.TestCase):
         trials = sched._state["bracket"].current_trials()
         for t in trials[:-1]:
             mock_runner._launch_trial(t)
-            sched.on_trial_result(mock_runner, t, result(
-                stats[str(1)]["r"], 10))
+            sched.on_trial_result(mock_runner, t, result(stats[str(1)]["r"], 10))
 
         mock_runner._launch_trial(trials[-1])
         sched.on_trial_complete(mock_runner, trials[-1], result(100, 12))
         self.assertEqual(
             len(sched._state["bracket"].current_trials()),
-            self.downscale(stats[str(1)]["n"], sched))
+            self.downscale(stats[str(1)]["n"], sched),
+        )
 
     def testAddAfterHalving(self):
         stats = self.default_statistics()
@@ -571,8 +570,7 @@ class HyperbandSuite(unittest.TestCase):
             mock_runner._launch_trial(t)
 
         for i, t in enumerate(bracket_trials):
-            action = sched.on_trial_result(mock_runner, t, result(
-                init_units, i))
+            action = sched.on_trial_result(mock_runner, t, result(init_units, i))
         self.assertEqual(action, TrialScheduler.CONTINUE)
         t = Trial("__fake")
         sched.on_trial_add(None, t)
@@ -582,15 +580,16 @@ class HyperbandSuite(unittest.TestCase):
         # Make sure that newly added trial gets fair computation (not just 1)
         self.assertEqual(
             TrialScheduler.CONTINUE,
-            sched.on_trial_result(mock_runner, t, result(init_units, 12)))
+            sched.on_trial_result(mock_runner, t, result(init_units, 12)),
+        )
         new_units = init_units + int(init_units * sched._eta)
         self.assertEqual(
             TrialScheduler.PAUSE,
-            sched.on_trial_result(mock_runner, t, result(new_units, 12)))
+            sched.on_trial_result(mock_runner, t, result(new_units, 12)),
+        )
 
     def _test_metrics(self, result_func, metric, mode):
-        sched = HyperBandScheduler(
-            time_attr="time_total_s", metric=metric, mode=mode)
+        sched = HyperBandScheduler(time_attr="time_total_s", metric=metric, mode=mode)
         stats = self.default_statistics()
 
         for i in range(stats["max_trials"]):
@@ -676,8 +675,7 @@ class HyperbandSuite(unittest.TestCase):
         sched, runner = self.schedulerSetup(100, 20)
         # "sched" should contains None brackets
         non_brackets = [
-            b for hyperband in sched._hyperbands for b in hyperband
-            if b is None
+            b for hyperband in sched._hyperbands for b in hyperband if b is None
         ]
         self.assertTrue(non_brackets)
         # Make sure "choose_trial_to_run" still works
@@ -695,10 +693,8 @@ class BOHBSuite(unittest.TestCase):
 
     def testLargestBracketFirst(self):
         sched = HyperBandForBOHB(
-            metric="episode_reward_mean",
-            mode="max",
-            max_t=3,
-            reduction_factor=3)
+            metric="episode_reward_mean", mode="max", max_t=3, reduction_factor=3
+        )
         runner = _MockTrialRunner(sched)
         for i in range(3):
             t = Trial("__fake")
@@ -714,10 +710,8 @@ class BOHBSuite(unittest.TestCase):
             return {"episode_reward_mean": score, TRAINING_ITERATION: ts}
 
         sched = HyperBandForBOHB(
-            metric="episode_reward_mean",
-            mode="max",
-            max_t=3,
-            reduction_factor=3)
+            metric="episode_reward_mean", mode="max", max_t=3, reduction_factor=3
+        )
         runner = _MockTrialRunner(sched)
         runner._search_alg = MagicMock()
         runner._search_alg.searcher = MagicMock()
@@ -734,20 +728,16 @@ class BOHBSuite(unittest.TestCase):
         decision = sched.on_trial_result(runner, trials[-1], spy_result)
         self.assertEqual(decision, TrialScheduler.STOP)
         sched.choose_trial_to_run(runner)
-        self.assertEqual(runner._search_alg.searcher.on_pause.call_count, 2)
-        self.assertEqual(runner._search_alg.searcher.on_unpause.call_count, 1)
         self.assertTrue("hyperband_info" in spy_result)
-        self.assertEquals(spy_result["hyperband_info"]["budget"], 1)
+        self.assertEqual(spy_result["hyperband_info"]["budget"], 1)
 
     def testCheckTrialInfoUpdateMin(self):
         def result(score, ts):
             return {"episode_reward_mean": score, TRAINING_ITERATION: ts}
 
         sched = HyperBandForBOHB(
-            metric="episode_reward_mean",
-            mode="min",
-            max_t=3,
-            reduction_factor=3)
+            metric="episode_reward_mean", mode="min", max_t=3, reduction_factor=3
+        )
         runner = _MockTrialRunner(sched)
         runner._search_alg = MagicMock()
         runner._search_alg.searcher = MagicMock()
@@ -764,19 +754,16 @@ class BOHBSuite(unittest.TestCase):
         decision = sched.on_trial_result(runner, trials[-1], spy_result)
         self.assertEqual(decision, TrialScheduler.CONTINUE)
         sched.choose_trial_to_run(runner)
-        self.assertEqual(runner._search_alg.searcher.on_pause.call_count, 2)
         self.assertTrue("hyperband_info" in spy_result)
-        self.assertEquals(spy_result["hyperband_info"]["budget"], 1)
+        self.assertEqual(spy_result["hyperband_info"]["budget"], 1)
 
     def testPauseResumeChooseTrial(self):
         def result(score, ts):
             return {"episode_reward_mean": score, TRAINING_ITERATION: ts}
 
         sched = HyperBandForBOHB(
-            metric="episode_reward_mean",
-            mode="min",
-            max_t=10,
-            reduction_factor=3)
+            metric="episode_reward_mean", mode="min", max_t=10, reduction_factor=3
+        )
         runner = _MockTrialRunner(sched)
         runner._search_alg = MagicMock()
         runner._search_alg.searcher = MagicMock()
@@ -793,8 +780,9 @@ class BOHBSuite(unittest.TestCase):
 
         run_trial = sched.choose_trial_to_run(runner)
         self.assertEqual(run_trial, trials[1])
-        self.assertSequenceEqual([t.status for t in trials],
-                                 [Trial.PAUSED, Trial.PENDING, Trial.PAUSED])
+        self.assertSequenceEqual(
+            [t.status for t in trials], [Trial.PAUSED, Trial.PENDING, Trial.PAUSED]
+        )
 
     def testNonstopBOHB(self):
         from ray.tune.suggest.bohb import TuneBOHB
@@ -810,13 +798,11 @@ class BOHBSuite(unittest.TestCase):
                 time.sleep(0.1)
                 tune.report(episode_reward_mean=i)
                 with tune.checkpoint_dir(i) as checkpoint_dir:
-                    with open(os.path.join(checkpoint_dir, "checkpoint"),
-                              "w") as f:
+                    with open(os.path.join(checkpoint_dir, "checkpoint"), "w") as f:
                         f.write(str(i))
 
         config = {"test_variable": tune.uniform(0, 20)}
-        sched = HyperBandForBOHB(
-            max_t=10, reduction_factor=3, stop_last_trials=False)
+        sched = HyperBandForBOHB(max_t=10, reduction_factor=3, stop_last_trials=False)
         alg = ConcurrencyLimiter(TuneBOHB(), 4)
         analysis = tune.run(
             train,
@@ -828,9 +814,11 @@ class BOHBSuite(unittest.TestCase):
             metric="episode_reward_mean",
             mode="min",
             verbose=1,
-            fail_fast="raise")
+            fail_fast="raise",
+        )
         counter = Counter(
-            t.last_result.get("training_iteration") for t in analysis.trials)
+            t.last_result.get("training_iteration") for t in analysis.trials
+        )
         assert 32 in counter
         assert counter[32] > 1
 
@@ -854,7 +842,7 @@ class _MockTrial(Trial):
 
     @property
     def checkpoint(self):
-        return Checkpoint(Checkpoint.MEMORY, self.trainable_name, None)
+        return _TuneCheckpoint(_TuneCheckpoint.MEMORY, self.trainable_name, None)
 
 
 class PopulationBasedTestingSuite(unittest.TestCase):
@@ -865,21 +853,39 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         ray.shutdown()
         _register_all()  # re-register the evicted objects
 
-    def basicSetup(self,
-                   num_trials=5,
-                   resample_prob=0.0,
-                   explore=None,
-                   perturbation_interval=10,
-                   log_config=False,
-                   require_attrs=True,
-                   hyperparams=None,
-                   hyperparam_mutations=None,
-                   step_once=True,
-                   synch=False):
+    # Helper function to call pbt.on_trial_result and assert decision,
+    # or trial status upon existing.
+    # Need to have the `trial` in `RUNNING` status first.
+    def on_trial_result(self, pbt, runner, trial, result, expected_decision=None):
+        trial.status = Trial.RUNNING
+        decision = pbt.on_trial_result(runner, trial, result)
+        if expected_decision is None:
+            pass
+        elif expected_decision == TrialScheduler.PAUSE:
+            self.assertTrue(
+                trial.status == Trial.PAUSED or decision == expected_decision
+            )
+        elif expected_decision == TrialScheduler.CONTINUE:
+            self.assertEqual(decision, expected_decision)
+        return decision
+
+    def basicSetup(
+        self,
+        num_trials=5,
+        resample_prob=0.0,
+        explore=None,
+        perturbation_interval=10,
+        log_config=False,
+        require_attrs=True,
+        hyperparams=None,
+        hyperparam_mutations=None,
+        step_once=True,
+        synch=False,
+    ):
         hyperparam_mutations = hyperparam_mutations or {
             "float_factor": lambda: 100.0,
             "int_factor": lambda: 10,
-            "id_factor": [100]
+            "id_factor": [100],
         }
         pbt = PopulationBasedTraining(
             time_attr="training_iteration",
@@ -900,7 +906,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                 "float_factor": 2.0,
                 "const_factor": 3,
                 "int_factor": 10,
-                "id_factor": i
+                "id_factor": i,
             }
             trial = _MockTrial(i, trial_hyperparams)
             runner.add_trial(trial)
@@ -909,13 +915,21 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             trial = runner.trials[i]
             if step_once:
                 if synch:
-                    self.assertEqual(
-                        pbt.on_trial_result(runner, trial, result(10, 50 * i)),
-                        TrialScheduler.PAUSE)
+                    self.on_trial_result(
+                        pbt,
+                        runner,
+                        trial,
+                        result(10, 50 * i),
+                        expected_decision=TrialScheduler.PAUSE,
+                    )
                 else:
-                    self.assertEqual(
-                        pbt.on_trial_result(runner, trial, result(10, 50 * i)),
-                        TrialScheduler.CONTINUE)
+                    self.on_trial_result(
+                        pbt,
+                        runner,
+                        trial,
+                        result(10, 50 * i),
+                        expected_decision=TrialScheduler.CONTINUE,
+                    )
         pbt.reset_stats()
         return pbt, runner
 
@@ -927,10 +941,8 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             tune.run(
-                mock_train,
-                config={"x": 1},
-                scheduler=pbt,
-                search_alg=_MockSearcher())
+                mock_train, config={"x": 1}, scheduler=pbt, search_alg=_MockSearcher()
+            )
 
     def testMetricError(self):
         pbt, runner = self.basicSetup()
@@ -938,18 +950,18 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         # Should error if training_iteration not in result dict.
         with self.assertRaises(RuntimeError):
-            pbt.on_trial_result(
-                runner, trials[0], result={"episode_reward_mean": 4})
+            self.on_trial_result(
+                pbt, runner, trials[0], result={"episode_reward_mean": 4}
+            )
 
         # Should error if episode_reward_mean not in result dict.
         with self.assertRaises(RuntimeError):
-            pbt.on_trial_result(
+            self.on_trial_result(
+                pbt,
                 runner,
                 trials[0],
-                result={
-                    "random_metric": 10,
-                    "training_iteration": 20
-                })
+                result={"random_metric": 10, "training_iteration": 20},
+            )
 
     def testMetricLog(self):
         pbt, runner = self.basicSetup(require_attrs=False)
@@ -957,18 +969,18 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         # Should not error if training_iteration not in result dict
         with self.assertLogs("ray.tune.schedulers.pbt", level="WARN"):
-            pbt.on_trial_result(
-                runner, trials[0], result={"episode_reward_mean": 4})
+            self.on_trial_result(
+                pbt, runner, trials[0], result={"episode_reward_mean": 4}
+            )
 
         # Should not error if episode_reward_mean not in result dict.
         with self.assertLogs("ray.tune.schedulers.pbt", level="WARN"):
-            pbt.on_trial_result(
+            self.on_trial_result(
+                pbt,
                 runner,
                 trials[0],
-                result={
-                    "random_metric": 10,
-                    "training_iteration": 20
-                })
+                result={"random_metric": 10, "training_iteration": 20},
+            )
 
     def testCheckpointsMostPromisingTrials(self):
         pbt, runner = self.basicSetup()
@@ -976,28 +988,28 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         # no checkpoint: haven't hit next perturbation interval yet
         self.assertEqual(pbt.last_scores(trials), [0, 50, 100, 150, 200])
-        self.assertEqual(
-            pbt.on_trial_result(runner, trials[0], result(15, 200)),
-            TrialScheduler.CONTINUE)
+        self.on_trial_result(
+            pbt, runner, trials[0], result(15, 200), TrialScheduler.CONTINUE
+        )
         self.assertEqual(pbt.last_scores(trials), [0, 50, 100, 150, 200])
         self.assertEqual(pbt._num_checkpoints, 0)
 
         # checkpoint: both past interval and upper quantile
-        self.assertEqual(
-            pbt.on_trial_result(runner, trials[0], result(20, 200)),
-            TrialScheduler.CONTINUE)
+        self.on_trial_result(
+            pbt, runner, trials[0], result(20, 200), TrialScheduler.CONTINUE
+        )
         self.assertEqual(pbt.last_scores(trials), [200, 50, 100, 150, 200])
         self.assertEqual(pbt._num_checkpoints, 1)
-        self.assertEqual(
-            pbt.on_trial_result(runner, trials[1], result(30, 201)),
-            TrialScheduler.CONTINUE)
+        self.on_trial_result(
+            pbt, runner, trials[1], result(30, 201), TrialScheduler.CONTINUE
+        )
         self.assertEqual(pbt.last_scores(trials), [200, 201, 100, 150, 200])
         self.assertEqual(pbt._num_checkpoints, 2)
 
         # not upper quantile any more
-        self.assertEqual(
-            pbt.on_trial_result(runner, trials[4], result(30, 199)),
-            TrialScheduler.CONTINUE)
+        self.on_trial_result(
+            pbt, runner, trials[4], result(30, 199), TrialScheduler.CONTINUE
+        )
         self.assertEqual(pbt._num_checkpoints, 2)
         self.assertEqual(pbt._num_perturbations, 0)
 
@@ -1007,24 +1019,24 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         # no checkpoint: haven't hit next perturbation interval yet
         self.assertEqual(pbt.last_scores(trials), [0, 50, 100, 150, 200])
-        self.assertEqual(
-            pbt.on_trial_result(runner, trials[0], result(15, 200)),
-            TrialScheduler.CONTINUE)
+        self.on_trial_result(
+            pbt, runner, trials[0], result(15, 200), TrialScheduler.CONTINUE
+        )
         self.assertEqual(pbt.last_scores(trials), [0, 50, 100, 150, 200])
         self.assertEqual(pbt._num_checkpoints, 0)
 
         # trials should be paused until all trials are synced.
         for i in range(len(trials) - 1):
-            self.assertEqual(
-                pbt.on_trial_result(runner, trials[i], result(20, 200 + i)),
-                TrialScheduler.PAUSE)
+            self.on_trial_result(
+                pbt, runner, trials[i], result(20, 200 + i), TrialScheduler.PAUSE
+            )
 
         self.assertEqual(pbt.last_scores(trials), [200, 201, 202, 203, 200])
         self.assertEqual(pbt._num_checkpoints, 0)
 
-        self.assertEqual(
-            pbt.on_trial_result(runner, trials[-1], result(20, 204)),
-            TrialScheduler.PAUSE)
+        self.on_trial_result(
+            pbt, runner, trials[-1], result(20, 204), TrialScheduler.PAUSE
+        )
         self.assertEqual(pbt._num_checkpoints, 2)
 
     def testPerturbsLowPerformingTrials(self):
@@ -1032,26 +1044,26 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         trials = runner.get_trials()
 
         # no perturbation: haven't hit next perturbation interval
-        self.assertEqual(
-            pbt.on_trial_result(runner, trials[0], result(15, -100)),
-            TrialScheduler.CONTINUE)
+        self.on_trial_result(
+            pbt, runner, trials[0], result(15, -100), TrialScheduler.CONTINUE
+        )
         self.assertEqual(pbt.last_scores(trials), [0, 50, 100, 150, 200])
         self.assertTrue("@perturbed" not in trials[0].experiment_tag)
         self.assertEqual(pbt._num_perturbations, 0)
 
         # perturb since it's lower quantile
-        self.assertEqual(
-            pbt.on_trial_result(runner, trials[0], result(20, -100)),
-            TrialScheduler.CONTINUE)
+        self.on_trial_result(
+            pbt, runner, trials[0], result(20, -100), TrialScheduler.PAUSE
+        )
         self.assertEqual(pbt.last_scores(trials), [-100, 50, 100, 150, 200])
         self.assertTrue("@perturbed" in trials[0].experiment_tag)
         self.assertIn(trials[0].restored_checkpoint, ["trial_3", "trial_4"])
         self.assertEqual(pbt._num_perturbations, 1)
 
         # also perturbed
-        self.assertEqual(
-            pbt.on_trial_result(runner, trials[2], result(20, 40)),
-            TrialScheduler.CONTINUE)
+        self.on_trial_result(
+            pbt, runner, trials[2], result(20, 40), TrialScheduler.PAUSE
+        )
         self.assertEqual(pbt.last_scores(trials), [-100, 50, 40, 150, 200])
         self.assertEqual(pbt._num_perturbations, 2)
         self.assertIn(trials[0].restored_checkpoint, ["trial_3", "trial_4"])
@@ -1062,25 +1074,25 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         trials = runner.get_trials()
 
         # no perturbation: haven't hit next perturbation interval
-        self.assertEqual(
-            pbt.on_trial_result(runner, trials[-1], result(15, -100)),
-            TrialScheduler.CONTINUE)
+        self.on_trial_result(
+            pbt, runner, trials[-1], result(15, -100), TrialScheduler.CONTINUE
+        )
         self.assertEqual(pbt.last_scores(trials), [0, 50, 100, 150, 200])
         self.assertTrue("@perturbed" not in trials[-1].experiment_tag)
         self.assertEqual(pbt._num_perturbations, 0)
 
         # Don't perturb until all trials are synched.
-        self.assertEqual(
-            pbt.on_trial_result(runner, trials[-1], result(20, -100)),
-            TrialScheduler.PAUSE)
+        self.on_trial_result(
+            pbt, runner, trials[-1], result(20, -100), TrialScheduler.PAUSE
+        )
         self.assertEqual(pbt.last_scores(trials), [0, 50, 100, 150, -100])
         self.assertTrue("@perturbed" not in trials[-1].experiment_tag)
 
         # Synch all trials.
         for i in range(len(trials) - 1):
-            self.assertEqual(
-                pbt.on_trial_result(runner, trials[i], result(20, -10 * i)),
-                TrialScheduler.PAUSE)
+            self.on_trial_result(
+                pbt, runner, trials[i], result(20, -10 * i), TrialScheduler.PAUSE
+            )
         self.assertEqual(pbt.last_scores(trials), [0, -10, -20, -30, -100])
         self.assertIn(trials[-1].restored_checkpoint, ["trial_0", "trial_1"])
         self.assertIn(trials[-2].restored_checkpoint, ["trial_0", "trial_1"])
@@ -1089,9 +1101,9 @@ class PopulationBasedTestingSuite(unittest.TestCase):
     def testPerturbWithoutResample(self):
         pbt, runner = self.basicSetup(resample_prob=0.0)
         trials = runner.get_trials()
-        self.assertEqual(
-            pbt.on_trial_result(runner, trials[0], result(20, -100)),
-            TrialScheduler.CONTINUE)
+        self.on_trial_result(
+            pbt, runner, trials[0], result(20, -100), TrialScheduler.PAUSE
+        )
         self.assertIn(trials[0].restored_checkpoint, ["trial_3", "trial_4"])
         self.assertIn(trials[0].config["id_factor"], [100])
         self.assertIn(trials[0].config["float_factor"], [2.4, 1.6])
@@ -1103,9 +1115,10 @@ class PopulationBasedTestingSuite(unittest.TestCase):
     def testPerturbWithResample(self):
         pbt, runner = self.basicSetup(resample_prob=1.0)
         trials = runner.get_trials()
-        self.assertEqual(
-            pbt.on_trial_result(runner, trials[0], result(20, -100)),
-            TrialScheduler.CONTINUE)
+        self.on_trial_result(
+            pbt, runner, trials[0], result(20, -100), TrialScheduler.PAUSE
+        )
+        self.assertEqual(trials[0].status, Trial.PAUSED)
         self.assertIn(trials[0].restored_checkpoint, ["trial_3", "trial_4"])
         self.assertEqual(trials[0].config["id_factor"], 100)
         self.assertEqual(trials[0].config["float_factor"], 100.0)
@@ -1120,12 +1133,13 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             hyperparam_mutations={
                 "float_factor": lambda: 100.0,
                 "int_factor": lambda: 10,
-                "id_factor": tune.choice([100])
-            })
+                "id_factor": tune.choice([100]),
+            },
+        )
         trials = runner.get_trials()
-        self.assertEqual(
-            pbt.on_trial_result(runner, trials[0], result(20, -100)),
-            TrialScheduler.CONTINUE)
+        self.on_trial_result(
+            pbt, runner, trials[0], result(20, -100), TrialScheduler.PAUSE
+        )
         self.assertIn(trials[0].restored_checkpoint, ["trial_3", "trial_4"])
         self.assertEqual(trials[0].config["id_factor"], 100)
         self.assertEqual(trials[0].config["float_factor"], 100.0)
@@ -1136,9 +1150,9 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
     def testTuneSampleFromError(self):
         with self.assertRaises(ValueError):
-            pbt, runner = self.basicSetup(hyperparam_mutations={
-                "float_factor": tune.sample_from(lambda: 100.0)
-            })
+            pbt, runner = self.basicSetup(
+                hyperparam_mutations={"float_factor": tune.sample_from(lambda: 100.0)}
+            )
 
     def testPerturbationValues(self):
         def assertProduces(fn, values):
@@ -1150,34 +1164,42 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         # Categorical case
         assertProduces(
-            lambda: explore({"v": 4}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x),
-            {3, 8})
+            lambda: explore({"v": 4}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x), {3, 8}
+        )
         assertProduces(
-            lambda: explore({"v": 3}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x),
-            {3, 4})
+            lambda: explore({"v": 3}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x), {3, 4}
+        )
         assertProduces(
-            lambda: explore({"v": 10}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x),
-            {8, 10})
+            lambda: explore({"v": 10}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x), {8, 10}
+        )
         assertProduces(
             lambda: explore({"v": 7}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x),
-            {3, 4, 8, 10})
+            {3, 4, 8, 10},
+        )
         assertProduces(
             lambda: explore({"v": 4}, {"v": [3, 4, 8, 10]}, 1.0, lambda x: x),
-            {3, 4, 8, 10})
+            {3, 4, 8, 10},
+        )
 
         # Continuous case
         assertProduces(
-            lambda: explore({"v": 100}, {
-                "v": lambda: random.choice([10, 100])
-            }, 0.0, lambda x: x), {80, 120})
+            lambda: explore(
+                {"v": 100}, {"v": lambda: random.choice([10, 100])}, 0.0, lambda x: x
+            ),
+            {80, 120},
+        )
         assertProduces(
-            lambda: explore({"v": 100.0}, {
-                "v": lambda: random.choice([10, 100])
-            }, 0.0, lambda x: x), {80.0, 120.0})
+            lambda: explore(
+                {"v": 100.0}, {"v": lambda: random.choice([10, 100])}, 0.0, lambda x: x
+            ),
+            {80.0, 120.0},
+        )
         assertProduces(
-            lambda: explore({"v": 100.0}, {
-                "v": lambda: random.choice([10, 100])
-            }, 1.0, lambda x: x), {10.0, 100.0})
+            lambda: explore(
+                {"v": 100.0}, {"v": lambda: random.choice([10, 100])}, 1.0, lambda x: x
+            ),
+            {10.0, 100.0},
+        )
 
         def deep_add(seen, new_values):
             for k, new_value in new_values.items():
@@ -1202,67 +1224,45 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         # Nested mutation and spec
         assertNestedProduces(
-            lambda: explore({
-                "a": {
-                    "b": 4
+            lambda: explore(
+                {
+                    "a": {"b": 4},
+                    "1": {"2": {"3": 100}},
                 },
-                "1": {
-                    "2": {
-                        "3": 100
-                    }
+                {
+                    "a": {"b": [3, 4, 8, 10]},
+                    "1": {"2": {"3": lambda: random.choice([10, 100])}},
                 },
-            }, {
-                "a": {
-                    "b": [3, 4, 8, 10]
-                },
-                "1": {
-                    "2": {
-                        "3": lambda: random.choice([10, 100])
-                    }
-                },
-            }, 0.0, lambda x: x), {
-                "a": {
-                    "b": {3, 8}
-                },
-                "1": {
-                    "2": {
-                        "3": {80, 120}
-                    }
-                },
-            })
+                0.0,
+                lambda x: x,
+            ),
+            {
+                "a": {"b": {3, 8}},
+                "1": {"2": {"3": {80, 120}}},
+            },
+        )
 
         custom_explore_fn = MagicMock(side_effect=lambda x: x)
 
         # Nested mutation and spec
         assertNestedProduces(
-            lambda: explore({
-                "a": {
-                    "b": 4
+            lambda: explore(
+                {
+                    "a": {"b": 4},
+                    "1": {"2": {"3": 100}},
                 },
-                "1": {
-                    "2": {
-                        "3": 100
-                    }
+                {
+                    "a": {"b": [3, 4, 8, 10]},
+                    "1": {"2": {"3": lambda: random.choice([10, 100])}},
                 },
-            }, {
-                "a": {
-                    "b": [3, 4, 8, 10]
-                },
-                "1": {
-                    "2": {
-                        "3": lambda: random.choice([10, 100])
-                    }
-                },
-            }, 0.0, custom_explore_fn), {
-                "a": {
-                    "b": {3, 8}
-                },
-                "1": {
-                    "2": {
-                        "3": {80, 120}
-                    }
-                },
-            })
+                0.0,
+                custom_explore_fn,
+            ),
+            {
+                "a": {"b": {3, 8}},
+                "1": {"2": {"3": {80, 120}}},
+            },
+        )
 
         # Expect call count to be 100 because we call explore 100 times
         self.assertEqual(custom_explore_fn.call_count, 100)
@@ -1272,23 +1272,20 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             resample_prob=1.0,
             hyperparams={
                 "float_factor": 2.0,
-                "nest": {
-                    "nest_float": 3.0
-                },
+                "nest": {"nest_float": 3.0},
                 "int_factor": 10,
-                "const_factor": 3
+                "const_factor": 3,
             },
             hyperparam_mutations={
                 "float_factor": lambda: 100.0,
-                "nest": {
-                    "nest_float": lambda: 101.0
-                },
+                "nest": {"nest_float": lambda: 101.0},
                 "int_factor": lambda: 10,
-            })
+            },
+        )
         trials = runner.get_trials()
-        self.assertEqual(
-            pbt.on_trial_result(runner, trials[0], result(20, -100)),
-            TrialScheduler.CONTINUE)
+        self.on_trial_result(
+            pbt, runner, trials[0], result(20, -100), TrialScheduler.PAUSE
+        )
         self.assertIn(trials[0].restored_checkpoint, ["trial_3", "trial_4"])
         self.assertEqual(trials[0].config["float_factor"], 100.0)
         self.assertIsInstance(trials[0].config["float_factor"], float)
@@ -1302,21 +1299,20 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         pbt, runner = self.basicSetup()
         trials = runner.get_trials()
         trials[0].status = Trial.PENDING  # simulate not enough resources
-
-        self.assertEqual(
-            pbt.on_trial_result(runner, trials[1], result(20, 1000)),
-            TrialScheduler.PAUSE)
+        self.on_trial_result(
+            pbt, runner, trials[1], result(20, 1000), TrialScheduler.PAUSE
+        )
         self.assertEqual(pbt.last_scores(trials), [0, 1000, 100, 150, 200])
         self.assertEqual(pbt.choose_trial_to_run(runner), trials[0])
 
     def testSchedulesMostBehindTrialToRun(self):
         pbt, runner = self.basicSetup()
         trials = runner.get_trials()
-        pbt.on_trial_result(runner, trials[0], result(800, 1000))
-        pbt.on_trial_result(runner, trials[1], result(700, 1001))
-        pbt.on_trial_result(runner, trials[2], result(600, 1002))
-        pbt.on_trial_result(runner, trials[3], result(500, 1003))
-        pbt.on_trial_result(runner, trials[4], result(700, 1004))
+        self.on_trial_result(pbt, runner, trials[0], result(800, 1000))
+        self.on_trial_result(pbt, runner, trials[1], result(700, 1001))
+        self.on_trial_result(pbt, runner, trials[2], result(600, 1002))
+        self.on_trial_result(pbt, runner, trials[3], result(500, 1003))
+        self.on_trial_result(pbt, runner, trials[4], result(700, 1004))
         self.assertEqual(pbt.choose_trial_to_run(runner), None)
         for i in range(5):
             trials[i].status = Trial.PENDING
@@ -1326,35 +1322,36 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         pbt, runner = self.basicSetup(synch=True)
         trials = runner.get_trials()
         runner.process_action(
-            trials[0], pbt.on_trial_result(runner, trials[0], result(
-                800, 1000)))
+            trials[0], self.on_trial_result(pbt, runner, trials[0], result(800, 1000))
+        )
         runner.process_action(
-            trials[1], pbt.on_trial_result(runner, trials[1], result(
-                700, 1001)))
+            trials[1], self.on_trial_result(pbt, runner, trials[1], result(700, 1001))
+        )
         runner.process_action(
-            trials[2], pbt.on_trial_result(runner, trials[2], result(
-                600, 1002)))
+            trials[2], self.on_trial_result(pbt, runner, trials[2], result(600, 1002))
+        )
         runner.process_action(
-            trials[3], pbt.on_trial_result(runner, trials[3], result(
-                500, 1003)))
+            trials[3], self.on_trial_result(pbt, runner, trials[3], result(500, 1003))
+        )
         runner.process_action(
-            trials[4], pbt.on_trial_result(runner, trials[4], result(
-                700, 1004)))
+            trials[4], self.on_trial_result(pbt, runner, trials[4], result(700, 1004))
+        )
         self.assertIn(
-            pbt.choose_trial_to_run(runner), [trials[0], trials[1], trials[3]])
+            pbt.choose_trial_to_run(runner), [trials[0], trials[1], trials[3]]
+        )
 
     def testPerturbationResetsLastPerturbTime(self):
         pbt, runner = self.basicSetup()
         trials = runner.get_trials()
-        pbt.on_trial_result(runner, trials[0], result(10000, 1005))
-        pbt.on_trial_result(runner, trials[1], result(10000, 1004))
-        pbt.on_trial_result(runner, trials[2], result(600, 1003))
+        self.on_trial_result(pbt, runner, trials[0], result(10000, 1005))
+        self.on_trial_result(pbt, runner, trials[1], result(10000, 1004))
+        self.on_trial_result(pbt, runner, trials[2], result(600, 1003))
         self.assertEqual(pbt._num_perturbations, 0)
-        pbt.on_trial_result(runner, trials[3], result(500, 1002))
+        self.on_trial_result(pbt, runner, trials[3], result(500, 1002))
         self.assertEqual(pbt._num_perturbations, 1)
-        pbt.on_trial_result(runner, trials[3], result(600, 100))
+        self.on_trial_result(pbt, runner, trials[3], result(600, 100))
         self.assertEqual(pbt._num_perturbations, 1)
-        pbt.on_trial_result(runner, trials[3], result(11000, 100))
+        self.on_trial_result(pbt, runner, trials[3], result(11000, 100))
         self.assertEqual(pbt._num_perturbations, 2)
 
     def testLogConfig(self):
@@ -1367,10 +1364,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             self.assertIn(policy[3], [0, 2, 3, 4])
             for i in [4, 5]:
                 self.assertIsInstance(policy[i], dict)
-                for key in [
-                        "const_factor", "int_factor", "float_factor",
-                        "id_factor"
-                ]:
+                for key in ["const_factor", "int_factor", "float_factor", "id_factor"]:
                     self.assertIn(key, policy[i])
                 self.assertIsInstance(policy[i]["float_factor"], float)
                 self.assertIsInstance(policy[i]["int_factor"], int)
@@ -1385,9 +1379,9 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         for i, trial in enumerate(trials):
             trial.local_dir = tmpdir
             trial.last_result = {TRAINING_ITERATION: i}
-        pbt.on_trial_result(runner, trials[0], result(15, -100))
-        pbt.on_trial_result(runner, trials[0], result(20, -100))
-        pbt.on_trial_result(runner, trials[2], result(20, 40))
+        self.on_trial_result(pbt, runner, trials[0], result(15, -100))
+        self.on_trial_result(pbt, runner, trials[0], result(20, -100))
+        self.on_trial_result(pbt, runner, trials[2], result(20, 40))
         log_files = ["pbt_global.txt", "pbt_policy_0.txt", "pbt_policy_2.txt"]
         for log_file in log_files:
             self.assertTrue(os.path.exists(os.path.join(tmpdir, log_file)))
@@ -1406,10 +1400,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             self.assertIn(policy[3], [3, 4])
             for i in [4, 5]:
                 self.assertIsInstance(policy[i], dict)
-                for key in [
-                        "const_factor", "int_factor", "float_factor",
-                        "id_factor"
-                ]:
+                for key in ["const_factor", "int_factor", "float_factor", "id_factor"]:
                     self.assertIn(key, policy[i])
                 self.assertIsInstance(policy[i]["float_factor"], float)
                 self.assertIsInstance(policy[i]["int_factor"], int)
@@ -1418,14 +1409,13 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                 self.assertIn(policy[i]["float_factor"], [2.4, 2, 1.6])
                 self.assertIn(policy[i]["id_factor"], [3, 4, 100])
 
-        pbt, runner = self.basicSetup(
-            log_config=True, synch=True, step_once=False)
+        pbt, runner = self.basicSetup(log_config=True, synch=True, step_once=False)
         trials = runner.get_trials()
         tmpdir = tempfile.mkdtemp()
         for i, trial in enumerate(trials):
             trial.local_dir = tmpdir
             trial.last_result = {TRAINING_ITERATION: i}
-            pbt.on_trial_result(runner, trials[i], result(10, i))
+            self.on_trial_result(pbt, runner, trials[i], result(10, i))
         log_files = ["pbt_global.txt", "pbt_policy_0.txt", "pbt_policy_1.txt"]
         for log_file in log_files:
             self.assertTrue(os.path.exists(os.path.join(tmpdir, log_file)))
@@ -1452,8 +1442,9 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             synch=False,
             hyperparam_mutations={
                 "float_factor": lambda: 100.0,
-                "int_factor": _Counter(1000)
-            })
+                "int_factor": _Counter(1000),
+            },
+        )
         trials = runner.get_trials()
         tmpdir = tempfile.mkdtemp()
 
@@ -1484,7 +1475,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             trial_state[k].forward(res[TRAINING_ITERATION])
 
             old_config = trials[k].config
-            pbt.on_trial_result(runner, trials[k], res)
+            self.on_trial_result(pbt, runner, trials[k], res)
             new_config = trials[k].config
             trial_state[k].config = new_config.copy()
 
@@ -1544,18 +1535,20 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                     "reward": 0,
                     "done": False,
                     "replayed": self.replayed,
-                    TRAINING_ITERATION: self.iter
+                    TRAINING_ITERATION: self.iter,
                 }
 
-            def reset_config(self, new_config):
-                self.config = new_config
-                return True
+            def save_checkpoint(self, checkpoint_dir):
+                path = os.path.join(checkpoint_dir, "checkpoint")
+                with open(path, "w") as f:
+                    f.write(json.dumps({"iter": self.iter, "replayed": self.replayed}))
+                return path
 
-            def save_checkpoint(self, tmp_checkpoint_dir):
-                return tmp_checkpoint_dir
-
-            def load_checkpoint(self, checkpoint):
-                pass
+            def load_checkpoint(self, checkpoint_path):
+                with open(checkpoint_path) as f:
+                    checkpoint_json = json.loads(f.read())
+                    self.iter = checkpoint_json["iter"]
+                    self.replayed = checkpoint_json["replayed"]
 
         # Loop through all trials and check if PBT history is the
         # same as the playback history
@@ -1564,12 +1557,13 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                 continue
 
             replay = PopulationBasedTrainingReplay(
-                os.path.join(tmpdir,
-                             "pbt_policy_{}.txt".format(trial.trial_id)))
+                os.path.join(tmpdir, "pbt_policy_{}.txt".format(trial.trial_id))
+            )
             analysis = tune.run(
                 Playback,
                 scheduler=replay,
-                stop={TRAINING_ITERATION: trial_state[i].step})
+                stop={TRAINING_ITERATION: trial_state[i].step},
+            )
 
             replayed = analysis.trials[0].last_result["replayed"]
             self.assertSequenceEqual(trial_state[i].history, replayed)
@@ -1577,12 +1571,13 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         # Trial 1 did not exploit anything and should raise an error
         with self.assertRaises(ValueError):
             replay = PopulationBasedTrainingReplay(
-                os.path.join(tmpdir,
-                             "pbt_policy_{}.txt".format(trials[1].trial_id)))
+                os.path.join(tmpdir, "pbt_policy_{}.txt".format(trials[1].trial_id))
+            )
             tune.run(
                 Playback,
                 scheduler=replay,
-                stop={TRAINING_ITERATION: trial_state[1].step})
+                stop={TRAINING_ITERATION: trial_state[1].step},
+            )
 
         shutil.rmtree(tmpdir)
 
@@ -1604,8 +1599,9 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             synch=True,
             hyperparam_mutations={
                 "float_factor": lambda: 100.0,
-                "int_factor": _Counter(1000)
-            })
+                "int_factor": _Counter(1000),
+            },
+        )
         trials = runner.get_trials()
         tmpdir = tempfile.mkdtemp()
 
@@ -1635,15 +1631,14 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             trials[k].last_result = res
             trial_state[k].forward(res[TRAINING_ITERATION])
 
-            trials[k].status = Trial.RUNNING
             if not synced:
-                action = pbt.on_trial_result(runner, trials[k], res)
+                action = self.on_trial_result(pbt, runner, trials[k], res)
                 runner.process_action(trials[k], action)
                 return
             else:
                 # Reached synchronization point
                 old_configs = [trial.config for trial in trials]
-                action = pbt.on_trial_result(runner, trials[k], res)
+                action = self.on_trial_result(pbt, runner, trials[k], res)
                 runner.process_action(trials[k], action)
                 new_configs = [trial.config for trial in trials]
 
@@ -1654,13 +1649,11 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                         # Copy history from source trial
                         source = -1
                         for m, cand in enumerate(trials):
-                            if cand.trainable_name == trials[
-                                    i].restored_checkpoint:
+                            if cand.trainable_name == trials[i].restored_checkpoint:
                                 source = m
                                 break
                         assert source >= 0
-                        trial_state[i].history = trial_state[
-                            source].history.copy()
+                        trial_state[i].history = trial_state[source].history.copy()
                         trial_state[i].step = trial_state[source].step
                         trial_state[i].config = new_config.copy()
 
@@ -1714,18 +1707,20 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                     "reward": 0,
                     "done": False,
                     "replayed": self.replayed,
-                    TRAINING_ITERATION: self.iter
+                    TRAINING_ITERATION: self.iter,
                 }
 
-            def reset_config(self, new_config):
-                self.config = new_config
-                return True
+            def save_checkpoint(self, checkpoint_dir):
+                path = os.path.join(checkpoint_dir, "checkpoint")
+                with open(path, "w") as f:
+                    f.write(json.dumps({"iter": self.iter, "replayed": self.replayed}))
+                return path
 
-            def save_checkpoint(self, tmp_checkpoint_dir):
-                return tmp_checkpoint_dir
-
-            def load_checkpoint(self, checkpoint):
-                pass
+            def load_checkpoint(self, checkpoint_path):
+                with open(checkpoint_path) as f:
+                    checkpoint_json = json.loads(f.read())
+                    self.iter = checkpoint_json["iter"]
+                    self.replayed = checkpoint_json["replayed"]
 
         # Loop through all trials and check if PBT history is the
         # same as the playback history
@@ -1734,12 +1729,13 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                 continue
 
             replay = PopulationBasedTrainingReplay(
-                os.path.join(tmpdir,
-                             "pbt_policy_{}.txt".format(trial.trial_id)))
+                os.path.join(tmpdir, "pbt_policy_{}.txt".format(trial.trial_id))
+            )
             analysis = tune.run(
                 Playback,
                 scheduler=replay,
-                stop={TRAINING_ITERATION: trial_state[i].step})
+                stop={TRAINING_ITERATION: trial_state[i].step},
+            )
 
             replayed = analysis.trials[0].last_result["replayed"]
             self.assertSequenceEqual(trial_state[i].history, replayed)
@@ -1747,12 +1743,13 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         # Trial 1 did not exploit anything and should raise an error
         with self.assertRaises(ValueError):
             replay = PopulationBasedTrainingReplay(
-                os.path.join(tmpdir,
-                             "pbt_policy_{}.txt".format(trials[1].trial_id)))
+                os.path.join(tmpdir, "pbt_policy_{}.txt".format(trials[1].trial_id))
+            )
             tune.run(
                 Playback,
                 scheduler=replay,
-                stop={TRAINING_ITERATION: trial_state[1].step})
+                stop={TRAINING_ITERATION: trial_state[1].step},
+            )
 
         shutil.rmtree(tmpdir)
 
@@ -1764,25 +1761,26 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         pbt, runner = self.basicSetup(resample_prob=0.0, explore=explore)
         trials = runner.get_trials()
-        self.assertEqual(
-            pbt.on_trial_result(runner, trials[0], result(20, -100)),
-            TrialScheduler.CONTINUE)
+        self.on_trial_result(
+            pbt, runner, trials[0], result(20, -100), TrialScheduler.PAUSE
+        )
         self.assertEqual(trials[0].config["id_factor"], 42)
         self.assertEqual(trials[0].config["float_factor"], 43)
 
     def testFastPerturb(self):
         pbt, runner = self.basicSetup(
-            perturbation_interval=1, step_once=False, log_config=True)
+            perturbation_interval=1, step_once=False, log_config=True
+        )
         trials = runner.get_trials()
 
         tmpdir = tempfile.mkdtemp()
         for i, trial in enumerate(trials):
             trial.local_dir = tmpdir
             trial.last_result = {}
-        pbt.on_trial_result(runner, trials[0], result(1, 10))
-        self.assertEqual(
-            pbt.on_trial_result(runner, trials[2], result(1, 200)),
-            TrialScheduler.CONTINUE)
+        self.on_trial_result(pbt, runner, trials[0], result(1, 10))
+        self.on_trial_result(
+            pbt, runner, trials[2], result(1, 200), TrialScheduler.CONTINUE
+        )
         self.assertEqual(pbt._num_checkpoints, 1)
 
         pbt._exploit(runner.trial_executor, trials[1], trials[2])
@@ -1820,8 +1818,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         scheduler = MockScheduler()
 
-        out = tune.run(
-            train, config={"x": tune.grid_search(vals)}, scheduler=scheduler)
+        out = tune.run(train, config={"x": tune.grid_search(vals)}, scheduler=scheduler)
 
         ever_active = set()
         active = set()
@@ -1850,18 +1847,20 @@ class E2EPopulationBasedTestingSuite(unittest.TestCase):
         ray.shutdown()
         _register_all()  # re-register the evicted objects
 
-    def basicSetup(self,
-                   resample_prob=0.0,
-                   explore=None,
-                   perturbation_interval=10,
-                   log_config=False,
-                   hyperparams=None,
-                   hyperparam_mutations=None,
-                   step_once=True):
+    def basicSetup(
+        self,
+        resample_prob=0.0,
+        explore=None,
+        perturbation_interval=10,
+        log_config=False,
+        hyperparams=None,
+        hyperparam_mutations=None,
+        step_once=True,
+    ):
         hyperparam_mutations = hyperparam_mutations or {
             "float_factor": lambda: 100.0,
             "int_factor": lambda: 10,
-            "id_factor": [100]
+            "id_factor": [100],
         }
         pbt = PopulationBasedTraining(
             metric="mean_accuracy",
@@ -1872,7 +1871,8 @@ class E2EPopulationBasedTestingSuite(unittest.TestCase):
             quantile_fraction=0.25,
             hyperparam_mutations=hyperparam_mutations,
             custom_explore_fn=explore,
-            log_config=log_config)
+            log_config=log_config,
+        )
         return pbt
 
     def testCheckpointing(self):
@@ -1888,11 +1888,17 @@ class E2EPopulationBasedTestingSuite(unittest.TestCase):
                     f.write("OK")
                 return checkpoint
 
+            def reset_config(self, config):
+                return True
+
+            def load_checkpoint(self, checkpoint):
+                pass
+
         trial_hyperparams = {
             "float_factor": 2.0,
             "const_factor": 3,
             "int_factor": 10,
-            "id_factor": 0
+            "id_factor": 0,
         }
 
         analysis = tune.run(
@@ -1901,7 +1907,8 @@ class E2EPopulationBasedTestingSuite(unittest.TestCase):
             scheduler=pbt,
             checkpoint_freq=3,
             config=trial_hyperparams,
-            stop={"training_iteration": 30})
+            stop={"training_iteration": 30},
+        )
 
         for trial in analysis.trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
@@ -1923,11 +1930,14 @@ class E2EPopulationBasedTestingSuite(unittest.TestCase):
             def load_checkpoint(self, state):
                 self.state = state
 
+            def reset_config(self, config):
+                return True
+
         trial_hyperparams = {
             "float_factor": 2.0,
             "const_factor": 3,
             "int_factor": 10,
-            "id_factor": 0
+            "id_factor": 0,
         }
 
         analysis = tune.run(
@@ -1936,7 +1946,8 @@ class E2EPopulationBasedTestingSuite(unittest.TestCase):
             scheduler=pbt,
             checkpoint_freq=3,
             config=trial_hyperparams,
-            stop={"training_iteration": 30})
+            stop={"training_iteration": 30},
+        )
 
         for trial in analysis.trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
@@ -1959,11 +1970,13 @@ class AsyncHyperBandSuite(unittest.TestCase):
         for i in range(10):
             self.assertEqual(
                 scheduler.on_trial_result(None, t1, result(i, i * 100)),
-                TrialScheduler.CONTINUE)
+                TrialScheduler.CONTINUE,
+            )
         for i in range(5):
             self.assertEqual(
                 scheduler.on_trial_result(None, t2, result(i, 450)),
-                TrialScheduler.CONTINUE)
+                TrialScheduler.CONTINUE,
+            )
         return t1, t2
 
     def nanSetup(self, scheduler):
@@ -1974,11 +1987,13 @@ class AsyncHyperBandSuite(unittest.TestCase):
         for i in range(10):
             self.assertEqual(
                 scheduler.on_trial_result(None, t1, result(i, 450)),
-                TrialScheduler.CONTINUE)
+                TrialScheduler.CONTINUE,
+            )
         for i in range(10):
             self.assertEqual(
                 scheduler.on_trial_result(None, t2, result(i, np.nan)),
-                TrialScheduler.CONTINUE)
+                TrialScheduler.CONTINUE,
+            )
         return t1, t2
 
     def nanInfSetup(self, scheduler, runner=None):
@@ -1998,14 +2013,15 @@ class AsyncHyperBandSuite(unittest.TestCase):
 
     def testAsyncHBOnComplete(self):
         scheduler = AsyncHyperBandScheduler(
-            metric="episode_reward_mean", mode="max", max_t=10, brackets=1)
+            metric="episode_reward_mean", mode="max", max_t=10, brackets=1
+        )
         t1, t2 = self.basicSetup(scheduler)
         t3 = Trial("PPO")
         scheduler.on_trial_add(None, t3)
         scheduler.on_trial_complete(None, t3, result(10, 1000))
         self.assertEqual(
-            scheduler.on_trial_result(None, t2, result(101, 0)),
-            TrialScheduler.STOP)
+            scheduler.on_trial_result(None, t2, result(101, 0)), TrialScheduler.STOP
+        )
 
     def testAsyncHBGracePeriod(self):
         scheduler = AsyncHyperBandScheduler(
@@ -2013,33 +2029,35 @@ class AsyncHyperBandSuite(unittest.TestCase):
             mode="max",
             grace_period=2.5,
             reduction_factor=3,
-            brackets=1)
+            brackets=1,
+        )
         t1, t2 = self.basicSetup(scheduler)
         scheduler.on_trial_complete(None, t1, result(10, 1000))
         scheduler.on_trial_complete(None, t2, result(10, 1000))
         t3 = Trial("PPO")
         scheduler.on_trial_add(None, t3)
         self.assertEqual(
-            scheduler.on_trial_result(None, t3, result(1, 10)),
-            TrialScheduler.CONTINUE)
+            scheduler.on_trial_result(None, t3, result(1, 10)), TrialScheduler.CONTINUE
+        )
         self.assertEqual(
-            scheduler.on_trial_result(None, t3, result(2, 10)),
-            TrialScheduler.CONTINUE)
+            scheduler.on_trial_result(None, t3, result(2, 10)), TrialScheduler.CONTINUE
+        )
         self.assertEqual(
-            scheduler.on_trial_result(None, t3, result(3, 10)),
-            TrialScheduler.STOP)
+            scheduler.on_trial_result(None, t3, result(3, 10)), TrialScheduler.STOP
+        )
 
     def testAsyncHBAllCompletes(self):
         scheduler = AsyncHyperBandScheduler(
-            metric="episode_reward_mean", mode="max", max_t=10, brackets=10)
+            metric="episode_reward_mean", mode="max", max_t=10, brackets=10
+        )
         trials = [Trial("PPO") for i in range(10)]
         for t in trials:
             scheduler.on_trial_add(None, t)
 
         for t in trials:
             self.assertEqual(
-                scheduler.on_trial_result(None, t, result(10, -2)),
-                TrialScheduler.STOP)
+                scheduler.on_trial_result(None, t, result(10, -2)), TrialScheduler.STOP
+            )
 
     def testAsyncHBUsesPercentile(self):
         scheduler = AsyncHyperBandScheduler(
@@ -2048,18 +2066,19 @@ class AsyncHyperBandSuite(unittest.TestCase):
             grace_period=1,
             max_t=10,
             reduction_factor=2,
-            brackets=1)
+            brackets=1,
+        )
         t1, t2 = self.basicSetup(scheduler)
         scheduler.on_trial_complete(None, t1, result(10, 1000))
         scheduler.on_trial_complete(None, t2, result(10, 1000))
         t3 = Trial("PPO")
         scheduler.on_trial_add(None, t3)
         self.assertEqual(
-            scheduler.on_trial_result(None, t3, result(1, 260)),
-            TrialScheduler.STOP)
+            scheduler.on_trial_result(None, t3, result(1, 260)), TrialScheduler.STOP
+        )
         self.assertEqual(
-            scheduler.on_trial_result(None, t3, result(2, 260)),
-            TrialScheduler.STOP)
+            scheduler.on_trial_result(None, t3, result(2, 260)), TrialScheduler.STOP
+        )
 
     def testAsyncHBNanPercentile(self):
         scheduler = AsyncHyperBandScheduler(
@@ -2068,21 +2087,22 @@ class AsyncHyperBandSuite(unittest.TestCase):
             grace_period=1,
             max_t=10,
             reduction_factor=2,
-            brackets=1)
+            brackets=1,
+        )
         t1, t2 = self.nanSetup(scheduler)
         scheduler.on_trial_complete(None, t1, result(10, 450))
         scheduler.on_trial_complete(None, t2, result(10, np.nan))
         t3 = Trial("PPO")
         scheduler.on_trial_add(None, t3)
         self.assertEqual(
-            scheduler.on_trial_result(None, t3, result(1, 260)),
-            TrialScheduler.STOP)
+            scheduler.on_trial_result(None, t3, result(1, 260)), TrialScheduler.STOP
+        )
         self.assertEqual(
-            scheduler.on_trial_result(None, t3, result(2, 260)),
-            TrialScheduler.STOP)
+            scheduler.on_trial_result(None, t3, result(2, 260)), TrialScheduler.STOP
+        )
 
     def testAsyncHBSaveRestore(self):
-        tmpfile = tempfile.mktemp()
+        _, tmpfile = tempfile.mkstemp()
 
         scheduler = AsyncHyperBandScheduler(
             metric="episode_reward_mean",
@@ -2090,7 +2110,8 @@ class AsyncHyperBandSuite(unittest.TestCase):
             grace_period=1,
             max_t=10,
             reduction_factor=2,
-            brackets=1)
+            brackets=1,
+        )
 
         # Add some trials
         trials = [Trial("PPO") for i in range(10)]
@@ -2100,13 +2121,14 @@ class AsyncHyperBandSuite(unittest.TestCase):
         # Report some results
         for t in trials[0:5]:
             self.assertNotEqual(
-                scheduler.on_trial_result(None, t, result(1, 10)),
-                TrialScheduler.STOP)
+                scheduler.on_trial_result(None, t, result(1, 10)), TrialScheduler.STOP
+            )
 
         # Report worse result: Trial should stop
         self.assertEqual(
             scheduler.on_trial_result(None, trials[5], result(1, 5)),
-            TrialScheduler.STOP)
+            TrialScheduler.STOP,
+        )
 
         scheduler.save(tmpfile)
 
@@ -2116,7 +2138,8 @@ class AsyncHyperBandSuite(unittest.TestCase):
         # Report a new bad result: Trial should stop
         self.assertEqual(
             scheduler2.on_trial_result(None, trials[6], result(1, 4)),
-            TrialScheduler.STOP)
+            TrialScheduler.STOP,
+        )
 
         # Create a new trial and report bad result: Trial should stop
         # Report a new bad result: Trial should stop
@@ -2124,11 +2147,62 @@ class AsyncHyperBandSuite(unittest.TestCase):
         scheduler2.on_trial_add(None, new_trial)
         self.assertEqual(
             scheduler2.on_trial_result(None, new_trial, result(1, 2)),
-            TrialScheduler.STOP)
+            TrialScheduler.STOP,
+        )
+
+    def testAsyncHBNonStopTrials(self):
+        trials = [Trial("PPO") for i in range(4)]
+        scheduler = AsyncHyperBandScheduler(
+            metric="metric",
+            mode="max",
+            grace_period=1,
+            max_t=3,
+            reduction_factor=2,
+            brackets=1,
+            stop_last_trials=False,
+        )
+        scheduler.on_trial_add(None, trials[0])
+        scheduler.on_trial_add(None, trials[1])
+        scheduler.on_trial_add(None, trials[2])
+        scheduler.on_trial_add(None, trials[3])
+
+        # Report one result
+        action = scheduler.on_trial_result(
+            None, trials[0], {"training_iteration": 2, "metric": 10}
+        )
+        assert action == TrialScheduler.CONTINUE
+        action = scheduler.on_trial_result(
+            None, trials[1], {"training_iteration": 2, "metric": 8}
+        )
+        assert action == TrialScheduler.STOP
+        action = scheduler.on_trial_result(
+            None, trials[2], {"training_iteration": 2, "metric": 6}
+        )
+        assert action == TrialScheduler.STOP
+        action = scheduler.on_trial_result(
+            None, trials[3], {"training_iteration": 2, "metric": 4}
+        )
+        assert action == TrialScheduler.STOP
+
+        # Report more. This will fail if `stop_last_trials=True`
+        action = scheduler.on_trial_result(
+            None, trials[0], {"training_iteration": 4, "metric": 10}
+        )
+        assert action == TrialScheduler.CONTINUE
+
+        action = scheduler.on_trial_result(
+            None, trials[0], {"training_iteration": 8, "metric": 10}
+        )
+        assert action == TrialScheduler.CONTINUE
+
+        # Also continue if we fall below the cutoff eventually
+        action = scheduler.on_trial_result(
+            None, trials[0], {"training_iteration": 14, "metric": 1}
+        )
+        assert action == TrialScheduler.CONTINUE
 
     def testMedianStoppingNanInf(self):
-        scheduler = MedianStoppingRule(
-            metric="episode_reward_mean", mode="max")
+        scheduler = MedianStoppingRule(metric="episode_reward_mean", mode="max")
 
         t1, t2, t3 = self.nanInfSetup(scheduler)
         scheduler.on_trial_complete(None, t1, result(10, np.nan))
@@ -2136,8 +2210,7 @@ class AsyncHyperBandSuite(unittest.TestCase):
         scheduler.on_trial_complete(None, t3, result(10, float("-inf")))
 
     def testHyperbandNanInf(self):
-        scheduler = HyperBandScheduler(
-            metric="episode_reward_mean", mode="max")
+        scheduler = HyperBandScheduler(metric="episode_reward_mean", mode="max")
         t1, t2, t3 = self.nanInfSetup(scheduler)
         scheduler.on_trial_complete(None, t1, result(10, np.nan))
         scheduler.on_trial_complete(None, t2, result(10, float("inf")))
@@ -2154,8 +2227,7 @@ class AsyncHyperBandSuite(unittest.TestCase):
         # skip trial complete in this mock setting
 
     def testPBTNanInf(self):
-        scheduler = PopulationBasedTraining(
-            metric="episode_reward_mean", mode="max")
+        scheduler = PopulationBasedTraining(metric="episode_reward_mean", mode="max")
         t1, t2, t3 = self.nanInfSetup(scheduler, runner=MagicMock())
         scheduler.on_trial_complete(None, t1, result(10, np.nan))
         scheduler.on_trial_complete(None, t2, result(10, float("inf")))
@@ -2167,7 +2239,8 @@ class AsyncHyperBandSuite(unittest.TestCase):
             time_attr="training_iteration",
             metric=metric,
             mode=mode,
-            brackets=1)
+            brackets=1,
+        )
         t1 = Trial("PPO")  # mean is 450, max 900, t_max=10
         t2 = Trial("PPO")  # mean is 450, max 450, t_max=5
         scheduler.on_trial_add(None, t1)
@@ -2175,18 +2248,22 @@ class AsyncHyperBandSuite(unittest.TestCase):
         for i in range(10):
             self.assertEqual(
                 scheduler.on_trial_result(None, t1, result_func(i, i * 100)),
-                TrialScheduler.CONTINUE)
+                TrialScheduler.CONTINUE,
+            )
         for i in range(5):
             self.assertEqual(
                 scheduler.on_trial_result(None, t2, result_func(i, 450)),
-                TrialScheduler.CONTINUE)
+                TrialScheduler.CONTINUE,
+            )
         scheduler.on_trial_complete(None, t1, result_func(10, 1000))
         self.assertEqual(
             scheduler.on_trial_result(None, t2, result_func(5, 450)),
-            TrialScheduler.CONTINUE)
+            TrialScheduler.CONTINUE,
+        )
         self.assertEqual(
             scheduler.on_trial_result(None, t2, result_func(6, 0)),
-            TrialScheduler.CONTINUE)
+            TrialScheduler.CONTINUE,
+        )
 
     def testAlternateMetrics(self):
         def result2(t, rew):
@@ -2208,9 +2285,10 @@ class AsyncHyperBandSuite(unittest.TestCase):
             train,
             mode="max",
             num_samples=1,
-            config={"value": tune.uniform(-2., 2.)},
+            config={"value": tune.uniform(-2.0, 2.0)},
             scheduler=scheduler_cls(),
-            search_alg=searcher)
+            search_alg=searcher,
+        )
 
         self.assertTrue(bool(out.best_trial))
 
@@ -2222,6 +2300,7 @@ class AsyncHyperBandSuite(unittest.TestCase):
 
     def testAnonymousMetricEndToEndBOHB(self):
         from ray.tune.suggest.bohb import TuneBOHB
+
         self._testAnonymousMetricEndToEnd(HyperBandForBOHB, TuneBOHB())
 
     def testAnonymousMetricEndToEndMedian(self):
@@ -2233,4 +2312,5 @@ class AsyncHyperBandSuite(unittest.TestCase):
 
 if __name__ == "__main__":
     import pytest
+
     sys.exit(pytest.main(["-v", __file__]))

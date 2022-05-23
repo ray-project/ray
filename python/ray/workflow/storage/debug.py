@@ -52,12 +52,10 @@ class LoggedStorage(FilesystemStorageImpl):
             k1 = self._log_dir / f"{count}.metadata.json"
             k2 = self._log_dir / f"{count}.value"
             await super().put(
-                str(k1), {
-                    "operation": "put",
-                    "key": key,
-                    "is_json": is_json
-                },
-                is_json=True)
+                str(k1),
+                {"operation": "put", "key": key, "is_json": is_json},
+                is_json=True,
+            )
             await super().put(str(k2), data, is_json=is_json)
             with open(self._count, "w") as f:
                 f.write(str(count + 1))
@@ -72,11 +70,8 @@ class LoggedStorage(FilesystemStorageImpl):
                 count = int(f.read())
             k1 = self._log_dir / f"{count}.metadata.json"
             await super().put(
-                str(k1), {
-                    "operation": "delete_prefix",
-                    "key": key
-                },
-                is_json=True)
+                str(k1), {"operation": "delete_prefix", "key": key}, is_json=True
+            )
             with open(self._count, "w") as f:
                 f.write(str(count + 1))
 
@@ -108,8 +103,12 @@ class DebugStorage(Storage):
         self._wrapped_storage = wrapped_storage
         log_path = pathlib.Path(path)
         parsed = parse.urlparse(wrapped_storage.storage_url)
-        log_path = (log_path / parsed.scheme.strip("/") /
-                    parsed.netloc.strip("/") / parsed.path.strip("/"))
+        log_path = (
+            log_path
+            / parsed.scheme.strip("/")
+            / parsed.netloc.strip("/")
+            / parsed.path.strip("/")
+        )
         if not log_path.exists():
             log_path.mkdir(parents=True)
         self._logged_storage = LoggedStorage(str(log_path))
@@ -144,7 +143,8 @@ class DebugStorage(Storage):
             netloc="",
             params="",
             query=f"storage={store_url}",
-            fragment="")
+            fragment="",
+        )
         return parse.urlunparse(parsed_url)
 
     def __reduce__(self):

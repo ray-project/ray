@@ -2,11 +2,13 @@ from libcpp cimport bool as c_bool
 from libcpp.memory cimport shared_ptr, unique_ptr
 from libcpp.string cimport string as c_string
 
-from libc.stdint cimport uint8_t, int32_t, uint64_t, int64_t
+from libc.stdint cimport uint8_t, int32_t, uint64_t, int64_t, uint32_t
 from libcpp.unordered_map cimport unordered_map
 from libcpp.vector cimport vector as c_vector
 from libcpp.pair cimport pair as c_pair
-
+from ray.includes.optional cimport (
+    optional,
+)
 from ray.includes.unique_ids cimport (
     CActorID,
     CJobID,
@@ -86,13 +88,13 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         CRayStatus Interrupted(const c_string &msg)
 
         @staticmethod
-        CRayStatus IntentionalSystemExit()
+        CRayStatus IntentionalSystemExit(const c_string &msg)
 
         @staticmethod
-        CRayStatus UnexpectedSystemExit()
+        CRayStatus UnexpectedSystemExit(const c_string &msg)
 
         @staticmethod
-        CRayStatus CreationTaskError()
+        CRayStatus CreationTaskError(const c_string &msg)
 
         @staticmethod
         CRayStatus NotFound()
@@ -150,6 +152,26 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         pass
     cdef cppclass CPlacementStrategy "ray::core::PlacementStrategy":
         pass
+    cdef cppclass CDefaultSchedulingStrategy "ray::rpc::DefaultSchedulingStrategy":  # noqa: E501
+        CDefaultSchedulingStrategy()
+    cdef cppclass CSpreadSchedulingStrategy "ray::rpc::SpreadSchedulingStrategy":  # noqa: E501
+        CSpreadSchedulingStrategy()
+    cdef cppclass CPlacementGroupSchedulingStrategy "ray::rpc::PlacementGroupSchedulingStrategy":  # noqa: E501
+        CPlacementGroupSchedulingStrategy()
+        void set_placement_group_id(const c_string& placement_group_id)
+        void set_placement_group_bundle_index(int64_t placement_group_bundle_index)  # noqa: E501
+        void set_placement_group_capture_child_tasks(c_bool placement_group_capture_child_tasks)  # noqa: E501
+    cdef cppclass CNodeAffinitySchedulingStrategy "ray::rpc::NodeAffinitySchedulingStrategy":  # noqa: E501
+        CNodeAffinitySchedulingStrategy()
+        void set_node_id(const c_string& node_id)
+        void set_soft(c_bool soft)
+    cdef cppclass CSchedulingStrategy "ray::rpc::SchedulingStrategy":
+        CSchedulingStrategy()
+        void clear_scheduling_strategy()
+        CSpreadSchedulingStrategy* mutable_spread_scheduling_strategy()
+        CDefaultSchedulingStrategy* mutable_default_scheduling_strategy()
+        CPlacementGroupSchedulingStrategy* mutable_placement_group_scheduling_strategy()  # noqa: E501
+        CNodeAffinitySchedulingStrategy* mutable_node_affinity_scheduling_strategy()
     cdef cppclass CAddress "ray::rpc::Address":
         CAddress()
         const c_string &SerializeAsString() const
@@ -234,12 +256,12 @@ cdef extern from "ray/core_worker/common.h" nogil:
     cdef cppclass CTaskOptions "ray::core::TaskOptions":
         CTaskOptions()
         CTaskOptions(c_string name, int num_returns,
-                     unordered_map[c_string, double] &resources)
+                     unordered_map[c_string, double] &resources,
+                     c_string concurrency_group_name)
         CTaskOptions(c_string name, int num_returns,
                      unordered_map[c_string, double] &resources,
                      c_string concurrency_group_name,
-                     c_string serialized_runtime_env,
-                     c_vector[c_string] runtime_env_uris)
+                     c_string serialized_runtime_env)
 
     cdef cppclass CActorCreationOptions "ray::core::ActorCreationOptions":
         CActorCreationOptions()
@@ -250,12 +272,13 @@ cdef extern from "ray/core_worker/common.h" nogil:
             const unordered_map[c_string, double] &resources,
             const unordered_map[c_string, double] &placement_resources,
             const c_vector[c_string] &dynamic_worker_options,
-            c_bool is_detached, c_string &name, c_string &ray_namespace,
+            optional[c_bool] is_detached, c_string &name, c_string &ray_namespace,
             c_bool is_asyncio,
-            c_pair[CPlacementGroupID, int64_t] placement_options,
-            c_bool placement_group_capture_child_tasks,
+            const CSchedulingStrategy &scheduling_strategy,
             c_string serialized_runtime_env,
-            c_vector[c_string] runtime_env_uris)
+            const c_vector[CConcurrencyGroup] &concurrency_groups,
+            c_bool execute_out_of_order,
+            int32_t max_pending_calls)
 
     cdef cppclass CPlacementGroupCreationOptions \
             "ray::core::PlacementGroupCreationOptions":
@@ -275,11 +298,21 @@ cdef extern from "ray/core_worker/common.h" nogil:
         const c_string &GetSpilledURL() const
         const CNodeID &GetSpilledNodeID() const
 
-cdef extern from "ray/gcs/gcs_client.h" nogil:
+cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":
-        CGcsClientOptions(const c_string &ip, int port,
-                          const c_string &password)
+        CGcsClientOptions(const c_string &gcs_address)
 
 cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
     cdef cppclass CJobConfig "ray::rpc::JobConfig":
         const c_string &SerializeAsString()
+
+cdef extern from "ray/common/task/task_spec.h" nogil:
+    cdef cppclass CConcurrencyGroup "ray::ConcurrencyGroup":
+        CConcurrencyGroup(
+            const c_string &name,
+            uint32_t max_concurrency,
+            const c_vector[CFunctionDescriptor] &c_fds)
+        CConcurrencyGroup()
+        c_string GetName() const
+        uint32_t GetMaxConcurrency() const
+        c_vector[CFunctionDescriptor] GetFunctionDescriptors() const

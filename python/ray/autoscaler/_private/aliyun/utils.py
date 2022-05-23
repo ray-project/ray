@@ -2,50 +2,42 @@ import logging
 import json
 
 from aliyunsdkcore import client
-from aliyunsdkcore.acs_exception.exceptions \
-    import ClientException, ServerException
-from aliyunsdkecs.request.v20140526.CreateInstanceRequest \
-    import CreateInstanceRequest
-from aliyunsdkecs.request.v20140526.DeleteInstanceRequest \
-    import DeleteInstanceRequest
-from aliyunsdkecs.request.v20140526.DeleteInstancesRequest \
-    import DeleteInstancesRequest
-from aliyunsdkecs.request.v20140526.StartInstanceRequest \
-    import StartInstanceRequest
-from aliyunsdkecs.request.v20140526.StopInstanceRequest \
-    import StopInstanceRequest
-from aliyunsdkecs.request.v20140526.StopInstancesRequest \
-    import StopInstancesRequest
-from aliyunsdkecs.request.v20140526.DescribeInstancesRequest \
-    import DescribeInstancesRequest
-from aliyunsdkecs.request.v20140526.TagResourcesRequest \
-    import TagResourcesRequest
-from aliyunsdkecs.request.v20140526.AllocatePublicIpAddressRequest \
-    import AllocatePublicIpAddressRequest
-from aliyunsdkecs.request.v20140526.ImportKeyPairRequest \
-    import ImportKeyPairRequest
-from aliyunsdkecs.request.v20140526.DescribeKeyPairsRequest \
-    import DescribeKeyPairsRequest
-from aliyunsdkecs.request.v20140526.CreateKeyPairRequest \
-    import CreateKeyPairRequest
-from aliyunsdkecs.request.v20140526.RunInstancesRequest \
-    import RunInstancesRequest
-from aliyunsdkecs.request.v20140526.CreateSecurityGroupRequest \
-    import CreateSecurityGroupRequest
-from aliyunsdkecs.request.v20140526.DeleteKeyPairsRequest \
-    import DeleteKeyPairsRequest
-from aliyunsdkecs.request.v20140526.AuthorizeSecurityGroupRequest \
-    import AuthorizeSecurityGroupRequest
-from aliyunsdkecs.request.v20140526.DescribeSecurityGroupsRequest \
-    import DescribeSecurityGroupsRequest
-from aliyunsdkecs.request.v20140526.CreateVSwitchRequest \
-    import CreateVSwitchRequest
-from aliyunsdkecs.request.v20140526.CreateVpcRequest \
-    import CreateVpcRequest
-from aliyunsdkecs.request.v20140526.DescribeVpcsRequest \
-    import DescribeVpcsRequest
-from aliyunsdkecs.request.v20140526.DescribeVSwitchesRequest \
-    import DescribeVSwitchesRequest
+from aliyunsdkcore.acs_exception.exceptions import ClientException, ServerException
+from aliyunsdkecs.request.v20140526.CreateInstanceRequest import CreateInstanceRequest
+from aliyunsdkecs.request.v20140526.DeleteInstanceRequest import DeleteInstanceRequest
+from aliyunsdkecs.request.v20140526.DeleteInstancesRequest import DeleteInstancesRequest
+from aliyunsdkecs.request.v20140526.StartInstanceRequest import StartInstanceRequest
+from aliyunsdkecs.request.v20140526.StopInstanceRequest import StopInstanceRequest
+from aliyunsdkecs.request.v20140526.StopInstancesRequest import StopInstancesRequest
+from aliyunsdkecs.request.v20140526.DescribeInstancesRequest import (
+    DescribeInstancesRequest,
+)
+from aliyunsdkecs.request.v20140526.TagResourcesRequest import TagResourcesRequest
+from aliyunsdkecs.request.v20140526.AllocatePublicIpAddressRequest import (
+    AllocatePublicIpAddressRequest,
+)
+from aliyunsdkecs.request.v20140526.ImportKeyPairRequest import ImportKeyPairRequest
+from aliyunsdkecs.request.v20140526.DescribeKeyPairsRequest import (
+    DescribeKeyPairsRequest,
+)
+from aliyunsdkecs.request.v20140526.CreateKeyPairRequest import CreateKeyPairRequest
+from aliyunsdkecs.request.v20140526.RunInstancesRequest import RunInstancesRequest
+from aliyunsdkecs.request.v20140526.CreateSecurityGroupRequest import (
+    CreateSecurityGroupRequest,
+)
+from aliyunsdkecs.request.v20140526.DeleteKeyPairsRequest import DeleteKeyPairsRequest
+from aliyunsdkecs.request.v20140526.AuthorizeSecurityGroupRequest import (
+    AuthorizeSecurityGroupRequest,
+)
+from aliyunsdkecs.request.v20140526.DescribeSecurityGroupsRequest import (
+    DescribeSecurityGroupsRequest,
+)
+from aliyunsdkecs.request.v20140526.CreateVSwitchRequest import CreateVSwitchRequest
+from aliyunsdkecs.request.v20140526.CreateVpcRequest import CreateVpcRequest
+from aliyunsdkecs.request.v20140526.DescribeVpcsRequest import DescribeVpcsRequest
+from aliyunsdkecs.request.v20140526.DescribeVSwitchesRequest import (
+    DescribeVSwitchesRequest,
+)
 
 
 class AcsClient:
@@ -70,7 +62,7 @@ class AcsClient:
         )
 
     def describe_instances(self, tags=None, instance_ids=None):
-        """ Query the details of one or more Elastic Compute Service (ECS) instances.
+        """Query the details of one or more Elastic Compute Service (ECS) instances.
 
         :param tags: The tags of the instance.
         :param instance_ids: The IDs of ECS instances
@@ -88,18 +80,18 @@ class AcsClient:
         return None
 
     def create_instance(
-            self,
-            instance_type,
-            image_id,
-            tags,
-            key_pair_name,
-            optimized="optimized",
-            instance_charge_type="PostPaid",
-            spot_strategy="SpotWithPriceLimit",
-            internet_charge_type="PayByTraffic",
-            internet_max_bandwidth_out=5,
+        self,
+        instance_type,
+        image_id,
+        tags,
+        key_pair_name,
+        optimized="optimized",
+        instance_charge_type="PostPaid",
+        spot_strategy="SpotWithPriceLimit",
+        internet_charge_type="PayByTraffic",
+        internet_max_bandwidth_out=5,
     ):
-        """ Create a subscription or pay-as-you-go ECS instance.
+        """Create a subscription or pay-as-you-go ECS instance.
 
         :param instance_type: The instance type of the ECS.
         :param image_id: The ID of the image used to create the instance.
@@ -131,28 +123,27 @@ class AcsClient:
         response = self._send_request(request)
         if response is not None:
             instance_id = response.get("InstanceId")
-            logging.info("instance %s created task submit successfully.",
-                         instance_id)
+            logging.info("instance %s created task submit successfully.", instance_id)
             return instance_id
         logging.error("instance created failed.")
         return None
 
     def run_instances(
-            self,
-            instance_type,
-            image_id,
-            tags,
-            security_group_id,
-            vswitch_id,
-            key_pair_name,
-            amount=1,
-            optimized="optimized",
-            instance_charge_type="PostPaid",
-            spot_strategy="SpotWithPriceLimit",
-            internet_charge_type="PayByTraffic",
-            internet_max_bandwidth_out=1,
+        self,
+        instance_type,
+        image_id,
+        tags,
+        security_group_id,
+        vswitch_id,
+        key_pair_name,
+        amount=1,
+        optimized="optimized",
+        instance_charge_type="PostPaid",
+        spot_strategy="SpotWithPriceLimit",
+        internet_charge_type="PayByTraffic",
+        internet_max_bandwidth_out=1,
     ):
-        """ Create one or more pay-as-you-go or subscription
+        """Create one or more pay-as-you-go or subscription
             Elastic Compute Service (ECS) instances
 
         :param instance_type: The instance type of the ECS.
@@ -200,7 +191,7 @@ class AcsClient:
         return None
 
     def create_security_group(self, vpc_id):
-        """ Create a security group
+        """Create a security group
 
         :param vpc_id: The ID of the VPC in which to create
                        the security group.
@@ -215,7 +206,7 @@ class AcsClient:
         return None
 
     def describe_security_groups(self, vpc_id=None, tags=None):
-        """ Query basic information of security groups.
+        """Query basic information of security groups.
 
         :param vpc_id: The ID of the VPC to which the security group belongs.
         :param tags: The tags of the security group.
@@ -228,15 +219,15 @@ class AcsClient:
             request.set_Tags(tags)
         response = self._send_request(request)
         if response is not None:
-            security_groups = response.get("SecurityGroups").get(
-                "SecurityGroup")
+            security_groups = response.get("SecurityGroups").get("SecurityGroup")
             return security_groups
         logging.error("describe security group failed.")
         return None
 
-    def authorize_security_group(self, ip_protocol, port_range,
-                                 security_group_id, source_cidr_ip):
-        """ Create an inbound security group rule.
+    def authorize_security_group(
+        self, ip_protocol, port_range, security_group_id, source_cidr_ip
+    ):
+        """Create an inbound security group rule.
 
         :param ip_protocol: The transport layer protocol.
         :param port_range: The range of destination ports relevant to
@@ -253,7 +244,7 @@ class AcsClient:
         self._send_request(request)
 
     def create_v_switch(self, vpc_id, zone_id, cidr_block):
-        """ Create vSwitches to divide the VPC into one or more subnets
+        """Create vSwitches to divide the VPC into one or more subnets
 
         :param vpc_id: The ID of the VPC to which the VSwitch belongs.
         :param zone_id: The ID of the zone to which
@@ -273,7 +264,7 @@ class AcsClient:
         return None
 
     def create_vpc(self):
-        """ Creates a virtual private cloud (VPC).
+        """Creates a virtual private cloud (VPC).
 
         :return: The created VPC ID.
         """
@@ -284,7 +275,7 @@ class AcsClient:
         return None
 
     def describe_vpcs(self):
-        """ Queries one or more VPCs in a region.
+        """Queries one or more VPCs in a region.
 
         :return: VPC list.
         """
@@ -295,7 +286,7 @@ class AcsClient:
         return None
 
     def tag_resource(self, resource_ids, tags, resource_type="instance"):
-        """ Create and bind tags to specified ECS resources.
+        """Create and bind tags to specified ECS resources.
 
         :param resource_ids: The IDs of N resources.
         :param tags: The tags of the resource.
@@ -312,7 +303,7 @@ class AcsClient:
             logging.error("instance %s create tag failed.", resource_ids)
 
     def start_instance(self, instance_id):
-        """ Start an ECS instance.
+        """Start an ECS instance.
 
         :param instance_id: The Ecs instance ID.
         """
@@ -326,7 +317,7 @@ class AcsClient:
             logging.error("instance %s start failed.", instance_id)
 
     def stop_instance(self, instance_id, force_stop=False):
-        """ Stop an ECS instance that is in the Running state.
+        """Stop an ECS instance that is in the Running state.
 
         :param instance_id: The Ecs instance ID.
         :param force_stop: Specifies whether to forcibly stop the instance.
@@ -339,7 +330,7 @@ class AcsClient:
         self._send_request(request)
 
     def stop_instances(self, instance_ids, stopped_mode="StopCharging"):
-        """  Stop one or more ECS instances that are in the Running state.
+        """Stop one or more ECS instances that are in the Running state.
 
         :param instance_ids: The IDs of instances.
         :param stopped_mode: Specifies whether billing for the instance
@@ -353,7 +344,7 @@ class AcsClient:
             logging.error("stop_instances failed")
 
     def delete_instance(self, instance_id):
-        """ Release a pay-as-you-go instance or
+        """Release a pay-as-you-go instance or
             an expired subscription instance.
 
         :param instance_id: The ID of the instance that you want to release.
@@ -365,7 +356,7 @@ class AcsClient:
         self._send_request(request)
 
     def delete_instances(self, instance_ids):
-        """ Release one or more pay-as-you-go instances or
+        """Release one or more pay-as-you-go instances or
             expired subscription instances.
 
         :param instance_ids: The IDs of instances that you want to release.
@@ -376,7 +367,7 @@ class AcsClient:
         self._send_request(request)
 
     def allocate_public_address(self, instance_id):
-        """ Assign a public IP address to an ECS instance.
+        """Assign a public IP address to an ECS instance.
 
         :param instance_id: The ID of the instance to which you want to
                             assign a public IP address.
@@ -389,7 +380,7 @@ class AcsClient:
             return response.get("IpAddress")
 
     def create_key_pair(self, key_pair_name):
-        """ Create an SSH key pair.
+        """Create an SSH key pair.
 
         :param key_pair_name: The name of the key pair.
         :return: The created keypair data.
@@ -398,15 +389,14 @@ class AcsClient:
         request.set_KeyPairName(key_pair_name)
         response = self._send_request(request)
         if response is not None:
-            logging.info("Create Key Pair %s Successfully",
-                         response.get("KeyPairId"))
+            logging.info("Create Key Pair %s Successfully", response.get("KeyPairId"))
             return response
         else:
             logging.error("Create Key Pair Failed")
             return None
 
     def import_key_pair(self, key_pair_name, public_key_body):
-        """ Import the public key of an RSA-encrypted key pair
+        """Import the public key of an RSA-encrypted key pair
             that is generated by a third-party tool.
 
         :param key_pair_name: The name of the key pair.
@@ -418,7 +408,7 @@ class AcsClient:
         self._send_request(request)
 
     def delete_key_pairs(self, key_pair_names):
-        """ Delete one or more SSH key pairs.
+        """Delete one or more SSH key pairs.
 
         :param key_pair_names: The name of the key pair.
         :return:
@@ -428,7 +418,7 @@ class AcsClient:
         self._send_request(request)
 
     def describe_key_pairs(self, key_pair_name=None):
-        """ Query one or more key pairs.
+        """Query one or more key pairs.
 
         :param key_pair_name: The name of the key pair.
         :return:
@@ -443,7 +433,7 @@ class AcsClient:
             return None
 
     def describe_v_switches(self, vpc_id=None):
-        """ Queries one or more VSwitches.
+        """Queries one or more VSwitches.
 
         :param vpc_id: The ID of the VPC to which the VSwitch belongs.
         :return: VSwitch list.

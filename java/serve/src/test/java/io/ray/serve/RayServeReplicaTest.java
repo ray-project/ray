@@ -1,16 +1,14 @@
 package io.ray.serve;
 
+import com.google.common.collect.ImmutableMap;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
-import io.ray.runtime.serializer.MessagePackSerializer;
-import io.ray.serve.generated.BackendConfig;
-import io.ray.serve.generated.BackendLanguage;
-import io.ray.serve.generated.BackendVersion;
+import io.ray.serve.api.Serve;
+import io.ray.serve.generated.DeploymentLanguage;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.generated.RequestWrapper;
 import java.io.IOException;
-import java.util.HashMap;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -25,71 +23,91 @@ public class RayServeReplicaTest {
 
     try {
       String controllerName = "RayServeReplicaTest";
-      String backendTag = "b_tag";
+      String deploymentName = "b_tag";
       String replicaTag = "r_tag";
       String version = "v1";
 
       ActorHandle<DummyServeController> controllerHandle =
           Ray.actor(DummyServeController::new).setName(controllerName).remote();
 
-      BackendConfig.Builder backendConfigBuilder = BackendConfig.newBuilder();
-      backendConfigBuilder.setBackendLanguage(BackendLanguage.JAVA);
-      byte[] backendConfigBytes = backendConfigBuilder.build().toByteArray();
-      Object[] initArgs = new Object[] {backendTag, replicaTag, controllerName, new Object()};
-      byte[] initArgsBytes = MessagePackSerializer.encode(initArgs).getLeft();
+      DeploymentConfig deploymentConfig =
+          new DeploymentConfig().setDeploymentLanguage(DeploymentLanguage.JAVA.getNumber());
+      DeploymentInfo deploymentInfo =
+          new DeploymentInfo()
+              .setName(deploymentName)
+              .setDeploymentConfig(deploymentConfig)
+              .setDeploymentVersion(new DeploymentVersion(version))
+              .setDeploymentDef(DummyReplica.class.getName());
 
-      DeploymentInfo deploymentInfo = new DeploymentInfo();
-      deploymentInfo.setBackendConfig(backendConfigBytes);
-      deploymentInfo.setBackendVersion(
-          BackendVersion.newBuilder().setCodeVersion(version).build().toByteArray());
-      deploymentInfo.setReplicaConfig(
-          new ReplicaConfig("io.ray.serve.ReplicaContext", initArgsBytes, new HashMap<>()));
-
-      ActorHandle<RayServeWrappedReplica> backendHandle =
+      ActorHandle<RayServeWrappedReplica> replicHandle =
           Ray.actor(
                   RayServeWrappedReplica::new,
-                  backendTag,
-                  replicaTag,
                   deploymentInfo,
-                  controllerName)
+                  replicaTag,
+                  controllerName,
+                  new RayServeConfig().setConfig(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false"))
               .remote();
 
       // ready
-      backendHandle.task(RayServeWrappedReplica::ready).remote();
+      Assert.assertTrue(replicHandle.task(RayServeWrappedReplica::checkHealth).remote().get());
 
       // handle request
       RequestMetadata.Builder requestMetadata = RequestMetadata.newBuilder();
       requestMetadata.setRequestId(RandomStringUtils.randomAlphabetic(10));
-      requestMetadata.setCallMethod("getBackendTag");
+      requestMetadata.setCallMethod(Constants.CALL_METHOD);
       RequestWrapper.Builder requestWrapper = RequestWrapper.newBuilder();
 
       ObjectRef<Object> resultRef =
-          backendHandle
+          replicHandle
               .task(
                   RayServeWrappedReplica::handleRequest,
                   requestMetadata.build().toByteArray(),
                   requestWrapper.build().toByteArray())
               .remote();
-      Assert.assertEquals((String) resultRef.get(), backendTag);
+      Assert.assertEquals((String) resultRef.get(), "1");
 
       // reconfigure
-      ObjectRef<byte[]> versionRef =
-          backendHandle.task(RayServeWrappedReplica::reconfigure, (Object) null).remote();
-      Assert.assertEquals(BackendVersion.parseFrom(versionRef.get()).getCodeVersion(), version);
+      ObjectRef<Object> versionRef =
+          replicHandle.task(RayServeWrappedReplica::reconfigure, (Object) null).remote();
+      Assert.assertEquals(((DeploymentVersion) versionRef.get()).getCodeVersion(), version);
+
+      replicHandle.task(RayServeWrappedReplica::reconfigure, new Object()).remote().get();
+      resultRef =
+          replicHandle
+              .task(
+                  RayServeWrappedReplica::handleRequest,
+                  requestMetadata.build().toByteArray(),
+                  requestWrapper.build().toByteArray())
+              .remote();
+      Assert.assertEquals((String) resultRef.get(), "1");
+
+      replicHandle
+          .task(RayServeWrappedReplica::reconfigure, ImmutableMap.of("value", "100"))
+          .remote()
+          .get();
+      resultRef =
+          replicHandle
+              .task(
+                  RayServeWrappedReplica::handleRequest,
+                  requestMetadata.build().toByteArray(),
+                  requestWrapper.build().toByteArray())
+              .remote();
+      Assert.assertEquals((String) resultRef.get(), "101");
 
       // get version
-      versionRef = backendHandle.task(RayServeWrappedReplica::getVersion).remote();
-      Assert.assertEquals(BackendVersion.parseFrom(versionRef.get()).getCodeVersion(), version);
+      versionRef = replicHandle.task(RayServeWrappedReplica::getVersion).remote();
+      Assert.assertEquals(((DeploymentVersion) versionRef.get()).getCodeVersion(), version);
 
       // prepare for shutdown
       ObjectRef<Boolean> shutdownRef =
-          backendHandle.task(RayServeWrappedReplica::prepareForShutdown).remote();
+          replicHandle.task(RayServeWrappedReplica::prepareForShutdown).remote();
       Assert.assertTrue(shutdownRef.get());
 
     } finally {
       if (!inited) {
         Ray.shutdown();
       }
+      Serve.setInternalReplicaContext(null);
     }
   }
 }

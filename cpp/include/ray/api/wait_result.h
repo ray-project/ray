@@ -14,9 +14,9 @@
 
 #pragma once
 
-#include <list>
-
 #include <ray/api/object_ref.h>
+
+#include <list>
 
 namespace ray {
 

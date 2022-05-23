@@ -15,6 +15,7 @@
 #pragma once
 
 #include <ray/api/ray_runtime.h>
+
 #include <msgpack.hpp>
 
 #include "ray/common/id.h"
@@ -26,7 +27,6 @@ namespace internal {
 class InvocationSpec {
  public:
   TaskType task_type;
-  TaskID task_id;
   std::string name;
   ActorID actor_id;
   int actor_counter;

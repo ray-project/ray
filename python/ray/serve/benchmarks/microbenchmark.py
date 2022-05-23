@@ -4,6 +4,7 @@
 
 import aiohttp
 import asyncio
+import logging
 import time
 import requests
 
@@ -11,7 +12,8 @@ import numpy as np
 
 import ray
 from ray import serve
-from ray.serve.utils import logger
+
+logger = logging.getLogger(__file__)
 
 NUM_CLIENTS = 8
 CALLS_PER_BATCH = 100
@@ -32,8 +34,11 @@ async def timeit(name, fn, multiplier=1):
             count += 1
         end = time.time()
         stats.append(multiplier * count / (end - start))
-    logger.info("\t{} {} +- {} requests/s".format(name, round(
-        np.mean(stats), 2), round(np.std(stats), 2)))
+    logger.info(
+        "\t{} {} +- {} requests/s".format(
+            name, round(np.mean(stats), 2), round(np.std(stats), 2)
+        )
+    )
     return round(np.mean(stats), 2)
 
 
@@ -56,18 +61,27 @@ class Client:
             await fetch(self.session, data)
 
 
-async def trial(result_json, intermediate_handles, num_replicas,
-                max_batch_size, max_concurrent_queries, data_size):
+async def trial(
+    result_json,
+    intermediate_handles,
+    num_replicas,
+    max_batch_size,
+    max_concurrent_queries,
+    data_size,
+):
     trial_key_base = (
         f"replica:{num_replicas}/batch_size:{max_batch_size}/"
         f"concurrent_queries:{max_concurrent_queries}/"
-        f"data_size:{data_size}/intermediate_handle:{intermediate_handles}")
+        f"data_size:{data_size}/intermediate_handle:{intermediate_handles}"
+    )
 
-    logger.info(f"intermediate_handles={intermediate_handles},"
-                f"num_replicas={num_replicas},"
-                f"max_batch_size={max_batch_size},"
-                f"max_concurrent_queries={max_concurrent_queries},"
-                f"data_size={data_size}")
+    logger.info(
+        f"intermediate_handles={intermediate_handles},"
+        f"num_replicas={num_replicas},"
+        f"max_batch_size={max_batch_size},"
+        f"max_concurrent_queries={max_concurrent_queries},"
+        f"data_size={data_size}"
+    )
 
     deployment_name = "api"
     if intermediate_handles:
@@ -80,8 +94,9 @@ async def trial(result_json, intermediate_handles, num_replicas,
 
             async def __call__(self, req):
                 if self.handle is None:
-                    self.handle = serve.get_deployment(
-                        deployment_name).get_handle(sync=False)
+                    self.handle = serve.get_deployment(deployment_name).get_handle(
+                        sync=False
+                    )
                 obj_ref = await self.handle.remote(req)
                 return await obj_ref
 
@@ -92,8 +107,9 @@ async def trial(result_json, intermediate_handles, num_replicas,
     @serve.deployment(
         name=deployment_name,
         num_replicas=num_replicas,
-        max_concurrent_queries=max_concurrent_queries)
-    class Backend:
+        max_concurrent_queries=max_concurrent_queries,
+    )
+    class D:
         @serve.batch(max_batch_size=max_batch_size)
         async def batch(self, reqs):
             return [b"ok"] * len(reqs)
@@ -104,7 +120,7 @@ async def trial(result_json, intermediate_handles, num_replicas,
             else:
                 return b"ok"
 
-    Backend.deploy()
+    D.deploy()
     routes = requests.get("http://localhost:8000/-/routes").json()
     assert f"/{deployment_name}" in routes, routes
 
@@ -124,7 +140,8 @@ async def trial(result_json, intermediate_handles, num_replicas,
         single_client_avg_tps = await timeit(
             "single client {} data".format(data_size),
             single_client,
-            multiplier=CALLS_PER_BATCH)
+            multiplier=CALLS_PER_BATCH,
+        )
         key = "num_client:1/" + trial_key_base
         result_json.update({key: single_client_avg_tps})
 
@@ -137,7 +154,8 @@ async def trial(result_json, intermediate_handles, num_replicas,
     multi_client_avg_tps = await timeit(
         "{} clients {} data".format(len(clients), data_size),
         many_clients,
-        multiplier=CALLS_PER_BATCH * len(clients))
+        multiplier=CALLS_PER_BATCH * len(clients),
+    )
     key = f"num_client:{len(clients)}/" + trial_key_base
     result_json.update({key: multi_client_avg_tps})
 
@@ -148,13 +166,21 @@ async def main():
     result_json = {}
     for intermediate_handles in [False, True]:
         for num_replicas in [1, 8]:
-            for max_batch_size, max_concurrent_queries in [(1, 1), (1, 10000),
-                                                           (10000, 10000)]:
+            for max_batch_size, max_concurrent_queries in [
+                (1, 1),
+                (1, 10000),
+                (10000, 10000),
+            ]:
                 # TODO(edoakes): large data causes broken pipe errors.
                 for data_size in ["small"]:
-                    await trial(result_json, intermediate_handles,
-                                num_replicas, max_batch_size,
-                                max_concurrent_queries, data_size)
+                    await trial(
+                        result_json,
+                        intermediate_handles,
+                        num_replicas,
+                        max_batch_size,
+                        max_concurrent_queries,
+                        data_size,
+                    )
     return result_json
 
 

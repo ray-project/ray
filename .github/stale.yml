@@ -66,15 +66,18 @@ closeComment: |
 limitPerRun: 5
 
 # Limit to only `issues` or `pulls`
-only: issues
+# only: issues
 
 # Optionally, specify configuration settings that are specific to just 'issues' or 'pulls':
-# pulls:
-#   daysUntilStale: 30
-#   markComment: >
-#     This pull request has been automatically marked as stale because it has not had
-#     recent activity. It will be closed if no further activity occurs. Thank you
-#     for your contributions.
+pulls:
+   daysUntilStale: 30
+   daysUntilClose: 14
+   markComment: >
+     This pull request has been automatically marked as stale because it has not had
+     recent activity. It will be closed in 14 days if no further activity occurs. Thank you
+     for your contributions.
+     
+     - If you'd like to keep this open, just leave any comment, and the stale label will be removed.
 
 # issues:
 #   exemptLabels:

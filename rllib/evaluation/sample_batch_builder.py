@@ -4,10 +4,11 @@ import numpy as np
 from typing import List, Any, Dict, Optional, TYPE_CHECKING
 
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
-from ray.rllib.evaluation.episode import MultiAgentEpisode
+from ray.rllib.evaluation.episode import Episode
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
-from ray.rllib.utils.annotations import Deprecated, DeveloperAPI
+from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.typing import PolicyID, AgentID
@@ -57,12 +58,11 @@ class SampleBatchBuilder:
     def build_and_reset(self) -> SampleBatch:
         """Returns a sample batch including all previously added values."""
 
-        batch = SampleBatch(
-            {k: to_float_array(v)
-             for k, v in self.buffers.items()})
+        batch = SampleBatch({k: to_float_array(v) for k, v in self.buffers.items()})
         if SampleBatch.UNROLL_ID not in batch:
             batch[SampleBatch.UNROLL_ID] = np.repeat(
-                SampleBatchBuilder._next_unroll_id, batch.count)
+                SampleBatchBuilder._next_unroll_id, batch.count
+            )
             SampleBatchBuilder._next_unroll_id += 1
         self.buffers.clear()
         self.count = 0
@@ -81,8 +81,12 @@ class MultiAgentSampleBatchBuilder:
     corresponding policy batch for the agent's policy.
     """
 
-    def __init__(self, policy_map: Dict[PolicyID, Policy], clip_rewards: bool,
-                 callbacks: "DefaultCallbacks"):
+    def __init__(
+        self,
+        policy_map: Dict[PolicyID, Policy],
+        clip_rewards: bool,
+        callbacks: "DefaultCallbacks",
+    ):
         """Initialize a MultiAgentSampleBatchBuilder.
 
         Args:
@@ -92,15 +96,11 @@ class MultiAgentSampleBatchBuilder:
             callbacks (DefaultCallbacks): RLlib callbacks.
         """
         if log_once("MultiAgentSampleBatchBuilder"):
-            deprecation_warning(
-                old="MultiAgentSampleBatchBuilder", error=False)
+            deprecation_warning(old="MultiAgentSampleBatchBuilder", error=False)
         self.policy_map = policy_map
         self.clip_rewards = clip_rewards
         # Build the Policies' SampleBatchBuilders.
-        self.policy_builders = {
-            k: SampleBatchBuilder()
-            for k in policy_map.keys()
-        }
+        self.policy_builders = {k: SampleBatchBuilder() for k in policy_map.keys()}
         # Whenever we observe a new agent, add a new SampleBatchBuilder for
         # this agent.
         self.agent_builders = {}
@@ -132,8 +132,7 @@ class MultiAgentSampleBatchBuilder:
         return len(self.agent_builders) > 0
 
     @DeveloperAPI
-    def add_values(self, agent_id: AgentID, policy_id: AgentID,
-                   **values: Any) -> None:
+    def add_values(self, agent_id: AgentID, policy_id: AgentID, **values: Any) -> None:
         """Add the given dictionary (row) of values to this batch.
 
         Args:
@@ -152,15 +151,14 @@ class MultiAgentSampleBatchBuilder:
 
         self.agent_builders[agent_id].add_values(**values)
 
-    def postprocess_batch_so_far(
-            self, episode: Optional[MultiAgentEpisode] = None) -> None:
+    def postprocess_batch_so_far(self, episode: Optional[Episode] = None) -> None:
         """Apply policy postprocessors to any unprocessed rows.
 
         This pushes the postprocessed per-agent batches onto the per-policy
         builders, clearing per-agent state.
 
         Args:
-            episode (Optional[MultiAgentEpisode]): The Episode object that
+            episode (Optional[Episode]): The Episode object that
                 holds this MultiAgentBatchBuilder object.
         """
 
@@ -169,7 +167,8 @@ class MultiAgentSampleBatchBuilder:
         for agent_id, builder in self.agent_builders.items():
             pre_batches[agent_id] = (
                 self.policy_map[self.agent_to_policy[agent_id]],
-                builder.build_and_reset())
+                builder.build_and_reset(),
+            )
 
         # Apply postprocessor.
         post_batches = {}
@@ -181,31 +180,38 @@ class MultiAgentSampleBatchBuilder:
                 pre_batch["rewards"] = np.clip(
                     pre_batch["rewards"],
                     a_min=-self.clip_rewards,
-                    a_max=self.clip_rewards)
+                    a_max=self.clip_rewards,
+                )
         for agent_id, (_, pre_batch) in pre_batches.items():
             other_batches = pre_batches.copy()
             del other_batches[agent_id]
             policy = self.policy_map[self.agent_to_policy[agent_id]]
-            if any(pre_batch["dones"][:-1]) or len(set(
-                    pre_batch["eps_id"])) > 1:
+            if any(pre_batch["dones"][:-1]) or len(set(pre_batch["eps_id"])) > 1:
                 raise ValueError(
                     "Batches sent to postprocessing must only contain steps "
-                    "from a single trajectory.", pre_batch)
+                    "from a single trajectory.",
+                    pre_batch,
+                )
             # Call the Policy's Exploration's postprocess method.
             post_batches[agent_id] = pre_batch
             if getattr(policy, "exploration", None) is not None:
                 policy.exploration.postprocess_trajectory(
-                    policy, post_batches[agent_id], policy.get_session())
+                    policy, post_batches[agent_id], policy.get_session()
+                )
             post_batches[agent_id] = policy.postprocess_trajectory(
-                post_batches[agent_id], other_batches, episode)
+                post_batches[agent_id], other_batches, episode
+            )
 
         if log_once("after_post"):
             logger.info(
-                "Trajectory fragment after postprocess_trajectory():\n\n{}\n".
-                format(summarize(post_batches)))
+                "Trajectory fragment after postprocess_trajectory():\n\n{}\n".format(
+                    summarize(post_batches)
+                )
+            )
 
         # Append into policy batches and reset
         from ray.rllib.evaluation.rollout_worker import get_global_worker
+
         for agent_id, post_batch in sorted(post_batches.items()):
             self.callbacks.on_postprocess_trajectory(
                 worker=get_global_worker(),
@@ -214,9 +220,9 @@ class MultiAgentSampleBatchBuilder:
                 policy_id=self.agent_to_policy[agent_id],
                 policies=self.policy_map,
                 postprocessed_batch=post_batch,
-                original_batches=pre_batches)
-            self.policy_builders[self.agent_to_policy[agent_id]].add_batch(
-                post_batch)
+                original_batches=pre_batches,
+            )
+            self.policy_builders[self.agent_to_policy[agent_id]].add_batch(post_batch)
 
         self.agent_builders.clear()
         self.agent_to_policy.clear()
@@ -228,21 +234,22 @@ class MultiAgentSampleBatchBuilder:
                     "The environment terminated for all agents, but we still "
                     "don't have a last observation for "
                     "agent {} (policy {}). ".format(
-                        agent_id, self.agent_to_policy[agent_id]) +
-                    "Please ensure that you include the last observations "
+                        agent_id, self.agent_to_policy[agent_id]
+                    )
+                    + "Please ensure that you include the last observations "
                     "of all live agents when setting '__all__' done to True. "
-                    "Alternatively, set no_done_at_end=True to allow this.")
+                    "Alternatively, set no_done_at_end=True to allow this."
+                )
 
     @DeveloperAPI
-    def build_and_reset(self, episode: Optional[MultiAgentEpisode] = None
-                        ) -> MultiAgentBatch:
+    def build_and_reset(self, episode: Optional[Episode] = None) -> MultiAgentBatch:
         """Returns the accumulated sample batches for each policy.
 
         Any unprocessed rows will be first postprocessed with a policy
         postprocessor. The internal state of this builder will be reset.
 
         Args:
-            episode (Optional[MultiAgentEpisode]): The Episode object that
+            episode (Optional[Episode]): The Episode object that
                 holds this MultiAgentBatchBuilder object or None.
 
         Returns:

@@ -26,8 +26,7 @@ class TestDNC(unittest.TestCase):
         ray.shutdown()
 
     def test_pack_unpack(self):
-        d = DNCMemory(
-            gym.spaces.Discrete(1), gym.spaces.Discrete(1), 1, {}, "")
+        d = DNCMemory(gym.spaces.Discrete(1), gym.spaces.Discrete(1), 1, {}, "")
         # Add batch dim
         packed_state = [m.unsqueeze(0) for m in d.get_initial_state()]
         [m.random_() for m in packed_state]
@@ -70,4 +69,5 @@ class TestDNC(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

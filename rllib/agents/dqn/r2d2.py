@@ -1,142 +1,237 @@
-"""
-Recurrent Experience Replay in Distributed Reinforcement Learning (R2D2)
-========================================================================
-
-[1] Recurrent Experience Replay in Distributed Reinforcement Learning -
-    S Kapturowski, G Ostrovski, J Quan, R Munos, W Dabney - 2019, DeepMind
-
-This file defines the distributed Trainer class for the R2D2
-algorithm. See `r2d2_[tf|torch]_policy.py` for the definition of the policies.
-
-Detailed documentation:
-https://docs.ray.io/en/master/rllib-algorithms.html#recurrent-replay-distributed-dqn-r2d2
-"""  # noqa: E501
-
 import logging
-from typing import List, Optional, Type
+from typing import Optional, Type
 
-from ray.rllib.agents import dqn
+from ray.rllib.algorithms.dqn import DQNConfig, DQNTrainer
 from ray.rllib.agents.dqn.r2d2_tf_policy import R2D2TFPolicy
 from ray.rllib.agents.dqn.r2d2_torch_policy import R2D2TorchPolicy
 from ray.rllib.policy.policy import Policy
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 logger = logging.getLogger(__name__)
 
-# yapf: disable
-# __sphinx_doc_begin__
-DEFAULT_CONFIG = dqn.DQNTrainer.merge_trainer_configs(
-    dqn.DEFAULT_CONFIG,  # See keys in impala.py, which are also supported.
-    {
-        # Learning rate for adam optimizer.
-        "lr": 1e-4,
-        # Discount factor.
-        "gamma": 0.997,
-        # Train batch size (in number of single timesteps).
-        "train_batch_size": 64 * 20,
-        # Adam epsilon hyper parameter
-        "adam_epsilon": 1e-3,
-        # Run in parallel by default.
-        "num_workers": 2,
-        # Batch mode must be complete_episodes.
-        "batch_mode": "complete_episodes",
 
-        # If True, assume a zero-initialized state input (no matter where in
-        # the episode the sequence is located).
-        # If False, store the initial states along with each SampleBatch, use
-        # it (as initial state when running through the network for training),
-        # and update that initial state during training (from the internal
-        # state outputs of the immediately preceding sequence).
-        "zero_init_states": True,
-        # If > 0, use the `burn_in` first steps of each replay-sampled sequence
-        # (starting either from all 0.0-values if `zero_init_state=True` or
-        # from the already stored values) to calculate an even more accurate
-        # initial states for the actual sequence (starting after this burn-in
-        # window). In the burn-in case, the actual length of the sequence
-        # used for loss calculation is `n - burn_in` time steps
-        # (n=LSTM’s/attention net’s max_seq_len).
-        "burn_in": 0,
+class R2D2Config(DQNConfig):
+    """Defines a configuration class from which a R2D2Trainer can be built.
 
-        # Whether to use the h-function from the paper [1] to scale target
-        # values in the R2D2-loss function:
-        # h(x) = sign(x)(􏰅|x| + 1 − 1) + εx
-        "use_h_function": True,
-        # The epsilon parameter from the R2D2 loss function (only used
-        # if `use_h_function`=True.
-        "h_function_epsilon": 1e-3,
+    Example:
+        >>> from ray.rllib.agents.dqn.r2d2 import R2D2Config
+        >>> config = R2D2Config()
+        >>> print(config.h_function_epsilon)
+        >>> replay_config = config.replay_buffer_config.update(
+        >>>     {
+        >>>         "capacity": 1000000,
+        >>>         "replay_burn_in": 20,
+        >>>     }
+        >>> )
+        >>> config.training(replay_buffer_config=replay_config)\
+        >>>       .resources(num_gpus=1)\
+        >>>       .rollouts(num_rollout_workers=30)\
+        >>>       .environment("CartPole-v1")
+        >>> trainer = R2D2Trainer(config=config)
+        >>> while True:
+        >>>     trainer.train()
 
-        # === Hyperparameters from the paper [1] ===
-        # Size of the replay buffer (in sequences, not timesteps).
-        "buffer_size": 100000,
-        # If True prioritized replay buffer will be used.
-        "prioritized_replay": False,
-        # Set automatically: The number of contiguous environment steps to
-        # replay at once. Will be calculated via
-        # model->max_seq_len + burn_in.
-        # Do not set this to any valid value!
-        "replay_sequence_length": -1,
+    Example:
+        >>> from ray.rllib.agents.dqn.r2d2 import R2D2Config
+        >>> from ray import tune
+        >>> config = R2D2Config()
+        >>> config.training(train_batch_size=tune.grid_search([256, 64])
+        >>> config.environment(env="CartPole-v1")
+        >>> tune.run(
+        >>>     "R2D2",
+        >>>     stop={"episode_reward_mean":200},
+        >>>     config=config.to_dict()
+        >>> )
 
-        # Update the target network every `target_network_update_freq` steps.
-        "target_network_update_freq": 2500,
-    },
-    _allow_unknown_configs=True,
-)
-# __sphinx_doc_end__
-# yapf: enable
+    Example:
+        >>> from ray.rllib.agents.dqn.r2d2 import R2D2Config
+        >>> config = R2D2Config()
+        >>> print(config.exploration_config)
+        >>> explore_config = config.exploration_config.update(
+        >>>     {
+        >>>         "initial_epsilon": 1.0,
+        >>>         "final_epsilon": 0.1,
+        >>>         "epsilone_timesteps": 200000,
+        >>>     }
+        >>> )
+        >>> config.training(lr_schedule=[[1, 1e-3, [500, 5e-3]])\
+        >>>       .exploration(exploration_config=explore_config)
 
-
-def validate_config(config: TrainerConfigDict) -> None:
-    """Checks and updates the config based on settings.
-
-    Rewrites rollout_fragment_length to take into account burn-in and
-    max_seq_len truncation.
+    Example:
+        >>> from ray.rllib.agents.dqn.r2d2 import R2D2Config
+        >>> config = R2D2Config()
+        >>> print(config.exploration_config)
+        >>> explore_config = config.exploration_config.update(
+        >>>     {
+        >>>         "type": "SoftQ",
+        >>>         "temperature": [1.0],
+        >>>     }
+        >>> )
+        >>> config.training(lr_schedule=[[1, 1e-3, [500, 5e-3]])\
+        >>>       .exploration(exploration_config=explore_config)
     """
-    if config["replay_sequence_length"] != -1:
-        raise ValueError(
-            "`replay_sequence_length` is calculated automatically to be "
-            "model->max_seq_len + burn_in!")
-    # Add the `burn_in` to the Model's max_seq_len.
-    # Set the replay sequence length to the max_seq_len of the model.
-    config["replay_sequence_length"] = \
-        config["burn_in"] + config["model"]["max_seq_len"]
 
-    if config.get("batch_mode") != "complete_episodes":
-        raise ValueError("`batch_mode` must be 'complete_episodes'!")
+    def __init__(self, trainer_class=None):
+        """Initializes a ApexConfig instance."""
+        super().__init__(trainer_class=trainer_class or R2D2Trainer)
 
+        # fmt: off
+        # __sphinx_doc_begin__
+        # R2D2-specific settings:
+        self.zero_init_states = True
+        self.use_h_function = True
+        self.h_function_epsilon = 1e-3
 
-def calculate_rr_weights(config: TrainerConfigDict) -> List[float]:
-    """Calculate the round robin weights for the rollout and train steps"""
-    if not config["training_intensity"]:
-        return [1, 1]
-    # e.g., 32 / 4 -> native ratio of 8.0
-    native_ratio = (
-        config["train_batch_size"] / config["rollout_fragment_length"])
-    # Training intensity is specified in terms of
-    # (steps_replayed / steps_sampled), so adjust for the native ratio.
-    weights = [1, config["training_intensity"] / native_ratio]
-    return weights
+        # R2D2 settings overriding DQN ones:
+        # .training()
+        self.adam_epsilon = 1e-3
+        self.lr = 1e-4
+        self.gamma = 0.997
+        self.train_batch_size = 64
+        self.target_network_update_freq = 2500
+        # R2D2 is using a buffer that stores sequences.
+        self.replay_buffer_config = {
+            "type": "MultiAgentReplayBuffer",
+            # Specify prioritized replay by supplying a buffer type that supports
+            # prioritization, for example: MultiAgentPrioritizedReplayBuffer.
+            "prioritized_replay": DEPRECATED_VALUE,
+            # Size of the replay buffer (in sequences, not timesteps).
+            "capacity": 100000,
+            "storage_unit": "sequences",
+            # Set automatically: The number
+            # of contiguous environment steps to
+            # replay at once. Will be calculated via
+            # model->max_seq_len + burn_in.
+            # Do not set this to any valid value!
+            "replay_sequence_length": -1,
+            # If > 0, use the `replay_burn_in` first steps of each replay-sampled
+            # sequence (starting either from all 0.0-values if `zero_init_state=True` or
+            # from the already stored values) to calculate an even more accurate
+            # initial states for the actual sequence (starting after this burn-in
+            # window). In the burn-in case, the actual length of the sequence
+            # used for loss calculation is `n - replay_burn_in` time steps
+            # (n=LSTM’s/attention net’s max_seq_len).
+            "replay_burn_in": 0,
+        }
 
+        # .rollouts()
+        self.num_workers = 2
+        self.batch_mode = "complete_episodes"
 
-def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
-    """Policy class picker function. Class is chosen based on DL-framework.
+        # fmt: on
+        # __sphinx_doc_end__
 
-    Args:
-        config (TrainerConfigDict): The trainer's configuration dict.
+        self.burn_in = DEPRECATED_VALUE
 
-    Returns:
-        Optional[Type[Policy]]: The Policy class to use with R2D2Trainer.
-            If None, use `default_policy` provided in build_trainer().
-    """
-    if config["framework"] == "torch":
-        return R2D2TorchPolicy
+    def training(
+        self,
+        *,
+        zero_init_states: Optional[bool] = None,
+        use_h_function: Optional[bool] = None,
+        h_function_epsilon: Optional[float] = None,
+        **kwargs,
+    ) -> "R2D2Config":
+        """Sets the training related configuration.
+
+        Args:
+            zero_init_states: If True, assume a zero-initialized state input (no
+                matter where in the episode the sequence is located).
+                If False, store the initial states along with each SampleBatch, use
+                it (as initial state when running through the network for training),
+                and update that initial state during training (from the internal
+                state outputs of the immediately preceding sequence).
+            use_h_function: Whether to use the h-function from the paper [1] to scale
+                target values in the R2D2-loss function:
+                h(x) = sign(x)(􏰅|x| + 1 − 1) + εx
+            h_function_epsilon: The epsilon parameter from the R2D2 loss function (only
+                used if `use_h_function`=True.
+
+        Returns:
+            This updated TrainerConfig object.
+        """
+        # Pass kwargs onto super's `training()` method.
+        super().training(**kwargs)
+
+        if zero_init_states is not None:
+            self.zero_init_states = zero_init_states
+        if use_h_function is not None:
+            self.use_h_function = use_h_function
+        if h_function_epsilon is not None:
+            self.h_function_epsilon = h_function_epsilon
+
+        return self
 
 
 # Build an R2D2 trainer, which uses the framework specific Policy
 # determined in `get_policy_class()` above.
-R2D2Trainer = dqn.DQNTrainer.with_updates(
-    name="R2D2",
-    default_policy=R2D2TFPolicy,
-    get_policy_class=get_policy_class,
-    default_config=DEFAULT_CONFIG,
-    validate_config=validate_config,
-)
+class R2D2Trainer(DQNTrainer):
+    """Recurrent Experience Replay in Distrib. Reinforcement Learning (R2D2).
+
+    Trainer defining the distributed R2D2 algorithm.
+    See `r2d2_[tf|torch]_policy.py` for the definition of the policies.
+
+    [1] Recurrent Experience Replay in Distributed Reinforcement Learning -
+        S Kapturowski, G Ostrovski, J Quan, R Munos, W Dabney - 2019, DeepMind
+
+
+    Detailed documentation:
+    https://docs.ray.io/en/master/rllib-algorithms.html#\
+    recurrent-replay-distributed-dqn-r2d2
+    """
+
+    @classmethod
+    @override(DQNTrainer)
+    def get_default_config(cls) -> TrainerConfigDict:
+        return R2D2Config().to_dict()
+
+    @override(DQNTrainer)
+    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
+        if config["framework"] == "torch":
+            return R2D2TorchPolicy
+        else:
+            return R2D2TFPolicy
+
+    @override(DQNTrainer)
+    def validate_config(self, config: TrainerConfigDict) -> None:
+        """Checks and updates the config based on settings.
+
+        Rewrites rollout_fragment_length to take into account burn-in and
+        max_seq_len truncation.
+        """
+        # Call super's validation method.
+        super().validate_config(config)
+
+        if config["replay_buffer_config"]["replay_sequence_length"] != -1:
+            raise ValueError(
+                "`replay_sequence_length` is calculated automatically to be "
+                "model->max_seq_len + burn_in!"
+            )
+        # Add the `burn_in` to the Model's max_seq_len.
+        # Set the replay sequence length to the max_seq_len of the model.
+        config["replay_buffer_config"]["replay_sequence_length"] = (
+            config["replay_buffer_config"]["replay_burn_in"]
+            + config["model"]["max_seq_len"]
+        )
+
+        if config.get("batch_mode") != "complete_episodes":
+            raise ValueError("`batch_mode` must be 'complete_episodes'!")
+
+
+# Deprecated: Use ray.rllib.agents.dqn.r2d2.R2D2Config instead!
+class _deprecated_default_config(dict):
+    def __init__(self):
+        super().__init__(R2D2Config().to_dict())
+
+    @Deprecated(
+        old="ray.rllib.agents.dqn.r2d2.R2D2_DEFAULT_CONFIG",
+        new="ray.rllib.agents.dqn.r2d2.R2D2Config(...)",
+        error=False,
+    )
+    def __getitem__(self, item):
+        return super().__getitem__(item)
+
+
+R2D2_DEFAULT_CONFIG = _deprecated_default_config()

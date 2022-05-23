@@ -109,12 +109,11 @@ const MemoryInfo: React.FC<{}> = () => {
   }, []);
 
   // Set up polling memory data
-  const fetchData = useCallback(
+  const fetchData = useCallback(() => {
     fetchMemoryTable(groupBy, (resp) =>
       dispatch(dashboardActions.setMemoryTable(resp)),
-    ),
-    [groupBy],
-  );
+    );
+  }, [groupBy, dispatch]);
   const intervalId = useRef<any>(null);
   useEffect(() => {
     if (!intervalId.current && !paused) {

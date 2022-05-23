@@ -1,9 +1,10 @@
 from django.shortcuts import render
 
-from ray.tune.automlboard.settings import AUTOMLBOARD_RELOAD_INTERVAL, \
-    AUTOMLBOARD_LOG_DIR
-from ray.tune.automlboard.models.models import JobRecord, \
-    TrialRecord, ResultRecord
+from ray.tune.automlboard.settings import (
+    AUTOMLBOARD_RELOAD_INTERVAL,
+    AUTOMLBOARD_LOG_DIR,
+)
+from ray.tune.automlboard.models.models import JobRecord, TrialRecord, ResultRecord
 from ray.tune.trial import Trial
 
 import datetime
@@ -16,8 +17,7 @@ def index(request):
 
     total_num = len(recent_trials)
     running_num = sum(t.trial_status == Trial.RUNNING for t in recent_trials)
-    success_num = sum(
-        t.trial_status == Trial.TERMINATED for t in recent_trials)
+    success_num = sum(t.trial_status == Trial.TERMINATED for t in recent_trials)
     failed_num = sum(t.trial_status == Trial.ERROR for t in recent_trials)
 
     job_records = []
@@ -31,7 +31,7 @@ def index(request):
         "trial_num": total_num,
         "running_num": running_num,
         "success_num": success_num,
-        "failed_num": failed_num
+        "failed_num": failed_num,
     }
     return render(request, "index.html", context)
 
@@ -40,15 +40,11 @@ def job(request):
     """View for a single job."""
     job_id = request.GET.get("job_id")
     recent_jobs = JobRecord.objects.order_by("-start_time")[0:100]
-    recent_trials = TrialRecord.objects \
-        .filter(job_id=job_id) \
-        .order_by("-start_time")
+    recent_trials = TrialRecord.objects.filter(job_id=job_id).order_by("-start_time")
     trial_records = []
     for recent_trial in recent_trials:
         trial_records.append(get_trial_info(recent_trial))
-    current_job = JobRecord.objects \
-        .filter(job_id=job_id) \
-        .order_by("-start_time")[0]
+    current_job = JobRecord.objects.filter(job_id=job_id).order_by("-start_time")[0]
 
     if len(trial_records) > 0:
         param_keys = trial_records[0]["params"].keys()
@@ -64,7 +60,7 @@ def job(request):
         "param_keys": param_keys,
         "param_num": len(param_keys),
         "metric_keys": metric_keys,
-        "metric_num": len(metric_keys)
+        "metric_num": len(metric_keys),
     }
     return render(request, "job.html", context)
 
@@ -73,21 +69,19 @@ def trial(request):
     """View for a single trial."""
     job_id = request.GET.get("job_id")
     trial_id = request.GET.get("trial_id")
-    recent_trials = TrialRecord.objects \
-        .filter(job_id=job_id) \
-        .order_by("-start_time")
-    recent_results = ResultRecord.objects \
-        .filter(trial_id=trial_id) \
-        .order_by("-date")[0:2000]
-    current_trial = TrialRecord.objects \
-        .filter(trial_id=trial_id) \
-        .order_by("-start_time")[0]
+    recent_trials = TrialRecord.objects.filter(job_id=job_id).order_by("-start_time")
+    recent_results = ResultRecord.objects.filter(trial_id=trial_id).order_by("-date")[
+        0:2000
+    ]
+    current_trial = TrialRecord.objects.filter(trial_id=trial_id).order_by(
+        "-start_time"
+    )[0]
     context = {
         "job_id": job_id,
         "trial_id": trial_id,
         "current_trial": current_trial,
         "recent_results": recent_results,
-        "recent_trials": recent_trials
+        "recent_trials": recent_trials,
     }
     return render(request, "trial.html", context)
 
@@ -120,7 +114,7 @@ def get_job_info(current_job):
         "failed_num": failed_num,
         "best_trial_id": current_job.best_trial_id,
         "progress": progress,
-        "winner": winner
+        "winner": winner,
     }
 
     return job_info
@@ -132,8 +126,9 @@ def get_trial_info(current_trial):
         # end time is parsed from result.json and the format
         # is like: yyyy-mm-dd_hh-MM-ss, which will be converted
         # to yyyy-mm-dd hh:MM:ss here
-        time_obj = datetime.datetime.strptime(current_trial.end_time,
-                                              "%Y-%m-%d_%H-%M-%S")
+        time_obj = datetime.datetime.strptime(
+            current_trial.end_time, "%Y-%m-%d_%H-%M-%S"
+        )
         end_time = time_obj.strftime("%Y-%m-%d %H:%M:%S")
     else:
         end_time = current_trial.end_time
@@ -150,7 +145,7 @@ def get_trial_info(current_trial):
         "start_time": current_trial.start_time,
         "end_time": end_time,
         "params": eval(current_trial.params.encode("utf-8")),
-        "metrics": metrics
+        "metrics": metrics,
     }
 
     return trial_info

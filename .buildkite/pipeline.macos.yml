@@ -11,24 +11,25 @@ common: &common
     LANG: en_US.UTF-8
 
 prelude_commands: &prelude_commands |-
-  ./ci/travis/upload_build_info.sh
+  ./ci/build/upload_build_info.sh
   (which bazel && bazel clean) || true;
-  . ./ci/travis/ci.sh init && source ~/.zshrc
-  . ./ci/travis/ci.sh build
-  ./ci/travis/install-dependencies.sh
+  . ./ci/ci.sh init && source ~/.zshrc
+  . ./ci/ci.sh build
+  ./ci/env/install-dependencies.sh
 
 epilogue_commands: &epilogue_commands |-
   # Cleanup runtime environment to save storage
-  rm -rf /tmp/ray
+  rm -rf /tmp/ray || true
   # Cleanup local caches (this shouldn't clean up global disk cache)
   bazel clean
 
 steps:
 - label: ":mac: :apple: Wheels and Jars"
   <<: *common
+  conditions: ["RAY_CI_MACOS_WHEELS_AFFECTED", "RAY_CI_PYTHON_DEPENDENCIES_AFFECTED"]
   commands:
     # Cleanup environments
-    - ./ci/travis/upload_build_info.sh
+    - ./ci/build/upload_build_info.sh
     - (which bazel && bazel clean) || true
     # TODO(simon): make sure to change both PR and wheel builds
     # Special setup for jar builds (will be installed to the machine instead)
@@ -38,13 +39,14 @@ steps:
     - export JAVA_HOME=/Library/Java/JavaVirtualMachines/adoptopenjdk-8.jdk/Contents/Home
     - java -version
     # Build wheels
+    - export UPLOAD_WHEELS_AS_ARTIFACTS=1
     - export MAC_WHEELS=1
     - export MAC_JARS=1
     - export RAY_INSTALL_JAVA=1
-    - . ./ci/travis/ci.sh init && source ~/.zshrc
-    - . ./ci/travis/ci.sh build
+    - . ./ci/ci.sh init && source ~/.zshrc
+    - . ./ci/ci.sh build
     # Test wheels
-    - . ./ci/travis/ci.sh test_wheels
+    - . ./ci/ci.sh test_wheels
     # Build jars
     - bash ./java/build-jar-multiplatform.sh darwin
     # Upload the wheels and jars
@@ -59,63 +61,61 @@ steps:
     - if [ "$BUILDKITE_BRANCH" = "master" ]; then python .buildkite/copy_files.py --destination jars --path ./.jar/darwin; fi
 
 
-- label: ":mac: :apple: Ray C++ and Libraries"
+- label: ":mac: :apple: Ray C++, Java and Libraries"
   <<: *common
+  conditions: ["RAY_CI_SERVE_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED", "RAY_CI_CPP_AFFECTED", "RAY_CI_JAVA_AFFECTED", "RAY_CI_PYTHON_AFFECTED", "RAY_CI_DASHBOARD_AFFECTED"]
   commands:
+    - export RAY_INSTALL_JAVA=1
     - *prelude_commands
-    - TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
-    - bazel test --config=ci --test_env=CI $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,-flaky-mac,-post_wheel_build --
+    - TORCH_VERSION=1.6 ./ci/env/install-dependencies.sh
+    # Use --dynamic_mode=off until MacOS CI runs on Big Sur or newer. Otherwise there are problems with running tests
+    # with dynamic linking.
+    - bazel test --config=ci --dynamic_mode=off --test_env=CI $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-post_wheel_build --
       //:all python/ray/serve/... python/ray/dashboard/... -rllib/... -core_worker_test
+    # clang-format is needed by java/test.sh
+    - pip install clang-format==12.0.1
+    - ./java/test.sh
+    - ./ci/ci.sh test_cpp
     - *epilogue_commands
 
-- label: ":mac: :apple: Worker"
-  <<: *common
-  commands:
-    - *prelude_commands
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - ./ci/travis/ci.sh test_cpp
 
-- label: ":mac: :apple: Small and Large"
+- label: ":mac: :apple: Small & Client"
   <<: *common
+  conditions: ["RAY_CI_CORE_CPP_AFFECTED", "RAY_CI_PYTHON_AFFECTED"]
   commands:
     - *prelude_commands
-    - bazel test $(./scripts/bazel_export_options) --config=ci
+    - bazel test $(./ci/run/bazel_export_options) --config=ci
       --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX
       --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI
-      --test_tag_filters=-kubernetes,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z,-flaky,-flaky-mac
-      python/ray/tests/...
+      --test_tag_filters=client_tests,small_size_python_tests
+      -- python/ray/tests/...
+    - *epilogue_commands
+
+- label: ":mac: :apple: Large"
+  <<: *common
+  parallelism: 3
+  conditions: ["RAY_CI_CORE_CPP_AFFECTED", "RAY_CI_PYTHON_AFFECTED"]
+  commands:
+    - *prelude_commands
+    - . ./ci/ci.sh test_large
     - *epilogue_commands
 
 - label: ":mac: :apple: Medium A-J"
   <<: *common
+  conditions: ["RAY_CI_CORE_CPP_AFFECTED", "RAY_CI_PYTHON_AFFECTED"]
   commands:
     - *prelude_commands
-    - bazel test --config=ci $(./scripts/bazel_export_options) --test_env=CI
-      --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j,-flaky,-flaky-mac
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CI
+      --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j
       python/ray/tests/...
     - *epilogue_commands
 
 - label: ":mac: :apple: Medium K-Z"
   <<: *common
+  conditions: ["RAY_CI_CORE_CPP_AFFECTED", "RAY_CI_PYTHON_AFFECTED"]
   commands:
     - *prelude_commands
-    - bazel test --config=ci $(./scripts/bazel_export_options) --test_env=CI
-      --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z,-flaky,-flaky-mac
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CI
+      --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z
       python/ray/tests/...
-    - *epilogue_commands
-
-- label: ":mac: :apple: :snowflake: Flaky"
-  <<: *common
-  commands:
-    - *prelude_commands
-    - ./ci/travis/install-dependencies.sh
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,flaky,flaky-mac
-      --test_env=CONDA_EXE
-      --test_env=CONDA_PYTHON_EXE
-      --test_env=CONDA_SHLVL
-      --test_env=CONDA_PREFIX
-      --test_env=CONDA_DEFAULT_ENV
-      --test_env=CI
-      python/ray/tests/... python/ray/serve/...
     - *epilogue_commands

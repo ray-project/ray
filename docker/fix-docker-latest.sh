@@ -1,61 +1,39 @@
 #!/bin/bash
-# This script is not for normal use and is used in the event that CI (or a user) overwrites the latest tag.
-set -x
 
-IMAGE="1.6.0"
-DEST="latest"
+IMAGE="1.7.0"
+
+if [ $# -eq 0 ]
+then
+echo "Please Specify the release tag (i.e. 1.7.0)"
+exit 1
+fi
 
 while [[ $# -gt 0 ]]
 do
 key="$1"
 case $key in
-    --source-tag)
+    --release-tag)
     shift
     IMAGE=$1
     ;;
-    --dest-tag)
-    shift
-    DEST=$1
-    ;;
     *)
-    echo "Usage: fix-docker-latest.sh --source-tag <TAG> --dest-tag <LATEST>"
+    echo "Usage: fix-docker-latest.sh --release-tag <TAG>"
     exit 1
 esac
 shift
 done
 
-echo "You must be logged into a user with push privileges to do this."
-# for REPO in "ray" "ray-ml" "autoscaler" "ray-deps" "base-deps"
-for REPO in "ray" "ray-ml" "autoscaler"
-do
-    for PYVERSION in "py36" "py37" "py38" "py39"
-    do
-        export SOURCE_TAG="$IMAGE"-"$PYVERSION"
-        export DEST_TAG="$DEST"-"$PYVERSION"
-        docker pull rayproject/"$REPO":"$SOURCE_TAG"
-        docker tag rayproject/"$REPO":"$SOURCE_TAG" rayproject/"$REPO":"$DEST_TAG"
-        docker tag rayproject/"$REPO":"$SOURCE_TAG" rayproject/"$REPO":"$DEST_TAG"-cpu
+ASSUME_ROLE_CREDENTIALS=$(aws sts assume-role --role-arn arn:aws:iam::"$(aws sts get-caller-identity | jq -r .Account)":role/InvokeDockerTagLatest --role-session-name push_latest)
 
-        docker pull rayproject/"$REPO":"$SOURCE_TAG"-gpu
-        docker tag rayproject/"$REPO":"$SOURCE_TAG"-gpu rayproject/"$REPO":"$DEST_TAG"-gpu
+AWS_ACCESS_KEY_ID=$(echo "$ASSUME_ROLE_CREDENTIALS" | jq -r .Credentials.AccessKeyId)
+AWS_SECRET_ACCESS_KEY=$(echo "$ASSUME_ROLE_CREDENTIALS" | jq -r .Credentials.SecretAccessKey)
+AWS_SESSION_TOKEN=$(echo "$ASSUME_ROLE_CREDENTIALS" | jq -r .Credentials.SessionToken)
 
-        docker push rayproject/"$REPO":"$DEST_TAG"
-        docker push rayproject/"$REPO":"$DEST_TAG"-cpu
-        docker push rayproject/"$REPO":"$DEST_TAG"-gpu
-    done
-done
+echo -e "Invoking this lambda!\nView logs at https://us-west-2.console.aws.amazon.com/cloudwatch/home?region=us-west-2#logsV2:log-groups"
+AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN=$AWS_SESSION_TOKEN AWS_SECURITY_TOKEN='' aws \
+lambda invoke --function-name DockerTagLatest \
+--cli-binary-format raw-in-base64-out \
+--cli-read-timeout 600 \
+--payload "{\"source_tag\" : \"$IMAGE\", \"destination_tag\" : \"latest\"}" /dev/stdout
 
-
-for REPO in "ray" "ray-ml" "autoscaler" "ray-deps" "base-deps"
-do
-    docker pull rayproject/"$REPO":"$IMAGE"
-    docker tag rayproject/"$REPO":"$IMAGE" rayproject/"$REPO":"$DEST"
-    docker tag rayproject/"$REPO":"$IMAGE" rayproject/"$REPO":"$DEST"-cpu
-
-    docker pull rayproject/"$REPO":"$IMAGE"-gpu
-    docker tag rayproject/"$REPO":"$IMAGE"-gpu rayproject/"$REPO":"$DEST"-gpu
-    
-    docker push rayproject/"$REPO":"$DEST"
-    docker push rayproject/"$REPO":"$DEST"-cpu
-    docker push rayproject/"$REPO":"$DEST"-gpu
-done
+echo -e "Please check logs before rerunning!!!!\n\nAt the time of writing, Autoscaler Images are not built & Ray-ML Images are not built for Py39\nSo retagging errors for those images are expected!"

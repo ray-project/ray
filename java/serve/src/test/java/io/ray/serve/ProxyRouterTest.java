@@ -15,7 +15,6 @@ public class ProxyRouterTest {
 
   @Test
   public void test() {
-
     boolean inited = Ray.isInitialized();
     Ray.init();
 
@@ -40,6 +39,9 @@ public class ProxyRouterTest {
       controllerHandle.task(DummyServeController::setEndpoints, endpointInfos).remote();
 
       Serve.setInternalReplicaContext(null, null, controllerName, null);
+      Serve.getReplicaContext()
+          .setRayServeConfig(
+              new RayServeConfig().setConfig(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false"));
 
       // ProxyRouter updates routes.
       ProxyRouter proxyRouter = new ProxyRouter();

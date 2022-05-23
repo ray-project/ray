@@ -18,10 +18,12 @@ class EagerModel(TFModelV2):
     perform any TF eager operation in tf.py_function().
     """
 
-    def __init__(self, observation_space, action_space, num_outputs,
-                 model_config, name):
-        super().__init__(observation_space, action_space, num_outputs,
-                         model_config, name)
+    def __init__(
+        self, observation_space, action_space, num_outputs, model_config, name
+    ):
+        super().__init__(
+            observation_space, action_space, num_outputs, model_config, name
+        )
 
         inputs = tf.keras.layers.Input(shape=observation_space.shape)
         self.fcnet = FullyConnectedNetwork(
@@ -29,7 +31,8 @@ class EagerModel(TFModelV2):
             action_space=self.action_space,
             num_outputs=self.num_outputs,
             model_config=self.model_config,
-            name="fc1")
+            name="fc1",
+        )
         out, value_out = self.fcnet.base_model(inputs)
 
         def lambda_(x):
@@ -43,8 +46,7 @@ class EagerModel(TFModelV2):
 
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
-        out, self._value_out = self.base_model(input_dict["obs"], state,
-                                               seq_lens)
+        out, self._value_out = self.base_model(input_dict["obs"], state, seq_lens)
         return out, []
 
     @override(ModelV2)
@@ -54,6 +56,8 @@ class EagerModel(TFModelV2):
     def forward_eager(self, feature_layer):
         assert tf.executing_eagerly()
         if random.random() > 0.99:
-            print("Eagerly printing the feature layer mean value",
-                  tf.reduce_mean(feature_layer))
+            print(
+                "Eagerly printing the feature layer mean value",
+                tf.reduce_mean(feature_layer),
+            )
         return feature_layer

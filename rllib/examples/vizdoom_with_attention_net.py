@@ -3,33 +3,35 @@ import os
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--run",
-    type=str,
-    default="PPO",
-    help="The RLlib-registered algorithm to use.")
+    "--run", type=str, default="PPO", help="The RLlib-registered algorithm to use."
+)
 parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "tfe", "torch"],
     default="tf",
-    help="The DL framework specifier.")
+    help="The DL framework specifier.",
+)
 parser.add_argument(
     "--from-checkpoint",
     type=str,
     default=None,
     help="Full path to a checkpoint file for restoring a previously saved "
-    "Trainer state.")
+    "Trainer state.",
+)
 parser.add_argument("--num-workers", type=int, default=0)
 parser.add_argument(
     "--use-n-prev-actions",
     type=int,
     default=0,
-    help="How many of the previous actions to use as attention input.")
+    help="How many of the previous actions to use as attention input.",
+)
 parser.add_argument(
     "--use-n-prev-rewards",
     type=int,
     default=0,
-    help="How many of the previous rewards to use as attention input.")
+    help="How many of the previous rewards to use as attention input.",
+)
 parser.add_argument("--stop-iters", type=int, default=9999)
 parser.add_argument("--stop-timesteps", type=int, default=100000000)
 parser.add_argument("--stop-reward", type=float, default=1000.0)

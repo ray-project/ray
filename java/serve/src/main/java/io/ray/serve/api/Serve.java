@@ -19,15 +19,15 @@ public class Serve {
   /**
    * Set replica information to global context.
    *
-   * @param backendTag backend tag
+   * @param deploymentName deployment name
    * @param replicaTag replica tag
    * @param controllerName the controller actor's name
    * @param servableObject the servable object of the specified replica.
    */
   public static void setInternalReplicaContext(
-      String backendTag, String replicaTag, String controllerName, Object servableObject) {
+      String deploymentName, String replicaTag, String controllerName, Object servableObject) {
     INTERNAL_REPLICA_CONTEXT =
-        new ReplicaContext(backendTag, replicaTag, controllerName, servableObject);
+        new ReplicaContext(deploymentName, replicaTag, controllerName, servableObject);
   }
 
   public static void setInternalReplicaContext(ReplicaContext replicaContext) {
@@ -42,7 +42,7 @@ public class Serve {
   public static ReplicaContext getReplicaContext() {
     if (INTERNAL_REPLICA_CONTEXT == null) {
       throw new RayServeException(
-          "`Serve.getReplicaContext()` may only be called from within a Ray Serve backend.");
+          "`Serve.getReplicaContext()` may only be called from within a Ray Serve deployment.");
     }
     return INTERNAL_REPLICA_CONTEXT;
   }

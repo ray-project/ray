@@ -7,7 +7,7 @@ ds = ray.data.from_items(range(200))
 
 
 def slow(x):
-    time.sleep(.1)
+    time.sleep(0.1)
     return x
 
 

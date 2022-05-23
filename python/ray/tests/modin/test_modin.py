@@ -36,8 +36,7 @@ if modin_compatible_version:
 skip = not modin_compatible_version or not modin_installed
 
 # These tests are written for versions of Modin that require python 3.7+
-pytestmark = pytest.mark.skipif(
-    skip, reason="Outdated or missing Modin dependency")
+pytestmark = pytest.mark.skipif(skip, reason="Outdated or missing Modin dependency")
 
 if not skip:
     from ray.tests.modin.modin_test_utils import df_equals
@@ -61,7 +60,7 @@ def run_ray_client(request):
 random_state = np.random.RandomState(seed=42)
 
 # Size of test dataframes
-NCOLS, NROWS = (2**6, 2**8)
+NCOLS, NROWS = (2 ** 6, 2 ** 8)
 
 # Range for values for test data
 RAND_LOW = 0
@@ -72,21 +71,26 @@ RAND_HIGH = 100
 test_data = {
     "int_data": {
         "col{}".format(int((i - NCOLS / 2) % NCOLS + 1)): random_state.randint(
-            RAND_LOW, RAND_HIGH, size=(NROWS))
+            RAND_LOW, RAND_HIGH, size=(NROWS)
+        )
         for i in range(NCOLS)
     },
     "float_nan_data": {
         "col{}".format(int((i - NCOLS / 2) % NCOLS + 1)): [
-            x if (j % 4 == 0 and i > NCOLS // 2)
-            or (j != i and i <= NCOLS // 2) else np.NaN for j, x in enumerate(
-                random_state.uniform(RAND_LOW, RAND_HIGH, size=(NROWS)))
+            x
+            if (j % 4 == 0 and i > NCOLS // 2) or (j != i and i <= NCOLS // 2)
+            else np.NaN
+            for j, x in enumerate(
+                random_state.uniform(RAND_LOW, RAND_HIGH, size=(NROWS))
+            )
         ]
         for i in range(NCOLS)
     },
 }
 
-test_data["int_data"]["index"] = test_data["int_data"].pop("col{}".format(
-    int(NCOLS / 2)))
+test_data["int_data"]["index"] = test_data["int_data"].pop(
+    "col{}".format(int(NCOLS / 2))
+)
 
 for col in test_data["float_nan_data"]:
     for row in range(NROWS // 2):
@@ -185,37 +189,47 @@ def test_merge():
 
         # left_on and right_index
         modin_result = pd.merge(
-            modin_df, modin_df2, how=how, left_on="col1", right_index=True)
+            modin_df, modin_df2, how=how, left_on="col1", right_index=True
+        )
         pandas_result = pandas.merge(
-            pandas_df, pandas_df2, how=how, left_on="col1", right_index=True)
+            pandas_df, pandas_df2, how=how, left_on="col1", right_index=True
+        )
         df_equals(modin_result, pandas_result)
 
         # left_index and right_on
         modin_result = pd.merge(
-            modin_df, modin_df2, how=how, left_index=True, right_on="col1")
+            modin_df, modin_df2, how=how, left_index=True, right_on="col1"
+        )
         pandas_result = pandas.merge(
-            pandas_df, pandas_df2, how=how, left_index=True, right_on="col1")
+            pandas_df, pandas_df2, how=how, left_index=True, right_on="col1"
+        )
         df_equals(modin_result, pandas_result)
 
         # left_on and right_on col1
         modin_result = pd.merge(
-            modin_df, modin_df2, how=how, left_on="col1", right_on="col1")
+            modin_df, modin_df2, how=how, left_on="col1", right_on="col1"
+        )
         pandas_result = pandas.merge(
-            pandas_df, pandas_df2, how=how, left_on="col1", right_on="col1")
+            pandas_df, pandas_df2, how=how, left_on="col1", right_on="col1"
+        )
         df_equals(modin_result, pandas_result)
 
         # left_on and right_on col2
         modin_result = pd.merge(
-            modin_df, modin_df2, how=how, left_on="col2", right_on="col2")
+            modin_df, modin_df2, how=how, left_on="col2", right_on="col2"
+        )
         pandas_result = pandas.merge(
-            pandas_df, pandas_df2, how=how, left_on="col2", right_on="col2")
+            pandas_df, pandas_df2, how=how, left_on="col2", right_on="col2"
+        )
         df_equals(modin_result, pandas_result)
 
         # left_index and right_index
         modin_result = pd.merge(
-            modin_df, modin_df2, how=how, left_index=True, right_index=True)
+            modin_df, modin_df2, how=how, left_index=True, right_index=True
+        )
         pandas_result = pandas.merge(
-            pandas_df, pandas_df2, how=how, left_index=True, right_index=True)
+            pandas_df, pandas_df2, how=how, left_index=True, right_index=True
+        )
         df_equals(modin_result, pandas_result)
 
     s = pd.Series(frame_data.get("col1"))
@@ -227,12 +241,14 @@ def test_merge():
 
 
 def test_pivot():
-    test_df = pd.DataFrame({
-        "foo": ["one", "one", "one", "two", "two", "two"],
-        "bar": ["A", "B", "C", "A", "B", "C"],
-        "baz": [1, 2, 3, 4, 5, 6],
-        "zoo": ["x", "y", "z", "q", "w", "t"],
-    })
+    test_df = pd.DataFrame(
+        {
+            "foo": ["one", "one", "one", "two", "two", "two"],
+            "bar": ["A", "B", "C", "A", "B", "C"],
+            "baz": [1, 2, 3, 4, 5, 6],
+            "zoo": ["x", "y", "z", "q", "w", "t"],
+        }
+    )
 
     df = pd.pivot(test_df, index="foo", columns="bar", values="baz")
     assert isinstance(df, pd.DataFrame)
@@ -242,35 +258,35 @@ def test_pivot():
 
 
 def test_pivot_table():
-    test_df = pd.DataFrame({
-        "A": ["foo", "foo", "foo", "foo", "foo", "bar", "bar", "bar", "bar"],
-        "B": ["one", "one", "one", "two", "two", "one", "one", "two", "two"],
-        "C": [
-            "small",
-            "large",
-            "large",
-            "small",
-            "small",
-            "large",
-            "small",
-            "small",
-            "large",
-        ],
-        "D": [1, 2, 2, 3, 3, 4, 5, 6, 7],
-        "E": [2, 4, 5, 5, 6, 6, 8, 9, 9],
-    })
+    test_df = pd.DataFrame(
+        {
+            "A": ["foo", "foo", "foo", "foo", "foo", "bar", "bar", "bar", "bar"],
+            "B": ["one", "one", "one", "two", "two", "one", "one", "two", "two"],
+            "C": [
+                "small",
+                "large",
+                "large",
+                "small",
+                "small",
+                "large",
+                "small",
+                "small",
+                "large",
+            ],
+            "D": [1, 2, 2, 3, 3, 4, 5, 6, 7],
+            "E": [2, 4, 5, 5, 6, 6, 8, 9, 9],
+        }
+    )
 
     df = pd.pivot_table(
-        test_df, values="D", index=["A", "B"], columns=["C"], aggfunc=np.sum)
+        test_df, values="D", index=["A", "B"], columns=["C"], aggfunc=np.sum
+    )
     assert isinstance(df, pd.DataFrame)
 
     with pytest.raises(ValueError):
         pd.pivot_table(
-            test_df["C"],
-            values="D",
-            index=["A", "B"],
-            columns=["C"],
-            aggfunc=np.sum)
+            test_df["C"], values="D", index=["A", "B"], columns=["C"], aggfunc=np.sum
+        )
 
 
 def test_unique():
@@ -285,60 +301,62 @@ def test_unique():
     assert modin_result.shape == pandas_result.shape
 
     modin_result = pd.unique(
-        pd.Series([pd.Timestamp("20160101"),
-                   pd.Timestamp("20160101")]))
+        pd.Series([pd.Timestamp("20160101"), pd.Timestamp("20160101")])
+    )
+    pandas_result = pandas.unique(
+        pandas.Series([pandas.Timestamp("20160101"), pandas.Timestamp("20160101")])
+    )
+    assert_array_equal(modin_result, pandas_result)
+    assert modin_result.shape == pandas_result.shape
+
+    modin_result = pd.unique(
+        pd.Series(
+            [
+                pd.Timestamp("20160101", tz="US/Eastern"),
+                pd.Timestamp("20160101", tz="US/Eastern"),
+            ]
+        )
+    )
     pandas_result = pandas.unique(
         pandas.Series(
-            [pandas.Timestamp("20160101"),
-             pandas.Timestamp("20160101")]))
+            [
+                pandas.Timestamp("20160101", tz="US/Eastern"),
+                pandas.Timestamp("20160101", tz="US/Eastern"),
+            ]
+        )
+    )
     assert_array_equal(modin_result, pandas_result)
     assert modin_result.shape == pandas_result.shape
 
     modin_result = pd.unique(
-        pd.Series([
-            pd.Timestamp("20160101", tz="US/Eastern"),
-            pd.Timestamp("20160101", tz="US/Eastern"),
-        ]))
+        pd.Index(
+            [
+                pd.Timestamp("20160101", tz="US/Eastern"),
+                pd.Timestamp("20160101", tz="US/Eastern"),
+            ]
+        )
+    )
     pandas_result = pandas.unique(
-        pandas.Series([
-            pandas.Timestamp("20160101", tz="US/Eastern"),
-            pandas.Timestamp("20160101", tz="US/Eastern"),
-        ]))
-    assert_array_equal(modin_result, pandas_result)
-    assert modin_result.shape == pandas_result.shape
-
-    modin_result = pd.unique(
-        pd.Index([
-            pd.Timestamp("20160101", tz="US/Eastern"),
-            pd.Timestamp("20160101", tz="US/Eastern"),
-        ]))
-    pandas_result = pandas.unique(
-        pandas.Index([
-            pandas.Timestamp("20160101", tz="US/Eastern"),
-            pandas.Timestamp("20160101", tz="US/Eastern"),
-        ]))
+        pandas.Index(
+            [
+                pandas.Timestamp("20160101", tz="US/Eastern"),
+                pandas.Timestamp("20160101", tz="US/Eastern"),
+            ]
+        )
+    )
     assert_array_equal(modin_result, pandas_result)
     assert modin_result.shape == pandas_result.shape
 
     modin_result = pd.unique(pd.Series(pd.Categorical(list("baabc"))))
-    pandas_result = pandas.unique(
-        pandas.Series(pandas.Categorical(list("baabc"))))
+    pandas_result = pandas.unique(pandas.Series(pandas.Categorical(list("baabc"))))
     assert_array_equal(modin_result, pandas_result)
     assert modin_result.shape == pandas_result.shape
 
 
 def test_to_datetime():
     # DataFrame input for to_datetime
-    modin_df = pd.DataFrame({
-        "year": [2015, 2016],
-        "month": [2, 3],
-        "day": [4, 5]
-    })
-    pandas_df = pandas.DataFrame({
-        "year": [2015, 2016],
-        "month": [2, 3],
-        "day": [4, 5]
-    })
+    modin_df = pd.DataFrame({"year": [2015, 2016], "month": [2, 3], "day": [4, 5]})
+    pandas_df = pandas.DataFrame({"year": [2015, 2016], "month": [2, 3], "day": [4, 5]})
     df_equals(pd.to_datetime(modin_df), pandas.to_datetime(pandas_df))
 
     # Series input for to_datetime
@@ -348,18 +366,13 @@ def test_to_datetime():
 
     # Other inputs for to_datetime
     value = 1490195805
-    assert pd.to_datetime(
-        value, unit="s") == pandas.to_datetime(
-            value, unit="s")
+    assert pd.to_datetime(value, unit="s") == pandas.to_datetime(value, unit="s")
     value = 1490195805433502912
-    assert pd.to_datetime(
-        value, unit="ns") == pandas.to_datetime(
-            value, unit="ns")
+    assert pd.to_datetime(value, unit="ns") == pandas.to_datetime(value, unit="ns")
     value = [1, 2, 3]
-    assert pd.to_datetime(
-        value, unit="D", origin=pd.Timestamp("2000-01-01")).equals(
-            pandas.to_datetime(
-                value, unit="D", origin=pandas.Timestamp("2000-01-01")))
+    assert pd.to_datetime(value, unit="D", origin=pd.Timestamp("2000-01-01")).equals(
+        pandas.to_datetime(value, unit="D", origin=pandas.Timestamp("2000-01-01"))
+    )
 
 
 @pytest.mark.parametrize(
@@ -375,10 +388,8 @@ def test_to_datetime():
 def test_to_numeric(data, errors, downcast):
     modin_series = pd.Series(data)
     pandas_series = pandas.Series(data)
-    modin_result = pd.to_numeric(
-        modin_series, errors=errors, downcast=downcast)
-    pandas_result = pandas.to_numeric(
-        pandas_series, errors=errors, downcast=downcast)
+    modin_result = pd.to_numeric(modin_series, errors=errors, downcast=downcast)
+    pandas_result = pandas.to_numeric(pandas_series, errors=errors, downcast=downcast)
     df_equals(modin_result, pandas_result)
 
 
@@ -387,11 +398,11 @@ def test_to_pandas_indices():
 
     md_df = pd.DataFrame(data)
     index = pandas.MultiIndex.from_tuples(
-        [(i, i * 2) for i in np.arange(len(md_df) + 1)], names=["A",
-                                                                "B"]).drop(0)
+        [(i, i * 2) for i in np.arange(len(md_df) + 1)], names=["A", "B"]
+    ).drop(0)
     columns = pandas.MultiIndex.from_tuples(
-        [(i, i * 2) for i in np.arange(len(md_df.columns) + 1)],
-        names=["A", "B"]).drop(0)
+        [(i, i * 2) for i in np.arange(len(md_df.columns) + 1)], names=["A", "B"]
+    ).drop(0)
 
     md_df.index = index
     md_df.columns = columns
@@ -400,9 +411,11 @@ def test_to_pandas_indices():
 
     for axis in [0, 1]:
         assert md_df.axes[axis].equals(
-            pd_df.axes[axis]), f"Indices at axis {axis} are different!"
-        assert md_df.axes[axis].equal_levels(pd_df.axes[
-            axis]), f"Levels of indices at axis {axis} are different!"
+            pd_df.axes[axis]
+        ), f"Indices at axis {axis} are different!"
+        assert md_df.axes[axis].equal_levels(
+            pd_df.axes[axis]
+        ), f"Levels of indices at axis {axis} are different!"
 
 
 def test_empty_dataframe():

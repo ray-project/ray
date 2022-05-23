@@ -1,45 +1,45 @@
 from typing import Tuple, Optional
 
+import ray
 from ray import workflow
 
 
-@workflow.step
+@ray.remote
 def intentional_fail() -> str:
     raise RuntimeError("oops")
 
 
-@workflow.step
+@ray.remote
 def cry(error: Exception) -> None:
     print("Sadly", error)
 
 
-@workflow.step
+@ray.remote
 def celebrate(result: str) -> None:
     print("Success!", result)
 
 
-@workflow.step
+@ray.remote
 def send_email(result: str) -> None:
     print("Sending email", result)
 
 
-@workflow.step
+@ray.remote
 def exit_handler(res: Tuple[Optional[str], Optional[Exception]]) -> None:
     result, error = res
-    email = send_email.step("Raw result: {}, {}".format(result, error))
+    email = send_email.bind(f"Raw result: {result}, {error}")
     if error:
-        handler = cry.step(error)
+        handler = cry.bind(error)
     else:
-        handler = celebrate.step(result)
-    return wait_all.step(handler, email)
+        handler = celebrate.bind(result)
+    return workflow.continuation(wait_all.bind(handler, email))
 
 
-@workflow.step
+@ray.remote
 def wait_all(*deps):
-    pass
+    return "done"
 
 
 if __name__ == "__main__":
-    workflow.init()
-    res = intentional_fail.options(catch_exceptions=True).step()
-    print(exit_handler.step(res).run())
+    res = intentional_fail.options(**workflow.options(catch_exceptions=True)).bind()
+    print(workflow.create(exit_handler.bind(res)).run())

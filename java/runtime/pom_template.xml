@@ -80,6 +80,53 @@
           <outputDirectory>${output.directory}</outputDirectory>
         </configuration>
       </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-shade-plugin</artifactId>
+          <version>3.1.1</version>
+          <executions>
+            <execution>
+                    <phase>package</phase>
+                    <goals>
+                        <goal>shade</goal>
+                    </goals>
+                    <configuration>
+                        <minimizeJar>false</minimizeJar>
+                        <artifactSet>
+                            <includes>
+                                <include>com.google.guava</include>
+                                <include>com.google.protobuf</include>
+                            </includes>
+                        </artifactSet>
+                        <relocations>
+                            <relocation>
+                                <pattern>com.google.common</pattern>
+                                <shadedPattern>io.ray.shaded.com.google.common</shadedPattern>
+                            </relocation>
+                            <relocation>
+                                <pattern>com.google.protobuf</pattern>
+                                <shadedPattern>io.ray.shaded.com.google.protobuf</shadedPattern>
+                            </relocation>
+                            <relocation>
+                                <pattern>com.google.thirdparty</pattern>
+                                <shadedPattern>io.ray.shaded.com.google.thirdparty</shadedPattern>
+                            </relocation>
+                        </relocations>
+                        <filters>
+                            <filter>
+                                <artifact>*:*</artifact>
+                                <excludes>
+                                    <exclude>META-INF/*.SF</exclude>
+                                    <exclude>META-INF/*.DSA</exclude>
+                                    <exclude>META-INF/*.RSA</exclude>
+                                </excludes>
+                            </filter>
+                        </filters>
+                    </configuration>
+                </execution>
+            </executions>
+        </plugin>
     </plugins>
   </build>
 

@@ -39,39 +39,56 @@ class RayObject {
   /// \param[in] metadata Metadata of the ray object.
   /// \param[in] nested_rfs ObjectRefs that were serialized in data.
   /// \param[in] copy_data Whether this class should hold a copy of data.
-  RayObject(const std::shared_ptr<Buffer> &data, const std::shared_ptr<Buffer> &metadata,
-            const std::vector<rpc::ObjectReference> &nested_refs, bool copy_data = false)
-      : data_(data),
+  RayObject(const std::shared_ptr<Buffer> &data,
+            const std::shared_ptr<Buffer> &metadata,
+            const std::vector<rpc::ObjectReference> &nested_refs,
+            bool copy_data = false) {
+    Init(data, metadata, nested_refs, copy_data);
+  }
+
+  /// This constructor creates a ray object instance whose data will be generated
+  /// by the data factory.
+  RayObject(const std::shared_ptr<Buffer> &metadata,
+            const std::vector<rpc::ObjectReference> &nested_refs,
+            std::function<std::shared_ptr<ray::Buffer>()> data_factory,
+            bool copy_data = false)
+      : data_factory_(std::move(data_factory)),
         metadata_(metadata),
         nested_refs_(nested_refs),
         has_data_copy_(copy_data),
         creation_time_nanos_(absl::GetCurrentTimeNanos()) {
     if (has_data_copy_) {
-      // If this object is required to hold a copy of the data,
-      // make a copy if the passed in buffers don't already have a copy.
-      if (data_ && !data_->OwnsData()) {
-        data_ = std::make_shared<LocalMemoryBuffer>(data_->Data(), data_->Size(),
-                                                    /*copy_data=*/true);
-      }
-
       if (metadata_ && !metadata_->OwnsData()) {
         metadata_ = std::make_shared<LocalMemoryBuffer>(
             metadata_->Data(), metadata_->Size(), /*copy_data=*/true);
       }
     }
-
-    RAY_CHECK(data_ || metadata_) << "Data and metadata cannot both be empty.";
   }
 
-  RayObject(rpc::ErrorType error_type);
-
-  RayObject(rpc::ErrorType error_type, const std::string &append_data);
-
-  RayObject(rpc::ErrorType error_type, const uint8_t *append_data,
-            size_t append_data_size);
+  /// Create an Ray error object. It uses msgpack for the serialization format now.
+  /// Ray error objects consist of metadata that indicates the error code (see
+  /// rpc::ErrorType) and the serialized message pack that contains serialized
+  /// rpc::RayErrorInfo as a body.
+  ///
+  /// NOTE: There's no reason to have outer-side message pack for serialization (it is
+  /// tech debt).
+  /// TODO(sang): Clean this up.
+  ///
+  /// NOTE: The deserialization side needs to have its own corresponding deserializer.
+  /// See `serialization.py's def _deserialize_msgpack_data`.
+  ///
+  /// \param[in] error_type Error type.
+  /// \param[in] ray_error_info The error information that this object body contains.
+  RayObject(rpc::ErrorType error_type, const rpc::RayErrorInfo *ray_error_info = nullptr);
 
   /// Return the data of the ray object.
-  const std::shared_ptr<Buffer> &GetData() const { return data_; }
+  std::shared_ptr<Buffer> GetData() const {
+    if (data_factory_ != nullptr) {
+      return data_factory_();
+    } else {
+      return data_;
+    }
+  }
 
   /// Return the metadata of the ray object.
   const std::shared_ptr<Buffer> &GetMetadata() const { return metadata_; }
@@ -87,7 +104,7 @@ class RayObject {
   }
 
   /// Whether this object has data.
-  bool HasData() const { return data_ != nullptr; }
+  bool HasData() const { return data_ != nullptr || data_factory_ != nullptr; }
 
   /// Whether this object has metadata.
   bool HasMetadata() const { return metadata_ != nullptr; }
@@ -109,9 +126,40 @@ class RayObject {
   int64_t CreationTimeNanos() const { return creation_time_nanos_; }
 
  private:
+  void Init(const std::shared_ptr<Buffer> &data,
+            const std::shared_ptr<Buffer> &metadata,
+            const std::vector<rpc::ObjectReference> &nested_refs,
+            bool copy_data = false) {
+    data_ = data;
+    metadata_ = metadata;
+    nested_refs_ = nested_refs;
+    has_data_copy_ = copy_data;
+    creation_time_nanos_ = absl::GetCurrentTimeNanos();
+
+    if (has_data_copy_) {
+      // If this object is required to hold a copy of the data,
+      // make a copy if the passed in buffers don't already have a copy.
+      if (data_ && !data_->OwnsData()) {
+        data_ = std::make_shared<LocalMemoryBuffer>(data_->Data(),
+                                                    data_->Size(),
+                                                    /*copy_data=*/true);
+      }
+
+      if (metadata_ && !metadata_->OwnsData()) {
+        metadata_ = std::make_shared<LocalMemoryBuffer>(
+            metadata_->Data(), metadata_->Size(), /*copy_data=*/true);
+      }
+    }
+
+    RAY_CHECK(data_ || metadata_) << "Data and metadata cannot both be empty.";
+  }
+
   std::shared_ptr<Buffer> data_;
+  /// The data factory is used to allocate data from the language frontend.
+  /// Note that, if this is provided, `data_` should be null.
+  std::function<const std::shared_ptr<Buffer>()> data_factory_ = nullptr;
   std::shared_ptr<Buffer> metadata_;
-  const std::vector<rpc::ObjectReference> nested_refs_;
+  std::vector<rpc::ObjectReference> nested_refs_;
   /// Whether this class holds a data copy.
   bool has_data_copy_;
   /// Whether this object was accessed.

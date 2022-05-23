@@ -1,6 +1,8 @@
 from ray.rllib.models.tf.tf_action_dist import Categorical, ActionDistribution
-from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
-    TorchDistributionWrapper
+from ray.rllib.models.torch.torch_action_dist import (
+    TorchCategorical,
+    TorchDistributionWrapper,
+)
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
 tf1, tf, tfv = try_import_tf()
@@ -40,8 +42,7 @@ class BinaryAutoregressiveDistribution(ActionDistribution):
         a1, a2 = actions[:, 0], actions[:, 1]
         a1_vec = tf.expand_dims(tf.cast(a1, tf.float32), 1)
         a1_logits, a2_logits = self.model.action_model([self.inputs, a1_vec])
-        return (
-            Categorical(a1_logits).logp(a1) + Categorical(a2_logits).logp(a2))
+        return Categorical(a1_logits).logp(a1) + Categorical(a2_logits).logp(a2)
 
     def sampled_action_logp(self):
         return tf.exp(self._action_logp)
@@ -61,8 +62,7 @@ class BinaryAutoregressiveDistribution(ActionDistribution):
 
     def _a1_distribution(self):
         BATCH = tf.shape(self.inputs)[0]
-        a1_logits, _ = self.model.action_model(
-            [self.inputs, tf.zeros((BATCH, 1))])
+        a1_logits, _ = self.model.action_model([self.inputs, tf.zeros((BATCH, 1))])
         a1_dist = Categorical(a1_logits)
         return a1_dist
 
@@ -110,8 +110,9 @@ class TorchBinaryAutoregressiveDistribution(TorchDistributionWrapper):
         a1, a2 = actions[:, 0], actions[:, 1]
         a1_vec = torch.unsqueeze(a1.float(), 1)
         a1_logits, a2_logits = self.model.action_module(self.inputs, a1_vec)
-        return (TorchCategorical(a1_logits).logp(a1) +
-                TorchCategorical(a2_logits).logp(a2))
+        return TorchCategorical(a1_logits).logp(a1) + TorchCategorical(a2_logits).logp(
+            a2
+        )
 
     def sampled_action_logp(self):
         return torch.exp(self._action_logp)

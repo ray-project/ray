@@ -17,6 +17,7 @@
 
 #include <future>
 #include <thread>
+
 #include "boost/filesystem.hpp"
 #include "ray/util/logging.h"
 
@@ -29,7 +30,34 @@ int Plus(int x, int y) { return x + y; }
 
 int Triple(int x, int y, int z) { return x + y + z; }
 
-RAY_REMOTE(Return1, Plus1, Plus, Triple);
+std::string GetVal(ray::ObjectRef<std::string> obj) { return *obj.Get(); }
+
+int GetIntVal(ray::ObjectRef<ray::ObjectRef<int>> obj) {
+  auto val = *obj.Get();
+  return *val.Get();
+}
+
+std::vector<std::shared_ptr<int>> GetList(int x, std::vector<ray::ObjectRef<int>> list) {
+  return ray::Get(list);
+}
+
+RAY_REMOTE(Return1, Plus1, Plus, Triple, GetVal, GetIntVal, GetList);
+
+std::promise<bool> g_promise;
+
+bool BlockGet() { return g_promise.get_future().get(); }
+
+bool GetValue(ray::ObjectRef<bool> arg) {
+  auto result = ray::Wait(std::vector<ray::ObjectRef<bool>>{arg}, 1, 1000);
+  EXPECT_EQ(result.ready.size(), 0);
+
+  g_promise.set_value(true);
+  bool r = *ray::Get(arg);
+  EXPECT_EQ(r, true);
+  return r;
+}
+
+RAY_REMOTE(BlockGet, GetValue);
 
 class Counter {
  public:
@@ -54,10 +82,30 @@ class Counter {
     count += x;
     return count;
   }
+
+  std::string GetVal(ray::ObjectRef<std::string> obj) { return *obj.Get(); }
+
+  int GetIntVal(ray::ObjectRef<ray::ObjectRef<int>> obj) {
+    auto val = *obj.Get();
+    return *val.Get();
+  }
+
+  // The dummy x is used to test a heterogeneous case: one is value arg, another is an
+  // ObjectRef arg.
+  std::vector<std::shared_ptr<int>> GetList(int x,
+                                            std::vector<ray::ObjectRef<int>> list) {
+    return ray::Get(list);
+  }
 };
 
-RAY_REMOTE(Counter::FactoryCreate, &Counter::Plus1, &Counter::Plus, &Counter::Triple,
-           &Counter::Add);
+RAY_REMOTE(Counter::FactoryCreate,
+           &Counter::Plus1,
+           &Counter::Plus,
+           &Counter::Triple,
+           &Counter::Add,
+           &Counter::GetVal,
+           &Counter::GetIntVal,
+           &Counter::GetList);
 
 TEST(RayApiTest, LogTest) {
   auto log_path = boost::filesystem::current_path().string() + "/tmp/";
@@ -142,6 +190,28 @@ TEST(RayApiTest, WaitTest) {
   EXPECT_EQ(*getResult[2], 5);
 }
 
+TEST(RayApiTest, ObjectRefArgsTest) {
+  auto obj = ray::Put(std::string("aaa"));
+  auto r = ray::Task(GetVal).Remote(obj);
+  EXPECT_EQ(*r.Get(), "aaa");
+
+  auto obj0 = ray::Put(42);
+  auto obj1 = ray::Put(obj0);
+  auto r1 = ray::Task(GetIntVal).Remote(obj1);
+  EXPECT_EQ(*r1.Get(), 42);
+
+  std::vector<ray::ObjectRef<int>> list{obj0, obj0};
+  auto r2 = ray::Task(GetList).Remote(1, list);
+  auto result2 = *r2.Get();
+  EXPECT_EQ(result2.size(), 2);
+  EXPECT_EQ(*result2[0], 42);
+  EXPECT_EQ(*result2[1], 42);
+
+  auto r4 = ray::Task(BlockGet).Remote();
+  auto r5 = ray::Task(GetValue).Remote(r4);
+  EXPECT_EQ(*r5.Get(), true);
+}
+
 TEST(RayApiTest, CallWithValueTest) {
   auto r0 = ray::Task(Return1).Remote();
   auto r1 = ray::Task(Plus1).Remote(3);
@@ -184,6 +254,24 @@ TEST(RayApiTest, ActorTest) {
   config.local_mode = true;
   ray::Init(config);
   auto actor = ray::Actor(Counter::FactoryCreate).Remote();
+  auto obj = ray::Put(std::string("aaa"));
+  auto r = actor.Task(&Counter::GetVal).Remote(obj);
+  EXPECT_EQ(*r.Get(), "aaa");
+
+  auto obj0 = ray::Put(42);
+  auto obj1 = ray::Put(obj0);
+  auto r1 = actor.Task(&Counter::GetIntVal).Remote(obj1);
+  EXPECT_EQ(*r1.Get(), 42);
+
+  std::vector<ray::ObjectRef<int>> list{obj0, obj0};
+  auto r2 = actor.Task(&Counter::GetList).Remote(1, list);
+  auto result2 = *r2.Get();
+  EXPECT_EQ(result2.size(), 2);
+
+  auto r3 = actor.Task(&Counter::GetList).Remote(obj0, list);
+  auto result3 = *r3.Get();
+  EXPECT_EQ(result3.size(), 2);
+
   auto rt1 = actor.Task(&Counter::Add).Remote(1);
   auto rt2 = actor.Task(&Counter::Add).Remote(2);
   auto rt3 = actor.Task(&Counter::Add).Remote(3);
@@ -217,22 +305,6 @@ TEST(RayApiTest, GetActorTest) {
   EXPECT_FALSE(ray::GetActor<Counter>("not_exist_actor"));
 }
 
-TEST(RayApiTest, GetGlobalActorTest) {
-  ray::ActorHandle<Counter> actor = ray::Actor(Counter::FactoryCreate)
-                                        .SetMaxRestarts(1)
-                                        .SetGlobalName("named_actor")
-                                        .Remote();
-  auto named_actor_obj = actor.Task(&Counter::Add).Remote(1);
-  EXPECT_EQ(1, *named_actor_obj.Get());
-
-  auto named_actor_handle_optional = ray::GetGlobalActor<Counter>("named_actor");
-  EXPECT_TRUE(named_actor_handle_optional);
-  auto &named_actor_handle = *named_actor_handle_optional;
-  auto named_actor_obj1 = named_actor_handle.Task(&Counter::Plus1).Remote(1);
-  EXPECT_EQ(2, *named_actor_obj1.Get());
-  EXPECT_FALSE(ray::GetGlobalActor<Counter>("not_exist_actor"));
-}
-
 TEST(RayApiTest, CompareWithFuture) {
   // future from a packaged_task
   std::packaged_task<int(int)> task(Plus1);
@@ -259,8 +331,8 @@ TEST(RayApiTest, CompareWithFuture) {
 
 TEST(RayApiTest, CreateAndRemovePlacementGroup) {
   std::vector<std::unordered_map<std::string, double>> bundles{{{"CPU", 1}}};
-  ray::PlacementGroupCreationOptions options1{false, "first_placement_group", bundles,
-                                              ray::PlacementStrategy::PACK};
+  ray::PlacementGroupCreationOptions options1{
+      "first_placement_group", bundles, ray::PlacementStrategy::PACK};
   auto first_placement_group = ray::CreatePlacementGroup(options1);
   EXPECT_TRUE(first_placement_group.Wait(10));
 

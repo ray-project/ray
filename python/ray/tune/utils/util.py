@@ -1,27 +1,35 @@
-import socket
-from contextlib import closing
-from typing import Dict, List, Union
 import copy
 import glob
+import inspect
 import logging
 import os
-import inspect
 import threading
 import time
 import uuid
 from collections import defaultdict
 from datetime import datetime
 from threading import Thread
+from typing import Dict, List, Union, Type, Callable, Any
 from typing import Optional
 
 import numpy as np
-import ray
 import psutil
-
+import ray
+from ray.ml.checkpoint import Checkpoint
+from ray.ml.utils.remote_storage import delete_at_uri
+from ray.util.ml_utils.dict import (  # noqa: F401
+    merge_dicts,
+    deep_update,
+    flatten_dict,
+    unflatten_dict,
+    unflatten_list_dict,
+    unflattened_lookup,
+)
 from ray.util.ml_utils.json import SafeFallbackEncoder  # noqa
-from ray.util.ml_utils.dict import merge_dicts, deep_update, flatten_dict, \
-                                    unflatten_dict, unflatten_list_dict, \
-                                    unflattened_lookup  # noqa
+from ray.util.ml_utils.util import (  # noqa: F401
+    is_nan,
+    is_nan_or_inf,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -74,9 +82,11 @@ class UtilMonitor(Thread):
         with self.lock:
             if psutil is not None:
                 self.values["cpu_util_percent"].append(
-                    float(psutil.cpu_percent(interval=None)))
+                    float(psutil.cpu_percent(interval=None))
+                )
                 self.values["ram_util_percent"].append(
-                    float(getattr(psutil.virtual_memory(), "percent")))
+                    float(getattr(psutil.virtual_memory(), "percent"))
+                )
             if self.GPUtil is not None:
                 gpu_list = []
                 try:
@@ -85,9 +95,11 @@ class UtilMonitor(Thread):
                     logger.debug("GPUtil failed to retrieve GPUs.")
                 for gpu in gpu_list:
                     self.values["gpu_util_percent" + str(gpu.id)].append(
-                        float(gpu.load))
+                        float(gpu.load)
+                    )
                     self.values["vram_util_percent" + str(gpu.id)].append(
-                        float(gpu.memoryUtil))
+                        float(gpu.memoryUtil)
+                    )
 
     def get_data(self):
         if self.stopped:
@@ -97,12 +109,7 @@ class UtilMonitor(Thread):
             ret_values = copy.deepcopy(self.values)
             for key, val in self.values.items():
                 del val[:]
-        return {
-            "perf": {
-                k: np.mean(v)
-                for k, v in ret_values.items() if len(v) > 0
-            }
-        }
+        return {"perf": {k: np.mean(v) for k, v in ret_values.items() if len(v) > 0}}
 
     def run(self):
         self.stopped = False
@@ -114,37 +121,79 @@ class UtilMonitor(Thread):
         self.stopped = True
 
 
-def pin_in_object_store(obj):
-    """Deprecated, use ray.put(value) instead."""
+def retry_fn(
+    fn: Callable[[], Any],
+    exception_type: Type[Exception],
+    num_retries: int = 3,
+    sleep_time: int = 1,
+):
+    for i in range(num_retries):
+        try:
+            fn()
+        except exception_type as e:
+            logger.warning(e)
+            time.sleep(sleep_time)
+        else:
+            break
 
-    obj_ref = ray.put(obj)
-    _pinned_objects.append(obj_ref)
-    return obj_ref
+
+@ray.remote
+def _serialize_checkpoint(checkpoint_path) -> bytes:
+    checkpoint = Checkpoint.from_directory(checkpoint_path)
+    return checkpoint.to_bytes()
 
 
-def get_pinned_object(pinned_id):
-    """Deprecated."""
+def get_checkpoint_from_remote_node(
+    checkpoint_path: str, node_ip: str, timeout: float = 300.0
+) -> Optional[Checkpoint]:
+    if not any(node["NodeManagerAddress"] == node_ip for node in ray.nodes()):
+        logger.warning(
+            f"Could not fetch checkpoint with path {checkpoint_path} from "
+            f"node with IP {node_ip} because the node is not available "
+            f"anymore."
+        )
+        return None
+    fut = _serialize_checkpoint.options(
+        resources={f"node:{node_ip}": 0.01}, num_cpus=0
+    ).remote(checkpoint_path)
+    try:
+        checkpoint_data = ray.get(fut, timeout=timeout)
+    except Exception as e:
+        logger.warning(
+            f"Could not fetch checkpoint with path {checkpoint_path} from "
+            f"node with IP {node_ip} because serialization failed: {e}"
+        )
+        return None
+    return Checkpoint.from_bytes(checkpoint_data)
 
-    return ray.get(pinned_id)
+
+def delete_external_checkpoint(checkpoint_uri: str):
+    delete_at_uri(checkpoint_uri)
 
 
 class warn_if_slow:
     """Prints a warning if a given operation is slower than 500ms.
 
     Example:
-        >>> with warn_if_slow("some_operation"):
-        ...    ray.get(something)
+        >>> from ray.tune.utils.util import warn_if_slow
+        >>> something = ... # doctest: +SKIP
+        >>> with warn_if_slow("some_operation"): # doctest: +SKIP
+        ...    ray.get(something) # doctest: +SKIP
     """
 
     DEFAULT_THRESHOLD = float(os.environ.get("TUNE_WARN_THRESHOLD_S", 0.5))
-    DEFAULT_MESSAGE = "The `{name}` operation took {duration:.3f} s, " \
-                      "which may be a performance bottleneck."
+    DEFAULT_MESSAGE = (
+        "The `{name}` operation took {duration:.3f} s, "
+        "which may be a performance bottleneck."
+    )
 
-    def __init__(self,
-                 name: str,
-                 threshold: Optional[float] = None,
-                 message: Optional[str] = None,
-                 disable: bool = False):
+    def __init__(
+        self,
+        name: str,
+        threshold: Optional[float] = None,
+        message: Optional[str] = None,
+        disable: bool = False,
+    ):
         self.name = name
         self.threshold = threshold or self.DEFAULT_THRESHOLD
         self.message = message or self.DEFAULT_MESSAGE
@@ -162,8 +211,7 @@ class warn_if_slow:
         if now - self.start > self.threshold and now - START_OF_TIME > 60.0:
             self.too_slow = True
             duration = now - self.start
-            logger.warning(
-                self.message.format(name=self.name, duration=duration))
+            logger.warning(self.message.format(name=self.name, duration=duration))
 
 
 class Tee(object):
@@ -218,10 +266,6 @@ def date_str():
     return datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
 
 
-def is_nan_or_inf(value):
-    return np.isnan(value) or np.isinf(value)
-
-
 def _to_pinnable(obj):
     """Converts obj to a form that can be pinned in object store memory.
 
@@ -238,11 +282,11 @@ def _from_pinnable(obj):
     return obj[0]
 
 
-def diagnose_serialization(trainable):
+def diagnose_serialization(trainable: Callable):
     """Utility for detecting why your trainable function isn't serializing.
 
     Args:
-        trainable (func): The trainable object passed to
+        trainable: The trainable object passed to
             tune.run(trainable). Currently only supports
             Function API.
 
@@ -296,61 +340,61 @@ def diagnose_serialization(trainable):
     except Exception as e:
         print(f"Serialization failed: {e}")
 
-    print("Inspecting the scope of the trainable by running "
-          f"`inspect.getclosurevars({str(trainable)})`...")
+    print(
+        "Inspecting the scope of the trainable by running "
+        f"`inspect.getclosurevars({str(trainable)})`..."
+    )
     closure = inspect.getclosurevars(trainable)
     failure_set = set()
     if closure.globals:
-        print(f"Detected {len(closure.globals)} global variables. "
-              "Checking serializability...")
-        check_variables(closure.globals, failure_set,
-                        lambda s: print("   " + s))
+        print(
+            f"Detected {len(closure.globals)} global variables. "
+            "Checking serializability..."
+        )
+        check_variables(closure.globals, failure_set, lambda s: print("   " + s))
 
     if closure.nonlocals:
-        print(f"Detected {len(closure.nonlocals)} nonlocal variables. "
-              "Checking serializability...")
-        check_variables(closure.nonlocals, failure_set,
-                        lambda s: print("   " + s))
+        print(
+            f"Detected {len(closure.nonlocals)} nonlocal variables. "
+            "Checking serializability..."
+        )
+        check_variables(closure.nonlocals, failure_set, lambda s: print("   " + s))
 
     if not failure_set:
-        print("Nothing was found to have failed the diagnostic test, though "
-              "serialization did not succeed. Feel free to raise an "
-              "issue on github.")
+        print(
+            "Nothing was found to have failed the diagnostic test, though "
+            "serialization did not succeed. Feel free to raise an "
+            "issue on github."
+        )
         return failure_set
     else:
-        print(f"Variable(s) {failure_set} was found to be non-serializable. "
-              "Consider either removing the instantiation/imports "
-              "of these objects or moving them into the scope of "
-              "the trainable. ")
+        print(
+            f"Variable(s) {failure_set} was found to be non-serializable. "
+            "Consider either removing the instantiation/imports "
+            "of these objects or moving them into the scope of "
+            "the trainable. "
+        )
         return failure_set
 
 
-def atomic_save(state: Dict, checkpoint_dir: str, file_name: str,
-                tmp_file_name: str):
+def atomic_save(state: Dict, checkpoint_dir: str, file_name: str, tmp_file_name: str):
     """Atomically saves the state object to the checkpoint directory.
 
     This is automatically used by tune.run during a Tune job.
 
     Args:
-        state (dict): Object state to be serialized.
-        checkpoint_dir (str): Directory location for the checkpoint.
-        file_name (str): Final name of file.
-        tmp_file_name (str): Temporary name of file.
+        state: Object state to be serialized.
+        checkpoint_dir: Directory location for the checkpoint.
+        file_name: Final name of file.
+        tmp_file_name: Temporary name of file.
     """
     import ray.cloudpickle as cloudpickle
+
     tmp_search_ckpt_path = os.path.join(checkpoint_dir, tmp_file_name)
     with open(tmp_search_ckpt_path, "wb") as f:
         cloudpickle.dump(state, f)
 
     os.replace(tmp_search_ckpt_path, os.path.join(checkpoint_dir, file_name))
-
-
-def find_free_port():
-    """Finds a free port on the current node."""
-    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
-        s.bind(("", 0))
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        return s.getsockname()[1]
 
 
 def load_newest_checkpoint(dirpath: str, ckpt_pattern: str) -> dict:
@@ -360,14 +404,15 @@ def load_newest_checkpoint(dirpath: str, ckpt_pattern: str) -> dict:
     :obj:atomic_save.
 
     Args:
-        dirpath (str): Directory in which to look for the checkpoint file.
-        ckpt_pattern (str): File name pattern to match to find checkpoint
+        dirpath: Directory in which to look for the checkpoint file.
+        ckpt_pattern: File name pattern to match to find checkpoint
             files.
 
     Returns:
         (dict) Deserialized state dict.
     """
     import ray.cloudpickle as cloudpickle
+
     full_paths = glob.glob(os.path.join(dirpath, ckpt_pattern))
     if not full_paths:
         return
@@ -377,25 +422,26 @@ def load_newest_checkpoint(dirpath: str, ckpt_pattern: str) -> dict:
     return checkpoint_state
 
 
-def wait_for_gpu(gpu_id=None,
-                 target_util=0.01,
-                 retry=20,
-                 delay_s=5,
-                 gpu_memory_limit=None):
+def wait_for_gpu(
+    gpu_id: Optional[Union[int, str]] = None,
+    target_util: float = 0.01,
+    retry: int = 20,
+    delay_s: int = 5,
+    gpu_memory_limit: Optional[float] = None,
+):
     """Checks if a given GPU has freed memory.
 
     Requires ``gputil`` to be installed: ``pip install gputil``.
 
     Args:
-        gpu_id (Optional[Union[int, str]]): GPU id or uuid to check.
+        gpu_id: GPU id or uuid to check.
             Must be found within GPUtil.getGPUs(). If none, resorts to
             the first item returned from `ray.get_gpu_ids()`.
-        target_util (float): The utilization threshold to reach to unblock.
+        target_util: The utilization threshold to reach to unblock.
             Set this to 0 to block until the GPU is completely free.
-        retry (int): Number of times to check GPU limit. Sleeps `delay_s`
+        retry: Number of times to check GPU limit. Sleeps `delay_s`
             seconds between checks.
-        delay_s (int): Seconds to wait before check.
-        gpu_memory_limit (float): Deprecated.
+        delay_s: Seconds to wait before check.
 
     Returns:
         bool: True if free.
@@ -415,18 +461,17 @@ def wait_for_gpu(gpu_id=None,
         tune.run(tune_func, resources_per_trial={"GPU": 1}, num_samples=10)
     """
     GPUtil = _import_gputil()
-    if gpu_memory_limit:
-        raise ValueError("'gpu_memory_limit' is deprecated. "
-                         "Use 'target_util' instead.")
+
     if GPUtil is None:
-        raise RuntimeError(
-            "GPUtil must be installed if calling `wait_for_gpu`.")
+        raise RuntimeError("GPUtil must be installed if calling `wait_for_gpu`.")
 
     if gpu_id is None:
         gpu_id_list = ray.get_gpu_ids()
         if not gpu_id_list:
-            raise RuntimeError("No GPU ids found from `ray.get_gpu_ids()`. "
-                               "Did you set Tune resources correctly?")
+            raise RuntimeError(
+                "No GPU ids found from `ray.get_gpu_ids()`. "
+                "Did you set Tune resources correctly?"
+            )
         gpu_id = gpu_id_list[0]
 
     gpu_attr = "id"
@@ -453,31 +498,35 @@ def wait_for_gpu(gpu_id=None,
         raise ValueError(
             f"{gpu_id} not found in set of available GPUs: {gpu_ids}. "
             "`wait_for_gpu` takes either GPU ordinal ID (e.g., '0') or "
-            "UUID (e.g., 'GPU-04546190-b68d-65ac-101b-035f8faed77d').")
+            "UUID (e.g., 'GPU-04546190-b68d-65ac-101b-035f8faed77d')."
+        )
 
     for i in range(int(retry)):
-        gpu_object = next(
-            g for g in GPUtil.getGPUs() if gpu_id_fn(g) == gpu_id)
+        gpu_object = next(g for g in GPUtil.getGPUs() if gpu_id_fn(g) == gpu_id)
         if gpu_object.memoryUtil > target_util:
-            logger.info(f"Waiting for GPU util to reach {target_util}. "
-                        f"Util: {gpu_object.memoryUtil:0.3f}")
+            logger.info(
+                f"Waiting for GPU util to reach {target_util}. "
+                f"Util: {gpu_object.memoryUtil:0.3f}"
+            )
             time.sleep(delay_s)
         else:
             return True
     raise RuntimeError("GPU memory was not freed.")
 
 
-def validate_save_restore(trainable_cls,
-                          config=None,
-                          num_gpus=0,
-                          use_object_store=False):
+def validate_save_restore(
+    trainable_cls: Type,
+    config: Optional[Dict] = None,
+    num_gpus: int = 0,
+    use_object_store: bool = False,
+):
     """Helper method to check if your Trainable class will resume correctly.
 
     Args:
         trainable_cls: Trainable class for evaluation.
-        config (dict): Config to pass to Trainable when testing.
-        num_gpus (int): GPU resources to allocate when testing.
-        use_object_store (bool): Whether to save and restore to Ray's object
+        config: Config to pass to Trainable when testing.
+        num_gpus: GPU resources to allocate when testing.
+        use_object_store: Whether to save and restore to Ray's object
             store. Recommended to set this to True if planning to use
             algorithms that pause training (i.e., PBT, HyperBand).
     """
@@ -493,15 +542,16 @@ def validate_save_restore(trainable_cls,
 
     assert res.get(TRAINING_ITERATION), (
         "Validation will not pass because it requires `training_iteration` "
-        "to be returned.")
+        "to be returned."
+    )
 
     if use_object_store:
         restore_check = trainable_2.restore_from_object.remote(
-            trainable_1.save_to_object.remote())
+            trainable_1.save_to_object.remote()
+        )
         ray.get(restore_check)
     else:
-        restore_check = ray.get(
-            trainable_2.restore.remote(trainable_1.save.remote()))
+        restore_check = ray.get(trainable_2.restore.remote(trainable_1.save.remote()))
 
     res = ray.get(trainable_2.train.remote())
     assert res[TRAINING_ITERATION] == 4
@@ -530,7 +580,8 @@ def detect_checkpoint_function(train_func, abort=False, partial=False):
             "Provided training function must have 2 args "
             "in the signature, and the latter arg must "
             "contain `checkpoint_dir`. For example: "
-            "`func(config, checkpoint_dir=None)`. Got {}".format(func_args))
+            "`func(config, checkpoint_dir=None)`. Got {}".format(func_args)
+        )
     return validated
 
 
@@ -565,8 +616,8 @@ def create_logdir(dirname: str, local_dir: str):
     to the dirname.
 
     Args:
-        dirname (str): Dirname to create in `local_dir`
-        local_dir (str): Root directory for the log dir
+        dirname: Dirname to create in `local_dir`
+        local_dir: Root directory for the log dir
 
     Returns:
         full path to the newly created logdir.
@@ -576,17 +627,21 @@ def create_logdir(dirname: str, local_dir: str):
     if os.path.exists(logdir):
         old_dirname = dirname
         dirname += "_" + uuid.uuid4().hex[:4]
-        logger.info(f"Creating a new dirname {dirname} because "
-                    f"trial dirname '{old_dirname}' already exists.")
+        logger.info(
+            f"Creating a new dirname {dirname} because "
+            f"trial dirname '{old_dirname}' already exists."
+        )
         logdir = os.path.join(local_dir, dirname)
     os.makedirs(logdir, exist_ok=True)
     return logdir
 
 
-def validate_warmstart(parameter_names: List[str],
-                       points_to_evaluate: List[Union[List, Dict]],
-                       evaluated_rewards: List,
-                       validate_point_name_lengths: bool = True):
+def validate_warmstart(
+    parameter_names: List[str],
+    points_to_evaluate: List[Union[List, Dict]],
+    evaluated_rewards: List,
+    validate_point_name_lengths: bool = True,
+):
     """Generic validation of a Searcher's warm start functionality.
     Raises exceptions in case of type and length mismatches between
     parameters.
@@ -599,78 +654,33 @@ def validate_warmstart(parameter_names: List[str],
         if not isinstance(points_to_evaluate, list):
             raise TypeError(
                 "points_to_evaluate expected to be a list, got {}.".format(
-                    type(points_to_evaluate)))
+                    type(points_to_evaluate)
+                )
+            )
         for point in points_to_evaluate:
             if not isinstance(point, (dict, list)):
                 raise TypeError(
                     f"points_to_evaluate expected to include list or dict, "
-                    f"got {point}.")
+                    f"got {point}."
+                )
 
-            if validate_point_name_lengths and (
-                    not len(point) == len(parameter_names)):
-                raise ValueError("Dim of point {}".format(point) +
-                                 " and parameter_names {}".format(
-                                     parameter_names) + " do not match.")
+            if validate_point_name_lengths and (not len(point) == len(parameter_names)):
+                raise ValueError(
+                    "Dim of point {}".format(point)
+                    + " and parameter_names {}".format(parameter_names)
+                    + " do not match."
+                )
 
     if points_to_evaluate and evaluated_rewards:
         if not isinstance(evaluated_rewards, list):
             raise TypeError(
                 "evaluated_rewards expected to be a list, got {}.".format(
-                    type(evaluated_rewards)))
+                    type(evaluated_rewards)
+                )
+            )
         if not len(evaluated_rewards) == len(points_to_evaluate):
             raise ValueError(
-                "Dim of evaluated_rewards {}".format(evaluated_rewards) +
-                " and points_to_evaluate {}".format(points_to_evaluate) +
-                " do not match.")
-
-
-def get_current_node_resource_key() -> str:
-    """Get the Ray resource key for current node.
-    It can be used for actor placement.
-
-    If using Ray Client, this will return the resource key for the node that
-    is running the client server.
-
-    Returns:
-        (str) A string of the format node:<CURRENT-NODE-IP-ADDRESS>
-    """
-    current_node_id = ray.get_runtime_context().node_id.hex()
-    for node in ray.nodes():
-        if node["NodeID"] == current_node_id:
-            # Found the node.
-            for key in node["Resources"].keys():
-                if key.startswith("node:"):
-                    return key
-    else:
-        raise ValueError("Cannot found the node dictionary for current node.")
-
-
-def force_on_current_node(task_or_actor=None):
-    """Given a task or actor, place it on the current node.
-
-    If using Ray Client, the current node is the client server node.
-
-    Args:
-        task_or_actor: A Ray remote function or class to place on the
-            current node. If None, returns the options dict to pass to
-            another actor.
-
-    Returns:
-        The provided task or actor, but with options modified to force
-            placement on the current node.
-    """
-    node_resource_key = get_current_node_resource_key()
-    options = {"resources": {node_resource_key: 0.01}}
-
-    if task_or_actor is None:
-        return options
-
-    return task_or_actor.options(**options)
-
-
-if __name__ == "__main__":
-    ray.init()
-    X = pin_in_object_store("hello")
-    print(X)
-    result = get_pinned_object(X)
-    print(result)
+                "Dim of evaluated_rewards {}".format(evaluated_rewards)
+                + " and points_to_evaluate {}".format(points_to_evaluate)
+                + " do not match."
+            )

@@ -3,11 +3,11 @@
 
 # Pendulum CQL can attain ~ -300 reward in 10k from that file.
 pendulum-cql:
-    env: Pendulum-v0
+    env: Pendulum-v1
     run: CQL
     stop:
         evaluation/episode_reward_mean: -700
-        timesteps_total: 100000
+        timesteps_total: 200000
     config:
         # Works for both torch and tf.
         framework: tf
@@ -21,7 +21,9 @@ pendulum-cql:
 
         twin_q: true
         train_batch_size: 2000
-        learning_starts: 0
+        replay_buffer_config:
+          type: MultiAgentReplayBuffer
+          learning_starts: 0
         bc_iters: 100
 
         metrics_smoothing_episodes: 5

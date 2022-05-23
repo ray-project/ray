@@ -12,9 +12,14 @@ class JAXModelV2(ModelV2):
     Note that this class by itself is not a valid model unless you
     implement forward() in a subclass."""
 
-    def __init__(self, obs_space: gym.spaces.Space,
-                 action_space: gym.spaces.Space, num_outputs: int,
-                 model_config: ModelConfigDict, name: str):
+    def __init__(
+        self,
+        obs_space: gym.spaces.Space,
+        action_space: gym.spaces.Space,
+        num_outputs: int,
+        model_config: ModelConfigDict,
+        name: str,
+    ):
         """Initializes a JAXModelV2 instance."""
 
         ModelV2.__init__(
@@ -24,4 +29,5 @@ class JAXModelV2(ModelV2):
             num_outputs,
             model_config,
             name,
-            framework="jax")
+            framework="jax",
+        )

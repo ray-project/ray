@@ -17,22 +17,26 @@ NODE_VERSION="14"
 PY_VERSIONS=("3.6.2"
              "3.7.0"
              "3.8.2"
-             "3.9.1")
+             "3.9.1"
+             "3.10.4")
 PY_INSTS=("python-3.6.2-macosx10.6.pkg"
           "python-3.7.0-macosx10.6.pkg"
           "python-3.8.2-macosx10.9.pkg"
-          "python-3.9.1-macosx10.9.pkg")
+          "python-3.9.1-macosx10.9.pkg"
+          "python-3.10.4-macos11.pkg")
 PY_MMS=("3.6"
         "3.7"
         "3.8"
-        "3.9")
+        "3.9"
+        "3.10")
 
 NUMPY_VERSIONS=("1.14.5"
                 "1.14.5"
                 "1.14.5"
-                "1.19.3")
+                "1.19.3"
+                "1.22.0")
 
-./ci/travis/install-bazel.sh
+./ci/env/install-bazel.sh
 
 mkdir -p $DOWNLOAD_DIR
 mkdir -p .whl
@@ -40,7 +44,7 @@ mkdir -p .whl
 # Use the latest version of Node.js in order to build the dashboard.
 source "$HOME"/.nvm/nvm.sh
 nvm install $NODE_VERSION
-nvm use node
+nvm use $NODE_VERSION
 
 # Build the dashboard so its static assets can be included in the wheel.
 pushd python/ray/dashboard/client
@@ -82,13 +86,14 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
 
   pushd python
     # Setuptools on CentOS is too old to install arrow 0.9.0, therefore we upgrade.
-    $PIP_CMD install --upgrade setuptools
+    # TODO: Unpin after https://github.com/pypa/setuptools/issues/2849 is fixed.
+    $PIP_CMD install --upgrade setuptools==58.4
     # Install setuptools_scm because otherwise when building the wheel for
     # Python 3.6, we see an error.
     $PIP_CMD install -q setuptools_scm==3.1.0
     # Fix the numpy version because this will be the oldest numpy version we can
     # support.
-    $PIP_CMD install -q numpy=="$NUMPY_VERSION" cython==0.29.15
+    $PIP_CMD install -q numpy=="$NUMPY_VERSION" cython==0.29.26
     # Install wheel to avoid the error "invalid command 'bdist_wheel'".
     $PIP_CMD install -q wheel
     # Set the commit SHA in __init__.py.

@@ -41,8 +41,7 @@ def main():
     ray.get(pg.ready())
 
     workers = [
-        Worker.options(placement_group=pg).remote(i)
-        for i in range(NUM_CPU_BUNDLES)
+        Worker.options(placement_group=pg).remote(i) for i in range(NUM_CPU_BUNDLES)
     ]
 
     trainer = Trainer.options(placement_group=pg).remote(0)

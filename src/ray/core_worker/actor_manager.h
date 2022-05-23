@@ -14,12 +14,14 @@
 
 #pragma once
 
+#include <gtest/gtest_prod.h>
+
 #include "absl/container/flat_hash_map.h"
 #include "ray/core_worker/actor_creator.h"
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
-#include "ray/gcs/gcs_client.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 namespace ray {
 namespace core {
 
@@ -57,7 +59,8 @@ class ActorManager {
   ActorID RegisterActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                               const ObjectID &outer_object_id,
                               const std::string &call_site,
-                              const rpc::Address &caller_address, bool is_self = false);
+                              const rpc::Address &caller_address,
+                              bool is_self = false);
 
   /// Get a handle to an actor.
   ///
@@ -76,8 +79,10 @@ class ActorManager {
   /// \param[in] caller_address The rpc address of the calling task.
   /// \return KV pair of actor handle pointer and status.
   std::pair<std::shared_ptr<const ActorHandle>, Status> GetNamedActorHandle(
-      const std::string &name, const std::string &ray_namespace,
-      const std::string &call_site, const rpc::Address &caller_address);
+      const std::string &name,
+      const std::string &ray_namespace,
+      const std::string &call_site,
+      const rpc::Address &caller_address);
 
   /// Check if an actor handle that corresponds to an actor_id exists.
   /// \param[in] actor_id The actor id of a handle.
@@ -100,7 +105,8 @@ class ActorManager {
   /// actor. \return True if the handle was added and False if we already had a handle to
   /// the same actor.
   bool AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
-                         const std::string &call_site, const rpc::Address &caller_address,
+                         const std::string &call_site,
+                         const rpc::Address &caller_address,
                          bool is_detached);
 
   /// Wait for actor out of scope.
@@ -116,16 +122,18 @@ class ActorManager {
   /// This is used for debugging purpose.
   std::vector<ObjectID> GetActorHandleIDsFromHandles();
 
-  /// Check if named actor is cached locally.
-  /// If it has been cached, core worker will not get actor id by name from GCS.
-  ActorID GetCachedNamedActorID(const std::string &actor_name);
+  /// Function that's invoked when the actor is permanatly dead.
+  ///
+  /// \param actor_id The actor id of the handle that will be invalidated.
+  void OnActorKilled(const ActorID &actor_id);
+
+  /// Subscribe to the state of actor. This method is idempotent and will ensure the actor
+  /// only be subscribed once.
+  ///
+  /// \param actor_id ID of the actor to be subscribed.
+  void SubscribeActorState(const ActorID &actor_id);
 
  private:
-  bool AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
-                         const std::string &cached_actor_name,
-                         const std::string &call_site, const rpc::Address &caller_address,
-                         bool is_detached);
-
   /// Give this worker a handle to an actor.
   ///
   /// This handle will remain as long as the current actor or task is
@@ -134,10 +142,6 @@ class ActorManager {
   /// they are submitted.
   ///
   /// \param actor_handle The handle to the actor.
-  /// \param cached_actor_name Actor name used to cache named actor.
-  /// \param is_owner_handle Whether this is the owner's handle to the actor.
-  /// The owner is the creator of the actor and is responsible for telling the
-  /// actor to disconnect once all handles are out of scope.
   /// \param[in] call_site The caller's site.
   /// \param[in] actor_id The id of an actor
   /// \param[in] actor_creation_return_id object id of this actor creation
@@ -147,10 +151,15 @@ class ActorManager {
   /// \return True if the handle was added and False if we already had a handle
   /// to the same actor.
   bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
-                      const std::string &cached_actor_name, bool is_owner_handle,
-                      const std::string &call_site, const rpc::Address &caller_address,
-                      const ActorID &actor_id, const ObjectID &actor_creation_return_id,
+                      const std::string &call_site,
+                      const rpc::Address &caller_address,
+                      const ActorID &actor_id,
+                      const ObjectID &actor_creation_return_id,
                       bool is_self = false);
+
+  /// Check if named actor is cached locally.
+  /// If it has been cached, core worker will not get actor id by name from GCS.
+  ActorID GetCachedNamedActorID(const std::string &actor_name);
 
   /// Handle actor state notification published from GCS.
   ///
@@ -158,6 +167,16 @@ class ActorManager {
   /// \param[in] actor_data The GCS actor data.
   void HandleActorStateNotification(const ActorID &actor_id,
                                     const rpc::ActorTableData &actor_data);
+
+  /// It should be invoked when the actor is killed or out of scope.
+  /// After the actor is marked killed or out of scope, task submission to the actor will
+  /// throw an exception.
+  ///
+  /// \param actor_handle The actor handle that will be marked as invalidate.
+  void MarkActorKilledOrOutOfScope(std::shared_ptr<ActorHandle> actor_handle);
+
+  /// Check if actor is valid.
+  bool IsActorKilledOrOutOfScope(const ActorID &actor_id) const;
 
   /// GCS client.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
@@ -176,13 +195,20 @@ class ActorManager {
   absl::flat_hash_map<ActorID, std::shared_ptr<ActorHandle>> actor_handles_
       GUARDED_BY(mutex_);
 
-  /// Protects access `cached_actor_name_to_ids_`.
-  absl::Mutex cache_mutex_;
+  /// Protects access `cached_actor_name_to_ids_` and `subscribed_actors_`.
+  mutable absl::Mutex cache_mutex_;
 
   /// The map to cache name and id of the named actors in this worker locally, to avoid
   /// getting them from GCS frequently.
   absl::flat_hash_map<std::string, ActorID> cached_actor_name_to_ids_
       GUARDED_BY(cache_mutex_);
+
+  /// id -> is_killed_or_out_of_scope
+  /// The state of actor is true When the actor is out of scope or is killed
+  absl::flat_hash_map<ActorID, bool> subscribed_actors_ GUARDED_BY(cache_mutex_);
+
+  FRIEND_TEST(ActorManagerTest, TestNamedActorIsKilledAfterSubscribeFinished);
+  FRIEND_TEST(ActorManagerTest, TestNamedActorIsKilledBeforeSubscribeFinished);
 };
 
 }  // namespace core

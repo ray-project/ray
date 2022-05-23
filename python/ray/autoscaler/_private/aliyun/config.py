@@ -39,22 +39,20 @@ def _client(config):
 
 def _get_or_create_security_group(config):
     cli = _client(config)
-    security_groups = cli.describe_security_groups(
-        vpc_id=config["provider"]["vpc_id"])
+    security_groups = cli.describe_security_groups(vpc_id=config["provider"]["vpc_id"])
     if security_groups is not None and len(security_groups) > 0:
-        config["provider"]["security_group_id"] = security_groups[0][
-            "SecurityGroupId"]
+        config["provider"]["security_group_id"] = security_groups[0]["SecurityGroupId"]
         return config
 
-    security_group_id = cli.create_security_group(
-        vpc_id=config["provider"]["vpc_id"])
+    security_group_id = cli.create_security_group(vpc_id=config["provider"]["vpc_id"])
 
     for rule in config["provider"].get("security_group_rule", {}):
         cli.authorize_security_group(
             security_group_id=security_group_id,
             port_range=rule["port_range"],
             source_cidr_ip=rule["source_cidr_ip"],
-            ip_protocol=rule["ip_protocol"])
+            ip_protocol=rule["ip_protocol"],
+        )
     config["provider"]["security_group_id"] = security_group_id
     return
 
@@ -81,7 +79,8 @@ def _get_or_create_vswitch(config):
     v_switch_id = cli.create_v_switch(
         vpc_id=config["provider"]["vpc_id"],
         zone_id=config["provider"]["zone_id"],
-        cidr_block=config["provider"]["cidr_block"])
+        cidr_block=config["provider"]["cidr_block"],
+    )
 
     if v_switch_id is not None:
         config["provider"]["v_switch_id"] = v_switch_id
@@ -95,8 +94,9 @@ def _get_or_import_key_pair(config):
 
     if keypairs is not None and len(keypairs) > 0:
         if "ssh_private_key" not in config["auth"]:
-            logger.info("{} keypair exists, use {} as local ssh key".format(
-                key_name, key_path))
+            logger.info(
+                "{} keypair exists, use {} as local ssh key".format(key_name, key_path)
+            )
             config["auth"]["ssh_private_key"] = key_path
     else:
         if "ssh_private_key" not in config["auth"]:
@@ -112,6 +112,5 @@ def _get_or_import_key_pair(config):
             # create new keypair, from local file
             with open(public_key_file) as f:
                 public_key = f.readline().strip("\n")
-                cli.import_key_pair(
-                    key_pair_name=key_name, public_key_body=public_key)
+                cli.import_key_pair(key_pair_name=key_name, public_key_body=public_key)
                 return

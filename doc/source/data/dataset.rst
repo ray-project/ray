@@ -1,37 +1,167 @@
+.. include:: /_includes/data/announcement.rst
+
 .. _datasets:
 
-Datasets: Flexible Distributed Data Loading
-===========================================
+==================================================
+Ray Datasets: Distributed Data Loading and Compute
+==================================================
 
-.. tip::
+.. _datasets-intro:
 
-  Datasets is available as **beta** in Ray 1.8+. Please file feature requests and bug reports on GitHub Issues or join the discussion on the `Ray Slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`__.
+Ray Datasets are the standard way to load and exchange data in Ray libraries and applications.
+They provide basic distributed data transformations such as maps
+(:meth:`map_batches <ray.data.Dataset.map_batches>`),
+global and grouped aggregations (:class:`GroupedDataset <ray.data.GroupedDataset>`), and
+shuffling operations (:meth:`random_shuffle <ray.data.Dataset.random_shuffle>`,
+:meth:`sort <ray.data.Dataset.sort>`,
+:meth:`repartition <ray.data.Dataset.repartition>`),
+and are compatible with a variety of file formats, data sources, and distributed frameworks.
 
-Ray Datasets are the standard way to load and exchange data in Ray libraries and applications. Datasets provide basic distributed data transformations such as ``map``, ``filter``, and ``repartition``, and are compatible with a variety of file formats, datasources, and distributed frameworks.
+Here's an overview of the integrations with other processing frameworks, file formats, and supported operations,
+as well as a glimpse at the Ray Datasets API.
 
-.. image:: dataset.svg
+Check our :ref:`compatibility matrix<data-compatibility>` to see if your favorite format
+is already supported.
+
+.. image:: images/dataset.svg
 
 ..
   https://docs.google.com/drawings/d/16AwJeBNR46_TsrkOmMbGaBK7u-OPsf_V8fHjU-d2PPQ/edit
 
-Concepts
---------
-Ray Datasets implement `Distributed Arrow <https://arrow.apache.org/>`__. A Dataset consists of a list of Ray object references to *blocks*. Each block holds a set of items in either an `Arrow table <https://arrow.apache.org/docs/python/data.html#tables>`__ or a Python list (for Arrow incompatible objects). Having multiple blocks in a dataset allows for parallel transformation and ingest of the data (e.g., into :ref:`Ray SGD <sgd-v2-docs>` for ML training).
 
-The following figure visualizes a Dataset that has three Arrow table blocks, each block holding 1000 rows each:
+Ray Datasets simplifies general purpose parallel GPU and CPU compute in Ray; for
+instance, for :ref:`GPU batch inference <transforming_datasets>`.
+It provides a higher-level API for Ray tasks and actors for such embarrassingly parallel compute,
+internally handling operations like batching, pipelining, and memory management.
 
-.. image:: dataset-arch.svg
+.. image:: images/dataset-compute-1.png
+   :width: 500px
+   :align: center
 
-..
-  https://docs.google.com/drawings/d/1PmbDvHRfVthme9XD7EYM-LIHPXtHdOfjCbc1SCsM64k/edit
+As part of the Ray ecosystem, Ray Datasets can leverage the full functionality of Ray's distributed scheduler,
+e.g., using actors for optimizing setup time and GPU scheduling.
 
-Since a Ray Dataset is just a list of Ray object references, it can be freely passed between Ray tasks, actors, and libraries like any other object reference. This flexibility is a unique characteristic of Ray Datasets.
+Data Loading and Preprocessing for ML Training
+==============================================
 
-Compared to `Spark RDDs <https://spark.apache.org/docs/latest/rdd-programming-guide.html>`__ and `Dask Bags <https://docs.dask.org/en/latest/bag.html>`__, Datasets offers a more basic set of features, and executes operations eagerly for simplicity. It is intended that users cast Datasets into more featureful dataframe types (e.g., ``ds.to_dask()``) for advanced operations.
+Ray Datasets are designed to load and preprocess data for distributed :ref:`ML training pipelines <train-docs>`.
+Compared to other loading solutions, Datasets are more flexible (e.g., can express higher-quality `per-epoch global shuffles <examples/big_data_ingestion.html>`__) and provides `higher overall performance <https://www.anyscale.com/blog/why-third-generation-ml-platforms-are-more-performant>`__.
 
-Datasource Compatibility Matrices
----------------------------------
+Ray Datasets is not intended as a replacement for more general data processing systems.
+:ref:`Learn more about how Ray Datasets works with other ETL systems <datasets-ml-preprocessing>`.
 
+----------------------
+Where to Go from Here?
+----------------------
+
+As new user of Ray Datasets, you may want to start with our :ref:`Getting Started guide<datasets_getting_started>`.
+If you've run your first examples already, you might want to dive into Ray Datasets'
+:ref:`key concepts <data_key_concepts>` or our :ref:`User Guide <data_user_guide>` instead.
+Advanced users can refer directly to the Ray Datasets :ref:`API reference <data_api>` for their projects.
+
+.. panels::
+    :container: text-center
+    :column: col-lg-6 px-2 py-2
+    :card:
+
+    Getting Started
+    ^^^
+
+    Start with our quick start tutorials for :ref:`working with Datasets<datasets_getting_started>`
+    and :ref:`Dataset Pipelines<pipelining_datasets>`.
+    These concrete examples will give you an idea of how to use Ray Datasets.
+
+    +++
+    .. link-button:: datasets_getting_started
+        :type: ref
+        :text: Get Started with Ray Datasets
+        :classes: btn-outline-info btn-block
+    ---
+
+    Key Concepts
+    ^^^
+
+    Understand the key concepts behind Ray Datasets.
+    Learn what :ref:`Datasets<dataset_concept>` and :ref:`Dataset Pipelines<dataset_pipeline_concept>` are
+    and :ref:`how they get executed<dataset_execution_concept>` in Ray Datasets.
+
+    +++
+    .. link-button:: data_key_concepts
+        :type: ref
+        :text: Learn Key Concepts
+        :classes: btn-outline-info btn-block
+    ---
+
+    User Guide
+    ^^^
+
+    Learn how to :ref:`create datasets<creating_datasets>`, :ref:`save
+    datasets<saving_datasets>`, :ref:`transform datasets<transforming_datasets>`,
+    :ref:`access and exchange datasets<accessing_datasets>`, :ref:`pipeline
+    transformations<pipelining_datasets>`, :ref:`load and process data for ML<datasets-ml-preprocessing>`,
+    work with :ref:`tensor data<datasets_tensor_support>`, or :ref:`use pipelines<data_pipeline_usage>`.
+
+    +++
+    .. link-button:: data_user_guide
+        :type: ref
+        :text: Start Using Ray Datasets
+        :classes: btn-outline-info btn-block
+    ---
+
+    **Ray Datasets FAQ**
+    ^^^
+
+    Find answers to commonly asked questions in our detailed FAQ.
+
+    +++
+    .. link-button:: datasets_faq
+        :type: ref
+        :text: Ray Datasets FAQ
+        :classes: btn-outline-info btn-block
+    ---
+
+    API
+    ^^^
+
+    Get more in-depth information about the Ray Datasets API.
+
+    +++
+    .. link-button:: data_api
+        :type: ref
+        :text: Read the API Reference
+        :classes: btn-outline-info btn-block
+    ---
+
+    Other Data Processing Solutions
+    ^^^
+
+    For running ETL pipelines, check out :ref:`Spark-on-Ray <spark-on-ray>`. For scaling
+    up your data science workloads, check out :ref:`Dask-on-Ray <dask-on-ray>`,
+    :ref:`Modin <modin-on-ray>`, and :ref:`Mars-on-Ray <mars-on-ray>`.
+
+    +++
+    .. link-button:: integrations
+        :type: ref
+        :text: Check Out Other Data Processing Options
+        :classes: btn-outline-info btn-block
+
+
+.. _data-compatibility:
+
+------------------------
+Datasource Compatibility
+------------------------
+
+Ray Datasets supports reading and writing many file formats.
+The following compatibility matrices will help you understand which formats are currently available.
+
+If none of these meet your needs, please reach out on `Discourse <https://discuss.ray.io/>`__ or open a feature
+request on the `Ray GitHub repo <https://github.com/ray-project/ray>`__, and check out
+our :ref:`guide for implementing a custom Datasets datasource <datasets_custom_datasource>`
+if you're interested in rolling your own integration!
+
+Supported Input Formats
+=======================
 
 .. list-table:: Input compatibility matrix
    :header-rows: 1
@@ -40,51 +170,57 @@ Datasource Compatibility Matrices
      - Read API
      - Status
    * - CSV File Format
-     - ``ray.data.read_csv()``
+     - :func:`ray.data.read_csv()`
      - ✅
    * - JSON File Format
-     - ``ray.data.read_json()``
+     - :func:`ray.data.read_json()`
      - ✅
    * - Parquet File Format
-     - ``ray.data.read_parquet()``
+     - :func:`ray.data.read_parquet()`
      - ✅
    * - Numpy File Format
-     - ``ray.data.read_numpy()``
+     - :func:`ray.data.read_numpy()`
      - ✅
    * - Text Files
-     - ``ray.data.read_text()``
+     - :func:`ray.data.read_text()`
      - ✅
    * - Binary Files
-     - ``ray.data.read_binary_files()``
+     - :func:`ray.data.read_binary_files()`
      - ✅
    * - Python Objects
-     - ``ray.data.from_items()``
+     - :func:`ray.data.from_items()`
      - ✅
    * - Spark Dataframe
-     - ``ray.data.from_spark()``
+     - :func:`ray.data.from_spark()`
      - ✅
    * - Dask Dataframe
-     - ``ray.data.from_dask()``
+     - :func:`ray.data.from_dask()`
      - ✅
    * - Modin Dataframe
-     - ``ray.data.from_modin()``
+     - :func:`ray.data.from_modin()`
      - ✅
    * - MARS Dataframe
-     - ``ray.data.from_mars()``
-     - (todo)
+     - :func:`ray.data.from_mars()`
+     - ✅
    * - Pandas Dataframe Objects
-     - ``ray.data.from_pandas()``
+     - :func:`ray.data.from_pandas()`
      - ✅
    * - NumPy ndarray Objects
-     - ``ray.data.from_numpy()``
+     - :func:`ray.data.from_numpy()`
      - ✅
    * - Arrow Table Objects
-     - ``ray.data.from_arrow()``
+     - :func:`ray.data.from_arrow()`
+     - ✅
+   * - 🤗 (Hugging Face) Dataset
+     - :func:`ray.data.from_huggingface()`
      - ✅
    * - Custom Datasource
-     - ``ray.data.read_datasource()``
+     - :func:`ray.data.read_datasource()`
      - ✅
 
+
+Supported Output Formats
+========================
 
 .. list-table:: Output compatibility matrix
    :header-rows: 1
@@ -93,268 +229,81 @@ Datasource Compatibility Matrices
      - Dataset API
      - Status
    * - CSV File Format
-     - ``ds.write_csv()``
+     - :meth:`ds.write_csv() <ray.data.Dataset.write_csv>`
      - ✅
    * - JSON File Format
-     - ``ds.write_json()``
+     - :meth:`ds.write_json() <ray.data.Dataset.write_json>`
      - ✅
    * - Parquet File Format
-     - ``ds.write_parquet()``
+     - :meth:`ds.write_parquet() <ray.data.Dataset.write_parquet>`
      - ✅
    * - Numpy File Format
-     - ``ds.write_numpy()``
+     - :meth:`ds.write_numpy() <ray.data.Dataset.write_numpy>`
      - ✅
    * - Spark Dataframe
-     - ``ds.to_spark()``
+     - :meth:`ds.to_spark() <ray.data.Dataset.to_spark>`
      - ✅
    * - Dask Dataframe
-     - ``ds.to_dask()``
+     - :meth:`ds.to_dask() <ray.data.Dataset.to_dask>`
      - ✅
    * - Modin Dataframe
-     - ``ds.to_modin()``
+     - :meth:`ds.to_modin() <ray.data.Dataset.to_modin>`
      - ✅
    * - MARS Dataframe
-     - ``ds.to_mars()``
-     - (todo)
+     - :meth:`ds.to_mars() <ray.data.Dataset.to_mars>`
+     - ✅
    * - Arrow Table Objects
-     - ``ds.to_arrow()``
+     - :meth:`ds.to_arrow_refs() <ray.data.Dataset.to_arrow_refs>`
      - ✅
    * - Arrow Table Iterator
-     - ``ds.iter_batches(batch_format="pyarrow")``
+     - :meth:`ds.iter_batches(batch_format="pyarrow") <ray.data.Dataset.iter_batches>`
+     - ✅
+   * - Single Pandas Dataframe
+     - :meth:`ds.to_pandas() <ray.data.Dataset.to_pandas>`
      - ✅
    * - Pandas Dataframe Objects
-     - ``ds.to_pandas()``
+     - :meth:`ds.to_pandas_refs() <ray.data.Dataset.to_pandas_refs>`
      - ✅
    * - NumPy ndarray Objects
-     - ``ds.to_numpy()``
+     - :meth:`ds.to_numpy_refs() <ray.data.Dataset.to_numpy_refs>`
      - ✅
    * - Pandas Dataframe Iterator
-     - ``ds.iter_batches(batch_format="pandas")``
+     - :meth:`ds.iter_batches(batch_format="pandas") <ray.data.Dataset.iter_batches>`
      - ✅
    * - PyTorch Iterable Dataset
-     - ``ds.to_torch()``
+     - :meth:`ds.to_torch() <ray.data.Dataset.to_torch>`
      - ✅
    * - TensorFlow Iterable Dataset
-     - ``ds.to_tf()``
+     - :meth:`ds.to_tf() <ray.data.Dataset.to_tf>`
+     - ✅
+   * - Random Access Dataset
+     - :meth:`ds.to_random_access_dataset() <ray.data.Dataset.to_random_access_dataset>`
      - ✅
    * - Custom Datasource
-     - ``ds.write_datasource()``
+     - :meth:`ds.write_datasource() <ray.data.Dataset.write_datasource>`
      - ✅
 
+.. _data-talks:
 
-Creating Datasets
------------------
+----------
+Learn More
+----------
 
-.. tip::
+- [slides] `Talk given at PyData 2021 <https://docs.google.com/presentation/d/1zANPlmrxQkjPU62I-p92oFO3rJrmjVhs73hL4YbM4C4>`_
+- [blog] `Data Ingest in a Third Generation ML Architecture <https://www.anyscale.com/blog/deep-dive-data-ingest-in-a-third-generation-ml-architecture>`_
+- [blog] `Building an end-to-end ML pipeline using Mars and XGBoost on Ray <https://www.anyscale.com/blog/building-an-end-to-end-ml-pipeline-using-mars-and-xgboost-on-ray>`_
+- [blog] `Ray Datasets for large-scale machine learning ingest and scoring <https://www.anyscale.com/blog/ray-datasets-for-machine-learning-training-and-scoring>`_
 
-   Run ``pip install ray[data]`` to get started!
+----------
+Contribute
+----------
 
-Get started by creating Datasets from synthetic data using ``ray.data.range()`` and ``ray.data.from_items()``. Datasets can hold either plain Python objects (schema is a Python type), or Arrow records (schema is Arrow).
+Contributions to Ray Datasets are `welcome <https://docs.ray.io/en/master/development.html#python-develop>`__!
+There are many potential improvements, including:
 
-.. code-block:: python
-
-    import ray
-    
-    # Create a Dataset of Python objects.
-    ds = ray.data.range(10000)
-    # -> Dataset(num_blocks=200, num_rows=10000, schema=<class 'int'>)
-
-    ds.take(5)
-    # -> [0, 1, 2, 3, 4]
-
-    ds.count()
-    # -> 10000
-
-    # Create a Dataset of Arrow records.
-    ds = ray.data.from_items([{"col1": i, "col2": str(i)} for i in range(10000)])
-    # -> Dataset(num_blocks=200, num_rows=10000, schema={col1: int64, col2: string})
-
-    ds.show(5)
-    # -> ArrowRow({'col1': 0, 'col2': '0'})
-    # -> ArrowRow({'col1': 1, 'col2': '1'})
-    # -> ArrowRow({'col1': 2, 'col2': '2'})
-    # -> ArrowRow({'col1': 3, 'col2': '3'})
-    # -> ArrowRow({'col1': 4, 'col2': '4'})
-
-    ds.schema()
-    # -> col1: int64
-    # -> col2: string
-
-Datasets can be created from files on local disk or remote datasources such as S3. Any filesystem `supported by pyarrow <http://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html>`__ can be used to specify file locations:
-
-.. code-block:: python
-
-    # Read a directory of files in remote storage.
-    ds = ray.data.read_csv("s3://bucket/path")
-
-    # Read multiple local files.
-    ds = ray.data.read_csv(["/path/to/file1", "/path/to/file2"])
-
-    # Read multiple directories.
-    ds = ray.data.read_csv(["s3://bucket/path1", "s3://bucket/path2"])
-
-Finally, you can create a ``Dataset`` from existing data in the Ray object store or Ray-compatible distributed DataFrames:
-
-.. code-block:: python
-
-    import pandas as pd
-    import dask.dataframe as dd
-
-    # Create a Dataset from a list of Pandas DataFrame objects.
-    pdf = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    ds = ray.data.from_pandas([pdf])
-
-    # Create a Dataset from a Dask-on-Ray DataFrame.
-    dask_df = dd.from_pandas(pdf, npartitions=10)
-    ds = ray.data.from_dask(dask_df)
-
-Saving Datasets
----------------
-
-Datasets can be written to local or remote storage using ``.write_csv()``, ``.write_json()``, and ``.write_parquet()``.
-
-.. code-block:: python
-
-    # Write to csv files in /tmp/output.
-    ray.data.range(10000).write_csv("/tmp/output")
-    # -> /tmp/output/data0.csv, /tmp/output/data1.csv, ...
-
-    # Use repartition to control the number of output files:
-    ray.data.range(10000).repartition(1).write_csv("/tmp/output2")
-    # -> /tmp/output2/data0.csv
-
-You can also convert a ``Dataset`` to Ray-compatibile distributed DataFrames:
-
-.. code-block:: python
-
-    # Convert a Ray Dataset into a Dask-on-Ray DataFrame.
-    dask_df = ds.to_dask()
-
-Transforming Datasets
----------------------
-
-Datasets can be transformed in parallel using ``.map()``. Transformations are executed *eagerly* and block until the operation is finished. Datasets also supports ``.filter()`` and ``.flat_map()``.
-
-.. code-block:: python
-
-    ds = ray.data.range(10000)
-    ds = ds.map(lambda x: x * 2)
-    # -> Map Progress: 100%|████████████████████| 200/200 [00:00<00:00, 1123.54it/s]
-    # -> Dataset(num_blocks=200, num_rows=10000, schema=<class 'int'>)
-    ds.take(5)
-    # -> [0, 2, 4, 6, 8]
-
-    ds.filter(lambda x: x > 5).take(5)
-    # -> Map Progress: 100%|████████████████████| 200/200 [00:00<00:00, 1859.63it/s]
-    # -> [6, 8, 10, 12, 14]
-
-    ds.flat_map(lambda x: [x, -x]).take(5)
-    # -> Map Progress: 100%|████████████████████| 200/200 [00:00<00:00, 1568.10it/s]
-    # -> [0, 0, 2, -2, 4]
-
-To take advantage of vectorized functions, use ``.map_batches()``. Note that you can also implement ``filter`` and ``flat_map`` using ``.map_batches()``, since your map function can return an output batch of any size.
-
-.. code-block:: python
-
-    ds = ray.data.range_arrow(10000)
-    ds = ds.map_batches(
-        lambda df: df.applymap(lambda x: x * 2), batch_format="pandas")
-    # -> Map Progress: 100%|████████████████████| 200/200 [00:00<00:00, 1927.62it/s]
-    ds.take(5)
-    # -> [ArrowRow({'value': 0}), ArrowRow({'value': 2}), ...]
-
-By default, transformations are executed using Ray tasks. For transformations that require setup, specify ``compute="actors"`` and Ray will use an autoscaling actor pool to execute your transforms instead. The following is an end-to-end example of reading, transforming, and saving batch inference results using Datasets:
-
-.. code-block:: python
-
-    # Example of GPU batch inference on an ImageNet model.
-    def preprocess(image: bytes) -> bytes:
-        return image
-
-    class BatchInferModel:
-        def __init__(self):
-            self.model = ImageNetModel()
-        def __call__(self, batch: pd.DataFrame) -> pd.DataFrame:
-            return self.model(batch)
-
-    ds = ray.data.read_binary_files("s3://bucket/image-dir")
-
-    # Preprocess the data.
-    ds = ds.map(preprocess)
-    # -> Map Progress: 100%|████████████████████| 200/200 [00:00<00:00, 1123.54it/s]
-
-    # Apply GPU batch inference with actors, and assign each actor a GPU using
-    # ``num_gpus=1`` (any Ray remote decorator argument can be used here).
-    ds = ds.map_batches(BatchInferModel, compute="actors", batch_size=256, num_gpus=1)
-    # -> Map Progress (16 actors 4 pending): 100%|██████| 200/200 [00:07, 27.60it/s]
-
-    # Save the results.
-    ds.repartition(1).write_json("s3://bucket/inference-results")
-
-Exchanging datasets
--------------------
-
-Datasets can be passed to Ray tasks or actors and read with ``.iter_batches()`` or ``.iter_rows()``. This does not incur a copy, since the blocks of the Dataset are passed by reference as Ray objects:
-
-.. code-block:: python
-
-    @ray.remote
-    def consume(data: Dataset[int]) -> int:
-        num_batches = 0
-        for batch in data.iter_batches():
-            num_batches += 1
-        return num_batches
-
-    ds = ray.data.range(10000)
-    ray.get(consume.remote(ds))
-    # -> 200
-
-Datasets can be split up into disjoint sub-datasets. Locality-aware splitting is supported if you pass in a list of actor handles to the ``split()`` function along with the number of desired splits. This is a common pattern useful for loading and splitting data between distributed training actors:
-
-.. code-block:: python
-
-    @ray.remote(num_gpus=1)
-    class Worker:
-        def __init__(self, rank: int):
-            pass
-
-        def train(self, shard: ray.data.Dataset[int]) -> int:
-            for batch in shard.iter_batches(batch_size=256):
-                pass
-            return shard.count()
-
-    workers = [Worker.remote(i) for i in range(16)]
-    # -> [Actor(Worker, ...), Actor(Worker, ...), ...]
-
-    ds = ray.data.range(10000)
-    # -> Dataset(num_blocks=200, num_rows=10000, schema=<class 'int'>)
-
-    shards = ds.split(n=16, locality_hints=workers)
-    # -> [Dataset(num_blocks=13, num_rows=650, schema=<class 'int'>),
-    #     Dataset(num_blocks=13, num_rows=650, schema=<class 'int'>), ...]
-
-    ray.get([w.train.remote(s) for s in shards])
-    # -> [650, 650, ...]
-
-Custom datasources
-------------------
-
-Datasets can read and write in parallel to `custom datasources <package-ref.html#custom-datasource-api>`__ defined in Python.
-
-.. code-block:: python
-
-    # Read from a custom datasource.
-    ds = ray.data.read_datasource(YourCustomDatasource(), **read_args)
-
-    # Write to a custom datasource.
-    ds.write_datasource(YourCustomDatasource(), **write_args)
-
-Contributing
-------------
-
-Contributions to Datasets are `welcome <https://docs.ray.io/en/master/development.html#python-develop>`__! There are many potential improvements, including:
-
-- Supporting more datasources and transforms.
+- Supporting more data sources and transforms.
 - Integration with more ecosystem libraries.
-- Adding features that require partitioning such as groupby() and join().
+- Adding features such as `join()`.
 - Performance optimizations.
+
+.. include:: /_includes/data/announcement_bottom.rst

@@ -54,7 +54,7 @@ spec:
           command: ["/bin/bash", "-c", "--"]
           args: ["trap : TERM INT; touch /tmp/raylogs; tail -f /tmp/raylogs; sleep infinity & wait;"]
           ports:
-          - containerPort: 6379  # Redis port
+          - containerPort: 6379  # Redis port for Ray <= 1.10.0. GCS server port for Ray >= 1.11.0.
           - containerPort: 10001  # Used by Ray Client
           - containerPort: 8265  # Used by Ray Dashboard
           - containerPort: 8000 # Used by Ray Serve
@@ -68,9 +68,10 @@ spec:
           resources:
             requests:
               cpu: 1000m
-              memory: 512Mi
+              memory: 1Gi
               ephemeral-storage: 1Gi
             limits:
+              cpu: 1000m
               # The maximum memory that this pod is allowed to use. The
               # limit will be detected by ray and split to use 10% for
               # redis, 30% for the shared memory object store, and the
@@ -78,7 +79,7 @@ spec:
               # the object store size is not set manually, ray will
               # allocate a very large object store in each pod that may
               # cause problems for other pods.
-              memory: 512Mi
+              memory: 1Gi
   - name: worker-node
     # Minimum number of Ray workers of this Pod type.
     minWorkers: 2
@@ -114,9 +115,10 @@ spec:
           resources:
             requests:
               cpu: 1000m
-              memory: 512Mi
+              memory: 1Gi
               ephemeral-storage: 1Gi
             limits:
+              cpu: 1000m
               # The maximum memory that this pod is allowed to use. The
               # limit will be detected by ray and split to use 10% for
               # redis, 30% for the shared memory object store, and the
@@ -124,12 +126,12 @@ spec:
               # the object store size is not set manually, ray will
               # allocate a very large object store in each pod that may
               # cause problems for other pods.
-              memory: 512Mi
+              memory: 1Gi
   # Commands to start Ray on the head node. You don't need to change this.
   # Note dashboard-host is set to 0.0.0.0 so that Kubernetes can port forward.
   headStartRayCommands:
     - ray stop
-    - ulimit -n 65536; ray start --head --no-monitor --dashboard-host 0.0.0.0 &> /tmp/raylogs
+    - ulimit -n 65536; ray start --head --port=6379 --no-monitor --dashboard-host 0.0.0.0 &> /tmp/raylogs
   # Commands to start Ray on worker nodes. You don't need to change this.
   workerStartRayCommands:
     - ray stop

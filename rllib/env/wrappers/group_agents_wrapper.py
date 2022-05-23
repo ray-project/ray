@@ -1,6 +1,9 @@
 from collections import OrderedDict
+import gym
+from typing import Dict, List, Optional
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from ray.rllib.utils.typing import AgentID
 
 # info key for the individual rewards of an agent, for example:
 # info: {
@@ -27,33 +30,50 @@ class GroupAgentsWrapper(MultiAgentEnv):
     This API is experimental.
     """
 
-    def __init__(self, env, groups, obs_space=None, act_space=None):
-        """Wrap an existing multi-agent env to group agents together.
+    def __init__(
+        self,
+        env: MultiAgentEnv,
+        groups: Dict[str, List[AgentID]],
+        obs_space: Optional[gym.Space] = None,
+        act_space: Optional[gym.Space] = None,
+    ):
+        """Wrap an existing MultiAgentEnv to group agent ID together.
 
-        See MultiAgentEnv.with_agent_groups() for usage info.
+        See `MultiAgentEnv.with_agent_groups()` for more detailed usage info.
 
         Args:
-            env (MultiAgentEnv): env to wrap
-            groups (dict): Grouping spec as documented in MultiAgentEnv.
-            obs_space (Space): Optional observation space for the grouped
-                env. Must be a tuple space.
-            act_space (Space): Optional action space for the grouped env.
-                Must be a tuple space.
+            env: The env to wrap and whose agent IDs to group into new agents.
+            groups: Mapping from group id to a list of the agent ids
+                of group members. If an agent id is not present in any group
+                value, it will be left ungrouped. The group id becomes a new agent ID
+                in the final environment.
+            obs_space: Optional observation space for the grouped
+                env. Must be a tuple space. If not provided, will infer this to be a
+                Tuple of n individual agents spaces (n=num agents in a group).
+            act_space: Optional action space for the grouped env.
+                Must be a tuple space. If not provided, will infer this to be a Tuple
+                of n individual agents spaces (n=num agents in a group).
         """
-
+        super().__init__()
         self.env = env
+        # Inherit wrapped env's `_skip_env_checking` flag.
+        if hasattr(self.env, "_skip_env_checking"):
+            self._skip_env_checking = self.env._skip_env_checking
         self.groups = groups
         self.agent_id_to_group = {}
         for group_id, agent_ids in groups.items():
             for agent_id in agent_ids:
                 if agent_id in self.agent_id_to_group:
                     raise ValueError(
-                        "Agent id {} is in multiple groups".format(agent_id))
+                        "Agent id {} is in multiple groups".format(agent_id)
+                    )
                 self.agent_id_to_group[agent_id] = group_id
         if obs_space is not None:
             self.observation_space = obs_space
         if act_space is not None:
             self.action_space = act_space
+        for group_id in groups.keys():
+            self._agent_ids.add(group_id)
 
     def seed(self, seed=None):
         if not hasattr(self.env, "seed"):
@@ -74,12 +94,11 @@ class GroupAgentsWrapper(MultiAgentEnv):
 
         # Apply grouping transforms to the env outputs
         obs = self._group_items(obs)
-        rewards = self._group_items(
-            rewards, agg_fn=lambda gvals: list(gvals.values()))
-        dones = self._group_items(
-            dones, agg_fn=lambda gvals: all(gvals.values()))
+        rewards = self._group_items(rewards, agg_fn=lambda gvals: list(gvals.values()))
+        dones = self._group_items(dones, agg_fn=lambda gvals: all(gvals.values()))
         infos = self._group_items(
-            infos, agg_fn=lambda gvals: {GROUP_INFO: list(gvals.values())})
+            infos, agg_fn=lambda gvals: {GROUP_INFO: list(gvals.values())}
+        )
 
         # Aggregate rewards, but preserve the original values in infos
         for agent_id, rew in rewards.items():
@@ -95,8 +114,11 @@ class GroupAgentsWrapper(MultiAgentEnv):
         out = {}
         for agent_id, value in items.items():
             if agent_id in self.groups:
-                assert len(value) == len(self.groups[agent_id]), \
-                    (agent_id, value, self.groups)
+                assert len(value) == len(self.groups[agent_id]), (
+                    agent_id,
+                    value,
+                    self.groups,
+                )
                 for a, v in zip(self.groups[agent_id], value):
                     out[a] = v
             else:
@@ -117,7 +139,9 @@ class GroupAgentsWrapper(MultiAgentEnv):
                     else:
                         raise ValueError(
                             "Missing member of group {}: {}: {}".format(
-                                group_id, a, items))
+                                group_id, a, items
+                            )
+                        )
                 grouped_items[group_id] = agg_fn(group_out)
             else:
                 grouped_items[agent_id] = item

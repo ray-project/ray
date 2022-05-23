@@ -8,7 +8,7 @@ from ray.rllib.env.wrappers.unity3d_env import Unity3DEnv
 class TestUnity3DEnv(unittest.TestCase):
     def test_port_editor(self, mock_unity3d):
         """Test if the environment uses the editor port
-         when no environment file is provided"""
+        when no environment file is provided"""
 
         _ = Unity3DEnv(port=None)
         args, kwargs = mock_unity3d.call_args
@@ -34,7 +34,8 @@ class TestUnity3DEnv(unittest.TestCase):
         args, kwargs_second = mock_unity3d.call_args
         self.assertNotEqual(
             kwargs_first.get("base_port") + kwargs_first.get("worker_id"),
-            kwargs_second.get("base_port") + kwargs_second.get("worker_id"))
+            kwargs_second.get("base_port") + kwargs_second.get("worker_id"),
+        )
 
     def test_custom_port_app(self, mock_unity3d):
         """Test if the base_port + worker_id is different
@@ -46,10 +47,12 @@ class TestUnity3DEnv(unittest.TestCase):
         args, kwargs_second = mock_unity3d.call_args
         self.assertNotEqual(
             kwargs_first.get("base_port") + kwargs_first.get("worker_id"),
-            kwargs_second.get("base_port") + kwargs_second.get("worker_id"))
+            kwargs_second.get("base_port") + kwargs_second.get("worker_id"),
+        )
 
 
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

@@ -1,155 +1,244 @@
-import json
-import logging
-import asyncio
-
 import aiohttp.web
-from aioredis.pubsub import Receiver
-from grpc.experimental import aio as aiogrpc
+from aiohttp.web import Request, Response
+import dataclasses
+import logging
+from typing import Any
+import json
+import traceback
+from dataclasses import dataclass
 
-import ray._private.gcs_utils as gcs_utils
+import ray
 import ray.dashboard.utils as dashboard_utils
-from ray.dashboard.modules.job import job_consts
-from ray.dashboard.modules.job.job_description import JobDescription
-from ray.core.generated import agent_manager_pb2
-from ray.core.generated import gcs_service_pb2
-from ray.core.generated import gcs_service_pb2_grpc
-from ray.core.generated import job_agent_pb2
-from ray.core.generated import job_agent_pb2_grpc
-from ray.dashboard.datacenter import (
-    DataSource,
-    GlobalSignals,
+import ray.dashboard.optional_utils as optional_utils
+from ray._private.runtime_env.packaging import (
+    package_exists,
+    upload_package_to_gcs,
+    pin_runtime_env_uri,
 )
+from ray.dashboard.modules.job.common import (
+    CURRENT_VERSION,
+    http_uri_components_to_uri,
+    JobInfo,
+    JobSubmitRequest,
+    JobSubmitResponse,
+    JobStopResponse,
+    JobLogsResponse,
+    VersionResponse,
+    validate_request_type,
+)
+from ray.dashboard.modules.job.job_manager import JobManager
 
 logger = logging.getLogger(__name__)
-routes = dashboard_utils.ClassMethodRouteTable
+logger.setLevel(logging.INFO)
 
-
-def job_table_data_to_dict(message):
-    decode_keys = {"jobId", "rayletId"}
-    return dashboard_utils.message_to_dict(
-        message, decode_keys, including_default_value_fields=True)
+routes = optional_utils.ClassMethodRouteTable
 
 
 class JobHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
-        # JobInfoGcsServiceStub
-        self._gcs_job_info_stub = None
+        self._job_manager = None
 
-    @routes.post("/jobs")
-    async def submit_job(self, req) -> aiohttp.web.Response:
-        job_description_data = dict(await req.json())
-        # Validate the job description data.
+    async def _parse_and_validate_request(
+        self, req: Request, request_type: dataclass
+    ) -> Any:
+        """Parse request and cast to request type. If parsing failed, return a
+        Response object with status 400 and stacktrace instead.
+        """
         try:
-            JobDescription(**job_description_data)
-        except Exception as ex:
-            return dashboard_utils.rest_response(
-                success=False, message=f"Failed to submit job: {ex}")
+            return validate_request_type(await req.json(), request_type)
+        except Exception as e:
+            logger.info(f"Got invalid request type: {e}")
+            return Response(
+                text=traceback.format_exc(),
+                status=aiohttp.web.HTTPBadRequest.status_code,
+            )
 
-        # TODO(fyrestone): Choose a random agent to start the driver
-        # for this job.
-        node_id, ports = next(iter(DataSource.agents.items()))
-        ip = DataSource.node_id_to_ip[node_id]
-        address = f"{ip}:{ports[1]}"
-        options = (("grpc.enable_http_proxy", 0), )
-        channel = aiogrpc.insecure_channel(address, options=options)
-        stub = job_agent_pb2_grpc.JobAgentServiceStub(channel)
-        request = job_agent_pb2.InitializeJobEnvRequest(
-            job_description=json.dumps(job_description_data))
-        # TODO(fyrestone): It's better not to wait the RPC InitializeJobEnv.
-        reply = await stub.InitializeJobEnv(request)
-        # TODO(fyrestone): We should reply a job id for the submitted job.
-        if reply.status == agent_manager_pb2.AGENT_RPC_STATUS_OK:
-            logger.info("Succeeded to submit job.")
-            return dashboard_utils.rest_response(
-                success=True, message="Job submitted.")
+    def job_exists(self, job_id: str) -> bool:
+        status = self._job_manager.get_job_status(job_id)
+        return status is not None
+
+    @routes.get("/api/version")
+    async def get_version(self, req: Request) -> Response:
+        # NOTE(edoakes): CURRENT_VERSION should be bumped and checked on the
+        # client when we have backwards-incompatible changes.
+        resp = VersionResponse(
+            version=CURRENT_VERSION,
+            ray_version=ray.__version__,
+            ray_commit=ray.__commit__,
+        )
+        return Response(
+            text=json.dumps(dataclasses.asdict(resp)),
+            content_type="application/json",
+            status=aiohttp.web.HTTPOk.status_code,
+        )
+
+    @routes.get("/api/packages/{protocol}/{package_name}")
+    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
+    async def get_package(self, req: Request) -> Response:
+        package_uri = http_uri_components_to_uri(
+            protocol=req.match_info["protocol"],
+            package_name=req.match_info["package_name"],
+        )
+
+        logger.debug(f"Adding temporary reference to package {package_uri}.")
+        try:
+            pin_runtime_env_uri(package_uri)
+        except Exception:
+            return Response(
+                text=traceback.format_exc(),
+                status=aiohttp.web.HTTPInternalServerError.status_code,
+            )
+
+        if not package_exists(package_uri):
+            return Response(
+                text=f"Package {package_uri} does not exist",
+                status=aiohttp.web.HTTPNotFound.status_code,
+            )
+
+        return Response()
+
+    @routes.put("/api/packages/{protocol}/{package_name}")
+    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
+    async def upload_package(self, req: Request):
+        package_uri = http_uri_components_to_uri(
+            protocol=req.match_info["protocol"],
+            package_name=req.match_info["package_name"],
+        )
+        logger.info(f"Uploading package {package_uri} to the GCS.")
+        try:
+            upload_package_to_gcs(package_uri, await req.read())
+        except Exception:
+            return Response(
+                text=traceback.format_exc(),
+                status=aiohttp.web.HTTPInternalServerError.status_code,
+            )
+
+        return Response(status=aiohttp.web.HTTPOk.status_code)
+
+    @routes.post("/api/jobs/")
+    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
+    async def submit_job(self, req: Request) -> Response:
+        result = await self._parse_and_validate_request(req, JobSubmitRequest)
+        # Request parsing failed, returned with Response object.
+        if isinstance(result, Response):
+            return result
         else:
-            logger.info("Failed to submit job.")
-            return dashboard_utils.rest_response(
-                success=False,
-                message=f"Failed to submit job: {reply.error_message}")
+            submit_request = result
 
-    @routes.get("/jobs")
-    @dashboard_utils.aiohttp_cache
-    async def get_all_jobs(self, req) -> aiohttp.web.Response:
-        view = req.query.get("view")
-        if view == "summary":
-            return dashboard_utils.rest_response(
-                success=True,
-                message="All job summary fetched.",
-                summary=list(DataSource.jobs.values()))
-        else:
-            return dashboard_utils.rest_response(
-                success=False, message="Unknown view {}".format(view))
+        try:
+            job_id = self._job_manager.submit_job(
+                entrypoint=submit_request.entrypoint,
+                job_id=submit_request.job_id,
+                runtime_env=submit_request.runtime_env,
+                metadata=submit_request.metadata,
+            )
 
-    @routes.get("/jobs/{job_id}")
-    @dashboard_utils.aiohttp_cache
-    async def get_job(self, req) -> aiohttp.web.Response:
-        job_id = req.match_info.get("job_id")
-        view = req.query.get("view")
-        if view is None:
-            job_detail = {
-                "jobInfo": DataSource.jobs.get(job_id, {}),
-                "jobActors": DataSource.job_actors.get(job_id, {}),
-                "jobWorkers": DataSource.job_workers.get(job_id, []),
-            }
-            await GlobalSignals.job_info_fetched.send(job_detail)
-            return dashboard_utils.rest_response(
-                success=True, message="Job detail fetched.", detail=job_detail)
-        else:
-            return dashboard_utils.rest_response(
-                success=False, message="Unknown view {}".format(view))
+            resp = JobSubmitResponse(job_id=job_id)
+        except (TypeError, ValueError):
+            return Response(
+                text=traceback.format_exc(),
+                status=aiohttp.web.HTTPBadRequest.status_code,
+            )
+        except Exception:
+            return Response(
+                text=traceback.format_exc(),
+                status=aiohttp.web.HTTPInternalServerError.status_code,
+            )
 
-    async def _update_jobs(self):
-        # Subscribe job channel.
-        aioredis_client = self._dashboard_head.aioredis_client
-        receiver = Receiver()
+        return Response(
+            text=json.dumps(dataclasses.asdict(resp)),
+            content_type="application/json",
+            status=aiohttp.web.HTTPOk.status_code,
+        )
 
-        key = f"{job_consts.JOB_CHANNEL}:*"
-        pattern = receiver.pattern(key)
-        await aioredis_client.psubscribe(pattern)
-        logger.info("Subscribed to %s", key)
+    @routes.post("/api/jobs/{job_id}/stop")
+    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
+    async def stop_job(self, req: Request) -> Response:
+        job_id = req.match_info["job_id"]
+        if not self.job_exists(job_id):
+            return Response(
+                text=f"Job {job_id} does not exist",
+                status=aiohttp.web.HTTPNotFound.status_code,
+            )
 
-        # Get all job info.
-        while True:
-            try:
-                logger.info("Getting all job info from GCS.")
-                request = gcs_service_pb2.GetAllJobInfoRequest()
-                reply = await self._gcs_job_info_stub.GetAllJobInfo(
-                    request, timeout=5)
-                if reply.status.code == 0:
-                    jobs = {}
-                    for job_table_data in reply.job_info_list:
-                        data = job_table_data_to_dict(job_table_data)
-                        jobs[data["jobId"]] = data
-                    # Update jobs.
-                    DataSource.jobs.reset(jobs)
-                    logger.info("Received %d job info from GCS.", len(jobs))
-                    break
-                else:
-                    raise Exception(
-                        f"Failed to GetAllJobInfo: {reply.status.message}")
-            except Exception:
-                logger.exception("Error Getting all job info from GCS.")
-                await asyncio.sleep(
-                    job_consts.RETRY_GET_ALL_JOB_INFO_INTERVAL_SECONDS)
+        try:
+            stopped = self._job_manager.stop_job(job_id)
+            resp = JobStopResponse(stopped=stopped)
+        except Exception:
+            return Response(
+                text=traceback.format_exc(),
+                status=aiohttp.web.HTTPInternalServerError.status_code,
+            )
 
-        # Receive jobs from channel.
-        async for sender, msg in receiver.iter():
-            try:
-                _, data = msg
-                pubsub_message = gcs_utils.PubSubMessage.FromString(data)
-                message = gcs_utils.JobTableData.FromString(
-                    pubsub_message.data)
-                job_table_data = job_table_data_to_dict(message)
-                job_id = job_table_data["jobId"]
-                # Update jobs.
-                DataSource.jobs[job_id] = job_table_data
-            except Exception:
-                logger.exception("Error receiving job info.")
+        return Response(
+            text=json.dumps(dataclasses.asdict(resp)), content_type="application/json"
+        )
+
+    @routes.get("/api/jobs/{job_id}")
+    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
+    async def get_job_info(self, req: Request) -> Response:
+        job_id = req.match_info["job_id"]
+        if not self.job_exists(job_id):
+            return Response(
+                text=f"Job {job_id} does not exist",
+                status=aiohttp.web.HTTPNotFound.status_code,
+            )
+
+        data: JobInfo = self._job_manager.get_job_info(job_id)
+        return Response(
+            text=json.dumps(dataclasses.asdict(data)), content_type="application/json"
+        )
+
+    @routes.get("/api/jobs/")
+    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
+    async def list_jobs(self, req: Request) -> Response:
+        data: dict[str, JobInfo] = self._job_manager.list_jobs()
+        return Response(
+            text=json.dumps(
+                {
+                    job_id: dataclasses.asdict(job_info)
+                    for job_id, job_info in data.items()
+                }
+            ),
+            content_type="application/json",
+        )
+
+    @routes.get("/api/jobs/{job_id}/logs")
+    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
+    async def get_job_logs(self, req: Request) -> Response:
+        job_id = req.match_info["job_id"]
+        if not self.job_exists(job_id):
+            return Response(
+                text=f"Job {job_id} does not exist",
+                status=aiohttp.web.HTTPNotFound.status_code,
+            )
+
+        resp = JobLogsResponse(logs=self._job_manager.get_job_logs(job_id))
+        return Response(
+            text=json.dumps(dataclasses.asdict(resp)), content_type="application/json"
+        )
+
+    @routes.get("/api/jobs/{job_id}/logs/tail")
+    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
+    async def tail_job_logs(self, req: Request) -> Response:
+        job_id = req.match_info["job_id"]
+        if not self.job_exists(job_id):
+            return Response(
+                text=f"Job {job_id} does not exist",
+                status=aiohttp.web.HTTPNotFound.status_code,
+            )
+
+        ws = aiohttp.web.WebSocketResponse()
+        await ws.prepare(req)
+
+        async for lines in self._job_manager.tail_job_logs(job_id):
+            await ws.send_str(lines)
 
     async def run(self, server):
-        self._gcs_job_info_stub = gcs_service_pb2_grpc.JobInfoGcsServiceStub(
-            self._dashboard_head.aiogrpc_gcs_channel)
+        if not self._job_manager:
+            self._job_manager = JobManager()
 
-        await asyncio.gather(self._update_jobs())
+    @staticmethod
+    def is_minimal_module():
+        return False

@@ -1,13 +1,22 @@
-import sys
 import time
 from typing import Any, List, Optional
 import tempfile
+import numpy as np
 
 import pytest
 import inspect
 import requests
-from fastapi import (Cookie, Depends, FastAPI, Header, Query, Request,
-                     APIRouter, BackgroundTasks, Response)
+from fastapi import (
+    Cookie,
+    Depends,
+    FastAPI,
+    Header,
+    Query,
+    Request,
+    APIRouter,
+    BackgroundTasks,
+    Response,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -19,6 +28,7 @@ import ray
 from ray import serve
 from ray.exceptions import GetTimeoutError
 from ray.serve.http_util import make_fastapi_class_based_view
+from ray.serve.utils import DEFAULT
 from ray._private.test_utils import SignalActor
 
 
@@ -165,14 +175,11 @@ def test_fastapi_features(serve_instance):
     @app.exception_handler(ValueError)
     async def custom_handler(_: Request, exc: ValueError):
         return JSONResponse(
-            status_code=500,
-            content={
-                "custom_error": "true",
-                "message": str(exc)
-            })
+            status_code=500, content={"custom_error": "true", "message": str(exc)}
+        )
 
     def run_background(background_tasks: BackgroundTasks):
-        path = tempfile.mktemp()
+        _, path = tempfile.mkstemp()
 
         def write_to_file(p):
             with open(p, "w") as f:
@@ -185,16 +192,16 @@ def test_fastapi_features(serve_instance):
 
     @app.get("/{path_arg}", response_model=RespModel, status_code=201)
     async def func(
-            path_arg: str,
-            query_arg: str,
-            body_val: BodyType,
-            backgrounds_tasks: BackgroundTasks,
-            do_error: bool = False,
-            query_arg_valid: Optional[str] = Query(None, min_length=3),
-            cookie_arg: Optional[str] = Cookie(None),
-            user_agent: Optional[str] = Header(None),
-            commons: dict = Depends(common_parameters),
-            db=Depends(yield_db),
+        path_arg: str,
+        query_arg: str,
+        body_val: BodyType,
+        backgrounds_tasks: BackgroundTasks,
+        do_error: bool = False,
+        query_arg_valid: Optional[str] = Query(None, min_length=3),
+        cookie_arg: Optional[str] = Cookie(None),
+        user_agent: Optional[str] = Header(None),
+        commons: dict = Depends(common_parameters),
+        db=Depends(yield_db),
     ):
         if do_error:
             raise ValueError("bad input")
@@ -256,18 +263,13 @@ def test_fastapi_features(serve_instance):
 
     resp = requests.get(
         f"{url}/path_arg",
-        json={
-            "name": "serve",
-            "price": 12,
-            "nests": {
-                "val": 1
-            }
-        },
+        json={"name": "serve", "price": 12, "nests": {"val": 1}},
         params={
             "query_arg": "query_arg",
             "query_arg_valid": "at-least-three-chars",
             "q": "common_arg",
-        })
+        },
+    )
     assert resp.status_code == 201, resp.text
     assert resp.json()["ok"]
     assert resp.json()["vals"] == [
@@ -279,9 +281,7 @@ def test_fastapi_features(serve_instance):
         "at-least-three-chars",
         None,
         "python-requests",
-        {
-            "q": "common_arg"
-        },
+        {"q": "common_arg"},
         "db",
         "app.state",
     ]
@@ -289,19 +289,14 @@ def test_fastapi_features(serve_instance):
 
     resp = requests.get(
         f"{url}/path_arg",
-        json={
-            "name": "serve",
-            "price": 12,
-            "nests": {
-                "val": 1
-            }
-        },
+        json={"name": "serve", "price": 12, "nests": {"val": 1}},
         params={
             "query_arg": "query_arg",
             "query_arg_valid": "at-least-three-chars",
             "q": "common_arg",
-            "do_error": "true"
-        })
+            "do_error": "true",
+        },
+    )
     assert resp.status_code == 500
     assert resp.json()["custom_error"] == "true"
 
@@ -312,8 +307,9 @@ def test_fastapi_features(serve_instance):
         f"{url}/docs",
         headers={
             "Access-Control-Request-Method": "GET",
-            "Origin": "https://googlebot.com"
-        })
+            "Origin": "https://googlebot.com",
+        },
+    )
     assert resp.headers["access-control-allow-origin"] == "*", resp.headers
 
 
@@ -334,8 +330,7 @@ def test_fast_api_mounted_app(serve_instance):
 
     A.deploy()
 
-    assert requests.get(
-        "http://localhost:8000/api/mounted/hi").json() == "world"
+    assert requests.get("http://localhost:8000/api/mounted/hi").json() == "world"
 
 
 def test_fastapi_init_lifespan_should_not_shutdown(serve_instance):
@@ -409,8 +404,7 @@ def test_asgi_compatible(serve_instance):
     assert resp.json() == {"hello": "world"}
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
-@pytest.mark.parametrize("route_prefix", [None, "/", "/subpath"])
+@pytest.mark.parametrize("route_prefix", [DEFAULT.VALUE, "/", "/subpath"])
 def test_doc_generation(serve_instance, route_prefix):
     app = FastAPI()
 
@@ -423,10 +417,7 @@ def test_doc_generation(serve_instance, route_prefix):
 
     App.deploy()
 
-    if route_prefix is None:
-        prefix = "/App"
-    else:
-        prefix = route_prefix
+    prefix = App.route_prefix
 
     if not prefix.endswith("/"):
         prefix += "/"
@@ -541,7 +532,7 @@ def test_fastapiwrapper_constructor_before_startup_hooks(serve_instance):
         def __init__(self):
             self.test_passed = False
             try:
-                ray.get(signal.wait.remote(), timeout=.1)
+                ray.get(signal.wait.remote(), timeout=0.1)
                 self.test_passed = False
             except GetTimeoutError:
                 self.test_passed = True
@@ -555,25 +546,27 @@ def test_fastapiwrapper_constructor_before_startup_hooks(serve_instance):
     assert resp.json()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_fastapi_shutdown_hook(serve_instance):
     # https://github.com/ray-project/ray/issues/18349
-    signal = SignalActor.remote()
+    shutdown_signal = SignalActor.remote()
+    del_signal = SignalActor.remote()
 
     app = FastAPI()
 
     @app.on_event("shutdown")
     def call_signal():
-        signal.send.remote()
+        shutdown_signal.send.remote()
 
     @serve.deployment
     @serve.ingress(app)
     class A:
-        pass
+        def __del__(self):
+            del_signal.send.remote()
 
     A.deploy()
     A.delete()
-    ray.get(signal.wait.remote(), timeout=20)
+    ray.get(shutdown_signal.wait.remote(), timeout=20)
+    ray.get(del_signal.wait.remote(), timeout=20)
 
 
 def test_fastapi_method_redefinition(serve_instance):
@@ -595,6 +588,74 @@ def test_fastapi_method_redefinition(serve_instance):
     assert requests.post("http://localhost:8000/a/").json() == "hi post"
 
 
+def test_fastapi_same_app_multiple_deployments(serve_instance):
+    # https://github.com/ray-project/ray/issues/21264
+    app = FastAPI()
+
+    @serve.deployment
+    @serve.ingress(app)
+    class CounterDeployment1:
+        @app.get("/incr")
+        def incr(self):
+            return "incr"
+
+        @app.get("/decr")
+        def decr(self):
+            return "decr"
+
+    @serve.deployment
+    @serve.ingress(app)
+    class CounterDeployment2:
+        @app.get("/incr2")
+        def incr2(self):
+            return "incr2"
+
+        @app.get("/decr2")
+        def decr2(self):
+            return "decr2"
+
+    CounterDeployment1.deploy()
+
+    CounterDeployment2.deploy()
+
+    should_work = [
+        ("/CounterDeployment1/incr", "incr"),
+        ("/CounterDeployment1/decr", "decr"),
+        ("/CounterDeployment2/incr2", "incr2"),
+        ("/CounterDeployment2/decr2", "decr2"),
+    ]
+    for path, resp in should_work:
+        assert requests.get("http://localhost:8000" + path).json() == resp, (path, resp)
+
+    should_404 = [
+        "/CounterDeployment2/incr",
+        "/CounterDeployment2/decr",
+        "/CounterDeployment1/incr2",
+        "/CounterDeployment1/decr2",
+    ]
+    for path in should_404:
+        assert requests.get("http://localhost:8000" + path).status_code == 404, path
+
+
+def test_fastapi_custom_serializers(serve_instance):
+    app = FastAPI()
+
+    @serve.deployment
+    @serve.ingress(app)
+    class D:
+        @app.get("/np_array")
+        def incr(self):
+            return np.zeros(2)
+
+    D.deploy()
+
+    resp = requests.get(D.url + "/np_array")
+    print(resp.text)
+    resp.raise_for_status()
+    assert resp.json() == [0, 0]
+
+
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", "-s", __file__]))

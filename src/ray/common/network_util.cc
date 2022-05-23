@@ -23,8 +23,11 @@ std::string GetValidLocalIp(int port, int64_t timeout_ms) {
   const std::string localhost_ip = "127.0.0.1";
   bool is_timeout;
 
-  if (async_client.Connect(kPublicDNSServerIp, kPublicDNSServerPort, timeout_ms,
-                           &is_timeout, &error_code)) {
+  if (async_client.Connect(kPublicDNSServerIp,
+                           kPublicDNSServerPort,
+                           timeout_ms,
+                           &is_timeout,
+                           &error_code)) {
     address = async_client.GetLocalIPAddress();
   } else {
     address = localhost_ip;
@@ -41,7 +44,9 @@ std::string GetValidLocalIp(int port, int64_t timeout_ms) {
           primary_endpoint.address(ip_candidate);
 
           AsyncClient client;
-          if (client.Connect(primary_endpoint.address().to_string(), port, timeout_ms,
+          if (client.Connect(primary_endpoint.address().to_string(),
+                             port,
+                             timeout_ms,
                              &is_timeout)) {
             success = true;
             break;
@@ -110,8 +115,8 @@ std::vector<boost::asio::ip::address> GetValidLocalIpCandidates() {
   freeifaddrs(ifs_info);
 
   // Bigger prefixes must be tested first in CompNameAndIps
-  std::sort(prefixes_and_priorities.begin(), prefixes_and_priorities.end(),
-            CompPrefixLen);
+  std::sort(
+      prefixes_and_priorities.begin(), prefixes_and_priorities.end(), CompPrefixLen);
 
   // Filter out interfaces with small possibility of being desired to be used to serve
   std::sort(ifnames_and_ips.begin(), ifnames_and_ips.end(), CompNamesAndIps);
@@ -140,7 +145,8 @@ std::vector<boost::asio::ip::address> GetValidLocalIpCandidates() {
   instrumented_io_context io_context;
   boost::asio::ip::tcp::resolver resolver(io_context);
   boost::asio::ip::tcp::resolver::query query(
-      boost::asio::ip::host_name(), "",
+      boost::asio::ip::host_name(),
+      "",
       boost::asio::ip::resolver_query_base::flags::v4_mapped);
 
   boost::asio::ip::tcp::resolver::iterator iter = resolver.resolve(query);
@@ -183,12 +189,6 @@ bool NameStartsWith(const std::string &name, const std::string &prefix) {
   return name.compare(0, prefix.size(), prefix) == 0;
 }
 }  // namespace NetIf
-
-bool Ping(const std::string &ip, int port, int64_t timeout_ms) {
-  AsyncClient client;
-  bool is_timeout;
-  return client.Connect(ip, port, timeout_ms, &is_timeout);
-}
 
 bool CheckFree(int port) {
   instrumented_io_context io_service;

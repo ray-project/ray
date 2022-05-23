@@ -16,10 +16,8 @@ class FastModel(TFModelV2):
     usually done for Keras-style TFModelV2s).
     """
 
-    def __init__(self, obs_space, action_space, num_outputs, model_config,
-                 name):
-        super().__init__(obs_space, action_space, num_outputs, model_config,
-                         name)
+    def __init__(self, obs_space, action_space, num_outputs, model_config, name):
+        super().__init__(obs_space, action_space, num_outputs, model_config, name)
         # Have we registered our vars yet (see `forward`)?
         self._registered = False
 
@@ -30,15 +28,17 @@ class FastModel(TFModelV2):
                 dtype=tf.float32,
                 name="bias",
                 initializer=tf.keras.initializers.Zeros(),
-                shape=())
-            output = bias + \
-                tf.zeros([tf.shape(input_dict["obs"])[0], self.num_outputs])
+                shape=(),
+            )
+            output = bias + tf.zeros([tf.shape(input_dict["obs"])[0], self.num_outputs])
             self._value_out = tf.reduce_mean(output, -1)  # fake value
 
         if not self._registered:
             self.register_variables(
                 tf1.get_collection(
-                    tf1.GraphKeys.TRAINABLE_VARIABLES, scope=".+/model/.+"))
+                    tf1.GraphKeys.TRAINABLE_VARIABLES, scope=".+/model/.+"
+                )
+            )
             self._registered = True
 
         return output, []
@@ -51,14 +51,15 @@ class FastModel(TFModelV2):
 class TorchFastModel(TorchModelV2, nn.Module):
     """Torch version of FastModel (tf)."""
 
-    def __init__(self, obs_space, action_space, num_outputs, model_config,
-                 name):
-        TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
-                              model_config, name)
+    def __init__(self, obs_space, action_space, num_outputs, model_config, name):
+        TorchModelV2.__init__(
+            self, obs_space, action_space, num_outputs, model_config, name
+        )
         nn.Module.__init__(self)
 
         self.bias = nn.Parameter(
-            torch.tensor([0.0], dtype=torch.float32, requires_grad=True))
+            torch.tensor([0.0], dtype=torch.float32, requires_grad=True)
+        )
 
         # Only needed to give some params to the optimizer (even though,
         # they are never used anywhere).
@@ -68,8 +69,8 @@ class TorchFastModel(TorchModelV2, nn.Module):
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
         self._output = self.bias + torch.zeros(
-            size=(input_dict["obs"].shape[0], self.num_outputs)).to(
-                self.bias.device)
+            size=(input_dict["obs"].shape[0], self.num_outputs)
+        ).to(self.bias.device)
         return self._output, []
 
     @override(ModelV2)

@@ -3,11 +3,11 @@ package io.ray.runtime.object;
 import com.google.common.base.Preconditions;
 import io.ray.api.ObjectRef;
 import io.ray.api.WaitResult;
+import io.ray.api.exception.RayException;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
 import io.ray.api.id.UniqueId;
 import io.ray.runtime.context.WorkerContext;
-import io.ray.runtime.exception.RayException;
 import io.ray.runtime.generated.Common.Address;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -102,6 +102,7 @@ public abstract class ObjectStore {
    * @param objectIds IDs of the objects to get.
    * @param timeoutMs Timeout in milliseconds, wait infinitely if it's negative.
    * @return Result list of objects data.
+   * @throws RayTimeoutException If it's timeout to get the object.
    */
   public abstract List<NativeRayObject> getRaw(List<ObjectId> objectIds, long timeoutMs);
 
@@ -114,8 +115,21 @@ public abstract class ObjectStore {
    */
   @SuppressWarnings("unchecked")
   public <T> List<T> get(List<ObjectId> ids, Class<?> elementType) {
-    // Pass -1 as timeout to wait until all objects are available in object store.
-    List<NativeRayObject> dataAndMetaList = getRaw(ids, -1);
+    return get(ids, elementType, -1);
+  }
+
+  /**
+   * Get a list of objects from the object store.
+   *
+   * @param ids List of the object ids.
+   * @param <T> Type of these objects.
+   * @param timeoutMs The maximum amount of time in seconds to wait before returning.
+   * @return A list of GetResult objects.
+   * @throws RayTimeoutException If it's timeout to get the object.
+   */
+  @SuppressWarnings("unchecked")
+  public <T> List<T> get(List<ObjectId> ids, Class<?> elementType, long timeoutMs) {
+    List<NativeRayObject> dataAndMetaList = getRaw(ids, timeoutMs);
 
     List<T> results = new ArrayList<>();
     for (int i = 0; i < dataAndMetaList.size(); i++) {

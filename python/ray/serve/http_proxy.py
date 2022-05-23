@@ -1,7 +1,10 @@
 import asyncio
+from asyncio.tasks import FIRST_COMPLETED
+import os
+import logging
+import pickle
 import socket
 import time
-import pickle
 from typing import Callable, List, Dict, Optional, Tuple
 
 import uvicorn
@@ -9,43 +12,38 @@ import starlette.responses
 import starlette.routing
 
 import ray
-from ray import serve
 from ray.exceptions import RayActorError, RayTaskError
-from ray.serve.common import EndpointInfo, EndpointTag
-from ray.serve.long_poll import LongPollNamespace
 from ray.util import metrics
-from ray.serve.utils import logger
+
+from ray import serve
 from ray.serve.handle import RayServeHandle
-from ray.serve.http_util import HTTPRequestWrapper, receive_http_body, Response
-from ray.serve.long_poll import LongPollClient
-from ray.serve.handle import DEFAULT
+from ray.serve.http_util import (
+    HTTPRequestWrapper,
+    RawASGIResponse,
+    receive_http_body,
+    Response,
+    set_socket_reuse_port,
+)
+from ray.serve.common import EndpointInfo, EndpointTag
+from ray.serve.constants import SERVE_LOGGER_NAME
+from ray.serve.long_poll import LongPollClient, LongPollNamespace
+from ray.serve.logging_utils import access_log_msg, configure_component_logger
+from ray.serve.utils import node_id_to_ip_addr
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 MAX_REPLICA_FAILURE_RETRIES = 10
+DISCONNECT_ERROR_CODE = "disconnection"
+SOCKET_REUSE_PORT_ENABLED = (
+    os.environ.get("SERVE_SOCKET_REUSE_PORT_ENABLED", "1") == "1"
+)
 
 
-async def _send_request_to_handle(handle, scope, receive, send):
+async def _send_request_to_handle(handle, scope, receive, send) -> str:
     http_body_bytes = await receive_http_body(scope, receive, send)
 
-    headers = {k.decode(): v.decode() for k, v in scope["headers"]}
-    handle = handle.options(
-        method_name=headers.get("X-SERVE-CALL-METHOD".lower(), DEFAULT.VALUE),
-        shard_key=headers.get("X-SERVE-SHARD-KEY".lower(), DEFAULT.VALUE),
-        http_method=scope["method"].upper(),
-        http_headers=headers,
-    )
-
-    # scope["router"] and scope["endpoint"] contain references to a router
-    # and endpoint object, respectively, which each in turn contain a
-    # reference to the Serve client, which cannot be serialized.
-    # The solution is to delete these from scope, as they will not be used.
-    # TODO(edoakes): this can be removed once we deprecate the old API.
-    if "router" in scope:
-        del scope["router"]
-    if "endpoint" in scope:
-        del scope["endpoint"]
-
     # NOTE(edoakes): it's important that we defer building the starlette
-    # request until it reaches the backend replica to avoid unnecessary
+    # request until it reaches the replica to avoid unnecessary
     # serialization cost, so we use a simple dataclass here.
     request = HTTPRequestWrapper(scope, http_body_bytes)
     # Perform a pickle here to improve latency. Stdlib pickle for simple
@@ -54,27 +52,64 @@ async def _send_request_to_handle(handle, scope, receive, send):
 
     retries = 0
     backoff_time_s = 0.05
+    loop = asyncio.get_event_loop()
+    # We have received all the http request conent. The next `receive`
+    # call might never arrive; if it does, it can only be `http.disconnect`.
+    client_disconnection_task = loop.create_task(receive())
     while retries < MAX_REPLICA_FAILURE_RETRIES:
-        object_ref = await handle.remote(request)
-        try:
-            result = await object_ref
-            break
-        except RayActorError:
-            logger.warning("Request failed due to replica failure. There are "
-                           f"{MAX_REPLICA_FAILURE_RETRIES - retries} retries "
-                           "remaining.")
-            await asyncio.sleep(backoff_time_s)
-            backoff_time_s *= 2
-            retries += 1
+        assignment_task = loop.create_task(handle.remote(request))
+        done, _ = await asyncio.wait(
+            [assignment_task, client_disconnection_task], return_when=FIRST_COMPLETED
+        )
+        if client_disconnection_task in done:
+            message = await client_disconnection_task
+            assert message["type"] == "http.disconnect", (
+                "Received additional request payload that's not disconnect. "
+                "This is an invalid HTTP state."
+            )
 
-    if isinstance(result, RayTaskError):
-        error_message = "Task Error. Traceback: {}.".format(result)
-        await Response(
-            error_message, status_code=500).send(scope, receive, send)
-    elif isinstance(result, starlette.responses.Response):
+            logger.warning(
+                f"Client from {scope['client']} disconnected, cancelling the "
+                "request."
+            )
+            # This will make the .result() to raise cancelled error.
+            assignment_task.cancel()
+        try:
+            object_ref = await assignment_task
+            result = await object_ref
+            client_disconnection_task.cancel()
+            break
+        except asyncio.CancelledError:
+            # Here because the client disconnected, we will return a custom
+            # error code for metric tracking.
+            return DISCONNECT_ERROR_CODE
+        except RayTaskError as error:
+            error_message = "Task Error. Traceback: {}.".format(error)
+            await Response(error_message, status_code=500).send(scope, receive, send)
+            return "500"
+        except RayActorError:
+            logger.debug(
+                "Request failed due to replica failure. There are "
+                f"{MAX_REPLICA_FAILURE_RETRIES - retries} retries "
+                "remaining."
+            )
+            await asyncio.sleep(backoff_time_s)
+            # Be careful about the expotential backoff scaling here.
+            # Assuming 10 retries, 1.5x scaling means the last retry is 38x the
+            # initial backoff time, while 2x scaling means 512x the initial.
+            backoff_time_s *= 1.5
+            retries += 1
+    else:
+        error_message = "Task failed with " f"{MAX_REPLICA_FAILURE_RETRIES} retries."
+        await Response(error_message, status_code=500).send(scope, receive, send)
+        return "500"
+
+    if isinstance(result, (starlette.responses.Response, RawASGIResponse)):
         await result(scope, receive, send)
+        return str(result.status_code)
     else:
         await Response(result).send(scope, receive, send)
+        return "200"
 
 
 class LongestPrefixRouter:
@@ -93,22 +128,15 @@ class LongestPrefixRouter:
     def endpoint_exists(self, endpoint: EndpointTag) -> bool:
         return endpoint in self.handles
 
-    def update_routes(self,
-                      endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
+    def update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
         logger.debug(f"Got updated endpoints: {endpoints}.")
 
         existing_handles = set(self.handles.keys())
         routes = []
         route_info = {}
         for endpoint, info in endpoints.items():
-            # Default case where the user did not specify a route prefix.
-            if info.route is None:
-                route = f"/{endpoint}"
-            else:
-                route = info.route
-
-            routes.append(route)
-            route_info[route] = endpoint
+            routes.append(info.route)
+            route_info[info.route] = endpoint
             if endpoint in self.handles:
                 existing_handles.remove(endpoint)
             else:
@@ -123,8 +151,9 @@ class LongestPrefixRouter:
         self.sorted_routes = sorted(routes, key=lambda x: len(x), reverse=True)
         self.route_info = route_info
 
-    def match_route(self, target_route: str
-                    ) -> Tuple[Optional[str], Optional[RayServeHandle]]:
+    def match_route(
+        self, target_route: str
+    ) -> Tuple[Optional[str], Optional[RayServeHandle]]:
         """Return the longest prefix match among existing routes for the route.
 
         Args:
@@ -148,8 +177,7 @@ class LongestPrefixRouter:
                 # to guard against the scenario where we have '/route' as a
                 # prefix and there's a request to '/routesuffix'. In this case,
                 # it should *not* be a match.
-                elif (len(target_route) == len(route)
-                      or target_route[len(route)] == "/"):
+                elif len(target_route) == len(route) or target_route[len(route)] == "/":
                     matched = True
 
                 if matched:
@@ -163,20 +191,26 @@ class HTTPProxy:
     """This class is meant to be instantiated and run by an ASGI HTTP server.
 
     >>> import uvicorn
-    >>> uvicorn.run(HTTPProxy(controller_name, controller_namespace))
+    >>> controller_name, controller_namespace = ... # doctest: +SKIP
+    >>> uvicorn.run(HTTPProxy(controller_name, controller_namespace)) # doctest: +SKIP
     """
 
-    def __init__(self, controller_name: str, controller_namespace: str):
+    def __init__(
+        self,
+        controller_name: str,
+        controller_namespace: str,
+    ):
         # Set the controller name so that serve will connect to the
         # controller instance this proxy is running in.
-        ray.serve.api._set_internal_replica_context(None, None,
-                                                    controller_name, None)
+        ray.serve.context.set_internal_replica_context(
+            None, None, controller_name, controller_namespace, None
+        )
 
         # Used only for displaying the route table.
         self.route_info: Dict[str, EndpointTag] = dict()
 
         def get_handle(name):
-            return serve.api._get_global_client().get_handle(
+            return serve.context.get_global_client().get_handle(
                 name,
                 sync=False,
                 missing_ok=True,
@@ -185,31 +219,47 @@ class HTTPProxy:
 
         self.prefix_router = LongestPrefixRouter(get_handle)
         self.long_poll_client = LongPollClient(
-            ray.get_actor(controller_name, namespace=controller_namespace), {
+            ray.get_actor(controller_name, namespace=controller_namespace),
+            {
                 LongPollNamespace.ROUTE_TABLE: self._update_routes,
             },
-            call_in_event_loop=asyncio.get_event_loop())
+            call_in_event_loop=asyncio.get_event_loop(),
+        )
         self.request_counter = metrics.Counter(
             "serve_num_http_requests",
             description="The number of HTTP requests processed.",
-            tag_keys=("route", ))
+            tag_keys=("route",),
+        )
 
-    def _update_routes(self,
-                       endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
+        self.request_error_counter = metrics.Counter(
+            "serve_num_http_error_requests",
+            description="The number of non-200 HTTP responses.",
+            tag_keys=("route", "error_code"),
+        )
+
+        self.deployment_request_error_counter = metrics.Counter(
+            "serve_num_deployment_http_error_requests",
+            description=(
+                "The number of non-200 HTTP responses returned by each deployment."
+            ),
+            tag_keys=("deployment",),
+        )
+
+    def _update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
         self.route_info: Dict[str, Tuple[EndpointTag, List[str]]] = dict()
         for endpoint, info in endpoints.items():
-            route = info.route if info.route is not None else f"/{endpoint}"
+            route = info.route
             self.route_info[route] = endpoint
 
         self.prefix_router.update_routes(endpoints)
 
-    async def block_until_endpoint_exists(self, endpoint: EndpointTag,
-                                          timeout_s: float):
+    async def block_until_endpoint_exists(
+        self, endpoint: EndpointTag, timeout_s: float
+    ):
         start = time.time()
         while True:
             if time.time() - start > timeout_s:
-                raise TimeoutError(
-                    f"Waited {timeout_s} for {endpoint} to propagate.")
+                raise TimeoutError(f"Waited {timeout_s} for {endpoint} to propagate.")
             for existing_endpoint in self.route_info.values():
                 if existing_endpoint == endpoint:
                     return
@@ -220,7 +270,8 @@ class HTTPProxy:
         response = Response(
             f"Path '{current_path}' not found. "
             "Please ping http://.../-/routes for route table.",
-            status_code=404)
+            status_code=404,
+        )
         await response.send(scope, receive, send)
 
     async def __call__(self, scope, receive, send):
@@ -231,14 +282,23 @@ class HTTPProxy:
         """
 
         assert scope["type"] == "http"
-        self.request_counter.inc(tags={"route": scope["path"]})
 
-        if scope["path"] == "/-/routes":
+        # only use the non-root part of the path for routing
+        root_path = scope["root_path"]
+        route_path = scope["path"][len(root_path) :]
+
+        self.request_counter.inc(tags={"route": route_path})
+
+        if route_path == "/-/routes":
             return await starlette.responses.JSONResponse(self.route_info)(
-                scope, receive, send)
+                scope, receive, send
+            )
 
-        route_prefix, handle = self.prefix_router.match_route(scope["path"])
+        route_prefix, handle = self.prefix_router.match_route(route_path)
         if route_prefix is None:
+            self.request_error_counter.inc(
+                tags={"route": route_path, "error_code": "404"}
+            )
             return await self._not_found(scope, receive, send)
 
         # Modify the path and root path so that reverse lookups and redirection
@@ -246,26 +306,51 @@ class HTTPProxy:
         # changed without restarting the replicas.
         if route_prefix != "/":
             assert not route_prefix.endswith("/")
-            scope["path"] = scope["path"].replace(route_prefix, "", 1)
-            scope["root_path"] = route_prefix
+            scope["path"] = route_path.replace(route_prefix, "", 1)
+            scope["root_path"] = root_path + route_prefix
 
-        await _send_request_to_handle(handle, scope, receive, send)
+        start_time = time.time()
+        status_code = await _send_request_to_handle(handle, scope, receive, send)
+        latency_ms = (time.time() - start_time) * 1000.0
+        logger.info(
+            access_log_msg(
+                method=scope["method"],
+                route=route_prefix,
+                status=str(status_code),
+                latency_ms=latency_ms,
+            )
+        )
+        if status_code != "200":
+            self.request_error_counter.inc(
+                tags={"route": route_path, "error_code": status_code}
+            )
+            self.deployment_request_error_counter.inc(
+                tags={"deployment": handle.deployment_name}
+            )
 
 
 @ray.remote(num_cpus=0)
 class HTTPProxyActor:
-    def __init__(self,
-                 host: str,
-                 port: int,
-                 controller_name: str,
-                 controller_namespace: str,
-                 http_middlewares: Optional[List[
-                     "starlette.middleware.Middleware"]] = None):  # noqa: F821
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        root_path: str,
+        controller_name: str,
+        controller_namespace: str,
+        node_id: str,
+        http_middlewares: Optional[List["starlette.middleware.Middleware"]] = None,
+    ):  # noqa: F821
+        configure_component_logger(
+            component_name="http_proxy", component_id=node_id_to_ip_addr(node_id)
+        )
+
         if http_middlewares is None:
             http_middlewares = []
 
         self.host = host
         self.port = port
+        self.root_path = root_path
 
         self.setup_complete = asyncio.Event()
 
@@ -273,8 +358,7 @@ class HTTPProxyActor:
 
         self.wrapped_app = self.app
         for middleware in http_middlewares:
-            self.wrapped_app = middleware.cls(self.wrapped_app,
-                                              **middleware.options)
+            self.wrapped_app = middleware.cls(self.wrapped_app, **middleware.options)
 
         # Start running the HTTP server on the event loop.
         # This task should be running forever. We track it in case of failure.
@@ -292,31 +376,29 @@ class HTTPProxyActor:
                 # Or self.run errored.
                 self.running_task,
             ],
-            return_when=asyncio.FIRST_COMPLETED)
+            return_when=asyncio.FIRST_COMPLETED,
+        )
 
         # Return None, or re-throw the exception from self.running_task.
         return await done_set.pop()
 
-    async def block_until_endpoint_exists(self, endpoint: EndpointTag,
-                                          timeout_s: float):
+    async def block_until_endpoint_exists(
+        self, endpoint: EndpointTag, timeout_s: float
+    ):
         await self.app.block_until_endpoint_exists(endpoint, timeout_s)
 
     async def run(self):
         sock = socket.socket()
-        # These two socket options will allow multiple process to bind the the
-        # same port. Kernel will evenly load balance among the port listeners.
-        # Note: this will only work on Linux.
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        if hasattr(socket, "SO_REUSEPORT"):
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-
+        if SOCKET_REUSE_PORT_ENABLED:
+            set_socket_reuse_port(sock)
         try:
             sock.bind((self.host, self.port))
         except OSError:
             # The OS failed to bind a socket to the given host and port.
             raise ValueError(
                 f"""Failed to bind Ray Serve HTTP proxy to '{self.host}:{self.port}'.
-Please make sure your http-host and http-port are specified correctly.""")
+Please make sure your http-host and http-port are specified correctly."""
+            )
 
         # Note(simon): we have to use lower level uvicorn Config and Server
         # class because we want to run the server as a coroutine. The only
@@ -325,8 +407,10 @@ Please make sure your http-host and http-port are specified correctly.""")
             self.wrapped_app,
             host=self.host,
             port=self.port,
+            root_path=self.root_path,
             lifespan="off",
-            access_log=False)
+            access_log=False,
+        )
         server = uvicorn.Server(config=config)
         # TODO(edoakes): we need to override install_signal_handlers here
         # because the existing implementation fails if it isn't running in

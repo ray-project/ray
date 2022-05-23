@@ -24,13 +24,16 @@
 #include <sstream>
 #include <thread>
 
+#include "ray/common/event_stats.h"
 #include "ray/common/ray_config.h"
 #include "ray/util/util.h"
 
 namespace ray {
 
-Status ConnectSocketRetry(local_stream_socket &socket, const std::string &endpoint,
-                          int num_retries, int64_t timeout_in_ms) {
+Status ConnectSocketRetry(local_stream_socket &socket,
+                          const std::string &endpoint,
+                          int num_retries,
+                          int64_t timeout_in_ms) {
   RAY_CHECK(num_retries != 0);
   // Pick the default values if the user did not specify.
   if (num_retries < 0) {
@@ -111,18 +114,20 @@ void ServerConnection::WriteBufferAsync(
     auto &io_context =
         static_cast<instrumented_io_context &>(socket_.get_executor().context());
     const auto stats_handle =
-        io_context.RecordStart("ClientConnection.async_write.WriteBufferAsync");
+        io_context.stats().RecordStart("ClientConnection.async_write.WriteBufferAsync");
     boost::asio::async_write(
-        socket_, buffer,
-        [handler, stats_handle = std::move(stats_handle), &io_context](
+        socket_,
+        buffer,
+        [handler, stats_handle = std::move(stats_handle)](
             const boost::system::error_code &ec, size_t bytes_transferred) {
-          io_context.RecordExecution(
+          EventTracker::RecordExecution(
               [handler, ec]() { handler(boost_to_ray_status(ec)); },
               std::move(stats_handle));
         });
   } else {
     boost::asio::async_write(
-        socket_, buffer,
+        socket_,
+        buffer,
         [handler](const boost::system::error_code &ec, size_t bytes_transferred) {
           handler(boost_to_ray_status(ec));
         });
@@ -159,25 +164,28 @@ void ServerConnection::ReadBufferAsync(
     auto &io_context =
         static_cast<instrumented_io_context &>(socket_.get_executor().context());
     const auto stats_handle =
-        io_context.RecordStart("ClientConnection.async_read.ReadBufferAsync");
+        io_context.stats().RecordStart("ClientConnection.async_read.ReadBufferAsync");
     boost::asio::async_read(
-        socket_, buffer,
-        [handler, stats_handle = std::move(stats_handle), &io_context](
+        socket_,
+        buffer,
+        [handler, stats_handle = std::move(stats_handle)](
             const boost::system::error_code &ec, size_t bytes_transferred) {
-          io_context.RecordExecution(
+          EventTracker::RecordExecution(
               [handler, ec]() { handler(boost_to_ray_status(ec)); },
               std::move(stats_handle));
         });
   } else {
     boost::asio::async_read(
-        socket_, buffer,
+        socket_,
+        buffer,
         [handler](const boost::system::error_code &ec, size_t bytes_transferred) {
           handler(boost_to_ray_status(ec));
         });
   }
 }
 
-ray::Status ServerConnection::WriteMessage(int64_t type, int64_t length,
+ray::Status ServerConnection::WriteMessage(int64_t type,
+                                           int64_t length,
                                            const uint8_t *message) {
   sync_writes_ += 1;
   bytes_written_ += length;
@@ -217,7 +225,9 @@ Status ServerConnection::ReadMessage(int64_t type, std::vector<uint8_t> *message
 }
 
 void ServerConnection::WriteMessageAsync(
-    int64_t type, int64_t length, const uint8_t *message,
+    int64_t type,
+    int64_t length,
+    const uint8_t *message,
     const std::function<void(const ray::Status &)> &handler) {
   async_writes_ += 1;
   bytes_written_ += length;
@@ -291,13 +301,17 @@ void ServerConnection::DoAsyncWrites() {
     auto &io_context =
         static_cast<instrumented_io_context &>(socket_.get_executor().context());
     const auto stats_handle =
-        io_context.RecordStart("ClientConnection.async_write.DoAsyncWrites");
+        io_context.stats().RecordStart("ClientConnection.async_write.DoAsyncWrites");
     boost::asio::async_write(
-        socket_, message_buffers,
-        [this, this_ptr, num_messages, call_handlers,
-         stats_handle = std::move(stats_handle),
-         &io_context](const boost::system::error_code &error, size_t bytes_transferred) {
-          io_context.RecordExecution(
+        socket_,
+        message_buffers,
+        [this,
+         this_ptr,
+         num_messages,
+         call_handlers,
+         stats_handle = std::move(stats_handle)](const boost::system::error_code &error,
+                                                 size_t bytes_transferred) {
+          EventTracker::RecordExecution(
               [this, this_ptr, num_messages, call_handlers, error]() {
                 ray::Status status = boost_to_ray_status(error);
                 if (error.value() == boost::system::errc::errc_t::broken_pipe) {
@@ -318,7 +332,8 @@ void ServerConnection::DoAsyncWrites() {
         });
   } else {
     boost::asio::async_write(
-        ServerConnection::socket_, message_buffers,
+        ServerConnection::socket_,
+        message_buffers,
         [this, this_ptr, num_messages, call_handlers](
             const boost::system::error_code &error, size_t bytes_transferred) {
           ray::Status status = boost_to_ray_status(error);
@@ -340,30 +355,34 @@ void ServerConnection::DoAsyncWrites() {
 }
 
 std::shared_ptr<ClientConnection> ClientConnection::Create(
-    ClientHandler &client_handler, MessageHandler &message_handler,
-    local_stream_socket &&socket, const std::string &debug_label,
-    const std::vector<std::string> &message_type_enum_names, int64_t error_message_type,
-    const std::vector<uint8_t> &error_message_data) {
-  std::shared_ptr<ClientConnection> self(new ClientConnection(
-      message_handler, std::move(socket), debug_label, message_type_enum_names,
-      error_message_type, error_message_data));
+    ClientHandler &client_handler,
+    MessageHandler &message_handler,
+    local_stream_socket &&socket,
+    const std::string &debug_label,
+    const std::vector<std::string> &message_type_enum_names,
+    int64_t error_message_type) {
+  std::shared_ptr<ClientConnection> self(new ClientConnection(message_handler,
+                                                              std::move(socket),
+                                                              debug_label,
+                                                              message_type_enum_names,
+                                                              error_message_type));
   // Let our manager process our new connection.
   client_handler(*self);
   return self;
 }
 
 ClientConnection::ClientConnection(
-    MessageHandler &message_handler, local_stream_socket &&socket,
+    MessageHandler &message_handler,
+    local_stream_socket &&socket,
     const std::string &debug_label,
-    const std::vector<std::string> &message_type_enum_names, int64_t error_message_type,
-    const std::vector<uint8_t> &error_message_data)
+    const std::vector<std::string> &message_type_enum_names,
+    int64_t error_message_type)
     : ServerConnection(std::move(socket)),
       registered_(false),
       message_handler_(message_handler),
       debug_label_(debug_label),
       message_type_enum_names_(message_type_enum_names),
-      error_message_type_(error_message_type),
-      error_message_data_(error_message_data) {}
+      error_message_type_(error_message_type) {}
 
 void ClientConnection::Register() {
   RAY_CHECK(!registered_);
@@ -383,16 +402,19 @@ void ClientConnection::ProcessMessages() {
     auto &io_context = static_cast<instrumented_io_context &>(
         ServerConnection::socket_.get_executor().context());
     const auto stats_handle =
-        io_context.RecordStart("ClientConnection.async_read.ReadBufferAsync");
+        io_context.stats().RecordStart("ClientConnection.async_read.ReadBufferAsync");
     boost::asio::async_read(
-        ServerConnection::socket_, header,
-        [this, this_ptr, stats_handle = std::move(stats_handle), &io_context](
+        ServerConnection::socket_,
+        header,
+        [this, this_ptr, stats_handle = std::move(stats_handle)](
             const boost::system::error_code &ec, size_t bytes_transferred) {
-          io_context.RecordExecution([this, this_ptr, ec]() { ProcessMessageHeader(ec); },
-                                     std::move(stats_handle));
+          EventTracker::RecordExecution(
+              [this, this_ptr, ec]() { ProcessMessageHeader(ec); },
+              std::move(stats_handle));
         });
   } else {
-    boost::asio::async_read(ServerConnection::socket_, header,
+    boost::asio::async_read(ServerConnection::socket_,
+                            header,
                             boost::bind(&ClientConnection::ProcessMessageHeader,
                                         shared_ClientConnection_from_this(),
                                         boost::asio::placeholders::error));
@@ -401,9 +423,6 @@ void ClientConnection::ProcessMessages() {
 
 void ClientConnection::ProcessMessageHeader(const boost::system::error_code &error) {
   if (error) {
-    // If there was an error, disconnect the client.
-    read_type_ = error_message_type_;
-    read_message_ = error_message_data_;
     read_length_ = 0;
     ProcessMessage(error);
     return;
@@ -424,16 +443,18 @@ void ClientConnection::ProcessMessageHeader(const boost::system::error_code &err
     auto &io_context = static_cast<instrumented_io_context &>(
         ServerConnection::socket_.get_executor().context());
     const auto stats_handle =
-        io_context.RecordStart("ClientConnection.async_read.ReadBufferAsync");
+        io_context.stats().RecordStart("ClientConnection.async_read.ReadBufferAsync");
     boost::asio::async_read(
-        ServerConnection::socket_, boost::asio::buffer(read_message_),
-        [this, this_ptr, stats_handle = std::move(stats_handle), &io_context](
+        ServerConnection::socket_,
+        boost::asio::buffer(read_message_),
+        [this, this_ptr, stats_handle = std::move(stats_handle)](
             const boost::system::error_code &ec, size_t bytes_transferred) {
-          io_context.RecordExecution([this, this_ptr, ec]() { ProcessMessage(ec); },
-                                     std::move(stats_handle));
+          EventTracker::RecordExecution([this, this_ptr, ec]() { ProcessMessage(ec); },
+                                        std::move(stats_handle));
         });
   } else {
-    boost::asio::async_read(ServerConnection::socket_, boost::asio::buffer(read_message_),
+    boost::asio::async_read(ServerConnection::socket_,
+                            boost::asio::buffer(read_message_),
                             boost::bind(&ClientConnection::ProcessMessage,
                                         shared_ClientConnection_from_this(),
                                         boost::asio::placeholders::error));
@@ -474,7 +495,24 @@ std::string ClientConnection::RemoteEndpointInfo() {
 
 void ClientConnection::ProcessMessage(const boost::system::error_code &error) {
   if (error) {
+    flatbuffers::FlatBufferBuilder fbb;
+    const auto &disconnect_detail = fbb.CreateString(absl::StrCat(
+        "Worker unexpectedly exits with a connection error code ",
+        error.value(),
+        ". ",
+        error.message(),
+        ". There are some potential root causes. (1) The process is killed by "
+        "SIGKILL by OOM killer due to high memory usage. (2) ray stop --force is "
+        "called. (3) The worker is crashed unexpectedly due to SIGSEGV or other "
+        "unexpected errors."));
+    protocol::DisconnectClientBuilder builder(fbb);
+    builder.add_disconnect_type(static_cast<int>(ray::rpc::WorkerExitType::SYSTEM_ERROR));
+    builder.add_disconnect_detail(disconnect_detail);
+    fbb.Finish(builder.Finish());
+    std::vector<uint8_t> error_data(fbb.GetBufferPointer(),
+                                    fbb.GetBufferPointer() + fbb.GetSize());
     read_type_ = error_message_type_;
+    read_message_ = error_data;
   }
 
   int64_t start_ms = current_time_ms();

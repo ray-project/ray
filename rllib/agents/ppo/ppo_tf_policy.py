@@ -7,22 +7,36 @@ import logging
 from typing import Dict, List, Optional, Type, Union
 
 import ray
-from ray.rllib.evaluation.episode import MultiAgentEpisode
-from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
-    Postprocessing
+from ray.rllib.evaluation.episode import Episode
+from ray.rllib.evaluation.postprocessing import (
+    compute_gae_for_sample_batch,
+    Postprocessing,
+)
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.tf_policy import LearningRateSchedule, \
-    EntropyCoeffSchedule
+from ray.rllib.policy.tf_mixins import (
+    EntropyCoeffSchedule,
+    KLCoeffMixin,
+    LearningRateSchedule,
+    ValueNetworkMixin,
+)
 from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.utils.annotations import Deprecated
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
-from ray.rllib.utils.framework import try_import_tf, get_variable
-from ray.rllib.utils.tf_ops import explained_variance, make_tf_callable
-from ray.rllib.utils.typing import AgentID, LocalOptimizer, ModelGradients, \
-    TensorType, TrainerConfigDict
+from ray.rllib.utils.deprecation import (
+    Deprecated,
+    DEPRECATED_VALUE,
+    deprecation_warning,
+)
+from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.tf_utils import explained_variance
+from ray.rllib.utils.typing import (
+    AgentID,
+    LocalOptimizer,
+    ModelGradients,
+    TensorType,
+    TrainerConfigDict,
+)
 
 tf1, tf, tfv = try_import_tf()
 
@@ -30,9 +44,11 @@ logger = logging.getLogger(__name__)
 
 
 def ppo_surrogate_loss(
-        policy: Policy, model: Union[ModelV2, "tf.keras.Model"],
-        dist_class: Type[TFActionDistribution],
-        train_batch: SampleBatch) -> Union[TensorType, List[TensorType]]:
+    policy: Policy,
+    model: Union[ModelV2, "tf.keras.Model"],
+    dist_class: Type[TFActionDistribution],
+    train_batch: SampleBatch,
+) -> Union[TensorType, List[TensorType]]:
     """Constructs the loss for Proximal Policy Objective.
 
     Args:
@@ -50,7 +66,7 @@ def ppo_surrogate_loss(
         logits, state, extra_outs = model(train_batch)
         value_fn_out = extra_outs[SampleBatch.VF_PREDS]
     else:
-        logits, state = model.from_batch(train_batch)
+        logits, state = model(train_batch)
         value_fn_out = model.value_function()
 
     curr_action_dist = dist_class(logits, model)
@@ -74,45 +90,56 @@ def ppo_surrogate_loss(
         mask = None
         reduce_mean_valid = tf.reduce_mean
 
-    prev_action_dist = dist_class(train_batch[SampleBatch.ACTION_DIST_INPUTS],
-                                  model)
+    prev_action_dist = dist_class(train_batch[SampleBatch.ACTION_DIST_INPUTS], model)
 
     logp_ratio = tf.exp(
-        curr_action_dist.logp(train_batch[SampleBatch.ACTIONS]) -
-        train_batch[SampleBatch.ACTION_LOGP])
-    action_kl = prev_action_dist.kl(curr_action_dist)
-    mean_kl_loss = reduce_mean_valid(action_kl)
+        curr_action_dist.logp(train_batch[SampleBatch.ACTIONS])
+        - train_batch[SampleBatch.ACTION_LOGP]
+    )
+
+    # Only calculate kl loss if necessary (kl-coeff > 0.0).
+    if policy.config["kl_coeff"] > 0.0:
+        action_kl = prev_action_dist.kl(curr_action_dist)
+        mean_kl_loss = reduce_mean_valid(action_kl)
+    else:
+        mean_kl_loss = tf.constant(0.0)
 
     curr_entropy = curr_action_dist.entropy()
     mean_entropy = reduce_mean_valid(curr_entropy)
 
     surrogate_loss = tf.minimum(
         train_batch[Postprocessing.ADVANTAGES] * logp_ratio,
-        train_batch[Postprocessing.ADVANTAGES] * tf.clip_by_value(
-            logp_ratio, 1 - policy.config["clip_param"],
-            1 + policy.config["clip_param"]))
+        train_batch[Postprocessing.ADVANTAGES]
+        * tf.clip_by_value(
+            logp_ratio, 1 - policy.config["clip_param"], 1 + policy.config["clip_param"]
+        ),
+    )
     mean_policy_loss = reduce_mean_valid(-surrogate_loss)
 
     # Compute a value function loss.
     if policy.config["use_critic"]:
-        prev_value_fn_out = train_batch[SampleBatch.VF_PREDS]
-        vf_loss1 = tf.math.square(value_fn_out -
-                                  train_batch[Postprocessing.VALUE_TARGETS])
-        vf_clipped = prev_value_fn_out + tf.clip_by_value(
-            value_fn_out - prev_value_fn_out, -policy.config["vf_clip_param"],
-            policy.config["vf_clip_param"])
-        vf_loss2 = tf.math.square(vf_clipped -
-                                  train_batch[Postprocessing.VALUE_TARGETS])
-        vf_loss = tf.maximum(vf_loss1, vf_loss2)
-        mean_vf_loss = reduce_mean_valid(vf_loss)
+        vf_loss = tf.math.square(
+            value_fn_out - train_batch[Postprocessing.VALUE_TARGETS]
+        )
+        vf_loss_clipped = tf.clip_by_value(
+            vf_loss,
+            0,
+            policy.config["vf_clip_param"],
+        )
+        mean_vf_loss = reduce_mean_valid(vf_loss_clipped)
     # Ignore the value function.
     else:
-        vf_loss = mean_vf_loss = tf.constant(0.0)
+        vf_loss_clipped = mean_vf_loss = tf.constant(0.0)
 
-    total_loss = reduce_mean_valid(-surrogate_loss +
-                                   policy.kl_coeff * action_kl +
-                                   policy.config["vf_loss_coeff"] * vf_loss -
-                                   policy.entropy_coeff * curr_entropy)
+    total_loss = reduce_mean_valid(
+        -surrogate_loss
+        + policy.config["vf_loss_coeff"] * vf_loss_clipped
+        - policy.entropy_coeff * curr_entropy
+    )
+    # Add mean_kl_loss (already processed through `reduce_mean_valid`),
+    # if necessary.
+    if policy.config["kl_coeff"] > 0.0:
+        total_loss += policy.kl_coeff * mean_kl_loss
 
     # Store stats in policy for stats_fn.
     policy._total_loss = total_loss
@@ -126,8 +153,9 @@ def ppo_surrogate_loss(
     return total_loss
 
 
-def kl_and_loss_stats(policy: Policy,
-                      train_batch: SampleBatch) -> Dict[str, TensorType]:
+def kl_and_loss_stats(
+    policy: Policy, train_batch: SampleBatch
+) -> Dict[str, TensorType]:
     """Stats function for PPO. Returns a dict with important KL and loss stats.
 
     Args:
@@ -144,7 +172,8 @@ def kl_and_loss_stats(policy: Policy,
         "policy_loss": policy._mean_policy_loss,
         "vf_loss": policy._mean_vf_loss,
         "vf_explained_var": explained_variance(
-            train_batch[Postprocessing.VALUE_TARGETS], policy._value_fn_out),
+            train_batch[Postprocessing.VALUE_TARGETS], policy._value_fn_out
+        ),
         "kl": policy._mean_kl_loss,
         "entropy": policy._mean_entropy,
         "entropy_coeff": tf.cast(policy.entropy_coeff, tf.float64),
@@ -174,8 +203,9 @@ def vf_preds_fetches(policy: Policy) -> Dict[str, TensorType]:
     }
 
 
-def compute_and_clip_gradients(policy: Policy, optimizer: LocalOptimizer,
-                               loss: TensorType) -> ModelGradients:
+def compute_and_clip_gradients(
+    policy: Policy, optimizer: LocalOptimizer, loss: TensorType
+) -> ModelGradients:
     """Gradients computing function (from loss tensor, using local optimizer).
 
     Args:
@@ -204,106 +234,19 @@ def compute_and_clip_gradients(policy: Policy, optimizer: LocalOptimizer,
         # If the global_norm is inf -> All grads will be NaN. Stabilize this
         # here by setting them to 0.0. This will simply ignore destructive loss
         # calculations.
-        policy.grads = [
-            tf.where(tf.math.is_nan(g), tf.zeros_like(g), g) for g in grads
-        ]
+        policy.grads = [tf.where(tf.math.is_nan(g), tf.zeros_like(g), g) for g in grads]
         clipped_grads_and_vars = list(zip(policy.grads, variables))
         return clipped_grads_and_vars
     else:
         return grads_and_vars
 
 
-class KLCoeffMixin:
-    """Assigns the `update_kl()` method to the PPOPolicy.
-
-    This is used in PPO's execution plan (see ppo.py) for updating the KL
-    coefficient after each learning step based on `config.kl_target` and
-    the measured KL value (from the train_batch).
-    """
-
-    def __init__(self, config):
-        # The current KL value (as python float).
-        self.kl_coeff_val = config["kl_coeff"]
-        # The current KL value (as tf Variable for in-graph operations).
-        self.kl_coeff = get_variable(
-            float(self.kl_coeff_val),
-            tf_name="kl_coeff",
-            trainable=False,
-            framework=config["framework"])
-        # Constant target value.
-        self.kl_target = config["kl_target"]
-        if self.framework == "tf":
-            self._kl_coeff_placeholder = \
-                tf1.placeholder(dtype=tf.float32, name="kl_coeff")
-            self._kl_coeff_update = self.kl_coeff.assign(
-                self._kl_coeff_placeholder, read_value=False)
-
-    def update_kl(self, sampled_kl):
-        # Update the current KL value based on the recently measured value.
-        # Increase.
-        if sampled_kl > 2.0 * self.kl_target:
-            self.kl_coeff_val *= 1.5
-        # Decrease.
-        elif sampled_kl < 0.5 * self.kl_target:
-            self.kl_coeff_val *= 0.5
-        # No change.
-        else:
-            return self.kl_coeff_val
-
-        # Update the tf Variable (via session call for tf).
-        if self.framework == "tf":
-            self.get_session().run(
-                self._kl_coeff_update,
-                feed_dict={self._kl_coeff_placeholder: self.kl_coeff_val})
-        else:
-            self.kl_coeff.assign(self.kl_coeff_val, read_value=False)
-        # Return the current KL value.
-        return self.kl_coeff_val
-
-
-class ValueNetworkMixin:
-    """Assigns the `_value()` method to the PPOPolicy.
-
-    This way, Policy can call `_value()` to get the current VF estimate on a
-    single(!) observation (as done in `postprocess_trajectory_fn`).
-    Note: When doing this, an actual forward pass is being performed.
-    This is different from only calling `model.value_function()`, where
-    the result of the most recent forward pass is being used to return an
-    already calculated tensor.
-    """
-
-    def __init__(self, obs_space, action_space, config):
-        # When doing GAE, we need the value function estimate on the
-        # observation.
-        if config["use_gae"]:
-
-            # Input dict is provided to us automatically via the Model's
-            # requirements. It's a single-timestep (last one in trajectory)
-            # input_dict.
-            @make_tf_callable(self.get_session())
-            def value(**input_dict):
-                input_dict = SampleBatch(input_dict)
-                if isinstance(self.model, tf.keras.Model):
-                    _, _, extra_outs = self.model(input_dict)
-                    return extra_outs[SampleBatch.VF_PREDS][0]
-                else:
-                    model_out, _ = self.model(input_dict)
-                    # [0] = remove the batch dim.
-                    return self.model.value_function()[0]
-
-        # When not doing GAE, we do not require the value function's output.
-        else:
-
-            @make_tf_callable(self.get_session())
-            def value(*args, **kwargs):
-                return tf.constant(0.0)
-
-        self._value = value
-
-
-def setup_config(policy: Policy, obs_space: gym.spaces.Space,
-                 action_space: gym.spaces.Space,
-                 config: TrainerConfigDict) -> None:
+def validate_config(
+    policy: Policy,
+    obs_space: gym.spaces.Space,
+    action_space: gym.spaces.Space,
+    config: TrainerConfigDict,
+) -> None:
     """Executed before Policy is "initialized" (at beginning of constructor).
 
     Args:
@@ -316,11 +259,11 @@ def setup_config(policy: Policy, obs_space: gym.spaces.Space,
     # It's confusing as some users might (correctly!) set it in their
     # model config and then won't notice that it's silently overwritten
     # here.
-    if config["vf_share_layers"] != DEPRECATED_VALUE:
+    if config.get("vf_share_layers", DEPRECATED_VALUE) != DEPRECATED_VALUE:
         deprecation_warning(
             old="config[vf_share_layers]",
             new="config[model][vf_share_layers]",
-            error=False,
+            error=True,
         )
         config["model"]["vf_share_layers"] = config["vf_share_layers"]
 
@@ -328,12 +271,16 @@ def setup_config(policy: Policy, obs_space: gym.spaces.Space,
     if config.get("model", {}).get("vf_share_layers") is True:
         logger.info(
             "`vf_share_layers=True` in your model. "
-            "Therefore, remember to tune the value of `vf_loss_coeff`!")
+            "Therefore, remember to tune the value of `vf_loss_coeff`!"
+        )
 
 
-def setup_mixins(policy: Policy, obs_space: gym.spaces.Space,
-                 action_space: gym.spaces.Space,
-                 config: TrainerConfigDict) -> None:
+def setup_mixins(
+    policy: Policy,
+    obs_space: gym.spaces.Space,
+    action_space: gym.spaces.Space,
+    config: TrainerConfigDict,
+) -> None:
     """Call mixin classes' constructors before Policy's loss initialization.
 
     Args:
@@ -342,25 +289,29 @@ def setup_mixins(policy: Policy, obs_space: gym.spaces.Space,
         action_space (gym.spaces.Space): The Policy's action space.
         config (TrainerConfigDict): The Policy's config.
     """
-    ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
+    ValueNetworkMixin.__init__(policy, config)
     KLCoeffMixin.__init__(policy, config)
-    EntropyCoeffSchedule.__init__(policy, config["entropy_coeff"],
-                                  config["entropy_coeff_schedule"])
+    EntropyCoeffSchedule.__init__(
+        policy, config["entropy_coeff"], config["entropy_coeff_schedule"]
+    )
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
 
 @Deprecated(
     old="rllib.agents.ppo.ppo_tf_policy.postprocess_ppo_gae",
     new="rllib.evaluation.postprocessing.compute_gae_for_sample_batch",
-    error=False)
+    error=False,
+)
 def postprocess_ppo_gae(
-        policy: Policy,
-        sample_batch: SampleBatch,
-        other_agent_batches: Optional[Dict[AgentID, SampleBatch]] = None,
-        episode: Optional[MultiAgentEpisode] = None) -> SampleBatch:
+    policy: Policy,
+    sample_batch: SampleBatch,
+    other_agent_batches: Optional[Dict[AgentID, SampleBatch]] = None,
+    episode: Optional[Episode] = None,
+) -> SampleBatch:
 
-    return compute_gae_for_sample_batch(policy, sample_batch,
-                                        other_agent_batches, episode)
+    return compute_gae_for_sample_batch(
+        policy, sample_batch, other_agent_batches, episode
+    )
 
 
 # Build a child class of `DynamicTFPolicy`, given the custom functions defined
@@ -373,9 +324,12 @@ PPOTFPolicy = build_tf_policy(
     stats_fn=kl_and_loss_stats,
     compute_gradients_fn=compute_and_clip_gradients,
     extra_action_out_fn=vf_preds_fetches,
-    before_init=setup_config,
+    before_init=validate_config,
     before_loss_init=setup_mixins,
     mixins=[
-        LearningRateSchedule, EntropyCoeffSchedule, KLCoeffMixin,
-        ValueNetworkMixin
-    ])
+        LearningRateSchedule,
+        EntropyCoeffSchedule,
+        KLCoeffMixin,
+        ValueNetworkMixin,
+    ],
+)

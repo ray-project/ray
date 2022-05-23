@@ -1,1 +1,4 @@
-auto_examples/
+# Generated documentation files
+_build
+source/_static/thumbs
+.ipynb_checkpoints/

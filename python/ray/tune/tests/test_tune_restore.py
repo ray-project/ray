@@ -1,43 +1,28 @@
 # coding: utf-8
 import signal
 from collections import Counter
+import multiprocessing
 import os
 import shutil
 import tempfile
+import threading
 import time
 from typing import List
 import unittest
 
-import skopt
-import numpy as np
-from hyperopt import hp
-from nevergrad.optimization import optimizerlib
-from zoopt import ValueType
-from hebo.design_space.design_space import DesignSpace as HEBODesignSpace
-
 import ray
 from ray import tune
 from ray._private.test_utils import recursive_fnmatch
+from ray.exceptions import RayTaskError
 from ray.rllib import _register_all
+from ray.tune import TuneError
 from ray.tune.callback import Callback
 from ray.tune.suggest.basic_variant import BasicVariantGenerator
-from ray.tune.suggest import ConcurrencyLimiter, Searcher
-from ray.tune.suggest.hyperopt import HyperOptSearch
-from ray.tune.suggest.dragonfly import DragonflySearch
-from ray.tune.suggest.bayesopt import BayesOptSearch
-from ray.tune.suggest.flaml import CFO, BlendSearch
-from ray.tune.suggest.skopt import SkOptSearch
-from ray.tune.suggest.nevergrad import NevergradSearch
-from ray.tune.suggest.optuna import OptunaSearch
-from ray.tune.suggest.sigopt import SigOptSearch
-from ray.tune.suggest.zoopt import ZOOptSearch
-from ray.tune.suggest.hebo import HEBOSearch
-from ray.tune.suggest.ax import AxSearch
-from ray.tune.suggest.bohb import TuneBOHB
-from ray.tune.schedulers.hb_bohb import HyperBandForBOHB
+from ray.tune.suggest import Searcher
 from ray.tune.trial import Trial
+from ray.tune.trial_runner import TrialRunner
 from ray.tune.utils import validate_save_restore
-from ray.tune.utils._mock_trainable import MyTrainableClass
+from ray.tune.utils.mock_trainable import MyTrainableClass
 
 
 class TuneRestoreTest(unittest.TestCase):
@@ -98,38 +83,44 @@ class TuneRestoreTest(unittest.TestCase):
         self.assertTrue(os.path.isfile(self.checkpoint_path))
 
 
+# Defining the callbacks at the file level, so they can be pickled and spawned
+# in a separate process.
+class SteppingCallback(Callback):
+    def __init__(self, driver_semaphore, trainer_semaphore):
+        self.driver_semaphore = driver_semaphore
+        self.trainer_semaphore = trainer_semaphore
+
+    def on_step_end(self, iteration, trials, **info):
+        self.driver_semaphore.release()  # Driver should continue
+        self.trainer_semaphore.acquire()  # Wait until released
+
+
+def _run(local_dir, driver_semaphore, trainer_semaphore):
+    def _train(config):
+        for i in range(7):
+            tune.report(val=i)
+
+    tune.run(
+        _train,
+        local_dir=local_dir,
+        name="interrupt",
+        callbacks=[SteppingCallback(driver_semaphore, trainer_semaphore)],
+    )
+
+
 class TuneInterruptionTest(unittest.TestCase):
-    def setUp(self) -> None:
-        # Wait up to five seconds for placement groups when starting a trial
-        os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "5"
-        # Block for results even when placement groups are pending
-        os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
-        os.environ["TUNE_TRIAL_RESULT_WAIT_TIME_S"] = "99999"
-
     def testExperimentInterrupted(self):
-        import multiprocessing
-
-        trainer_semaphore = multiprocessing.Semaphore()
-        driver_semaphore = multiprocessing.Semaphore()
-
-        class SteppingCallback(Callback):
-            def on_step_end(self, iteration, trials, **info):
-                driver_semaphore.release()  # Driver should continue
-                trainer_semaphore.acquire()  # Wait until released
-
-        def _run(local_dir):
-            def _train(config):
-                for i in range(7):
-                    tune.report(val=i)
-
-            tune.run(
-                _train,
-                local_dir=local_dir,
-                name="interrupt",
-                callbacks=[SteppingCallback()])
-
         local_dir = tempfile.mkdtemp()
-        process = multiprocessing.Process(target=_run, args=(local_dir, ))
+        # Unix platforms may default to "fork", which is problematic with
+        # multithreading and GRPC. The child process should always be spawned.
+        mp_ctx = multiprocessing.get_context("spawn")
+        driver_semaphore = mp_ctx.Semaphore()
+        trainer_semaphore = mp_ctx.Semaphore()
+        process = mp_ctx.Process(
+            target=_run,
+            args=(local_dir, driver_semaphore, trainer_semaphore),
+            name="tune_interrupt",
+        )
         process.daemon = False
         process.start()
 
@@ -164,20 +155,41 @@ class TuneInterruptionTest(unittest.TestCase):
 
         shutil.rmtree(local_dir)
 
+    def testInterruptDisabledInWorkerThread(self):
+        # https://github.com/ray-project/ray/issues/22295
+        # This test will hang without the proper patch because tune.run will fail.
+
+        event = threading.Event()
+
+        def run_in_thread():
+            def _train(config):
+                for i in range(7):
+                    tune.report(val=i)
+
+            tune.run(
+                _train,
+            )
+            event.set()
+
+        thread = threading.Thread(target=run_in_thread)
+        thread.start()
+        event.wait()
+        thread.join()
+
+        ray.shutdown()
+        os.environ.pop("TUNE_DISABLE_SIGINT_HANDLER", None)
+
 
 class TuneFailResumeGridTest(unittest.TestCase):
     class FailureInjectorCallback(Callback):
         """Adds random failure injection to the TrialExecutor."""
 
-        def __init__(self, steps=20):
-            self._step = 0
-            self.steps = steps
+        def __init__(self, num_trials=20):
+            self.num_trials = num_trials
 
-        def on_trial_start(self, trials, **info):
-            self._step += 1
-            if self._step >= self.steps:
-                print(f"Failing after step {self._step} with "
-                      f"{len(trials)} trials")
+        def on_step_end(self, trials, **kwargs):
+            if len(trials) == self.num_trials:
+                print(f"Failing after {self.num_trials} trials.")
                 raise RuntimeError
 
     class CheckStateCallback(Callback):
@@ -212,23 +224,24 @@ class TuneFailResumeGridTest(unittest.TestCase):
             if not self._checked and iteration >= self._check_after:
                 for trial in trials:
                     if trial.status == Trial.PENDING:
-                        assert trial.resources.cpu == self._expected_cpu
+                        assert (
+                            trial.placement_group_factory.required_resources.get(
+                                "CPU", 0
+                            )
+                            == self._expected_cpu
+                        )
                 self._checked = True
 
     def setUp(self):
         self.logdir = tempfile.mkdtemp()
         os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "0"
-        # Wait up to 1.5 seconds for placement groups when starting a trial
-        os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "1.5"
-        # Block for results even when placement groups are pending
-        os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
-        os.environ["TUNE_TRIAL_RESULT_WAIT_TIME_S"] = "99999"
 
         # Change back to local_mode=True after this is resolved:
         # https://github.com/ray-project/ray/issues/13932
         ray.init(local_mode=False, num_cpus=2)
 
         from ray.tune import register_trainable
+
         register_trainable("trainable", MyTrainableClass)
 
     def tearDown(self):
@@ -248,19 +261,15 @@ class TuneFailResumeGridTest(unittest.TestCase):
             },
             stop={"training_iteration": 2},
             local_dir=self.logdir,
-            verbose=1)
+            verbose=1,
+        )
 
         with self.assertRaises(RuntimeError):
-            tune.run(
-                "trainable",
-                callbacks=[self.FailureInjectorCallback()],
-                **config)
+            tune.run("trainable", callbacks=[self.FailureInjectorCallback()], **config)
 
         analysis = tune.run(
-            "trainable",
-            resume=True,
-            callbacks=[self.CheckStateCallback()],
-            **config)
+            "trainable", resume=True, callbacks=[self.CheckStateCallback()], **config
+        )
         assert len(analysis.trials) == 27
         test_counter = Counter([t.config["test"] for t in analysis.trials])
         assert all(v == 9 for v in test_counter.values())
@@ -280,36 +289,34 @@ class TuneFailResumeGridTest(unittest.TestCase):
             },
             stop={"training_iteration": 2},
             local_dir=self.logdir,
-            verbose=1)
+            verbose=1,
+        )
 
         with self.assertRaises(RuntimeError):
             tune.run(
                 "trainable",
                 callbacks=[
                     self.FailureInjectorCallback(),
-                    self.CheckTrialResourcesCallback(1)
+                    self.CheckTrialResourcesCallback(1),
                 ],
-                **config)
+                **config,
+            )
 
         analysis = tune.run(
             "trainable",
             resume=True,
             resources_per_trial={"cpu": 2},
             callbacks=[self.CheckTrialResourcesCallback(2)],
-            **config)
+            **config,
+        )
         assert len(analysis.trials) == 27
 
     def testFailResumeWithPreset(self):
         os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
 
-        search_alg = BasicVariantGenerator(points_to_evaluate=[{
-            "test": -1,
-            "test2": -1
-        }, {
-            "test": -1
-        }, {
-            "test2": -1
-        }])
+        search_alg = BasicVariantGenerator(
+            points_to_evaluate=[{"test": -1, "test2": -1}, {"test": -1}, {"test2": -1}]
+        )
 
         config = dict(
             num_samples=3 + 3,  # 3 preset, 3 samples
@@ -320,20 +327,23 @@ class TuneFailResumeGridTest(unittest.TestCase):
             },
             stop={"training_iteration": 2},
             local_dir=self.logdir,
-            verbose=1)
+            verbose=1,
+        )
         with self.assertRaises(RuntimeError):
             tune.run(
                 "trainable",
                 callbacks=[self.FailureInjectorCallback(5)],
                 search_alg=search_alg,
-                **config)
+                **config,
+            )
 
         analysis = tune.run(
             "trainable",
             resume=True,
             callbacks=[self.CheckStateCallback(expected_trials=5)],
             search_alg=search_alg,
-            **config)
+            **config,
+        )
         assert len(analysis.trials) == 34
         test_counter = Counter([t.config["test"] for t in analysis.trials])
         assert test_counter.pop(-1) == 4
@@ -345,14 +355,9 @@ class TuneFailResumeGridTest(unittest.TestCase):
     def testFailResumeAfterPreset(self):
         os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
 
-        search_alg = BasicVariantGenerator(points_to_evaluate=[{
-            "test": -1,
-            "test2": -1
-        }, {
-            "test": -1
-        }, {
-            "test2": -1
-        }])
+        search_alg = BasicVariantGenerator(
+            points_to_evaluate=[{"test": -1, "test2": -1}, {"test": -1}, {"test2": -1}]
+        )
 
         config = dict(
             num_samples=3 + 3,  # 3 preset, 3 samples
@@ -363,21 +368,24 @@ class TuneFailResumeGridTest(unittest.TestCase):
             },
             stop={"training_iteration": 2},
             local_dir=self.logdir,
-            verbose=1)
+            verbose=1,
+        )
 
         with self.assertRaises(RuntimeError):
             tune.run(
                 "trainable",
                 callbacks=[self.FailureInjectorCallback(15)],
                 search_alg=search_alg,
-                **config)
+                **config,
+            )
 
         analysis = tune.run(
             "trainable",
             resume=True,
             callbacks=[self.CheckStateCallback(expected_trials=15)],
             search_alg=search_alg,
-            **config)
+            **config,
+        )
         assert len(analysis.trials) == 34
         test_counter = Counter([t.config["test"] for t in analysis.trials])
         assert test_counter.pop(-1) == 4
@@ -400,19 +408,23 @@ class TuneFailResumeGridTest(unittest.TestCase):
                         "test": tune.grid_search([1, 2, 3]),
                     },
                     stop={"training_iteration": 1},
-                    local_dir=self.logdir))
+                    local_dir=self.logdir,
+                )
+            )
 
         with self.assertRaises(RuntimeError):
             tune.run(
                 experiments,
                 callbacks=[self.FailureInjectorCallback(10)],
-                fail_fast=True)
+                fail_fast=True,
+            )
 
         analysis = tune.run(
             experiments,
             resume=True,
             callbacks=[self.CheckStateCallback(expected_trials=10)],
-            fail_fast=True)
+            fail_fast=True,
+        )
         assert len(analysis.trials) == 18
 
     def testWarningLargeGrid(self):
@@ -428,14 +440,13 @@ class TuneFailResumeGridTest(unittest.TestCase):
             },
             stop={"training_iteration": 2},
             local_dir=self.logdir,
-            verbose=1)
-        with self.assertWarnsRegex(UserWarning,
-                                   "exceeds the serialization threshold"):
+            verbose=1,
+        )
+        with self.assertWarnsRegex(UserWarning, "exceeds the serialization threshold"):
             with self.assertRaises(RuntimeError):
                 tune.run(
-                    "trainable",
-                    callbacks=[self.FailureInjectorCallback(10)],
-                    **config)
+                    "trainable", callbacks=[self.FailureInjectorCallback(10)], **config
+                )
 
 
 class TuneExampleTest(unittest.TestCase):
@@ -449,6 +460,7 @@ class TuneExampleTest(unittest.TestCase):
     def testPBTKeras(self):
         from ray.tune.examples.pbt_tune_cifar10_with_keras import Cifar10Model
         from tensorflow.python.keras.datasets import cifar10
+
         cifar10.load_data()
         validate_save_restore(Cifar10Model)
         validate_save_restore(Cifar10Model, use_object_store=True)
@@ -456,17 +468,16 @@ class TuneExampleTest(unittest.TestCase):
     def testPyTorchMNIST(self):
         from ray.tune.examples.mnist_pytorch_trainable import TrainMNIST
         from torchvision import datasets
+
         datasets.MNIST("~/data", train=True, download=True)
         validate_save_restore(TrainMNIST)
         validate_save_restore(TrainMNIST, use_object_store=True)
 
     def testHyperbandExample(self):
-        from ray.tune.examples.hyperband_example import MyTrainableClass
         validate_save_restore(MyTrainableClass)
         validate_save_restore(MyTrainableClass, use_object_store=True)
 
     def testAsyncHyperbandExample(self):
-        from ray.tune.utils.mock import MyTrainableClass
         validate_save_restore(MyTrainableClass)
         validate_save_restore(MyTrainableClass, use_object_store=True)
 
@@ -480,483 +491,6 @@ class AutoInitTest(unittest.TestCase):
     def tearDown(self):
         ray.shutdown()
         _register_all()
-
-
-class AbstractWarmStartTest:
-    def setUp(self):
-        ray.init(num_cpus=1, local_mode=True)
-        self.tmpdir = tempfile.mkdtemp()
-        self.experiment_name = "results"
-
-    def tearDown(self):
-        shutil.rmtree(self.tmpdir)
-        ray.shutdown()
-        _register_all()
-
-    def set_basic_conf(self):
-        raise NotImplementedError()
-
-    def get_scheduler(self):
-        return None
-
-    def treat_trial_config(self, trial_config):
-        return trial_config
-
-    def run_part_from_scratch(self):
-        np.random.seed(162)
-        search_alg, cost = self.set_basic_conf()
-        search_alg = ConcurrencyLimiter(search_alg, 1)
-        results_exp_1 = tune.run(
-            cost,
-            num_samples=5,
-            search_alg=search_alg,
-            scheduler=self.get_scheduler(),
-            verbose=0,
-            name=self.experiment_name,
-            local_dir=self.tmpdir)
-        checkpoint_path = os.path.join(self.tmpdir, "warmStartTest.pkl")
-        search_alg.save(checkpoint_path)
-        return results_exp_1, np.random.get_state(), checkpoint_path
-
-    def run_from_experiment_restore(self, random_state):
-        search_alg, cost = self.set_basic_conf()
-        search_alg = ConcurrencyLimiter(search_alg, 1)
-        search_alg.restore_from_dir(
-            os.path.join(self.tmpdir, self.experiment_name))
-        results = tune.run(
-            cost,
-            num_samples=5,
-            search_alg=search_alg,
-            scheduler=self.get_scheduler(),
-            verbose=0,
-            name=self.experiment_name,
-            local_dir=self.tmpdir)
-        return results
-
-    def run_explicit_restore(self, random_state, checkpoint_path):
-        np.random.set_state(random_state)
-        search_alg2, cost = self.set_basic_conf()
-        search_alg2 = ConcurrencyLimiter(search_alg2, 1)
-        search_alg2.restore(checkpoint_path)
-        return tune.run(
-            cost,
-            num_samples=5,
-            search_alg=search_alg2,
-            scheduler=self.get_scheduler(),
-            verbose=0)
-
-    def run_full(self):
-        np.random.seed(162)
-        search_alg3, cost = self.set_basic_conf()
-        search_alg3 = ConcurrencyLimiter(search_alg3, 1)
-        return tune.run(
-            cost,
-            num_samples=10,
-            search_alg=search_alg3,
-            scheduler=self.get_scheduler(),
-            verbose=0)
-
-    def testWarmStart(self):
-        results_exp_1, r_state, checkpoint_path = self.run_part_from_scratch()
-        results_exp_2 = self.run_explicit_restore(r_state, checkpoint_path)
-        results_exp_3 = self.run_full()
-        trials_1_config = self.treat_trial_config(
-            [trial.config for trial in results_exp_1.trials])
-        trials_2_config = self.treat_trial_config(
-            [trial.config for trial in results_exp_2.trials])
-        trials_3_config = self.treat_trial_config(
-            [trial.config for trial in results_exp_3.trials])
-        self.assertEqual(trials_1_config + trials_2_config, trials_3_config)
-
-    def testRestore(self):
-        results_exp_1, r_state, checkpoint_path = self.run_part_from_scratch()
-        results_exp_2 = self.run_from_experiment_restore(r_state)
-        results_exp_3 = self.run_full()
-
-        trials_1_config = self.treat_trial_config(
-            [trial.config for trial in results_exp_1.trials])
-        trials_2_config = self.treat_trial_config(
-            [trial.config for trial in results_exp_2.trials])
-        trials_3_config = self.treat_trial_config(
-            [trial.config for trial in results_exp_3.trials])
-        self.assertEqual(trials_1_config + trials_2_config, trials_3_config)
-
-
-class HyperoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
-    def set_basic_conf(self):
-        space = {
-            "x": hp.uniform("x", 0, 10),
-            "y": hp.uniform("y", -10, 10),
-            "z": hp.uniform("z", -10, 0)
-        }
-
-        def cost(space, reporter):
-            loss = space["x"]**2 + space["y"]**2 + space["z"]**2
-            reporter(loss=loss)
-
-        search_alg = HyperOptSearch(
-            space,
-            metric="loss",
-            mode="min",
-            random_state_seed=5,
-            n_initial_points=1,
-        )
-        search_alg = ConcurrencyLimiter(search_alg, max_concurrent=1000)
-        return search_alg, cost
-
-
-class BayesoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
-    def set_basic_conf(self, analysis=None):
-        space = {"width": (0, 20), "height": (-100, 100)}
-
-        def cost(space, reporter):
-            reporter(loss=(space["height"] - 14)**2 - abs(space["width"] - 3))
-
-        search_alg = BayesOptSearch(
-            space, metric="loss", mode="min", analysis=analysis)
-        return search_alg, cost
-
-    def testBootStrapAnalysis(self):
-        analysis = self.run_full()
-        search_alg3, cost = self.set_basic_conf(analysis)
-        search_alg3 = ConcurrencyLimiter(search_alg3, 1)
-        tune.run(cost, num_samples=10, search_alg=search_alg3, verbose=0)
-
-
-class CFOWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
-    def set_basic_conf(self):
-        space = {
-            "height": tune.uniform(-100, 100),
-            "width": tune.randint(0, 100),
-        }
-
-        def cost(param, reporter):
-            reporter(loss=(param["height"] - 14)**2 - abs(param["width"] - 3))
-
-        search_alg = CFO(
-            space=space,
-            metric="loss",
-            mode="min",
-            seed=20,
-        )
-
-        return search_alg, cost
-
-
-class BlendSearchWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
-    def set_basic_conf(self):
-        space = {
-            "height": tune.uniform(-100, 100),
-            "width": tune.randint(0, 100),
-            "time_budget_s": 10,
-        }
-
-        def cost(param, reporter):
-            reporter(loss=(param["height"] - 14)**2 - abs(param["width"] - 3))
-
-        search_alg = BlendSearch(
-            space=space,
-            metric="loss",
-            mode="min",
-            seed=20,
-        )
-
-        return search_alg, cost
-
-
-class SkoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
-    def set_basic_conf(self):
-        optimizer = skopt.Optimizer([(0, 20), (-100, 100)])
-        previously_run_params = [[10, 0], [15, -20]]
-        known_rewards = [-189, -1144]
-
-        def cost(space, reporter):
-            reporter(loss=(space["height"]**2 + space["width"]**2))
-
-        search_alg = SkOptSearch(
-            optimizer, ["width", "height"],
-            metric="loss",
-            mode="min",
-            points_to_evaluate=previously_run_params,
-            evaluated_rewards=known_rewards)
-        search_alg = ConcurrencyLimiter(search_alg, max_concurrent=1000)
-        return search_alg, cost
-
-
-class NevergradWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
-    def set_basic_conf(self):
-        instrumentation = 2
-        parameter_names = ["height", "width"]
-        optimizer = optimizerlib.OnePlusOne(instrumentation)
-
-        def cost(space, reporter):
-            reporter(loss=(space["height"] - 14)**2 - abs(space["width"] - 3))
-
-        search_alg = NevergradSearch(
-            optimizer,
-            parameter_names,
-            metric="loss",
-            mode="min",
-        )
-        search_alg = ConcurrencyLimiter(search_alg, max_concurrent=1000)
-        return search_alg, cost
-
-
-class OptunaWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
-    def set_basic_conf(self):
-        from optuna.samplers import TPESampler
-        space = OptunaSearch.convert_search_space({
-            "width": tune.uniform(0, 20),
-            "height": tune.uniform(-100, 100)
-        })
-
-        def cost(space, reporter):
-            reporter(loss=(space["height"] - 14)**2 - abs(space["width"] - 3))
-
-        search_alg = OptunaSearch(
-            space, sampler=TPESampler(seed=10), metric="loss", mode="min")
-        return search_alg, cost
-
-
-class DragonflyWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
-    def set_basic_conf(self):
-        from dragonfly.opt.gp_bandit import EuclideanGPBandit
-        from dragonfly.exd.experiment_caller import EuclideanFunctionCaller
-        from dragonfly import load_config
-
-        def cost(space, reporter):
-            height, width = space["point"]
-            reporter(loss=(height - 14)**2 - abs(width - 3))
-
-        domain_vars = [{
-            "name": "height",
-            "type": "float",
-            "min": -10,
-            "max": 10
-        }, {
-            "name": "width",
-            "type": "float",
-            "min": 0,
-            "max": 20
-        }]
-
-        domain_config = load_config({"domain": domain_vars})
-
-        func_caller = EuclideanFunctionCaller(
-            None, domain_config.domain.list_of_domains[0])
-        optimizer = EuclideanGPBandit(func_caller, ask_tell_mode=True)
-        search_alg = DragonflySearch(
-            optimizer, metric="loss", mode="min", random_state_seed=162)
-        search_alg = ConcurrencyLimiter(search_alg, max_concurrent=1000)
-        return search_alg, cost
-
-    def treat_trial_config(self, trial_config):
-        return [list(x["point"]) for x in trial_config]
-
-
-class SigOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
-    def set_basic_conf(self):
-        space = [
-            {
-                "name": "width",
-                "type": "int",
-                "bounds": {
-                    "min": 0,
-                    "max": 20
-                },
-            },
-            {
-                "name": "height",
-                "type": "int",
-                "bounds": {
-                    "min": -100,
-                    "max": 100
-                },
-            },
-        ]
-
-        def cost(space, reporter):
-            reporter(loss=(space["height"] - 14)**2 - abs(space["width"] - 3))
-
-        # Unfortunately, SigOpt doesn't allow setting of random state. Thus,
-        # we always end up with different suggestions, which is unsuitable
-        # for the warm start test. Here we make do with points_to_evaluate,
-        # and ensure that state is preserved over checkpoints and restarts.
-        points = [
-            {
-                "width": 5,
-                "height": 20
-            },
-            {
-                "width": 10,
-                "height": -20
-            },
-            {
-                "width": 15,
-                "height": 30
-            },
-            {
-                "width": 5,
-                "height": -30
-            },
-            {
-                "width": 10,
-                "height": 40
-            },
-            {
-                "width": 15,
-                "height": -40
-            },
-            {
-                "width": 5,
-                "height": 50
-            },
-            {
-                "width": 10,
-                "height": -50
-            },
-            {
-                "width": 15,
-                "height": 60
-            },
-            {
-                "width": 12,
-                "height": -60
-            },
-        ]
-
-        search_alg = SigOptSearch(
-            space,
-            name="SigOpt Example Experiment",
-            metric="loss",
-            mode="min",
-            points_to_evaluate=points)
-        search_alg = ConcurrencyLimiter(search_alg, max_concurrent=1)
-        return search_alg, cost
-
-    def testWarmStart(self):
-        if "SIGOPT_KEY" not in os.environ:
-            self.skipTest("No SigOpt API key found in environment.")
-            return
-
-        super().testWarmStart()
-
-    def testRestore(self):
-        if "SIGOPT_KEY" not in os.environ:
-            self.skipTest("No SigOpt API key found in environment.")
-            return
-        super().testRestore()
-
-
-class ZOOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
-    def set_basic_conf(self):
-        dim_dict = {
-            "height": (ValueType.CONTINUOUS, [-100, 100], 1e-2),
-            "width": (ValueType.DISCRETE, [0, 20], False)
-        }
-
-        def cost(param, reporter):
-            reporter(loss=(param["height"] - 14)**2 - abs(param["width"] - 3))
-
-        search_alg = ZOOptSearch(
-            algo="Asracos",  # only support ASRacos currently
-            budget=200,
-            dim_dict=dim_dict,
-            metric="loss",
-            mode="min")
-
-        return search_alg, cost
-
-
-class HEBOWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
-    def set_basic_conf(self):
-        space_config = [
-            {
-                "name": "width",
-                "type": "num",
-                "lb": 0,
-                "ub": 20
-            },
-            {
-                "name": "height",
-                "type": "num",
-                "lb": -100,
-                "ub": 100
-            },
-        ]
-        space = HEBODesignSpace().parse(space_config)
-
-        def cost(param, reporter):
-            reporter(loss=(param["height"] - 14)**2 - abs(param["width"] - 3))
-
-        search_alg = HEBOSearch(
-            space=space, metric="loss", mode="min", random_state_seed=5)
-
-        return search_alg, cost
-
-
-class AxWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
-    def set_basic_conf(self):
-        from ax.service.ax_client import AxClient
-        space = AxSearch.convert_search_space({
-            "width": tune.uniform(0, 20),
-            "height": tune.uniform(-100, 100)
-        })
-
-        from ax.modelbridge.generation_strategy import (GenerationStep,
-                                                        GenerationStrategy)
-        from ax.modelbridge.registry import Models
-
-        # set generation strategy to sobol to ensure reproductibility
-        try:
-            # ax-platform>=0.2.0
-            gs = GenerationStrategy(steps=[
-                GenerationStep(
-                    model=Models.SOBOL,
-                    num_trials=-1,
-                    model_kwargs={"seed": 4321},
-                ),
-            ])
-        except TypeError:
-            # ax-platform<0.2.0
-            gs = GenerationStrategy(steps=[
-                GenerationStep(
-                    model=Models.SOBOL,
-                    num_arms=-1,
-                    model_kwargs={"seed": 4321},
-                ),
-            ])
-
-        client = AxClient(random_seed=4321, generation_strategy=gs)
-        client.create_experiment(
-            parameters=space, objective_name="loss", minimize=True)
-
-        def cost(space, reporter):
-            reporter(loss=(space["height"] - 14)**2 - abs(space["width"] - 3))
-
-        search_alg = AxSearch(ax_client=client)
-        return search_alg, cost
-
-
-class BOHBWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
-    def set_basic_conf(self):
-        space = {
-            "width": tune.uniform(0, 20),
-            "height": tune.uniform(-100, 100)
-        }
-
-        def cost(space, reporter):
-            for i in range(10):
-                reporter(
-                    loss=(space["height"] - 14)**2 -
-                    abs(space["width"] - 3 - i))
-
-        search_alg = TuneBOHB(space=space, metric="loss", mode="min", seed=1)
-
-        return search_alg, cost
-
-    def get_scheduler(self):
-        return HyperBandForBOHB(max_t=10, metric="loss", mode="min")
 
 
 class SearcherTest(unittest.TestCase):
@@ -982,7 +516,62 @@ class SearcherTest(unittest.TestCase):
         assert searcher_2.data == original_data
 
 
+class WorkingDirectoryTest(unittest.TestCase):
+    def testWorkingDir(self):
+        """Trainables should know the original working dir on driver through env
+        variable."""
+        working_dir = os.getcwd()
+
+        def f(config):
+            assert os.environ.get("TUNE_ORIG_WORKING_DIR") == working_dir
+
+        tune.run(f)
+
+
+class TrainableCrashWithFailFast(unittest.TestCase):
+    def test(self):
+        """Trainable crashes with fail_fast flag and the original crash message
+        should bubble up."""
+
+        def f(config):
+            tune.report({"a": 1})
+            time.sleep(0.1)
+            raise RuntimeError("Error happens in trainable!!")
+
+        with self.assertRaisesRegex(RayTaskError, "Error happens in trainable!!"):
+            tune.run(f, fail_fast=TrialRunner.RAISE)
+
+
+# For some reason, different tests are coupled through tune.registry.
+# After running `ResourceExhaustedTest`, there is always a super huge `training_func` to
+# be put through GCS, which will fail subsequent tests.
+# tldr, make sure that this test is the last test in the file.
+class ResourceExhaustedTest(unittest.TestCase):
+    def test_resource_exhausted_info(self):
+        """This is to test if helpful information is displayed when
+        the objects captured in trainable/training function are too
+        large and RESOURCES_EXHAUSTED error of gRPC is triggered."""
+
+        # generate some random data to be captured implicitly in training func.
+        from sklearn.datasets import fetch_olivetti_faces
+
+        a_large_array = []
+        for i in range(25):
+            a_large_array.append(fetch_olivetti_faces())
+
+        def training_func(config):
+            for item in a_large_array:
+                assert item
+
+        with self.assertRaisesRegex(
+            TuneError,
+            "The Trainable/training function is too large for grpc resource limit.",
+        ):
+            tune.run(training_func)
+
+
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))

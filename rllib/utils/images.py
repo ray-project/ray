@@ -6,6 +6,7 @@ logger = logging.getLogger(__name__)
 
 try:
     import cv2
+
     cv2.ocl.setUseOpenCL(False)
 
     logger.debug("CV2 found for image processing.")

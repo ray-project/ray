@@ -1,5 +1,11 @@
 #!/usr/bin/env python
 
+"""This example demonstrates the usage of BOHB with Ray Tune.
+
+Requires the HpBandSter and ConfigSpace libraries to be installed
+(`pip install hpbandster ConfigSpace`).
+"""
+
 import argparse
 import json
 import time
@@ -45,16 +51,14 @@ class MyTrainableClass(Trainable):
 
 
 if __name__ == "__main__":
-    import ConfigSpace as CS  # noqa: F401
-
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--server-address",
         type=str,
         default=None,
         required=False,
-        help="The address of server to connect to if using "
-        "Ray Client.")
+        help="The address of server to connect to if using Ray Client.",
+    )
     args, _ = parser.parse_known_args()
 
     if args.server_address:
@@ -66,10 +70,11 @@ if __name__ == "__main__":
         "iterations": 100,
         "width": tune.uniform(0, 20),
         "height": tune.uniform(-100, 100),
-        "activation": tune.choice(["relu", "tanh"])
+        "activation": tune.choice(["relu", "tanh"]),
     }
 
     # Optional: Pass the parameter space yourself
+    # import ConfigSpace as CS
     # config_space = CS.ConfigurationSpace()
     # config_space.add_hyperparameter(
     #     CS.UniformFloatHyperparameter("width", lower=0, upper=20))
@@ -83,13 +88,13 @@ if __name__ == "__main__":
         time_attr="training_iteration",
         max_t=100,
         reduction_factor=4,
-        stop_last_trials=False)
+        stop_last_trials=False,
+    )
 
     bohb_search = TuneBOHB(
         # space=config_space,  # If you want to set the space manually
     )
-    bohb_search = tune.suggest.ConcurrencyLimiter(
-        bohb_search, max_concurrent=4)
+    bohb_search = tune.suggest.ConcurrencyLimiter(bohb_search, max_concurrent=4)
 
     analysis = tune.run(
         MyTrainableClass,
@@ -100,6 +105,7 @@ if __name__ == "__main__":
         num_samples=10,
         stop={"training_iteration": 100},
         metric="episode_reward_mean",
-        mode="max")
+        mode="max",
+    )
 
     print("Best hyperparameters found were: ", analysis.best_config)

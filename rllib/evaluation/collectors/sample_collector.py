@@ -2,11 +2,10 @@ from abc import abstractmethod, ABCMeta
 import logging
 from typing import Dict, List, Optional, TYPE_CHECKING, Union
 
-from ray.rllib.evaluation.episode import MultiAgentEpisode
+from ray.rllib.evaluation.episode import Episode
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
-from ray.rllib.utils.typing import AgentID, EnvID, EpisodeID, PolicyID, \
-    TensorType
+from ray.rllib.utils.typing import AgentID, EnvID, EpisodeID, PolicyID, TensorType
 
 if TYPE_CHECKING:
     from ray.rllib.agents.callbacks import DefaultCallbacks
@@ -14,7 +13,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 class SampleCollector(metaclass=ABCMeta):
     """Collects samples for all policies and agents from a multi-agent env.
@@ -57,7 +56,7 @@ class SampleCollector(metaclass=ABCMeta):
         self.count_steps_by = count_steps_by
 
     @abstractmethod
-    def add_init_obs(self, episode: MultiAgentEpisode, agent_id: AgentID,
+    def add_init_obs(self, episode: Episode, agent_id: AgentID,
                      policy_id: PolicyID, t: int,
                      init_obs: TensorType) -> None:
         """Adds an initial obs (after reset) to this collector.
@@ -70,7 +69,7 @@ class SampleCollector(metaclass=ABCMeta):
         called for that same agent/episode-pair.
 
         Args:
-            episode (MultiAgentEpisode): The MultiAgentEpisode, for which we
+            episode (Episode): The Episode, for which we
                 are adding an Agent's initial observation.
             agent_id (AgentID): Unique id for the agent we are adding
                 values for.
@@ -126,11 +125,11 @@ class SampleCollector(metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
-    def episode_step(self, episode: MultiAgentEpisode) -> None:
+    def episode_step(self, episode: Episode) -> None:
         """Increases the episode step counter (across all agents) by one.
 
         Args:
-            episode (MultiAgentEpisode): Episode we are stepping through.
+            episode (Episode): Episode we are stepping through.
                 Useful for handling counting b/c it is called once across
                 all agents that are inside this episode.
         """
@@ -200,7 +199,7 @@ class SampleCollector(metaclass=ABCMeta):
 
     @abstractmethod
     def postprocess_episode(self,
-                            episode: MultiAgentEpisode,
+                            episode: Episode,
                             is_done: bool = False,
                             check_dones: bool = False,
                             build: bool = False) -> Optional[MultiAgentBatch]:
@@ -214,7 +213,7 @@ class SampleCollector(metaclass=ABCMeta):
         correctly added to the buffers.
 
         Args:
-            episode (MultiAgentEpisode): The Episode object for which
+            episode (Episode): The Episode object for which
                 to post-process data.
             is_done (bool): Whether the given episode is actually terminated
                 (all agents are done OR we hit a hard horizon). If True, the

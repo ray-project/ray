@@ -4,15 +4,18 @@ import time
 
 import ray
 from ray import ray_constants
-from ray._private.test_utils import get_error_message, init_error_pubsub, \
-    run_string_as_driver
+from ray._private.test_utils import (
+    get_error_message,
+    init_error_pubsub,
+    run_string_as_driver,
+)
 from ray.cluster_utils import Cluster
 
 
 def test_isolation(shutdown_only):
     info = ray.init(namespace="namespace")
 
-    address = info["redis_address"]
+    address = info["address"]
 
     # First param of template is the namespace. Second is the redis address.
     driver_template = """
@@ -73,7 +76,7 @@ ray.get(actor.ping.remote())
 def test_placement_groups(shutdown_only):
     info = ray.init(namespace="namespace")
 
-    address = info["redis_address"]
+    address = info["address"]
 
     # First param of template is the namespace. Second is the redis address.
     driver_template = """
@@ -115,7 +118,7 @@ ray.get(pg.ready())
 def test_default_namespace(shutdown_only):
     info = ray.init(namespace="namespace")
 
-    address = info["redis_address"]
+    address = info["address"]
 
     # First param of template is the namespace. Second is the redis address.
     driver_template = """
@@ -145,7 +148,7 @@ def test_namespace_in_job_config(shutdown_only):
     job_config = ray.job_config.JobConfig(ray_namespace="namespace")
     info = ray.init(job_config=job_config)
 
-    address = info["redis_address"]
+    address = info["address"]
 
     # First param of template is the namespace. Second is the redis address.
     driver_template = """
@@ -178,7 +181,8 @@ def test_detached_warning(shutdown_only):
 
     error_pubsub = init_error_pubsub()
     actor = DetachedActor.options(  # noqa: F841
-        name="Pinger", lifetime="detached").remote()
+        name="Pinger", lifetime="detached"
+    ).remote()
     errors = get_error_message(error_pubsub, 1, None)
     error = errors.pop()
     assert error.type == ray_constants.DETACHED_ACTOR_ANONYMOUS_NAMESPACE_ERROR
@@ -205,7 +209,9 @@ print("Done!!!")
 
     print(
         run_string_as_driver(
-            template.format(address="localhost:8080", namespace="test")))
+            template.format(address="localhost:8080", namespace="test")
+        )
+    )
 
     ray.util.connect("localhost:8080", namespace="test")
 

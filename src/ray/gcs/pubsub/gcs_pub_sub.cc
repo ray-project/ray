@@ -14,196 +14,202 @@
 
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 
+#include "absl/strings/str_cat.h"
+
 namespace ray {
 namespace gcs {
 
-Status GcsPubSub::Publish(const std::string &channel, const std::string &id,
-                          const std::string &data, const StatusCallback &done) {
-  rpc::PubSubMessage message;
-  message.set_id(id);
-  message.set_data(data);
+Status GcsPublisher::PublishActor(const ActorID &id,
+                                  const rpc::ActorTableData &message,
+                                  const StatusCallback &done) {
+  rpc::PubMessage msg;
+  msg.set_channel_type(rpc::ChannelType::GCS_ACTOR_CHANNEL);
+  msg.set_key_id(id.Binary());
+  *msg.mutable_actor_message() = message;
+  publisher_->Publish(msg);
+  if (done != nullptr) {
+    done(Status::OK());
+  }
+  return Status::OK();
+}
 
-  auto on_done = [done](std::shared_ptr<CallbackReply> reply) {
-    if (done) {
-      done(Status::OK());
-    }
+Status GcsPublisher::PublishJob(const JobID &id,
+                                const rpc::JobTableData &message,
+                                const StatusCallback &done) {
+  rpc::PubMessage msg;
+  msg.set_channel_type(rpc::ChannelType::GCS_JOB_CHANNEL);
+  msg.set_key_id(id.Binary());
+  *msg.mutable_job_message() = message;
+  publisher_->Publish(msg);
+  if (done != nullptr) {
+    done(Status::OK());
+  }
+  return Status::OK();
+}
+
+Status GcsPublisher::PublishNodeInfo(const NodeID &id,
+                                     const rpc::GcsNodeInfo &message,
+                                     const StatusCallback &done) {
+  rpc::PubMessage msg;
+  msg.set_channel_type(rpc::ChannelType::GCS_NODE_INFO_CHANNEL);
+  msg.set_key_id(id.Binary());
+  *msg.mutable_node_info_message() = message;
+  publisher_->Publish(msg);
+  if (done != nullptr) {
+    done(Status::OK());
+  }
+  return Status::OK();
+}
+
+Status GcsPublisher::PublishWorkerFailure(const WorkerID &id,
+                                          const rpc::WorkerDeltaData &message,
+                                          const StatusCallback &done) {
+  rpc::PubMessage msg;
+  msg.set_channel_type(rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL);
+  msg.set_key_id(id.Binary());
+  *msg.mutable_worker_delta_message() = message;
+  publisher_->Publish(msg);
+  if (done != nullptr) {
+    done(Status::OK());
+  }
+  return Status::OK();
+}
+
+Status GcsPublisher::PublishError(const std::string &id,
+                                  const rpc::ErrorTableData &message,
+                                  const StatusCallback &done) {
+  rpc::PubMessage msg;
+  msg.set_channel_type(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
+  msg.set_key_id(id);
+  *msg.mutable_error_info_message() = message;
+  publisher_->Publish(msg);
+  if (done != nullptr) {
+    done(Status::OK());
+  }
+  return Status::OK();
+}
+
+std::string GcsPublisher::DebugString() const { return "GcsPublisher {}"; }
+
+Status GcsSubscriber::SubscribeAllJobs(
+    const SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
+    const StatusCallback &done) {
+  // GCS subscriber.
+  auto subscribe_item_callback = [subscribe](const rpc::PubMessage &msg) {
+    RAY_CHECK(msg.channel_type() == rpc::ChannelType::GCS_JOB_CHANNEL);
+    const JobID id = JobID::FromBinary(msg.key_id());
+    subscribe(id, msg.job_message());
   };
-
-  return redis_client_->GetPrimaryContext()->PublishAsync(
-      GenChannelPattern(channel, boost::optional<std::string>(id)),
-      message.SerializeAsString(), on_done);
-}
-
-Status GcsPubSub::Subscribe(const std::string &channel, const std::string &id,
-                            const Callback &subscribe, const StatusCallback &done) {
-  return SubscribeInternal(channel, subscribe, done, false,
-                           boost::optional<std::string>(id));
-}
-
-Status GcsPubSub::SubscribeAll(const std::string &channel, const Callback &subscribe,
-                               const StatusCallback &done) {
-  return SubscribeInternal(channel, subscribe, done, true);
-}
-
-Status GcsPubSub::Unsubscribe(const std::string &channel_name, const std::string &id) {
-  std::string pattern = GenChannelPattern(channel_name, id);
-
-  absl::MutexLock lock(&mutex_);
-  // Add the UNSUBSCRIBE command to the queue.
-  auto channel = channels_.find(pattern);
-  RAY_CHECK(channel != channels_.end());
-  channel->second.command_queue.push_back(Command());
-  total_commands_queued_++;
-
-  // Process the first command on the queue, if possible.
-  return ExecuteCommandIfPossible(channel->first, channel->second);
-}
-
-Status GcsPubSub::SubscribeInternal(const std::string &channel_name,
-                                    const Callback &subscribe, const StatusCallback &done,
-                                    bool is_sub_or_unsub_all,
-                                    const boost::optional<std::string> &id) {
-  std::string pattern = GenChannelPattern(channel_name, id);
-
-  absl::MutexLock lock(&mutex_);
-  auto channel = channels_.find(pattern);
-  if (channel == channels_.end()) {
-    // There were no pending commands for this channel and we were not already
-    // subscribed.
-    channel = channels_.emplace(pattern, Channel()).first;
-  }
-
-  // Add the SUBSCRIBE command to the queue.
-  channel->second.command_queue.push_back(Command(subscribe, done, is_sub_or_unsub_all));
-  total_commands_queued_++;
-
-  // Process the first command on the queue, if possible.
-  return ExecuteCommandIfPossible(channel->first, channel->second);
-}
-
-Status GcsPubSub::ExecuteCommandIfPossible(const std::string &channel_key,
-                                           GcsPubSub::Channel &channel) {
-  // Process the first command on the queue, if possible.
-  Status status;
-  auto &command = channel.command_queue.front();
-  if (command.is_subscribe && channel.callback_index == -1) {
-    // The next command is SUBSCRIBE and we are currently unsubscribed, so we
-    // can execute the command.
-    int64_t callback_index =
-        ray::gcs::RedisCallbackManager::instance().AllocateCallbackIndex();
-    const auto &command_done_callback = command.done_callback;
-    const auto &command_subscribe_callback = command.subscribe_callback;
-    auto callback = [this, channel_key, command_done_callback, command_subscribe_callback,
-                     callback_index](std::shared_ptr<CallbackReply> reply) {
-      if (reply->IsNil()) {
-        return;
-      }
-      if (reply->IsUnsubscribeCallback()) {
-        // Unset the callback index.
-        absl::MutexLock lock(&mutex_);
-        auto channel = channels_.find(channel_key);
-        RAY_CHECK(channel != channels_.end());
-        ray::gcs::RedisCallbackManager::instance().RemoveCallback(
-            channel->second.callback_index);
-        channel->second.callback_index = -1;
-        channel->second.pending_reply = false;
-
-        if (channel->second.command_queue.empty()) {
-          // We are unsubscribed and there are no more commands to process.
-          // Delete the channel.
-          channels_.erase(channel);
-        } else {
-          // Process the next item in the queue.
-          RAY_CHECK(channel->second.command_queue.front().is_subscribe);
-          RAY_CHECK_OK(ExecuteCommandIfPossible(channel_key, channel->second));
+  auto subscription_failure_callback = [](const std::string &, const Status &status) {
+    RAY_LOG(WARNING) << "Subscription to Job channel failed: " << status.ToString();
+  };
+  // Ignore if the subscription already exists, because the resubscription is intentional.
+  RAY_UNUSED(subscriber_->SubscribeChannel(
+      std::make_unique<rpc::SubMessage>(),
+      rpc::ChannelType::GCS_JOB_CHANNEL,
+      gcs_address_,
+      [done](Status status) {
+        if (done != nullptr) {
+          done(status);
         }
-      } else if (reply->IsSubscribeCallback()) {
-        {
-          // Set the callback index.
-          absl::MutexLock lock(&mutex_);
-          auto channel = channels_.find(channel_key);
-          RAY_CHECK(channel != channels_.end());
-          channel->second.callback_index = callback_index;
-          channel->second.pending_reply = false;
-          // Process the next item in the queue, if any.
-          if (!channel->second.command_queue.empty()) {
-            RAY_CHECK(!channel->second.command_queue.front().is_subscribe);
-            RAY_CHECK_OK(ExecuteCommandIfPossible(channel_key, channel->second));
-          }
-        }
-
-        if (command_done_callback) {
-          command_done_callback(Status::OK());
-        }
-      } else {
-        const auto reply_data = reply->ReadAsPubsubData();
-        if (!reply_data.empty()) {
-          rpc::PubSubMessage message;
-          message.ParseFromString(reply_data);
-          command_subscribe_callback(message.id(), message.data());
-        }
-      }
-    };
-
-    if (command.is_sub_or_unsub_all) {
-      status = redis_client_->GetPrimaryContext()->PSubscribeAsync(channel_key, callback,
-                                                                   callback_index);
-    } else {
-      status = redis_client_->GetPrimaryContext()->SubscribeAsync(channel_key, callback,
-                                                                  callback_index);
-    }
-    channel.pending_reply = true;
-    channel.command_queue.pop_front();
-    total_commands_queued_--;
-  } else if (!command.is_subscribe && channel.callback_index != -1) {
-    // The next command is UNSUBSCRIBE and we are currently subscribed, so we
-    // can execute the command. The reply for will be received through the
-    // SUBSCRIBE command's callback.
-    if (command.is_sub_or_unsub_all) {
-      status = redis_client_->GetPrimaryContext()->PUnsubscribeAsync(channel_key);
-    } else {
-      status = redis_client_->GetPrimaryContext()->UnsubscribeAsync(channel_key);
-    }
-    channel.pending_reply = true;
-    channel.command_queue.pop_front();
-    total_commands_queued_--;
-  } else if (!channel.pending_reply) {
-    // There is no in-flight command, but the next command to execute is not
-    // runnable. The caller must have sent a command out-of-order.
-    // TODO(swang): This can cause a fatal error if the GCS server restarts and
-    // the client attempts to subscribe again.
-    RAY_LOG(FATAL) << "Caller attempted a duplicate subscribe or unsubscribe to channel "
-                   << channel_key;
-  }
-  return status;
+      },
+      std::move(subscribe_item_callback),
+      std::move(subscription_failure_callback)));
+  return Status::OK();
 }
 
-std::string GcsPubSub::GenChannelPattern(const std::string &channel,
-                                         const boost::optional<std::string> &id) {
-  std::stringstream pattern;
-  pattern << channel << ":";
-  if (id) {
-    pattern << *id;
-  } else {
-    pattern << "*";
-  }
-  return pattern.str();
+Status GcsSubscriber::SubscribeActor(
+    const ActorID &id,
+    const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+    const StatusCallback &done) {
+  // GCS subscriber.
+  auto subscription_callback = [id, subscribe](const rpc::PubMessage &msg) {
+    RAY_CHECK(msg.channel_type() == rpc::ChannelType::GCS_ACTOR_CHANNEL);
+    RAY_CHECK(msg.key_id() == id.Binary());
+    subscribe(id, msg.actor_message());
+  };
+  auto subscription_failure_callback = [id](const std::string &failed_id,
+                                            const Status &status) {
+    RAY_CHECK(failed_id == id.Binary());
+    RAY_LOG(WARNING) << "Subscription to Actor " << id.Hex()
+                     << " failed: " << status.ToString();
+  };
+  // Ignore if the subscription already exists, because the resubscription is intentional.
+  RAY_UNUSED(subscriber_->Subscribe(
+      std::make_unique<rpc::SubMessage>(),
+      rpc::ChannelType::GCS_ACTOR_CHANNEL,
+      gcs_address_,
+      id.Binary(),
+      [done](Status status) {
+        if (done != nullptr) {
+          done(status);
+        }
+      },
+      std::move(subscription_callback),
+      std::move(subscription_failure_callback)));
+  return Status::OK();
 }
 
-bool GcsPubSub::IsUnsubscribed(const std::string &channel, const std::string &id) {
-  std::string pattern = GenChannelPattern(channel, id);
-
-  absl::MutexLock lock(&mutex_);
-  return !channels_.contains(pattern);
+Status GcsSubscriber::UnsubscribeActor(const ActorID &id) {
+  subscriber_->Unsubscribe(
+      rpc::ChannelType::GCS_ACTOR_CHANNEL, gcs_address_, id.Binary());
+  return Status::OK();
 }
 
-std::string GcsPubSub::DebugString() const {
-  absl::MutexLock lock(&mutex_);
-  std::ostringstream stream;
-  stream << "GcsPubSub:";
-  stream << "\n- num channels subscribed to: " << channels_.size();
-  stream << "\n- total commands queued: " << total_commands_queued_;
-  return stream.str();
+bool GcsSubscriber::IsActorUnsubscribed(const ActorID &id) {
+  return !subscriber_->IsSubscribed(
+      rpc::ChannelType::GCS_ACTOR_CHANNEL, gcs_address_, id.Binary());
+}
+
+Status GcsSubscriber::SubscribeAllNodeInfo(
+    const ItemCallback<rpc::GcsNodeInfo> &subscribe, const StatusCallback &done) {
+  // GCS subscriber.
+  auto subscribe_item_callback = [subscribe](const rpc::PubMessage &msg) {
+    RAY_CHECK(msg.channel_type() == rpc::ChannelType::GCS_NODE_INFO_CHANNEL);
+    subscribe(msg.node_info_message());
+  };
+  auto subscription_failure_callback = [](const std::string &, const Status &status) {
+    RAY_LOG(WARNING) << "Subscription to NodeInfo channel failed: " << status.ToString();
+  };
+  // Ignore if the subscription already exists, because the resubscription is intentional.
+  RAY_UNUSED(subscriber_->SubscribeChannel(
+      std::make_unique<rpc::SubMessage>(),
+      rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
+      gcs_address_,
+      [done](Status status) {
+        if (done != nullptr) {
+          done(status);
+        }
+      },
+      std::move(subscribe_item_callback),
+      std::move(subscription_failure_callback)));
+  return Status::OK();
+}
+
+Status GcsSubscriber::SubscribeAllWorkerFailures(
+    const ItemCallback<rpc::WorkerDeltaData> &subscribe, const StatusCallback &done) {
+  auto subscribe_item_callback = [subscribe](const rpc::PubMessage &msg) {
+    RAY_CHECK(msg.channel_type() == rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL);
+    subscribe(msg.worker_delta_message());
+  };
+  auto subscription_failure_callback = [](const std::string &, const Status &status) {
+    RAY_LOG(WARNING) << "Subscription to WorkerDelta channel failed: "
+                     << status.ToString();
+  };
+  // Ignore if the subscription already exists, because the resubscription is intentional.
+  RAY_UNUSED(subscriber_->SubscribeChannel(
+      std::make_unique<rpc::SubMessage>(),
+      rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL,
+      gcs_address_,
+      /*subscribe_done_callback=*/
+      [done](Status status) {
+        if (done != nullptr) {
+          done(status);
+        }
+      },
+      std::move(subscribe_item_callback),
+      std::move(subscription_failure_callback)));
+  return Status::OK();
 }
 
 }  // namespace gcs

@@ -1,10 +1,12 @@
 import re
 import sys
+import threading
 
 import pytest
 import ray
 
 from ray.exceptions import RayTaskError, RayActorError
+
 """This module tests stacktrace of Ray.
 
 There are total 3 different stacktrace types in Ray.
@@ -26,14 +28,19 @@ these tests will fail.
 
 def scrub_traceback(ex):
     assert isinstance(ex, str)
+    print(ex)
     ex = ex.strip("\n")
-    ex = re.sub("pid=.*,", "pid=XXX,", ex)
-    ex = re.sub("ip=.*\)", "ip=YYY)", ex)
+    ex = re.sub("pid=[0-9]+,", "pid=XXX,", ex)
+    ex = re.sub("ip=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+", "ip=YYY", ex)
+    ex = re.sub("repr=.*\)", "repr=ZZZ)", ex)
     ex = re.sub("line .*,", "line ZZ,", ex)
     ex = re.sub('".*"', '"FILE"', ex)
     # These are used to coloring the string.
     ex = re.sub("\\x1b\[36m", "", ex)
     ex = re.sub("\\x1b\[39m", "", ex)
+    # When running bazel test with pytest 6.x, the module name becomes
+    # "python.ray.tests.test_traceback" instead of just "test_traceback"
+    ex = re.sub(r"python\.ray\.tests\.test_traceback", "test_traceback", ex)
     # Clean up object address.
     ex = re.sub("object at .*>", "object at ADDRESS>", ex)
     return ex
@@ -47,11 +54,11 @@ def clean_noqa(ex):
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Clean stacktrace not supported on Windows")
+    sys.platform == "win32", reason="Clean stacktrace not supported on Windows"
+)
 def test_actor_creation_stacktrace(ray_start_regular):
     """Test the actor creation task stacktrace."""
-    expected_output = """The actor died because of an error raised in its creation task, ray::A.__init__() (pid=XXX, ip=YYY) # noqa
+    expected_output = """The actor died because of an error raised in its creation task, ray::A.__init__() (pid=XXX, ip=YYY, repr=ZZZ) # noqa
   File "FILE", line ZZ, in __init__
     g(3)
   File "FILE", line ZZ, in g
@@ -78,8 +85,8 @@ ValueError: 3"""
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Clean stacktrace not supported on Windows")
+    sys.platform == "win32", reason="Clean stacktrace not supported on Windows"
+)
 def test_task_stacktrace(ray_start_regular):
     """Test the normal task stacktrace."""
     expected_output = """ray::f() (pid=XXX, ip=YYY)
@@ -108,11 +115,11 @@ ValueError: 7"""
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Clean stacktrace not supported on Windows")
+    sys.platform == "win32", reason="Clean stacktrace not supported on Windows"
+)
 def test_actor_task_stacktrace(ray_start_regular):
     """Test the actor task stacktrace."""
-    expected_output = """ray::A.f() (pid=XXX, repr=<test_traceback.A object at ADDRESS>) # noqa
+    expected_output = """ray::A.f() (pid=XXX, ip=YYY, repr=ZZZ) # noqa
   File "FILE", line ZZ, in f
     return g(c)
   File "FILE", line ZZ, in g
@@ -139,8 +146,8 @@ ValueError: 7"""
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Clean stacktrace not supported on Windows")
+    sys.platform == "win32", reason="Clean stacktrace not supported on Windows"
+)
 def test_exception_chain(ray_start_regular):
     """Test the chained stacktrace."""
     expected_output = """ray::foo() (pid=XXX, ip=YYY) # noqa
@@ -169,8 +176,8 @@ ZeroDivisionError: division by zero"""
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Clean stacktrace not supported on Windows")
+    sys.platform == "win32", reason="Clean stacktrace not supported on Windows"
+)
 def test_dep_failure(ray_start_regular):
     """Test the stacktrace genereated due to dependency failures."""
     expected_output = """ray::f() (pid=XXX, ip=YYY) # noqa
@@ -199,14 +206,15 @@ ValueError: b failed"""
     except Exception as ex:
         print(ex)
         from pprint import pprint
+
         pprint(clean_noqa(expected_output))
         pprint(scrub_traceback(str(ex)))
         assert clean_noqa(expected_output) == scrub_traceback(str(ex))
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Clean stacktrace not supported on Windows")
+    sys.platform == "win32", reason="Clean stacktrace not supported on Windows"
+)
 def test_actor_repr_in_traceback(ray_start_regular):
     def parse_labels_from_traceback(ex):
         error_msg = str(ex)
@@ -270,10 +278,10 @@ def test_actor_repr_in_traceback(ray_start_regular):
         assert label_dict["repr"] == actor_repr
 
 
-def test_unpickleable_stacktrace():
+def test_unpickleable_stacktrace(shutdown_only):
     expected_output = """System error: Failed to unpickle serialized exception
 traceback: Traceback (most recent call last):
-  File "FILE", line ZZ, in from_bytes
+  File "FILE", line ZZ, in from_ray_exception
     return pickle.loads(ray_exception.serialized_exception)
 TypeError: __init__() missing 1 required positional argument: 'arg'
 
@@ -285,6 +293,8 @@ Traceback (most recent call last):
   File "FILE", line ZZ, in _deserialize_object
     return RayError.from_bytes(obj)
   File "FILE", line ZZ, in from_bytes
+    return RayError.from_ray_exception(ray_exception)
+  File "FILE", line ZZ, in from_ray_exception
     raise RuntimeError(msg) from e
 RuntimeError: Failed to unpickle serialized exception"""
 
@@ -305,11 +315,79 @@ RuntimeError: Failed to unpickle serialized exception"""
     try:
         ray.get(f.remote())
     except Exception as ex:
-        print(repr(scrub_traceback(str(ex))))
         assert clean_noqa(expected_output) == scrub_traceback(str(ex))
+
+
+def test_serialization_error_message(shutdown_only):
+    expected_output_task = """Could not serialize the argument <unlocked _thread.lock object at ADDRESS> for a task or actor test_traceback.test_serialization_error_message.<locals>.task_with_unserializable_arg. Check https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting for more information."""  # noqa
+    expected_output_actor = """Could not serialize the argument <unlocked _thread.lock object at ADDRESS> for a task or actor test_traceback.test_serialization_error_message.<locals>.A.__init__. Check https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting for more information."""  # noqa
+    expected_capture_output_task = """Could not serialize the function test_traceback.test_serialization_error_message.<locals>.capture_lock. Check https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting for more information."""  # noqa
+    expected_capture_output_actor = """Could not serialize the actor class test_traceback.test_serialization_error_message.<locals>.B.__init__. Check https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting for more information."""  # noqa
+    ray.init(num_cpus=1)
+    lock = threading.Lock()
+
+    @ray.remote
+    def task_with_unserializable_arg(lock):
+        print(lock)
+
+    @ray.remote
+    class A:
+        def __init__(self, lock):
+            print(lock)
+
+    @ray.remote
+    def capture_lock():
+        print(lock)
+
+    @ray.remote
+    class B:
+        def __init__(self):
+            print(lock)
+
+    """
+    Test a task with an unserializable object.
+    """
+    with pytest.raises(TypeError) as excinfo:
+        task_with_unserializable_arg.remote(lock)
+
+    def scrub_traceback(ex):
+        return re.sub("object at .*> for a", "object at ADDRESS> for a", ex)
+
+    test_prefix = "com_github_ray_project_ray.python.ray.tests."
+
+    assert clean_noqa(expected_output_task) == scrub_traceback(
+        str(excinfo.value)
+    ).replace(test_prefix, "")
+    """
+    Test an actor with an unserializable object.
+    """
+    with pytest.raises(TypeError) as excinfo:
+        a = A.remote(lock)
+        print(a)
+    assert clean_noqa(expected_output_actor) == scrub_traceback(
+        str(excinfo.value)
+    ).replace(test_prefix, "")
+    """
+    Test the case where an unserializable object is captured by tasks.
+    """
+    with pytest.raises(TypeError) as excinfo:
+        capture_lock.remote()
+    assert clean_noqa(expected_capture_output_task) == str(excinfo.value).replace(
+        test_prefix, ""
+    )
+    """
+    Test the case where an unserializable object is captured by actors.
+    """
+    with pytest.raises(TypeError) as excinfo:
+        b = B.remote()
+        print(b)
+    assert clean_noqa(expected_capture_output_actor) == str(excinfo.value).replace(
+        test_prefix, ""
+    )
 
 
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

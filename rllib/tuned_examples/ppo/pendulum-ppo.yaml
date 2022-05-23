@@ -1,6 +1,6 @@
 # Can expect improvement to -140 reward in ~300-500k timesteps.
 pendulum-ppo:
-    env: Pendulum-v0
+    env: Pendulum-v1
     run: PPO
     stop:
         episode_reward_mean: -500

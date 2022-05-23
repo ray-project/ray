@@ -15,10 +15,8 @@ logger = logging.getLogger(__name__)
 class FullyConnectedNetwork(JAXModelV2):
     """Generic fully connected network."""
 
-    def __init__(self, obs_space, action_space, num_outputs, model_config,
-                 name):
-        super().__init__(obs_space, action_space, num_outputs, model_config,
-                         name)
+    def __init__(self, obs_space, action_space, num_outputs, model_config, name):
+        super().__init__(obs_space, action_space, num_outputs, model_config, name)
 
         self.key = jax.random.PRNGKey(int(time.time()))
 
@@ -32,7 +30,9 @@ class FullyConnectedNetwork(JAXModelV2):
         # the outputs.
         if self.free_log_std:
             assert num_outputs % 2 == 0, (
-                "num_outputs must be divisible by two", num_outputs)
+                "num_outputs must be divisible by two",
+                num_outputs,
+            )
             num_outputs = num_outputs // 2
 
         self._hidden_layers = []
@@ -42,10 +42,8 @@ class FullyConnectedNetwork(JAXModelV2):
         # Create layers 0 to second-last.
         for size in hiddens[:-1]:
             self._hidden_layers.append(
-                SlimFC(
-                    in_size=prev_layer_size,
-                    out_size=size,
-                    activation_fn=activation))
+                SlimFC(in_size=prev_layer_size, out_size=size, activation_fn=activation)
+            )
             prev_layer_size = size
 
         # The last layer is adjusted to be of size num_outputs, but it's a
@@ -55,7 +53,9 @@ class FullyConnectedNetwork(JAXModelV2):
                 SlimFC(
                     in_size=prev_layer_size,
                     out_size=num_outputs,
-                    activation_fn=activation))
+                    activation_fn=activation,
+                )
+            )
             prev_layer_size = num_outputs
         # Finish the layers with the provided sizes (`hiddens`), plus -
         # iff num_outputs > 0 - a last linear layer of size num_outputs.
@@ -65,16 +65,18 @@ class FullyConnectedNetwork(JAXModelV2):
                     SlimFC(
                         in_size=prev_layer_size,
                         out_size=hiddens[-1],
-                        activation_fn=activation))
+                        activation_fn=activation,
+                    )
+                )
                 prev_layer_size = hiddens[-1]
             if num_outputs:
                 self._logits = SlimFC(
-                    in_size=prev_layer_size,
-                    out_size=num_outputs,
-                    activation_fn=None)
+                    in_size=prev_layer_size, out_size=num_outputs, activation_fn=None
+                )
             else:
-                self.num_outputs = (
-                    [int(np.product(obs_space.shape))] + hiddens[-1:])[-1]
+                self.num_outputs = ([int(np.product(obs_space.shape))] + hiddens[-1:])[
+                    -1
+                ]
 
         # Layer to add the log std vars to the state-dependent means.
         if self.free_log_std and self._logits:
@@ -91,12 +93,14 @@ class FullyConnectedNetwork(JAXModelV2):
                         in_size=prev_vf_layer_size,
                         out_size=size,
                         activation_fn=activation,
-                    ))
+                    )
+                )
                 prev_vf_layer_size = size
             self._value_branch_separate = vf_layers
 
         self._value_branch = SlimFC(
-            in_size=prev_layer_size, out_size=1, activation_fn=None)
+            in_size=prev_layer_size, out_size=1, activation_fn=None
+        )
         # Holds the current "base" output (before logits layer).
         self._features = None
         # Holds the last input, in case value branch is separate.
@@ -109,8 +113,7 @@ class FullyConnectedNetwork(JAXModelV2):
         for layer in self._hidden_layers:
             x = layer(x)
         self._features = x
-        logits = self._logits(self._features) if self._logits else \
-            self._features
+        logits = self._logits(self._features) if self._logits else self._features
         if self.free_log_std:
             logits = self._append_free_log_std(logits)
         return logits, state
@@ -120,6 +123,7 @@ class FullyConnectedNetwork(JAXModelV2):
         assert self._features is not None, "must call forward() first"
         if self._value_branch_separate:
             return self._value_branch(
-                self._value_branch_separate(self._last_flat_in)).squeeze(1)
+                self._value_branch_separate(self._last_flat_in)
+            ).squeeze(1)
         else:
             return self._value_branch(self._features).squeeze(1)

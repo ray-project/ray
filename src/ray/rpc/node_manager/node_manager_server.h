@@ -27,6 +27,8 @@ namespace rpc {
 #define RAY_NODE_MANAGER_RPC_HANDLERS                                 \
   RPC_SERVICE_HANDLER(NodeManagerService, UpdateResourceUsage, -1)    \
   RPC_SERVICE_HANDLER(NodeManagerService, RequestResourceReport, -1)  \
+  RPC_SERVICE_HANDLER(NodeManagerService, GetResourceLoad, -1)        \
+  RPC_SERVICE_HANDLER(NodeManagerService, NotifyGCSRestart, -1)       \
   RPC_SERVICE_HANDLER(NodeManagerService, RequestWorkerLease, -1)     \
   RPC_SERVICE_HANDLER(NodeManagerService, ReportWorkerBacklog, -1)    \
   RPC_SERVICE_HANDLER(NodeManagerService, ReturnWorker, -1)           \
@@ -42,7 +44,10 @@ namespace rpc {
   RPC_SERVICE_HANDLER(NodeManagerService, RequestObjectSpillage, -1)  \
   RPC_SERVICE_HANDLER(NodeManagerService, ReleaseUnusedBundles, -1)   \
   RPC_SERVICE_HANDLER(NodeManagerService, GetSystemConfig, -1)        \
-  RPC_SERVICE_HANDLER(NodeManagerService, GetGcsServerAddress, -1)
+  RPC_SERVICE_HANDLER(NodeManagerService, GetGcsServerAddress, -1)    \
+  RPC_SERVICE_HANDLER(NodeManagerService, ShutdownRaylet, -1)         \
+  RPC_SERVICE_HANDLER(NodeManagerService, GetTasksInfo, -1)           \
+  RPC_SERVICE_HANDLER(NodeManagerService, GetObjectsInfo, -1)
 
 /// Interface of the `NodeManagerService`, see `src/ray/protobuf/node_manager.proto`.
 class NodeManagerServiceHandler {
@@ -67,6 +72,14 @@ class NodeManagerServiceHandler {
       rpc::RequestResourceReportReply *reply,
       rpc::SendReplyCallback send_reply_callback) = 0;
 
+  virtual void HandleGetResourceLoad(const rpc::GetResourceLoadRequest &request,
+                                     rpc::GetResourceLoadReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleNotifyGCSRestart(const rpc::NotifyGCSRestartRequest &request,
+                                      rpc::NotifyGCSRestartReply *reply,
+                                      rpc::SendReplyCallback send_reply_callback) = 0;
+
   virtual void HandleRequestWorkerLease(const RequestWorkerLeaseRequest &request,
                                         RequestWorkerLeaseReply *reply,
                                         SendReplyCallback send_reply_callback) = 0;
@@ -82,6 +95,10 @@ class NodeManagerServiceHandler {
   virtual void HandleReleaseUnusedWorkers(const ReleaseUnusedWorkersRequest &request,
                                           ReleaseUnusedWorkersReply *reply,
                                           SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleShutdownRaylet(const ShutdownRayletRequest &request,
+                                    ShutdownRayletReply *reply,
+                                    SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &request,
                                        rpc::CancelWorkerLeaseReply *reply,
@@ -110,7 +127,8 @@ class NodeManagerServiceHandler {
                                   GetNodeStatsReply *reply,
                                   SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleGlobalGC(const GlobalGCRequest &request, GlobalGCReply *reply,
+  virtual void HandleGlobalGC(const GlobalGCRequest &request,
+                              GlobalGCReply *reply,
                               SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleFormatGlobalMemoryInfo(const FormatGlobalMemoryInfoRequest &request,
@@ -132,6 +150,12 @@ class NodeManagerServiceHandler {
   virtual void HandleGetGcsServerAddress(const GetGcsServerAddressRequest &request,
                                          GetGcsServerAddressReply *reply,
                                          SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleGetTasksInfo(const GetTasksInfoRequest &request,
+                                  GetTasksInfoReply *reply,
+                                  SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleGetObjectsInfo(const GetObjectsInfoRequest &request,
+                                    GetObjectsInfoReply *reply,
+                                    SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `NodeManagerService`.

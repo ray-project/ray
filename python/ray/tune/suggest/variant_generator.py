@@ -1,5 +1,6 @@
 import copy
 import logging
+import re
 from collections.abc import Mapping
 from typing import Any, Dict, Generator, List, Optional, Tuple
 
@@ -7,14 +8,16 @@ import numpy
 import random
 
 from ray.tune import TuneError
-from ray.tune.sample import Categorical, Domain, Function
+from ray.tune.sample import Categorical, Domain, Function, RandomState
 
 logger = logging.getLogger(__name__)
 
 
-def generate_variants(unresolved_spec: Dict,
-                      constant_grid_search: bool = False
-                      ) -> Generator[Tuple[Dict, Dict], None, None]:
+def generate_variants(
+    unresolved_spec: Dict,
+    constant_grid_search: bool = False,
+    random_state: "RandomState" = None,
+) -> Generator[Tuple[Dict, Dict], None, None]:
     """Generates variants from a spec (dict) with unresolved values.
 
     There are two types of unresolved values:
@@ -46,7 +49,10 @@ def generate_variants(unresolved_spec: Dict,
         (Dict of resolved variables, Spec object)
     """
     for resolved_vars, spec in _generate_variants(
-            unresolved_spec, constant_grid_search=constant_grid_search):
+        unresolved_spec,
+        constant_grid_search=constant_grid_search,
+        random_state=random_state,
+    ):
         assert not _unresolved_values(spec)
         yield resolved_vars, spec
 
@@ -78,29 +84,41 @@ def resolve_nested_dict(nested_dict: Dict) -> Dict[Tuple, Any]:
     for k, v in nested_dict.items():
         if isinstance(v, dict):
             for k_, v_ in resolve_nested_dict(v).items():
-                res[(k, ) + k_] = v_
+                res[(k,) + k_] = v_
         else:
-            res[(k, )] = v
+            res[(k,)] = v
     return res
 
 
 def format_vars(resolved_vars: Dict) -> str:
-    """Formats the resolved variable dict into a single string."""
-    out = []
-    for path, value in sorted(resolved_vars.items()):
-        if path[0] in ["run", "env", "resources_per_trial"]:
-            continue  # TrialRunner already has these in the experiment_tag
-        pieces = []
-        last_string = True
-        for k in path[::-1]:
-            if isinstance(k, int):
-                pieces.append(str(k))
-            elif last_string:
-                last_string = False
-                pieces.append(k)
-        pieces.reverse()
-        out.append(_clean_value("_".join(pieces)) + "=" + _clean_value(value))
-    return ",".join(out)
+    """Format variables to be used as experiment tags.
+
+    Experiment tags are used in directory names, so this method makes sure
+    the resulting tags can be legally used in directory names on all systems.
+
+    The input to this function is a dict of the form
+    ``{("nested", "config", "path"): "value"}``. The output will be a comma
+    separated string of the form ``last_key=value``, so in this example
+    ``path=value``.
+
+    Note that the sanitizing implies that empty strings are possible return
+    values. This is expected and acceptable, as it is not a common case and
+    the resulting directory names will still be valid.
+
+    Args:
+        resolved_vars: Dictionary mapping from config path tuples to a value.
+
+    Returns:
+        Comma-separated key=value string.
+    """
+    vars = resolved_vars.copy()
+    # TrialRunner already has these in the experiment_tag
+    for v in ["run", "env", "resources_per_trial"]:
+        vars.pop(v, None)
+
+    return ",".join(
+        f"{_clean_value(k[-1])}={_clean_value(v)}" for k, v in sorted(vars.items())
+    )
 
 
 def flatten_resolved_vars(resolved_vars: Dict) -> Dict:
@@ -115,14 +133,19 @@ def flatten_resolved_vars(resolved_vars: Dict) -> Dict:
 
 
 def _clean_value(value: Any) -> str:
+    """Format floats and replace invalid string characters with ``_``."""
     if isinstance(value, float):
-        return "{:.5}".format(value)
+        return f"{value:.4f}"
     else:
-        return str(value).replace("/", "_")
+        # Define an invalid alphabet, which is the inverse of the
+        # stated regex characters
+        invalid_alphabet = r"[^a-zA-Z0-9_-]+"
+        return re.sub(invalid_alphabet, "_", str(value)).strip("_")
 
 
-def parse_spec_vars(spec: Dict) -> Tuple[List[Tuple[Tuple, Any]], List[Tuple[
-        Tuple, Any]], List[Tuple[Tuple, Any]]]:
+def parse_spec_vars(
+    spec: Dict,
+) -> Tuple[List[Tuple[Tuple, Any]], List[Tuple[Tuple, Any]], List[Tuple[Tuple, Any]]]:
     resolved, unresolved = _split_resolved_unresolved_values(spec)
     resolved_vars = list(resolved.items())
 
@@ -177,7 +200,8 @@ def count_variants(spec: Dict, presets: Optional[List[Dict]] = None) -> int:
 
 
 def _generate_variants(
-        spec: Dict, constant_grid_search: bool = False) -> Tuple[Dict, Dict]:
+    spec: Dict, constant_grid_search: bool = False, random_state: "RandomState" = None
+) -> Tuple[Dict, Dict]:
     spec = copy.deepcopy(spec)
     _, domain_vars, grid_vars = parse_spec_vars(spec)
 
@@ -194,36 +218,48 @@ def _generate_variants(
         # for grid search.
         # `_resolve_domain_vars` will alter `spec` directly
         all_resolved, resolved_vars = _resolve_domain_vars(
-            spec, domain_vars, allow_fail=True)
+            spec, domain_vars, allow_fail=True, random_state=random_state
+        )
         if not all_resolved:
             # Not all variables have been resolved, but remove those that have
             # from the `to_resolve` list.
-            to_resolve = [(r, d) for r, d in to_resolve
-                          if r not in resolved_vars]
+            to_resolve = [(r, d) for r, d in to_resolve if r not in resolved_vars]
     grid_search = _grid_search_generator(spec, grid_vars)
     for resolved_spec in grid_search:
         if not constant_grid_search or not all_resolved:
             # In this path, we sample the remaining random variables
-            _, resolved_vars = _resolve_domain_vars(resolved_spec, to_resolve)
+            _, resolved_vars = _resolve_domain_vars(
+                resolved_spec, to_resolve, random_state=random_state
+            )
 
         for resolved, spec in _generate_variants(
-                resolved_spec, constant_grid_search=constant_grid_search):
+            resolved_spec,
+            constant_grid_search=constant_grid_search,
+            random_state=random_state,
+        ):
             for path, value in grid_vars:
                 resolved_vars[path] = _get_value(spec, path)
             for k, v in resolved.items():
-                if (k in resolved_vars and v != resolved_vars[k]
-                        and _is_resolved(resolved_vars[k])):
+                if (
+                    k in resolved_vars
+                    and v != resolved_vars[k]
+                    and _is_resolved(resolved_vars[k])
+                ):
                     raise ValueError(
                         "The variable `{}` could not be unambiguously "
                         "resolved to a single value. Consider simplifying "
-                        "your configuration.".format(k))
+                        "your configuration.".format(k)
+                    )
                 resolved_vars[k] = v
             yield resolved_vars, spec
 
 
-def get_preset_variants(spec: Dict,
-                        config: Dict,
-                        constant_grid_search: bool = False):
+def get_preset_variants(
+    spec: Dict,
+    config: Dict,
+    constant_grid_search: bool = False,
+    random_state: "RandomState" = None,
+):
     """Get variants according to a spec, initialized with a config.
 
     Variables from the spec are overwritten by the variables in the config.
@@ -258,16 +294,20 @@ def get_preset_variants(spec: Dict,
                 if not domain.is_valid(val):
                     logger.warning(
                         f"Pre-set value `{val}` is not within valid values of "
-                        f"parameter `{'/'.join(path)}`: {domain.domain_str}")
+                        f"parameter `{'/'.join(path)}`: {domain.domain_str}"
+                    )
             else:
                 # domain is actually a fixed value
                 if domain != val:
                     logger.warning(
                         f"Pre-set value `{val}` is not equal to the value of "
-                        f"parameter `{'/'.join(path)}`: {domain}")
+                        f"parameter `{'/'.join(path)}`: {domain}"
+                    )
         assign_value(spec["config"], path, val)
 
-    return _generate_variants(spec, constant_grid_search=constant_grid_search)
+    return _generate_variants(
+        spec, constant_grid_search=constant_grid_search, random_state=random_state
+    )
 
 
 def assign_value(spec: Dict, path: Tuple, value: Any):
@@ -282,9 +322,12 @@ def _get_value(spec: Dict, path: Tuple) -> Any:
     return spec
 
 
-def _resolve_domain_vars(spec: Dict,
-                         domain_vars: List[Tuple[Tuple, Domain]],
-                         allow_fail: bool = False) -> Tuple[bool, Dict]:
+def _resolve_domain_vars(
+    spec: Dict,
+    domain_vars: List[Tuple[Tuple, Domain]],
+    allow_fail: bool = False,
+    random_state: "RandomState" = None,
+) -> Tuple[bool, Dict]:
     resolved = {}
     error = True
     num_passes = 0
@@ -295,13 +338,15 @@ def _resolve_domain_vars(spec: Dict,
             if path in resolved:
                 continue
             try:
-                value = domain.sample(_UnresolvedAccessGuard(spec))
+                value = domain.sample(
+                    _UnresolvedAccessGuard(spec), random_state=random_state
+                )
             except RecursiveDependencyError as e:
                 error = e
             except Exception:
                 raise ValueError(
-                    "Failed to evaluate expression: {}: {}".format(
-                        path, domain))
+                    "Failed to evaluate expression: {}: {}".format(path, domain)
+                )
             else:
                 assign_value(spec, path, value)
                 resolved[path] = value
@@ -313,8 +358,9 @@ def _resolve_domain_vars(spec: Dict,
     return True, resolved
 
 
-def _grid_search_generator(unresolved_spec: Dict,
-                           grid_vars: List) -> Generator[Dict, None, None]:
+def _grid_search_generator(
+    unresolved_spec: Dict, grid_vars: List
+) -> Generator[Dict, None, None]:
     value_indices = [0] * len(grid_vars)
 
     def increment(i):
@@ -354,45 +400,51 @@ def _try_resolve(v) -> Tuple[bool, Any]:
     elif isinstance(v, dict) and len(v) == 1 and "eval" in v:
         # Lambda function in eval syntax
         return False, Function(
-            lambda spec: eval(v["eval"], _STANDARD_IMPORTS, {"spec": spec}))
+            lambda spec: eval(v["eval"], _STANDARD_IMPORTS, {"spec": spec})
+        )
     elif isinstance(v, dict) and len(v) == 1 and "grid_search" in v:
         # Grid search values
         grid_values = v["grid_search"]
         if not isinstance(grid_values, list):
             raise TuneError(
-                "Grid search expected list of values, got: {}".format(
-                    grid_values))
+                "Grid search expected list of values, got: {}".format(grid_values)
+            )
         return False, Categorical(grid_values).grid()
     return True, v
 
 
 def _split_resolved_unresolved_values(
-        spec: Dict) -> Tuple[Dict[Tuple, Any], Dict[Tuple, Any]]:
+    spec: Dict,
+) -> Tuple[Dict[Tuple, Any], Dict[Tuple, Any]]:
     resolved_vars = {}
     unresolved_vars = {}
     for k, v in spec.items():
         resolved, v = _try_resolve(v)
         if not resolved:
-            unresolved_vars[(k, )] = v
+            unresolved_vars[(k,)] = v
         elif isinstance(v, dict):
             # Recurse into a dict
-            _resolved_children, _unresolved_children = \
-                _split_resolved_unresolved_values(v)
+            (
+                _resolved_children,
+                _unresolved_children,
+            ) = _split_resolved_unresolved_values(v)
             for (path, value) in _resolved_children.items():
-                resolved_vars[(k, ) + path] = value
+                resolved_vars[(k,) + path] = value
             for (path, value) in _unresolved_children.items():
-                unresolved_vars[(k, ) + path] = value
-        elif isinstance(v, list):
+                unresolved_vars[(k,) + path] = value
+        elif isinstance(v, (list, tuple)):
             # Recurse into a list
             for i, elem in enumerate(v):
-                _resolved_children, _unresolved_children = \
-                    _split_resolved_unresolved_values({i: elem})
+                (
+                    _resolved_children,
+                    _unresolved_children,
+                ) = _split_resolved_unresolved_values({i: elem})
                 for (path, value) in _resolved_children.items():
-                    resolved_vars[(k, ) + path] = value
+                    resolved_vars[(k,) + path] = value
                 for (path, value) in _unresolved_children.items():
-                    unresolved_vars[(k, ) + path] = value
+                    unresolved_vars[(k,) + path] = value
         else:
-            resolved_vars[(k, )] = v
+            resolved_vars[(k,)] = v
     return resolved_vars, unresolved_vars
 
 
@@ -413,7 +465,8 @@ class _UnresolvedAccessGuard(dict):
         value = dict.__getattribute__(self, item)
         if not _is_resolved(value):
             raise RecursiveDependencyError(
-                "`{}` recursively depends on {}".format(item, value))
+                "`{}` recursively depends on {}".format(item, value)
+            )
         elif isinstance(value, dict):
             return _UnresolvedAccessGuard(value)
         else:

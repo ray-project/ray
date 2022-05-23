@@ -60,11 +60,14 @@ class PullManager {
   /// \param restore_spilled_object A callback which should
   /// retrieve an spilled object from the external store.
   PullManager(
-      NodeID &self_node_id, const std::function<bool(const ObjectID &)> object_is_local,
+      NodeID &self_node_id,
+      const std::function<bool(const ObjectID &)> object_is_local,
       const std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
       const std::function<void(const ObjectID &)> cancel_pull_request,
+      const std::function<void(const ObjectID &)> fail_pull_request,
       const RestoreSpilledObjectCallback restore_spilled_object,
-      const std::function<double()> get_time, int pull_timeout_ms,
+      const std::function<double()> get_time_seconds,
+      int pull_timeout_ms,
       int64_t num_bytes_available,
       std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
       std::function<std::string(const ObjectID &)> get_locally_spilled_object_url);
@@ -77,10 +80,8 @@ class PullManager {
   ///
   /// \param object_refs The bundle of objects that must be made local.
   /// \param prio The priority class of the bundle.
-  /// task, versus the arguments of a queued task. Worker requests are
   /// \param objects_to_locate The objects whose new locations the caller
   /// should subscribe to, and call OnLocationChange for.
-  /// prioritized over queued task arguments.
   /// \return A request ID that can be used to cancel the request.
   uint64_t Pull(const std::vector<rpc::ObjectReference> &object_ref_bundle,
                 BundlePriority prio,
@@ -88,7 +89,7 @@ class PullManager {
 
   /// Update the pull requests that are currently being pulled, according to
   /// the current capacity. The PullManager will choose the objects to pull by
-  /// taking the longest contiguous prefix of the request queue whose total
+  /// taking as many as pullable requests whose total
   /// size is less than the given capacity.
   ///
   /// \param num_bytes_available The number of bytes that are currently
@@ -104,9 +105,15 @@ class PullManager {
   /// non-empty, the object may no longer be on any node.
   /// \param spilled_node_id The node id of the object if it was spilled. If Nil, the
   /// object may no longer be on any node.
+  /// \param pending_creation Whether this object is pending creation. This is
+  /// used to time out objects that have had no locations for too long.
+  /// \param object_size The size of the object. Used to compute how many
+  /// objects we can safely pull.
   void OnLocationChange(const ObjectID &object_id,
                         const std::unordered_set<NodeID> &client_ids,
-                        const std::string &spilled_url, const NodeID &spilled_node_id,
+                        const std::string &spilled_url,
+                        const NodeID &spilled_node_id,
+                        bool pending_creation,
                         size_t object_size);
 
   /// Cancel an existing pull request.
@@ -132,25 +139,25 @@ class PullManager {
   void ResetRetryTimer(const ObjectID &object_id);
 
   /// The number of ongoing object pulls.
-  int NumActiveRequests() const;
+  int NumObjectPullRequests() const;
 
-  /// Returns whether the object is actively being pulled. object_required
-  /// returns whether the object is still needed by some pull request on this
-  /// node (but may not be actively pulled due to throttling).
+  /// Returns whether the object is actively being pulled.
   ///
   /// This method (and this method only) is thread-safe.
   bool IsObjectActive(const ObjectID &object_id) const;
 
   /// Check whether the pull request is currently active or waiting for object
   /// size information. If this returns false, then the pull request is most
-  /// likely inactive due to lack of memory. This can also return false if an
-  /// earlier request is waiting for metadata.
+  /// likely inactive due to lack of memory.
   bool PullRequestActiveOrWaitingForMetadata(uint64_t request_id) const;
 
   /// Whether we are have requests queued that are not currently active. This
   /// can happen when we are at capacity in the object store or temporarily, if
   /// there are object sizes missing.
   bool HasPullsQueued() const;
+
+  /// Record the internal metrics.
+  void RecordMetrics() const;
 
   std::string DebugString() const;
 
@@ -170,7 +177,13 @@ class PullManager {
     std::vector<NodeID> client_locations;
     std::string spilled_url;
     NodeID spilled_node_id;
+    bool pending_object_creation = false;
     double next_pull_time;
+    // The pull will timeout at this time if there are still no locations for
+    // the object.
+    double expiration_time_seconds = 0;
+    int64_t activate_time_ms = 0;
+    int64_t request_start_time_ms = absl::GetCurrentTimeNanos() / 1e3;
     uint8_t num_retries;
     bool object_size_set = false;
     size_t object_size = 0;
@@ -178,26 +191,130 @@ class PullManager {
     // object. This includes bundle requests whose objects are not actively
     // being pulled.
     absl::flat_hash_set<uint64_t> bundle_request_ids;
-  };
 
-  struct PullBundleRequest {
-    PullBundleRequest(const std::vector<rpc::ObjectReference> &requested_objects)
-        : objects(requested_objects), num_object_sizes_missing(objects.size()) {}
-    const std::vector<rpc::ObjectReference> objects;
-    size_t num_object_sizes_missing;
-    // The total number of bytes needed by this pull bundle request. Note that
-    // the objects may overlap with another request, so the actual amount of
-    // memory needed to activate this request may be less than this amount.
-    size_t num_bytes_needed = 0;
+    // An object is pullable if we know the size and it's not pending
+    // creation due to object reconstruction.
+    bool IsPullable() const { return object_size_set && !pending_object_creation; }
 
-    void RegisterObjectSize(size_t object_size) {
-      RAY_CHECK(num_object_sizes_missing > 0);
-      num_object_sizes_missing--;
-      num_bytes_needed += object_size;
+    std::string DebugString() const {
+      std::stringstream result;
+      result << "ObjectPullRequest{";
+      result << "locations: " << debug_string(client_locations);
+      result << ", spilled url: " << spilled_url;
+      result << ", spilled node id: " << spilled_node_id;
+      result << ", pending creation: " << pending_object_creation;
+      result << ", object size set: " << object_size_set;
+      result << ", object size: " << object_size;
+      result << ", num of retries: " << static_cast<uint64_t>(num_retries);
+      result << "}";
+      return result.str();
     }
   };
 
-  using Queue = std::map<uint64_t, PullBundleRequest>;
+  /// A helper structure for tracking information about each ongoing bundle pull request.
+  struct BundlePullRequest {
+    BundlePullRequest(std::vector<ObjectID> requested_objects)
+        : objects(std::move(requested_objects)) {}
+    // All the objects that this bundle is trying to pull.
+    const std::vector<ObjectID> objects;
+    // All the objects that are pullable.
+    absl::flat_hash_set<ObjectID> pullable_objects;
+
+    void MarkObjectAsPullable(const ObjectID &object) {
+      pullable_objects.emplace(object);
+    }
+
+    void MarkObjectAsUnpullable(const ObjectID &object) {
+      pullable_objects.erase(object);
+    }
+
+    // A bundle is pullable if we know the sizes of all objects
+    // and none of them is pending creation due to object reconstruction.
+    bool IsPullable() const { return pullable_objects.size() == objects.size(); }
+  };
+
+  /// A helper structure for tracking all the bundle pull requests for a particular bundle
+  /// priority.
+  struct BundlePullRequestQueue {
+    // Key is the request id assigned to each bundle pull request.
+    absl::flat_hash_map<uint64_t, BundlePullRequest> requests;
+    // A bundle pull request can be in one of the three stats:
+    // 1. active: the bundle is actively being pulled.
+    // 2. inactive: the bundle is pullable but is not being pulled
+    // because we are at capacity in the object store.
+    // 3. unpullable: at least one object is not pullable (i.e. missing size or pending
+    // creation).
+    //
+    // All requests in the queue that are not in one of the following sets are unpullable.
+    // (i.e. requests - active_requests - inactive_requests == unpullable_requests).
+    //
+    // Allowed transitions between stats are:
+    // 1. active -> inactive: when we need to deactivate the pull request to make room
+    // for higher priority ones or the object being pulled is pending creation
+    // due to object reconstruction.
+    // 2. inactive -> active: when we have enough available object store memory to fullfil
+    // the request.
+    // 3. inactive -> unpullable: when the object is lost and pending creation due to
+    // object reconstruction.
+    // 4. unpullable -> inactive: when all objects have size and are not pending creation.
+    //
+    // Note: we use std::set here so requests are sorted by their request ids (i.e. the
+    // order of pull).
+    std::set<uint64_t> active_requests;
+    std::set<uint64_t> inactive_requests;
+
+    bool Empty() const { return requests.empty(); }
+
+    // Add a request to the queue, the request will start with inactive or unpullable
+    // state. The caller must explicitly activate it if needed.
+    void AddBundlePullRequest(uint64_t request_id, BundlePullRequest request) {
+      requests.emplace(request_id, request);
+      if (request.IsPullable()) {
+        inactive_requests.emplace(request_id);
+      }
+    }
+
+    void ActivateBundlePullRequest(uint64_t request_id) {
+      RAY_CHECK_EQ(inactive_requests.erase(request_id), 1u);
+      active_requests.emplace(request_id);
+    }
+
+    void DeactivateBundlePullRequest(uint64_t request_id) {
+      RAY_CHECK_EQ(active_requests.erase(request_id), 1u);
+      inactive_requests.emplace(request_id);
+    }
+
+    void MarkBundleAsPullable(uint64_t request_id) {
+      RAY_CHECK(map_find_or_die(requests, request_id).IsPullable());
+      RAY_CHECK_EQ(active_requests.count(request_id), 0u);
+      inactive_requests.emplace(request_id);
+    }
+
+    void MarkBundleAsUnpullable(uint64_t request_id) {
+      RAY_CHECK(!map_find_or_die(requests, request_id).IsPullable());
+      // For a request to go from active to unpullable, it must be
+      // deactivated first.
+      RAY_CHECK_EQ(active_requests.count(request_id), 0u);
+      inactive_requests.erase(request_id);
+    }
+
+    void RemoveBundlePullRequest(uint64_t request_id) {
+      requests.erase(request_id);
+      active_requests.erase(request_id);
+      inactive_requests.erase(request_id);
+    }
+
+    std::string DebugString() const {
+      std::stringstream result;
+      result << "BundlePullRequestQueue{";
+      result << requests.size() << " total, ";
+      result << active_requests.size() << " active, ";
+      result << inactive_requests.size() << " inactive, ";
+      result << (requests.size() - active_requests.size() - inactive_requests.size())
+             << " unpullable}";
+      return result.str();
+    }
+  };
 
   /// Try to make an object local, by restoring the object from external
   /// storage or by fetching the object from one of its expected client
@@ -241,16 +358,14 @@ class PullManager {
   /// size information), or activating the request would exceed memory quota.
   ///
   /// Note that we allow exceeding the quota to maintain at least 1 active bundle.
-  bool ActivateNextPullBundleRequest(const Queue &bundles,
-                                     uint64_t *highest_req_id_being_pulled,
+  bool ActivateNextBundlePullRequest(BundlePullRequestQueue &bundles,
                                      bool respect_quota,
                                      std::vector<ObjectID> *objects_to_pull);
 
   /// Deactivate a pull request in the queue. This cancels any pull or restore
   /// operations for the object.
-  void DeactivatePullBundleRequest(const Queue &bundles,
-                                   const Queue::iterator &request_it,
-                                   uint64_t *highest_req_id_being_pulled,
+  void DeactivateBundlePullRequest(BundlePullRequestQueue &bundles,
+                                   uint64_t request_id,
                                    std::unordered_set<ObjectID> *objects_to_cancel);
 
   /// Helper method that deactivates requests from the given queue until the pull
@@ -260,18 +375,21 @@ class PullManager {
   ///                   bundles (in any queue) below this threshold.
   /// \param quota_margin Keep deactivating bundles until this amount of quota margin
   ///                     becomes available.
-  void DeactivateUntilMarginAvailable(const std::string &debug_name, Queue &bundles,
-                                      int retain_min, int64_t quota_margin,
-                                      uint64_t *highest_id_for_bundle,
+  void DeactivateUntilMarginAvailable(const std::string &debug_name,
+                                      BundlePullRequestQueue &bundles,
+                                      int retain_min,
+                                      int64_t quota_margin,
                                       std::unordered_set<ObjectID> *objects_to_cancel);
 
   /// Return debug info about this bundle queue.
-  std::string BundleInfo(const Queue &bundles, uint64_t highest_id_being_pulled) const;
+  std::string BundleInfo(const BundlePullRequestQueue &bundles) const;
 
   /// Return the incremental space required to pull the next bundle, if available.
   /// If the next bundle is not ready for pulling, 0L will be returned.
-  int64_t NextRequestBundleSize(const Queue &bundles,
-                                uint64_t highest_id_being_pulled) const;
+  int64_t NextRequestBundleSize(const BundlePullRequestQueue &bundles) const;
+
+  const BundlePullRequestQueue &GetBundlePullRequestQueue(uint64_t request_id) const;
+  BundlePullRequestQueue &GetBundlePullRequestQueue(uint64_t request_id);
 
   /// See the constructor's arguments.
   NodeID self_node_id_;
@@ -279,14 +397,14 @@ class PullManager {
   const std::function<void(const ObjectID &, const NodeID &)> send_pull_request_;
   const std::function<void(const ObjectID &)> cancel_pull_request_;
   const RestoreSpilledObjectCallback restore_spilled_object_;
-  const std::function<double()> get_time_;
+  const std::function<double()> get_time_seconds_;
   uint64_t pull_timeout_ms_;
 
   /// The next ID to assign to a bundle pull request, so that the caller can
   /// cancel. Start at 1 because 0 means null.
   uint64_t next_req_id_ = 1;
 
-  /// The currently active pull requests. Each request is a bundle of objects
+  /// The currently ongoing pull requests. Each request is a bundle of objects
   /// that must be made local. The key is the ID that was assigned to that
   /// request, which can be used by the caller to cancel the request.
   ///
@@ -299,11 +417,11 @@ class PullManager {
   /// We only enable plasma fallback allocations for ray.get() requests, which
   /// also take precedence over ray.wait() requests.
   ///
-  /// Queues of `ray.get` and `ray.wait` requests made by workers.
-  Queue get_request_bundles_;
-  Queue wait_request_bundles_;
-  /// Queue of arguments of queued tasks.
-  Queue task_argument_bundles_;
+  /// Bundle pull requests of `ray.get` and `ray.wait` requests made by workers.
+  BundlePullRequestQueue get_request_bundles_;
+  BundlePullRequestQueue wait_request_bundles_;
+  /// Bundle pull requests of arguments of queued tasks.
+  BundlePullRequestQueue task_argument_bundles_;
 
   /// The total number of bytes that we are currently pulling. This is the
   /// total size of the objects requested that we are actively pulling. To
@@ -321,24 +439,9 @@ class PullManager {
   /// Callback to pin plasma objects.
   std::function<std::unique_ptr<RayObject>(const ObjectID &object_ids)> pin_object_;
 
-  /// The last time OOM was reported. Track this so we don't spam warnings when
-  /// the object store is full.
-  uint64_t last_oom_reported_ms_ = 0;
-
-  /// A pointer to the highest request ID whose objects we are currently
-  /// pulling. We always pull a contiguous prefix of the active pull requests.
-  /// This means that all requests with a lower ID are either already canceled
-  /// or their objects are also being pulled.
-  ///
-  /// We keep one pointer for each request queue, since we prioritize worker
-  /// requests over task argument requests, and gets over waits.
-  uint64_t highest_get_req_id_being_pulled_ = 0;
-  uint64_t highest_wait_req_id_being_pulled_ = 0;
-  uint64_t highest_task_req_id_being_pulled_ = 0;
-
   /// The objects that this object manager has been asked to fetch from remote
   /// object managers.
-  std::unordered_map<ObjectID, ObjectPullRequest> object_pull_requests_;
+  absl::flat_hash_map<ObjectID, ObjectPullRequest> object_pull_requests_;
 
   // Protects state that is shared by the threads used to receive object
   // chunks.
@@ -363,11 +466,17 @@ class PullManager {
   // It will return an empty string otherwise.
   std::function<std::string(const ObjectID &)> get_locally_spilled_object_url_;
 
+  // A callback to fail a hung pull request.
+  std::function<void(const ObjectID &)> fail_pull_request_;
+
   /// Internally maintained random number generator.
   std::mt19937_64 gen_;
   int64_t max_timeout_ = 0;
   ObjectID max_timeout_object_id_;
+  int64_t num_tries_total_ = 0;
   int64_t num_retries_total_ = 0;
+  int64_t num_succeeded_pins_total_ = 0;
+  int64_t num_failed_pins_total_ = 0;
 
   friend class PullManagerTest;
   friend class PullManagerTestWithCapacity;

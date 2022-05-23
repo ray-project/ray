@@ -1,0 +1,50 @@
+parametric-item-reco-env-slateq:
+    env: ray.rllib.examples.env.bandit_envs_recommender_system.ParametricItemRecoEnv
+    run: SlateQ
+    stop:
+        #evaluation/episode_reward_mean: 48.0
+        timesteps_total: 200000
+    config:
+        # SlateQ only supported for torch so far.
+        framework: torch
+
+        metrics_num_episodes_for_smoothing: 200
+
+        exploration_config:
+            temperature: 0.7
+
+        # Env c'tor kwargs:
+        env_config:
+            config:
+                slate_q: true
+                num_users: 50
+                num_items: 1000
+                num_candidates: 50
+                slate_size: 1
+                feature_dim: 16
+
+        grad_clip: 10.0
+        #double_q: false
+        #slateq_strategy: MYOP
+
+        # Larger networks seem to help (large obs/action spaces).
+        hiddens: [512, 512]
+
+        # Larger batch sizes seem to help (more stability, even with higher lr).
+        train_batch_size: 64
+
+        num_workers: 0
+        num_gpus: 0
+
+        lr_choice_model: 0.01
+        lr_q_model: 0.01
+
+        target_network_update_freq: 500
+        tau: 1.0
+
+        # Evaluation settings.
+        evaluation_interval: 1
+        evaluation_num_workers: 4
+        evaluation_duration: 200
+        evaluation_duration_unit: episodes
+        evaluation_parallel_to_training: true

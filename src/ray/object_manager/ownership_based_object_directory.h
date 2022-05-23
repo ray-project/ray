@@ -24,7 +24,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
-#include "ray/gcs/gcs_client.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/object_manager/object_directory.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/rpc/worker/core_worker_client.h"
@@ -43,9 +43,11 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   /// \param gcs_client A Ray GCS client to request object and node
   /// information from.
   OwnershipBasedObjectDirectory(
-      instrumented_io_context &io_service, std::shared_ptr<gcs::GcsClient> &gcs_client,
+      instrumented_io_context &io_service,
+      std::shared_ptr<gcs::GcsClient> &gcs_client,
       pubsub::SubscriberInterface *object_location_subscriber,
-      rpc::CoreWorkerClientPool *owner_client_pool, int64_t max_object_report_batch_size,
+      rpc::CoreWorkerClientPool *owner_client_pool,
+      int64_t max_object_report_batch_size,
       std::function<void(const ObjectID &, const rpc::ErrorType &)> mark_as_failed);
 
   virtual ~OwnershipBasedObjectDirectory() {}
@@ -56,10 +58,6 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
 
   void HandleNodeRemoved(const NodeID &node_id) override;
 
-  ray::Status LookupLocations(const ObjectID &object_id,
-                              const rpc::Address &owner_address,
-                              const OnLocationsFound &callback) override;
-
   ray::Status SubscribeObjectLocations(const UniqueID &callback_id,
                                        const ObjectID &object_id,
                                        const rpc::Address &owner_address,
@@ -69,13 +67,21 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
 
   /// Report to the owner that the given object is added to the current node.
   /// This method guarantees ordering and batches requests.
-  void ReportObjectAdded(const ObjectID &object_id, const NodeID &node_id,
+  void ReportObjectAdded(const ObjectID &object_id,
+                         const NodeID &node_id,
                          const ObjectInfo &object_info) override;
 
   /// Report to the owner that the given object is removed to the current node.
   /// This method guarantees ordering and batches requests.
-  void ReportObjectRemoved(const ObjectID &object_id, const NodeID &node_id,
+  void ReportObjectRemoved(const ObjectID &object_id,
+                           const NodeID &node_id,
                            const ObjectInfo &object_info) override;
+
+  void ReportObjectSpilled(const ObjectID &object_id,
+                           const NodeID &node_id,
+                           const rpc::Address &owner_address,
+                           const std::string &spilled_url,
+                           const bool spilled_to_local_storage) override;
 
   void RecordMetrics(uint64_t duration_ms) override;
 
@@ -87,7 +93,7 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   /// Callbacks associated with a call to GetLocations.
   struct LocationListenerState {
     /// The callback to invoke when object locations are found.
-    std::unordered_map<UniqueID, OnLocationsFound> callbacks;
+    absl::flat_hash_map<UniqueID, OnLocationsFound> callbacks;
     /// The current set of known locations of this object.
     std::unordered_set<NodeID> current_object_locations;
     /// The location where this object has been spilled, if any.
@@ -95,6 +101,7 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
     // The node id that spills the object to the disk.
     // It will be Nil if it uses a distributed external storage.
     NodeID spilled_node_id = NodeID::Nil();
+    bool pending_creation = true;
     /// The size of the object.
     size_t object_size = 0;
     /// This flag will get set to true if received any notification of the object.
@@ -112,7 +119,7 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   /// Reference to the gcs client.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
   /// Info about subscribers to object locations.
-  std::unordered_map<ObjectID, LocationListenerState> listeners_;
+  absl::flat_hash_map<ObjectID, LocationListenerState> listeners_;
   /// The client call manager used to create the RPC clients.
   rpc::ClientCallManager client_call_manager_;
   /// The object location subscriber.
@@ -125,7 +132,12 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   std::function<void(const ObjectID &, const rpc::ErrorType &)> mark_as_failed_;
 
   /// A buffer for batch object location updates.
-  absl::flat_hash_map<WorkerID, absl::flat_hash_map<ObjectID, rpc::ObjectLocationState>>
+  /// owner id -> {(FIFO object queue (to avoid starvation), map for the latest update of
+  /// objects)}. Since absl::flat_hash_map doesn't maintain the insertion order, we use a
+  /// deque here to achieve FIFO.
+  absl::flat_hash_map<WorkerID,
+                      std::pair<std::deque<ObjectID>,
+                                absl::flat_hash_map<ObjectID, rpc::ObjectLocationUpdate>>>
       location_buffers_;
 
   /// A set of in-flight UpdateObjectLocationBatch requests.
@@ -138,7 +150,8 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   /// Internal callback function used by object location subscription.
   void ObjectLocationSubscriptionCallback(
       const rpc::WorkerObjectLocationsPubMessage &location_info,
-      const ObjectID &object_id, bool location_lookup_failed);
+      const ObjectID &object_id,
+      bool location_lookup_failed);
 
   /// Send object location update batch from the location_buffers_.
   /// We only allow 1 in-flight request per owner for the batch request
@@ -168,6 +181,8 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   double metrics_num_object_location_updates_per_second_;
 
   uint64_t cum_metrics_num_object_location_updates_;
+
+  friend class OwnershipBasedObjectDirectoryTest;
 };
 
 }  // namespace ray

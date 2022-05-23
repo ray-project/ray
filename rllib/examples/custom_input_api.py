@@ -20,22 +20,22 @@ from ray.tune.registry import register_input
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--run",
-    type=str,
-    default="CQL",
-    help="The RLlib-registered algorithm to use.")
+    "--run", type=str, default="CQL", help="The RLlib-registered algorithm to use."
+)
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "tfe", "torch"],
     default="tf",
-    help="The DL framework specifier.")
+    help="The DL framework specifier.",
+)
 parser.add_argument("--stop-iters", type=int, default=100)
 parser.add_argument(
     "--input-files",
     type=str,
     default=os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        "../tests/data/pendulum/small.json"))
+        os.path.dirname(os.path.abspath(__file__)), "../tests/data/pendulum/small.json"
+    ),
+)
 
 
 class CustomJsonReader(JsonReader):
@@ -80,13 +80,12 @@ if __name__ == "__main__":
 
     # config modified from rllib/tuned_examples/cql/pendulum-cql.yaml
     config = {
-        "env": "Pendulum-v0",
+        "env": "Pendulum-v1",
         # we can either use the tune registry, class path, or direct function
         # to connect our input api.
         "input": "custom_input",
         # "input": "ray.rllib.examples.custom_input_api.CustomJsonReader",
         # "input": input_creator,
-
         # this gets passed to the IOContext
         "input_config": {
             "input_files": args.input_files,
@@ -98,15 +97,15 @@ if __name__ == "__main__":
         "train_batch_size": 2000,
         "learning_starts": 0,
         "bc_iters": 100,
-        "metrics_smoothing_episodes": 5,
+        "metrics_num_episodes_for_smoothing": 5,
         "evaluation_interval": 1,
         "evaluation_num_workers": 2,
-        "evaluation_num_episodes": 10,
+        "evaluation_duration": 10,
         "evaluation_parallel_to_training": True,
         "evaluation_config": {
             "input": "sampler",
             "explore": False,
-        }
+        },
     }
 
     stop = {

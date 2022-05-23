@@ -24,8 +24,8 @@ public class GcsClient {
 
   private GlobalStateAccessor globalStateAccessor;
 
-  public GcsClient(String redisAddress, String redisPassword) {
-    globalStateAccessor = GlobalStateAccessor.getInstance(redisAddress, redisPassword);
+  public GcsClient(String bootstrapAddress, String redisPassword) {
+    globalStateAccessor = GlobalStateAccessor.getInstance(bootstrapAddress, redisPassword);
   }
 
   /**
@@ -43,11 +43,11 @@ public class GcsClient {
    * Get a placement group by name.
    *
    * @param name Name of the placement group.
-   * @param global Whether the named placement group is global.
+   * @param namespace The namespace of the placement group.
    * @return The placement group.
    */
-  public PlacementGroup getPlacementGroupInfo(String name, boolean global) {
-    byte[] result = globalStateAccessor.getPlacementGroupInfo(name, global);
+  public PlacementGroup getPlacementGroupInfo(String name, String namespace) {
+    byte[] result = globalStateAccessor.getPlacementGroupInfo(name, namespace);
     return result == null ? null : PlacementGroupUtils.generatePlacementGroupFromByteArray(result);
   }
 
@@ -66,8 +66,8 @@ public class GcsClient {
     return placementGroups;
   }
 
-  public String getInternalKV(String key) {
-    byte[] value = globalStateAccessor.getInternalKV(key);
+  public String getInternalKV(String ns, String key) {
+    byte[] value = globalStateAccessor.getInternalKV(ns, key);
     return value == null ? null : new String(value);
   }
 
@@ -161,6 +161,20 @@ public class GcsClient {
       throw new RuntimeException("Received invalid protobuf data from GCS.");
     }
     return nodeInfo;
+  }
+
+  public byte[] getActorAddress(ActorId actorId) {
+    byte[] serializedActorInfo = globalStateAccessor.getActorInfo(actorId);
+    if (serializedActorInfo == null) {
+      return null;
+    }
+
+    try {
+      Gcs.ActorTableData actorTableData = Gcs.ActorTableData.parseFrom(serializedActorInfo);
+      return actorTableData.getAddress().toByteArray();
+    } catch (InvalidProtocolBufferException e) {
+      throw new RuntimeException("Received invalid protobuf data from GCS.");
+    }
   }
 
   /** Destroy global state accessor when ray native runtime will be shutdown. */

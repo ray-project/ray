@@ -1,0 +1,23 @@
+two-step-game-qmix-with-qmix-mixer:
+    env: ray.rllib.examples.env.two_step_game.TwoStepGameWithGroupedAgents
+    run: QMIX
+    stop:
+        episode_reward_mean: 8.0
+        timesteps_total: 70000
+    config:
+        # QMIX only supports torch for now.
+        framework: torch
+
+        env_config:
+            env_config:
+              separate_state_space: true
+              one_hot_state_encoding: true
+
+        # W/o this setting, won't get to 8.0 reward.
+        exploration_config:
+            final_epsilon: 0.0
+
+        rollout_fragment_length: 4
+        train_batch_size: 32
+        num_workers: 0
+        mixer: qmix

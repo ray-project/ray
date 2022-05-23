@@ -1,9 +1,10 @@
+import asyncio
 import logging
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.memory_utils as memory_utils
+
 # TODO(fyrestone): Not import from dashboard module.
-from ray.dashboard.modules.actor.actor_utils import \
-    actor_classname_from_task_spec
+from ray.dashboard.modules.actor.actor_utils import actor_classname_from_task_spec
 from ray.dashboard.utils import Dict, Signal, async_loop_forever
 
 logger = logging.getLogger(__name__)
@@ -110,11 +111,20 @@ class DataOrganizer:
         pid_to_worker_stats = {}
         pid_to_language = {}
         pid_to_job_id = {}
+        pids_on_node = set()
         for core_worker_stats in node_stats.get("coreWorkersStats", []):
             pid = core_worker_stats["pid"]
+            pids_on_node.add(pid)
             pid_to_worker_stats.setdefault(pid, []).append(core_worker_stats)
             pid_to_language[pid] = core_worker_stats["language"]
             pid_to_job_id[pid] = core_worker_stats["jobId"]
+
+        # Clean up logs from a dead pid.
+        dead_pids = set(node_logs.keys()) - pids_on_node
+        for dead_pid in dead_pids:
+            if dead_pid in node_logs:
+                node_logs.mutable().pop(dead_pid)
+
         for worker in node_physical_stats.get("workers", []):
             worker = dict(worker)
             pid = worker["pid"]
@@ -122,9 +132,9 @@ class DataOrganizer:
             worker["errorCount"] = len(node_errs.get(str(pid), []))
             worker["coreWorkerStats"] = pid_to_worker_stats.get(pid, [])
             worker["language"] = pid_to_language.get(
-                pid, dashboard_consts.DEFAULT_LANGUAGE)
-            worker["jobId"] = pid_to_job_id.get(
-                pid, dashboard_consts.DEFAULT_JOB_ID)
+                pid, dashboard_consts.DEFAULT_LANGUAGE
+            )
+            worker["jobId"] = pid_to_job_id.get(pid, dashboard_consts.DEFAULT_JOB_ID)
 
             await GlobalSignals.worker_info_fetched.send(node_id, worker)
 
@@ -133,8 +143,7 @@ class DataOrganizer:
 
     @classmethod
     async def get_node_info(cls, node_id):
-        node_physical_stats = dict(
-            DataSource.node_physical_stats.get(node_id, {}))
+        node_physical_stats = dict(DataSource.node_physical_stats.get(node_id, {}))
         node_stats = dict(DataSource.node_stats.get(node_id, {}))
         node = DataSource.nodes.get(node_id, {})
         node_ip = DataSource.node_id_to_ip.get(node_id)
@@ -152,8 +161,8 @@ class DataOrganizer:
 
         view_data = node_stats.get("viewData", [])
         ray_stats = cls._extract_view_data(
-            view_data,
-            {"object_store_used_memory", "object_store_available_memory"})
+            view_data, {"object_store_used_memory", "object_store_available_memory"}
+        )
 
         node_info = node_physical_stats
         # Merge node stats to node physical stats under raylet
@@ -174,8 +183,7 @@ class DataOrganizer:
 
     @classmethod
     async def get_node_summary(cls, node_id):
-        node_physical_stats = dict(
-            DataSource.node_physical_stats.get(node_id, {}))
+        node_physical_stats = dict(DataSource.node_physical_stats.get(node_id, {}))
         node_stats = dict(DataSource.node_stats.get(node_id, {}))
         node = DataSource.nodes.get(node_id, {})
 
@@ -183,8 +191,8 @@ class DataOrganizer:
         node_stats.pop("workersStats", None)
         view_data = node_stats.get("viewData", [])
         ray_stats = cls._extract_view_data(
-            view_data,
-            {"object_store_used_memory", "object_store_available_memory"})
+            view_data, {"object_store_used_memory", "object_store_available_memory"}
+        )
         node_stats.pop("viewData", None)
 
         node_summary = node_physical_stats
@@ -214,18 +222,29 @@ class DataOrganizer:
 
     @classmethod
     async def get_all_actors(cls):
-        return {
-            actor_id: await cls._get_actor(actor)
-            for actor_id, actor in DataSource.actors.items()
-        }
+        result = {}
+        for index, (actor_id, actor) in enumerate(DataSource.actors.items()):
+            result[actor_id] = await cls._get_actor(actor)
+            # There can be thousands of actors including dead ones. Processing
+            # them all can take many seconds, which blocks all other requests
+            # to the dashboard. The ideal solution might be to implement
+            # pagination. For now, use a workaround to yield to the event loop
+            # periodically, so other request handlers have a chance to run and
+            # avoid long latencies.
+            if index % 1000 == 0 and index > 0:
+                # Canonical way to yield to the event loop:
+                # https://github.com/python/asyncio/issues/284
+                await asyncio.sleep(0)
+        return result
 
     @staticmethod
     async def _get_actor(actor):
         actor = dict(actor)
         worker_id = actor["address"]["workerId"]
         core_worker_stats = DataSource.core_worker_stats.get(worker_id, {})
-        actor_constructor = core_worker_stats.get("actorTitle",
-                                                  "Unknown actor constructor")
+        actor_constructor = core_worker_stats.get(
+            "actorTitle", "Unknown actor constructor"
+        )
         actor["actorConstructor"] = actor_constructor
         actor.update(core_worker_stats)
 
@@ -243,7 +262,9 @@ class DataOrganizer:
                     break
 
             for gpu_stats in node_physical_stats.get("gpus", []):
-                for process in gpu_stats.get("processes", []):
+                # gpu_stats.get("processes") can be None, an empty list or a
+                # list of dictionaries.
+                for process in gpu_stats.get("processes") or []:
                     if process["pid"] == pid:
                         actor_process_gpu_stats.append(gpu_stats)
                         break
@@ -255,8 +276,12 @@ class DataOrganizer:
     @classmethod
     async def get_actor_creation_tasks(cls):
         infeasible_tasks = sum(
-            (list(node_stats.get("infeasibleTasks", []))
-             for node_stats in DataSource.node_stats.values()), [])
+            (
+                list(node_stats.get("infeasibleTasks", []))
+                for node_stats in DataSource.node_stats.values()
+            ),
+            [],
+        )
         new_infeasible_tasks = []
         for task in infeasible_tasks:
             task = dict(task)
@@ -265,8 +290,12 @@ class DataOrganizer:
             new_infeasible_tasks.append(task)
 
         resource_pending_tasks = sum(
-            (list(data.get("readyTasks", []))
-             for data in DataSource.node_stats.values()), [])
+            (
+                list(data.get("readyTasks", []))
+                for data in DataSource.node_stats.values()
+            ),
+            [],
+        )
         new_resource_pending_tasks = []
         for task in resource_pending_tasks:
             task = dict(task)
@@ -281,14 +310,17 @@ class DataOrganizer:
         return results
 
     @classmethod
-    async def get_memory_table(cls,
-                               sort_by=memory_utils.SortingType.OBJECT_SIZE,
-                               group_by=memory_utils.GroupByType.STACK_TRACE):
+    async def get_memory_table(
+        cls,
+        sort_by=memory_utils.SortingType.OBJECT_SIZE,
+        group_by=memory_utils.GroupByType.STACK_TRACE,
+    ):
         all_worker_stats = []
         for node_stats in DataSource.node_stats.values():
             all_worker_stats.extend(node_stats.get("coreWorkersStats", []))
         memory_information = memory_utils.construct_memory_table(
-            all_worker_stats, group_by=group_by, sort_by=sort_by)
+            all_worker_stats, group_by=group_by, sort_by=sort_by
+        )
         return memory_information
 
     @staticmethod

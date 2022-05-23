@@ -12,9 +12,13 @@ from .interface import _SourceShard
 
 
 class ParquetSourceShard(_SourceShard):
-    def __init__(self, data_pieces: List[pq.ParquetDatasetPiece],
-                 columns: Optional[List[str]],
-                 partitions: Optional[pq.ParquetPartitions], shard_id: int):
+    def __init__(
+        self,
+        data_pieces: List[pq.ParquetDatasetPiece],
+        columns: Optional[List[str]],
+        partitions: Optional[pq.ParquetPartitions],
+        shard_id: int,
+    ):
         self._data_pieces = data_pieces
         self._columns = columns
         self._partitions = partitions
@@ -30,19 +34,20 @@ class ParquetSourceShard(_SourceShard):
     def __iter__(self) -> Iterable[DataFrame]:
         for piece in self._data_pieces:
             yield piece.read(
-                columns=self._columns,
-                use_threads=False,
-                partitions=self._partitions).to_pandas()
+                columns=self._columns, use_threads=False, partitions=self._partitions
+            ).to_pandas()
 
 
 @Deprecated
-def read_parquet(paths: Union[str, List[str]],
-                 num_shards: int,
-                 rowgroup_split: bool = True,
-                 shuffle: bool = False,
-                 shuffle_seed: int = None,
-                 columns: Optional[List[str]] = None,
-                 **kwargs) -> MLDataset:
+def read_parquet(
+    paths: Union[str, List[str]],
+    num_shards: int,
+    rowgroup_split: bool = True,
+    shuffle: bool = False,
+    shuffle_seed: int = None,
+    columns: Optional[List[str]] = None,
+    **kwargs,
+) -> MLDataset:
     """Read parquet format data from hdfs like filesystem into a MLDataset.
 
     .. code-block:: python
@@ -81,16 +86,23 @@ def read_parquet(paths: Union[str, List[str]],
             num_row_groups = piece.get_metadata().to_dict()["num_row_groups"]
             for i in range(num_row_groups):
                 data_pieces.append(
-                    pq.ParquetDatasetPiece(piece.path, piece.open_file_func,
-                                           piece.file_options, i,
-                                           piece.partition_keys))
+                    pq.ParquetDatasetPiece(
+                        piece.path,
+                        piece.open_file_func,
+                        piece.file_options,
+                        i,
+                        piece.partition_keys,
+                    )
+                )
     else:
         # split base on file pieces
         data_pieces = pieces.copy()
 
     if len(data_pieces) < num_shards:
-        raise ValueError(f"number of data pieces: {len(data_pieces)} should "
-                         f"larger than num_shards: {num_shards}")
+        raise ValueError(
+            f"number of data pieces: {len(data_pieces)} should "
+            f"larger than num_shards: {num_shards}"
+        )
 
     if shuffle:
         random_shuffle = random.Random(shuffle_seed)
@@ -101,9 +113,14 @@ def read_parquet(paths: Union[str, List[str]],
         if item.row_group is None:
             for number in item.get_metadata().to_dict()["num_row_groups"]:
                 shard.append(
-                    pq.ParquetDatasetPiece(item.path, item.open_file_func,
-                                           item.file_options, number,
-                                           item.partition_keys))
+                    pq.ParquetDatasetPiece(
+                        item.path,
+                        item.open_file_func,
+                        item.file_options,
+                        number,
+                        item.partition_keys,
+                    )
+                )
         else:
             shard.append(item)
 

@@ -44,21 +44,26 @@ from ray.rllib.env.policy_client import PolicyClient
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--no-train", action="store_true", help="Whether to disable training.")
+    "--no-train", action="store_true", help="Whether to disable training."
+)
 parser.add_argument(
-    "--inference-mode", type=str, default="local", choices=["local", "remote"])
+    "--inference-mode", type=str, default="local", choices=["local", "remote"]
+)
 parser.add_argument(
     "--off-policy",
     action="store_true",
     help="Whether to compute random actions instead of on-policy "
-    "(Policy-computed) ones.")
+    "(Policy-computed) ones.",
+)
 parser.add_argument(
     "--stop-reward",
     type=float,
     default=9999,
-    help="Stop once the specified reward is reached.")
+    help="Stop once the specified reward is reached.",
+)
 parser.add_argument(
-    "--port", type=int, default=9900, help="The port to use (on localhost).")
+    "--port", type=int, default=9900, help="The port to use (on localhost)."
+)
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -76,7 +81,8 @@ if __name__ == "__main__":
     # Note that no config is needed in this script as it will be defined
     # on and sent from the server.
     client = PolicyClient(
-        f"http://localhost:{args.port}", inference_mode=args.inference_mode)
+        f"http://localhost:{args.port}", inference_mode=args.inference_mode
+    )
 
     # In the following, we will use our external environment (the CartPole
     # env we created above) in connection with the PolicyClient to query

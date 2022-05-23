@@ -1,7 +1,7 @@
 import unittest
 
 import ray
-from ray.rllib.agents.pg import PGTrainer, DEFAULT_CONFIG
+from ray.rllib.algorithms.pg import PGTrainer, DEFAULT_CONFIG
 from ray.rllib.utils.test_utils import framework_iterator
 
 
@@ -26,4 +26,5 @@ class LocalModeTest(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

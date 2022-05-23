@@ -112,10 +112,10 @@ def slow(test_case):
 
 
 def generate_data(
-        input_features,
-        output_features,
-        filename="test_csv.csv",
-        num_examples=25,
+    input_features,
+    output_features,
+    filename="test_csv.csv",
+    num_examples=25,
 ):
     """
     Helper method to generate synthetic data based on input, output feature
@@ -144,9 +144,7 @@ def numerical_feature(normalization=None, **kwargs):
     feature = {
         "name": "num_" + random_string(),
         "type": "numerical",
-        "preprocessing": {
-            "normalization": normalization
-        },
+        "preprocessing": {"normalization": normalization},
     }
     feature.update(kwargs)
     feature[COLUMN] = feature[NAME]
@@ -334,11 +332,7 @@ def h3_feature(**kwargs):
 
 
 def vector_feature(**kwargs):
-    feature = {
-        "type": VECTOR,
-        "vector_size": 5,
-        "name": "vector_" + random_string()
-    }
+    feature = {"type": VECTOR, "vector_size": 5, "name": "vector_" + random_string()}
     feature.update(kwargs)
     feature[COLUMN] = feature[NAME]
     feature[PROC_COLUMN] = compute_feature_hash(feature)
@@ -346,12 +340,12 @@ def vector_feature(**kwargs):
 
 
 def run_experiment(
-        input_features,
-        output_features,
-        skip_save_processed_input=True,
-        config=None,
-        backend=None,
-        **kwargs,
+    input_features,
+    output_features,
+    skip_save_processed_input=True,
+    config=None,
+    backend=None,
+    **kwargs,
 ):
     """
     Helper method to avoid code repetition in running an experiment. Deletes
@@ -368,13 +362,8 @@ def run_experiment(
         config = {
             "input_features": input_features,
             "output_features": output_features,
-            "combiner": {
-                "type": "concat",
-                "fc_size": 14
-            },
-            "training": {
-                "epochs": 2
-            },
+            "combiner": {"type": "concat", "fc_size": 14},
+            "training": {"epochs": 2},
         }
 
     args = {
@@ -424,13 +413,12 @@ def generate_output_features_with_dependencies(main_feature, dependencies):
     }
 
     # generate list of dependencies with real feature names
-    generated_dependencies = [
-        feature_names[feat_name][1] for feat_name in dependencies
-    ]
+    generated_dependencies = [feature_names[feat_name][1] for feat_name in dependencies]
 
     # specify dependencies for the main_feature
     output_features[feature_names[main_feature][0]][
-        "dependencies"] = generated_dependencies
+        "dependencies"
+    ] = generated_dependencies
 
     return output_features
 
@@ -462,7 +450,8 @@ def spawn(fn):
         if isinstance(results, Exception):
             raise RuntimeError(
                 f"Spawned subprocess raised {type(results).__name__}, "
-                f"check log output above for stack trace.")
+                f"check log output above for stack trace."
+            )
         return results
 
     return wrapped_fn
@@ -479,13 +468,8 @@ def run_api_experiment(input_features, output_features, data_csv):
     config = {
         "input_features": input_features,
         "output_features": output_features,
-        "combiner": {
-            "type": "concat",
-            "fc_size": 14
-        },
-        "training": {
-            "epochs": 2
-        },
+        "combiner": {"type": "concat", "fc_size": 14},
+        "training": {"epochs": 2},
     }
 
     model = LudwigModel(config)
@@ -540,8 +524,7 @@ def create_data_set_to_use(data_format, raw_data):
     from tabulate import tabulate
 
     def to_fwf(df, fname):
-        content = tabulate(
-            df.values.tolist(), list(df.columns), tablefmt="plain")
+        content = tabulate(df.values.tolist(), list(df.columns), tablefmt="plain")
         open(fname, "w").write(content)
 
     pd.DataFrame.to_fwf = to_fwf
@@ -582,8 +565,7 @@ def create_data_set_to_use(data_format, raw_data):
 
     elif data_format == "jsonl":
         dataset_to_use = replace_file_extension(raw_data, "jsonl")
-        pd.read_csv(raw_data).to_json(
-            dataset_to_use, orient="records", lines=True)
+        pd.read_csv(raw_data).to_json(dataset_to_use, orient="records", lines=True)
 
     elif data_format == "parquet":
         dataset_to_use = replace_file_extension(raw_data, "parquet")
@@ -608,14 +590,14 @@ def create_data_set_to_use(data_format, raw_data):
 
 
 def train_with_backend(
-        backend,
-        config,
-        dataset=None,
-        training_set=None,
-        validation_set=None,
-        test_set=None,
-        predict=True,
-        evaluate=True,
+    backend,
+    config,
+    dataset=None,
+    training_set=None,
+    validation_set=None,
+    test_set=None,
+    predict=True,
+    evaluate=True,
 ):
     model = LudwigModel(config, backend=backend)
     output_dir = None

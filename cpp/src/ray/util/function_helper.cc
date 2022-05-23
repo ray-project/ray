@@ -13,9 +13,11 @@
 // limitations under the License.
 
 #include "function_helper.h"
+
 #include <boost/filesystem.hpp>
 #include <boost/range/iterator_range.hpp>
 #include <memory>
+
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -51,7 +53,7 @@ void FunctionHelper::LoadDll(const boost::filesystem::path &lib_path) {
 
   try {
     auto entry_func = boost::dll::import_alias<msgpack::sbuffer(
-        const std::string &, const std::vector<msgpack::sbuffer> &, msgpack::sbuffer *)>(
+        const std::string &, const ArgsBufferList &, msgpack::sbuffer *)>(
         *lib, "TaskExecutionHandler");
     auto function_names = LoadAllRemoteFunctions(lib_path.string(), *lib, entry_func);
     if (function_names.empty()) {
@@ -84,6 +86,14 @@ std::string FunctionHelper::LoadAllRemoteFunctions(const std::string lib_path,
                      << "' not found in " << lib_path;
     return "";
   }
+  // Both default worker and user dynamic library static link libray_api.so which has a
+  // singleton class RayRuntimeHolder, the user dynamic library will get a new un-init
+  // instance of RayRuntimeHolder, so we need to init the RayRuntimeHolder singleton when
+  // loading the user dynamic library to make sure the new instance valid.
+  auto init_func =
+      boost::dll::import_alias<void(std::shared_ptr<RayRuntime>)>(lib, "InitRayRuntime");
+  init_func(RayRuntimeHolder::Instance().Runtime());
+
   auto get_remote_func = boost::dll::import_alias<
       std::pair<const RemoteFunctionMap_t &, const RemoteMemberFunctionMap_t &>()>(
       lib, internal_function_name);

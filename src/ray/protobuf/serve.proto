@@ -43,42 +43,57 @@ message AutoscalingConfig {
 
   // The multiplicative "gain" factor to limit scaling decisions.
   double smoothing_factor = 6;
+
+  // How long to wait before scaling down replicas.
+  double downscale_delay_s = 7;
+
+  // How long to wait before scaling up replicas.
+  double upscale_delay_s = 8;
 }
 
-// Configuration options for a backend, to be set by the user.
-message BackendConfig {
-  // The number of processes to start up that will handle requests to this backend.
+// Configuration options for a deployment, to be set by the user.
+message DeploymentConfig {
+  // The number of processes to start up that will handle requests to this deployment.
   // Defaults to 1.
   int32 num_replicas = 1;
 
-  // The maximum number of queries that will be sent to a replica of this backend without
-  // receiving a response. Defaults to 100.
+  // The maximum number of queries that will be sent to a replica of this deployment
+  // without receiving a response. Defaults to 100.
   int32 max_concurrent_queries = 2;
 
-  // Arguments to pass to the reconfigure method of the backend. The reconfigure method is
-  // called if user_config is not None.
+  // Arguments to pass to the reconfigure method of the deployment. The reconfigure method
+  // is called if user_config is not None.
   bytes user_config = 3;
 
-  // Duration that backend workers will wait until there is no more work to be done before
-  // shutting down. Defaults to 2s.
+  // Duration that deployment replicas will wait until there is no more work to be done
+  // before shutting down.
   double graceful_shutdown_wait_loop_s = 4;
 
   // Controller waits for this duration to forcefully kill the replica for shutdown.
-  // Defaults to 20s.
   double graceful_shutdown_timeout_s = 5;
 
-  // Is the construction of backend is cross language?
-  bool is_cross_language = 6;
+  // Frequency at which the controller health checks replicas.
+  double health_check_period_s = 6;
 
-  // The backend's programming language.
-  BackendLanguage backend_language = 7;
+  // Timeout after which a replica is marked unhealthy without a response.
+  double health_check_timeout_s = 7;
 
-  // The backend's autoscaling configuration.
-  AutoscalingConfig autoscaling_config = 8;
+  // Is the construction of deployment is cross language?
+  bool is_cross_language = 8;
+
+  // The deployment's programming language.
+  DeploymentLanguage deployment_language = 9;
+
+  // The deployment's autoscaling configuration.
+  AutoscalingConfig autoscaling_config = 10;
+
+  string version = 11;
+
+  string prev_version = 12;
 }
 
-// Backend language.
-enum BackendLanguage {
+// Deployment language.
+enum DeploymentLanguage {
   PYTHON = 0;
   JAVA = 1;
 }
@@ -89,6 +104,8 @@ message RequestMetadata {
   string endpoint = 2;
 
   string call_method = 3;
+
+  map<string, string> context = 4;
 }
 
 message RequestWrapper {
@@ -118,11 +135,66 @@ message EndpointSet {
   map<string, EndpointInfo> endpoints = 1;
 }
 
+// Now Actor handle can be transfered across language through ray call, but the list of
+// Actor handles can't. So we use this message wrapped a Actor name list to pass actor
+// list across language. When Actor handle list supports across language, this message can
+// be replaced.
+message ActorNameList {
+  repeated string names = 1;
+}
+
+// It is deprecated. Use ActorNameList instead.
 message ActorSet {
   repeated string names = 1;
 }
 
-message BackendVersion {
+message DeploymentVersion {
   string code_version = 1;
   bytes user_config = 2;
+}
+
+message ReplicaConfig {
+  bytes serialized_deployment_def = 1;
+  bytes init_args = 2;
+  bytes init_kwargs = 3;
+  string ray_actor_options = 4;
+}
+
+message DeploymentInfo {
+  string name = 1;
+  DeploymentConfig deployment_config = 2;
+  ReplicaConfig replica_config = 3;
+  int64 start_time_ms = 4;
+  string actor_name = 5;
+  bytes serialized_deployment_def = 6;
+  string version = 7;
+  int64 end_time_ms = 8;
+}
+
+// Wrap DeploymentInfo and route. The "" route value need to be convert to None/null.
+message DeploymentRoute {
+  DeploymentInfo deployment_info = 1;
+  string route = 2;
+}
+
+// Wrap a list for DeploymentRoute.
+message DeploymentRouteList {
+  repeated DeploymentRoute deployment_routes = 1;
+}
+
+enum DeploymentStatus {
+  UPDATING = 0;
+  HEALTHY = 1;
+  UNHEALTHY = 2;
+}
+
+message DeploymentStatusInfo {
+  string name = 1;
+  DeploymentStatus status = 2;
+  string message = 3;
+}
+
+// Wrap a list for DeploymentStatusInfo.
+message DeploymentStatusInfoList {
+  repeated DeploymentStatusInfo deployment_status_infos = 1;
 }

@@ -1,12 +1,6 @@
 import dayjs from "dayjs";
 import low from "lowlight";
-import React, {
-  CSSProperties,
-  MutableRefObject,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import React, { MutableRefObject, useEffect, useRef, useState } from "react";
 import { FixedSizeList as List } from "react-window";
 import "./darcula.css";
 import "./github.css";
@@ -112,18 +106,12 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
   if (listRef) {
     listRef.current = outter.current;
   }
-  const itemRenderer = ({
-    index,
-    style: s,
-  }: {
-    index: number;
-    style: CSSProperties;
-  }) => {
+  const itemRenderer = ({ index, style }: { index: number; style: any }) => {
     const { i, origin } = logs[revert ? logs.length - 1 - index : index];
     return (
       <div
         key={`${index}list`}
-        style={{ ...s, overflowX: "visible", whiteSpace: "pre" }}
+        style={{ ...style, overflowX: "visible", whiteSpace: "pre" }}
       >
         <span
           style={{
@@ -183,6 +171,7 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
   }, [focusLine, fontSize]);
 
   useEffect(() => {
+    let outterCurrentValue: any = null;
     if (outter.current) {
       const scrollFunc = (event: any) => {
         const { target } = event;
@@ -194,9 +183,14 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
             onScrollBottom(event);
           }
         }
+        outterCurrentValue = outter.current;
       };
       outter.current.addEventListener("scroll", scrollFunc);
-      return () => outter?.current?.removeEventListener("scroll", scrollFunc);
+      return () => {
+        if (outterCurrentValue) {
+          outterCurrentValue.removeEventListener("scroll", scrollFunc);
+        }
+      };
     }
   }, [onScrollBottom]);
 

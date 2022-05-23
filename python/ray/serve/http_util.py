@@ -1,13 +1,21 @@
 import asyncio
+import socket
 from dataclasses import dataclass
 import inspect
 import json
-from typing import Any, Dict, List, Optional, Tuple, Type
+import logging
+from typing import Any, Dict, Type
 
 import starlette.responses
 import starlette.requests
+from starlette.types import Send, ASGIApp
+from fastapi.encoders import jsonable_encoder
 
 from ray.serve.exceptions import RayServeException
+from ray.serve.constants import SERVE_LOGGER_NAME
+
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 @dataclass
@@ -38,11 +46,7 @@ def build_starlette_request(scope, serialized_body: bytes):
             await block_forever.wait()
 
         received = True
-        return {
-            "body": serialized_body,
-            "type": "http.request",
-            "more_body": False
-        }
+        return {"body": serialized_body, "type": "http.request", "more_body": False}
 
     return starlette.requests.Request(scope, mock_receive)
 
@@ -53,7 +57,9 @@ class Response:
     It is expected to be called in async context and pass along
     `scope, receive, send` as in ASGI spec.
 
-    >>> await Response({"k": "v"}).send(scope, receive, send)
+    >>> from ray.serve.http_util import Response
+    >>> scope, receive = ... # doctest: +SKIP
+    >>> await Response({"k": "v"}).send(scope, receive, send) # doctest: +SKIP
     """
 
     def __init__(self, content=None, status_code=200):
@@ -77,28 +83,31 @@ class Response:
             self.set_content_type("text-utf8")
         else:
             # Delayed import since utils depends on http_util
-            from ray.serve.utils import ServeEncoder
+            from ray.serve.utils import serve_encoders
+
             self.body = json.dumps(
-                content, cls=ServeEncoder, indent=2).encode()
+                jsonable_encoder(content, custom_encoder=serve_encoders)
+            ).encode()
             self.set_content_type("json")
 
     def set_content_type(self, content_type):
         if content_type == "text":
             self.raw_headers.append([b"content-type", b"text/plain"])
         elif content_type == "text-utf8":
-            self.raw_headers.append(
-                [b"content-type", b"text/plain; charset=utf-8"])
+            self.raw_headers.append([b"content-type", b"text/plain; charset=utf-8"])
         elif content_type == "json":
             self.raw_headers.append([b"content-type", b"application/json"])
         else:
             raise ValueError("Invalid content type {}".format(content_type))
 
     async def send(self, scope, receive, send):
-        await send({
-            "type": "http.response.start",
-            "status": self.status_code,
-            "headers": self.raw_headers,
-        })
+        await send(
+            {
+                "type": "http.response.start",
+                "status": self.status_code,
+                "headers": self.raw_headers,
+            }
+        )
         await send({"type": "http.response.body", "body": self.body})
 
 
@@ -115,29 +124,39 @@ async def receive_http_body(scope, receive, send):
     return b"".join(body_buffer)
 
 
-class ASGIHTTPSender:
-    """Implement the interface for ASGI sender, build Starlette Response"""
+class RawASGIResponse(ASGIApp):
+    """Implement a raw ASGI response interface.
+
+    We have to build this because starlette's base response class is
+    still too smart and perform header inference.
+    """
+
+    def __init__(self, messages):
+        self.messages = messages
+
+    async def __call__(self, _scope, _receive, send):
+        for message in self.messages:
+            await send(message)
+
+    @property
+    def status_code(self):
+        return self.messages[0]["status"]
+
+
+class ASGIHTTPSender(Send):
+    """Implement the interface for ASGI sender to save data from varisous
+    asgi response type (fastapi, starlette, etc.)
+    """
 
     def __init__(self) -> None:
-        self.status_code: Optional[int] = 200
-        self.headers: List[Tuple[bytes, bytes]] = []
-        self.buffer: List[bytes] = []
+        self.messages = []
 
     async def __call__(self, message):
-        if (message["type"] == "http.response.start"):
-            self.status_code = message["status"]
-            self.headers = message["headers"]
-        elif (message["type"] == "http.response.body"):
-            self.buffer.append(message["body"])
-        else:
-            raise ValueError("ASGI type must be one of "
-                             "http.responses.{body,start}.")
+        assert message["type"] in ("http.response.start", "http.response.body")
+        self.messages.append(message)
 
-    def build_starlette_response(self) -> starlette.responses.Response:
-        resp = starlette.responses.Response(
-            b"".join(self.buffer), status_code=self.status_code)
-        resp.raw_headers.extend(self.headers)
-        return resp
+    def build_asgi_response(self) -> RawASGIResponse:
+        return RawASGIResponse(self.messages)
 
 
 def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
@@ -147,13 +166,14 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
     https://github.com/dmontagu/fastapi-utils/blob/master/fastapi_utils/cbv.py
 
     Usage:
-    >>> app = FastAPI()
-    >>> class A:
-            @app.route("/{i}")
-            def func(self, i: int) -> str:
-                return self.dep + i
+    >>> from fastapi import FastAPI
+    >>> app = FastAPI() # doctest: +SKIP
+    >>> class A: # doctest: +SKIP
+    ...     @app.route("/{i}") # doctest: +SKIP
+    ...     def func(self, i: int) -> str: # doctest: +SKIP
+    ...         return self.dep + i # doctest: +SKIP
     >>> # just running the app won't work, here.
-    >>> make_fastapi_class_based_view(app, A)
+    >>> make_fastapi_class_based_view(app, A) # doctest: +SKIP
     >>> # now app can be run properly
     """
     # Delayed import to prevent ciruclar imports in workers.
@@ -162,11 +182,14 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
 
     def get_current_servable_instance():
         from ray import serve
+
         return serve.get_replica_context().servable_object
 
     # Find all the class method routes
     class_method_routes = [
-        route for route in fastapi_app.routes if
+        route
+        for route in fastapi_app.routes
+        if
         # User defined routes must all be APIRoute.
         isinstance(route, APIRoute)
         # We want to find the route that's bound to the `cls`.
@@ -195,10 +218,12 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
             # TODO(simon): make it more flexible to support no arguments.
             raise RayServeException(
                 "Methods in FastAPI class-based view must have ``self`` as "
-                "their first argument.")
+                "their first argument."
+            )
         old_self_parameter = old_parameters[0]
         new_self_parameter = old_self_parameter.replace(
-            default=Depends(get_current_servable_instance))
+            default=Depends(get_current_servable_instance)
+        )
         new_parameters = [new_self_parameter] + [
             # Make the rest of the parameters keyword only because
             # the first argument is no longer positional.
@@ -211,22 +236,52 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
         new_router.routes.append(route)
     fastapi_app.include_router(new_router)
 
-    routes = fastapi_app.routes
-    for route in routes:
+    routes_to_remove = list()
+    for route in fastapi_app.routes:
         if not isinstance(route, APIRoute):
             continue
 
         # If there is a response model, FastAPI creates a copy of the fields.
         # But FastAPI creates the field incorrectly by missing the outer_type_.
         if route.response_model:
-            original_resp_fields = (
-                route.response_field.outer_type_.__fields__)
+            original_resp_fields = route.response_field.outer_type_.__fields__
             cloned_resp_fields = (
-                route.secure_cloned_response_field.outer_type_.__fields__)
+                route.secure_cloned_response_field.outer_type_.__fields__
+            )
             for key, field in cloned_resp_fields.items():
                 field.outer_type_ = original_resp_fields[key].outer_type_
 
         # Remove endpoints that belong to other class based views.
         serve_cls = getattr(route.endpoint, "_serve_cls", None)
         if serve_cls is not None and serve_cls != cls:
-            routes.remove(route)
+            routes_to_remove.append(route)
+    fastapi_app.routes[:] = [r for r in fastapi_app.routes if r not in routes_to_remove]
+
+
+def set_socket_reuse_port(sock: socket.socket) -> bool:
+    """Mutate a socket object to allow multiple process listening on the same port.
+
+    Returns:
+        success(bool): whether the setting was successful.
+    """
+    try:
+        # These two socket options will allow multiple process to bind the the
+        # same port. Kernel will evenly load balance among the port listeners.
+        # Note: this will only work on Linux.
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        if hasattr(socket, "SO_REUSEPORT"):
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        # In some Python binary distribution (e.g., conda py3.6), this flag
+        # was not present at build time but available in runtime. But
+        # Python relies on compiler flag to include this in binary.
+        # Therefore, in the absence of socket.SO_REUSEPORT, we try
+        # to use `15` which is value in linux kernel.
+        # https://github.com/torvalds/linux/blob/master/tools/include/uapi/asm-generic/socket.h#L27
+        else:
+            sock.setsockopt(socket.SOL_SOCKET, 15, 1)
+        return True
+    except Exception as e:
+        logger.debug(
+            f"Setting SO_REUSEPORT failed because of {e}. SO_REUSEPORT is disabled."
+        )
+        return False

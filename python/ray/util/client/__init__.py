@@ -1,41 +1,47 @@
 from typing import List, Tuple, Dict, Any, Optional
 from ray.job_config import JobConfig
-from ray._private.client_mode_hook import (_explicitly_disable_client_mode,
-                                           _explicitly_enable_client_mode)
+from ray._private.client_mode_hook import (
+    _explicitly_disable_client_mode,
+    _explicitly_enable_client_mode,
+)
 import os
 import sys
 import logging
 import threading
 import grpc
+import ray.ray_constants as ray_constants
+from ray._private.ray_logging import setup_logger
 
 logger = logging.getLogger(__name__)
 
 # This version string is incremented to indicate breaking changes in the
 # protocol that require upgrading the client version.
-CURRENT_PROTOCOL_VERSION = "2021-09-22"
+CURRENT_PROTOCOL_VERSION = "2022-05-13"
 
 
 class _ClientContext:
     def __init__(self):
         from ray.util.client.api import ClientAPI
+
         self.api = ClientAPI()
         self.client_worker = None
         self._server = None
         self._connected_with_init = False
         self._inside_client_test = False
 
-    def connect(self,
-                conn_str: str,
-                job_config: JobConfig = None,
-                secure: bool = False,
-                metadata: List[Tuple[str, str]] = None,
-                connection_retries: int = 3,
-                namespace: str = None,
-                *,
-                ignore_version: bool = False,
-                _credentials: Optional[grpc.ChannelCredentials] = None,
-                ray_init_kwargs: Optional[Dict[str, Any]] = None
-                ) -> Dict[str, Any]:
+    def connect(
+        self,
+        conn_str: str,
+        job_config: JobConfig = None,
+        secure: bool = False,
+        metadata: List[Tuple[str, str]] = None,
+        connection_retries: int = 3,
+        namespace: str = None,
+        *,
+        ignore_version: bool = False,
+        _credentials: Optional[grpc.ChannelCredentials] = None,
+        ray_init_kwargs: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         """Connect the Ray Client to a server.
 
         Args:
@@ -52,11 +58,11 @@ class _ClientContext:
         """
         # Delay imports until connect to avoid circular imports.
         from ray.util.client.worker import Worker
+
         if self.client_worker is not None:
             if self._connected_with_init:
                 return
-            raise Exception(
-                "ray.init() called, but ray client is already connected")
+            raise Exception("ray.init() called, but ray client is already connected")
         if not self._inside_client_test:
             # If we're calling a client connect specifically and we're not
             # currently in client mode, ensure we are.
@@ -64,19 +70,26 @@ class _ClientContext:
         if namespace is not None:
             job_config = job_config or JobConfig()
             job_config.set_ray_namespace(namespace)
-        if job_config is not None:
-            runtime_env = job_config.runtime_env
-            if runtime_env.get("pip") or runtime_env.get("conda"):
-                logger.warning("The 'pip' or 'conda' field was specified in "
-                               "the runtime env, so it may take some time to "
-                               "install the environment before Ray connects.")
+
+        logging_level = ray_constants.LOGGER_LEVEL
+        logging_format = ray_constants.LOGGER_FORMAT
+
+        if ray_init_kwargs is not None:
+            if ray_init_kwargs.get("logging_level") is not None:
+                logging_level = ray_init_kwargs["logging_level"]
+            if ray_init_kwargs.get("logging_format") is not None:
+                logging_format = ray_init_kwargs["logging_format"]
+
+        setup_logger(logging_level, logging_format)
+
         try:
             self.client_worker = Worker(
                 conn_str,
                 secure=secure,
                 _credentials=_credentials,
                 metadata=metadata,
-                connection_retries=connection_retries)
+                connection_retries=connection_retries,
+            )
             self.api.worker = self.client_worker
             self.client_worker._server_init(job_config, ray_init_kwargs)
             conn_info = self.client_worker.connection_info()
@@ -95,35 +108,41 @@ class _ClientContext:
         """
         import ray.serialization_addons
         from ray.util.serialization import StandaloneSerializationContext
+
         ctx = StandaloneSerializationContext()
         ray.serialization_addons.apply(ctx)
 
-    def _check_versions(self, conn_info: Dict[str, Any],
-                        ignore_version: bool) -> None:
+    def _check_versions(self, conn_info: Dict[str, Any], ignore_version: bool) -> None:
         local_major_minor = f"{sys.version_info[0]}.{sys.version_info[1]}"
         if not conn_info["python_version"].startswith(local_major_minor):
             version_str = f"{local_major_minor}.{sys.version_info[2]}"
-            msg = "Python minor versions differ between client and server:" + \
-                  f" client is {version_str}," + \
-                  f" server is {conn_info['python_version']}"
+            msg = (
+                "Python minor versions differ between client and server:"
+                + f" client is {version_str},"
+                + f" server is {conn_info['python_version']}"
+            )
             if ignore_version or "RAY_IGNORE_VERSION_MISMATCH" in os.environ:
                 logger.warning(msg)
             else:
                 raise RuntimeError(msg)
         if CURRENT_PROTOCOL_VERSION != conn_info["protocol_version"]:
-            msg = "Client Ray installation incompatible with server:" + \
-                  f" client is {CURRENT_PROTOCOL_VERSION}," + \
-                  f" server is {conn_info['protocol_version']}"
+            msg = (
+                "Client Ray installation incompatible with server:"
+                + f" client is {CURRENT_PROTOCOL_VERSION},"
+                + f" server is {conn_info['protocol_version']}"
+            )
             if ignore_version or "RAY_IGNORE_VERSION_MISMATCH" in os.environ:
                 logger.warning(msg)
             else:
                 raise RuntimeError(msg)
 
     def disconnect(self):
-        """Disconnect the Ray Client.
-        """
+        """Disconnect the Ray Client."""
+        from ray.util.client.api import ClientAPI
+
         if self.client_worker is not None:
             self.client_worker.close()
+        self.api = ClientAPI()
         self.client_worker = None
 
     # remote can be called outside of a connection, which is why it
@@ -147,8 +166,9 @@ class _ClientContext:
             # Client is not connected, thus Ray is not considered initialized.
             return lambda: False
         else:
-            raise Exception("Ray Client is not connected. "
-                            "Please connect by calling `ray.init`.")
+            raise Exception(
+                "Ray Client is not connected. Please connect by calling `ray.init`."
+            )
 
     def is_connected(self) -> bool:
         if self.client_worker is None:
@@ -159,20 +179,22 @@ class _ClientContext:
         if self._server is not None:
             raise Exception("Trying to start two instances of ray via client")
         import ray.util.client.server.server as ray_client_server
+
         server_handle, address_info = ray_client_server.init_and_serve(
-            "localhost:50051", *args, **kwargs)
+            "127.0.0.1:50051", *args, **kwargs
+        )
         self._server = server_handle.grpc_server
-        self.connect("localhost:50051")
+        self.connect("127.0.0.1:50051")
         self._connected_with_init = True
         return address_info
 
     def shutdown(self, _exiting_interpreter=False):
         self.disconnect()
         import ray.util.client.server.server as ray_client_server
+
         if self._server is None:
             return
-        ray_client_server.shutdown_with_server(self._server,
-                                               _exiting_interpreter)
+        ray_client_server.shutdown_with_server(self._server, _exiting_interpreter)
         self._server = None
 
 

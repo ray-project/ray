@@ -4,16 +4,27 @@ from threading import RLock
 import time
 import logging
 
+import googleapiclient
+
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler._private.gcp.config import (
-    bootstrap_gcp, construct_clients_from_provider_config, get_node_type)
+    bootstrap_gcp,
+    construct_clients_from_provider_config,
+    get_node_type,
+)
 
 # The logic has been abstracted away here to allow for different GCP resources
 # (API endpoints), which can differ widely, making it impossible to use
 # the same logic for everything.
 from ray.autoscaler._private.gcp.node import (  # noqa
-    GCPResource, GCPNode, GCPCompute, GCPTPU, GCPNodeType,
-    INSTANCE_NAME_MAX_LEN, INSTANCE_NAME_UUID_LEN)
+    GCPResource,
+    GCPNode,
+    GCPCompute,
+    GCPTPU,
+    GCPNodeType,
+    INSTANCE_NAME_MAX_LEN,
+    INSTANCE_NAME_UUID_LEN,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +69,8 @@ class GCPNodeProvider(NodeProvider):
 
     def _construct_clients(self):
         _, _, compute, tpu = construct_clients_from_provider_config(
-            self.provider_config)
+            self.provider_config
+        )
 
         # Dict of different resources provided by GCP.
         # At this moment - Compute and TPUs
@@ -66,17 +78,22 @@ class GCPNodeProvider(NodeProvider):
 
         # Compute is always required
         self.resources[GCPNodeType.COMPUTE] = GCPCompute(
-            compute, self.provider_config["project_id"],
-            self.provider_config["availability_zone"], self.cluster_name)
+            compute,
+            self.provider_config["project_id"],
+            self.provider_config["availability_zone"],
+            self.cluster_name,
+        )
 
         # if there are no TPU nodes defined in config, tpu will be None.
         if tpu is not None:
             self.resources[GCPNodeType.TPU] = GCPTPU(
-                tpu, self.provider_config["project_id"],
-                self.provider_config["availability_zone"], self.cluster_name)
+                tpu,
+                self.provider_config["project_id"],
+                self.provider_config["availability_zone"],
+                self.cluster_name,
+            )
 
-    def _get_resource_depending_on_node_name(self,
-                                             node_name: str) -> GCPResource:
+    def _get_resource_depending_on_node_name(self, node_name: str) -> GCPResource:
         """Return the resource responsible for the node, based on node_name.
 
         This expects the name to be in format '[NAME]-[UUID]-[TYPE]',
@@ -160,7 +177,18 @@ class GCPNodeProvider(NodeProvider):
     def terminate_node(self, node_id: str):
         with self.lock:
             resource = self._get_resource_depending_on_node_name(node_id)
-            result = resource.delete_instance(node_id=node_id, )
+            try:
+                result = resource.delete_instance(
+                    node_id=node_id,
+                )
+            except googleapiclient.errors.HttpError as http_error:
+                if http_error.resp.status == 404:
+                    logger.warning(
+                        f"Tried to delete the node with id {node_id} "
+                        "but it was already gone."
+                    )
+                else:
+                    raise http_error from None
             return result
 
     @_retry

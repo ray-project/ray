@@ -2,7 +2,10 @@ import random
 import pytest
 import numpy as np
 import os
-import pickle
+from ray import cloudpickle as pickle
+from ray import ray_constants
+from ray.actor import ActorClassInheritanceException
+
 try:
     import pytest_timeout
 except ImportError:
@@ -11,11 +14,14 @@ import sys
 import tempfile
 import datetime
 
-from ray._private.test_utils import (client_test_enabled, wait_for_condition,
-                                     wait_for_pid_to_exit)
+from ray._private.test_utils import (
+    client_test_enabled,
+    wait_for_condition,
+    wait_for_pid_to_exit,
+)
 from ray.tests.client_test_utils import create_remote_signal_actor
-
 import ray
+
 # NOTE: We have to import setproctitle after ray because we bundle setproctitle
 # with ray.
 import setproctitle  # noqa
@@ -48,6 +54,39 @@ def test_caching_actors(shutdown_only, set_enable_auto_connect):
     f = Foo.remote()
 
     assert ray.get(f.get_val.remote()) == 3
+
+
+# https://github.com/ray-project/ray/issues/20554
+def test_not_reusing_task_workers(shutdown_only):
+    @ray.remote
+    def create_ref():
+        ref = ray.put(np.zeros(100_000_000))
+        return ref
+
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            return
+
+        def foo(self):
+            return
+
+    ray.init(num_cpus=1, object_store_memory=1000_000_000)
+    wrapped_ref = create_ref.remote()
+    print(ray.get(ray.get(wrapped_ref)))
+
+    # create_ref worker gets reused as an actor.
+    a = Actor.remote()
+    ray.get(a.foo.remote())
+    # Actor will get force-killed.
+    del a
+
+    # Flush the object store.
+    for _ in range(10):
+        ray.put(np.zeros(100_000_000))
+
+    # Object has been evicted and owner has died. Throws OwnerDiedError.
+    print(ray.get(ray.get(wrapped_ref)))
 
 
 def test_remote_function_within_actor(ray_start_10_cpus):
@@ -94,8 +133,7 @@ def test_remote_function_within_actor(ray_start_10_cpus):
 
     assert ray.get(ray.get(actor.f.remote())) == list(range(1, 6))
     assert ray.get(actor.g.remote()) == list(range(1, 6))
-    assert ray.get(actor.h.remote([f.remote(i) for i in range(5)])) == list(
-        range(1, 6))
+    assert ray.get(actor.h.remote([f.remote(i) for i in range(5)])) == list(range(1, 6))
 
 
 def test_define_actor_within_actor(ray_start_10_cpus):
@@ -192,8 +230,9 @@ def test_define_actor_within_remote_function(ray_start_10_cpus):
         return ray.get([actor.get_value.remote() for _ in range(n)])
 
     assert ray.get(f.remote(3, 1)) == [3]
-    assert ray.get(
-        [f.remote(i, 20) for i in range(10)]) == [20 * [i] for i in range(10)]
+    assert ray.get([f.remote(i, 20) for i in range(10)]) == [
+        20 * [i] for i in range(10)
+    ]
 
 
 def test_use_actor_within_remote_function(ray_start_10_cpus):
@@ -273,13 +312,16 @@ def test_actor_class_name(ray_start_regular):
             pass
 
     Foo.remote()
-
-    r = ray.worker.global_worker.redis_client
-    actor_keys = r.keys("ActorClass*")
+    g = ray.worker.global_worker.gcs_client
+    actor_keys = g.internal_kv_keys(
+        b"ActorClass", ray_constants.KV_NAMESPACE_FUNCTION_TABLE
+    )
     assert len(actor_keys) == 1
-    actor_class_info = r.hgetall(actor_keys[0])
-    assert actor_class_info[b"class_name"] == b"Foo"
-    assert b"test_actor" in actor_class_info[b"module"]
+    actor_class_info = pickle.loads(
+        g.internal_kv_get(actor_keys[0], ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
+    )
+    assert actor_class_info["class_name"] == "Foo"
+    assert "test_actor" in actor_class_info["module"]
 
 
 def test_actor_exit_from_task(ray_start_regular_shared):
@@ -341,15 +383,12 @@ def test_keyword_args(ray_start_regular_shared):
 
     actor = Actor.remote(1, arg2="c")
     assert ray.get(actor.get_values.remote(0, arg2="d")) == (1, 3, "cd")
-    assert ray.get(actor.get_values.remote(0, arg2="d", arg1=0)) == (1, 1,
-                                                                     "cd")
+    assert ray.get(actor.get_values.remote(0, arg2="d", arg1=0)) == (1, 1, "cd")
 
     actor = Actor.remote(1, arg2="c", arg1=2)
     assert ray.get(actor.get_values.remote(0, arg2="d")) == (1, 4, "cd")
-    assert ray.get(actor.get_values.remote(0, arg2="d", arg1=0)) == (1, 2,
-                                                                     "cd")
-    assert ray.get(actor.get_values.remote(arg2="d", arg1=0, arg0=2)) == (3, 2,
-                                                                          "cd")
+    assert ray.get(actor.get_values.remote(0, arg2="d", arg1=0)) == (1, 2, "cd")
+    assert ray.get(actor.get_values.remote(arg2="d", arg1=0, arg0=2)) == (3, 2, "cd")
 
     # Make sure we get an exception if the constructor is called
     # incorrectly.
@@ -410,12 +449,15 @@ def test_variable_number_of_args(ray_start_regular_shared):
     assert ray.get(actor.get_values.remote(2, 3)) == (3, 5, (), ())
 
     actor = Actor.remote(1, 2, "c")
-    assert ray.get(actor.get_values.remote(2, 3, "d")) == (3, 5, ("c", ),
-                                                           ("d", ))
+    assert ray.get(actor.get_values.remote(2, 3, "d")) == (3, 5, ("c",), ("d",))
 
     actor = Actor.remote(1, 2, "a", "b", "c", "d")
-    assert ray.get(actor.get_values.remote(
-        2, 3, 1, 2, 3, 4)) == (3, 5, ("a", "b", "c", "d"), (1, 2, 3, 4))
+    assert ray.get(actor.get_values.remote(2, 3, 1, 2, 3, 4)) == (
+        3,
+        5,
+        ("a", "b", "c", "d"),
+        (1, 2, 3, 4),
+    )
 
     @ray.remote
     class Actor:
@@ -428,7 +470,7 @@ def test_variable_number_of_args(ray_start_regular_shared):
     a = Actor.remote()
     assert ray.get(a.get_values.remote()) == ((), ())
     a = Actor.remote(1)
-    assert ray.get(a.get_values.remote(2)) == ((1, ), (2, ))
+    assert ray.get(a.get_values.remote(2)) == ((1,), (2,))
     a = Actor.remote(1, 2)
     assert ray.get(a.get_values.remote(3, 4)) == ((1, 2), (3, 4))
 
@@ -627,8 +669,7 @@ def test_random_id_generation(ray_start_regular_shared):
     assert f1._actor_id != f2._actor_id
 
 
-@pytest.mark.skipif(
-    client_test_enabled(), reason="differing inheritence structure")
+@pytest.mark.skipif(client_test_enabled(), reason="differing inheritence structure")
 def test_actor_inheritance(ray_start_regular_shared):
     class NonActorBase:
         def __init__(self):
@@ -646,9 +687,9 @@ def test_actor_inheritance(ray_start_regular_shared):
 
     # Test that you can't inherit from an actor class.
     with pytest.raises(
-            TypeError,
-            match="Inheriting from actor classes is not "
-            "currently supported."):
+        ActorClassInheritanceException,
+        match="Inheriting from actor classes is not currently supported.",
+    ):
 
         class Derived(ActorBase):
             def __init__(self):
@@ -732,7 +773,6 @@ def test_define_actor(ray_start_regular_shared):
         t.f(1)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_actor_deletion(ray_start_regular_shared):
     # Make sure that when an actor handles goes out of scope, the actor
     # destructor is called.
@@ -818,7 +858,7 @@ def test_multiple_actors(ray_start_regular_shared):
         results += [actors[i].increase.remote() for _ in range(num_increases)]
     result_values = ray.get(results)
     for i in range(num_actors):
-        v = result_values[(num_increases * i):(num_increases * (i + 1))]
+        v = result_values[(num_increases * i) : (num_increases * (i + 1))]
         assert v == list(range(i + 1, num_increases + i + 1))
 
     # Reset the actor values.
@@ -830,7 +870,7 @@ def test_multiple_actors(ray_start_regular_shared):
         results += [actor.increase.remote() for actor in actors]
     result_values = ray.get(results)
     for j in range(num_increases):
-        v = result_values[(num_actors * j):(num_actors * (j + 1))]
+        v = result_values[(num_actors * j) : (num_actors * (j + 1))]
         assert v == num_actors * [j + 1]
 
 
@@ -913,6 +953,57 @@ def test_named_actor_cache(ray_start_regular_shared):
 
     get_after_restart = Counter.options(name="hi").remote()
     assert ray.get(get_after_restart.inc_and_get.remote()) == 1
+    get_by_name = ray.get_actor("hi")
+    assert ray.get(get_by_name.inc_and_get.remote()) == 2
+
+
+def test_named_actor_cache_via_another_actor(ray_start_regular_shared):
+    """Verify that named actor cache works well with another actor."""
+
+    @ray.remote(max_restarts=0)
+    class Counter:
+        def __init__(self):
+            self.count = 0
+
+        def inc_and_get(self):
+            self.count += 1
+            return self.count
+
+    # The third actor to get named actor. To indicates this cache doesn't
+    # break getting from the third party.
+    @ray.remote(max_restarts=0)
+    class ActorGetter:
+        def get_actor_count(self, name):
+            actor = ray.get_actor(name)
+            return ray.get(actor.inc_and_get.remote())
+
+    # Start a actor and get it by name in driver.
+    a = Counter.options(name="foo").remote()
+    first_get = ray.get_actor("foo")
+    assert ray.get(first_get.inc_and_get.remote()) == 1
+
+    # Start another actor as the third actor to get named actor.
+    actor_getter = ActorGetter.remote()
+    assert ray.get(actor_getter.get_actor_count.remote("foo")) == 2
+    ray.kill(a, no_restart=True)
+
+    def actor_removed():
+        try:
+            ray.get_actor("foo")
+            return False
+        except ValueError:
+            return True
+
+    wait_for_condition(actor_removed)
+
+    # Restart the named actor.
+    get_after_restart = Counter.options(name="foo").remote()
+    assert ray.get(get_after_restart.inc_and_get.remote()) == 1
+    # Get the named actor from the third actor again.
+    assert ray.get(actor_getter.get_actor_count.remote("foo")) == 2
+    # Get the named actor by name in driver again.
+    get_by_name = ray.get_actor("foo")
+    assert ray.get(get_by_name.inc_and_get.remote()) == 3
 
 
 def test_wrapped_actor_handle(ray_start_regular_shared):
@@ -934,8 +1025,7 @@ def test_wrapped_actor_handle(ray_start_regular_shared):
     assert ray.get(b_list[0].doit.remote()) == 2
 
 
-@pytest.mark.skip(
-    "This test is just used to print the latency of creating 100 actors.")
+@pytest.mark.skip("This test is just used to print the latency of creating 100 actors.")
 def test_actor_creation_latency(ray_start_regular_shared):
     # This test is just used to test the latency of actor creation.
     @ray.remote
@@ -949,22 +1039,25 @@ def test_actor_creation_latency(ray_start_regular_shared):
     for actor_handle in actor_handles:
         ray.get(actor_handle.get_value.remote())
     end = datetime.datetime.now()
-    print("actor_create_time_consume = {}, total_time_consume = {}".format(
-        actor_create_time - start, end - start))
+    print(
+        "actor_create_time_consume = {}, total_time_consume = {}".format(
+            actor_create_time - start, end - start
+        )
+    )
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize(
     "exit_condition",
     [
         # "out_of_scope", TODO(edoakes): enable this once fixed.
         "__ray_terminate__",
         "ray.actor.exit_actor",
-        "ray.kill"
-    ])
+        "ray.kill",
+    ],
+)
 def test_atexit_handler(ray_start_regular_shared, exit_condition):
     @ray.remote
-    class A():
+    class A:
         def __init__(self, tmpfile, data):
             import atexit
 
@@ -982,7 +1075,9 @@ def test_atexit_handler(ray_start_regular_shared, exit_condition):
             ray.actor.exit_actor()
 
     data = "hello"
-    tmpfile = tempfile.NamedTemporaryFile()
+    tmpfile = tempfile.NamedTemporaryFile("w+", suffix=".tmp", delete=False)
+    tmpfile.close()
+
     a = A.remote(tmpfile.name, data)
     ray.get(a.ready.remote())
 
@@ -998,7 +1093,7 @@ def test_atexit_handler(ray_start_regular_shared, exit_condition):
         assert False, "Unrecognized condition"
 
     def check_file_written():
-        with open(tmpfile.name) as f:
+        with open(tmpfile.name, "r") as f:
             if f.read() == data:
                 return True
             return False
@@ -1008,6 +1103,8 @@ def test_atexit_handler(ray_start_regular_shared, exit_condition):
         assert not check_file_written()
     else:
         wait_for_condition(check_file_written)
+
+    os.unlink(tmpfile.name)
 
 
 def test_return_actor_handle_from_actor(ray_start_regular_shared):
@@ -1042,7 +1139,7 @@ def test_actor_autocomplete(ray_start_regular_shared):
 
     class_calls = [fn for fn in dir(Foo) if not fn.startswith("_")]
 
-    assert set(class_calls) == {"method_one", "options", "remote"}
+    assert set(class_calls) == {"method_one", "options", "remote", "bind"}
 
     f = Foo.remote()
 
@@ -1055,6 +1152,54 @@ def test_actor_autocomplete(ray_start_regular_shared):
     method_options = [fn for fn in dir(f.method_one) if not fn.startswith("_")]
 
     assert set(method_options) == {"options", "remote"}
+
+
+def test_actor_mro(ray_start_regular_shared):
+    @ray.remote
+    class Foo:
+        def __init__(self, x):
+            self.x = x
+
+        @classmethod
+        def factory_f(cls, x):
+            return cls(x)
+
+        def get_x(self):
+            return self.x
+
+    obj = Foo.factory_f(1)
+    assert obj.get_x() == 1
+
+
+@pytest.mark.skipif(client_test_enabled(), reason="differing deletion behaviors")
+def test_keep_calling_get_actor(ray_start_regular_shared):
+    """
+    Test keep calling get_actor.
+    """
+
+    @ray.remote
+    class Actor:
+        def hello(self):
+            return "hello"
+
+    actor = Actor.options(name="ABC").remote()
+    assert ray.get(actor.hello.remote()) == "hello"
+
+    for _ in range(10):
+        actor = ray.get_actor("ABC")
+        assert ray.get(actor.hello.remote()) == "hello"
+
+    del actor
+
+    # Verify the actor is killed
+    def actor_removed():
+        try:
+            ray.get_actor("ABC")
+            return False
+        except ValueError:
+            return True
+
+    wait_for_condition(actor_removed)
 
 
 if __name__ == "__main__":

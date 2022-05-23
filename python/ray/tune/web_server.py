@@ -1,6 +1,7 @@
 import json
 import logging
 import threading
+from typing import Tuple, List, TYPE_CHECKING
 
 from urllib.parse import urljoin, urlparse
 from http.server import SimpleHTTPRequestHandler, HTTPServer
@@ -10,14 +11,19 @@ from ray.tune import TuneError
 from ray.tune.suggest import BasicVariantGenerator
 from ray._private.utils import binary_to_hex, hex_to_binary
 
+if TYPE_CHECKING:
+    from ray.tune.trial_runner import TrialRunner
+
 logger = logging.getLogger(__name__)
 
 try:
     import requests  # `requests` is not part of stdlib.
 except ImportError:
     requests = None
-    logger.exception("Couldn't import `requests` library. "
-                     "Be sure to install it on the client side.")
+    logger.exception(
+        "Couldn't import `requests` library. "
+        "Be sure to install it on the client side."
+    )
 
 
 class TuneClient:
@@ -26,11 +32,11 @@ class TuneClient:
     Requires a TuneServer to have started running.
 
     Attributes:
-        tune_address (str): Address of running TuneServer
-        port_forward (int): Port number of running TuneServer
+        tune_address: Address of running TuneServer
+        port_forward: Port number of running TuneServer
     """
 
-    def __init__(self, tune_address, port_forward):
+    def __init__(self, tune_address: str, port_forward: int):
         self._tune_address = tune_address
         self._port_forward = port_forward
         self._path = "http://{}:{}".format(tune_address, port_forward)
@@ -43,7 +49,8 @@ class TuneClient:
     def get_trial(self, trial_id, timeout=None):
         """Returns trial information by trial_id."""
         response = requests.get(
-            urljoin(self._path, "trials/{}".format(trial_id)), timeout=timeout)
+            urljoin(self._path, "trials/{}".format(trial_id)), timeout=timeout
+        )
         return self._deserialize(response)
 
     def add_trial(self, name, specification):
@@ -54,8 +61,7 @@ class TuneClient:
 
     def stop_trial(self, trial_id):
         """Requests to stop trial by trial_id."""
-        response = requests.put(
-            urljoin(self._path, "trials/{}".format(trial_id)))
+        response = requests.put(urljoin(self._path, "trials/{}".format(trial_id)))
         return self._deserialize(response)
 
     def stop_experiment(self):
@@ -72,10 +78,8 @@ class TuneClient:
         return self._port_forward
 
     def _load_trial_info(self, trial_info):
-        trial_info["config"] = cloudpickle.loads(
-            hex_to_binary(trial_info["config"]))
-        trial_info["result"] = cloudpickle.loads(
-            hex_to_binary(trial_info["result"]))
+        trial_info["config"] = cloudpickle.loads(hex_to_binary(trial_info["config"]))
+        trial_info["result"] = cloudpickle.loads(hex_to_binary(trial_info["result"]))
 
     def _deserialize(self, response):
         parsed = response.json()
@@ -97,12 +101,12 @@ def RunnerHandler(runner):
         the TuneServer.
         """
 
-        def _do_header(self, response_code=200, headers=None):
+        def _do_header(self, response_code: int = 200, headers: List[Tuple] = None):
             """Sends the header portion of the HTTP response.
 
             Parameters:
-                response_code (int): Standard HTTP response code
-                headers (list[tuples]): Standard HTTP response headers
+                response_code: Standard HTTP response code
+                headers: Standard HTTP response headers
             """
             if headers is None:
                 headers = [("Content-type", "application/json")]
@@ -171,11 +175,9 @@ def RunnerHandler(runner):
             content_len = int(self.headers.get("Content-Length"), 0)
             raw_body = self.rfile.read(content_len)
             parsed_input = json.loads(raw_body.decode())
-            resource = self._add_trials(parsed_input["name"],
-                                        parsed_input["spec"])
+            resource = self._add_trials(parsed_input["name"], parsed_input["spec"])
 
-            headers = [("Content-type", "application/json"), ("Location",
-                                                              "/trials/")]
+            headers = [("Content-type", "application/json"), ("Location", "/trials/")]
             self._do_header(response_code=response_code, headers=headers)
             self.wfile.write(json.dumps(resource).encode())
 
@@ -190,7 +192,7 @@ def RunnerHandler(runner):
                 "trainable_name": trial.trainable_name,
                 "config": binary_to_hex(cloudpickle.dumps(trial.config)),
                 "status": trial.status,
-                "result": binary_to_hex(cloudpickle.dumps(result))
+                "result": binary_to_hex(cloudpickle.dumps(result)),
             }
             return info_dict
 
@@ -228,13 +230,13 @@ class TuneServer(threading.Thread):
     The server handles requests from a TuneClient.
 
     Attributes:
-        runner (TrialRunner): Runner that modifies and accesses trials.
-        port_forward (int): Port number of TuneServer.
+        runner: Runner that modifies and accesses trials.
+        port_forward: Port number of TuneServer.
     """
 
     DEFAULT_PORT = 4321
 
-    def __init__(self, runner, port=None):
+    def __init__(self, runner: "TrialRunner", port: int = None):
         """Initialize HTTPServer and serve forever by invoking self.run()"""
         threading.Thread.__init__(self)
         self._port = port if port else self.DEFAULT_PORT

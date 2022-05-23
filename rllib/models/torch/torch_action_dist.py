@@ -1,23 +1,22 @@
 import functools
+import gym
 from math import log
 import numpy as np
 import tree  # pip install dm_tree
-import gym
+from typing import Optional
 
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import override, DeveloperAPI, ExperimentalAPI
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.numpy import SMALL_NUMBER, MIN_LOG_NN_OUTPUT, \
-    MAX_LOG_NN_OUTPUT
+from ray.rllib.utils.numpy import SMALL_NUMBER, MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
-from ray.rllib.utils.torch_ops import atanh
-from ray.rllib.utils.typing import TensorType, List, Union, \
-    Tuple, ModelConfigDict
+from ray.rllib.utils.typing import TensorType, List, Union, Tuple, ModelConfigDict
 
 torch, nn = try_import_torch()
 
 
+@DeveloperAPI
 class TorchDistributionWrapper(ActionDistribution):
     """Wrapper class for torch.distributions."""
 
@@ -56,21 +55,22 @@ class TorchDistributionWrapper(ActionDistribution):
         return self.logp(self.last_sample)
 
 
+@DeveloperAPI
 class TorchCategorical(TorchDistributionWrapper):
     """Wrapper class for PyTorch Categorical distribution."""
 
     @override(ActionDistribution)
-    def __init__(self,
-                 inputs: List[TensorType],
-                 model: TorchModelV2 = None,
-                 temperature: float = 1.0):
+    def __init__(
+        self,
+        inputs: List[TensorType],
+        model: TorchModelV2 = None,
+        temperature: float = 1.0,
+    ):
         if temperature != 1.0:
-            assert temperature > 0.0, \
-                "Categorical `temperature` must be > 0.0!"
+            assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
             inputs /= temperature
         super().__init__(inputs, model)
-        self.dist = torch.distributions.categorical.Categorical(
-            logits=self.inputs)
+        self.dist = torch.distributions.categorical.Categorical(logits=self.inputs)
 
     @override(ActionDistribution)
     def deterministic_sample(self) -> TensorType:
@@ -80,20 +80,23 @@ class TorchCategorical(TorchDistributionWrapper):
     @staticmethod
     @override(ActionDistribution)
     def required_model_output_shape(
-            action_space: gym.Space,
-            model_config: ModelConfigDict) -> Union[int, np.ndarray]:
+        action_space: gym.Space, model_config: ModelConfigDict
+    ) -> Union[int, np.ndarray]:
         return action_space.n
 
 
+@DeveloperAPI
 class TorchMultiCategorical(TorchDistributionWrapper):
     """MultiCategorical distribution for MultiDiscrete action spaces."""
 
     @override(TorchDistributionWrapper)
-    def __init__(self,
-                 inputs: List[TensorType],
-                 model: TorchModelV2,
-                 input_lens: Union[List[int], np.ndarray, Tuple[int, ...]],
-                 action_space=None):
+    def __init__(
+        self,
+        inputs: List[TensorType],
+        model: TorchModelV2,
+        input_lens: Union[List[int], np.ndarray, Tuple[int, ...]],
+        action_space=None,
+    ):
         super().__init__(inputs, model)
         # If input_lens is np.ndarray or list, force-make it a tuple.
         inputs_split = self.inputs.split(tuple(input_lens), dim=1)
@@ -109,8 +112,7 @@ class TorchMultiCategorical(TorchDistributionWrapper):
         arr = [cat.sample() for cat in self.cats]
         sample_ = torch.stack(arr, dim=1)
         if isinstance(self.action_space, gym.spaces.Box):
-            sample_ = torch.reshape(sample_,
-                                    [-1] + list(self.action_space.shape))
+            sample_ = torch.reshape(sample_, [-1] + list(self.action_space.shape))
         self.last_sample = sample_
         return sample_
 
@@ -119,8 +121,7 @@ class TorchMultiCategorical(TorchDistributionWrapper):
         arr = [torch.argmax(cat.probs, -1) for cat in self.cats]
         sample_ = torch.stack(arr, dim=1)
         if isinstance(self.action_space, gym.spaces.Box):
-            sample_ = torch.reshape(sample_,
-                                    [-1] + list(self.action_space.shape))
+            sample_ = torch.reshape(sample_, [-1] + list(self.action_space.shape))
         self.last_sample = sample_
         return sample_
 
@@ -130,10 +131,10 @@ class TorchMultiCategorical(TorchDistributionWrapper):
         if isinstance(actions, torch.Tensor):
             if isinstance(self.action_space, gym.spaces.Box):
                 actions = torch.reshape(
-                    actions, [-1, int(np.product(self.action_space.shape))])
+                    actions, [-1, int(np.prod(self.action_space.shape))]
+                )
             actions = torch.unbind(actions, dim=1)
-        logps = torch.stack(
-            [cat.log_prob(act) for cat, act in zip(self.cats, actions)])
+        logps = torch.stack([cat.log_prob(act) for cat, act in zip(self.cats, actions)])
         return torch.sum(logps, dim=0)
 
     @override(ActionDistribution)
@@ -161,8 +162,8 @@ class TorchMultiCategorical(TorchDistributionWrapper):
     @staticmethod
     @override(ActionDistribution)
     def required_model_output_shape(
-            action_space: gym.Space,
-            model_config: ModelConfigDict) -> Union[int, np.ndarray]:
+        action_space: gym.Space, model_config: ModelConfigDict
+    ) -> Union[int, np.ndarray]:
         # Int Box.
         if isinstance(action_space, gym.spaces.Box):
             assert action_space.dtype.name.startswith("int")
@@ -170,20 +171,81 @@ class TorchMultiCategorical(TorchDistributionWrapper):
             high_ = np.max(action_space.high)
             assert np.all(action_space.low == low_)
             assert np.all(action_space.high == high_)
-            np.product(action_space.shape) * (high_ - low_ + 1)
+            np.prod(action_space.shape, dtype=np.int32) * (high_ - low_ + 1)
         # MultiDiscrete space.
         else:
+            # `nvec` is already integer. No need to cast.
             return np.sum(action_space.nvec)
 
 
+@ExperimentalAPI
+class TorchSlateMultiCategorical(TorchCategorical):
+    """MultiCategorical distribution for MultiDiscrete action spaces.
+
+    The action space must be uniform, meaning all nvec items have the same size, e.g.
+    MultiDiscrete([10, 10, 10]), where 10 is the number of candidates to pick from
+    and 3 is the slate size (pick 3 out of 10). When picking candidates, no candidate
+    must be picked more than once.
+    """
+
+    def __init__(
+        self,
+        inputs: List[TensorType],
+        model: TorchModelV2 = None,
+        temperature: float = 1.0,
+        action_space: Optional[gym.spaces.MultiDiscrete] = None,
+        all_slates=None,
+    ):
+        assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
+        # Allow softmax formula w/ temperature != 1.0:
+        # Divide inputs by temperature.
+        super().__init__(inputs / temperature, model)
+        self.action_space = action_space
+        # Assert uniformness of the action space (all discrete buckets have the same
+        # size).
+        assert isinstance(self.action_space, gym.spaces.MultiDiscrete) and all(
+            n == self.action_space.nvec[0] for n in self.action_space.nvec
+        )
+        self.all_slates = all_slates
+
+    @override(ActionDistribution)
+    def deterministic_sample(self) -> TensorType:
+        # Get a sample from the underlying Categorical (batch of ints).
+        sample = super().deterministic_sample()
+        # Use the sampled ints to pick the actual slates.
+        return torch.take_along_dim(self.all_slates, sample.long(), dim=-1)
+
+    @override(ActionDistribution)
+    def logp(self, x: TensorType) -> TensorType:
+        # TODO: Implement.
+        return torch.ones_like(self.inputs[:, 0])
+
+
+@DeveloperAPI
 class TorchDiagGaussian(TorchDistributionWrapper):
     """Wrapper class for PyTorch Normal distribution."""
 
     @override(ActionDistribution)
-    def __init__(self, inputs: List[TensorType], model: TorchModelV2):
+    def __init__(
+        self,
+        inputs: List[TensorType],
+        model: TorchModelV2,
+        *,
+        action_space: Optional[gym.spaces.Space] = None
+    ):
         super().__init__(inputs, model)
         mean, log_std = torch.chunk(self.inputs, 2, dim=1)
+        self.log_std = log_std
         self.dist = torch.distributions.normal.Normal(mean, torch.exp(log_std))
+        # Remember to squeeze action samples in case action space is Box(shape)
+        self.zero_action_dim = action_space and action_space.shape == ()
+
+    @override(TorchDistributionWrapper)
+    def sample(self) -> TensorType:
+        sample = super().sample()
+        if self.zero_action_dim:
+            return torch.squeeze(sample, dim=-1)
+        return sample
 
     @override(ActionDistribution)
     def deterministic_sample(self) -> TensorType:
@@ -205,11 +267,12 @@ class TorchDiagGaussian(TorchDistributionWrapper):
     @staticmethod
     @override(ActionDistribution)
     def required_model_output_shape(
-            action_space: gym.Space,
-            model_config: ModelConfigDict) -> Union[int, np.ndarray]:
-        return np.prod(action_space.shape) * 2
+        action_space: gym.Space, model_config: ModelConfigDict
+    ) -> Union[int, np.ndarray]:
+        return np.prod(action_space.shape, dtype=np.int32) * 2
 
 
+@DeveloperAPI
 class TorchSquashedGaussian(TorchDistributionWrapper):
     """A tanh-squashed Gaussian distribution defined by: mean, std, low, high.
 
@@ -217,11 +280,13 @@ class TorchSquashedGaussian(TorchDistributionWrapper):
     `low`+SMALL_NUMBER or `high`-SMALL_NUMBER respectively.
     """
 
-    def __init__(self,
-                 inputs: List[TensorType],
-                 model: TorchModelV2,
-                 low: float = -1.0,
-                 high: float = 1.0):
+    def __init__(
+        self,
+        inputs: List[TensorType],
+        model: TorchModelV2,
+        low: float = -1.0,
+        high: float = 1.0,
+    ):
         """Parameterizes the distribution via `inputs`.
 
         Args:
@@ -269,16 +334,17 @@ class TorchSquashedGaussian(TorchDistributionWrapper):
         # Get log-prob for squashed Gaussian.
         unsquashed_values_tanhd = torch.tanh(unsquashed_values)
         log_prob = log_prob_gaussian - torch.sum(
-            torch.log(1 - unsquashed_values_tanhd**2 + SMALL_NUMBER), dim=-1)
+            torch.log(1 - unsquashed_values_tanhd ** 2 + SMALL_NUMBER), dim=-1
+        )
         return log_prob
 
     def sample_logp(self):
         z = self.dist.rsample()
         actions = self._squash(z)
         return actions, torch.sum(
-            self.dist.log_prob(z) -
-            torch.log(1 - actions * actions + SMALL_NUMBER),
-            dim=-1)
+            self.dist.log_prob(z) - torch.log(1 - actions * actions + SMALL_NUMBER),
+            dim=-1,
+        )
 
     @override(TorchDistributionWrapper)
     def entropy(self) -> TensorType:
@@ -290,27 +356,29 @@ class TorchSquashedGaussian(TorchDistributionWrapper):
 
     def _squash(self, raw_values: TensorType) -> TensorType:
         # Returned values are within [low, high] (including `low` and `high`).
-        squashed = ((torch.tanh(raw_values) + 1.0) / 2.0) * \
-            (self.high - self.low) + self.low
+        squashed = ((torch.tanh(raw_values) + 1.0) / 2.0) * (
+            self.high - self.low
+        ) + self.low
         return torch.clamp(squashed, self.low, self.high)
 
     def _unsquash(self, values: TensorType) -> TensorType:
-        normed_values = (values - self.low) / (self.high - self.low) * 2.0 - \
-                        1.0
+        normed_values = (values - self.low) / (self.high - self.low) * 2.0 - 1.0
         # Stabilize input to atanh.
-        save_normed_values = torch.clamp(normed_values, -1.0 + SMALL_NUMBER,
-                                         1.0 - SMALL_NUMBER)
-        unsquashed = atanh(save_normed_values)
+        save_normed_values = torch.clamp(
+            normed_values, -1.0 + SMALL_NUMBER, 1.0 - SMALL_NUMBER
+        )
+        unsquashed = torch.atanh(save_normed_values)
         return unsquashed
 
     @staticmethod
     @override(ActionDistribution)
     def required_model_output_shape(
-            action_space: gym.Space,
-            model_config: ModelConfigDict) -> Union[int, np.ndarray]:
-        return np.prod(action_space.shape) * 2
+        action_space: gym.Space, model_config: ModelConfigDict
+    ) -> Union[int, np.ndarray]:
+        return np.prod(action_space.shape, dtype=np.int32) * 2
 
 
+@DeveloperAPI
 class TorchBeta(TorchDistributionWrapper):
     """
     A Beta distribution is defined on the interval [0, 1] and parameterized by
@@ -321,22 +389,22 @@ class TorchBeta(TorchDistributionWrapper):
         and Gamma(n) = (n - 1)!
     """
 
-    def __init__(self,
-                 inputs: List[TensorType],
-                 model: TorchModelV2,
-                 low: float = 0.0,
-                 high: float = 1.0):
+    def __init__(
+        self,
+        inputs: List[TensorType],
+        model: TorchModelV2,
+        low: float = 0.0,
+        high: float = 1.0,
+    ):
         super().__init__(inputs, model)
         # Stabilize input parameters (possibly coming from a linear layer).
-        self.inputs = torch.clamp(self.inputs, log(SMALL_NUMBER),
-                                  -log(SMALL_NUMBER))
+        self.inputs = torch.clamp(self.inputs, log(SMALL_NUMBER), -log(SMALL_NUMBER))
         self.inputs = torch.log(torch.exp(self.inputs) + 1.0) + 1.0
         self.low = low
         self.high = high
         alpha, beta = torch.chunk(self.inputs, 2, dim=-1)
         # Note: concentration0==beta, concentration1=alpha (!)
-        self.dist = torch.distributions.Beta(
-            concentration1=alpha, concentration0=beta)
+        self.dist = torch.distributions.Beta(concentration1=alpha, concentration0=beta)
 
     @override(ActionDistribution)
     def deterministic_sample(self) -> TensorType:
@@ -365,11 +433,12 @@ class TorchBeta(TorchDistributionWrapper):
     @staticmethod
     @override(ActionDistribution)
     def required_model_output_shape(
-            action_space: gym.Space,
-            model_config: ModelConfigDict) -> Union[int, np.ndarray]:
-        return np.prod(action_space.shape) * 2
+        action_space: gym.Space, model_config: ModelConfigDict
+    ) -> Union[int, np.ndarray]:
+        return np.prod(action_space.shape, dtype=np.int32) * 2
 
 
+@DeveloperAPI
 class TorchDeterministic(TorchDistributionWrapper):
     """Action distribution that returns the input values directly.
 
@@ -383,7 +452,7 @@ class TorchDeterministic(TorchDistributionWrapper):
 
     @override(TorchDistributionWrapper)
     def sampled_action_logp(self) -> TensorType:
-        return torch.zeros((self.inputs.size()[0], ), dtype=torch.float32)
+        return torch.zeros((self.inputs.size()[0],), dtype=torch.float32)
 
     @override(TorchDistributionWrapper)
     def sample(self) -> TensorType:
@@ -392,17 +461,16 @@ class TorchDeterministic(TorchDistributionWrapper):
     @staticmethod
     @override(ActionDistribution)
     def required_model_output_shape(
-            action_space: gym.Space,
-            model_config: ModelConfigDict) -> Union[int, np.ndarray]:
-        return np.prod(action_space.shape)
+        action_space: gym.Space, model_config: ModelConfigDict
+    ) -> Union[int, np.ndarray]:
+        return np.prod(action_space.shape, dtype=np.int32)
 
 
+@DeveloperAPI
 class TorchMultiActionDistribution(TorchDistributionWrapper):
-    """Action distribution that operates on multiple, possibly nested actions.
-    """
+    """Action distribution that operates on multiple, possibly nested actions."""
 
-    def __init__(self, inputs, model, *, child_distributions, input_lens,
-                 action_space):
+    def __init__(self, inputs, model, *, child_distributions, input_lens, action_space):
         """Initializes a TorchMultiActionDistribution object.
 
         Args:
@@ -431,8 +499,10 @@ class TorchMultiActionDistribution(TorchDistributionWrapper):
         flat_child_distributions = tree.flatten(child_distributions)
         split_inputs = torch.split(inputs, self.input_lens, dim=1)
         self.flat_child_distributions = tree.map_structure(
-            lambda dist, input_: dist(input_, model), flat_child_distributions,
-            list(split_inputs))
+            lambda dist, input_: dist(input_, model),
+            flat_child_distributions,
+            list(split_inputs),
+        )
 
     @override(ActionDistribution)
     def logp(self, x):
@@ -444,8 +514,18 @@ class TorchMultiActionDistribution(TorchDistributionWrapper):
             for dist in self.flat_child_distributions:
                 if isinstance(dist, TorchCategorical):
                     split_indices.append(1)
+                elif (
+                    isinstance(dist, TorchMultiCategorical)
+                    and dist.action_space is not None
+                ):
+                    split_indices.append(int(np.prod(dist.action_space.shape)))
                 else:
-                    split_indices.append(dist.sample().size()[1])
+                    sample = dist.sample()
+                    # Cover Box(shape=()) case.
+                    if len(sample.shape) == 1:
+                        split_indices.append(1)
+                    else:
+                        split_indices.append(sample.size()[1])
             split_x = list(torch.split(x, split_indices, dim=1))
         # Structured or flattened (by single action component) input.
         else:
@@ -454,21 +534,22 @@ class TorchMultiActionDistribution(TorchDistributionWrapper):
         def map_(val, dist):
             # Remove extra categorical dimension.
             if isinstance(dist, TorchCategorical):
-                val = torch.squeeze(val, dim=-1).int()
+                val = (torch.squeeze(val, dim=-1) if len(val.shape) > 1 else val).int()
             return dist.logp(val)
 
         # Remove extra categorical dimension and take the logp of each
         # component.
-        flat_logps = tree.map_structure(map_, split_x,
-                                        self.flat_child_distributions)
+        flat_logps = tree.map_structure(map_, split_x, self.flat_child_distributions)
 
         return functools.reduce(lambda a, b: a + b, flat_logps)
 
     @override(ActionDistribution)
     def kl(self, other):
         kl_list = [
-            d.kl(o) for d, o in zip(self.flat_child_distributions,
-                                    other.flat_child_distributions)
+            d.kl(o)
+            for d, o in zip(
+                self.flat_child_distributions, other.flat_child_distributions
+            )
         ]
         return functools.reduce(lambda a, b: a + b, kl_list)
 
@@ -479,16 +560,19 @@ class TorchMultiActionDistribution(TorchDistributionWrapper):
 
     @override(ActionDistribution)
     def sample(self):
-        child_distributions = tree.unflatten_as(self.action_space_struct,
-                                                self.flat_child_distributions)
+        child_distributions = tree.unflatten_as(
+            self.action_space_struct, self.flat_child_distributions
+        )
         return tree.map_structure(lambda s: s.sample(), child_distributions)
 
     @override(ActionDistribution)
     def deterministic_sample(self):
-        child_distributions = tree.unflatten_as(self.action_space_struct,
-                                                self.flat_child_distributions)
-        return tree.map_structure(lambda s: s.deterministic_sample(),
-                                  child_distributions)
+        child_distributions = tree.unflatten_as(
+            self.action_space_struct, self.flat_child_distributions
+        )
+        return tree.map_structure(
+            lambda s: s.deterministic_sample(), child_distributions
+        )
 
     @override(TorchDistributionWrapper)
     def sampled_action_logp(self):
@@ -499,9 +583,10 @@ class TorchMultiActionDistribution(TorchDistributionWrapper):
 
     @override(ActionDistribution)
     def required_model_output_shape(self, action_space, model_config):
-        return np.sum(self.input_lens)
+        return np.sum(self.input_lens, dtype=np.int32)
 
 
+@DeveloperAPI
 class TorchDirichlet(TorchDistributionWrapper):
     """Dirichlet distribution for continuous actions that are between
     [0,1] and sum to 1.
@@ -549,4 +634,4 @@ class TorchDirichlet(TorchDistributionWrapper):
     @staticmethod
     @override(ActionDistribution)
     def required_model_output_shape(action_space, model_config):
-        return np.prod(action_space.shape)
+        return np.prod(action_space.shape, dtype=np.int32)

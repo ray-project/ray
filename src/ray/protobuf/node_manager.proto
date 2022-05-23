@@ -44,9 +44,32 @@ message RequestWorkerLeaseRequest {
   TaskSpec resource_spec = 1;
   // Worker's backlog size for this spec's shape.
   int64 backlog_size = 2;
+  // If it's true, either grant the lease if the task is
+  // locally schedulable or reject the request.
+  // Else, the raylet may return another raylet at which to retry the request.
+  bool grant_or_reject = 3;
+  // If it's true, then the current raylet is selected
+  // due to the locality of task arguments.
+  bool is_selected_based_on_locality = 4;
 }
 
 message RequestWorkerLeaseReply {
+  enum SchedulingFailureType {
+    // The default failure type is "not failed".
+    NOT_FAILED = 0;
+    // Scheduling is failed on this node.
+    SCHEDULING_FAILED = 1;
+    // Scheduling is cancelled because task/actor's placement is removed.
+    SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED = 2;
+    // Scheduling is cancelled because task/actor's runtime environment setup is failed
+    SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED = 3;
+    // Scheduling is cancelled because task/actor is intentionally cancelled. E.g.,
+    // ray.kill or ray.cancel
+    SCHEDULING_CANCELLED_INTENDED = 4;
+    // Scheduling is cancelled because the task/actor is no longer schedulable.
+    SCHEDULING_CANCELLED_UNSCHEDULABLE = 5;
+  }
+
   // Address of the leased worker. If this is empty, then the request should be
   // retried at the provided raylet address.
   Address worker_address = 1;
@@ -54,23 +77,25 @@ message RequestWorkerLeaseReply {
   Address retry_at_raylet_address = 2;
   // Resource mapping ids acquired by the leased worker.
   repeated ResourceMapEntry resource_mapping = 3;
-  // Whether this lease request was canceled. In this case, the
-  // client should try again if the resources are still required.
+  // Whether this lease request was canceled.
   bool canceled = 4;
-  // Whether creating the runtime environment for this lease request failed.
-  // If this is true, the corresponding task should be failed by the client.
-  bool runtime_env_setup_failed = 5;
   // PID of the worker process.
   uint32 worker_pid = 6;
   // Whether the request was rejected because of insufficient resources.
   bool rejected = 7;
   // The (normal task) resources data to be carried by the Reply.
   ResourcesData resources_data = 8;
+  // Scheduling failure type.
+  // Must be set only when canceled is set.
+  SchedulingFailureType failure_type = 9;
+  // The error message explaining why scheduling has failed.
+  // Must be an empty string if failure_type is `NOT_FAILED`.
+  string scheduling_failure_message = 10;
 }
 
 message PrepareBundleResourcesRequest {
-  // Bundle containing the requested resources.
-  Bundle bundle_spec = 1;
+  // Bundles that containing the requested resources.
+  repeated Bundle bundle_specs = 1;
 }
 
 message PrepareBundleResourcesReply {
@@ -79,8 +104,8 @@ message PrepareBundleResourcesReply {
 }
 
 message CommitBundleResourcesRequest {
-  // Bundle containing the requested resources.
-  Bundle bundle_spec = 1;
+  // Bundles containing the requested resources.
+  repeated Bundle bundle_specs = 1;
 }
 
 message CommitBundleResourcesReply {
@@ -103,6 +128,8 @@ message ReturnWorkerRequest {
   // If true, there was some unrecoverable error and the raylet should
   // disconnect the worker.
   bool disconnect_worker = 3;
+  // Whether the worker is exiting and cannot be reused.
+  bool worker_exiting = 4;
 }
 
 message ReturnWorkerReply {
@@ -114,6 +141,13 @@ message ReleaseUnusedWorkersRequest {
 
 message ReleaseUnusedWorkersReply {
 }
+
+message ShutdownRayletRequest {
+  /// Whether the shutdown request is graceful or not.
+  bool graceful = 1;
+}
+
+message ShutdownRayletReply {}
 
 message CancelWorkerLeaseRequest {
   // The task to cancel.
@@ -135,8 +169,7 @@ message PinObjectIDsRequest {
   repeated bytes object_ids = 2;
 }
 
-message PinObjectIDsReply {
-}
+message PinObjectIDsReply {}
 
 message GetNodeStatsRequest {
   // Whether to include memory stats. This could be large since it includes
@@ -264,10 +297,40 @@ message GetGcsServerAddressReply {
   int32 port = 2;
 }
 
+message GetTasksInfoRequest {}
+
+message GetTasksInfoReply {
+  repeated TaskInfoEntry owned_task_info_entries = 1;
+  // A list of task that's currently running.
+  // All tasks must be treated as TaskStatus::RUNNING
+  // from the caller side.
+  repeated bytes running_task_ids = 2;
+}
+
+message GetObjectsInfoRequest {}
+
+message GetObjectsInfoReply {
+  repeated CoreWorkerStats core_workers_stats = 1;
+}
+
+message GetResourceLoadRequest {}
+
+message GetResourceLoadReply {
+  ResourcesData resources = 1;
+}
+
+message NotifyGCSRestartRequest {}
+
+message NotifyGCSRestartReply {}
+
 // Service for inter-node-manager communication.
 service NodeManagerService {
-  // Update the node's view of the cluster resource usage
+  // Update the node's view of the cluster resource usage.
   rpc UpdateResourceUsage(UpdateResourceUsageRequest) returns (UpdateResourceUsageReply);
+  // Handle the case when GCS restarted.
+  rpc NotifyGCSRestart(NotifyGCSRestartRequest) returns (NotifyGCSRestartReply);
+  // Get the resource load of the raylet.
+  rpc GetResourceLoad(GetResourceLoadRequest) returns (GetResourceLoadReply);
   // Request the current resource usage from this raylet
   rpc RequestResourceReport(RequestResourceReportRequest)
       returns (RequestResourceReportReply);
@@ -283,6 +346,8 @@ service NodeManagerService {
   // are still needed. And Raylet will release other leased workers.
   rpc ReleaseUnusedWorkers(ReleaseUnusedWorkersRequest)
       returns (ReleaseUnusedWorkersReply);
+  /// Shutdown the raylet (node manager) gracefully.
+  rpc ShutdownRaylet(ShutdownRayletRequest) returns (ShutdownRayletReply);
   // Request a raylet to lock resources for a bundle.
   // This is the first phase of 2PC protocol for atomic placement group creation.
   rpc PrepareBundleResources(PrepareBundleResourcesRequest)
@@ -319,4 +384,8 @@ service NodeManagerService {
   rpc GetSystemConfig(GetSystemConfigRequest) returns (GetSystemConfigReply);
   // Get gcs server address.
   rpc GetGcsServerAddress(GetGcsServerAddressRequest) returns (GetGcsServerAddressReply);
+  // [State API] Get the all task information of the node.
+  rpc GetTasksInfo(GetTasksInfoRequest) returns (GetTasksInfoReply);
+  // [State API] Get the all object information of the node.
+  rpc GetObjectsInfo(GetObjectsInfoRequest) returns (GetObjectsInfoReply);
 }

@@ -2,8 +2,14 @@
 from abc import ABCMeta
 from abc import abstractmethod
 
-from ray.util.collective.types import AllReduceOptions, BarrierOptions, \
-    ReduceOptions, AllGatherOptions, BroadcastOptions, ReduceScatterOptions
+from ray.util.collective.types import (
+    AllReduceOptions,
+    BarrierOptions,
+    ReduceOptions,
+    AllGatherOptions,
+    BroadcastOptions,
+    ReduceScatterOptions,
+)
 
 
 class BaseGroup(metaclass=ABCMeta):
@@ -56,10 +62,7 @@ class BaseGroup(metaclass=ABCMeta):
         raise NotImplementedError()
 
     @abstractmethod
-    def allgather(self,
-                  tensor_list,
-                  tensor,
-                  allgather_options=AllGatherOptions()):
+    def allgather(self, tensor_list, tensor, allgather_options=AllGatherOptions()):
         raise NotImplementedError()
 
     @abstractmethod
@@ -67,10 +70,9 @@ class BaseGroup(metaclass=ABCMeta):
         raise NotImplementedError()
 
     @abstractmethod
-    def reducescatter(self,
-                      tensor,
-                      tensor_list,
-                      reducescatter_options=ReduceScatterOptions()):
+    def reducescatter(
+        self, tensor, tensor_list, reducescatter_options=ReduceScatterOptions()
+    ):
         raise NotImplementedError()
 
     @abstractmethod

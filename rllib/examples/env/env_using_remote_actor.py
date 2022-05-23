@@ -18,15 +18,13 @@ class ParameterStorage:
 
 
 class CartPoleWithRemoteParamServer(CartPoleEnv):
-    """CartPoleMassEnv varies the weights of the cart and the pole.
-    """
+    """CartPoleMassEnv varies the weights of the cart and the pole."""
 
     def __init__(self, env_config):
         self.env_config = env_config
         super().__init__()
         # Get our param server (remote actor) by name.
-        self._handler = ray.get_actor(
-            env_config.get("param_server", "param-server"))
+        self._handler = ray.get_actor(env_config.get("param_server", "param-server"))
         self.rng_seed = None
         self.np_random, _ = seeding.np_random(self.rng_seed)
 
@@ -34,8 +32,9 @@ class CartPoleWithRemoteParamServer(CartPoleEnv):
         if not rng_seed:
             return
 
-        print(f"Seeding env (worker={self.env_config.worker_index}) "
-              f"with {rng_seed}")
+        print(
+            f"Seeding env (worker={self.env_config.worker_index}) " f"with {rng_seed}"
+        )
 
         self.rng_seed = rng_seed
         self.np_random, _ = seeding.np_random(rng_seed)
@@ -51,15 +50,18 @@ class CartPoleWithRemoteParamServer(CartPoleEnv):
         # Or create a new RNG from another random number:
         # Seed the RNG with a deterministic seed if set, otherwise, create
         # a random one.
-        new_seed = (self.np_random.randint(0, 1000000)
-                    if not self.rng_seed else self.rng_seed)
+        new_seed = (
+            self.np_random.randint(0, 1000000) if not self.rng_seed else self.rng_seed
+        )
         self.np_random, _ = seeding.np_random(new_seed)
 
-        print(f"Env worker-idx={self.env_config.worker_index} "
-              f"mass={params['MASSCART']}")
+        print(
+            f"Env worker-idx={self.env_config.worker_index} "
+            f"mass={params['MASSCART']}"
+        )
 
         self.masscart = params["MASSCART"]
-        self.total_mass = (self.masspole + self.masscart)
-        self.polemass_length = (self.masspole * self.length)
+        self.total_mass = self.masspole + self.masscart
+        self.polemass_length = self.masspole * self.length
 
         return super().reset()

@@ -6,13 +6,12 @@ import tree  # pip install dm_tree
 from typing import Dict, Iterator, List, Optional, Set, Union
 
 from ray.util import log_once
-from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, \
-    PublicAPI
+from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI, PublicAPI
 from ray.rllib.utils.compression import pack, unpack, is_compressed
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.memory import concat_aligned
-from ray.rllib.utils.typing import PolicyID, TensorType
+from ray.rllib.utils.numpy import concat_aligned
+from ray.rllib.utils.typing import PolicyID, TensorType, ViewRequirementsDict
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -40,6 +39,8 @@ class SampleBatch(dict):
     DONES = "dones"
     INFOS = "infos"
     SEQ_LENS = "seq_lens"
+    # This is only computed and used when RE3 exploration strategy is enabled
+    OBS_EMBEDS = "obs_embeds"
     T = "t"
 
     # Extra action fetches keys.
@@ -71,10 +72,10 @@ class SampleBatch(dict):
         as-is to the parent dict constructor.
 
         Keyword Args:
-            _time_major (Optinal[bool]): Whether data in this sample batch
+            _time_major (Optional[bool]): Whether data in this sample batch
                 is time-major. This is False by default and only relevant
                 if the data contains sequences.
-            _max_seq_len (Optional[bool]): The max sequence chunk length
+            _max_seq_len (Optional[int]): The max sequence chunk length
                 if the data contains sequences.
             _zero_padded (Optional[bool]): Whether the data in this batch
                 contains sequences AND these sequences are right-zero-padded
@@ -91,7 +92,7 @@ class SampleBatch(dict):
         # Is alredy right-zero-padded?
         self.zero_padded = kwargs.pop("_zero_padded", False)
         # Whether this batch is used for training (vs inference).
-        self.is_training = kwargs.pop("_is_training", None)
+        self._is_training = kwargs.pop("_is_training", None)
 
         # Call super constructor. This will make the actual data accessible
         # by column name (str) via e.g. self["some-col"].
@@ -105,21 +106,22 @@ class SampleBatch(dict):
 
         # Clear out None seq-lens.
         seq_lens_ = self.get(SampleBatch.SEQ_LENS)
-        if seq_lens_ is None or \
-                (isinstance(seq_lens_, list) and len(seq_lens_) == 0):
+        if seq_lens_ is None or (isinstance(seq_lens_, list) and len(seq_lens_) == 0):
             self.pop(SampleBatch.SEQ_LENS, None)
         # Numpyfy seq_lens if list.
         elif isinstance(seq_lens_, list):
-            self[SampleBatch.SEQ_LENS] = seq_lens_ = \
-                np.array(seq_lens_, dtype=np.int32)
+            self[SampleBatch.SEQ_LENS] = seq_lens_ = np.array(seq_lens_, dtype=np.int32)
 
-        if self.max_seq_len is None and seq_lens_ is not None and \
-                not (tf and tf.is_tensor(seq_lens_)) and \
-                len(seq_lens_) > 0:
+        if (
+            self.max_seq_len is None
+            and seq_lens_ is not None
+            and not (tf and tf.is_tensor(seq_lens_))
+            and len(seq_lens_) > 0
+        ):
             self.max_seq_len = max(seq_lens_)
 
-        if self.is_training is None:
-            self.is_training = self.pop("is_training", False)
+        if self._is_training is None:
+            self._is_training = self.pop("is_training", False)
 
         lengths = []
         copy_ = {k: v for k, v in self.items() if k != SampleBatch.SEQ_LENS}
@@ -136,15 +138,18 @@ class SampleBatch(dict):
             # value that is actually a ndarray/tensor. This would fail if
             # all values are nested dicts/tuples of more complex underlying
             # structures.
-            len_ = len(v) if isinstance(
-                v,
-                (list, np.ndarray)) or (torch and torch.is_tensor(v)) else None
-            if len_:
-                lengths.append(len_)
+            try:
+                len_ = len(v) if not isinstance(v, (dict, tuple)) else None
+                if len_:
+                    lengths.append(len_)
+            except Exception:
+                pass
 
-        if self.get(SampleBatch.SEQ_LENS) is not None and \
-                not (tf and tf.is_tensor(self[SampleBatch.SEQ_LENS])) and \
-                len(self[SampleBatch.SEQ_LENS]) > 0:
+        if (
+            self.get(SampleBatch.SEQ_LENS) is not None
+            and not (tf and tf.is_tensor(self[SampleBatch.SEQ_LENS]))
+            and len(self[SampleBatch.SEQ_LENS]) > 0
+        ):
             self.count = sum(self[SampleBatch.SEQ_LENS])
         else:
             self.count = lengths[0] if lengths else 0
@@ -156,46 +161,84 @@ class SampleBatch(dict):
         self._slice_map = []
 
     @PublicAPI
-    def __len__(self):
+    def __len__(self) -> int:
         """Returns the amount of samples in the sample batch."""
         return self.count
+
+    @PublicAPI
+    def agent_steps(self) -> int:
+        """Returns the same as len(self) (number of steps in this batch).
+
+        To make this compatible with `MultiAgentBatch.agent_steps()`.
+        """
+        return len(self)
+
+    @PublicAPI
+    def env_steps(self) -> int:
+        """Returns the same as len(self) (number of steps in this batch).
+
+        To make this compatible with `MultiAgentBatch.env_steps()`.
+        """
+        return len(self)
 
     @staticmethod
     @PublicAPI
     def concat_samples(
-            samples: Union[List["SampleBatch"], List["MultiAgentBatch"]],
+        samples: Union[List["SampleBatch"], List["MultiAgentBatch"]],
     ) -> Union["SampleBatch", "MultiAgentBatch"]:
         """Concatenates n SampleBatches or MultiAgentBatches.
 
         Args:
-            samples (Union[List[SampleBatch], List[MultiAgentBatch]]): List of
-                SampleBatches or MultiAgentBatches to be concatenated.
+            samples: List of SampleBatches or MultiAgentBatches to be
+                concatenated.
 
         Returns:
-            Union[SampleBatch, MultiAgentBatch]: A new (concatenated)
-                SampleBatch or MultiAgentBatch.
+            A new (concatenated) SampleBatch or MultiAgentBatch.
 
         Examples:
-            >>> b1 = SampleBatch({"a": np.array([1, 2]),
+            >>> import numpy as np
+            >>> from ray.rllib.policy.sample_batch import SampleBatch
+            >>> b1 = SampleBatch({"a": np.array([1, 2]), # doctest: +SKIP
             ...                   "b": np.array([10, 11])})
-            >>> b2 = SampleBatch({"a": np.array([3]),
+            >>> b2 = SampleBatch({"a": np.array([3]), # doctest: +SKIP
             ...                   "b": np.array([12])})
-            >>> print(SampleBatch.concat_samples([b1, b2]))
+            >>> print(SampleBatch.concat_samples([b1, b2])) # doctest: +SKIP
             {"a": np.array([1, 2, 3]), "b": np.array([10, 11, 12])}
         """
         if any(isinstance(s, MultiAgentBatch) for s in samples):
             return MultiAgentBatch.concat_samples(samples)
         concatd_seq_lens = []
         concat_samples = []
-        zero_padded = samples[0].zero_padded
-        max_seq_len = samples[0].max_seq_len
-        time_major = samples[0].time_major
+        # Make sure these settings are consistent amongst all batches.
+        zero_padded = max_seq_len = time_major = None
         for s in samples:
             if s.count > 0:
-                assert s.zero_padded == zero_padded
-                assert s.time_major == time_major
-                if zero_padded:
-                    assert s.max_seq_len == max_seq_len
+                if max_seq_len is None:
+                    zero_padded = s.zero_padded
+                    max_seq_len = s.max_seq_len
+                    time_major = s.time_major
+
+                # Make sure these settings are consistent amongst all batches.
+                if s.zero_padded != zero_padded or s.time_major != time_major:
+                    raise ValueError(
+                        "All SampleBatches' `zero_padded` and `time_major` settings "
+                        "must be consistent!"
+                    )
+                if (
+                    s.max_seq_len is None or max_seq_len is None
+                ) and s.max_seq_len != max_seq_len:
+                    raise ValueError(
+                        "Samples must consistently either provide or omit "
+                        "`max_seq_len`!"
+                    )
+                elif zero_padded and s.max_seq_len != max_seq_len:
+                    raise ValueError(
+                        "For `zero_padded` SampleBatches, the values of `max_seq_len` "
+                        "must be consistent!"
+                    )
+
+                if max_seq_len is not None:
+                    max_seq_len = max(max_seq_len, s.max_seq_len)
                 concat_samples.append(s)
                 if s.get(SampleBatch.SEQ_LENS) is not None:
                     concatd_seq_lens.extend(s[SampleBatch.SEQ_LENS])
@@ -215,14 +258,18 @@ class SampleBatch(dict):
             for k in concat_samples[0].keys():
                 if k == "infos":
                     concatd_data[k] = concat_aligned(
-                        [s[k] for s in concat_samples], time_major=time_major)
+                        [s[k] for s in concat_samples], time_major=time_major
+                    )
                 else:
                     concatd_data[k] = tree.map_structure(
-                        concat_key, *[c[k] for c in concat_samples])
+                        concat_key, *[c[k] for c in concat_samples]
+                    )
         except Exception:
-            raise ValueError(f"Cannot concat data under key '{k}', b/c "
-                             "sub-structures under that key don't match. "
-                             f"`samples`={samples}")
+            raise ValueError(
+                f"Cannot concat data under key '{k}', b/c "
+                "sub-structures under that key don't match. "
+                f"`samples`={samples}"
+            )
 
         # Return a new (concat'd) SampleBatch.
         return SampleBatch(
@@ -238,17 +285,17 @@ class SampleBatch(dict):
         """Concatenates `other` to this one and returns a new SampleBatch.
 
         Args:
-            other (SampleBatch): The other SampleBatch object to concat to this
-                one.
+            other: The other SampleBatch object to concat to this one.
 
         Returns:
-            SampleBatch: The new SampleBatch, resulting from concating `other`
-                to `self`.
+            The new SampleBatch, resulting from concating `other` to `self`.
 
         Examples:
-            >>> b1 = SampleBatch({"a": np.array([1, 2])})
-            >>> b2 = SampleBatch({"a": np.array([3, 4, 5])})
-            >>> print(b1.concat(b2))
+            >>> import numpy as np
+            >>> from ray.rllib.policy.sample_batch import SampleBatch
+            >>> b1 = SampleBatch({"a": np.array([1, 2])}) # doctest: +SKIP
+            >>> b2 = SampleBatch({"a": np.array([3, 4, 5])}) # doctest: +SKIP
+            >>> print(b1.concat(b2)) # doctest: +SKIP
             {"a": np.array([1, 2, 3, 4, 5])}
         """
         return self.concat_samples([self, other])
@@ -258,47 +305,49 @@ class SampleBatch(dict):
         """Creates a deep or shallow copy of this SampleBatch and returns it.
 
         Args:
-            shallow (bool): Whether the copying should be done shallowly.
+            shallow: Whether the copying should be done shallowly.
 
         Returns:
-            SampleBatch: A deep or shallow copy of this SampleBatch object.
+            A deep or shallow copy of this SampleBatch object.
         """
         copy_ = {k: v for k, v in self.items()}
         data = tree.map_structure(
-            lambda v: (np.array(v, copy=not shallow) if
-                       isinstance(v, np.ndarray) else v),
+            lambda v: (
+                np.array(v, copy=not shallow) if isinstance(v, np.ndarray) else v
+            ),
             copy_,
         )
         copy_ = SampleBatch(data)
         copy_.set_get_interceptor(self.get_interceptor)
+        copy_.added_keys = self.added_keys
+        copy_.deleted_keys = self.deleted_keys
+        copy_.accessed_keys = self.accessed_keys
         return copy_
 
     @PublicAPI
     def rows(self) -> Iterator[Dict[str, TensorType]]:
         """Returns an iterator over data rows, i.e. dicts with column values.
 
-        Note that if `seq_lens` is set in self, we set it to [1] in the rows.
+        Note that if `seq_lens` is set in self, we set it to 1 in the rows.
 
         Yields:
-            Dict[str, TensorType]: The column values of the row in this
-                iteration.
+            The column values of the row in this iteration.
 
         Examples:
-            >>> batch = SampleBatch({
+            >>> from ray.rllib.policy.sample_batch import SampleBatch
+            >>> batch = SampleBatch({ # doctest: +SKIP
             ...    "a": [1, 2, 3],
             ...    "b": [4, 5, 6],
             ...    "seq_lens": [1, 2]
             ... })
-            >>> for row in batch.rows():
-                   print(row)
-            {"a": 1, "b": 4, "seq_lens": [1]}
-            {"a": 2, "b": 5, "seq_lens": [1]}
-            {"a": 3, "b": 6, "seq_lens": [1]}
+            >>> for row in batch.rows(): # doctest: +SKIP
+            ...    print(row) # doctest: +SKIP
+            {"a": 1, "b": 4, "seq_lens": 1}
+            {"a": 2, "b": 5, "seq_lens": 1}
+            {"a": 3, "b": 6, "seq_lens": 1}
         """
 
-        # Do we add seq_lens=[1] to each row?
-        seq_lens = None if self.get(
-            SampleBatch.SEQ_LENS) is None else np.array([1])
+        seq_lens = None if self.get(SampleBatch.SEQ_LENS, 1) is None else 1
 
         self_as_dict = {k: v for k, v in self.items()}
 
@@ -313,15 +362,16 @@ class SampleBatch(dict):
         """Returns a list of the batch-data in the specified columns.
 
         Args:
-            keys (List[str]): List of column names fo which to return the data.
+            keys: List of column names fo which to return the data.
 
         Returns:
-            List[any]: The list of data items ordered by the order of column
-                names in `keys`.
+            The list of data items ordered by the order of column
+            names in `keys`.
 
         Examples:
-            >>> batch = SampleBatch({"a": [1], "b": [2], "c": [3]})
-            >>> print(batch.columns(["a", "b"]))
+            >>> from ray.rllib.policy.sample_batch import SampleBatch
+            >>> batch = SampleBatch({"a": [1], "b": [2], "c": [3]}) # doctest: +SKIP
+            >>> print(batch.columns(["a", "b"])) # doctest: +SKIP
             [[1], [2]]
         """
 
@@ -332,18 +382,19 @@ class SampleBatch(dict):
         return out
 
     @PublicAPI
-    def shuffle(self) -> None:
+    def shuffle(self) -> "SampleBatch":
         """Shuffles the rows of this batch in-place.
 
         Returns:
-            SampleBatch: This very (now shuffled) SampleBatch.
+            This very (now shuffled) SampleBatch.
 
         Raises:
             ValueError: If self[SampleBatch.SEQ_LENS] is defined.
 
         Examples:
-            >>> batch = SampleBatch({"a": [1, 2, 3, 4]})
-            >>> print(batch.shuffle())
+            >>> from ray.rllib.policy.sample_batch import SampleBatch
+            >>> batch = SampleBatch({"a": [1, 2, 3, 4]})  # doctest: +SKIP
+            >>> print(batch.shuffle()) # doctest: +SKIP
             {"a": [4, 1, 3, 2]}
         """
 
@@ -352,25 +403,20 @@ class SampleBatch(dict):
         if self.get(SampleBatch.SEQ_LENS) is not None:
             raise ValueError(
                 "SampleBatch.shuffle not possible when your data has "
-                "`seq_lens` defined!")
+                "`seq_lens` defined!"
+            )
 
         # Get a permutation over the single items once and use the same
         # permutation for all the data (otherwise, data would become
         # meaningless).
         permutation = np.random.permutation(self.count)
 
-        def _permutate_in_place(path, value):
-            curr = self
-            for i, p in enumerate(path):
-                if i == len(path) - 1:
-                    curr[p] = value[permutation]
-                # Translate into list (tuples are immutable).
-                if isinstance(curr[p], tuple):
-                    curr[p] = list(curr[p])
-                curr = curr[p]
-
-        tree.map_structure_with_path(_permutate_in_place, self)
-
+        self_as_dict = {k: v for k, v in self.items()}
+        shuffled = tree.map_structure(lambda v: v[permutation], self_as_dict)
+        self.update(shuffled)
+        # Flush cache such that intercepted values are recalculated after the
+        # shuffling.
+        self.intercepted_values = {}
         return self
 
     @PublicAPI
@@ -378,14 +424,16 @@ class SampleBatch(dict):
         """Splits by `eps_id` column and returns list of new batches.
 
         Returns:
-            List[SampleBatch]: List of batches, one per distinct episode.
+            List of batches, one per distinct episode.
 
         Raises:
             KeyError: If the `eps_id` AND `dones` columns are not present.
 
         Examples:
-            >>> batch = SampleBatch({"a": [1, 2, 3], "eps_id": [0, 0, 1]})
-            >>> print(batch.split_by_episode())
+            >>> from ray.rllib.policy.sample_batch import SampleBatch
+            >>> batch = SampleBatch( # doctest: +SKIP
+            ...     {"a": [1, 2, 3], "eps_id": [0, 0, 1]})
+            >>> print(batch.split_by_episode()) # doctest: +SKIP
             [{"a": [1, 2], "eps_id": [0, 0]}, {"a": [3], "eps_id": [1]}]
         """
 
@@ -410,7 +458,7 @@ class SampleBatch(dict):
                 offset = i
                 cur_eps_id = next_eps_id
         # Add final slice.
-        slices.append(self[offset:self.count])
+        slices.append(self[offset : self.count])
 
         # TODO: (sven) Are these checks necessary? Should be all ok according
         #  to above logic.
@@ -422,35 +470,38 @@ class SampleBatch(dict):
         return slices
 
     @Deprecated(new="SampleBatch[start:stop]", error=False)
-    def slice(self, start: int, end: int, state_start=None,
-              state_end=None) -> "SampleBatch":
+    def slice(
+        self, start: int, end: int, state_start=None, state_end=None
+    ) -> "SampleBatch":
         """Returns a slice of the row data of this batch (w/o copying).
 
         Args:
-            start (int): Starting index. If < 0, will left-zero-pad.
-            end (int): Ending index.
+            start: Starting index. If < 0, will left-zero-pad.
+            end: Ending index.
 
         Returns:
-            SampleBatch: A new SampleBatch, which has a slice of this batch's
-                data.
+            A new SampleBatch, which has a slice of this batch's data.
         """
-        if self.get(SampleBatch.SEQ_LENS) is not None and \
-                len(self[SampleBatch.SEQ_LENS]) > 0:
+        if (
+            self.get(SampleBatch.SEQ_LENS) is not None
+            and len(self[SampleBatch.SEQ_LENS]) > 0
+        ):
             if start < 0:
                 data = {
-                    k: np.concatenate([
-                        np.zeros(
-                            shape=(-start, ) + v.shape[1:], dtype=v.dtype),
-                        v[0:end]
-                    ])
-                    for k, v in self.items() if k != SampleBatch.SEQ_LENS
-                    and not k.startswith("state_in_")
+                    k: np.concatenate(
+                        [
+                            np.zeros(shape=(-start,) + v.shape[1:], dtype=v.dtype),
+                            v[0:end],
+                        ]
+                    )
+                    for k, v in self.items()
+                    if k != SampleBatch.SEQ_LENS and not k.startswith("state_in_")
                 }
             else:
                 data = {
-                    k: v[start:end]
-                    for k, v in self.items() if k != SampleBatch.SEQ_LENS
-                    and not k.startswith("state_in_")
+                    k: tree.map_structure(lambda s: s[start:end], v)
+                    for k, v in self.items()
+                    if k != SampleBatch.SEQ_LENS and not k.startswith("state_in_")
                 }
             if state_start is not None:
                 assert state_end is not None
@@ -460,8 +511,7 @@ class SampleBatch(dict):
                     data[state_key] = self[state_key][state_start:state_end]
                     state_idx += 1
                     state_key = "state_in_{}".format(state_idx)
-                seq_lens = list(
-                    self[SampleBatch.SEQ_LENS][state_start:state_end])
+                seq_lens = list(self[SampleBatch.SEQ_LENS][state_start:state_end])
                 # Adjust seq_lens if necessary.
                 data_len = len(data[next(iter(data))])
                 if sum(seq_lens) != data_len:
@@ -480,14 +530,12 @@ class SampleBatch(dict):
                         if state_start is None:
                             state_start = i
                         while state_key in self:
-                            data[state_key] = self[state_key][state_start:i +
-                                                              1]
+                            data[state_key] = self[state_key][state_start : i + 1]
                             state_idx += 1
                             state_key = "state_in_{}".format(state_idx)
-                        seq_lens = list(
-                            self[SampleBatch.SEQ_LENS][state_start:i]) + [
-                                seq_len - (count - end)
-                            ]
+                        seq_lens = list(self[SampleBatch.SEQ_LENS][state_start:i]) + [
+                            seq_len - (count - end)
+                        ]
                         if start < 0:
                             seq_lens[0] += -start
                         diff = sum(seq_lens) - (end - start)
@@ -501,6 +549,7 @@ class SampleBatch(dict):
             return SampleBatch(
                 data,
                 seq_lens=seq_lens,
+                _is_training=self.is_training,
                 _time_major=self.time_major,
             )
         else:
@@ -511,24 +560,25 @@ class SampleBatch(dict):
             )
 
     @PublicAPI
-    def timeslices(self,
-                   size: Optional[int] = None,
-                   num_slices: Optional[int] = None,
-                   k: Optional[int] = None) -> List["SampleBatch"]:
+    def timeslices(
+        self,
+        size: Optional[int] = None,
+        num_slices: Optional[int] = None,
+        k: Optional[int] = None,
+    ) -> List["SampleBatch"]:
         """Returns SampleBatches, each one representing a k-slice of this one.
 
         Will start from timestep 0 and produce slices of size=k.
 
         Args:
-            size (Optional[int]): The size (in timesteps) of each returned
-                SampleBatch.
-            num_slices (Optional[int]): The number of slices to produce.
-            k (int): Obsoleted: Use size or num_slices instead!
-                The size (in timesteps) of each returned SampleBatch.
+            size: The size (in timesteps) of each returned SampleBatch.
+            num_slices: The number of slices to produce.
+            k: Deprecated: Use size or num_slices instead. The size
+                (in timesteps) of each returned SampleBatch.
 
         Returns:
-            List[SampleBatch]: The list of `num_slices` (new) SampleBatches
-                or n (new) SampleBatches each one of size `size`.
+            The list of `num_slices` (new) SampleBatches or n (new)
+            SampleBatches each one of size `size`.
         """
         if size is None and num_slices is None:
             deprecation_warning("k", "size or num_slices")
@@ -575,26 +625,28 @@ class SampleBatch(dict):
         `self.max_seq_len` to the given `max_seq_len` value.
 
         Args:
-            max_len (int): The max (total) length to zero pad to.
-            exclude_states (bool): If True, also right-zero-pad all
-                `state_in_x` data. If False, leave `state_in_x` keys
+            max_seq_len: The max (total) length to zero pad to.
+            exclude_states: If False, also right-zero-pad all
+                `state_in_x` data. If True, leave `state_in_x` keys
                 as-is.
 
         Returns:
-            SampleBatch: This very (now right-zero-padded) SampleBatch.
+            This very (now right-zero-padded) SampleBatch.
 
         Raises:
             ValueError: If self[SampleBatch.SEQ_LENS] is None (not defined).
 
         Examples:
-            >>> batch = SampleBatch({"a": [1, 2, 3], "seq_lens": [1, 2]})
-            >>> print(batch.right_zero_pad(max_seq_len=4))
+            >>> from ray.rllib.policy.sample_batch import SampleBatch
+            >>> batch = SampleBatch( # doctest: +SKIP
+            ...     {"a": [1, 2, 3], "seq_lens": [1, 2]})
+            >>> print(batch.right_zero_pad(max_seq_len=4)) # doctest: +SKIP
             {"a": [1, 0, 0, 0, 2, 3, 0, 0], "seq_lens": [1, 2]}
 
-            >>> batch = SampleBatch({"a": [1, 2, 3],
+            >>> batch = SampleBatch({"a": [1, 2, 3], # doctest: +SKIP
             ...                      "state_in_0": [1.0, 3.0],
             ...                      "seq_lens": [1, 2]})
-            >>> print(batch.right_zero_pad(max_seq_len=5))
+            >>> print(batch.right_zero_pad(max_seq_len=5)) # doctest: +SKIP
             {"a": [1, 0, 0, 0, 0, 2, 3, 0, 0, 0],
              "state_in_0": [1.0, 3.0],  # <- all state-ins remain as-is
              "seq_lens": [1, 2]}
@@ -603,27 +655,27 @@ class SampleBatch(dict):
         if seq_lens is None:
             raise ValueError(
                 "Cannot right-zero-pad SampleBatch if no `seq_lens` field "
-                "present! SampleBatch={self}")
+                f"present! SampleBatch={self}"
+            )
 
         length = len(seq_lens) * max_seq_len
 
         def _zero_pad_in_place(path, value):
             # Skip "state_in_..." columns and "seq_lens".
-            if (exclude_states is True and path[0].startswith("state_in_")) \
-                    or path[0] == SampleBatch.SEQ_LENS:
+            if (exclude_states is True and path[0].startswith("state_in_")) or path[
+                0
+            ] == SampleBatch.SEQ_LENS:
                 return
             # Generate zero-filled primer of len=max_seq_len.
-            if value.dtype == np.object or value.dtype.type is np.str_:
+            if value.dtype == object or value.dtype.type is np.str_:
                 f_pad = [None] * length
             else:
                 # Make sure type doesn't change.
-                f_pad = np.zeros(
-                    (length, ) + np.shape(value)[1:], dtype=value.dtype)
+                f_pad = np.zeros((length,) + np.shape(value)[1:], dtype=value.dtype)
             # Fill primer with data.
             f_pad_base = f_base = 0
             for len_ in self[SampleBatch.SEQ_LENS]:
-                f_pad[f_pad_base:f_pad_base + len_] = value[f_base:f_base +
-                                                            len_]
+                f_pad[f_pad_base : f_pad_base + len_] = value[f_base : f_base + len_]
                 f_pad_base += max_seq_len
                 f_base += len_
             assert f_base == len(value), value
@@ -644,13 +696,13 @@ class SampleBatch(dict):
 
         return self
 
-    # Experimental method.
+    @ExperimentalAPI
     def to_device(self, device, framework="torch"):
         """TODO: transfer batch to given device as framework tensor."""
         if framework == "torch":
             assert torch is not None
             for k, v in self.items():
-                if isinstance(v, np.ndarray) and v.dtype != np.object:
+                if isinstance(v, np.ndarray) and v.dtype != object:
                     self[k] = torch.from_numpy(v).to(device)
         else:
             raise NotImplementedError
@@ -664,11 +716,12 @@ class SampleBatch(dict):
         sys.getsizeof(...).
 
         Returns:
-            int: The overall size in bytes of the data buffer (all columns).
+            The overall size in bytes of the data buffer (all columns).
         """
         return sum(
             v.nbytes if isinstance(v, np.ndarray) else sys.getsizeof(v)
-            for v in tree.flatten(self))
+            for v in tree.flatten(self)
+        )
 
     def get(self, key, default=None):
         try:
@@ -677,16 +730,25 @@ class SampleBatch(dict):
             return default
 
     @PublicAPI
+    def as_multi_agent(self) -> "MultiAgentBatch":
+        """Returns the respective MultiAgentBatch using DEFAULT_POLICY_ID.
+
+        Returns:
+            The MultiAgentBatch (using DEFAULT_POLICY_ID) corresponding
+            to this SampleBatch.
+        """
+        return MultiAgentBatch({DEFAULT_POLICY_ID: self}, self.count)
+
+    @PublicAPI
     def __getitem__(self, key: Union[str, slice]) -> TensorType:
         """Returns one column (by key) from the data or a sliced new batch.
 
         Args:
-            key (Union[str, slice]): The key (column name) to return or
+            key: The key (column name) to return or
                 a slice object for slicing this SampleBatch.
 
         Returns:
-            TensorType: The data under the given key or a sliced version of
-                this batch.
+            The data under the given key or a sliced version of this batch.
         """
         if isinstance(key, slice):
             return self._slice(key)
@@ -697,7 +759,8 @@ class SampleBatch(dict):
                 deprecation_warning(
                     old="SampleBatch['is_training']",
                     new="SampleBatch.is_training",
-                    error=False)
+                    error=False,
+                )
             return self.is_training
 
         if not hasattr(self, key) and key in self:
@@ -715,8 +778,8 @@ class SampleBatch(dict):
         """Inserts (overrides) an entire column (by key) in the data buffer.
 
         Args:
-            key (str): The column name to set a value for.
-            item (TensorType): The data to insert.
+            key: The column name to set a value for.
+            item: The data to insert.
         """
         # Defend against creating SampleBatch via pickle (no property
         # `added_keys` and first item is already set).
@@ -730,8 +793,9 @@ class SampleBatch(dict):
                 deprecation_warning(
                     old="SampleBatch['is_training']",
                     new="SampleBatch.is_training",
-                    error=False)
-            self.is_training = item
+                    error=False,
+                )
+            self._is_training = item
             return
 
         if key not in self:
@@ -741,26 +805,40 @@ class SampleBatch(dict):
         if key in self.intercepted_values:
             self.intercepted_values[key] = item
 
+    @property
+    def is_training(self):
+        if self.get_interceptor is not None and isinstance(self._is_training, bool):
+            if "_is_training" not in self.intercepted_values:
+                self.intercepted_values["_is_training"] = self.get_interceptor(
+                    self._is_training
+                )
+            return self.intercepted_values["_is_training"]
+        return self._is_training
+
+    def set_training(self, training: Union[bool, "tf1.placeholder"] = True):
+        self._is_training = training
+        self.intercepted_values.pop("_is_training", None)
+
     @PublicAPI
     def __delitem__(self, key):
         self.deleted_keys.add(key)
         dict.__delitem__(self, key)
 
     @DeveloperAPI
-    def compress(self,
-                 bulk: bool = False,
-                 columns: Set[str] = frozenset(["obs", "new_obs"])) -> None:
+    def compress(
+        self, bulk: bool = False, columns: Set[str] = frozenset(["obs", "new_obs"])
+    ) -> "SampleBatch":
         """Compresses the data buffers (by column) in place.
 
         Args:
-            bulk (bool): Whether to compress across the batch dimension (0)
+            bulk: Whether to compress across the batch dimension (0)
                 as well. If False will compress n separate list items, where n
                 is the batch size.
-            columns (Set[str]): The columns to compress. Default: Only
+            columns: The columns to compress. Default: Only
                 compress the obs and new_obs columns.
 
         Returns:
-            SampleBatch: This very (now compressed) SampleBatch.
+            This very (now compressed) SampleBatch.
         """
 
         def _compress_in_place(path, value):
@@ -780,17 +858,17 @@ class SampleBatch(dict):
         return self
 
     @DeveloperAPI
-    def decompress_if_needed(self,
-                             columns: Set[str] = frozenset(
-                                 ["obs", "new_obs"])) -> "SampleBatch":
+    def decompress_if_needed(
+        self, columns: Set[str] = frozenset(["obs", "new_obs"])
+    ) -> "SampleBatch":
         """Decompresses data buffers (per column if not compressed) in place.
 
         Args:
-            columns (Set[str]): The columns to decompress. Default: Only
+            columns: The columns to decompress. Default: Only
                 decompress the obs and new_obs columns.
 
         Returns:
-            SampleBatch: This very (now uncompressed) SampleBatch.
+            This very (now uncompressed) SampleBatch.
         """
 
         def _decompress_in_place(path, value):
@@ -823,10 +901,11 @@ class SampleBatch(dict):
             return f"SampleBatch({self.count}: {keys})"
         else:
             keys.remove(SampleBatch.SEQ_LENS)
-            return f"SampleBatch({self.count} " \
-                   f"(seqs={len(self['seq_lens'])}): {keys})"
+            return (
+                f"SampleBatch({self.count} " f"(seqs={len(self['seq_lens'])}): {keys})"
+            )
 
-    def _slice(self, slice_: slice):
+    def _slice(self, slice_: slice) -> "SampleBatch":
         """Helper method to handle SampleBatch slicing using a slice object.
 
         The returned SampleBatch uses the same underlying data object as
@@ -837,11 +916,11 @@ class SampleBatch(dict):
         same).
 
         Args:
-            slice_ (slice): The python slice object to slice by.
+            slice_: The python slice object to slice by.
 
         Returns:
-            SampleBatch: A new SampleBatch, however "linking" into the same
-                data (sliced) as self.
+            A new SampleBatch, however "linking" into the same data
+            (sliced) as self.
         """
         start = slice_.start or 0
         stop = slice_.stop or len(self)
@@ -852,30 +931,37 @@ class SampleBatch(dict):
             stop = len(self)
         assert start >= 0 and stop >= 0 and slice_.step in [1, None]
 
-        if self.get(SampleBatch.SEQ_LENS) is not None and \
-                len(self[SampleBatch.SEQ_LENS]) > 0:
+        if (
+            self.get(SampleBatch.SEQ_LENS) is not None
+            and len(self[SampleBatch.SEQ_LENS]) > 0
+        ):
             # Build our slice-map, if not done already.
             if not self._slice_map:
                 sum_ = 0
-                for i, l in enumerate(self[SampleBatch.SEQ_LENS]):
-                    for _ in range(l):
-                        self._slice_map.append((i, sum_))
-                    sum_ += l
+                for i, l in enumerate(map(int, self[SampleBatch.SEQ_LENS])):
+                    self._slice_map.extend([(i, sum_)] * l)
+                    sum_ = sum_ + l
                 # In case `stop` points to the very end (lengths of this
                 # batch), return the last sequence (the -1 here makes sure we
                 # never go beyond it; would result in an index error below).
                 self._slice_map.append((len(self[SampleBatch.SEQ_LENS]), sum_))
 
-            start_seq_len, start = self._slice_map[start]
-            stop_seq_len, stop = self._slice_map[stop]
+            start_seq_len, start_unpadded = self._slice_map[start]
+            stop_seq_len, stop_unpadded = self._slice_map[stop]
+            start_padded = start_unpadded
+            stop_padded = stop_unpadded
             if self.zero_padded:
-                start = start_seq_len * self.max_seq_len
-                stop = stop_seq_len * self.max_seq_len
+                start_padded = start_seq_len * self.max_seq_len
+                stop_padded = stop_seq_len * self.max_seq_len
 
             def map_(path, value):
                 if path[0] != SampleBatch.SEQ_LENS and not path[0].startswith(
-                        "state_in_"):
-                    return value[start:stop]
+                    "state_in_"
+                ):
+                    if path[0] != SampleBatch.INFOS:
+                        return value[start_padded:stop_padded]
+                    else:
+                        return value[start_unpadded:stop_unpadded]
                 else:
                     return value[start_seq_len:stop_seq_len]
 
@@ -899,11 +985,14 @@ class SampleBatch(dict):
     def _get_slice_indices(self, slice_size):
         data_slices = []
         data_slices_states = []
-        if self.get(SampleBatch.SEQ_LENS) is not None and len(
-                self[SampleBatch.SEQ_LENS]) > 0:
-            assert np.all(self[SampleBatch.SEQ_LENS] < slice_size), \
-                "ERROR: `slice_size` must be larger than the max. seq-len " \
+        if (
+            self.get(SampleBatch.SEQ_LENS) is not None
+            and len(self[SampleBatch.SEQ_LENS]) > 0
+        ):
+            assert np.all(self[SampleBatch.SEQ_LENS] < slice_size), (
+                "ERROR: `slice_size` must be larger than the max. seq-len "
                 "in the batch!"
+            )
             start_pos = 0
             current_slize_size = 0
             actual_slice_idx = 0
@@ -912,8 +1001,9 @@ class SampleBatch(dict):
             while idx < len(self[SampleBatch.SEQ_LENS]):
                 seq_len = self[SampleBatch.SEQ_LENS][idx]
                 current_slize_size += seq_len
-                actual_slice_idx += seq_len if not self.zero_padded else \
-                    self.max_seq_len
+                actual_slice_idx += (
+                    seq_len if not self.zero_padded else self.max_seq_len
+                )
                 # Complete minibatch -> Append to data_slices.
                 if current_slize_size >= slice_size:
                     end_idx = idx + 1
@@ -924,7 +1014,7 @@ class SampleBatch(dict):
                         start_pos += slice_size
                         if current_slize_size > slice_size:
                             overhead = current_slize_size - slice_size
-                            start_pos -= (seq_len - overhead)
+                            start_pos -= seq_len - overhead
                             idx -= 1
                     # We are already zero-padded: Cut in chunks of max_seq_len.
                     else:
@@ -942,23 +1032,20 @@ class SampleBatch(dict):
                 i += slice_size
         return data_slices, data_slices_states
 
-    # TODO: deprecate
-    @property
-    def data(self):
-        deprecation_warning(
-            old="SampleBatch.data[..]", new="SampleBatch[..]", error=True)
-        return self
-
-    # TODO: (sven) Experimental method.
-    def get_single_step_input_dict(self, view_requirements, index="last"):
+    @ExperimentalAPI
+    def get_single_step_input_dict(
+        self,
+        view_requirements: ViewRequirementsDict,
+        index: Union[str, int] = "last",
+    ) -> "SampleBatch":
         """Creates single ts SampleBatch at given index from `self`.
 
-        For usage as input-dict for model calls.
+        For usage as input-dict for model (action or value function) calls.
 
         Args:
-            sample_batch (SampleBatch): A single-trajectory SampleBatch object
-                to generate the compute_actions input dict from.
-            index (Union[int, str]): An integer index value indicating the
+            view_requirements: A view requirements dict from the model for
+                which to produce the input_dict.
+            index: An integer index value indicating the
                 position in the trajectory for which to generate the
                 compute_actions input dict. Set to "last" to generate the dict
                 at the very end of the trajectory (e.g. for value estimation).
@@ -966,7 +1053,7 @@ class SampleBatch(dict):
                 final NEXT_OBS as observation input.
 
         Returns:
-            SampleBatch: The (single-timestep) input dict for ModelV2 calls.
+            The (single-timestep) input dict for ModelV2 calls.
         """
         last_mappings = {
             SampleBatch.OBS: SampleBatch.NEXT_OBS,
@@ -976,50 +1063,48 @@ class SampleBatch(dict):
 
         input_dict = {}
         for view_col, view_req in view_requirements.items():
+            if view_req.used_for_compute_actions is False:
+                continue
+
             # Create batches of size 1 (single-agent input-dict).
             data_col = view_req.data_col or view_col
             if index == "last":
                 data_col = last_mappings.get(data_col, data_col)
                 # Range needed.
                 if view_req.shift_from is not None:
-                    data = self[view_col][-1]
                     # Batch repeat value > 1: We have single frames in the
-                    # batch at each timestep.
-                    if view_req.batch_repeat_value > 1:
-                        traj_len = len(self[data_col])
-                        missing_at_end = traj_len % view_req.batch_repeat_value
-                        obs_shift = -1 if data_col in [
-                            SampleBatch.OBS, SampleBatch.NEXT_OBS
-                        ] else 0
-                        from_ = view_req.shift_from + obs_shift
-                        to_ = view_req.shift_to + obs_shift + 1
-                        if to_ == 0:
-                            to_ = None
-                        input_dict[view_col] = np.array([
-                            np.concatenate(
-                                [self[data_col][-missing_at_end:],
-                                 data])[from_:to_]
-                        ])
-                    # Batch repeat value = 1: We already have framestacks
-                    # at each timestep.
-                    else:
-                        input_dict[view_col] = data[None]
+                    # batch at each timestep (for the `data_col`).
+                    data = self[view_col][-1]
+                    traj_len = len(self[data_col])
+                    missing_at_end = traj_len % view_req.batch_repeat_value
+                    # Index into the observations column must be shifted by
+                    # -1 b/c index=0 for observations means the current (last
+                    # seen) observation (after having taken an action).
+                    obs_shift = (
+                        -1 if data_col in [SampleBatch.OBS, SampleBatch.NEXT_OBS] else 0
+                    )
+                    from_ = view_req.shift_from + obs_shift
+                    to_ = view_req.shift_to + obs_shift + 1
+                    if to_ == 0:
+                        to_ = None
+                    input_dict[view_col] = np.array(
+                        [
+                            np.concatenate([data, self[data_col][-missing_at_end:]])[
+                                from_:to_
+                            ]
+                        ]
+                    )
                 # Single index.
                 else:
                     input_dict[view_col] = tree.map_structure(
                         lambda v: v[-1:],  # keep as array (w/ 1 element)
                         self[data_col],
                     )
+            # Single index somewhere inside the trajectory (non-last).
             else:
-                # Index range.
-                if isinstance(index, tuple):
-                    data = self[data_col][index[0]:index[1] +
-                                          1 if index[1] != -1 else None]
-                    input_dict[view_col] = np.array([data])
-                # Single index.
-                else:
-                    input_dict[view_col] = self[data_col][
-                        index:index + 1 if index != -1 else None]
+                input_dict[view_col] = self[data_col][
+                    index : index + 1 if index != -1 else None
+                ]
 
         return SampleBatch(input_dict, seq_lens=np.array([1], dtype=np.int32))
 
@@ -1035,14 +1120,13 @@ class MultiAgentBatch:
     """
 
     @PublicAPI
-    def __init__(self, policy_batches: Dict[PolicyID, SampleBatch],
-                 env_steps: int):
-        """Initialize a MultiAgentBatch object.
+    def __init__(self, policy_batches: Dict[PolicyID, SampleBatch], env_steps: int):
+        """Initialize a MultiAgentBatch instance.
 
         Args:
-            policy_batches (Dict[PolicyID, SampleBatch]): Mapping from policy
+            policy_batches: Mapping from policy
                 ids to SampleBatches of experiences.
-            env_steps (int): The number of environment steps in the environment
+            env_steps: The number of environment steps in the environment
                 this batch contains. This will be less than the number of
                 transitions this batch contains across all policies in total.
         """
@@ -1060,8 +1144,13 @@ class MultiAgentBatch:
         """The number of env steps (there are >= 1 agent steps per env step).
 
         Returns:
-            int: The number of environment steps contained in this batch.
+            The number of environment steps contained in this batch.
         """
+        return self.count
+
+    @PublicAPI
+    def __len__(self) -> int:
+        """Same as `self.env_steps()`."""
         return self.count
 
     @PublicAPI
@@ -1069,7 +1158,7 @@ class MultiAgentBatch:
         """The number of agent steps (there are >= 1 agent steps per env step).
 
         Returns:
-            int: The number of agent steps total in this batch.
+            The number of agent steps total in this batch.
         """
         ct = 0
         for batch in self.policy_batches.values():
@@ -1093,15 +1182,21 @@ class MultiAgentBatch:
         method does not guarantee each batch contains only data from a single
         unroll. Batches might contain data from multiple different envs.
         """
-        from ray.rllib.evaluation.sample_batch_builder import \
-            SampleBatchBuilder
+        from ray.rllib.evaluation.sample_batch_builder import SampleBatchBuilder
 
         # Build a sorted set of (eps_id, t, policy_id, data...)
         steps = []
         for policy_id, batch in self.policy_batches.items():
             for row in batch.rows():
-                steps.append((row[SampleBatch.EPS_ID], row[SampleBatch.T],
-                              row[SampleBatch.AGENT_INDEX], policy_id, row))
+                steps.append(
+                    (
+                        row[SampleBatch.EPS_ID],
+                        row[SampleBatch.T],
+                        row[SampleBatch.AGENT_INDEX],
+                        policy_id,
+                        row,
+                    )
+                )
         steps.sort()
 
         finished_slices = []
@@ -1112,9 +1207,10 @@ class MultiAgentBatch:
             nonlocal cur_slice_size
             assert cur_slice_size > 0
             batch = MultiAgentBatch(
-                {k: v.build_and_reset()
-                 for k, v in cur_slice.items()}, cur_slice_size)
+                {k: v.build_and_reset() for k, v in cur_slice.items()}, cur_slice_size
+            )
             cur_slice_size = 0
+            cur_slice.clear()
             finished_slices.append(batch)
 
         # For each unique env timestep.
@@ -1137,23 +1233,21 @@ class MultiAgentBatch:
     @staticmethod
     @PublicAPI
     def wrap_as_needed(
-            policy_batches: Dict[PolicyID, SampleBatch],
-            env_steps: int) -> Union[SampleBatch, "MultiAgentBatch"]:
+        policy_batches: Dict[PolicyID, SampleBatch], env_steps: int
+    ) -> Union[SampleBatch, "MultiAgentBatch"]:
         """Returns SampleBatch or MultiAgentBatch, depending on given policies.
 
         Args:
-            policy_batches (Dict[PolicyID, SampleBatch]): Mapping from policy
-                ids to SampleBatch.
-            env_steps (int): Number of env steps in the batch.
+            policy_batches: Mapping from policy ids to SampleBatch.
+            env_steps: Number of env steps in the batch.
 
         Returns:
-            Union[SampleBatch, MultiAgentBatch]: The single default policy's
-                SampleBatch or a MultiAgentBatch (more than one policy).
+            The single default policy's SampleBatch or a MultiAgentBatch
+            (more than one policy).
         """
         if len(policy_batches) == 1 and DEFAULT_POLICY_ID in policy_batches:
             return policy_batches[DEFAULT_POLICY_ID]
-        return MultiAgentBatch(
-            policy_batches=policy_batches, env_steps=env_steps)
+        return MultiAgentBatch(policy_batches=policy_batches, env_steps=env_steps)
 
     @staticmethod
     @PublicAPI
@@ -1161,12 +1255,10 @@ class MultiAgentBatch:
         """Concatenates a list of MultiAgentBatches into a new MultiAgentBatch.
 
         Args:
-            samples (List[MultiAgentBatch]): List of MultiagentBatch objects
-                to concatenate.
+            samples: List of MultiagentBatch objects to concatenate.
 
         Returns:
-            MultiAgentBatch: A new MultiAgentBatch consisting of the
-                concatenated inputs.
+            A new MultiAgentBatch consisting of the concatenated inputs.
         """
         policy_batches = collections.defaultdict(list)
         env_steps = 0
@@ -1179,7 +1271,8 @@ class MultiAgentBatch:
                 # Otherwise: Error.
                 raise ValueError(
                     "`MultiAgentBatch.concat_samples()` can only concat "
-                    "MultiAgentBatch types, not {}!".format(type(s).__name__))
+                    "MultiAgentBatch types, not {}!".format(type(s).__name__)
+                )
             for key, batch in s.policy_batches.items():
                 policy_batches[key].append(batch)
             env_steps += s.env_steps()
@@ -1193,55 +1286,66 @@ class MultiAgentBatch:
         """Deep-copies self into a new MultiAgentBatch.
 
         Returns:
-            MultiAgentBatch: The copy of self with deep-copied data.
+            The copy of self with deep-copied data.
         """
         return MultiAgentBatch(
-            {k: v.copy()
-             for (k, v) in self.policy_batches.items()}, self.count)
+            {k: v.copy() for (k, v) in self.policy_batches.items()}, self.count
+        )
 
     @PublicAPI
     def size_bytes(self) -> int:
         """
         Returns:
-            int: The overall size in bytes of all policy batches (all columns).
+            The overall size in bytes of all policy batches (all columns).
         """
         return sum(b.size_bytes() for b in self.policy_batches.values())
 
     @DeveloperAPI
-    def compress(self,
-                 bulk: bool = False,
-                 columns: Set[str] = frozenset(["obs", "new_obs"])) -> None:
+    def compress(
+        self, bulk: bool = False, columns: Set[str] = frozenset(["obs", "new_obs"])
+    ) -> None:
         """Compresses each policy batch (per column) in place.
 
         Args:
-            bulk (bool): Whether to compress across the batch dimension (0)
+            bulk: Whether to compress across the batch dimension (0)
                 as well. If False will compress n separate list items, where n
                 is the batch size.
-            columns (Set[str]): Set of column names to compress.
+            columns: Set of column names to compress.
         """
         for batch in self.policy_batches.values():
             batch.compress(bulk=bulk, columns=columns)
 
     @DeveloperAPI
-    def decompress_if_needed(self,
-                             columns: Set[str] = frozenset(
-                                 ["obs", "new_obs"])) -> "MultiAgentBatch":
+    def decompress_if_needed(
+        self, columns: Set[str] = frozenset(["obs", "new_obs"])
+    ) -> "MultiAgentBatch":
         """Decompresses each policy batch (per column), if already compressed.
 
         Args:
-            columns (Set[str]): Set of column names to decompress.
+            columns: Set of column names to decompress.
 
         Returns:
-            MultiAgentBatch: This very MultiAgentBatch.
+            Self.
         """
         for batch in self.policy_batches.values():
             batch.decompress_if_needed(columns)
         return self
 
+    @DeveloperAPI
+    def as_multi_agent(self) -> "MultiAgentBatch":
+        """Simply returns `self` (already a MultiAgentBatch).
+
+        Returns:
+            This very instance of MultiAgentBatch.
+        """
+        return self
+
     def __str__(self):
         return "MultiAgentBatch({}, env_steps={})".format(
-            str(self.policy_batches), self.count)
+            str(self.policy_batches), self.count
+        )
 
     def __repr__(self):
         return "MultiAgentBatch({}, env_steps={})".format(
-            str(self.policy_batches), self.count)
+            str(self.policy_batches), self.count
+        )

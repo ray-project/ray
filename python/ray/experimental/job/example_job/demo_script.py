@@ -17,8 +17,7 @@ class StepActor:
 
         worker = ray.worker.global_worker
         worker_id = worker.core_worker.get_actor_id()
-        ray_kv._internal_kv_put(
-            f"JOB:{worker_id}", self.current_step, overwrite=True)
+        ray_kv._internal_kv_put(f"JOB:{worker_id}", self.current_step, overwrite=True)
 
     def run(self):
         worker = ray.worker.global_worker
@@ -26,12 +25,15 @@ class StepActor:
 
         while self.current_step <= self.total_steps:
             if not self.stopped:
-                print(f"Sleeping {self.interval_s} secs to executing "
-                      f"step {self.current_step}")
+                print(
+                    f"Sleeping {self.interval_s} secs to executing "
+                    f"step {self.current_step}"
+                )
                 time.sleep(self.interval_s)
                 self.current_step += 1
                 ray_kv._internal_kv_put(
-                    f"JOB:{worker_id}", self.current_step, overwrite=True)
+                    f"JOB:{worker_id}", self.current_step, overwrite=True
+                )
             else:
                 print("Stop called or reached final step.")
                 break
@@ -54,18 +56,21 @@ if __name__ == "__main__":
         required=False,
         type=int,
         default=1,
-        help="Address to use to connect to Ray")
+        help="Address to use to connect to Ray",
+    )
     parser.add_argument(
         "--total-steps",
         required=False,
         type=int,
         default=3,
-        help="Password for connecting to Redis")
+        help="Password for connecting to Redis",
+    )
     args, _ = parser.parse_known_args()
 
     ray.init()
     step_actor = StepActor.remote(
-        interval_s=args.interval_s, total_steps=args.total_steps)
+        interval_s=args.interval_s, total_steps=args.total_steps
+    )
     ref = step_actor.run.remote()
     print(ray.get([ref]))
     job_key = ray_kv._internal_kv_list("JOB:")[0]

@@ -1,5 +1,5 @@
 from collections import Counter
-from typing import Dict, List, Union
+from typing import Dict, List, Union, Optional
 
 from tensorflow.keras.callbacks import Callback
 from ray import tune
@@ -9,6 +9,7 @@ import os
 
 class TuneCallback(Callback):
     """Base class for Tune's Keras callbacks."""
+
     _allowed = [
         "batch_begin",
         "batch_end",
@@ -36,7 +37,9 @@ class TuneCallback(Callback):
         if any(w not in self._allowed for w in on):
             raise ValueError(
                 "Invalid trigger time selected: {}. Must be one of {}".format(
-                    on, self._allowed))
+                    on, self._allowed
+                )
+            )
         self._on = on
 
     def _handle(self, logs: Dict, when: str):
@@ -113,13 +116,13 @@ class TuneReportCallback(TuneCallback):
     Reports metrics to Ray Tune.
 
     Args:
-        metrics (str|list|dict): Metrics to report to Tune. If this is a list,
+        metrics: Metrics to report to Tune. If this is a list,
             each item describes the metric key reported to Keras,
             and it will reported under the same name to Tune. If this is a
             dict, each key will be the name reported to Tune and the respective
             value will be the metric key reported to Keras. If this is None,
             all Keras logs will be reported.
-        on (str|list): When to trigger checkpoint creations. Must be one of
+        on: When to trigger checkpoint creations. Must be one of
             the Keras event hooks (less the ``on_``), e.g.
             "train_start", or "predict_end". Defaults to "epoch_end".
 
@@ -142,9 +145,11 @@ class TuneReportCallback(TuneCallback):
 
     """
 
-    def __init__(self,
-                 metrics: Union[None, str, List[str], Dict[str, str]] = None,
-                 on: Union[str, List[str]] = "epoch_end"):
+    def __init__(
+        self,
+        metrics: Optional[Union[str, List[str], Dict[str, str]]] = None,
+        on: Union[str, List[str]] = "epoch_end",
+    ):
         super(TuneReportCallback, self).__init__(on)
         if isinstance(metrics, str):
             metrics = [metrics]
@@ -174,29 +179,32 @@ class _TuneCheckpointCallback(TuneCallback):
     instead.
 
     Args:
-        filename (str): Filename of the checkpoint within the checkpoint
+        filename: Filename of the checkpoint within the checkpoint
             directory. Defaults to "checkpoint".
-        frequency (int|list): Checkpoint frequency. If this is an integer `n`,
+        frequency: Checkpoint frequency. If this is an integer `n`,
             checkpoints are saved every `n` times each hook was called. If
             this is a list, it specifies the checkpoint frequencies for each
             hook individually.
-        on (str|list): When to trigger checkpoint creations. Must be one of
+        on: When to trigger checkpoint creations. Must be one of
             the Keras event hooks (less the ``on_``), e.g.
             "train_start", or "predict_end". Defaults to "epoch_end".
 
 
     """
 
-    def __init__(self,
-                 filename: str = "checkpoint",
-                 frequency: Union[int, List[int]] = 1,
-                 on: Union[str, List[str]] = "epoch_end"):
+    def __init__(
+        self,
+        filename: str = "checkpoint",
+        frequency: Union[int, List[int]] = 1,
+        on: Union[str, List[str]] = "epoch_end",
+    ):
 
         if isinstance(frequency, list):
             if not isinstance(on, list) or len(frequency) != len(on):
                 raise ValueError(
                     "If you pass a list for checkpoint frequencies, the `on` "
-                    "parameter has to be a list with the same length.")
+                    "parameter has to be a list with the same length."
+                )
 
         self._frequency = frequency
 
@@ -218,8 +226,8 @@ class _TuneCheckpointCallback(TuneCallback):
         if self._counter[when] % freq == 0:
             with tune.checkpoint_dir(step=self._cp_count) as checkpoint_dir:
                 self.model.save(
-                    os.path.join(checkpoint_dir, self._filename),
-                    overwrite=True)
+                    os.path.join(checkpoint_dir, self._filename), overwrite=True
+                )
                 self._cp_count += 1
 
 
@@ -238,19 +246,19 @@ class TuneReportCheckpointCallback(TuneCallback):
     but doesn't register them with Ray Tune.
 
     Args:
-        metrics (str|list|dict): Metrics to report to Tune. If this is a list,
+        metrics: Metrics to report to Tune. If this is a list,
             each item describes the metric key reported to Keras,
             and it will reported under the same name to Tune. If this is a
             dict, each key will be the name reported to Tune and the respective
             value will be the metric key reported to Keras. If this is None,
             all Keras logs will be reported.
-        filename (str): Filename of the checkpoint within the checkpoint
+        filename: Filename of the checkpoint within the checkpoint
             directory. Defaults to "checkpoint".
-        frequency (int|list): Checkpoint frequency. If this is an integer `n`,
+        frequency: Checkpoint frequency. If this is an integer `n`,
             checkpoints are saved every `n` times each hook was called. If
             this is a list, it specifies the checkpoint frequencies for each
             hook individually.
-        on (str|list): When to trigger checkpoint creations. Must be one of
+        on: When to trigger checkpoint creations. Must be one of
             the Keras event hooks (less the ``on_``), e.g.
             "train_start", or "predict_end". Defaults to "epoch_end".
 
@@ -277,11 +285,13 @@ class TuneReportCheckpointCallback(TuneCallback):
 
     """
 
-    def __init__(self,
-                 metrics: Union[None, str, List[str], Dict[str, str]] = None,
-                 filename: str = "checkpoint",
-                 frequency: Union[int, List[int]] = 1,
-                 on: Union[str, List[str]] = "epoch_end"):
+    def __init__(
+        self,
+        metrics: Optional[Union[str, List[str], Dict[str, str]]] = None,
+        filename: str = "checkpoint",
+        frequency: Union[int, List[int]] = 1,
+        on: Union[str, List[str]] = "epoch_end",
+    ):
         super(TuneReportCheckpointCallback, self).__init__(on)
         self._checkpoint = _TuneCheckpointCallback(filename, frequency, on)
         self._report = TuneReportCallback(metrics, on)

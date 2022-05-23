@@ -18,6 +18,7 @@
 
 #include <memory>
 #include <msgpack.hpp>
+
 #include "ray/common/id.h"
 
 namespace ray {
@@ -67,7 +68,8 @@ class ObjectStore {
   /// \param[in] num_objects The minimum number of objects to wait.
   /// \param[in] timeout_ms The maximum wait time in milliseconds.
   /// \return A vector that indicates each object has appeared or not.
-  virtual std::vector<bool> Wait(const std::vector<ObjectID> &ids, int num_objects,
+  virtual std::vector<bool> Wait(const std::vector<ObjectID> &ids,
+                                 int num_objects,
                                  int timeout_ms) = 0;
 
   /// Increase the reference count for this object ID.
@@ -82,6 +84,10 @@ class ObjectStore {
   ///
   /// \param[in] id The binary string ID to decrease the reference count for.
   virtual void RemoveLocalReference(const std::string &id) = 0;
+
+  /// Returns a map of all ObjectIDs currently in scope with a pair of their
+  /// (local, submitted_task) reference counts. For debugging purposes.
+  std::unordered_map<ObjectID, std::pair<size_t, size_t>> GetAllReferenceCounts() const;
 
  private:
   virtual void PutRaw(std::shared_ptr<msgpack::sbuffer> data, ObjectID *object_id) = 0;

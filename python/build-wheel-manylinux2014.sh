@@ -15,12 +15,14 @@ NODE_VERSION="14"
 PYTHONS=("cp36-cp36m"
          "cp37-cp37m"
          "cp38-cp38"
-         "cp39-cp39")
+         "cp39-cp39"
+         "cp310-cp310")
 
 NUMPY_VERSIONS=("1.14.5"
                 "1.14.5"
                 "1.14.5"
-                "1.19.3")
+                "1.19.3"
+                "1.22.0")
 
 yum -y install unzip zip sudo
 yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel xz
@@ -37,7 +39,7 @@ echo "java_bin path $java_bin"
 java_home=${java_bin%jre/bin/java}
 export JAVA_HOME="$java_home"
 
-/ray/ci/travis/install-bazel.sh
+/ray/ci/env/install-bazel.sh
 # Put bazel into the PATH if building Bazel from source
 # export PATH=/root/bazel-3.2.0/output:$PATH:/root/bin
 
@@ -80,7 +82,7 @@ for ((i=0; i<${#PYTHONS[@]}; ++i)); do
   pushd python
     # Fix the numpy version because this will be the oldest numpy version we can
     # support.
-    /opt/python/"${PYTHON}"/bin/pip install -q numpy=="${NUMPY_VERSION}" cython==0.29.15
+    /opt/python/"${PYTHON}"/bin/pip install -q numpy=="${NUMPY_VERSION}" cython==0.29.26
     # Set the commit SHA in __init__.py.
     if [ -n "$TRAVIS_COMMIT" ]; then
       sed -i.bak "s/{{RAY_COMMIT_SHA}}/$TRAVIS_COMMIT/g" ray/__init__.py && rm ray/__init__.py.bak

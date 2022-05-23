@@ -42,27 +42,29 @@ parser.add_argument(
     type=str,
     default=None,
     help="The game executable to run as RL env. If not provided, uses local "
-    "Unity3D editor instance.")
+    "Unity3D editor instance.",
+)
 parser.add_argument(
     "--horizon",
     type=int,
     default=200,
     help="The max. number of `step()`s for any episode (per agent) before "
-    "it'll be reset again automatically.")
+    "it'll be reset again automatically.",
+)
 parser.add_argument(
     "--server",
     type=str,
     default=SERVER_ADDRESS,
-    help="The Policy server's address to connect to from this client.")
+    help="The Policy server's address to connect to from this client.",
+)
 parser.add_argument(
-    "--port",
-    type=int,
-    default=SERVER_PORT,
-    help="The port to use (on --server).")
+    "--port", type=int, default=SERVER_PORT, help="The port to use (on --server)."
+)
 parser.add_argument(
     "--no-train",
     action="store_true",
-    help="Whether to disable training (on the server side).")
+    help="Whether to disable training (on the server side).",
+)
 parser.add_argument(
     "--inference-mode",
     type=str,
@@ -70,18 +72,21 @@ parser.add_argument(
     choices=["local", "remote"],
     help="Whether to compute actions `local`ly or `remote`ly. Note that "
     "`local` is much faster b/c observations/actions do not have to be "
-    "sent via the network.")
+    "sent via the network.",
+)
 parser.add_argument(
     "--update-interval-local-mode",
     type=float,
     default=10.0,
     help="For `inference-mode=local`, every how many seconds do we update "
-    "learnt policy weights from the server?")
+    "learnt policy weights from the server?",
+)
 parser.add_argument(
     "--stop-reward",
     type=float,
     default=9999,
-    help="Stop once the specified reward is reached.")
+    help="Stop once the specified reward is reached.",
+)
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -91,7 +96,8 @@ if __name__ == "__main__":
     client = PolicyClient(
         "http://" + args.server + ":" + str(args.port),
         inference_mode=args.inference_mode,
-        update_interval=args.update_interval_local_mode)
+        update_interval=args.update_interval_local_mode,
+    )
 
     # Start and reset the actual Unity3DEnv (either already running Unity3D
     # editor or a binary (game) to be started automatically).

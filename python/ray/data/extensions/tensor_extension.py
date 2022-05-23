@@ -38,6 +38,7 @@ import pandas as pd
 from pandas._typing import Dtype
 from pandas.compat import set_function_name
 from pandas.core.dtypes.generic import ABCDataFrame, ABCSeries
+
 try:
     from pandas.core.dtypes.generic import ABCIndex
 except ImportError:
@@ -68,33 +69,34 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
 
     Examples:
         >>> # Create a DataFrame with a list of ndarrays as a column.
+        >>> import pandas as pd
+        >>> import numpy as np
+        >>> import ray
         >>> df = pd.DataFrame({
-                "one": [1, 2, 3],
-                "two": list(np.arange(24).reshape((3, 2, 2, 2)))})
+        ...     "one": [1, 2, 3],
+        ...     "two": list(np.arange(24).reshape((3, 2, 2, 2)))})
         >>> # Note the opaque np.object dtype for this column.
-        >>> df.dtypes
+        >>> df.dtypes # doctest: +SKIP
         one     int64
         two    object
         dtype: object
-
         >>> # Cast column to our TensorDtype extension type.
+        >>> from ray.data.extensions import TensorDtype
         >>> df["two"] = df["two"].astype(TensorDtype())
-
         >>> # Note that the column dtype is now TensorDtype instead of
         >>> # np.object.
-        >>> df.dtypes
+        >>> df.dtypes # doctest: +SKIP
         one          int64
         two    TensorDtype
         dtype: object
-
         >>> # Pandas is now aware of this tensor column, and we can do the
         >>> # typical DataFrame operations on this column.
         >>> col = 2 * (df["two"] + 10)
         >>> # The ndarrays underlying the tensor column will be manipulated,
         >>> # but the column itself will continue to be a Pandas type.
-        >>> type(col)
+        >>> type(col) # doctest: +SKIP
         pandas.core.series.Series
-        >>> col
+        >>> col # doctest: +SKIP
         0   [[[ 2  4]
               [ 6  8]]
              [[10 12]
@@ -111,46 +113,44 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
         >>> # Once you do an aggregation on that column that returns a single
         >>> # row's value, you get back our TensorArrayElement type.
         >>> tensor = col.mean()
-        >>> type(tensor)
+        >>> type(tensor) # doctest: +SKIP
         ray.data.extensions.tensor_extension.TensorArrayElement
-        >>> tensor
+        >>> tensor # doctest: +SKIP
         array([[[18., 20.],
                 [22., 24.]],
                [[26., 28.],
                 [30., 32.]]])
         >>> # This is a light wrapper around a NumPy ndarray, and can easily
         >>> # be converted to an ndarray.
-        >>> type(tensor.to_numpy())
+        >>> type(tensor.to_numpy()) # doctest: +SKIP
         numpy.ndarray
-
         >>> # In addition to doing Pandas operations on the tensor column,
         >>> # you can now put the DataFrame into a Dataset.
-        >>> ds = ray.data.from_pandas([ray.put(df)])
+        >>> ds = ray.data.from_pandas(df) # doctest: +SKIP
         >>> # Internally, this column is represented the corresponding
         >>> # Arrow tensor extension type.
-        >>> ds.schema()
+        >>> ds.schema() # doctest: +SKIP
         one: int64
         two: extension<arrow.py_extension_type<ArrowTensorType>>
-
         >>> # You can write the dataset to Parquet.
-        >>> ds.write_parquet("/some/path")
+        >>> ds.write_parquet("/some/path") # doctest: +SKIP
         >>> # And you can read it back.
-        >>> read_ds = ray.data.read_parquet("/some/path")
-        >>> read_ds.schema()
+        >>> read_ds = ray.data.read_parquet("/some/path") # doctest: +SKIP
+        >>> read_ds.schema() # doctest: +SKIP
         one: int64
         two: extension<arrow.py_extension_type<ArrowTensorType>>
-
-        >>> read_df = ray.get(read_ds.to_pandas_refs())[0]
-        >>> read_df.dtypes
+        >>> read_df = ray.get(read_ds.to_pandas_refs())[0] # doctest: +SKIP
+        >>> read_df.dtypes # doctest: +SKIP
         one          int64
         two    TensorDtype
         dtype: object
         >>> # The tensor extension type is preserved along the
         >>> # Pandas --> Arrow --> Parquet --> Arrow --> Pandas
         >>> # conversion chain.
-        >>> read_df.equals(df)
+        >>> read_df.equals(df) # doctest: +SKIP
         True
     """
+
     # NOTE(Clark): This is apparently required to prevent integer indexing
     # errors, but is an undocumented ExtensionDtype attribute. See issue:
     # https://github.com/CODAIT/text-extensions-for-pandas/issues/166
@@ -208,6 +208,7 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
         For extension dtypes with arguments the following may be an
         adequate implementation.
 
+        >>> import re
         >>> @classmethod
         ... def construct_from_string(cls, string):
         ...     pattern = re.compile(r"^my_type\[(?P<arg_name>.+)\]$")
@@ -228,8 +229,7 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
         if string == cls.__name__:
             return cls()
         else:
-            raise TypeError(
-                f"Cannot construct a '{cls.__name__}' from '{string}'")
+            raise TypeError(f"Cannot construct a '{cls.__name__}' from '{string}'")
 
     @classmethod
     def construct_array_type(cls):
@@ -257,7 +257,8 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
                 # TODO(Clark): Remove concat and construct from list with
                 # shape.
                 values = np.concatenate(
-                    [chunk.to_numpy() for chunk in array.iterchunks()])
+                    [chunk.to_numpy() for chunk in array.iterchunks()]
+                )
             else:
                 values = array.chunk(0).to_numpy()
         else:
@@ -303,9 +304,9 @@ class TensorOpsMixin(pd.api.extensions.ExtensionScalarOpsMixin):
             result = op(lvalues, rvalues)
 
             # Force a TensorArray if rvalue is not a scalar.
-            if (isinstance(self, TensorArrayElement)
-                    and (not isinstance(other, TensorArrayElement)
-                         or not np.isscalar(other))):
+            if isinstance(self, TensorArrayElement) and (
+                not isinstance(other, TensorArrayElement) or not np.isscalar(other)
+            ):
                 result_wrapped = TensorArray(result)
             else:
                 result_wrapped = cls(result)
@@ -359,24 +360,26 @@ class TensorArray(pd.api.extensions.ExtensionArray, TensorOpsMixin):
 
     Examples:
         >>> # Create a DataFrame with a list of ndarrays as a column.
+        >>> import pandas as pd
+        >>> import numpy as np
+        >>> import ray
+        >>> from ray.data.extensions import TensorArray
         >>> df = pd.DataFrame({
-                "one": [1, 2, 3],
-                "two": TensorArray(np.arange(24).reshape((3, 2, 2, 2)))})
-
+        ...     "one": [1, 2, 3],
+        ...     "two": TensorArray(np.arange(24).reshape((3, 2, 2, 2)))})
         >>> # Note that the column dtype is TensorDtype.
-        >>> df.dtypes
+        >>> df.dtypes # doctest: +SKIP
         one          int64
         two    TensorDtype
         dtype: object
-
         >>> # Pandas is aware of this tensor column, and we can do the
         >>> # typical DataFrame operations on this column.
         >>> col = 2 * (df["two"] + 10)
         >>> # The ndarrays underlying the tensor column will be manipulated,
         >>> # but the column itself will continue to be a Pandas type.
-        >>> type(col)
+        >>> type(col) # doctest: +SKIP
         pandas.core.series.Series
-        >>> col
+        >>> col # doctest: +SKIP
         0   [[[ 2  4]
               [ 6  8]]
              [[10 12]
@@ -392,47 +395,46 @@ class TensorArray(pd.api.extensions.ExtensionArray, TensorOpsMixin):
         Name: two, dtype: TensorDtype
         >>> # Once you do an aggregation on that column that returns a single
         >>> # row's value, you get back our TensorArrayElement type.
-        >>> tensor = col.mean()
-        >>> type(tensor)
+        >>> tensor = col.mean() # doctest: +SKIP
+        >>> type(tensor) # doctest: +SKIP
         ray.data.extensions.tensor_extension.TensorArrayElement
-        >>> tensor
+        >>> tensor # doctest: +SKIP
         array([[[18., 20.],
                 [22., 24.]],
                [[26., 28.],
                 [30., 32.]]])
         >>> # This is a light wrapper around a NumPy ndarray, and can easily
         >>> # be converted to an ndarray.
-        >>> type(tensor.to_numpy())
+        >>> type(tensor.to_numpy()) # doctest: +SKIP
         numpy.ndarray
-
         >>> # In addition to doing Pandas operations on the tensor column,
         >>> # you can now put the DataFrame into a Dataset.
-        >>> ds = ray.data.from_pandas([ray.put(df)])
+        >>> ds = ray.data.from_pandas(df) # doctest: +SKIP
         >>> # Internally, this column is represented the corresponding
         >>> # Arrow tensor extension type.
-        >>> ds.schema()
+        >>> ds.schema() # doctest: +SKIP
         one: int64
         two: extension<arrow.py_extension_type<ArrowTensorType>>
-
         >>> # You can write the dataset to Parquet.
-        >>> ds.write_parquet("/some/path")
+        >>> ds.write_parquet("/some/path") # doctest: +SKIP
         >>> # And you can read it back.
-        >>> read_ds = ray.data.read_parquet("/some/path")
-        >>> read_ds.schema()
+        >>> read_ds = ray.data.read_parquet("/some/path") # doctest: +SKIP
+        >>> read_ds.schema() # doctest: +SKIP
         one: int64
         two: extension<arrow.py_extension_type<ArrowTensorType>>
 
-        >>> read_df = ray.get(read_ds.to_pandas_refs())[0]
-        >>> read_df.dtypes
+        >>> read_df = ray.get(read_ds.to_pandas_refs())[0] # doctest: +SKIP
+        >>> read_df.dtypes # doctest: +SKIP
         one          int64
         two    TensorDtype
         dtype: object
         >>> # The tensor extension type is preserved along the
         >>> # Pandas --> Arrow --> Parquet --> Arrow --> Pandas
         >>> # conversion chain.
-        >>> read_df.equals(df)
+        >>> read_df.equals(df) # doctest: +SKIP
         True
     """
+
     SUPPORTED_REDUCERS = {
         "sum": np.sum,
         "all": np.all,
@@ -448,8 +450,16 @@ class TensorArray(pd.api.extensions.ExtensionArray, TensorOpsMixin):
 
     # See https://github.com/pandas-dev/pandas/blob/master/pandas/core/arrays/base.py  # noqa
     # for interface documentation and the subclassing contract.
-    def __init__(self, values: Union[np.ndarray, ABCSeries, Sequence[Union[
-            np.ndarray, TensorArrayElement]], TensorArrayElement, Any]):
+    def __init__(
+        self,
+        values: Union[
+            np.ndarray,
+            ABCSeries,
+            Sequence[Union[np.ndarray, TensorArrayElement]],
+            TensorArrayElement,
+            Any,
+        ],
+    ):
         """
         Args:
             values: A NumPy ndarray or sequence of NumPy ndarrays of equal
@@ -461,9 +471,11 @@ class TensorArray(pd.api.extensions.ExtensionArray, TensorOpsMixin):
             values = values.to_numpy()
 
         if isinstance(values, np.ndarray):
-            if (values.dtype.type is np.object_ and len(values) > 0
-                    and isinstance(values[0],
-                                   (np.ndarray, TensorArrayElement))):
+            if (
+                values.dtype.type is np.object_
+                and len(values) > 0
+                and isinstance(values[0], (np.ndarray, TensorArrayElement))
+            ):
                 # Convert ndarrays of ndarrays/TensorArrayElements
                 # with an opaque object type to a properly typed ndarray of
                 # ndarrays.
@@ -474,28 +486,25 @@ class TensorArray(pd.api.extensions.ExtensionArray, TensorOpsMixin):
             if len(values) == 0:
                 self._tensor = np.array([])
             else:
-                self._tensor = np.stack(
-                    [np.asarray(v) for v in values], axis=0)
+                self._tensor = np.stack([np.asarray(v) for v in values], axis=0)
         elif isinstance(values, TensorArrayElement):
             self._tensor = np.array([np.asarray(values)])
         elif np.isscalar(values):
             # `values` is a single element:
             self._tensor = np.array([values])
         elif isinstance(values, TensorArray):
-            raise TypeError(
-                "Use the copy() method to create a copy of a TensorArray")
+            raise TypeError("Use the copy() method to create a copy of a TensorArray")
         else:
             raise TypeError(
                 "Expected a numpy.ndarray or sequence of numpy.ndarray, "
                 f"but received {values} "
-                f"of type '{type(values)}' instead.")
+                f"of type '{type(values)}' instead."
+            )
 
     @classmethod
-    def _from_sequence(cls,
-                       scalars,
-                       *,
-                       dtype: Optional[Dtype] = None,
-                       copy: bool = False):
+    def _from_sequence(
+        cls, scalars, *, dtype: Optional[Dtype] = None, copy: bool = False
+    ):
         """
         Construct a new ExtensionArray from a sequence of scalars.
 
@@ -522,8 +531,9 @@ class TensorArray(pd.api.extensions.ExtensionArray, TensorOpsMixin):
         return TensorArray(scalars)
 
     @classmethod
-    def _from_factorized(cls, values: np.ndarray,
-                         original: pd.api.extensions.ExtensionArray):
+    def _from_factorized(
+        cls, values: np.ndarray, original: pd.api.extensions.ExtensionArray
+    ):
         """
         Reconstruct an ExtensionArray after factorization.
 
@@ -542,8 +552,9 @@ class TensorArray(pd.api.extensions.ExtensionArray, TensorOpsMixin):
         """
         raise NotImplementedError
 
-    def __getitem__(self, item: Union[int, slice, np.ndarray]
-                    ) -> Union["TensorArray", "TensorArrayElement"]:
+    def __getitem__(
+        self, item: Union[int, slice, np.ndarray]
+    ) -> Union["TensorArray", "TensorArrayElement"]:
         """
         Select a subset of self.
 
@@ -578,12 +589,13 @@ class TensorArray(pd.api.extensions.ExtensionArray, TensorOpsMixin):
                 return TensorArrayElement(value)
         else:
             # BEGIN workaround for Pandas issue #42430
-            if (isinstance(item, tuple) and len(item) > 1
-                    and item[0] == Ellipsis):
+            if isinstance(item, tuple) and len(item) > 1 and item[0] == Ellipsis:
                 if len(item) > 2:
                     # Hopefully this case is not possible, but can't be sure
-                    raise ValueError("Workaround Pandas issue #42430 not "
-                                     "implemented for tuple length > 2")
+                    raise ValueError(
+                        "Workaround Pandas issue #42430 not "
+                        "implemented for tuple length > 2"
+                    )
                 item = item[1]
             # END workaround for issue #42430
             if isinstance(item, TensorArray):
@@ -640,17 +652,17 @@ class TensorArray(pd.api.extensions.ExtensionArray, TensorOpsMixin):
             # may do something funny with that operation.
             result_list = [self._tensor[i] is None for i in range(len(self))]
             result = np.broadcast_to(
-                np.array(result_list, dtype=np.bool), self.numpy_shape)
+                np.array(result_list, dtype=np.bool), self.numpy_shape
+            )
         elif self._tensor.dtype.type is np.str_:
             result = self._tensor == ""
         else:
             result = np.isnan(self._tensor)
         return TensorArray(result)
 
-    def take(self,
-             indices: Sequence[int],
-             allow_fill: bool = False,
-             fill_value: Any = None) -> "TensorArray":
+    def take(
+        self, indices: Sequence[int], allow_fill: bool = False, fill_value: Any = None
+    ) -> "TensorArray":
         """
         Take elements from an array.
 
@@ -744,14 +756,11 @@ class TensorArray(pd.api.extensions.ExtensionArray, TensorOpsMixin):
                     fill_value = np.nan
 
                 # Create an array populated with fill value.
-                values = np.full((len(indices), ) + self._tensor.shape[1:],
-                                 fill_value)
+                values = np.full((len(indices),) + self._tensor.shape[1:], fill_value)
 
                 # Put tensors at the given positive indices into array.
                 is_nonneg = indices >= 0
-                np.put(values,
-                       np.where(is_nonneg)[0],
-                       self._tensor[indices[is_nonneg]])
+                np.put(values, np.where(is_nonneg)[0], self._tensor[indices[is_nonneg]])
 
                 return TensorArray(values)
 
@@ -772,8 +781,7 @@ class TensorArray(pd.api.extensions.ExtensionArray, TensorOpsMixin):
         return TensorArray(self._tensor.copy())
 
     @classmethod
-    def _concat_same_type(cls,
-                          to_concat: Sequence["TensorArray"]) -> "TensorArray":
+    def _concat_same_type(cls, to_concat: Sequence["TensorArray"]) -> "TensorArray":
         """
         Concatenate multiple array of this dtype.
 
@@ -817,11 +825,9 @@ class TensorArray(pd.api.extensions.ExtensionArray, TensorOpsMixin):
             value = np.asarray(value)
         if isinstance(value, list):
             value = [
-                np.asarray(v) if isinstance(v, TensorArrayElement) else v
-                for v in value
+                np.asarray(v) if isinstance(v, TensorArrayElement) else v for v in value
             ]
-        if (isinstance(value, ABCSeries)
-                and isinstance(value.dtype, TensorDtype)):
+        if isinstance(value, ABCSeries) and isinstance(value.dtype, TensorDtype):
             value = value.values
         if value is None or isinstance(value, Sequence) and len(value) == 0:
             self._tensor[key] = np.full_like(self._tensor[key], np.nan)
@@ -829,7 +835,8 @@ class TensorArray(pd.api.extensions.ExtensionArray, TensorOpsMixin):
             self._tensor[key] = value
         else:
             raise NotImplementedError(
-                f"__setitem__ with key type '{type(key)}' not implemented")
+                f"__setitem__ with key type '{type(key)}' not implemented"
+            )
 
     def __contains__(self, item) -> bool:
         """
@@ -883,11 +890,11 @@ class TensorArray(pd.api.extensions.ExtensionArray, TensorOpsMixin):
             except KeyError:
                 pass
         try:
-            return TensorArrayElement(self.SUPPORTED_REDUCERS[name](
-                self._tensor, axis=0, **reducer_kwargs))
+            return TensorArrayElement(
+                self.SUPPORTED_REDUCERS[name](self._tensor, axis=0, **reducer_kwargs)
+            )
         except KeyError:
-            raise NotImplementedError(
-                f"'{name}' aggregate not implemented.") from None
+            raise NotImplementedError(f"'{name}' aggregate not implemented.") from None
 
     def __array__(self, dtype: np.dtype = None):
         return np.asarray(self._tensor, dtype=dtype)
@@ -903,11 +910,11 @@ class TensorArray(pd.api.extensions.ExtensionArray, TensorOpsMixin):
                 return NotImplemented
 
         # Defer to the implementation of the ufunc on unwrapped values.
-        inputs = tuple(
-            x._tensor if isinstance(x, TensorArray) else x for x in inputs)
+        inputs = tuple(x._tensor if isinstance(x, TensorArray) else x for x in inputs)
         if out:
             kwargs["out"] = tuple(
-                x._tensor if isinstance(x, TensorArray) else x for x in out)
+                x._tensor if isinstance(x, TensorArray) else x for x in out
+            )
         result = getattr(ufunc, method)(*inputs, **kwargs)
 
         if type(result) is tuple:
@@ -920,10 +927,12 @@ class TensorArray(pd.api.extensions.ExtensionArray, TensorOpsMixin):
             # One return value.
             return type(self)(result)
 
-    def to_numpy(self,
-                 dtype: np.dtype = None,
-                 copy: bool = False,
-                 na_value: Any = pd.api.extensions.no_default):
+    def to_numpy(
+        self,
+        dtype: np.dtype = None,
+        copy: bool = False,
+        na_value: Any = pd.api.extensions.no_default,
+    ):
         """
         Convert to a NumPy ndarray.
 
@@ -1028,12 +1037,12 @@ class TensorArray(pd.api.extensions.ExtensionArray, TensorOpsMixin):
 
         if isinstance(dtype, TensorDtype):
             values = TensorArray(self._tensor.copy()) if copy else self
-        elif not (pd.api.types.is_object_dtype(dtype)
-                  and pd.api.types.is_string_dtype(dtype)):
+        elif not (
+            pd.api.types.is_object_dtype(dtype) and pd.api.types.is_string_dtype(dtype)
+        ):
             values = np.array([str(t) for t in self._tensor])
             if isinstance(dtype, pd.StringDtype):
-                return dtype.construct_array_type()._from_sequence(
-                    values, copy=False)
+                return dtype.construct_array_type()._from_sequence(values, copy=False)
             else:
                 return values
         elif pd.api.types.is_object_dtype(dtype):
@@ -1157,7 +1166,8 @@ class ArrowTensorType(pa.PyExtensionType):
 
     def __str__(self):
         return "<ArrowTensorType: shape={}, dtype={}>".format(
-            self.shape, self.storage_type.value_type)
+            self.shape, self.storage_type.value_type
+        )
 
 
 @PublicAPI(stability="beta")
@@ -1170,6 +1180,7 @@ class ArrowTensorArray(pa.ExtensionArray):
     See Arrow docs for customizing extension arrays:
     https://arrow.apache.org/docs/python/extending_types.html#custom-extension-array-class
     """
+
     OFFSET_DTYPE = np.int32
 
     def __getitem__(self, key):
@@ -1230,23 +1241,33 @@ class ArrowTensorArray(pa.ExtensionArray):
             outer_len = arr.shape[0]
             element_shape = arr.shape[1:]
             total_num_items = arr.size
-            num_items_per_element = (np.prod(element_shape)
-                                     if element_shape else 1)
+            num_items_per_element = np.prod(element_shape) if element_shape else 1
 
             # Data buffer.
+            if pa.types.is_boolean(pa_dtype):
+                # NumPy doesn't represent boolean arrays as bit-packed, so we manually
+                # bit-pack the booleans before handing the buffer off to Arrow.
+                # NOTE: Arrow expects LSB bit-packed ordering.
+                # NOTE: This creates a copy.
+                arr = np.packbits(arr, bitorder="little")
             data_buffer = pa.py_buffer(arr)
-            data_array = pa.Array.from_buffers(pa_dtype, total_num_items,
-                                               [None, data_buffer])
+            data_array = pa.Array.from_buffers(
+                pa_dtype, total_num_items, [None, data_buffer]
+            )
 
             # Offset buffer.
             offset_buffer = pa.py_buffer(
                 cls.OFFSET_DTYPE(
-                    [i * num_items_per_element for i in range(outer_len + 1)]))
+                    [i * num_items_per_element for i in range(outer_len + 1)]
+                )
+            )
 
             storage = pa.Array.from_buffers(
                 pa.list_(pa_dtype),
-                outer_len, [None, offset_buffer],
-                children=[data_array])
+                outer_len,
+                [None, offset_buffer],
+                children=[data_array],
+            )
             type_ = ArrowTensorType(element_shape, pa_dtype)
             return pa.ExtensionArray.from_storage(type_, storage)
         elif isinstance(arr, Iterable):
@@ -1254,7 +1275,7 @@ class ArrowTensorArray(pa.ExtensionArray):
         else:
             raise ValueError("Must give ndarray or iterable of ndarrays.")
 
-    def _to_numpy(self, index: Optional[int] = None):
+    def _to_numpy(self, index: Optional[int] = None, zero_copy_only: bool = False):
         """
         Helper for getting either an element of the array of tensors as an
         ndarray, or the entire array of tensors as a single ndarray.
@@ -1263,47 +1284,90 @@ class ArrowTensorArray(pa.ExtensionArray):
             index: The index of the tensor element that we wish to return as
                 an ndarray. If not given, the entire array of tensors is
                 returned as an ndarray.
+            zero_copy_only: If True, an exception will be raised if the
+                conversion to a NumPy array would require copying the
+                underlying data (e.g. in presence of nulls, or for
+                non-primitive types). This argument is currently ignored, so
+                zero-copy isn't enforced even if this argument is true.
 
         Returns:
             The corresponding tensor element as an ndarray if an index was
             given, or the entire array of tensors as an ndarray otherwise.
         """
+        # TODO(Clark): Enforce zero_copy_only.
+        # TODO(Clark): Support strides?
         # Buffers schema:
         # [None, offset_buffer, None, data_buffer]
         buffers = self.buffers()
         data_buffer = buffers[3]
         storage_list_type = self.storage.type
-        ext_dtype = storage_list_type.value_type.to_pandas_dtype()
+        value_type = storage_list_type.value_type
+        ext_dtype = value_type.to_pandas_dtype()
         shape = self.type.shape
-        # Size in bytes of the underlying ndarray item.
-        item_byte_width = storage_list_type.value_type.bit_width // 8
+        if pa.types.is_boolean(value_type):
+            # Arrow boolean array buffers are bit-packed, with 8 entries per byte,
+            # and are accessed via bit offsets.
+            buffer_item_width = value_type.bit_width
+        else:
+            # We assume all other array types are accessed via byte array
+            # offsets.
+            buffer_item_width = value_type.bit_width // 8
         # Number of items per inner ndarray.
         num_items_per_element = np.prod(shape) if shape else 1
         # Base offset into data buffer, e.g. due to zero-copy slice.
         buffer_offset = self.offset * num_items_per_element
-        # Offset (in bytes) of array data in buffer.
-        offset = item_byte_width * buffer_offset
+        # Offset of array data in buffer.
+        offset = buffer_item_width * buffer_offset
         if index is not None:
             # Getting a single tensor element of the array.
             offset_buffer = buffers[1]
             offset_array = np.ndarray(
-                (len(self), ), buffer=offset_buffer, dtype=self.OFFSET_DTYPE)
+                (len(self),), buffer=offset_buffer, dtype=self.OFFSET_DTYPE
+            )
             # Offset into array to reach logical index.
             index_offset = offset_array[index]
             # Add the index offset to the base offset.
-            offset += item_byte_width * index_offset
+            offset += buffer_item_width * index_offset
         else:
             # Getting the entire array of tensors.
-            shape = (len(self), ) + shape
-        # TODO(Clark): Support strides?
-        return np.ndarray(
-            shape, dtype=ext_dtype, buffer=data_buffer, offset=offset)
+            shape = (len(self),) + shape
+        if pa.types.is_boolean(value_type):
+            # Special handling for boolean arrays, since Arrow bit-packs boolean arrays
+            # while NumPy does not.
+            # Cast as uint8 array and let NumPy unpack into a boolean view.
+            # Offset into uint8 array, where each element is a bucket for 8 booleans.
+            byte_bucket_offset = offset // 8
+            # Offset for a specific boolean, within a uint8 array element.
+            bool_offset = offset % 8
+            # The number of uint8 array elements (buckets) that our slice spans.
+            # Note that, due to the offset for a specific boolean, the slice can span
+            # byte boundaries even if it contains less than 8 booleans.
+            num_boolean_byte_buckets = 1 + ((bool_offset + np.prod(shape) - 1) // 8)
+            # Construct the uint8 array view on the buffer.
+            arr = np.ndarray(
+                (num_boolean_byte_buckets,),
+                dtype=np.uint8,
+                buffer=data_buffer,
+                offset=byte_bucket_offset,
+            )
+            # Unpack into a byte per boolean, using LSB bit-packed ordering.
+            arr = np.unpackbits(arr, bitorder="little")
+            # Interpret buffer as boolean array.
+            return np.ndarray(shape, dtype=np.bool_, buffer=arr, offset=bool_offset)
+        return np.ndarray(shape, dtype=ext_dtype, buffer=data_buffer, offset=offset)
 
-    def to_numpy(self):
+    def to_numpy(self, zero_copy_only: bool = True):
         """
         Convert the entire array of tensors into a single ndarray.
+
+        Args:
+            zero_copy_only: If True, an exception will be raised if the
+                conversion to a NumPy array would require copying the
+                underlying data (e.g. in presence of nulls, or for
+                non-primitive types). This argument is currently ignored, so
+                zero-copy isn't enforced even if this argument is true.
 
         Returns:
             A single ndarray representing the entire array of tensors.
         """
-        return self._to_numpy()
+        return self._to_numpy(zero_copy_only=zero_copy_only)

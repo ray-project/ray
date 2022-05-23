@@ -39,7 +39,8 @@ if __name__ == "__main__":
             "sgd_minibatch_size": lambda: random.randint(128, 16384),
             "train_batch_size": lambda: random.randint(2000, 160000),
         },
-        custom_explore_fn=explore)
+        custom_explore_fn=explore,
+    )
 
     analysis = tune.run(
         "PPO",
@@ -53,9 +54,7 @@ if __name__ == "__main__":
             "kl_coeff": 1.0,
             "num_workers": 8,
             "num_gpus": 1,
-            "model": {
-                "free_log_std": True
-            },
+            "model": {"free_log_std": True},
             # These params are tuned from a fixed starting value.
             "lambda": 0.95,
             "clip_param": 0.2,
@@ -63,7 +62,8 @@ if __name__ == "__main__":
             # These params start off randomly drawn from a set.
             "num_sgd_iter": tune.choice([10, 20, 30]),
             "sgd_minibatch_size": tune.choice([128, 512, 2048]),
-            "train_batch_size": tune.choice([10000, 20000, 40000])
-        })
+            "train_batch_size": tune.choice([10000, 20000, 40000]),
+        },
+    )
 
     print("best hyperparameters: ", analysis.best_config)

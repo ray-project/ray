@@ -14,8 +14,10 @@ def leaked_processes():
     """Returns whether any subprocesses were leaked."""
     result = subprocess.check_output(
         "ps aux | grep '{}' | grep -v grep || true".format(
-            EnvWithSubprocess.UNIQUE_CMD),
-        shell=True)
+            EnvWithSubprocess.UNIQUE_CMD
+        ),
+        shell=True,
+    )
     return result
 
 
@@ -36,26 +38,26 @@ if __name__ == "__main__":
     assert os.path.exists(tmp4)
     assert not leaked_processes()
 
-    run_experiments({
-        "demo": {
-            "run": "PG",
-            "env": "subproc",
-            "num_samples": 1,
-            "config": {
-                "num_workers": 1,
-                "env_config": {
-                    "tmp_file1": tmp1,
-                    "tmp_file2": tmp2,
-                    "tmp_file3": tmp3,
-                    "tmp_file4": tmp4,
+    run_experiments(
+        {
+            "demo": {
+                "run": "PG",
+                "env": "subproc",
+                "num_samples": 1,
+                "config": {
+                    "num_workers": 1,
+                    "env_config": {
+                        "tmp_file1": tmp1,
+                        "tmp_file2": tmp2,
+                        "tmp_file3": tmp3,
+                        "tmp_file4": tmp4,
+                    },
+                    "framework": "tf",
                 },
-                "framework": "tf",
+                "stop": {"training_iteration": 1},
             },
-            "stop": {
-                "training_iteration": 1
-            },
-        },
-    })
+        }
+    )
 
     ray.shutdown()
 

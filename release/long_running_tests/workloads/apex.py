@@ -5,14 +5,18 @@ from ray.tune import run_experiments
 from ray.tune.utils.release_test_util import ProgressCallback
 
 num_redis_shards = 5
-redis_max_memory = 10**8
-object_store_memory = 10**9
+redis_max_memory = 10 ** 8
+object_store_memory = 10 ** 9
 num_nodes = 3
 
-message = ("Make sure there is enough memory on this machine to run this "
-           "workload. We divide the system memory by 2 to provide a buffer.")
-assert (num_nodes * object_store_memory + num_redis_shards * redis_max_memory <
-        ray._private.utils.get_system_memory() / 2), message
+message = (
+    "Make sure there is enough memory on this machine to run this "
+    "workload. We divide the system memory by 2 to provide a buffer."
+)
+assert (
+    num_nodes * object_store_memory + num_redis_shards * redis_max_memory
+    < ray._private.utils.get_system_memory() / 2
+), message
 
 # Simulate a cluster on one machine.
 
@@ -39,13 +43,16 @@ run_experiments(
             "config": {
                 "num_workers": 3,
                 "num_gpus": 0,
-                "buffer_size": 10000,
-                "learning_starts": 0,
+                "replay_buffer_config": {
+                    "capacity": 10000,
+                    "learning_starts": 0,
+                },
                 "rollout_fragment_length": 1,
                 "train_batch_size": 1,
                 "min_iter_time_s": 10,
-                "timesteps_per_iteration": 10,
+                "min_sample_timesteps_per_reporting": 10,
             },
         }
     },
-    callbacks=[ProgressCallback()])
+    callbacks=[ProgressCallback()],
+)

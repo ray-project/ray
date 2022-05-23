@@ -1,22 +1,29 @@
+from typing import Dict, List, Optional, Set, TYPE_CHECKING, Tuple, Union
 from collections import defaultdict
 from inspect import signature
+from copy import deepcopy
 import json
 import os
 import time
-from typing import Dict, List, Optional, Set, TYPE_CHECKING, Tuple
 import uuid
 
 import ray
 from ray import ObjectRef, logger
 from ray.actor import ActorClass
 from ray.tune.resources import Resources
-from ray.util.placement_group import PlacementGroup, get_placement_group, \
-    placement_group, placement_group_table, remove_placement_group
+from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.util.placement_group import (
+    PlacementGroup,
+    get_placement_group,
+    placement_group,
+    placement_group_table,
+    remove_placement_group,
+)
 
 if TYPE_CHECKING:
     from ray.tune.trial import Trial
 
-TUNE_PLACEMENT_GROUP_REMOVAL_DELAY = 2.
+TUNE_PLACEMENT_GROUP_REMOVAL_DELAY = 2.0
 
 _tune_pg_prefix = None
 
@@ -47,6 +54,7 @@ def get_tune_pg_prefix():
     return _tune_pg_prefix
 
 
+@PublicAPI(stability="beta")
 class PlacementGroupFactory:
     """Wrapper class that creates placement groups for trials.
 
@@ -88,6 +96,21 @@ class PlacementGroupFactory:
     could be used e.g. if you had one learner running in the main trainable
     that schedules two remote workers that need access to 2 CPUs each.
 
+    If the trainable itself doesn't require resources.
+    You can specify it as:
+
+    .. code-block:: python
+
+        from ray import tune
+
+        tune.run(
+            train,
+            resources_per_trial=tune.PlacementGroupFactory([
+                {},
+                {"CPU": 2},
+                {"CPU": 2},
+            ], strategy="PACK"))
+
     Args:
         bundles(List[Dict]): A list of bundles which
             represent the resources requirements.
@@ -103,13 +126,28 @@ class PlacementGroupFactory:
 
     """
 
-    def __init__(self,
-                 bundles: List[Dict[str, float]],
-                 strategy: str = "PACK",
-                 *args,
-                 **kwargs):
-        self._bundles = [{k: float(v)
-                          for k, v in bundle.items()} for bundle in bundles]
+    def __init__(
+        self,
+        bundles: List[Dict[str, Union[int, float]]],
+        strategy: str = "PACK",
+        *args,
+        **kwargs,
+    ):
+        assert (
+            len(bundles) > 0
+        ), "Cannot initialize a PlacementGroupFactory with zero bundles."
+
+        self._bundles = [
+            {k: float(v) for k, v in bundle.items() if v != 0} for bundle in bundles
+        ]
+
+        if not self._bundles[0]:
+            # This is when trainable itself doesn't need resources.
+            self._head_bundle_is_empty = True
+            self._bundles.pop(0)
+        else:
+            self._head_bundle_is_empty = False
+
         self._strategy = strategy
         self._args = args
         self._kwargs = kwargs
@@ -120,8 +158,24 @@ class PlacementGroupFactory:
         self._bind()
 
     @property
-    def head_cpus(self):
-        return self._bundles[0].get("CPU", None)
+    def head_bundle_is_empty(self):
+        """Returns True if head bundle is empty while child bundles
+        need resources.
+
+        This is considered an internal API within Tune.
+        """
+        return self._head_bundle_is_empty
+
+    @property
+    @DeveloperAPI
+    def head_cpus(self) -> float:
+        return 0.0 if self._head_bundle_is_empty else self._bundles[0].get("CPU", 0.0)
+
+    @property
+    @DeveloperAPI
+    def bundles(self) -> List[Dict[str, float]]:
+        """Returns a deep copy of resource bundles"""
+        return deepcopy(self._bundles)
 
     @property
     def required_resources(self) -> Dict[str, float]:
@@ -135,34 +189,38 @@ class PlacementGroupFactory:
     def _bind(self):
         sig = signature(placement_group)
         try:
-            self._bound = sig.bind(self._bundles, self._strategy, *self._args,
-                                   **self._kwargs)
+            self._bound = sig.bind(
+                self._bundles, self._strategy, *self._args, **self._kwargs
+            )
         except Exception as exc:
             raise RuntimeError(
                 "Invalid definition for placement group factory. Please check "
                 "that you passed valid arguments to the PlacementGroupFactory "
-                "object.") from exc
+                "object."
+            ) from exc
 
     def __call__(self, *args, **kwargs):
         kwargs.update(self._bound.kwargs)
         # Call with bounded *args and **kwargs
         return placement_group(*self._bound.args, **kwargs)
 
-    def __eq__(self, other):
-        return self._bound == other._bound
+    def __eq__(self, other: "PlacementGroupFactory"):
+        return (
+            self._bound == other._bound
+            and self.head_bundle_is_empty == other.head_bundle_is_empty
+        )
 
     def __hash__(self):
         if not self._hash:
             # Cache hash
             self._hash = hash(
                 json.dumps(
-                    {
-                        "args": self._bound.args,
-                        "kwargs": self._bound.kwargs
-                    },
+                    {"args": self._bound.args, "kwargs": self._bound.kwargs},
                     sort_keys=True,
                     indent=0,
-                    ensure_ascii=True))
+                    ensure_ascii=True,
+                )
+            )
         return self._hash
 
     def __getstate__(self):
@@ -185,28 +243,22 @@ def resource_dict_to_pg_factory(spec: Optional[Dict[str, float]]):
         spec = spec._asdict()
 
     spec = spec.copy()
-    extra_custom = spec.pop("extra_custom_resources", {}) or {}
 
-    if any(k.startswith("extra_") and spec[k]
-           for k in spec) or any(extra_custom[k] for k in extra_custom):
-        raise ValueError(
-            "Passing `extra_*` resource requirements to `resources_per_trial` "
-            "is deprecated. Please use a `PlacementGroupFactory` object "
-            "to define your resource requirements instead.")
-
-    cpus = spec.pop("cpu", 0.)
-    gpus = spec.pop("gpu", 0.)
-    memory = spec.pop("memory", 0.)
-    object_store_memory = spec.pop("object_store_memory", 0.)
+    cpus = spec.pop("cpu", 0.0)
+    gpus = spec.pop("gpu", 0.0)
+    memory = spec.pop("memory", 0.0)
+    object_store_memory = spec.pop("object_store_memory", 0.0)
 
     bundle = {k: v for k, v in spec.pop("custom_resources", {}).items()}
 
-    bundle.update({
-        "CPU": cpus,
-        "GPU": gpus,
-        "memory": memory,
-        "object_store_memory": object_store_memory
-    })
+    bundle.update(
+        {
+            "CPU": cpus,
+            "GPU": gpus,
+            "memory": memory,
+            "object_store_memory": object_store_memory,
+        }
+    )
 
     return PlacementGroupFactory([bundle])
 
@@ -225,26 +277,28 @@ class PlacementGroupManager:
     placement groups with their factory methods.
 
     Args:
-        prefix (str): Prefix for the placement group names that are created.
+        prefix: Prefix for the placement group names that are created.
     """
 
     def __init__(self, prefix: str = "__tune__", max_staging: int = 1000):
         self._prefix = prefix
 
         # Sets of staged placement groups by factory
-        self._staging: Dict[PlacementGroupFactory, Set[
-            PlacementGroup]] = defaultdict(set)
+        self._staging: Dict[PlacementGroupFactory, Set[PlacementGroup]] = defaultdict(
+            set
+        )
         # Sets of ready and unused placement groups by factory
-        self._ready: Dict[PlacementGroupFactory, Set[
-            PlacementGroup]] = defaultdict(set)
+        self._ready: Dict[PlacementGroupFactory, Set[PlacementGroup]] = defaultdict(set)
         # Ray futures to check if a placement group is ready
-        self._staging_futures: Dict[ObjectRef, Tuple[PlacementGroupFactory,
-                                                     PlacementGroup]] = {}
+        self._staging_futures: Dict[
+            ObjectRef, Tuple[PlacementGroupFactory, PlacementGroup]
+        ] = {}
 
         # Cache of unstaged PGs (cleaned after full PG removal)
         self._unstaged_pg_pgf: Dict[PlacementGroup, PlacementGroupFactory] = {}
-        self._unstaged_pgf_pg: Dict[PlacementGroupFactory, Set[
-            PlacementGroup]] = defaultdict(set)
+        self._unstaged_pgf_pg: Dict[
+            PlacementGroupFactory, Set[PlacementGroup]
+        ] = defaultdict(set)
 
         # Placement groups used by trials
         self._in_use_pgs: Dict[PlacementGroup, "Trial"] = {}
@@ -255,16 +309,15 @@ class PlacementGroupManager:
         self._cached_pgs: Dict[PlacementGroup, PlacementGroupFactory] = {}
 
         # Placement groups scheduled for delayed removal.
+        # This is used as a damper to filter out some high frequency change
+        # in resources request.
+        # Only PGs that have never been used go here.
+        # TODO(xwjiang): `self._pgs_for_removal` and `self._unstaged_xxx`
+        #  are really the same now. We should consolidate to using one.
+        #  Also `remove_placement_group` method should just be combined with
+        #  `unstage_unused_xxx`.
         self._pgs_for_removal: Dict[PlacementGroup, float] = {}
         self._removal_delay = TUNE_PLACEMENT_GROUP_REMOVAL_DELAY
-
-        # Latest PG staging time to check if still in grace period.
-        self._latest_staging_start_time = time.time()
-
-        # Seconds we wait for a trial to come up before we make blocking calls
-        # to process events
-        self._grace_period = float(
-            os.getenv("TUNE_TRIAL_STARTUP_GRACE_PERIOD", 10.))
 
         self._max_staging = max_staging
 
@@ -275,7 +328,7 @@ class PlacementGroupManager:
         """Schedule placement group for (delayed) removal.
 
         Args:
-            pg (PlacementGroup): Placement group object.
+            pg: Placement group object.
 
         """
         self._pgs_for_removal[pg] = time.time()
@@ -289,14 +342,16 @@ class PlacementGroupManager:
         groups are removed instead.
 
         Args:
-            force (bool): If True, all placement groups scheduled for removal
+            force: If True, all placement groups scheduled for removal
                 will be removed, disregarding any removal conditions.
 
         """
         # Wrap in list so we can modify the dict
         for pg in list(self._pgs_for_removal):
-            if force or (time.time() -
-                         self._removal_delay) >= self._pgs_for_removal[pg]:
+            if (
+                force
+                or (time.time() - self._removal_delay) >= self._pgs_for_removal[pg]
+            ):
                 self._pgs_for_removal.pop(pg)
 
                 remove_placement_group(pg)
@@ -317,11 +372,12 @@ class PlacementGroupManager:
         same driver script.
 
         Args:
-            block (bool): If True, will wait until all placement groups are
+            block: If True, will wait until all placement groups are
                 shut down.
         """
         should_cleanup = not int(
-            os.getenv("TUNE_PLACEMENT_GROUP_CLEANUP_DISABLED", "0"))
+            os.getenv("TUNE_PLACEMENT_GROUP_CLEANUP_DISABLED", "0")
+        )
         if should_cleanup:
             has_non_removed_pg_left = True
             while has_non_removed_pg_left:
@@ -351,7 +407,7 @@ class PlacementGroupManager:
         placement groups is not exhausted.
 
         Args:
-            trial (Trial): Trial whose placement group to stage.
+            trial: Trial whose placement group to stage.
 
         Returns:
             False if placement group has not been staged, True otherwise.
@@ -377,7 +433,6 @@ class PlacementGroupManager:
 
         self._staging[pgf].add(pg)
         self._staging_futures[pg.ready()] = (pgf, pg)
-        self._latest_staging_start_time = time.time()
 
         return True
 
@@ -398,13 +453,20 @@ class PlacementGroupManager:
             ready, _ = ray.wait(list(self._staging_futures.keys()), timeout=0)
 
             for ready_fut in ready:
-                ready_pgf, ready_pg = self._staging_futures.pop(ready_fut)
+                self.handle_ready_future(ready_fut)
 
-                self._staging[ready_pgf].remove(ready_pg)
-                self._ready[ready_pgf].add(ready_pg)
+    def handle_ready_future(self, ready_fut):
+        ready_pgf, ready_pg = self._staging_futures.pop(ready_fut)
 
-    def get_full_actor_cls(self, trial: "Trial",
-                           actor_cls: ActorClass) -> Optional[ActorClass]:
+        self._staging[ready_pgf].remove(ready_pg)
+        self._ready[ready_pgf].add(ready_pg)
+
+    def get_staging_future_list(self):
+        return list(self._staging_futures.keys())
+
+    def get_full_actor_cls(
+        self, trial: "Trial", actor_cls: ActorClass
+    ) -> Optional[ActorClass]:
         """Get a fully configured actor class.
 
         Returns the actor handle if the placement group is ready. In this case,
@@ -412,7 +474,7 @@ class PlacementGroupManager:
         `self._ready`.
 
         Args:
-            trial ("Trial"): "Trial" object to start
+            trial: "Trial" object to start
             actor_cls: Ray actor class.
 
         Returns:
@@ -428,36 +490,44 @@ class PlacementGroupManager:
         self._in_use_pgs[pg] = trial
         self._in_use_trials[trial] = pg
 
-        # We still have to pass resource specs
-        # Pass the full resource specs of the first bundle per default
-        first_bundle = pg.bundle_specs[0].copy()
-        num_cpus = first_bundle.pop("CPU", None)
-        num_gpus = first_bundle.pop("GPU", None)
-
-        # Only custom resources remain in `first_bundle`
-        resources = first_bundle or None
-
-        if num_cpus is None:
-            # If the placement group specifically set the number
-            # of CPUs to 0, use this.
-            num_cpus = pgf.head_cpus
-
         logger.debug(f"For trial {trial} use pg {pg.id}")
 
-        return actor_cls.options(
-            placement_group=pg,
-            placement_group_bundle_index=0,
-            placement_group_capture_child_tasks=True,
-            num_cpus=num_cpus,
-            num_gpus=num_gpus,
-            resources=resources)
+        # We still have to pass resource specs
+        if not pgf.head_bundle_is_empty:
+            # Pass the full resource specs of the first bundle per default
+            head_bundle = pg.bundle_specs[0].copy()
+            num_cpus = head_bundle.pop("CPU", 0)
+            num_gpus = head_bundle.pop("GPU", 0)
+            memory = head_bundle.pop("memory", None)
+            object_store_memory = head_bundle.pop("object_store_memory", None)
+
+            # Only custom resources remain in `head_bundle`
+            resources = head_bundle
+            return actor_cls.options(
+                placement_group=pg,
+                placement_group_bundle_index=0,
+                placement_group_capture_child_tasks=True,
+                num_cpus=num_cpus,
+                num_gpus=num_gpus,
+                memory=memory,
+                object_store_memory=object_store_memory,
+                resources=resources,
+            )
+        else:
+            return actor_cls.options(
+                placement_group=pg,
+                placement_group_capture_child_tasks=True,
+                num_cpus=0,
+                num_gpus=0,
+                resources={},
+            )
 
     def has_ready(self, trial: "Trial", update: bool = False) -> bool:
         """Return True if placement group for trial is ready.
 
         Args:
-            trial (Trial): :obj:`Trial` object.
-            update (bool): Update status first.
+            trial: :obj:`Trial` object.
+            update: Update status first.
 
         Returns:
             Boolean.
@@ -466,6 +536,21 @@ class PlacementGroupManager:
         if update:
             self.update_status()
         return bool(self._ready[trial.placement_group_factory])
+
+    def has_staging(self, trial: "Trial", update: bool = False) -> bool:
+        """Return True if placement group for trial is staging.
+
+        Args:
+            trial: :obj:`Trial` object.
+            update: Update status first.
+
+        Returns:
+            Boolean.
+
+        """
+        if update:
+            self.update_status()
+        return bool(self._staging[trial.placement_group_factory])
 
     def trial_in_use(self, trial: "Trial"):
         return trial in self._in_use_trials
@@ -487,7 +572,7 @@ class PlacementGroupManager:
         cached and None will be returned.
 
         Args:
-            trial (Trial): Trial object with the (currently in use) placement
+            trial: Trial object with the (currently in use) placement
                 group that should be cached.
 
         Returns:
@@ -495,9 +580,6 @@ class PlacementGroupManager:
                 no placement group was replaced.
 
         """
-        if not trial.uses_placement_groups:
-            return None
-
         pgf = trial.placement_group_factory
 
         staged_pg = self._unstage_unused_pg(pgf)
@@ -522,8 +604,10 @@ class PlacementGroupManager:
         pgf = self._cached_pgs.pop(pg)
         trial_pgf = trial.placement_group_factory
 
-        assert pgf == trial_pgf, f"Cannot assign placement group with a " \
-                                 f"non-matching factory to trial {trial}"
+        assert pgf == trial_pgf, (
+            f"Cannot assign placement group with a "
+            f"non-matching factory to trial {trial}"
+        )
 
         logger.debug(f"For trial {trial} RE-use pg {pg.id}")
 
@@ -535,72 +619,25 @@ class PlacementGroupManager:
     def clean_cached_pg(self, pg: PlacementGroup):
         self._cached_pgs.pop(pg)
 
-    def return_or_clean_cached_pg(self, pg: PlacementGroup):
-        """Return cached pg, making it available for other trials to use.
+    def has_cached_pg(self, pgf: PlacementGroupFactory):
+        """Check if a placement group for given factory has been cached"""
+        return any(cached_pgf == pgf for cached_pgf in self._cached_pgs.values())
 
-        This will try to replace another staged placement group. If this
-        is unsuccessful, destroy the placement group instead.
-
-        Args:
-            pg (PlacementGroup): Return this cached placement group.
-
-        Returns:
-            Boolean indicating if the placement group was returned (True)
-                or destroyed (False)
-        """
-        pgf = self._cached_pgs.pop(pg)
-
-        # Replace staged placement group
-        staged_pg = self._unstage_unused_pg(pgf)
-
-        # Could not replace
-        if not staged_pg:
-            self.remove_pg(pg)
-            return False
-
-        # Replace successful
-        self.remove_pg(staged_pg)
-        self._ready[pgf].add(pg)
-        return True
-
-    def return_pg(self,
-                  trial: "Trial",
-                  destroy_pg_if_cannot_replace: bool = True):
-        """Return pg, making it available for other trials to use.
-
-        If destroy_pg_if_cannot_replace is True, this will only return
-        a placement group if a staged placement group can be replaced
-        by it. If not, it will destroy the placement group.
+    def remove_from_in_use(self, trial: "Trial") -> PlacementGroup:
+        """Return pg back to Core scheduling.
 
         Args:
-            trial (Trial): Return placement group of this trial.
-
-        Returns:
-            Boolean indicating if the placement group was returned.
+            trial: Return placement group of this trial.
         """
-        if not trial.uses_placement_groups:
-            return True
-
-        pgf = trial.placement_group_factory
 
         pg = self._in_use_trials.pop(trial)
         self._in_use_pgs.pop(pg)
 
-        if destroy_pg_if_cannot_replace:
-            staged_pg = self._unstage_unused_pg(pgf)
-
-            # Could not replace
-            if not staged_pg:
-                self.remove_pg(pg)
-                return False
-
-            self.remove_pg(staged_pg)
-        self._ready[pgf].add(pg)
-
-        return True
+        return pg
 
     def _unstage_unused_pg(
-            self, pgf: PlacementGroupFactory) -> Optional[PlacementGroup]:
+        self, pgf: PlacementGroupFactory
+    ) -> Optional[PlacementGroup]:
         """Unstage an unsued (i.e. staging or ready) placement group.
 
         This method will find an unused placement group and remove it from
@@ -612,7 +649,7 @@ class PlacementGroupManager:
         group directly, but sometimes we would like to enqueue removal.)
 
         Args:
-            pgf (PlacementGroupFactory): Placement group factory object.
+            pgf: Placement group factory object.
                 This method will try to remove a staged PG of this factory
                 first, then settle for a ready but unused. If none exist,
                 no placement group will be removed and None will be returned.
@@ -648,38 +685,6 @@ class PlacementGroupManager:
 
         return trial_pg
 
-    def clean_trial_placement_group(
-            self, trial: "Trial") -> Optional[PlacementGroup]:
-        """Remove reference to placement groups associated with a trial.
-
-        Returns an associated placement group. If the trial was scheduled, this
-        is the placement group it was scheduled on. If the trial was not
-        scheduled, it will first try to return a staging placement group. If
-        there is no staging placement group, it will return a ready placement
-        group that is not yet being used by another trial.
-
-        Args:
-            trial ("Trial"): :obj:`Trial` object.
-
-        Returns:
-            PlacementGroup or None.
-
-        """
-        pgf = trial.placement_group_factory
-
-        if trial in self._in_use_trials:
-            # "Trial" was in use. Just return its placement group.
-            trial_pg = self._in_use_trials.pop(trial)
-            self._in_use_pgs.pop(trial_pg)
-        else:
-            trial_pg = self._unstage_unused_pg(pgf)
-
-        return trial_pg
-
-    def in_staging_grace_period(self):
-        return self._staging_futures and self._grace_period and time.time(
-        ) <= self._latest_staging_start_time + self._grace_period
-
     def reconcile_placement_groups(self, trials: List["Trial"]):
         """Reconcile placement groups to match requirements.
 
@@ -692,7 +697,7 @@ class PlacementGroupManager:
         (paused+running+pending) should be in staging, use, or the cache.
 
         Args:
-            trials (List[Trial]): List of trials.
+            trials: List of trials.
 
         """
         # Keep track of the currently tracked placement groups
@@ -701,15 +706,13 @@ class PlacementGroupManager:
         # Count number of expected placement groups
         pgf_expected: Dict[PlacementGroupFactory, int] = defaultdict(int)
         for trial in trials:
-            if not trial.uses_placement_groups:
-                continue
-
             # Count in-use placement groups
             if trial in self._in_use_trials:
                 current_counts[trial.placement_group_factory] += 1
 
-            pgf_expected[trial.placement_group_factory] += \
+            pgf_expected[trial.placement_group_factory] += (
                 1 if trial.status in ["PAUSED", "PENDING", "RUNNING"] else 0
+            )
 
         # Ensure that unexpected placement groups are accounted for
         for pgf in self._staging:
@@ -741,8 +744,10 @@ class PlacementGroupManager:
             while expected > current_counts[pgf]:
                 self._stage_pgf_pg(pgf)
                 current_counts[pgf] += 1
-                logger.debug(f"Adding an expected but previously unstaged "
-                             f"placement group for factory {pgf}")
+                logger.debug(
+                    f"Adding an expected but previously unstaged "
+                    f"placement group for factory {pgf}"
+                )
 
     def occupied_resources(self):
         """Return a dictionary of currently in-use resources."""
@@ -753,37 +758,3 @@ class PlacementGroupManager:
                     resources[key] = resources.get(key, 0) + val
 
         return resources
-
-    def total_used_resources(self, committed_resources: Resources) -> dict:
-        """Dict of total used resources incl. placement groups
-
-        Args:
-            committed_resources (Resources): Additional commited resources
-                from (legacy) Ray Tune resource management.
-        """
-        committed = committed_resources._asdict()
-
-        # Make dict compatible with pg resource dict
-        committed.pop("has_placement_group", None)
-        committed["CPU"] = committed.pop("cpu", 0) + committed.pop(
-            "extra_cpu", 0)
-        committed["GPU"] = committed.pop("gpu", 0) + committed.pop(
-            "extra_gpu", 0)
-        committed["memory"] += committed.pop("extra_memory", 0.)
-        committed["object_store_memory"] += committed.pop(
-            "extra_object_store_memory", 0.)
-
-        custom = committed.pop("custom_resources", {})
-        extra_custom = committed.pop("extra_custom_resources", {})
-
-        for k, v in extra_custom.items():
-            custom[k] = custom.get(k, 0.) + v
-
-        committed.update(custom)
-
-        pg_resources = self.occupied_resources()
-
-        for k, v in committed.items():
-            pg_resources[k] = pg_resources.get(k, 0.) + v
-
-        return pg_resources

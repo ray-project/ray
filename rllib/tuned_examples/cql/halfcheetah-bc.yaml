@@ -15,10 +15,10 @@ halfcheetah_bc:
         framework: torch
         soft_horizon: False
         horizon: 1000
-        Q_model:
+        q_model_config:
           fcnet_activation: relu
           fcnet_hiddens: [256, 256, 256]
-        policy_model:
+        policy_model_config:
           fcnet_activation: relu
           fcnet_hiddens: [256, 256, 256]
         tau: 0.005
@@ -26,11 +26,12 @@ halfcheetah_bc:
         no_done_at_end: false
         n_step: 1
         rollout_fragment_length: 1
-        prioritized_replay: false
+        replay_buffer_config:
+          type: MultiAgentReplayBuffer
+          learning_starts: 10
         train_batch_size: 256
         target_network_update_freq: 0
-        timesteps_per_iteration: 1000
-        learning_starts: 10
+        min_train_timesteps_per_reporting: 1000
         optimization:
           actor_learning_rate: 0.0001
           critic_learning_rate: 0.0003

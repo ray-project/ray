@@ -13,38 +13,51 @@ import ray._private.gcs_utils as gcs_utils
 
 from ray.autoscaler._private.commands import debug_status
 from ray._private.test_utils import (
-    generate_system_config_map, kill_actor_and_wait_for_failure,
-    run_string_as_driver, wait_for_condition, is_placement_group_removed)
+    generate_system_config_map,
+    kill_actor_and_wait_for_failure,
+    run_string_as_driver,
+    wait_for_condition,
+    is_placement_group_removed,
+    convert_actor_state,
+)
 from ray.exceptions import RaySystemError
-from ray._raylet import PlacementGroupID
-from ray.util.placement_group import (PlacementGroup, placement_group,
-                                      remove_placement_group)
+from ray.util.placement_group import placement_group, remove_placement_group
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
-from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR, \
-    DEBUG_AUTOSCALING_STATUS
+import ray.experimental.internal_kv as internal_kv
+from ray.ray_constants import DEBUG_AUTOSCALING_ERROR, DEBUG_AUTOSCALING_STATUS
 
 
 def get_ray_status_output(address):
-    redis_client = ray._private.services.create_redis_client(address, "")
-    status = redis_client.hget(DEBUG_AUTOSCALING_STATUS, "value")
-    error = redis_client.hget(DEBUG_AUTOSCALING_ERROR, "value")
+    gcs_client = gcs_utils.GcsClient(address=address)
+    internal_kv._initialize_internal_kv(gcs_client)
+    status = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_STATUS)
+    error = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_ERROR)
     return {
-        "demand": debug_status(
-            status, error).split("Demands:")[1].strip("\n").strip(" "),
-        "usage": debug_status(status, error).split("Demands:")[0].split(
-            "Usage:")[1].strip("\n").strip(" ")
+        "demand": debug_status(status, error)
+        .split("Demands:")[1]
+        .strip("\n")
+        .strip(" "),
+        "usage": debug_status(status, error)
+        .split("Demands:")[0]
+        .split("Usage:")[1]
+        .strip("\n")
+        .strip(" "),
     }
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster_head", [
+    "ray_start_cluster_head_with_external_redis",
+    [
         generate_system_config_map(
-            num_heartbeats_timeout=10, ping_gcs_rpc_server_max_retries=60)
+            num_heartbeats_timeout=10, gcs_rpc_server_reconnect_timeout_s=60
+        )
     ],
-    indirect=True)
+    indirect=True,
+)
 def test_create_placement_group_during_gcs_server_restart(
-        ray_start_cluster_head):
-    cluster = ray_start_cluster_head
+    ray_start_cluster_head_with_external_redis,
+):
+    cluster = ray_start_cluster_head_with_external_redis
     cluster.add_node(num_cpus=200)
     cluster.wait_for_nodes()
 
@@ -62,13 +75,16 @@ def test_create_placement_group_during_gcs_server_restart(
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster_head", [
+    "ray_start_cluster_head_with_external_redis",
+    [
         generate_system_config_map(
-            num_heartbeats_timeout=10, ping_gcs_rpc_server_max_retries=60)
+            num_heartbeats_timeout=10, gcs_rpc_server_reconnect_timeout_s=60
+        )
     ],
-    indirect=True)
-def test_placement_group_wait_api(ray_start_cluster_head):
-    cluster = ray_start_cluster_head
+    indirect=True,
+)
+def test_placement_group_wait_api(ray_start_cluster_head_with_external_redis):
+    cluster = ray_start_cluster_head_with_external_redis
     cluster.add_node(num_cpus=2)
     cluster.add_node(num_cpus=2)
     cluster.wait_for_nodes()
@@ -129,7 +145,7 @@ def test_detached_placement_group(ray_start_cluster):
     driver_code = f"""
 import ray
 
-ray.init(address="{info["redis_address"]}")
+ray.init(address="{info["address"]}")
 
 pg = ray.util.placement_group(
         [{{"CPU": 1}} for _ in range(2)],
@@ -161,8 +177,7 @@ ray.shutdown()
 
     def assert_alive_num_pg(expected_num_pg):
         alive_num_pg = 0
-        for _, placement_group_info in ray.util.placement_group_table().items(
-        ):
+        for _, placement_group_info in ray.util.placement_group_table().items():
             if placement_group_info["state"] == "CREATED":
                 alive_num_pg += 1
         return alive_num_pg == expected_num_pg
@@ -170,7 +185,9 @@ ray.shutdown()
     def assert_alive_num_actor(expected_num_actor):
         alive_num_actor = 0
         for actor_info in ray.state.actors().values():
-            if actor_info["State"] == gcs_utils.ActorTableData.ALIVE:
+            if actor_info["State"] == convert_actor_state(
+                gcs_utils.ActorTableData.ALIVE
+            ):
                 alive_num_actor += 1
         return alive_num_actor == expected_num_actor
 
@@ -198,19 +215,19 @@ ray.shutdown()
         def schedule_nested_actor_with_detached_pg(self):
             # Create placement group which is detached.
             pg = ray.util.placement_group(
-                [{
-                    "CPU": 1
-                } for _ in range(2)],
+                [{"CPU": 1} for _ in range(2)],
                 strategy="STRICT_SPREAD",
                 lifetime="detached",
-                name="detached_pg")
+                name="detached_pg",
+            )
             ray.get(pg.ready())
             # Schedule nested actor with the placement group.
             for bundle_index in range(2):
                 actor = NestedActor.options(
                     placement_group=pg,
                     placement_group_bundle_index=bundle_index,
-                    lifetime="detached").remote()
+                    lifetime="detached",
+                ).remote()
                 ray.get(actor.ready.remote())
                 self.actors.append(actor)
 
@@ -234,15 +251,14 @@ def test_named_placement_group(ray_start_cluster):
     for _ in range(2):
         cluster.add_node(num_cpus=3)
     cluster.wait_for_nodes()
-    info = ray.init(
-        address=cluster.address, namespace="default_test_namespace")
+    info = ray.init(address=cluster.address, namespace="default_test_namespace")
     global_placement_group_name = "named_placement_group"
 
     # Create a detached placement group with name.
     driver_code = f"""
 import ray
 
-ray.init(address="{info["redis_address"]}", namespace="default_test_namespace")
+ray.init(address="{info["address"]}", namespace="default_test_namespace")
 
 pg = ray.util.placement_group(
         [{{"CPU": 1}} for _ in range(2)],
@@ -276,8 +292,8 @@ ray.shutdown()
     assert placement_group is not None
     assert placement_group.wait(5)
     actor = Actor.options(
-        placement_group=placement_group,
-        placement_group_bundle_index=0).remote()
+        placement_group=placement_group, placement_group_bundle_index=0
+    ).remote()
 
     ray.get(actor.ping.remote())
 
@@ -285,11 +301,10 @@ ray.shutdown()
     error_creation_count = 0
     try:
         ray.util.placement_group(
-            [{
-                "CPU": 1
-            } for _ in range(2)],
+            [{"CPU": 1} for _ in range(2)],
             strategy="STRICT_SPREAD",
-            name=global_placement_group_name)
+            name=global_placement_group_name,
+        )
     except RaySystemError:
         error_creation_count += 1
     assert error_creation_count == 1
@@ -298,11 +313,10 @@ ray.shutdown()
     # will successful.
     ray.util.remove_placement_group(placement_group)
     same_name_pg = ray.util.placement_group(
-        [{
-            "CPU": 1
-        } for _ in range(2)],
+        [{"CPU": 1} for _ in range(2)],
         strategy="STRICT_SPREAD",
-        name=global_placement_group_name)
+        name=global_placement_group_name,
+    )
     assert same_name_pg.wait(10)
 
     # Get a named placement group with a name that doesn't exist
@@ -316,8 +330,7 @@ ray.shutdown()
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
-def test_placement_group_synchronous_registration(ray_start_cluster,
-                                                  connect_to_client):
+def test_placement_group_synchronous_registration(ray_start_cluster, connect_to_client):
     cluster = ray_start_cluster
     # One node which only has one CPU.
     cluster.add_node(num_cpus=1)
@@ -330,11 +343,13 @@ def test_placement_group_synchronous_registration(ray_start_cluster,
         placement_group = ray.util.placement_group(
             name="name",
             strategy="STRICT_PACK",
-            bundles=[{
-                "CPU": 1,
-            }, {
-                "CPU": 1
-            }])
+            bundles=[
+                {
+                    "CPU": 1,
+                },
+                {"CPU": 1},
+            ],
+        )
         # Make sure we can properly remove it immediately
         # as its registration is synchronous.
         ray.util.remove_placement_group(placement_group)
@@ -355,27 +370,22 @@ def test_placement_group_gpu_set(ray_start_cluster, connect_to_client):
         placement_group = ray.util.placement_group(
             name="name",
             strategy="PACK",
-            bundles=[{
-                "CPU": 1,
-                "GPU": 1
-            }, {
-                "CPU": 1,
-                "GPU": 1
-            }])
+            bundles=[{"CPU": 1, "GPU": 1}, {"CPU": 1, "GPU": 1}],
+        )
 
         @ray.remote(num_gpus=1)
         def get_gpus():
             return ray.get_gpu_ids()
 
         result = get_gpus.options(
-            placement_group=placement_group,
-            placement_group_bundle_index=0).remote()
+            placement_group=placement_group, placement_group_bundle_index=0
+        ).remote()
         result = ray.get(result)
         assert result == [0]
 
         result = get_gpus.options(
-            placement_group=placement_group,
-            placement_group_bundle_index=1).remote()
+            placement_group=placement_group, placement_group_bundle_index=1
+        ).remote()
         result = ray.get(result)
         assert result == [0]
 
@@ -390,6 +400,7 @@ def test_placement_group_gpu_assigned(ray_start_cluster, connect_to_client):
     @ray.remote(num_gpus=1, num_cpus=0)
     def f():
         import os
+
         return os.environ["CUDA_VISIBLE_DEVICES"]
 
     with connect_to_client_or_not(connect_to_client):
@@ -405,58 +416,19 @@ def test_placement_group_gpu_assigned(ray_start_cluster, connect_to_client):
         assert len(gpu_ids_res) == 2
 
 
-def test_placement_group_client_option_serialization():
-    """Tests conversion of placement group to json-serializable dict and back.
-
-    Tests conversion
-    placement_group -> dict -> placement_group and
-    dict -> placement_group -> dict
-    with and without non-null bundle cache.
-    """
-
-    # Tests conversion from dict to placement group and back.
-    def dict_to_pg_to_dict(pg_dict_in):
-        pg = PlacementGroup.from_dict(pg_dict_in)
-        pg_dict_out = pg.to_dict()
-        assert pg_dict_in == pg_dict_out
-
-    # Tests conversion from placement group to dict and back.
-    def pg_to_dict_to_pg(pg_in):
-        pg_dict = pg_in.to_dict()
-        pg_out = PlacementGroup.from_dict(pg_dict)
-        assert pg_out.id == pg_in.id
-        assert pg_out.bundle_cache == pg_in.bundle_cache
-
-    pg_id = PlacementGroupID(id=bytes(16))
-    id_string = bytes(16).hex()
-    bundle_cache = [{"CPU": 2}, {"custom_resource": 5}]
-
-    pg_with_bundles = PlacementGroup(id=pg_id, bundle_cache=bundle_cache)
-    pg_to_dict_to_pg(pg_with_bundles)
-
-    pg_no_bundles = PlacementGroup(id=pg_id)
-    pg_to_dict_to_pg(pg_no_bundles)
-
-    pg_dict_with_bundles = {"id": id_string, "bundle_cache": bundle_cache}
-    dict_to_pg_to_dict(pg_dict_with_bundles)
-
-    pg_dict_no_bundles = {"id": id_string, "bundle_cache": None}
-    dict_to_pg_to_dict(pg_dict_no_bundles)
-
-
 def test_actor_scheduling_not_block_with_placement_group(ray_start_cluster):
     """Tests the scheduling of lots of actors will not be blocked
-       when using placement groups.
+    when using placement groups.
 
-       For more detailed information please refer to:
-       https://github.com/ray-project/ray/issues/15801.
+    For more detailed information please refer to:
+    https://github.com/ray-project/ray/issues/15801.
     """
 
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1)
     ray.init(address=cluster.address)
 
-    @ray.remote
+    @ray.remote(num_cpus=1)
     class A:
         def ready(self):
             pass
@@ -474,14 +446,14 @@ def test_actor_scheduling_not_block_with_placement_group(ray_start_cluster):
 
     def is_pg_created_number_correct():
         created_pgs = [
-            pg for _, pg in ray.util.placement_group_table().items()
+            pg
+            for _, pg in ray.util.placement_group_table().items()
             if pg["state"] == "CREATED"
         ]
         return len(created_pgs) == expected_created_num
 
     wait_for_condition(is_pg_created_number_correct, timeout=3)
-    wait_for_condition(
-        is_actor_created_number_correct, timeout=30, retry_interval_ms=0)
+    wait_for_condition(is_actor_created_number_correct, timeout=30, retry_interval_ms=0)
 
     # NOTE: we don't need to test all the actors create successfully.
     for _ in range(20):
@@ -492,12 +464,12 @@ def test_actor_scheduling_not_block_with_placement_group(ray_start_cluster):
         # Make sure the node add event will cause a waiting actor
         # to create successfully in time.
         wait_for_condition(
-            is_actor_created_number_correct, timeout=30, retry_interval_ms=0)
+            is_actor_created_number_correct, timeout=30, retry_interval_ms=0
+        )
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
-def test_placement_group_gpu_unique_assigned(ray_start_cluster,
-                                             connect_to_client):
+def test_placement_group_gpu_unique_assigned(ray_start_cluster, connect_to_client):
     cluster = ray_start_cluster
     cluster.add_node(num_gpus=4, num_cpus=4)
     ray.init(address=cluster.address)
@@ -515,22 +487,23 @@ def test_placement_group_gpu_unique_assigned(ray_start_cluster,
     class Actor:
         def get_gpu(self):
             import os
+
             return os.environ["CUDA_VISIBLE_DEVICES"]
 
     # Create actors out of order.
     actors = []
     actors.append(
-        Actor.options(placement_group=pg,
-                      placement_group_bundle_index=0).remote())
+        Actor.options(placement_group=pg, placement_group_bundle_index=0).remote()
+    )
     actors.append(
-        Actor.options(placement_group=pg,
-                      placement_group_bundle_index=3).remote())
+        Actor.options(placement_group=pg, placement_group_bundle_index=3).remote()
+    )
     actors.append(
-        Actor.options(placement_group=pg,
-                      placement_group_bundle_index=2).remote())
+        Actor.options(placement_group=pg, placement_group_bundle_index=2).remote()
+    )
     actors.append(
-        Actor.options(placement_group=pg,
-                      placement_group_bundle_index=1).remote())
+        Actor.options(placement_group=pg, placement_group_bundle_index=1).remote()
+    )
 
     for actor in actors:
         gpu_ids = ray.get(actor.get_gpu.remote())
@@ -610,7 +583,7 @@ def test_placement_group_status(ray_start_cluster):
 
 def test_placement_group_removal_leak_regression(ray_start_cluster):
     """Related issue:
-        https://github.com/ray-project/ray/issues/19131
+    https://github.com/ray-project/ray/issues/19131
     """
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=5)
@@ -641,6 +614,73 @@ def test_placement_group_removal_leak_regression(ray_start_cluster):
         return expected_bundle_wildcard_val == bundle_resources
 
     wait_for_condition(check_bundle_leaks)
+
+
+def test_placement_group_local_resource_view(monkeypatch, ray_start_cluster):
+    """Please refer to https://github.com/ray-project/ray/pull/19911
+    for more details.
+    """
+    with monkeypatch.context() as m:
+        # Increase broadcasting interval so that node resource will arrive
+        # at raylet after local resource all being allocated.
+        m.setenv("RAY_raylet_report_resources_period_milliseconds", "2000")
+        m.setenv("RAY_grpc_based_resource_broadcast", "true")
+        cluster = ray_start_cluster
+
+        cluster.add_node(num_cpus=16, object_store_memory=1e9)
+        cluster.wait_for_nodes()
+        # We need to init here so that we can make sure it's connecting to
+        # the raylet where it only has cpu resources.
+        # This is a hacky way to prevent scheduling hanging which will
+        # schedule <CPU:1> job to the node with GPU and for <GPU:1, CPU:1> task
+        # there is no node has this resource.
+        ray.init(address="auto")
+        cluster.add_node(num_cpus=16, num_gpus=1)
+        cluster.wait_for_nodes()
+        NUM_CPU_BUNDLES = 30
+
+        @ray.remote(num_cpus=1)
+        class Worker(object):
+            def __init__(self, i):
+                self.i = i
+
+            def work(self):
+                time.sleep(0.1)
+                print("work ", self.i)
+
+        @ray.remote(num_cpus=1, num_gpus=1)
+        class Trainer(object):
+            def __init__(self, i):
+                self.i = i
+
+            def train(self):
+                time.sleep(0.2)
+                print("train ", self.i)
+
+        bundles = [{"CPU": 1, "GPU": 1}]
+        bundles += [{"CPU": 1} for _ in range(NUM_CPU_BUNDLES)]
+        pg = placement_group(bundles, strategy="PACK")
+        ray.get(pg.ready())
+
+        # Local resource will be allocated and here we are to ensure
+        # local view is consistent and node resouce updates are discarded
+        workers = [
+            Worker.options(placement_group=pg).remote(i) for i in range(NUM_CPU_BUNDLES)
+        ]
+        trainer = Trainer.options(placement_group=pg).remote(0)
+        ray.get([workers[i].work.remote() for i in range(NUM_CPU_BUNDLES)])
+        ray.get(trainer.train.remote())
+
+
+def test_fractional_resources_handle_correct(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1000)
+    ray.init(address=cluster.address)
+
+    bundles = [{"CPU": 0.01} for _ in range(5)]
+    pg = placement_group(bundles, strategy="SPREAD")
+
+    ray.get(pg.ready(), timeout=10)
 
 
 if __name__ == "__main__":

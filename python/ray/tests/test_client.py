@@ -7,6 +7,8 @@ import queue
 import threading
 import _thread
 from unittest.mock import patch
+import numpy as np
+from ray.util.client.common import OBJECT_TRANSFER_CHUNK_SIZE
 
 import ray.util.client.server.server as ray_client_server
 from ray.tests.client_test_utils import create_remote_signal_actor
@@ -23,6 +25,7 @@ from ray._private.test_utils import run_string_as_driver
 @pytest.mark.parametrize("connect_to_client", [False, True])
 def test_client_context_manager(ray_start_regular_shared, connect_to_client):
     import ray
+
     with connect_to_client_or_not(connect_to_client):
         if connect_to_client:
             # Client mode is on.
@@ -34,9 +37,9 @@ def test_client_context_manager(ray_start_regular_shared, connect_to_client):
             assert not ray.util.client.ray.is_connected()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_client_thread_safe(call_ray_stop_only):
     import ray
+
     ray.init(num_cpus=2)
 
     with ray_start_client_server() as ray:
@@ -88,15 +91,13 @@ def test_client_mode_hook_thread_safe(ray_start_regular_shared):
             assert client_mode_should_convert(auto_init=True)
             lock.release()
             t.join()
-            assert q.get(
-            ) is False, "Threaded disable_client_hook failed  to disable"
-            assert q.get(
-            ) is True, "Threaded disable_client_hook failed to re-enable"
+            assert q.get() is False, "Threaded disable_client_hook failed  to disable"
+            assert q.get() is True, "Threaded disable_client_hook failed to re-enable"
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_interrupt_ray_get(call_ray_stop_only):
     import ray
+
     ray.init(num_cpus=2)
 
     with ray_start_client_server() as ray:
@@ -126,7 +127,6 @@ def test_interrupt_ray_get(call_ray_stop_only):
         assert ray.get(fast.remote()) == "ok"
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_get_list(ray_start_regular_shared):
     with ray_start_client_server() as ray:
 
@@ -156,13 +156,13 @@ def test_get_list(ray_start_regular_shared):
         assert get_count == 1
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_real_ray_fallback(ray_start_regular_shared):
     with ray_start_client_server() as ray:
 
         @ray.remote
         def get_nodes_real():
             import ray as real_ray
+
             return real_ray.nodes()
 
         nodes = ray.get(get_nodes_real.remote())
@@ -177,7 +177,6 @@ def test_real_ray_fallback(ray_start_regular_shared):
         assert len(nodes) == 1, nodes
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_nested_function(ray_start_regular_shared):
     with ray_start_client_server() as ray:
 
@@ -192,7 +191,6 @@ def test_nested_function(ray_start_regular_shared):
         assert ray.get(g.remote()) == "OK"
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_put_get(ray_start_regular_shared):
     with ray_start_client_server() as ray:
         objectref = ray.put("hello world")
@@ -205,9 +203,12 @@ def test_put_get(ray_start_regular_shared):
         assert not objectref == 1
         # Make sure it returns True when necessary as well.
         assert objectref == ClientObjectRef(objectref.id)
+        # Assert output is correct type.
+        list_put = ray.put([1, 2, 3])
+        assert isinstance(list_put, ClientObjectRef)
+        assert ray.get(list_put) == [1, 2, 3]
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_put_failure_get(ray_start_regular_shared):
     with ray_start_client_server() as ray:
 
@@ -226,7 +227,6 @@ def test_put_failure_get(ray_start_regular_shared):
         assert ray.get(ray.put(100)) == 100
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_wait(ray_start_regular_shared):
     with ray_start_client_server() as ray:
         objectref = ray.put("hello world")
@@ -237,12 +237,16 @@ def test_wait(ray_start_regular_shared):
 
         objectref2 = ray.put(5)
         ready, remaining = ray.wait([objectref, objectref2])
-        assert (ready, remaining) == ([objectref], [objectref2]) or \
-            (ready, remaining) == ([objectref2], [objectref])
+        assert (ready, remaining) == ([objectref], [objectref2]) or (
+            ready,
+            remaining,
+        ) == ([objectref2], [objectref])
         ready_retval = ray.get(ready[0])
         remaining_retval = ray.get(remaining[0])
-        assert (ready_retval, remaining_retval) == ("hello world", 5) \
-            or (ready_retval, remaining_retval) == (5, "hello world")
+        assert (ready_retval, remaining_retval) == ("hello world", 5) or (
+            ready_retval,
+            remaining_retval,
+        ) == (5, "hello world")
 
         with pytest.raises(Exception):
             # Reference not in the object store.
@@ -255,7 +259,6 @@ def test_wait(ray_start_regular_shared):
             ray.wait(["blabla"])
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_remote_functions(ray_start_regular_shared):
     with ray_start_client_server() as ray:
         SignalActor = create_remote_signal_actor(ray)
@@ -314,7 +317,6 @@ def test_remote_functions(ray_start_regular_shared):
         assert len(res[0]) == 1 and res[1] == []
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_function_calling_function(ray_start_regular_shared):
     with ray_start_client_server() as ray:
 
@@ -331,7 +333,6 @@ def test_function_calling_function(ray_start_regular_shared):
         assert ray.get(f.remote()) == "OK"
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_basic_actor(ray_start_regular_shared):
     with ray_start_client_server() as ray:
 
@@ -364,7 +365,6 @@ def test_basic_actor(ray_start_regular_shared):
         assert ray.get(r2) == 3
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_pass_handles(ray_start_regular_shared):
     """Test that passing client handles to actors and functions to remote actors
     in functions (on the server or raylet side) works transparently to the
@@ -416,19 +416,17 @@ def test_pass_handles(ray_start_regular_shared):
         assert ray.get(sneaky_func_exec.remote(test_obj, 5)) == local_fact(5)
         actor_handle = ExecActor.remote()
         assert ray.get(actor_handle.exec.remote(fact, 7)) == local_fact(7)
-        assert ray.get(func_actor_exec.remote(actor_handle, fact,
-                                              10)) == local_fact(10)
+        assert ray.get(func_actor_exec.remote(actor_handle, fact, 10)) == local_fact(10)
         second_actor = ExecActor.remote()
-        assert ray.get(actor_handle.exec_exec.remote(second_actor, fact,
-                                                     9)) == local_fact(9)
+        assert ray.get(
+            actor_handle.exec_exec.remote(second_actor, fact, 9)
+        ) == local_fact(9)
         test_actor_obj = {}
         test_actor_obj["actor"] = second_actor
         test_actor_obj["f"] = fact
-        assert ray.get(sneaky_actor_exec.remote(test_actor_obj,
-                                                4)) == local_fact(4)
+        assert ray.get(sneaky_actor_exec.remote(test_actor_obj, 4)) == local_fact(4)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_basic_log_stream(ray_start_regular_shared):
     with ray_start_client_server() as ray:
         log_msgs = []
@@ -445,13 +443,10 @@ def test_basic_log_stream(ray_start_regular_shared):
         time.sleep(1)
         logs_with_id = [msg for msg in log_msgs if msg.find(x.id.hex()) >= 0]
         assert len(logs_with_id) >= 2, logs_with_id
-        assert any(
-            (msg.find("get") >= 0 for msg in logs_with_id)), logs_with_id
-        assert any(
-            (msg.find("put") >= 0 for msg in logs_with_id)), logs_with_id
+        assert any((msg.find("get") >= 0 for msg in logs_with_id)), logs_with_id
+        assert any((msg.find("put") >= 0 for msg in logs_with_id)), logs_with_id
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_stdout_log_stream(ray_start_regular_shared):
     with ray_start_client_server() as ray:
         log_msgs = []
@@ -476,31 +471,22 @@ def test_stdout_log_stream(ray_start_regular_shared):
         assert num_hello == 2, f"Invalid logs: {log_msgs}"
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_serializing_exceptions(ray_start_regular_shared):
     with ray_start_client_server() as ray:
-        with pytest.raises(
-                ValueError, match="Failed to look up actor with name 'abc'"):
+        with pytest.raises(ValueError, match="Failed to look up actor with name 'abc'"):
             ray.get_actor("abc")
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_invalid_task(ray_start_regular_shared):
     with ray_start_client_server() as ray:
 
-        @ray.remote(runtime_env="invalid value")
-        def f():
-            return 1
+        with pytest.raises(TypeError):
 
-        # No exception on making the remote call.
-        ref = f.remote()
-
-        # Exception during scheduling will be raised on ray.get()
-        with pytest.raises(Exception):
-            ray.get(ref)
+            @ray.remote(runtime_env="invalid value")
+            def f():
+                return 1
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_create_remote_before_start(ray_start_regular_shared):
     """Creates remote objects (as though in a library) before
     starting the client.
@@ -525,10 +511,8 @@ def test_create_remote_before_start(ray_start_regular_shared):
         assert ray.get(a.doit.remote()) == "foo"
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_basic_named_actor(ray_start_regular_shared):
-    """Test that ray.get_actor() can create and return a detached actor.
-    """
+    """Test that ray.get_actor() can create and return a detached actor."""
     with ray_start_client_server() as ray:
 
         @ray.remote
@@ -559,8 +543,7 @@ def test_basic_named_actor(ray_start_regular_shared):
 
         del actor
 
-        actor = Accumulator.options(
-            name="test_acc2", lifetime="detached").remote()
+        actor = Accumulator.options(name="test_acc2", lifetime="detached").remote()
         actor.inc.remote()
         del actor
 
@@ -590,7 +573,6 @@ def test_error_serialization(ray_start_regular_shared):
             ray.get(g.remote())
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_internal_kv(ray_start_regular_shared):
     with ray_start_client_server() as ray:
         assert ray._internal_kv_initialized()
@@ -602,11 +584,12 @@ def test_internal_kv(ray_start_regular_shared):
         assert ray._internal_kv_get("apple") == b"asdf"
         assert ray._internal_kv_list("a") == [b"apple"]
         ray._internal_kv_del("apple")
-        assert ray._internal_kv_get("apple") == b""
+        assert ray._internal_kv_get("apple") is None
 
 
 def test_startup_retry(ray_start_regular_shared):
     from ray.util.client import ray as ray_client
+
     ray_client._inside_client_test = True
 
     with pytest.raises(ConnectionError):
@@ -627,6 +610,7 @@ def test_startup_retry(ray_start_regular_shared):
 
 def test_dataclient_server_drop(ray_start_regular_shared):
     from ray.util.client import ray as ray_client
+
     ray_client._inside_client_test = True
 
     @ray_client.remote
@@ -640,7 +624,7 @@ def test_dataclient_server_drop(ray_start_regular_shared):
 
     server = ray_client_server.serve("localhost:50051")
     ray_client.connect("localhost:50051")
-    thread = threading.Thread(target=stop_server, args=(server, ))
+    thread = threading.Thread(target=stop_server, args=(server,))
     thread.start()
     x = f.remote(2)
     with pytest.raises(ConnectionError):
@@ -652,18 +636,20 @@ def test_dataclient_server_drop(ray_start_regular_shared):
     time.sleep(3)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @patch.dict(os.environ, {"RAY_ENABLE_AUTO_CONNECT": "0"})
 def test_client_gpu_ids(call_ray_stop_only):
     import ray
+
     ray.init(num_cpus=2)
 
     with enable_client_mode():
         # No client connection.
         with pytest.raises(Exception) as e:
             ray.get_gpu_ids()
-        assert str(e.value) == "Ray Client is not connected."\
+        assert (
+            str(e.value) == "Ray Client is not connected."
             " Please connect by calling `ray.init`."
+        )
 
         with ray_start_client_server():
             # Now have a client connection.
@@ -713,11 +699,11 @@ def test_object_ref_cleanup():
         assert "Exception ignored in" not in result
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize(
     "call_ray_start",
     ["ray start --head --ray-client-server-port 25552 --port 0"],
-    indirect=True)
+    indirect=True,
+)
 def test_wrapped_actor_creation(call_ray_start):
     """
     When the client schedules an actor, the server will load a separate
@@ -742,8 +728,109 @@ def test_wrapped_actor_creation(call_ray_start):
     imports the class.
     """
     import ray
+
     ray.init("ray://localhost:25552")
     run_wrapped_actor_creation()
+
+
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --ray-client-server-port 25553 --num-cpus 0"],
+    indirect=True,
+)
+@pytest.mark.parametrize("use_client", [True, False])
+def test_init_requires_no_resources(call_ray_start, use_client):
+    import ray
+
+    if not use_client:
+        address = call_ray_start
+        ray.init(address)
+    else:
+        ray.init("ray://localhost:25553")
+
+    @ray.remote(num_cpus=0)
+    def f():
+        pass
+
+    ray.get(f.remote())
+
+
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --ray-client-server-port 25553 --num-cpus 1"],
+    indirect=True,
+)
+def test_object_ref_release(call_ray_start):
+    import ray
+
+    ray.init("ray://localhost:25553")
+
+    a = ray.put("Hello")
+
+    ray.shutdown()
+    ray.init("ray://localhost:25553")
+
+    del a
+
+    with disable_client_hook():
+        ref_cnt = ray.util.client.ray.get_context().client_worker.reference_count
+        assert all(v > 0 for v in ref_cnt.values())
+
+
+def test_empty_objects(ray_start_regular_shared):
+    """
+    Tests that client works with "empty" objects. Sanity check, since put requests
+    will fail if the serialized version of an object consists of zero bytes.
+    """
+    objects = [0, b"", "", [], np.array(()), {}, set(), None]
+    with ray_start_client_server() as ray:
+        for obj in objects:
+            ref = ray.put(obj)
+            if isinstance(obj, np.ndarray):
+                assert np.array_equal(ray.get(ref), obj)
+            else:
+                assert ray.get(ref) == obj
+
+
+def test_large_remote_call(ray_start_regular_shared):
+    """
+    Test remote calls with large (multiple chunk) arguments
+    """
+    with ray_start_client_server() as ray:
+
+        @ray.remote
+        def f(large_obj):
+            return large_obj.shape
+
+        @ray.remote
+        def f2(*args):
+            assert args[0] == 123
+            return args[1].shape
+
+        @ray.remote
+        def f3(*args, **kwargs):
+            assert args[0] == "a"
+            assert args[1] == "b"
+            return kwargs["large_obj"].shape
+
+        # 1024x1024x16 f64's =~ 128 MiB. Chunking size is 64 MiB, so guarantees
+        # that transferring argument requires multiple chunks.
+        assert OBJECT_TRANSFER_CHUNK_SIZE < 2 ** 20 * 128
+        large_obj = np.random.random((1024, 1024, 16))
+        assert ray.get(f.remote(large_obj)) == (1024, 1024, 16)
+        assert ray.get(f2.remote(123, large_obj)) == (1024, 1024, 16)
+        assert ray.get(f3.remote("a", "b", large_obj=large_obj)) == (1024, 1024, 16)
+
+        @ray.remote
+        class SomeActor:
+            def __init__(self, large_obj):
+                self.inner = large_obj
+
+            def some_method(self, large_obj):
+                return large_obj.shape == self.inner.shape
+
+        a = SomeActor.remote(large_obj)
+        assert ray.get(a.some_method.remote(large_obj))
 
 
 if __name__ == "__main__":

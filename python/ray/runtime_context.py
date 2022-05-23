@@ -1,6 +1,7 @@
 import ray.worker
 import logging
 from ray._private.client_mode_hook import client_mode_hook
+from ray.runtime_env import RuntimeEnv
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -69,30 +70,31 @@ class RuntimeContext(object):
 
         Example:
 
+            >>> import ray
             >>> @ray.remote
-            >>> class Actor:
-            >>>     def ready(self):
-            >>>         return True
+            ... class Actor:
+            ...     def ready(self):
+            ...         return True
             >>>
-            >>> @ray.remote
-            >>> def f():
-            >>>     return True
-            >>>
+            >>> @ray.remote # doctest: +SKIP
+            ... def f():
+            ...     return True
             >>> # All the below code will generate different task ids.
             >>> # Task ids are available for actor creation.
-            >>> a = Actor.remote()
+            >>> a = Actor.remote() # doctest: +SKIP
             >>> # Task ids are available for actor tasks.
-            >>> a.ready.remote()
+            >>> a.ready.remote() # doctest: +SKIP
             >>> # Task ids are available for normal tasks.
-            >>> f.remote()
+            >>> f.remote() # doctest: +SKIP
 
         Returns:
             The current worker's task id. None if there's no task id.
         """
         # only worker mode has actor_id
-        assert self.worker.mode == ray.worker.WORKER_MODE, (
-            f"This method is only available when the process is a\
-                 worker. Current mode: {self.worker.mode}")
+        assert (
+            self.worker.mode == ray.worker.WORKER_MODE
+        ), f"This method is only available when the process is a\
+                 worker. Current mode: {self.worker.mode}"
         task_id = self.worker.current_task_id
         return task_id if not task_id.is_nil() else None
 
@@ -107,25 +109,32 @@ class RuntimeContext(object):
             The current actor id in this worker. None if there's no actor id.
         """
         # only worker mode has actor_id
-        assert self.worker.mode == ray.worker.WORKER_MODE, (
-            f"This method is only available when the process is a\
-                 worker. Current mode: {self.worker.mode}")
+        assert (
+            self.worker.mode == ray.worker.WORKER_MODE
+        ), f"This method is only available when the process is a\
+                 worker. Current mode: {self.worker.mode}"
         actor_id = self.worker.actor_id
         return actor_id if not actor_id.is_nil() else None
 
     @property
     def namespace(self):
+        """Get the current namespace of this worker.
+
+        Returns:
+            The current namespace of this worker.
+        """
         return self.worker.namespace
 
     @property
     def was_current_actor_reconstructed(self):
-        """Check whether this actor has been restarted
+        """Check whether this actor has been restarted.
 
         Returns:
             Whether this actor has been ever restarted.
         """
-        assert not self.actor_id.is_nil(), (
-            "This method should't be called inside Ray tasks.")
+        assert (
+            not self.actor_id.is_nil()
+        ), "This method should't be called inside Ray tasks."
         actor_info = ray.state.actors(self.actor_id.hex())
         return actor_info and actor_info["NumRestarts"] != 0
 
@@ -150,14 +159,39 @@ class RuntimeContext(object):
         """
         return self.worker.should_capture_child_tasks_in_placement_group
 
-    @property
-    def runtime_env(self):
-        """Get the runtime env used for the current driver or worker.
+    def _get_runtime_env_string(self):
+        """Get the runtime env string used for the current driver or worker.
 
         Returns:
-            The runtime env currently using by this worker.
+            The runtime env string currently using by this worker.
         """
         return self.worker.runtime_env
+
+    @property
+    def runtime_env(self):
+        """Get the runtime env of the current job/worker.
+
+        If this API is called in driver or ray client, returns the job level runtime
+        env.
+        If this API is called in workers/actors, returns the worker level runtime env.
+
+        Returns:
+            A new ray.runtime_env.RuntimeEnv instance.
+
+        To merge from the current runtime env in some specific cases, you can get the
+        current runtime env by this API and modify it by yourself.
+
+        Example:
+
+            >>> # Inherit current runtime env, except `env_vars`
+            >>> Actor.options( # doctest: +SKIP
+            ...     runtime_env=ray.get_runtime_context().runtime_env.update(
+            ...     {"env_vars": {"A": "a", "B": "b"}})
+            ... )
+
+        """
+
+        return RuntimeEnv.deserialize(self._get_runtime_env_string())
 
     @property
     def current_actor(self):
@@ -177,8 +211,8 @@ class RuntimeContext(object):
 
         Returns:
             A dictionary keyed by the function name. The values are
-            dictionaries with form ``{"received": 0, "executing": 1,
-            "exectued": 2}``.
+            dictionaries with form ``{"pending": 0, "running": 1,
+            "finished": 2}``.
         """
         worker = self.worker
         worker.check_connected()
@@ -195,8 +229,12 @@ def get_runtime_context():
 
     Example:
 
-    >>> ray.get_runtime_context().job_id # Get the job id.
-    >>> ray.get_runtime_context().get() # Get all the metadata.
+        >>> import ray
+        >>> # Get the job id.
+        >>> ray.get_runtime_context().job_id # doctest: +SKIP
+        >>> # Get all the metadata.
+        >>> ray.get_runtime_context().get() # doctest: +SKIP
+
     """
     global _runtime_context
     if _runtime_context is None:

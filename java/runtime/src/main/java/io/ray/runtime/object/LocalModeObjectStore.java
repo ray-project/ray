@@ -1,6 +1,7 @@
 package io.ray.runtime.object;
 
 import com.google.common.base.Preconditions;
+import io.ray.api.exception.RayTimeoutException;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
 import io.ray.api.id.UniqueId;
@@ -63,6 +64,9 @@ public class LocalModeObjectStore extends ObjectStore {
   @Override
   public List<NativeRayObject> getRaw(List<ObjectId> objectIds, long timeoutMs) {
     waitInternal(objectIds, objectIds.size(), timeoutMs);
+    if (timeoutMs >= 0 && objectIds.stream().filter(pool::containsKey).count() < objectIds.size()) {
+      throw new RayTimeoutException("Get timed out: some object(s) not ready.");
+    }
     return objectIds.stream().map(pool::get).collect(Collectors.toList());
   }
 
