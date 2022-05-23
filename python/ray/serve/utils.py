@@ -1,6 +1,5 @@
 from functools import wraps
 import importlib
-from itertools import groupby
 import pickle
 import random
 import string
@@ -132,41 +131,18 @@ def format_actor_name(actor_name, controller_name=None, *modifiers):
     return name
 
 
-def get_all_node_ids():
-    """Get IDs for all nodes in the cluster.
+def get_all_node_ids() -> List[Tuple[str, str]]:
+    """Get IDs for all live nodes in the cluster.
 
-    Handles multiple nodes on the same IP by appending an index to the
-    node_id, e.g., 'node_id-index'.
-
-    Returns a list of ('node_id-index', 'node_id') tuples (the latter can be
-    used as a resource requirement for actor placements).
+    Returns a list of (node_id: str, ip_address: str). The node_id can be
+    passed into the Ray SchedulingPolicy API.
     """
     node_ids = []
-    # We need to use the node_id and index here because we could
-    # have multiple virtual nodes on the same host. In that case
-    # they will have the same IP and therefore node_id.
-    for _, node_id_group in groupby(sorted(ray.state.node_ids())):
-        for index, node_id in enumerate(node_id_group):
-            node_ids.append(("{}-{}".format(node_id, index), node_id))
+    for node in ray.nodes():
+        if node["Alive"]:
+            node_ids.append((node["NodeID"], node["NodeName"]))
 
     return node_ids
-
-
-def node_id_to_ip_addr(node_id: str):
-    """Recovers the IP address for an entry from get_all_node_ids."""
-    if ":" in node_id:
-        node_id = node_id.split(":")[1]
-
-    if "-" in node_id:
-        node_id = node_id.split("-")[0]
-
-    return node_id
-
-
-def get_node_id_for_actor(actor_handle):
-    """Given an actor handle, return the node id it's placed on."""
-
-    return ray.state.actors()[actor_handle._actor_id.hex()]["Address"]["NodeID"]
 
 
 def compute_iterable_delta(old: Iterable, new: Iterable) -> Tuple[set, set, set]:

@@ -77,11 +77,13 @@ class HTTPState:
             return []
 
         if location == DeploymentMode.HeadOnly:
-            return [
-                (node_id, node_resource)
-                for node_id, node_resource in target_nodes
+            nodes = [
+                (node_id, ip_address)
+                for node_id, ip_address in target_nodes
                 if node_id == self._head_node_id
-            ][:1]
+            ]
+            assert len(nodes) == 1, f"Head node not found! {target_nodes}"
+            return nodes
 
         if location == DeploymentMode.FixedNumber:
             num_replicas = self._config.fixed_number_replicas
@@ -103,7 +105,7 @@ class HTTPState:
 
     def _start_proxies_if_needed(self) -> None:
         """Start a proxy on every node if it doesn't already exist."""
-        for node_id, node_resource in self._get_target_nodes():
+        for node_id, node_ip_address in self._get_target_nodes():
             if node_id in self._proxy_actors:
                 continue
 
@@ -125,7 +127,6 @@ class HTTPState:
                     max_concurrency=ASYNC_CONCURRENCY,
                     max_restarts=-1,
                     max_task_retries=-1,
-                    resources={node_resource: 0.01},
                     scheduling_strategy=NodeAffinitySchedulingStrategy(
                         node_id, soft=False
                     ),
@@ -135,7 +136,7 @@ class HTTPState:
                     self._config.root_path,
                     controller_name=self._controller_name,
                     controller_namespace=self._controller_namespace,
-                    node_id=node_id,
+                    node_ip_address=node_ip_address,
                     http_middlewares=self._config.middlewares,
                 )
 
