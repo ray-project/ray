@@ -2062,7 +2062,7 @@ class Trainer(Trainable):
         if self.config["recreate_failed_workers"] is True:
             removed_workers, new_workers = workers.recreate_failed_workers()
         elif self.config["ignore_worker_failures"] is True:
-            workers.remove_failed_workers()
+            removed_workers = workers.remove_failed_workers()
         self.on_worker_failures(removed_workers, new_workers)
 
         if not self.config.get("_disable_execution_plan_api") and callable(
