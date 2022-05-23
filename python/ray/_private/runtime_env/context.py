@@ -67,7 +67,7 @@ class RuntimeEnvContext:
 
         exec_command = " ".join([f"{executable}"] + passthrough_args)
         command_str = " && ".join(self.command_prefix + [exec_command])
-        logger.info(f"Exec'ing worker with command: {command_str}")
+        logger.debug(f"Exec'ing worker with command: {command_str}")
         if sys.platform == "win32":
             os.system(command_str)
         else:

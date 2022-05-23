@@ -29,7 +29,7 @@ if __name__ == "__main__":
 
     # See rllib/tuned_examples/cql/pendulum-cql.yaml for comparison.
 
-    config = cql.CQL_DEFAULT_CONFIG.copy()
+    config = cql.DEFAULT_CONFIG.copy()
     config["num_workers"] = 0  # Run locally.
     config["horizon"] = 200
     config["soft_horizon"] = True
@@ -45,11 +45,11 @@ if __name__ == "__main__":
     config["replay_buffer_config"]["capacity"] = int(1e6)
     config["tau"] = 0.005
     config["target_entropy"] = "auto"
-    config["Q_model"] = {
+    config["q_model_config"] = {
         "fcnet_hiddens": [256, 256],
         "fcnet_activation": "relu",
     }
-    config["policy_model"] = {
+    config["policy_model_config"] = {
         "fcnet_hiddens": [256, 256],
         "fcnet_activation": "relu",
     }

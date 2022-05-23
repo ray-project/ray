@@ -37,7 +37,7 @@ def auto_http_archive(
     If strip_prefix == True , it is auto-deduced.
     """
     DOUBLE_SUFFIXES_LOWERCASE = [("tar", "bz2"), ("tar", "gz"), ("tar", "xz")]
-    mirror_prefixes = ["https://mirror.bazel.build/"]
+    mirror_prefixes = ["https://mirror.bazel.build/", "https://storage.googleapis.com/bazel-mirror"]
 
     canonical_url = url if url != None else urls[0]
     url_parts = urlsplit(canonical_url)

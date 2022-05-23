@@ -35,7 +35,7 @@ typedef std::function<std::shared_ptr<rpc::RuntimeEnvAgentClientInterface>(
     const std::string &ip_address, int port)>
     RuntimeEnvAgentClientFactoryFn;
 
-/// Callback that's callaed after runtime env is created.
+/// Callback that's called after runtime env is created.
 /// \param[in] successful Whether or not the creation was successful.
 /// \param[in] serialized_runtime_env_context Serialized context.
 /// \param[in] setup_error_message The error message if runtime env creation fails.
