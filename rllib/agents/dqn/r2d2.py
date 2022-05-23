@@ -90,7 +90,7 @@ class R2D2Config(DQNConfig):
         self.adam_epsilon = 1e-3
         self.lr = 1e-4
         self.gamma = 0.997
-        self.train_batch_size = 64
+        self.train_batch_size = 1000
         self.target_network_update_freq = 2500
         # R2D2 is using a buffer that stores sequences.
         self.replay_buffer_config = {
