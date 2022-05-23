@@ -2427,7 +2427,7 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
         {return_id},
         [return_id, pinned_return_object](const Status &status,
                                           const rpc::PinObjectIDsReply &reply) {
-          if (!status.ok()) {
+          if (!status.ok() || !reply.success(0)) {
             RAY_LOG(INFO) << "Failed to pin existing copy of the task return object "
                           << return_id
                           << ". This object may get evicted while there are still "
