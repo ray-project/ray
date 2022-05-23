@@ -225,7 +225,7 @@ class TestExecution(unittest.TestCase):
         next(b)
         assert buf.sample(100).count == 100
 
-        replay_op = Replay(local_buffer=buf)
+        replay_op = Replay(local_buffer=buf, num_items_to_replay=100)
         assert next(replay_op).count == 100
 
     def test_store_to_replay_actor(self):
