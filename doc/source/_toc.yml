@@ -172,6 +172,8 @@ parts:
                 sections:
                   - file: ray-air/examples/analyze_tuning_results
                     title: "Analyze hyperparameter tuning results"
+                  - file: ray-air/examples/tensorflow_image_example
+                    title: "Training a TensorFlow classifier"
               - file: ray-air/package-ref
           - file: ray-more-libs/joblib
           - file: ray-more-libs/lightgbm-ray
