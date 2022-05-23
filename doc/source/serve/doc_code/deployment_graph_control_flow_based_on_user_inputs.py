@@ -17,12 +17,11 @@ class Model:
 
 
 @serve.deployment
-def combine(value_refs, combine_type):
-    values = [ray.get(value_ref) for value_ref in value_refs]
+def combine(value1, value2, combine_type):
     if combine_type == "sum":
-        return sum(values)
+        return sum([value1, value2])
     else:
-        return max(values)
+        return max([value1, value2])
 
 
 with InputNode() as user_input:
@@ -30,7 +29,8 @@ with InputNode() as user_input:
     model2 = Model.bind(1)
     output1 = model1.forward.bind(user_input[0])
     output2 = model2.forward.bind(user_input[0])
-    dag = combine.bind([output1, output2], user_input[1])
+    dag = combine.bind(output1, output2, user_input[1])
+
 
 print(ray.get(dag.execute(1, "max")))
 print(ray.get(dag.execute(1, "sum")))
