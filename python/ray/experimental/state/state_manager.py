@@ -63,7 +63,6 @@ def handle_grpc_network_errors(func):
         try:
             return await func(*args, **kwargs)
         except grpc.aio.AioRpcError as e:
-            logger.info("Sangbin", e)
             if (
                 e.code() == grpc.StatusCode.DEADLINE_EXCEEDED
                 or e.code() == grpc.StatusCode.UNAVAILABLE
@@ -184,7 +183,6 @@ class StateDataSourceClient:
         try:
             return self._job_client.get_all_jobs()
         except grpc.aio.AioRpcError as e:
-            logger.exception(e)
             if (
                 e.code == grpc.StatusCode.DEADLINE_EXCEEDED
                 or e.code == grpc.StatusCode.UNAVAILABLE
@@ -193,6 +191,9 @@ class StateDataSourceClient:
                     "Failed to query the data source. "
                     "It is either there's a network issue, or the source is down."
                 )
+            else:
+                logger.exception(e)
+                raise e
 
     @handle_grpc_network_errors
     async def get_task_info(

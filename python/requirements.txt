@@ -64,6 +64,7 @@ moto[s3,server]
 mypy
 networkx
 numba
+asyncmock
 # higher version of llvmlite breaks windows
 llvmlite==0.34.0
 openpyxl
