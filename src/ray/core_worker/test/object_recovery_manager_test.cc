@@ -66,7 +66,7 @@ class MockRayletClient : public PinObjectsInterface {
     callbacks.push_back(callback);
   }
 
-  size_t Flush(bool success=true) {
+  size_t Flush(bool success = true) {
     std::list<rpc::ClientCallback<rpc::PinObjectIDsReply>> callbacks_snapshot;
     std::swap(callbacks_snapshot, callbacks);
     size_t flushed = callbacks_snapshot.size();
