@@ -319,6 +319,39 @@ class DeploymentSchema(BaseModel, extra=Extra.forbid):
                 )
         return v
 
+    def deployment_dict(self, exclude_unset: bool = True) -> Dict:
+        """Gets argument-value pairs for @serve.deployment() decorator.
+
+        Prepends underscores to private fields to match their format in the
+        deployment decorator.
+
+        Args:
+            exclude_unset (bool): Whether to exclude values that weren't
+                explicitly set by when creating this deployment.
+
+        Return: a dictionary containing argument-value pairs that can be
+            passed directly into @serve.deployment(), options(), or
+            set_options().
+        """
+
+        # Get dictionary of options using Pydantic's dict() function
+        deployment_dict = self.dict(exclude_unset=exclude_unset)
+
+        # Prepend underscores to all private deployment options
+        private_options = {
+            "_autoscaling_config",
+            "_graceful_shutdown_wait_loop_s",
+            "_graceful_shutdown_timeout_s",
+            "_health_check_period_s",
+            "_health_check_timeout_s",
+        }
+
+        for option in private_options:
+            if option[1:] in deployment_dict:
+                deployment_dict[option] = deployment_dict.pop(option[1:])
+
+        return deployment_dict
+
 
 class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
     import_path: str = Field(
@@ -391,6 +424,26 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
                     f'Got invalid import path "{v}". An '
                     "import path may not start or end with a dot."
                 )
+
+    def deployment_dicts(self, exclude_unset: bool = True) -> List[Dict]:
+        """Gets deployment options dictionaries for all deployments.
+
+        Args:
+            exclude_unset (bool): Whether to exclude values that weren't
+                explicitly set by when creating the deployments.
+
+        Return: a list of dictionaries containing argument-value pairs that can
+            be passed directly into @serve.deployment(), options(), or
+            set_options().
+        """
+
+        deployment_dicts = []
+        for deployment_schema in self.deployments:
+            deployment_dicts.append(
+                deployment_schema.deployment_dict(exclude_unset=exclude_unset)
+            )
+
+        return deployment_dicts
 
 
 class DeploymentStatusSchema(BaseModel, extra=Extra.forbid):
