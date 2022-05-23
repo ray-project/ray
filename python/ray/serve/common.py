@@ -1,5 +1,6 @@
-from dataclasses import dataclass, field
+import json
 from enum import Enum
+from dataclasses import dataclass, field, asdict
 from typing import Any, List, Dict, Optional
 
 import ray
@@ -40,12 +41,8 @@ class ApplicationStatusInfo:
     message: str = ""
     deployment_timestamp: float = 0
 
-    def __str__(self):
-        return (
-            f"Status: {self.status}\n"
-            f"Deployment Timestamp: {self.deployment_timestamp}\n"
-            f"Message: {self.message}"
-        )
+    def debug_str(self):
+        return json.dumps(asdict(self), indent=4)
 
     def to_proto(self):
         return ApplicationStatusInfoProto(
@@ -75,10 +72,8 @@ class DeploymentStatusInfo:
     status: DeploymentStatus
     message: str = ""
 
-    def __str__(self):
-        return (
-            f"Name: {self.name}\n" f"Status: {self.status}\n" f"Message: {self.message}"
-        )
+    def debug_str(self):
+        return json.dumps(asdict(self), indent=4)
 
     def to_proto(self):
         return DeploymentStatusInfoProto(
@@ -99,22 +94,8 @@ class StatusOverview:
     app_status: ApplicationStatusInfo
     deployment_statuses: List[DeploymentStatusInfo] = field(default_factory=list)
 
-    def __str__(self):
-        status_info_str = (
-            "========================================\n"
-            "        Serve Application Status:       \n"
-            "----------------------------------------\n"
-            f"{str(self.app_status)}\n"
-            "========================================\n"
-            "        Serve Deployment Statuses:      \n"
-            "----------------------------------------\n"
-        )
-
-        for deployment_status in self.deployment_statuses:
-            status_info_str += str(deployment_status)
-            status_info_str += "\n----------------------------------------\n"
-
-        return status_info_str
+    def debug_str(self):
+        return json.dumps(asdict(self), indent=4)
 
     def get_deployment_status(self, name: str) -> Optional[DeploymentStatusInfo]:
         """Get a deployment's status by name.
