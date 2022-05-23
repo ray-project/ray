@@ -22,7 +22,7 @@ RELEASE_AWS_ANYSCALE_SECRET_ARN = os.getenv(
     "RELEASE_AWS_ANYSCALE_SECRET_ARN",
     "arn:aws:secretsmanager:us-west-2:029272617770:secret:"
     "release-automation/"
-    "anyscale-token20210505220406333800000001-BcUuKB",
+    "anyscale-token-staging-kf-iwVKvc",
 )
 
 

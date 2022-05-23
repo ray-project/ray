@@ -17,8 +17,8 @@ DEFAULT_ARTIFACTS_DIR_HOST = "/tmp/ray_release_test_artifacts"
 
 DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
     "env": {
-        "ANYSCALE_CLOUD_ID": "cld_4F7k8814aZzGG8TNUGPKnc",
-        "ANYSCALE_PROJECT": "prj_2xR6uT6t7jJuu1aCwWMsle",
+        "ANYSCALE_CLOUD_ID": "cld_401TPoxgB8MM6A0NNQauOV",
+        "ANYSCALE_PROJECT": "prj_3PQEEUK8rhBpBpzAQBgKnUws",
         "RELEASE_AWS_BUCKET": "ray-release-automation-results",
         "RELEASE_AWS_LOCATION": "dev",
         "RELEASE_AWS_DB_NAME": "ray_ci",
