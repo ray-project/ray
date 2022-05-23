@@ -43,7 +43,6 @@ class MAMLConfig(TrainerConfig):
         >>> config = MAMLConfig()
         >>> # Print out some default values.
         >>> print(config.lr)
-        ... 0.0004
         >>> # Update the config object.
         >>> config.training(grad_clip=tune.grid_search([10.0, 40.0]))
         >>> # Set the config object's env.
