@@ -143,14 +143,19 @@ def main(
             cluster_env_id=cluster_env_id,
             no_terminate=no_terminate,
         )
+        return_code = result.return_code
     except ReleaseTestError as e:
         logger.exception(e)
+        return_code = e.exit_code
+
+        print(os.environ.get("ANYSCALE_HOST"))
+        print(os.environ.get("ANYSCALE_API_TOKEN", "xxxxxxx")[0:6])
 
     logger.info(
         f"Release test pipeline for test {test['name']} completed. "
-        f"Returning with exit code = {result.return_code}"
+        f"Returning with exit code = {return_code}"
     )
-    sys.exit(result.return_code)
+    sys.exit(return_code)
 
 
 if __name__ == "__main__":
