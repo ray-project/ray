@@ -11,7 +11,7 @@ import warnings
 
 import ray
 from ray.exceptions import RayTaskError
-from ray.tune.error import TuneStopTrialError
+from ray.tune.error import _TuneStopTrialError
 from ray.tune.impl.out_of_band_serialize_dataset import out_of_band_serialize_dataset
 from ray.util import get_node_ip_address
 from ray.tune import TuneError
@@ -21,7 +21,7 @@ from ray.tune.insufficient_resources_manager import InsufficientResourcesManager
 from ray.tune.ray_trial_executor import (
     RayTrialExecutor,
     ExecutorEventType,
-    ExecutorEvent,
+    _ExecutorEvent,
 )
 from ray.tune.result import (
     DEBUG_METRICS,
@@ -735,7 +735,7 @@ class TrialRunner:
                 trial = event.trial
                 result = event.result
                 if event.type == ExecutorEventType.ERROR:
-                    self._on_executor_error(trial, result[ExecutorEvent.KEY_EXCEPTION])
+                    self._on_executor_error(trial, result[_ExecutorEvent.KEY_EXCEPTION])
                 elif event.type == ExecutorEventType.RESTORING_RESULT:
                     self._on_restoring_result(trial)
                 else:
@@ -745,11 +745,11 @@ class TrialRunner:
                     ), f"Unexpected future type - {event.type}"
                     if event.type == ExecutorEventType.TRAINING_RESULT:
                         self._on_training_result(
-                            trial, result[ExecutorEvent.KEY_FUTURE_RESULT]
+                            trial, result[_ExecutorEvent.KEY_FUTURE_RESULT]
                         )
                     else:
                         self._on_saving_result(
-                            trial, result[ExecutorEvent.KEY_FUTURE_RESULT]
+                            trial, result[_ExecutorEvent.KEY_FUTURE_RESULT]
                         )
                     self._post_process_on_training_saving_result(trial)
         except Exception as e:
@@ -1364,7 +1364,7 @@ class TrialRunner:
                 self._process_trial_failure(trial, exc=e)
             else:
                 self._process_trial_failure(
-                    trial, TuneStopTrialError(traceback.format_exc())
+                    trial, _TuneStopTrialError(traceback.format_exc())
                 )
 
     def cleanup_trials(self):

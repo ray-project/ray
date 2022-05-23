@@ -23,10 +23,10 @@ from typing import (
 import ray
 from ray.exceptions import GetTimeoutError, RayTaskError
 from ray.tune.error import (
-    AbortTrialExecution,
+    _AbortTrialExecution,
     TuneError,
-    TuneStartTrialError,
-    TuneGetNextExecutorEventError,
+    _TuneStartTrialError,
+    _TuneNoNextExecutorEventError,
 )
 from ray.tune.logger import NoopLogger
 from ray.tune.result import TRIAL_INFO, STDOUT_FILE, STDERR_FILE
@@ -165,8 +165,7 @@ class ExecutorEventType(Enum):
     YIELD = 8  # Yielding back to TrialRunner's main event loop.
 
 
-@DeveloperAPI
-class ExecutorEvent:
+class _ExecutorEvent:
     """A struct that describes the event to be processed by TrialRunner.
 
     Attributes:
@@ -309,7 +308,7 @@ class RayTrialExecutor(TrialExecutor):
             if not self.reset_trial(
                 trial, trial.config, trial.experiment_tag, logger_creator
             ):
-                raise AbortTrialExecution(
+                raise _AbortTrialExecution(
                     "Trainable runner reuse requires reset_config() to be "
                     "implemented and return True."
                 )
@@ -317,7 +316,7 @@ class RayTrialExecutor(TrialExecutor):
 
         trainable_cls = trial.get_trainable_cls()
         if not trainable_cls:
-            raise AbortTrialExecution(
+            raise _AbortTrialExecution(
                 f"Invalid trainable: {trial.trainable_name}. If you passed "
                 f"a string, make sure the trainable was registered before."
             )
@@ -525,7 +524,7 @@ class RayTrialExecutor(TrialExecutor):
         """
         try:
             return self._start_trial(trial)
-        except AbortTrialExecution as e:
+        except _AbortTrialExecution as e:
             logger.exception("Trial %s: Error starting runner, aborting!", trial)
             time.sleep(2)
             self._stop_trial(trial, exc=e)
@@ -536,7 +535,9 @@ class RayTrialExecutor(TrialExecutor):
             if isinstance(e, TuneError):
                 self._stop_trial(trial, exc=e)
             else:
-                self._stop_trial(trial, exc=TuneStartTrialError(traceback.format_exc()))
+                self._stop_trial(
+                    trial, exc=_TuneStartTrialError(traceback.format_exc())
+                )
             # Note that we don't return the resources, since they may
             # have been lost. TODO(ujvl): is this the right thing to do?
             return False
@@ -746,7 +747,7 @@ class RayTrialExecutor(TrialExecutor):
                 with self._change_working_directory(trial):
                     remote = trial.runner.restore_from_object.remote(obj)
             else:
-                raise AbortTrialExecution(
+                raise _AbortTrialExecution(
                     "Pass in `sync_on_checkpoint=True` for driver-based trial"
                     "restoration. Pass in an `upload_dir` for remote "
                     "storage-based restoration"
@@ -809,7 +810,7 @@ class RayTrialExecutor(TrialExecutor):
 
     def get_next_executor_event(
         self, live_trials: Set[Trial], next_trial_exists: bool
-    ) -> ExecutorEvent:
+    ) -> _ExecutorEvent:
         """Get the next executor event to be processed in TrialRunner.
 
         In case there are multiple events available for handling, the next
@@ -864,11 +865,11 @@ class RayTrialExecutor(TrialExecutor):
             # runner. The next trial can then be scheduled on this PG.
             if next_trial_exists:
                 if len(self._cached_actor_pg) > 0:
-                    return ExecutorEvent(ExecutorEventType.PG_READY)
+                    return _ExecutorEvent(ExecutorEventType.PG_READY)
                 # TODO(xwjiang): Expose proper API when we decide to do
                 #  ActorPool abstraction.
                 if any(len(r) > 0 for r in self._pg_manager._ready.values()):
-                    return ExecutorEvent(ExecutorEventType.PG_READY)
+                    return _ExecutorEvent(ExecutorEventType.PG_READY)
 
             ###################################################################
             # Prepare for futures to wait
@@ -902,11 +903,11 @@ class RayTrialExecutor(TrialExecutor):
                     # infeasible.
                     # TODO: Move InsufficientResourceManager's logic
                     #  to TrialExecutor. It is not Runner's responsibility!
-                    return ExecutorEvent(ExecutorEventType.NO_RUNNING_TRIAL_TIMEOUT)
+                    return _ExecutorEvent(ExecutorEventType.NO_RUNNING_TRIAL_TIMEOUT)
                 else:
                     # Training simply takes long time, yield the control back to main
                     # event loop to print progress info etc.
-                    return ExecutorEvent(ExecutorEventType.YIELD)
+                    return _ExecutorEvent(ExecutorEventType.YIELD)
 
             ###################################################################
             # If there is future returned.
@@ -919,7 +920,7 @@ class RayTrialExecutor(TrialExecutor):
             ###################################################################
             if ready_future not in self._futures.keys():
                 self._pg_manager.handle_ready_future(ready_future)
-                return ExecutorEvent(ExecutorEventType.PG_READY)
+                return _ExecutorEvent(ExecutorEventType.PG_READY)
 
             ###################################################################
             # non PG_READY event
@@ -942,25 +943,25 @@ class RayTrialExecutor(TrialExecutor):
                         ExecutorEventType.RESTORING_RESULT,
                     ):
                         logger.debug(f"Returning [{result_type}] for trial {trial}")
-                        return ExecutorEvent(
+                        return _ExecutorEvent(
                             result_type,
                             trial,
-                            result={ExecutorEvent.KEY_FUTURE_RESULT: future_result},
+                            result={_ExecutorEvent.KEY_FUTURE_RESULT: future_result},
                         )
                     else:
                         raise TuneError(f"Unexpected future type - [{result_type}]")
                 except RayTaskError as e:
-                    return ExecutorEvent(
+                    return _ExecutorEvent(
                         ExecutorEventType.ERROR,
                         trial,
-                        result={ExecutorEvent.KEY_EXCEPTION: e.as_instanceof_cause()},
+                        result={_ExecutorEvent.KEY_EXCEPTION: e.as_instanceof_cause()},
                     )
                 except Exception:
-                    return ExecutorEvent(
+                    return _ExecutorEvent(
                         ExecutorEventType.ERROR,
                         trial,
                         result={
-                            ExecutorEvent.KEY_EXCEPTION: TuneGetNextExecutorEventError(
+                            _ExecutorEvent.KEY_EXCEPTION: _TuneNoNextExecutorEventError(
                                 traceback.format_exc()
                             )
                         },

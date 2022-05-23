@@ -11,7 +11,7 @@ from ray.rllib import _register_all
 from ray.tune import Trainable
 from ray.tune.callback import Callback
 from ray.tune.ray_trial_executor import (
-    ExecutorEvent,
+    _ExecutorEvent,
     ExecutorEventType,
     RayTrialExecutor,
 )
@@ -113,7 +113,7 @@ class RayTrialExecutorTest(unittest.TestCase):
             )
             if event.type == ExecutorEventType.TRAINING_RESULT:
                 break
-        training_result = event.result[ExecutorEvent.KEY_FUTURE_RESULT]
+        training_result = event.result[_ExecutorEvent.KEY_FUTURE_RESULT]
         if isinstance(training_result, list):
             for r in training_result:
                 trial.update_last_result(r)
@@ -128,7 +128,7 @@ class RayTrialExecutorTest(unittest.TestCase):
             live_trials={trial}, next_trial_exists=False
         )
         assert event.type == ExecutorEventType.SAVING_RESULT
-        self.process_trial_save(trial, event.result[ExecutorEvent.KEY_FUTURE_RESULT])
+        self.process_trial_save(trial, event.result[_ExecutorEvent.KEY_FUTURE_RESULT])
         self.assertEqual(checkpoint, trial.checkpoint)
 
     def testStartStop(self):

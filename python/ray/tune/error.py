@@ -1,4 +1,4 @@
-from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.util.annotations import PublicAPI
 
 
 @PublicAPI
@@ -8,15 +8,13 @@ class TuneError(Exception):
     pass
 
 
-@DeveloperAPI
-class AbortTrialExecution(TuneError):
+class _AbortTrialExecution(TuneError):
     """Error that indicates a trial should not be retried."""
 
     pass
 
 
-@DeveloperAPI
-class SubCategoryTuneError(TuneError):
+class _SubCategoryTuneError(TuneError):
     """The more specific TuneError that happens for a certain Tune
     subroutine. For example starting/stopping a trial.
     """
@@ -28,22 +26,19 @@ class SubCategoryTuneError(TuneError):
         return self.traceback_str
 
 
-@DeveloperAPI
-class TuneStopTrialError(SubCategoryTuneError):
+class _TuneStopTrialError(_SubCategoryTuneError):
     """Error that happens when stopping a tune trial."""
 
     pass
 
 
-@DeveloperAPI
-class TuneStartTrialError(SubCategoryTuneError):
+class _TuneStartTrialError(_SubCategoryTuneError):
     """Error that happens when starting a tune trial."""
 
     pass
 
 
-@DeveloperAPI
-class TuneGetNextExecutorEventError(SubCategoryTuneError):
+class _TuneNoNextExecutorEventError(_SubCategoryTuneError):
     """Error that happens when waiting to get the next event to
     handle from RayTrialExecutor.
 
