@@ -90,7 +90,7 @@ class R2D2Config(DQNConfig):
         self.adam_epsilon = 1e-3
         self.lr = 1e-4
         self.gamma = 0.997
-        self.train_batch_size = 64
+        self.train_batch_size = 1000
         self.target_network_update_freq = 2500
         # R2D2 is using a buffer that stores sequences.
         self.replay_buffer_config = {
@@ -100,6 +100,10 @@ class R2D2Config(DQNConfig):
             "prioritized_replay": DEPRECATED_VALUE,
             # Size of the replay buffer (in sequences, not timesteps).
             "capacity": 100000,
+            # This algorithm learns on sequences. We therefore require the replay buffer
+            # to slice sampled batches into sequences before replay. How sequences
+            # are sliced depends on the parameters `replay_sequence_length`,
+            # `replay_burn_in`, and `replay_zero_init_states`.
             "storage_unit": "sequences",
             # Set automatically: The number
             # of contiguous environment steps to

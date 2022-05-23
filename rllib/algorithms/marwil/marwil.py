@@ -23,6 +23,7 @@ from ray.rllib.utils.typing import (
     ResultDict,
     TrainerConfigDict,
 )
+from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
 
 
 class MARWILConfig(TrainerConfig):
@@ -141,7 +142,6 @@ class MARWILConfig(TrainerConfig):
                 "type": "MultiAgentReplayBuffer",
                 "learning_starts": 1000,
                 "capacity": 50000,
-                "replay_batch_size": 32,
                 "replay_sequence_length": 1,
                 }
                 - OR -
@@ -258,7 +258,11 @@ class MARWILTrainer(Trainer):
         self.local_replay_buffer.add(batch)
 
         # Pull batch from replay buffer and train on it.
-        train_batch = self.local_replay_buffer.sample(self.config["train_batch_size"])
+        train_batch = sample_min_n_steps_from_buffer(
+            self.local_replay_buffer,
+            self.config["train_batch_size"],
+            count_by_agent_steps=self._by_agent_steps,
+        )
         # Train.
         if self.config["simple_optimizer"]:
             train_results = train_one_step(self, train_batch)
