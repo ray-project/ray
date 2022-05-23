@@ -70,11 +70,13 @@ from ray.rllib.utils.error import EnvError, ERR_MSG_INVALID_ENV_DESCRIPTOR
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.metrics import (
-    TRAINING_ITERATION_TIMER,
-    NUM_ENV_STEPS_SAMPLED,
     NUM_AGENT_STEPS_SAMPLED,
-    NUM_ENV_STEPS_TRAINED,
+    NUM_AGENT_STEPS_SAMPLED_THIS_ITER,
     NUM_AGENT_STEPS_TRAINED,
+    NUM_ENV_STEPS_SAMPLED,
+    NUM_ENV_STEPS_SAMPLED_THIS_ITER,
+    NUM_ENV_STEPS_TRAINED,
+    TRAINING_ITERATION_TIMER,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.pre_checks.multi_agent import check_multi_agent
@@ -631,6 +633,7 @@ class Trainer(Trainable):
             # No parallelism.
             if not self.config["evaluation_parallel_to_training"]:
                 step_results = self._exec_plan_or_training_iteration_fn()
+                #print(f"ts sampled={step_results[NUM_AGENT_STEPS_SAMPLED]}")
 
             # Kick off evaluation-loop (and parallel train() call,
             # if requested).
@@ -660,6 +663,7 @@ class Trainer(Trainable):
             # Sequential: train (already done above), then eval.
             else:
                 step_results.update(self.evaluate())
+                print(f"ts evaluated={step_results['evaluation'][NUM_ENV_STEPS_SAMPLED_THIS_ITER]}")
 
         # Attach latest available evaluation results to train results,
         # if necessary.
@@ -756,7 +760,8 @@ class Trainer(Trainable):
                 else (self.config["evaluation_num_workers"] or 1)
                 * (1 if unit == "episodes" else rollout)
             )
-            num_ts_run = 0
+            agent_steps_this_iter = 0
+            env_steps_this_iter = 0
 
             # Default done-function returns True, whenever num episodes
             # have been completed.
@@ -778,7 +783,9 @@ class Trainer(Trainable):
                 # `rollout_fragment_length` is exactly the desired ts.
                 iters = duration if unit == "episodes" else 1
                 for _ in range(iters):
-                    num_ts_run += len(self.workers.local_worker().sample())
+                    batch = self.workers.local_worker().sample()
+                    agent_steps_this_iter += batch.agent_steps()
+                    env_steps_this_iter += batch.env_steps()
                 metrics = collect_metrics(
                     self.workers.local_worker(),
                     keep_custom_metrics=self.config["keep_per_episode_custom_metrics"],
@@ -792,7 +799,9 @@ class Trainer(Trainable):
                 # `rollout_fragment_length` is exactly the desired ts.
                 iters = duration if unit == "episodes" else 1
                 for _ in range(iters):
-                    num_ts_run += len(self.evaluation_workers.local_worker().sample())
+                    batch = self.evaluation_workers.local_worker().sample()
+                    agent_steps_this_iter += batch.agent_steps()
+                    env_steps_this_iter += batch.env_steps()
 
             # Evaluation worker set has n remote workers.
             else:
@@ -815,14 +824,18 @@ class Trainer(Trainable):
                             < units_left_to_do
                         ]
                     )
+                    agent_steps_this_iter = sum(b.agent_steps() for b in batches)
+                    env_steps_this_iter = sum(b.env_steps() for b in batches)
                     # 1 episode per returned batch.
                     if unit == "episodes":
                         num_units_done += len(batches)
                     # n timesteps per returned batch.
                     else:
-                        ts = sum(len(b) for b in batches)
-                        num_ts_run += ts
-                        num_units_done += ts
+                        num_units_done += (
+                            agent_steps_this_iter
+                            if self._by_agent_steps
+                            else env_steps_this_iter
+                        )
 
                     logger.info(
                         f"Ran round {round_} of parallel evaluation "
@@ -835,7 +848,8 @@ class Trainer(Trainable):
                     self.evaluation_workers.remote_workers(),
                     keep_custom_metrics=self.config["keep_per_episode_custom_metrics"],
                 )
-            metrics["timesteps_this_iter"] = num_ts_run
+            metrics[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps_this_iter
+            metrics[NUM_ENV_STEPS_SAMPLED_THIS_ITER] = env_steps_this_iter
 
         # Evaluation does not run for every step.
         # Save evaluation metrics on trainer, so it can be attached to
