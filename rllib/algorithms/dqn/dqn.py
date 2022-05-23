@@ -133,7 +133,7 @@ class DQNConfig(SimpleQConfig):
         self.before_learn_on_batch = None
         self.training_intensity = None
 
-        # Changes to SimpleQConfig default
+        # Changes to SimpleQConfig's default:
         self.replay_buffer_config = {
             "type": "MultiAgentPrioritizedReplayBuffer",
             # Specify prioritized replay by supplying a buffer type that supports
@@ -174,7 +174,6 @@ class DQNConfig(SimpleQConfig):
             Type[MultiAgentBatch],
         ] = None,
         training_intensity: Optional[float] = None,
-        worker_side_prioritization: Optional[bool] = None,
         replay_buffer_config: Optional[dict] = None,
         **kwargs,
     ) -> "DQNConfig":
@@ -211,9 +210,6 @@ class DQNConfig(SimpleQConfig):
                 -> will make sure that replay+train op will be executed 4x asoften as
                 rollout+insert op (4 * 250 = 1000).
                 See: rllib/agents/dqn/dqn.py::calculate_rr_weights for further details.
-                TODO: Find a way to support None again as a means to replay
-                 proceeding as fast as possible.
-            worker_side_prioritization: Whether to compute priorities on workers.
             replay_buffer_config: Replay buffer config.
                 Examples:
                 {
@@ -278,8 +274,6 @@ class DQNConfig(SimpleQConfig):
             self.before_learn_on_batch = before_learn_on_batch
         if training_intensity is not None:
             self.training_intensity = training_intensity
-        if worker_side_prioritization is not None:
-            self.worker_side_priorizatiion = worker_side_prioritization
         if replay_buffer_config is not None:
             self.replay_buffer_config = replay_buffer_config
 
