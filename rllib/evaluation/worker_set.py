@@ -25,7 +25,7 @@ from ray.rllib.offline import (
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, Deprecated, deprecation_warning
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.typing import (

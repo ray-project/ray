@@ -115,7 +115,9 @@ class TestMARWIL(unittest.TestCase):
         config["evaluation_config"] = {"input": "sampler"}
         # Learn from offline data.
         config["input"] = [data_file]
-        config["off_policy_estimation_methods"] = []  # disable (data has no action-probs)
+        config[
+            "off_policy_estimation_methods"
+        ] = []  # disable (data has no action-probs)
         num_iterations = 3
 
         # Test for all frameworks.

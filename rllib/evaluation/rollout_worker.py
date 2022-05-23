@@ -42,7 +42,10 @@ from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils import force_list, merge_dicts, check_env
 from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI
 from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, Deprecated, deprecation_warning
+from ray.rllib.utils.deprecation import (
+    Deprecated,
+    deprecation_warning,
+)
 from ray.rllib.utils.error import ERR_MSG_NO_GPUS, HOWTO_CHANGE_CONFIG
 from ray.rllib.utils.filter import get_filter, Filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -335,7 +338,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 DefaultCallbacks for training/policy/rollout-worker callbacks.
             input_creator: Function that returns an InputReader object for
                 loading previous generated experiences.
-            off_policy_estimation_methods: How to evaluate the policy performance. 
+            off_policy_estimation_methods: How to evaluate the policy performance.
                 Setting this only makes sense when the input is reading offline data.
                 Available options:
                 - "simulation" (str): Run the environment in the background, but use

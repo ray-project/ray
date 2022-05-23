@@ -950,7 +950,9 @@ class TrainerConfig:
         if input_evaluation is not None:
             deprecation_warning(
                 old="offline_data(input_evaluation={})".format(input_evaluation),
-                new="offline_data(off_policy_estimation_methods={})".format(input_evaluation),
+                new="offline_data(off_policy_estimation_methods={})".format(
+                    input_evaluation
+                ),
                 error=False,
             )
             self.off_policy_estimation_methods = input_evaluation

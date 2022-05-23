@@ -1874,12 +1874,13 @@ class Trainer(Trainable):
             )
             config["off_policy_estimation_methods"] = input_evaluation
         if isinstance(config["off_policy_estimation_methods"], tuple):
-            config["off_policy_estimation_methods"] = list(config["off_policy_estimation_methods"])
+            config["off_policy_estimation_methods"] = list(
+                config["off_policy_estimation_methods"]
+            )
         elif not isinstance(config["off_policy_estimation_methods"], list):
             raise ValueError(
-                "`off_policy_estimation_methods` must be a list of strings, got {}!".format(
-                    config["off_policy_estimation_methods"]
-                )
+                "`off_policy_estimation_methods` must be a list of strings, got"
+                f"{config['off_policy_estimation_methods']} !"
             )
 
         # Check model config.
