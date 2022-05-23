@@ -212,6 +212,39 @@ def test_push_based_shuffle_schedule():
     _test(100, 10, {"node1": 10, "node2": 10, "node3": 10})
 
 
+def test_push_based_shuffle_stats(ray_start_cluster):
+    ctx = ray.data.context.DatasetContext.get_current()
+    try:
+        original = ctx.use_push_based_shuffle
+        ctx.use_push_based_shuffle = True
+
+        cluster = ray_start_cluster
+        cluster.add_node(
+            resources={"bar:1": 100},
+            num_cpus=10,
+            _system_config={"max_direct_call_object_size": 0},
+        )
+        cluster.add_node(resources={"bar:2": 100}, num_cpus=10)
+        cluster.add_node(resources={"bar:3": 100}, num_cpus=0)
+
+        ray.init(cluster.address)
+
+        parallelism = 100
+        ds = ray.data.range(1000, parallelism=parallelism).random_shuffle()
+        assert "random_shuffle_merge" in ds.stats()
+        # Check all nodes used.
+        assert "2 nodes used" in ds.stats()
+        assert "1 nodes used" not in ds.stats()
+
+        # Check all merge tasks are included in stats.
+        internal_stats = ds._plan.stats()
+        num_merge_tasks = len(internal_stats.stages["random_shuffle_merge"])
+        assert parallelism // 3 <= num_merge_tasks <= parallelism // 2
+
+    finally:
+        ctx.use_push_based_shuffle = original
+
+
 if __name__ == "__main__":
     import sys
 
