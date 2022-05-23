@@ -1,6 +1,7 @@
 # This example showcases how to use Tensorflow with Ray Train.
 # Original code:
 # https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras
+# https://blog.keras.io/building-autoencoders-in-keras.html
 import argparse
 import json
 import os
