@@ -22,7 +22,7 @@ R2D2_DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         # Discount factor.
         "gamma": 0.997,
         # Train batch size (in number of single timesteps).
-        "train_batch_size": 2560,
+        "train_batch_size": 1000,
         # Adam epsilon hyper parameter
         "adam_epsilon": 1e-3,
         # Run in parallel by default.
