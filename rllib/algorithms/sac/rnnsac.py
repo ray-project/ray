@@ -28,14 +28,8 @@ class RNNSACConfig(SACConfig):
         super().__init__(trainer_class=trainer_class or RNNSACTrainer)
         # fmt: off
         # __sphinx_doc_begin__
-        self.burn_in = DEPRECATED_VALUE
         self.batch_mode = "complete_episodes"
         self.zero_init_states = True
-        self.replay_buffer_config["replay_burn_in"] = 0
-        # Set automatically: The number of contiguous environment steps to
-        # replay at once. Will be calculated via
-        # model->max_seq_len + burn_in.
-        # Do not set this to any valid value!
         self.replay_buffer_config = {
             # This algorithm learns on sequences. We therefore require the replay buffer
             # to slice sampled batches into sequences before replay. How sequences
@@ -56,7 +50,7 @@ class RNNSACConfig(SACConfig):
             # Do not set this to any valid value!
             "replay_sequence_length": -1,
         },
-        self.burn_in = DEPRECATED_VALUE,
+        self.burn_in = DEPRECATED_VALUE
 
         # fmt: on
         # __sphinx_doc_end__

@@ -79,7 +79,7 @@ R2D2_DEFAULT_CONFIG = Trainer.merge_trainer_configs(
 
         # Deprecated keys:
         # Use config["replay_buffer_config"]["replay_burn_in"] instead
-        "burn_in": DEPRECATED_VALUE
+        "burn_in": DEPRECATED_VALUE,
     },
     _allow_unknown_configs=True,
 )
