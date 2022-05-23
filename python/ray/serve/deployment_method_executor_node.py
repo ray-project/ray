@@ -41,7 +41,7 @@ class DeploymentMethodExecutorNode(DAGNode):
         new_kwargs: Dict[str, Any],
         new_options: Dict[str, Any],
         new_other_args_to_resolve: Dict[str, Any],
-    ):
+    ) -> "DeploymentMethodExecutorNode":
         return DeploymentMethodExecutorNode(
             self._deployment_method_name,
             new_args,
