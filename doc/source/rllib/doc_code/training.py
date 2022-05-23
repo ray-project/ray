@@ -80,7 +80,7 @@ _____________________________________________________________________
 # __get_q_values_dqn_start__
 # Get a reference to the model through the policy
 import numpy as np
-from ray.rllib.agents.dqn import DQNTrainer
+from ray.rllib.algorithms.dqn import DQNTrainer
 
 trainer = DQNTrainer(env="CartPole-v0", config={"framework": "tf2"})
 model = trainer.get_policy().model

@@ -108,7 +108,6 @@ class TrainerConfig:
         self.action_space = None
         self.env_task_fn = None
         self.render_env = False
-        self.record_env = False
         self.clip_rewards = None
         self.normalize_actions = True
         self.clip_actions = False
@@ -458,7 +457,6 @@ class TrainerConfig:
         action_space: Optional[gym.spaces.Space] = None,
         env_task_fn: Optional[Callable[[ResultDict, EnvType, EnvContext], Any]] = None,
         render_env: Optional[bool] = None,
-        record_env: Optional[bool] = None,
         clip_rewards: Optional[Union[bool, float]] = None,
         normalize_actions: Optional[bool] = None,
         clip_actions: Optional[bool] = None,
@@ -489,11 +487,6 @@ class TrainerConfig:
                 `render()` method which either:
                 a) handles window generation and rendering itself (returning True) or
                 b) returns a numpy uint8 image of shape [height x width x 3 (RGB)].
-            record_env: If True, stores videos in this relative directory inside the
-                default output dir (~/ray_results/...). Alternatively, you can
-                specify an absolute path (str), in which the env recordings should be
-                stored instead. Set to False for not recording anything.
-                Note: This setting replaces the deprecated `monitor` key.
             clip_rewards: Whether to clip rewards during Policy's postprocessing.
                 None (default): Clip for Atari only (r=sign(r)).
                 True: r=sign(r): Fixed rewards -1.0, 1.0, or 0.0.
@@ -524,8 +517,6 @@ class TrainerConfig:
             self.env_task_fn = env_task_fn
         if render_env is not None:
             self.render_env = render_env
-        if record_env is not None:
-            self.record_env = record_env
         if clip_rewards is not None:
             self.clip_rewards = clip_rewards
         if normalize_actions is not None:
