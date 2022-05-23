@@ -1,6 +1,6 @@
 import gym
 import logging
-from typing import Callable, Dict, List, Tuple, Type, Optional, Union, Set
+from typing import Callable, Dict, List, Tuple, Optional, Union, Set, Type
 
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.utils.annotations import (
