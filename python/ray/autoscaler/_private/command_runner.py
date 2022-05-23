@@ -466,7 +466,7 @@ class SSHCommandRunner(CommandRunnerInterface):
                     use_login_shells=is_using_login_shells(),
                 )
             else:
-                return self.process_runner.check_output(final_cmd)
+                return self.process_runner.check_call(final_cmd)
 
         except subprocess.CalledProcessError as e:
             joined_cmd = " ".join(final_cmd)
