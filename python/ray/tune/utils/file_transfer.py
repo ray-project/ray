@@ -391,9 +391,9 @@ def _copy_dir(source_dir: str, target_dir: str) -> None:
 _remote_copy_dir = ray.remote(_copy_dir)
 
 
-def _delete_path(target_path: str, filelock: bool = True) -> bool:
+def _delete_path(target_path: str) -> bool:
     """Delete path (files and directories)"""
-    with FileLock(f"{filelock}.lock"):
+    with FileLock(f"{target_path}.lock"):
         return _delete_path_unsafe(target_path)
 
 
