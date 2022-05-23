@@ -466,11 +466,7 @@ class SSHCommandRunner(CommandRunnerInterface):
                     use_login_shells=is_using_login_shells(),
                 )
             else:
-                # TODO (Dmitri) The next line looks like it should be "check_output"
-                # since this branch appears to require output. And yet the next line has
-                # said "check_call" for years. I'm not going to hazard fixing this now,
-                # but it should be investigated.
-                return self.process_runner.check_call(final_cmd)
+                return self.process_runner.check_output(final_cmd)
         except subprocess.CalledProcessError as e:
             joined_cmd = " ".join(final_cmd)
             if not is_using_login_shells():
