@@ -34,21 +34,11 @@ class ApplicationStatus(str, Enum):
     DEPLOY_FAILED = "DEPLOY_FAILED"
 
 
-@dataclass
+@dataclass(eq=True)
 class ApplicationStatusInfo:
     status: ApplicationStatus
     message: str = ""
     deployment_timestamp: float = 0
-
-    def __eq__(self, other):
-        if not isinstance(other, ApplicationStatusInfo):
-            return False
-
-        return (
-            self.status == other.status
-            and self.message == other.message
-            and self.deployment_timestamp == other.deployment_timestamp
-        )
 
     def __str__(self):
         return (
@@ -79,21 +69,11 @@ class DeploymentStatus(str, Enum):
     UNHEALTHY = "UNHEALTHY"
 
 
-@dataclass
+@dataclass(eq=True)
 class DeploymentStatusInfo:
     name: str
     status: DeploymentStatus
     message: str = ""
-
-    def __eq__(self, other):
-        if not isinstance(other, DeploymentStatusInfo):
-            return False
-
-        return (
-            self.name == other.name
-            and self.status == other.status
-            and self.message == other.message
-        )
 
     def __str__(self):
         return (
@@ -114,7 +94,7 @@ class DeploymentStatusInfo:
         )
 
 
-@dataclass
+@dataclass(eq=True)
 class StatusOverview:
     app_status: ApplicationStatusInfo
     deployment_statuses: List[DeploymentStatusInfo] = field(default_factory=list)
@@ -135,22 +115,6 @@ class StatusOverview:
             status_info_str += "\n----------------------------------------\n"
 
         return status_info_str
-
-    def __eq__(self, other):
-        if not isinstance(other, StatusOverview):
-            return False
-
-        if self.app_status == other.app_status and len(self.deployment_statuses) == len(
-            other.deployment_statuses
-        ):
-            for self_status, other_status in zip(
-                self.deployment_statuses, other.deployment_statuses
-            ):
-                if self_status != other_status:
-                    return False
-            return True
-        else:
-            return False
 
     def get_deployment_status(self, name: str) -> Optional[DeploymentStatusInfo]:
         """Get a deployment's status by name.
