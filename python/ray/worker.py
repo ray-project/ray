@@ -2124,6 +2124,9 @@ def cancel(
             the worker that is running the task.
         recursive (boolean): Whether to try to cancel tasks submitted by the
             task specified.
+    Returns:
+        bool: True if all the tasks are successfully cancelled i.e.,
+            all statuses are ok for each cancellation request.
     Raises:
         TypeError: This is also raised for actor tasks.
     """

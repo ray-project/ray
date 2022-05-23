@@ -337,6 +337,23 @@ def test_cancel_list(ray_start_regular):
         except (RayTaskError, TaskCancelledError):
             assert True
 
+    obj_ref1 = blocking_operation_1.remote(3)
+    obj_ref2 = blocking_operation_2.remote(2)
+    obj_ref3 = blocking_operation_1.remote(1)
+    obj_refs = [obj_ref1, obj_ref2, obj_ref3]
+
+    # let the tasks complete
+    time.sleep(30)
+
+    assert ray.cancel(obj_refs)
+
+    for obj_ref in obj_refs:
+        try:
+            ray.get(obj_ref)
+            assert True
+        except RayTaskError as e:
+            assert False
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

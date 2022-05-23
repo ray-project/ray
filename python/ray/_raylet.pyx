@@ -1789,6 +1789,8 @@ cdef class CoreWorker:
             if not statuses[i].ok():
                 raise TypeError(statuses[i].message().decode())
 
+        return 1
+
     def resource_ids(self):
         cdef:
             ResourceMappingType resource_mapping = (
