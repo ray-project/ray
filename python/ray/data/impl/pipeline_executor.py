@@ -129,7 +129,7 @@ class PipelineExecutor:
         return output
 
 
-@ray.remote(num_cpus=0, placement_group=None)
+@ray.remote(num_cpus=0)
 class PipelineSplitExecutorCoordinator:
     def __init__(
         self,

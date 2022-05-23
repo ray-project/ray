@@ -57,7 +57,6 @@ _OUTPUT_ITER_OPS = ["take", "take_all", "show", "to_tf", "to_torch"]
 class DatasetPipeline(Generic[T]):
     """Implements a pipeline of Datasets.
 
-    Unlike Datasets, which execute all transformations synchronously,
     DatasetPipelines implement pipelined execution. This allows for the
     overlapped execution of data input (e.g., reading files), computation
     (e.g. feature preprocessing), and output (e.g., distributed ML training).
@@ -285,9 +284,11 @@ class DatasetPipeline(Generic[T]):
             # will fate-share with the coordinator anyway.
             resources["node:{}".format(ray.util.get_node_ip_address())] = 0.0001
 
+        ctx = DatasetContext.get_current()
+
         coordinator = PipelineSplitExecutorCoordinator.options(
             resources=resources,
-            placement_group=None,
+            scheduling_strategy=ctx.scheduling_strategy,
         ).remote(self, n, splitter, DatasetContext.get_current())
         if self._executed[0]:
             raise RuntimeError("Pipeline cannot be read multiple times.")
