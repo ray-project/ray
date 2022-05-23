@@ -24,7 +24,6 @@ config = {
     "mode": "max",
     "verbose": 2,
     "config": {
-        "seed": 42,
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "framework": "torch",
         "num_workers": 4,
