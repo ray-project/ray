@@ -136,7 +136,7 @@ class ImpalaConfig(TrainerConfig):
         self.num_workers = 2
         self.num_gpus = 1
         self.lr = 0.0005
-        self.min_time_s_per_reporting = 10
+        self.min_time_s_per_iteration = 10
         # __sphinx_doc_end__
         # fmt: on
 
@@ -567,7 +567,7 @@ class ImpalaTrainer(Trainer):
             self.workers_that_need_updates = set()
 
     @override(Trainer)
-    def training_iteration(self) -> ResultDict:
+    def training_loop(self) -> ResultDict:
         unprocessed_sample_batches = self.get_samples_from_workers()
 
         self.workers_that_need_updates |= unprocessed_sample_batches.keys()

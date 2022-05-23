@@ -92,8 +92,8 @@ class SACConfig(TrainerConfig):
         self.train_batch_size = 256
 
         # .reporting()
-        self.min_time_s_per_reporting = 1
-        self.min_sample_timesteps_per_reporting = 100
+        self.min_time_s_per_iteration = 1
+        self.min_sample_timesteps_per_iteration = 100
         # __sphinx_doc_end__
         # fmt: on
 

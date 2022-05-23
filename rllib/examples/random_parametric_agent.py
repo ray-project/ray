@@ -69,7 +69,7 @@ class RandomParametricTrainer(Trainer):
         return RandomParametricPolicy
 
     @override(Trainer)
-    def training_iteration(self) -> ResultDict:
+    def training_loop(self) -> ResultDict:
         # Perform rollouts (only for collecting metrics later).
         synchronous_parallel_sample(worker_set=self.workers)
 

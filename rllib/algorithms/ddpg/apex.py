@@ -42,8 +42,8 @@ APEX_DDPG_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
         "rollout_fragment_length": 50,
         # Update the target network every `target_network_update_freq` sample timesteps.
         "target_network_update_freq": 500000,
-        "min_sample_timesteps_per_reporting": 25000,
-        "min_time_s_per_reporting": 30,
+        "min_sample_timesteps_per_iteration": 25000,
+        "min_time_s_per_iteration": 30,
     },
     _allow_unknown_configs=True,
 )
@@ -60,9 +60,9 @@ class ApexDDPGTrainer(DDPGTrainer, ApexTrainer):
         return ApexTrainer.setup(self, config)
 
     @override(DDPGTrainer)
-    def training_iteration(self) -> ResultDict:
+    def training_loop(self) -> ResultDict:
         """Use APEX-DQN's training iteration function."""
-        return ApexTrainer.training_iteration(self)
+        return ApexTrainer.training_loop(self)
 
     @staticmethod
     @override(DDPGTrainer)

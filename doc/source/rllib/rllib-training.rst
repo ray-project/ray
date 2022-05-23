@@ -489,7 +489,7 @@ The following is a list of the common algorithm hyper-parameters:
     # If - after one `step_attempt()`, the time limit has not been reached,
     # will perform n more `step_attempt()` calls until this minimum time has been
     # consumed. Set to 0 for no minimum time.
-    "min_time_s_per_reporting": 0,
+    "min_time_s_per_iteration": 0,
     # Minimum train/sample timesteps to accumulate within a single `train()` call.
     # This value does not affect learning, only the number of times
     # `self.step_attempt()` is called by `self.train()`.
@@ -497,8 +497,8 @@ The following is a list of the common algorithm hyper-parameters:
     # training) have not been reached, will perform n more `step_attempt()`
     # calls until the minimum timesteps have been executed.
     # Set to 0 for no minimum timesteps.
-    "min_train_timesteps_per_reporting": 0,
-    "min_sample_timesteps_per_reporting": 0,
+    "min_train_timesteps_per_iteration": 0,
+    "min_sample_timesteps_per_iteration": 0,
 
     # This argument, in conjunction with worker_index, sets the random seed of
     # each worker, so that identically configured trials will have identical
@@ -651,7 +651,7 @@ The following is a list of the common algorithm hyper-parameters:
 
     # === API deprecations/simplifications/changes ===
     # If True, the execution plan API will not be used. Instead,
-    # a Trainer's `training_iteration()` method will be called on each
+    # a Trainer's `training_loop()` method will be called on each
     # training iteration.
     "_disable_execution_plan_api": True,
 

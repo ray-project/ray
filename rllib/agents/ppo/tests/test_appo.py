@@ -109,10 +109,10 @@ class TestAPPO(unittest.TestCase):
             )
         )
 
-        config.min_sample_timesteps_per_reporting = 20
+        config.min_sample_timesteps_per_iteration = 20
         # 0 metrics reporting delay, this makes sure timestep,
         # which entropy coeff depends on, is updated after each worker rollout.
-        config.min_time_s_per_reporting = 0
+        config.min_time_s_per_iteration = 0
 
         def _step_n_times(trainer, n: int):
             """Step trainer n times.

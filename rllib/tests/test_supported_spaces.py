@@ -181,7 +181,7 @@ class TestSupportedSpacesOffPolicy(unittest.TestCase):
             "DDPG",
             {
                 "exploration_config": {"ou_base_scale": 100.0},
-                "min_sample_timesteps_per_reporting": 1,
+                "min_sample_timesteps_per_iteration": 1,
                 "replay_buffer_config": {
                     "capacity": 1000,
                 },
@@ -192,7 +192,7 @@ class TestSupportedSpacesOffPolicy(unittest.TestCase):
 
     def test_dqn(self):
         config = {
-            "min_sample_timesteps_per_reporting": 1,
+            "min_sample_timesteps_per_iteration": 1,
             "replay_buffer_config": {
                 "capacity": 1000,
             },

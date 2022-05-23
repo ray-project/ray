@@ -277,7 +277,7 @@ class DDPPOTrainer(PPOTrainer):
             logger.info("Torch process group init completed")
 
     @override(PPOTrainer)
-    def training_iteration(self) -> ResultDict:
+    def training_loop(self) -> ResultDict:
         # Shortcut.
         first_worker = self.workers.remote_workers()[0]
 

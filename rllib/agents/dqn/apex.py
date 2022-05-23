@@ -118,9 +118,9 @@ APEX_DEFAULT_CONFIG = merge_dicts(
         # `step_attempt()`, the env sampling timestep count has not been reached, will
         # perform n more `step_attempt()` calls until the minimum timesteps have been
         # executed. Set to 0 for no minimum timesteps.
-        "min_sample_timesteps_per_reporting": 25000,
+        "min_sample_timesteps_per_iteration": 25000,
         "exploration_config": {"type": "PerWorkerEpsilonGreedy"},
-        "min_time_s_per_reporting": 30,
+        "min_time_s_per_iteration": 30,
         # This will set the ratio of replayed from a buffer and learned
         # on timesteps to sampled from an environment and stored in the replay
         # buffer timesteps. Must be greater than 0.
@@ -245,7 +245,7 @@ class ApexTrainer(DQNTrainer):
         #         raise ValueError("training_intensity must be > 0")
 
     @override(Trainable)
-    def training_iteration(self) -> ResultDict:
+    def training_loop(self) -> ResultDict:
         num_samples_ready_dict = self.get_samples_and_store_to_replay_buffers()
         worker_samples_collected = defaultdict(int)
 

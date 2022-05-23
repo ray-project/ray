@@ -213,6 +213,17 @@ class Trainer(Trainable):
             logger_creator: Callable that creates a ray.tune.Logger
                 object. If unspecified, a default logger is created.
         """
+        # Check, whether `training_iteration` is still a tune.Trainable property
+        # and has not been overridden by the user in the attempt to implement the
+        # algos logic (this should be done now inside `training_loop`).
+        try:
+            assert isinstance(self.training_iteration, int)
+        except AssertionError:
+            raise AssertionError(
+                "Your Trainer's `training_iteration` seems to be overridden by your "
+                "custom training logic! To solve this problem, simply rename your "
+                "`self.training_iteration()` method into `self.training_loop`."
+            )
 
         # User provided (partial) config (this may be w/o the default
         # Trainer's Config object). Will get merged with TrainerConfig()
@@ -529,14 +540,14 @@ class Trainer(Trainable):
         )
 
         # Results dict for training (and if appolicable: evaluation).
-        result: Optional[ResultDict] = None
+        result: ResultDict = {}
 
         first_step_attempt = True
 
         # Create a step context ...
         with self._step_context() as step_ctx:
             #  so we can query it whether we should stop the iteration loop (e.g. when
-            #  we have reached `min_time_s_per_reporting`).
+            #  we have reached `min_time_s_per_iteration`).
             while not step_ctx.should_stop(result):
                 # Try to train one step.
                 try:
@@ -621,9 +632,9 @@ class Trainer(Trainable):
 
             # Collect worker metrics.
             if self.config["_disable_execution_plan_api"]:
-                result = self._compile_step_results(
+                result = self._compile_iteration_results(
                     step_ctx=step_ctx,
-                    step_attempt_results=step_attempt_results,
+                    iteration_results=result,
                 )
 
         # Check `env_task_fn` for possible update of the env's task.
@@ -834,7 +845,7 @@ class Trainer(Trainable):
         return self.evaluation_metrics
 
     @DeveloperAPI
-    def training_iteration(self) -> ResultDict:
+    def training_loop(self) -> ResultDict:
         """Default single iteration logic of an algorithm.
 
         - Collect on-policy samples (SampleBatches) in parallel using the
@@ -886,7 +897,7 @@ class Trainer(Trainable):
         raise NotImplementedError(
             "It is not longer recommended to use Trainer's `execution_plan` method/API."
             " Set `_disable_execution_plan_api=True` in your config and override the "
-            "`Trainer.training_iteration()` method with your algo's custom "
+            "`Trainer.training_loop()` method with your algo's custom "
             "execution logic."
         )
 
@@ -1631,7 +1642,7 @@ class Trainer(Trainable):
     def _exec_plan_or_training_iteration_fn(self):
         with self._timers[TRAINING_ITERATION_TIMER]:
             if self.config["_disable_execution_plan_api"]:
-                results = self.training_iteration()
+                results = self.training_loop()
             else:
                 results = next(self.train_exec_impl)
         return results
@@ -1912,10 +1923,34 @@ class Trainer(Trainable):
         if config.get("min_iter_time_s", DEPRECATED_VALUE) != DEPRECATED_VALUE:
             deprecation_warning(
                 old="min_iter_time_s",
-                new="min_time_s_per_reporting",
+                new="min_time_s_per_iteration",
                 error=False,
             )
-            config["min_time_s_per_reporting"] = config["min_iter_time_s"] or 0
+            config["min_time_s_per_iteration"] = config["min_iter_time_s"] or 0
+
+        if config.get("min_time_s_per_reporting", DEPRECATED_VALUE) != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="min_time_s_per_reporting",
+                new="min_time_s_per_iteration",
+                error=False,
+            )
+            config["min_time_s_per_iteration"] = config["min_time_s_per_reporting"] or 0
+
+        if config.get("min_sample_timesteps_per_reporting", DEPRECATED_VALUE) != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="min_sample_timesteps_per_reporting",
+                new="min_sample_timesteps_per_iteration",
+                error=False,
+            )
+            config["min_sample_timesteps_per_iteration"] = config["min_sample_timesteps_per_reporting"] or 0
+
+        if config.get("min_train_timesteps_per_reporting", DEPRECATED_VALUE) != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="min_train_timesteps_per_reporting",
+                new="min_train_timesteps_per_iteration",
+                error=False,
+            )
+            config["min_train_timesteps_per_iteration"] = config["min_train_timesteps_per_reporting"] or 0
 
         if config.get("collect_metrics_timeout", DEPRECATED_VALUE) != DEPRECATED_VALUE:
             # TODO: Warn once all algos use the `training_iteration` method.
@@ -1931,11 +1966,11 @@ class Trainer(Trainable):
         if config.get("timesteps_per_iteration", DEPRECATED_VALUE) != DEPRECATED_VALUE:
             deprecation_warning(
                 old="timesteps_per_iteration",
-                new="`min_sample_timesteps_per_reporting` OR "
-                "`min_train_timesteps_per_reporting`",
+                new="`min_sample_timesteps_per_iteration` OR "
+                "`min_train_timesteps_per_iteration`",
                 error=False,
             )
-            config["min_sample_timesteps_per_reporting"] = (
+            config["min_sample_timesteps_per_iteration"] = (
                 config["timesteps_per_iteration"] or 0
             )
             config["timesteps_per_iteration"] = DEPRECATED_VALUE
@@ -2254,9 +2289,9 @@ class Trainer(Trainable):
                             - self.init_env_steps_trained
                         )
 
-                    min_t = trainer.config["min_time_s_per_reporting"]
-                    min_sample_ts = trainer.config["min_sample_timesteps_per_reporting"]
-                    min_train_ts = trainer.config["min_train_timesteps_per_reporting"]
+                    min_t = trainer.config["min_time_s_per_iteration"]
+                    min_sample_ts = trainer.config["min_sample_timesteps_per_iteration"]
+                    min_train_ts = trainer.config["min_train_timesteps_per_iteration"]
                     # Repeat if not enough time has passed or if not enough
                     # env|train timesteps have been processed (or these min
                     # values are not provided by the user).
@@ -2275,21 +2310,21 @@ class Trainer(Trainable):
 
         return StepCtx()
 
-    def _compile_step_results(self, *, step_ctx, step_attempt_results=None):
+    def _compile_iteration_results(self, *, step_ctx, iteration_results=None):
         # Return dict.
         results: ResultDict = {}
-        step_attempt_results = step_attempt_results or {}
+        iteration_results = iteration_results or {}
 
         # Evaluation results.
-        if "evaluation" in step_attempt_results:
-            results["evaluation"] = step_attempt_results.pop("evaluation")
+        if "evaluation" in iteration_results:
+            results["evaluation"] = iteration_results.pop("evaluation")
 
         # Custom metrics and episode media.
-        results["custom_metrics"] = step_attempt_results.pop("custom_metrics", {})
-        results["episode_media"] = step_attempt_results.pop("episode_media", {})
+        results["custom_metrics"] = iteration_results.pop("custom_metrics", {})
+        results["episode_media"] = iteration_results.pop("episode_media", {})
 
         # Learner info.
-        results["info"] = {LEARNER_INFO: step_attempt_results}
+        results["info"] = {LEARNER_INFO: iteration_results}
 
         # Collect rollout worker metrics.
         episodes, self._episodes_to_be_collected = collect_episodes(

@@ -27,8 +27,8 @@ class TestApexDQN(unittest.TestCase):
         config["replay_buffer_config"] = {
             "learning_starts": 1000,
         }
-        config["min_sample_timesteps_per_reporting"] = 100
-        config["min_time_s_per_reporting"] = 1
+        config["min_sample_timesteps_per_iteration"] = 100
+        config["min_time_s_per_iteration"] = 1
         config["optimizer"]["num_replay_buffer_shards"] = 1
         for _ in framework_iterator(config):
             trainer = apex.ApexTrainer(config=config, env="CartPole-v0")
@@ -45,8 +45,8 @@ class TestApexDQN(unittest.TestCase):
         config["replay_buffer_config"] = {
             "learning_starts": 1000,
         }
-        config["min_sample_timesteps_per_reporting"] = 100
-        config["min_time_s_per_reporting"] = 1
+        config["min_sample_timesteps_per_iteration"] = 100
+        config["min_time_s_per_iteration"] = 1
         config["optimizer"]["num_replay_buffer_shards"] = 1
 
         for _ in framework_iterator(config, with_eager_tracing=True):
@@ -94,10 +94,10 @@ class TestApexDQN(unittest.TestCase):
             # Epsilon to add to the TD errors when updating priorities.
             "prioritized_replay_eps": 1e-6,
         }
-        config["min_sample_timesteps_per_reporting"] = 10
+        config["min_sample_timesteps_per_iteration"] = 10
         # 0 metrics reporting delay, this makes sure timestep,
         # which lr depends on, is updated after each worker rollout.
-        config["min_time_s_per_reporting"] = 0
+        config["min_time_s_per_iteration"] = 0
         config["optimizer"]["num_replay_buffer_shards"] = 1
         # This makes sure learning schedule is checked every 10 timesteps.
         config["optimizer"]["max_weight_sync_delay"] = 10

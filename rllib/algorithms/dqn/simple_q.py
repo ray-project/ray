@@ -148,8 +148,8 @@ class SimpleQConfig(TrainerConfig):
         self.evaluation_config = {"explore": False}
 
         # `reporting()`
-        self.min_time_s_per_reporting = 1
-        self.min_sample_timesteps_per_reporting = 1000
+        self.min_time_s_per_iteration = 1
+        self.min_sample_timesteps_per_iteration = 1000
 
         # Deprecated.
         self.buffer_size = DEPRECATED_VALUE
@@ -305,7 +305,7 @@ class SimpleQTrainer(Trainer):
 
     @ExperimentalAPI
     @override(Trainer)
-    def training_iteration(self) -> ResultDict:
+    def training_loop(self) -> ResultDict:
         """Simple Q training iteration function.
 
         Simple Q consists of the following steps:

@@ -373,7 +373,7 @@ class PPOTrainer(Trainer):
             return PPOTFPolicy
 
     @ExperimentalAPI
-    def training_iteration(self) -> ResultDict:
+    def training_loop(self) -> ResultDict:
         # Collect SampleBatches from sample workers until we have a full batch.
         if self._by_agent_steps:
             train_batch = synchronous_parallel_sample(

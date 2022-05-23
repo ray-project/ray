@@ -112,8 +112,8 @@ class TestExecution(unittest.TestCase):
             a,
             workers,
             {
-                "min_time_s_per_reporting": 2.5,
-                "min_sample_timesteps_per_reporting": 0,
+                "min_time_s_per_iteration": 2.5,
+                "min_sample_timesteps_per_iteration": 0,
                 "metrics_num_episodes_for_smoothing": 10,
                 "metrics_episode_collection_timeout_s": 10,
                 "keep_per_episode_custom_metrics": False,

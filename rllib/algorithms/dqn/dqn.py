@@ -343,7 +343,7 @@ class DQNTrainer(SimpleQTrainer):
             return DQNTFPolicy
 
     @ExperimentalAPI
-    def training_iteration(self) -> ResultDict:
+    def training_loop(self) -> ResultDict:
         """DQN training iteration function.
 
         Each training iteration, we:

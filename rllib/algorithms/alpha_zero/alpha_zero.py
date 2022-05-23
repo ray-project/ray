@@ -216,7 +216,7 @@ class AlphaZeroTrainer(Trainer):
         return AlphaZeroPolicyWrapperClass
 
     @override(Trainer)
-    def training_iteration(self) -> ResultDict:
+    def training_loop(self) -> ResultDict:
         """TODO:
 
         Returns:

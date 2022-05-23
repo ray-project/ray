@@ -85,7 +85,7 @@ class APPOConfig(ImpalaConfig):
         # Override some of ImpalaConfig's default values with APPO-specific values.
         self.rollout_fragment_length = 50
         self.train_batch_size = 500
-        self.min_time_s_per_reporting = 10
+        self.min_time_s_per_iteration = 10
         self.num_workers = 2
         self.num_gpus = 0
         self.num_multi_gpu_tower_stacks = 1
@@ -228,8 +228,8 @@ class APPOTrainer(ImpalaTrainer):
                 self.workers.local_worker().foreach_policy_to_train(update)
 
     @override(ImpalaTrainer)
-    def training_iteration(self) -> ResultDict:
-        train_results = super().training_iteration()
+    def training_loop(self) -> ResultDict:
+        train_results = super().training_loop()
 
         # Update KL, target network periodically.
         self.after_train_step(train_results)

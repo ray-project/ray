@@ -131,7 +131,7 @@ class AlphaStarConfig(appo.APPOConfig):
         # Override some of APPOConfig's default values with AlphaStar-specific
         # values.
         self.vtrace_drop_last_ts = False
-        self.min_time_s_per_reporting = 2
+        self.min_time_s_per_iteration = 2
         # __sphinx_doc_end__
         # fmt: on
 
@@ -369,7 +369,7 @@ class AlphaStarTrainer(appo.APPOTrainer):
         return result
 
     @override(Trainer)
-    def training_iteration(self) -> ResultDict:
+    def training_loop(self) -> ResultDict:
         # Trigger asynchronous rollouts on all RolloutWorkers.
         # - Rollout results are sent directly to correct replay buffer
         #   shards, instead of here (to the driver).

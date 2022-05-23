@@ -377,7 +377,7 @@ class DREAMERTrainer(Trainer):
         return rollouts
 
     @override(Trainer)
-    def training_iteration(self) -> ResultDict:
+    def training_loop(self) -> ResultDict:
         local_worker = self.workers.local_worker()
 
         # Number of sub-iterations for Dreamer

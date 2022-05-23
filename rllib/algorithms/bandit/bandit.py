@@ -35,7 +35,7 @@ class BanditConfig(TrainerConfig):
         # Make sure, a `train()` call performs at least 100 env sampling
         # timesteps, before reporting results. Not setting this (default is 0)
         # would significantly slow down the Bandit Trainer.
-        self.min_sample_timesteps_per_reporting = 100
+        self.min_sample_timesteps_per_iteration = 100
         # __sphinx_doc_end__
         # fmt: on
 

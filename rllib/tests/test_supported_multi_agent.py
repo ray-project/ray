@@ -93,13 +93,13 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
             "APEX",
             {
                 "num_workers": 2,
-                "min_sample_timesteps_per_reporting": 100,
+                "min_sample_timesteps_per_iteration": 100,
                 "num_gpus": 0,
                 "replay_buffer_config": {
                     "capacity": 1000,
                     "learning_starts": 10,
                 },
-                "min_time_s_per_reporting": 1,
+                "min_time_s_per_iteration": 1,
                 "target_network_update_freq": 100,
                 "optimizer": {
                     "num_replay_buffer_shards": 1,
@@ -112,13 +112,13 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
             "APEX_DDPG",
             {
                 "num_workers": 2,
-                "min_sample_timesteps_per_reporting": 100,
+                "min_sample_timesteps_per_iteration": 100,
                 "replay_buffer_config": {
                     "capacity": 1000,
                     "learning_starts": 10,
                 },
                 "num_gpus": 0,
-                "min_time_s_per_reporting": 1,
+                "min_time_s_per_iteration": 1,
                 "target_network_update_freq": 100,
                 "use_state_preprocessor": True,
             },
@@ -128,7 +128,7 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
         check_support_multiagent(
             "DDPG",
             {
-                "min_sample_timesteps_per_reporting": 1,
+                "min_sample_timesteps_per_iteration": 1,
                 "replay_buffer_config": {
                     "capacity": 1000,
                     "learning_starts": 500,
@@ -141,7 +141,7 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
         check_support_multiagent(
             "DQN",
             {
-                "min_sample_timesteps_per_reporting": 1,
+                "min_sample_timesteps_per_iteration": 1,
                 "replay_buffer_config": {
                     "capacity": 1000,
                 },

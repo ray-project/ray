@@ -19,7 +19,7 @@ ddpg-halfcheetahbulletenv-v0:
             ou_base_scale: 0.1
             ou_theta: 0.15
             ou_sigma: 0.2
-        min_sample_timesteps_per_reporting: 1000
+        min_sample_timesteps_per_iteration: 1000
         target_network_update_freq: 0
         tau: 0.001
         replay_buffer_config:

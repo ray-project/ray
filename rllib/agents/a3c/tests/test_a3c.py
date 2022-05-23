@@ -61,7 +61,7 @@ class TestA3C(unittest.TestCase):
         # 0 metrics reporting delay, this makes sure timestep,
         # which entropy coeff depends on, is updated after each worker rollout.
         config.reporting(
-            min_time_s_per_reporting=0, min_sample_timesteps_per_reporting=20
+            min_time_s_per_iteration=0, min_sample_timesteps_per_iteration=20
         )
 
         def _step_n_times(trainer, n: int):
