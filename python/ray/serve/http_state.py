@@ -46,6 +46,7 @@ class HTTPState:
         self._proxy_actors: Dict[NodeId, ActorHandle] = dict()
         self._proxy_actor_names: Dict[NodeId, str] = dict()
         self._head_node_id: str = head_node_id
+        assert isinstance(head_node_id, str)
 
         # Will populate self.proxy_actors with existing actors.
         if _start_proxies_on_init:
@@ -69,7 +70,7 @@ class HTTPState:
         self._stop_proxies_if_needed()
 
     def _get_target_nodes(self) -> List[Tuple[str, str]]:
-        """Return the list of (id, resource_key) to deploy HTTP servers on."""
+        """Return the list of (node_id, ip_address) to deploy HTTP servers on."""
         location = self._config.location
         target_nodes = get_all_node_ids()
 
