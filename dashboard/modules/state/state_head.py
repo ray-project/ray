@@ -1,7 +1,5 @@
 import logging
 
-from typing import List
-
 import aiohttp.web
 
 import dataclasses
@@ -13,6 +11,7 @@ import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray.dashboard.optional_utils import rest_response
 from ray.dashboard.state_aggregator import StateAPIManager
 from ray.experimental.state.common import ListApiOptions
+from ray.experimental.state.exception import DataSourceUnavailable
 from ray.experimental.state.state_manager import StateDataSourceClient
 
 logger = logging.getLogger(__name__)
@@ -41,16 +40,14 @@ class StateHead(dashboard_utils.DashboardHeadModule):
         timeout = int(int(req.query.get("timeout")) * 0.8)
         return ListApiOptions(limit=limit, timeout=timeout)
 
-    def _reply(
-        self, success: bool, message: str, result: dict, warnings: List[str] = None
-    ):
+    def _reply(self, success: bool, error_message: str, result: dict, **kwargs):
         """Reply to the client."""
         return rest_response(
             success=success,
-            message=message,
+            message=error_message,
             result=result,
             convert_google_style=False,
-            warnings=warnings,
+            **kwargs,
         )
 
     async def _update_raylet_stubs(self, change: Change):
@@ -98,70 +95,125 @@ class StateHead(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/api/v0/actors")
     async def list_actors(self, req) -> aiohttp.web.Response:
-        result = await self._state_api.list_actors(option=self._options_from_req(req))
-        return self._reply(
-            success=True, message="", result=result.data, warnings=result.warnings
-        )
+        try:
+            result = await self._state_api.list_actors(
+                option=self._options_from_req(req)
+            )
+            return self._reply(
+                success=True,
+                error_message="",
+                result=result.result,
+                partial_failure_warning=result.partial_failure_warning,
+            )
+        except DataSourceUnavailable as e:
+            return self._reply(success=False, error_message=str(e), result=None)
 
     @routes.get("/api/v0/jobs")
     async def list_jobs(self, req) -> aiohttp.web.Response:
-        result = self._state_api.list_jobs(option=self._options_from_req(req))
-        return self._reply(
-            success=True,
-            message="",
-            result={
-                job_id: dataclasses.asdict(job_info)
-                for job_id, job_info in result.data.items()
-            },
-            warnings=result.warnings,
-        )
+        try:
+            result = self._state_api.list_jobs(option=self._options_from_req(req))
+            return self._reply(
+                success=True,
+                error_message="",
+                result={
+                    job_id: dataclasses.asdict(job_info)
+                    for job_id, job_info in result.result.items()
+                },
+                partial_failure_warning=result.partial_failure_warning,
+            )
+        except DataSourceUnavailable as e:
+            return self._reply(success=False, error_message=str(e), result=None)
 
     @routes.get("/api/v0/nodes")
     async def list_nodes(self, req) -> aiohttp.web.Response:
-        result = await self._state_api.list_nodes(option=self._options_from_req(req))
-        return self._reply(
-            success=True, message="", result=result.data, warnings=result.warnings
-        )
+        try:
+            result = await self._state_api.list_nodes(
+                option=self._options_from_req(req)
+            )
+            return self._reply(
+                success=True,
+                error_message="",
+                result=result.result,
+                partial_failure_warning=result.partial_failure_warning,
+            )
+        except DataSourceUnavailable as e:
+            return self._reply(success=False, error_message=str(e), result=None)
 
     @routes.get("/api/v0/placement_groups")
     async def list_placement_groups(self, req) -> aiohttp.web.Response:
-        result = await self._state_api.list_placement_groups(
-            option=self._options_from_req(req)
-        )
-        return self._reply(
-            success=True, message="", result=result.data, warnings=result.warnings
-        )
+        try:
+            result = await self._state_api.list_placement_groups(
+                option=self._options_from_req(req)
+            )
+            return self._reply(
+                success=True,
+                error_message="",
+                result=result.result,
+                partial_failure_warning=result.partial_failure_warning,
+            )
+        except DataSourceUnavailable as e:
+            return self._reply(success=False, error_message=str(e), result=None)
 
     @routes.get("/api/v0/workers")
     async def list_workers(self, req) -> aiohttp.web.Response:
-        result = await self._state_api.list_workers(option=self._options_from_req(req))
-        return self._reply(
-            success=True, message="", result=result.data, warnings=result.warnings
-        )
+        try:
+            result = await self._state_api.list_workers(
+                option=self._options_from_req(req)
+            )
+            return self._reply(
+                success=True,
+                error_message="",
+                result=result.result,
+                partial_failure_warning=result.partial_failure_warning,
+            )
+        except DataSourceUnavailable as e:
+            return self._reply(success=False, error_message=str(e), result=None)
 
     @routes.get("/api/v0/tasks")
     async def list_tasks(self, req) -> aiohttp.web.Response:
-        result = await self._state_api.list_tasks(option=self._options_from_req(req))
-        return self._reply(
-            success=True, message="", result=result.data, warnings=result.warnings
-        )
+        try:
+            result = await self._state_api.list_tasks(
+                option=self._options_from_req(req)
+            )
+            return self._reply(
+                success=True,
+                error_message="",
+                result=result.result,
+                partial_failure_warning=result.partial_failure_warning,
+            )
+        except DataSourceUnavailable as e:
+            return self._reply(success=False, error_message=str(e), result=None)
 
     @routes.get("/api/v0/objects")
     async def list_objects(self, req) -> aiohttp.web.Response:
-        result = await self._state_api.list_objects(option=self._options_from_req(req))
-        return self._reply(
-            success=True, message="", result=result.data, warnings=result.warnings
-        )
+        try:
+            result = await self._state_api.list_objects(
+                option=self._options_from_req(req)
+            )
+            return self._reply(
+                success=True,
+                error_message="",
+                result=result.result,
+                partial_failure_warning=result.partial_failure_warning,
+            )
+        except DataSourceUnavailable as e:
+            return self._reply(success=False, error_message=str(e), result=None)
 
     @routes.get("/api/v0/runtime_envs")
     @dashboard_optional_utils.aiohttp_cache
     async def list_runtime_envs(self, req) -> aiohttp.web.Response:
-        result = await self._state_api.list_runtime_envs(
-            option=self._options_from_req(req)
-        )
-        return self._reply(
-            success=True, message="", result=result.data, warnings=result.warnings
-        )
+        try:
+            result = await self._state_api.list_runtime_envs(
+                option=self._options_from_req(req)
+            )
+            return self._reply(
+                success=True,
+                error_message="",
+                result=result.result,
+                partial_failure_warning=result.partial_failure_warning,
+            )
+        except DataSourceUnavailable as e:
+            return self._reply(success=False, error_message=str(e), result=None)
 
     async def run(self, server):
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel

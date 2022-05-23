@@ -1,6 +1,7 @@
 import logging
 
 from dataclasses import dataclass, fields
+from typing import List, Dict, Union
 
 from ray.dashboard.modules.job.common import JobInfo
 
@@ -94,3 +95,30 @@ class RuntimeEnvState:
     error: str
     creation_time_ms: float
     node_id: str
+
+
+@dataclass(init=True)
+class ListApiResponse:
+    # Returned data. None if no data is returned.
+    result: Union[
+        Dict[
+            str,
+            Union[
+                ActorState,
+                PlacementGroupState,
+                NodeState,
+                JobInfo,
+                WorkerState,
+                TaskState,
+                ObjectState,
+            ],
+        ],
+        List[RuntimeEnvState],
+    ] = None
+    # List API can have a partial failure if queries to
+    # all sources fail. For example, getting object states
+    # require to ping all raylets, and it is possible some of
+    # them fails. Note that it is impossible to guarantee high
+    # availability of data because ray's state information is
+    # not replicated.
+    partial_failure_warning: str = ""

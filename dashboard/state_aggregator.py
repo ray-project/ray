@@ -1,14 +1,12 @@
 import asyncio
 import logging
 
-from dataclasses import dataclass
 from itertools import islice
-from typing import List, Dict, Union
+from typing import List
 
 from ray.core.generated.common_pb2 import TaskStatus
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.memory_utils as memory_utils
-from ray.dashboard.modules.job.common import JobInfo
 
 from ray.experimental.state.common import (
     filter_fields,
@@ -20,46 +18,32 @@ from ray.experimental.state.common import (
     ObjectState,
     RuntimeEnvState,
     ListApiOptions,
+    ListApiResponse,
 )
-from ray.experimental.state.state_manager import StateDataSourceClient
+from ray.experimental.state.state_manager import (
+    StateDataSourceClient,
+    DataSourceUnavailable,
+)
 from ray.runtime_env import RuntimeEnv
 from ray._private.utils import binary_to_hex
 
 logger = logging.getLogger(__name__)
 
-
-@dataclass(init=True)
-class StateApiResult:
-    # Returned data.
-    data: Union[dict, List[dict], Dict[str, JobInfo]] = None
-    # A list of warnings generated from the API that should be delivered to users.
-    warnings: List[str] = None
-
-
 GCS_QUERY_FAILURE_WARNING = (
     "Failed to query data from GCS. It is due to "
     "(1) GCS is unexpectedly failed. "
-    "(2) GCS is overloaded by lots of work. "
-    "(3) There's an uexpected network issues. Please check the GCS logs to "
-    "find the root cause."
+    "(2) GCS is overloaded. "
+    "(3) There's an unexpected network issue. "
+    "Please check the gcs_server.out log to find the root cause."
 )
-RAYLET_QUERY_FAILURE_WARNING = (
-    "Failed to query data from some raylets. You might have data loss. "
-    "Queryed {total} raylets "
-    "and {network_failures} raylets failed to reply. It is due to "
-    "(1) Raylet is unexpectedly failed. "
-    "(2) Raylet is overloaded by lots of work. "
-    "(3) There's an uexpected network issues. Please check the Raylet logs to "
-    "find the root cause."
-)
-AGENT_QUERY_FAILURE_WARNING = (
-    "Failed to query data from some Ray agents. You might have data loss. "
-    "Queryed {total} Ray agents "
-    "and {network_failures} Ray agents failed to reply. It is due to "
-    "(1) Ray agent is unexpectedly failed. "
-    "(2) Ray agent is overloaded by lots of work. "
-    "(3) There's an uexpected network issues. Please check the Ray agent logs to "
-    "find the root cause."
+NODE_QUERY_FAILURE_WARNING = (
+    "Failed to query data from {type}. "
+    "Queryed {total} {type} "
+    "and {network_failures} {type} failed to reply. It is due to "
+    "(1) {type} is unexpectedly failed. "
+    "(2) {type} is overloaded. "
+    "(3) There's an unexpected network issue. Please check the "
+    "{log_command} to find the root cause."
 )
 
 
@@ -78,16 +62,18 @@ class StateAPIManager:
     def data_source_client(self):
         return self._client
 
-    async def list_actors(self, *, option: ListApiOptions) -> StateApiResult:
+    async def list_actors(self, *, option: ListApiOptions) -> ListApiResponse:
         """List all actor information from the cluster.
 
         Returns:
             {actor_id -> actor_data_in_dict}
             actor_data_in_dict's schema is in ActorState
+
         """
-        reply = await self._client.get_all_actor_info(timeout=option.timeout)
-        if not reply:
-            return StateApiResult(warnings=[GCS_QUERY_FAILURE_WARNING])
+        try:
+            reply = await self._client.get_all_actor_info(timeout=option.timeout)
+        except DataSourceUnavailable:
+            raise DataSourceUnavailable(GCS_QUERY_FAILURE_WARNING)
 
         result = []
         for message in reply.actor_table_data:
@@ -97,20 +83,23 @@ class StateAPIManager:
 
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["actor_id"])
-        return StateApiResult(
-            data={d["actor_id"]: d for d in islice(result, option.limit)}
+        return ListApiResponse(
+            result={d["actor_id"]: d for d in islice(result, option.limit)}
         )
 
-    async def list_placement_groups(self, *, option: ListApiOptions) -> StateApiResult:
+    async def list_placement_groups(self, *, option: ListApiOptions) -> ListApiResponse:
         """List all placement group information from the cluster.
 
         Returns:
             {pg_id -> pg_data_in_dict}
             pg_data_in_dict's schema is in PlacementGroupState
         """
-        reply = await self._client.get_all_placement_group_info(timeout=option.timeout)
-        if not reply:
-            return StateApiResult(warnings=[GCS_QUERY_FAILURE_WARNING])
+        try:
+            reply = await self._client.get_all_placement_group_info(
+                timeout=option.timeout
+            )
+        except DataSourceUnavailable:
+            raise DataSourceUnavailable(GCS_QUERY_FAILURE_WARNING)
 
         result = []
         for message in reply.placement_group_table_data:
@@ -124,20 +113,21 @@ class StateAPIManager:
 
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["placement_group_id"])
-        return StateApiResult(
-            data={d["placement_group_id"]: d for d in islice(result, option.limit)}
+        return ListApiResponse(
+            result={d["placement_group_id"]: d for d in islice(result, option.limit)}
         )
 
-    async def list_nodes(self, *, option: ListApiOptions) -> StateApiResult:
+    async def list_nodes(self, *, option: ListApiOptions) -> ListApiResponse:
         """List all node information from the cluster.
 
         Returns:
             {node_id -> node_data_in_dict}
             node_data_in_dict's schema is in NodeState
         """
-        reply = await self._client.get_all_node_info(timeout=option.timeout)
-        if not reply:
-            return StateApiResult(warnings=[GCS_QUERY_FAILURE_WARNING])
+        try:
+            reply = await self._client.get_all_node_info(timeout=option.timeout)
+        except DataSourceUnavailable:
+            raise DataSourceUnavailable(GCS_QUERY_FAILURE_WARNING)
 
         result = []
         for message in reply.node_info_list:
@@ -147,20 +137,21 @@ class StateAPIManager:
 
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["node_id"])
-        return StateApiResult(
-            data={d["node_id"]: d for d in islice(result, option.limit)}
+        return ListApiResponse(
+            result={d["node_id"]: d for d in islice(result, option.limit)}
         )
 
-    async def list_workers(self, *, option: ListApiOptions) -> StateApiResult:
+    async def list_workers(self, *, option: ListApiOptions) -> ListApiResponse:
         """List all worker information from the cluster.
 
         Returns:
             {worker_id -> worker_data_in_dict}
             worker_data_in_dict's schema is in WorkerState
         """
-        reply = await self._client.get_all_worker_info(timeout=option.timeout)
-        if not reply:
-            return StateApiResult(warnings=[GCS_QUERY_FAILURE_WARNING])
+        try:
+            reply = await self._client.get_all_worker_info(timeout=option.timeout)
+        except DataSourceUnavailable:
+            raise DataSourceUnavailable(GCS_QUERY_FAILURE_WARNING)
 
         result = []
         for message in reply.worker_table_data:
@@ -173,18 +164,19 @@ class StateAPIManager:
 
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["worker_id"])
-        return StateApiResult(
-            data={d["worker_id"]: d for d in islice(result, option.limit)}
+        return ListApiResponse(
+            result={d["worker_id"]: d for d in islice(result, option.limit)}
         )
 
-    def list_jobs(self, *, option: ListApiOptions) -> StateApiResult:
+    def list_jobs(self, *, option: ListApiOptions) -> ListApiResponse:
         # TODO(sang): Support limit & timeout & async calls.
-        result = self._client.get_job_info()
-        if not result:
-            return StateApiResult(warnings=[GCS_QUERY_FAILURE_WARNING])
-        return StateApiResult(data=result)
+        try:
+            result = self._client.get_job_info()
+        except DataSourceUnavailable:
+            raise DataSourceUnavailable(GCS_QUERY_FAILURE_WARNING)
+        return ListApiResponse(result=result)
 
-    async def list_tasks(self, *, option: ListApiOptions) -> StateApiResult:
+    async def list_tasks(self, *, option: ListApiOptions) -> ListApiResponse:
         """List all task information from the cluster.
 
         Returns:
@@ -197,23 +189,35 @@ class StateAPIManager:
                 self._client.get_task_info(node_id, timeout=option.timeout)
                 for node_id in raylet_ids
             ],
+            return_exceptions=True,
         )
 
-        network_failures = 0
+        unresponsive_nodes = 0
         running_task_id = set()
+        successful_replies = []
         for reply in replies:
-            if not reply:
-                network_failures += 1
+            if isinstance(reply, DataSourceUnavailable):
+                unresponsive_nodes += 1
                 continue
+            elif isinstance(reply, Exception):
+                raise reply
+
+            successful_replies.append(reply)
             for task_id in reply.running_task_ids:
                 running_task_id.add(binary_to_hex(task_id))
+        warning_msg = NODE_QUERY_FAILURE_WARNING.format(
+            type="raylet",
+            total=len(raylet_ids),
+            network_failures=unresponsive_nodes,
+            log_command="raylet.out",
+        )
+
+        if unresponsive_nodes == len(raylet_ids):
+            raise DataSourceUnavailable(warning_msg)
 
         result = []
-        for reply in replies:
-            if not reply:
-                # We don't increment network failures here
-                # becaues it has been already counted.
-                continue
+        for reply in successful_replies:
+            assert not isinstance(reply, Exception)
             tasks = reply.owned_task_info_entries
             for task in tasks:
                 data = self._message_to_dict(
@@ -227,23 +231,16 @@ class StateAPIManager:
                 data = filter_fields(data, TaskState)
                 result.append(data)
 
-        warnings = (
-            [
-                RAYLET_QUERY_FAILURE_WARNING.format(
-                    total=len(raylet_ids), network_failures=network_failures
-                )
-            ]
-            if network_failures
-            else None
-        )
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["task_id"])
-        return StateApiResult(
-            data={d["task_id"]: d for d in islice(result, option.limit)},
-            warnings=warnings,
+        return ListApiResponse(
+            result={d["task_id"]: d for d in islice(result, option.limit)},
+            partial_failure_warning=(
+                f"The returned data may contain incomplete result. {warning_msg}"
+            ),
         )
 
-    async def list_objects(self, *, option: ListApiOptions) -> StateApiResult:
+    async def list_objects(self, *, option: ListApiOptions) -> ListApiResponse:
         """List all object information from the cluster.
 
         Returns:
@@ -255,15 +252,18 @@ class StateAPIManager:
             *[
                 self._client.get_object_info(node_id, timeout=option.timeout)
                 for node_id in raylet_ids
-            ]
+            ],
+            return_exceptions=True,
         )
 
-        network_failures = 0
+        unresponsive_nodes = 0
         worker_stats = []
-        for reply in replies:
-            if not reply:
-                network_failures += 1
+        for reply, node_id in zip(replies, raylet_ids):
+            if isinstance(reply, DataSourceUnavailable):
+                unresponsive_nodes += 1
                 continue
+            elif isinstance(reply, Exception):
+                raise reply
 
             for core_worker_stat in reply.core_workers_stats:
                 # NOTE: Set preserving_proto_field_name=False here because
@@ -278,6 +278,16 @@ class StateAPIManager:
                     )
                 )
 
+        warning_msg = NODE_QUERY_FAILURE_WARNING.format(
+            type="raylet",
+            total=len(raylet_ids),
+            network_failures=unresponsive_nodes,
+            log_command="raylet.out",
+        )
+
+        if unresponsive_nodes == len(raylet_ids):
+            raise DataSourceUnavailable(warning_msg)
+
         result = []
         memory_table = memory_utils.construct_memory_table(worker_stats)
         for entry in memory_table.table:
@@ -290,23 +300,16 @@ class StateAPIManager:
             data = filter_fields(data, ObjectState)
             result.append(data)
 
-        warnings = (
-            [
-                RAYLET_QUERY_FAILURE_WARNING.format(
-                    total=len(raylet_ids), network_failures=network_failures
-                )
-            ]
-            if network_failures
-            else None
-        )
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["object_id"])
-        return StateApiResult(
-            data={d["object_id"]: d for d in islice(result, option.limit)},
-            warnings=warnings,
+        return ListApiResponse(
+            result={d["object_id"]: d for d in islice(result, option.limit)},
+            partial_failure_warning=(
+                f"The returned data may contain incomplete result. {warning_msg}"
+            ),
         )
 
-    async def list_runtime_envs(self, *, option: ListApiOptions) -> StateApiResult:
+    async def list_runtime_envs(self, *, option: ListApiOptions) -> ListApiResponse:
         """List all runtime env information from the cluster.
 
         Returns:
@@ -321,15 +324,18 @@ class StateAPIManager:
             *[
                 self._client.get_runtime_envs_info(node_id, timeout=option.timeout)
                 for node_id in agent_ids
-            ]
+            ],
+            return_exceptions=True,
         )
 
         result = []
-        network_failures = 0
+        unresponsive_nodes = 0
         for node_id, reply in zip(self._client.get_all_registered_agent_ids(), replies):
-            if not reply:
-                network_failures += 1
+            if isinstance(reply, DataSourceUnavailable):
+                unresponsive_nodes += 1
                 continue
+            elif isinstance(reply, Exception):
+                raise reply
 
             states = reply.runtime_env_states
             for state in states:
@@ -342,15 +348,15 @@ class StateAPIManager:
                 data = filter_fields(data, RuntimeEnvState)
                 result.append(data)
 
-        warnings = (
-            [
-                AGENT_QUERY_FAILURE_WARNING.format(
-                    total=len(agent_ids), network_failures=network_failures
-                )
-            ]
-            if network_failures
-            else None
+        warning_msg = NODE_QUERY_FAILURE_WARNING.format(
+            type="agent",
+            total=len(agent_ids),
+            network_failures=unresponsive_nodes,
+            log_command="dashboard_agent.log",
         )
+
+        if unresponsive_nodes == len(agent_ids):
+            raise DataSourceUnavailable(warning_msg)
 
         # Sort to make the output deterministic.
         def sort_func(entry):
@@ -365,8 +371,11 @@ class StateAPIManager:
                 return float(entry["creation_time_ms"])
 
         result.sort(key=sort_func, reverse=True)
-        return StateApiResult(
-            data=list(islice(result, option.limit)), warnings=warnings
+        return ListApiResponse(
+            result=list(islice(result, option.limit)),
+            partial_failure_warning=(
+                f"The returned data may contain incomplete result. {warning_msg}"
+            ),
         )
 
     def _message_to_dict(

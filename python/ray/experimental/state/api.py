@@ -1,4 +1,5 @@
 import requests
+import warnings
 
 from dataclasses import fields
 
@@ -8,6 +9,7 @@ from ray.experimental.state.common import (
     DEFAULT_RPC_TIMEOUT,
     DEFAULT_LIMIT,
 )
+from ray.experimental.state.exception import RayStateApiException
 
 
 # TODO(sang): Replace it with auto-generated methods.
@@ -48,16 +50,16 @@ def _list(
 
     response = r.json()
     if response["result"] is False:
-        raise ValueError(
-            "API server internal error. See dashboard.log file for more details."
+        raise RayStateApiException(
+            "API server internal error. See dashboard.log file for more details. "
+            f"Error: {response['msg']}"
         )
 
     if _print_api_stats:
         # Print warnings if anything was given.
-        warnings = response["data"].get("warnings")
-        if warnings:
-            for warning in warnings:
-                print(warning)
+        warning_msg = response["data"].get("partial_failure_warning")
+        if warning_msg:
+            warnings.warn(warning_msg, RuntimeWarning)
 
     return r.json()["data"]["result"]
 

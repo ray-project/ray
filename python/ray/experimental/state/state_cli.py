@@ -59,6 +59,12 @@ def get_state_api_output_to_print(
         )
 
 
+def _should_print_api_stats(format: AvailableFormat):
+    # If the format is json or yaml, it should not print stats because
+    # users don't want additional strings.
+    return format == AvailableFormat.DEFAULT or format == AvailableFormat.TABLE
+
+
 @click.group("list")
 @click.pass_context
 def list_state_cli_group(ctx):
@@ -93,10 +99,13 @@ def list_state_cli_group(ctx):
 @click.pass_context
 def actors(ctx, format: str):
     url = ctx.obj["api_server_url"]
+    format = AvailableFormat(format)
     print(
         get_state_api_output_to_print(
-            list_actors(api_server_url=url, _print_api_stats=True),
-            format=AvailableFormat(format),
+            list_actors(
+                api_server_url=url, _print_api_stats=_should_print_api_stats(format)
+            ),
+            format=format,
         )
     )
 
@@ -108,10 +117,13 @@ def actors(ctx, format: str):
 @click.pass_context
 def placement_groups(ctx, format: str):
     url = ctx.obj["api_server_url"]
+    format = AvailableFormat(format)
     print(
         get_state_api_output_to_print(
-            list_placement_groups(api_server_url=url, _print_api_stats=True),
-            format=AvailableFormat(format),
+            list_placement_groups(
+                api_server_url=url, _print_api_stats=_should_print_api_stats(format)
+            ),
+            format=format,
         )
     )
 
@@ -123,10 +135,13 @@ def placement_groups(ctx, format: str):
 @click.pass_context
 def nodes(ctx, format: str):
     url = ctx.obj["api_server_url"]
+    format = AvailableFormat(format)
     print(
         get_state_api_output_to_print(
-            list_nodes(api_server_url=url, _print_api_stats=True),
-            format=AvailableFormat(format),
+            list_nodes(
+                api_server_url=url, _print_api_stats=_should_print_api_stats(format)
+            ),
+            format=format,
         )
     )
 
@@ -138,10 +153,13 @@ def nodes(ctx, format: str):
 @click.pass_context
 def jobs(ctx, format: str):
     url = ctx.obj["api_server_url"]
+    format = AvailableFormat(format)
     print(
         get_state_api_output_to_print(
-            list_jobs(api_server_url=url, _print_api_stats=True),
-            format=AvailableFormat(format),
+            list_jobs(
+                api_server_url=url, _print_api_stats=_should_print_api_stats(format)
+            ),
+            format=format,
         )
     )
 
@@ -153,10 +171,13 @@ def jobs(ctx, format: str):
 @click.pass_context
 def workers(ctx, format: str):
     url = ctx.obj["api_server_url"]
+    format = AvailableFormat(format)
     print(
         get_state_api_output_to_print(
-            list_workers(api_server_url=url, _print_api_stats=True),
-            format=AvailableFormat(format),
+            list_workers(
+                api_server_url=url, _print_api_stats=_should_print_api_stats(format)
+            ),
+            format=format,
         )
     )
 
@@ -168,10 +189,13 @@ def workers(ctx, format: str):
 @click.pass_context
 def tasks(ctx, format: str):
     url = ctx.obj["api_server_url"]
+    format = AvailableFormat(format)
     print(
         get_state_api_output_to_print(
-            list_tasks(api_server_url=url, _print_api_stats=True),
-            format=AvailableFormat(format),
+            list_tasks(
+                api_server_url=url, _print_api_stats=_should_print_api_stats(format)
+            ),
+            format=format,
         )
     )
 
@@ -183,10 +207,13 @@ def tasks(ctx, format: str):
 @click.pass_context
 def objects(ctx, format: str):
     url = ctx.obj["api_server_url"]
+    format = AvailableFormat(format)
     print(
         get_state_api_output_to_print(
-            list_objects(api_server_url=url, _print_api_stats=True),
-            format=AvailableFormat(format),
+            list_objects(
+                api_server_url=url, _print_api_stats=_should_print_api_stats(format)
+            ),
+            format=format,
         )
     )
 
@@ -198,9 +225,12 @@ def objects(ctx, format: str):
 @click.pass_context
 def runtime_envs(ctx, format: str):
     url = ctx.obj["api_server_url"]
+    format = AvailableFormat(format)
     print(
         get_state_api_output_to_print(
-            list_runtime_envs(api_server_url=url, _print_api_stats=True),
-            format=AvailableFormat(format),
+            list_runtime_envs(
+                api_server_url=url, _print_api_stats=_should_print_api_stats(format)
+            ),
+            format=format,
         )
     )
