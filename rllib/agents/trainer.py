@@ -1865,12 +1865,20 @@ class Trainer(Trainable):
                 )
 
         # Offline RL settings.
-        if isinstance(config["input_evaluation"], tuple):
-            config["input_evaluation"] = list(config["input_evaluation"])
-        elif not isinstance(config["input_evaluation"], list):
+        input_evaluation = config.get("input_evaluation")
+        if input_evaluation is not None and input_evaluation is not DEPRECATED_VALUE:
+            deprecation_warning(
+                old="config.input_evaluation: {}".format(input_evaluation),
+                new="config.off_policy_estimation_methods={}".format(input_evaluation),
+                error=False,
+            )
+            config["off_policy_estimation_methods"] = input_evaluation
+        if isinstance(config["off_policy_estimation_methods"], tuple):
+            config["off_policy_estimation_methods"] = list(config["off_policy_estimation_methods"])
+        elif not isinstance(config["off_policy_estimation_methods"], list):
             raise ValueError(
-                "`input_evaluation` must be a list of strings, got {}!".format(
-                    config["input_evaluation"]
+                "`off_policy_estimation_methods` must be a list of strings, got {}!".format(
+                    config["off_policy_estimation_methods"]
                 )
             )
 

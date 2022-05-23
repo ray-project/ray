@@ -42,7 +42,7 @@ from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils import force_list, merge_dicts, check_env
 from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI
 from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
-from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, Deprecated, deprecation_warning
 from ray.rllib.utils.error import ERR_MSG_NO_GPUS, HOWTO_CHANGE_CONFIG
 from ray.rllib.utils.filter import get_filter, Filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -238,7 +238,7 @@ class RolloutWorker(ParallelIteratorWorker):
         input_creator: Callable[
             [IOContext], InputReader
         ] = lambda ioctx: ioctx.default_sampler_input(),
-        input_evaluation: List[str] = frozenset([]),
+        off_policy_estimation_methods: List[str] = frozenset([]),
         output_creator: Callable[
             [IOContext], OutputWriter
         ] = lambda ioctx: NoopOutput(),
@@ -335,8 +335,8 @@ class RolloutWorker(ParallelIteratorWorker):
                 DefaultCallbacks for training/policy/rollout-worker callbacks.
             input_creator: Function that returns an InputReader object for
                 loading previous generated experiences.
-            input_evaluation: How to evaluate the policy performance. Setting this only
-                makes sense when the input is reading offline data.
+            off_policy_estimation_methods: How to evaluate the policy performance. 
+                Setting this only makes sense when the input is reading offline data.
                 Available options:
                 - "simulation" (str): Run the environment in the background, but use
                 this data for evaluation only and not for learning.
@@ -695,22 +695,22 @@ class RolloutWorker(ParallelIteratorWorker):
             log_dir, policy_config, worker_index, self
         )
         self.reward_estimators: List[OffPolicyEstimator] = []
-        for method in input_evaluation:
+        for method in off_policy_estimation_methods:
             if method == "is":
                 method = ImportanceSampling
                 deprecation_warning(
-                    old="config.input_evaluation=[is]",
+                    old="config.off_policy_estimation_methods=[is]",
                     new="from ray.rllib.offline.estimators import "
-                    f"{method.__name__}; config.input_evaluation="
+                    f"{method.__name__}; config.off_policy_estimation_methods="
                     f"[{method.__name__}]",
                     error=False,
                 )
             elif method == "wis":
                 method = WeightedImportanceSampling
                 deprecation_warning(
-                    old="config.input_evaluation=[wis]",
+                    old="config.off_policy_estimation_methods=[wis]",
                     new="from ray.rllib.offline.estimators import "
-                    f"{method.__name__}; config.input_evaluation="
+                    f"{method.__name__}; config.off_policy_estimation_methods="
                     f"[{method.__name__}]",
                     error=False,
                 )
@@ -752,7 +752,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 multiple_episodes_in_batch=pack,
                 normalize_actions=normalize_actions,
                 clip_actions=clip_actions,
-                blackhole_outputs="simulation" in input_evaluation,
+                blackhole_outputs="simulation" in off_policy_estimation_methods,
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,
                 observation_fn=observation_fn,

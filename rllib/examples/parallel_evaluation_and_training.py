@@ -135,7 +135,7 @@ if __name__ == "__main__":
         # with every other call to Trainer.train()).
         "evaluation_interval": args.evaluation_interval,
         "evaluation_config": {
-            "input_evaluation": ["is"],
+            "off_policy_estimation_methods": ["is"],
         },
         # Run for n episodes/timesteps (properly distribute load amongst
         # all eval workers). The longer it takes to evaluate, the more sense

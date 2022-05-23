@@ -25,7 +25,7 @@ from ray.rllib.offline import (
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, Deprecated, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.typing import (
@@ -603,9 +603,9 @@ class WorkerSet:
             )
 
         if config["input"] == "sampler":
-            input_evaluation = []
+            off_policy_estimation_methods = []
         else:
-            input_evaluation = config["input_evaluation"]
+            off_policy_estimation_methods = config["off_policy_estimation_methods"]
 
         # Assert everything is correct in "multiagent" config dict (if given).
         ma_policies = config["multiagent"]["policies"]
@@ -658,7 +658,7 @@ class WorkerSet:
             log_level=config["log_level"],
             callbacks=config["callbacks"],
             input_creator=input_creator,
-            input_evaluation=input_evaluation,
+            off_policy_estimation_methods=off_policy_estimation_methods,
             output_creator=output_creator,
             remote_worker_envs=config["remote_worker_envs"],
             remote_env_batch_wait_ms=config["remote_env_batch_wait_ms"],
