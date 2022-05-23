@@ -55,6 +55,27 @@ class OneHotEncoder(Preprocessor):
     the top popular values (see ``limit``) will result in all of the encoded column
     values being 0.
 
+    Example:
+        ohe = OneHotEncoder(
+            columns=[
+                "trip_start_hour",
+                "trip_start_day",
+                "trip_start_month",
+                "dropoff_census_tract",
+                "pickup_community_area",
+                "dropoff_community_area",
+                "payment_type",
+                "company",
+            ],
+            limit={
+                "dropoff_census_tract": 25,
+                "pickup_community_area": 20,
+                "dropoff_community_area": 20,
+                "payment_type": 2,
+                "company": 7,
+            },
+        )
+
     Args:
         columns: The columns that will individually be encoded.
         limit: If set, only the top "limit" number of most popular values become
