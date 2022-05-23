@@ -505,7 +505,7 @@ class Trainer(Trainable):
 
     @override(Trainable)
     def step(self) -> ResultDict:
-        """Implements the main `Trainer.train()` logic.
+        """Implements the main `Trainer.train()` logic, defining one "iteration".
 
         Takes n attempts to perform a single training step. Thereby
         catches RayErrors resulting from worker failures. After n attempts,
@@ -519,13 +519,69 @@ class Trainer(Trainable):
             The results dict with stats/infos on sampling, training,
             and - if required - evaluation.
         """
-        step_attempt_results = None
+        # Do we have to run `self.evaluate()` this iteration?
+        # `self.iteration` gets incremented after this function returns,
+        # meaning that e. g. the first time this function is called,
+        # self.iteration will be 0.
+        evaluate_this_iter = (
+            self.config["evaluation_interval"]
+            and (self.iteration + 1) % self.config["evaluation_interval"] == 0
+        )
 
+        # Results dict for training (and if appolicable: evaluation).
+        result: Optional[ResultDict] = None
+
+        first_step_attempt = True
+
+        # Create a step context ...
         with self._step_context() as step_ctx:
-            while not step_ctx.should_stop(step_attempt_results):
+            #  so we can query it whether we should stop the iteration loop (e.g. when
+            #  we have reached `min_time_s_per_reporting`).
+            while not step_ctx.should_stop(result):
                 # Try to train one step.
                 try:
-                    step_attempt_results = self.step_attempt()
+                    # No evaluation necessary, just run the next training iteration.
+                    if not evaluate_this_iter:
+                        result = self._exec_plan_or_training_iteration_fn()
+                    # We have to evaluate in this training iteration.
+                    else:
+                        # No parallelism.
+                        if not self.config["evaluation_parallel_to_training"]:
+                            result = self._exec_plan_or_training_iteration_fn()
+                        # Kick off evaluation-loop (and parallel train() call,
+                        # if requested).
+                        # Parallel eval + training.
+                        else:
+                            with concurrent.futures.ThreadPoolExecutor() as executor:
+                                train_future = executor.submit(
+                                    lambda: self._exec_plan_or_training_iteration_fn()
+                                )
+                                # Automatically determine duration of the evaluation
+                                # (as long as training takes).
+                                if self.config["evaluation_duration"] == "auto":
+                                    unit = self.config["evaluation_duration_unit"]
+                                    result.update(
+                                        self.evaluate(
+                                            duration_fn=functools.partial(
+                                                self._auto_duration_fn,
+                                                unit,
+                                                self.config["evaluation_num_workers"],
+                                                self.config["evaluation_config"],
+                                                train_future,
+                                            )
+                                        )
+                                    )
+                                # Run `self.evaluate()` only once per iteration.
+                                elif first_step_attempt:
+                                    first_step_attempt = False
+                                    result.update(self.evaluate())
+                                # Collect the training results from the future.
+                                result.update(train_future.result())
+
+                        # Sequential: train (already done above), then eval.
+                        if not self.config["evaluation_parallel_to_training"]:
+                            result.update(self.evaluate())
+
                 # @ray.remote RolloutWorker failure.
                 except RayError as e:
                     # Try to recover w/o the failed worker.
@@ -551,7 +607,13 @@ class Trainer(Trainable):
                     time.sleep(0.5)
                     raise e
 
-        result = step_attempt_results
+        # Attach latest available evaluation results to train results,
+        # if necessary.
+        if not evaluate_this_iter and self.config["always_attach_evaluation_results"]:
+            assert isinstance(
+                self.evaluation_metrics, dict
+            ), "Trainer.evaluate() needs to return a dict."
+            result.update(self.evaluation_metrics)
 
         if hasattr(self, "workers") and isinstance(self.workers, WorkerSet):
             # Sync filters on workers.
@@ -583,97 +645,9 @@ class Trainer(Trainable):
 
         return result
 
-    def step_attempt(self) -> ResultDict:
-        """Attempts a single training step, including evaluation, if required.
-
-        Override this method in your Trainer sub-classes if you would like to
-        keep the n step-attempts logic (catch worker failures) in place or
-        override `step()` directly if you would like to handle worker
-        failures yourself.
-
-        Returns:
-            The results dict with stats/infos on sampling, training,
-            and - if required - evaluation.
-        """
-
-        def auto_duration_fn(unit, num_eval_workers, eval_cfg, num_units_done):
-            # Training is done and we already ran at least one
-            # evaluation -> Nothing left to run.
-            if num_units_done > 0 and train_future.done():
-                return 0
-            # Count by episodes. -> Run n more
-            # (n=num eval workers).
-            elif unit == "episodes":
-                return num_eval_workers
-            # Count by timesteps. -> Run n*m*p more
-            # (n=num eval workers; m=rollout fragment length;
-            # p=num-envs-per-worker).
-            else:
-                return (
-                    num_eval_workers
-                    * eval_cfg["rollout_fragment_length"]
-                    * eval_cfg["num_envs_per_worker"]
-                )
-
-        # self._iteration gets incremented after this function returns,
-        # meaning that e. g. the first time this function is called,
-        # self._iteration will be 0.
-        evaluate_this_iter = (
-            self.config["evaluation_interval"]
-            and (self._iteration + 1) % self.config["evaluation_interval"] == 0
-        )
-
-        step_results = {}
-
-        # No evaluation necessary, just run the next training iteration.
-        if not evaluate_this_iter:
-            step_results = self._exec_plan_or_training_iteration_fn()
-        # We have to evaluate in this training iteration.
-        else:
-            # No parallelism.
-            if not self.config["evaluation_parallel_to_training"]:
-                step_results = self._exec_plan_or_training_iteration_fn()
-                #print(f"ts sampled={step_results[NUM_AGENT_STEPS_SAMPLED]}")
-
-            # Kick off evaluation-loop (and parallel train() call,
-            # if requested).
-            # Parallel eval + training.
-            if self.config["evaluation_parallel_to_training"]:
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    train_future = executor.submit(
-                        lambda: self._exec_plan_or_training_iteration_fn()
-                    )
-                    # Automatically determine duration of the evaluation.
-                    if self.config["evaluation_duration"] == "auto":
-                        unit = self.config["evaluation_duration_unit"]
-                        step_results.update(
-                            self.evaluate(
-                                duration_fn=functools.partial(
-                                    auto_duration_fn,
-                                    unit,
-                                    self.config["evaluation_num_workers"],
-                                    self.config["evaluation_config"],
-                                )
-                            )
-                        )
-                    else:
-                        step_results.update(self.evaluate())
-                    # Collect the training results from the future.
-                    step_results.update(train_future.result())
-            # Sequential: train (already done above), then eval.
-            else:
-                step_results.update(self.evaluate())
-                print(f"ts evaluated={step_results['evaluation'][NUM_ENV_STEPS_SAMPLED_THIS_ITER]}")
-
-        # Attach latest available evaluation results to train results,
-        # if necessary.
-        if not evaluate_this_iter and self.config["always_attach_evaluation_results"]:
-            assert isinstance(
-                self.evaluation_metrics, dict
-            ), "Trainer.evaluate() needs to return a dict."
-            step_results.update(self.evaluation_metrics)
-
-        return step_results
+    @Deprecated(new="logic moved into `self.step()`", error=True)
+    def step_attempt(self):
+        pass
 
     @PublicAPI
     def evaluate(
@@ -2042,15 +2016,22 @@ class Trainer(Trainable):
         pass
 
     def try_recover_from_step_attempt(self) -> None:
-        """Try to identify and remove any unhealthy workers.
+        """Try to identify and remove any unhealthy workers (incl. eval workers).
 
         This method is called after an unexpected remote error is encountered
-        from a worker during the call to `self.step_attempt()` (within
-        `self.step()`). It issues check requests to all current workers and
-        removes any that respond with error. If no healthy workers remain,
-        an error is raised. Otherwise, tries to re-build the execution plan
-        with the remaining (healthy) workers.
+        from a worker during the call to `self.step()`. It issues check requests to
+        all current workers and removes any that respond with error. If no healthy
+        workers remain, an error is raised.
         """
+        # Try to get our "eval" WorkerSet (used for evaluating policies).
+        eval_workers = getattr(self, "evaluation_workers", None)
+        if isinstance(eval_workers, WorkerSet):
+            # Search for failed workers and try to recover (restart) them.
+            if self.config["evaluation_config"].get("recreate_failed_workers") is True:
+                eval_workers.recreate_failed_workers()
+            elif self.config["evaluation_config"].get("ignore_worker_failures") is True:
+                eval_workers.remove_failed_workers()
+
         # Try to get our "main" WorkerSet (used for training sample collection).
         workers = getattr(self, "workers", None)
         if not isinstance(workers, WorkerSet):
@@ -2194,6 +2175,26 @@ class Trainer(Trainable):
         if self.local_replay_buffer is not None:
             kwargs["local_replay_buffer"] = self.local_replay_buffer
         return kwargs
+
+    @staticmethod
+    def _auto_duration_fn(unit, num_eval_workers, eval_cfg, num_units_done, train_future):
+        # Training is done and we already ran at least one
+        # evaluation -> Nothing left to run.
+        if num_units_done > 0 and train_future.done():
+            return 0
+        # Count by episodes. -> Run n more
+        # (n=num eval workers).
+        elif unit == "episodes":
+            return num_eval_workers
+        # Count by timesteps. -> Run n*m*p more
+        # (n=num eval workers; m=rollout fragment length;
+        # p=num-envs-per-worker).
+        else:
+            return (
+                num_eval_workers
+                * eval_cfg["rollout_fragment_length"]
+                * eval_cfg["num_envs_per_worker"]
+            )
 
     def _step_context(trainer):
         class StepCtx:
