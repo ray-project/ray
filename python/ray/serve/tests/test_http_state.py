@@ -25,8 +25,8 @@ def test_node_selection(patch_get_namespace):
             _start_proxies_on_init=False,
         )
 
-    all_nodes = [(head_node_id, "node-id-1")] + [
-        (f"node_idx-worker-{i}", f"node-id-{i}") for i in range(100)
+    all_nodes = [(head_node_id, "fake-head-ip")] + [
+        (f"worker-node-id-{i}", f"fake-worker-ip-{i}") for i in range(100)
     ]
 
     with patch("ray.serve.http_state.get_all_node_ids") as func:
