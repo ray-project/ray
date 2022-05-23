@@ -147,22 +147,6 @@ py_test(
     args = ["--smoke-test"]
 )
 
-py_test(
-    name = "upload_to_comet_ml",
-    size = "medium",
-    srcs = ["examples/upload_to_comet_ml.py"],
-    tags = ["team:ml", "exclusive", "needs_credentials"],
-    deps = [":ml_lib"]
-)
-
-py_test(
-    name = "upload_to_wandb",
-    size = "medium",
-    srcs = ["examples/upload_to_wandb.py"],
-    tags = ["team:ml", "exclusive", "needs_credentials"],
-    deps = [":ml_lib"]
-)
-
 # --------------------------------------------------------------------
 # Tests from the python/ray/ml/tests directory.
 # Covers all tests starting with `test_`.

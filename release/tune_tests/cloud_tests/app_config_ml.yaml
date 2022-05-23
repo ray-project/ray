@@ -8,13 +8,12 @@ python:
     - pytest
     - awscli
     - gsutil
+    - gym
     - gcsfs
-    - gym==0.21.0
     - pyarrow>=6.0.1,<7.0.0
   conda_packages: []
 
 post_build_cmds:
-  - pip uninstall -y ray || true
   # Install Ray
-  - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - pip3 uninstall -y ray || true && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}

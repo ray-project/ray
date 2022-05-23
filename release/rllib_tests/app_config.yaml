@@ -8,12 +8,11 @@ python:
   # These dependencies should be handled by requirements_rllib.txt and
   # requirements_ml_docker.txt
   pip_packages:
-      - gym==0.21.0
+      - gym
   conda_packages: []
 
 post_build_cmds:
-  - pip uninstall -y ray || true
-  - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - pip3 uninstall -y ray || true && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
   # TODO(jungong): remove once nightly image gets upgraded.
   - pip install -U pybullet==3.2.0

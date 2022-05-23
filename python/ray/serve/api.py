@@ -16,13 +16,6 @@ from starlette.requests import Request
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
-import ray
-from ray import cloudpickle
-from ray.experimental.dag import DAGNode
-from ray.util.annotations import PublicAPI
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-from ray._private.usage import usage_lib
-
 from ray.serve.common import DeploymentStatusInfo
 from ray.serve.config import (
     AutoscalingConfig,
@@ -40,17 +33,22 @@ from ray.serve.constants import (
 from ray.serve.controller import ServeController
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
+from ray.experimental.dag import DAGNode
 from ray.serve.handle import RayServeHandle
 from ray.serve.http_util import ASGIHTTPSender, make_fastapi_class_based_view
 from ray.serve.logging_utils import LoggingContext
 from ray.serve.utils import (
     ensure_serialization_context,
     format_actor_name,
+    get_current_node_resource_key,
     get_random_letters,
     in_interactive_shell,
     DEFAULT,
     install_serve_encoders_to_fastapi,
 )
+from ray.util.annotations import PublicAPI
+import ray
+from ray import cloudpickle
 from ray.serve.deployment_graph import ClassNode, FunctionNode
 from ray.serve.application import Application
 from ray.serve.client import ServeControllerClient, get_controller_namespace
@@ -62,6 +60,7 @@ from ray.serve.context import (
 )
 from ray.serve.pipeline.api import build as pipeline_build
 from ray.serve.pipeline.api import get_and_validate_ingress_deployment
+from ray._private.usage import usage_lib
 
 logger = logging.getLogger(__file__)
 
@@ -162,12 +161,8 @@ def start(
         lifetime="detached" if detached else None,
         max_restarts=-1,
         max_task_retries=-1,
-        # Schedule the controller on the head node with a soft constraint. This
-        # prefers it to run on the head node in most cases, but allows it to be
-        # restarted on other nodes in an HA cluster.
-        scheduling_strategy=NodeAffinitySchedulingStrategy(
-            ray.get_runtime_context().node_id, soft=True
-        ),
+        # Pin Serve controller on the head node.
+        resources={get_current_node_resource_key(): 0.01},
         namespace=controller_namespace,
         max_concurrency=CONTROLLER_MAX_CONCURRENCY,
     ).remote(

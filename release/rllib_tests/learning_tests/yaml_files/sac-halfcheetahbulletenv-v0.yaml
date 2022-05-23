@@ -10,10 +10,10 @@ sac-halfcheetahbulletenv-v0:
     config:
         horizon: 1000
         soft_horizon: false
-        Q_model:
+        q_model_config:
             fcnet_activation: relu
             fcnet_hiddens: [256, 256]
-        policy_model:
+        policy_model_config:
             fcnet_activation: relu
             fcnet_hiddens: [256, 256]
         tau: 0.005

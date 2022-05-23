@@ -1318,12 +1318,6 @@ sh_test(
     data = glob(["examples/serving/*.py"]),
 )
 
-py_test(
-    name = "env/tests/test_record_env_wrapper",
-    tags = ["team:ml", "env"],
-    size = "small",
-    srcs = ["env/tests/test_record_env_wrapper.py"]
-)
 
 py_test(
     name = "env/tests/test_remote_worker_envs",
@@ -2831,13 +2825,13 @@ py_test(
     args = ["--as-test", "--framework=torch"],
 )
 
-py_test(
-    name = "examples/remote_base_env_with_custom_api",
-    tags = ["team:ml", "examples", "examples_R"],
-    size = "medium",
-    srcs = ["examples/remote_base_env_with_custom_api.py"],
-    args = ["--stop-iters=3"]
-)
+# py_test(
+#    name = "examples/remote_base_env_with_custom_api",
+#    tags = ["team:ml", "examples", "examples_R"],
+#    size = "medium",
+#    srcs = ["examples/remote_base_env_with_custom_api.py"],
+#    args = ["--stop-iters=3"]
+# )
 
 py_test(
     name = "examples/restore_1_of_n_agents_from_checkpoint",
