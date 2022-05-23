@@ -9,9 +9,9 @@ import unittest
 
 import ray
 import ray.rllib.agents.a3c as a3c
-import ray.rllib.agents.dqn as dqn
-from ray.rllib.agents.marwil import BCTrainer
-import ray.rllib.agents.pg as pg
+import ray.rllib.algorithms.dqn as dqn
+from ray.rllib.algorithms.marwil import BCConfig, BCTrainer
+import ray.rllib.algorithms.pg as pg
 from ray.rllib.agents.trainer import COMMON_CONFIG
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.parallel_evaluation_and_training import AssertEvalCallback
@@ -301,22 +301,23 @@ class TestTrainer(unittest.TestCase):
 
         env = gym.make("CartPole-v0")
 
-        offline_rl_config = {
-            # Offline RL -> No env on regular workers.
-            "input": input_file,
-            # No env -> Must specify spaces here.
-            "observation_space": env.observation_space,
-            "action_space": env.action_space,
-            # Configure env to be created on evaluation workers.
-            "evaluation_interval": 1,
-            "evaluation_num_workers": 1,
-            "evaluation_config": {
-                "env": "CartPole-v0",
-                "input": "sampler",
-                "observation_space": None,  # Test, whether this is inferred.
-                "action_space": None,  # Test, whether this is inferred.
-            },
-        }
+        offline_rl_config = (
+            BCConfig()
+            .environment(
+                observation_space=env.observation_space, action_space=env.action_space
+            )
+            .evaluation(
+                evaluation_interval=1,
+                evaluation_num_workers=1,
+                evaluation_config={
+                    "env": "CartPole-v0",
+                    "input": "sampler",
+                    "observation_space": None,  # Test, whether this is inferred.
+                    "action_space": None,  # Test, whether this is inferred.
+                },
+            )
+            .offline_data(input_=[input_file])
+        )
 
         bc_trainer = BCTrainer(config=offline_rl_config)
         bc_trainer.train()

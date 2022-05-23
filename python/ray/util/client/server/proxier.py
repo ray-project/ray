@@ -520,6 +520,26 @@ class RayletServicerProxy(ray_client_pb2_grpc.RayletDriverServicer):
             exists = ray.experimental.internal_kv._internal_kv_exists(request.key)
         return ray_client_pb2.KVExistsResponse(exists=exists)
 
+    def PinRuntimeEnvURI(
+        self, request, context=None
+    ) -> ray_client_pb2.ClientPinRuntimeEnvURIResponse:
+        """Proxies internal_kv.pin_runtime_env_uri.
+
+        This is used by the working_dir code to upload to the GCS before
+        ray.init is called. In that case (if we don't have a server yet)
+        we directly make the internal KV call from the proxier.
+
+        Otherwise, we proxy the call to the downstream server as usual.
+        """
+        if self._has_channel_for_request(context):
+            return self._call_inner_function(request, context, "PinRuntimeEnvURI")
+
+        with disable_client_hook():
+            ray.experimental.internal_kv._pin_runtime_env_uri(
+                request.uri, expiration_s=request.expiration_s
+            )
+        return ray_client_pb2.ClientPinRuntimeEnvURIResponse()
+
     def ListNamedActors(
         self, request, context=None
     ) -> ray_client_pb2.ClientListNamedActorsResponse:

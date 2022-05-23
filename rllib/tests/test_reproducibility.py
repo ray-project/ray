@@ -3,7 +3,7 @@ import numpy as np
 import unittest
 
 import ray
-from ray.rllib.agents.dqn import DQNTrainer
+from ray.rllib.algorithms.dqn import DQNTrainer
 from ray.rllib.utils.test_utils import framework_iterator
 from ray.tune.registry import register_env
 

@@ -14,7 +14,7 @@ import random
 
 import ray
 from ray import tune
-from ray.rllib.agents.pg import PGTrainer, PGTFPolicy, PGTorchPolicy
+from ray.rllib.algorithms.pg import PGTrainer, PGTFPolicy, PGTorchPolicy
 from ray.rllib.agents.registry import get_trainer_class
 from ray.rllib.env import PettingZooEnv
 from ray.rllib.examples.policy.rock_paper_scissors_dummies import (

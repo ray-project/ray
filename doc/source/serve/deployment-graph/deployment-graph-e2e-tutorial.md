@@ -39,7 +39,7 @@ __[Full Ray Enhancement Proposal, REP-001: Serve Pipeline](https://github.com/ra
 
 ## Concepts
 
-- **Deployment**: Scalable, upgradeable group of actors managed by Ray Serve. __[See docs for detail](https://docs.ray.io/en/master/serve/core-apis.html#core-api-deployments)__
+- **Deployment**: Scalable, upgradeable group of actors managed by Ray Serve. __[See docs for detail](https://docs.ray.io/en/master/serve/package-ref.html#deployment-api)__
 
 - **DeploymentNode**: Smallest unit in a graph, created by calling `.bind()` on a serve decorated class or function, backed by a Deployment.
 
@@ -88,7 +88,7 @@ import asyncio
 from ray import serve
 # We will later move Ray DAG related components
 # out of experimental in later stable release
-from ray.experimental.dag.input_node import InputNode
+from ray.serve.dag import InputNode
 
 @serve.deployment
 async def preprocessor(input_data: str):
@@ -429,7 +429,7 @@ import starlette
 
 import ray
 from ray import serve
-from ray.experimental.dag.input_node import InputNode
+from ray.serve.dag import InputNode
 from ray.serve.drivers import DAGDriver
 from ray.serve.http_adapters import json_request
 
@@ -556,7 +556,7 @@ Total of `0.45` secs.
 
 ## More Examples using deployment graph api
 
-We provide more examples in using the deployment graph api in [here](./deployment-graph-user-guides.md)
+We provide more examples in using the deployment graph api in [here](../deployment-graph.md)
 
 ## Conclusion
 

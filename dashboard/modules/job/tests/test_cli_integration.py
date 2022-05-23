@@ -89,11 +89,9 @@ class TestRayAddress:
 
     def test_empty_ray_address(self, ray_start_stop):
         with set_env_var("RAY_ADDRESS", None):
-            _, stderr = _run_cmd("ray job submit -- echo hello", should_fail=True)
-            assert (
-                "Address must be specified using either the "
-                "--address flag or RAY_ADDRESS environment"
-            ) in stderr
+            stdout, _ = _run_cmd("ray job submit -- echo hello")
+            assert "hello" in stdout
+            assert "succeeded" in stdout
 
     @pytest.mark.parametrize(
         "ray_client_address", ["127.0.0.1:8265", "ray://127.0.0.1:8265"]

@@ -73,15 +73,15 @@ load("//bazel:python.bzl", "py_test_module_list")
 # --------------------------------------------------------------------
 
 # A2C/A3C
-py_test(
-    name = "learning_tests_cartpole_a2c",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/a3c/cartpole-a2c.yaml"],
-    args = ["--yaml-dir=tuned_examples/a3c"]
-)
+# py_test(
+#    name = "learning_tests_cartpole_a2c",
+#    main = "tests/run_regression_tests.py",
+#    tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+#    size = "large",
+#    srcs = ["tests/run_regression_tests.py"],
+#    data = ["tuned_examples/a3c/cartpole-a2c.yaml"],
+#    args = ["--yaml-dir=tuned_examples/a3c"]
+# )
 
 py_test(
     name = "learning_tests_cartpole_a2c_microbatch",
@@ -103,15 +103,15 @@ py_test(
     args = ["--yaml-dir=tuned_examples/a3c"]
 )
 
-py_test(
-    name = "learning_tests_cartpole_a3c",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/a3c/cartpole-a3c.yaml"],
-    args = ["--yaml-dir=tuned_examples/a3c"]
-)
+# py_test(
+#    name = "learning_tests_cartpole_a3c",
+#    main = "tests/run_regression_tests.py",
+#    tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+#    size = "large",
+#    srcs = ["tests/run_regression_tests.py"],
+#    data = ["tuned_examples/a3c/cartpole-a3c.yaml"],
+#    args = ["--yaml-dir=tuned_examples/a3c"]
+# )
 
 # AlphaStar
 py_test(
@@ -124,18 +124,29 @@ py_test(
     args = ["--yaml-dir=tuned_examples/alpha_star", "--num-cpus=10"]
 )
 
-# APEX-DQN
+# AlphaZero
 py_test(
-    name = "learning_tests_cartpole_apex",
+    name = "learning_tests_cartpole_sparse_rewards_alpha_zero",
+    tags = ["team:ml", "torch_only", "learning_tests", "learning_tests_discrete"],
     main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = [
-        "tuned_examples/dqn/cartpole-apex.yaml",
-    ],
-    args = ["--yaml-dir=tuned_examples/dqn", "--num-cpus=6"]
+    data = ["tuned_examples/alpha_zero/cartpole-sparse-rewards-alpha-zero.yaml"],
+    args = ["--yaml-dir=tuned_examples/alpha_zero", "--num-cpus=8"]
 )
+
+# APEX-DQN
+# py_test(
+#    name = "learning_tests_cartpole_apex",
+#    main = "tests/run_regression_tests.py",
+#    tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+#    size = "large",
+#    srcs = ["tests/run_regression_tests.py"],
+#    data = [
+#        "tuned_examples/dqn/cartpole-apex.yaml",
+#    ],
+#    args = ["--yaml-dir=tuned_examples/dqn", "--num-cpus=6"]
+# )
 
 # Once APEX supports multi-GPU.
 # py_test(
@@ -159,15 +170,15 @@ py_test(
     args = ["--yaml-dir=tuned_examples/ppo"]
 )
 
-py_test(
-    name = "learning_tests_cartpole_appo_vtrace",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/ppo/cartpole-appo-vtrace.yaml"],
-    args = ["--yaml-dir=tuned_examples/ppo"]
-)
+# py_test(
+#    name = "learning_tests_cartpole_appo_vtrace",
+#    main = "tests/run_regression_tests.py",
+#    tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+#    size = "large",
+#    srcs = ["tests/run_regression_tests.py"],
+#    data = ["tuned_examples/ppo/cartpole-appo-vtrace.yaml"],
+#    args = ["--yaml-dir=tuned_examples/ppo"]
+# )
 
 py_test(
     name = "learning_tests_cartpole_separate_losses_appo",
@@ -181,15 +192,15 @@ py_test(
     args = ["--yaml-dir=tuned_examples/ppo"]
 )
 
-py_test(
-    name = "learning_tests_frozenlake_appo",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "learning_tests", "learning_tests_discrete"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/ppo/frozenlake-appo-vtrace.yaml"],
-    args = ["--yaml-dir=tuned_examples/ppo"]
-)
+# py_test(
+#    name = "learning_tests_frozenlake_appo",
+#    main = "tests/run_regression_tests.py",
+#    tags = ["team:ml", "learning_tests", "learning_tests_discrete"],
+#    size = "large",
+#    srcs = ["tests/run_regression_tests.py"],
+#    data = ["tuned_examples/ppo/frozenlake-appo-vtrace.yaml"],
+#    args = ["--yaml-dir=tuned_examples/ppo"]
+# )
 
 py_test(
     name = "learning_tests_cartpole_appo_fake_gpus",
@@ -228,15 +239,15 @@ py_test(
 )
 
 # DDPG
-py_test(
-   name = "learning_tests_pendulum_ddpg",
-   main = "tests/run_regression_tests.py",
-   tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
-   size = "large",
-   srcs = ["tests/run_regression_tests.py"],
-   data = glob(["tuned_examples/ddpg/pendulum-ddpg.yaml"]),
-   args = ["--yaml-dir=tuned_examples/ddpg"]
-)
+# py_test(
+#   name = "learning_tests_pendulum_ddpg",
+#   main = "tests/run_regression_tests.py",
+#   tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+#   size = "large",
+#   srcs = ["tests/run_regression_tests.py"],
+#   data = glob(["tuned_examples/ddpg/pendulum-ddpg.yaml"]),
+#   args = ["--yaml-dir=tuned_examples/ddpg"]
+# )
 
 py_test(
    name = "learning_tests_pendulum_ddpg_fake_gpus",
@@ -270,15 +281,15 @@ py_test(
 )
 
 # DQN
-py_test(
-    name = "learning_tests_cartpole_dqn",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/dqn/cartpole-dqn.yaml"],
-    args = ["--yaml-dir=tuned_examples/dqn"]
-)
+# py_test(
+#    name = "learning_tests_cartpole_dqn",
+#    main = "tests/run_regression_tests.py",
+#    tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+#    size = "large",
+#    srcs = ["tests/run_regression_tests.py"],
+#    data = ["tuned_examples/dqn/cartpole-dqn.yaml"],
+#    args = ["--yaml-dir=tuned_examples/dqn"]
+# )
 
 py_test(
     name = "learning_tests_cartpole_dqn_softq",
@@ -330,33 +341,33 @@ py_test(
     name = "learning_tests_cartpole_simpleq_fake_gpus",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/dqn/cartpole-simpleq-fake-gpus.yaml"],
     args = ["--yaml-dir=tuned_examples/dqn"]
 )
 
 # ES
-py_test(
-    name = "learning_tests_cartpole_es",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/es/cartpole-es.yaml"],
-    args = ["--yaml-dir=tuned_examples/es"]
-)
+# py_test(
+#    name = "learning_tests_cartpole_es",
+#    main = "tests/run_regression_tests.py",
+#    tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+#    size = "large",
+#    srcs = ["tests/run_regression_tests.py"],
+#    data = ["tuned_examples/es/cartpole-es.yaml"],
+#    args = ["--yaml-dir=tuned_examples/es"]
+# )
 
 # IMPALA
-py_test(
-    name = "learning_tests_cartpole_impala",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/impala/cartpole-impala.yaml"],
-    args = ["--yaml-dir=tuned_examples/impala"]
-)
+# py_test(
+#    name = "learning_tests_cartpole_impala",
+#    main = "tests/run_regression_tests.py",
+#    tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+#    size = "large",
+#    srcs = ["tests/run_regression_tests.py"],
+#    data = ["tuned_examples/impala/cartpole-impala.yaml"],
+#    args = ["--yaml-dir=tuned_examples/impala"]
+# )
 
 py_test(
     name = "learning_tests_cartpole_impala_fake_gpus",
@@ -403,15 +414,15 @@ py_test(
 )
 
 # PPO
-py_test(
-    name = "learning_tests_cartpole_ppo",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/ppo/cartpole-ppo.yaml"],
-    args = ["--yaml-dir=tuned_examples/ppo"]
-)
+# py_test(
+#    name = "learning_tests_cartpole_ppo",
+#    main = "tests/run_regression_tests.py",
+#    tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+#    size = "large",
+#    srcs = ["tests/run_regression_tests.py"],
+#    data = ["tuned_examples/ppo/cartpole-ppo.yaml"],
+#    args = ["--yaml-dir=tuned_examples/ppo"]
+# )
 
 py_test(
     name = "learning_tests_pendulum_ppo",
@@ -516,15 +527,15 @@ py_test(
     args = ["--yaml-dir=tuned_examples/sac"]
 )
 
-py_test(
-    name = "learning_tests_cartpole_continuous_pybullet_sac",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_continuous"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/sac/cartpole-continuous-pybullet-sac.yaml"],
-    args = ["--yaml-dir=tuned_examples/sac"]
-)
+# py_test(
+#    name = "learning_tests_cartpole_continuous_pybullet_sac",
+#    main = "tests/run_regression_tests.py",
+#    tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_continuous"],
+#    size = "large",
+#    srcs = ["tests/run_regression_tests.py"],
+#    data = ["tuned_examples/sac/cartpole-continuous-pybullet-sac.yaml"],
+#    args = ["--yaml-dir=tuned_examples/sac"]
+# )
 
 # py_test(
 #    name = "learning_tests_pendulum_sac",
@@ -557,15 +568,15 @@ py_test(
 # )
 
 # SlateQ
-py_test(
-    name = "learning_tests_interest_evolution_10_candidates_recsim_env_slateq",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "learning_tests", "learning_tests_discrete"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/slateq/interest-evolution-10-candidates-recsim-env-slateq.yaml"],
-    args = ["--yaml-dir=tuned_examples/slateq"]
-)
+# py_test(
+#    name = "learning_tests_interest_evolution_10_candidates_recsim_env_slateq",
+#    main = "tests/run_regression_tests.py",
+#    tags = ["team:ml", "learning_tests", "learning_tests_discrete"],
+#    size = "large",
+#    srcs = ["tests/run_regression_tests.py"],
+#    data = ["tuned_examples/slateq/interest-evolution-10-candidates-recsim-env-slateq.yaml"],
+#    args = ["--yaml-dir=tuned_examples/slateq"]
+# )
 
 py_test(
     name = "learning_tests_interest_evolution_10_candidates_recsim_env_slateq_fake_gpus",
@@ -578,15 +589,15 @@ py_test(
 )
 
 # TD3
-py_test(
-    name = "learning_tests_pendulum_td3",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/ddpg/pendulum-td3.yaml"],
-    args = ["--yaml-dir=tuned_examples/ddpg"]
-)
+# py_test(
+#    name = "learning_tests_pendulum_td3",
+#    main = "tests/run_regression_tests.py",
+#    tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+#    size = "large",
+#    srcs = ["tests/run_regression_tests.py"],
+#    data = ["tuned_examples/ddpg/pendulum-td3.yaml"],
+#    args = ["--yaml-dir=tuned_examples/ddpg"]
+# )
 
 
 # --------------------------------------------------------------------
@@ -647,7 +658,15 @@ py_test(
     name = "test_alpha_star",
     tags = ["team:ml", "trainers_dir"],
     size = "large",
-    srcs = ["agents/alpha_star/tests/test_alpha_star.py"]
+    srcs = ["algorithms/alpha_star/tests/test_alpha_star.py"]
+)
+
+# AlphaZero
+py_test(
+    name = "test_alpha_zero",
+    tags = ["team:ml", "trainers_dir"],
+    size = "large",
+    srcs = ["algorithms/alpha_zero/tests/test_alpha_zero.py"]
 )
 
 # APEXTrainer (DQN)
@@ -663,7 +682,7 @@ py_test(
     name = "test_apex_ddpg",
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
-    srcs = ["agents/ddpg/tests/test_apex_ddpg.py"]
+    srcs = ["algorithms/ddpg/tests/test_apex_ddpg.py"]
 )
 
 # ARS
@@ -679,7 +698,7 @@ py_test(
     name = "test_bandits",
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
-    srcs = ["agents/bandit/tests/test_bandits.py"],
+    srcs = ["algorithms/bandit/tests/test_bandits.py"],
 )
 
 # CQLTrainer
@@ -687,7 +706,7 @@ py_test(
     name = "test_cql",
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
-    srcs = ["agents/cql/tests/test_cql.py"]
+    srcs = ["algorithms/cql/tests/test_cql.py"]
 )
 
 # DDPGTrainer
@@ -695,7 +714,7 @@ py_test(
     name = "test_ddpg",
     tags = ["team:ml", "trainers_dir"],
     size = "large",
-    srcs = ["agents/ddpg/tests/test_ddpg.py"]
+    srcs = ["algorithms/ddpg/tests/test_ddpg.py"]
 )
 
 # DQNTrainer
@@ -703,7 +722,7 @@ py_test(
     name = "test_dqn",
     tags = ["team:ml", "trainers_dir"],
     size = "large",
-    srcs = ["agents/dqn/tests/test_dqn.py"]
+    srcs = ["algorithms/dqn/tests/test_dqn.py"]
 )
 
 # Dreamer
@@ -711,7 +730,7 @@ py_test(
     name = "test_dreamer",
     tags = ["team:ml", "trainers_dir"],
     size = "small",
-    srcs = ["agents/dreamer/tests/test_dreamer.py"]
+    srcs = ["algorithms/dreamer/tests/test_dreamer.py"]
 )
 
 # ES
@@ -743,7 +762,7 @@ py_test(
     size = "large",
     # Include the json data file.
     data = ["tests/data/cartpole/large.json"],
-    srcs = ["agents/marwil/tests/test_marwil.py"]
+    srcs = ["algorithms/marwil/tests/test_marwil.py"]
 )
 
 # BCTrainer (sub-type of MARWIL)
@@ -753,7 +772,7 @@ py_test(
     size = "large",
     # Include the json data file.
     data = ["tests/data/cartpole/large.json"],
-    srcs = ["agents/marwil/tests/test_bc.py"]
+    srcs = ["algorithms/marwil/tests/test_bc.py"]
 )
 
 # MAMLTrainer
@@ -761,7 +780,7 @@ py_test(
     name = "test_maml",
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
-    srcs = ["agents/maml/tests/test_maml.py"]
+    srcs = ["algorithms/maml/tests/test_maml.py"]
 )
 
 # MBMPOTrainer
@@ -769,7 +788,7 @@ py_test(
     name = "test_mbmpo",
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
-    srcs = ["agents/mbmpo/tests/test_mbmpo.py"]
+    srcs = ["algorithms/mbmpo/tests/test_mbmpo.py"]
 )
 
 # PGTrainer
@@ -777,7 +796,7 @@ py_test(
     name = "test_pg",
     tags = ["team:ml", "trainers_dir"],
     size = "large",
-    srcs = ["agents/pg/tests/test_pg.py"]
+    srcs = ["algorithms/pg/tests/test_pg.py"]
 )
 
 # PPOTrainer
@@ -809,7 +828,7 @@ py_test(
     name = "test_qmix",
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
-    srcs = ["agents/qmix/tests/test_qmix.py"]
+    srcs = ["algorithms/qmix/tests/test_qmix.py"]
 )
 
 # R2D2Trainer
@@ -825,7 +844,7 @@ py_test(
     name = "test_rnnsac",
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
-    srcs = ["agents/sac/tests/test_rnnsac.py"]
+    srcs = ["algorithms/sac/tests/test_rnnsac.py"]
 )
 
 # SACTrainer
@@ -833,7 +852,7 @@ py_test(
     name = "test_sac",
     tags = ["team:ml", "trainers_dir"],
     size = "large",
-    srcs = ["agents/sac/tests/test_sac.py"]
+    srcs = ["algorithms/sac/tests/test_sac.py"]
 )
 
 # SimpleQTrainer
@@ -841,7 +860,7 @@ py_test(
     name = "test_simple_q",
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
-    srcs = ["agents/dqn/tests/test_simple_q.py"]
+    srcs = ["algorithms/dqn/tests/test_simple_q.py"]
 )
 
 # SlateQTrainer
@@ -849,7 +868,7 @@ py_test(
     name = "test_slateq",
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
-    srcs = ["agents/slateq/tests/test_slateq.py"]
+    srcs = ["algorithms/slateq/tests/test_slateq.py"]
 )
 
 # TD3Trainer
@@ -857,7 +876,7 @@ py_test(
     name = "test_td3",
     tags = ["team:ml", "trainers_dir"],
     size = "large",
-    srcs = ["agents/ddpg/tests/test_td3.py"]
+    srcs = ["algorithms/ddpg/tests/test_td3.py"]
 )
 
 # --------------------------------------------------------------------
@@ -870,15 +889,6 @@ py_test(
     main = "contrib/random_agent/random_agent.py",
     size = "small",
     srcs = ["contrib/random_agent/random_agent.py"]
-)
-
-py_test(
-    name = "alpha_zero_cartpole",
-    tags = ["team:ml", "trainers_dir"],
-    main = "contrib/alpha_zero/examples/train_cartpole.py",
-    size = "large",
-    srcs = ["contrib/alpha_zero/examples/train_cartpole.py"],
-    args = ["--training-iteration=1", "--num-workers=2", "--ray-num-cpus=3"]
 )
 
 
@@ -1030,7 +1040,7 @@ py_test(
         "--env", "Pendulum-v1",
         "--run", "APEX_DDPG",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"num_workers\": 2, \"optimizer\": {\"num_replay_buffer_shards\": 1}, \"learning_starts\": 100, \"min_time_s_per_reporting\": 1, \"batch_mode\": \"complete_episodes\"}'",
+        "--config", "'{\"framework\": \"tf\", \"num_workers\": 2, \"optimizer\": {\"num_replay_buffer_shards\": 1}, \"replay_buffer_config\": {\"learning_starts\": 100}, \"min_time_s_per_reporting\": 1, \"batch_mode\": \"complete_episodes\"}'",
         "--ray-num-cpus", "4",
         ]
 )
@@ -1087,7 +1097,7 @@ py_test(
         "--env", "CartPole-v0",
         "--run", "DQN",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"input\": \"tests/data/cartpole\", \"learning_starts\": 0, \"input_evaluation\": [\"wis\", \"is\"], \"exploration_config\": {\"type\": \"SoftQ\"}}'"
+        "--config", "'{\"framework\": \"tf\", \"input\": \"tests/data/cartpole\", \"replay_buffer_config\": {\"learning_starts\": 0}, \"input_evaluation\": [\"wis\", \"is\"], \"exploration_config\": {\"type\": \"SoftQ\"}}'"
         ]
 )
 
@@ -1099,7 +1109,7 @@ py_test(
         "--env", "PongDeterministic-v4",
         "--run", "DQN",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"lr\": 1e-4, \"exploration_config\": {\"epsilon_timesteps\": 200000, \"final_epsilon\": 0.01}, \"buffer_size\": 10000, \"rollout_fragment_length\": 4, \"learning_starts\": 10000, \"target_network_update_freq\": 1000, \"gamma\": 0.99, \"prioritized_replay\": true}'"
+        "--config", "'{\"framework\": \"tf\", \"lr\": 1e-4, \"exploration_config\": {\"epsilon_timesteps\": 200000, \"final_epsilon\": 0.01}, \"replay_buffer_config\": {\"capacity\": 10000, \"learning_starts\": 10000}, \"rollout_fragment_length\": 4, \"target_network_update_freq\": 1000, \"gamma\": 0.99}'"
         ]
 )
 
@@ -1308,12 +1318,6 @@ sh_test(
     data = glob(["examples/serving/*.py"]),
 )
 
-py_test(
-    name = "env/tests/test_record_env_wrapper",
-    tags = ["team:ml", "env"],
-    size = "small",
-    srcs = ["env/tests/test_record_env_wrapper.py"]
-)
 
 py_test(
     name = "env/tests/test_remote_worker_envs",
@@ -1383,27 +1387,6 @@ py_test(
     tags = ["team:ml", "evaluation"],
     size = "small",
     srcs = ["evaluation/tests/test_episode.py"]
-)
-
-# --------------------------------------------------------------------
-# Optimizers and Memories
-# rllib/execution/
-#
-# Tag: execution
-# --------------------------------------------------------------------
-
-py_test(
-    name = "test_segment_tree",
-    tags = ["team:ml", "execution"],
-    size = "small",
-    srcs = ["execution/tests/test_segment_tree.py"]
-)
-
-py_test(
-    name = "test_prioritized_replay_buffer",
-    tags = ["team:ml", "execution"],
-    size = "small",
-    srcs = ["execution/tests/test_prioritized_replay_buffer.py"]
 )
 
 # --------------------------------------------------------------------
@@ -1631,6 +1614,13 @@ py_test(
 # it correctly by its starting letter, e.g. tags=["tests_dir", "tests_dir_A"]
 # for `tests/test_all_stuff.py`.
 # --------------------------------------------------------------------
+
+py_test(
+    name = "tests/test_algorithm_imports",
+    tags = ["team:ml", "tests_dir", "tests_dir_C"],
+    size = "small",
+    srcs = ["tests/test_algorithm_imports.py"]
+)
 
 py_test(
     name = "tests/test_catalog",
@@ -2822,13 +2812,13 @@ py_test(
     args = ["--as-test", "--framework=torch"],
 )
 
-py_test(
-    name = "examples/remote_base_env_with_custom_api",
-    tags = ["team:ml", "examples", "examples_R"],
-    size = "medium",
-    srcs = ["examples/remote_base_env_with_custom_api.py"],
-    args = ["--stop-iters=3"]
-)
+# py_test(
+#    name = "examples/remote_base_env_with_custom_api",
+#    tags = ["team:ml", "examples", "examples_R"],
+#    size = "medium",
+#    srcs = ["examples/remote_base_env_with_custom_api.py"],
+#    args = ["--stop-iters=3"]
+# )
 
 py_test(
     name = "examples/restore_1_of_n_agents_from_checkpoint",

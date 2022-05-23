@@ -169,4 +169,4 @@ class RunConfig:
     stop: Optional[Union[Mapping, "Stopper", Callable[[str, Mapping], bool]]] = None
     failure: Optional[FailureConfig] = None
     sync_config: Optional[SyncConfig] = None
-    verbose: Union[int, Verbosity] = Verbosity.V2_TRIAL_NORM
+    verbose: Union[int, Verbosity] = Verbosity.V3_TRIAL_DETAILS
