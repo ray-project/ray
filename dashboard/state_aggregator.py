@@ -48,7 +48,7 @@ NODE_QUERY_FAILURE_WARNING = (
 
 
 # TODO(sang): Move the class to state/state_manager.py.
-# TODO(sang): Remove *State and replaces with Pydantic or protobuf
+# TODO(sang): Remove *State and replaces with Pydantic or protobuf.
 # (depending on API interface standardization).
 class StateAPIManager:
     """A class to query states from data source, caches, and post-processes

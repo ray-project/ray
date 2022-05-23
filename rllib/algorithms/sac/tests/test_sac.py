@@ -6,7 +6,7 @@ import re
 import unittest
 
 import ray
-import ray.rllib.algorithms.sac as sac
+from ray.rllib.algorithms import sac
 from ray.rllib.algorithms.sac.sac_tf_policy import sac_actor_critic_loss as tf_loss
 from ray.rllib.algorithms.sac.sac_torch_policy import actor_critic_loss as loss_torch
 from ray.rllib.examples.env.random_env import RandomEnv
@@ -74,20 +74,17 @@ class TestSAC(unittest.TestCase):
 
     def test_sac_compilation(self):
         """Tests whether an SACTrainer can be built with all frameworks."""
-        config = sac.DEFAULT_CONFIG.copy()
-        config["Q_model"] = sac.DEFAULT_CONFIG["Q_model"].copy()
-        config["num_workers"] = 0  # Run locally.
-        config["n_step"] = 3
-        config["twin_q"] = True
-        config["replay_buffer_config"]["learning_starts"] = 0
-        config["rollout_fragment_length"] = 10
-        config["train_batch_size"] = 10
-        # If we use default buffer size (1e6), the buffer will take up
-        # 169.445 GB memory, which is beyond travis-ci's current (Mar 19, 2021)
-        # available system memory (8.34816 GB).
-        config["replay_buffer_config"]["capacity"] = 40000
-        # Test with saved replay buffer.
-        config["store_buffer_in_checkpoints"] = True
+        config = (
+            sac.SACConfig()
+            .training(
+                n_step=3,
+                twin_q=True,
+                replay_buffer_config={"learning_starts": 0, "capacity": 40000},
+                store_buffer_in_checkpoints=True,
+                train_batch_size=10,
+            )
+            .rollouts(num_rollout_workers=0, rollout_fragment_length=10)
+        )
         num_iterations = 1
 
         ModelCatalog.register_custom_model("batch_norm", KerasBatchNormModel)
@@ -134,12 +131,12 @@ class TestSAC(unittest.TestCase):
                 print("Env={}".format(env))
                 # Test making the Q-model a custom one for CartPole, otherwise,
                 # use the default model.
-                config["Q_model"]["custom_model"] = (
+                config.q_model_config["custom_model"] = (
                     "batch_norm{}".format("_torch" if fw == "torch" else "")
                     if env == "CartPole-v0"
                     else None
                 )
-                trainer = sac.SACTrainer(config=config, env=env)
+                trainer = config.build(env=env)
                 for i in range(num_iterations):
                     results = trainer.train()
                     check_train_results(results)
@@ -167,22 +164,25 @@ class TestSAC(unittest.TestCase):
 
     def test_sac_loss_function(self):
         """Tests SAC loss function results across all frameworks."""
-        config = sac.DEFAULT_CONFIG.copy()
-        # Run locally.
-        config["seed"] = 42
-        config["num_workers"] = 0
-        config["replay_buffer_config"]["learning_starts"] = 0
-        config["twin_q"] = False
-        config["gamma"] = 0.99
-        # Switch on deterministic loss so we can compare the loss values.
-        config["_deterministic_loss"] = True
-        # Use very simple nets.
-        config["Q_model"]["fcnet_hiddens"] = [10]
-        config["policy_model"]["fcnet_hiddens"] = [10]
-        # Make sure, timing differences do not affect trainer.train().
-        config["min_time_s_per_reporting"] = 0
-        # Test SAC with Simplex action space.
-        config["env_config"] = {"simplex_actions": True}
+        config = (
+            sac.SACConfig()
+            .training(
+                twin_q=False,
+                gamma=0.99,
+                _deterministic_loss=True,
+                q_model_config={"fcnet_hiddens": [10]},
+                policy_model_config={"fcnet_hiddens": [10]},
+                replay_buffer_config={"learning_starts": 0},
+            )
+            .rollouts(num_rollout_workers=0)
+            .reporting(
+                min_time_s_per_reporting=0,
+            )
+            .environment(
+                env_config={"simplex_actions": True},
+            )
+            .debugging(seed=42)
+        )
 
         map_ = {
             # Action net.
@@ -247,7 +247,7 @@ class TestSAC(unittest.TestCase):
             config, frameworks=("tf", "torch"), session=True
         ):
             # Generate Trainer and get its default Policy object.
-            trainer = sac.SACTrainer(config=config, env=env)
+            trainer = config.build(env=env)
             policy = trainer.get_policy()
             p_sess = None
             if sess:
@@ -287,7 +287,7 @@ class TestSAC(unittest.TestCase):
                     sorted(weights_dict.keys()),
                     log_alpha,
                     fw,
-                    gamma=config["gamma"],
+                    gamma=config.gamma,
                     sess=sess,
                 )
 
@@ -520,19 +520,22 @@ class TestSAC(unittest.TestCase):
                 return dict_samples[self.steps], 1, self.steps >= 5, {}
 
         tune.register_env("nested", lambda _: NestedDictEnv())
-
-        config = sac.DEFAULT_CONFIG.copy()
-        config["num_workers"] = 0  # Run locally.
-        config["replay_buffer_config"]["learning_starts"] = 0
-        config["rollout_fragment_length"] = 5
-        config["train_batch_size"] = 5
-        config["replay_buffer_config"]["capacity"] = 10
-        # Disable preprocessors.
-        config["_disable_preprocessor_api"] = True
+        config = (
+            sac.SACConfig()
+            .training(
+                replay_buffer_config={"learning_starts": 0, "capacity": 10},
+                train_batch_size=5,
+            )
+            .rollouts(
+                num_rollout_workers=0,
+                rollout_fragment_length=5,
+            )
+            .experimental(_disable_preprocessor_api=True)
+        )
         num_iterations = 1
 
         for _ in framework_iterator(config, with_eager_tracing=True):
-            trainer = sac.SACTrainer(env="nested", config=config)
+            trainer = config.build(env="nested")
             for _ in range(num_iterations):
                 results = trainer.train()
                 check_train_results(results)
