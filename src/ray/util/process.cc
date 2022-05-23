@@ -613,33 +613,11 @@ bool IsProcessAlive(pid_t pid) {
     CloseHandle(handle);
   }
   return false;
-#elif defined __APPLE__
-  if (kill(pid, 0) == -1 && errno == ESRCH) {
-    return false;
-  }
-  return true;
 #else
   if (kill(pid, 0) == -1 && errno == ESRCH) {
     return false;
   }
-  // Check whether the process is a zombie
-  // https://stackoverflow.com/questions/16382964/detect-if-pid-is-zombie-on-linux
-  bool iszombie = false;
-  // open the /proc/*/stat file
-  char pbuf[32];
-  snprintf(pbuf, sizeof(pbuf), "/proc/%d/stat", (int)pid);
-  FILE *fpstat = fopen(pbuf, "r");
-  if (!fpstat) {
-    return false;
-  }
-
-  int rpid = 0;
-  char rcmd[32];
-  char rstatc = 0;
-  RAY_CHECK(fscanf(fpstat, "%d %30s %c", &rpid, rcmd, &rstatc) == 3);
-  iszombie = rstatc == 'Z';
-  fclose(fpstat);
-  return !iszombie;
+  return true;
 #endif
 }
 
