@@ -3256,6 +3256,7 @@ void CoreWorker::HandleBatchAssignObjectOwner(
     reference_counter_->AddOwnedObject(object_id, contained_object_ids, rpc_address_,
                                        call_site, object_size,
                                        /*is_reconstructable=*/false,
+                                       /*add_local_ref=*/false,
                                        /*pinned_at_raylet_id=*/borrower_node_id);
     reference_counter_->AddBorrowerAddress(object_id, borrower_address);
     RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));

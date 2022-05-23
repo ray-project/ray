@@ -101,16 +101,12 @@ void ObjectBarrier::AsyncWaitForAssignmentFinish(const ObjectID &object_id,
 
 void ObjectBarrier::InvokeAllReplyCallbacks(const ObjectID &object_id,
                                             const Status &status) {
-  io_service_.post(
-      [this, object_id, status]() {
-        auto it = object_callbacks_->find(object_id);
-        if (it == object_callbacks_->end()) return;
-        for (auto &cb : it->second) {
-          cb(status);
-        }
-        object_callbacks_->erase(it);
-      },
-      "ObjectBarrier.InvokeAllReplyCallbacksForCreateFailed");
+  auto it = object_callbacks_->find(object_id);
+  if (it == object_callbacks_->end()) return;
+  for (auto &cb : it->second) {
+    cb(status);
+  }
+  object_callbacks_->erase(it);
 }
 
 void ObjectBarrier::SendAssignOwnerRequest(const rpc::Address &owner_address) {

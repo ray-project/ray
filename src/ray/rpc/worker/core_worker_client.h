@@ -326,7 +326,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
       CoreWorkerService, Exit, grpc_client_, /*method_timeout_ms*/ -1, override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService,
-                         AssignObjectOwner,
+                         BatchAssignObjectOwner,
                          grpc_client_,
                          /*method_timeout_ms*/ -1,
                          override)
