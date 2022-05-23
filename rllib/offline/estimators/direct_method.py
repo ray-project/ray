@@ -1,4 +1,4 @@
-from typing import Dict, List
+from typing import Dict
 from ray.rllib.offline.estimators.off_policy_estimator import (
     OffPolicyEstimator,
     OffPolicyEstimate,

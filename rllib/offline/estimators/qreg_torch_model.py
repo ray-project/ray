@@ -61,12 +61,12 @@ class QRegTorchModel(TorchModelV2):
             rewards = episode[SampleBatch.REWARDS]
             old_prob = episode[SampleBatch.ACTION_PROB]
             new_prob = self.policy.compute_log_likelihoods(
-            actions=episode[SampleBatch.ACTIONS],
-            obs_batch=episode[SampleBatch.OBS],
-            state_batches=[episode[k] for k in state_keys],
-            prev_action_batch=episode.get(SampleBatch.PREV_ACTIONS),
-            prev_reward_batch=episode.get(SampleBatch.PREV_REWARDS),
-            actions_normalized=True,
+                actions=episode[SampleBatch.ACTIONS],
+                obs_batch=episode[SampleBatch.OBS],
+                state_batches=[episode[k] for k in state_keys],
+                prev_action_batch=episode.get(SampleBatch.PREV_ACTIONS),
+                prev_reward_batch=episode.get(SampleBatch.PREV_REWARDS),
+                actions_normalized=True,
             )
 
             # calculate importance ratios and returns
@@ -80,11 +80,10 @@ class QRegTorchModel(TorchModelV2):
                     pt_prev = ps[eps_begin + t - 1]
                     pt_next = pt_next * new_prob[-t] / old_prob[-t]
                     returns[eps_end - t - 1] = (
-                        rewards[-t - 1]
-                        + self.gamma * pt_next * returns[eps_end - t]
-                        )
+                        rewards[-t - 1] + self.gamma * pt_next * returns[eps_end - t]
+                    )
                 ps[eps_begin + t] = pt_prev * new_prob[t] / old_prob[t]
-            
+
             # Update before next episode
             eps_begin = eps_end
 

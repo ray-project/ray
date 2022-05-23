@@ -26,6 +26,7 @@ class OffPolicyEstimator:
             policy: Policy to evaluate.
             gamma: Discount factor of the environment.
         """
+        assert policy.config["batch_mode"] == "complete_episodes"
         self.policy = policy
         self.gamma = gamma
         self.config = config
@@ -51,7 +52,7 @@ class OffPolicyEstimator:
 
         Args:
             batch: The batch to train the model on
-        
+
         Returns:
             any optional training/loss metrics from the model
         """
