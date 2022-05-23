@@ -178,10 +178,11 @@ def validate_buffer_config(config: dict):
         deprecation_warning(
             old="config['replay_batch_size'] or config['replay_buffer_config']["
             "'replay_batch_size']",
-            help="Specification of replay_batch_size is not needed anymore for most "
-            "replay buffers and will be ignored. Specify the number of items you "
-            "want to replay upon calling sample().",
-            error=False,
+            help="Specification of replay_batch_size is not supported anymore but is "
+            "derived from `train_batch_size`. Specify the number of "
+            "items you want to replay upon calling the sample() method of replay "
+            "buffers if this does not work for you.",
+            error=True,
         )
 
     # Deprecation of old-style replay buffer args
