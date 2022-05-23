@@ -398,8 +398,9 @@ class AlphaStarTrainer(appo.APPOTrainer):
         self._learner_worker_manager = AsyncRequestsManager(
             workers=policy_actors,
             max_remote_requests_in_flight_per_worker=self.config[
-                "timeout_s_learner_manager"
+                "max_requests_in_flight_per_learner_worker"
             ],
+            ray_wait_timeout_s=self.config["timeout_s_learner_manager"],
         )
 
     @override(Trainer)
