@@ -202,7 +202,8 @@ if __name__ == "__main__":
                 # nothing is run but linting in these cases
                 pass
             elif changed_file.startswith("release/ray_release/"):
-                # Tests for release/ray_release always run. Other tests are irrelevant.
+                # Tests for release/ray_release always run, so it is unnecessary to
+                # tag affected tests.
                 pass
             elif changed_file.endswith("build-docker-images.py"):
                 RAY_CI_DOCKER_AFFECTED = 1
