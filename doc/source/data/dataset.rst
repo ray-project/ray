@@ -133,7 +133,7 @@ Advanced users can refer directly to the Ray Datasets :ref:`API reference <data_
         :classes: btn-outline-info btn-block
     ---
 
-    API
+    **API**
     ^^^
 
     Get more in-depth information about the Ray Datasets API.
@@ -145,7 +145,7 @@ Advanced users can refer directly to the Ray Datasets :ref:`API reference <data_
         :classes: btn-outline-info btn-block
     ---
 
-    Other Data Processing Solutions
+    **Other Data Processing Solutions**
     ^^^
 
     For running ETL pipelines, check out :ref:`Spark-on-Ray <spark-on-ray>`. For scaling
