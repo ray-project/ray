@@ -75,8 +75,6 @@ public class RayConfig {
 
   public final List<String> headArgs;
 
-  public final int numWorkersPerProcess;
-
   public final String namespace;
 
   public final List<String> jvmOptionsForJavaWorker;
@@ -109,7 +107,7 @@ public class RayConfig {
     boolean isDriver = workerMode == WorkerType.DRIVER;
     // Run mode.
     if (config.hasPath("ray.local-mode")) {
-      runMode = config.getBoolean("ray.local-mode") ? RunMode.SINGLE_PROCESS : RunMode.CLUSTER;
+      runMode = config.getBoolean("ray.local-mode") ? RunMode.LOCAL : RunMode.CLUSTER;
     } else {
       runMode = config.getEnum(RunMode.class, "ray.run-mode");
     }
@@ -189,8 +187,6 @@ public class RayConfig {
       codeSearchPathString = System.getProperty("java.class.path");
     }
     codeSearchPath = Arrays.asList(codeSearchPathString.split(":"));
-
-    numWorkersPerProcess = config.getInt("ray.job.num-java-workers-per-process");
 
     startupToken = config.getInt("ray.raylet.startup-token");
 

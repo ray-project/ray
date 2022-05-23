@@ -4,64 +4,85 @@
 Transforming Datasets
 =====================
 
-Datasets can be transformed in parallel using ``.map_batches()``. Ray will transform
-batches of records in the Dataset using the given function. The function must return
-a batch of records. You are allowed to filter or add additional records to the batch,
-which will change the size of the Dataset.
+The Ray Datasets transformations take in datasets and produce new datasets.
+For example, *map* is a transformation that applies a user-defined function (UDF)
+on each row of input dataset and returns a new dataset as result. The Datasets
+transformations are **composable**. Operations can be further applied on the result
+dataset, forming a chain of transformations to express more complex computations.
+Transformations are the core for expressing business logic in Datasets.
 
-Transformations are executed *eagerly* and block until the operation is finished.
+Transformations
+---------------
 
-.. code-block:: python
+In general, we have two types of transformations:
 
-    def transform_batch(df: pandas.DataFrame) -> pandas.DataFrame:
-        return df.applymap(lambda x: x * 2)
+* **One-to-one transformations:** each input block will contribute to only one output
+  block, such as :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`. In other
+  systems this may be called narrow transformations.
+* **All-to-all transformations:** input blocks can contribute to multiple output blocks,
+  such as :meth:`ds.random_shuffle() <ray.data.Dataset.random_shuffle>`. In other
+  systems this may be called wide transformations.
 
-    ds = ray.data.range_table(10000)
-    ds = ds.map_batches(transform_batch, batch_format="pandas")
-    # -> Map Progress: 100%|████████████████████| 200/200 [00:00<00:00, 1927.62it/s]
-    ds.take(5)
-    # -> [{'value': 0}, {'value': 2}, ...]
+Here is a table listing some common transformations supported by Ray Datasets.
 
-The batch format can be specified using ``batch_format`` option, which defaults to "native",
-meaning pandas format for Arrow-compatible batches, and Python lists for other types. You
-can also specify explicitly "arrow" or "pandas" to force a conversion to that batch format.
-The batch size can also be chosen. If not given, the batch size will default to entire blocks.
+.. list-table:: Common Ray Datasets transformations.
+   :header-rows: 1
+
+   * - Transformation
+     - Type
+     - Description
+   * - :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`
+     - One-to-one
+     - Apply a given function to batches of records of this dataset. 
+   * - :meth:`ds.split() <ray.data.Dataset.split>`
+     - One-to-one
+     - | Split the dataset into N disjoint pieces.
+   * - :meth:`ds.repartition(shuffle=False) <ray.data.Dataset.repartition>`
+     - One-to-one
+     - | Repartition the dataset into N blocks, without shuffling the data.
+   * - :meth:`ds.repartition(shuffle=True) <ray.data.Dataset.repartition>`
+     - All-to-all
+     - | Repartition the dataset into N blocks, shuffling the data during repartition.
+   * - :meth:`ds.random_shuffle() <ray.data.Dataset.random_shuffle>`
+     - All-to-all
+     - | Randomly shuffle the elements of this dataset.
+   * -  :meth:`ds.sort() <ray.data.Dataset.sort>`
+     - All-to-all
+     - | Sort the dataset by a sortkey.
+   * -  :meth:`ds.groupby() <ray.data.Dataset.groupby>`
+     - All-to-all
+     - | Group the dataset by a groupkey.
 
 .. tip::
 
-    Datasets also provides the convenience methods ``map``, ``flat_map``, and ``filter``, which are not vectorized (slower than ``map_batches``), but may be useful for development.
+    Datasets also provides the convenience transformation methods :meth:`ds.map() <ray.data.Dataset.map>`,
+    :meth:`ds.flat_map() <ray.data.Dataset.flat_map>`, and :meth:`ds.filter() <ray.data.Dataset.filter>`,
+    which are not vectorized (slower than :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`), but
+    may be useful for development.
 
-By default, transformations are executed using Ray tasks.
-For transformations that require setup, specify ``compute=ray.data.ActorPoolStrategy(min, max)`` and Ray will use an autoscaling actor pool of ``min`` to ``max`` actors to execute your transforms.
-For a fixed-size actor pool, specify ``ActorPoolStrategy(n, n)``.
-The following is an end-to-end example of reading, transforming, and saving batch inference results using Ray Data:
+The following is an example to make use of those transformation APIs for processing
+the Iris dataset.
 
-.. code-block:: python
+.. literalinclude:: ./doc_code/transforming_datasets.py
+   :language: python
+   :start-after: __dataset_transformation_begin__
+   :end-before: __dataset_transformation_end__
 
-    from ray.data import ActorPoolStrategy
+Compute Strategy
+----------------
 
-    # Example of GPU batch inference on an ImageNet model.
-    def preprocess(image: bytes) -> bytes:
-        return image
+Datasets transformations are executed by either :ref:`Ray tasks <ray-remote-functions>`
+or :ref:`Ray actors <actor-guide>` across a Ray cluster. By default, Ray tasks are
+used (with ``compute="tasks"``). For transformations that require expensive setup,
+it's preferrable to use Ray actors, which are stateful and allow setup to be reused
+for efficiency. You can specify ``compute=ray.data.ActorPoolStrategy(min, max)`` and
+Ray will use an autoscaling actor pool of ``min`` to ``max`` actors to execute your
+transforms. For a fixed-size actor pool, just specify ``ActorPoolStrategy(n, n)``.
 
-    class BatchInferModel:
-        def __init__(self):
-            self.model = ImageNetModel()
-        def __call__(self, batch: pd.DataFrame) -> pd.DataFrame:
-            return self.model(batch)
+The following is an example of using the Ray tasks and actors compute strategy
+for batch inference:
 
-    ds = ray.data.read_binary_files("s3://bucket/image-dir")
-
-    # Preprocess the data.
-    ds = ds.map(preprocess)
-    # -> Map Progress: 100%|████████████████████| 200/200 [00:00<00:00, 1123.54it/s]
-
-    # Apply GPU batch inference with actors, and assign each actor a GPU using
-    # ``num_gpus=1`` (any Ray remote decorator argument can be used here).
-    ds = ds.map_batches(
-        BatchInferModel, compute=ActorPoolStrategy(10, 20),
-        batch_size=256, num_gpus=1)
-    # -> Map Progress (16 actors 4 pending): 100%|██████| 200/200 [00:07, 27.60it/s]
-
-    # Save the results.
-    ds.repartition(1).write_json("s3://bucket/inference-results")
+.. literalinclude:: ./doc_code/transforming_datasets.py
+   :language: python
+   :start-after: __dataset_compute_strategy_begin__
+   :end-before: __dataset_compute_strategy_end__

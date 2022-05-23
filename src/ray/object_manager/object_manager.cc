@@ -718,7 +718,7 @@ std::string ObjectManager::DebugString() const {
   result << "ObjectManager:";
   result << "\n- num local objects: " << local_objects_.size();
   result << "\n- num unfulfilled push requests: " << unfulfilled_push_requests_.size();
-  result << "\n- num pull requests: " << pull_manager_->NumActiveRequests();
+  result << "\n- num object pull requests: " << pull_manager_->NumObjectPullRequests();
   result << "\n- num chunks received total: " << num_chunks_received_total_;
   result << "\n- num chunks received failed (all): " << num_chunks_received_total_failed_;
   result << "\n- num chunks received failed / cancelled: "
@@ -748,7 +748,7 @@ void ObjectManager::RecordMetrics() {
   stats::ObjectStoreFallbackMemory().Record(
       plasma::plasma_store_runner->GetFallbackAllocated());
   stats::ObjectStoreLocalObjects().Record(local_objects_.size());
-  stats::ObjectManagerPullRequests().Record(pull_manager_->NumActiveRequests());
+  stats::ObjectManagerPullRequests().Record(pull_manager_->NumObjectPullRequests());
 
   ray::stats::STATS_object_manager_bytes.Record(num_bytes_pushed_from_plasma_,
                                                 "PushedFromLocalPlasma");

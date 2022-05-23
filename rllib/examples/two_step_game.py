@@ -16,7 +16,7 @@ import os
 import ray
 from ray import tune
 from ray.tune import register_env
-from ray.rllib.agents.qmix import QMixConfig
+from ray.rllib.algorithms.qmix import QMixConfig
 from ray.rllib.env.multi_agent_env import ENV_STATE
 from ray.rllib.examples.env.two_step_game import TwoStepGame
 from ray.rllib.policy.policy import PolicySpec

@@ -49,7 +49,7 @@ You can install the nightly Ray wheels via the following links. These daily rele
 `Linux Python 3.9`_  `MacOS Python 3.9`_  `Windows Python 3.9`_
 `Linux Python 3.8`_  `MacOS Python 3.8`_  `Windows Python 3.8`_
 `Linux Python 3.7`_  `MacOS Python 3.7`_  `Windows Python 3.7`_
-`Linux Python 3.6`_  `MacOS Python 3.6`_  `Windows Python 3.6`_
+`Linux Python 3.6`_  `MacOS Python 3.6`_
 ===================  ===================  ======================
 
 .. note::
@@ -70,8 +70,6 @@ You can install the nightly Ray wheels via the following links. These daily rele
 .. _`Windows Python 3.9`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp39-cp39-win_amd64.whl
 .. _`Windows Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp38-cp38-win_amd64.whl
 .. _`Windows Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp37-cp37m-win_amd64.whl
-.. _`Windows Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp36-cp36m-win_amd64.whl
-
 
 Installing from a specific commit
 ---------------------------------
@@ -255,38 +253,38 @@ However, should you need to build from source, follow :ref:`these instructions f
 Docker Source Images
 --------------------
 
-Most users should pull a Docker image from the `Ray Docker Hub. <https://hub.docker.com/r/rayproject/>`_
+Most users should pull a Docker image from the `Ray Docker Hub <https://hub.docker.com/r/rayproject/>`__.
 
-- The ``rayproject/ray`` `image has ray and all required dependencies. It comes with anaconda and Python 3.7. <https://hub.docker.com/r/rayproject/ray>`_
-- The ``rayproject/ray-ml`` `image has the above features as well as many additional libraries. <https://hub.docker.com/r/rayproject/ray-ml>`_
-- The ``rayproject/base-deps`` and ``rayproject/ray-deps`` are for the linux and python dependencies respectively.
+- The ``rayproject/ray`` `images <https://hub.docker.com/r/rayproject/ray>`__ include Ray and all required dependencies. It comes with anaconda and various versions of Python.
+- The ``rayproject/ray-ml`` `images <https://hub.docker.com/r/rayproject/ray-ml>`__ include the above as well as many additional ML libraries. 
+- The ``rayproject/base-deps`` and ``rayproject/ray-deps`` images are for the Linux and Python dependencies respectively.
 
-Image releases are `tagged` using the following format:
-
+Images are `tagged` with the format ``{Ray version}[-{Python version}][-{Platform}]``. ``Ray version`` tag can be one of the following:
 
 .. list-table::
    :widths: 25 50
    :header-rows: 1
 
-   * - Tag
+   * - Ray version tag
      - Description
    * - latest
      - The most recent Ray release.
-   * - 1.x.x
-     - A specific Ray release.
+   * - x.y.z
+     - A specific Ray release, e.g. 1.12.1
    * - nightly
-     - The most recent Ray build (the most recent commit on Github ``master``)
-   * - Git SHA
-     - A specific nightly build (uses a SHA from the Github ``master``).
+     - The most recent Ray development build (a recent commit from Github ``master``)
+   * - 6 character Git SHA prefix
+     - A specific development build (uses a SHA from the Github ``master``, e.g. ``8960af``).
 
+The optional ``Python version`` tag specifies the Python version in the image. All Python versions supported by Ray are available, e.g. ``py37``, ``py38``, ``py39`` and ``py310``. If unspecified, the tag points to an image using ``Python 3.7``.
 
-Some tags also have `variants` that add or change functionality:
+The optional ``Platform`` tag specifies the platform where the image is intended for:
 
 .. list-table::
    :widths: 16 40
    :header-rows: 1
 
-   * - Variant
+   * - Platform tag
      - Description
    * - -cpu
      - These are based off of an Ubuntu image.
@@ -297,6 +295,7 @@ Some tags also have `variants` that add or change functionality:
    * - <no tag>
      - Aliases to ``-cpu`` tagged images. For ``ray-ml`` image, aliases to ``-gpu`` tagged image.
 
+Example: for the nightly image based on ``Python 3.8`` and without GPU support, the tag is ``nightly-py38-cpu``.
 
 If you want to tweak some aspect of these images and build them locally, refer to the following script:
 

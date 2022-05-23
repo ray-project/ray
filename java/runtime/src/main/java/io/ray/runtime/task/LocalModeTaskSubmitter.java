@@ -496,7 +496,6 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
                         ? objectStore.getRaw(Collections.singletonList(arg.id), -1).get(0)
                         : arg.value)
             .collect(Collectors.toList());
-    runtime.setIsContextSet(true);
     ((LocalModeWorkerContext) runtime.getWorkerContext()).setCurrentTask(taskSpec);
 
     ((LocalModeWorkerContext) runtime.getWorkerContext()).setCurrentWorkerId(workerId);
@@ -513,9 +512,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     // Set this flag to true is necessary because at the end of `taskExecutor.execute()`,
     // this flag will be set to false. And `runtime.getWorkerContext()` requires it to be
     // true.
-    runtime.setIsContextSet(true);
     ((LocalModeWorkerContext) runtime.getWorkerContext()).setCurrentTask(null);
-    runtime.setIsContextSet(false);
     List<ObjectId> returnIds = getReturnIds(taskSpec);
     for (int i = 0; i < returnIds.size(); i++) {
       NativeRayObject putObject;
