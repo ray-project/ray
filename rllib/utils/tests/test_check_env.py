@@ -29,7 +29,6 @@ class TestGymCheckEnv(unittest.TestCase):
         env = Mock(spec=["observation_space"])
         with pytest.raises(AttributeError, match="Env must have action_space."):
             check_gym_environments(env)
-        del env
 
     def test_obs_and_action_spaces_are_gym_spaces(self):
         env = RandomEnv()
@@ -41,7 +40,6 @@ class TestGymCheckEnv(unittest.TestCase):
         env.action_space = "not an action space"
         with pytest.raises(ValueError, match="Action space must be a gym.space"):
             check_env(env)
-        del env
 
     def test_reset(self):
         reset = MagicMock(return_value=5)
@@ -56,7 +54,6 @@ class TestGymCheckEnv(unittest.TestCase):
         env.reset = reset
         with pytest.raises(ValueError, match=error):
             check_env(env)
-        del env
 
     def test_step(self):
         step = MagicMock(return_value=(5, 5, True, {}))
@@ -92,7 +89,6 @@ class TestGymCheckEnv(unittest.TestCase):
         error = "Your step function must return a info that is a dict."
         with pytest.raises(ValueError, match=error):
             check_env(env)
-        del env
 
 
 class TestCheckMultiAgentEnv(unittest.TestCase):
@@ -104,7 +100,6 @@ class TestCheckMultiAgentEnv(unittest.TestCase):
         env = RandomEnv()
         with pytest.raises(ValueError, match="The passed env is not"):
             check_multiagent_environments(env)
-        del env
 
     def test_check_env_reset_incorrect_error(self):
         reset = MagicMock(return_value=5)
@@ -119,7 +114,6 @@ class TestCheckMultiAgentEnv(unittest.TestCase):
         env.reset = lambda *_: bad_obs
         with pytest.raises(ValueError, match="The observation collected from env"):
             check_env(env)
-        del env
 
     def test_check_incorrect_space_contains_functions_error(self):
         def bad_contains_function(self, x):
@@ -131,7 +125,6 @@ class TestCheckMultiAgentEnv(unittest.TestCase):
             ValueError, match="Your observation_space_contains function has some"
         ):
             check_env(env)
-        del env
         env = make_multi_agent("CartPole-v1")({"num_agents": 2})
         bad_action = {0: 2, 1: 2}
         env.action_space_sample = lambda *_: bad_action
@@ -178,7 +171,6 @@ class TestCheckMultiAgentEnv(unittest.TestCase):
             ValueError, match="The action collected from action_space_sample"
         ):
             check_env(env)
-        del env
         env = make_multi_agent("CartPole-v1")({"num_agents": 2})
         bad_obs = {
             0: np.array([np.inf, np.inf, np.inf, np.inf]),
@@ -206,7 +198,6 @@ class TestCheckBaseEnv:
         env = RandomEnv()
         with pytest.raises(ValueError, match="The passed env is not"):
             check_base_env(env)
-        del env
 
     def test_check_env_reset_incorrect_error(self):
         reset = MagicMock(return_value=5)
@@ -244,7 +235,6 @@ class TestCheckBaseEnv:
             ValueError, match="The observation collected from try_reset"
         ):
             check_env(env)
-        del env
 
     def test_check_space_contains_functions_errors(self):
         def bad_contains_function(self, x):
@@ -258,14 +248,12 @@ class TestCheckBaseEnv:
         ):
             check_env(env)
 
-        del env
         env = self._make_base_env()
         env.action_space_contains = bad_contains_function
         with pytest.raises(
             ValueError, match="Your action_space_contains function has some error"
         ):
             check_env(env)
-        del env
 
     def test_bad_sample_function(self):
         env = self._make_base_env()
@@ -276,7 +264,6 @@ class TestCheckBaseEnv:
         ):
             check_env(env)
 
-        del env
         env = self._make_base_env()
         bad_obs = {
             0: {

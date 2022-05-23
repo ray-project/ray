@@ -168,7 +168,7 @@ class AlphaZeroPolicyWrapperClass(AlphaZeroPolicy):
         model = ModelCatalog.get_model_v2(
             obs_space, action_space, action_space.n, config["model"], "torch"
         )
-        env_creator = Trainer._get_env_creator_from_env_id(None, config["env"])
+        _, env_creator = Trainer._get_env_id_and_creator(config["env"], config)
         if config["ranked_rewards"]["enable"]:
             # if r2 is enabled, tne env is wrapped to include a rewards buffer
             # used to normalize rewards

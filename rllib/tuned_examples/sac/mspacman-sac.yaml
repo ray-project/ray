@@ -11,10 +11,10 @@ mspacman-sac-tf:
         # Works for both torch and tf.
         framework: tf
         gamma: 0.99
-        Q_model:
+        q_model_config:
             fcnet_hiddens: [512]
             fcnet_activation: relu
-        policy_model:
+        policy_model_config:
             fcnet_hiddens: [512]
             fcnet_activation: relu
         # Do hard syncs.
