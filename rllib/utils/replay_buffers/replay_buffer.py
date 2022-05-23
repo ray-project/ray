@@ -16,7 +16,6 @@ from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics.window_stat import WindowStat
 from ray.rllib.utils.typing import SampleBatchType, T
 from ray.util.annotations import DeveloperAPI
-from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.util.iter import ParallelIteratorWorker
 
 # Constant that represents all policies in lockstep replay mode.
@@ -339,19 +338,18 @@ class ReplayBuffer(ParallelIteratorWorker):
         """
         return func(self, *_args, **kwargs)
 
-    @Deprecated(old="ReplayBuffer.add_batch()", new="RepayBuffer.add()", error=False)
+    @Deprecated(old="ReplayBuffer.add_batch()", new="ReplayBuffer.add()", error=False)
     def add_batch(self, *args, **kwargs):
         return self.add(*args, **kwargs)
 
     @Deprecated(
-        old="RepayBuffer.replay(num_items)",
-        new="RepayBuffer.sample(num_items)",
+        old="ReplayBuffer.replay(num_items)",
+        new="ReplayBuffer.sample(num_items)",
         error=False,
     )
     def replay(self, num_items):
         return self.sample(num_items)
 
-    @ExperimentalAPI
     @Deprecated(
         help="ReplayBuffers could be iterated over by default before. "
         "Making a buffer an iterator will soon "

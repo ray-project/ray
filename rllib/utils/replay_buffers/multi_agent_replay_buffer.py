@@ -186,8 +186,8 @@ class MultiAgentReplayBuffer(ReplayBuffer):
 
     @DeveloperAPI
     @Deprecated(
-        old="RepayBuffer.replay()",
-        new="RepayBuffer.sample(num_items)",
+        old="ReplayBuffer.replay()",
+        new="ReplayBuffer.sample(num_items)",
         error=True,
     )
     def replay(self, num_items: int = None, **kwargs) -> Optional[SampleBatchType]:
