@@ -55,11 +55,12 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
     @routes.put("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def put_all_deployments(self, req: Request) -> Response:
-        from ray import serve
-        from ray.serve.application import Application
+        from ray.serve.context import get_global_client
+        from ray.serve.schema import ServeApplicationSchema
 
-        app = Application.from_dict(await req.json())
-        serve.run(app, _blocking=False)
+        config = ServeApplicationSchema.parse_obj(await req.json())
+        client = get_global_client(_override_controller_namespace="serve")
+        client.deploy_app(config)
 
         return Response()
 
