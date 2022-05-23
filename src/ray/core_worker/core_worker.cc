@@ -1012,7 +1012,7 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
       status = plasma_store_provider_->Create(metadata,
                                               data_size,
                                               *object_id,
-                                              /* owner_address = */ rpc_address_,
+                                              /* owner_address = */ real_owner_address,
                                               data,
                                               created_by_worker);
     }
