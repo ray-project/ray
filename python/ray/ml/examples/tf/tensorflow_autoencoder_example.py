@@ -11,6 +11,8 @@ import ray.train as train
 import tensorflow as tf
 import tensorflow_datasets as tfds
 from ray.data.datasource import SimpleTensorFlowDatasource
+from ray.ml.batch_predictor import BatchPredictor
+from ray.ml.predictors.integrations.tensorflow import TensorflowPredictor
 from ray.ml.result import Result
 from ray.ml.train.integrations.tensorflow import TensorflowTrainer
 from ray.train.tensorflow import prepare_dataset_shard
@@ -109,6 +111,7 @@ def train_func(config: dict):
             metrics=["binary_crossentropy",],
         )
 
+    results = []
     for epoch in range(epochs):
         tf_dataset = prepare_dataset_shard(
             dataset_shard.to_tf(
@@ -121,10 +124,11 @@ def train_func(config: dict):
                 batch_size=per_worker_batch_size,
             )
         )
-        multi_worker_model.fit(tf_dataset)
-        train.save_checkpoint(
-            epoch=epoch, model_weights=multi_worker_model.get_weights()
+        history = multi_worker_model.fit(
+            tf_dataset, callbacks=[TrainCheckpointReportCallback()]
         )
+        results.append(history.history)
+    return results
 
 
 def train_tensorflow_mnist(
@@ -140,7 +144,62 @@ def train_tensorflow_mnist(
     )
 
     results = trainer.fit()
+    print(results.metrics)
     return results
+
+
+def predict_tensorflow_mnist(result: Result) -> ray.data.Dataset:
+    batch_predictor = BatchPredictor.from_checkpoint(
+        result.checkpoint, TensorflowPredictor, model_definition=build_autoencoder_model
+    )
+
+    predictions = batch_predictor.predict(
+        test_dataset, feature_columns=["image"], dtype=tf.float32
+    )
+
+    pandas_predictions = predictions.to_pandas(float("inf"))
+    print(f"PREDICTIONS\n{pandas_predictions}")
+
+    return pandas_predictions
+
+
+def visualize_tensorflow_mnist_autoencoder(result: Result) -> None:
+
+    batch_predictor = BatchPredictor.from_checkpoint(
+        result.checkpoint, TensorflowPredictor, model_definition=build_autoencoder_model
+    )
+
+    # test_dataset.
+    predictions = batch_predictor.predict(
+        test_dataset, feature_columns=["image"], dtype=tf.float32
+    )
+
+    pandas_predictions = predictions.to_pandas(float("inf"))
+
+    decoded_imgs = pandas_predictions["predictions"].values
+    x_test = test_dataset.to_pandas(float("inf"))["image"].values
+
+    import matplotlib.pyplot as plt
+
+    n = 10  # How many digits we will display
+    plt.figure(figsize=(20, 4))
+    for i in range(n):
+        # Display original
+        ax = plt.subplot(2, n, i + 1)
+        plt.imshow(np.asarray(x_test[i]).reshape(28, 28))
+        plt.gray()
+        ax.get_xaxis().set_visible(False)
+        ax.get_yaxis().set_visible(False)
+
+        # Display reconstruction
+        ax = plt.subplot(2, n, i + 1 + n)
+        plt.imshow(np.asarray(decoded_imgs[i]).reshape(28, 28))
+        plt.gray()
+        ax.get_xaxis().set_visible(False)
+        ax.get_yaxis().set_visible(False)
+
+    # how to retrieve the folderpath of the checkpoint
+    plt.savefig("test.png")
 
 
 if __name__ == "__main__":
@@ -182,3 +241,6 @@ if __name__ == "__main__":
         train_tensorflow_mnist(
             num_workers=args.num_workers, use_gpu=args.use_gpu, epochs=args.epochs
         )
+
+    predict_tensorflow_mnist(result)
+    visualize_tensorflow_mnist_autoencoder(result)
