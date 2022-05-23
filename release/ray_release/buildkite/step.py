@@ -78,7 +78,7 @@ def get_step(
 
     step["plugins"][0]["docker#v3.9.0"][
         "image"
-    ] = f"rayproject/ray:latest-py{python_version_str(python_version)}"
+    ] = f"rayproject/ray:nightly-py{python_version_str(python_version)}"
 
     commit = get_test_env_var("RAY_COMMIT")
     branch = get_test_env_var("RAY_BRANCH")
