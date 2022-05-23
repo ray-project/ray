@@ -32,7 +32,7 @@ from ray.tune.logger import NoopLogger
 from ray.tune.result import TRIAL_INFO, STDOUT_FILE, STDERR_FILE
 from ray.tune.utils.placement_groups import PlacementGroupManager, get_tune_pg_prefix
 from ray.tune.utils.trainable import TrainableUtil
-from ray.tune.trial import Trial, _TuneCheckpoint, Location, TrialInfo
+from ray.tune.trial import Trial, _TuneCheckpoint, _Location, _TrialInfo
 from ray.tune.trial_executor import TrialExecutor
 from ray.tune.utils import warn_if_slow
 from ray.tune.utils.resource_updater import ResourceUpdater
@@ -165,6 +165,7 @@ class ExecutorEventType(Enum):
     YIELD = 8  # Yielding back to TrialRunner's main event loop.
 
 
+@DeveloperAPI
 class ExecutorEvent:
     """A struct that describes the event to be processed by TrialRunner.
 
@@ -328,12 +329,12 @@ class RayTrialExecutor(TrialExecutor):
         full_actor_class = self._pg_manager.get_full_actor_cls(trial, _actor_cls)
         # Clear the Trial's location (to be updated later on result)
         # since we don't know where the remote runner is placed.
-        trial.set_location(Location())
+        trial.set_location(_Location())
         logger.debug("Trial %s: Setting up new remote runner.", trial)
         # Logging for trials is handled centrally by TrialRunner, so
         # configure the remote runner to use a noop-logger.
         trial_config = copy.deepcopy(trial.config)
-        trial_config[TRIAL_INFO] = TrialInfo(trial)
+        trial_config[TRIAL_INFO] = _TrialInfo(trial)
 
         stdout_file, stderr_file = trial.log_to_file
         trial_config[STDOUT_FILE] = stdout_file
@@ -458,7 +459,7 @@ class RayTrialExecutor(TrialExecutor):
         """
         self.set_status(trial, Trial.ERROR if error or exc else Trial.TERMINATED)
         self._trial_just_finished = True
-        trial.set_location(Location())
+        trial.set_location(_Location())
 
         try:
             trial.write_error_log(exc=exc)
@@ -590,7 +591,7 @@ class RayTrialExecutor(TrialExecutor):
 
         # Pass magic variables
         extra_config = copy.deepcopy(new_config)
-        extra_config[TRIAL_INFO] = TrialInfo(trial)
+        extra_config[TRIAL_INFO] = _TrialInfo(trial)
 
         stdout_file, stderr_file = trial.log_to_file
         extra_config[STDOUT_FILE] = stdout_file

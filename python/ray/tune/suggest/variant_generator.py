@@ -9,6 +9,7 @@ import random
 
 from ray.tune import TuneError
 from ray.tune.sample import Categorical, Domain, Function, RandomState
+from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
@@ -473,6 +474,7 @@ class _UnresolvedAccessGuard(dict):
             return value
 
 
+@DeveloperAPI
 class RecursiveDependencyError(Exception):
     def __init__(self, msg: str):
         Exception.__init__(self, msg)

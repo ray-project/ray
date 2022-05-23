@@ -22,7 +22,7 @@ from ray.util.debug import log_once
 logger = logging.getLogger(__name__)
 
 
-class PBTTrialState:
+class _PBTTrialState:
     """Internal PBT state tracked per-trial."""
 
     def __init__(self, trial: Trial):
@@ -362,7 +362,7 @@ class PopulationBasedTraining(FIFOScheduler):
                 )
             )
 
-        self._trial_state[trial] = PBTTrialState(trial)
+        self._trial_state[trial] = _PBTTrialState(trial)
 
         for attr in self._hyperparam_mutations.keys():
             if attr not in trial.config:
@@ -490,7 +490,7 @@ class PopulationBasedTraining(FIFOScheduler):
             )
 
     def _save_trial_state(
-        self, state: PBTTrialState, time: int, result: Dict, trial: Trial
+        self, state: _PBTTrialState, time: int, result: Dict, trial: Trial
     ):
         """Saves necessary trial information when result is received.
         Args:
@@ -548,8 +548,8 @@ class PopulationBasedTraining(FIFOScheduler):
 
     def _log_config_on_step(
         self,
-        trial_state: PBTTrialState,
-        new_state: PBTTrialState,
+        trial_state: _PBTTrialState,
+        new_state: _PBTTrialState,
         trial: Trial,
         trial_to_clone: Trial,
         new_config: Dict,

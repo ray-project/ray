@@ -41,6 +41,7 @@ from ray.tune.utils.log import Verbosity, has_verbosity
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncoder
 from ray.tune.web_server import TuneServer
+from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
 
 MAX_DEBUG_TRIALS = 20
@@ -200,6 +201,7 @@ class _ExperimentCheckpointManager:
         return self._checkpoint_dir
 
 
+@DeveloperAPI
 class TrialRunner:
     """A TrialRunner implements the event loop for scheduling trials on Ray.
 
@@ -1450,6 +1452,7 @@ class TrialExecutorWrapper(RayTrialExecutor):
         return getattr(self._trial_executor, attr)
 
 
+@DeveloperAPI
 class TrialRunnerWrapper(TrialRunner):
     """Wraps around TrialRunner class, intercepts API calls and warns users
     of restricted API access.
