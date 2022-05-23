@@ -4,7 +4,6 @@ from typing import List, Type
 
 import ray
 from ray.rllib.agents import with_common_config
-from ray.rllib.algorithms.mbmpo.mbmpo_torch_policy import MBMPOTorchPolicy
 from ray.rllib.algorithms.mbmpo.model_ensemble import DynamicsEnsembleCustomModel
 from ray.rllib.algorithms.mbmpo.utils import calculate_gae_advantages, MBMPOExploration
 from ray.rllib.agents.trainer import Trainer
@@ -374,6 +373,8 @@ class MBMPOTrainer(Trainer):
 
     @override(Trainer)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
+        from ray.rllib.algorithms.mbmpo.mbmpo_torch_policy import MBMPOTorchPolicy
+
         return MBMPOTorchPolicy
 
     @staticmethod

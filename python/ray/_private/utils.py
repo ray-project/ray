@@ -162,7 +162,10 @@ def publish_error_to_driver(
         job_id = ray.JobID.nil()
     assert isinstance(job_id, ray.JobID)
     error_data = construct_error_message(job_id, error_type, message, time.time())
-    gcs_publisher.publish_error(job_id.hex().encode(), error_data)
+    try:
+        gcs_publisher.publish_error(job_id.hex().encode(), error_data)
+    except Exception:
+        logger.exception(f"Failed to publish error {error_data}")
 
 
 def random_string():

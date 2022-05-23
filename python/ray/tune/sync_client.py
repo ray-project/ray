@@ -509,6 +509,9 @@ class RemoteTaskClient(SyncClient):
 
         return self._execute_sync(self._last_source_tuple, self._last_target_tuple)
 
+    def _sync_function(self, *args, **kwargs):
+        return sync_dir_between_nodes(*args, **kwargs)
+
     def _execute_sync(
         self,
         source_tuple: Tuple[str, str],
@@ -517,7 +520,7 @@ class RemoteTaskClient(SyncClient):
         source_ip, source_path = source_tuple
         target_ip, target_path = target_tuple
 
-        self._sync_future, pack_actor, files_stats = sync_dir_between_nodes(
+        self._sync_future, pack_actor, files_stats = self._sync_function(
             source_ip=source_ip,
             source_path=source_path,
             target_ip=target_ip,

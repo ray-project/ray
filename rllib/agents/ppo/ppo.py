@@ -72,9 +72,9 @@ class PPOConfig(TrainerConfig):
         ... )
     """
 
-    def __init__(self):
+    def __init__(self, trainer_class=None):
         """Initializes a PPOConfig instance."""
-        super().__init__(trainer_class=PPOTrainer)
+        super().__init__(trainer_class=trainer_class or PPOTrainer)
 
         # fmt: off
         # __sphinx_doc_begin__
