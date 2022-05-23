@@ -255,7 +255,7 @@ def test_chaos_push_based_sort(set_kill_interval):
     ctx = ray.data.context.DatasetContext.get_current()
     ctx.use_push_based_shuffle = True
 
-    num_partitions = 300
+    num_partitions = 200
     partition_size = int(1e6)
     source = RandomIntRowDatasource()
     num_rows_per_partition = partition_size // 8
