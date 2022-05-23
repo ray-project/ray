@@ -28,6 +28,7 @@ from ray.serve.config import (
     HTTPOptions,
     ReplicaConfig,
 )
+from ray.serve.schema import ServeApplicationSchema
 from ray.serve.constants import (
     MAX_CACHED_HANDLES,
     CLIENT_POLLING_INTERVAL_S,
@@ -314,6 +315,14 @@ class ServeControllerClient:
                 new_deployments_names
             )
             self.delete_deployments(deployment_names_to_delete)
+
+    @_ensure_connected
+    def deploy_app(self, config: ServeApplicationSchema) -> None:
+        ray.get(
+            self._controller.deploy_app(
+                config.import_path, config.runtime_env, config.deployment_dicts()
+            )
+        )
 
     @_ensure_connected
     def delete_deployments(self, names: Iterable[str], blocking: bool = True) -> None:
