@@ -37,7 +37,7 @@ mountaincarcontinuous-ddpg:
           prioritized_replay_alpha: 0.6
           prioritized_replay_beta: 0.4
           prioritized_replay_eps: 0.000001
-          worker_side_prioritization: False
+          worker_side_prioritization: false
         clip_rewards: False
 
         # === Optimization ===

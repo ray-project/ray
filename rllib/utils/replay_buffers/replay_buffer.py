@@ -192,7 +192,10 @@ class ReplayBuffer(ParallelIteratorWorker):
             self._storage.append(item)
             self._est_size_bytes += item.size_bytes()
         else:
+            item_to_be_removed = self._storage[self._next_idx]
+            self._est_size_bytes -= item_to_be_removed.size_bytes()
             self._storage[self._next_idx] = item
+            self._est_size_bytes += item.size_bytes()
 
         # Eviction of older samples has already started (buffer is "full").
         if self._eviction_started:

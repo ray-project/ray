@@ -6,20 +6,19 @@ import ray
 from ray import tune
 from ray.rllib.agents.registry import get_trainer_class
 
-from ray.rllib.examples.env.repeat_after_me_env import RepeatAfterMeEnv
+# from ray.rllib.examples.env.repeat_after_me_env import RepeatAfterMeEnv
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
 
-envs = {"RepeatAfterMeEnv": RepeatAfterMeEnv, "StatelessCartPole": StatelessCartPole}
 
 config = {
     "name": "RNNSAC_example",
     "local_dir": str(Path(__file__).parent / "example_out"),
-    "checkpoint_freq": 1,
+    "checkpoint_at_end": True,
     "keep_checkpoints_num": 1,
     "checkpoint_score_attr": "episode_reward_mean",
     "stop": {
-        "episode_reward_mean": 80.0,
-        "timesteps_total": 500000,
+        "episode_reward_mean": 65.0,
+        "timesteps_total": 50000,
     },
     "metric": "episode_reward_mean",
     "mode": "max",
@@ -32,7 +31,7 @@ config = {
         "num_envs_per_worker": 1,
         "num_cpus_per_worker": 1,
         "log_level": "INFO",
-        "env": envs["StatelessCartPole"],
+        "env": StatelessCartPole,
         "horizon": 1000,
         "gamma": 0.95,
         "batch_mode": "complete_episodes",
@@ -55,14 +54,14 @@ config = {
         "model": {
             "max_seq_len": 20,
         },
-        "policy_model": {
+        "policy_model_config": {
             "use_lstm": True,
             "lstm_cell_size": 64,
             "fcnet_hiddens": [64, 64],
             "lstm_use_prev_action": True,
             "lstm_use_prev_reward": True,
         },
-        "Q_model": {
+        "q_model_config": {
             "use_lstm": True,
             "lstm_cell_size": 64,
             "fcnet_hiddens": [64, 64],
@@ -102,7 +101,7 @@ if __name__ == "__main__":
     eps = 0
     ep_reward = 0
     while eps < 10:
-        action, state, info_trainer = agent.compute_action(
+        action, state, info_trainer = agent.compute_single_action(
             obs,
             state=state,
             prev_action=prev_action,
@@ -115,7 +114,7 @@ if __name__ == "__main__":
         ep_reward += reward
         try:
             env.render()
-        except (NotImplementedError, ImportError):
+        except Exception:
             pass
         if done:
             eps += 1
