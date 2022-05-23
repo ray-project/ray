@@ -6,8 +6,8 @@ import tree  # pip install dm_tree
 import unittest
 
 import ray
-from ray.rllib.agents.marwil import BCTrainer
-from ray.rllib.agents.pg import PGTrainer, DEFAULT_CONFIG
+from ray.rllib.algorithms.marwil import BCTrainer
+from ray.rllib.algorithms.pg import PGTrainer, DEFAULT_CONFIG
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.offline.json_reader import JsonReader
 from ray.rllib.utils.test_utils import framework_iterator

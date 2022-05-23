@@ -3,10 +3,10 @@ from scipy.stats import norm
 import unittest
 
 import ray
-import ray.rllib.agents.dqn as dqn
-import ray.rllib.agents.pg as pg
+import ray.rllib.algorithms.dqn as dqn
+import ray.rllib.algorithms.pg as pg
 import ray.rllib.agents.ppo as ppo
-import ray.rllib.agents.sac as sac
+import ray.rllib.algorithms.sac as sac
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check, framework_iterator
 from ray.rllib.utils.numpy import one_hot, fc, MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT
@@ -177,8 +177,8 @@ class TestComputeLogLikelihood(unittest.TestCase):
         """Tests SAC's (cont. actions) compute_log_likelihoods method."""
         config = sac.DEFAULT_CONFIG.copy()
         config["seed"] = 42
-        config["policy_model"]["fcnet_hiddens"] = [10]
-        config["policy_model"]["fcnet_activation"] = "linear"
+        config["policy_model_config"]["fcnet_hiddens"] = [10]
+        config["policy_model_config"]["fcnet_activation"] = "linear"
         prev_a = np.array([0.0])
 
         # SAC cont uses a squashed normal distribution. Implement it's logp
@@ -210,8 +210,8 @@ class TestComputeLogLikelihood(unittest.TestCase):
         """Tests SAC's (discrete actions) compute_log_likelihoods method."""
         config = sac.DEFAULT_CONFIG.copy()
         config["seed"] = 42
-        config["policy_model"]["fcnet_hiddens"] = [10]
-        config["policy_model"]["fcnet_activation"] = "linear"
+        config["policy_model_config"]["fcnet_hiddens"] = [10]
+        config["policy_model_config"]["fcnet_activation"] = "linear"
         prev_a = np.array(0)
 
         do_test_log_likelihood(sac.SACTrainer, config, prev_a)

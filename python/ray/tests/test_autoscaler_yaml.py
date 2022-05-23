@@ -1,5 +1,6 @@
 import jsonschema
 import logging
+import mock
 import os
 import sys
 import tempfile
@@ -260,6 +261,33 @@ class AutoscalingConfigTest(unittest.TestCase):
         prepared_config = prepare_config(too_many_workers_config)
 
         # Check that worker config numbers were clipped to 3.
+        assert prepared_config == expected_prepared
+
+        not_enough_workers_config = copy.deepcopy(base_config)
+
+        # Max workers is less than than the three available ips.
+        # The user is probably has probably made an error. Make sure we log a warning.
+        not_enough_workers_config["max_workers"] = 0
+        not_enough_workers_config["min_workers"] = 0
+        with mock.patch(
+            "ray.autoscaler._private.local.config.cli_logger.warning"
+        ) as warning:
+            prepared_config = prepare_config(not_enough_workers_config)
+            warning.assert_called_with(
+                "The value of `max_workers` supplied (0) is less"
+                " than the number of available worker ips (3)."
+                " At most 0 Ray worker nodes will connect to the cluster."
+            )
+        expected_prepared = yaml.safe_load(EXPECTED_LOCAL_CONFIG_STR)
+        # We logged a warning.
+        # However, prepare_config does not repair the strange config setting:
+        expected_prepared["max_workers"] = 0
+        expected_prepared["available_node_types"]["local.cluster.node"][
+            "max_workers"
+        ] = 0
+        expected_prepared["available_node_types"]["local.cluster.node"][
+            "min_workers"
+        ] = 0
         assert prepared_config == expected_prepared
 
     def testValidateNetworkConfig(self):

@@ -38,11 +38,11 @@ class GcsServerAddressUpdater {
   /// Update gcs server address.
   void UpdateGcsServerAddress();
 
+  instrumented_io_context updater_io_service_;
   rpc::ClientCallManager client_call_manager_;
   /// A client connection to the raylet.
   raylet::RayletClient raylet_client_;
   std::function<void(std::string, int)> update_func_;
-  instrumented_io_context updater_io_service_;
   PeriodicalRunner updater_runner_;
   std::thread updater_thread_;
   int32_t failed_ping_count_ = 0;

@@ -12,6 +12,16 @@ py_test(
 )
 
 py_test(
+    name = "check_ingest",
+    size = "large",
+    main = "utils/check_ingest.py",
+    srcs = ["utils/check_ingest.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+
+py_test(
     name = "distributed_sage_example",
     size = "large",
     main = "examples/pytorch_geometric/distributed_sage_example.py",
@@ -21,47 +31,38 @@ py_test(
     args = ["--use-gpu", "--num-workers=2", "--epochs=1", "--dataset=fake"]
 )
 
+py_test(
+    name = "horovod_cifar_pbt_example",
+    size = "medium",
+    srcs = ["examples/horovod/horovod_cifar_pbt_example.py"],
+    tags = ["team:ml", "exlusive"],
+    deps = [":ml_lib"],
+    args = ["--smoke-test"]
+)
+
+py_test(
+    name = "horovod_pytorch_example",
+    size = "medium",
+    srcs = ["examples/horovod/horovod_pytorch_example.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"],
+    args = ["--num-epochs=1"]
+)
+
+py_test(
+    name = "horovod_tune_example",
+    size = "medium",
+    srcs = ["examples/horovod/horovod_tune_example.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"],
+    args = ["--smoke-test"]
+)
+
 py_test (
     name = "huggingface_basic_language_modeling_example",
     size = "medium",
     srcs = ["examples/huggingface/huggingface_basic_language_modeling_example.py"],
     args = ["--smoke-test", "--num-epochs 3"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test (
-    name = "lightgbm_example",
-    size = "medium",
-    srcs = ["examples/lightgbm_example.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test (
-    name = "rl_example_offline",
-    main = "examples/rl_example.py",
-    size = "medium",
-    srcs = ["examples/rl_example.py"],
-    args = ["--offline"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test (
-    name = "rl_example_online",
-    main = "examples/rl_example.py",
-    size = "medium",
-    srcs = ["examples/rl_example.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test (
-    name = "rl_serving_example",
-    main = "examples/rl_serving_example.py",
-    size = "medium",
-    srcs = ["examples/rl_serving_example.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
@@ -146,30 +147,6 @@ py_test(
     args = ["--smoke-test"]
 )
 
-py_test(
-    name = "sklearn_example",
-    size = "medium",
-    srcs = ["examples/sklearn_example.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
-    name = "upload_to_wandb",
-    size = "medium",
-    srcs = ["examples/upload_to_wandb.py"],
-    tags = ["team:ml", "exclusive", "needs_credentials"],
-    deps = [":ml_lib"]
-)
-
-py_test(
-    name = "xgboost_example",
-    size = "medium",
-    srcs = ["examples/xgboost_example.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
 # --------------------------------------------------------------------
 # Tests from the python/ray/ml/tests directory.
 # Covers all tests starting with `test_`.
@@ -196,6 +173,14 @@ py_test(
     name = "test_data_parallel_trainer",
     size = "medium",
     srcs = ["tests/test_data_parallel_trainer.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_dataset_utils",
+    size = "small",
+    srcs = ["tests/test_dataset_utils.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )

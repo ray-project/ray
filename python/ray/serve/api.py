@@ -16,6 +16,13 @@ from starlette.requests import Request
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
+import ray
+from ray import cloudpickle
+from ray.experimental.dag import DAGNode
+from ray.util.annotations import PublicAPI
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+from ray._private.usage import usage_lib
+
 from ray.serve.common import DeploymentStatusInfo
 from ray.serve.config import (
     AutoscalingConfig,
@@ -33,22 +40,17 @@ from ray.serve.constants import (
 from ray.serve.controller import ServeController
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
-from ray.experimental.dag import DAGNode
 from ray.serve.handle import RayServeHandle
 from ray.serve.http_util import ASGIHTTPSender, make_fastapi_class_based_view
 from ray.serve.logging_utils import LoggingContext
 from ray.serve.utils import (
     ensure_serialization_context,
     format_actor_name,
-    get_current_node_resource_key,
     get_random_letters,
     in_interactive_shell,
     DEFAULT,
     install_serve_encoders_to_fastapi,
 )
-from ray.util.annotations import PublicAPI
-import ray
-from ray import cloudpickle
 from ray.serve.deployment_graph import ClassNode, FunctionNode
 from ray.serve.application import Application
 from ray.serve.client import ServeControllerClient, get_controller_namespace
@@ -58,7 +60,8 @@ from ray.serve.context import (
     get_internal_replica_context,
     ReplicaContext,
 )
-from ray._private.usage import usage_lib
+from ray.serve.pipeline.api import build as pipeline_build
+from ray.serve.pipeline.api import get_and_validate_ingress_deployment
 
 logger = logging.getLogger(__file__)
 
@@ -159,8 +162,12 @@ def start(
         lifetime="detached" if detached else None,
         max_restarts=-1,
         max_task_retries=-1,
-        # Pin Serve controller on the head node.
-        resources={get_current_node_resource_key(): 0.01},
+        # Schedule the controller on the head node with a soft constraint. This
+        # prefers it to run on the head node in most cases, but allows it to be
+        # restarted on other nodes in an HA cluster.
+        scheduling_strategy=NodeAffinitySchedulingStrategy(
+            ray.get_runtime_context().node_id, soft=True
+        ),
         namespace=controller_namespace,
         max_concurrency=CONTROLLER_MAX_CONCURRENCY,
     ).remote(
@@ -592,9 +599,6 @@ def run(
         RayServeHandle: A regular ray serve handle that can be called by user
             to execute the serve DAG.
     """
-    # TODO (jiaodong): Resolve circular reference in pipeline codebase and serve
-    from ray.serve.pipeline.api import build as pipeline_build
-    from ray.serve.pipeline.api import get_and_validate_ingress_deployment
 
     client = start(detached=True, http_options={"host": host, "port": port})
 
@@ -668,8 +672,6 @@ def build(target: Union[ClassNode, FunctionNode]) -> Application:
     The returned Application object can be exported to a dictionary or YAML
     config.
     """
-    # TODO (jiaodong): Resolve circular reference in pipeline codebase and serve
-    from ray.serve.pipeline.api import build as pipeline_build
 
     if in_interactive_shell():
         raise RuntimeError(

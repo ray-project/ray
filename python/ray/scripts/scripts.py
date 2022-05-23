@@ -770,6 +770,17 @@ def start(
                 cf.bold("  ray start --address='{}'"),
                 bootstrap_addresses,
             )
+            if bootstrap_addresses.startswith("127.0.0.1:"):
+                cli_logger.print(
+                    "This Ray runtime only accepts connections from local host."
+                )
+                cli_logger.print(
+                    "To accept connections from remote hosts, "
+                    "specify a public ip when starting"
+                )
+                cli_logger.print(
+                    "the head node: ray start --head --node-ip-address=<public-ip>."
+                )
             cli_logger.newline()
             cli_logger.print("Alternatively, use the following Python code:")
             with cli_logger.indented():
@@ -973,19 +984,7 @@ def stop(force, grace_period):
             proc, proc_cmd, proc_args = candidate
             corpus = proc_cmd if filter_by_cmd else subprocess.list2cmdline(proc_args)
             if keyword in corpus:
-                # This is a way to avoid killing redis server that's not started by Ray.
-                # We are using a simple hacky solution here since
-                # Redis server will anyway removed soon from the ray repository.
-                # This feature is only supported on MacOS/Linux temporarily until
-                # Redis is removed from Ray.
-                if (
-                    keyword == "redis-server"
-                    and sys.platform != "win32"
-                    and "core/src/ray/thirdparty/redis/src/redis-server" not in corpus
-                ):
-                    continue
                 found.append(candidate)
-
         for proc, proc_cmd, proc_args in found:
             proc_string = str(subprocess.list2cmdline(proc_args))
             try:
@@ -1437,6 +1436,13 @@ def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes):
     default=False,
     help="If True, the usage stats collection will be disabled.",
 )
+@click.option(
+    "--extra-screen-args",
+    default=None,
+    help="if screen is enabled, add the provided args to it. A useful example "
+    "usage scenario is passing --extra-screen-args='-Logfile /full/path/blah_log.txt'"
+    " as it redirects screen output also to a custom file",
+)
 @add_click_logging_options
 def submit(
     cluster_config_file,
@@ -1451,6 +1457,7 @@ def submit(
     args,
     script_args,
     disable_usage_stats,
+    extra_screen_args: Optional[str] = None,
 ):
     """Uploads and runs a script on the specified cluster.
 
@@ -1477,6 +1484,11 @@ def submit(
 
     assert not (screen and tmux), "Can specify only one of `screen` or `tmux`."
     assert not (script_args and args), "Use -- --arg1 --arg2 for script args."
+
+    if (extra_screen_args is not None) and (not screen):
+        cli_logger.abort(
+            "To use extra_screen_args, it is required to use the --screen flag"
+        )
 
     if args:
         cli_logger.warning(
@@ -1535,6 +1547,7 @@ def submit(
         override_cluster_name=cluster_name,
         no_config_cache=no_config_cache,
         port_forward=port_forward,
+        extra_screen_args=extra_screen_args,
     )
 
 

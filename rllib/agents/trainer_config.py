@@ -108,7 +108,6 @@ class TrainerConfig:
         self.action_space = None
         self.env_task_fn = None
         self.render_env = False
-        self.record_env = False
         self.clip_rewards = None
         self.normalize_actions = True
         self.clip_actions = False
@@ -226,6 +225,16 @@ class TrainerConfig:
         self.timesteps_per_iteration = DEPRECATED_VALUE
         self.min_iter_time_s = DEPRECATED_VALUE
         self.collect_metrics_timeout = DEPRECATED_VALUE
+        # The following values have moved because of the new ReplayBuffer API
+        self.buffer_size = DEPRECATED_VALUE
+        self.prioritized_replay = DEPRECATED_VALUE
+        self.learning_starts = DEPRECATED_VALUE
+        self.replay_batch_size = DEPRECATED_VALUE
+        # -1 = DEPRECATED_VALUE is a valid value for replay_sequence_length
+        self.replay_sequence_length = None
+        self.prioritized_replay_alpha = DEPRECATED_VALUE
+        self.prioritized_replay_beta = DEPRECATED_VALUE
+        self.prioritized_replay_eps = DEPRECATED_VALUE
 
     def to_dict(self) -> TrainerConfigDict:
         """Converts all settings into a legacy config dict for backward compatibility.
@@ -448,7 +457,6 @@ class TrainerConfig:
         action_space: Optional[gym.spaces.Space] = None,
         env_task_fn: Optional[Callable[[ResultDict, EnvType, EnvContext], Any]] = None,
         render_env: Optional[bool] = None,
-        record_env: Optional[bool] = None,
         clip_rewards: Optional[Union[bool, float]] = None,
         normalize_actions: Optional[bool] = None,
         clip_actions: Optional[bool] = None,
@@ -479,11 +487,6 @@ class TrainerConfig:
                 `render()` method which either:
                 a) handles window generation and rendering itself (returning True) or
                 b) returns a numpy uint8 image of shape [height x width x 3 (RGB)].
-            record_env: If True, stores videos in this relative directory inside the
-                default output dir (~/ray_results/...). Alternatively, you can
-                specify an absolute path (str), in which the env recordings should be
-                stored instead. Set to False for not recording anything.
-                Note: This setting replaces the deprecated `monitor` key.
             clip_rewards: Whether to clip rewards during Policy's postprocessing.
                 None (default): Clip for Atari only (r=sign(r)).
                 True: r=sign(r): Fixed rewards -1.0, 1.0, or 0.0.
@@ -514,8 +517,6 @@ class TrainerConfig:
             self.env_task_fn = env_task_fn
         if render_env is not None:
             self.render_env = render_env
-        if record_env is not None:
-            self.record_env = record_env
         if clip_rewards is not None:
             self.clip_rewards = clip_rewards
         if normalize_actions is not None:
@@ -839,7 +840,7 @@ class TrainerConfig:
             self.evaluation_num_workers = evaluation_num_workers
         if custom_evaluation_function is not None:
             self.custom_evaluation_function = custom_evaluation_function
-        if self.always_attach_evaluation_results:
+        if always_attach_evaluation_results:
             self.always_attach_evaluation_results = always_attach_evaluation_results
 
         return self
@@ -927,7 +928,7 @@ class TrainerConfig:
         Returns:
             This updated TrainerConfig object.
         """
-        if input is not None:
+        if input_ is not None:
             self.input_ = input_
         if input_config is not None:
             self.input_config = input_config

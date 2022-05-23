@@ -12,7 +12,7 @@ import java.nio.ByteBuffer;
 /** Worker context for cluster mode. This is a wrapper class for worker context of core worker. */
 public class NativeWorkerContext implements WorkerContext {
 
-  private final ThreadLocal<ClassLoader> currentClassLoader = new ThreadLocal<>();
+  private ClassLoader currentClassLoader = null;
 
   @Override
   public UniqueId getCurrentWorkerId() {
@@ -27,18 +27,6 @@ public class NativeWorkerContext implements WorkerContext {
   @Override
   public ActorId getCurrentActorId() {
     return ActorId.fromByteBuffer(nativeGetCurrentActorId());
-  }
-
-  @Override
-  public ClassLoader getCurrentClassLoader() {
-    return currentClassLoader.get();
-  }
-
-  @Override
-  public void setCurrentClassLoader(ClassLoader currentClassLoader) {
-    if (this.currentClassLoader.get() != currentClassLoader) {
-      this.currentClassLoader.set(currentClassLoader);
-    }
   }
 
   @Override
