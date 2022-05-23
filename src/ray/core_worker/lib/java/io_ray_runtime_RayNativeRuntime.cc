@@ -168,10 +168,10 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
           Status status_to_return = Status::OK();
           if (env->IsInstanceOf(throwable,
                                 java_ray_intentional_system_exit_exception_class)) {
-            status_to_return = Status::IntentionalSystemExit();
+            status_to_return = Status::IntentionalSystemExit("");
           } else if (env->IsInstanceOf(throwable, java_ray_actor_exception_class)) {
             creation_task_exception_pb = SerializeActorCreationException(env, throwable);
-            status_to_return = Status::CreationTaskError();
+            status_to_return = Status::CreationTaskError("");
           } else {
             RAY_LOG(ERROR) << "Unkown java exception was thrown while executing tasks.";
           }

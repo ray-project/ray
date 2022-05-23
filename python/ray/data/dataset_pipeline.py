@@ -57,7 +57,6 @@ _OUTPUT_ITER_OPS = ["take", "take_all", "show", "to_tf", "to_torch"]
 class DatasetPipeline(Generic[T]):
     """Implements a pipeline of Datasets.
 
-    Unlike Datasets, which execute all transformations synchronously,
     DatasetPipelines implement pipelined execution. This allows for the
     overlapped execution of data input (e.g., reading files), computation
     (e.g. feature preprocessing), and output (e.g., distributed ML training).
@@ -786,7 +785,7 @@ class DatasetPipeline(Generic[T]):
 
 for method in _PER_DATASET_OPS:
 
-    def make_impl(method):
+    def _make_impl(method):
         delegate = getattr(Dataset, method)
 
         def impl(self, *args, **kwargs) -> "DatasetPipeline[U]":
@@ -805,11 +804,11 @@ Apply ``Dataset.{method}`` to each dataset/window in this pipeline.
         )
         return impl
 
-    setattr(DatasetPipeline, method, make_impl(method))
+    setattr(DatasetPipeline, method, _make_impl(method))
 
 for method in _HOLISTIC_PER_DATASET_OPS:
 
-    def make_impl(method):
+    def _make_impl(method):
         delegate = getattr(Dataset, method)
 
         def impl(self, *args, **kwargs) -> "DatasetPipeline[U]":
@@ -828,7 +827,7 @@ Apply ``Dataset.{method}`` to each dataset/window in this pipeline.
         )
         return impl
 
-    def deprecation_warning(method: str):
+    def _deprecation_warning(method: str):
         def impl(*a, **kw):
             raise DeprecationWarning(
                 "`{}` has been renamed to `{}_each_window`.".format(method, method)
@@ -836,12 +835,12 @@ Apply ``Dataset.{method}`` to each dataset/window in this pipeline.
 
         return impl
 
-    setattr(DatasetPipeline, method, deprecation_warning(method))
-    setattr(DatasetPipeline, method + "_each_window", make_impl(method))
+    setattr(DatasetPipeline, method, _deprecation_warning(method))
+    setattr(DatasetPipeline, method + "_each_window", _make_impl(method))
 
 for method in _PER_DATASET_OUTPUT_OPS:
 
-    def make_impl(method):
+    def _make_impl(method):
         delegate = getattr(Dataset, method)
 
         def impl(self, *args, **kwargs):
@@ -861,11 +860,11 @@ Call ``Dataset.{method}`` on each output dataset of this pipeline.
         setattr(impl, "__signature__", inspect.signature(delegate))
         return impl
 
-    setattr(DatasetPipeline, method, make_impl(method))
+    setattr(DatasetPipeline, method, _make_impl(method))
 
 for method in _OUTPUT_ITER_OPS:
 
-    def make_impl(method):
+    def _make_impl(method):
         delegate = getattr(Dataset, method)
 
         def impl(self, *args, **kwargs):
@@ -880,4 +879,4 @@ Call ``Dataset.{method}`` over the stream of output batches from the pipeline.
         setattr(impl, "__signature__", inspect.signature(delegate))
         return impl
 
-    setattr(DatasetPipeline, method, make_impl(method))
+    setattr(DatasetPipeline, method, _make_impl(method))

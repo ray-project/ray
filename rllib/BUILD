@@ -682,7 +682,7 @@ py_test(
     name = "test_apex_ddpg",
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
-    srcs = ["agents/ddpg/tests/test_apex_ddpg.py"]
+    srcs = ["algorithms/ddpg/tests/test_apex_ddpg.py"]
 )
 
 # ARS
@@ -698,7 +698,7 @@ py_test(
     name = "test_bandits",
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
-    srcs = ["agents/bandit/tests/test_bandits.py"],
+    srcs = ["algorithms/bandit/tests/test_bandits.py"],
 )
 
 # CQLTrainer
@@ -714,7 +714,7 @@ py_test(
     name = "test_ddpg",
     tags = ["team:ml", "trainers_dir"],
     size = "large",
-    srcs = ["agents/ddpg/tests/test_ddpg.py"]
+    srcs = ["algorithms/ddpg/tests/test_ddpg.py"]
 )
 
 # DQNTrainer
@@ -722,7 +722,7 @@ py_test(
     name = "test_dqn",
     tags = ["team:ml", "trainers_dir"],
     size = "large",
-    srcs = ["agents/dqn/tests/test_dqn.py"]
+    srcs = ["algorithms/dqn/tests/test_dqn.py"]
 )
 
 # Dreamer
@@ -796,7 +796,7 @@ py_test(
     name = "test_pg",
     tags = ["team:ml", "trainers_dir"],
     size = "large",
-    srcs = ["agents/pg/tests/test_pg.py"]
+    srcs = ["algorithms/pg/tests/test_pg.py"]
 )
 
 # PPOTrainer
@@ -828,7 +828,7 @@ py_test(
     name = "test_qmix",
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
-    srcs = ["agents/qmix/tests/test_qmix.py"]
+    srcs = ["algorithms/qmix/tests/test_qmix.py"]
 )
 
 # R2D2Trainer
@@ -844,7 +844,7 @@ py_test(
     name = "test_rnnsac",
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
-    srcs = ["agents/sac/tests/test_rnnsac.py"]
+    srcs = ["algorithms/sac/tests/test_rnnsac.py"]
 )
 
 # SACTrainer
@@ -852,7 +852,7 @@ py_test(
     name = "test_sac",
     tags = ["team:ml", "trainers_dir"],
     size = "large",
-    srcs = ["agents/sac/tests/test_sac.py"]
+    srcs = ["algorithms/sac/tests/test_sac.py"]
 )
 
 # SimpleQTrainer
@@ -860,7 +860,7 @@ py_test(
     name = "test_simple_q",
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
-    srcs = ["agents/dqn/tests/test_simple_q.py"]
+    srcs = ["algorithms/dqn/tests/test_simple_q.py"]
 )
 
 # SlateQTrainer
@@ -868,7 +868,7 @@ py_test(
     name = "test_slateq",
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
-    srcs = ["agents/slateq/tests/test_slateq.py"]
+    srcs = ["algorithms/slateq/tests/test_slateq.py"]
 )
 
 # TD3Trainer
@@ -876,7 +876,7 @@ py_test(
     name = "test_td3",
     tags = ["team:ml", "trainers_dir"],
     size = "large",
-    srcs = ["agents/ddpg/tests/test_td3.py"]
+    srcs = ["algorithms/ddpg/tests/test_td3.py"]
 )
 
 # --------------------------------------------------------------------
@@ -1318,12 +1318,6 @@ sh_test(
     data = glob(["examples/serving/*.py"]),
 )
 
-py_test(
-    name = "env/tests/test_record_env_wrapper",
-    tags = ["team:ml", "env"],
-    size = "small",
-    srcs = ["env/tests/test_record_env_wrapper.py"]
-)
 
 py_test(
     name = "env/tests/test_remote_worker_envs",
@@ -1620,6 +1614,13 @@ py_test(
 # it correctly by its starting letter, e.g. tags=["tests_dir", "tests_dir_A"]
 # for `tests/test_all_stuff.py`.
 # --------------------------------------------------------------------
+
+py_test(
+    name = "tests/test_algorithm_imports",
+    tags = ["team:ml", "tests_dir", "tests_dir_C"],
+    size = "small",
+    srcs = ["tests/test_algorithm_imports.py"]
+)
 
 py_test(
     name = "tests/test_catalog",
@@ -2811,13 +2812,13 @@ py_test(
     args = ["--as-test", "--framework=torch"],
 )
 
-py_test(
-    name = "examples/remote_base_env_with_custom_api",
-    tags = ["team:ml", "examples", "examples_R"],
-    size = "medium",
-    srcs = ["examples/remote_base_env_with_custom_api.py"],
-    args = ["--stop-iters=3"]
-)
+# py_test(
+#    name = "examples/remote_base_env_with_custom_api",
+#    tags = ["team:ml", "examples", "examples_R"],
+#    size = "medium",
+#    srcs = ["examples/remote_base_env_with_custom_api.py"],
+#    args = ["--stop-iters=3"]
+# )
 
 py_test(
     name = "examples/restore_1_of_n_agents_from_checkpoint",

@@ -436,7 +436,7 @@ def test_runtime_env_log_msg(
 
     good_env = runtime_env_class(pip=["requests"])
     ray.get(f.options(runtime_env=good_env).remote())
-    sources = get_log_sources(p, timeout=10)
+    sources = get_log_sources(p, 5)
     if local_env_var_enabled:
         assert "runtime_env" in sources
     else:

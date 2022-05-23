@@ -5,6 +5,8 @@ import unittest
 
 import ray
 import ray.rllib.algorithms.marwil as marwil
+from ray.rllib.algorithms.marwil.marwil_tf_policy import MARWILEagerTFPolicy
+from ray.rllib.algorithms.marwil.marwil_torch_policy import MARWILTorchPolicy
 from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.offline import JsonReader
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -185,9 +187,7 @@ class TestMARWIL(unittest.TestCase):
             batch.set_get_interceptor(None)
             postprocessed_batch = policy.postprocess_trajectory(batch)
             loss_func = (
-                marwil.marwil_tf_policy.marwil_loss
-                if fw != "torch"
-                else marwil.marwil_torch_policy.marwil_loss
+                MARWILEagerTFPolicy.loss if fw != "torch" else MARWILTorchPolicy.loss
             )
             if fw != "tf":
                 policy._lazy_tensor_dict(postprocessed_batch)

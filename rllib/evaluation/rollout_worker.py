@@ -27,7 +27,6 @@ from ray.rllib.env.base_env import BaseEnv, convert_to_base_env
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
-from ray.rllib.env.utils import record_env_wrapper
 from ray.rllib.env.wrappers.atari_wrappers import wrap_deepmind, is_atari
 from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
 from ray.rllib.evaluation.metrics import RolloutMetrics
@@ -140,7 +139,7 @@ class RolloutWorker(ParallelIteratorWorker):
         >>> # Create a rollout worker and using it to collect experiences.
         >>> import gym
         >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-        >>> from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
+        >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTFPolicy
         >>> worker = RolloutWorker( # doctest: +SKIP
         ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
         ...   policy_spec=PGTFPolicy) # doctest: +SKIP
@@ -174,8 +173,8 @@ class RolloutWorker(ParallelIteratorWorker):
             "traffic_light_policy": SampleBatch(...)})
     """
 
-    @DeveloperAPI
     @classmethod
+    @DeveloperAPI
     def as_remote(
         cls,
         num_cpus: Optional[int] = None,
@@ -239,7 +238,6 @@ class RolloutWorker(ParallelIteratorWorker):
         worker_index: int = 0,
         num_workers: int = 0,
         recreated_worker: bool = False,
-        record_env: Union[bool, str] = False,
         log_dir: Optional[str] = None,
         log_level: Optional[str] = None,
         callbacks: Type["DefaultCallbacks"] = None,
@@ -259,7 +257,6 @@ class RolloutWorker(ParallelIteratorWorker):
         fake_sampler: bool = False,
         spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
         policy=None,
-        monitor_path=None,
         disable_env_checking=False,
     ):
         """Initializes a RolloutWorker instance.
@@ -338,10 +335,6 @@ class RolloutWorker(ParallelIteratorWorker):
                 `recreate_failed_workers=True` and one of the original workers (or an
                 already recreated one) has failed. They don't differ from original
                 workers other than the value of this flag (`self.recreated_worker`).
-            record_env: Write out episode stats and videos
-                using gym.wrappers.Monitor to this directory if specified. If
-                True, use the default output dir in ~/ray_results/.... If
-                False, do not record anything.
             log_dir: Directory where logs can be placed.
             log_level: Set the root log level on creation.
             callbacks: Custom sub-class of
@@ -380,7 +373,6 @@ class RolloutWorker(ParallelIteratorWorker):
                 to (obs_space, action_space)-tuples. This is used in case no
                 Env is created on this RolloutWorker.
             policy: Obsoleted arg. Use `policy_spec` instead.
-            monitor_path: Obsoleted arg. Use `record_env` instead.
             disable_env_checking: If True, disables the env checking module that
                 validates the properties of the passed environment.
         """
@@ -400,10 +392,6 @@ class RolloutWorker(ParallelIteratorWorker):
             pid: spec if isinstance(spec, PolicySpec) else PolicySpec(*spec)
             for pid, spec in policy_spec.copy().items()
         }
-
-        if monitor_path is not None:
-            deprecation_warning("monitor_path", "record_env", error=False)
-            record_env = monitor_path
 
         self._original_kwargs: dict = locals().copy()
         del self._original_kwargs["self"]
@@ -496,7 +484,7 @@ class RolloutWorker(ParallelIteratorWorker):
         # 1) Create the env using the user provided env_creator. This may
         #    return a gym.Env (incl. MultiAgentEnv), an already vectorized
         #    VectorEnv, BaseEnv, ExternalEnv, or an ActorHandle (remote env).
-        # 2) Wrap - if applicable - with Atari/recording/rendering wrappers.
+        # 2) Wrap - if applicable - with Atari/rendering wrappers.
         # 3) Seed the env, if necessary.
         # 4) Vectorize the existing single env by creating more clones of
         #    this env and wrapping it with the RLlib BaseEnv class.
@@ -547,14 +535,12 @@ class RolloutWorker(ParallelIteratorWorker):
                     env = wrap_deepmind(
                         env, dim=model_config.get("dim"), framestack=use_framestack
                     )
-                    env = record_env_wrapper(env, record_env, log_dir, policy_config)
                     return env
 
-            # gym.Env -> Wrap with gym Monitor.
             else:
 
                 def wrap(env):
-                    return record_env_wrapper(env, record_env, log_dir, policy_config)
+                    return env
 
             # Wrap env through the correct wrapper.
             self.env: EnvType = wrap(self.env)
@@ -833,7 +819,7 @@ class RolloutWorker(ParallelIteratorWorker):
         Examples:
             >>> import gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
+            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTFPolicy
             >>> worker = RolloutWorker( # doctest: +SKIP
             ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
             ...   policy_spec=PGTFPolicy) # doctest: +SKIP
@@ -916,7 +902,7 @@ class RolloutWorker(ParallelIteratorWorker):
         Examples:
             >>> import gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
+            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTFPolicy
             >>> worker = RolloutWorker( # doctest: +SKIP
             ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
             ...   policy_spec=PGTFPolicy) # doctest: +SKIP
@@ -942,7 +928,7 @@ class RolloutWorker(ParallelIteratorWorker):
         Examples:
             >>> import gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
+            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTFPolicy
             >>> worker = RolloutWorker( # doctest: +SKIP
             ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
             ...   policy_spec=PGTFPolicy) # doctest: +SKIP
@@ -1059,7 +1045,7 @@ class RolloutWorker(ParallelIteratorWorker):
         Examples:
             >>> import gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
+            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTFPolicy
             >>> worker = RolloutWorker( # doctest: +SKIP
             ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
             ...   policy_spec=PGTFPolicy) # doctest: +SKIP
@@ -1128,7 +1114,7 @@ class RolloutWorker(ParallelIteratorWorker):
         Examples:
             >>> import gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
+            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTFPolicy
             >>> worker = RolloutWorker( # doctest: +SKIP
             ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
             ...   policy_spec=PGTFPolicy) # doctest: +SKIP

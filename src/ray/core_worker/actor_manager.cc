@@ -31,8 +31,6 @@ ActorID ActorManager::RegisterActorHandle(std::unique_ptr<ActorHandle> actor_han
   // Note we need set `cached_actor_name` to empty string as we only cache named actors
   // when getting them from GCS.
   RAY_UNUSED(AddActorHandle(std::move(actor_handle),
-                            /*cached_actor_name=*/"",
-                            /*is_owner_handle=*/false,
                             call_site,
                             caller_address,
                             actor_id,
@@ -72,8 +70,6 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> ActorManager::GetNamedActo
       auto actor_handle = std::make_unique<ActorHandle>(actor_table_data, task_spec);
       actor_id = actor_handle->GetActorID();
       AddNewActorHandle(std::move(actor_handle),
-                        GenerateCachedActorName(actor_table_data.ray_namespace(),
-                                                actor_table_data.name()),
                         call_site,
                         caller_address,
                         /*is_detached*/ true);
@@ -91,6 +87,18 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> ActorManager::GetNamedActo
       RAY_LOG(ERROR) << error_str;
       return std::make_pair(nullptr, Status::TimedOut(error_str));
     }
+  } else {
+    // When the named actor is already cached, the reference of actor_creation_return_id
+    // must be increased, so we call AddActorHandle here to ensure that.
+    std::string serialized_actor_handle;
+    auto actor_handle = GetActorHandle(actor_id);
+    actor_handle->Serialize(&serialized_actor_handle);
+
+    AddActorHandle(std::make_unique<ActorHandle>(serialized_actor_handle),
+                   call_site,
+                   caller_address,
+                   actor_id,
+                   ObjectID::ForActorHandle(actor_id));
   }
 
   if (actor_id.IsNil()) {
@@ -114,7 +122,6 @@ bool ActorManager::CheckActorHandleExists(const ActorID &actor_id) {
 }
 
 bool ActorManager::AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
-                                     const std::string &cached_actor_name,
                                      const std::string &call_site,
                                      const rpc::Address &caller_address,
                                      bool is_detached) {
@@ -134,28 +141,13 @@ bool ActorManager::AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
   }
 
   return AddActorHandle(std::move(actor_handle),
-                        cached_actor_name,
-                        /*is_owner_handle=*/!is_detached,
                         call_site,
                         caller_address,
                         actor_id,
                         actor_creation_return_id);
 }
 
-bool ActorManager::AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
-                                     const std::string &call_site,
-                                     const rpc::Address &caller_address,
-                                     bool is_detached) {
-  return AddNewActorHandle(std::move(actor_handle),
-                           /*cached_actor_name=*/"",
-                           call_site,
-                           caller_address,
-                           is_detached);
-}
-
 bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
-                                  const std::string &cached_actor_name,
-                                  bool is_owner_handle,
                                   const std::string &call_site,
                                   const rpc::Address &caller_address,
                                   const ActorID &actor_id,
@@ -178,44 +170,13 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
     // num_restarts is used for dropping out-of-order pub messages. Since we won't
     // subscribe any messages, we can set any value bigger than -1(we use 0 here).
     direct_actor_submitter_->ConnectActor(actor_id, caller_address, /*num_restarts=*/0);
-    return inserted;
-  }
-
-  if (inserted) {
-    // Register a callback to handle actor notifications.
-    auto actor_notification_callback =
-        std::bind(&ActorManager::HandleActorStateNotification,
-                  this,
-                  std::placeholders::_1,
-                  std::placeholders::_2);
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
-        actor_id,
-        actor_notification_callback,
-        [this, actor_id, cached_actor_name](Status status) {
-          if (status.ok() && !cached_actor_name.empty()) {
-            {
-              absl::MutexLock lock(&cache_mutex_);
-              cached_actor_name_to_ids_.emplace(cached_actor_name, actor_id);
-            }
-          }
-        }));
   }
 
   return inserted;
 }
 
 void ActorManager::OnActorKilled(const ActorID &actor_id) {
-  const auto &actor_handle = GetActorHandle(actor_id);
-  const auto &actor_name = actor_handle->GetName();
-  const auto &ray_namespace = actor_handle->GetNamespace();
-
-  /// Invalidate named actor cache.
-  if (!actor_name.empty()) {
-    RAY_LOG(DEBUG) << "Actor name cache is invalided for the actor of name " << actor_name
-                   << " namespace " << ray_namespace << " id " << actor_id;
-    absl::MutexLock lock(&cache_mutex_);
-    cached_actor_name_to_ids_.erase(GenerateCachedActorName(ray_namespace, actor_name));
-  }
+  MarkActorKilledOrOutOfScope(GetActorHandle(actor_id));
 }
 
 void ActorManager::WaitForActorOutOfScope(
@@ -226,9 +187,12 @@ void ActorManager::WaitForActorOutOfScope(
   if (it == actor_handles_.end()) {
     actor_out_of_scope_callback(actor_id);
   } else {
+    auto actor_handle = it->second;
     // GCS actor manager will wait until the actor has been created before polling the
     // owner. This should avoid any asynchronous problems.
-    auto callback = [actor_id, actor_out_of_scope_callback](const ObjectID &object_id) {
+    auto callback = [this, actor_id, actor_handle, actor_out_of_scope_callback](
+                        const ObjectID &object_id) {
+      MarkActorKilledOrOutOfScope(actor_handle);
       actor_out_of_scope_callback(actor_id);
     };
 
@@ -238,6 +202,7 @@ void ActorManager::WaitForActorOutOfScope(
     const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
     if (!reference_counter_->SetDeleteCallback(actor_creation_return_id, callback)) {
       RAY_LOG(DEBUG) << "ActorID reference already gone for " << actor_id;
+      MarkActorKilledOrOutOfScope(actor_handle);
       actor_out_of_scope_callback(actor_id);
     }
   }
@@ -300,6 +265,76 @@ ActorID ActorManager::GetCachedNamedActorID(const std::string &actor_name) {
     }
   }
   return ActorID::Nil();
+}
+
+void ActorManager::SubscribeActorState(const ActorID &actor_id) {
+  {
+    // Make sure this method only be executed once.
+    absl::MutexLock lock(&cache_mutex_);
+    if (!subscribed_actors_.emplace(actor_id, /*valid*/ true).second) {
+      return;
+    }
+  }
+
+  auto actor_handle = GetActorHandle(actor_id);
+  RAY_CHECK(actor_handle != nullptr);
+
+  std::string cached_actor_name;
+  if (!actor_handle->GetName().empty()) {
+    cached_actor_name =
+        GenerateCachedActorName(actor_handle->GetNamespace(), actor_handle->GetName());
+  }
+
+  // Register a callback to handle actor notifications.
+  auto actor_notification_callback =
+      std::bind(&ActorManager::HandleActorStateNotification,
+                this,
+                std::placeholders::_1,
+                std::placeholders::_2);
+  RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
+      actor_id,
+      actor_notification_callback,
+      [this, actor_id, cached_actor_name](Status status) {
+        if (status.ok() && !cached_actor_name.empty()) {
+          // It should be ignored if the finished callback of the subscription comes
+          // after the actor died, otherwise the stale named actor will be cached.
+          // NOTE: We can not guarantee the order of arrival of `on_done` callback and
+          // subscribe callback for the time being.
+          absl::MutexLock lock(&cache_mutex_);
+          auto iter = subscribed_actors_.find(actor_id);
+          if (iter != subscribed_actors_.end() && iter->second) {
+            cached_actor_name_to_ids_.emplace(cached_actor_name, actor_id);
+          }
+        }
+      }));
+}
+
+void ActorManager::MarkActorKilledOrOutOfScope(
+    std::shared_ptr<ActorHandle> actor_handle) {
+  RAY_CHECK(actor_handle != nullptr);
+  const auto &actor_id = actor_handle->GetActorID();
+  const auto &actor_name = actor_handle->GetName();
+  const auto &ray_namespace = actor_handle->GetNamespace();
+
+  absl::MutexLock lock(&cache_mutex_);
+
+  auto iter = subscribed_actors_.find(actor_id);
+  if (iter != subscribed_actors_.end()) {
+    iter->second = false;
+  }
+
+  /// Invalidate named actor cache.
+  if (!actor_name.empty()) {
+    RAY_LOG(DEBUG) << "Actor name cache is invalidated for the actor of name "
+                   << actor_name << " namespace " << ray_namespace << " id " << actor_id;
+    cached_actor_name_to_ids_.erase(GenerateCachedActorName(ray_namespace, actor_name));
+  }
+}
+
+bool ActorManager::IsActorKilledOrOutOfScope(const ActorID &actor_id) const {
+  absl::MutexLock lock(&cache_mutex_);
+  auto iter = subscribed_actors_.find(actor_id);
+  return iter == subscribed_actors_.end() || !iter->second;
 }
 
 }  // namespace core

@@ -46,7 +46,7 @@ class TestBC(unittest.TestCase):
             .offline_data(input_=[data_file])
         )
         num_iterations = 350
-        min_reward = 70.0
+        min_reward = 75.0
 
         # Test for all frameworks.
         for _ in framework_iterator(config, frameworks=("tf", "torch")):

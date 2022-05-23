@@ -378,29 +378,47 @@ To disable all deletion behavior (for example, for debugging purposes) you may s
 Inheritance
 """""""""""
 
-The runtime environment is inheritable, so it will apply to all tasks/actors within a job and all child tasks/actors of a task or actor once set, unless it is overridden.
+The runtime environment is inheritable, so it will apply to all tasks/actors within a job and all child tasks/actors of a task or actor once set, unless it is overridden by explicitly specifying a runtime environment for the child task/actor.
 
-If an actor or task specifies a new ``runtime_env``, it will override the parent’s ``runtime_env`` (i.e., the parent actor/task's ``runtime_env``, or the job's ``runtime_env`` if there is no parent actor or task) as follows:
-
-* The ``runtime_env["env_vars"]`` field will be merged with the ``runtime_env["env_vars"]`` field of the parent.
-  This allows for environment variables set in the parent's runtime environment to be automatically propagated to the child, even if new environment variables are set in the child's runtime environment.
-* Every other field in the ``runtime_env`` will be *overridden* by the child, not merged.  For example, if ``runtime_env["py_modules"]`` is specified, it will replace the ``runtime_env["py_modules"]`` field of the parent.
-
-Example:
+1. By default, all actors and tasks inherit the current runtime env.
 
 .. code-block:: python
 
-  # Parent's `runtime_env`
+  # Current `runtime_env`
+  ray.init(runtime_env={"pip": ["requests", "chess"]})
+
+  # Create child actor
+  ChildActor.remote()
+
+  # ChildActor's actual `runtime_env` (inherit from current runtime env)
+  {"pip": ["requests", "chess"]}
+
+2. However, if you specify runtime_env for task/actor, it will override current runtime env.
+
+.. code-block:: python
+
+  # Current `runtime_env`
+  ray.init(runtime_env={"pip": ["requests", "chess"]})
+
+  # Create child actor
+  ChildActor.options(runtime_env={"env_vars": {"A": "a", "B": "b"}}).remote()
+
+  # ChildActor's actual `runtime_env` (specify runtime_env overrides)
+  {"env_vars": {"A": "a", "B": "b"}}
+
+3. If you'd like to still use current runtime env, you can use the API :ref:`ray.get_runtime_context().runtime_env <runtime-context-apis>` to get the current runtime env and modify it by yourself.
+
+.. code-block:: python
+
+  # Current `runtime_env`
+  ray.init(runtime_env={"pip": ["requests", "chess"]})
+
+  # Child updates `runtime_env`
+  Actor.options(runtime_env=ray.get_runtime_context().runtime_env.update({"env_vars": {"A": "a", "B": "b"}}))
+
+  # Child's actual `runtime_env` (merged with current runtime env)
   {"pip": ["requests", "chess"],
   "env_vars": {"A": "a", "B": "b"}}
-
-  # Child's specified `runtime_env`
-  {"pip": ["torch", "ray[serve]"],
-  "env_vars": {"B": "new", "C", "c"}}
-
-  # Child's actual `runtime_env` (merged with parent's)
-  {"pip": ["torch", "ray[serve]"],
-  "env_vars": {"A": "a", "B": "new", "C", "c"}}
 
 .. _runtime-env-faq:
 
@@ -411,11 +429,12 @@ Are environments installed on every node?
 """""""""""""""""""""""""""""""""""""""""
 
 If a runtime environment is specified in ``ray.init(runtime_env=...)``, then the environment will be installed on every node.  See :ref:`Per-Job <rte-per-job>` for more details.
+(Note, by default the runtime environment will be installed eagerly on every node in the cluster. If you want to lazily install the runtime environment on demand, set the ``eager_install`` option to false: ``ray.init(runtime_env={..., "eager_install": False}``.)
 
 When is the environment installed?
 """"""""""""""""""""""""""""""""""
 
-When specified per-job, the environment is installed when you call ``ray.init()``.  
+When specified per-job, the environment is installed when you call ``ray.init()`` (unless ``"eager_install": False`` is set).
 When specified per-task or per-actor, the environment is installed when the task is invoked or the actor is instantiated (i.e. when you call ``my_task.remote()`` or ``my_actor.remote()``.)
 See :ref:`Per-Job <rte-per-job>` :ref:`Per-Task/Actor, within a job <rte-per-task-actor>` for more details.
 
@@ -435,6 +454,7 @@ This could take seconds or minutes.
 On the other hand, loading a runtime environment from the cache should be nearly as fast as the ordinary Ray worker startup time, which is on the order of a few seconds. A new Ray worker is started for every Ray actor or task that requires a new runtime environment.
 (Note that loading a cached ``conda`` environment could still be slow, since the ``conda activate`` command sometimes takes a few seconds.)
 
+You can set ``setup_timeout_seconds`` config to avoid the installation hanging for a long time. If the installation is not finished within this time, your tasks or actors will fail to start.
 
 
 .. _remote-uris:
