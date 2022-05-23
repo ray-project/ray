@@ -29,7 +29,8 @@ virtualenv
 ## setup.py extras
 dm_tree
 flask
-gym==0.21.0; python_version >= '3.7'
+pygame
+gym>=0.21.0,<0.24.0; python_version >= '3.7'
 gym==0.19.0; python_version < '3.7'
 lz4
 scikit-image
