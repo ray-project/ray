@@ -106,6 +106,7 @@ class ReplicaSet:
         for _ in range(len(self.in_flight_queries.keys())):
             replica = next(self.replica_iterator)
             if len(self.in_flight_queries[replica]) >= replica.max_concurrent_queries:
+                # This replica is overloaded, try next one
                 continue
 
             logger.debug(
@@ -153,13 +154,13 @@ class ReplicaSet:
             # All replicas are really busy, wait for a query to complete or the
             # config to be updated.
             if num_finished == 0:
+                logger.debug("All replicas are busy, waiting for a free replica.")
                 await asyncio.wait(
                     self._all_query_refs + [self.config_updated_event.wait()],
                     return_when=asyncio.FIRST_COMPLETED,
                 )
                 if self.config_updated_event.is_set():
                     self.config_updated_event.clear()
-                # raise RuntimeError("cancel it! raise it when timeout")
             # We are pretty sure a free replica is ready now, let's recurse and
             # assign this query a replica.
             assigned_ref = self._try_assign_replica(query)
