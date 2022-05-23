@@ -15,7 +15,12 @@ torch, nn = try_import_torch()
 
 
 def check_batch_sizes(train_results):
-    """Check if batch sizes are according to what we expect from config."""
+    """Check if batch sizes are according to what we expect from config.
+
+    Since R2D2 learns on sequences of a fixed length but with variable amount of
+    timesteps that are not padding, the batch size is almost never the
+    `train_batch_size`, but very close to it.
+    """
     info = train_results["info"]
     learner_info = info[LEARNER_INFO]
 
@@ -26,13 +31,18 @@ def check_batch_sizes(train_results):
         configured_b = train_results["config"]["train_batch_size"]
         actual_b = policy_stats["td_error"].shape[0]
         if (configured_b - actual_b) / actual_b > 0.1:
-            assert (
-                configured_b
-                / (
-                    train_results["config"]["model"]["max_seq_len"]
-                    + train_results["config"]["replay_buffer_config"]["replay_burn_in"]
+            assert 0.8(
+                abs(
+                    configured_b
+                    / (
+                        train_results["config"]["model"]["max_seq_len"]
+                        + train_results["config"]["replay_buffer_config"][
+                            "replay_burn_in"
+                        ]
+                    )
+                    / actual_b
                 )
-                == actual_b
+                < 1.2
             )
 
 
