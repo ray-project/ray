@@ -478,6 +478,10 @@ lint_banned_words() {
   "${ROOT_DIR}"/lint/check-banned-words.sh
 }
 
+lint_annotations() {
+  "${ROOT_DIR}"/lint/check_api_annotations.py
+}
+
 lint_bazel() {
   # Run buildifier without affecting external environment variables
   (
@@ -547,6 +551,9 @@ _lint() {
 
   # Run banned words check.
   lint_banned_words
+
+  # Run annotations check.
+  lint_annotations
 
   # Make sure that the README is formatted properly.
   lint_readme

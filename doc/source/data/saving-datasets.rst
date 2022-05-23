@@ -6,7 +6,7 @@ Saving Datasets
 
 Datasets can be written to local or remote storage in the desired data format.
 The supported formats include Parquet, CSV, JSON, NumPy. To control the number
-of output files, you may use :meth:`ds.repartition() <ray.data.Dataset.repartition>>`
+of output files, you may use :meth:`ds.repartition() <ray.data.Dataset.repartition>`
 to repartition the Dataset before writing out.
 
 .. tabbed:: Parquet
