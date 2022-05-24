@@ -4,7 +4,6 @@ import numpy as np
 import pandas as pd
 import torch
 
-from ray.data.extensions import TensorArray
 from ray.ml.predictor import Predictor, DataBatchType
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
