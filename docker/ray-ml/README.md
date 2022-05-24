@@ -23,5 +23,11 @@ The optional `Platform` tag specifies the platform where the image is intended f
 | `-gpu`  | Aliases to a specific `-cuXX` tagged image. |
 | no tag  | Aliases to `-cpu` tagged images for `ray`, and aliases to ``-gpu`` tagged images for `ray-ml`. |
 
+Examples tags:
+- none: equivalent to `latest`
+- `latest`: equivalent to `latest-py37-gpu`, i.e. image for the most recent Ray release
+- `nightly-py38-cpu`
+- `806c18-py38-cu112`
+
 ## Other Images
 * [`rayproject/ray`](https://hub.docker.com/repository/docker/rayproject/ray) - Ray and all of its dependencies.
