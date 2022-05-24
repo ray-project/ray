@@ -335,7 +335,7 @@ class VTraceTorchPolicy(
         return loss.total_loss
 
     @override(TorchPolicyV2)
-    def extra_grad_info(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
+    def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
         return convert_to_numpy(
             {
                 "cur_lr": self.cur_lr,
