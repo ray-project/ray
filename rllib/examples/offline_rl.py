@@ -118,8 +118,10 @@ if __name__ == "__main__":
 
     # Example on how to do evaluation on the trained Trainer
     # using the data from our buffer.
-    # Get a sample (MultiAgentBatch -> SampleBatch).
-    batch = replay_buffer.replay().policy_batches["default_policy"]
+    # Get a sample (MultiAgentBatch).
+    multi_agent_batch = replay_buffer.sample(num_items=config["train_batch_size"])
+    # All experiences have been buffered for `default_policy`
+    batch = multi_agent_batch.policy_batches["default_policy"]
     obs = torch.from_numpy(batch["obs"])
     # Pass the observations through our model to get the
     # features, which then to pass through the Q-head.
