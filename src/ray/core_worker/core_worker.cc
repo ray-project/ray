@@ -14,6 +14,10 @@
 
 #include "ray/core_worker/core_worker.h"
 
+#ifndef _WIN32
+#include <unistd.h>
+#endif
+
 #include <google/protobuf/util/json_util.h>
 
 #include "boost/fiber/all.hpp"
@@ -506,6 +510,21 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         }
       },
       100);
+
+#ifndef _WIN32
+  // Doing this last during CoreWorker initialization, so initialization logic like
+  // registering with Raylet can finish with higher priority.
+  static const bool niced = [this]() {
+    if (options_.worker_type != WorkerType::DRIVER) {
+      const auto niceness = nice(RayConfig::instance().worker_niceness());
+      RAY_LOG(INFO) << "Adjusted worker niceness to " << niceness;
+      return true;
+    }
+    return false;
+  }();
+  // Verify driver and worker are never mixed in the same process.
+  RAY_CHECK_EQ(options_.worker_type != WorkerType::DRIVER, niced);
+#endif
 }
 
 CoreWorker::~CoreWorker() { RAY_LOG(INFO) << "Core worker is destructed"; }
@@ -1005,7 +1024,7 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
       status = plasma_store_provider_->Create(metadata,
                                               data_size,
                                               *object_id,
-                                              /* owner_address = */ rpc_address_,
+                                              /* owner_address = */ real_owner_address,
                                               data,
                                               created_by_worker);
     }
@@ -1878,6 +1897,9 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
   }
 
   auto actor_handle = actor_manager_->GetActorHandle(actor_id);
+  // Subscribe the actor state when we first submit the actor task. It is to reduce the
+  // number of connections. The method is idempotent.
+  actor_manager_->SubscribeActorState(actor_id);
 
   // Add one for actor cursor object id for tasks.
   const int num_returns = task_options.num_returns + 1;

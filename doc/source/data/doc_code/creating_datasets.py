@@ -18,14 +18,14 @@ ds.take(5)
 # fmt: on
 
 # fmt: off
-# __gen_synth_arrow_range_begin__
+# __gen_synth_tabular_range_begin__
 # Create a Dataset of Arrow records.
-ds = ray.data.range_arrow(10000)
+ds = ray.data.range_table(10000)
 # -> Dataset(num_blocks=200, num_rows=10000, schema={value: int64})
 
 ds.take(5)
 # -> [{'value': 0}, {'value': 1}, {'value': 2}, {'value': 3}, {'value': 4}]
-# __gen_synth_arrow_range_end__
+# __gen_synth_tabular_range_end__
 # fmt: on
 
 # fmt: off

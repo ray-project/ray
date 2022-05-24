@@ -53,12 +53,12 @@ class IOContext:
         """
         return self.worker.sampler
 
-    @PublicAPI
     @property
+    @PublicAPI
     def input_config(self):
         return self.config.get("input_config", {})
 
-    @PublicAPI
     @property
+    @PublicAPI
     def output_config(self):
         return self.config.get("output_config", {})
