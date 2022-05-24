@@ -221,9 +221,10 @@ class _WandbLoggingProcess(Process):
         self._trial_name = self.kwargs.get("name", "unknown")
 
     def run(self):
-        wandb.require("service")
+        # Since we're running in a separate process already, use threads.
+        os.environ["WANDB_START_METHOD"] = "thread"
         wandb.init(*self.args, **self.kwargs)
-        wandb.setup()
+
         while True:
             item_type, item_content = self.queue.get()
             if item_type == _QueueItem.END:
@@ -613,6 +614,6 @@ class WandbTrainableMixin:
         self.wandb = self._wandb.init(**wandb_init_kwargs)
 
     def stop(self):
-        self._wandb.join()
+        self._wandb.finish()
         if hasattr(super(), "stop"):
             super().stop()
