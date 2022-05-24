@@ -449,6 +449,7 @@ class ServeController:
         self.config_deployment_request_ref = run_graph.remote(
             import_path, deployment_override_options
         )
+        self.deployment_timestamp = time.time()
 
     def delete_deployment(self, name: str):
         self.endpoint_state.delete_endpoint(name)
