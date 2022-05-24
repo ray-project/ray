@@ -234,7 +234,7 @@ def test_push(init):
     assert pool.has_free() is False
     assert len(pool._pending_submits) == 1
     pool.push(a3)
-    assert pool.has_free() is False # a3 is used for pending submit
+    assert pool.has_free() is False  # a3 is used for pending submit
     assert len(pool._pending_submits) == 0
 
 
