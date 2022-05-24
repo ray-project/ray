@@ -1,5 +1,5 @@
 import logging
-from ray.rllib.algorithms.cql import CQLConfig
+from ray.rllib.algorithms.ddpg import DDPGConfig
 from ray.rllib.algorithms.crr import CRR
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
@@ -10,7 +10,7 @@ tfp = try_import_tfp()
 logger = logging.getLogger(__name__)
 
 
-class CRRConfig(CQLConfig):
+class CRRConfig(DDPGConfig):
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, trainer_class=None):
+        super().__init__(trainer_class=trainer_class or CRR)
