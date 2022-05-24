@@ -103,7 +103,6 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
                                                       jstring rayletSocket,
                                                       jbyteArray jobId,
                                                       jobject gcsClientOptions,
-                                                      jint numWorkersPerProcess,
                                                       jstring logDir,
                                                       jbyteArray jobConfig,
                                                       jint startupToken,
@@ -169,10 +168,10 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
           Status status_to_return = Status::OK();
           if (env->IsInstanceOf(throwable,
                                 java_ray_intentional_system_exit_exception_class)) {
-            status_to_return = Status::IntentionalSystemExit();
+            status_to_return = Status::IntentionalSystemExit("");
           } else if (env->IsInstanceOf(throwable, java_ray_actor_exception_class)) {
             creation_task_exception_pb = SerializeActorCreationException(env, throwable);
-            status_to_return = Status::CreationTaskError();
+            status_to_return = Status::CreationTaskError("");
           } else {
             RAY_LOG(ERROR) << "Unkown java exception was thrown while executing tasks.";
           }
@@ -289,7 +288,6 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
   options.task_execution_callback = task_execution_callback;
   options.on_worker_shutdown = on_worker_shutdown;
   options.gc_collect = gc_collect;
-  options.num_workers = static_cast<int>(numWorkersPerProcess);
   options.serialized_job_config = serialized_job_config;
   options.metrics_agent_port = -1;
   options.startup_token = startupToken;
@@ -390,12 +388,6 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeKillActor(
       /*force_kill=*/true,
       noRestart);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
-}
-
-JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeSetCoreWorker(
-    JNIEnv *env, jclass, jbyteArray workerId) {
-  const auto worker_id = JavaByteArrayToId<WorkerID>(env, workerId);
-  CoreWorkerProcess::SetCurrentThreadWorkerId(worker_id);
 }
 
 JNIEXPORT jobject JNICALL

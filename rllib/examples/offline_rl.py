@@ -29,7 +29,7 @@ if __name__ == "__main__":
 
     # See rllib/tuned_examples/cql/pendulum-cql.yaml for comparison.
 
-    config = cql.CQL_DEFAULT_CONFIG.copy()
+    config = cql.DEFAULT_CONFIG.copy()
     config["num_workers"] = 0  # Run locally.
     config["horizon"] = 200
     config["soft_horizon"] = True
@@ -38,16 +38,18 @@ if __name__ == "__main__":
     config["bc_iters"] = 0
     config["clip_actions"] = False
     config["normalize_actions"] = True
-    config["learning_starts"] = 256
+    config["replay_buffer_config"]["learning_starts"] = 256
     config["rollout_fragment_length"] = 1
-    config["prioritized_replay"] = False
+    # Test without prioritized replay
+    config["replay_buffer_config"]["type"] = "MultiAgentReplayBuffer"
+    config["replay_buffer_config"]["capacity"] = int(1e6)
     config["tau"] = 0.005
     config["target_entropy"] = "auto"
-    config["Q_model"] = {
+    config["q_model_config"] = {
         "fcnet_hiddens": [256, 256],
         "fcnet_activation": "relu",
     }
-    config["policy_model"] = {
+    config["policy_model_config"] = {
         "fcnet_hiddens": [256, 256],
         "fcnet_activation": "relu",
     }
@@ -101,7 +103,7 @@ if __name__ == "__main__":
     # Get policy, model, and replay-buffer.
     pol = trainer.get_policy()
     cql_model = pol.model
-    from ray.rllib.agents.cql.cql import replay_buffer
+    from ray.rllib.algorithms.cql.cql import replay_buffer
 
     # If you would like to query CQL's learnt Q-function for arbitrary
     # (cont.) actions, do the following:

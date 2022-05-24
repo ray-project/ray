@@ -25,7 +25,7 @@ extern "C" {
  * Class:     io_ray_runtime_RayNativeRuntime
  * Method:    nativeInitialize
  * Signature:
- * (ILjava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;[BLio/ray/runtime/gcs/GcsClientOptions;ILjava/lang/String;[BII)V
+ * (ILjava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;[BLio/ray/runtime/gcs/GcsClientOptions;Ljava/lang/String;[BII)V
  */
 JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *,
                                                                              jclass,
@@ -37,7 +37,6 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNI
                                                                              jstring,
                                                                              jbyteArray,
                                                                              jobject,
-                                                                             jint,
                                                                              jstring,
                                                                              jbyteArray,
                                                                              jint,
@@ -79,14 +78,6 @@ Java_io_ray_runtime_RayNativeRuntime_nativeGetActorIdOfNamedActor(JNIEnv *,
                                                                   jclass,
                                                                   jstring,
                                                                   jstring);
-
-/*
- * Class:     io_ray_runtime_RayNativeRuntime
- * Method:    nativeSetCoreWorker
- * Signature: ([B)V
- */
-JNIEXPORT void JNICALL
-Java_io_ray_runtime_RayNativeRuntime_nativeSetCoreWorker(JNIEnv *, jclass, jbyteArray);
 
 /*
  * Class:     io_ray_runtime_RayNativeRuntime
