@@ -537,13 +537,6 @@ Currently, three types of remote URIs are supported for hosting ``working_dir`` 
 
     - ``runtime_env = {"working_dir": "gs://example_bucket/example_file.zip"}``
 
-- ``FILE``: ``FILE`` refers to URIs starting with ``file://`` that point to compressed packages stored on a local file system or a network file system.
-  You are responsible to make sure that the file exists on every node in the cluster or on a network file system (NFS) mounted on every node.
-
-  - Example:
-
-    - ``runtime_env = {"working_dir": "file:///path/to/example_file.zip"}``
-
 
 Hosting a Dependency on a Remote Git Provider: Step-by-Step Guide
 -----------------------------------------------------------------
