@@ -155,7 +155,6 @@ class QRegTorchModel(TorchModelV2):
         the probability distribution over actions for each state s to give the
         state value V(s) = sum_A pi(a|s)Q(s,a).
         """
-        obs = torch.tensor(obs, device=self.device)
         q_values = self.estimate_q(obs)
         v_values = torch.sum(q_values * action_probs, axis=-1)
         return v_values.detach()
