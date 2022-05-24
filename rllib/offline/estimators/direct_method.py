@@ -50,6 +50,9 @@ class DirectMethod(OffPolicyEstimator):
         assert isinstance(
             policy.action_space, Discrete
         ), "DM Estimator only supports discrete action spaces!"
+        assert (
+            policy.config["batch_mode"] == "complete_episodes"
+        ), "DM Estimator only supports `complete_episodes`"
         model_cls = QRegTorchModel if policy.framework == "torch" else QRegTFModel
         self.model = model_cls(
             policy=policy,
@@ -70,8 +73,7 @@ class DirectMethod(OffPolicyEstimator):
             # Train Q-function
             if train_episodes:
                 train_batch = train_episodes[0].concat_samples(train_episodes)
-                # TODO (rohan): log the training losses somewhere
-                losses = self.train(train_batch)  # noqa: F841
+                losses = self.train(train_batch)
 
             # Calculate direct method OPE estimates
             for episode in test_episodes:
@@ -97,6 +99,7 @@ class DirectMethod(OffPolicyEstimator):
                             "V_prev": V_prev,
                             "V_DM": V_DM,
                             "V_gain_est": V_DM / max(1e-8, V_prev),
+                            "train_loss": np.mean(losses),
                         },
                     )
                 )

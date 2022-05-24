@@ -26,7 +26,6 @@ class OffPolicyEstimator:
             policy: Policy to evaluate.
             gamma: Discount factor of the environment.
         """
-        assert policy.config["batch_mode"] == "complete_episodes"
         self.policy = policy
         self.gamma = gamma
         self.config = config

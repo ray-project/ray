@@ -33,13 +33,17 @@ class TestOPE(unittest.TestCase):
                 "input": data_file,
                 "input_evaluation": [],
                 "framework": "torch",
+                "batch_mode": "complete_episodes",
                 "exploration_config": {
                     "type": "SoftQ",
                     "temperature": 1.0,
                 },
             },
         )
-        trainer.train()
+        timesteps_total = 200000
+        n_batches = 100
+        while trainer._timesteps_total and trainer._timesteps_total < timesteps_total:
+            trainer.train()
 
         estimators = [
             ImportanceSampling,
@@ -55,11 +59,10 @@ class TestOPE(unittest.TestCase):
             )
             reader = JsonReader(data_file)
             batch = reader.next()
-            for _ in range(10):
+            for _ in range(n_batches - 1):
                 batch = batch.concat(reader.next())
-            estimate = estimator.estimate(batch)
-            assert len(estimate) == len(batch.split_by_episode())
-            print(estimate)
+            estimates = estimator.estimate(batch)
+            assert len(estimates) == len(batch.split_by_episode())
 
 
 if __name__ == "__main__":

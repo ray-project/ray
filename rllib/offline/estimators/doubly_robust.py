@@ -61,6 +61,7 @@ class DoublyRobust(DirectMethod):
                             "V_prev": V_prev,
                             "V_DR": V_DR,
                             "V_gain_est": V_DR / max(1e-8, V_prev),
+                            "train_loss": np.mean(losses),
                         },
                     )
                 )
