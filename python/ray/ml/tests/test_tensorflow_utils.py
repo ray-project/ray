@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 
+from ray.data.extensions import TensorArray
 from ray.ml.utils.tensorflow_utils import convert_pandas_to_tf_tensor
 
 
@@ -18,8 +19,8 @@ def test_convert_simple_df_to_tensor():
 
 
 def test_convert_image_df_to_tensor():
-    image = np.zeros([3, 32, 32])
-    df = pd.DataFrame({"image": 4 * [image]})
+    images = np.zeros([4, 3, 32, 32])
+    df = pd.DataFrame({"image": TensorArray(images)})
 
     actual_tensor = convert_pandas_to_tf_tensor(df)
 
