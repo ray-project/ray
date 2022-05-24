@@ -3424,7 +3424,7 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
     def __str__(self) -> str:
         return repr(self)
 
-    def __len(self) -> int:
+    def __len__(self) -> int:
         return self.count()
 
     def _block_num_rows(self) -> List[int]:
