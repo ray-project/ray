@@ -72,10 +72,6 @@ class WorkerContext {
   /// Returns whether we are in a direct call actor.
   bool CurrentActorIsDirectCall() const LOCKS_EXCLUDED(mutex_);
 
-  /// Returns whether we are in a direct call task. This encompasses both direct
-  /// actor and normal tasks.
-  bool CurrentTaskIsDirectCall() const LOCKS_EXCLUDED(mutex_);
-
   int CurrentActorMaxConcurrency() const LOCKS_EXCLUDED(mutex_);
 
   bool CurrentActorIsAsync() const LOCKS_EXCLUDED(mutex_);
@@ -117,6 +113,7 @@ class WorkerContext {
   // To protect access to mutable members;
   mutable absl::Mutex mutex_;
 
+// TODO(qwang): Remove this
  private:
   WorkerThreadContext &GetThreadContext() const;
 
