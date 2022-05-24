@@ -94,7 +94,6 @@ class ApexDDPGTrainer(DDPGTrainer, ApexTrainer):
             removed_workers: removed worker ids.
             new_workers: ids of newly created workers.
         """
-        import ipdb; ipdb.set_trace()
         self._sampling_actor_manager.remove_workers(removed_workers)
         self._sampling_actor_manager.add_workers(new_workers)
 
