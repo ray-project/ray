@@ -17,18 +17,19 @@ def convert_pandas_to_tf_tensor(df: pd.DataFrame) -> tf.Tensor:
 
     Examples:
         >>> import pandas as pd
-        >>> df = pd.DataFrame({"X1": [1, 2, 3], "X2": [4, 5, 6]})
+        >>> from ray.ml.utils.tensorflow_utils improt convert_pandas_to_tf_tensor
         >>>
+        >>> df = pd.DataFrame({"X1": [1, 2, 3], "X2": [4, 5, 6]})
         >>> convert_pandas_to_tf_tensor(df[["X1"]]).shape
         TensorShape([3])
         >>> convert_pandas_to_tf_tensor(df[["X1", "X2"]]).shape
         TensorShape([3, 2])
 
-        >>> import numpy as np
+        >>> from ray.data.extensions import TensorArray
         >>>
-        >>> df = pd.DataFrame({"image": 2 * [np.zeros([3, 32, 32])]})
+        >>> df = pd.DataFrame({"image": TensorArray(np.zeros((4, 3, 32, 32)))})
         >>> convert_pandas_to_tf_tensor(df).shape
-        TensorShape([2, 3, 32, 32])
+        TensorShape([4, 3, 32, 32])
     """
 
     def tensorize(series):
