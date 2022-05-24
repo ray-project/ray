@@ -54,7 +54,7 @@ class Protocol(Enum):
 
     @classmethod
     def remote_protocols(cls):
-        # Returns a lit of protocols that support remote storage
+        # Returns a list of protocols that support remote storage
         # These protocols should only be used with paths that end in ".zip"
         return [cls.HTTPS, cls.S3, cls.GS, cls.NFS]
 
