@@ -306,7 +306,7 @@ class Checkpoint:
     def _handle_external_path(self, external_path: str, path: str):
         """Handle external path (uri) when converting to directory."""
         # If this exists on external storage (e.g. cloud), download
-        download_from_uri(uri=external_path, local_path=path)
+        download_from_uri(uri=external_path, local_path=path, filelock=False)
 
     def _to_directory_from_dict(self, data_dict: dict, path: str):
         """Convert to directory from dict."""
@@ -374,7 +374,6 @@ class Checkpoint:
             if not os.path.exists(path):
                 return self.to_directory(path)
 
-        print(f"to_directory {path}")
         return path
 
     @contextlib.contextmanager
