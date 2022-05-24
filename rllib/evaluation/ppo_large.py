@@ -12,7 +12,7 @@ config = {
     "num_workers": 2,
     # Change this to "framework: torch", if you are using PyTorch.
     # Also, use "framework: tf2" for tf2.x eager execution.
-    "framework": "tf",
+    "framework": "torch",
     # Tweak the default model provided automatically by RLlib,
     # given the environment's observation- and action spaces.
     "model": {

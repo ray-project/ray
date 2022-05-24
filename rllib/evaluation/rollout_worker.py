@@ -1588,7 +1588,7 @@ class RolloutWorker(ParallelIteratorWorker):
     #     return self.policy_map_buffer
 
     def buffer_to_policy_map(self):
-        self.policy_map['default_policy'][self.buffer_key] = self.buffer.get()
+        self.policy_map['default_policy'][self.buffer_key] = self.buffer
 
 
     @DeveloperAPI

@@ -1,6 +1,7 @@
 import gym
 from gym.spaces import Discrete, MultiDiscrete
 import numpy as np
+import cupy as cp
 import os
 import tree  # pip install dm_tree
 from typing import Dict, List, Optional, TYPE_CHECKING
@@ -156,6 +157,18 @@ def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
             # Already numpy: Wrap as torch tensor.
             else:
                 tensor = torch.from_numpy(item)
+        elif isinstance(item, cp.ndarray):
+            # Object type (e.g. info dicts in train batch): leave as-is.
+            if item.dtype == object:
+                return item
+            # Non-writable numpy-arrays will cause PyTorch warning.
+            elif item.flags.writeable is False:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    tensor = torch.as_tensor(item, device="cuda")
+            # Already numpy: Wrap as torch tensor.
+            else:
+                tensor = torch.as_tensor(item, device="cuda")
         # Everything else: Convert to numpy, then wrap as torch tensor.
         else:
             tensor = torch.from_numpy(np.asarray(item))

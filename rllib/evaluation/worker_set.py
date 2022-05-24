@@ -205,15 +205,14 @@ class WorkerSet:
         )
         return init_results
 
-    def sync_weights_broadcast(self, buffer: np.ndarray):
-        cp_buffer = cp.asarray(buffer)
+    def sync_weights_broadcast(self, buffer: cp.ndarray):
         # Broadcast to collective group buffers from worker 0
         print(f">>>> Setting new weights to worker 0 buffer: {buffer}")
         start = time.time()
         ray.get(
             [
                 self.remote_workers()[0].set_buffer_key.remote("default_policy/fc_2/kernel"),
-                self.remote_workers()[0].set_buffer.remote(cp_buffer),
+                self.remote_workers()[0].set_buffer.remote(buffer),
             ]
         )
         print(f">>>> Time spent on setting new weights to worker 0 buffer: {(time.time() - start)*1000}ms")
@@ -276,7 +275,7 @@ class WorkerSet:
                 # print(f">>> Tensor key: {val}, size: {val.size()}")
                 tensor = weights['default_policy'][key]
                 # buffer_key_list.append(key)
-                if key == "default_policy/fc_2/kernel":
+                if key == "_hidden_layers.1._model.0.weight":
                     buffer = tensor
                 print(f"Type: {type(tensor)}, {(tensor.size * 4) / (10**6)} MB - {tensor.shape} - {key}")
             # Put weights only once into object store and use same object
