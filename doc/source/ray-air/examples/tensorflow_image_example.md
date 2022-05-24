@@ -232,4 +232,27 @@ scores.sum(on="correct") / scores.count()
 
 ## Deploy the network and make a prediction
 
-TODO
+```{code-cell} python3
+from ray import serve
+from ray.serve.model_wrappers import ModelWrapperDeployment
+
+serve.start(detached=True)
+deployment = ModelWrapperDeployment.options(name="my-deployment")
+deployment.deploy(TensorflowPredictor, latest_checkpoint, batching_params=False, model_definition=build_model)
+```
+
+Let's classify a test image.
+
+```{code-cell} python3
+batch = test_dataset.take(1)
+array = np.expand_dims(np.array(batch[0]["image"]), axis=0)
+```
+
+You can perform inference against a deployed model by posting a dictionary with an `"array"` key. To learn more about the default input schema, read the {py:class}`NdArray <ray.serve.http_adapters.NdArray>` documentation.
+
+```{code-cell} python3
+import requests
+payload = {"array": array.tolist()}
+response = requests.post(deployment.url, json=payload)
+response.json()
+```
