@@ -262,7 +262,7 @@ VERBOSE_CMD = """from ray import tune
 import random
 import numpy as np
 import time
-from ray.tune.trial import Location
+from ray.tune.trial import _Location
 from ray.tune.progress_reporter import _get_trial_location
 from unittest.mock import patch
 
@@ -270,7 +270,7 @@ from unittest.mock import patch
 def mock_get_trial_location(trial, result):
     location = _get_trial_location(trial, result)
     if location.pid:
-        return Location("123.123.123.123", "1")
+        return _Location("123.123.123.123", "1")
     return location
 
 
