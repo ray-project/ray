@@ -148,8 +148,8 @@ class TensorflowPredictor(Predictor):
         if self.model_weights:
             input_shape = list(tensor.shape)
             # The batch axis can contain varying number of elements, so we set
-            # the shape along the axis to 0.
-            input_shape[0] = 0
+            # the shape along the axis to `None`.
+            input_shape[0] = None
 
             model.build(input_shape=input_shape)
             model.set_weights(self.model_weights)
