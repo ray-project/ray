@@ -7,7 +7,6 @@ import ray
 from ray.util import PublicAPI
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.config import RunConfig, ScalingConfig, ScalingConfigDataClass
-from ray.ml.constants import TRAIN_DATASET_KEY
 from ray.ml.ingest import _choose_ingest_strategy, IngestStrategy
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.result import Result

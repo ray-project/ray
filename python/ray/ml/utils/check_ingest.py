@@ -28,6 +28,7 @@ class DummyTrainer(DataParallelTrainer):
         runtime_seconds: int = 30,
         prefetch_blocks: int = 1,
         batch_size: Optional[int] = None,
+        ingest=None,
         **kwargs
     ):
         if not scaling_config:
@@ -38,6 +39,7 @@ class DummyTrainer(DataParallelTrainer):
             ),
             *args,
             scaling_config=scaling_config,
+            ingest=ingest,
             **kwargs
         )
 
@@ -140,7 +142,7 @@ if __name__ == "__main__":
         runtime_seconds=10,  # Stop after this amount or time or 1 epoch is read.
         prefetch_blocks=1,  # Number of blocks to prefetch when reading data.
         batch_size=None,
-        ingest=StreamedIngest(),
+        ingest=StreamedIngest(global_shuffle=True),
     )
     trainer.fit()
 

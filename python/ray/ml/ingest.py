@@ -46,7 +46,7 @@ class StreamedIngest(IngestStrategy):
 
         train_pipe = (
             datasets[TRAIN_DATASET_KEY]
-            .window(window_size_bytes=self._window_size_bytes)
+            .window(bytes_per_window=self._window_size_bytes)
             .repeat()
         )
 

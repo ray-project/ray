@@ -243,6 +243,7 @@ class DataParallelTrainer(Trainer):
         datasets: Optional[Dict[str, GenDataset]] = None,
         preprocessor: Optional[Preprocessor] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
+        ingest=None,
     ):
         if not ray.is_initialized():
             ray.init()
@@ -261,6 +262,7 @@ class DataParallelTrainer(Trainer):
             datasets=datasets,
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
+            ingest=ingest,
         )
 
     def _validate_attributes(self):

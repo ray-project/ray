@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional, Union, Dict, Callable, List, TYPE_CHECKING
+from typing import Optional, Union, Dict, Callable, List
 
 from ray.actor import ActorHandle
 from ray.ml.ingest import IngestStrategy
