@@ -179,7 +179,11 @@ class WorkflowIndexingStorage:
         """
         if status_filter is None:
             status_filter = set(WorkflowStatus)
-        status_filter.discard(WorkflowStatus.NONE)
+            status_filter.discard(WorkflowStatus.NONE)
+        elif not isinstance(status_filter, set):
+            raise TypeError("'status_filter' should either be 'None' or a set.")
+        elif WorkflowStatus.NONE in status_filter:
+            raise ValueError("'WorkflowStatus.NONE' is not a valid filter value.")
 
         results = {}
         for status in status_filter:

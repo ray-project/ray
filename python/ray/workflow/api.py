@@ -287,6 +287,7 @@ def list_all(
             )
     elif status_filter is None:
         status_filter = set(WorkflowStatus)
+        status_filter.discard(WorkflowStatus.NONE)
     else:
         raise TypeError(
             "status_filter must be WorkflowStatus or a set of WorkflowStatus."
