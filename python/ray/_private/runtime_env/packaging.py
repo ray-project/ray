@@ -569,7 +569,7 @@ def download_and_unpack_package(
                             "to fetch URIs in Google Cloud Storage bucket."
                         )
                 elif protocol == Protocol.FILE:
-                    pkg_uri = pkg_uri[len("file://"):]
+                    pkg_uri = pkg_uri[len("file://") :]
 
                     def open_file(uri, mode, *, transport_params=None):
                         return open(uri, mode)
