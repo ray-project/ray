@@ -103,5 +103,4 @@ class SyncCheckpoint(Checkpoint):
             return checkpoint
         sync_checkpoint = copy(checkpoint)
         sync_checkpoint.__class__ = SyncCheckpoint
-        sync_checkpoint._init_tmp_dir_name()
         return sync_checkpoint
