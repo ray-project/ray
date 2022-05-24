@@ -8,13 +8,10 @@ from filelock import FileLock
 from pathlib import Path
 from typing import Iterator, Optional
 
-import ray
 import ray.cloudpickle as cpickle
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.constants import PREPROCESSOR_KEY
-from ray.tune.utils.file_transfer import sync_dir_between_nodes
-from ray.util import get_node_ip_address
 from ray.util.annotations import DeveloperAPI
 
 
@@ -46,73 +43,44 @@ def load_preprocessor_from_dir(
 class SyncCheckpoint(Checkpoint):
     """Checkpoint with special sync logic for dirs.
 
-    If the data is represented by a local directory,
-    the IP of the node and the path will be persisted during serialization.
-    Then, when ``to_directory`` is called, the local directory will
-    be downloaded from the source node.
-
     This class contains a ``_tmp_dir_name`` attribute set
     on initailization, used to provide the same temporary
     directory name for all workers, in order to avoid
     multiple workers on the same node using separate
     but equal temporary directories."""
 
-    def __init__(
-        self,
-        local_path: Optional[str] = None,
-        data_dict: Optional[dict] = None,
-        uri: Optional[str] = None,
-        obj_ref: Optional[ray.ObjectRef] = None,
-    ):
-        self._init_tmp_dir_name()
-        super().__init__(local_path, data_dict, uri, obj_ref)
-
-    def _init_tmp_dir_name(self):
-        self._tmp_dir_name = uuid.uuid4().hex
+    @staticmethod
+    def get_tmp_dir_name() -> str:
+        return uuid.uuid4().hex
 
     @property
-    def remote_ip(self) -> Optional[str]:
-        return getattr(self, "_remote_ip", None)
+    def tmp_dir_name(self) -> str:
+        if not hasattr(self, "_tmp_dir_name"):
+            self._tmp_dir_name = self.get_tmp_dir_name()
+        return self._tmp_dir_name
+
+    @tmp_dir_name.setter
+    def tmp_dir_name(self, value: str):
+        self._tmp_dir_name = value
 
     def _get_temporary_checkpoint_dir(self) -> str:
-        return str(Path(tempfile.gettempdir()).joinpath(self._tmp_dir_name))
-
-    def _to_directory_from_dict(self, data_dict: dict, path: str):
-        remote_ip = self.remote_ip
-        if not remote_ip:
-            return super()._to_directory_from_dict(data_dict, path)
-        sync_dir_between_nodes(
-            source_ip=remote_ip,
-            source_path=self._local_path,
-            target_ip=get_node_ip_address(),
-            target_path=path,
-            max_size_bytes=None,
-        )
-
-    def _to_directory_from_local_path_or_uri(self, path: str):
-        remote_ip = self.remote_ip
-        if not remote_ip:
-            return super()._to_directory_from_local_path_or_uri(path)
-        sync_dir_between_nodes(
-            source_ip=remote_ip,
-            source_path=self._local_path,
-            target_ip=get_node_ip_address(),
-            target_path=path,
-            max_size_bytes=None,
-        )
+        return str(Path(tempfile.gettempdir()).joinpath(self.tmp_dir_name))
 
     def _make_dir(self, path: str) -> None:
         super()._make_dir(path)
-        del_lock_path = Path(path).joinpath(f".del_lock_{os.getpid()}")
+        del_lock_path = self._get_del_lock_path(path)
         open(del_lock_path, "a").close()
+
+    def _get_del_lock_path(self, path: str) -> Path:
+        return Path(path).joinpath(f".del_lock_{os.getpid()}")
 
     @contextlib.contextmanager
     def as_directory(self) -> Iterator[str]:
-        if self._local_path and not self.remote_ip:
+        if self._local_path:
             yield self._local_path
         else:
             temp_dir = self.to_directory()
-            del_lock_path = Path(temp_dir).joinpath(f".del_lock_{os.getpid()}")
+            del_lock_path = self._get_del_lock_path(temp_dir)
             yield temp_dir
             try:
                 os.remove(str(del_lock_path))
@@ -121,20 +89,12 @@ class SyncCheckpoint(Checkpoint):
                 pass
             # check if any lock files are remaining
             if not list(Path(temp_dir).glob(".del_lock_*")):
-                print(f"removing {temp_dir}")
-                with FileLock(f"{temp_dir}.lock"):
-                    shutil.rmtree(temp_dir, ignore_errors=True)
-
-    def _to_sync(self) -> dict:
-        assert self._local_path
-        state = self.__dict__.copy()
-        state["_remote_ip"] = get_node_ip_address()
-        return state
-
-    def __getstate__(self):
-        if self._local_path:
-            return self._to_sync()
-        return self.__dict__
+                try:
+                    with FileLock(f"{temp_dir}.lock", timeout=0):
+                        print(f"removing {temp_dir}")
+                        shutil.rmtree(temp_dir, ignore_errors=True)
+                except TimeoutError:
+                    pass
 
     @classmethod
     def from_checkpoint(self, checkpoint: Checkpoint) -> "SyncCheckpoint":

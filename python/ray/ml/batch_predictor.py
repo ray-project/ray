@@ -28,15 +28,10 @@ class BatchPredictor(Predictor):
         self, checkpoint: Checkpoint, predictor_cls: Type[Predictor], **predictor_kwargs
     ):
         # Store as object ref so we only serialize it once for all map workers
-        if checkpoint.get_internal_representation()[0] == "local_path":
-            self.checkpoint_ref = (
-                "local_path",
-                ray.put(SyncCheckpoint.from_checkpoint(checkpoint)),
-            )
-        else:
-            self.checkpoint_ref = ("object_ref", checkpoint.to_object_ref())
+        self.checkpoint_ref = checkpoint.to_object_ref()
         self.predictor_cls = predictor_cls
         self.predictor_kwargs = predictor_kwargs
+        self._tmp_dir_name = SyncCheckpoint.get_tmp_dir_name()
 
     @classmethod
     def from_checkpoint(
@@ -79,15 +74,12 @@ class BatchPredictor(Predictor):
         predictor_cls = self.predictor_cls
         checkpoint_ref = self.checkpoint_ref
         predictor_kwargs = self.predictor_kwargs
+        tmp_dir_name = self._tmp_dir_name
 
         class ScoringWrapper:
             def __init__(self):
-                if checkpoint_ref[0] == "local_path":
-                    checkpoint = ray.get(checkpoint_ref[1])
-                else:
-                    checkpoint = Checkpoint.from_object_ref(checkpoint_ref[1])
-                print(checkpoint)
-                # assert isinstance(checkpoint, SyncCheckpoint)
+                checkpoint = SyncCheckpoint.from_object_ref(checkpoint_ref)
+                checkpoint.tmp_dir_name = tmp_dir_name
                 self.predictor = predictor_cls.from_checkpoint(
                     checkpoint, **predictor_kwargs
                 )

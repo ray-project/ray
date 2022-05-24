@@ -4,6 +4,7 @@ import os
 import shutil
 import tarfile
 import tempfile
+from filelock import FileLock
 from typing import Iterator, Optional, Tuple, Union
 
 import ray
@@ -295,6 +296,7 @@ class Checkpoint:
         return cls(local_path=path)
 
     def _handle_local_path(self, local_path: str, path: str):
+        """Handle local path when converting to directory."""
         if local_path != path:
             # If this exists on the local path, just copy over
             if path and os.path.exists(path):
@@ -302,10 +304,12 @@ class Checkpoint:
             shutil.copytree(local_path, path)
 
     def _handle_external_path(self, external_path: str, path: str):
+        """Handle external path (uri) when converting to directory."""
         # If this exists on external storage (e.g. cloud), download
         download_from_uri(uri=external_path, local_path=path)
 
     def _to_directory_from_dict(self, data_dict: dict, path: str):
+        """Convert to directory from dict."""
         if _FS_CHECKPOINT_KEY in data_dict:
             # This used to be a true fs checkpoint, so restore
             _unpack(data_dict[_FS_CHECKPOINT_KEY], path)
@@ -316,6 +320,7 @@ class Checkpoint:
                 pickle.dump(data_dict, f)
 
     def _to_directory_from_local_path_or_uri(self, path: str):
+        """Convert to directory from local_path or uri."""
         local_path = self._local_path
         external_path = _get_external_path(self._uri)
         if local_path:
@@ -328,12 +333,25 @@ class Checkpoint:
             )
 
     def _get_temporary_checkpoint_dir(self) -> str:
+        """Return the name for the temporary checkpoint dir."""
         return _temporary_checkpoint_dir()
 
     def _make_dir(self, path: str) -> None:
+        """Create the temporary checkpoint dir at ``path``."""
         os.makedirs(path, exist_ok=True)
         # Drop marker
         open(os.path.join(path, ".is_checkpoint"), "a").close()
+
+    def _to_directory(self, path: str) -> None:
+        self._make_dir(path)
+
+        if self._data_dict or self._obj_ref:
+            # This is a object ref or dict
+            data_dict = self.to_dict()
+            self._to_directory_from_dict(data_dict, path)
+        else:
+            # This is either a local fs, remote node fs, or external fs
+            self._to_directory_from_local_path_or_uri(path)
 
     def to_directory(self, path: Optional[str] = None) -> str:
         """Write checkpoint data to directory.
@@ -346,16 +364,15 @@ class Checkpoint:
         """
         path = path if path is not None else self._get_temporary_checkpoint_dir()
 
-        self._make_dir(path)
+        try:
+            with FileLock(f"{path}.lock", timeout=0):
+                self._to_directory(path)
+        except TimeoutError:
+            # if the directory is already locked, then wait but do not do anything
+            with FileLock(f"{path}.lock", timeout=-1):
+                pass
 
-        if self._data_dict or self._obj_ref:
-            # This is a object ref or dict
-            data_dict = self.to_dict()
-            self._to_directory_from_dict(data_dict, path)
-        else:
-            # This is either a local fs, remote node fs, or external fs
-            self._to_directory_from_local_path_or_uri(path)
-
+        print(f"to_directory {path}")
         return path
 
     @contextlib.contextmanager
@@ -386,8 +403,14 @@ class Checkpoint:
             yield self._local_path
         else:
             temp_dir = self.to_directory()
-            yield temp_dir
-            shutil.rmtree(temp_dir, ignore_errors=True)
+            try:
+                yield temp_dir
+            finally:
+                try:
+                    with FileLock(f"{temp_dir}.lock", timeout=0):
+                        shutil.rmtree(temp_dir, ignore_errors=True)
+                except TimeoutError:
+                    pass
 
     @classmethod
     def from_uri(cls, uri: str) -> "Checkpoint":
