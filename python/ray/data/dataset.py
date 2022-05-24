@@ -2584,6 +2584,9 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
                         f"but got a `{type(feature_columns).__name__}` instead."
                     )
 
+                if unsqueeze_label_tensor:
+                    targets = tf.expand_dims(targets, axis=-1)
+
                 if label_column:
                     yield features, targets
                 else:
