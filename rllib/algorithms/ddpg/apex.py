@@ -61,7 +61,7 @@ APEX_DDPG_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
         # the number of remote requests in flight, or enable compression in your
         # experiment of timesteps.
         "max_requests_in_flight_per_sampler_worker": 2,
-        "max_requests_in_flight_per_aggregator_worker": float("inf"),
+        "max_requests_in_flight_per_replay_worker": float("inf"),
         "timeout_s_sampler_manager": 0.0,
         "timeout_s_replay_manager": 0.0,
     },
@@ -94,6 +94,7 @@ class ApexDDPGTrainer(DDPGTrainer, ApexTrainer):
             removed_workers: removed worker ids.
             new_workers: ids of newly created workers.
         """
+        import ipdb; ipdb.set_trace()
         self._sampling_actor_manager.remove_workers(removed_workers)
         self._sampling_actor_manager.add_workers(new_workers)
 
