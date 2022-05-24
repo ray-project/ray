@@ -14,13 +14,14 @@ from ray.ml.utils.remote_storage import (
     is_non_local_path_uri,
     upload_to_uri,
 )
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 _DICT_CHECKPOINT_FILE_NAME = "dict_checkpoint.pkl"
 _FS_CHECKPOINT_KEY = "fs_checkpoint"
 _BYTES_DATA_KEY = "bytes_data"
 
 
+@PublicAPI
 class Checkpoint:
     """Ray ML Checkpoint.
 

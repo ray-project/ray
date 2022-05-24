@@ -80,7 +80,7 @@ def _import_bc():
 def _import_cql():
     from ray.rllib.algorithms import cql
 
-    return cql.CQLTrainer, cql.CQL_DEFAULT_CONFIG
+    return cql.CQLTrainer, cql.DEFAULT_CONFIG
 
 
 def _import_ddpg():
