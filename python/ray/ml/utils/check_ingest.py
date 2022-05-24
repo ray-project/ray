@@ -63,16 +63,16 @@ class DummyTrainer(DataParallelTrainer):
             import pandas as pd
 
             rank = train.world_rank()
-            data_shard = train.get_dataset_shard("train")
+            data_reader = train.get_dataset_reader("train")
             start = time.perf_counter()
             num_epochs, num_batches, num_bytes = 0, 0, 0
             batch_delays = []
 
             print("Starting train loop on worker", rank)
-            while time.perf_counter() - start < runtime_seconds:
+            for epoch in data_reader.iter_epochs():
                 num_epochs += 1
                 batch_start = time.perf_counter()
-                for batch in data_shard.iter_batches(
+                for batch in epoch.iter_batches(
                     prefetch_blocks=prefetch_blocks, batch_size=batch_size
                 ):
                     batch_delay = time.perf_counter() - batch_start
@@ -85,8 +85,8 @@ class DummyTrainer(DataParallelTrainer):
                     elif isinstance(batch, np.ndarray):
                         num_bytes += batch.nbytes
                     else:
-                        # NOTE: This isn't recursive and will just return the size of
-                        # the object pointers if list of non-primitive types.
+                        # NOTE: This isn't recursive and will just return the size
+                        # of the object pointers if list of non-primitive types.
                         num_bytes += sys.getsizeof(batch)
                     train.report(
                         bytes_read=num_bytes,
@@ -95,6 +95,8 @@ class DummyTrainer(DataParallelTrainer):
                         batch_delay=batch_delay,
                     )
                     batch_start = time.perf_counter()
+                if time.perf_counter() - start > runtime_seconds:
+                    break
             delta = time.perf_counter() - start
 
             print("Time to read all data", delta, "seconds")
@@ -112,7 +114,7 @@ class DummyTrainer(DataParallelTrainer):
             )
 
             if rank == 0:
-                print("Ingest stats from rank=0:\n\n{}".format(data_shard.stats()))
+                print("Ingest stats from rank=0:\n\n{}".format(data_reader.stats()))
 
         return train_loop_per_worker
 
@@ -120,7 +122,7 @@ class DummyTrainer(DataParallelTrainer):
 if __name__ == "__main__":
     # Generate a synthetic dataset of ~10GiB of float64 data. The dataset is sharded
     # into 100 blocks (parallelism=100).
-    dataset = ray.data.range_tensor(50000, shape=(80, 80, 4), parallelism=100)
+    dataset = ray.data.range_tensor(5000, shape=(80, 80, 4), parallelism=100)
 
     # An example preprocessor chain that just scales all values by 4.0 in two stages.
     preprocessor = Chain(
@@ -134,7 +136,7 @@ if __name__ == "__main__":
         scaling_config={"num_workers": 1, "use_gpu": False},
         datasets={"train": dataset},
         preprocessor=preprocessor,
-        runtime_seconds=30,  # Stop after this amount or time or 1 epoch is read.
+        runtime_seconds=10,  # Stop after this amount or time or 1 epoch is read.
         prefetch_blocks=1,  # Number of blocks to prefetch when reading data.
         batch_size=None,
     )

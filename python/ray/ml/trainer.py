@@ -152,7 +152,7 @@ class Trainer(abc.ABC):
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
         preprocessor: Optional[Preprocessor] = None,
-        ingest: Optional[IngestConfig] = None,
+        ingest: Optional[IngestStrategy] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
 

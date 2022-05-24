@@ -1,6 +1,8 @@
 from typing import List, Dict, TYPE_CHECKING
 
+from ray.actor import ActorHandle
 from ray.data import Dataset, DatasetPipeline
+from ray.ml.constants import TRAIN_DATASET_KEY
 
 
 class IngestStrategy:
@@ -8,20 +10,18 @@ class IngestStrategy:
         """Call to preprocess datasets."""
         raise NotImplementedError
 
-    def prepare_readers(self, datasets, worker_handles) -> None:
-        """Must be called before get_reader"""
-        raise NotImplementedError
-
-    def get_reader_for_rank(self, dataset, i) -> DatasetPipeline:
-        """Called in start of train loop of trainer."""
+    def create_readers(self, datasets, workers) -> Dict[str, DatasetPipeline]:
+        """Call to create dataset readers."""
         raise NotImplementedError
 
 
 class StreamIngest(IngestStrategy):
     def __init__(self):
+        # TODO: calculate this as 1GiB per worker by default?
         self._window_size_bytes = 0.25 * local_object_store_memory()
 
     def preprocess_datasets(self, preprocessor, datasets):
+        # TODO: in initial version just check that everything isn't fittable?
         train_dataset = datasets.get(TRAIN_DATASET_KEY, None)
         if train_dataset:
             preprocessor.fit_pipeline(train_dataset)
@@ -33,14 +33,6 @@ class StreamIngest(IngestStrategy):
 
         # Return original datasets? Transforms will be applied on the fly at read time?
         return datasets
-
-    def prepare_readers(self, datasets, worker_handles) -> None:
-        """Must be called before get_reader"""
-        raise NotImplementedError
-
-    def get_reader_for_rank(self, dataset, i) -> DatasetPipeline:
-        """Called in start of train loop of trainer."""
-        raise NotImplementedError
 
 
 class BulkIngest(IngestStrategy):
@@ -56,7 +48,6 @@ class BulkIngest(IngestStrategy):
             raise ValueError("Cannot specify both global and local shuffle.")
         self._split = split
         self._world_size = 1
-        self._dataset_splits: List[Dict[str, Dataset]] = []
 
     def preprocess_datasets(self, preprocessor, datasets):
         train_dataset = datasets.get(TRAIN_DATASET_KEY, None)
@@ -73,23 +64,27 @@ class BulkIngest(IngestStrategy):
 
         return new_datasets
 
-    def prepare_readers(self, datasets, worker_handles) -> None:
+    def create_readers(self, datasets, worker_handles) -> Dict[str, DatasetPipeline]:
         self._world_size = len(worker_handles)
         if self._split:
             splits = _default_dataset_split_fn(datasets, worker_handles)
         else:
             splits = [datasets.copy() for _ in worker_handles]
-        self._dataset_splits = splits
 
-    def get_reader_for_rank(self, dataset_name, i) -> DatasetPipeline:
-        assert 0 <= i < self._world_size
-        dataset = self.splits[i][dataset_name]
-        pipe = dataset.repeat()
-        if self._global_shuffle:
-            pipe = pipe.random_shuffle_each_window()
-        if self._local_shuffle_buffer_size > 0:
-            raise NotImplementedError
-        return pipe
+        def to_reader(ds):
+            pipe = ds.repeat()
+            # TODO: only shuffle train dataset?
+            if self._global_shuffle:
+                pipe = pipe.random_shuffle_each_window()
+            if self._local_shuffle_buffer_size > 0:
+                raise NotImplementedError
+            return pipe
+
+        for i in range(self._world_size):
+            splits[i] = {
+                k: to_reader(v) for k, v in splits[i].items()
+            }
+        return splits
 
 
 def _choose_ingest_strategy(dataset: Dict[str, Dataset]) -> IngestStrategy:

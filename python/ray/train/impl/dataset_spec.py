@@ -2,9 +2,8 @@ from dataclasses import dataclass
 from typing import Optional, Union, Dict, Callable, List, TYPE_CHECKING
 
 from ray.actor import ActorHandle
-
-if TYPE_CHECKING:
-    from ray.data import Dataset, DatasetPipeline
+from ray.ml.ingest import IngestStrategy
+from ray.data import Dataset, DatasetPipeline
 
 RayDataset = Union["Dataset", "DatasetPipeline"]
 
@@ -38,6 +37,7 @@ class _RayDatasetSpec:
             List[Union[RayDataset, Dict[str, RayDataset]]],
         ]
     ] = None
+    ingest: Optional[IngestStrategy] = None
 
     def _default_split_fn(
         self, training_worker_handles: List[ActorHandle]
@@ -91,3 +91,8 @@ class _RayDatasetSpec:
                     f"the number of training workers: {len(training_worker_handles)}"
                 )
             return splits
+
+    def get_dataset_readers(
+        self, training_worker_handles: List[ActorHandle]
+    ) -> List[Optional[Dict[str, DatasetPipeline]]]:
+        return self.ingest.create_readers(self.dataset_or_dict, training_worker_handles)

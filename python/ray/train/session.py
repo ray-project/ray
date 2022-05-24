@@ -11,6 +11,7 @@ from typing import Optional, Dict, Type
 import warnings
 
 import ray
+from ray.data import DatasetPipeline
 from ray.train.accelerator import Accelerator
 from ray.train.constants import (
     DETAILED_AUTOFILLED_KEYS,
@@ -51,12 +52,14 @@ class Session:
         local_rank: int,
         world_size: int,
         dataset_shard: Optional[RayDataset] = None,
+        dataset_reader: Optional[DatasetPipeline] = None,
         checkpoint: Optional[Dict] = None,
         encode_data_fn: Callable = None,
         detailed_autofilled_metrics: bool = False,
     ):
 
         self.dataset_shard = dataset_shard
+        self.dataset_reader = dataset_reader
 
         # The Thread object that is running the training function.
         self.training_thread = PropagatingThread(target=training_func, daemon=True)
@@ -275,6 +278,31 @@ def shutdown_session():
     """Shuts down the initialized session."""
     global _session
     _session = None
+
+
+@PublicAPI(stability="beta")
+def get_dataset_reader(dataset_name: Optional[str] = None) -> Optional[DatasetPipeline]:
+    session = get_session()
+    if session is None:
+        _warn_session_misuse(get_dataset_reader.__name__)
+        return
+    reader = session.dataset_reader
+    if reader is None:
+        warnings.warn(
+            "No dataset passed in. Returning None. Make sure to "
+            "pass in a Ray Dataset to Trainer.run to use this "
+            "function."
+        )
+    elif isinstance(reader, dict):
+        if not dataset_name:
+            raise RuntimeError(
+                "Multiple datasets were passed into ``Trainer``, "
+                "but no ``dataset_name`` is passed into "
+                "``get_dataset_reader``. Please specify which "
+                "dataset reader to retrieve."
+            )
+        return reader[dataset_name]
+    return reader
 
 
 @PublicAPI(stability="beta")

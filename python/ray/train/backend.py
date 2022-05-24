@@ -133,6 +133,7 @@ class BackendExecutor:
 
         self.worker_group = InactiveWorkerGroup()
         self.dataset_shards = None
+        self.dataset_readers = None
 
     def start(
         self,
@@ -347,6 +348,7 @@ class BackendExecutor:
             world_size,
             checkpoint,
             dataset_shard,
+            dataset_reader,
             encode_data_fn,
         ):
             try:
@@ -356,6 +358,7 @@ class BackendExecutor:
                     local_rank=local_rank,
                     world_size=world_size,
                     dataset_shard=dataset_shard,
+                    dataset_reader=dataset_reader,
                     checkpoint=checkpoint,
                     encode_data_fn=encode_data_fn,
                     detailed_autofilled_metrics=use_detailed_autofilled_metrics,
@@ -371,6 +374,9 @@ class BackendExecutor:
         if self.dataset_shards is None:
             actors = [worker.actor for worker in self.worker_group.workers]
             self.dataset_shards = dataset_spec.get_dataset_shards(actors)
+            self.dataset_readers = dataset_spec.get_dataset_readers(actors)
+
+        assert self.dataset_readers is not None
 
         local_rank_map = self._create_local_rank_map()
 
@@ -385,6 +391,7 @@ class BackendExecutor:
                     world_size=len(self.worker_group),
                     train_func=train_func,
                     dataset_shard=self.dataset_shards[index],
+                    dataset_reader=self.dataset_readers[index],
                     checkpoint=checkpoint,
                     encode_data_fn=self._backend.encode_data,
                 )
@@ -543,6 +550,7 @@ class BackendExecutor:
             self._placement_group = None
 
         self.dataset_shards = None
+        self.dataset_readers = None
 
     def is_started(self):
         return not isinstance(self.worker_group, InactiveWorkerGroup)

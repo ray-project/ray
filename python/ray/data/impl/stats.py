@@ -408,6 +408,8 @@ class DatasetPipelineStats:
         for i, stats in self.history_buffer:
             out += "== Pipeline Window {} ==\n".format(i)
             out += stats.summary_string(already_printed)
+            if out[-1] != "\n":  # Fix indent for [execution cached] case.
+                out += "\n"
             out += "\n"
         out += "##### Overall Pipeline Time Breakdown #####\n"
         # Drop the first sample since there's no pipelining there.
