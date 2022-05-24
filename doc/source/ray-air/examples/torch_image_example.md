@@ -205,7 +205,7 @@ outputs: ray.data.Dataset = batch_predictor.predict(
 )
 
 outputs.show(1)
-``
+```
 
 ```{code-cell} python3
 import numpy as np
