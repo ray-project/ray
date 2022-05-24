@@ -50,13 +50,13 @@ class Protocol(Enum):
     HTTPS = "https", "Remote https path, assumes everything packed in one zip file."
     S3 = "s3", "Remote s3 path, assumes everything packed in one zip file."
     GS = "gs", "Remote google storage path, assumes everything packed in one zip file."
-    NFS = "file", "NFS storage path, assumes everything packed in one zip file."
+    FILE = "file", "File storage path, assumes everything packed in one zip file."
 
     @classmethod
     def remote_protocols(cls):
         # Returns a list of protocols that support remote storage
         # These protocols should only be used with paths that end in ".zip"
-        return [cls.HTTPS, cls.S3, cls.GS, cls.NFS]
+        return [cls.HTTPS, cls.S3, cls.GS, cls.FILE]
 
 
 def _xor_bytes(left: bytes, right: bytes) -> bytes:
@@ -170,6 +170,15 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
             )
             -> ("gs",
             "gs_public-runtime-env-test_test_module.zip")
+    For FILE URIs, the path will have '/' replaced with '_'. The package name
+    will be the adjusted path with 'file_' prepended.
+        urlparse("file://path/to/test_module.zip")
+            -> ParseResult(
+                scheme='file',
+                netloc='path',
+                path='/to/test_module.zip'
+            )
+            -> ("file", "file__path_to_test_module.zip")
     """
     uri = urlparse(pkg_uri)
     protocol = Protocol(uri.scheme)
@@ -180,10 +189,10 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
             protocol,
             f"https_{uri.netloc.replace('.', '_')}{uri.path.replace('/', '_')}",
         )
-    elif protocol == Protocol.NFS:
+    elif protocol == Protocol.FILE:
         return (
             protocol,
-            f"nfs_{uri.path.replace('/', '_')}",
+            f"file_{uri.path.replace('/', '_')}",
         )
     else:
         return (protocol, uri.netloc)
