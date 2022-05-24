@@ -170,7 +170,9 @@ message PinObjectIDsRequest {
 }
 
 message PinObjectIDsReply {
-  repeated bool success = 1;
+  // Whether pinning the corresponding object succeeded or not.
+  // Pin can fail if the object is already evicted.
+  repeated bool successes = 1;
 }
 
 message GetNodeStatsRequest {
