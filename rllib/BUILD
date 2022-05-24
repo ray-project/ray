@@ -379,6 +379,17 @@ py_test(
     args = ["--yaml-dir=tuned_examples/impala"]
 )
 
+# MADDPG
+py_test(
+    name = "learning_tests_two_step_game_maddpg",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:ml", "tf_only", "no_tf_eager_tracing", "learning_tests", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/maddpg/two-step-game-maddpg.yaml"],
+    args = ["--yaml-dir=tuned_examples/maddpg", "--framework=tf"]
+)
+
 # Working, but takes a long time to learn (>15min).
 # Removed due to Higher API conflicts with Pytorch-Import tests
 ## MB-MPO
@@ -729,7 +740,7 @@ py_test(
 py_test(
     name = "test_dreamer",
     tags = ["team:ml", "trainers_dir"],
-    size = "small",
+    size = "medium",
     srcs = ["algorithms/dreamer/tests/test_dreamer.py"]
 )
 
@@ -773,6 +784,14 @@ py_test(
     # Include the json data file.
     data = ["tests/data/cartpole/large.json"],
     srcs = ["algorithms/marwil/tests/test_bc.py"]
+)
+
+# MADDPGTrainer
+py_test(
+    name = "test_maddpg",
+    tags = ["team:ml", "trainers_dir"],
+    size = "medium",
+    srcs = ["algorithms/maddpg/tests/test_maddpg.py"]
 )
 
 # MAMLTrainer
@@ -2949,15 +2968,6 @@ py_test(
     size = "medium",
     srcs = ["examples/two_trainer_workflow.py"],
     args = ["--as-test", "--mixed-torch-tf", "--stop-reward=450.0"]
-)
-
-py_test(
-    name = "examples/two_step_game_maddpg",
-    main = "examples/two_step_game.py",
-    tags = ["team:ml", "examples", "examples_T"],
-    size = "medium",
-    srcs = ["examples/two_step_game.py"],
-    args = ["--as-test", "--stop-reward=7.1", "--run=MADDPG"]
 )
 
 py_test(

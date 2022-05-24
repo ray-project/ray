@@ -3,7 +3,7 @@ package io.ray.test;
 import com.google.common.base.Preconditions;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
-import io.ray.runtime.AbstractRayRuntime;
+import io.ray.runtime.RayRuntimeInternal;
 import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.config.RunMode;
 import io.ray.runtime.task.ArgumentsBuilder;
@@ -122,8 +122,12 @@ public class TestUtils {
     Assert.assertEquals(obj.get(), "hi");
   }
 
-  public static AbstractRayRuntime getRuntime() {
-    return (AbstractRayRuntime) Ray.internal();
+  public static RayRuntimeInternal getRuntime() {
+    return (RayRuntimeInternal) Ray.internal();
+  }
+
+  public static RayRuntimeInternal getUnderlyingRuntime() {
+    return (RayRuntimeInternal) Ray.internal();
   }
 
   public static ProcessBuilder buildDriver(Class<?> mainClass, String[] args) {

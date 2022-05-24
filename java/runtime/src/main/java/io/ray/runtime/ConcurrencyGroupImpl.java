@@ -24,7 +24,7 @@ public class ConcurrencyGroupImpl implements ConcurrencyGroup {
     funcs.forEach(
         func -> {
           RayFunction rayFunc =
-              ((AbstractRayRuntime) Ray.internal()).getFunctionManager().getFunction(func);
+              ((RayRuntimeInternal) Ray.internal()).getFunctionManager().getFunction(func);
           functionDescriptors.add(rayFunc.getFunctionDescriptor());
         });
   }
