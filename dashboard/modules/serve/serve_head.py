@@ -33,14 +33,14 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
     @routes.get("/api/serve/deployments/status")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def get_all_deployment_statuses(self, req: Request) -> Response:
-        from ray.serve.api import get_deployment_statuses
-        from ray.serve.schema import serve_application_status_to_schema
+        from ray.serve.context import get_global_client
+        from ray.serve.schema import serve_status_to_schema
 
-        serve_application_status_schema = serve_application_status_to_schema(
-            get_deployment_statuses()
-        )
+        client = get_global_client(_override_controller_namespace="serve")
+
+        serve_status_schema = serve_status_to_schema(client.get_serve_status())
         return Response(
-            text=serve_application_status_schema.json(),
+            text=serve_status_schema.json(),
             content_type="application/json",
         )
 
