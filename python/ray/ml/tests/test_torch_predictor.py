@@ -84,7 +84,7 @@ def test_predict_dataframe_with_feature_columns():
     assert predictions.to_numpy().flatten().tolist() == [0., 0., 0.]
 
 
-def test_predict_array_from_checkpoint_no_preprocessor(model):
+def test_predict_array_from_checkpoint(model):
     checkpoint = Checkpoint.from_dict({MODEL_KEY: model})
     predictor = TorchPredictor.from_checkpoint(checkpoint)
 
