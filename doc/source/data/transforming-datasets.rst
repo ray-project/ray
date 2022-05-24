@@ -74,7 +74,7 @@ Compute Strategy
 Datasets transformations are executed by either :ref:`Ray tasks <ray-remote-functions>`
 or :ref:`Ray actors <actor-guide>` across a Ray cluster. By default, Ray tasks are
 used (with ``compute="tasks"``). For transformations that require expensive setup,
-it's preferrable to use Ray actors, which are stateful and allows setup to be reused
+it's preferrable to use Ray actors, which are stateful and allow setup to be reused
 for efficiency. You can specify ``compute=ray.data.ActorPoolStrategy(min, max)`` and
 Ray will use an autoscaling actor pool of ``min`` to ``max`` actors to execute your
 transforms. For a fixed-size actor pool, just specify ``ActorPoolStrategy(n, n)``.

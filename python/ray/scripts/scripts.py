@@ -413,14 +413,12 @@ def debug(address):
 @click.option(
     "--dashboard-agent-listen-port",
     type=int,
-    hidden=True,
     default=0,
     help="the port for dashboard agents to listen for http on.",
 )
 @click.option(
     "--dashboard-agent-grpc-port",
     type=int,
-    hidden=True,
     default=None,
     help="the port for dashboard agents to listen for grpc on.",
 )
@@ -486,7 +484,6 @@ def debug(address):
 @click.option(
     "--metrics-export-port",
     type=int,
-    hidden=True,
     default=None,
     help="the port to use to expose Ray metrics through a Prometheus endpoint.",
 )
