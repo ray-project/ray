@@ -103,7 +103,10 @@ Here's a list of tips for getting involved with the Ray community:
 ```{include} _includes/_contribute.md
 ```
 
-If you're interested in contributing to Ray, check out our [contributing guide](https://docs.ray.io/en/master/ray-contribute/getting-involved.html)
+If you're interested in contributing to Ray, check out our
+[contributing guide for this release](ray-contribute/getting-involved)
+or see the
+[latest version of our contributing guide](https://docs.ray.io/en/master/ray-contribute/getting-involved.html)
 to read about the contribution process and see what you can work on.
 
 ## What documentation resource is right for you?

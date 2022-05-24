@@ -237,12 +237,12 @@ parts:
 
   - caption: Developer Guides
     chapters:
-      - url: https://docs.ray.io/en/master/ray-contribute/getting-involved.html
+      - file: ray-contribute/getting-involved
         sections:
-          - url: https://docs.ray.io/en/master/ray-contribute/development.html
-          - url: https://docs.ray.io/en/master/ray-contribute/docs.html
-          - url: https://docs.ray.io/en/master/ray-contribute/fake-autoscaler.html
-          - url: https://docs.ray.io/en/master/ray-core/examples/testing-tips.html
+          - file: ray-contribute/development
+          - file: ray-contribute/docs
+          - file: ray-contribute/fake-autoscaler
+          - file: ray-core/examples/testing-tips
       - file: ray-core/configure
       - file: ray-observability/index
       - file: ray-contribute/whitepaper
