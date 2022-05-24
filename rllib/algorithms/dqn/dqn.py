@@ -114,15 +114,13 @@ class DQNConfig(SimpleQConfig):
         >>>       .exploration(exploration_config=explore_config)
     """
 
-    def __init__(self):
+    def __init__(self, trainer_class=None):
         """Initializes a DQNConfig instance."""
-        super().__init__()
+        super().__init__(trainer_class=trainer_class or DQNTrainer)
 
-        # DQN specific
+        # DQN specific config settings.
         # fmt: off
         # __sphinx_doc_begin__
-        #
-        self.trainer_class = DQNTrainer
         self.num_atoms = 1
         self.v_min = -10.0
         self.v_max = 10.0
@@ -282,20 +280,6 @@ class DQNConfig(SimpleQConfig):
         return self
 
 
-# Deprecated: Use ray.rllib.algorithms.dqn.DQNConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(DQNConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.dqn.dqn.DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.dqn.dqn.DQNConfig(...)",
-        error=False,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
 def calculate_rr_weights(config: TrainerConfigDict) -> List[float]:
     """Calculate the round robin weights for the rollout and train steps"""
     if not config["training_intensity"]:
@@ -433,6 +417,20 @@ class DQNTrainer(SimpleQTrainer):
 
         # Return all collected metrics for the iteration.
         return train_results
+
+
+# Deprecated: Use ray.rllib.algorithms.dqn.DQNConfig instead!
+class _deprecated_default_config(dict):
+    def __init__(self):
+        super().__init__(DQNConfig().to_dict())
+
+    @Deprecated(
+        old="ray.rllib.algorithms.dqn.dqn.DEFAULT_CONFIG",
+        new="ray.rllib.algorithms.dqn.dqn.DQNConfig(...)",
+        error=False,
+    )
+    def __getitem__(self, item):
+        return super().__getitem__(item)
 
 
 DEFAULT_CONFIG = _deprecated_default_config()
