@@ -2056,8 +2056,8 @@ class Trainer(Trainable):
         workers = getattr(self, "workers", None)
         if not isinstance(workers, WorkerSet):
             return
-        removed_workers, new_workers = [], []
 
+        removed_workers, new_workers = [], []
         # Search for failed workers and try to recover (restart) them.
         if self.config["recreate_failed_workers"] is True:
             removed_workers, new_workers = workers.recreate_failed_workers()
