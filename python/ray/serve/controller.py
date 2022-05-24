@@ -435,6 +435,7 @@ class ServeController:
                 app.deployments[name].set_options(**options_dict)
 
             # Run the graph locally on the cluster
+            serve.start(_override_controller_namespace="serve")
             serve.run(app)
 
         self.config_deployment_request_ref = run_graph.remote(
