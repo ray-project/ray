@@ -97,6 +97,8 @@ test_dataset
 
 ## Train a convolutional neural network
 
+Now that we've created our datasets, let's define the training logic.
+
 ```{code-cell} python3
 def build_model():
     model = models.Sequential()
