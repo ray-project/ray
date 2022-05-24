@@ -4,6 +4,7 @@ from ray.serve.deployment_graph import InputNode
 
 ray.init()
 
+
 @serve.deployment
 class Model:
     def __init__(self, weight):
