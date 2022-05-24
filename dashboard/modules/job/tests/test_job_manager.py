@@ -275,7 +275,7 @@ class TestShellScriptExecution:
         with tempfile.NamedTemporaryFile(suffix=".zip") as f:
             filename, _ = urllib.request.urlretrieve(
                 "https://runtime-env-test.s3.amazonaws.com/script_runtime_env.zip",
-                filename=f.name
+                filename=f.name,
             )
             job_id = job_manager.submit_job(
                 entrypoint="python script.py",
@@ -285,7 +285,8 @@ class TestShellScriptExecution:
                 check_job_succeeded, job_manager=job_manager, job_id=job_id
             )
             assert (
-                job_manager.get_job_logs(job_id) == "Executing main() from script.py !!\n"
+                job_manager.get_job_logs(job_id)
+                == "Executing main() from script.py !!\n"
             )
 
 
