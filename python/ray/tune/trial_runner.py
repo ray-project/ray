@@ -17,10 +17,10 @@ from ray.util import get_node_ip_address
 from ray.tune import TuneError
 from ray.tune.callback import CallbackList, Callback
 from ray.tune.experiment import Experiment
-from ray.tune.insufficient_resources_manager import InsufficientResourcesManager
+from ray.tune.insufficient_resources_manager import _InsufficientResourcesManager
 from ray.tune.ray_trial_executor import (
     RayTrialExecutor,
-    ExecutorEventType,
+    _ExecutorEventType,
     _ExecutorEvent,
 )
 from ray.tune.result import (
@@ -282,7 +282,7 @@ class TrialRunner:
         self._search_alg = search_alg or BasicVariantGenerator()
         self._scheduler_alg = scheduler or FIFOScheduler()
         self.trial_executor = trial_executor or RayTrialExecutor()
-        self._insufficient_resources_manager = InsufficientResourcesManager()
+        self._insufficient_resources_manager = _InsufficientResourcesManager()
         self._pending_trial_queue_times = {}
 
         # Set the number of maximum pending trials
@@ -723,27 +723,27 @@ class TrialRunner:
             event = self.trial_executor.get_next_executor_event(
                 self._live_trials, next_trial is not None
             )
-            if event.type == ExecutorEventType.PG_READY:
+            if event.type == _ExecutorEventType.PG_READY:
                 self._on_pg_ready(next_trial)
-            elif event.type == ExecutorEventType.NO_RUNNING_TRIAL_TIMEOUT:
+            elif event.type == _ExecutorEventType.NO_RUNNING_TRIAL_TIMEOUT:
                 self._insufficient_resources_manager.on_no_available_trials(
                     self.get_trials()
                 )
-            elif event.type == ExecutorEventType.YIELD:
+            elif event.type == _ExecutorEventType.YIELD:
                 pass
             else:
                 trial = event.trial
                 result = event.result
-                if event.type == ExecutorEventType.ERROR:
+                if event.type == _ExecutorEventType.ERROR:
                     self._on_executor_error(trial, result[_ExecutorEvent.KEY_EXCEPTION])
-                elif event.type == ExecutorEventType.RESTORING_RESULT:
+                elif event.type == _ExecutorEventType.RESTORING_RESULT:
                     self._on_restoring_result(trial)
                 else:
                     assert event.type in (
-                        ExecutorEventType.SAVING_RESULT,
-                        ExecutorEventType.TRAINING_RESULT,
+                        _ExecutorEventType.SAVING_RESULT,
+                        _ExecutorEventType.TRAINING_RESULT,
                     ), f"Unexpected future type - {event.type}"
-                    if event.type == ExecutorEventType.TRAINING_RESULT:
+                    if event.type == _ExecutorEventType.TRAINING_RESULT:
                         self._on_training_result(
                             trial, result[_ExecutorEvent.KEY_FUTURE_RESULT]
                         )
@@ -1423,7 +1423,7 @@ class TrialRunner:
             self._server = TuneServer(self, self._server_port)
 
 
-class TrialExecutorWrapper(RayTrialExecutor):
+class _TrialExecutorWrapper(RayTrialExecutor):
     """Wraps around TrialExecutor class, intercepts API calls and warns users
     of restricted API access.
 
@@ -1470,7 +1470,7 @@ class TrialRunnerWrapper(TrialRunner):
         executor_whitelist_attr: Optional[set] = None,
     ):
         self._trial_runner = trial_runner
-        self._trial_executor = TrialExecutorWrapper(
+        self._trial_executor = _TrialExecutorWrapper(
             trial_runner.trial_executor, executor_whitelist_attr
         )
         self._runner_whitelist_attr = runner_whitelist_attr or set()

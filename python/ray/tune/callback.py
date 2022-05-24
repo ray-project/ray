@@ -3,7 +3,7 @@ from abc import ABCMeta
 import warnings
 
 from ray.tune.checkpoint_manager import _TuneCheckpoint
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import PublicAPI, DeveloperAPI
 
 if TYPE_CHECKING:
     from ray.tune.trial import Trial
@@ -270,6 +270,7 @@ class Callback(metaclass=_CallbackMeta):
         pass
 
 
+@DeveloperAPI
 class CallbackList(Callback):
     """Call multiple callbacks at once."""
 

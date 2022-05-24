@@ -512,6 +512,7 @@ def get_node_syncer(
     return _syncers[key]
 
 
+@DeveloperAPI
 class SyncerCallback(Callback):
     def __init__(self, sync_function: Optional[Union[bool, Callable]]):
         self._sync_function = sync_function

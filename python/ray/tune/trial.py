@@ -15,7 +15,7 @@ import ray
 import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError, RayTaskError
 from ray.tune import TuneError
-from ray.tune.checkpoint_manager import _TuneCheckpoint, CheckpointManager
+from ray.tune.checkpoint_manager import _TuneCheckpoint, _CheckpointManager
 
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
@@ -369,7 +369,7 @@ class Trial:
         self.keep_checkpoints_num = keep_checkpoints_num
         self.checkpoint_score_attr = checkpoint_score_attr
         self.sync_on_checkpoint = sync_on_checkpoint
-        self.checkpoint_manager = CheckpointManager(
+        self.checkpoint_manager = _CheckpointManager(
             keep_checkpoints_num,
             checkpoint_score_attr,
             _CheckpointDeleter(self._trainable_name(), self.runner),

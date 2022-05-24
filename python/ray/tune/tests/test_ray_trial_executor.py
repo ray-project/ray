@@ -12,7 +12,7 @@ from ray.tune import Trainable
 from ray.tune.callback import Callback
 from ray.tune.ray_trial_executor import (
     _ExecutorEvent,
-    ExecutorEventType,
+    _ExecutorEventType,
     RayTrialExecutor,
 )
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS, register_trainable
@@ -102,7 +102,7 @@ class RayTrialExecutorTest(unittest.TestCase):
         future_result = self.trial_executor.get_next_executor_event(
             live_trials={trial}, next_trial_exists=True
         )
-        assert future_result.type == ExecutorEventType.PG_READY
+        assert future_result.type == _ExecutorEventType.PG_READY
         self.assertTrue(self.trial_executor.start_trial(trial))
         self.assertEqual(Trial.RUNNING, trial.status)
 
@@ -111,7 +111,7 @@ class RayTrialExecutorTest(unittest.TestCase):
             event = self.trial_executor.get_next_executor_event(
                 live_trials={trial}, next_trial_exists=False
             )
-            if event.type == ExecutorEventType.TRAINING_RESULT:
+            if event.type == _ExecutorEventType.TRAINING_RESULT:
                 break
         training_result = event.result[_ExecutorEvent.KEY_FUTURE_RESULT]
         if isinstance(training_result, list):
@@ -127,7 +127,7 @@ class RayTrialExecutorTest(unittest.TestCase):
         event = self.trial_executor.get_next_executor_event(
             live_trials={trial}, next_trial_exists=False
         )
-        assert event.type == ExecutorEventType.SAVING_RESULT
+        assert event.type == _ExecutorEventType.SAVING_RESULT
         self.process_trial_save(trial, event.result[_ExecutorEvent.KEY_FUTURE_RESULT])
         self.assertEqual(checkpoint, trial.checkpoint)
 
