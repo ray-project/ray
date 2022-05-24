@@ -4,7 +4,6 @@ from ray.experimental.dag.input_node import InputNode
 
 
 ray.init()
-serve.start()
 
 
 @serve.deployment
