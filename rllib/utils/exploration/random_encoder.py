@@ -111,7 +111,7 @@ def compute_states_entropy(
     """
     obs_embeds_ = np.reshape(obs_embeds, [-1, embed_dim])
     dist = np.linalg.norm(obs_embeds_[:, None, :] - obs_embeds_[None, :, :], axis=-1)
-    return dist.argsort(axis=-1)[:, :k_nn][:, -1]
+    return dist.argsort(axis=-1)[:, :k_nn][:, -1].astype(np.float32)
 
 
 class RE3(Exploration):
