@@ -99,3 +99,4 @@ proxy.py
 myst-parser==0.15.2
 myst-nb==0.13.1
 jupytext==1.13.6
+pytest-docker-tools
