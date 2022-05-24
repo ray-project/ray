@@ -1,4 +1,4 @@
-from typing import List, Dict, TYPE_CHECKING
+from typing import List, Dict
 
 from ray.actor import ActorHandle
 from ray.data import Dataset, DatasetPipeline
@@ -15,24 +15,57 @@ class IngestStrategy:
         raise NotImplementedError
 
 
-class StreamIngest(IngestStrategy):
-    def __init__(self):
-        # TODO: calculate this as 1GiB per worker by default?
-        self._window_size_bytes = 0.25 * local_object_store_memory()
+class StreamedIngest(IngestStrategy):
+    def __init__(self, global_shuffle: bool = False):
+        # TODO: calculate this as 1GiB per worker.
+        self._window_size_bytes = 1e9
+        self._fitted_preprocessor = None
+        self._global_shuffle = global_shuffle
 
     def preprocess_datasets(self, preprocessor, datasets):
-        # TODO: in initial version just check that everything isn't fittable?
         train_dataset = datasets.get(TRAIN_DATASET_KEY, None)
         if train_dataset:
-            preprocessor.fit_pipeline(train_dataset)
+            # TODO(ekl) support streaming fit?
+            preprocessor.fit(train_dataset)
+            self._fitted_preprocessor = train_dataset
 
-        #        new_datasets = {}
-        #        for key, dataset in datasets.items():
-        #            # TODO exclude train one for streaming read
-        #            new_datasets[key] = preprocessor.transform(dataset)
+        # Only transform non-train datasets. In the future, we might support streaming
+        # transform of those as well.
+        for k, dataset in datasets.items():
+            if k == TRAIN_DATASET_KEY:
+                pass
+            else:
+                datasets[k] = self._fitted_preprocessor.transform(dataset)
 
-        # Return original datasets? Transforms will be applied on the fly at read time?
         return datasets
+
+    def create_readers(self, datasets, worker_handles) -> Dict[str, DatasetPipeline]:
+        # TODO: implement independent reads per worker
+        self._world_size = len(worker_handles)
+        splits = [datasets.copy() for _ in worker_handles]
+
+        train_pipe = (
+            datasets[TRAIN_DATASET_KEY]
+            .window(window_size_bytes=self._window_size_bytes)
+            .repeat()
+        )
+
+        if self._global_shuffle:
+            train_pipe = train_pipe.random_shuffle_each_window()
+
+        train_pipe_splits = train_pipe.split(
+            self._world_size, equal=True, locality_hints=worker_handles
+        )
+
+        def to_reader(i, k, ds):
+            if k == TRAIN_DATASET_KEY:
+                return train_pipe_splits[i]
+            else:
+                return ds.repeat()
+
+        for i in range(self._world_size):
+            splits[i] = {k: to_reader(i, k, v) for k, v in splits[i].items()}
+        return splits
 
 
 class BulkIngest(IngestStrategy):
@@ -71,25 +104,27 @@ class BulkIngest(IngestStrategy):
         else:
             splits = [datasets.copy() for _ in worker_handles]
 
-        def to_reader(ds):
+        def to_reader(k, ds):
             pipe = ds.repeat()
-            # TODO: only shuffle train dataset?
-            if self._global_shuffle:
+            if self._global_shuffle and k == TRAIN_DATASET_KEY:
                 pipe = pipe.random_shuffle_each_window()
             if self._local_shuffle_buffer_size > 0:
                 raise NotImplementedError
             return pipe
 
         for i in range(self._world_size):
-            splits[i] = {k: to_reader(v) for k, v in splits[i].items()}
+            splits[i] = {k: to_reader(k, v) for k, v in splits[i].items()}
         return splits
 
 
 def _choose_ingest_strategy(dataset: Dict[str, Dataset]) -> IngestStrategy:
-    # TODO: if small enough, use bulk ingest
-    # if train dataset < max(1gb, 0.25 * object_store_memory)
-    # else stream with window = 0.25 * object_store_memory
-    return BulkIngest()
+    sz = dataset.size_bytes()
+    if sz < 1e9:
+        print("Chose bulk ingest by default, dataset size", sz)
+        return BulkIngest()
+    else:
+        print("Chose streamed ingest by default, dataset size", sz)
+        return StreamedIngest()
 
 
 def _default_dataset_split_fn(
