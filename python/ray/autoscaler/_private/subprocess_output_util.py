@@ -345,7 +345,6 @@ def run_cmd_redirected(
             stderr_file=sys.stderr,
             use_login_shells=use_login_shells,
         )
-
     else:
         tmpfile_path = os.path.join(
             tempfile.gettempdir(), "ray-up-{}-{}.txt".format(cmd[0], time.time())
