@@ -3425,8 +3425,6 @@
     test_name: dataset_shuffle_random_shuffle_1tb
     test_suite: dataset_test
 
-  stable: true
-
   frequency: nightly
   team: core
   cluster:
@@ -3447,8 +3445,6 @@
   legacy:
     test_name: dataset_shuffle_sort_1tb
     test_suite: dataset_test
-
-  stable: true
 
   frequency: nightly
   team: core
@@ -3535,8 +3531,6 @@
   legacy:
     test_name: dataset_shuffle_push_based_sort_1tb
     test_suite: dataset_test
-
-  stable: false
 
   frequency: nightly
   team: core
