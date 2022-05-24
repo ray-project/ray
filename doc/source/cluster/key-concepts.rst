@@ -68,7 +68,8 @@ to meet the needs of the Ray workload while matching the specification in the
 :ref:`cluster config file<cluster-config>`. In particular, if the resource
 demands of the Ray workload exceed the current capacity of the cluster, the
 autoscaler will try to add nodes. Conversely, if a node is idle for long enough,
-the autoscaler will remove it from the cluster.
+the autoscaler will remove it from the cluster. To learn more about autoscaling,
+refer to the :ref:`Ray cluster deployment guide<deployment-guide-autoscaler>`.
 
 Ray Client
 ----------
