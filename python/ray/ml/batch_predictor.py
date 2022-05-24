@@ -3,7 +3,9 @@ from typing import Type, Optional, Dict, Any
 import ray
 from ray.ml import Checkpoint
 from ray.ml.predictor import Predictor
-from ray.ml.utils.checkpointing import SyncCheckpoint
+from ray.ml.utils.checkpointing import _FixedDirCheckpoint, _LazyCheckpointActor
+from ray.util import get_node_ip_address
+from ray.util.ml_utils.node import force_on_current_node
 
 
 class BatchPredictor(Predictor):
@@ -28,10 +30,22 @@ class BatchPredictor(Predictor):
         self, checkpoint: Checkpoint, predictor_cls: Type[Predictor], **predictor_kwargs
     ):
         # Store as object ref so we only serialize it once for all map workers
-        self.checkpoint_ref = checkpoint.to_object_ref()
+        if checkpoint.get_internal_representation()[0] in ("local_path"):
+            options_kwargs = {
+                **force_on_current_node(),
+                "num_cpus": 0,
+                "placement_group": None,
+            }
+            self.checkpoint_actor = _LazyCheckpointActor.options(
+                **options_kwargs
+            ).remote(checkpoint.get_internal_representation())
+            self.checkpoint_ref = None
+        else:
+            self.checkpoint_ref = checkpoint.to_object_ref()
+            self.checkpoint_actor = None
         self.predictor_cls = predictor_cls
         self.predictor_kwargs = predictor_kwargs
-        self._tmp_dir_name = SyncCheckpoint.get_tmp_dir_name()
+        self._tmp_dir_name = _FixedDirCheckpoint.get_tmp_dir_name()
 
     @classmethod
     def from_checkpoint(
@@ -73,12 +87,27 @@ class BatchPredictor(Predictor):
         """
         predictor_cls = self.predictor_cls
         checkpoint_ref = self.checkpoint_ref
+        checkpoint_actor = self.checkpoint_actor
         predictor_kwargs = self.predictor_kwargs
         tmp_dir_name = self._tmp_dir_name
 
         class ScoringWrapper:
             def __init__(self):
-                checkpoint = SyncCheckpoint.from_object_ref(checkpoint_ref)
+                if checkpoint_actor:
+                    if get_node_ip_address() == ray.get(
+                        checkpoint_actor.get_ip.remote()
+                    ):
+                        checkpoint = _FixedDirCheckpoint.from_internal_representation(
+                            ray.get(
+                                checkpoint_actor.get_checkpoint_representation.remote()
+                            )
+                        )
+                    else:
+                        checkpoint = _FixedDirCheckpoint.from_object_ref(
+                            ray.get(checkpoint_actor.get_object_ref.remote())
+                        )
+                else:
+                    checkpoint = _FixedDirCheckpoint.from_object_ref(checkpoint_ref)
                 checkpoint.tmp_dir_name = tmp_dir_name
                 self.predictor = predictor_cls.from_checkpoint(
                     checkpoint, **predictor_kwargs

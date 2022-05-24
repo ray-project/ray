@@ -486,6 +486,11 @@ class Checkpoint:
                 "Cannot get internal representation of empty checkpoint."
             )
 
+    @DeveloperAPI
+    @classmethod
+    def from_internal_representation(cls, internal_representation: Tuple[str, Union[dict, str, ray.ObjectRef]]):
+        return cls(**{internal_representation[0]: internal_representation[1]})
+
     def __getstate__(self):
         if self._local_path:
             blob = self.to_bytes()
