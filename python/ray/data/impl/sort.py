@@ -19,14 +19,15 @@ block and becomes part of the new, sorted dataset.
 from typing import List, Any, Callable, TypeVar, Tuple, Union
 
 import numpy as np
-import ray
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockMetadata, BlockAccessor, BlockExecStats
 from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.remote_fn import cached_remote_fn
-from ray.data.impl.shuffle import ShuffleOp
+from ray.data.impl.shuffle import ShuffleOp, SimpleShufflePlan
+from ray.data.impl.push_based_shuffle import PushBasedShufflePlan
+from ray.data.context import DatasetContext
 
 T = TypeVar("T")
 
@@ -36,7 +37,7 @@ T = TypeVar("T")
 SortKeyT = Union[None, List[Tuple[str, str]], Callable[[T], Any]]
 
 
-class SortOp(ShuffleOp):
+class _SortOp(ShuffleOp):
     @staticmethod
     def map(
         idx: int,
@@ -64,6 +65,14 @@ class SortOp(ShuffleOp):
         )
 
 
+class SimpleSortOp(_SortOp, SimpleShufflePlan):
+    pass
+
+
+class PushBasedSortOp(_SortOp, PushBasedShufflePlan):
+    pass
+
+
 def sample_boundaries(
     blocks: List[ObjectRef[Block]], key: SortKeyT, num_reducers: int
 ) -> List[T]:
@@ -81,10 +90,9 @@ def sample_boundaries(
 
     sample_results = [sample_block.remote(block, n_samples, key) for block in blocks]
     sample_bar = ProgressBar("Sort Sample", len(sample_results))
-    sample_bar.block_until_complete(sample_results)
+    samples = sample_bar.fetch_until_complete(sample_results)
     sample_bar.close()
-
-    samples = ray.get(sample_results)
+    del sample_results
     samples = [s for s in samples if len(s) > 0]
     # The dataset is empty
     if len(samples) == 0:
@@ -127,10 +135,15 @@ def sort_impl(
     if descending:
         boundaries.reverse()
 
-    shuffle_op = SortOp(
+    context = DatasetContext.get_current()
+    if context.use_push_based_shuffle:
+        sort_op_cls = PushBasedSortOp
+    else:
+        sort_op_cls = SimpleSortOp
+    sort_op = sort_op_cls(
         map_args=[boundaries, key, descending], reduce_args=[key, descending]
     )
-    return shuffle_op.execute(
+    return sort_op.execute(
         blocks,
         num_reducers,
         clear_input_blocks,

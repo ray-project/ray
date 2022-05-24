@@ -2150,6 +2150,57 @@ class AsyncHyperBandSuite(unittest.TestCase):
             TrialScheduler.STOP,
         )
 
+    def testAsyncHBNonStopTrials(self):
+        trials = [Trial("PPO") for i in range(4)]
+        scheduler = AsyncHyperBandScheduler(
+            metric="metric",
+            mode="max",
+            grace_period=1,
+            max_t=3,
+            reduction_factor=2,
+            brackets=1,
+            stop_last_trials=False,
+        )
+        scheduler.on_trial_add(None, trials[0])
+        scheduler.on_trial_add(None, trials[1])
+        scheduler.on_trial_add(None, trials[2])
+        scheduler.on_trial_add(None, trials[3])
+
+        # Report one result
+        action = scheduler.on_trial_result(
+            None, trials[0], {"training_iteration": 2, "metric": 10}
+        )
+        assert action == TrialScheduler.CONTINUE
+        action = scheduler.on_trial_result(
+            None, trials[1], {"training_iteration": 2, "metric": 8}
+        )
+        assert action == TrialScheduler.STOP
+        action = scheduler.on_trial_result(
+            None, trials[2], {"training_iteration": 2, "metric": 6}
+        )
+        assert action == TrialScheduler.STOP
+        action = scheduler.on_trial_result(
+            None, trials[3], {"training_iteration": 2, "metric": 4}
+        )
+        assert action == TrialScheduler.STOP
+
+        # Report more. This will fail if `stop_last_trials=True`
+        action = scheduler.on_trial_result(
+            None, trials[0], {"training_iteration": 4, "metric": 10}
+        )
+        assert action == TrialScheduler.CONTINUE
+
+        action = scheduler.on_trial_result(
+            None, trials[0], {"training_iteration": 8, "metric": 10}
+        )
+        assert action == TrialScheduler.CONTINUE
+
+        # Also continue if we fall below the cutoff eventually
+        action = scheduler.on_trial_result(
+            None, trials[0], {"training_iteration": 14, "metric": 1}
+        )
+        assert action == TrialScheduler.CONTINUE
+
     def testMedianStoppingNanInf(self):
         scheduler = MedianStoppingRule(metric="episode_reward_mean", mode="max")
 

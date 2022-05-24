@@ -49,6 +49,10 @@ RAY_CONFIG(int64_t, handler_warning_timeout_ms, 1000)
 
 /// The duration between heartbeats sent by the raylets.
 RAY_CONFIG(uint64_t, raylet_heartbeat_period_milliseconds, 1000)
+
+/// The duration between loads pulled by GCS
+RAY_CONFIG(uint64_t, gcs_pull_resource_loads_period_milliseconds, 1000)
+
 /// If a component has not sent a heartbeat in the last num_heartbeats_timeout
 /// heartbeat intervals, the raylet monitor process will report
 /// it as dead to the db_client table.
@@ -60,6 +64,10 @@ RAY_CONFIG(uint64_t, num_heartbeats_warning, 5)
 
 /// The duration between reporting resources sent by the raylets.
 RAY_CONFIG(uint64_t, raylet_report_resources_period_milliseconds, 100)
+
+/// The duration between raylet check memory pressure and send gc request
+RAY_CONFIG(uint64_t, raylet_check_gc_period_milliseconds, 100)
+
 /// For a raylet, if the last resource report was sent more than this many
 /// report periods ago, then a warning will be logged that the report
 /// handler is drifting.
@@ -148,11 +156,20 @@ RAY_CONFIG(int64_t, max_direct_call_object_size, 100 * 1024)
 
 // The max gRPC message size (the gRPC internal default is 4MB). We use a higher
 // limit in Ray to avoid crashing with many small inlined task arguments.
-RAY_CONFIG(int64_t, max_grpc_message_size, 100 * 1024 * 1024)
+// Keep in sync with GCS_STORAGE_MAX_SIZE in packaging.py.
+RAY_CONFIG(int64_t, max_grpc_message_size, 250 * 1024 * 1024)
 
 // Retry timeout for trying to create a gRPC server. Only applies if the number
 // of retries is non zero.
 RAY_CONFIG(int64_t, grpc_server_retry_timeout_milliseconds, 1000)
+
+// Whether to allow HTTP proxy on GRPC clients. Disable HTTP proxy by default since it
+// disrupts local connections. Note that this config item only controls GrpcClient in
+// `src/ray/rpc/grpc_client.h`. Python GRPC clients are not directly controlled by this.
+// NOTE (kfstorm): DO NOT set this config item via `_system_config`, use
+// `RAY_grpc_enable_http_proxy` environment variable instead so that it can be passed to
+// non-C++ children processes such as dashboard agent.
+RAY_CONFIG(bool, grpc_enable_http_proxy, false)
 
 // The min number of retries for direct actor creation tasks. The actual number
 // of creation retries will be MAX(actor_creation_min_retries, max_restarts).
@@ -160,7 +177,7 @@ RAY_CONFIG(uint64_t, actor_creation_min_retries, 3)
 
 /// Warn if more than this many tasks are queued for submission to an actor.
 /// It likely indicates a bug in the user code.
-RAY_CONFIG(int64_t, actor_excess_queueing_warn_threshold, 5000)
+RAY_CONFIG(uint64_t, actor_excess_queueing_warn_threshold, 5000)
 
 /// When trying to resolve an object, the initial period that the raylet will
 /// wait before contacting the object's owner to check if the object is still
@@ -214,10 +231,23 @@ RAY_CONFIG(int64_t, kill_worker_timeout_milliseconds, 100)
 
 /// The duration that we wait after the worker is launched before the
 /// starting_worker_timeout_callback() is called.
-RAY_CONFIG(int64_t, worker_register_timeout_seconds, 30)
+RAY_CONFIG(int64_t, worker_register_timeout_seconds, 60)
 
 /// The maximum number of workers to iterate whenever we analyze the resources usage.
 RAY_CONFIG(uint32_t, worker_max_resource_analysis_iteration, 128);
+
+/// A value to add to workers' OOM score adjustment, so that the OS prioritizes
+/// killing these over the raylet. 0 or positive values only (negative values
+/// require sudo permissions).
+/// NOTE(swang): Linux only.
+RAY_CONFIG(int, worker_oom_score_adjustment, 1000)
+
+/// Sets workers' nice value on posix systems, so that the OS prioritizes CPU for other
+/// processes over worker. This makes CPU available to GCS, Raylet and user processes
+/// even when workers are busy.
+/// Valid value is [0, 19] (negative values require sudo permissions).
+/// NOTE: Linux, Unix and MacOS only.
+RAY_CONFIG(int, worker_niceness, 15)
 
 /// Allow up to 60 seconds for connecting to Redis.
 RAY_CONFIG(int64_t, redis_db_connect_retries, 600)
@@ -327,8 +357,32 @@ RAY_CONFIG(bool, support_fork, false)
 /// Each reconnection ping will be retried every 1 second.
 RAY_CONFIG(int32_t, gcs_rpc_server_reconnect_timeout_s, 60)
 
+/// The timeout for GCS connection in seconds
+RAY_CONFIG(int32_t, gcs_rpc_server_connect_timeout_s, 5)
+
 /// Minimum interval between reconnecting gcs rpc server when gcs server restarts.
 RAY_CONFIG(int32_t, minimum_gcs_reconnect_interval_milliseconds, 5000)
+
+/// gRPC channel reconnection related configs to GCS.
+/// Check https://grpc.github.io/grpc/core/group__grpc__arg__keys.html for details
+RAY_CONFIG(int32_t, gcs_grpc_max_reconnect_backoff_ms, 2000)
+RAY_CONFIG(int32_t, gcs_grpc_min_reconnect_backoff_ms, 100)
+RAY_CONFIG(int32_t, gcs_grpc_initial_reconnect_backoff_ms, 100)
+
+/// Maximum bytes of request queued when RPC failed due to GCS is down.
+/// If reach the limit, the core worker will hang until GCS is reconnected.
+/// By default, the value if 5GB.
+RAY_CONFIG(uint64_t, gcs_grpc_max_request_queued_max_bytes, 1024UL * 1024 * 1024 * 5)
+
+/// The duration between two checks for grpc status.
+RAY_CONFIG(int32_t, gcs_client_check_connection_status_interval_milliseconds, 1000)
+
+/// Feature flag to use the ray syncer for resource synchronization
+RAY_CONFIG(bool, use_ray_syncer, false)
+
+/// The queuing buffer of ray syncer. This indicates how many concurrent
+/// requests can run in flight for syncing.
+RAY_CONFIG(int64_t, ray_syncer_polling_buffer, 5)
 
 /// The interval at which the gcs client will check if the address of gcs service has
 /// changed. When the address changed, we will resubscribe again.
@@ -338,7 +392,7 @@ RAY_CONFIG(uint64_t, gcs_service_address_check_interval_milliseconds, 1000)
 RAY_CONFIG(int64_t, metrics_report_batch_size, 100)
 
 /// Whether or not we enable metrics collection.
-RAY_CONFIG(int64_t, enable_metrics_collection, true)
+RAY_CONFIG(bool, enable_metrics_collection, true)
 
 // Max number bytes of inlined objects in a task rpc request/response.
 RAY_CONFIG(int64_t, task_rpc_inlined_bytes_limit, 10 * 1024 * 1024)

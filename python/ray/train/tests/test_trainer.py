@@ -1164,6 +1164,9 @@ def test_resources(ray_start_4_cpus_4_gpus_4_extra, resource, num_requested):
     trainer.shutdown()
     wait_for_condition(lambda: ray.available_resources().get(resource, 0) == original)
 
+    # Check that user input has not been modified
+    assert resources_per_worker == {resource: num_requested}
+
 
 def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra):
     class CudaTestBackend(TestBackend):

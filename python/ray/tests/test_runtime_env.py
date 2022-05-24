@@ -33,9 +33,12 @@ from ray.runtime_env import RuntimeEnv
 
 
 def test_get_wheel_filename():
-    ray_version = "2.0.0.dev0"
+    ray_version = "3.0.0.dev0"
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ["36", "37", "38", "39"]:
+            if sys_platform == "win32" and py_version == "36":
+                # Windows wheels are not built for py3.6 anymore
+                continue
             filename = get_wheel_filename(sys_platform, ray_version, py_version)
             prefix = "https://s3-us-west-2.amazonaws.com/ray-wheels/latest/"
             url = f"{prefix}{filename}"
@@ -43,10 +46,13 @@ def test_get_wheel_filename():
 
 
 def test_get_master_wheel_url():
-    ray_version = "2.0.0.dev0"
-    test_commit = "58a73821fbfefbf53a19b6c7ffd71e70ccf258c7"
+    ray_version = "3.0.0.dev0"
+    test_commit = "c3ac6fcf3fcc8cfe6930c9a820add0e187bff579"
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ["36", "37", "38", "39"]:
+            if sys_platform == "win32" and py_version == "36":
+                # Windows wheels are not built for py3.6 anymore
+                continue
             url = get_master_wheel_url(
                 test_commit, sys_platform, ray_version, py_version
             )

@@ -1,11 +1,18 @@
 import inspect
-from typing import Optional, Dict, Type, Union, Callable, Any
+import os
+from typing import Optional, Dict, Tuple, Type, Union, Callable, Any
 
+import ray.cloudpickle as cpickle
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.config import ScalingConfig, RunConfig
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.trainer import Trainer, GenDataset
+from ray.ml.utils.checkpointing import (
+    load_preprocessor_from_dir,
+    save_preprocessor_to_dir,
+)
 from ray.rllib.agents.trainer import Trainer as RLlibTrainer
+from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.typing import PartialTrainerConfigDict, EnvType
 from ray.tune import Trainable, PlacementGroupFactory
 from ray.tune.logger import Logger
@@ -13,6 +20,10 @@ from ray.tune.registry import get_trainable_cls
 from ray.tune.resources import Resources
 from ray.util.annotations import PublicAPI
 from ray.util.ml_utils.dict import merge_dicts
+
+
+RL_TRAINER_CLASS_FILE = "trainer_class.pkl"
+RL_CONFIG_FILE = "config.pkl"
 
 
 @PublicAPI(stability="alpha")
@@ -177,8 +188,9 @@ class RLTrainer(Trainer):
 
     def as_trainable(self) -> Type[Trainable]:
         param_dict = self._param_dict
-        base_config = self._config
+        base_config = self._config or {}
         trainer_cls = self.__class__
+        preprocessor = self.preprocessor
 
         if isinstance(self._algorithm, str):
             rllib_trainer = get_trainable_cls(self._algorithm)
@@ -194,19 +206,37 @@ class RLTrainer(Trainer):
                 remote_checkpoint_dir: Optional[str] = None,
                 sync_function_tpl: Optional[str] = None,
             ):
-                resolved_config = merge_dicts(base_config, config)
+                resolved_config = merge_dicts(base_config, config or {})
                 param_dict["config"] = resolved_config
 
                 trainer = trainer_cls(**param_dict)
                 rllib_config = trainer._get_rllib_config(process_datasets=True)
 
                 super(AIRRLTrainer, self).__init__(
-                    rllib_config,
-                    env,
-                    logger_creator,
-                    remote_checkpoint_dir,
-                    sync_function_tpl,
+                    config=rllib_config,
+                    env=env,
+                    logger_creator=logger_creator,
+                    remote_checkpoint_dir=remote_checkpoint_dir,
+                    sync_function_tpl=sync_function_tpl,
                 )
+
+            def save_checkpoint(self, checkpoint_dir: str):
+                checkpoint_path = super(AIRRLTrainer, self).save_checkpoint(
+                    checkpoint_dir
+                )
+
+                trainer_class_path = os.path.join(checkpoint_dir, RL_TRAINER_CLASS_FILE)
+                with open(trainer_class_path, "wb") as fp:
+                    cpickle.dump(self.__class__, fp)
+
+                config_path = os.path.join(checkpoint_dir, RL_CONFIG_FILE)
+                with open(config_path, "wb") as fp:
+                    cpickle.dump(self.config, fp)
+
+                if preprocessor:
+                    save_preprocessor_to_dir(preprocessor, checkpoint_dir)
+
+                return checkpoint_path
 
             @classmethod
             def default_resource_request(
@@ -222,3 +252,64 @@ class RLTrainer(Trainer):
 
         AIRRLTrainer.__name__ = f"AIR{rllib_trainer.__name__}"
         return AIRRLTrainer
+
+
+def load_checkpoint(
+    checkpoint: Checkpoint,
+    env: Optional[EnvType] = None,
+) -> Tuple[Policy, Optional[Preprocessor]]:
+    """Load a Checkpoint from ``RLTrainer``.
+
+    Args:
+        checkpoint: The checkpoint to load the policy and
+            preprocessor from. It is expected to be from the result of a
+            ``RLTrainer`` run.
+        env: Optional environment to instantiate the trainer with. If not given,
+            it is parsed from the saved trainer configuration instead.
+
+    Returns:
+        The policy and AIR preprocessor contained within.
+    """
+    with checkpoint.as_directory() as checkpoint_path:
+        trainer_class_path = os.path.join(checkpoint_path, RL_TRAINER_CLASS_FILE)
+        config_path = os.path.join(checkpoint_path, RL_CONFIG_FILE)
+
+        if not os.path.exists(trainer_class_path):
+            raise ValueError(
+                f"RLPredictor only works with checkpoints created by "
+                f"RLTrainer. The checkpoint you specified is missing the "
+                f"`{RL_TRAINER_CLASS_FILE}` file."
+            )
+
+        if not os.path.exists(config_path):
+            raise ValueError(
+                f"RLPredictor only works with checkpoints created by "
+                f"RLTrainer. The checkpoint you specified is missing the "
+                f"`{RL_CONFIG_FILE}` file."
+            )
+
+        with open(trainer_class_path, "rb") as fp:
+            trainer_cls = cpickle.load(fp)
+
+        with open(config_path, "rb") as fp:
+            config = cpickle.load(fp)
+
+        checkpoint_data_path = None
+        for file in os.listdir(checkpoint_path):
+            if file.startswith("checkpoint") and not file.endswith(".tune_metadata"):
+                checkpoint_data_path = os.path.join(checkpoint_path, file)
+
+        if not checkpoint_data_path:
+            raise ValueError(
+                f"Could not find checkpoint data in RLlib checkpoint. "
+                f"Found files: {list(os.listdir(checkpoint_path))}"
+            )
+
+        preprocessor = load_preprocessor_from_dir(checkpoint_path)
+
+        config.get("evaluation_config", {}).pop("in_evaluation", None)
+        trainer = trainer_cls(config=config, env=env)
+        trainer.restore(checkpoint_data_path)
+
+        policy = trainer.get_policy()
+        return policy, preprocessor

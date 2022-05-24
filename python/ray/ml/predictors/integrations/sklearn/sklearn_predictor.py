@@ -1,9 +1,15 @@
 from typing import Optional, List, Union
+
 import pandas as pd
+import numpy as np
+from joblib import parallel_backend
 
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.predictor import Predictor, DataBatchType
 from ray.ml.preprocessor import Preprocessor
+from ray.ml.train.integrations.sklearn import load_checkpoint
+from ray.ml.utils.sklearn_utils import set_cpu_params
+from ray.util.joblib import register_ray
 
 from sklearn.base import BaseEstimator
 
@@ -36,12 +42,14 @@ class SklearnPredictor(Predictor):
                 ``SklearnTrainer`` run.
 
         """
-        raise NotImplementedError
+        estimator, preprocessor = load_checkpoint(checkpoint)
+        return SklearnPredictor(estimator=estimator, preprocessor=preprocessor)
 
     def predict(
         self,
         data: DataBatchType,
         feature_columns: Optional[Union[List[str], List[int]]] = None,
+        num_estimator_cpus: Optional[int] = 1,
         **predict_kwargs,
     ) -> pd.DataFrame:
         """Run inference on data batch.
@@ -52,6 +60,9 @@ class SklearnPredictor(Predictor):
             feature_columns: The names or indices of the columns in the
                 data to use as features to predict on. If None, then use
                 all columns in ``data``.
+            num_estimator_cpus: If set to a value other than None, will set
+                the values of all ``n_jobs`` and ``thread_count`` parameters
+                in the estimator (including in nested objects) to the given value.
             **predict_kwargs: Keyword arguments passed to ``estimator.predict``.
 
         Examples:
@@ -100,4 +111,24 @@ class SklearnPredictor(Predictor):
             pd.DataFrame: Prediction result.
 
         """
-        raise NotImplementedError
+        register_ray()
+
+        if self.preprocessor:
+            data = self.preprocessor.transform_batch(data)
+
+        if num_estimator_cpus:
+            set_cpu_params(self.estimator, num_estimator_cpus)
+
+        if feature_columns:
+            if isinstance(data, np.ndarray):
+                data = data[:, feature_columns]
+            else:
+                data = data[feature_columns]
+        with parallel_backend("ray", n_jobs=num_estimator_cpus):
+            df = pd.DataFrame(self.estimator.predict(data, **predict_kwargs))
+        df.columns = (
+            ["predictions"]
+            if len(df.columns) == 1
+            else [f"predictions_{i}" for i in range(len(df.columns))]
+        )
+        return df

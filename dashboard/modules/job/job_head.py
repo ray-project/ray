@@ -10,8 +10,11 @@ from dataclasses import dataclass
 import ray
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as optional_utils
-from ray.dashboard.optional_utils import rest_response
-from ray._private.runtime_env.packaging import package_exists, upload_package_to_gcs
+from ray._private.runtime_env.packaging import (
+    package_exists,
+    upload_package_to_gcs,
+    pin_runtime_env_uri,
+)
 from ray.dashboard.modules.job.common import (
     CURRENT_VERSION,
     http_uri_components_to_uri,
@@ -77,6 +80,15 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             protocol=req.match_info["protocol"],
             package_name=req.match_info["package_name"],
         )
+
+        logger.debug(f"Adding temporary reference to package {package_uri}.")
+        try:
+            pin_runtime_env_uri(package_uri)
+        except Exception:
+            return Response(
+                text=traceback.format_exc(),
+                status=aiohttp.web.HTTPInternalServerError.status_code,
+            )
 
         if not package_exists(package_uri):
             return Response(
@@ -222,19 +234,6 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
         async for lines in self._job_manager.tail_job_logs(job_id):
             await ws.send_str(lines)
-
-    @routes.get("/api/v0/jobs")
-    async def get_jobs(self, req) -> aiohttp.web.Response:
-        data = self._job_manager.list_jobs()
-        return rest_response(
-            success=True,
-            message="",
-            result={
-                job_id: dataclasses.asdict(job_info)
-                for job_id, job_info in data.items()
-            },
-            convert_google_style=False,
-        )
 
     async def run(self, server):
         if not self._job_manager:

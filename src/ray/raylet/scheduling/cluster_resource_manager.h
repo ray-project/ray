@@ -33,6 +33,9 @@ namespace raylet {
 class ClusterTaskManagerTest;
 class SchedulingPolicyTest;
 }  // namespace raylet
+namespace gcs {
+class GcsActorSchedulerTest;
+}  // namespace gcs
 
 /// Class manages the resources view of the entire cluster.
 /// This class is not thread safe.
@@ -126,6 +129,7 @@ class ClusterResourceManager {
 
  private:
   friend class ClusterResourceScheduler;
+  friend class gcs::GcsActorSchedulerTest;
 
   /// Add a new node or overwrite the resources of an existing node.
   ///

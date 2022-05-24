@@ -13,16 +13,23 @@ from ray.experimental.internal_kv import (
     _internal_kv_put,
     _internal_kv_get,
     _internal_kv_exists,
+    _pin_runtime_env_uri,
 )
 from ray._private.thirdparty.pathspec import PathSpec
+from ray.ray_constants import (
+    RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT,
+    RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR,
+)
 
 default_logger = logging.getLogger(__name__)
 
 # If an individual file is beyond this size, print a warning.
 FILE_SIZE_WARNING = 10 * 1024 * 1024  # 10MiB
-# NOTE(edoakes): we should be able to support up to 512 MiB based on the GCS'
-# limit, but for some reason that causes failures when downloading.
-GCS_STORAGE_MAX_SIZE = 100 * 1024 * 1024  # 100MiB
+# The size is bounded by the max gRPC message size.
+# Keep in sync with max_grpc_message_size in ray_config_def.h.
+GCS_STORAGE_MAX_SIZE = int(
+    os.environ.get("RAY_max_grpc_message_size", 250 * 1024 * 1024)
+)
 RAY_PKG_PREFIX = "_ray_pkg_"
 
 
@@ -192,11 +199,20 @@ def is_zip_uri(uri: str) -> bool:
 
 def is_whl_uri(uri: str) -> bool:
     try:
-        protocol, path = parse_uri(uri)
+        _, path = parse_uri(uri)
     except ValueError:
         return False
 
     return Path(path).suffix == ".whl"
+
+
+def is_jar_uri(uri: str) -> bool:
+    try:
+        _, path = parse_uri(uri)
+    except ValueError:
+        return False
+
+    return Path(path).suffix == ".jar"
 
 
 def _get_excludes(path: Path, excludes: List[str]) -> Callable:
@@ -224,6 +240,40 @@ def _get_gitignore(path: Path) -> Optional[Callable]:
         return match
     else:
         return None
+
+
+def pin_runtime_env_uri(uri: str, *, expiration_s: Optional[int] = None) -> None:
+    """Pin a reference to a runtime_env URI in the GCS on a timeout.
+
+    This is used to avoid premature eviction in edge conditions for job
+    reference counting. See https://github.com/ray-project/ray/pull/24719.
+
+    Packages are uploaded to GCS in order to be downloaded by a runtime env plugin
+    (e.g. working_dir, py_modules) after the job starts.
+
+    This function adds a temporary reference to the package in the GCS to prevent
+    it from being deleted before the job starts. (See #23423 for the bug where
+    this happened.)
+
+    If this reference didn't have an expiration, then if the script exited
+    (e.g. via Ctrl-C) before the job started, the reference would never be
+    removed, so the package would never be deleted.
+    """
+
+    if expiration_s is None:
+        expiration_s = int(
+            os.environ.get(
+                RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR,
+                RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT,
+            )
+        )
+    elif not isinstance(expiration_s, int):
+        raise ValueError(f"expiration_s must be an int, got {type(expiration_s)}.")
+
+    if expiration_s < 0:
+        raise ValueError(f"expiration_s must be >= 0, got {expiration_s}.")
+    elif expiration_s > 0:
+        _pin_runtime_env_uri(uri, expiration_s=expiration_s)
 
 
 def _store_package_in_gcs(
@@ -449,6 +499,8 @@ def upload_package_if_needed(
 
     if logger is None:
         logger = default_logger
+
+    pin_runtime_env_uri(pkg_uri)
 
     if package_exists(pkg_uri):
         return False

@@ -23,13 +23,12 @@ from ray._private.gcs_pubsub import (
 )
 from ray.dashboard.datacenter import DataOrganizer
 from ray.dashboard.utils import async_loop_forever
-from ray.dashboard.state_aggregator import GcsStateAggregator
 
 logger = logging.getLogger(__name__)
 
 aiogrpc.init_grpc_aio()
 GRPC_CHANNEL_OPTIONS = (
-    ("grpc.enable_http_proxy", 0),
+    *ray_constants.GLOBAL_GRPC_OPTIONS,
     ("grpc.max_send_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
     ("grpc.max_receive_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
 )
@@ -87,7 +86,6 @@ class DashboardHead:
         self.temp_dir = temp_dir
         self.session_dir = session_dir
         self.aiogrpc_gcs_channel = None
-        self.gcs_state_aggregator = None
         self.gcs_error_subscriber = None
         self.gcs_log_subscriber = None
         self.ip = ray.util.get_node_ip_address()
@@ -176,7 +174,6 @@ class DashboardHead:
         self.aiogrpc_gcs_channel = ray._private.utils.init_grpc_channel(
             gcs_address, GRPC_CHANNEL_OPTIONS, asynchronous=True
         )
-        self.gcs_state_aggregator = GcsStateAggregator(self.aiogrpc_gcs_channel)
 
         self.gcs_error_subscriber = GcsAioErrorSubscriber(address=gcs_address)
         self.gcs_log_subscriber = GcsAioLogSubscriber(address=gcs_address)

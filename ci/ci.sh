@@ -126,6 +126,7 @@ test_core() {
         -//:gcs_server_test
         -//:gcs_server_rpc_test
         -//:ray_syncer_test # TODO (iycheng): it's flaky on windows. Add it back once we figure out the cause
+        -//:gcs_client_reconnection_test
       )
       ;;
   esac
@@ -191,9 +192,10 @@ test_python() {
 
 # For running large Python tests on Linux and MacOS.
 test_large() {
-  bazel test --config=ci "$(./ci/run/bazel_export_options)" --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE \
+  # shellcheck disable=SC2046
+  bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE \
       --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER \
-      --test_env=CI --test_tag_filters="large_size_python_tests_shard_${BUILDKITE_PARALLEL_JOB}" \
+      --test_env=CI --test_tag_filters="large_size_python_tests_shard_${BUILDKITE_PARALLEL_JOB}"  "$@" \
       -- python/ray/tests/...
 }
 
@@ -429,8 +431,11 @@ build_wheels() {
 
         # Sync the directory to buildkite artifacts
         rm -rf /artifact-mount/.whl || true
-        cp -r .whl /artifact-mount/.whl
-        chmod -R 777 /artifact-mount/.whl
+
+        if [ "${UPLOAD_WHEELS_AS_ARTIFACTS-}" = "1" ]; then
+          cp -r .whl /artifact-mount/.whl
+          chmod -R 777 /artifact-mount/.whl
+        fi
 
         validate_wheels_commit_str
       fi
@@ -440,8 +445,11 @@ build_wheels() {
       "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
       mkdir -p /tmp/artifacts/.whl
       rm -rf /tmp/artifacts/.whl || true
-      cp -r .whl /tmp/artifacts/.whl
-      chmod -R 777 /tmp/artifacts/.whl
+
+      if [ "${UPLOAD_WHEELS_AS_ARTIFACTS-}" = "1" ]; then
+        cp -r .whl /tmp/artifacts/.whl
+        chmod -R 777 /tmp/artifacts/.whl
+      fi
 
       validate_wheels_commit_str
       ;;
@@ -464,6 +472,14 @@ lint_readme() {
 
 lint_scripts() {
   FORMAT_SH_PRINT_DIFF=1 "${ROOT_DIR}"/lint/format.sh --all-scripts
+}
+
+lint_banned_words() {
+  "${ROOT_DIR}"/lint/check-banned-words.sh
+}
+
+lint_annotations() {
+  "${ROOT_DIR}"/lint/check_api_annotations.py
 }
 
 lint_bazel() {
@@ -532,6 +548,12 @@ _lint() {
 
   # Run script linting
   lint_scripts
+
+  # Run banned words check.
+  lint_banned_words
+
+  # Run annotations check.
+  lint_annotations
 
   # Make sure that the README is formatted properly.
   lint_readme
@@ -671,6 +693,43 @@ build() {
   if need_wheels; then
     build_wheels
   fi
+}
+
+test_minimal() {
+  ./ci/env/install-minimal.sh "$1"
+  ./ci/env/env_info.sh
+  python ./ci/env/check_minimal_install.py
+  BAZEL_EXPORT_OPTIONS="$(./ci/run/bazel_export_options)"
+  # Ignoring shellcheck is necessary because if ${BAZEL_EXPORT_OPTIONS} is wrapped by the double quotation,
+  # bazel test cannot recognize the option.
+  # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic
+  # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic_2
+  # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic_3
+  # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic_4
+  # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic_5
+  # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_output
+  # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env_ray_minimal
+  # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env
+  # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env_2
+  # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env_complicated
+  # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env_validation
+  # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_serve_ray_minimal
+  # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/dashboard/test_dashboard
+  # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_usage_stats
 }
 
 _main() {

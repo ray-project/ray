@@ -320,6 +320,28 @@ message TaskSpec {
   uint64 attempt_number = 28;
 }
 
+message TaskInfoEntry {
+  // Type of this task.
+  TaskType type = 1;
+  // Name of this task.
+  string name = 2;
+  // Language of this task.
+  Language language = 3;
+  // Function descriptor of this task uniquely describe the function to execute.
+  string func_or_class_name = 4;
+  TaskStatus scheduling_state = 5;
+  // ID of the job that this task belongs to.
+  bytes job_id = 6;
+  // Task ID of the task.
+  bytes task_id = 7;
+  // Task ID of the parent task.
+  bytes parent_task_id = 8;
+  // Quantities of the different resources required by this task.
+  map<string, double> required_resources = 13;
+  // Runtime environment for this task.
+  RuntimeEnvInfo runtime_env_info = 23;
+}
+
 message Bundle {
   message BundleIdentifier {
     bytes placement_group_id = 1;
@@ -506,6 +528,12 @@ enum TaskStatus {
   SCHEDULED = 2;
   // The task finished successfully.
   FINISHED = 3;
+  // The task is scheduled properly and waiting for execution.
+  // It includes time to deliver the task to the remote worker + queueing time
+  // from the execution side.
+  WAITING_FOR_EXECUTION = 5;
+  // The task that is running.
+  RUNNING = 6;
 }
 
 // Debug info for a referenced object.
@@ -550,10 +578,6 @@ message CoreWorkerStats {
   int32 num_pending_tasks = 2;
   // Number of object refs in local scope.
   int32 num_object_refs_in_scope = 3;
-  // Name of the currently executing task.
-  string current_task_name = 4;
-  // String representation of the function descriptor of the currently executing task.
-  string current_task_func_desc = 5;
   // IP address of the core worker.
   string ip_address = 7;
   // Port of the core worker.
@@ -608,19 +632,16 @@ message MetricPoint {
 // Type of a worker exit.
 enum WorkerExitType {
   // Worker exit due to system level failures (i.e. worker crash).
-  SYSTEM_ERROR_EXIT = 0;
-  // Intended, initiated worker exit via raylet API.
-  INTENDED_EXIT = 1;
-  // Worker exit due to resource bundle release.
-  UNUSED_RESOURCE_RELEASED = 2;
-  // Worker exit due to placement group removal.
-  PLACEMENT_GROUP_REMOVED = 3;
-  // Worker exit due to exceptions in creation task.
-  CREATION_TASK_ERROR = 4;
-  // Worker killed by raylet if it has been idle for too long.
-  IDLE_EXIT = 5;
-  // Worker killed because its node is dead.
-  NODE_DIED = 6;
+  SYSTEM_ERROR = 0;
+  // System-level exit that is intended. E.g.,
+  // Workers that are killed because they are idle for a long time.
+  INTENDED_SYSTEM_EXIT = 1;
+  // Worker exits because of user error.
+  // E.g., execptions from the actor initialization.
+  USER_ERROR = 2;
+  // Intended exit from users (e.g., users exit workers with exit code 0
+  // or exit initated by Ray API such as ray.kill).
+  INTENDED_USER_EXIT = 3;
 }
 
 ///////////////////////////////////////////////////////////////////////////////

@@ -134,6 +134,9 @@ if __name__ == "__main__":
         # Evaluate every other training iteration (together
         # with every other call to Trainer.train()).
         "evaluation_interval": args.evaluation_interval,
+        "evaluation_config": {
+            "input_evaluation": ["is"],
+        },
         # Run for n episodes/timesteps (properly distribute load amongst
         # all eval workers). The longer it takes to evaluate, the more sense
         # it makes to use `evaluation_parallel_to_training=True`.

@@ -1,6 +1,5 @@
 import inspect
 import json
-import pickle
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -15,7 +14,7 @@ from pydantic import (
     validator,
 )
 
-from ray import cloudpickle as cloudpickle
+from ray import cloudpickle
 from ray.serve.constants import (
     DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
     DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
@@ -30,7 +29,8 @@ from ray.serve.generated.serve_pb2 import (
     AutoscalingConfig as AutoscalingConfigProto,
     ReplicaConfig as ReplicaConfigProto,
 )
-from ray.serve.utils import ServeEncoder
+from ray._private import ray_option_utils
+from ray._private.utils import resources_from_ray_options
 
 
 class AutoscalingConfig(BaseModel):
@@ -153,7 +153,7 @@ class DeploymentConfig(BaseModel):
     def to_proto(self):
         data = self.dict()
         if data.get("user_config"):
-            data["user_config"] = pickle.dumps(data["user_config"])
+            data["user_config"] = cloudpickle.dumps(data["user_config"])
         if data.get("autoscaling_config"):
             data["autoscaling_config"] = AutoscalingConfigProto(
                 **data["autoscaling_config"]
@@ -173,7 +173,7 @@ class DeploymentConfig(BaseModel):
         )
         if "user_config" in data:
             if data["user_config"] != "":
-                data["user_config"] = pickle.loads(proto.user_config)
+                data["user_config"] = cloudpickle.loads(proto.user_config)
             else:
                 data["user_config"] = None
         if "autoscaling_config" in data:
@@ -264,84 +264,35 @@ class ReplicaConfig:
         if ray_actor_options is None:
             self.ray_actor_options = {}
         else:
+            if not isinstance(ray_actor_options, dict):
+                raise TypeError("ray_actor_options must be a dictionary.")
+            allowed_ray_actor_options = {
+                # resource options
+                "accelerator_type",
+                "memory",
+                "num_cpus",
+                "num_gpus",
+                "object_store_memory",
+                "resources",
+                # other options
+                "runtime_env",
+            }
+            for option in ray_actor_options:
+                if option not in allowed_ray_actor_options:
+                    raise ValueError(
+                        f"Specifying '{option}' in ray_actor_options is not allowed. "
+                        f"Allowed options: {allowed_ray_actor_options}"
+                    )
+            ray_option_utils.validate_actor_options(ray_actor_options, in_options=True)
             self.ray_actor_options = ray_actor_options
 
-        self.resource_dict = {}
-        self._validate()
-
-    def _validate(self):
-        if not isinstance(self.ray_actor_options, dict):
-            raise TypeError("ray_actor_options must be a dictionary.")
-
-        disallowed_ray_actor_options = {
-            "args",
-            "kwargs",
-            "max_concurrency",
-            "max_restarts",
-            "max_task_retries",
-            "name",
-            "namespace",
-            "lifetime",
-            "placement_group",
-            "placement_group_bundle_index",
-            "placement_group_capture_child_tasks",
-            "max_pending_calls",
-            "scheduling_strategy",
-        }
-
-        for option in disallowed_ray_actor_options:
-            if option in self.ray_actor_options:
-                raise ValueError(
-                    f"Specifying {option} in ray_actor_options is not allowed."
-                )
-
-        # TODO(suquark): reuse options validation of remote function/actor.
-        # Ray defaults to zero CPUs for placement, we default to one here.
-        if self.ray_actor_options.get("num_cpus") is None:
+        # The ray_actor_options dictionary is what ultimately gets passed into
+        # each replica actor's .options() call. The resource_dict is used only
+        # to inform the user about their resource usage.
+        self.ray_actor_options.setdefault("num_cpus", None)
+        if self.ray_actor_options["num_cpus"] is None:
             self.ray_actor_options["num_cpus"] = 1
-        num_cpus = self.ray_actor_options["num_cpus"]
-        if not isinstance(num_cpus, (int, float)):
-            raise TypeError("num_cpus in ray_actor_options must be an int or a float.")
-        elif num_cpus < 0:
-            raise ValueError("num_cpus in ray_actor_options must be >= 0.")
-        self.resource_dict["CPU"] = num_cpus
-
-        if self.ray_actor_options.get("num_gpus") is None:
-            self.ray_actor_options["num_gpus"] = 0
-        num_gpus = self.ray_actor_options["num_gpus"]
-        if not isinstance(num_gpus, (int, float)):
-            raise TypeError("num_gpus in ray_actor_options must be an int or a float.")
-        elif num_gpus < 0:
-            raise ValueError("num_gpus in ray_actor_options must be >= 0.")
-        self.resource_dict["GPU"] = num_gpus
-
-        # Serve deployments use Ray's default for actor memory.
-        self.ray_actor_options.setdefault("memory", None)
-        memory = self.ray_actor_options["memory"]
-        if memory is not None and not isinstance(memory, (int, float)):
-            raise TypeError(
-                "memory in ray_actor_options must be an int, a float, or None."
-            )
-        elif memory is not None and memory <= 0:
-            raise ValueError("memory in ray_actor_options must be > 0.")
-        self.resource_dict["memory"] = memory
-
-        object_store_memory = self.ray_actor_options.get("object_store_memory")
-        if not isinstance(object_store_memory, (int, float, type(None))):
-            raise TypeError(
-                "object_store_memory in ray_actor_options must be an int, float "
-                "or None."
-            )
-        elif object_store_memory is not None and object_store_memory < 0:
-            raise ValueError("object_store_memory in ray_actor_options must be >= 0.")
-        self.resource_dict["object_store_memory"] = object_store_memory
-
-        if self.ray_actor_options.get("resources") is None:
-            self.ray_actor_options["resources"] = {}
-        custom_resources = self.ray_actor_options["resources"]
-        if not isinstance(custom_resources, dict):
-            raise TypeError("resources in ray_actor_options must be a dictionary.")
-        self.resource_dict.update(custom_resources)
+        self.resource_dict = resources_from_ray_options(self.ray_actor_options)
 
     @classmethod
     def from_proto(
@@ -355,9 +306,11 @@ class ReplicaConfig:
                 # TODO use messagepack
                 deployment_def = cloudpickle.loads(proto.serialized_deployment_def)
 
-        init_args = pickle.loads(proto.init_args) if proto.init_args != b"" else None
+        init_args = (
+            cloudpickle.loads(proto.init_args) if proto.init_args != b"" else None
+        )
         init_kwargs = (
-            pickle.loads(proto.init_kwargs) if proto.init_kwargs != b"" else None
+            cloudpickle.loads(proto.init_kwargs) if proto.init_kwargs != b"" else None
         )
         ray_actor_options = (
             json.loads(proto.ray_actor_options)
@@ -379,13 +332,11 @@ class ReplicaConfig:
             "serialized_deployment_def": self.serialized_deployment_def,
         }
         if self.init_args:
-            data["init_args"] = pickle.dumps(self.init_args)
+            data["init_args"] = cloudpickle.dumps(self.init_args)
         if self.init_kwargs:
-            data["init_kwargs"] = pickle.dumps(self.init_kwargs)
+            data["init_kwargs"] = cloudpickle.dumps(self.init_kwargs)
         if self.ray_actor_options:
-            data["ray_actor_options"] = json.dumps(
-                self.ray_actor_options, cls=ServeEncoder
-            )
+            data["ray_actor_options"] = json.dumps(self.ray_actor_options)
         return ReplicaConfigProto(**data)
 
     def to_proto_bytes(self):

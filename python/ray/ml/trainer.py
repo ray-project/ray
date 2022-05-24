@@ -1,19 +1,22 @@
 import abc
 import inspect
 import logging
-from typing import Dict, Union, Callable, Optional, TYPE_CHECKING, Type
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
 
 import ray
-
-from ray.ml.preprocessor import Preprocessor
+from ray.util import PublicAPI
 from ray.ml.checkpoint import Checkpoint
-from ray.ml.result import Result
 from ray.ml.config import RunConfig, ScalingConfig, ScalingConfigDataClass
 from ray.ml.constants import TRAIN_DATASET_KEY
+from ray.ml.preprocessor import Preprocessor
+from ray.ml.result import Result
+from ray.ml.utils.config import (
+    ensure_only_allowed_dataclass_keys_updated,
+    ensure_only_allowed_dict_keys_set,
+)
 from ray.tune import Trainable
 from ray.tune.error import TuneError
 from ray.tune.function_runner import wrap_function
-from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
 from ray.util.ml_utils.dict import merge_dicts
 
@@ -133,6 +136,8 @@ class Trainer(abc.ABC):
         resume_from_checkpoint: A checkpoint to resume training from.
     """
 
+    _scaling_config_allowed_keys: List[str] = ["trainer_resources"]
+
     def __init__(
         self,
         *,
@@ -210,6 +215,25 @@ class Trainer(abc.ABC):
                 f"with value `{self.resume_from_checkpoint}`."
             )
 
+    @classmethod
+    def _validate_and_get_scaling_config_data_class(
+        cls, dataclass_or_dict: Union[ScalingConfigDataClass, Dict[str, Any]]
+    ) -> ScalingConfigDataClass:
+        """Return scaling config dataclass after validating updated keys."""
+        if isinstance(dataclass_or_dict, dict):
+            ensure_only_allowed_dict_keys_set(
+                dataclass_or_dict, cls._scaling_config_allowed_keys
+            )
+            scaling_config_dataclass = ScalingConfigDataClass(**dataclass_or_dict)
+
+            return scaling_config_dataclass
+
+        ensure_only_allowed_dataclass_keys_updated(
+            dataclass=dataclass_or_dict,
+            allowed_keys=cls._scaling_config_allowed_keys,
+        )
+        return dataclass_or_dict
+
     def setup(self) -> None:
         """Called during fit() to perform initial setup on the Trainer.
 
@@ -233,9 +257,9 @@ class Trainer(abc.ABC):
         If the ``Trainer`` has both a datasets dict and
         a preprocessor, the datasets dict contains a training dataset (denoted by
         the "train" key), and the preprocessor has not yet
-        been fit, then it will be fit on the train.
+        been fit, then it will be fit on the train dataset.
 
-        Then, the Trainer's datasets will be transformed by the preprocessor.
+        Then, all Trainer's datasets will be transformed by the preprocessor.
 
         The transformed datasets will be set back in the ``self.datasets`` attribute
         of the Trainer to be used when overriding ``training_loop``.
@@ -359,8 +383,10 @@ class Trainer(abc.ABC):
             @classmethod
             def default_resource_request(cls, config):
                 updated_scaling_config = config.get("scaling_config", scaling_config)
-                scaling_config_dataclass = ScalingConfigDataClass(
-                    **updated_scaling_config
+                scaling_config_dataclass = (
+                    trainer_cls._validate_and_get_scaling_config_data_class(
+                        updated_scaling_config
+                    )
                 )
                 return scaling_config_dataclass.as_placement_group_factory()
 

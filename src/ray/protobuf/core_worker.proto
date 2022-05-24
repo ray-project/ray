@@ -230,6 +230,8 @@ message KillActorRequest {
   bool force_kill = 2;
   // If set to true, the killed actor will not be restarted anymore.
   bool no_restart = 3;
+  // The precise reason why this actor receives a kill request.
+  ActorDeathCause death_cause = 4;
 }
 
 message KillActorReply {
@@ -246,7 +248,9 @@ message CancelTaskRequest {
 
 message CancelTaskReply {
   // Whether the requested task is the currently running task.
-  bool attempt_succeeded = 1;
+  bool requested_task_running = 1;
+  // Whether the task is canceled.
+  bool attempt_succeeded = 2;
 }
 
 message RemoteCancelTaskRequest {
@@ -267,11 +271,27 @@ message GetCoreWorkerStatsRequest {
   // Whether to include memory stats. This could be large since it includes
   // metadata for all live object references.
   bool include_memory_info = 2;
+  // Whether to include task information. This could be large since it
+  // includes metadata for all live tasks.
+  bool include_task_info = 3;
 }
 
 message GetCoreWorkerStatsReply {
   // Debug information returned from the core worker.
   CoreWorkerStats core_worker_stats = 1;
+  /// Task information
+  /// Task information is scattered to 3 places.
+  /// Owner of tasks: knows the general state of task
+  ///   (e.g., waiting for deps or scheduling).
+  /// Worker that executes tasks: knows whether or not the task is actually running.
+  ///   This is necessary because the task can be queued on the execution side.
+  /// Raylet: Knows the exact scheduling state.
+  // A list of task information of the current worker.
+  repeated TaskInfoEntry owned_task_info_entries = 2;
+  // A list of task that's currently running.
+  // All tasks must be treated as TaskStatus::RUNNING
+  // from the caller side.
+  repeated bytes running_task_ids = 3;
 }
 
 message LocalGCRequest {
@@ -339,10 +359,16 @@ message AssignObjectOwnerRequest {
   string call_site = 5;
 }
 
-message AssignObjectOwnerReply {
-}
+message AssignObjectOwnerReply {}
+
+message RayletNotifyGCSRestartRequest {}
+
+message RayletNotifyGCSRestartReply {}
 
 service CoreWorkerService {
+  // Notify core worker GCS has restarted.
+  rpc RayletNotifyGCSRestart(RayletNotifyGCSRestartRequest)
+      returns (RayletNotifyGCSRestartReply);
   // Push a task directly to this worker from another.
   rpc PushTask(PushTaskRequest) returns (PushTaskReply);
   // Reply from raylet that wait for direct actor call args has completed.

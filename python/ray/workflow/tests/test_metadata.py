@@ -14,13 +14,12 @@ def test_user_metadata(workflow_start_regular):
     step_name = "simple_step"
     workflow_id = "simple"
 
-    @workflow.step
+    @workflow.options(name=step_name, metadata=user_step_metadata)
+    @ray.remote
     def simple():
         return 0
 
-    simple.options(name=step_name, metadata=user_step_metadata).step().run(
-        workflow_id, metadata=user_run_metadata
-    )
+    workflow.create(simple.bind()).run(workflow_id, metadata=user_run_metadata)
 
     assert workflow.get_metadata("simple")["user_metadata"] == user_run_metadata
     assert (
@@ -34,30 +33,31 @@ def test_user_metadata_empty(workflow_start_regular):
     step_name = "simple_step"
     workflow_id = "simple"
 
-    @workflow.step
+    @workflow.options(name=step_name)
+    @ray.remote
     def simple():
         return 0
 
-    simple.options(name=step_name).step().run(workflow_id)
+    workflow.create(simple.bind()).run(workflow_id)
 
     assert workflow.get_metadata("simple")["user_metadata"] == {}
     assert workflow.get_metadata("simple", "simple_step")["user_metadata"] == {}
 
 
 def test_user_metadata_not_dict(workflow_start_regular):
-    @workflow.step
+    @ray.remote
     def simple():
         return 0
 
     with pytest.raises(ValueError):
-        simple.options(metadata="x")
+        workflow.create(simple.options(**workflow.options(metadata="x")).bind())
 
     with pytest.raises(ValueError):
-        simple.step().run(metadata="x")
+        workflow.create(simple.bind()).run(metadata="x")
 
 
 def test_user_metadata_not_json_serializable(workflow_start_regular):
-    @workflow.step
+    @ray.remote
     def simple():
         return 0
 
@@ -65,10 +65,10 @@ def test_user_metadata_not_json_serializable(workflow_start_regular):
         pass
 
     with pytest.raises(ValueError):
-        simple.options(metadata={"x": X()})
+        workflow.create(simple.options(**workflow.options(metadata={"x": X()})).bind())
 
     with pytest.raises(ValueError):
-        simple.step().run(metadata={"x": X()})
+        workflow.create(simple.bind()).run(metadata={"x": X()})
 
 
 def test_runtime_metadata(workflow_start_regular):
@@ -76,12 +76,13 @@ def test_runtime_metadata(workflow_start_regular):
     step_name = "simple_step"
     workflow_id = "simple"
 
-    @workflow.step
+    @workflow.options(name=step_name)
+    @ray.remote
     def simple():
         time.sleep(2)
         return 0
 
-    simple.options(name=step_name).step().run(workflow_id)
+    workflow.create(simple.bind()).run(workflow_id)
 
     workflow_metadata = workflow.get_metadata("simple")
     assert "start_time" in workflow_metadata["stats"]
@@ -106,14 +107,13 @@ def test_successful_workflow(workflow_start_regular):
     step_name = "simple_step"
     workflow_id = "simple"
 
-    @workflow.step
+    @workflow.options(name=step_name, metadata=user_step_metadata)
+    @ray.remote
     def simple():
         time.sleep(2)
         return 0
 
-    simple.options(name=step_name, metadata=user_step_metadata).step().run(
-        workflow_id, metadata=user_run_metadata
-    )
+    workflow.create(simple.bind()).run(workflow_id, metadata=user_run_metadata)
 
     workflow_metadata = workflow.get_metadata("simple")
     assert workflow_metadata["status"] == "SUCCESSFUL"
@@ -139,13 +139,13 @@ def test_running_and_canceled_workflow(workflow_start_regular, tmp_path):
     workflow_id = "simple"
     flag = tmp_path / "flag"
 
-    @workflow.step
+    @ray.remote
     def simple():
         flag.touch()
         time.sleep(1000)
         return 0
 
-    simple.step().run_async(workflow_id)
+    workflow.create(simple.bind()).run_async(workflow_id)
 
     # Wait until step runs to make sure pre-run metadata is written
     while not flag.exists():
@@ -170,14 +170,14 @@ def test_failed_and_resumed_workflow(workflow_start_regular, tmp_path):
     error_flag = tmp_path / "error"
     error_flag.touch()
 
-    @workflow.step
+    @ray.remote
     def simple():
         if error_flag.exists():
             raise ValueError()
         return 0
 
     with pytest.raises(ray.exceptions.RaySystemError):
-        simple.step().run(workflow_id)
+        workflow.create(simple.bind()).run(workflow_id)
 
     workflow_metadata_failed = workflow.get_metadata(workflow_id)
     assert workflow_metadata_failed["status"] == "FAILED"
@@ -201,17 +201,19 @@ def test_failed_and_resumed_workflow(workflow_start_regular, tmp_path):
 
 
 def test_nested_workflow(workflow_start_regular):
-    @workflow.step(name="inner", metadata={"inner_k": "inner_v"})
+    @workflow.options(name="inner", metadata={"inner_k": "inner_v"})
+    @ray.remote
     def inner():
         time.sleep(2)
         return 10
 
-    @workflow.step(name="outer", metadata={"outer_k": "outer_v"})
+    @workflow.options(name="outer", metadata={"outer_k": "outer_v"})
+    @ray.remote
     def outer():
         time.sleep(2)
-        return inner.step()
+        return workflow.continuation(inner.bind())
 
-    outer.step().run("nested", metadata={"workflow_k": "workflow_v"})
+    workflow.create(outer.bind()).run("nested", metadata={"workflow_k": "workflow_v"})
 
     workflow_metadata = workflow.get_metadata("nested")
     outer_step_metadata = workflow.get_metadata("nested", "outer")
@@ -317,11 +319,12 @@ def test_no_workflow_found(workflow_start_regular):
     step_name = "simple_step"
     workflow_id = "simple"
 
-    @workflow.step
+    @workflow.options(name=step_name)
+    @ray.remote
     def simple():
         return 0
 
-    simple.options(name=step_name).step().run(workflow_id)
+    workflow.create(simple.bind()).run(workflow_id)
 
     with pytest.raises(ValueError) as excinfo:
         workflow.get_metadata("simple1")

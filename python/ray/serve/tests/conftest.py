@@ -7,7 +7,8 @@ import random
 
 import ray
 from ray import serve
-from ray.serve.pipeline.generate import DeploymentNameGenerator
+
+from ray.tests.conftest import pytest_runtest_makereport  # noqa
 
 # https://tools.ietf.org/html/rfc6335#section-6
 MIN_DYNAMIC_PORT = 49152
@@ -79,5 +80,3 @@ def serve_instance(_shared_serve_instance):
     _shared_serve_instance.delete_deployments(serve.list_deployments().keys())
     # Clear the ServeHandle cache between tests to avoid them piling up.
     _shared_serve_instance.handle_cache.clear()
-    # Clear deployment generation shared state between tests
-    DeploymentNameGenerator.reset()

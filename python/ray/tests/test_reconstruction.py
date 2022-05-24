@@ -21,6 +21,7 @@ SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 WAITING_FOR_DEPENDENCIES = "WAITING_FOR_DEPENDENCIES"
 SCHEDULED = "SCHEDULED"
 FINISHED = "FINISHED"
+WAITING_FOR_EXECUTION = "WAITING_FOR_EXECUTION"
 
 
 def test_cached_object(ray_start_cluster):
@@ -383,6 +384,14 @@ def test_basic_reconstruction_actor_lineage_disabled(
 
     with pytest.raises(ray.exceptions.ObjectLostError):
         ray.get(obj)
+
+    while True:
+        time.sleep(1)
+        try:
+            ray.get(a.pid.remote())
+            break
+        except ray.exceptions.RayActorError:
+            pass
 
     # Make sure the actor handle is still usable.
     pid = ray.get(a.pid.remote())
@@ -1056,6 +1065,7 @@ def test_memory_util(ray_start_cluster):
 
     def stats():
         info = memory_summary(cluster.address, line_wrap=False)
+        print(info)
         info = info.split("\n")
         reconstructing_waiting = [
             line
@@ -1063,7 +1073,9 @@ def test_memory_util(ray_start_cluster):
             if "Attempt #2" in line and WAITING_FOR_DEPENDENCIES in line
         ]
         reconstructing_scheduled = [
-            line for line in info if "Attempt #2" in line and SCHEDULED in line
+            line
+            for line in info
+            if "Attempt #2" in line and WAITING_FOR_EXECUTION in line
         ]
         reconstructing_finished = [
             line for line in info if "Attempt #2" in line and FINISHED in line

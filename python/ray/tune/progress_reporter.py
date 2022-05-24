@@ -1,7 +1,8 @@
 from __future__ import print_function
 
 import datetime
-from typing import Dict, List, Optional, Union
+import numbers
+from typing import Any, Dict, List, Optional, Union
 
 import collections
 import os
@@ -60,6 +61,31 @@ class ProgressReporter:
     receiving training results, and so on.
     """
 
+    def setup(
+        self,
+        start_time: Optional[float] = None,
+        total_samples: Optional[int] = None,
+        metric: Optional[str] = None,
+        mode: Optional[str] = None,
+        **kwargs,
+    ):
+        """Setup progress reporter for a new Ray Tune run.
+
+        This function is used to initialize parameters that are set on runtime.
+        It will be called before any of the other methods.
+
+        Defaults to no-op.
+
+        Args:
+            start_time: Timestamp when the Ray Tune run is started.
+            total_samples: Number of samples the Ray Tune run will run.
+            metric: Metric to optimize.
+            mode: Must be one of [min, max]. Determines whether objective is
+                minimizing or maximizing the metric attribute.
+            **kwargs: Keyword arguments for forward-compatibility.
+        """
+        pass
+
     def should_report(self, trials: List[Trial], done: bool = False):
         """Returns whether or not progress should be reported.
 
@@ -78,12 +104,6 @@ class ProgressReporter:
             sys_info: System info.
         """
         raise NotImplementedError
-
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str]):
-        return True
-
-    def set_total_samples(self, total_samples: int):
-        pass
 
 
 @DeveloperAPI
@@ -110,6 +130,8 @@ class TuneReporterBase(ProgressReporter):
         max_error_rows: Maximum number of rows to print in the
             error table. The error table lists the error file, if any,
             corresponding to each trial. Defaults to 20.
+        max_column_length: Maximum column length (in characters). Column
+            headers and values longer than this will be abbreviated.
         max_report_frequency: Maximum report frequency in seconds.
             Defaults to 5s.
         infer_limit: Maximum number of metrics to automatically infer
@@ -150,11 +172,13 @@ class TuneReporterBase(ProgressReporter):
 
     def __init__(
         self,
+        *,
         metric_columns: Optional[Union[List[str], Dict[str, str]]] = None,
         parameter_columns: Optional[Union[List[str], Dict[str, str]]] = None,
         total_samples: Optional[int] = None,
         max_progress_rows: int = 20,
         max_error_rows: int = 20,
+        max_column_length: int = 20,
         max_report_frequency: int = 5,
         infer_limit: int = 3,
         print_intermediate_tables: Optional[bool] = None,
@@ -169,6 +193,7 @@ class TuneReporterBase(ProgressReporter):
         self._parameter_columns = parameter_columns or []
         self._max_progress_rows = max_progress_rows
         self._max_error_rows = max_error_rows
+        self._max_column_length = max_column_length
         self._infer_limit = infer_limit
 
         if print_intermediate_tables is None:
@@ -189,11 +214,26 @@ class TuneReporterBase(ProgressReporter):
         else:
             self._sort_by_metric = sort_by_metric
 
+    def setup(
+        self,
+        start_time: Optional[float] = None,
+        total_samples: Optional[int] = None,
+        metric: Optional[str] = None,
+        mode: Optional[str] = None,
+        **kwargs,
+    ):
+        self.set_start_time(start_time)
+        self.set_total_samples(total_samples)
+        self.set_search_properties(metric=metric, mode=mode)
+
     def set_search_properties(self, metric: Optional[str], mode: Optional[str]):
-        if self._metric and metric:
-            return False
-        if self._mode and mode:
-            return False
+        if (self._metric and metric) or (self._mode and mode):
+            raise ValueError(
+                "You passed a `metric` or `mode` argument to `tune.run()`, but "
+                "the reporter you are using was already instantiated with their "
+                "own `metric` and `mode` parameters. Either remove the arguments "
+                "from your reporter or from your call to `tune.run()`"
+            )
 
         if metric:
             self._metric = metric
@@ -326,6 +366,7 @@ class TuneReporterBase(ProgressReporter):
                     force_table=self._print_intermediate_tables,
                     fmt=fmt,
                     max_rows=max_progress,
+                    max_column_length=self._max_column_length,
                     done=done,
                     metric=self._metric,
                     mode=self._mode,
@@ -382,12 +423,36 @@ class TuneReporterBase(ProgressReporter):
         return best_trial, metric
 
 
+@DeveloperAPI
+class RemoteReporterMixin:
+    """Remote reporter abstract mixin class.
+
+    Subclasses of this class will use a Ray Queue to display output
+    on the driver side when running Ray Client."""
+
+    @property
+    def output_queue(self) -> Queue:
+        return getattr(self, "_output_queue", None)
+
+    @output_queue.setter
+    def output_queue(self, value: Queue):
+        self._output_queue = value
+
+    def display(self, string: str) -> None:
+        """Display the progress string.
+
+        Args:
+            string: String to display.
+        """
+        raise NotImplementedError
+
+
 @PublicAPI
-class JupyterNotebookReporter(TuneReporterBase):
+class JupyterNotebookReporter(TuneReporterBase, RemoteReporterMixin):
     """Jupyter notebook-friendly Reporter that can update display in-place.
 
     Args:
-        overwrite: Flag for overwriting the last reported progress.
+        overwrite: Flag for overwriting the cell contents before initialization.
         metric_columns: Names of metrics to
             include in progress table. If this is a dict, the keys should
             be metric names and the values should be the displayed names.
@@ -403,6 +468,8 @@ class JupyterNotebookReporter(TuneReporterBase):
         max_error_rows: Maximum number of rows to print in the
             error table. The error table lists the error file, if any,
             corresponding to each trial. Defaults to 20.
+        max_column_length: Maximum column length (in characters). Column
+            headers and values longer than this will be abbreviated.
         max_report_frequency: Maximum report frequency in seconds.
             Defaults to 5s.
         infer_limit: Maximum number of metrics to automatically infer
@@ -422,12 +489,14 @@ class JupyterNotebookReporter(TuneReporterBase):
 
     def __init__(
         self,
-        overwrite: bool,
+        *,
+        overwrite: bool = True,
         metric_columns: Optional[Union[List[str], Dict[str, str]]] = None,
         parameter_columns: Optional[Union[List[str], Dict[str, str]]] = None,
         total_samples: Optional[int] = None,
         max_progress_rows: int = 20,
         max_error_rows: int = 20,
+        max_column_length: int = 20,
         max_report_frequency: int = 5,
         infer_limit: int = 3,
         print_intermediate_tables: Optional[bool] = None,
@@ -436,17 +505,18 @@ class JupyterNotebookReporter(TuneReporterBase):
         sort_by_metric: bool = False,
     ):
         super(JupyterNotebookReporter, self).__init__(
-            metric_columns,
-            parameter_columns,
-            total_samples,
-            max_progress_rows,
-            max_error_rows,
-            max_report_frequency,
-            infer_limit,
-            print_intermediate_tables,
-            metric,
-            mode,
-            sort_by_metric,
+            metric_columns=metric_columns,
+            parameter_columns=parameter_columns,
+            total_samples=total_samples,
+            max_progress_rows=max_progress_rows,
+            max_error_rows=max_error_rows,
+            max_column_length=max_column_length,
+            max_report_frequency=max_report_frequency,
+            infer_limit=infer_limit,
+            print_intermediate_tables=print_intermediate_tables,
+            metric=metric,
+            mode=mode,
+            sort_by_metric=sort_by_metric,
         )
 
         if not IS_NOTEBOOK:
@@ -460,33 +530,30 @@ class JupyterNotebookReporter(TuneReporterBase):
             )
 
         self._overwrite = overwrite
-        self._output_queue = None
-
-    def set_output_queue(self, queue: Queue):
-        self._output_queue = queue
+        self._display_handle = None
+        self.display("")  # initialize empty display to update later
 
     def report(self, trials: List[Trial], done: bool, *sys_info: Dict):
-        overwrite = self._overwrite
         progress_str = self._progress_str(
             trials, done, *sys_info, fmt="html", delim="<br>"
         )
 
-        def update_output():
-            from IPython.display import clear_output
-            from IPython.core.display import display, HTML
-
-            if overwrite:
-                clear_output(wait=True)
-
-            display(HTML(progress_str))
-
-        if self._output_queue is not None:
-            # If an output queue is set, send callable (e.g. when using
-            # Ray client)
-            self._output_queue.put(update_output)
+        if self.output_queue is not None:
+            # If an output queue is set, send string
+            self.output_queue.put(progress_str)
         else:
             # Else, output directly
-            update_output()
+            self.display(progress_str)
+
+    def display(self, string: str) -> None:
+        from IPython.display import display, HTML, clear_output
+
+        if not self._display_handle:
+            if self._overwrite:
+                clear_output(wait=True)
+            self._display_handle = display(HTML(string), display_id=True)
+        else:
+            self._display_handle.update(HTML(string))
 
 
 @PublicAPI
@@ -509,6 +576,8 @@ class CLIReporter(TuneReporterBase):
         max_error_rows: Maximum number of rows to print in the
             error table. The error table lists the error file, if any,
             corresponding to each trial. Defaults to 20.
+        max_column_length: Maximum column length (in characters). Column
+            headers and values longer than this will be abbreviated.
         max_report_frequency: Maximum report frequency in seconds.
             Defaults to 5s.
         infer_limit: Maximum number of metrics to automatically infer
@@ -528,11 +597,13 @@ class CLIReporter(TuneReporterBase):
 
     def __init__(
         self,
+        *,
         metric_columns: Optional[Union[List[str], Dict[str, str]]] = None,
         parameter_columns: Optional[Union[List[str], Dict[str, str]]] = None,
         total_samples: Optional[int] = None,
         max_progress_rows: int = 20,
         max_error_rows: int = 20,
+        max_column_length: int = 20,
         max_report_frequency: int = 5,
         infer_limit: int = 3,
         print_intermediate_tables: Optional[bool] = None,
@@ -542,17 +613,18 @@ class CLIReporter(TuneReporterBase):
     ):
 
         super(CLIReporter, self).__init__(
-            metric_columns,
-            parameter_columns,
-            total_samples,
-            max_progress_rows,
-            max_error_rows,
-            max_report_frequency,
-            infer_limit,
-            print_intermediate_tables,
-            metric,
-            mode,
-            sort_by_metric,
+            metric_columns=metric_columns,
+            parameter_columns=parameter_columns,
+            total_samples=total_samples,
+            max_progress_rows=max_progress_rows,
+            max_error_rows=max_error_rows,
+            max_column_length=max_column_length,
+            max_report_frequency=max_report_frequency,
+            infer_limit=infer_limit,
+            print_intermediate_tables=print_intermediate_tables,
+            metric=metric,
+            mode=mode,
+            sort_by_metric=sort_by_metric,
         )
 
     def report(self, trials: List[Trial], done: bool, *sys_info: Dict):
@@ -628,6 +700,7 @@ def trial_progress_str(
     force_table: bool = False,
     fmt: str = "psql",
     max_rows: Optional[int] = None,
+    max_column_length: int = 20,
     done: bool = False,
     metric: Optional[str] = None,
     mode: Optional[str] = None,
@@ -656,6 +729,7 @@ def trial_progress_str(
         fmt: Output format (see tablefmt in tabulate API).
         max_rows: Maximum number of rows in the trial table. Defaults to
             unlimited.
+        max_column_length: Maximum column length (in characters).
         done: True indicates that the tuning run finished.
         metric: Metric used to sort trials.
         mode: One of [min, max]. Determines whether objective is
@@ -692,17 +766,46 @@ def trial_progress_str(
 
     if force_table or (has_verbosity(Verbosity.V2_TRIAL_NORM) and done):
         messages += trial_progress_table(
-            trials,
-            metric_columns,
-            parameter_columns,
-            fmt,
-            max_rows,
-            metric,
-            mode,
-            sort_by_metric,
+            trials=trials,
+            metric_columns=metric_columns,
+            parameter_columns=parameter_columns,
+            fmt=fmt,
+            max_rows=max_rows,
+            metric=metric,
+            mode=mode,
+            sort_by_metric=sort_by_metric,
+            max_column_length=max_column_length,
         )
 
     return delim.join(messages)
+
+
+def _max_len(value: Any, max_len: int = 20, add_addr: bool = False) -> Any:
+    """Abbreviate a string representation of an object to `max_len` characters.
+
+    For numbers, booleans and None, the original value will be returned for
+    correct rendering in the table formatting tool.
+
+    Args:
+        value: Object to be represented as a string.
+        max_len: Maximum return string length.
+        add_addr: If True, will add part of the object address to the end of the
+            string, e.g. to identify different instances of the same class. If
+            False, three dots (``...``) will be used instead.
+    """
+    if value is None or isinstance(value, (int, float, numbers.Number, bool)):
+        return value
+
+    string = str(value)
+    if len(string) <= max_len:
+        return string
+
+    if add_addr and not isinstance(value, (int, float, bool)):
+        result = f"{string[: (max_len - 5)]}_{hex(id(value))[-4:]}"
+        return result
+
+    result = f"{string[: (max_len - 3)]}..."
+    return result
 
 
 def trial_progress_table(
@@ -714,6 +817,7 @@ def trial_progress_table(
     metric: Optional[str] = None,
     mode: Optional[str] = None,
     sort_by_metric: bool = False,
+    max_column_length: int = 20,
 ):
     messages = []
     num_trials = len(trials)
@@ -785,17 +889,29 @@ def trial_progress_table(
 
     # Build trial rows.
     trial_table = [
-        _get_trial_info(trial, parameter_keys, metric_keys) for trial in trials
+        _get_trial_info(
+            trial, parameter_keys, metric_keys, max_column_length=max_column_length
+        )
+        for trial in trials
     ]
     # Format column headings
     if isinstance(metric_columns, Mapping):
-        formatted_metric_columns = [metric_columns[k] for k in metric_keys]
+        formatted_metric_columns = [
+            _max_len(metric_columns[k], max_len=max_column_length, add_addr=False)
+            for k in metric_keys
+        ]
     else:
         formatted_metric_columns = metric_keys
     if isinstance(parameter_columns, Mapping):
-        formatted_parameter_columns = [parameter_columns[k] for k in parameter_keys]
+        formatted_parameter_columns = [
+            _max_len(parameter_columns[k], max_len=max_column_length, add_addr=False)
+            for k in parameter_keys
+        ]
     else:
-        formatted_parameter_columns = parameter_keys
+        formatted_parameter_columns = [
+            _max_len(k, max_len=max_column_length, add_addr=False)
+            for k in parameter_keys
+        ]
     columns = (
         ["Trial name", "status", "loc"]
         + formatted_parameter_columns
@@ -917,7 +1033,9 @@ def _get_trial_location(trial: Trial, result: dict) -> Location:
     return location
 
 
-def _get_trial_info(trial: Trial, parameters: List[str], metrics: List[str]):
+def _get_trial_info(
+    trial: Trial, parameters: List[str], metrics: List[str], max_column_length: int = 20
+):
     """Returns the following information about a trial:
 
     name | status | loc | params... | metrics...
@@ -926,16 +1044,27 @@ def _get_trial_info(trial: Trial, parameters: List[str], metrics: List[str]):
         trial: Trial to get information for.
         parameters: Names of trial parameters to include.
         metrics: Names of metrics to include.
+        max_column_length: Maximum column length (in characters).
     """
     result = trial.last_result
     config = trial.config
     location = _get_trial_location(trial, result)
     trial_info = [str(trial), trial.status, str(location)]
     trial_info += [
-        unflattened_lookup(param, config, default=None) for param in parameters
+        _max_len(
+            unflattened_lookup(param, config, default=None),
+            max_len=max_column_length,
+            add_addr=True,
+        )
+        for param in parameters
     ]
     trial_info += [
-        unflattened_lookup(metric, result, default=None) for metric in metrics
+        _max_len(
+            unflattened_lookup(metric, result, default=None),
+            max_len=max_column_length,
+            add_addr=True,
+        )
+        for metric in metrics
     ]
     return trial_info
 

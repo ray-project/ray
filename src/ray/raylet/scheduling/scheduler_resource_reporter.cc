@@ -58,7 +58,7 @@ int64_t SchedulerResourceReporter::TotalBacklogSize(
 
 void SchedulerResourceReporter::FillResourceUsage(
     rpc::ResourcesData &data,
-    const std::shared_ptr<SchedulingResources> &last_reported_resources) const {
+    const std::shared_ptr<NodeResources> &last_reported_resources) const {
   if (max_resource_shapes_per_load_report_ == 0) {
     return;
   }
@@ -81,9 +81,25 @@ void SchedulerResourceReporter::FillResourceUsage(
         break;
       }
 
-      const auto &resources =
-          TaskSpecification::GetSchedulingClassDescriptor(scheduling_class)
-              .resource_set.GetResourceMap();
+      const auto &scheduling_class_descriptor =
+          TaskSpecification::GetSchedulingClassDescriptor(scheduling_class);
+      if ((scheduling_class_descriptor.scheduling_strategy.scheduling_strategy_case() ==
+           rpc::SchedulingStrategy::SchedulingStrategyCase::
+               kNodeAffinitySchedulingStrategy) &&
+          !is_infeasible) {
+        // Resource demands from tasks with node affinity scheduling strategy shouldn't
+        // create new nodes since those tasks are intended to run with existing nodes. The
+        // exception is when soft is False and there is no feasible node. In this case, we
+        // should report so autoscaler can launch new nodes to unblock the tasks.
+        // TODO(Alex): ideally we should report everything to autoscaler and autoscaler
+        // can decide whether or not to launch new nodes based on scheduling strategies.
+        // However currently scheduling strategies are not part of resource load report
+        // and adding it while maintaining backward compatibility in autoscaler is not
+        // trivial so we should do it during the autoscaler redesign.
+        continue;
+      }
+
+      const auto &resources = scheduling_class_descriptor.resource_set.GetResourceMap();
       auto by_shape_entry = resource_load_by_shape->Add();
 
       for (const auto &resource : resources) {
@@ -138,13 +154,14 @@ void SchedulerResourceReporter::FillResourceUsage(
                      "the autoscaler.";
   }
 
-  if (RayConfig::instance().enable_light_weight_resource_report()) {
+  if (RayConfig::instance().enable_light_weight_resource_report() &&
+      last_reported_resources != nullptr) {
     // Check whether resources have been changed.
     absl::flat_hash_map<std::string, double> local_resource_map(
         data.resource_load().begin(), data.resource_load().end());
-    ResourceSet local_resource(local_resource_map);
-    if (last_reported_resources == nullptr ||
-        !last_reported_resources->GetLoadResources().IsEqual(local_resource)) {
+    ray::ResourceRequest local_resource =
+        ResourceMapToResourceRequest(local_resource_map, false);
+    if (last_reported_resources->load != local_resource) {
       data.set_resource_load_changed(true);
     }
   } else {
@@ -184,6 +201,33 @@ void SchedulerResourceReporter::FillPendingActorInfo(
         auto ready_task = reply->add_infeasible_tasks();
         ready_task->CopyFrom(task.GetTaskSpecification().GetMessage());
       }
+    }
+  }
+}
+
+void SchedulerResourceReporter::FillPendingActorCountByShape(
+    rpc::ResourcesData &data) const {
+  absl::flat_hash_map<SchedulingClass, std::pair<int, int>> pending_count_by_shape;
+  for (const auto &[scheduling_class, queue] : infeasible_tasks_) {
+    pending_count_by_shape[scheduling_class].first = queue.size();
+  }
+  for (const auto &[scheduling_class, queue] : tasks_to_schedule_) {
+    pending_count_by_shape[scheduling_class].second = queue.size();
+  }
+
+  if (!pending_count_by_shape.empty()) {
+    data.set_cluster_full_of_actors_detected(true);
+    auto resource_load_by_shape =
+        data.mutable_resource_load_by_shape()->mutable_resource_demands();
+    for (const auto &shape_entry : pending_count_by_shape) {
+      auto by_shape_entry = resource_load_by_shape->Add();
+      for (const auto &resource_entry :
+           TaskSpecification::GetSchedulingClassDescriptor(shape_entry.first)
+               .resource_set.GetResourceMap()) {
+        (*by_shape_entry->mutable_shape())[resource_entry.first] = resource_entry.second;
+      }
+      by_shape_entry->set_num_infeasible_requests_queued(shape_entry.second.first);
+      by_shape_entry->set_num_ready_requests_queued(shape_entry.second.second);
     }
   }
 }

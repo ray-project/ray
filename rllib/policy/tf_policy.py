@@ -18,10 +18,9 @@ from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
-from ray.rllib.utils.framework import try_import_tf, get_variable
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
-from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.tf_utils import get_gpu_devices
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
@@ -151,7 +150,7 @@ class TFPolicy(Policy):
         super().__init__(observation_space, action_space, config)
 
         # Get devices to build the graph on.
-        worker_idx = self.config.get("worker_index", 0)
+        worker_idx = config.get("worker_index", 0)
         if not config["_fake_gpus"] and ray.worker._mode() == ray.worker.LOCAL_MODE:
             num_gpus = 0
         elif worker_idx == 0:
@@ -199,8 +198,11 @@ class TFPolicy(Policy):
 
         # Disable env-info placeholder.
         if SampleBatch.INFOS in self.view_requirements:
-            self.view_requirements[SampleBatch.INFOS].used_for_training = False
             self.view_requirements[SampleBatch.INFOS].used_for_compute_actions = False
+            self.view_requirements[SampleBatch.INFOS].used_for_training = False
+            # Optionally add `infos` to the output dataset
+            if self.config["output_config"].get("store_infos", False):
+                self.view_requirements[SampleBatch.INFOS].used_for_training = True
 
         assert model is None or isinstance(model, (ModelV2, tf.keras.Model)), (
             "Model classes for TFPolicy other than `ModelV2|tf.keras.Model` "
@@ -235,7 +237,7 @@ class TFPolicy(Policy):
         self._action_input = action_input  # For logp calculations.
         self._dist_inputs = dist_inputs
         self.dist_class = dist_class
-
+        self._cached_extra_action_out = None
         self._state_inputs = state_inputs or []
         self._state_outputs = state_outputs or []
         self._seq_lens = seq_lens
@@ -782,6 +784,16 @@ class TFPolicy(Policy):
 
     @DeveloperAPI
     def extra_compute_action_fetches(self) -> Dict[str, TensorType]:
+        # Cache graph fetches for action computation for better
+        # performance.
+        # This function is called every time the static graph is run
+        # to compute actions.
+        if not self._cached_extra_action_out:
+            self._cached_extra_action_out = self.extra_action_out_fn()
+        return self._cached_extra_action_out
+
+    @DeveloperAPI
+    def extra_action_out_fn(self) -> Dict[str, TensorType]:
         """Extra values to fetch and return from compute_actions().
 
         By default we return action probability/log-likelihood info
@@ -1201,100 +1213,3 @@ class TFPolicy(Policy):
             feed_dict[self._seq_lens] = train_batch[SampleBatch.SEQ_LENS]
 
         return feed_dict
-
-
-@DeveloperAPI
-class LearningRateSchedule:
-    """Mixin for TFPolicy that adds a learning rate schedule."""
-
-    @DeveloperAPI
-    def __init__(self, lr, lr_schedule):
-        self._lr_schedule = None
-        if lr_schedule is None:
-            self.cur_lr = tf1.get_variable("lr", initializer=lr, trainable=False)
-        else:
-            self._lr_schedule = PiecewiseSchedule(
-                lr_schedule, outside_value=lr_schedule[-1][-1], framework=None
-            )
-            self.cur_lr = tf1.get_variable(
-                "lr", initializer=self._lr_schedule.value(0), trainable=False
-            )
-            if self.framework == "tf":
-                self._lr_placeholder = tf1.placeholder(dtype=tf.float32, name="lr")
-                self._lr_update = self.cur_lr.assign(
-                    self._lr_placeholder, read_value=False
-                )
-
-    @override(Policy)
-    def on_global_var_update(self, global_vars):
-        super(LearningRateSchedule, self).on_global_var_update(global_vars)
-        if self._lr_schedule is not None:
-            new_val = self._lr_schedule.value(global_vars["timestep"])
-            if self.framework == "tf":
-                self.get_session().run(
-                    self._lr_update, feed_dict={self._lr_placeholder: new_val}
-                )
-            else:
-                self.cur_lr.assign(new_val, read_value=False)
-                # This property (self._optimizer) is (still) accessible for
-                # both TFPolicy and any TFPolicy_eager.
-                self._optimizer.learning_rate.assign(self.cur_lr)
-
-    @override(TFPolicy)
-    def optimizer(self):
-        return tf1.train.AdamOptimizer(learning_rate=self.cur_lr)
-
-
-@DeveloperAPI
-class EntropyCoeffSchedule:
-    """Mixin for TFPolicy that adds entropy coeff decay."""
-
-    @DeveloperAPI
-    def __init__(self, entropy_coeff, entropy_coeff_schedule):
-        self._entropy_coeff_schedule = None
-        if entropy_coeff_schedule is None:
-            self.entropy_coeff = get_variable(
-                entropy_coeff, framework="tf", tf_name="entropy_coeff", trainable=False
-            )
-        else:
-            # Allows for custom schedule similar to lr_schedule format
-            if isinstance(entropy_coeff_schedule, list):
-                self._entropy_coeff_schedule = PiecewiseSchedule(
-                    entropy_coeff_schedule,
-                    outside_value=entropy_coeff_schedule[-1][-1],
-                    framework=None,
-                )
-            else:
-                # Implements previous version but enforces outside_value
-                self._entropy_coeff_schedule = PiecewiseSchedule(
-                    [[0, entropy_coeff], [entropy_coeff_schedule, 0.0]],
-                    outside_value=0.0,
-                    framework=None,
-                )
-
-            self.entropy_coeff = get_variable(
-                self._entropy_coeff_schedule.value(0),
-                framework="tf",
-                tf_name="entropy_coeff",
-                trainable=False,
-            )
-            if self.framework == "tf":
-                self._entropy_coeff_placeholder = tf1.placeholder(
-                    dtype=tf.float32, name="entropy_coeff"
-                )
-                self._entropy_coeff_update = self.entropy_coeff.assign(
-                    self._entropy_coeff_placeholder, read_value=False
-                )
-
-    @override(Policy)
-    def on_global_var_update(self, global_vars):
-        super(EntropyCoeffSchedule, self).on_global_var_update(global_vars)
-        if self._entropy_coeff_schedule is not None:
-            new_val = self._entropy_coeff_schedule.value(global_vars["timestep"])
-            if self.framework == "tf":
-                self.get_session().run(
-                    self._entropy_coeff_update,
-                    feed_dict={self._entropy_coeff_placeholder: new_val},
-                )
-            else:
-                self.entropy_coeff.assign(new_val, read_value=False)

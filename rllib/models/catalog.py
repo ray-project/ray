@@ -13,7 +13,6 @@ from ray.tune.registry import (
     _global_registry,
 )
 from ray.rllib.models.action_dist import ActionDistribution
-from ray.rllib.models.jax.jax_action_dist import JAXCategorical
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.preprocessors import get_preprocessor, Preprocessor
 from ray.rllib.models.tf.tf_action_dist import (
@@ -39,6 +38,7 @@ from ray.rllib.utils.deprecation import (
 )
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.spaces.space_utils import flatten_space
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
@@ -296,13 +296,14 @@ class ModelCatalog:
                     )
         # Discrete Space -> Categorical.
         elif isinstance(action_space, Discrete):
-            dist_cls = (
-                TorchCategorical
-                if framework == "torch"
-                else JAXCategorical
-                if framework == "jax"
-                else Categorical
-            )
+            if framework == "torch":
+                dist_cls = TorchCategorical
+            elif framework == "jax":
+                from ray.rllib.models.jax.jax_action_dist import JAXCategorical
+
+                dist_cls = JAXCategorical
+            else:
+                dist_cls = Categorical
         # Tuple/Dict Spaces -> MultiAction.
         elif (
             dist_type
@@ -436,7 +437,7 @@ class ModelCatalog:
             model_interface (cls): Interface required for the model
             default_model (cls): Override the default class for the model. This
                 only has an effect when not using a custom model
-            model_kwargs (dict): args to pass to the ModelV2 constructor
+            model_kwargs (dict): Args to pass to the ModelV2 constructor
 
         Returns:
             model (ModelV2): Model to use for the policy.
@@ -456,6 +457,18 @@ class ModelCatalog:
 
             if isinstance(model_config["custom_model"], type):
                 model_cls = model_config["custom_model"]
+            elif (
+                isinstance(model_config["custom_model"], str)
+                and "." in model_config["custom_model"]
+            ):
+                return from_config(
+                    cls=model_config["custom_model"],
+                    obs_space=obs_space,
+                    action_space=action_space,
+                    num_outputs=num_outputs,
+                    model_config=customized_model_kwargs,
+                    name=name,
+                )
             else:
                 model_cls = _global_registry.get(
                     RLLIB_MODEL, model_config["custom_model"]
@@ -515,7 +528,7 @@ class ModelCatalog:
 
                 def track_var_creation(next_creator, **kw):
                     v = next_creator(**kw)
-                    created.add(v)
+                    created.add(v.ref())
                     return v
 
                 with tf.variable_creator_scope(track_var_creation):

@@ -22,6 +22,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/gcs/gcs_client/accessor.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
@@ -37,7 +38,7 @@ namespace ray {
 /// it also supports creating a new resource or delete an existing resource.
 /// Whenever the resouce changes, it notifies the subscriber of the change.
 /// This class is not thread safe.
-class LocalResourceManager {
+class LocalResourceManager : public syncer::ReporterInterface {
  public:
   LocalResourceManager(
       scheduling::NodeID local_node_id,
@@ -136,7 +137,7 @@ class LocalResourceManager {
   /// Replace the local resources by the provided value.
   ///
   /// \param replacement: the new value.
-  void ResetLastReportResourceUsage(const SchedulingResources &replacement);
+  void ResetLastReportResourceUsage(const NodeResources &replacement);
 
   /// Check whether the specific resource exists or not in local node.
   ///
@@ -144,6 +145,9 @@ class LocalResourceManager {
   ///
   /// \return true, if exist. otherwise, false.
   bool ResourcesExist(scheduling::ResourceID resource_id) const;
+
+  std::optional<syncer::RaySyncMessage> CreateSyncMessage(
+      int64_t after_version, syncer::MessageType message_type) const override;
 
  private:
   /// Notify the subscriber that the local resouces has changed.
@@ -250,6 +254,9 @@ class LocalResourceManager {
 
   // Specify custom resources that consists of unit-size instances.
   std::unordered_set<int64_t> custom_unit_instance_resources_{};
+
+  // Version of this resource. It will incr by one whenever the state changed.
+  int64_t version_ = 0;
 
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, AvailableResourceInstancesOpsTest);

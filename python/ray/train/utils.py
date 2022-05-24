@@ -10,7 +10,6 @@ from typing import (
     Dict,
     List,
     Any,
-    TYPE_CHECKING,
     Union,
     Callable,
     TypeVar,
@@ -23,11 +22,6 @@ from ray.exceptions import RayActorError
 from ray.types import ObjectRef
 from ray.util.ml_utils.util import find_free_port
 
-if TYPE_CHECKING:
-    from ray.data import Dataset
-    from ray.data.dataset_pipeline import DatasetPipeline
-
-RayDataset = Union["Dataset", "DatasetPipeline"]
 T = TypeVar("T")
 
 logger = logging.getLogger(__name__)

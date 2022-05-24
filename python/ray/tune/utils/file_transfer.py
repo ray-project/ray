@@ -2,6 +2,7 @@ import io
 import os
 import shutil
 import tarfile
+from filelock import FileLock
 
 from typing import Optional, Tuple, Dict, Generator, Union
 
@@ -13,6 +14,106 @@ _DEFAULT_MAX_SIZE_BYTES = 1 * 1024 * 1024 * 1024  # 1 GiB
 
 
 def sync_dir_between_nodes(
+    source_ip: str,
+    source_path: str,
+    target_ip: str,
+    target_path: str,
+    force_all: bool = False,
+    chunk_size_bytes: int = _DEFAULT_CHUNK_SIZE_BYTES,
+    max_size_bytes: Optional[int] = _DEFAULT_MAX_SIZE_BYTES,
+    return_futures: bool = False,
+) -> Union[
+    None,
+    Tuple[ray.ObjectRef, ray.ActorID, ray.ObjectRef],
+    Tuple[ray.ObjectRef, None, None],
+]:
+    """Synchronize directory on source node to directory on target node.
+
+    Per default, this function will collect information about already existing
+    files in the target directory. Only files that differ in either mtime or
+    filesize will be transferred, unless ``force_all=True``.
+
+    If ``source_ip==target_ip``, shutil will be used to copy the directory. Otherwise,
+    the directory will be packed and sent through the Ray Object Store to the target
+    node.
+
+    Args:
+        source_ip: IP of source node.
+        source_path: Path to directory on source node.
+        target_ip: IP of target node.
+        target_path: Path to directory on target node.
+        force_all: If True, all files will be transferred (not just differing files).
+            Ignored if ``source_ip==target_ip``.
+        chunk_size_bytes: Chunk size for data transfer. Ignored if
+            ``source_ip==target_ip``.
+        max_size_bytes: If packed data exceeds this value, raise an error before
+            transfer. If ``None``, no limit is enforced. Ignored if
+            ``source_ip==target_ip``.
+        return_futures: If True, returns a tuple of the unpack future,
+            the pack actor, and the files_stats future. If False (default) will
+            block until synchronization finished and return None.
+
+    Returns:
+        None, or Tuple of unpack future, pack actor, and files_stats future.
+        If ``source_ip==target_ip``, pack actor and files_stats future will be None.
+
+    """
+    if source_ip != target_ip:
+        return _sync_dir_between_different_nodes(
+            source_ip=source_ip,
+            source_path=source_path,
+            target_ip=target_ip,
+            target_path=target_path,
+            force_all=force_all,
+            chunk_size_bytes=chunk_size_bytes,
+            max_size_bytes=max_size_bytes,
+            return_futures=return_futures,
+        )
+    elif source_path != target_path:
+        ret = _sync_dir_on_same_node(
+            ip=source_ip,
+            source_path=source_path,
+            target_path=target_path,
+            return_futures=return_futures,
+        )
+        if return_futures:
+            return ret, None, None
+        return ret
+
+
+def _sync_dir_on_same_node(
+    ip: str,
+    source_path: str,
+    target_path: str,
+    return_futures: bool = False,
+) -> Optional[ray.ObjectRef]:
+    """Synchronize directory to another directory on the same node.
+
+    Per default, this function will collect information about already existing
+    files in the target directory. All files will be copied over.
+
+    Args:
+        ip: IP of the node.
+        source_path: Path to source directory.
+        target_path: Path to target directory.
+        return_futures: If True, returns a future of the copy task.
+
+    Returns:
+        None, or future of the copy task.
+
+    """
+    copy_on_node = _copy_dir.options(
+        num_cpus=0, resources={f"node:{ip}": 0.01}, placement_group=None
+    )
+    copy_future = copy_on_node.remote(source_dir=source_path, target_dir=target_path)
+
+    if return_futures:
+        return copy_future
+
+    return ray.get(copy_future)
+
+
+def _sync_dir_between_different_nodes(
     source_ip: str,
     source_path: str,
     target_ip: str,
@@ -251,8 +352,9 @@ def _iter_remote(actor: ray.ActorID) -> Generator[bytes, None, None]:
 def _unpack_dir(stream: io.BytesIO, target_dir: str) -> None:
     """Unpack tarfile stream into target directory."""
     stream.seek(0)
-    with tarfile.open(fileobj=stream) as tar:
-        tar.extractall(target_dir)
+    with FileLock(f"{target_dir}.lock"):
+        with tarfile.open(fileobj=stream) as tar:
+            tar.extractall(target_dir)
 
 
 @ray.remote
@@ -264,8 +366,22 @@ def _unpack_from_actor(pack_actor: ray.ActorID, target_dir: str) -> None:
     _unpack_dir(stream, target_dir=target_dir)
 
 
+@ray.remote
+def _copy_dir(source_dir: str, target_dir: str) -> None:
+    """Copy dir with shutil on the actor."""
+    with FileLock(f"{target_dir}.lock"):
+        _delete_path_unsafe(target_dir)
+        shutil.copytree(source_dir, target_dir)
+
+
 def _delete_path(target_path: str) -> bool:
     """Delete path (files and directories)"""
+    with FileLock(f"{target_path}.lock"):
+        return _delete_path_unsafe(target_path)
+
+
+def _delete_path_unsafe(target_path: str):
+    """Delete path (files and directories). No filelock."""
     if os.path.exists(target_path):
         if os.path.isdir(target_path):
             shutil.rmtree(target_path)

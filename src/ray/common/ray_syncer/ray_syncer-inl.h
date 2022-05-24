@@ -25,7 +25,7 @@ class NodeState {
 
   /// Set the local component.
   ///
-  /// \param cid The component id.
+  /// \param message_type The type of the message for this component.
   /// \param reporter The reporter is defined to be the local module which wants to
   /// broadcast its internal status to the whole clsuter. When it's null, it means there
   /// is no reporter in the local node for this component. This is the place there
@@ -36,16 +36,16 @@ class NodeState {
   /// received messages are consumed.
   ///
   /// \return true if set successfully.
-  bool SetComponent(RayComponentId cid,
+  bool SetComponent(MessageType message_type,
                     const ReporterInterface *reporter,
                     ReceiverInterface *receiver);
 
   /// Get the snapshot of a component for a newer version.
   ///
-  /// \param cid The component id to take the snapshot.
+  /// \param message_type The component to take the snapshot.
   ///
   /// \return If a snapshot is taken, return the message, otherwise std::nullopt.
-  std::optional<RaySyncMessage> GetSnapshot(RayComponentId cid);
+  std::optional<RaySyncMessage> CreateSyncMessage(MessageType message_type);
 
   /// Consume a message. Receiver will consume this message if it doesn't have
   /// this message.
@@ -53,7 +53,7 @@ class NodeState {
   /// \param message The message received.
   ///
   /// \return true if the local node doesn't have message with newer version.
-  bool ConsumeMessage(std::shared_ptr<const RaySyncMessage> message);
+  bool ConsumeSyncMessage(std::shared_ptr<const RaySyncMessage> message);
 
   /// Return the cluster view of this local node.
   const absl::flat_hash_map<
@@ -68,8 +68,8 @@ class NodeState {
   std::array<const ReporterInterface *, kComponentArraySize> reporters_ = {nullptr};
   std::array<ReceiverInterface *, kComponentArraySize> receivers_ = {nullptr};
 
-  /// This field records the version of the snapshot that has been taken.
-  std::array<int64_t, kComponentArraySize> snapshots_versions_taken_;
+  /// This field records the version of the sync message that has been taken.
+  std::array<int64_t, kComponentArraySize> sync_message_versions_taken_;
   /// Keep track of the latest messages received.
   /// Use shared pointer for easier liveness management since these messages might be
   /// sending via rpc.
@@ -127,7 +127,7 @@ class NodeSyncConnection {
   std::function<void(std::shared_ptr<RaySyncMessage>)> message_processor_;
 
   /// Buffering all the updates. Sending will be done in an async way.
-  absl::flat_hash_map<std::pair<std::string, RayComponentId>,
+  absl::flat_hash_map<std::pair<std::string, MessageType>,
                       std::shared_ptr<const RaySyncMessage>>
       sending_buffer_;
 
@@ -162,8 +162,8 @@ class ServerSyncConnection : public NodeSyncConnection {
   /// After the message being sent, these two fields will be set to be empty again.
   /// When the periodical timer wake up, it'll check whether these two fields are set
   /// and it'll only send data when these are set.
-  RaySyncMessages *response_ = nullptr;
-  grpc::ServerUnaryReactor *unary_reactor_ = nullptr;
+  std::vector<RaySyncMessages *> responses_;
+  std::vector<grpc::ServerUnaryReactor *> unary_reactors_;
 };
 
 /// SyncConnection for gRPC client side. It has customized logic for sending.
@@ -185,9 +185,6 @@ class ClientSyncConnection : public NodeSyncConnection {
 
   /// Stub for this connection.
   std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub_;
-
-  /// Where the received message is stored.
-  ray::rpc::syncer::RaySyncMessages in_message_;
 
   /// Dummy request for long-polling.
   DummyRequest dummy_;

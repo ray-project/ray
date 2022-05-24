@@ -1,5 +1,6 @@
 import asyncio
 from asyncio.tasks import FIRST_COMPLETED
+import os
 import logging
 import pickle
 import socket
@@ -21,6 +22,7 @@ from ray.serve.http_util import (
     RawASGIResponse,
     receive_http_body,
     Response,
+    set_socket_reuse_port,
 )
 from ray.serve.common import EndpointInfo, EndpointTag
 from ray.serve.constants import SERVE_LOGGER_NAME
@@ -32,6 +34,9 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 MAX_REPLICA_FAILURE_RETRIES = 10
 DISCONNECT_ERROR_CODE = "disconnection"
+SOCKET_REUSE_PORT_ENABLED = (
+    os.environ.get("SERVE_SOCKET_REUSE_PORT_ENABLED", "1") == "1"
+)
 
 
 async def _send_request_to_handle(handle, scope, receive, send) -> str:
@@ -197,7 +202,7 @@ class HTTPProxy:
     ):
         # Set the controller name so that serve will connect to the
         # controller instance this proxy is running in.
-        ray.serve.api._set_internal_replica_context(
+        ray.serve.context.set_internal_replica_context(
             None, None, controller_name, controller_namespace, None
         )
 
@@ -205,7 +210,7 @@ class HTTPProxy:
         self.route_info: Dict[str, EndpointTag] = dict()
 
         def get_handle(name):
-            return serve.api.internal_get_global_client().get_handle(
+            return serve.context.get_global_client().get_handle(
                 name,
                 sync=False,
                 missing_ok=True,
@@ -384,13 +389,8 @@ class HTTPProxyActor:
 
     async def run(self):
         sock = socket.socket()
-        # These two socket options will allow multiple process to bind the the
-        # same port. Kernel will evenly load balance among the port listeners.
-        # Note: this will only work on Linux.
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        if hasattr(socket, "SO_REUSEPORT"):
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-
+        if SOCKET_REUSE_PORT_ENABLED:
+            set_socket_reuse_port(sock)
         try:
             sock.bind((self.host, self.port))
         except OSError:

@@ -242,38 +242,41 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingIdInsertOrDieTest) {
 
 TEST_F(ClusterResourceSchedulerTest, SchedulingInitClusterTest) {
   int num_nodes = 10;
-  ClusterResourceScheduler resource_scheduler;
+  ClusterResourceScheduler resource_scheduler(
+      scheduling::NodeID(num_nodes + 1), NodeResources(), [](auto) { return true; });
   AssertPredefinedNodeResources();
 
   initCluster(resource_scheduler, num_nodes);
 
-  ASSERT_EQ(resource_scheduler.GetClusterResourceManager().NumNodes(), num_nodes);
+  ASSERT_EQ(resource_scheduler.GetClusterResourceManager().NumNodes(), num_nodes + 1);
 }
 
 TEST_F(ClusterResourceSchedulerTest, SchedulingDeleteClusterNodeTest) {
   int num_nodes = 4;
   int64_t remove_id = 2;
 
-  ClusterResourceScheduler resource_scheduler;
+  ClusterResourceScheduler resource_scheduler(
+      scheduling::NodeID(num_nodes + 1), NodeResources(), [](auto) { return true; });
 
   initCluster(resource_scheduler, num_nodes);
   resource_scheduler.GetClusterResourceManager().RemoveNode(
       scheduling::NodeID(remove_id));
 
-  ASSERT_TRUE(num_nodes - 1 == resource_scheduler.GetClusterResourceManager().NumNodes());
+  ASSERT_TRUE(num_nodes == resource_scheduler.GetClusterResourceManager().NumNodes());
 }
 
 TEST_F(ClusterResourceSchedulerTest, SchedulingModifyClusterNodeTest) {
   int num_nodes = 4;
   int64_t update_id = 2;
-  ClusterResourceScheduler resource_scheduler;
+  ClusterResourceScheduler resource_scheduler(
+      scheduling::NodeID(num_nodes + 1), NodeResources(), [](auto) { return true; });
 
   initCluster(resource_scheduler, num_nodes);
 
   NodeResources node_resources = RandomNodeResources();
   resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
       scheduling::NodeID(update_id), node_resources);
-  ASSERT_TRUE(num_nodes == resource_scheduler.GetClusterResourceManager().NumNodes());
+  ASSERT_TRUE(num_nodes + 1 == resource_scheduler.GetClusterResourceManager().NumNodes());
 }
 
 TEST_F(ClusterResourceSchedulerTest, NodeAffinitySchedulingStrategyTest) {
@@ -449,7 +452,8 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest) {
 }
 
 TEST_F(ClusterResourceSchedulerTest, SchedulingAddOrUpdateNodeTest) {
-  ClusterResourceScheduler resource_scheduler;
+  ClusterResourceScheduler resource_scheduler(
+      scheduling::NodeID(0), NodeResources(), [](auto) { return true; });
   NodeResources nr, nr_out;
   int64_t node_id = 1;
 
@@ -1171,7 +1175,7 @@ TEST_F(ClusterResourceSchedulerTest, ResourceUsageReportTest) {
         allocation_map, allocations);
     rpc::ResourcesData data;
     resource_scheduler.GetLocalResourceManager().ResetLastReportResourceUsage(
-        SchedulingResources{});
+        NodeResources{});
     resource_scheduler.GetLocalResourceManager().FillResourceUsage(data);
 
     auto available = data.resources_available();

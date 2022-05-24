@@ -19,7 +19,6 @@ from ray.dashboard.modules.dashboard_sdk import (
     parse_cluster_info,
 )
 from ray.dashboard.tests.conftest import *  # noqa
-from ray.ray_constants import DEFAULT_DASHBOARD_PORT
 from ray.tests.conftest import _ray_start
 from ray._private.test_utils import (
     chdir,
@@ -481,10 +480,9 @@ def test_parse_cluster_info(scheme: str, host: str, port: Optional[int]):
     if port is not None:
         address += f":{port}"
 
-    final_port = port if port is not None else DEFAULT_DASHBOARD_PORT
     if scheme in {"http", "https"}:
         assert parse_cluster_info(address, False) == ClusterInfo(
-            address=f"{scheme}://{host}:{final_port}",
+            address=address,
             cookies=None,
             metadata=None,
             headers=None,
@@ -521,6 +519,33 @@ for i in range(100):
                 i += 1
 
         wait_for_condition(_check_job_succeeded, client=client, job_id=job_id)
+
+
+def _hook(env):
+    with open(env["env_vars"]["TEMPPATH"], "w+") as f:
+        f.write(env["env_vars"]["TOKEN"])
+    return env
+
+
+def test_jobs_env_hook(job_sdk_client: JobSubmissionClient):
+    client = job_sdk_client
+
+    _, path = tempfile.mkstemp()
+    runtime_env = {"env_vars": {"TEMPPATH": path, "TOKEN": "Ray rocks!"}}
+    run_job_script = """
+import os
+import ray
+os.environ["RAY_RUNTIME_ENV_HOOK"] =\
+    "ray.dashboard.modules.job.tests.test_http_job_server._hook"
+ray.init(address="auto")
+"""
+    entrypoint = f"python -c '{run_job_script}'"
+    job_id = client.submit_job(entrypoint=entrypoint, runtime_env=runtime_env)
+
+    wait_for_condition(_check_job_succeeded, client=client, job_id=job_id)
+
+    with open(path) as f:
+        assert f.read().strip() == "Ray rocks!"
 
 
 if __name__ == "__main__":

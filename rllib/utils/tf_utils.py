@@ -233,28 +233,31 @@ def get_tf_eager_cls_if_necessary(
     """
     cls = orig_cls
     framework = config.get("framework", "tf")
-    if framework in ["tf2", "tf", "tfe"]:
-        if not tf1:
-            raise ImportError("Could not import tensorflow!")
-        if framework in ["tf2", "tfe"]:
-            assert tf1.executing_eagerly()
 
-            from ray.rllib.policy.tf_policy import TFPolicy
+    if framework in ["tf2", "tf", "tfe"] and not tf1:
+        raise ImportError("Could not import tensorflow!")
 
-            # Create eager-class.
-            if hasattr(orig_cls, "as_eager"):
-                cls = orig_cls.as_eager()
-                if config.get("eager_tracing"):
-                    cls = cls.with_tracing()
-            # Could be some other type of policy or already
-            # eager-ized.
-            elif not issubclass(orig_cls, TFPolicy):
-                pass
-            else:
-                raise ValueError(
-                    "This policy does not support eager "
-                    "execution: {}".format(orig_cls)
-                )
+    if framework in ["tf2", "tfe"]:
+        assert tf1.executing_eagerly()
+
+        from ray.rllib.policy.tf_policy import TFPolicy
+        from ray.rllib.policy.eager_tf_policy import EagerTFPolicy
+
+        # Create eager-class (if not already one).
+        if hasattr(orig_cls, "as_eager") and not issubclass(orig_cls, EagerTFPolicy):
+            cls = orig_cls.as_eager()
+        # Could be some other type of policy or already
+        # eager-ized.
+        elif not issubclass(orig_cls, TFPolicy):
+            pass
+        else:
+            raise ValueError(
+                "This policy does not support eager " "execution: {}".format(orig_cls)
+            )
+
+        # Now that we know, policy is an eager one, add tracing, if necessary.
+        if config.get("eager_tracing") and issubclass(cls, EagerTFPolicy):
+            cls = cls.with_tracing()
     return cls
 
 

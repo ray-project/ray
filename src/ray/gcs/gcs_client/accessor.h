@@ -26,11 +26,9 @@
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
-
 namespace gcs {
 
 using SubscribeOperation = std::function<Status(const StatusCallback &done)>;
-
 using FetchDataOperation = std::function<void(const StatusCallback &done)>;
 
 class GcsClient;
@@ -444,14 +442,6 @@ class NodeResourceInfoAccessor {
   virtual Status AsyncGetAllAvailableResources(
       const MultiItemCallback<rpc::AvailableResources> &callback);
 
-  /// Subscribe to node resource changes.
-  ///
-  /// \param subscribe Callback that will be called when any resource is updated.
-  /// \param done Callback that will be called when subscription is complete.
-  /// \return Status
-  virtual Status AsyncSubscribeToResources(
-      const ItemCallback<rpc::NodeResourceChange> &subscribe, const StatusCallback &done);
-
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
   /// PubSub server restart will cause GCS server restart. In this case, we need to
@@ -472,7 +462,7 @@ class NodeResourceInfoAccessor {
   virtual void AsyncReReportResourceUsage();
 
   /// Return resources in last report. Used by light heartbeat.
-  virtual const std::shared_ptr<SchedulingResources> &GetLastResourceUsage() {
+  virtual const std::shared_ptr<NodeResources> &GetLastResourceUsage() {
     return last_resource_usage_;
   }
 
@@ -489,8 +479,7 @@ class NodeResourceInfoAccessor {
  protected:
   /// Cache which stores resource usage in last report used to check if they are changed.
   /// Used by light resource usage report.
-  std::shared_ptr<SchedulingResources> last_resource_usage_ =
-      std::make_shared<SchedulingResources>();
+  std::shared_ptr<NodeResources> last_resource_usage_ = std::make_shared<NodeResources>();
 
  private:
   // Mutex to protect the cached_resource_usage_ field.

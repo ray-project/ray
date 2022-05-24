@@ -14,9 +14,9 @@ from ray.workflow.common import (
     StepType,
     WorkflowNotFoundError,
     validate_user_metadata,
+    asyncio_run,
 )
 from ray.workflow.step_executor import commit_step
-from ray.workflow.storage import get_global_storage
 from ray.workflow.workflow_access import (
     flatten_workflow_output,
     get_or_create_management_actor,
@@ -38,19 +38,18 @@ def run(
     validate_user_metadata(metadata)
     metadata = metadata or {}
 
-    store = get_global_storage()
-    assert ray.is_initialized()
+    from ray.workflow.api import _ensure_workflow_initialized
+
+    _ensure_workflow_initialized()
+
     if workflow_id is None:
         # Workflow ID format: {Entry workflow UUID}.{Unix time to nanoseconds}
         workflow_id = f"{str(uuid.uuid4())}.{time.time():.9f}"
     step_type = entry_workflow.data.step_options.step_type
 
-    logger.info(
-        f'Workflow job created. [id="{workflow_id}", storage_url='
-        f'"{store.storage_url}"]. Type: {step_type}.'
-    )
+    logger.info(f'Workflow job created. [id="{workflow_id}"]. Type: {step_type}.')
 
-    with workflow_context.workflow_step_context(workflow_id, store.storage_url):
+    with workflow_context.workflow_step_context(workflow_id):
         # checkpoint the workflow
         ws = workflow_storage.get_workflow_storage(workflow_id)
         ws.save_workflow_user_metadata(metadata)
@@ -78,8 +77,9 @@ def run(
         # ensures caller of 'run()' holds the reference to the workflow
         # result. Otherwise if the actor removes the reference of the
         # workflow output, the caller may fail to resolve the result.
+        job_id = ray.get_runtime_context().job_id.hex()
         result: "WorkflowExecutionResult" = ray.get(
-            workflow_manager.run_or_resume.remote(workflow_id, ignore_existing)
+            workflow_manager.run_or_resume.remote(job_id, workflow_id, ignore_existing)
         )
         if not is_growing:
             return flatten_workflow_output(workflow_id, result.persisted_output)
@@ -90,18 +90,17 @@ def run(
 # TODO(suquark): support recovery with ObjectRef inputs.
 def resume(workflow_id: str) -> ray.ObjectRef:
     """Resume a workflow asynchronously. See "api.resume()" for details."""
-    storage = get_global_storage()
-    logger.info(
-        f'Resuming workflow [id="{workflow_id}", storage_url='
-        f'"{storage.storage_url}"].'
-    )
+    logger.info(f'Resuming workflow [id="{workflow_id}"].')
     workflow_manager = get_or_create_management_actor()
     # NOTE: It is important to 'ray.get' the returned output. This
     # ensures caller of 'run()' holds the reference to the workflow
     # result. Otherwise if the actor removes the reference of the
     # workflow output, the caller may fail to resolve the result.
+    job_id = ray.get_runtime_context().job_id.hex()
     result: "WorkflowExecutionResult" = ray.get(
-        workflow_manager.run_or_resume.remote(workflow_id, ignore_existing=False)
+        workflow_manager.run_or_resume.remote(
+            job_id, workflow_id, ignore_existing=False
+        )
     )
     logger.info(f"Workflow job {workflow_id} resumed.")
     return flatten_workflow_output(workflow_id, result.persisted_output)
@@ -111,7 +110,9 @@ def get_output(workflow_id: str, name: Optional[str]) -> ray.ObjectRef:
     """Get the output of a running workflow.
     See "api.get_output()" for details.
     """
-    assert ray.is_initialized()
+    from ray.workflow.api import _ensure_workflow_initialized
+
+    _ensure_workflow_initialized()
     try:
         workflow_manager = get_management_actor()
     except ValueError as e:
@@ -198,8 +199,9 @@ def resume_all(with_failed: bool) -> List[Tuple[str, ray.ObjectRef]]:
 
     async def _resume_one(wid: str) -> Tuple[str, Optional[ray.ObjectRef]]:
         try:
+            job_id = ray.get_runtime_context().job_id.hex()
             result: "WorkflowExecutionResult" = (
-                await workflow_manager.run_or_resume.remote(wid)
+                await workflow_manager.run_or_resume.remote(job_id, wid)
             )
             obj = flatten_workflow_output(wid, result.persisted_output)
             return wid, obj
@@ -207,7 +209,5 @@ def resume_all(with_failed: bool) -> List[Tuple[str, ray.ObjectRef]]:
             logger.error(f"Failed to resume workflow {wid}")
             return (wid, None)
 
-    ret = workflow_storage.asyncio_run(
-        asyncio.gather(*[_resume_one(wid) for (wid, _) in all_failed])
-    )
+    ret = asyncio_run(asyncio.gather(*[_resume_one(wid) for (wid, _) in all_failed]))
     return [(wid, obj) for (wid, obj) in ret if obj is not None]

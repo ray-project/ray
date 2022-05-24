@@ -13,33 +13,23 @@ import logging
 from typing import List, Optional, Type, Union
 
 from ray.util.debug import log_once
-from ray.rllib.agents import with_common_config
 from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.agents.trainer_config import TrainerConfig
-from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.rollout_ops import (
-    ParallelRollouts,
-    ConcatBatches,
-    StandardizeFields,
     standardize_fields,
-    SelectExperiences,
 )
 from ray.rllib.execution.train_ops import (
-    TrainOneStep,
-    MultiGPUTrainOneStep,
     train_one_step,
     multi_gpu_train_one_step,
 )
 from ray.rllib.utils.annotations import ExperimentalAPI
-from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
 from ray.rllib.utils.typing import TrainerConfigDict, ResultDict
-from ray.util.iter import LocalIterator
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
@@ -54,15 +44,18 @@ class PPOConfig(TrainerConfig):
     """Defines a PPOTrainer configuration class from which a PPOTrainer can be built.
 
     Example:
-        >>> config = PPOConfig(kl_coeff=0.3).training(gamma=0.9, lr=0.01)\
-                        .resources(num_gpus=0)\
-                        .rollouts(num_workers=4)
+        >>> from ray.rllib.agents.ppo import PPOConfig
+        >>> config = PPOConfig().training(gamma=0.9, lr=0.01, kl_coeff=0.3)\
+        ...             .resources(num_gpus=0)\
+        ...             .rollouts(num_workers=4)
         >>> print(config.to_dict())
         >>> # Build a Trainer object from the config and run 1 training iteration.
         >>> trainer = config.build(env="CartPole-v1")
         >>> trainer.train()
 
     Example:
+        >>> from ray.rllib.agents.ppo import PPOConfig
+        >>> from ray import tune
         >>> config = PPOConfig()
         >>> # Print out some default values.
         >>> print(config.clip_param)
@@ -79,13 +72,13 @@ class PPOConfig(TrainerConfig):
         ... )
     """
 
-    def __init__(self):
+    def __init__(self, trainer_class=None):
         """Initializes a PPOConfig instance."""
-        super().__init__(trainer_class=PPOTrainer)
+        super().__init__(trainer_class=trainer_class or PPOTrainer)
 
         # fmt: off
         # __sphinx_doc_begin__
-        #
+        # PPO specific settings:
         self.lr_schedule = None
         self.use_critic = True
         self.use_gae = True
@@ -101,15 +94,14 @@ class PPOConfig(TrainerConfig):
         self.vf_clip_param = 10.0
         self.grad_clip = None
         self.kl_target = 0.01
-        # __sphinx_doc_end__
-        # fmt: on
 
         # Override some of TrainerConfig's default values with PPO-specific values.
         self.rollout_fragment_length = 200
         self.train_batch_size = 4000
         self.lr = 5e-5
         self.model["vf_share_layers"] = False
-        self._disable_execution_plan_api = True
+        # __sphinx_doc_end__
+        # fmt: on
 
     @override(TrainerConfig)
     def training(
@@ -200,52 +192,6 @@ class PPOConfig(TrainerConfig):
             self.kl_target = kl_target
 
         return self
-
-
-# Deprecated: Use ray.rllib.agents.ppo.PPOConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(
-            with_common_config(
-                {
-                    # PPO specific keys:
-                    "use_critic": True,
-                    "use_gae": True,
-                    "lambda": 1.0,
-                    "kl_coeff": 0.2,
-                    "sgd_minibatch_size": 128,
-                    "shuffle_sequences": True,
-                    "num_sgd_iter": 30,
-                    "lr_schedule": None,
-                    "vf_loss_coeff": 1.0,
-                    "entropy_coeff": 0.0,
-                    "entropy_coeff_schedule": None,
-                    "clip_param": 0.3,
-                    "vf_clip_param": 10.0,
-                    "grad_clip": None,
-                    "kl_target": 0.01,
-                    "rollout_fragment_length": 200,
-                    # TrainerConfig overrides:
-                    "train_batch_size": 4000,
-                    "lr": 5e-5,
-                    "model": {
-                        "vf_share_layers": False,
-                    },
-                    "_disable_execution_plan_api": True,
-                }
-            )
-        )
-
-    @Deprecated(
-        old="ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG",
-        new="ray.rllib.agents.ppo.ppo.PPOConfig(...)",
-        error=False,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()
 
 
 class UpdateKL:
@@ -503,55 +449,19 @@ class PPOTrainer(Trainer):
 
         return train_results
 
-    @staticmethod
-    @override(Trainer)
-    def execution_plan(
-        workers: WorkerSet, config: TrainerConfigDict, **kwargs
-    ) -> LocalIterator[dict]:
-        assert (
-            len(kwargs) == 0
-        ), "PPO execution_plan does NOT take any additional parameters"
 
-        rollouts = ParallelRollouts(workers, mode="bulk_sync")
+# Deprecated: Use ray.rllib.agents.ppo.PPOConfig instead!
+class _deprecated_default_config(dict):
+    def __init__(self):
+        super().__init__(PPOConfig().to_dict())
 
-        # Collect batches for the trainable policies.
-        rollouts = rollouts.for_each(
-            SelectExperiences(local_worker=workers.local_worker())
-        )
-        # Concatenate the SampleBatches into one.
-        rollouts = rollouts.combine(
-            ConcatBatches(
-                min_batch_size=config["train_batch_size"],
-                count_steps_by=config["multiagent"]["count_steps_by"],
-            )
-        )
-        # Standardize advantages.
-        rollouts = rollouts.for_each(StandardizeFields(["advantages"]))
+    @Deprecated(
+        old="ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG",
+        new="ray.rllib.agents.ppo.ppo.PPOConfig(...)",
+        error=False,
+    )
+    def __getitem__(self, item):
+        return super().__getitem__(item)
 
-        # Perform one training step on the combined + standardized batch.
-        if config["simple_optimizer"]:
-            train_op = rollouts.for_each(
-                TrainOneStep(
-                    workers,
-                    num_sgd_iter=config["num_sgd_iter"],
-                    sgd_minibatch_size=config["sgd_minibatch_size"],
-                )
-            )
-        else:
-            train_op = rollouts.for_each(
-                MultiGPUTrainOneStep(
-                    workers=workers,
-                    sgd_minibatch_size=config["sgd_minibatch_size"],
-                    num_sgd_iter=config["num_sgd_iter"],
-                    num_gpus=config["num_gpus"],
-                    _fake_gpus=config["_fake_gpus"],
-                )
-            )
 
-        # Update KL after each round of training.
-        train_op = train_op.for_each(lambda t: t[1]).for_each(UpdateKL(workers))
-
-        # Warn about bad reward scales and return training metrics.
-        return StandardMetricsReporting(train_op, workers, config).for_each(
-            lambda result: warn_about_bad_reward_scales(config, result)
-        )
+DEFAULT_CONFIG = _deprecated_default_config()

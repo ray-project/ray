@@ -1,12 +1,3 @@
-# ---------------
-# IMPORTANT NOTE:
-# ---------------
-# A recent bug in openAI gym prevents RLlib's "record_env" option
-# from recording videos properly. Instead, the produced mp4 files
-# have a size of 1kb and are corrupted.
-# A simple fix for this is described here:
-# https://github.com/openai/gym/issues/1925
-
 import argparse
 import gym
 import numpy as np
@@ -115,13 +106,6 @@ if __name__ == "__main__":
         # Special evaluation config. Keys specified here will override
         # the same keys in the main config, but only for evaluation.
         "evaluation_config": {
-            # Store videos in this relative directory here inside
-            # the default output dir (~/ray_results/...).
-            # Alternatively, you can specify an absolute path.
-            # Set to True for using the default output dir (~/ray_results/...).
-            # Set to False for not recording anything.
-            "record_env": "videos",
-            # "record_env": "/Users/xyz/my_videos/",
             # Render the env while evaluating.
             # Note that this will always only render the 1st RolloutWorker's
             # env and only the 1st sub-env in a vectorized env.

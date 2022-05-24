@@ -13,7 +13,9 @@ def canonicalize(stats: str) -> str:
     s2 = re.sub(" [0]+(\.[0]+)?", " Z", s1)
     # Other numerics.
     s3 = re.sub("[0-9]+(\.[0-9]+)?", "N", s2)
-    return s3
+    # Replace tabs with spaces.
+    s4 = re.sub("\t", "    ", s3)
+    return s4
 
 
 def test_dataset_stats_basic(ray_start_regular_shared):
@@ -59,33 +61,37 @@ def test_dataset_stats_shuffle(ray_start_regular_shared):
     stats = canonicalize(ds.stats())
     assert (
         stats
-        == """Stage N read->random_shuffle_map: N/N blocks executed in T
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* Output num rows: N min, N max, N mean, N total
-* Output size bytes: N min, N max, N mean, N total
-* Tasks per node: N min, N max, N mean; N nodes used
+        == """Stage N read->random_shuffle: executed in T
 
-Stage N random_shuffle_reduce: N/N blocks executed in T
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* Output num rows: N min, N max, N mean, N total
-* Output size bytes: N min, N max, N mean, N total
-* Tasks per node: N min, N max, N mean; N nodes used
+    Substage Z read->random_shuffle_map: N/N blocks executed
+    * Remote wall time: T min, T max, T mean, T total
+    * Remote cpu time: T min, T max, T mean, T total
+    * Output num rows: N min, N max, N mean, N total
+    * Output size bytes: N min, N max, N mean, N total
+    * Tasks per node: N min, N max, N mean; N nodes used
 
-Stage N repartition_map: N/N blocks executed in T
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* Output num rows: N min, N max, N mean, N total
-* Output size bytes: N min, N max, N mean, N total
-* Tasks per node: N min, N max, N mean; N nodes used
+    Substage N random_shuffle_reduce: N/N blocks executed
+    * Remote wall time: T min, T max, T mean, T total
+    * Remote cpu time: T min, T max, T mean, T total
+    * Output num rows: N min, N max, N mean, N total
+    * Output size bytes: N min, N max, N mean, N total
+    * Tasks per node: N min, N max, N mean; N nodes used
 
-Stage N repartition_reduce: N/N blocks executed in T
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* Output num rows: N min, N max, N mean, N total
-* Output size bytes: N min, N max, N mean, N total
-* Tasks per node: N min, N max, N mean; N nodes used
+Stage N repartition: executed in T
+
+    Substage Z repartition_map: N/N blocks executed
+    * Remote wall time: T min, T max, T mean, T total
+    * Remote cpu time: T min, T max, T mean, T total
+    * Output num rows: N min, N max, N mean, N total
+    * Output size bytes: N min, N max, N mean, N total
+    * Tasks per node: N min, N max, N mean; N nodes used
+
+    Substage N repartition_reduce: N/N blocks executed
+    * Remote wall time: T min, T max, T mean, T total
+    * Remote cpu time: T min, T max, T mean, T total
+    * Output num rows: N min, N max, N mean, N total
+    * Output size bytes: N min, N max, N mean, N total
+    * Tasks per node: N min, N max, N mean; N nodes used
 """
     )
 
@@ -142,6 +148,35 @@ def test_dataset_stats_read_parquet(ray_start_regular_shared, tmp_path):
 * Tasks per node: N min, N max, N mean; N nodes used
 """
     )
+
+
+def test_dataset_split_stats(ray_start_regular_shared, tmp_path):
+    ds = ray.data.range(100, parallelism=10).map(lambda x: x + 1)
+    dses = ds.split_at_indices([50])
+    dses = [ds.map(lambda x: x + 1) for ds in dses]
+    for ds_ in dses:
+        stats = canonicalize(ds_.stats())
+        assert (
+            stats
+            == """Stage N read->map: N/N blocks executed in T
+* Remote wall time: T min, T max, T mean, T total
+* Remote cpu time: T min, T max, T mean, T total
+* Output num rows: N min, N max, N mean, N total
+* Output size bytes: N min, N max, N mean, N total
+* Tasks per node: N min, N max, N mean; N nodes used
+
+Stage N split: N/N blocks split from parent in T
+* Output num rows: N min, N max, N mean, N total
+* Output size bytes: N min, N max, N mean, N total
+
+Stage N map: N/N blocks executed in T
+* Remote wall time: T min, T max, T mean, T total
+* Remote cpu time: T min, T max, T mean, T total
+* Output num rows: N min, N max, N mean, N total
+* Output size bytes: N min, N max, N mean, N total
+* Tasks per node: N min, N max, N mean; N nodes used
+"""
+        )
 
 
 def test_dataset_pipeline_stats_basic(ray_start_regular_shared):

@@ -306,10 +306,13 @@ void LocalResourceManager::UpdateAvailableObjectStoreMemResource() {
   RAY_CHECK_EQ(total_instances.size(), 1u);
   const double used = get_used_object_store_memory_();
   const double total = total_instances[0].Double();
-  local_resources_.available.Set(ResourceID::ObjectStoreMemory(),
-                                 {FixedPoint(total >= used ? total - used : 0.0)});
-
-  OnResourceChanged();
+  auto new_available =
+      std::vector<FixedPoint>{FixedPoint(total >= used ? total - used : 0.0)};
+  if (new_available != local_resources_.available.Get(ResourceID::ObjectStoreMemory())) {
+    local_resources_.available.Set(ResourceID::ObjectStoreMemory(),
+                                   std::move(new_available));
+    OnResourceChanged();
+  }
 }
 
 void LocalResourceManager::FillResourceUsage(rpc::ResourcesData &resources_data) {
@@ -322,6 +325,7 @@ void LocalResourceManager::FillResourceUsage(rpc::ResourcesData &resources_data)
     NodeResources node_resources = ResourceMapToNodeResources({{}}, {{}});
     last_report_resources_.reset(new NodeResources(node_resources));
   }
+
   for (auto entry : resources.total.ToMap()) {
     auto resource_id = entry.first;
     auto label = ResourceID(resource_id).Binary();
@@ -361,6 +365,53 @@ double LocalResourceManager::GetLocalAvailableCpus() const {
   return local_resources_.available.Sum(ResourceID::CPU()).Double();
 }
 
+std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
+    int64_t after_version, syncer::MessageType message_type) const {
+  RAY_CHECK(message_type == syncer::MessageType::RESOURCE_VIEW);
+  // We check the memory inside version, so version is not a const function.
+  // Ideally, we need to move the memory check somewhere else.
+  // TODO(iycheng): Make version as a const function.
+  const_cast<LocalResourceManager *>(this)->UpdateAvailableObjectStoreMemResource();
+
+  if (version_ <= after_version) {
+    return std::nullopt;
+  }
+
+  syncer::RaySyncMessage msg;
+  rpc::ResourcesData resources_data;
+
+  resources_data.set_node_id(local_node_id_.Binary());
+
+  NodeResources resources = ToNodeResources(local_resources_);
+
+  for (auto entry : resources.total.ToMap()) {
+    auto resource_id = entry.first;
+    auto label = ResourceID(resource_id).Binary();
+    auto total = entry.second;
+    auto available = resources.available.Get(resource_id);
+
+    resources_data.set_resources_available_changed(true);
+    (*resources_data.mutable_resources_available())[label] = available.Double();
+    (*resources_data.mutable_resources_total())[label] = total.Double();
+  }
+
+  if (get_pull_manager_at_capacity_ != nullptr) {
+    resources.object_pulls_queued = get_pull_manager_at_capacity_();
+    resources_data.set_object_pulls_queued(resources.object_pulls_queued);
+    resources_data.set_resources_available_changed(true);
+  }
+
+  resources_data.set_resources_available_changed(true);
+
+  msg.set_node_id(local_node_id_.Binary());
+  msg.set_version(version_);
+  msg.set_message_type(message_type);
+  std::string serialized_msg;
+  RAY_CHECK(resources_data.SerializeToString(&serialized_msg));
+  msg.set_sync_message(std::move(serialized_msg));
+  return std::make_optional(std::move(msg));
+}
+
 ray::gcs::NodeResourceInfoAccessor::ResourceMap LocalResourceManager::GetResourceTotals(
     const absl::flat_hash_map<std::string, double> &resource_map_filter) const {
   ray::gcs::NodeResourceInfoAccessor::ResourceMap map;
@@ -380,6 +431,7 @@ ray::gcs::NodeResourceInfoAccessor::ResourceMap LocalResourceManager::GetResourc
 }
 
 void LocalResourceManager::OnResourceChanged() {
+  ++version_;
   if (resource_change_subscriber_ == nullptr) {
     return;
   }
@@ -387,10 +439,8 @@ void LocalResourceManager::OnResourceChanged() {
 }
 
 void LocalResourceManager::ResetLastReportResourceUsage(
-    const SchedulingResources &replacement) {
-  last_report_resources_ = std::make_unique<NodeResources>(
-      ResourceMapToNodeResources(replacement.GetTotalResources().GetResourceMap(),
-                                 replacement.GetAvailableResources().GetResourceMap()));
+    const NodeResources &replacement) {
+  last_report_resources_.reset(new NodeResources(replacement));
 }
 
 bool LocalResourceManager::ResourcesExist(scheduling::ResourceID resource_id) const {

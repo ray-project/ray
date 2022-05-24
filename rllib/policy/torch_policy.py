@@ -35,7 +35,6 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
@@ -76,7 +75,13 @@ class TorchPolicy(Policy):
         ] = None,
         action_distribution_class: Optional[Type[TorchDistributionWrapper]] = None,
         action_sampler_fn: Optional[
-            Callable[[TensorType, List[TensorType]], Tuple[TensorType, TensorType]]
+            Callable[
+                [TensorType, List[TensorType]],
+                Union[
+                    Tuple[TensorType, TensorType, List[TensorType]],
+                    Tuple[TensorType, TensorType, TensorType, List[TensorType]],
+                ],
+            ]
         ] = None,
         action_distribution_fn: Optional[
             Callable[
@@ -99,13 +104,14 @@ class TorchPolicy(Policy):
             loss: Callable that returns one or more (a list of) scalar loss
                 terms.
             action_distribution_class: Class for a torch action distribution.
-            action_sampler_fn: A callable returning a sampled action and its
-                log-likelihood given Policy, ModelV2, input_dict, state batches
-                (optional), explore, and timestep.
-                Provide `action_sampler_fn` if you would like to have full
-                control over the action computation step, including the
-                model forward pass, possible sampling from a distribution,
-                and exploration logic.
+            action_sampler_fn: A callable returning either a sampled action,
+                its log-likelihood and updated state or a sampled action, its
+                log-likelihood, updated state and action distribution inputs
+                given Policy, ModelV2, input_dict, state batches (optional),
+                explore, and timestep. Provide `action_sampler_fn` if you would
+                like to have full control over the action computation step,
+                including the model forward pass, possible sampling from a
+                distribution, and exploration logic.
                 Note: If `action_sampler_fn` is given, `action_distribution_fn`
                 must be None. If both `action_sampler_fn` and
                 `action_distribution_fn` are None, RLlib will simply pass
@@ -539,7 +545,7 @@ class TorchPolicy(Policy):
     def get_num_samples_loaded_into_buffer(self, buffer_index: int = 0) -> int:
         if len(self.devices) == 1 and self.devices[0] == "/cpu:0":
             assert buffer_index == 0
-        return len(self._loaded_batches[buffer_index])
+        return sum(len(b) for b in self._loaded_batches[buffer_index])
 
     @override(Policy)
     @DeveloperAPI
@@ -935,7 +941,7 @@ class TorchPolicy(Policy):
 
         if self.action_sampler_fn:
             action_dist = dist_inputs = None
-            actions, logp, state_out = self.action_sampler_fn(
+            action_sampler_outputs = self.action_sampler_fn(
                 self,
                 self.model,
                 input_dict,
@@ -943,6 +949,10 @@ class TorchPolicy(Policy):
                 explore=explore,
                 timestep=timestep,
             )
+            if len(action_sampler_outputs) == 4:
+                actions, logp, dist_inputs, state_out = action_sampler_outputs
+            else:
+                actions, logp, state_out = action_sampler_outputs
         else:
             # Call the exploration before_compute_actions hook.
             self.exploration.before_compute_actions(explore=explore, timestep=timestep)
@@ -1171,68 +1181,6 @@ class TorchPolicy(Policy):
                 raise output[0] from output[1]
             outputs.append(results[shard_idx])
         return outputs
-
-
-# TODO: (sven) Unify hyperparam annealing procedures across RLlib (tf/torch)
-#   and for all possible hyperparams, not just lr.
-@DeveloperAPI
-class LearningRateSchedule:
-    """Mixin for TorchPolicy that adds a learning rate schedule."""
-
-    @DeveloperAPI
-    def __init__(self, lr, lr_schedule):
-        self._lr_schedule = None
-        if lr_schedule is None:
-            self.cur_lr = lr
-        else:
-            self._lr_schedule = PiecewiseSchedule(
-                lr_schedule, outside_value=lr_schedule[-1][-1], framework=None
-            )
-            self.cur_lr = self._lr_schedule.value(0)
-
-    @override(Policy)
-    def on_global_var_update(self, global_vars):
-        super().on_global_var_update(global_vars)
-        if self._lr_schedule:
-            self.cur_lr = self._lr_schedule.value(global_vars["timestep"])
-            for opt in self._optimizers:
-                for p in opt.param_groups:
-                    p["lr"] = self.cur_lr
-
-
-@DeveloperAPI
-class EntropyCoeffSchedule:
-    """Mixin for TorchPolicy that adds entropy coeff decay."""
-
-    @DeveloperAPI
-    def __init__(self, entropy_coeff, entropy_coeff_schedule):
-        self._entropy_coeff_schedule = None
-        if entropy_coeff_schedule is None:
-            self.entropy_coeff = entropy_coeff
-        else:
-            # Allows for custom schedule similar to lr_schedule format
-            if isinstance(entropy_coeff_schedule, list):
-                self._entropy_coeff_schedule = PiecewiseSchedule(
-                    entropy_coeff_schedule,
-                    outside_value=entropy_coeff_schedule[-1][-1],
-                    framework=None,
-                )
-            else:
-                # Implements previous version but enforces outside_value
-                self._entropy_coeff_schedule = PiecewiseSchedule(
-                    [[0, entropy_coeff], [entropy_coeff_schedule, 0.0]],
-                    outside_value=0.0,
-                    framework=None,
-                )
-            self.entropy_coeff = self._entropy_coeff_schedule.value(0)
-
-    @override(Policy)
-    def on_global_var_update(self, global_vars):
-        super(EntropyCoeffSchedule, self).on_global_var_update(global_vars)
-        if self._entropy_coeff_schedule is not None:
-            self.entropy_coeff = self._entropy_coeff_schedule.value(
-                global_vars["timestep"]
-            )
 
 
 @DeveloperAPI

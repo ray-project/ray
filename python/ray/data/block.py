@@ -1,7 +1,9 @@
+from dataclasses import dataclass
 import time
 from typing import (
     TypeVar,
     List,
+    Dict,
     Generic,
     Iterator,
     Tuple,
@@ -81,6 +83,10 @@ def _validate_key_fn(ds: "Dataset", key: KeyFn) -> None:
 # ``SimpleBlockAccessor`` and ``ArrowBlockAccessor``.
 Block = Union[List[T], "pyarrow.Table", "pandas.DataFrame", bytes]
 
+# User-facing data batch type. This is the data type for data that is supplied to and
+# returned from batch UDFs.
+DataBatch = Union[Block, np.ndarray]
+
 # A list of block references pending computation by a single task. For example,
 # this may be the output of a task reading a file.
 BlockPartition = List[Tuple[ObjectRef[Block], "BlockMetadata"]]
@@ -142,6 +148,7 @@ class _BlockExecStatsBuilder:
 
 
 @DeveloperAPI
+@dataclass
 class BlockMetadata:
     """Metadata about the block.
 
@@ -154,22 +161,15 @@ class BlockMetadata:
         exec_stats: Execution stats for this block.
     """
 
-    def __init__(
-        self,
-        *,
-        num_rows: Optional[int],
-        size_bytes: Optional[int],
-        schema: Union[type, "pyarrow.lib.Schema"],
-        input_files: List[str],
-        exec_stats: Optional[BlockExecStats]
-    ):
-        if input_files is None:
-            input_files = []
-        self.num_rows: Optional[int] = num_rows
-        self.size_bytes: Optional[int] = size_bytes
-        self.schema: Optional[Any] = schema
-        self.input_files: List[str] = input_files
-        self.exec_stats: Optional[BlockExecStats] = exec_stats
+    num_rows: Optional[int]
+    size_bytes: Optional[int]
+    schema: Optional[Union[type, "pyarrow.lib.Schema"]]
+    input_files: Optional[List[str]]
+    exec_stats: Optional[BlockExecStats]
+
+    def __post_init__(self):
+        if self.input_files is None:
+            self.input_files = []
 
 
 @DeveloperAPI
@@ -215,11 +215,13 @@ class BlockAccessor(Generic[T]):
         """Convert this block into a Pandas dataframe."""
         raise NotImplementedError
 
-    def to_numpy(self, column: str = None) -> np.ndarray:
-        """Convert this block (or column of block) into a NumPy ndarray.
+    def to_numpy(
+        self, columns: Optional[Union[str, List[str]]] = None
+    ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
+        """Convert this block (or columns of block) into a NumPy ndarray.
 
         Args:
-            column: Name of column to convert, or None.
+            columns: Name of columns to convert, or None if converting all columns.
         """
         raise NotImplementedError
 
@@ -230,6 +232,10 @@ class BlockAccessor(Generic[T]):
     def to_block(self) -> Block:
         """Return the base block that this accessor wraps."""
         raise NotImplementedError
+
+    def to_native(self) -> Block:
+        """Return the native data format for this accessor."""
+        return self.to_block()
 
     def size_bytes(self) -> int:
         """Return the approximate size in bytes of this block."""
@@ -259,6 +265,15 @@ class BlockAccessor(Generic[T]):
     def builder() -> "BlockBuilder[T]":
         """Create a builder for this block type."""
         raise NotImplementedError
+
+    @staticmethod
+    def batch_to_block(batch: DataBatch) -> Block:
+        """Create a block from user-facing data formats."""
+        if isinstance(batch, np.ndarray):
+            from ray.data.impl.arrow_block import ArrowBlockAccessor
+
+            return ArrowBlockAccessor.numpy_to_block(batch)
+        return batch
 
     @staticmethod
     def for_block(block: Block) -> "BlockAccessor[T]":

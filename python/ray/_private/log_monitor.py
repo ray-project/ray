@@ -125,7 +125,7 @@ class LogMonitor:
                 ):
                     assert not isinstance(file_info.worker_pid, str), (
                         "PID should be an int type. "
-                        "Given PID: {file_info.worker_pid}."
+                        f"Given PID: {file_info.worker_pid}."
                     )
                     os.kill(file_info.worker_pid, 0)
             except OSError:
@@ -286,7 +286,10 @@ class LogMonitor:
                     "actor_name": file_info.actor_name,
                     "task_name": file_info.task_name,
                 }
-                self.publisher.publish_logs(data)
+                try:
+                    self.publisher.publish_logs(data)
+                except Exception:
+                    logger.exception(f"Failed to publish log messages {data}")
                 anything_published = True
                 lines_to_publish = []
 

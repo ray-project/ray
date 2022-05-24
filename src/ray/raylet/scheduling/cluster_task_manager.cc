@@ -138,7 +138,9 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
       auto &work_queue = shapes_it->second;
       const auto &work = work_queue[0];
       const RayTask task = work->task;
-      announce_infeasible_task_(task);
+      if (announce_infeasible_task_) {
+        announce_infeasible_task_(task);
+      }
 
       // TODO(sang): Use a shared pointer deque to reduce copy overhead.
       infeasible_tasks_[shapes_it->first] = shapes_it->second;
@@ -149,7 +151,6 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
       shapes_it++;
     }
   }
-
   local_task_manager_->ScheduleAndDispatchTasks();
 }
 
@@ -239,7 +240,7 @@ void ClusterTaskManager::FillPendingActorInfo(rpc::GetNodeStatsReply *reply) con
 
 void ClusterTaskManager::FillResourceUsage(
     rpc::ResourcesData &data,
-    const std::shared_ptr<SchedulingResources> &last_reported_resources) {
+    const std::shared_ptr<NodeResources> &last_reported_resources) {
   scheduler_resource_reporter_.FillResourceUsage(data, last_reported_resources);
 }
 
@@ -316,6 +317,7 @@ void ClusterTaskManager::ScheduleOnNode(const NodeID &spillback_to,
   }
 
   internal_stats_.TaskSpilled();
+
   const auto &task = work->task;
   const auto &task_spec = task.GetTaskSpecification();
   RAY_LOG(DEBUG) << "Spilling task " << task_spec.TaskId() << " to node " << spillback_to;
@@ -339,5 +341,31 @@ void ClusterTaskManager::ScheduleOnNode(const NodeID &spillback_to,
 
   send_reply_callback();
 }
+
+std::shared_ptr<ClusterResourceScheduler>
+ClusterTaskManager::GetClusterResourceScheduler() const {
+  return cluster_resource_scheduler_;
+}
+
+size_t ClusterTaskManager::GetInfeasibleQueueSize() const {
+  size_t count = 0;
+  for (const auto &cls_entry : infeasible_tasks_) {
+    count += cls_entry.second.size();
+  }
+  return count;
+}
+
+size_t ClusterTaskManager::GetPendingQueueSize() const {
+  size_t count = 0;
+  for (const auto &cls_entry : tasks_to_schedule_) {
+    count += cls_entry.second.size();
+  }
+  return count;
+}
+
+void ClusterTaskManager::FillPendingActorInfo(rpc::ResourcesData &data) const {
+  scheduler_resource_reporter_.FillPendingActorCountByShape(data);
+}
+
 }  // namespace raylet
 }  // namespace ray

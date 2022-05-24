@@ -5,7 +5,6 @@ import ray
 import numpy as np
 
 from ray.rllib import Policy
-from ray.rllib.agents import with_common_config
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.examples.env.parametric_actions_cartpole import ParametricActionsCartPole
@@ -13,13 +12,6 @@ from ray.rllib.models.modelv2 import restore_original_dimensions
 from ray.rllib.utils import override
 from ray.rllib.utils.typing import ResultDict
 from ray.tune.registry import register_env
-
-DEFAULT_CONFIG = with_common_config(
-    {
-        # Run with new `training_iteration` API.
-        "_disable_execution_plan_api": True,
-    }
-)
 
 
 class RandomParametricPolicy(Policy, ABC):
@@ -72,10 +64,6 @@ class RandomParametricTrainer(Trainer):
     Overrides the `training_iteration` method, which only runs a (dummy)
     rollout and performs no learning.
     """
-
-    @classmethod
-    def get_default_config(cls):
-        return DEFAULT_CONFIG
 
     def get_default_policy_class(self, config):
         return RandomParametricPolicy

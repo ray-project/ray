@@ -29,7 +29,18 @@ from ray.tune.syncer import (
     SyncerCallback,
 )
 from ray.tune.utils.callback import create_default_callbacks
-from ray.tune.utils.file_transfer import sync_dir_between_nodes, delete_on_node
+from ray.tune.utils.file_transfer import (
+    delete_on_node,
+    _sync_dir_on_same_node,
+    _sync_dir_between_different_nodes,
+)
+
+
+# Default RemoteTaskClient will use _sync_dir_on_same_node in this test,
+# as the IPs are the same
+class RemoteTaskClientWithSyncDirBetweenDifferentNodes(RemoteTaskClient):
+    def _sync_function(self, *args, **kwargs):
+        return _sync_dir_between_different_nodes(*args, **kwargs)
 
 
 class TestSyncFunctionality(unittest.TestCase):
@@ -41,37 +52,26 @@ class TestSyncFunctionality(unittest.TestCase):
         _register_all()  # re-register the evicted objects
 
     def testSyncConfigDeprecation(self):
-        with self.assertWarnsRegex(DeprecationWarning, expected_regex="sync_period"):
-            sync_conf = tune.SyncConfig(node_sync_period=4, cloud_sync_period=8)
-            self.assertEqual(sync_conf.sync_period, 4)
+        with self.assertRaisesRegex(DeprecationWarning, expected_regex="sync_period"):
+            tune.SyncConfig(node_sync_period=4, cloud_sync_period=8)
 
-        with self.assertWarnsRegex(DeprecationWarning, expected_regex="sync_period"):
-            sync_conf = tune.SyncConfig(node_sync_period=4)
-            self.assertEqual(sync_conf.sync_period, 4)
+        with self.assertRaisesRegex(DeprecationWarning, expected_regex="sync_period"):
+            tune.SyncConfig(node_sync_period=4)
 
-        with self.assertWarnsRegex(DeprecationWarning, expected_regex="sync_period"):
-            sync_conf = tune.SyncConfig(cloud_sync_period=8)
-            self.assertEqual(sync_conf.sync_period, 8)
+        with self.assertRaisesRegex(DeprecationWarning, expected_regex="sync_period"):
+            tune.SyncConfig(cloud_sync_period=8)
 
-        with self.assertWarnsRegex(DeprecationWarning, expected_regex="syncer"):
-            sync_conf = tune.SyncConfig(
-                sync_to_driver="a", sync_to_cloud="b", upload_dir=None
-            )
-            self.assertEqual(sync_conf.syncer, "a")
+        with self.assertRaisesRegex(DeprecationWarning, expected_regex="syncer"):
+            tune.SyncConfig(sync_to_driver="a", sync_to_cloud="b", upload_dir=None)
 
-        with self.assertWarnsRegex(DeprecationWarning, expected_regex="syncer"):
-            sync_conf = tune.SyncConfig(
-                sync_to_driver="a", sync_to_cloud="b", upload_dir="c"
-            )
-            self.assertEqual(sync_conf.syncer, "b")
+        with self.assertRaisesRegex(DeprecationWarning, expected_regex="syncer"):
+            tune.SyncConfig(sync_to_driver="a", sync_to_cloud="b", upload_dir="c")
 
-        with self.assertWarnsRegex(DeprecationWarning, expected_regex="syncer"):
-            sync_conf = tune.SyncConfig(sync_to_cloud="b", upload_dir=None)
-            self.assertEqual(sync_conf.syncer, None)
+        with self.assertRaisesRegex(DeprecationWarning, expected_regex="syncer"):
+            tune.SyncConfig(sync_to_cloud="b", upload_dir=None)
 
-        with self.assertWarnsRegex(DeprecationWarning, expected_regex="syncer"):
-            sync_conf = tune.SyncConfig(sync_to_driver="a", upload_dir="c")
-            self.assertEqual(sync_conf.syncer, None)
+        with self.assertRaisesRegex(DeprecationWarning, expected_regex="syncer"):
+            tune.SyncConfig(sync_to_driver="a", upload_dir="c")
 
     @patch("ray.tune.sync_client.S3_PREFIX", "test")
     def testCloudProperString(self):
@@ -159,7 +159,7 @@ class TestSyncFunctionality(unittest.TestCase):
         tmpdir2 = tempfile.mkdtemp()
         os.mkdir(os.path.join(tmpdir2, "foo"))
 
-        def sync_func(local, remote):
+        def sync_func(local, remote, exclude=None):
             for filename in glob.glob(os.path.join(local, "*.json")):
                 shutil.copy(filename, remote)
 
@@ -187,7 +187,7 @@ class TestSyncFunctionality(unittest.TestCase):
                 time.sleep(1)
                 tune.report(score=i)
 
-        def counter(local, remote):
+        def counter(local, remote, exclude=None):
             count_file = os.path.join(tmpdir, "count.txt")
             if not os.path.exists(count_file):
                 count = 0
@@ -219,7 +219,7 @@ class TestSyncFunctionality(unittest.TestCase):
         shutil.rmtree(tmpdir)
 
     def testClusterSyncFunction(self):
-        def sync_func_driver(source, target):
+        def sync_func_driver(source, target, exclude=None):
             assert ":" in source, "Source {} not a remote path.".format(source)
             assert ":" not in target, "Target is supposed to be local."
             with open(os.path.join(target, "test.log2"), "w") as f:
@@ -255,7 +255,7 @@ class TestSyncFunctionality(unittest.TestCase):
     def testNoSync(self):
         """Sync should not run on a single node."""
 
-        def sync_func(source, target):
+        def sync_func(source, target, exclude=None):
             pass
 
         sync_config = tune.SyncConfig(syncer=sync_func)
@@ -409,7 +409,7 @@ class TestSyncFunctionality(unittest.TestCase):
         sync_config = tune.SyncConfig(syncer=None)
 
         # Create syncer callbacks
-        callbacks = create_default_callbacks([], sync_config, loggers=None)
+        callbacks = create_default_callbacks([], sync_config)
         syncer_callback = callbacks[-1]
 
         # Sanity check that we got the syncer callback
@@ -457,7 +457,14 @@ class TestSyncFunctionality(unittest.TestCase):
 
         self.assertEquals(client._sync_downs, 2)
 
-    def testSyncBetweenNodesAndDelete(self):
+    def _check_dir_contents(self, path: str):
+        assert os.path.exists(os.path.join(path, "dir_level0"))
+        assert os.path.exists(os.path.join(path, "dir_level0", "dir_level1"))
+        assert os.path.exists(os.path.join(path, "dir_level0", "file_level1.txt"))
+        with open(os.path.join(path, "dir_level0", "file_level1.txt"), "r") as f:
+            assert f.read() == "Data\n"
+
+    def _testSyncInNodeAndDelete(self, num_workers: int = 1):
         temp_source = tempfile.mkdtemp()
         temp_up_target = tempfile.mkdtemp()
         temp_down_target = tempfile.mkdtemp()
@@ -469,65 +476,121 @@ class TestSyncFunctionality(unittest.TestCase):
         with open(os.path.join(temp_source, "dir_level0", "file_level1.txt"), "w") as f:
             f.write("Data\n")
 
-        def check_dir_contents(path: str):
-            assert os.path.exists(os.path.join(path, "dir_level0"))
-            assert os.path.exists(os.path.join(path, "dir_level0", "dir_level1"))
-            assert os.path.exists(os.path.join(path, "dir_level0", "file_level1.txt"))
-            with open(os.path.join(path, "dir_level0", "file_level1.txt"), "r") as f:
-                assert f.read() == "Data\n"
-
         # Sanity check
-        check_dir_contents(temp_source)
+        self._check_dir_contents(temp_source)
+        node_ip = ray.util.get_node_ip_address()
 
-        sync_dir_between_nodes(
-            source_ip=ray.util.get_node_ip_address(),
-            source_path=temp_source,
-            target_ip=ray.util.get_node_ip_address(),
-            target_path=temp_up_target,
-        )
+        futures = [
+            _sync_dir_on_same_node(
+                ip=node_ip,
+                source_path=temp_source,
+                target_path=temp_up_target,
+                return_futures=True,
+            )
+            for i in range(num_workers)
+        ]
+        ray.get(futures)
 
         # Check sync up
-        check_dir_contents(temp_up_target)
+        self._check_dir_contents(temp_up_target)
+
+        assert not os.listdir(temp_down_target)
+
+        futures = [
+            _sync_dir_on_same_node(
+                ip=node_ip,
+                source_path=temp_up_target,
+                target_path=temp_down_target,
+                return_futures=True,
+            )
+            for i in range(num_workers)
+        ]
+        ray.get(futures)
+
+        # Check sync down
+        self._check_dir_contents(temp_down_target)
+
+        # Delete in some dir
+        delete_on_node(node_ip=node_ip, path=temp_up_target)
+
+        assert not os.path.exists(temp_up_target)
+
+    def testSyncInNodeAndDelete(self):
+        self._testSyncInNodeAndDelete(num_workers=1)
+
+    def testSyncInNodeAndDeleteMultipleWorkers(self):
+        self._testSyncInNodeAndDelete(num_workers=8)
+
+    def _testSyncBetweenNodesAndDelete(self, num_workers: int = 1):
+        temp_source = tempfile.mkdtemp()
+        temp_up_target = tempfile.mkdtemp()
+        temp_down_target = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, temp_source)
+        self.addCleanup(shutil.rmtree, temp_up_target, ignore_errors=True)
+        self.addCleanup(shutil.rmtree, temp_down_target)
+
+        os.makedirs(os.path.join(temp_source, "dir_level0", "dir_level1"))
+        with open(os.path.join(temp_source, "dir_level0", "file_level1.txt"), "w") as f:
+            f.write("Data\n")
+
+        # Sanity check
+        self._check_dir_contents(temp_source)
+        node_ip = ray.util.get_node_ip_address()
+
+        futures = [
+            _sync_dir_between_different_nodes(
+                source_ip=node_ip,
+                source_path=temp_source,
+                target_ip=node_ip,
+                target_path=temp_up_target,
+                return_futures=True,
+            )[0]
+            for i in range(num_workers)
+        ]
+        ray.get(futures)
+
+        # Check sync up
+        self._check_dir_contents(temp_up_target)
 
         # Max size exceeded
         with self.assertRaises(RayTaskError):
-            sync_dir_between_nodes(
-                source_ip=ray.util.get_node_ip_address(),
+            _sync_dir_between_different_nodes(
+                source_ip=node_ip,
                 source_path=temp_up_target,
-                target_ip=ray.util.get_node_ip_address(),
+                target_ip=node_ip,
                 target_path=temp_down_target,
                 max_size_bytes=2,
             )
 
         assert not os.listdir(temp_down_target)
 
-        sync_dir_between_nodes(
-            source_ip=ray.util.get_node_ip_address(),
-            source_path=temp_up_target,
-            target_ip=ray.util.get_node_ip_address(),
-            target_path=temp_down_target,
-        )
+        futures = [
+            _sync_dir_between_different_nodes(
+                source_ip=node_ip,
+                source_path=temp_up_target,
+                target_ip=node_ip,
+                target_path=temp_down_target,
+                return_futures=True,
+            )[0]
+            for i in range(num_workers)
+        ]
+        ray.get(futures)
 
         # Check sync down
-        check_dir_contents(temp_down_target)
+        self._check_dir_contents(temp_down_target)
 
         # Delete in some dir
-        delete_on_node(node_ip=ray.util.get_node_ip_address(), path=temp_up_target)
+        delete_on_node(node_ip=node_ip, path=temp_up_target)
 
         assert not os.path.exists(temp_up_target)
 
-    def testSyncRemoteTaskOnlyDifferences(self):
-        """Tests the RemoteTaskClient sync client.
+    def testSyncBetweenNodesAndDelete(self):
+        self._testSyncBetweenNodesAndDelete(num_workers=1)
 
-        In this test we generate a directory with multiple files.
-        We then use both ``sync_down`` and ``sync_up`` to synchronize
-        these to different directories (on the same node). We then assert
-        that the files have been transferred correctly.
+    def testSyncBetweenNodesAndDeleteMultipleWorkers(self):
+        self._testSyncBetweenNodesAndDelete(num_workers=8)
 
-        We then edit one of the files and add another one. We then sync
-        up/down again. In this sync, we assert that only modified and new
-        files are transferred.
-        """
+    def _prepareDirForTestSyncRemoteTask(self):
         temp_source = tempfile.mkdtemp()
         temp_up_target = tempfile.mkdtemp()
         temp_down_target = tempfile.mkdtemp()
@@ -546,11 +609,29 @@ class TestSyncFunctionality(unittest.TestCase):
             fp.write("Level A2\n")
         with open(os.path.join(temp_source, "B", "level_b1.txt"), "wt") as fp:
             fp.write("Level B1\n")
+        return temp_source, temp_up_target, temp_down_target
 
+    def testSyncRemoteTaskOnlyDifferencesOnDifferentNodes(self):
+        """Tests the RemoteTaskClient sync client with different node logic.
+
+        In this test we generate a directory with multiple files.
+        We then use both ``sync_down`` and ``sync_up`` to synchronize
+        these to different directories (on the same node). We then assert
+        that the files have been transferred correctly.
+
+        We then edit one of the files and add another one. We then sync
+        up/down again. In this sync, we assert that only modified and new
+        files are transferred.
+        """
+        (
+            temp_source,
+            temp_up_target,
+            temp_down_target,
+        ) = self._prepareDirForTestSyncRemoteTask()
         this_node_ip = ray.util.get_node_ip_address()
 
         # Sync everything up
-        client = RemoteTaskClient(_store_remotes=True)
+        client = RemoteTaskClientWithSyncDirBetweenDifferentNodes(_store_remotes=True)
         client.sync_up(source=temp_source, target=(this_node_ip, temp_up_target))
         client.wait()
 

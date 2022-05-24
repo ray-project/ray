@@ -135,6 +135,7 @@ class RayParams:
         node_manager_port=0,
         gcs_server_port=None,
         node_ip_address=None,
+        node_name=None,
         raylet_ip_address=None,
         min_worker_port=None,
         max_worker_port=None,
@@ -186,6 +187,7 @@ class RayParams:
         self.node_manager_port = node_manager_port
         self.gcs_server_port = gcs_server_port
         self.node_ip_address = node_ip_address
+        self.node_name = node_name
         self.raylet_ip_address = raylet_ip_address
         self.min_worker_port = min_worker_port
         self.max_worker_port = max_worker_port

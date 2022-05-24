@@ -21,7 +21,6 @@ OffPolicyEstimate = namedtuple("OffPolicyEstimate", ["estimator_name", "metrics"
 class OffPolicyEstimator:
     """Interface for an off policy reward estimator."""
 
-    @DeveloperAPI
     def __init__(self, policy: Policy, gamma: float):
         """Initializes an OffPolicyEstimator instance.
 
@@ -34,6 +33,7 @@ class OffPolicyEstimator:
         self.new_estimates = []
 
     @classmethod
+    @DeveloperAPI
     def create_from_io_context(cls, ioctx: IOContext) -> "OffPolicyEstimator":
         """Creates an off-policy estimator from an IOContext object.
 

@@ -1,7 +1,7 @@
 import numpy as np
 import os
 import tracemalloc
-from typing import Dict, Optional, TYPE_CHECKING
+from typing import Dict, Optional, Tuple, TYPE_CHECKING
 
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
@@ -17,6 +17,7 @@ from ray.rllib.utils.exploration.random_encoder import (
     update_beta,
 )
 from ray.rllib.utils.typing import AgentID, EnvType, PolicyID
+from ray.tune.callback import CallbackMeta
 
 # Import psutil after ray so the packaged version is used.
 import psutil
@@ -27,7 +28,7 @@ if TYPE_CHECKING:
 
 
 @PublicAPI
-class DefaultCallbacks:
+class DefaultCallbacks(metaclass=CallbackMeta):
     """Abstract base class for RLlib callbacks (similar to Keras callbacks).
 
     These callbacks can be used for custom metrics and custom postprocessing.
@@ -196,7 +197,7 @@ class DefaultCallbacks:
         policy_id: PolicyID,
         policies: Dict[PolicyID, Policy],
         postprocessed_batch: SampleBatch,
-        original_batches: Dict[AgentID, SampleBatch],
+        original_batches: Dict[AgentID, Tuple[Policy, SampleBatch]],
         **kwargs,
     ) -> None:
         """Called immediately after a policy's postprocess_fn is called.
@@ -368,6 +369,8 @@ class MultiCallbacks(DefaultCallbacks):
             ])
     """
 
+    IS_CALLBACK_CONTAINER = True
+
     def __init__(self, callback_class_list):
         super().__init__()
         self._callback_class_list = callback_class_list
@@ -380,6 +383,26 @@ class MultiCallbacks(DefaultCallbacks):
         ]
 
         return self
+
+    def on_trainer_init(self, *, trainer: "Trainer", **kwargs) -> None:
+        for callback in self._callback_list:
+            callback.on_trainer_init(trainer=trainer, **kwargs)
+
+    def on_sub_environment_created(
+        self,
+        *,
+        worker: "RolloutWorker",
+        sub_environment: EnvType,
+        env_context: EnvContext,
+        **kwargs,
+    ) -> None:
+        for callback in self._callback_list:
+            callback.on_sub_environment_created(
+                worker=worker,
+                sub_environment=sub_environment,
+                env_context=env_context,
+                **kwargs,
+            )
 
     def on_episode_start(
         self,
@@ -450,7 +473,7 @@ class MultiCallbacks(DefaultCallbacks):
         policy_id: PolicyID,
         policies: Dict[PolicyID, Policy],
         postprocessed_batch: SampleBatch,
-        original_batches: Dict[AgentID, SampleBatch],
+        original_batches: Dict[AgentID, Tuple[Policy, SampleBatch]],
         **kwargs,
     ) -> None:
         for callback in self._callback_list:

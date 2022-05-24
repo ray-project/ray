@@ -15,7 +15,6 @@ import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.consts as dashboard_consts
 from ray.dashboard.utils import async_loop_forever
-from ray.dashboard.optional_utils import rest_response
 from ray.dashboard.memory_utils import GroupByType, SortingType
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
@@ -79,7 +78,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             address = "{}:{}".format(
                 node_info["nodeManagerAddress"], int(node_info["nodeManagerPort"])
             )
-            options = (("grpc.enable_http_proxy", 0),)
+            options = ray_constants.GLOBAL_GRPC_OPTIONS
             channel = ray._private.utils.init_grpc_channel(
                 address, options, asynchronous=True
             )
@@ -260,6 +259,9 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 logger.exception(f"Error updating node stats of {node_id}.")
 
     async def _update_log_info(self):
+        if ray_constants.DISABLE_DASHBOARD_LOG_INFO:
+            return
+
         def process_log_batch(log_batch):
             ip = log_batch["ip"]
             pid = str(log_batch["pid"])
@@ -319,13 +321,6 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 process_error(error_data)
             except Exception:
                 logger.exception("Error receiving error info from GCS.")
-
-    @routes.get("/api/v0/nodes")
-    async def get_nodes(self, req) -> aiohttp.web.Response:
-        data = await self._dashboard_head.gcs_state_aggregator.get_nodes()
-        return rest_response(
-            success=True, message="", result=data, convert_google_style=False
-        )
 
     async def run(self, server):
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel

@@ -10,6 +10,7 @@ except ImportError:
     from grpc.experimental import aio as aiogrpc
 
 from ray._private.gcs_pubsub import GcsAioActorSubscriber
+import ray.ray_constants as ray_constants
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray.dashboard.optional_utils import rest_response
@@ -62,7 +63,6 @@ def actor_table_data_to_dict(message):
         "numExecutedTasks",
     }
     light_message = {k: v for (k, v) in orig_message.items() if k in fields}
-    logger.info(light_message)
     if "functionDescriptor" in light_message:
         actor_class = actor_classname_from_func_descriptor(
             light_message["functionDescriptor"]
@@ -89,7 +89,7 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             address = "{}:{}".format(
                 node_info["nodeManagerAddress"], int(node_info["nodeManagerPort"])
             )
-            options = (("grpc.enable_http_proxy", 0),)
+            options = ray_constants.GLOBAL_GRPC_OPTIONS
             channel = ray._private.utils.init_grpc_channel(
                 address, options, asynchronous=True
             )
@@ -208,7 +208,7 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
         except KeyError:
             return rest_response(success=False, message="Bad Request")
         try:
-            options = (("grpc.enable_http_proxy", 0),)
+            options = ray_constants.GLOBAL_GRPC_OPTIONS
             channel = ray._private.utils.init_grpc_channel(
                 f"{ip_address}:{port}", options=options, asynchronous=True
             )
@@ -227,13 +227,6 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             pass
 
         return rest_response(success=True, message=f"Killed actor with id {actor_id}")
-
-    @routes.get("/api/v0/actors")
-    async def get_actors(self, req) -> aiohttp.web.Response:
-        data = await self._dashboard_head.gcs_state_aggregator.get_actors()
-        return rest_response(
-            success=True, message="", result=data, convert_google_style=False
-        )
 
     async def run(self, server):
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel

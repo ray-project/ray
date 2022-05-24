@@ -46,9 +46,18 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
     gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
-    cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>();
+    auto local_node_id = NodeID::FromRandom();
+    cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
+        scheduling::NodeID(local_node_id.Binary()),
+        NodeResources(),
+        /*is_node_available_fn=*/
+        [](auto) { return true; },
+        /*is_local_node_with_raylet=*/false);
     gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(
-        gcs_table_storage_, cluster_resource_scheduler_->GetClusterResourceManager());
+        io_service_,
+        gcs_table_storage_,
+        cluster_resource_scheduler_->GetClusterResourceManager(),
+        local_node_id);
     ray_syncer_ = std::make_shared<ray::gcs_syncer::RaySyncer>(
         io_service_, nullptr, *gcs_resource_manager_);
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
@@ -63,7 +72,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
         *gcs_resource_manager_,
         *cluster_resource_scheduler_,
         raylet_client_pool_,
-        *ray_syncer_);
+        ray_syncer_.get());
   }
 
   void TearDown() override {

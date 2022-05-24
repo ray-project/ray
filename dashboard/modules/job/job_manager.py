@@ -1,5 +1,6 @@
 import asyncio
 from asyncio.tasks import FIRST_COMPLETED
+import copy
 import os
 import json
 import logging
@@ -106,7 +107,7 @@ class JobSupervisor:
         self._job_id = job_id
         self._job_info_client = JobInfoStorageClient()
         self._log_client = JobLogStorageClient()
-        self._runtime_env = ray.get_runtime_context().runtime_env
+        self._driver_runtime_env = self._get_driver_runtime_env()
         self._entrypoint = entrypoint
 
         # Default metadata if not passed by the user.
@@ -115,6 +116,16 @@ class JobSupervisor:
 
         # fire and forget call from outer job manager to this actor
         self._stop_event = asyncio.Event()
+
+    def _get_driver_runtime_env(self) -> Dict[str, Any]:
+        # Get the runtime_env set for the supervisor actor.
+        curr_runtime_env = dict(ray.get_runtime_context().runtime_env)
+        # Allow CUDA_VISIBLE_DEVICES to be set normally for the driver's tasks
+        # & actors.
+        env_vars = curr_runtime_env.get("env_vars", {})
+        env_vars.pop(ray_constants.NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR)
+        curr_runtime_env["env_vars"] = env_vars
+        return curr_runtime_env
 
     def ping(self):
         """Used to check the health of the actor."""
@@ -161,6 +172,28 @@ class JobSupervisor:
             )
             return child_process
 
+    def _get_driver_env_vars(self) -> Dict[str, str]:
+        """Returns environment variables that should be set in the driver."""
+        ray_addr = ray._private.services.find_bootstrap_address().pop()
+        return {
+            # Set JobConfig for the child process (runtime_env, metadata).
+            RAY_JOB_CONFIG_JSON_ENV_VAR: json.dumps(
+                {
+                    "runtime_env": self._driver_runtime_env,
+                    "metadata": self._metadata,
+                }
+            ),
+            # Always set RAY_ADDRESS as find_bootstrap_address address for
+            # job submission. In case of local development, prevent user from
+            # re-using http://{address}:{dashboard_port} to interact with
+            # jobs SDK.
+            # TODO:(mwtian) Check why "auto" does not work in entrypoint script
+            ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE: ray_addr,
+            # Set PYTHONUNBUFFERED=1 to stream logs during the job instead of
+            # only streaming them upon completion of the job.
+            "PYTHONUNBUFFERED": "1",
+        }
+
     async def _polling(self, child_process) -> int:
         try:
             while child_process is not None:
@@ -201,25 +234,10 @@ class JobSupervisor:
         self._job_info_client.put_status(self._job_id, JobStatus.RUNNING)
 
         try:
-            # Set JobConfig for the child process (runtime_env, metadata).
-            os.environ[RAY_JOB_CONFIG_JSON_ENV_VAR] = json.dumps(
-                {
-                    "runtime_env": self._runtime_env,
-                    "metadata": self._metadata,
-                }
-            )
-            # Always set RAY_ADDRESS as find_bootstrap_address address for
-            # job submission. In case of local development, prevent user from
-            # re-using http://{address}:{dashboard_port} to interact with
-            # jobs SDK.
-            # TODO:(mwtian) Check why "auto" does not work in entrypoint script
-            os.environ[
-                ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE
-            ] = ray._private.services.find_bootstrap_address().pop()
-
-            # Set PYTHONUNBUFFERED=1 to stream logs during the job instead of
-            # only streaming them upon completion of the job.
-            os.environ["PYTHONUNBUFFERED"] = "1"
+            # Configure environment variables for the child process. These
+            # will *not* be set in the runtime_env, so they apply to the driver
+            # only, not its tasks & actors.
+            os.environ.update(self._get_driver_env_vars())
             logger.info(
                 "Submitting job with RAY_ADDRESS = "
                 f"{os.environ[ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE]}"
@@ -387,6 +405,24 @@ class JobManager:
         if result is None:
             return
 
+    def _get_supervisor_runtime_env(
+        self, user_runtime_env: Dict[str, Any]
+    ) -> Dict[str, Any]:
+
+        """Configure and return the runtime_env for the supervisor actor."""
+
+        # Make a copy to avoid mutating passed runtime_env.
+        runtime_env = (
+            copy.deepcopy(user_runtime_env) if user_runtime_env is not None else {}
+        )
+        # Don't set CUDA_VISIBLE_DEVICES for the supervisor actor so the
+        # driver can use GPUs if it wants to. This will be removed from
+        # the driver's runtime_env so it isn't inherited by tasks & actors.
+        env_vars = runtime_env.get("env_vars", {})
+        env_vars[ray_constants.NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR] = "1"
+        runtime_env["env_vars"] = env_vars
+        return runtime_env
+
     def submit_job(
         self,
         *,
@@ -433,7 +469,7 @@ class JobManager:
         job_info = JobInfo(
             entrypoint=entrypoint,
             status=JobStatus.PENDING,
-            start_time=int(time.time()),
+            start_time=int(time.time() * 1000),
             metadata=metadata,
             runtime_env=runtime_env,
         )
@@ -452,7 +488,7 @@ class JobManager:
                 resources={
                     self._get_current_node_resource_key(): 0.001,
                 },
-                runtime_env=runtime_env,
+                runtime_env=self._get_supervisor_runtime_env(runtime_env),
             ).remote(job_id, entrypoint, metadata or {})
             supervisor.run.remote(_start_signal_actor=_start_signal_actor)
 

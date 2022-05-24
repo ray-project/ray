@@ -1,6 +1,6 @@
 import logging
 import platform
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Callable, Union
 
 import numpy as np
 import random
@@ -11,18 +11,12 @@ import ray  # noqa F401
 import psutil  # noqa E402
 
 from ray.util.debug import log_once
-from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
-from ray.rllib.utils.annotations import ExperimentalAPI
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics.window_stat import WindowStat
-from ray.rllib.utils.typing import SampleBatchType
-from ray.rllib.execution.buffers.replay_buffer import warn_replay_capacity
-from ray.rllib.utils.deprecation import deprecation_warning
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
-from ray.rllib.execution.buffers.multi_agent_replay_buffer import (
-    MultiAgentReplayBuffer as Legacy_MultiAgentReplayBuffer,
-)
-from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.typing import SampleBatchType, T
+from ray.util.annotations import DeveloperAPI
+from ray.util.iter import ParallelIteratorWorker
 
 # Constant that represents all policies in lockstep replay mode.
 _ALL_POLICIES = "__all__"
@@ -30,231 +24,44 @@ _ALL_POLICIES = "__all__"
 logger = logging.getLogger(__name__)
 
 
-@ExperimentalAPI
+@DeveloperAPI
 class StorageUnit(Enum):
     TIMESTEPS = "timesteps"
     SEQUENCES = "sequences"
     EPISODES = "episodes"
+    FRAGMENTS = "fragments"
 
 
-@ExperimentalAPI
-def validate_buffer_config(config: dict):
-    if config.get("replay_buffer_config", None) is None:
-        config["replay_buffer_config"] = {}
-
-    prioritized_replay = config.get("prioritized_replay")
-    if prioritized_replay != DEPRECATED_VALUE:
-        deprecation_warning(
-            old="config['prioritized_replay']",
-            help="Replay prioritization specified at new location config["
-            "'replay_buffer_config']["
-            "'prioritized_replay'] will be overwritten.",
-            error=False,
-        )
-        config["replay_buffer_config"]["prioritized_replay"] = prioritized_replay
-
-    capacity = config.get("buffer_size", DEPRECATED_VALUE)
-    if capacity != DEPRECATED_VALUE:
-        deprecation_warning(
-            old="config['buffer_size']",
-            help="Buffer size specified at new location config["
-            "'replay_buffer_config']["
-            "'capacity'] will be overwritten.",
-            error=False,
-        )
-        config["replay_buffer_config"]["capacity"] = capacity
-
-    # Deprecation of old-style replay buffer args
-    # Warnings before checking of we need local buffer so that algorithms
-    # Without local buffer also get warned
-    deprecated_replay_buffer_keys = [
-        "prioritized_replay_alpha",
-        "prioritized_replay_beta",
-        "prioritized_replay_eps",
-        "learning_starts",
-    ]
-    for k in deprecated_replay_buffer_keys:
-        if config.get(k, DEPRECATED_VALUE) != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="config[{}]".format(k),
-                help="config['replay_buffer_config'][{}] should be used "
-                "for Q-Learning algorithms. Ignore this warning if "
-                "you are not using a Q-Learning algorithm and still "
-                "provide {}."
-                "".format(k, k),
-                error=False,
+@DeveloperAPI
+def warn_replay_capacity(*, item: SampleBatchType, num_items: int) -> None:
+    """Warn if the configured replay buffer capacity is too large."""
+    if log_once("replay_capacity"):
+        item_size = item.size_bytes()
+        psutil_mem = psutil.virtual_memory()
+        total_gb = psutil_mem.total / 1e9
+        mem_size = num_items * item_size / 1e9
+        msg = (
+            "Estimated max memory usage for replay buffer is {} GB "
+            "({} batches of size {}, {} bytes each), "
+            "available system memory is {} GB".format(
+                mem_size, num_items, item.count, item_size, total_gb
             )
-            # Copy values over to new location in config to support new
-            # and old configuration style
-            if config.get("replay_buffer_config") is not None:
-                config["replay_buffer_config"][k] = config[k]
-
-    # Old Ape-X configs may contain no_local_replay_buffer
-    no_local_replay_buffer = config.get("no_local_replay_buffer", False)
-    if no_local_replay_buffer:
-        deprecation_warning(
-            old="config['no_local_replay_buffer']",
-            help="no_local_replay_buffer specified at new location config["
-            "'replay_buffer_config']["
-            "'capacity'] will be overwritten.",
-            error=False,
         )
-        config["replay_buffer_config"][
-            "no_local_replay_buffer"
-        ] = no_local_replay_buffer
-
-    # TODO (Artur):
-    if config["replay_buffer_config"].get("no_local_replay_buffer", False):
-        return
-
-    replay_buffer_config = config["replay_buffer_config"]
-    assert (
-        "type" in replay_buffer_config
-    ), "Can not instantiate ReplayBuffer from config without 'type' key."
-
-    # Check if old replay buffer should be instantiated
-    buffer_type = config["replay_buffer_config"]["type"]
-    if not config["replay_buffer_config"].get("_enable_replay_buffer_api", False):
-        if isinstance(buffer_type, str) and buffer_type.find(".") == -1:
-            # Prepend old-style buffers' path
-            assert buffer_type == "MultiAgentReplayBuffer", (
-                "Without "
-                "ReplayBuffer "
-                "API, only "
-                "MultiAgentReplayBuffer "
-                "is supported!"
-            )
-            # Create valid full [module].[class] string for from_config
-            buffer_type = "ray.rllib.execution.MultiAgentReplayBuffer"
+        if mem_size > total_gb:
+            raise ValueError(msg)
+        elif mem_size > 0.2 * total_gb:
+            logger.warning(msg)
         else:
-            assert buffer_type in [
-                "ray.rllib.execution.MultiAgentReplayBuffer",
-                Legacy_MultiAgentReplayBuffer,
-            ], (
-                "Without ReplayBuffer API, only " "MultiAgentReplayBuffer is supported!"
-            )
-
-        config["replay_buffer_config"]["type"] = buffer_type
-
-        # Remove from config, so it's not passed into the buffer c'tor
-        config["replay_buffer_config"].pop("_enable_replay_buffer_api", None)
-
-        # We need to deprecate the old-style location of the following
-        # buffer arguments and make users put them into the
-        # "replay_buffer_config" field of their config.
-        replay_batch_size = config.get("replay_batch_size", DEPRECATED_VALUE)
-        if replay_batch_size != DEPRECATED_VALUE:
-            config["replay_buffer_config"]["replay_batch_size"] = replay_batch_size
-            deprecation_warning(
-                old="config['replay_batch_size']",
-                help="Replay batch size specified at new "
-                "location config['replay_buffer_config']["
-                "'replay_batch_size'] will be overwritten.",
-                error=False,
-            )
-
-        replay_mode = config.get("replay_mode", DEPRECATED_VALUE)
-        if replay_mode != DEPRECATED_VALUE:
-            config["replay_buffer_config"]["replay_mode"] = replay_mode
-            deprecation_warning(
-                old="config['multiagent']['replay_mode']",
-                help="Replay sequence length specified at new "
-                "location config['replay_buffer_config']["
-                "'replay_mode'] will be overwritten.",
-                error=False,
-            )
-
-        # Can't use DEPRECATED_VALUE here because this is also a deliberate
-        # value set for some algorithms
-        # TODO: (Artur): Compare to DEPRECATED_VALUE on deprecation
-        replay_sequence_length = config.get("replay_sequence_length", None)
-        if replay_sequence_length is not None:
-            config["replay_buffer_config"][
-                "replay_sequence_length"
-            ] = replay_sequence_length
-            deprecation_warning(
-                old="config['replay_sequence_length']",
-                help="Replay sequence length specified at new "
-                "location config['replay_buffer_config']["
-                "'replay_sequence_length'] will be overwritten.",
-                error=False,
-            )
-
-        replay_burn_in = config.get("burn_in", DEPRECATED_VALUE)
-        if replay_burn_in != DEPRECATED_VALUE:
-            config["replay_buffer_config"]["replay_burn_in"] = replay_burn_in
-            deprecation_warning(
-                old="config['burn_in']",
-                help="Burn in specified at new location config["
-                "'replay_buffer_config']["
-                "'replay_burn_in'] will be overwritten.",
-            )
-
-        replay_zero_init_states = config.get(
-            "replay_zero_init_states", DEPRECATED_VALUE
-        )
-        if replay_zero_init_states != DEPRECATED_VALUE:
-            config["replay_buffer_config"][
-                "replay_zero_init_states"
-            ] = replay_zero_init_states
-            deprecation_warning(
-                old="config['replay_zero_init_states']",
-                help="Replay zero init states specified at new location "
-                "config["
-                "'replay_buffer_config']["
-                "'replay_zero_init_states'] will be overwritten.",
-                error=False,
-            )
-
-        # TODO (Artur): Move this logic into config objects
-        if config["replay_buffer_config"].get("prioritized_replay", False):
-            is_prioritized_buffer = True
-        else:
-            is_prioritized_buffer = False
-            # This triggers non-prioritization in old-style replay buffer
-            config["replay_buffer_config"]["prioritized_replay_alpha"] = 0.0
-    else:
-        if isinstance(buffer_type, str) and buffer_type.find(".") == -1:
-            # Create valid full [module].[class] string for from_config
-            config["replay_buffer_config"]["type"] = (
-                "ray.rllib.utils.replay_buffers." + buffer_type
-            )
-        test_buffer = from_config(buffer_type, config["replay_buffer_config"])
-        if hasattr(test_buffer, "update_priorities"):
-            is_prioritized_buffer = True
-        else:
-            is_prioritized_buffer = False
-
-    if is_prioritized_buffer:
-        if config["multiagent"]["replay_mode"] == "lockstep":
-            raise ValueError(
-                "Prioritized replay is not supported when replay_mode=lockstep."
-            )
-        elif config["replay_buffer_config"].get("replay_sequence_length", 0) > 1:
-            raise ValueError(
-                "Prioritized replay is not supported when "
-                "replay_sequence_length > 1."
-            )
-    else:
-        if config.get("worker_side_prioritization"):
-            raise ValueError(
-                "Worker side prioritization is not supported when "
-                "prioritized_replay=False."
-            )
-
-    if config["replay_buffer_config"].get("replay_batch_size", None) is None:
-        # Fall back to train batch size if no replay batch size was provided
-        config["replay_buffer_config"]["replay_batch_size"] = config["train_batch_size"]
-
-    # Pop prioritized replay because it's not a valid parameter for older
-    # replay buffers
-    config["replay_buffer_config"].pop("prioritized_replay", None)
+            logger.info(msg)
 
 
-@ExperimentalAPI
-class ReplayBuffer:
+@DeveloperAPI
+class ReplayBuffer(ParallelIteratorWorker):
     def __init__(
-        self, capacity: int = 10000, storage_unit: str = "timesteps", **kwargs
+        self,
+        capacity: int = 10000,
+        storage_unit: Union[str, StorageUnit] = "timesteps",
+        **kwargs,
     ):
         """Initializes a (FIFO) ReplayBuffer instance.
 
@@ -273,9 +80,12 @@ class ReplayBuffer:
             self._storage_unit = StorageUnit.SEQUENCES
         elif storage_unit in ["episodes", StorageUnit.EPISODES]:
             self._storage_unit = StorageUnit.EPISODES
+        elif storage_unit in ["fragments", StorageUnit.FRAGMENTS]:
+            self._storage_unit = StorageUnit.FRAGMENTS
         else:
             raise ValueError(
-                "storage_unit must be either 'timesteps', `sequences` or `episodes`."
+                "storage_unit must be either 'timesteps', `sequences` or `episodes` "
+                "or `fragments`, but is {}".format(storage_unit)
             )
 
         # The actual storage (list of SampleBatches or MultiAgentBatches).
@@ -316,19 +126,7 @@ class ReplayBuffer:
         """Returns the number of items currently stored in this buffer."""
         return len(self._storage)
 
-    @ExperimentalAPI
-    @Deprecated(old="add_batch", new="add", error=False)
-    def add_batch(self, batch: SampleBatchType, **kwargs) -> None:
-        """Deprecated in favor of new ReplayBuffer API."""
-        return self.add(batch, **kwargs)
-
-    @ExperimentalAPI
-    @Deprecated(old="replay", new="sample", error=False)
-    def replay(self, num_items: int = 1, **kwargs) -> Optional[SampleBatchType]:
-        """Deprecated in favor of new ReplayBuffer API."""
-        return self.sample(num_items, **kwargs)
-
-    @ExperimentalAPI
+    @DeveloperAPI
     def add(self, batch: SampleBatchType, **kwargs) -> None:
         """Adds a batch of experiences to this buffer.
 
@@ -340,18 +138,10 @@ class ReplayBuffer:
             batch: Batch to add to this buffer's storage.
             **kwargs: Forward compatibility kwargs.
         """
-        assert batch.count > 0, batch
-        warn_replay_capacity(item=batch, num_items=self.capacity / batch.count)
+        if not batch.count > 0:
+            return
 
-        if (
-            type(batch) == MultiAgentBatch
-            and self._storage_unit != StorageUnit.TIMESTEPS
-        ):
-            raise ValueError(
-                "Can not add MultiAgentBatch to ReplayBuffer "
-                "with storage_unit {}"
-                "".format(str(self._storage_unit))
-            )
+        warn_replay_capacity(item=batch, num_items=self.capacity / batch.count)
 
         if self._storage_unit == StorageUnit.TIMESTEPS:
             self._add_single_batch(batch, **kwargs)
@@ -380,8 +170,10 @@ class ReplayBuffer:
                             "to be added to it. Some samples may be "
                             "dropped."
                         )
+        elif self._storage_unit == StorageUnit.FRAGMENTS:
+            self._add_single_batch(batch, **kwargs)
 
-    @ExperimentalAPI
+    @DeveloperAPI
     def _add_single_batch(self, item: SampleBatchType, **kwargs) -> None:
         """Add a SampleBatch of experiences to self._storage.
 
@@ -400,7 +192,10 @@ class ReplayBuffer:
             self._storage.append(item)
             self._est_size_bytes += item.size_bytes()
         else:
+            item_to_be_removed = self._storage[self._next_idx]
+            self._est_size_bytes -= item_to_be_removed.size_bytes()
             self._storage[self._next_idx] = item
+            self._est_size_bytes += item.size_bytes()
 
         # Eviction of older samples has already started (buffer is "full").
         if self._eviction_started:
@@ -415,7 +210,7 @@ class ReplayBuffer:
         else:
             self._next_idx += 1
 
-    @ExperimentalAPI
+    @DeveloperAPI
     def sample(self, num_items: int, **kwargs) -> Optional[SampleBatchType]:
         """Samples `num_items` items from this buffer.
 
@@ -446,7 +241,7 @@ class ReplayBuffer:
         self._num_timesteps_sampled += sample.count
         return sample
 
-    @ExperimentalAPI
+    @DeveloperAPI
     def stats(self, debug: bool = False) -> dict:
         """Returns the stats of this buffer.
 
@@ -469,7 +264,7 @@ class ReplayBuffer:
             data.update(self._evicted_hit_stats.stats())
         return data
 
-    @ExperimentalAPI
+    @DeveloperAPI
     def get_state(self) -> Dict[str, Any]:
         """Returns all local state.
 
@@ -480,7 +275,7 @@ class ReplayBuffer:
         state.update(self.stats(debug=False))
         return state
 
-    @ExperimentalAPI
+    @DeveloperAPI
     def set_state(self, state: Dict[str, Any]) -> None:
         """Restores all local state to the provided `state`.
 
@@ -498,6 +293,7 @@ class ReplayBuffer:
         self._num_timesteps_sampled = state["sampled_count"]
         self._est_size_bytes = state["est_size_bytes"]
 
+    @DeveloperAPI
     def _encode_sample(self, idxes: List[int]) -> SampleBatchType:
         """Fetches concatenated samples at given indeces from the storage."""
         samples = []
@@ -514,6 +310,7 @@ class ReplayBuffer:
         out.decompress_if_needed()
         return out
 
+    @DeveloperAPI
     def get_host(self) -> str:
         """Returns the computer's network name.
 
@@ -522,3 +319,56 @@ class ReplayBuffer:
             name could not be determined.
         """
         return platform.node()
+
+    @DeveloperAPI
+    def apply(
+        self,
+        func: Callable[["ReplayBuffer", Optional[Any], Optional[Any]], T],
+        *_args,
+        **kwargs,
+    ) -> T:
+        """Calls the given function with this ReplayBuffer instance.
+
+        This is useful if we want to apply a function to a set of remote actors.
+
+        Args:
+            func: A callable that accepts the replay buffer itself, args and kwargs
+            *_arkgs: Any args to pass to func
+            **kwargs: Any kwargs to pass to func
+
+        Returns:
+            Return value of the induced function call
+        """
+        return func(self, *_args, **kwargs)
+
+    @Deprecated(old="ReplayBuffer.add_batch()", new="ReplayBuffer.add()", error=False)
+    def add_batch(self, *args, **kwargs):
+        return self.add(*args, **kwargs)
+
+    @Deprecated(
+        old="ReplayBuffer.replay(num_items)",
+        new="ReplayBuffer.sample(num_items)",
+        error=False,
+    )
+    def replay(self, num_items):
+        return self.sample(num_items)
+
+    @Deprecated(
+        help="ReplayBuffers could be iterated over by default before. "
+        "Making a buffer an iterator will soon "
+        "be deprecated altogether. Consider switching to the training "
+        "iteration API to resolve this.",
+        error=False,
+    )
+    def make_iterator(self, num_items_to_replay: int):
+        """Make this buffer a ParallelIteratorWorker to retain compatibility.
+
+        Execution plans have made heavy use of buffers as ParallelIteratorWorkers.
+        This method provides an easy way to support this for now.
+        """
+
+        def gen_replay():
+            while True:
+                yield self.sample(num_items_to_replay)
+
+        ParallelIteratorWorker.__init__(self, gen_replay, False)

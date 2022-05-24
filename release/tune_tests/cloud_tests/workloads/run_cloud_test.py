@@ -320,7 +320,7 @@ def run_tune_script_for_time(
         # Wait until indicator file exists
         wait_for_run_or_raise(process, indicator_file=indicator_file, timeout=30)
         # Stop experiment (with checkpoint) after some time
-        send_signal_after_wait(process, signal=signal.SIGINT, wait=run_time)
+        send_signal_after_wait(process, signal=signal.SIGUSR1, wait=run_time)
         # Wait until process gracefully terminated
         wait_until_process_terminated(process, timeout=45)
     finally:

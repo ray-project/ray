@@ -29,7 +29,6 @@ class SimpleImputer(Preprocessor):
         strategy: str = "mean",
         fill_value: Optional[Union[str, Number]] = None,
     ):
-        super().__init__()
         self.columns = columns
         self.strategy = strategy
         self.fill_value = fill_value
@@ -74,7 +73,14 @@ class SimpleImputer(Preprocessor):
         return df
 
     def __repr__(self):
-        return f"<Imputer columns={self.columns} stats={self.stats_}>"
+        stats = getattr(self, "stats_", None)
+        return (
+            f"SimpleImputer("
+            f"columns={self.columns}, "
+            f"strategy={self.strategy}, "
+            f"fill_value={self.fill_value}, "
+            f"stats={stats})"
+        )
 
 
 def _get_most_frequent_values(
@@ -82,16 +88,17 @@ def _get_most_frequent_values(
 ) -> Dict[str, Union[str, Number]]:
     columns = list(columns)
 
-    def get_pd_value_counts(df: pd.DataFrame) -> List[Counter]:
-        return [Counter(df[col].value_counts().to_dict()) for col in columns]
+    def get_pd_value_counts(df: pd.DataFrame) -> List[Dict[str, Counter]]:
+        return [{col: Counter(df[col].value_counts().to_dict()) for col in columns}]
 
     value_counts = dataset.map_batches(get_pd_value_counts, batch_format="pandas")
-    final_counters = [Counter() for _ in columns]
+    final_counters = {col: Counter() for col in columns}
     for batch in value_counts.iter_batches():
-        for i, col_value_counts in enumerate(batch):
-            final_counters[i] += col_value_counts
+        for col_value_counts in batch:
+            for col, value_counts in col_value_counts.items():
+                final_counters[col] += value_counts
 
     return {
-        f"most_frequent({column})": final_counters[i].most_common(1)[0][0]
-        for i, column in enumerate(columns)
+        f"most_frequent({column})": final_counters[column].most_common(1)[0][0]
+        for column in columns
     }

@@ -433,8 +433,7 @@ class RayTrialExecutor(TrialExecutor):
         self.restore(trial)
         self.set_status(trial, Trial.RUNNING)
 
-        if trial in self._staged_trials:
-            self._staged_trials.remove(trial)
+        self._staged_trials.discard(trial)
 
         if not trial.is_restoring:
             self._train(trial)
@@ -484,7 +483,7 @@ class RayTrialExecutor(TrialExecutor):
                         # only be the case if there are no more trials with
                         # this placement group factory to run
                         logger.debug(
-                            "Could not cache of trial {trial} actor for "
+                            f"Could not cache actor of trial {trial} for "
                             "reuse, as there are no pending trials "
                             "requiring its resources."
                         )
@@ -503,8 +502,7 @@ class RayTrialExecutor(TrialExecutor):
                     if self._trial_cleanup:  # force trial cleanup within a deadline
                         self._trial_cleanup.add(future)
 
-                if trial in self._staged_trials:
-                    self._staged_trials.remove(trial)
+                self._staged_trials.discard(trial)
 
         except Exception:
             logger.exception("Trial %s: Error stopping runner.", trial)
@@ -626,8 +624,13 @@ class RayTrialExecutor(TrialExecutor):
         """
         return (
             trial in self._staged_trials
+            or (
+                len(self._cached_actor_pg) > 0
+                and (self._pg_manager.has_cached_pg(trial.placement_group_factory))
+            )
             or self._pg_manager.can_stage()
             or self._pg_manager.has_ready(trial, update=True)
+            or self._pg_manager.has_staging(trial)
         )
 
     def debug_string(self) -> str:

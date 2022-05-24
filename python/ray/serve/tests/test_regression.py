@@ -11,7 +11,7 @@ import ray
 from ray.exceptions import GetTimeoutError
 from ray import serve
 from ray._private.test_utils import SignalActor
-from ray.serve.api import internal_get_global_client
+from ray.serve.context import get_global_client
 
 
 @pytest.fixture
@@ -146,7 +146,7 @@ def test_nested_actors(serve_instance):
 
 def test_handle_cache_out_of_scope(serve_instance):
     # https://github.com/ray-project/ray/issues/18980
-    initial_num_cached = len(internal_get_global_client().handle_cache)
+    initial_num_cached = len(get_global_client().handle_cache)
 
     @serve.deployment(name="f")
     def f():
@@ -155,7 +155,7 @@ def test_handle_cache_out_of_scope(serve_instance):
     f.deploy()
     handle = serve.get_deployment("f").get_handle()
 
-    handle_cache = internal_get_global_client().handle_cache
+    handle_cache = get_global_client().handle_cache
     assert len(handle_cache) == initial_num_cached + 1
 
     def sender_where_handle_goes_out_of_scope():
@@ -233,6 +233,33 @@ def test_uvicorn_duplicate_headers(serve_instance):
     resp = requests.get("http://127.0.0.1:8000/A")
     # If the header duplicated, it will be "9, 9"
     assert resp.headers["content-length"] == "9"
+
+
+def test_healthcheck_timeout(serve_instance):
+    # https://github.com/ray-project/ray/issues/24554
+
+    signal = SignalActor.remote()
+
+    @serve.deployment(
+        _health_check_timeout_s=2,
+        _health_check_period_s=1,
+        _graceful_shutdown_timeout_s=0,
+    )
+    class A:
+        def check_health(self):
+            return True
+
+        def __call__(self):
+            ray.get(signal.wait.remote())
+
+    A.deploy()
+    handle = A.get_handle()
+    ref = handle.remote()
+    # without the proper fix, the ref will fail with actor died error.
+    with pytest.raises(GetTimeoutError):
+        ray.get(ref, timeout=10)
+    signal.send.remote()
+    ray.get(ref)
 
 
 if __name__ == "__main__":

@@ -9,7 +9,7 @@ from ray.experimental.dag import (
     ClassMethodNode,
     FunctionNode,
     InputNode,
-    InputAtrributeNode,
+    InputAttributeNode,
     DAGNODE_TYPE_KEY,
 )
 from ray.serve.pipeline.deployment_node import DeploymentNode
@@ -102,7 +102,7 @@ class DAGNodeEncoder(json.JSONEncoder):
             }
         # For all other DAGNode types.
         elif isinstance(obj, DAGNode):
-            return obj.to_json(DAGNodeEncoder)
+            return obj.to_json()
         else:
             return json.JSONEncoder.default(self, obj)
 
@@ -142,28 +142,22 @@ def dagnode_from_json(input_json: Any) -> Union[DAGNode, RayServeHandle, Any]:
         )
     # Deserialize DAGNode type
     elif input_json[DAGNODE_TYPE_KEY] == InputNode.__name__:
-        return InputNode.from_json(input_json, object_hook=dagnode_from_json)
-    elif input_json[DAGNODE_TYPE_KEY] == InputAtrributeNode.__name__:
-        return InputAtrributeNode.from_json(input_json, object_hook=dagnode_from_json)
+        return InputNode.from_json(input_json)
+    elif input_json[DAGNODE_TYPE_KEY] == InputAttributeNode.__name__:
+        return InputAttributeNode.from_json(input_json)
     elif input_json[DAGNODE_TYPE_KEY] == ClassMethodNode.__name__:
-        return ClassMethodNode.from_json(input_json, object_hook=dagnode_from_json)
+        return ClassMethodNode.from_json(input_json)
     elif input_json[DAGNODE_TYPE_KEY] == DeploymentNode.__name__:
-        return DeploymentNode.from_json(input_json, object_hook=dagnode_from_json)
+        return DeploymentNode.from_json(input_json)
     elif input_json[DAGNODE_TYPE_KEY] == DeploymentMethodNode.__name__:
-        return DeploymentMethodNode.from_json(input_json, object_hook=dagnode_from_json)
+        return DeploymentMethodNode.from_json(input_json)
     elif input_json[DAGNODE_TYPE_KEY] == DeploymentFunctionNode.__name__:
-        return DeploymentFunctionNode.from_json(
-            input_json, object_hook=dagnode_from_json
-        )
+        return DeploymentFunctionNode.from_json(input_json)
     else:
         # Class and Function nodes require original module as body.
         module_name, attr_name = parse_import_path(input_json["import_path"])
         module = getattr(import_module(module_name), attr_name)
         if input_json[DAGNODE_TYPE_KEY] == FunctionNode.__name__:
-            return FunctionNode.from_json(
-                input_json, module, object_hook=dagnode_from_json
-            )
+            return FunctionNode.from_json(input_json, module)
         elif input_json[DAGNODE_TYPE_KEY] == ClassNode.__name__:
-            return ClassNode.from_json(
-                input_json, module, object_hook=dagnode_from_json
-            )
+            return ClassNode.from_json(input_json, module)

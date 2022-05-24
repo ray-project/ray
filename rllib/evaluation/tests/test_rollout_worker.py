@@ -4,15 +4,13 @@ from gym.spaces import Box, Discrete
 import numpy as np
 import os
 import random
-import tempfile
 import time
 import unittest
 
 import ray
-from ray.rllib.agents.pg import PGTrainer
+from ray.rllib.algorithms.pg import PGTrainer
 from ray.rllib.agents.a3c import A2CTrainer
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
-from ray.rllib.env.utils import VideoMonitor
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.postprocessing import compute_advantages
@@ -358,6 +356,53 @@ class TestRolloutWorker(unittest.TestCase):
         # space.
         self.assertGreater(np.max(sample["actions"]), action_space.high[0])
         self.assertLess(np.min(sample["actions"]), action_space.low[0])
+        ev.stop()
+
+    def test_action_immutability(self):
+        from ray.rllib.examples.env.random_env import RandomEnv
+
+        action_space = gym.spaces.Box(0.0001, 0.0002, (5,))
+
+        class ActionMutationEnv(RandomEnv):
+            def init(self, config):
+                self.test_case = config["test_case"]
+                super().__init__(config=config)
+
+            def step(self, action):
+                # Ensure that it is called from inside the sampling process.
+                import inspect
+
+                curframe = inspect.currentframe()
+                called_from_check = any(
+                    frame[3] == "check_gym_environments"
+                    for frame in inspect.getouterframes(curframe, 2)
+                )
+                # Check, whether the action is immutable.
+                if action.flags.writeable and not called_from_check:
+                    self.test_case.assertFalse(
+                        action.flags.writeable, "Action is mutable"
+                    )
+                return super().step(action)
+
+        ev = RolloutWorker(
+            env_creator=lambda _: ActionMutationEnv(
+                config=dict(
+                    test_case=self,
+                    action_space=action_space,
+                    max_episode_len=10,
+                    p_done=0.0,
+                    check_action_bounds=True,
+                )
+            ),
+            policy_spec=RandomPolicy,
+            policy_config=dict(
+                action_space=action_space,
+                ignore_action_bounds=True,
+            ),
+            clip_actions=False,
+            batch_mode="complete_episodes",
+        )
+        ev.sample()
         ev.stop()
 
     def test_reward_clipping(self):
@@ -776,15 +821,12 @@ class TestRolloutWorker(unittest.TestCase):
             policy_config={
                 "in_evaluation": False,
             },
-            record_env=tempfile.gettempdir(),
         )
         # Make sure we can properly sample from the wrapped env.
         ev.sample()
         # Make sure the resulting environment is indeed still an
-        # instance of MultiAgentEnv and VideoMonitor.
         self.assertTrue(isinstance(ev.env.unwrapped, MultiAgentEnv))
         self.assertTrue(isinstance(ev.env, gym.Env))
-        self.assertTrue(isinstance(ev.env, VideoMonitor))
         ev.stop()
 
     def test_no_training(self):

@@ -19,13 +19,14 @@ prelude_commands: &prelude_commands |-
 
 epilogue_commands: &epilogue_commands |-
   # Cleanup runtime environment to save storage
-  rm -rf /tmp/ray
+  rm -rf /tmp/ray || true
   # Cleanup local caches (this shouldn't clean up global disk cache)
   bazel clean
 
 steps:
 - label: ":mac: :apple: Wheels and Jars"
   <<: *common
+  conditions: ["RAY_CI_MACOS_WHEELS_AFFECTED", "RAY_CI_PYTHON_DEPENDENCIES_AFFECTED"]
   commands:
     # Cleanup environments
     - ./ci/build/upload_build_info.sh
@@ -38,6 +39,7 @@ steps:
     - export JAVA_HOME=/Library/Java/JavaVirtualMachines/adoptopenjdk-8.jdk/Contents/Home
     - java -version
     # Build wheels
+    - export UPLOAD_WHEELS_AS_ARTIFACTS=1
     - export MAC_WHEELS=1
     - export MAC_JARS=1
     - export RAY_INSTALL_JAVA=1
@@ -61,6 +63,7 @@ steps:
 
 - label: ":mac: :apple: Ray C++, Java and Libraries"
   <<: *common
+  conditions: ["RAY_CI_SERVE_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED", "RAY_CI_CPP_AFFECTED", "RAY_CI_JAVA_AFFECTED", "RAY_CI_PYTHON_AFFECTED", "RAY_CI_DASHBOARD_AFFECTED"]
   commands:
     - export RAY_INSTALL_JAVA=1
     - *prelude_commands
@@ -72,17 +75,13 @@ steps:
     # clang-format is needed by java/test.sh
     - pip install clang-format==12.0.1
     - ./java/test.sh
+    - ./ci/ci.sh test_cpp
     - *epilogue_commands
 
-- label: ":mac: :apple: Worker"
-  <<: *common
-  commands:
-    - *prelude_commands
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - ./ci/ci.sh test_cpp
 
 - label: ":mac: :apple: Small & Client"
   <<: *common
+  conditions: ["RAY_CI_CORE_CPP_AFFECTED", "RAY_CI_PYTHON_AFFECTED"]
   commands:
     - *prelude_commands
     - bazel test $(./ci/run/bazel_export_options) --config=ci
@@ -95,6 +94,7 @@ steps:
 - label: ":mac: :apple: Large"
   <<: *common
   parallelism: 3
+  conditions: ["RAY_CI_CORE_CPP_AFFECTED", "RAY_CI_PYTHON_AFFECTED"]
   commands:
     - *prelude_commands
     - . ./ci/ci.sh test_large
@@ -102,6 +102,7 @@ steps:
 
 - label: ":mac: :apple: Medium A-J"
   <<: *common
+  conditions: ["RAY_CI_CORE_CPP_AFFECTED", "RAY_CI_PYTHON_AFFECTED"]
   commands:
     - *prelude_commands
     - bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CI
@@ -111,6 +112,7 @@ steps:
 
 - label: ":mac: :apple: Medium K-Z"
   <<: *common
+  conditions: ["RAY_CI_CORE_CPP_AFFECTED", "RAY_CI_PYTHON_AFFECTED"]
   commands:
     - *prelude_commands
     - bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CI

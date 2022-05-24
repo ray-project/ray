@@ -37,7 +37,7 @@ def auto_http_archive(
     If strip_prefix == True , it is auto-deduced.
     """
     DOUBLE_SUFFIXES_LOWERCASE = [("tar", "bz2"), ("tar", "gz"), ("tar", "xz")]
-    mirror_prefixes = ["https://mirror.bazel.build/"]
+    mirror_prefixes = ["https://mirror.bazel.build/", "https://storage.googleapis.com/bazel-mirror"]
 
     canonical_url = url if url != None else urls[0]
     url_parts = urlsplit(canonical_url)
@@ -236,13 +236,11 @@ def ray_deps_setup():
     auto_http_archive(
         name = "com_github_grpc_grpc",
         # NOTE: If you update this, also update @boringssl's hash.
-        url = "https://github.com/grpc/grpc/archive/refs/tags/v1.43.2.tar.gz",
-        sha256 = "b74ce7d26fe187970d1d8e2c06a5d3391122f7bc1fdce569aff5e435fb8fe780",
+        url = "https://github.com/grpc/grpc/archive/refs/tags/v1.45.2.tar.gz",
+        sha256 = "e18b16f7976aab9a36c14c38180f042bb0fd196b75c9fd6a20a2b5f934876ad6",
         patches = [
             "@com_github_ray_project_ray//thirdparty/patches:grpc-cython-copts.patch",
             "@com_github_ray_project_ray//thirdparty/patches:grpc-python.patch",
-            # Delete after upgrading from 1.44.0
-            "@com_github_ray_project_ray//thirdparty/patches:grpc-remove-distutils.patch",
         ],
     )
 

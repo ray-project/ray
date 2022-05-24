@@ -51,14 +51,13 @@ public class MultiThreadingTest extends BaseTest {
       final Object[] result = new Object[1];
       Thread thread =
           new Thread(
-              Ray.wrapRunnable(
-                  () -> {
-                    try {
-                      result[0] = Ray.getRuntimeContext().getCurrentActorId();
-                    } catch (Exception e) {
-                      result[0] = e;
-                    }
-                  }));
+              () -> {
+                try {
+                  result[0] = Ray.getRuntimeContext().getCurrentActorId();
+                } catch (Exception e) {
+                  result[0] = e;
+                }
+              });
       thread.start();
       thread.join();
       if (result[0] instanceof Exception) {
@@ -133,13 +132,15 @@ public class MultiThreadingTest extends BaseTest {
     testMultiThreading();
   }
 
-  // Single-process mode doesn't have real workers.
+  // Local mode doesn't have real workers.
   @Test(groups = {"cluster"})
   public void testInWorker() {
     ObjectRef<String> obj = Ray.task(MultiThreadingTest::testMultiThreading).remote();
     Assert.assertEquals("ok", obj.get());
   }
 
+  /// SINGLE_PROCESS mode doesn't support this API.
+  @Test(groups = {"cluster"})
   public void testGetCurrentActorId() {
     ActorHandle<ActorIdTester> actorIdTester = Ray.actor(ActorIdTester::new).remote();
     ActorId actorId = actorIdTester.task(ActorIdTester::getCurrentActorId).remote().get();
@@ -162,104 +163,6 @@ public class MultiThreadingTest extends BaseTest {
     };
   }
 
-  static boolean testMissingWrapRunnable() throws InterruptedException {
-    {
-      Runnable[] runnables = generateRunnables();
-      // It's OK to run them in main thread.
-      for (Runnable runnable : runnables) {
-        runnable.run();
-      }
-    }
-
-    Throwable[] throwable = new Throwable[1];
-
-    {
-      Runnable[] runnables = generateRunnables();
-      Thread thread =
-          new Thread(
-              Ray.wrapRunnable(
-                  () -> {
-                    try {
-                      // It would be OK to run them in another thread if wrapped the runnable.
-                      for (Runnable runnable : runnables) {
-                        runnable.run();
-                      }
-                    } catch (Throwable ex) {
-                      throwable[0] = ex;
-                    }
-                  }));
-      thread.start();
-      thread.join();
-      if (throwable[0] != null) {
-        throw new RuntimeException("Exception occurred in thread.", throwable[0]);
-      }
-    }
-
-    {
-      Runnable[] runnables = generateRunnables();
-      Thread thread =
-          new Thread(
-              () -> {
-                try {
-                  // It wouldn't be OK to run them in another thread if not wrapped the runnable.
-                  for (Runnable runnable : runnables) {
-                    Assert.expectThrows(RuntimeException.class, runnable::run);
-                  }
-                } catch (Throwable ex) {
-                  throwable[0] = ex;
-                }
-              });
-      thread.start();
-      thread.join();
-      if (throwable[0] != null) {
-        throw new RuntimeException("Exception occurred in thread.", throwable[0]);
-      }
-    }
-
-    {
-      Runnable[] runnables = generateRunnables();
-      Runnable[] wrappedRunnables = new Runnable[runnables.length];
-      for (int i = 0; i < runnables.length; i++) {
-        wrappedRunnables[i] = Ray.wrapRunnable(runnables[i]);
-      }
-      // It would be OK to run the wrapped runnables in the current thread.
-      for (Runnable runnable : wrappedRunnables) {
-        runnable.run();
-      }
-
-      // It would be OK to invoke Ray APIs after executing a wrapped runnable in the current thread.
-      wrappedRunnables[0].run();
-      runnables[0].run();
-    }
-
-    // Return true here to make the caller.remote() returns an ObjectRef.
-    return true;
-  }
-
-  public void testMissingWrapRunnableInWorker() {
-    Ray.task(MultiThreadingTest::testMissingWrapRunnable).remote().get();
-  }
-
-  public void testGetAndSetAsyncContext() throws InterruptedException {
-    Object asyncContext = Ray.getAsyncContext();
-    Throwable[] throwable = new Throwable[1];
-    Thread thread =
-        new Thread(
-            () -> {
-              try {
-                Ray.setAsyncContext(asyncContext);
-                Ray.put(1);
-              } catch (Throwable ex) {
-                throwable[0] = ex;
-              }
-            });
-    thread.start();
-    thread.join();
-    if (throwable[0] != null) {
-      throw new RuntimeException("Exception occurred in thread.", throwable[0]);
-    }
-  }
-
   private static void runTestCaseInMultipleThreads(Runnable testCase, int numRepeats) {
     ExecutorService service = Executors.newFixedThreadPool(NUM_THREADS);
 
@@ -267,14 +170,13 @@ public class MultiThreadingTest extends BaseTest {
       List<Future<String>> futures = new ArrayList<>();
       for (int i = 0; i < NUM_THREADS; i++) {
         Callable<String> task =
-            Ray.wrapCallable(
-                () -> {
-                  for (int j = 0; j < numRepeats; j++) {
-                    TimeUnit.MILLISECONDS.sleep(1);
-                    testCase.run();
-                  }
-                  return "ok";
-                });
+            () -> {
+              for (int j = 0; j < numRepeats; j++) {
+                TimeUnit.MILLISECONDS.sleep(1);
+                testCase.run();
+              }
+              return "ok";
+            };
         futures.add(service.submit(task));
       }
       for (Future<String> future : futures) {
@@ -287,36 +189,5 @@ public class MultiThreadingTest extends BaseTest {
     } finally {
       service.shutdown();
     }
-  }
-
-  private static boolean testGetAsyncContextAndSetAsyncContext() throws Exception {
-    final Object asyncContext = Ray.getAsyncContext();
-    final Object[] result = new Object[1];
-    Thread thread =
-        new Thread(
-            () -> {
-              try {
-                Ray.setAsyncContext(asyncContext);
-                Ray.put(0);
-              } catch (Exception e) {
-                result[0] = e;
-              }
-            });
-    thread.start();
-    thread.join();
-    if (result[0] instanceof Exception) {
-      throw (Exception) result[0];
-    }
-    return true;
-  }
-
-  public void testGetAsyncContextAndSetAsyncContextInDriver() throws Exception {
-    Assert.assertTrue(testGetAsyncContextAndSetAsyncContext());
-  }
-
-  public void testGetAsyncContextAndSetAsyncContextInWorker() {
-    ObjectRef<Boolean> obj =
-        Ray.task(MultiThreadingTest::testGetAsyncContextAndSetAsyncContext).remote();
-    Assert.assertTrue(obj.get());
   }
 }

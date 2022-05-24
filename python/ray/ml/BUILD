@@ -11,29 +11,58 @@ py_test(
     deps = [":ml_lib"]
 )
 
-py_test (
-    name = "lightgbm_example",
-    size = "medium",
-    srcs = ["examples/lightgbm_example.py"],
+py_test(
+    name = "check_ingest",
+    size = "large",
+    main = "utils/check_ingest.py",
+    srcs = ["utils/check_ingest.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
 
-py_test (
-    name = "rl_example_offline",
-    main = "examples/rl_example.py",
+
+py_test(
+    name = "distributed_sage_example",
+    size = "large",
+    main = "examples/pytorch_geometric/distributed_sage_example.py",
+    srcs = ["examples/pytorch_geometric/distributed_sage_example.py"],
+    tags = ["team:ml", "exclusive", "gpu"],
+    deps = [":ml_lib"],
+    args = ["--use-gpu", "--num-workers=2", "--epochs=1", "--dataset=fake"]
+)
+
+py_test(
+    name = "horovod_cifar_pbt_example",
     size = "medium",
-    srcs = ["examples/rl_example.py"],
-    args = ["--offline"],
+    srcs = ["examples/horovod/horovod_cifar_pbt_example.py"],
+    tags = ["team:ml", "exlusive"],
+    deps = [":ml_lib"],
+    args = ["--smoke-test"]
+)
+
+py_test(
+    name = "horovod_pytorch_example",
+    size = "medium",
+    srcs = ["examples/horovod/horovod_pytorch_example.py"],
     tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
+    deps = [":ml_lib"],
+    args = ["--num-epochs=1"]
+)
+
+py_test(
+    name = "horovod_tune_example",
+    size = "medium",
+    srcs = ["examples/horovod/horovod_tune_example.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"],
+    args = ["--smoke-test"]
 )
 
 py_test (
-    name = "rl_example_online",
-    main = "examples/rl_example.py",
+    name = "huggingface_basic_language_modeling_example",
     size = "medium",
-    srcs = ["examples/rl_example.py"],
+    srcs = ["examples/huggingface/huggingface_basic_language_modeling_example.py"],
+    args = ["--smoke-test", "--num-epochs 3"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
@@ -118,14 +147,6 @@ py_test(
     args = ["--smoke-test"]
 )
 
-py_test(
-    name = "xgboost_example",
-    size = "medium",
-    srcs = ["examples/xgboost_example.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
 # --------------------------------------------------------------------
 # Tests from the python/ray/ml/tests directory.
 # Covers all tests starting with `test_`.
@@ -157,9 +178,33 @@ py_test(
 )
 
 py_test(
+    name = "test_dataset_utils",
+    size = "small",
+    srcs = ["tests/test_dataset_utils.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
     name = "test_horovod_trainer",
     size = "large",
     srcs = ["tests/test_horovod_trainer.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_huggingface_predictor",
+    size = "small",
+    srcs = ["tests/test_huggingface_predictor.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_huggingface_trainer",
+    size = "medium",
+    srcs = ["tests/test_huggingface_trainer.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
@@ -197,9 +242,25 @@ py_test(
 )
 
 py_test(
-    name = "test_trainer",
+    name = "test_rl_predictor",
+    size = "small",
+    srcs = ["tests/test_rl_predictor.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_sklearn_predictor",
+    size = "small",
+    srcs = ["tests/test_sklearn_predictor.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_sklearn_trainer",
     size = "medium",
-    srcs = ["tests/test_trainer.py"],
+    srcs = ["tests/test_sklearn_trainer.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
@@ -240,6 +301,14 @@ py_test(
     name = "test_torch_utils",
     size = "small",
     srcs = ["tests/test_torch_utils.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_trainer",
+    size = "medium",
+    srcs = ["tests/test_trainer.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )

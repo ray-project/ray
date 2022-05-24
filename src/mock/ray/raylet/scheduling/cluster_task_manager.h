@@ -49,7 +49,7 @@ class MockClusterTaskManager : public ClusterTaskManager {
   MOCK_METHOD(void,
               FillResourceUsage,
               (rpc::ResourcesData & data,
-               const std::shared_ptr<SchedulingResources> &last_reported_resources),
+               const std::shared_ptr<NodeResources> &last_reported_resources),
               (override));
   MOCK_METHOD(bool,
               AnyPendingTasksForResourceAcquisition,
@@ -73,7 +73,7 @@ class MockClusterTaskManager : public ClusterTaskManager {
   MOCK_METHOD(void, ScheduleAndDispatchTasks, (), (override));
   MOCK_METHOD(void, RecordMetrics, (), (override));
   MOCK_METHOD(std::string, DebugStr, (), (const, override));
-  MOCK_METHOD(ResourceSet, CalcNormalTaskResources, (), (const, override));
+  MOCK_METHOD(ResourceRequest, CalcNormalTaskResources, (), (const, override));
 };
 
 }  // namespace raylet

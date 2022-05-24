@@ -47,12 +47,18 @@ class SchedulerResourceReporter {
   ///                                     resources have been changed.
   void FillResourceUsage(
       rpc::ResourcesData &data,
-      const std::shared_ptr<SchedulingResources> &last_reported_resources) const;
+      const std::shared_ptr<NodeResources> &last_reported_resources) const;
 
   /// Populate the list of pending or infeasible actor tasks for node stats.
   ///
   /// \param[out] reply: Output parameter. `infeasible_tasks` is the only field filled.
   void FillPendingActorInfo(rpc::GetNodeStatsReply *reply) const;
+
+  /// Populate the count of pending and infeasible actor tasks, organized by shape.
+  ///
+  /// \param[out] data: Output parameter. `resource_load_by_shape` is the only field
+  /// filled.
+  void FillPendingActorCountByShape(rpc::ResourcesData &data) const;
 
  private:
   int64_t TotalBacklogSize(SchedulingClass scheduling_class) const;

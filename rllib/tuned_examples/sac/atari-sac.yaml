@@ -14,10 +14,10 @@ atari-sac-tf-and-torch:
         framework:
             grid_search: [tf, torch]
         gamma: 0.99
-        Q_model:
+        q_model_config:
             hidden_activation: relu
             hidden_layer_sizes: [512]
-        policy_model:
+        policy_model_config:
             hidden_activation: relu
             hidden_layer_sizes: [512]
         # Do hard syncs.
@@ -30,13 +30,20 @@ atari-sac-tf-and-torch:
         no_done_at_end: False
         n_step: 1
         rollout_fragment_length: 1
-        prioritized_replay: true
+        replay_buffer_config:
+          type: MultiAgentPrioritizedReplayBuffer
+          capacity: 1000000
+          # How many steps of the model to sample before learning starts.
+          learning_starts: 100000
+          # If True prioritized replay buffer will be used.
+          prioritized_replay_alpha: 0.6
+          prioritized_replay_beta: 0.4
+          prioritized_replay_eps: 1e-6
         train_batch_size: 64
-        timesteps_per_iteration: 4
+        min_sample_timesteps_per_reporting: 4
         # Paper uses 20k random timesteps, which is not exactly the same, but
         # seems to work nevertheless. We use 100k here for the longer Atari
         # runs (DQN style: filling up the buffer a bit before learning).
-        learning_starts: 100000
         optimization:
             actor_learning_rate: 0.0003
             critic_learning_rate: 0.0003

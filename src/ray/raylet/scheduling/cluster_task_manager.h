@@ -99,9 +99,9 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \param[in] last_reported_resources: The last reported resources. Used to check
   /// whether
   ///                                     resources have been changed.
-  void FillResourceUsage(rpc::ResourcesData &data,
-                         const std::shared_ptr<SchedulingResources>
-                             &last_reported_resources = nullptr) override;
+  void FillResourceUsage(
+      rpc::ResourcesData &data,
+      const std::shared_ptr<NodeResources> &last_reported_resources = nullptr) override;
 
   /// Return if any tasks are pending resource acquisition.
   ///
@@ -123,6 +123,20 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
 
   /// The helper to dump the debug state of the cluster task manater.
   std::string DebugStr() const override;
+
+  std::shared_ptr<ClusterResourceScheduler> GetClusterResourceScheduler() const;
+
+  /// Get the count of tasks in `infeasible_tasks_`.
+  size_t GetInfeasibleQueueSize() const;
+  /// Get the count of tasks in `tasks_to_schedule_`.
+  size_t GetPendingQueueSize() const;
+
+  /// Populate the info of pending and infeasible actors. This function
+  /// is only called by gcs node.
+  ///
+  /// \param[out] data: Output parameter. `resource_load_by_shape` is the only field
+  /// filled.
+  void FillPendingActorInfo(rpc::ResourcesData &data) const;
 
  private:
   void TryScheduleInfeasibleTask();

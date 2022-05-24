@@ -22,17 +22,29 @@ logger = logging.getLogger(__name__)
 
 
 # https://github.com/ray-project/ray/issues/6662
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
 @pytest.mark.skipif(client_test_enabled(), reason="interferes with grpc")
-def test_ignore_http_proxy(shutdown_only):
-    ray.init(num_cpus=1)
-    os.environ["http_proxy"] = "http://example.com"
-    os.environ["https_proxy"] = "http://example.com"
+def test_http_proxy(start_http_proxy, shutdown_only):
+    # C++ config `grpc_enable_http_proxy` only initializes once, so we have to
+    # run driver as a separate process to make sure the correct config value
+    # is initialized.
+    script = """
+import ray
 
-    @ray.remote
-    def f():
-        return 1
+ray.init(num_cpus=1)
 
-    assert ray.get(f.remote()) == 1
+@ray.remote
+def f():
+    return 1
+
+assert ray.get(f.remote()) == 1
+"""
+
+    env = start_http_proxy
+    run_string_as_driver(script, dict(os.environ, **env))
 
 
 # https://github.com/ray-project/ray/issues/16025
@@ -283,6 +295,92 @@ def test_options():
         v.validate(k, v.default_value)
         with pytest.raises(TypeError):
             v.validate(k, unique_object)
+
+    # test updating each namespace of "_metadata" independently
+    assert ray_option_utils.update_options(
+        {
+            "_metadata": {"ns1": {"a1": 1, "b1": 2, "c1": 3}, "ns2": {"a2": 1}},
+            "num_cpus": 1,
+            "xxx": {"x": 2},
+            "zzz": 42,
+        },
+        {
+            "_metadata": {"ns1": {"b1": 22}, "ns3": {"b3": 2}},
+            "num_cpus": 2,
+            "xxx": {"y": 2},
+            "yyy": 3,
+        },
+    ) == {
+        "_metadata": {
+            "ns1": {"a1": 1, "b1": 22, "c1": 3},
+            "ns2": {"a2": 1},
+            "ns3": {"b3": 2},
+        },
+        "num_cpus": 2,
+        "xxx": {"y": 2},
+        "yyy": 3,
+        "zzz": 42,
+    }
+
+    # test options for other Ray libraries.
+    namespace = "namespace"
+
+    class mock_options:
+        def __init__(self, **options):
+            self.options = {"_metadata": {namespace: options}}
+
+        def keys(self):
+            return ("_metadata",)
+
+        def __getitem__(self, key):
+            return self.options[key]
+
+        def __call__(self, f):
+            f._default_options.update(self.options)
+            return f
+
+    @mock_options(a=1, b=2)
+    @ray.remote(num_gpus=2)
+    def foo():
+        pass
+
+    assert foo._default_options == {
+        "_metadata": {"namespace": {"a": 1, "b": 2}},
+        "num_gpus": 2,
+    }
+
+    f2 = foo.options(num_cpus=1, num_gpus=1, **mock_options(a=11, c=3))
+
+    # TODO(suquark): The current implementation of `.options()` is so bad that we
+    # cannot even access its options from outside. Here we hack the closures to
+    # achieve our goal. Need futher efforts to clean up the tech debt.
+    assert f2.remote.__closure__[1].cell_contents == {
+        "_metadata": {"namespace": {"a": 11, "b": 2, "c": 3}},
+        "num_cpus": 1,
+        "num_gpus": 1,
+    }
+
+    class mock_options2(mock_options):
+        def __init__(self, **options):
+            self.options = {"_metadata": {namespace + "2": options}}
+
+    f3 = foo.options(num_cpus=1, num_gpus=1, **mock_options2(a=11, c=3))
+
+    assert f3.remote.__closure__[1].cell_contents == {
+        "_metadata": {"namespace": {"a": 1, "b": 2}, "namespace2": {"a": 11, "c": 3}},
+        "num_cpus": 1,
+        "num_gpus": 1,
+    }
+
+    with pytest.raises(TypeError):
+        # Ensure only a single "**option" per ".options()".
+        # Otherwise it would be confusing.
+        foo.options(
+            num_cpus=1,
+            num_gpus=1,
+            **mock_options(a=11, c=3),
+            **mock_options2(a=11, c=3),
+        )
 
 
 # https://github.com/ray-project/ray/issues/17842

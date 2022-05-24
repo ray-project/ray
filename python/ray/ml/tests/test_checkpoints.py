@@ -325,13 +325,11 @@ class CheckpointsSerdeTest(unittest.TestCase):
         # Local checkpoints are converted to bytes on serialization. Currently
         # this is a pickled dict, so we compare with a dict checkpoint.
         source_checkpoint = Checkpoint.from_dict({"checkpoint_data": 5})
-        tmpdir = source_checkpoint.to_directory()
-        self.addCleanup(shutil.rmtree, tmpdir)
-
-        checkpoint = Checkpoint.from_directory(tmpdir)
-        self._testCheckpointSerde(
-            checkpoint, *source_checkpoint.get_internal_representation()
-        )
+        with source_checkpoint.as_directory() as tmpdir:
+            checkpoint = Checkpoint.from_directory(tmpdir)
+            self._testCheckpointSerde(
+                checkpoint, *source_checkpoint.get_internal_representation()
+            )
 
     def testBytesCheckpointSerde(self):
         # Bytes checkpoints are just dict checkpoints constructed

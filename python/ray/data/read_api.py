@@ -20,17 +20,18 @@ if TYPE_CHECKING:
     import mars
     import modin
     import pyspark
+    import datasets
 
 import ray
 from ray.types import ObjectRef
-from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.util.annotations import PublicAPI, DeveloperAPI, Deprecated
 from ray.data.block import (
     Block,
     BlockAccessor,
     BlockMetadata,
     BlockExecStats,
 )
-from ray.data.context import DatasetContext
+from ray.data.context import DatasetContext, DEFAULT_SCHEDULING_STRATEGY
 from ray.data.dataset import Dataset
 from ray.data.datasource import (
     Datasource,
@@ -43,8 +44,11 @@ from ray.data.datasource import (
     ReadTask,
     BaseFileMetadataProvider,
     DefaultFileMetadataProvider,
+    FastFileMetadataProvider,
     ParquetMetadataProvider,
     DefaultParquetMetadataProvider,
+    PathPartitionFilter,
+    ParquetBaseDatasource,
 )
 from ray.data.datasource.file_based_datasource import (
     _wrap_arrow_serialization_workaround,
@@ -131,12 +135,12 @@ def range(n: int, *, parallelism: int = 200) -> Dataset[int]:
 
 
 @PublicAPI
-def range_arrow(n: int, *, parallelism: int = 200) -> Dataset[ArrowRow]:
-    """Create an Arrow dataset from a range of integers [0..n).
+def range_table(n: int, *, parallelism: int = 200) -> Dataset[ArrowRow]:
+    """Create a tabular dataset from a range of integers [0..n).
 
     Examples:
         >>> import ray
-        >>> ds = ray.data.range_arrow(1000) # doctest: +SKIP
+        >>> ds = ray.data.range_table(1000) # doctest: +SKIP
         >>> ds.map(lambda r: {"v2": r["value"] * 2}).show() # doctest: +SKIP
 
     This is similar to range(), but uses Arrow tables to hold the integers
@@ -155,6 +159,11 @@ def range_arrow(n: int, *, parallelism: int = 200) -> Dataset[ArrowRow]:
     )
 
 
+@Deprecated
+def range_arrow(*args, **kwargs):
+    raise DeprecationWarning("range_arrow() is deprecated, use range_table() instead.")
+
+
 @PublicAPI
 def range_tensor(
     n: int, *, shape: Tuple = (1,), parallelism: int = 200
@@ -165,10 +174,10 @@ def range_tensor(
         >>> import ray
         >>> ds = ray.data.range_tensor(1000, shape=(3, 10)) # doctest: +SKIP
         >>> ds.map_batches( # doctest: +SKIP
-        ...     lambda arr: arr * 2, batch_format="pandas").show()
+        ...     lambda arr: arr * 2).show()
 
-    This is similar to range_arrow(), but uses the ArrowTensorArray extension
-    type. The dataset elements take the form {"value": array(N, shape=shape)}.
+    This is similar to range_table(), but uses the ArrowTensorArray extension
+    type. The dataset elements take the form {VALUE_COL_NAME: array(N, shape=shape)}.
 
     Args:
         n: The upper bound of the range of integer records.
@@ -208,6 +217,7 @@ def read_datasource(
     Returns:
         Dataset holding the data read from the datasource.
     """
+    ctx = DatasetContext.get_current()
     # TODO(ekl) remove this feature flag.
     force_local = "RAY_DATASET_FORCE_LOCAL_METADATA" in os.environ
     pa_ds = _lazy_import_pyarrow_dataset()
@@ -225,7 +235,6 @@ def read_datasource(
     else:
         # Prepare read in a remote task so that in Ray client mode, we aren't
         # attempting metadata resolution from the client machine.
-        ctx = DatasetContext.get_current()
         prepare_read = cached_remote_fn(
             _prepare_read, retry_exceptions=False, num_cpus=0
         )
@@ -250,7 +259,10 @@ def read_datasource(
 
     if ray_remote_args is None:
         ray_remote_args = {}
-    if "scheduling_strategy" not in ray_remote_args:
+    if (
+        "scheduling_strategy" not in ray_remote_args
+        and ctx.scheduling_strategy == DEFAULT_SCHEDULING_STRATEGY
+    ):
         ray_remote_args["scheduling_strategy"] = "SPREAD"
 
     block_list = LazyBlockList(read_tasks, ray_remote_args=ray_remote_args)
@@ -306,35 +318,10 @@ def read_parquet(
     Returns:
         Dataset holding Arrow records read from the specified paths.
     """
-    if tensor_column_schema is not None:
-        existing_block_udf = arrow_parquet_args.pop("_block_udf", None)
-
-        def _block_udf(block: "pyarrow.Table") -> "pyarrow.Table":
-            from ray.data.extensions import ArrowTensorArray
-
-            for tensor_col_name, (dtype, shape) in tensor_column_schema.items():
-                # NOTE(Clark): We use NumPy to consolidate these potentially
-                # non-contiguous buffers, and to do buffer bookkeeping in
-                # general.
-                np_col = np.array(
-                    [
-                        np.ndarray(shape, buffer=buf.as_buffer(), dtype=dtype)
-                        for buf in block.column(tensor_col_name)
-                    ]
-                )
-
-                block = block.set_column(
-                    block._ensure_integer_index(tensor_col_name),
-                    tensor_col_name,
-                    ArrowTensorArray.from_numpy(np_col),
-                )
-            if existing_block_udf is not None:
-                # Apply UDF after casting the tensor columns.
-                block = existing_block_udf(block)
-            return block
-
-        arrow_parquet_args["_block_udf"] = _block_udf
-
+    arrow_parquet_args = _resolve_parquet_args(
+        tensor_column_schema,
+        **arrow_parquet_args,
+    )
     return read_datasource(
         ParquetDatasource(),
         parallelism=parallelism,
@@ -348,6 +335,98 @@ def read_parquet(
 
 
 @PublicAPI
+def read_parquet_bulk(
+    paths: Union[str, List[str]],
+    *,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    columns: Optional[List[str]] = None,
+    parallelism: int = 200,
+    ray_remote_args: Dict[str, Any] = None,
+    arrow_open_file_args: Optional[Dict[str, Any]] = None,
+    tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
+    meta_provider: BaseFileMetadataProvider = FastFileMetadataProvider(),
+    partition_filter: PathPartitionFilter = None,
+    **arrow_parquet_args,
+) -> Dataset[ArrowRow]:
+    """Create an Arrow dataset from a large number (e.g. >1K) of parquet files quickly.
+
+    By default, ONLY file paths should be provided as input (i.e. no directory paths),
+    and an OSError will be raised if one or more paths point to directories. If your
+    use-case requires directory paths, then the metadata provider should be changed to
+    one that supports directory expansion (e.g. DefaultFileMetadataProvider).
+
+    Offers improved performance vs. `read_parquet` due to not using PyArrow's
+    `ParquetDataset` abstraction, whose latency scales linearly with the number of
+    input files due to collecting all file metadata on a single node.
+
+    Also supports a wider variety of input Parquet file types than `read_parquet` due
+    to not trying to merge and resolve a unified schema for all files.
+
+    However, unlike `read_parquet`, this does not offer file metadata resolution by
+    default, so a custom metadata provider should be provided if your use-case requires
+    a unified dataset schema, block sizes, row counts, etc.
+
+    Examples:
+        >>> # Read multiple local files. You should always provide only input file
+        >>> # paths (i.e. no directory paths) when known to minimize read latency.
+        >>> ray.data.read_parquet_bulk(["/path/to/file1", "/path/to/file2"])
+
+        >>> # Read a directory of files in remote storage. Caution should be taken
+        >>> # when providing directory paths, since the time to both check each path
+        >>> # type and expand its contents may result in greatly increased latency
+        >>> # and/or request rate throttling from cloud storage service providers.
+        >>> ray.data.read_parquet_bulk(
+        >>>     "s3://bucket/path",
+        >>>     meta_provider=DefaultFileMetadataProvider(),
+        >>> )
+
+    Args:
+        paths: A single file path or a list of file paths. If one or more directories
+            are provided, then `meta_provider` should also be set to an implementation
+            that supports directory expansion (e.g. DefaultFileMetadataProvider).
+        filesystem: The filesystem implementation to read from.
+        columns: A list of column names to read.
+        parallelism: The requested parallelism of the read. Parallelism may be
+            limited by the number of files of the dataset.
+        ray_remote_args: kwargs passed to ray.remote in the read tasks.
+        arrow_open_file_args: kwargs passed to
+            pyarrow.fs.FileSystem.open_input_file
+        tensor_column_schema: A dict of column name --> tensor dtype and shape
+            mappings for converting a Parquet column containing serialized
+            tensors (ndarrays) as their elements to our tensor column extension
+            type. This assumes that the tensors were serialized in the raw
+            NumPy array format in C-contiguous order (e.g. via
+            `arr.tobytes()`).
+        meta_provider: File metadata provider. Defaults to a fast file metadata
+            provider that skips file size collection and requires all input paths to be
+            files. Change to DefaultFileMetadataProvider or a custom metadata provider
+            if directory expansion and/or file metadata resolution is required.
+        partition_filter: Path-based partition filter, if any. Can be used
+            with a custom callback to read only selected partitions of a dataset.
+        arrow_parquet_args: Other parquet read options to pass to pyarrow.
+
+    Returns:
+        Dataset holding Arrow records read from the specified paths.
+    """
+    arrow_parquet_args = _resolve_parquet_args(
+        tensor_column_schema,
+        **arrow_parquet_args,
+    )
+    return read_datasource(
+        ParquetBaseDatasource(),
+        parallelism=parallelism,
+        paths=paths,
+        filesystem=filesystem,
+        columns=columns,
+        ray_remote_args=ray_remote_args,
+        open_stream_args=arrow_open_file_args,
+        meta_provider=meta_provider,
+        partition_filter=partition_filter,
+        **arrow_parquet_args,
+    )
+
+
+@PublicAPI
 def read_json(
     paths: Union[str, List[str]],
     *,
@@ -356,6 +435,7 @@ def read_json(
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
+    partition_filter: PathPartitionFilter = None,
     **arrow_json_args,
 ) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from json files.
@@ -383,6 +463,8 @@ def read_json(
             pyarrow.fs.FileSystem.open_input_stream
         meta_provider: File metadata provider. Custom metadata providers may
             be able to resolve file metadata more quickly and/or accurately.
+        partition_filter: Path-based partition filter, if any. Can be used
+            with a custom callback to read only selected partitions of a dataset.
         arrow_json_args: Other json read options to pass to pyarrow.
 
     Returns:
@@ -396,6 +478,7 @@ def read_json(
         ray_remote_args=ray_remote_args,
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
+        partition_filter=partition_filter,
         **arrow_json_args,
     )
 
@@ -409,6 +492,7 @@ def read_csv(
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
+    partition_filter: PathPartitionFilter = None,
     **arrow_csv_args,
 ) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from csv files.
@@ -436,6 +520,8 @@ def read_csv(
             pyarrow.fs.FileSystem.open_input_stream
         meta_provider: File metadata provider. Custom metadata providers may
             be able to resolve file metadata more quickly and/or accurately.
+        partition_filter: Path-based partition filter, if any. Can be used
+            with a custom callback to read only selected partitions of a dataset.
         arrow_csv_args: Other csv read options to pass to pyarrow.
 
     Returns:
@@ -449,6 +535,7 @@ def read_csv(
         ray_remote_args=ray_remote_args,
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
+        partition_filter=partition_filter,
         **arrow_csv_args,
     )
 
@@ -464,6 +551,7 @@ def read_text(
     parallelism: int = 200,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
+    partition_filter: PathPartitionFilter = None,
 ) -> Dataset[str]:
     """Create a dataset from lines stored in text files.
 
@@ -487,6 +575,8 @@ def read_text(
             pyarrow.fs.FileSystem.open_input_stream
         meta_provider: File metadata provider. Custom metadata providers may
             be able to resolve file metadata more quickly and/or accurately.
+        partition_filter: Path-based partition filter, if any. Can be used
+            with a custom callback to read only selected partitions of a dataset.
 
     Returns:
         Dataset holding lines of text read from the specified paths.
@@ -504,6 +594,7 @@ def read_text(
         parallelism=parallelism,
         arrow_open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
+        partition_filter=partition_filter,
     ).flat_map(to_text)
 
 
@@ -515,6 +606,7 @@ def read_numpy(
     parallelism: int = 200,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
+    partition_filter: PathPartitionFilter = None,
     **numpy_load_args,
 ) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from numpy files.
@@ -542,6 +634,8 @@ def read_numpy(
         numpy_load_args: Other options to pass to np.load.
         meta_provider: File metadata provider. Custom metadata providers may
             be able to resolve file metadata more quickly and/or accurately.
+        partition_filter: Path-based partition filter, if any. Can be used
+            with a custom callback to read only selected partitions of a dataset.
     Returns:
         Dataset holding Tensor records read from the specified paths.
     """
@@ -552,6 +646,7 @@ def read_numpy(
         filesystem=filesystem,
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
+        partition_filter=partition_filter,
         **numpy_load_args,
     )
 
@@ -566,6 +661,7 @@ def read_binary_files(
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
+    partition_filter: PathPartitionFilter = None,
 ) -> Dataset[Union[Tuple[str, bytes], bytes]]:
     """Create a dataset from binary files of arbitrary contents.
 
@@ -591,6 +687,8 @@ def read_binary_files(
             pyarrow.fs.FileSystem.open_input_stream
         meta_provider: File metadata provider. Custom metadata providers may
             be able to resolve file metadata more quickly and/or accurately.
+        partition_filter: Path-based partition filter, if any. Can be used
+            with a custom callback to read only selected partitions of a dataset.
 
     Returns:
         Dataset holding Arrow records read from the specified paths.
@@ -605,6 +703,7 @@ def read_binary_files(
         open_stream_args=arrow_open_stream_args,
         schema=bytes,
         meta_provider=meta_provider,
+        partition_filter=partition_filter,
     )
 
 
@@ -651,7 +750,9 @@ def from_mars(df: "mars.DataFrame") -> Dataset[ArrowRow]:
     Returns:
         Dataset holding Arrow records read from the dataframe.
     """
-    raise NotImplementedError  # P1
+    import mars.dataframe as md
+
+    return md.to_ray_dataset(df)
 
 
 @PublicAPI
@@ -870,6 +971,40 @@ def from_spark(
     return raydp.spark.spark_dataframe_to_ray_dataset(df, parallelism)
 
 
+@PublicAPI
+def from_huggingface(
+    dataset: Union["datasets.Dataset", "datasets.DatasetDict"],
+) -> Union[Dataset[ArrowRow], Dict[str, Dataset[ArrowRow]]]:
+    """Create a dataset from a Hugging Face Datasets Dataset.
+
+    This function is not parallelized, and is intended to be used
+    with Hugging Face Datasets that are loaded into memory (as opposed
+    to memory-mapped).
+
+    Args:
+        dataset: A Hugging Face ``Dataset``, or ``DatasetDict``.
+            ``IterableDataset`` is not supported.
+
+    Returns:
+        Dataset holding Arrow records from the Hugging Face Dataset, or a
+        dict of datasets in case ``dataset`` is a ``DatasetDict``.
+    """
+    import datasets
+
+    def convert(ds: "datasets.Dataset") -> Dataset[ArrowRow]:
+        return from_arrow(ds.data.table)
+
+    if isinstance(dataset, datasets.DatasetDict):
+        return {k: convert(ds) for k, ds in dataset.items()}
+    elif isinstance(dataset, datasets.Dataset):
+        return convert(dataset)
+    else:
+        raise TypeError(
+            "`dataset` must be a `datasets.Dataset` or `datasets.DatasetDict`, "
+            f"got {type(dataset)}"
+        )
+
+
 def _df_to_block(df: "pandas.DataFrame") -> Block[ArrowRow]:
     stats = BlockExecStats.builder()
     import pyarrow as pa
@@ -885,16 +1020,11 @@ def _df_to_block(df: "pandas.DataFrame") -> Block[ArrowRow]:
 
 def _ndarray_to_block(ndarray: np.ndarray) -> Block[np.ndarray]:
     stats = BlockExecStats.builder()
-    import pyarrow as pa
-    from ray.data.extensions import TensorArray
-
-    table = pa.Table.from_pydict({"value": TensorArray(ndarray)})
-    return (
-        table,
-        BlockAccessor.for_block(table).get_metadata(
-            input_files=None, exec_stats=stats.build()
-        ),
+    block = BlockAccessor.batch_to_block(ndarray)
+    metadata = BlockAccessor.for_block(block).get_metadata(
+        input_files=None, exec_stats=stats.build()
     )
+    return block, metadata
 
 
 def _get_metadata(table: Union["pyarrow.Table", "pandas.DataFrame"]) -> BlockMetadata:
@@ -910,3 +1040,38 @@ def _prepare_read(
     kwargs = _unwrap_arrow_serialization_workaround(kwargs)
     DatasetContext._set_current(ctx)
     return ds.prepare_read(parallelism, **kwargs)
+
+
+def _resolve_parquet_args(
+    tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
+    **arrow_parquet_args,
+) -> Dict[str, Any]:
+    if tensor_column_schema is not None:
+        existing_block_udf = arrow_parquet_args.pop("_block_udf", None)
+
+        def _block_udf(block: "pyarrow.Table") -> "pyarrow.Table":
+            from ray.data.extensions import ArrowTensorArray
+
+            for tensor_col_name, (dtype, shape) in tensor_column_schema.items():
+                # NOTE(Clark): We use NumPy to consolidate these potentially
+                # non-contiguous buffers, and to do buffer bookkeeping in
+                # general.
+                np_col = np.array(
+                    [
+                        np.ndarray(shape, buffer=buf.as_buffer(), dtype=dtype)
+                        for buf in block.column(tensor_col_name)
+                    ]
+                )
+
+                block = block.set_column(
+                    block._ensure_integer_index(tensor_col_name),
+                    tensor_col_name,
+                    ArrowTensorArray.from_numpy(np_col),
+                )
+            if existing_block_udf is not None:
+                # Apply UDF after casting the tensor columns.
+                block = existing_block_udf(block)
+            return block
+
+        arrow_parquet_args["_block_udf"] = _block_udf
+    return arrow_parquet_args

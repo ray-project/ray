@@ -504,7 +504,13 @@ class _WrappedDataLoader(DataLoader):
         # the tensor might be freed once it is no longer used by
         # the creator stream.
         for i in item:
-            i.record_stream(curr_stream)
+            # The Pytorch DataLoader has no restrictions on what is outputted for
+            # each batch. We should only ``record_stream`` if the item has the
+            # ability to do so.
+            try:
+                i.record_stream(curr_stream)
+            except AttributeError:
+                pass
 
     def __len__(self):
         return len(self._dataloader)

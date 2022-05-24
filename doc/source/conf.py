@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from pathlib import Path
 import sys
 import os
 
@@ -8,9 +9,6 @@ from datetime import datetime
 
 # Mocking modules allows Sphinx to work without installing Ray.
 mock_modules()
-
-# Download docs from ecosystem library repos
-download_and_preprocess_ecosystem_docs()
 
 assert (
     "ray" not in sys.modules
@@ -70,6 +68,9 @@ jupyter_execute_notebooks = os.getenv("RUN_NOTEBOOKS", "off")
 
 external_toc_exclude_missing = False
 external_toc_path = "_toc.yml"
+
+html_extra_path = ["robots.txt"]
+
 
 # There's a flaky autodoc import for "TensorFlowVariables" that fails depending on the doc structure / order
 # of imports.
@@ -134,7 +135,6 @@ all_toc_libs += [
     "cluster",
     "tune",
     "data",
-    "raysgd",
     "train",
     "rllib",
     "serve",
@@ -296,3 +296,10 @@ def setup(app):
 
     # Custom docstring processor
     app.connect("autodoc-process-docstring", fix_xgb_lgbm_docs)
+
+    base_path = Path(__file__).parent
+    github_docs = DownloadAndPreprocessEcosystemDocs(base_path)
+    # Download docs from ecosystem library repos
+    app.connect("builder-inited", github_docs.write_new_docs)
+    # Restore original file content after build
+    app.connect("build-finished", github_docs.write_original_docs)

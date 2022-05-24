@@ -6,6 +6,11 @@ from typing import Any, Dict, Optional
 
 import json
 
+from ray.autoscaler._private.constants import (
+    DISABLE_NODE_UPDATERS_KEY,
+    DISABLE_LAUNCH_CONFIG_CHECK_KEY,
+    FOREGROUND_NODE_LAUNCH_KEY,
+)
 from ray.autoscaler._private.kuberay import node_provider
 from ray.autoscaler._private.util import validate_config
 
@@ -98,8 +103,9 @@ def _generate_provider_config(ray_cluster_namespace: str) -> Dict[str, Any]:
     return {
         "type": "kuberay",
         "namespace": ray_cluster_namespace,
-        "disable_node_updaters": True,
-        "disable_launch_config_check": True,
+        DISABLE_NODE_UPDATERS_KEY: True,
+        DISABLE_LAUNCH_CONFIG_CHECK_KEY: True,
+        FOREGROUND_NODE_LAUNCH_KEY: True,
     }
 
 
@@ -254,8 +260,8 @@ def _get_num_gpus(
     Ray Operator.
     """
 
-    if "num_gpus" in ray_start_params:
-        return int(ray_start_params["num_gpus"])
+    if "num-gpus" in ray_start_params:
+        return int(ray_start_params["num-gpus"])
 
     # Issue a warning if GPUs are present in the container spec but not in the
     # ray start params.

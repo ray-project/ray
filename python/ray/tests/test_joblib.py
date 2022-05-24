@@ -177,6 +177,21 @@ def test_cross_validation(shutdown_only):
         assert result > 0.95
 
 
+def test_ray_remote_args(shutdown_only):
+    ray.init(num_cpus=4, resources={"custom_resource": 4})
+    register_ray()
+
+    assert ray.available_resources().get("custom_resource", 0) == 4
+
+    def check_resource():
+        assert ray.available_resources().get("custom_resource", 0) < 4
+
+    with joblib.parallel_backend(
+        "ray", ray_remote_args={"resources": {"custom_resource": 1}}
+    ):
+        joblib.Parallel()(joblib.delayed(check_resource)() for i in range(8))
+
+
 if __name__ == "__main__":
     import pytest
 
