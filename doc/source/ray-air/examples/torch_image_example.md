@@ -85,6 +85,8 @@ train_dataset
 
 ## Train a convolutional neural network
 
+Now that we've created our datasets, let's define the training logic.
+
 ```{code-cell} python3
 import torch
 import torch.nn as nn
