@@ -10,6 +10,7 @@ import numpy as np
 import logging
 from typing import Any, Dict, List, Optional, Type, Union
 
+import ray
 import ray.rllib.agents.impala.vtrace_torch as vtrace
 from ray.rllib.agents.impala.vtrace_torch_policy import (
     make_time_major,
@@ -326,7 +327,7 @@ class APPOTorchPolicy(
         return total_loss
 
     @override(TorchPolicyV2)
-    def extra_grad_info(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
+    def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
         """Stats function for APPO. Returns a dict with important loss stats.
 
         Args:
