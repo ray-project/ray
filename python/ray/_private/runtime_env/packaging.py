@@ -549,7 +549,7 @@ def download_and_unpack_package(
 
                 if protocol == Protocol.S3:
                     try:
-                        from smart_open import open
+                        from smart_open import open as open_file
                         import boto3
                     except ImportError:
                         raise ImportError(
@@ -560,7 +560,7 @@ def download_and_unpack_package(
                     tp = {"client": boto3.client("s3")}
                 elif protocol == Protocol.GS:
                     try:
-                        from smart_open import open
+                        from smart_open import open as open_file
                         from google.cloud import storage  # noqa: F401
                     except ImportError:
                         raise ImportError(
@@ -568,17 +568,22 @@ def download_and_unpack_package(
                             "`pip install google-cloud-storage` "
                             "to fetch URIs in Google Cloud Storage bucket."
                         )
+                elif protocol == Protocol.FILE:
+                    pkg_uri = pkg_uri[len("file://"):]
+
+                    def open_file(uri, mode, *, transport_params=None):
+                        return open(uri, mode)
                 else:
                     try:
-                        from smart_open import open
+                        from smart_open import open as open_file
                     except ImportError:
                         raise ImportError(
                             "You must `pip install smart_open` "
                             f"to fetch {protocol.value.upper()} URIs."
                         )
 
-                with open(pkg_uri, "rb", transport_params=tp) as package_zip:
-                    with open(pkg_file, "wb") as fin:
+                with open_file(pkg_uri, "rb", transport_params=tp) as package_zip:
+                    with open_file(pkg_file, "wb") as fin:
                         fin.write(package_zip.read())
 
                 unzip_package(

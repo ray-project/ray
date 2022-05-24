@@ -538,7 +538,6 @@ Currently, three types of remote URIs are supported for hosting ``working_dir`` 
     - ``runtime_env = {"working_dir": "gs://example_bucket/example_file.zip"}``
 
 - ``FILE``: ``FILE`` refers to URIs starting with ``file://`` that point to compressed packages stored on a local file system or a network file system.
-  To use packages via ``FILE`` URIs, you must have the ``smart_open`` library (you can install it using ``pip install smart_open``).
   You are responsible to make sure that the file exists on every node in the cluster or on a network file system (NFS) mounted on every node.
 
   - Example:
