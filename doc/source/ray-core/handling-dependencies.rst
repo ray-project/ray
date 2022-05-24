@@ -543,7 +543,7 @@ Currently, three types of remote URIs are supported for hosting ``working_dir`` 
 
   - Example:
 
-    - ``runtime_env = {"working_dir": "file///path/to/example_file.zip"}``
+    - ``runtime_env = {"working_dir": "file:///path/to/example_file.zip"}``
 
 
 Hosting a Dependency on a Remote Git Provider: Step-by-Step Guide
