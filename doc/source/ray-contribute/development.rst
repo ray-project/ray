@@ -64,6 +64,8 @@ Every time you want to update your local version you can pull the changes from t
     # Pull the latest changes from the main repository
     git pull upstream master
 
+.. _python-environment:
+
 Prepare the Python environment
 ------------------------------
 
@@ -162,15 +164,24 @@ Preparing to build Ray on MacOS
 
 .. tip:: Assuming you already have Brew and Bazel installed on your mac and you also have grpc and protobuf installed on your mac consider removing those (grpc and protobuf) for smooth build through the commands ``brew uninstall grpc``, ``brew uninstall protobuf``. If you have built the source code earlier and it still fails with errors like ``No such file or directory:``, try cleaning previous builds on your host by running the commands ``brew uninstall binutils`` and ``bazel clean --expunge``.
 
-To build Ray on MacOS, first install these dependencies:
+To build Ray on MacOS, it is recommended to use a conda environment to install
+the dependencies. See :ref:`python-environment` for more details.
 
-.. code-block:: bash
+.. tabbed:: Conda
 
-  brew update
-  brew install wget
+    .. code-block:: bash
 
-  # Install Bazel.
-  ray/ci/env/install-bazel.sh
+        conda install protobuf bazel
+
+.. tabbed:: Bash
+
+    .. code-block:: bash
+
+        brew update
+        brew install wget
+
+        # Install Bazel.
+        ray/ci/env/install-bazel.sh
 
 Building Ray on Linux & MacOS (full)
 ------------------------------------
