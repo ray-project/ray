@@ -113,7 +113,6 @@ class WorkerContext {
   // To protect access to mutable members;
   mutable absl::Mutex mutex_;
 
-// TODO(qwang): Remove this
  private:
   WorkerThreadContext &GetThreadContext() const;
 

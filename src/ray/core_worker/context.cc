@@ -135,6 +135,9 @@ struct WorkerThreadContext {
   bool placement_group_capture_child_tasks_ = false;
 };
 
+thread_local std::unique_ptr<WorkerThreadContext> WorkerContext::thread_context_ =
+    nullptr;
+
 WorkerContext::WorkerContext(WorkerType worker_type,
                              const WorkerID &worker_id,
                              const JobID &job_id)
