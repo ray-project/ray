@@ -35,7 +35,7 @@ lz4
 scikit-image
 pandas>=1.0.5; python_version < '3.7'
 pandas>=1.2.0; python_version >= '3.7'
-scipy==1.4.1
+scipy >= 1.5
 tabulate
 tensorboardX >= 1.9
 uvicorn==0.16.0
