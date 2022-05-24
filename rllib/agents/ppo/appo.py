@@ -12,7 +12,6 @@ https://docs.ray.io/en/master/rllib-algorithms.html#appo
 from typing import Optional, Type
 import logging
 
-from ray.rllib.agents.ppo.appo_tf_policy import AsyncPPOTFPolicy
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.agents.impala import ImpalaTrainer, ImpalaConfig
 from ray.rllib.policy.policy import Policy
