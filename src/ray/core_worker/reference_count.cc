@@ -695,8 +695,6 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
     if (!it->second.OutOfScope(lineage_pinning_enabled_)) {
       if (check_node_alive_(raylet_id)) {
         it->second.pinned_at_raylet_id = raylet_id;
-        // We eagerly add the pinned location to the set of object locations.
-        AddObjectLocationInternal(it, raylet_id);
       } else {
         ReleasePlasmaObject(it);
         objects_to_recover_.push_back(object_id);
@@ -1282,13 +1280,15 @@ absl::optional<LocalityData> ReferenceCounter::GetLocalityData(
   // - If we don't own this object, this will contain a snapshot of the object locations
   //   at future resolution time.
   auto node_ids = it->second.locations;
-  if (!it->second.spilled_node_id.IsNil()) {
-    node_ids.emplace(it->second.spilled_node_id);
+  // Add location of the primary copy since the object must be there: either in memory or
+  // spilled.
+  if (it->second.pinned_at_raylet_id.has_value()) {
+    node_ids.emplace(it->second.pinned_at_raylet_id.value());
   }
 
   // We should only reach here if we have valid locality data to return.
   absl::optional<LocalityData> locality_data(
-      {static_cast<uint64_t>(object_size), node_ids});
+      {static_cast<uint64_t>(object_size), std::move(node_ids)});
   return locality_data;
 }
 
