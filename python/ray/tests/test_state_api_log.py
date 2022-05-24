@@ -422,3 +422,9 @@ def test_logs_grpc_client_termination(ray_start_with_dashboard):
         f'terminated StreamLog:\nlog_file_name: "{RAYLET_FILE_NAME}"'
         "\nkeep_alive: true"
     ) in file_response.text
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
