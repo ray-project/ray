@@ -2539,31 +2539,12 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
         except ImportError:
             raise ValueError("tensorflow must be installed!")
 
+        from ray.ml.utils.tensorflow_utils import convert_pandas_to_tf_tensor
+
         # `output_signature` can be a tuple but not a list. See
         # https://stackoverflow.com/questions/59092423/what-is-a-nested-structure-in-tensorflow.
         if isinstance(output_signature, list):
             output_signature = tuple(output_signature)
-
-        def get_df_values(df: "pandas.DataFrame") -> np.ndarray:
-            # TODO(Clark): Support unsqueezing column dimension API, similar to
-            # to_torch().
-            try:
-                values = df.values
-            except ValueError as e:
-                import pandas as pd
-
-                # Pandas DataFrame.values doesn't support extension arrays in all
-                # supported Pandas versions, so we check to see if this DataFrame
-                # contains any extensions arrays and do a manual conversion if so.
-                # See https://github.com/pandas-dev/pandas/pull/43160.
-                if any(
-                    isinstance(dtype, pd.api.extensions.ExtensionDtype)
-                    for dtype in df.dtypes
-                ):
-                    values = np.stack([col.to_numpy() for _, col in df.items()], axis=1)
-                else:
-                    raise e from None
-            return values
 
         def make_generator():
             for batch in self.iter_batches(
@@ -2573,19 +2554,19 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
                 drop_last=drop_last,
             ):
                 if label_column:
-                    targets = batch.pop(label_column).values
-                    if unsqueeze_label_tensor:
-                        targets = np.expand_dims(targets, axis=1)
+                    targets = convert_pandas_to_tf_tensor(batch[[label_column]])
+                    batch.pop(label_column)
 
                 features = None
                 if feature_columns is None:
-                    features = get_df_values(batch)
+                    features = convert_pandas_to_tf_tensor(batch)
                 elif isinstance(feature_columns, list):
                     if all(isinstance(column, str) for column in feature_columns):
-                        features = get_df_values(batch[feature_columns])
+                        features = convert_pandas_to_tf_tensor(batch[feature_columns])
                     elif all(isinstance(columns, list) for columns in feature_columns):
                         features = tuple(
-                            get_df_values(batch[columns]) for columns in feature_columns
+                            convert_pandas_to_tf_tensor(batch[columns])
+                            for columns in feature_columns
                         )
                     else:
                         raise ValueError(
@@ -2594,7 +2575,7 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
                         )
                 elif isinstance(feature_columns, dict):
                     features = {
-                        key: get_df_values(batch[columns])
+                        key: convert_pandas_to_tf_tensor(batch[columns])
                         for key, columns in feature_columns.items()
                     }
                 else:
