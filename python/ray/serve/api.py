@@ -453,6 +453,9 @@ def deployment(
             "_autoscaling_config is provided."
         )
 
+    if num_replicas == 0:
+        raise ValueError("num_replicas is expected to larger than 0")
+
     config = DeploymentConfig.from_default(
         ignore_none=True,
         num_replicas=num_replicas,

@@ -25,7 +25,8 @@ def start_metrics_pusher(
         collection_callback: a callable that returns the metric data points to
           be sent to the the controller. The collection callback should take
           no argument and returns a dictionary of str_key -> float_value.
-        controller_handle: actor handle to Serve controller.
+        metrics_process_func: actor handle function.
+        stop_event: the daemon thread will be closed when the stop event is set
     """
 
     def send_once():
@@ -89,6 +90,18 @@ class InMemoryMetricsStore:
             # Using in-sort to insert while maintaining sorted ordering.
             bisect.insort(a=self.data[name], x=TimeStampedValue(timestamp, value))
 
+    def _get_datapoints(self, key: str, window_start_timestamp_s: float) -> List[float]:
+        """Get all data points given key after window_start_timestamp_s"""
+        datapoints = self.data[key]
+
+        idx = bisect.bisect(
+            a=datapoints,
+            x=TimeStampedValue(
+                timestamp=window_start_timestamp_s, value=0  # dummy value
+            ),
+        )
+        return datapoints[idx:]
+
     def window_average(
         self, key: str, window_start_timestamp_s: float, do_compact: bool = True
     ) -> Optional[float]:
@@ -106,15 +119,7 @@ class InMemoryMetricsStore:
             The average of all the datapoints for the key on and after time
             window_start_timestamp_s, or None if there are no such points.
         """
-        datapoints = self.data[key]
-
-        idx = bisect.bisect(
-            a=datapoints,
-            x=TimeStampedValue(
-                timestamp=window_start_timestamp_s, value=0  # dummy value
-            ),
-        )
-        points_after_idx = datapoints[idx:]
+        points_after_idx = self._get_datapoints(key, window_start_timestamp_s)
 
         if do_compact:
             self.data[key] = points_after_idx
@@ -124,14 +129,18 @@ class InMemoryMetricsStore:
         return sum(point.value for point in points_after_idx) / len(points_after_idx)
 
     def max(self, key: str, window_start_timestamp_s: float):
-        datapoints = self.data[key]
-        idx = bisect.bisect(
-            a=datapoints,
-            x=TimeStampedValue(
-                timestamp=window_start_timestamp_s, value=0  # dummy value
-            ),
-        )
-        points_after_idx = datapoints[idx:]
+        """Perform a max operation for metric `key`
+
+        Args:
+            key(str): the metric name.
+            window_start_timestamp_s(float): the unix epoch timestamp for the
+              start of the window. The computed average will use all datapoints
+              from this timestamp until now.
+        Returns:
+            max value of the data pointes for the key on and after time
+            window_start_timestamp_s, or None if there are no such points.
+        """
+        points_after_idx = self._get_datapoints(key, window_start_timestamp_s)
 
         if len(points_after_idx) == 0:
             return

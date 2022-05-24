@@ -216,8 +216,8 @@ class ServeController:
             new_deployment_config = deployment_config.copy()
 
             decision_num_replicas = autoscaling_policy.get_decision_num_replicas(
-                current_num_ongoing_requests=current_num_ongoing_requests,
                 curr_target_num_replicas=deployment_config.num_replicas,
+                current_num_ongoing_requests=current_num_ongoing_requests,
                 current_handle_queued_queries=current_handle_queued_queries,
             )
 

@@ -833,6 +833,15 @@ def test_input_validation():
     with pytest.raises(ValidationError):
         Base.options(num_replicas="hi")
 
+    with pytest.raises(ValueError):
+
+        @serve.deployment(num_replicas=0)
+        class ZeroNumReplicas:
+            pass
+
+    with pytest.raises(ValueError):
+        Base.options(num_replicas=0)
+
     with pytest.raises(ValidationError):
 
         @serve.deployment(num_replicas=-1)

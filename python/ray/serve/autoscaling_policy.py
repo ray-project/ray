@@ -69,8 +69,8 @@ class AutoscalingPolicy:
     @abstractmethod
     def get_decision_num_replicas(
         self,
-        current_num_ongoing_requests: List[float],
         curr_target_num_replicas: int,
+        current_num_ongoing_requests: List[float],
         current_handle_queued_queries: float,
     ) -> int:
         """Make a decision to scale replicas.
@@ -125,8 +125,8 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
 
     def get_decision_num_replicas(
         self,
-        current_num_ongoing_requests: List[float],
         curr_target_num_replicas: int,
+        current_num_ongoing_requests: List[float],
         current_handle_queued_queries: float,
     ) -> int:
 
