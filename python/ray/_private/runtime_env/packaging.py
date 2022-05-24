@@ -172,11 +172,11 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
             "gs_public-runtime-env-test_test_module.zip")
     For FILE URIs, the path will have '/' replaced with '_'. The package name
     will be the adjusted path with 'file_' prepended.
-        urlparse("file://path/to/test_module.zip")
+        urlparse("file:///path/to/test_module.zip")
             -> ParseResult(
                 scheme='file',
                 netloc='path',
-                path='/to/test_module.zip'
+                path='/path/to/test_module.zip'
             )
             -> ("file", "file__path_to_test_module.zip")
     """
