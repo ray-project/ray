@@ -13,6 +13,8 @@ python:
 
 post_build_cmds:
   - pip uninstall -y ray || true
+  - pip uninstall -y gym
+  - pip install -U "gym==0.21.0"
   - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
   # TODO(jungong): remove once nightly image gets upgraded.
