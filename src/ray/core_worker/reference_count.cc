@@ -1288,7 +1288,7 @@ absl::optional<LocalityData> ReferenceCounter::GetLocalityData(
 
   // We should only reach here if we have valid locality data to return.
   absl::optional<LocalityData> locality_data(
-      {static_cast<uint64_t>(object_size), node_ids});
+      {static_cast<uint64_t>(object_size), std::move(node_ids)});
   return locality_data;
 }
 
