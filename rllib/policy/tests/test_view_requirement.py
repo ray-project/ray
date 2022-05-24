@@ -17,7 +17,7 @@ class TestViewRequirement(unittest.TestCase):
         )
         d = vr.to_dict()
         self.assertEqual(d["data_col"], "obs")
-        self.assertEqual(d["space"]["type"], "box")
+        self.assertEqual(d["space"]["space"], "box")
 
         # Make sure serialized dict is JSON serializable.
         s = json.dumps(d)
