@@ -10,7 +10,6 @@ import time
 from ray.experimental import shuffle
 from ray.tests.conftest import _ray_start_chaos_cluster
 from ray.data.impl.progress_bar import ProgressBar
-from ray.data.datasource import RandomIntRowDatasource
 from ray.util.placement_group import placement_group
 from ray._private.test_utils import get_log_message
 from ray.exceptions import RayTaskError, ObjectLostError
@@ -244,28 +243,6 @@ def test_streaming_shuffle(set_kill_interval):
 
         # TODO(swang): Enable this once we implement support ray.put.
         # assert not lineage_reconstruction_enabled
-
-
-@pytest.mark.parametrize(
-    "set_kill_interval",
-    [(True, 5), (True, 15)],
-    indirect=True,
-)
-def test_chaos_push_based_sort(set_kill_interval):
-    ctx = ray.data.context.DatasetContext.get_current()
-    ctx.use_push_based_shuffle = True
-
-    num_partitions = 200
-    partition_size = int(1e6)
-    source = RandomIntRowDatasource()
-    num_rows_per_partition = partition_size // 8
-    ds = ray.data.read_datasource(
-        source,
-        parallelism=num_partitions,
-        n=num_rows_per_partition * num_partitions,
-        num_columns=1,
-    )
-    ds = ds.sort(key="c_0")
 
 
 if __name__ == "__main__":
