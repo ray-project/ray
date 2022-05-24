@@ -2467,7 +2467,6 @@ Dict[str, List[str]]]): The names of the columns
         prefetch_blocks: int = 0,
         batch_size: int = 1,
         drop_last: bool = False,
-        unsqueeze_feature_tensors: bool = True,
     ) -> "tf.data.Dataset":
         """Return a TF Dataset over this dataset.
 
