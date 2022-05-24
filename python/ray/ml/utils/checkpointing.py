@@ -92,13 +92,13 @@ class _FixedDirCheckpoint(Checkpoint):
             except Exception:
                 pass
             # check if any lock files are remaining
-            if not list(Path(temp_dir).glob(".del_lock_*")):
-                try:
-                    with FileLock(f"{temp_dir}.lock", timeout=0):
+            try:
+                with FileLock(f"{temp_dir}.lock", timeout=0):
+                    if not list(Path(temp_dir).glob(".del_lock_*")):
                         print(f"removing {temp_dir}")
                         shutil.rmtree(temp_dir, ignore_errors=True)
-                except TimeoutError:
-                    pass
+            except TimeoutError:
+                pass
 
     @classmethod
     def from_checkpoint(self, checkpoint: Checkpoint) -> "_FixedDirCheckpoint":

@@ -343,8 +343,6 @@ class Checkpoint:
         open(os.path.join(path, ".is_checkpoint"), "a").close()
 
     def _to_directory(self, path: str) -> None:
-        self._make_dir(path)
-
         if self._data_dict or self._obj_ref:
             # This is a object ref or dict
             data_dict = self.to_dict()
@@ -364,6 +362,8 @@ class Checkpoint:
         """
         path = path if path is not None else self._get_temporary_checkpoint_dir()
 
+        self._make_dir(path)
+
         try:
             with FileLock(f"{path}.lock", timeout=0):
                 self._to_directory(path)
@@ -371,6 +371,8 @@ class Checkpoint:
             # if the directory is already locked, then wait but do not do anything
             with FileLock(f"{path}.lock", timeout=-1):
                 pass
+            if not os.path.exists(path):
+                return self.to_directory(path)
 
         print(f"to_directory {path}")
         return path
@@ -488,7 +490,9 @@ class Checkpoint:
 
     @DeveloperAPI
     @classmethod
-    def from_internal_representation(cls, internal_representation: Tuple[str, Union[dict, str, ray.ObjectRef]]):
+    def from_internal_representation(
+        cls, internal_representation: Tuple[str, Union[dict, str, ray.ObjectRef]]
+    ):
         return cls(**{internal_representation[0]: internal_representation[1]})
 
     def __getstate__(self):
