@@ -12,6 +12,25 @@ torch, nn = try_import_torch()
 
 
 class QRegTorchModel(TorchModelV2):
+    """Pytorch implementation of the Q-Reg model from
+    https://arxiv.org/pdf/1911.06854.pdf
+
+    Arguments:
+        policy: The Policy object correspodning to the target policy in OPE
+        gamma: The discount factor for the environment
+        config: Optional config settings for Q-Reg
+        config = {
+            # The ModelConfigDict for self.q_model
+            "model": {"fcnet_hiddens": [32, 32], "fcnet_activation": "relu"},
+            # Maximum number of training iterations to run on the batch
+            "n_iters": 80,
+            Learning rate for Q-function optimizer
+            "lr": 1e-3,
+            Early stopping if the mean loss < delta
+            "delta": 1e-4,
+        }
+    """
+
     def __init__(self, policy: Policy, gamma: float, config: Dict) -> None:
         self.policy = policy
         self.gamma = gamma
@@ -40,9 +59,18 @@ class QRegTorchModel(TorchModelV2):
         self.initializer = f
 
     def reset(self) -> None:
+        """Resets/Reinintializes the model weights."""
         self.q_model.apply(self.initializer)
 
     def train_q(self, batch: SampleBatch) -> TensorType:
+        """Trains self.q_model using Q-Reg loss on given batch.
+
+        Args:
+            batch: A SampleBatch of episodes to train on
+
+        Returns:
+            A list of losses for each training iteration
+        """
         obs = torch.tensor(batch[SampleBatch.OBS], device=self.device)
         actions = torch.tensor(batch[SampleBatch.ACTIONS], device=self.device)
         ps = torch.zeros([batch.count], device=self.device)
@@ -105,6 +133,11 @@ class QRegTorchModel(TorchModelV2):
         obs: Union[TensorType, List[TensorType]],
         actions: Union[TensorType, List[TensorType]] = None,
     ) -> TensorType:
+        """Given `obs`, a list or array or tensor of observations,
+        compute the Q-values for `obs` for all actions in the action space.
+        If `actions` is not None, return the Q-values for the actions provided,
+        else return Q-values for all actions for each observation in `obs`.
+        """
         obs = torch.tensor(obs, device=self.device)
         q_values, _ = self.q_model({"obs": obs}, [], None)
         if actions is not None:
@@ -117,6 +150,11 @@ class QRegTorchModel(TorchModelV2):
         obs: Union[TensorType, List[TensorType]],
         action_probs: Union[TensorType, List[TensorType]],
     ) -> TensorType:
+        """Given `obs`, compute q-values for all actions in the action space
+        for each observations s in `obs`, then multiply this by `action_probs`,
+        the probability distribution over actions for each state s to give the
+        state value V(s) = sum_A pi(a|s)Q(s,a).
+        """
         obs = torch.tensor(obs, device=self.device)
         q_values = self.estimate_q(obs)
         v_values = torch.sum(q_values * action_probs, axis=-1)

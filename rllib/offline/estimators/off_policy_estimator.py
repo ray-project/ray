@@ -44,8 +44,8 @@ class OffPolicyEstimator:
         raise NotImplementedError
 
     @DeveloperAPI
-    def train(self, batch: SampleBatchType):
-        """Trains an Off-Policy Estimator on the given batch of episodes.
+    def train(self, batch: SampleBatchType) -> TensorType:
+        """Trains an Off-Policy Estimator on a batch of experiences.
         A model-based estimator should override this and train
         a transition, value, or reward model.
 
@@ -137,7 +137,7 @@ class OffPolicyEstimator:
         self.new_estimates = []
         return out
 
-    # TODO(rohan): Remove deprecated methods; all are set to error=True because changing
+    # TODO (rohan): Remove deprecated methods; set to error=True because changing
     # from one episode per SampleBatch to full SampleBatch is a breaking change anyway
 
     @Deprecated(help="OffPolicyEstimator.__init__(policy, gamma, config)", error=False)

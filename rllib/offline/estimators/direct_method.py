@@ -15,10 +15,20 @@ import numpy as np
 
 
 def k_fold_cv(batch: SampleBatchType, k: int):
+    """Utility function that returns a k-fold cross validation generator
+    over episodes from the given batch.
+
+    Args:
+        batch: A SampleBatch of episodes to split
+        k: Number of cross-validation splits
+
+    Returns:
+        A tuple of SampleBatches (train_episodes, test_episodes)
+    """
     episodes = batch.split_by_episode()
     n_episodes = len(episodes)
     if n_episodes < k:
-        # Raise warning
+        # TODO(rohan): print warning: "len(batch) < k, running OPE without training"
         yield [], episodes
         return
     n_fold = n_episodes // k
@@ -52,7 +62,7 @@ class DirectMethod(OffPolicyEstimator):
         ), "DM Estimator only supports discrete action spaces!"
         assert (
             policy.config["batch_mode"] == "complete_episodes"
-        ), "DM Estimator only supports `complete_episodes`"
+        ), "DM Estimator only supports batch_mode=`complete_episodes`"
         model_cls = QRegTorchModel if policy.framework == "torch" else QRegTFModel
         self.model = model_cls(
             policy=policy,
@@ -73,7 +83,7 @@ class DirectMethod(OffPolicyEstimator):
             # Train Q-function
             if train_episodes:
                 train_batch = train_episodes[0].concat_samples(train_episodes)
-                losses = self.train(train_batch)
+                losses = self.train(train_batch)  # noqa: F841
 
             # Calculate direct method OPE estimates
             for episode in test_episodes:
@@ -99,7 +109,6 @@ class DirectMethod(OffPolicyEstimator):
                             "V_prev": V_prev,
                             "V_DM": V_DM,
                             "V_gain_est": V_DM / max(1e-8, V_prev),
-                            "train_loss": np.mean(losses),
                         },
                     )
                 )

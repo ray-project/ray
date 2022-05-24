@@ -1,6 +1,6 @@
 import unittest
 import ray
-from ray.rllib.algorithms.dqn import DQNTrainer
+from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.offline.estimators import (
     ImportanceSampling,
     WeightedImportanceSampling,
@@ -27,24 +27,33 @@ class TestOPE(unittest.TestCase):
         data_file = os.path.join(rllib_dir, "tests/data/cartpole/small.json")
         print("data_file={} exists={}".format(data_file, os.path.isfile(data_file)))
 
-        trainer = DQNTrainer(
-            env="CartPole-v0",
-            config={
-                "input": data_file,
-                "input_evaluation": [],
-                "framework": "torch",
-                "batch_mode": "complete_episodes",
-                "exploration_config": {
+        config = (
+            DQNConfig()
+            .environment(env="CartPole-v0")
+            .offline_data(input_=data_file, input_evaluation=[])
+            .exploration(
+                explore=True,
+                exploration_config={
                     "type": "SoftQ",
                     "temperature": 1.0,
                 },
-            },
+            )
+            .framework("torch")
+            .rollouts(batch_mode="complete_episodes")
         )
+
+        trainer = config.build()
+
         timesteps_total = 200000
         n_batches = 100
         while trainer._timesteps_total and trainer._timesteps_total < timesteps_total:
             trainer.train()
-
+        reader = JsonReader(data_file)
+        batch = reader.next()
+        for _ in range(n_batches - 1):
+            batch = batch.concat(reader.next())
+        n_episodes = len(batch.split_by_episode())
+        print("Episodes:", n_episodes)
         estimators = [
             ImportanceSampling,
             WeightedImportanceSampling,
@@ -55,14 +64,10 @@ class TestOPE(unittest.TestCase):
             estimator = estimator_cls(
                 trainer.get_policy(),
                 gamma=0.99,
-                config={"k": 5, "n_iters": 600, "lr": 1e-3, "delta": 1e-5},
+                config={"k": 5, "n_iters": 80, "lr": 1e-3, "delta": 1e-5},
             )
-            reader = JsonReader(data_file)
-            batch = reader.next()
-            for _ in range(n_batches - 1):
-                batch = batch.concat(reader.next())
             estimates = estimator.estimate(batch)
-            assert len(estimates) == len(batch.split_by_episode())
+            assert len(estimates) == n_episodes
 
 
 if __name__ == "__main__":

@@ -25,7 +25,6 @@ class DoublyRobust(DirectMethod):
             # Train Q-function
             if train_episodes:
                 train_batch = train_episodes[0].concat_samples(train_episodes)
-                # TODO (rohan): log the training loss somewhere
                 losses = self.train(train_batch)  # noqa: F841
 
             # Calculate doubly robust OPE estimates
@@ -61,7 +60,6 @@ class DoublyRobust(DirectMethod):
                             "V_prev": V_prev,
                             "V_DR": V_DR,
                             "V_gain_est": V_DR / max(1e-8, V_prev),
-                            "train_loss": np.mean(losses),
                         },
                     )
                 )
