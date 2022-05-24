@@ -72,7 +72,7 @@ class MockRayletClient : public PinObjectsInterface {
     size_t flushed = callbacks_snapshot.size();
     for (const auto &callback : callbacks_snapshot) {
       rpc::PinObjectIDsReply reply;
-      reply.add_success(success);
+      reply.add_successes(success);
       callback(Status::OK(), reply);
     }
     return flushed;

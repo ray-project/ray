@@ -170,7 +170,8 @@ message PinObjectIDsRequest {
 }
 
 message PinObjectIDsReply {
-  repeated bool success = 1;
+  // Whether pinning the corresponding object succeeded or not.
+  repeated bool successes = 1;
 }
 
 message GetNodeStatsRequest {

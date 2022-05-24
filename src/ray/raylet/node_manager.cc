@@ -2374,7 +2374,7 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
   std::vector<std::unique_ptr<RayObject>> results;
   if (!GetObjectsFromPlasma(object_ids, &results)) {
     for (size_t i = 0; i < object_ids.size(); ++i) {
-      reply->add_success(false);
+      reply->add_successes(false);
     }
   } else {
     RAY_CHECK_EQ(object_ids.size(), results.size());
@@ -2387,18 +2387,18 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
                        << "secondary copy and it's evicted in the meantime";
         object_id_it = object_ids.erase(object_id_it);
         result_it = results.erase(result_it);
-        reply->add_success(false);
+        reply->add_successes(false);
       } else {
         ++object_id_it;
         ++result_it;
-        reply->add_success(true);
+        reply->add_successes(true);
       }
     }
     // Wait for the object to be freed by the owner, which keeps the ref count.
     local_object_manager_.PinObjectsAndWaitForFree(
         object_ids, std::move(results), owner_address);
   }
-  RAY_CHECK_EQ(request.object_ids_size(), reply->success_size());
+  RAY_CHECK_EQ(request.object_ids_size(), reply->successes_size());
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
