@@ -13,6 +13,24 @@ The example shows how to user inputs to control the graph flow
    :language: python
 ```
 
+```{note}
+1. The dag.execute() take arbitrary number of arguments, and internally the graph will access inputs by index (e.g. user_input[0], user_input[1]).
+
+2. value1 and value2 are ObjectRef passed into the combine, the value of ObjectRef will be addressed at the runtime.
+
+3. we can pass value1 and value2 as a list. In this case, we are passing the ObjectRef as reference, the value of ObjectRef will not be addressed automatically. We need to explicitly use ray.get() to address value before we do sum() or max() function.
+
+code example:
+
+```python
+dag = combine.bind([output1, output2], user_input[1])
+...
+@serve.deployment
+def combine(value_refs, combine_type):
+    values = [ray.get(value_ref) for value_ref in value_refs]
+...
+```
+
 ## Outputs
 
 The code uses 'max' to do combine from the output of the two models.
