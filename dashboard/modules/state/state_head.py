@@ -37,7 +37,7 @@ class StateHead(dashboard_utils.DashboardHeadModule):
         limit = int(req.query.get("limit"))
         # Only apply 80% of the timeout so that
         # the API will reply before client times out if query to the source fails.
-        timeout = int(int(req.query.get("timeout")) * 0.8)
+        timeout = int(req.query.get("timeout"))
         return ListApiOptions(limit=limit, timeout=timeout)
 
     def _reply(self, success: bool, error_message: str, result: dict, **kwargs):
@@ -93,12 +93,9 @@ class StateHead(dashboard_utils.DashboardHeadModule):
                 int(ports[1]),
             )
 
-    @routes.get("/api/v0/actors")
-    async def list_actors(self, req) -> aiohttp.web.Response:
+    async def _handle_list_api(self, list_api_fn, req):
         try:
-            result = await self._state_api.list_actors(
-                option=self._options_from_req(req)
-            )
+            result = await list_api_fn(option=self._options_from_req(req))
             return self._reply(
                 success=True,
                 error_message="",
@@ -107,6 +104,10 @@ class StateHead(dashboard_utils.DashboardHeadModule):
             )
         except DataSourceUnavailable as e:
             return self._reply(success=False, error_message=str(e), result=None)
+
+    @routes.get("/api/v0/actors")
+    async def list_actors(self, req) -> aiohttp.web.Response:
+        return await self._handle_list_api(self._state_api.list_actors, req)
 
     @routes.get("/api/v0/jobs")
     async def list_jobs(self, req) -> aiohttp.web.Response:
@@ -126,94 +127,27 @@ class StateHead(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/api/v0/nodes")
     async def list_nodes(self, req) -> aiohttp.web.Response:
-        try:
-            result = await self._state_api.list_nodes(
-                option=self._options_from_req(req)
-            )
-            return self._reply(
-                success=True,
-                error_message="",
-                result=result.result,
-                partial_failure_warning=result.partial_failure_warning,
-            )
-        except DataSourceUnavailable as e:
-            return self._reply(success=False, error_message=str(e), result=None)
+        return await self._handle_list_api(self._state_api.list_nodes, req)
 
     @routes.get("/api/v0/placement_groups")
     async def list_placement_groups(self, req) -> aiohttp.web.Response:
-        try:
-            result = await self._state_api.list_placement_groups(
-                option=self._options_from_req(req)
-            )
-            return self._reply(
-                success=True,
-                error_message="",
-                result=result.result,
-                partial_failure_warning=result.partial_failure_warning,
-            )
-        except DataSourceUnavailable as e:
-            return self._reply(success=False, error_message=str(e), result=None)
+        return await self._handle_list_api(self._state_api.list_placement_groups, req)
 
     @routes.get("/api/v0/workers")
     async def list_workers(self, req) -> aiohttp.web.Response:
-        try:
-            result = await self._state_api.list_workers(
-                option=self._options_from_req(req)
-            )
-            return self._reply(
-                success=True,
-                error_message="",
-                result=result.result,
-                partial_failure_warning=result.partial_failure_warning,
-            )
-        except DataSourceUnavailable as e:
-            return self._reply(success=False, error_message=str(e), result=None)
+        return await self._handle_list_api(self._state_api.list_workers, req)
 
     @routes.get("/api/v0/tasks")
     async def list_tasks(self, req) -> aiohttp.web.Response:
-        try:
-            result = await self._state_api.list_tasks(
-                option=self._options_from_req(req)
-            )
-            return self._reply(
-                success=True,
-                error_message="",
-                result=result.result,
-                partial_failure_warning=result.partial_failure_warning,
-            )
-        except DataSourceUnavailable as e:
-            return self._reply(success=False, error_message=str(e), result=None)
+        return await self._handle_list_api(self._state_api.list_tasks, req)
 
     @routes.get("/api/v0/objects")
     async def list_objects(self, req) -> aiohttp.web.Response:
-        try:
-            result = await self._state_api.list_objects(
-                option=self._options_from_req(req)
-            )
-            return self._reply(
-                success=True,
-                error_message="",
-                result=result.result,
-                partial_failure_warning=result.partial_failure_warning,
-            )
-        except DataSourceUnavailable as e:
-            return self._reply(success=False, error_message=str(e), result=None)
+        return await self._handle_list_api(self._state_api.list_objects, req)
 
     @routes.get("/api/v0/runtime_envs")
-    @dashboard_optional_utils.aiohttp_cache
     async def list_runtime_envs(self, req) -> aiohttp.web.Response:
-        try:
-            result = await self._state_api.list_runtime_envs(
-                option=self._options_from_req(req)
-            )
-            return self._reply(
-                success=True,
-                error_message="",
-                result=result.result,
-                partial_failure_warning=result.partial_failure_warning,
-            )
-        except DataSourceUnavailable as e:
-            return self._reply(success=False, error_message=str(e), result=None)
+        return await self._handle_list_api(self._state_api.list_runtime_envs, req)
 
     async def run(self, server):
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel

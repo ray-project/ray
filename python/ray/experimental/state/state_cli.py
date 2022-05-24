@@ -59,7 +59,7 @@ def get_state_api_output_to_print(
         )
 
 
-def _should_print_api_stats(format: AvailableFormat):
+def _should_explain(format: AvailableFormat):
     # If the format is json or yaml, it should not print stats because
     # users don't want additional strings.
     return format == AvailableFormat.DEFAULT or format == AvailableFormat.TABLE
@@ -102,9 +102,7 @@ def actors(ctx, format: str):
     format = AvailableFormat(format)
     print(
         get_state_api_output_to_print(
-            list_actors(
-                api_server_url=url, _print_api_stats=_should_print_api_stats(format)
-            ),
+            list_actors(api_server_url=url, _explain=_should_explain(format)),
             format=format,
         )
     )
@@ -120,9 +118,7 @@ def placement_groups(ctx, format: str):
     format = AvailableFormat(format)
     print(
         get_state_api_output_to_print(
-            list_placement_groups(
-                api_server_url=url, _print_api_stats=_should_print_api_stats(format)
-            ),
+            list_placement_groups(api_server_url=url, _explain=_should_explain(format)),
             format=format,
         )
     )
@@ -138,9 +134,7 @@ def nodes(ctx, format: str):
     format = AvailableFormat(format)
     print(
         get_state_api_output_to_print(
-            list_nodes(
-                api_server_url=url, _print_api_stats=_should_print_api_stats(format)
-            ),
+            list_nodes(api_server_url=url, _explain=_should_explain(format)),
             format=format,
         )
     )
@@ -156,9 +150,7 @@ def jobs(ctx, format: str):
     format = AvailableFormat(format)
     print(
         get_state_api_output_to_print(
-            list_jobs(
-                api_server_url=url, _print_api_stats=_should_print_api_stats(format)
-            ),
+            list_jobs(api_server_url=url, _explain=_should_explain(format)),
             format=format,
         )
     )
@@ -174,9 +166,7 @@ def workers(ctx, format: str):
     format = AvailableFormat(format)
     print(
         get_state_api_output_to_print(
-            list_workers(
-                api_server_url=url, _print_api_stats=_should_print_api_stats(format)
-            ),
+            list_workers(api_server_url=url, _explain=_should_explain(format)),
             format=format,
         )
     )
@@ -192,9 +182,7 @@ def tasks(ctx, format: str):
     format = AvailableFormat(format)
     print(
         get_state_api_output_to_print(
-            list_tasks(
-                api_server_url=url, _print_api_stats=_should_print_api_stats(format)
-            ),
+            list_tasks(api_server_url=url, _explain=_should_explain(format)),
             format=format,
         )
     )
@@ -210,9 +198,7 @@ def objects(ctx, format: str):
     format = AvailableFormat(format)
     print(
         get_state_api_output_to_print(
-            list_objects(
-                api_server_url=url, _print_api_stats=_should_print_api_stats(format)
-            ),
+            list_objects(api_server_url=url, _explain=_should_explain(format)),
             format=format,
         )
     )
@@ -228,9 +214,7 @@ def runtime_envs(ctx, format: str):
     format = AvailableFormat(format)
     print(
         get_state_api_output_to_print(
-            list_runtime_envs(
-                api_server_url=url, _print_api_stats=_should_print_api_stats(format)
-            ),
+            list_runtime_envs(api_server_url=url, _explain=_should_explain(format)),
             format=format,
         )
     )

@@ -205,15 +205,20 @@ class StateAPIManager:
             successful_replies.append(reply)
             for task_id in reply.running_task_ids:
                 running_task_id.add(binary_to_hex(task_id))
-        warning_msg = NODE_QUERY_FAILURE_WARNING.format(
-            type="raylet",
-            total=len(raylet_ids),
-            network_failures=unresponsive_nodes,
-            log_command="raylet.out",
-        )
 
-        if unresponsive_nodes == len(raylet_ids):
-            raise DataSourceUnavailable(warning_msg)
+        partial_failure_warning = None
+        if len(raylet_ids) > 0 and unresponsive_nodes > 0:
+            warning_msg = NODE_QUERY_FAILURE_WARNING.format(
+                type="raylet",
+                total=len(raylet_ids),
+                network_failures=unresponsive_nodes,
+                log_command="raylet.out",
+            )
+            if unresponsive_nodes == len(raylet_ids):
+                raise DataSourceUnavailable(warning_msg)
+            partial_failure_warning = (
+                f"The returned data may contain incomplete result. {warning_msg}"
+            )
 
         result = []
         for reply in successful_replies:
@@ -235,9 +240,7 @@ class StateAPIManager:
         result.sort(key=lambda entry: entry["task_id"])
         return ListApiResponse(
             result={d["task_id"]: d for d in islice(result, option.limit)},
-            partial_failure_warning=(
-                f"The returned data may contain incomplete result. {warning_msg}"
-            ),
+            partial_failure_warning=partial_failure_warning,
         )
 
     async def list_objects(self, *, option: ListApiOptions) -> ListApiResponse:
@@ -278,15 +281,19 @@ class StateAPIManager:
                     )
                 )
 
-        warning_msg = NODE_QUERY_FAILURE_WARNING.format(
-            type="raylet",
-            total=len(raylet_ids),
-            network_failures=unresponsive_nodes,
-            log_command="raylet.out",
-        )
-
-        if unresponsive_nodes == len(raylet_ids):
-            raise DataSourceUnavailable(warning_msg)
+        partial_failure_warning = None
+        if len(raylet_ids) > 0 and unresponsive_nodes > 0:
+            warning_msg = NODE_QUERY_FAILURE_WARNING.format(
+                type="raylet",
+                total=len(raylet_ids),
+                network_failures=unresponsive_nodes,
+                log_command="raylet.out",
+            )
+            if unresponsive_nodes == len(raylet_ids):
+                raise DataSourceUnavailable(warning_msg)
+            partial_failure_warning = (
+                f"The returned data may contain incomplete result. {warning_msg}"
+            )
 
         result = []
         memory_table = memory_utils.construct_memory_table(worker_stats)
@@ -304,9 +311,7 @@ class StateAPIManager:
         result.sort(key=lambda entry: entry["object_id"])
         return ListApiResponse(
             result={d["object_id"]: d for d in islice(result, option.limit)},
-            partial_failure_warning=(
-                f"The returned data may contain incomplete result. {warning_msg}"
-            ),
+            partial_failure_warning=partial_failure_warning,
         )
 
     async def list_runtime_envs(self, *, option: ListApiOptions) -> ListApiResponse:
@@ -348,15 +353,19 @@ class StateAPIManager:
                 data = filter_fields(data, RuntimeEnvState)
                 result.append(data)
 
-        warning_msg = NODE_QUERY_FAILURE_WARNING.format(
-            type="agent",
-            total=len(agent_ids),
-            network_failures=unresponsive_nodes,
-            log_command="dashboard_agent.log",
-        )
-
-        if unresponsive_nodes == len(agent_ids):
-            raise DataSourceUnavailable(warning_msg)
+        partial_failure_warning = None
+        if len(agent_ids) > 0 and unresponsive_nodes > 0:
+            warning_msg = NODE_QUERY_FAILURE_WARNING.format(
+                type="agent",
+                total=len(agent_ids),
+                network_failures=unresponsive_nodes,
+                log_command="dashboard_agent.log",
+            )
+            if unresponsive_nodes == len(agent_ids):
+                raise DataSourceUnavailable(warning_msg)
+            partial_failure_warning = (
+                f"The returned data may contain incomplete result. {warning_msg}"
+            )
 
         # Sort to make the output deterministic.
         def sort_func(entry):
@@ -373,9 +382,7 @@ class StateAPIManager:
         result.sort(key=sort_func, reverse=True)
         return ListApiResponse(
             result=list(islice(result, option.limit)),
-            partial_failure_warning=(
-                f"The returned data may contain incomplete result. {warning_msg}"
-            ),
+            partial_failure_warning=partial_failure_warning,
         )
 
     def _message_to_dict(

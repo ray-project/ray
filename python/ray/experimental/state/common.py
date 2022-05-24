@@ -24,11 +24,20 @@ def filter_fields(data: dict, state_dataclass) -> dict:
 class ListApiOptions:
     limit: int
     timeout: int
+    # When the request is processed on the server side,
+    # we should apply multiplier so that server side can finish
+    # processing a request within timeout. Otherwise,
+    # timeout will always lead Http timeout.
+    _server_timeout_multiplier: float = 0.8
 
     # TODO(sang): Use Pydantic instead.
     def __post_init__(self):
         assert isinstance(self.limit, int)
         assert isinstance(self.timeout, int)
+        # To return the data to users, when there's a partial failure
+        # we need to have a timeout that's smaller than the users' timeout.
+        # 80% is configured arbitrarily.
+        self.timeout = int(self.timeout * self._server_timeout_multiplier)
 
 
 # TODO(sang): Replace it with Pydantic or gRPC schema (once interface is finalized).

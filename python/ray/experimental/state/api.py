@@ -17,7 +17,7 @@ def _list(
     resource_name: str,
     options: ListApiOptions,
     api_server_url: str = None,
-    _print_api_stats: bool = False,
+    _explain: bool = False,
 ):
     """Query the API server in address to list "resource_name" states.
 
@@ -27,7 +27,7 @@ def _list(
         api_server_url: The address of API server. If it is not give, it assumes the ray
             is already connected and obtains the API server address using
             Ray API.
-        _print_api_stats: Print the API stats such as API
+        explain: Print the API information such as API
             latency or failed query information.
     """
     if api_server_url is None:
@@ -55,10 +55,10 @@ def _list(
             f"Error: {response['msg']}"
         )
 
-    if _print_api_stats:
+    if _explain:
         # Print warnings if anything was given.
-        warning_msg = response["data"].get("partial_failure_warning")
-        if warning_msg:
+        warning_msg = response["data"].get("partial_failure_warning", None)
+        if warning_msg is not None:
             warnings.warn(warning_msg, RuntimeWarning)
 
     return r.json()["data"]["result"]
@@ -68,13 +68,13 @@ def list_actors(
     api_server_url: str = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
-    _print_api_stats: bool = False,
+    _explain: bool = False,
 ):
     return _list(
         "actors",
         ListApiOptions(limit=limit, timeout=timeout),
         api_server_url=api_server_url,
-        _print_api_stats=_print_api_stats,
+        _explain=_explain,
     )
 
 
@@ -82,13 +82,13 @@ def list_placement_groups(
     api_server_url: str = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
-    _print_api_stats: bool = False,
+    _explain: bool = False,
 ):
     return _list(
         "placement_groups",
         ListApiOptions(limit=limit, timeout=timeout),
         api_server_url=api_server_url,
-        _print_api_stats=_print_api_stats,
+        _explain=_explain,
     )
 
 
@@ -96,13 +96,13 @@ def list_nodes(
     api_server_url: str = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
-    _print_api_stats: bool = False,
+    _explain: bool = False,
 ):
     return _list(
         "nodes",
         ListApiOptions(limit=limit, timeout=timeout),
         api_server_url=api_server_url,
-        _print_api_stats=_print_api_stats,
+        _explain=_explain,
     )
 
 
@@ -110,13 +110,13 @@ def list_jobs(
     api_server_url: str = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
-    _print_api_stats: bool = False,
+    _explain: bool = False,
 ):
     return _list(
         "jobs",
         ListApiOptions(limit=limit, timeout=timeout),
         api_server_url=api_server_url,
-        _print_api_stats=_print_api_stats,
+        _explain=_explain,
     )
 
 
@@ -124,13 +124,13 @@ def list_workers(
     api_server_url: str = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
-    _print_api_stats: bool = False,
+    _explain: bool = False,
 ):
     return _list(
         "workers",
         ListApiOptions(limit=limit, timeout=timeout),
         api_server_url=api_server_url,
-        _print_api_stats=_print_api_stats,
+        _explain=_explain,
     )
 
 
@@ -138,13 +138,13 @@ def list_tasks(
     api_server_url: str = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
-    _print_api_stats: bool = False,
+    _explain: bool = False,
 ):
     return _list(
         "tasks",
         ListApiOptions(limit=limit, timeout=timeout),
         api_server_url=api_server_url,
-        _print_api_stats=_print_api_stats,
+        _explain=_explain,
     )
 
 
@@ -152,13 +152,13 @@ def list_objects(
     api_server_url: str = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
-    _print_api_stats: bool = False,
+    _explain: bool = False,
 ):
     return _list(
         "objects",
         ListApiOptions(limit=limit, timeout=timeout),
         api_server_url=api_server_url,
-        _print_api_stats=_print_api_stats,
+        _explain=_explain,
     )
 
 
@@ -166,11 +166,11 @@ def list_runtime_envs(
     api_server_url: str = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
-    _print_api_stats: bool = False,
+    _explain: bool = False,
 ):
     return _list(
         "runtime_envs",
         ListApiOptions(limit=limit, timeout=timeout),
         api_server_url=api_server_url,
-        _print_api_stats=_print_api_stats,
+        _explain=_explain,
     )

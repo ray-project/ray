@@ -195,7 +195,7 @@ def generate_runtime_env_info(runtime_env, creation_time=None):
 
 
 def list_api_options(timeout: int = DEFAULT_RPC_TIMEOUT, limit: int = DEFAULT_LIMIT):
-    return ListApiOptions(limit=limit, timeout=timeout)
+    return ListApiOptions(limit=limit, timeout=timeout, _server_timeout_multiplier=1.0)
 
 
 @pytest.mark.asyncio
@@ -1080,7 +1080,7 @@ def test_network_failure(shutdown_only):
     ray.worker._global_node.kill_raylet()
 
     with pytest.raises(RayStateApiException):
-        list_tasks(_print_api_stats=True)
+        list_tasks(_explain=True)
 
 
 def test_network_partial_failures(ray_start_cluster):
@@ -1100,20 +1100,51 @@ def test_network_partial_failures(ray_start_cluster):
     a = [f.remote() for _ in range(4)]  # noqa
     wait_for_condition(lambda: len(list_tasks()) == 4)
 
+    # Make sure when there's 0 node failure, it doesn't print the error.
+    with pytest.warns(None) as record:
+        list_tasks(_explain=True)
+    assert len(record) == 0
+
     # Kill raylet so that list_tasks will have network error on querying raylets.
     cluster.remove_node(n, allow_graceful=False)
-    import time
 
-    time.sleep(1)
-
-    # with pytest.raises(RayStateApiException):
     with pytest.warns(RuntimeWarning):
-        list_tasks(_print_api_stats=True)
+        list_tasks(_explain=True)
 
-    # Make sure when _print_api_stats == False, warning is not printed.
+    # Make sure when _explain == False, warning is not printed.
     with pytest.warns(None) as record:
-        list_tasks(_print_api_stats=False)
+        list_tasks(_explain=False)
     assert len(record) == 0
+
+
+def test_network_partial_failures_timeout(monkeypatch, ray_start_cluster):
+    """When the request fails due to network timeout,
+    verifies it prints proper warning."""
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=2)
+    ray.init(address=cluster.address)
+    with monkeypatch.context() as m:
+        # defer for 10s for the second node.
+        m.setenv(
+            "RAY_testing_asio_delay_us",
+            "NodeManagerService.grpc_server.GetTasksInfo=10000000:10000000",
+        )
+        cluster.add_node(num_cpus=2)
+
+    @ray.remote
+    def f():
+        import time
+
+        time.sleep(30)
+
+    a = [f.remote() for _ in range(4)]  # noqa
+
+    def verify():
+        with pytest.warns(None) as record:
+            list_tasks(_explain=True, timeout=5)
+        return len(record) == 1
+
+    wait_for_condition(verify)
 
 
 @pytest.mark.asyncio
