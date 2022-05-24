@@ -208,10 +208,14 @@ class GcsClient:
         return self._channel._gcs_address
 
     @_auto_reconnect
-    def internal_kv_get(self, key: bytes, namespace: Optional[bytes]) -> bytes:
+    def internal_kv_get(
+        self, key: bytes, namespace: Optional[bytes], timeout: Optional[int] = None
+    ) -> bytes:
         logger.debug(f"internal_kv_get {key} {namespace}")
-        req = gcs_service_pb2.InternalKVGetRequest(namespace=namespace, key=key)
-        reply = self._kv_stub.InternalKVGet(req)
+        req = gcs_service_pb2.InternalKVGetRequest(
+            namespace=namespace, key=key
+        )
+        reply = self._kv_stub.InternalKVGet(req, timeout=timeout)
         if reply.status.code == GcsCode.OK:
             return reply.value
         elif reply.status.code == GcsCode.NotFound:
@@ -224,13 +228,21 @@ class GcsClient:
 
     @_auto_reconnect
     def internal_kv_put(
-        self, key: bytes, value: bytes, overwrite: bool, namespace: Optional[bytes]
+        self,
+        key: bytes,
+        value: bytes,
+        overwrite: bool,
+        namespace: Optional[bytes],
+        timeout: Optional[int] = None,
     ) -> int:
         logger.debug(f"internal_kv_put {key} {value} {overwrite} {namespace}")
         req = gcs_service_pb2.InternalKVPutRequest(
-            namespace=namespace, key=key, value=value, overwrite=overwrite
+            namespace=namespace,
+            key=key,
+            value=value,
+            overwrite=overwrite,
         )
-        reply = self._kv_stub.InternalKVPut(req)
+        reply = self._kv_stub.InternalKVPut(req, timeout=timeout)
         if reply.status.code == GcsCode.OK:
             return reply.added_num
         else:
@@ -241,13 +253,17 @@ class GcsClient:
 
     @_auto_reconnect
     def internal_kv_del(
-        self, key: bytes, del_by_prefix: bool, namespace: Optional[bytes]
+        self,
+        key: bytes,
+        del_by_prefix: bool,
+        namespace: Optional[bytes],
+        timeout: Optional[int] = None,
     ) -> int:
         logger.debug(f"internal_kv_del {key} {del_by_prefix} {namespace}")
         req = gcs_service_pb2.InternalKVDelRequest(
             namespace=namespace, key=key, del_by_prefix=del_by_prefix
         )
-        reply = self._kv_stub.InternalKVDel(req)
+        reply = self._kv_stub.InternalKVDel(req, timeout=timeout)
         if reply.status.code == GcsCode.OK:
             return reply.deleted_num
         else:
@@ -256,10 +272,14 @@ class GcsClient:
             )
 
     @_auto_reconnect
-    def internal_kv_exists(self, key: bytes, namespace: Optional[bytes]) -> bool:
+    def internal_kv_exists(
+        self, key: bytes, namespace: Optional[bytes], timeout: Optional[int] = None
+    ) -> bool:
         logger.debug(f"internal_kv_exists {key} {namespace}")
-        req = gcs_service_pb2.InternalKVExistsRequest(namespace=namespace, key=key)
-        reply = self._kv_stub.InternalKVExists(req)
+        req = gcs_service_pb2.InternalKVExistsRequest(
+            namespace=namespace, key=key
+        )
+        reply = self._kv_stub.InternalKVExists(req, timeout=timeout)
         if reply.status.code == GcsCode.OK:
             return reply.exists
         else:
@@ -270,11 +290,13 @@ class GcsClient:
 
     @_auto_reconnect
     def internal_kv_keys(
-        self, prefix: bytes, namespace: Optional[bytes]
+        self, prefix: bytes, namespace: Optional[bytes], timeout: Optional[int] = None
     ) -> List[bytes]:
         logger.debug(f"internal_kv_keys {prefix} {namespace}")
-        req = gcs_service_pb2.InternalKVKeysRequest(namespace=namespace, prefix=prefix)
-        reply = self._kv_stub.InternalKVKeys(req)
+        req = gcs_service_pb2.InternalKVKeysRequest(
+            namespace=namespace, prefix=prefix
+        )
+        reply = self._kv_stub.InternalKVKeys(req, timeout=timeout)
         if reply.status.code == GcsCode.OK:
             return reply.results
         else:
