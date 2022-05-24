@@ -128,6 +128,7 @@ class TrainerConfig:
         self.ignore_worker_failures = False
         self.recreate_failed_workers = False
         self.restart_failed_sub_environments = False
+        self.num_consecutive_worker_failures_tolerance = 100
         self.horizon = None
         self.soft_horizon = False
         self.no_done_at_end = False
@@ -547,6 +548,7 @@ class TrainerConfig:
         ignore_worker_failures: Optional[bool] = None,
         recreate_failed_workers: Optional[bool] = None,
         restart_failed_sub_environments: Optional[bool] = None,
+        num_consecutive_worker_failures_tolerance: Optional[int] = None,
         horizon: Optional[int] = None,
         soft_horizon: Optional[bool] = None,
         no_done_at_end: Optional[bool] = None,
@@ -627,6 +629,13 @@ class TrainerConfig:
                 Sampler will try to restart the faulty sub-environment. This is done
                 without disturbing the other (still intact) sub-environment and without
                 the RolloutWorker crashing.
+            num_consecutive_worker_failures_tolerance: The number of consecutive times
+                a rollout worker (or evaluation worker) failure is tolerated before
+                finally crashing the Trainer. Only useful if either
+                `ignore_worker_failures` or `recreate_failed_workers` is True.
+                Note that for `restart_failed_sub_environments` and sub-environment
+                failures, the worker itself is NOT affected and won't throw any errors
+                as the flawed sub-environment is silently restarted under the hood.
             horizon: Number of steps after which the episode is forced to terminate.
                 Defaults to `env.spec.max_episode_steps` (if present) for Gym envs.
             soft_horizon: Calculate rewards but don't reset the environment when the
@@ -685,6 +694,10 @@ class TrainerConfig:
             self.recreate_failed_workers = recreate_failed_workers
         if restart_failed_sub_environments is not None:
             self.restart_failed_sub_environments = restart_failed_sub_environments
+        if num_consecutive_worker_failures_tolerance is not None:
+            self.num_consecutive_worker_failures_tolerance = (
+                num_consecutive_worker_failures_tolerance
+            )
         if horizon is not None:
             self.horizon = horizon
         if soft_horizon is not None:

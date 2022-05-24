@@ -261,18 +261,18 @@ class _VectorizedGymEnv(VectorEnv):
     def restart_at(self, index: Optional[int] = None) -> None:
         if index is None:
             index = 0
-        old_env = self.envs[index]
-        # Re-create the sub-env at the new index.
-        self.envs[index] = self.make_env(index)
+
         # Try closing down the old (possibly faulty) sub-env, but ignore errors.
         try:
-            old_env.close()
+            self.envs[index].close()
         except Exception as e:
             if log_once("close_sub_env"):
                 logger.warning(
                     "Trying to close old and replaced sub-environment (at vector "
                     f"index={index}), but closing resulted in error:\n{e}"
                 )
+        # Re-create the sub-env at the new index.
+        self.envs[index] = self.make_env(index)
 
     @override(VectorEnv)
     def vector_step(self, actions):
@@ -321,12 +321,18 @@ class VectorEnvWrapper(BaseEnv):
     def __init__(self, vector_env: VectorEnv):
         self.vector_env = vector_env
         self.num_envs = vector_env.num_envs
-        self.new_obs = None  # lazily initialized
-        self.cur_rewards = [None for _ in range(self.num_envs)]
-        self.cur_dones = [False for _ in range(self.num_envs)]
-        self.cur_infos = [None for _ in range(self.num_envs)]
         self._observation_space = vector_env.observation_space
         self._action_space = vector_env.action_space
+
+        # Sub-environments' states.
+        self.new_obs = None
+        self.cur_rewards = None
+        self.cur_dones = None
+        self.cur_infos = None
+        # At first `poll()`, reset everything (all sub-environments).
+        self.first_reset_done = False
+        # Initialize sub-environments' state.
+        self._init_env_state(idx=None)
 
     @override(BaseEnv)
     def poll(
@@ -334,16 +340,20 @@ class VectorEnvWrapper(BaseEnv):
     ) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict]:
         from ray.rllib.env.base_env import with_dummy_agent_id
 
-        if self.new_obs is None:
+        if not self.first_reset_done:
+            self.first_reset_done = True
             self.new_obs = self.vector_env.vector_reset()
         new_obs = dict(enumerate(self.new_obs))
         rewards = dict(enumerate(self.cur_rewards))
         dones = dict(enumerate(self.cur_dones))
         infos = dict(enumerate(self.cur_infos))
+
+        # Empty all states (in case `poll()` gets called again).
         self.new_obs = []
         self.cur_rewards = []
         self.cur_dones = []
         self.cur_infos = []
+
         return (
             with_dummy_agent_id(new_obs),
             with_dummy_agent_id(rewards),
@@ -383,11 +393,7 @@ class VectorEnvWrapper(BaseEnv):
         # Restart the sub-env at the index.
         self.vector_env.restart_at(env_id)
         # Auto-reset (get ready for next `poll()`).
-        self.new_obs[env_id] = self.vector_env.reset_at(env_id)
-        # Reset all other states to null values.
-        self.cur_rewards[env_id] = None
-        self.cur_dones[env_id] = False
-        self.cur_infos[env_id] = None
+        self._init_env_state(env_id)
 
     @override(BaseEnv)
     def get_sub_environments(self, as_dict: bool = False) -> Union[List[EnvType], dict]:
@@ -407,7 +413,7 @@ class VectorEnvWrapper(BaseEnv):
     @property
     @override(BaseEnv)
     @PublicAPI
-    def observation_space(self) -> gym.spaces.Dict:
+    def observation_space(self) -> gym.Space:
         return self._observation_space
 
     @property
@@ -432,3 +438,23 @@ class VectorEnvWrapper(BaseEnv):
     @PublicAPI
     def get_agent_ids(self) -> Set[AgentID]:
         return {_DUMMY_AGENT_ID}
+
+    def _init_env_state(self, idx: Optional[int] = None) -> None:
+        """Resets all or one particular sub-environment's state (by index).
+
+        Args:
+            idx: The index to reset at. If None, reset all the sub-environments' states.
+        """
+        # If index is None, reset all sub-envs' states:
+        if idx is None:
+            self.new_obs = [None for _ in range(self.num_envs)]
+            self.cur_rewards = [0.0 for _ in range(self.num_envs)]
+            self.cur_dones = [False for _ in range(self.num_envs)]
+            self.cur_infos = [{} for _ in range(self.num_envs)]
+        # Index provided, reset only the sub-env's state at the given index.
+        else:
+            self.new_obs[idx] = self.vector_env.reset_at(idx)
+            # Reset all other states to null values.
+            self.cur_rewards[idx] = 0.0
+            self.cur_dones[idx] = False
+            self.cur_infos[idx] = {}

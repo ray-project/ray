@@ -503,7 +503,7 @@ class MultiAgentEnvWrapper(BaseEnv):
             self.envs.append(self.make_env(len(self.envs)))
         for env in self.envs:
             assert isinstance(env, MultiAgentEnv)
-        self.env_states = [_MultiAgentEnvState(env) for env in self.envs]
+        self._init_env_state(idx=None)
         self._unwrapped_env = self.envs[0].unwrapped
 
     @override(BaseEnv)
@@ -565,13 +565,13 @@ class MultiAgentEnvWrapper(BaseEnv):
             # Recreate the sub-env.
             self.envs[idx] = self.make_env(idx)
             # Replace the multi-agent env state at the index.
-            self.env_states[idx] = _MultiAgentEnvState(self.envs[idx])
+            self._init_env_state(idx)
             # Remove done flag at index.
             if idx in self.dones:
                 self.dones.remove(idx)
 
     @override(BaseEnv)
-    def get_sub_environments(self, as_dict: bool = False) -> List[EnvType]:
+    def get_sub_environments(self, as_dict: bool = False) -> Union[Dict[str, EnvType], List[EnvType]]:
         if as_dict:
             return {_id: env_state for _id, env_state in enumerate(self.env_states)}
         return [state.env for state in self.env_states]
@@ -587,7 +587,7 @@ class MultiAgentEnvWrapper(BaseEnv):
     @override(BaseEnv)
     @PublicAPI
     def observation_space(self) -> gym.spaces.Dict:
-        self.envs[0].observation_space
+        return self.envs[0].observation_space
 
     @property
     @override(BaseEnv)
@@ -614,6 +614,20 @@ class MultiAgentEnvWrapper(BaseEnv):
     @override(BaseEnv)
     def get_agent_ids(self) -> Set[AgentID]:
         return self.envs[0].get_agent_ids()
+
+    def _init_env_state(self, idx: Optional[int] = None) -> None:
+        """Resets all or one particular sub-environment's state (by index).
+
+        Args:
+            idx: The index to reset at. If None, reset all the sub-environments' states.
+        """
+        # If index is None, reset all sub-envs' states:
+        if idx is None:
+            self.env_states = [_MultiAgentEnvState(env) for env in self.envs]
+        # Index provided, reset only the sub-env's state at the given index.
+        else:
+            assert isinstance(idx, int)
+            self.env_states[idx] = _MultiAgentEnvState(self.envs[idx])
 
 
 class _MultiAgentEnvState:

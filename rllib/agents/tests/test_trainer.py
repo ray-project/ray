@@ -147,23 +147,20 @@ class TestTrainer(unittest.TestCase):
             trainer.stop()
 
     def test_evaluation_option(self):
-        config = dqn.DEFAULT_CONFIG.copy()
-        config.update(
-            {
-                "env": "CartPole-v0",
-                "evaluation_interval": 2,
-                "evaluation_duration": 2,
-                "evaluation_config": {
-                    "gamma": 0.98,
-                },
-                # Use a custom callback that asserts that we are running the
-                # configured exact number of episodes per evaluation.
-                "callbacks": AssertEvalCallback,
-            }
-        )
+        # Use a custom callback that asserts that we are running the
+        # configured exact number of episodes per evaluation.
+        config = dqn.DQNConfig().environment(env="CartPole-v0").evaluation(
+            evaluation_interval=2,
+            evaluation_duration=2,
+            evaluation_duration_unit="episodes",
+            evaluation_config={
+                "gamma": 0.98,
+            },
+            always_attach_evaluation_results=True
+        ).callbacks(callbacks_class=AssertEvalCallback)
 
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            trainer = dqn.DQNTrainer(config=config)
+            trainer = config.build()
             # Given evaluation_interval=2, r0, r2, r4 should not contain
             # evaluation metrics, while r1, r3 should.
             r0 = trainer.train()
@@ -184,25 +181,19 @@ class TestTrainer(unittest.TestCase):
             self.assertNotEqual(r1["evaluation"], r3["evaluation"])
 
     def test_evaluation_option_always_attach_eval_metrics(self):
-        config = dqn.DEFAULT_CONFIG.copy()
-        config.update(
-            {
-                "env": "CartPole-v0",
-                "evaluation_interval": 2,
-                "evaluation_duration": 2,
-                "evaluation_duration_unit": "episodes",
-                "evaluation_config": {
-                    "gamma": 0.98,
-                },
-                "always_attach_evaluation_results": True,
-                # Use a custom callback that asserts that we are running the
-                # configured exact number of episodes per evaluation.
-                "callbacks": AssertEvalCallback,
-            }
-        )
-
+        # Use a custom callback that asserts that we are running the
+        # configured exact number of episodes per evaluation.
+        config = dqn.DQNConfig().environment(env="CartPole-v0").evaluation(
+            evaluation_interval=2,
+            evaluation_duration=2,
+            evaluation_duration_unit="episodes",
+            evaluation_config={
+                "gamma": 0.98,
+            },
+            always_attach_evaluation_results=True
+        ).callbacks(callbacks_class=AssertEvalCallback)
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            trainer = dqn.DQNTrainer(config=config)
+            trainer = config.build()
             # Should always see latest available eval results.
             r0 = trainer.train()
             r1 = trainer.train()
@@ -219,21 +210,14 @@ class TestTrainer(unittest.TestCase):
             self.assertTrue("evaluation" in r3)
 
     def test_evaluation_wo_evaluation_worker_set(self):
-        config = a3c.DEFAULT_CONFIG.copy()
-        config.update(
-            {
-                "env": "CartPole-v0",
-                # Switch off evaluation (this should already be the default).
-                "evaluation_interval": None,
-                # Use a custom callback that asserts that we are running the
-                # configured exact number of episodes per evaluation.
-                "callbacks": AssertEvalCallback,
-            }
-        )
+        # Use a custom callback that asserts that we are running the
+        # configured exact number of episodes per evaluation.
+        config = a3c.A3CConfig().environment(env="CartPole-v0").callbacks(callbacks_class=AssertEvalCallback)
+
         for _ in framework_iterator(frameworks=("tf", "torch")):
             # Setup trainer w/o evaluation worker set and still call
             # evaluate() -> Expect error.
-            trainer_wo_env_on_driver = a3c.A3CTrainer(config=config)
+            trainer_wo_env_on_driver = config.build()
             self.assertRaisesRegex(
                 ValueError,
                 "Cannot evaluate w/o an evaluation worker set",
@@ -245,13 +229,13 @@ class TestTrainer(unittest.TestCase):
             # This force-adds the env on the local-worker, so this Trainer
             # can `evaluate` even though it doesn't have an evaluation-worker
             # set.
-            config["create_env_on_driver"] = True
-            trainer_w_env_on_driver = a3c.A3CTrainer(config=config)
+            config.create_env_on_local_worker = True
+            trainer_w_env_on_driver = config.build()
             results = trainer_w_env_on_driver.evaluate()
             assert "evaluation" in results
             assert "episode_reward_mean" in results["evaluation"]
             trainer_w_env_on_driver.stop()
-            config["create_env_on_driver"] = False
+            config.create_env_on_local_worker = False
 
     def test_space_inference_from_remote_workers(self):
         # Expect to not do space inference if the learner has an env.
@@ -298,22 +282,21 @@ class TestTrainer(unittest.TestCase):
 
     def test_worker_validation_time(self):
         """Tests the time taken by `validate_workers_after_construction=True`."""
-        config = pg.PGConfig()
-        config.env = "CartPole-v0"
+        config = pg.PGConfig().environment(env="CartPole-v0")
         config.validate_workers_after_construction = True
 
         # Test, whether validating one worker takes just as long as validating
         # >> 1 workers.
         config.num_workers = 1
         t0 = time.time()
-        trainer = pg.PGTrainer(config=config)
+        trainer = config.build()
         total_time_1 = time.time() - t0
         print(f"Validating w/ 1 worker: {total_time_1}sec")
         trainer.stop()
 
         config.num_workers = 5
         t0 = time.time()
-        trainer = pg.PGTrainer(config=config)
+        trainer = config.build()
         total_time_5 = time.time() - t0
         print(f"Validating w/ 5 workers: {total_time_5}sec")
         trainer.stop()

@@ -225,6 +225,9 @@ class Trainer(Trainable):
         self._env_id, self.env_creator = self._get_env_id_and_creator(
             env or config.get("env"), config
         )
+        env_descr = (
+            self._env_id if isinstance(self._env_id, str) else self._env_id.__name__
+        )
 
         # Placeholder for a local replay buffer instance.
         self.local_replay_buffer = None
@@ -234,7 +237,7 @@ class Trainer(Trainable):
             # Default logdir prefix containing the agent's name and the
             # env id.
             timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-            logdir_prefix = "{}_{}_{}".format(str(self), self._env_id, timestr)
+            logdir_prefix = "{}_{}_{}".format(str(self), env_descr, timestr)
             if not os.path.exists(DEFAULT_RESULTS_DIR):
                 os.makedirs(DEFAULT_RESULTS_DIR)
             logdir = tempfile.mkdtemp(prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
@@ -379,12 +382,17 @@ class Trainer(Trainable):
             # constructor).
             except RayActorError as e:
                 # In case of an actor (remote worker) init failure, the remote worker
-                # may still exist and will be accessbile, however, e.g. calling
-                # `sample.remote()` on it would result to strange "property not found"
+                # may still exist and will be accessible, however, e.g. calling
+                # its `sample.remote()` would result in strange "property not found"
                 # errors.
                 if e.actor_init_failed:
                     # Raise the original error here that the RolloutWorker raised
-                    # during its construction process.
+                    # during its construction process. This is to enforce transparency
+                    # for the user (better to understand the real reason behind the
+                    # failure).
+                    # - e.args[0]: The RayTaskError (inside the caught RayActorError).
+                    # - e.args[0].args[2]: The original Exception (e.g. a ValueError due
+                    # to a config mismatch) thrown inside the actor.
                     raise e.args[0].args[2]
                 # In any other case, raise the RayActorError as-is.
                 else:
@@ -2210,6 +2218,11 @@ class Trainer(Trainable):
     def _step_context(trainer):
         class StepCtx:
             def __enter__(self):
+                # Before first call to `step()`, `result` is expected to be None ->
+                # Start with self.failures=-1 -> set to 0 before the very first call
+                # to `self.step()`.
+                self.failures = -1
+
                 self.time_start = time.time()
                 self.sampled = 0
                 self.trained = 0
@@ -2221,6 +2234,9 @@ class Trainer(Trainable):
                 self.init_agent_steps_trained = trainer._counters[
                     NUM_AGENT_STEPS_TRAINED
                 ]
+                self.failure_tolerance = trainer.config[
+                    "num_consecutive_worker_failures_tolerance"
+                ]
                 return self
 
             def __exit__(self, *args):
@@ -2228,9 +2244,19 @@ class Trainer(Trainable):
 
             def should_stop(self, result):
 
-                # First call to stop, `result` is expected to be None.
-                # Return False (meaning: do continue and perform first step).
+                # Before first call to `step()`, `result` is expected to be None ->
+                # self.failures=0.
                 if result is None:
+                    # Fail after n retries.
+                    self.failures += 1
+                    if self.failures > self.failure_tolerance:
+                        raise RuntimeError(
+                            "More than `num_consecutive_worker_failures_tolerance="
+                            f"{self.failure_tolerance}` consecutive worker failures! "
+                            "Exiting."
+                        )
+                    # Continue to very first `step()` call or retry `step()` after
+                    # a (tolerable) failure.
                     return False
 
                 # Stopping criteria: Only when using the `training_iteration`

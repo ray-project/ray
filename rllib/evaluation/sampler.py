@@ -820,9 +820,16 @@ def _process_observations(
     for env_id, all_agents_obs in unfiltered_obs.items():
         is_new_episode: bool = env_id not in active_episodes
         episode: Episode = active_episodes[env_id]
+        # Check for any agent having a `episode_faulty` flag in its info dict.
+        # This is how a sub-environment can tell the caller to `poll()` that its
+        # current episode is faulty and should not be used for training.
+        # If any agent has this info -> Assume the entire episode is not good for
+        # training.
+        # TODO: We may want to insert the sub-environment faulty logic into the
+        #  BaseEnv's API, but there is currently no way of separating the ok return
+        #  values from healthy sub-environments from the errors thrown by faulty ones.
         episode_faulty = any(
-            isinstance(i, dict) and "episode_faulty" in i
-            for i in infos[env_id].values()
+            "episode_faulty" in i for i in infos[env_id].values()
         )
 
         if not is_new_episode:
@@ -1006,6 +1013,9 @@ def _process_observations(
             # MultiAgentBatch from a single episode and add it to "outputs".
             # Otherwise, just postprocess and continue collecting across
             # episodes.
+            # If an episode was marked faulty, perform regular postprocessing
+            # (to e.g. properly flush and clean up the SampleCollector's buffers),
+            # but then discard the entire batch and don't return it.
             ma_sample_batch = sample_collector.postprocess_episode(
                 episode,
                 is_done=is_done or (hit_horizon and not soft_horizon),
