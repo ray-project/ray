@@ -81,7 +81,7 @@ if __name__ == "__main__":
     #    verify(ray.train, set(), ok, output)
     #    verify(ray.serve, set(), ok, output)
     #    verify(ray.rllib, set(), ok, output)
-    verify(ray.tune, set(), ok, output)
+    # verify(ray.tune, set(), ok, output)
     #    verify(ray, set(), ok, output)
 
     print("Num ok", len(ok))
