@@ -16,7 +16,7 @@ config = {
     # Tweak the default model provided automatically by RLlib,
     # given the environment's observation- and action spaces.
     "model": {
-        "fcnet_hiddens": [5000, 5000],
+        "fcnet_hiddens": [500, 500],
         "fcnet_activation": "relu",
     },
     # Set up a separate evaluation worker set for the

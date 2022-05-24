@@ -205,14 +205,20 @@ class WorkerSet:
         )
         return init_results
 
-    def sync_weights_broadcast(self, buffer: cp.ndarray):
+    def sync_weights_broadcast(self, weights: Dict[str, Dict[str, cp.ndarray]]):
+        tensor_key_list = []
+        tensor_list = []
+        for key in weights['default_policy'].keys():
+            tensor = weights['default_policy'][key]
+            tensor_key_list.append(key)
+            tensor_list.append(tensor)
         # Broadcast to collective group buffers from worker 0
-        print(f">>>> Setting new weights to worker 0 buffer: {buffer}")
+        print(f">>>> Setting new weights to worker 0 buffer")
         start = time.time()
         ray.get(
             [
-                self.remote_workers()[0].set_buffer_key.remote("default_policy/fc_2/kernel"),
-                self.remote_workers()[0].set_buffer.remote(buffer),
+                self.remote_workers()[0].set_buffer_key_list.remote(tensor_key_list),
+                self.remote_workers()[0].set_buffer_list.remote(tensor_list),
             ]
         )
         print(f">>>> Time spent on setting new weights to worker 0 buffer: {(time.time() - start)*1000}ms")
@@ -220,8 +226,7 @@ class WorkerSet:
         start = time.time()
         ray.get(
             [
-                worker.broadcast.remote(group_name="device_mesh", src_rank=0)
-                for worker in self.remote_workers()
+                self.remote_workers()[0].broadcast.remote(group_name="device_mesh", src_rank=0)
             ]
         )
         print(f">>>> Time spent on warming up default_policy/fc_2/kernel buffer: {(time.time() - start)*1000}ms")
@@ -229,8 +234,7 @@ class WorkerSet:
         start = time.time()
         ray.get(
             [
-                worker.broadcast.remote(group_name="device_mesh", src_rank=0)
-                for worker in self.remote_workers()
+                self.remote_workers()[0].broadcast.remote(group_name="device_mesh", src_rank=0)
             ]
         )
         print(f">>>> Time spent on broadcasting default_policy/fc_2/kernel buffer: {(time.time() - start)*1000}ms")
@@ -270,13 +274,9 @@ class WorkerSet:
             print(f">>> len(weights): {len(weights)}")
             print(f">>> len(self.remote_workers()): {len(self.remote_workers())}")
             # buffer_key_list = []
-            buffer = None
             for key in weights['default_policy'].keys():
                 # print(f">>> Tensor key: {val}, size: {val.size()}")
                 tensor = weights['default_policy'][key]
-                # buffer_key_list.append(key)
-                if key == "_hidden_layers.1._model.0.weight":
-                    buffer = tensor
                 print(f"Type: {type(tensor)}, {(tensor.size * 4) / (10**6)} MB - {tensor.shape} - {key}")
             # Put weights only once into object store and use same object
             # ref to synch to all workers.
@@ -286,7 +286,7 @@ class WorkerSet:
             # Sync to all remote workers in this WorkerSet.
             # for to_worker in self.remote_workers():
             #     to_worker.set_weights.remote(weights_ref, global_vars=global_vars)
-            self.sync_weights_broadcast(buffer)
+            self.sync_weights_broadcast(weights)
 
         # If `from_worker` is provided, also sync to this WorkerSet's
         # local worker.

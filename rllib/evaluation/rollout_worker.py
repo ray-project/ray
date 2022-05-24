@@ -385,7 +385,8 @@ class RolloutWorker(ParallelIteratorWorker):
             disable_env_checking: If True, disables the env checking module that
                 validates the properties of the passed environment.
         """
-        self.buffer = cp.ndarray(shape=(2,2))
+        self.buffer_key_list = []
+        self.buffer_list = []
         # Deprecated args.
         if policy is not None:
             deprecation_warning("policy", "policy_spec", error=False)
@@ -1576,13 +1577,17 @@ class RolloutWorker(ParallelIteratorWorker):
     #     collective.recv(self.policy_map_buffer, src_rank, group_name)
 
     def broadcast(self, group_name="default", src_rank=0):
-        collective.broadcast(self.buffer, src_rank, group_name)
+        # TODO (jiaodong): build better API to send multiple tensors in batch
+        print(f">>>> Broadcasting ... len: buffer_key_list: {len(self.buffer_key_list)}, len: buffer_list: {len(self.buffer_list)}")
+        for i in range(len(self.buffer_key_list)):
+            print(f">>>> Broadcasting tensor for {self.buffer_key_list[i]}.. ")
+            collective.broadcast(self.buffer_list[i], src_rank, group_name)
 
-    def set_buffer_key(self, buffer_key: str):
-        self.buffer_key = buffer_key
+    def set_buffer_key_list(self, buffer_key_list: List[str]):
+        self.buffer_key_list = buffer_key_list
 
-    def set_buffer(self, buffer: cp.ndarray):
-        self.buffer = buffer
+    def set_buffer_list(self, buffer_list: List[cp.ndarray]):
+        self.buffer_list = buffer_list
 
     # def get_policy_map_buffer(self):
     #     return self.policy_map_buffer
