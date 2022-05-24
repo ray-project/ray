@@ -5,7 +5,7 @@
 Environments
 ============
 
-RLlib works with several different types of environments, including `OpenAI Gym <https://gym.openai.com/>`__, user-defined, multi-agent, and also batched environments.
+RLlib works with several different types of environments, including `OpenAI Gym <https://www.gymlibrary.ml/>`__, user-defined, multi-agent, and also batched environments.
 
 .. tip::
 
@@ -16,7 +16,7 @@ RLlib works with several different types of environments, including `OpenAI Gym 
 Configuring Environments
 ------------------------
 
-You can pass either a string name or a Python class to specify an environment. By default, strings will be interpreted as a gym `environment name <https://gym.openai.com/envs>`__. Custom env classes passed directly to the trainer must take a single ``env_config`` parameter in their constructor:
+You can pass either a string name or a Python class to specify an environment. By default, strings will be interpreted as a gym `environment name <https://www.gymlibrary.ml/>`__. Custom env classes passed directly to the trainer must take a single ``env_config`` parameter in their constructor:
 
 .. code-block:: python
 

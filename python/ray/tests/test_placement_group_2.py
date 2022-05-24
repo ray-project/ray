@@ -639,7 +639,7 @@ def create_pg():
 # def f():
 #     create_pg()
 
-@ray.remote(num_cpus=0, max_restarts=1)
+@ray.remote(num_cpus=0, max_restarts=1, max_task_retries=-1)
 class A:
     def create_pg(self):
         create_pg()

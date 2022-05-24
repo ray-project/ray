@@ -7,8 +7,8 @@ import torch
 from ray.ml.predictor import Predictor, DataBatchType
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
-from ray.ml.utils.torch_utils import load_torch_model, convert_pandas_to_torch_tensor
-from ray.ml.constants import PREPROCESSOR_KEY, MODEL_KEY
+from ray.ml.train.integrations.torch import load_checkpoint
+from ray.ml.utils.torch_utils import convert_pandas_to_torch_tensor
 
 
 class TorchPredictor(Predictor):
@@ -42,17 +42,7 @@ class TorchPredictor(Predictor):
                 the model itself, then the state dict will be loaded to this
                 ``model``.
         """
-        checkpoint_dict = checkpoint.to_dict()
-        preprocessor = checkpoint_dict.get(PREPROCESSOR_KEY, None)
-        if MODEL_KEY not in checkpoint_dict:
-            raise RuntimeError(
-                f"No item with key: {MODEL_KEY} is found in the "
-                f"Checkpoint. Make sure this key exists when saving the "
-                f"checkpoint in ``TorchTrainer``."
-            )
-        model = load_torch_model(
-            saved_model=checkpoint_dict[MODEL_KEY], model_definition=model
-        )
+        model, preprocessor = load_checkpoint(checkpoint, model)
         return TorchPredictor(model=model, preprocessor=preprocessor)
 
     # parity with Datset.to_torch
@@ -92,7 +82,11 @@ class TorchPredictor(Predictor):
     def _predict(self, tensor: torch.Tensor) -> pd.DataFrame:
         """Handle actual prediction."""
         prediction = self.model(tensor).cpu().detach().numpy()
-        return pd.DataFrame(prediction, columns=["predictions"])
+        # If model has outputs a Numpy array (for example outputting logits),
+        # these cannot be used as values in a Pandas Dataframe.
+        # We have to convert the outermost dimension to a python list (but the values
+        # in the list can still be Numpy arrays).
+        return pd.DataFrame({"predictions": list(prediction)}, columns=["predictions"])
 
     def predict(
         self,
@@ -122,10 +116,10 @@ class TorchPredictor(Predictor):
                 format of ``feature_columns``, or be a single dtype, in which
                 case it will be applied to all tensors.
                 If None, then automatically infer the dtype.
-            unsqueeze_feature_tensors (bool): If set to True, the features tensors
-                will be unsqueezed (reshaped to (N, 1)) before being concatenated into
-                the final features tensor. Otherwise, they will be left as is, that is
-                (N, ). Defaults to True.
+            unsqueeze (bool): If set to True, the features tensors will be unsqueezed
+                (reshaped to (N, 1)) before being concatenated into the final features
+                tensor. Otherwise, they will be left as is, that is (N, ).
+                Defaults to True.
 
         Examples:
 

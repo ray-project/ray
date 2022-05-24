@@ -14,7 +14,6 @@ from ray._private.runtime_env.validation import (
     parse_and_validate_env_vars,
     parse_and_validate_py_modules,
 )
-from ray._private.runtime_env.plugin import encode_plugin_uri
 from ray.runtime_env import RuntimeEnv
 
 CONDA_DICT = {"dependencies": ["pip", {"pip": ["pip-install-test==0.5"]}]}
@@ -49,10 +48,6 @@ def test_directory():
 def test_key_with_value_none():
     parsed_runtime_env = RuntimeEnv(pip=None)
     assert parsed_runtime_env == {}
-
-
-def test_encode_plugin_uri():
-    assert encode_plugin_uri("plugin", "uri") == "plugin|uri"
 
 
 class TestValidateWorkingDir:

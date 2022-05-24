@@ -11,7 +11,7 @@ from ray.ml.checkpoint import Checkpoint
 from ray.ml.predictor import DataBatchType, Predictor
 from ray.serve.model_wrappers import ModelWrapperDeployment
 from ray.serve.pipeline.api import build
-from ray.experimental.dag.input_node import InputNode
+from ray.serve.dag import InputNode
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.http_adapters import json_to_ndarray
 import ray

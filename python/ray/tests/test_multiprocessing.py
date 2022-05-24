@@ -16,6 +16,7 @@ from ray.util.multiprocessing import Pool, TimeoutError, JoinableQueue
 from ray.util.joblib import register_ray
 
 from joblib import parallel_backend, Parallel, delayed
+from ray._private.test_utils import test_external_redis
 
 
 def teardown_function(function):
@@ -68,6 +69,9 @@ def ray_start_4_cpu():
     ray.shutdown()
 
 
+@pytest.mark.skipif(
+    test_external_redis(), reason="The same Redis is used within the test."
+)
 def test_ray_init(shutdown_only):
     def getpid(args):
         return os.getpid()
@@ -116,6 +120,9 @@ def test_ray_init(shutdown_only):
         }
     ],
     indirect=True,
+)
+@pytest.mark.skipif(
+    test_external_redis(), reason="The same Redis is used within the test."
 )
 def test_connect_to_ray(ray_start_cluster):
     def getpid(args):
