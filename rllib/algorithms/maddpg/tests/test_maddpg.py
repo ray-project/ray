@@ -1,7 +1,7 @@
 import unittest
 
 import ray
-import ray.rllib.agents.maddpg as maddpg
+import ray.rllib.algorithms.maddpg as maddpg
 from ray.rllib.examples.env.two_step_game import TwoStepGame
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.test_utils import (

@@ -43,7 +43,7 @@ class MADDPGPostprocessing:
 class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
     def __init__(self, obs_space, act_space, config):
         # _____ Initial Configuration
-        config = dict(ray.rllib.agents.maddpg.DEFAULT_CONFIG, **config)
+        config = dict(ray.rllib.algorithms.maddpg.maddpg.DEFAULT_CONFIG, **config)
         self.config = config
         self.global_step = tf1.train.get_or_create_global_step()
 
