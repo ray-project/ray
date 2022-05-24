@@ -13,8 +13,13 @@ from ray.experimental.internal_kv import (
     _internal_kv_put,
     _internal_kv_get,
     _internal_kv_exists,
+    _pin_runtime_env_uri,
 )
 from ray._private.thirdparty.pathspec import PathSpec
+from ray.ray_constants import (
+    RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT,
+    RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR,
+)
 
 default_logger = logging.getLogger(__name__)
 
@@ -235,6 +240,40 @@ def _get_gitignore(path: Path) -> Optional[Callable]:
         return match
     else:
         return None
+
+
+def pin_runtime_env_uri(uri: str, *, expiration_s: Optional[int] = None) -> None:
+    """Pin a reference to a runtime_env URI in the GCS on a timeout.
+
+    This is used to avoid premature eviction in edge conditions for job
+    reference counting. See https://github.com/ray-project/ray/pull/24719.
+
+    Packages are uploaded to GCS in order to be downloaded by a runtime env plugin
+    (e.g. working_dir, py_modules) after the job starts.
+
+    This function adds a temporary reference to the package in the GCS to prevent
+    it from being deleted before the job starts. (See #23423 for the bug where
+    this happened.)
+
+    If this reference didn't have an expiration, then if the script exited
+    (e.g. via Ctrl-C) before the job started, the reference would never be
+    removed, so the package would never be deleted.
+    """
+
+    if expiration_s is None:
+        expiration_s = int(
+            os.environ.get(
+                RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR,
+                RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT,
+            )
+        )
+    elif not isinstance(expiration_s, int):
+        raise ValueError(f"expiration_s must be an int, got {type(expiration_s)}.")
+
+    if expiration_s < 0:
+        raise ValueError(f"expiration_s must be >= 0, got {expiration_s}.")
+    elif expiration_s > 0:
+        _pin_runtime_env_uri(uri, expiration_s=expiration_s)
 
 
 def _store_package_in_gcs(
@@ -460,6 +499,8 @@ def upload_package_if_needed(
 
     if logger is None:
         logger = default_logger
+
+    pin_runtime_env_uri(pkg_uri)
 
     if package_exists(pkg_uri):
         return False

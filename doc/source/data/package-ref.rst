@@ -123,6 +123,23 @@ Custom Datasource API
 .. autoclass:: ray.data.ReadTask
     :members:
 
+Datasource Partitioning API
+---------------------------
+
+.. autoclass:: ray.data.datasource.PartitionStyle
+    :members:
+
+.. autoclass:: ray.data.datasource.PathPartitionScheme
+    :members:
+
+.. autoclass:: ray.data.datasource.PathPartitionEncoder
+    :members:
+
+.. autoclass:: ray.data.datasource.PathPartitionParser
+    :members:
+
+.. autoclass:: ray.data.datasource.PathPartitionFilter
+
 Built-in Datasources
 --------------------
 
@@ -146,7 +163,7 @@ Built-in Datasources
 
 .. autoclass:: ray.data.datasource.RangeDatasource
     :members:
-    
+
 .. autoclass:: ray.data.datasource.SimpleTensorFlowDatasource
     :members:
 

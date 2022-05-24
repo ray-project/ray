@@ -424,13 +424,21 @@ class TestRuntimeEnv:
             {JOB_NAME_METADATA_KEY: "custom_name", JOB_ID_METADATA_KEY: job_id}
         ) in job_manager.get_job_logs(job_id)
 
-    async def test_cuda_visible_devices(self, job_manager):
+    @pytest.mark.parametrize(
+        "env_vars",
+        [None, {}, {"hello": "world"}],
+    )
+    async def test_cuda_visible_devices(self, job_manager, env_vars):
         """Check CUDA_VISIBLE_DEVICES behavior.
 
         Should not be set in the driver, but should be set in tasks.
+
+        We test a variety of `env_vars` parameters due to custom parsing logic
+        that caused https://github.com/ray-project/ray/issues/25086.
         """
         run_cmd = f"python {_driver_script_path('check_cuda_devices.py')}"
-        job_id = job_manager.submit_job(entrypoint=run_cmd)
+        runtime_env = {"env_vars": env_vars}
+        job_id = job_manager.submit_job(entrypoint=run_cmd, runtime_env=runtime_env)
 
         await async_wait_for_condition(
             check_job_succeeded, job_manager=job_manager, job_id=job_id
