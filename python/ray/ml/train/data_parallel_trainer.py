@@ -336,7 +336,8 @@ class DataParallelTrainer(Trainer):
             resume_checkpoint_dict = None
 
         dataset_spec = _RayDatasetSpec(
-            dataset_or_dict=self.datasets, dataset_split_fn=_default_dataset_split_fn,
+            dataset_or_dict=self.datasets,
+            dataset_split_fn=_default_dataset_split_fn,
             ingest=self.ingest,
         )
 

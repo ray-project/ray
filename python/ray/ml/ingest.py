@@ -26,10 +26,10 @@ class StreamIngest(IngestStrategy):
         if train_dataset:
             preprocessor.fit_pipeline(train_dataset)
 
-#        new_datasets = {}
-#        for key, dataset in datasets.items():
-#            # TODO exclude train one for streaming read
-#            new_datasets[key] = preprocessor.transform(dataset)
+        #        new_datasets = {}
+        #        for key, dataset in datasets.items():
+        #            # TODO exclude train one for streaming read
+        #            new_datasets[key] = preprocessor.transform(dataset)
 
         # Return original datasets? Transforms will be applied on the fly at read time?
         return datasets
@@ -81,9 +81,7 @@ class BulkIngest(IngestStrategy):
             return pipe
 
         for i in range(self._world_size):
-            splits[i] = {
-                k: to_reader(v) for k, v in splits[i].items()
-            }
+            splits[i] = {k: to_reader(v) for k, v in splits[i].items()}
         return splits
 
 
