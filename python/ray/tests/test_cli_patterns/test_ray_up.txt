@@ -32,7 +32,7 @@ Acquiring an up-to-date head node
   \[3/7\] No worker file mounts to sync
   New status: setting-up
   \[4/7\] Running initialization commands
-  \[5/7\] Initalizing command runner
+  \[5/7\] Initializing command runner
   \[6/7\] Running setup commands
     \(0/4\) echo a
     \(1/4\) echo b
