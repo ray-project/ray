@@ -26,8 +26,8 @@ class PGConfig(TrainerConfig):
         >>> from ray import tune
         >>> config = PGConfig()
         >>> # Print out some default values.
-        >>> print(config.lr)
-        ... 0.0004
+        >>> print(config.lr) # doctest: +SKIP
+        0.0004
         >>> # Update the config object.
         >>> config.training(lr=tune.grid_search([0.001, 0.0001]))
         >>> # Set the config object's env.

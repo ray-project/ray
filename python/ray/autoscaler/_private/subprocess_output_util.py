@@ -325,7 +325,7 @@ def run_cmd_redirected(
         process_runner: Process runner used for executing commands.
         silent (bool): If true, the command output will be silenced completely
                        (redirected to /dev/null), unless verbose logging
-                       is enabled. Use this for runnign utility commands like
+                       is enabled. Use this for running utility commands like
                        rsync.
     """
     if silent and cli_logger.verbosity < 1:

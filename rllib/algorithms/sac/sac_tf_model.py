@@ -19,9 +19,9 @@ class SACTFModel(TFModelV2):
 
     To customize, do one of the following:
     - sub-class SACTFModel and override one or more of its methods.
-    - Use SAC's `Q_model` and `policy_model` keys to tweak the default model
+    - Use SAC's `q_model_config` and `policy_model` keys to tweak the default model
       behaviors (e.g. fcnet_hiddens, conv_filters, etc..).
-    - Use SAC's `Q_model->custom_model` and `policy_model->custom_model` keys
+    - Use SAC's `q_model_config->custom_model` and `policy_model->custom_model` keys
       to specify your own custom Q-model(s) and policy-models, which will be
       created within this SACTFModel (see `build_policy_model` and
       `build_q_model`.
@@ -160,7 +160,7 @@ class SACTFModel(TFModelV2):
 
         Override this method in a sub-class of SACTFModel to implement your
         own Q-nets. Alternatively, simply set `custom_model` within the
-        top level SAC `Q_model` config key to make this default implementation
+        top level SAC `q_model_config` config key to make this default implementation
         of `build_q_model` use your custom Q-nets.
 
         Returns:

@@ -8,7 +8,7 @@ import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.api.id.ObjectId;
 import io.ray.api.id.UniqueId;
-import io.ray.runtime.RayRuntimeInternal;
+import io.ray.runtime.AbstractRayRuntime;
 import java.io.Externalizable;
 import java.io.IOException;
 import java.io.ObjectInput;
@@ -60,7 +60,7 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
   public void init(ObjectId id, Class<?> type, boolean skipAddingLocalRef) {
     this.id = id;
     this.type = (Class<T>) type;
-    RayRuntimeInternal runtime = (RayRuntimeInternal) Ray.internal();
+    AbstractRayRuntime runtime = (AbstractRayRuntime) Ray.internal();
     Preconditions.checkState(workerId == null);
     workerId = runtime.getWorkerContext().getCurrentWorkerId();
 
@@ -106,7 +106,7 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
   public void writeExternal(ObjectOutput out) throws IOException {
     out.writeObject(this.getId());
     out.writeObject(this.getType());
-    RayRuntimeInternal runtime = (RayRuntimeInternal) Ray.internal();
+    AbstractRayRuntime runtime = (AbstractRayRuntime) Ray.internal();
     byte[] ownerAddress = runtime.getObjectStore().getOwnershipInfo(this.getId());
     out.writeInt(ownerAddress.length);
     out.write(ownerAddress);
@@ -121,7 +121,7 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
     byte[] ownerAddress = new byte[len];
     in.readFully(ownerAddress);
 
-    RayRuntimeInternal runtime = (RayRuntimeInternal) Ray.internal();
+    AbstractRayRuntime runtime = (AbstractRayRuntime) Ray.internal();
     Preconditions.checkState(workerId == null);
     workerId = runtime.getWorkerContext().getCurrentWorkerId();
     runtime.getObjectStore().addLocalReference(workerId, id);
@@ -156,7 +156,7 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
         REFERENCES.remove(this);
         // It's possible that GC is executed after the runtime is shutdown.
         if (Ray.isInitialized()) {
-          ((RayRuntimeInternal) (Ray.internal()))
+          ((AbstractRayRuntime) (Ray.internal()))
               .getObjectStore()
               .removeLocalReference(workerId, objectId);
           allObjects.remove(objectId);
