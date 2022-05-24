@@ -11,6 +11,7 @@ https://docs.ray.io/en/master/rllib-algorithms.html#deep-q-networks-dqn-rainbow-
 
 import logging
 from typing import List, Optional, Type, Callable
+import numpy as np
 
 from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.algorithms.dqn.dqn_torch_policy import DQNTorchPolicy
@@ -200,7 +201,7 @@ class DQNConfig(SimpleQConfig):
                 `train_batch_size` / (`rollout_fragment_length` x `num_workers` x
                 `num_envs_per_worker`).
                 If not None, will make sure that the ratio between timesteps inserted
-                into and sampled from th buffer matches the given values.
+                into and sampled from the buffer matches the given values.
                 Example:
                 training_intensity=1000.0
                 train_batch_size=250
@@ -293,13 +294,18 @@ def calculate_rr_weights(config: TrainerConfigDict) -> List[float]:
     native_ratio = config["train_batch_size"] / (
         config["rollout_fragment_length"]
         * config["num_envs_per_worker"]
-        * config["num_workers"]
+        # Add one to workers because the local
+        # worker usually collects experiences as well, and we avoid division by zero.
+        * max(config["num_workers"] + 1, 1)
     )
 
     # Training intensity is specified in terms of
     # (steps_replayed / steps_sampled), so adjust for the native ratio.
-    weights = [1, config["training_intensity"] / native_ratio]
-    return weights
+    sample_and_train_weight = config["training_intensity"] / native_ratio
+    if sample_and_train_weight < 1:
+        return [int(np.round(1 / sample_and_train_weight)), 1]
+    else:
+        return [1, int(np.round(sample_and_train_weight))]
 
 
 class DQNTrainer(SimpleQTrainer):
@@ -380,6 +386,10 @@ class DQNTrainer(SimpleQTrainer):
             # Postprocess batch before we learn on it
             post_fn = self.config.get("before_learn_on_batch") or (lambda b, *a: b)
             train_batch = post_fn(train_batch, self.workers, self.config)
+
+            # for policy_id, sample_batch in train_batch.policy_batches.items():
+            #     print(len(sample_batch["obs"]))
+            #     print(sample_batch.count)
 
             # Learn on training batch.
             # Use simple optimizer (only for multi-agent or tf-eager; all other
