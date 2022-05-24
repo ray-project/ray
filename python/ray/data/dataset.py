@@ -2466,8 +2466,8 @@ Dict[str, List[str]]]): The names of the columns
         ] = None,
         prefetch_blocks: int = 0,
         batch_size: int = 1,
-        unsqueeze_label_tensor=True,
         drop_last: bool = False,
+        unsqueeze_label_tensor=True,
     ) -> "tf.data.Dataset":
         """Return a TF Dataset over this dataset.
 
@@ -2491,6 +2491,12 @@ Dict[str, List[str]]]): The names of the columns
           {key1: (N, n1),..., keyN: (N, nk)}, with columns of each
           tensor corresponding to the value of ``feature_columns`` under the
           key.
+
+        If ``unsqueeze_label_tensor=True`` (default), the label tensor will be
+        of shape (N, 1). Otherwise, it will be of shape (N,).
+        If ``label_column`` is specified as ``None``, then no column from the
+        ``Dataset`` will be treated as the label, and the output label tensor
+        will be ``None``.
 
         This is only supported for datasets convertible to Arrow records.
 
@@ -2527,6 +2533,11 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
                 if the dataset size is not divisible by the batch size. If
                 False and the size of dataset is not divisible by the batch
                 size, then the last batch will be smaller. Defaults to False.
+            unsqueeze_label_tensor (bool): If set to True, the label tensor
+                will be unsqueezed (reshaped to (N, 1)). Otherwise, it will
+                be left as is, that is (N, ). In general, regression loss
+                functions expect an unsqueezed tensor, while classification
+                loss functions expect a squeezed one. Defaults to True.
 
         Returns:
             A tf.data.Dataset.
