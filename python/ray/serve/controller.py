@@ -3,6 +3,7 @@ from collections import defaultdict
 from copy import copy
 import json
 import logging
+import traceback
 import time
 import os
 from typing import Dict, Iterable, List, Optional, Tuple, Any
@@ -11,6 +12,7 @@ import ray
 from ray.types import ObjectRef
 from ray.actor import ActorHandle
 from ray._private.utils import import_attr
+from ray.exceptions import RayTaskError
 
 from ray.serve.autoscaling_metrics import InMemoryMetricsStore
 from ray.serve.autoscaling_policy import BasicAutoscalingPolicy
@@ -123,6 +125,9 @@ class ServeController:
 
         # Reference to Ray task executing most recent deployment request
         self.config_deployment_request_ref: ObjectRef = None
+
+        # Unix timestamp of latest config deployment request. Defaults to 0.
+        self.deployment_timestamp = 0
 
         # TODO(simon): move autoscaling related stuff into a manager.
         self.autoscaling_metrics_store = InMemoryMetricsStore()
@@ -533,10 +538,21 @@ class ServeController:
 
     def get_serve_status(self) -> bytes:
 
-        # TODO (shrekris-anyscale): Replace defaults with actual REST API status
         serve_app_status = ApplicationStatus.RUNNING
         serve_app_message = ""
-        deployment_timestamp = time.time()
+        deployment_timestamp = self.deployment_timestamp
+
+        if self.config_deployment_request_ref:
+            finished, pending = ray.wait([self.deploy_config_task_ref], timeout=0)
+
+        if pending:
+            serve_app_status = ApplicationStatus.DEPLOYING
+        else:
+            try:
+                ray.get(finished[0])
+            except RayTaskError:
+                serve_app_status = ApplicationStatus.DEPLOY_FAILED
+                serve_app_message = f"Deployment failed:\n{traceback.format_exc()}"
 
         app_status = ApplicationStatusInfo(
             serve_app_status, serve_app_message, deployment_timestamp
