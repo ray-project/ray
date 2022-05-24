@@ -1177,7 +1177,7 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
     auto job_iter = jobs.find(actor_id.JobId());
     auto is_job_dead = (job_iter == jobs.end() || job_iter->second.is_dead());
     if (actor_table_data.state() != ray::rpc::ActorTableData::DEAD &&
-        (!is_job_dead && actor->IsDetached())) {
+        (!is_job_dead || actor_table_data.is_detached())) {
       const auto &iter = actor_task_specs.find(actor_id);
       RAY_CHECK(iter != actor_task_specs.end());
       auto actor = std::make_shared<GcsActor>(actor_table_data, iter->second);
