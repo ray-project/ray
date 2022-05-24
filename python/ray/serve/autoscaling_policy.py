@@ -80,6 +80,8 @@ class AutoscalingPolicy:
                 ongoing requests for each replica.
             curr_target_num_replicas: The number of replicas that the
                 deployment is currently trying to scale to.
+            current_handle_queued_queries (float): The number of handle queued queries,
+            if there are multiple handles, the max one should be passed in
 
         Returns:
             int: The new number of replicas to scale to.
@@ -125,9 +127,7 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
         self,
         current_num_ongoing_requests: List[float],
         curr_target_num_replicas: int,
-        # Default is added for unit tests for unit test passing,
-        # no default value needed after the code settle down
-        current_handle_queued_queries: float = 0,
+        current_handle_queued_queries: float,
     ) -> int:
 
         if current_handle_queued_queries > 0 and len(current_num_ongoing_requests) == 0:
