@@ -45,7 +45,12 @@ from ray.tune.result import (
     TRIAL_ID,
     EXPERIMENT_TAG,
 )
-from ray.tune.schedulers import TrialScheduler, FIFOScheduler, AsyncHyperBandScheduler
+from ray.tune.schedulers import (
+    TrialScheduler,
+    FIFOScheduler,
+    AsyncHyperBandScheduler,
+)
+from ray.tune.schedulers.pb2 import PB2
 from ray.tune.stopper import (
     MaximumIterationStopper,
     TrialPlateauStopper,
@@ -1464,6 +1469,16 @@ class ShimCreationTest(unittest.TestCase):
         shim_scheduler = tune.create_scheduler(scheduler, **kwargs)
         real_scheduler = AsyncHyperBandScheduler(**kwargs)
         assert type(shim_scheduler) is type(real_scheduler)
+
+    def testCreateLazyImportScheduler(self):
+        kwargs = {
+            "metric": "metric_foo",
+            "mode": "min",
+            "hyperparam_bounds": {"param1": [0, 1]},
+        }
+        shim_scheduler_pb2 = tune.create_scheduler("pb2", **kwargs)
+        real_scheduler_pb2 = PB2(**kwargs)
+        assert type(shim_scheduler_pb2) is type(real_scheduler_pb2)
 
     def testCreateSearcher(self):
         kwargs = {"metric": "metric_foo", "mode": "min"}

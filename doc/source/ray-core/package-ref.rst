@@ -29,6 +29,12 @@ ray.remote
 
 .. autofunction:: ray.actor.ActorClass.options
 
+.. _scheduling-strategy-ref:
+
+.. autofunction:: ray.util.scheduling_strategies.PlacementGroupSchedulingStrategy
+
+.. autofunction:: ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy
+
 .. _ray-get-ref:
 
 ray.get

@@ -5,6 +5,7 @@ import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.util.JsonFormat;
 import com.google.protobuf.util.JsonFormat.Printer;
 import io.ray.api.BaseActorHandle;
+import io.ray.api.exception.RayIntentionalSystemExitException;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
 import io.ray.api.id.ObjectId;
@@ -13,7 +14,7 @@ import io.ray.api.options.ActorLifetime;
 import io.ray.api.runtimecontext.ResourceValue;
 import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.context.NativeWorkerContext;
-import io.ray.runtime.exception.RayIntentionalSystemExitException;
+import io.ray.runtime.functionmanager.FunctionManager;
 import io.ray.runtime.gcs.GcsClient;
 import io.ray.runtime.gcs.GcsClientOptions;
 import io.ray.runtime.generated.Common.WorkerType;
@@ -102,14 +103,13 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       if (rayConfig.workerMode == WorkerType.DRIVER && rayConfig.getJobId() == JobId.NIL) {
         rayConfig.setJobId(getGcsClient().nextJobId());
       }
-      int numWorkersPerProcess =
-          rayConfig.workerMode == WorkerType.DRIVER ? 1 : rayConfig.numWorkersPerProcess;
+      // Make sure the job id has been set already.
+      functionManager = new FunctionManager(rayConfig.codeSearchPath);
 
       byte[] serializedJobConfig = null;
       if (rayConfig.workerMode == WorkerType.DRIVER) {
         JobConfig.Builder jobConfigBuilder =
             JobConfig.newBuilder()
-                .setNumJavaWorkersPerProcess(rayConfig.numWorkersPerProcess)
                 .addAllJvmOptions(rayConfig.jvmOptionsForJavaWorker)
                 .addAllCodeSearchPath(rayConfig.codeSearchPath)
                 .setRayNamespace(rayConfig.namespace);
@@ -150,7 +150,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
           rayConfig.rayletSocketName,
           (rayConfig.workerMode == WorkerType.DRIVER ? rayConfig.getJobId() : JobId.NIL).getBytes(),
           new GcsClientOptions(rayConfig),
-          numWorkersPerProcess,
           rayConfig.logDir,
           serializedJobConfig,
           rayConfig.getStartupToken(),
@@ -224,19 +223,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   }
 
   @Override
-  public Object getAsyncContext() {
-    return new AsyncContext(
-        workerContext.getCurrentWorkerId(), workerContext.getCurrentClassLoader());
-  }
-
-  @Override
-  public void setAsyncContext(Object asyncContext) {
-    nativeSetCoreWorker(((AsyncContext) asyncContext).workerId.getBytes());
-    workerContext.setCurrentClassLoader(((AsyncContext) asyncContext).currentClassLoader);
-    super.setAsyncContext(asyncContext);
-  }
-
-  @Override
   List<ObjectId> getCurrentReturnIds(int numReturns, ActorId actorId) {
     List<byte[]> ret = nativeGetCurrentReturnIds(numReturns, actorId.getBytes());
     return ret.stream().map(ObjectId::new).collect(Collectors.toList());
@@ -289,7 +275,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       String rayletSocket,
       byte[] jobId,
       GcsClientOptions gcsClientOptions,
-      int numWorkersPerProcess,
       String logDir,
       byte[] serializedJobConfig,
       int startupToken,
@@ -302,8 +287,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   private static native void nativeKillActor(byte[] actorId, boolean noRestart);
 
   private static native byte[] nativeGetActorIdOfNamedActor(String actorName, String namespace);
-
-  private static native void nativeSetCoreWorker(byte[] workerId);
 
   private static native Map<String, List<ResourceValue>> nativeGetResourceIds();
 

@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Callable, Iterator, List
 
 from ray.data.block import Block, BlockMetadata, T
 from ray.data.datasource import Datasource, ReadTask
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     import tensorflow as tf
@@ -10,6 +11,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+@PublicAPI
 class SimpleTensorFlowDatasource(Datasource[T]):
     """A datasource that lets you use TensorFlow datasets with Ray Data.
 
