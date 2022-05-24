@@ -573,6 +573,7 @@ def download_and_unpack_package(
 
                     def open_file(uri, mode, *, transport_params=None):
                         return open(uri, mode)
+
                 else:
                     try:
                         from smart_open import open as open_file
