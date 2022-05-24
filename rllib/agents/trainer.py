@@ -34,6 +34,7 @@ from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.utils import gym_env_creator
 from ray.rllib.evaluation.episode import Episode
+from ray.rllib.utils import force_list
 from ray.rllib.evaluation.metrics import (
     collect_episodes,
     collect_metrics,
@@ -1873,15 +1874,9 @@ class Trainer(Trainable):
                 error=False,
             )
             config["off_policy_estimation_methods"] = input_evaluation
-        if isinstance(config["off_policy_estimation_methods"], tuple):
-            config["off_policy_estimation_methods"] = list(
-                config["off_policy_estimation_methods"]
-            )
-        elif not isinstance(config["off_policy_estimation_methods"], list):
-            raise ValueError(
-                "`off_policy_estimation_methods` must be a list of strings, got"
-                f"{config['off_policy_estimation_methods']} !"
-            )
+        config["off_policy_estimation_methods"] = force_list(
+            config["off_policy_estimation_methods"]
+        )
 
         # Check model config.
         # If no preprocessing, propagate into model's config as well

@@ -946,7 +946,7 @@ class TrainerConfig:
                 new="offline_data(off_policy_estimation_methods={})".format(
                     input_evaluation
                 ),
-                error=False,
+                error=True,
             )
             self.off_policy_estimation_methods = input_evaluation
         if off_policy_estimation_methods is not None:
