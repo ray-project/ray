@@ -189,8 +189,8 @@ class GcsClient:
         if channel is None:
             assert isinstance(address, str)
             channel = GcsChannel(gcs_address=address)
-        assert channel._aio is True
         assert isinstance(channel, GcsChannel)
+        assert channel._aio is False
         self._channel = channel
         self._connect()
         self._nums_reconnect_retry = nums_reconnect_retry
@@ -213,9 +213,7 @@ class GcsClient:
         self, key: bytes, namespace: Optional[bytes], timeout: Optional[int] = None
     ) -> bytes:
         logger.debug(f"internal_kv_get {key} {namespace}")
-        req = gcs_service_pb2.InternalKVGetRequest(
-            namespace=namespace, key=key
-        )
+        req = gcs_service_pb2.InternalKVGetRequest(namespace=namespace, key=key)
         reply = self._kv_stub.InternalKVGet(req, timeout=timeout)
         if reply.status.code == GcsCode.OK:
             return reply.value
@@ -277,9 +275,7 @@ class GcsClient:
         self, key: bytes, namespace: Optional[bytes], timeout: Optional[int] = None
     ) -> bool:
         logger.debug(f"internal_kv_exists {key} {namespace}")
-        req = gcs_service_pb2.InternalKVExistsRequest(
-            namespace=namespace, key=key
-        )
+        req = gcs_service_pb2.InternalKVExistsRequest(namespace=namespace, key=key)
         reply = self._kv_stub.InternalKVExists(req, timeout=timeout)
         if reply.status.code == GcsCode.OK:
             return reply.exists
@@ -294,9 +290,7 @@ class GcsClient:
         self, prefix: bytes, namespace: Optional[bytes], timeout: Optional[int] = None
     ) -> List[bytes]:
         logger.debug(f"internal_kv_keys {prefix} {namespace}")
-        req = gcs_service_pb2.InternalKVKeysRequest(
-            namespace=namespace, prefix=prefix
-        )
+        req = gcs_service_pb2.InternalKVKeysRequest(namespace=namespace, prefix=prefix)
         reply = self._kv_stub.InternalKVKeys(req, timeout=timeout)
         if reply.status.code == GcsCode.OK:
             return reply.results
@@ -334,8 +328,8 @@ class GcsAioClient:
         if channel is None:
             assert isinstance(address, str)
             channel = GcsChannel(gcs_address=address, aio=True)
-        assert channel._aio is True
         assert isinstance(channel, GcsChannel)
+        assert channel._aio is True
         self._channel = channel
         self._connect()
 
@@ -349,9 +343,7 @@ class GcsAioClient:
         self, key: bytes, namespace: Optional[bytes], timeout: Optional[int] = None
     ) -> Awaitable[bytes]:
         logger.debug(f"internal_kv_get {key} {namespace}")
-        req = gcs_service_pb2.InternalKVGetRequest(
-            namespace=namespace, key=key
-        )
+        req = gcs_service_pb2.InternalKVGetRequest(namespace=namespace, key=key)
         reply = await self._kv_stub.InternalKVGet(req, timeout=timeout)
         if reply.status.code == GcsCode.OK:
             return reply.value
@@ -372,13 +364,13 @@ class GcsAioClient:
         timeout: Optional[int] = None,
     ) -> Awaitable[int]:
         logger.debug(f"internal_kv_put {key} {value} {overwrite} {namespace}")
-        req = await gcs_service_pb2.InternalKVPutRequest(
+        req = gcs_service_pb2.InternalKVPutRequest(
             namespace=namespace,
             key=key,
             value=value,
             overwrite=overwrite,
         )
-        reply = self._kv_stub.InternalKVPut(req, timeout=timeout)
+        reply = await self._kv_stub.InternalKVPut(req, timeout=timeout)
         if reply.status.code == GcsCode.OK:
             return reply.added_num
         else:
@@ -410,9 +402,7 @@ class GcsAioClient:
         self, key: bytes, namespace: Optional[bytes], timeout: Optional[int] = None
     ) -> Awaitable[bool]:
         logger.debug(f"internal_kv_exists {key} {namespace}")
-        req = gcs_service_pb2.InternalKVExistsRequest(
-            namespace=namespace, key=key
-        )
+        req = gcs_service_pb2.InternalKVExistsRequest(namespace=namespace, key=key)
         reply = await self._kv_stub.InternalKVExists(req, timeout=timeout)
         if reply.status.code == GcsCode.OK:
             return reply.exists
@@ -426,9 +416,7 @@ class GcsAioClient:
         self, prefix: bytes, namespace: Optional[bytes], timeout: Optional[int] = None
     ) -> Awaitable[List[bytes]]:
         logger.debug(f"internal_kv_keys {prefix} {namespace}")
-        req = gcs_service_pb2.InternalKVKeysRequest(
-            namespace=namespace, prefix=prefix
-        )
+        req = gcs_service_pb2.InternalKVKeysRequest(namespace=namespace, prefix=prefix)
         reply = await self._kv_stub.InternalKVKeys(req, timeout=timeout)
         if reply.status.code == GcsCode.OK:
             return reply.results
@@ -437,8 +425,6 @@ class GcsAioClient:
                 f"Failed to list prefix {prefix} "
                 f"due to error {reply.status.message}"
             )
-
-
 
 
 def use_gcs_for_bootstrap():
