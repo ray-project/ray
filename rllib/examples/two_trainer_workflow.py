@@ -21,7 +21,9 @@ from ray.rllib.agents.ppo.ppo_torch_policy import PPOTorchPolicy
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import train_one_step
-from ray.rllib.execution.buffers.multi_agent_replay_buffer import MultiAgentReplayBuffer
+from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import (
+    MultiAgentReplayBuffer,
+)
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import override
@@ -82,7 +84,7 @@ class MyTrainer(Trainer):
         super().setup(config)
         # Create local replay buffer.
         self.local_replay_buffer = MultiAgentReplayBuffer(
-            num_shards=1, learning_starts=1000, capacity=50000, replay_batch_size=64
+            num_shards=1, learning_starts=1000, capacity=50000
         )
 
     @override(Trainer)
@@ -103,14 +105,14 @@ class MyTrainer(Trainer):
                 self._counters[NUM_AGENT_STEPS_SAMPLED] += ma_batch.agent_steps()
                 ppo_batch = ma_batch.policy_batches.pop("ppo_policy")
                 # Add collected batches (only for DQN policy) to replay buffer.
-                self.local_replay_buffer.add_batch(ma_batch)
+                self.local_replay_buffer.add(ma_batch)
 
                 ppo_batches.append(ppo_batch)
                 num_env_steps += ppo_batch.count
 
         # DQN sub-flow.
         dqn_train_results = {}
-        dqn_train_batch = self.local_replay_buffer.replay()
+        dqn_train_batch = self.local_replay_buffer.sample(num_items=64)
         if dqn_train_batch is not None:
             dqn_train_results = train_one_step(self, dqn_train_batch, ["dqn_policy"])
             self._counters["agent_steps_trained_DQN"] += dqn_train_batch.agent_steps()
