@@ -85,6 +85,10 @@ cdef class Config:
         return RayConfig.instance().object_manager_default_chunk_size()
 
     @staticmethod
+    def gcs_rpc_server_reconnect_timeout_s():
+        return RayConfig.instance().gcs_rpc_server_reconnect_timeout_s()
+
+    @staticmethod
     def maximum_gcs_deletion_batch_size():
         return RayConfig.instance().maximum_gcs_deletion_batch_size()
 
