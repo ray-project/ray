@@ -45,6 +45,7 @@ Status InMemoryStoreClient::AsyncPut(const std::string &table_name,
 Status InMemoryStoreClient::AsyncGet(const std::string &table_name,
                                      const std::string &key,
                                      const OptionalItemCallback<std::string> &callback) {
+  RAY_LOG_EVERY_MS(INFO, 60 * 1000) << DebugDump();
   RAY_CHECK(callback != nullptr);
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
@@ -174,6 +175,23 @@ Status InMemoryStoreClient::AsyncExists(const std::string &table_name,
                         "GcsInMemoryStore.Exists");
   return Status::OK();
 }
+
+std::string InMemoryStoreClient::DebugDump() {
+  std::stringstream stream;
+  absl::MutexLock lock(&mutex_);
+  stream << "num of tables: " << tables_.size() << "\n";
+  for (auto& [table_name, table] : tables_) {
+    stream << "table name: " << table_name << "\n";
+    absl::MutexLock lock(&(table->mutex_));
+    stream << "num of keys: " << table->records_.size() << "\n";
+    size_t total = 0;
+    for (auto& [key, value] : table->records_) {
+      total += key.size() + value.size();
+    }
+    stream << "total size: " << total << "\n";
+  }
+  return stream.str();
+} 
 
 }  // namespace gcs
 

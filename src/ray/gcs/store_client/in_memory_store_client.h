@@ -79,6 +79,8 @@ class InMemoryStoreClient : public StoreClient {
   std::shared_ptr<InMemoryStoreClient::InMemoryTable> GetOrCreateTable(
       const std::string &table_name);
 
+  std::string DebugDump();
+
   /// Mutex to protect the tables_ field.
   absl::Mutex mutex_;
   absl::flat_hash_map<std::string, std::shared_ptr<InMemoryTable>> tables_
