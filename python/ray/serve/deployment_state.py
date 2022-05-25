@@ -1336,7 +1336,9 @@ class DeploymentState:
 
             # Check for a non-zero number of deployments.
             if target_replica_count == running_at_target_version_replica_cnt:
-                self._curr_status_info = DeploymentStatusInfo(DeploymentStatus.HEALTHY)
+                self._curr_status_info = DeploymentStatusInfo(
+                    self._name, DeploymentStatus.HEALTHY
+                )
                 return False
 
         return False
