@@ -3425,7 +3425,9 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
         return repr(self)
 
     def __len__(self) -> int:
-        return self.count()
+        raise AttributeError(
+            "This operation causes a distributed query. Use `count` instead if you would really like to do this"
+        )
 
     def _block_num_rows(self) -> List[int]:
         get_num_rows = cached_remote_fn(_get_num_rows)
