@@ -932,17 +932,16 @@ cdef int64_t restore_spilled_objects_handler(
                     ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER_IDLE):
                 bytes_restored = external_storage.restore_spilled_objects(
                     object_refs, urls)
-        except Exception:
+        except Exception as err:
             exception_str = (
                 "An unexpected internal error occurred while the IO worker "
-                "was restoring spilled objects.")
+                "was restoring spilled objects. Attempted to restore URLS: {}, got {}".format(err))
             logger.exception(exception_str)
-            if os.getenv("RAY_BACKEND_LOG_LEVEL") == "debug":
-                ray._private.utils.push_error_to_driver(
-                    ray.worker.global_worker,
-                    "restore_objects_error",
-                    traceback.format_exc() + exception_str,
-                    job_id=None)
+            ray._private.utils.push_error_to_driver(
+                ray.worker.global_worker,
+                "restore_objects_error",
+                traceback.format_exc() + exception_str,
+                job_id=None)
     return bytes_restored
 
 
