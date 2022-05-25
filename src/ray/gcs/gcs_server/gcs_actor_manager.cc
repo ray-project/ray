@@ -1176,6 +1176,10 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
   for (const auto &[actor_id, actor_table_data] : gcs_init_data.Actors()) {
     auto job_iter = jobs.find(actor_id.JobId());
     auto is_job_dead = (job_iter == jobs.end() || job_iter->second.is_dead());
+    // We only load actors which are supposed to be alive:
+    //   - Actors which are not dead.
+    //   - Non-deatched actors whoes owner is alive.
+    //   - Detached actors which lives even when their original owner is dead.
     if (actor_table_data.state() != ray::rpc::ActorTableData::DEAD &&
         (!is_job_dead || actor_table_data.is_detached())) {
       const auto &iter = actor_task_specs.find(actor_id);
