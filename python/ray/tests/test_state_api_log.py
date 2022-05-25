@@ -22,10 +22,9 @@ from ray.dashboard.modules.log.log_manager import LogsManager
 from ray.experimental.log.common import (
     LogStreamOptions,
     LogIdentifiers,
-    NodeIdentifiers,
     FileIdentifiers,
 )
-from ray.dashboard.modules.log.log_grpc_client import LogsGrpcClient
+from ray.experimental.state.state_manager import StateDataSourceClient
 
 ASYNCMOCK_MIN_PYTHON_VER = (3, 8)
 
@@ -68,8 +67,8 @@ def logs_manager():
         raise Exception(f"Unsupported for this version of python {sys.version_info}")
     from unittest.mock import AsyncMock
 
-    grpc_client = AsyncMock(LogsGrpcClient)
-    manager = LogsManager(grpc_client)
+    client = AsyncMock(StateDataSourceClient)
+    manager = LogsManager(client)
     yield manager
 
 
@@ -257,7 +256,7 @@ def test_logs_list(ray_start_with_dashboard):
     webui_url = format_web_url(webui_url)
 
     # test that list logs is comprehensive
-    response = requests.get(webui_url + "/api/experimental/logs/list")
+    response = requests.get(webui_url + "/api/v0/logs")
     response.raise_for_status()
     logs = json.loads(response.text)
     assert len(logs) == 1
@@ -280,7 +279,7 @@ def test_logs_list(ray_start_with_dashboard):
     return True
 
     # Test that logs/list can be filtered
-    response = requests.get(webui_url + "/api/experimental/logs/list?filters=gcs")
+    response = requests.get(webui_url + "/api/v0/logs?filters=gcs")
     response.raise_for_status()
     logs = json.loads(response.text)
     assert len(logs) == 1
@@ -290,7 +289,7 @@ def test_logs_list(ray_start_with_dashboard):
         if category != "gcs_server":
             assert len(logs[node_id][category]) == 0
 
-    response = requests.get(webui_url + "/api/experimental/logs/list?filters=worker")
+    response = requests.get(webui_url + "/api/v0/logs?filters=worker")
     response.raise_for_status()
     logs = json.loads(response.text)
     assert len(logs) == 1
@@ -318,7 +317,7 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
     webui_url = ray_start_with_dashboard["webui_url"]
     webui_url = format_web_url(webui_url)
 
-    response = requests.get(webui_url + "/api/experimental/logs/list")
+    response = requests.get(webui_url + "/api/v0/logs")
     response.raise_for_status()
     logs = json.loads(response.text)
     assert len(logs) == 1
@@ -330,7 +329,7 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
     # Test stream and fetching by actor id
     stream_response = requests.get(
         webui_url
-        + f"/api/experimental/logs/stream?node_id={node_id}&lines=2"
+        + f"/api/v0/logs/stream?node_id={node_id}&lines=2"
         + "&actor_id="
         + actor._ray_actor_id.hex(),
         stream=True,
@@ -362,7 +361,7 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
     LINES = 150
     file_response = requests.get(
         webui_url
-        + f"/api/experimental/logs/file?node_id={node_id}&lines={LINES}"
+        + f"/api/v0/logs/file?node_id={node_id}&lines={LINES}"
         + "&actor_id="
         + actor._ray_actor_id.hex(),
     ).content.decode("utf-8")
@@ -381,7 +380,7 @@ def test_logs_grpc_client_termination(ray_start_with_dashboard):
     DASHBOARD_AGENT_FILE_NAME = "dashboard_agent.log"
     stream_response = requests.get(
         webui_url
-        + f"/api/experimental/logs/stream?node_id={node_id}"
+        + f"/api/v0/logs/stream?node_id={node_id}"
         + f"&lines=0&log_file_name={RAYLET_FILE_NAME}",
         stream=True,
     )
@@ -392,7 +391,7 @@ def test_logs_grpc_client_termination(ray_start_with_dashboard):
 
     file_response = requests.get(
         webui_url
-        + f"/api/experimental/logs/file?node_id={node_id}"
+        + f"/api/v0/logs/file?node_id={node_id}"
         + f"&lines=10&log_file_name={DASHBOARD_AGENT_FILE_NAME}",
     )
 
@@ -413,7 +412,7 @@ def test_logs_grpc_client_termination(ray_start_with_dashboard):
 
     file_response = requests.get(
         webui_url
-        + f"/api/experimental/logs/file?node_id={node_id}"
+        + f"/api/v0/logs/file?node_id={node_id}"
         + f"&lines=10&log_file_name={DASHBOARD_AGENT_FILE_NAME}",
     )
 

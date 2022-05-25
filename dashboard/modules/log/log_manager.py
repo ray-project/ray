@@ -1,152 +1,64 @@
-from typing import List, TypeVar
-import asyncio
-import aiohttp.web
 import logging
-from dataclasses import fields, is_dataclass
+
+from collections import defaultdict
+from typing import List, Optional, Dict
+from pathlib import Path
 
 from ray.experimental.log.common import (
-    NodeIdentifiers,
-    LogIdentifiers,
     LogStreamOptions,
+    FileIdentifiers
 )
-from ray.experimental.log.consts import (
-    RAY_LOG_CATEGORIES,
-    RAY_WORKER_LOG_CATEGORIES,
-)
-from ray.dashboard.modules.log.log_grpc_client import LogsGrpcClient
+from ray.experimental.state.exception import DataSourceUnavailable
+from ray.experimental.state.state_manager import StateDataSourceClient
+# TODO(sang): Remove the usage of this class.
 from ray.dashboard.datacenter import DataSource
 from ray import ray_constants
 
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar("T")  # Declare type variable
-
-
-def to_schema(req: aiohttp.web.Request, Dataclass: T) -> T:
-    """Converts a aiohttp Request into the given dataclass
-
-    Args:
-        req: the request to extract the fields from
-        Dataclass: the dataclass to instantiate from the request
-    """
-    kwargs = {}
-    for field in fields(Dataclass):
-        if is_dataclass(field.type):
-            # recursively resolve the dataclass
-            kwargs[field.name] = to_schema(req, field.type)
-        else:
-            value = req.query.get(field.name) or req.match_info.get(field.name)
-            # Note: This is brittle as the class needs to be
-            # instantiable from the str
-            kwargs[field.name] = field.type(value) if value else None
-    return Dataclass(**kwargs)
-
-
-def wait_until_client_initializes(func):
-    async def wait_wrapper(self, *args, **kwargs):
-        await self.client.wait_until_initialized()
-        return await func(self, *args, **kwargs)
-
-    return wait_wrapper
-
 
 class LogsManager:
-    def __init__(self, grpc_client: LogsGrpcClient):
-        self.client = grpc_client
+    def __init__(self, data_source_client: StateDataSourceClient):
+        self.client = data_source_client
 
     @property
-    def logs_client(self):
+    def logs_client(self) -> StateDataSourceClient:
         return self.client
 
-    @wait_until_client_initializes
-    async def resolve_node_id(self, args: NodeIdentifiers):
-        node_id = args.node_id
-        if node_id is None:
-            ip = args.node_ip
-            if ip is not None:
-                node_id = self.client.ip_to_node_id(ip)
-                if node_id is None:
-                    raise ValueError(f"node_ip: {ip} not found")
-        elif node_id not in self.client.get_all_registered_nodes():
-            raise ValueError(f"node_id: {node_id} not found")
-        return node_id
-
-    @wait_until_client_initializes
-    async def list_logs(self, node_id: str, filters: List[str]):
+    def resolve_node_id(self, node_ip: Optional[str]):
+        """Resolve the node id from a given node ip.
+        
+        Args:
+            node_ip: The node ip.
+        
+        Returns:
+            node_id if there's a node id that matches the given node ip and is alive.
+            None otherwise.
         """
-        Helper function to list the logs by querying each agent
-        on each cluster via gRPC.
+        return self.client.ip_to_node_id(node_ip)
+
+    async def list_logs(self, node_id: str, glob_filter: Optional[str], timeout: int) -> List[str]:
+        """Return a list of log files on a given node id filtered by the glob.
+        
+        Args:
+            node_id: The node id where log files present.
+            glob_filter: The glob filter to filter out log files.
+            timeout: The timeout of the API.
+        
+        Returns:
+            A list of log files categorized by a component.
+
+        Raises:
+            DataSourceUnavailable: If a source is unresponsive.
         """
-        response = {}
-        tasks = []
+        self._verify_node_registered(node_id)
+        reply = await self.client.list_logs(node_id, timeout=timeout)
+        return self._categorize_log_files(reply.log_files, glob_filter)
 
-        async def fill_response_for_node_id(node_id: str):
-            reply = await self.client.list_logs(node_id, timeout=None)
-            response[node_id] = self._list_logs_single_node(reply.log_files, filters)
-
-        for node_id_it in self.client.get_all_registered_nodes():
-            if node_id is None or node_id == node_id_it:
-                tasks.append(fill_response_for_node_id(node_id_it))
-        await asyncio.gather(*tasks)
-        return response
-
-    async def _resolve_file_and_node(self, args: LogIdentifiers):
-        node_id = await self.resolve_node_id(args.node)
-        log_file_name = args.file.log_file_name
-
-        # If `log_file_name` is not provided, check if we can get the
-        # corresponding `log_file_name` if an `actor_id` is provided.
-        if log_file_name is None:
-            if args.file.actor_id is not None:
-                actor_data = DataSource.actors.get(args.file.actor_id)
-                if actor_data is None:
-                    raise ValueError("Actor ID {actor_id} not found.")
-                worker_id = actor_data["address"].get("workerId")
-                if worker_id is None:
-                    raise ValueError("Worker ID for Actor ID {actor_id} not found.")
-
-                index = await self.list_logs(node_id, [worker_id])
-                for node in index:
-                    for file in index[node]["worker_stdout"]:
-                        if file.split(".")[0].split("-")[1] == worker_id:
-                            log_file_name = file
-                            if node_id is None:
-                                node_id = node
-                            break
-
-        # If `log_file_name` cannot be resolved, check if we can get the
-        # corresponding `log_file_name` if a `pid` is provided.
-        if log_file_name is None:
-            pid = args.file.pid
-            if pid is not None:
-                if node_id is None:
-                    raise ValueError(
-                        "Node identifiers (node_ip, node_id) not provided "
-                        f"with pid: {pid}. "
-                    )
-                index = await self.list_logs(node_id, [pid])
-                for file in index[node_id]["worker_stdout"]:
-                    if file.split(".")[0].split("-")[3] == pid:
-                        log_file_name = file
-                        break
-                if log_file_name is None:
-                    raise ValueError(
-                        f"Worker with pid {pid} not found on node {node_id}"
-                    )
-
-        # node_id and log_file_name need to be known by this point
-        if node_id is None or node_id not in self.client.get_all_registered_nodes():
-            raise ValueError(f"node_id {node_id} not found")
-        if log_file_name is None:
-            raise ValueError("Could not resolve file identifiers to a file name.")
-
-        return log_file_name, node_id
-
-    @wait_until_client_initializes
     async def create_log_stream(
         self,
-        identifiers: LogIdentifiers,
+        identifiers: FileIdentifiers,
         stream_options: LogStreamOptions,
     ):
         log_file_name, node_id = await self._resolve_file_and_node(identifiers)
@@ -166,54 +78,95 @@ class LogsManager:
             interval=stream_options.interval,
         )
 
-    @staticmethod
-    def _list_logs_single_node(log_files: List[str], filters: List[str]):
-        """
-        Returns a JSON file mapping a category of log component to a list of filenames,
-        on the given node.
-        """
-        filters = [] if filters == [""] else filters
+    def _verify_node_registered(self, node_id: str):
+        if node_id not in self.client.get_all_registered_agent_ids():
+            raise DataSourceUnavailable(
+                f"Given node id, {node_id} is not available. "
+                "It's either the node is dead, or it is not registered. Use `ray list nodes` "
+                "to see the node status. If the node is registered, it is highly likely "
+                "a transient issue. Try again.")
 
-        def contains_all_filters(log_file_name):
-            return all(f in log_file_name for f in filters)
+    async def _resolve_file_and_node(self, file_identifier: FileIdentifiers, node_id: Optional[str] = None, node_ip: Optional[str] = None):
+        node_id = node_id or self.resolve_node_id(node_ip)
+        self._verify_node_registered(node_id)
 
-        filtered = list(filter(contains_all_filters, log_files))
-        logs = {}
-        logs["worker_errors"] = list(
-            filter(lambda s: "worker" in s and s.endswith(".err"), filtered)
-        )
-        logs["worker_stdout"] = list(
-            filter(lambda s: "worker" in s and s.endswith(".out"), filtered)
-        )
-        for lang in ray_constants.LANGUAGE_WORKER_TYPES:
-            logs[f"{lang}_core_worker"] = list(
-                filter(
-                    lambda s: f"{lang}-core-worker" in s and s.endswith(".log"),
-                    filtered,
-                )
-            )
-            logs[f"{lang}_driver"] = list(
-                filter(
-                    lambda s: f"{lang}-core-driver" in s and s.endswith(".log"),
-                    filtered,
-                )
-            )
-        for key in logs:
-            assert key in RAY_WORKER_LOG_CATEGORIES
+        # If `log_file_name` is not provided, check if we can get the
+        # corresponding `log_file_name` if an `actor_id` is provided.
+        log_file_name = file_identifier.log_file_name
+        if log_file_name is None:
+            if file_identifier.actor_id is not None:
+                actor_data = DataSource.actors.get(file_identifier.actor_id)
+                if actor_data is None:
+                    raise ValueError("Actor ID {actor_id} not found.")
+                worker_id = actor_data["address"].get("workerId")
+                if worker_id is None:
+                    raise ValueError("Worker ID for Actor ID {actor_id} not found.")
 
-        LOG_MATCH_BY_CATEGORY_EXCEPTIONS = ["autoscaler", "misc"]
-        for category in RAY_LOG_CATEGORIES:
-            if category not in LOG_MATCH_BY_CATEGORY_EXCEPTIONS:
-                logs[category] = list(filter(lambda s: category in s, filtered))
-            elif category == "autoscaler":
-                logs["autoscaler"] = list(
-                    filter(
-                        lambda s: "monitor" in s and "log_monitor" not in s, filtered
+                index = await self.list_logs(node_id, [worker_id])
+                for node in index:
+                    for file in index[node]["worker_stdout"]:
+                        if file.split(".")[0].split("-")[1] == worker_id:
+                            log_file_name = file
+                            if node_id is None:
+                                node_id = node
+                            break
+
+        # If `log_file_name` cannot be resolved, check if we can get the
+        # corresponding `log_file_name` if a `pid` is provided.
+        if log_file_name is None:
+            pid = file_identifier.pid
+            if pid is not None:
+                if node_id is None:
+                    raise ValueError(
+                        "Node identifiers (node_ip, node_id) not provided "
+                        f"with pid: {pid}. "
                     )
-                )
+                index = await self.list_logs(node_id, [pid])
+                for file in index[node_id]["worker_stdout"]:
+                    if file.split(".")[0].split("-")[3] == pid:
+                        log_file_name = file
+                        break
+                if log_file_name is None:
+                    raise ValueError(
+                        f"Worker with pid {pid} not found on node {node_id}"
+                    )
 
-        logs["folders"] = list(filter(lambda s: "." not in s, filtered))
-        logs["misc"] = list(
-            filter(lambda s: all([s not in logs[k] for k in logs]), filtered)
-        )
-        return logs
+        # node_id and log_file_name need to be known by this point
+        if node_id is None or node_id not in self.client.get_all_registered_agent_ids():
+            raise ValueError(f"node_id {node_id} not found")
+        if log_file_name is None:
+            raise ValueError("Could not resolve file identifiers to a file name.")
+
+        return log_file_name, node_id
+
+    def _categorize_log_files(log_files: List[str], glob_filter: Optional[str]) -> Dict[str, List[str]]:
+        """Categorize the given log files after filterieng them out using a given glob.
+        
+        Returns:
+            Dictionary of {component_name -> list of log files}
+        """
+        result = defaultdict(list)
+        log_files = [p for p in log_files if Path(p).match(glob_filter)]
+        for log_file in log_files:
+            if "worker" in log_file and (log_file.endswith(".out") or log_file.endswith(".err")):
+                result["worker"].append(log_file)
+            elif "core-worker" in log_file and log_file.endswith(".log"):
+                result["core_worker"].append(log_file)
+            elif "core-driver" in log_file and log_file.endswith(".log"):
+                result["driver"].append(log_file)
+            elif "raylet." in log_file:
+                result["raylet"].append(log_file)
+            elif "gcs_server." in log_file:
+                result["gcs_server"].append(log_file)
+            elif "log_monitor" in log_file:
+                result["internal"].append(log_file)
+            elif "monitor" in log_file:
+                result["autoscaler"].append(log_file)
+            elif "agent." in log_file:
+                result["agent"].append(log_file)
+            elif "dashboard." in log_file:
+                result["dashboard"].append(log_file)
+            else:
+                result["internal"].append(log_file)
+
+        return result

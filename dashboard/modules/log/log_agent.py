@@ -50,6 +50,8 @@ class LogAgentV1Grpc(
     async def ListLogs(self, request, context):
         """
         Lists all files in the active Ray logs directory.
+
+        NOTE: These RPCs are used by state_head.py, not log_head.py
         """
         logger.info(f"initiated ListLogs:\n{request}")
 
@@ -72,6 +74,8 @@ class LogAgentV1Grpc(
         Streams the log in real time starting from `request.lines` number of lines from
         the end of the file if `request.keep_alive == True`. Else, it terminates the
         stream once there are no more bytes to read from the log file.
+
+        NOTE: These RPCs are used by state_head.py, not log_head.py
         """
         logger.info(f"initiated StreamLog:\n{request}")
 

@@ -2,14 +2,6 @@ import logging
 
 import aiohttp.web
 import ray.dashboard.modules.log.log_utils as log_utils
-from ray.dashboard.modules.log.log_manager import (
-    LogsManager,
-    LogIdentifiers,
-    NodeIdentifiers,
-    LogStreamOptions,
-    to_schema,
-)
-from ray.dashboard.modules.log.log_grpc_client import LogsGrpcClient
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray.dashboard.datacenter import DataSource, GlobalSignals
@@ -101,75 +93,6 @@ class LogHead(dashboard_utils.DashboardHeadModule):
         html = f"<html>\n{head_str}\n{body}\n</html>"
 
         return html
-
-    async def run(self, server):
-        pass
-
-    @staticmethod
-    def is_minimal_module():
-        return False
-
-
-def catch_internal_server_error(func):
-    async def try_catch_wrapper(*args, **kwargs):
-        try:
-            return await func(*args, **kwargs)
-        except Exception as e:
-            logger.exception(e)
-            return aiohttp.web.HTTPInternalServerError(reason=e)
-
-    return try_catch_wrapper
-
-
-class LogHeadV1(dashboard_utils.DashboardHeadModule):
-    def __init__(self, dashboard_head):
-        super().__init__(dashboard_head)
-        self.logs_manager = LogsManager(LogsGrpcClient())
-
-    @routes.get("/api/experimental/logs/list")
-    @catch_internal_server_error
-    async def handle_list_logs(self, req: aiohttp.web.Request):
-        """
-        Returns a JSON file containing, for each node in the cluster,
-        a dict mapping a category of log component to a list of filenames.
-        """
-        filters = req.query.get("filters", "").split(",")
-        node_id = await self.logs_manager.resolve_node_id(
-            to_schema(req, NodeIdentifiers)
-        )
-        response = await self.logs_manager.list_logs(node_id, filters)
-        return aiohttp.web.json_response(response)
-
-    @routes.get("/api/experimental/logs/{media_type}")
-    @catch_internal_server_error
-    async def handle_get_log(self, req: aiohttp.web.Request):
-        """
-        If `media_type = stream`, creates HTTP stream which is either kept alive while
-        the HTTP connection is not closed. Else, if `media_type = file`, the stream
-        ends once all the lines in the file requested are transmitted.
-        """
-
-        stream = await self.logs_manager.create_log_stream(
-            identifiers=to_schema(req, LogIdentifiers),
-            stream_options=to_schema(req, LogStreamOptions),
-        )
-
-        response = aiohttp.web.StreamResponse()
-        response.content_type = "text/plain"
-        await response.prepare(req)
-
-        # try-except here in order to properly handle ongoing HTTP stream
-        try:
-            async for log_response in stream:
-                await response.write(log_response.data)
-            await response.write_eof()
-            return response
-        except Exception as e:
-            logger.exception(str(e))
-            await response.write(b"Closing HTTP stream due to internal server error:\n")
-            await response.write(str(e).encode())
-            await response.write_eof()
-            return response
 
     async def run(self, server):
         pass
