@@ -1,12 +1,15 @@
 from gym.spaces import Discrete, MultiDiscrete, Space
 import logging
 import numpy as np
-from typing import Optional, Union
+from typing import Dict, Optional, Union, TYPE_CHECKING
 
+from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.env.base_env import BaseEnv
+from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import NullContextManager
 from ray.rllib.utils.annotations import override
@@ -16,6 +19,9 @@ from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.tf_utils import get_placeholder
 from ray.rllib.utils.typing import FromConfigSpec, ModelConfigDict, TensorType
 
+if TYPE_CHECKING:
+    from ray.rllib.evaluation import RolloutWorker
+    
 logger = logging.getLogger(__name__)
 
 tf1, tf, tfv = try_import_tf()
@@ -71,54 +77,54 @@ class NovelD(Exploration):
         """Initializes a NovelD exploration scheme.
 
         Args:
-            action_space: The action space of the environment. At
-                present NovelD exploration works only with
+            action_space: The action space of the environment. At 
+                present NovelD exploration works only with 
                 (Multi)Discrete action spaces.
-            framework: The ml framework used to train the model.
-                Can be either one of ["tf", "tf2", "torch"].
+            framework: The ml framework used to train the model. 
+                Can be either one of ["tf", "tf2", "torch"]. 
                 tf: TensorFlow (static-graph); tf2: TensorFlow 2.x
                 (eager or traced, if eager_tracing=True); torch: PyTorch.
-                This should be the same framework as used in the Trainer.
+                This should be the same framework as used in the Trainer. 
             embed_dim: The embedding dimension of the distillation networks
-                used to compute the novelty of a state. This is the output
-                size of the distillation networks. A larger embedding size
-                will generalize less and therefore states have to be very
-                similar for the intrinsic reward o shrink to zero. Note
+                used to compute the novelty of a state. This is the output 
+                size of the distillation networks. A larger embedding size 
+                will generalize less and therefore states have to be very 
+                similar for the intrinsic reward o shrink to zero. Note 
                 that large embedding sizes will necessarily result in slower
-                training times for the agent as the distillation network is
+                training times for the agent as the distillation network is 
                 trained for one iteration after each single rollout.
-            distill_net_config: An optional model configuration for the
-                distillation networks. If None, the configuration of the
-                Policy model is used.
-            lr: The learning rate of the distillation network optimizer. The
-                optimizer used is `Adam`. Note the network usually approaches
-                its target easily. Too high learning rates will result in
-                the intrinsic rewards vanishing faster and exploring similar
-                states results in smaller rewards. Learning rates too small
-                cause the opposite effect: intrinsic rewards are getting still
-                paid for highly similar states even though they are not that
-                new anymore.
-            alpha: The scaling factor of the state's novelty. Smaller values
-                increase the intrinsic rewards every time new states are visited.
-                An ablation study has shown an optimal for alpha is 0.5.
-            beta: The clipping factor of NovelD. Intrinsic rewards will be not
-                smaller than beta. A value too large will result in all intrinsic
-                rewards being the same until a specific state has been visited.
-                The ablation study in the paper shows that a value of 0 is
+            distill_net_config: An optional model configuration for the 
+                distillation networks. If None, the configuration of the 
+                Policy model is used. 
+            lr: The learning rate of the distillation network optimizer. The 
+                optimizer used is `Adam`. Note the network usually approaches 
+                its target easily. Too high learning rates will result in 
+                the intrinsic rewards vanishing faster and exploring similar 
+                states results in smaller rewards. Learning rates too small 
+                cause the opposite effect: intrinsic rewards are getting still 
+                paid for highly similar states even though they are not that 
+                novel anymore.
+            alpha: The scaling factor of the state's novelty. Smaller values 
+                increase the intrinsic rewards every time new states are visited. 
+                An ablation study has shown an optimal value for alpha is 0.5.
+            beta: The clipping factor of NovelD. Intrinsic rewards will be not 
+                smaller than beta. A value too large will result in all intrinsic 
+                rewards being the same until a specific state has been visited. 
+                The ablation study in the paper shows that a value of 0 is 
                 preferable.
-            intrinsic_reward_coeff: Scaling factor of the next states intrinsic
-                reward. The default value appears to be a good choice. Values
-                too high might be contraproductive leading to no signal from the
-                original (sparse) rewards. Values too low make exploration less
+            intrinsic_reward_coeff: Scaling factor of the next state's intrinsic 
+                reward. The default value appears to be a good choice. Values 
+                too high might be contraproductive leading to no signal from the 
+                original (sparse) rewards. Values too low make exploration less 
                 efficient as the agent has less incentive to do so.
-            normalize: Indicates, if intrinsic rewards should be normalized. In
-                experiments with distillation networks a normalization of intrinsic
+            normalize: Indicates, if intrinsic rewards should be normalized. In 
+                experiments with distillation networks a normalization of intrinsic 
                 rewards results in more stable exploration (after a burn-in).
-            random_timesteps: The number of timesteps to act fully random when the
+            random_timesteps: The number of timesteps to act fully random when the 
                 default sub-exploration is used (`subexploration=None`).
             subexploration: The config dict for the underlying Exploration
-                to use (e.g. epsilon-greedy for DQN). If None, EpsilonGreedy is
-                used with a PiecewiseSchedule, i.e. using the `random_timesteps`.
+                to use (e.g. epsilon-greedy for DQN). If None, `EpsilonGreedy` is 
+                used with a `PiecewiseSchedule`, i.e. using the `random_timesteps`.            
         """
         if not isinstance(action_space, (Discrete, MultiDiscrete)):
             raise ValueError(
@@ -163,6 +169,7 @@ class NovelD(Exploration):
         self.beta = beta
         self.intrinsic_reward_coeff = intrinsic_reward_coeff
         self.normalize = normalize
+        self._moving_mean_std = None
 
         self._state_counts = {}
         self._state_counts_total = 0.0
@@ -170,9 +177,8 @@ class NovelD(Exploration):
         if self.normalize:
             # Use the `_Moving_MeanStd` class to normalize the intrinsic rewards.
             from ray.rllib.utils.exploration.random_encoder import _MovingMeanStd
-
             self._moving_mean_std = _MovingMeanStd()
-
+            
         self.action_dim = (
             self.action_space.n
             if isinstance(self.action_space, Discrete)
@@ -508,3 +514,133 @@ class NovelD(Exploration):
         """
         states_hashes = [self._hash_state(single_obs) for single_obs in obs]
         return np.array([self._state_counts[hash] for hash in states_hashes])
+
+
+class NovelDMetricsCallbacks(DefaultCallbacks):
+    """Collects metrics for NovelD exploration.
+
+    The metrics should help users monitor the exploration of
+    the environment. The metrics tracked are:
+
+    intrinsic_reward: The intrinsic reward given by NovelD for
+        exploring new states. These are averaged over the
+        timesteps in the episode. A high metric indicates that
+        a lot of new states are explored over the course of an
+        episode.
+    novelty: The novelty in NovelD is the distillation error.
+        This error decreases over the run of an experiment for
+        already explored states. A low metric indicates that
+        the agent visits states where it has already been or
+        states that are very similar to states he visited before.
+        If the state is truly novel this metric increases.
+    novelty_next: This is the equivalent metric for the next
+        state visited (see `novelty`). Together with `novelty`
+        this metric helps the user to understand the values for
+        the `intrinsic_reward`.
+    state_counts_total: The number of states explored over the
+        course of the experiment. If this metric stagnates it is
+        a sign of little exploration.
+    state_counts_avg: The average number of state visits. This
+        metric averages the visits to single states. If this metric
+        rises it is a sign of either little exploration or of
+        states that have to be crossed by the agent to go further.
+        Together with `state_counts_total` this metric helps user
+        to get a glimpse at state exploration. A low
+        `state_counts_total` with high `state_counts_avg` is a
+        strong sign of little exploration, whereas a high
+        `state_counts_total` together with a low `state_counts_avg`
+        is a good indicator of much exploration.
+    """
+
+    def __init__(self):
+        super().__init__()
+
+    def on_episode_start(
+        self,
+        *,
+        worker: "RolloutWorker",
+        base_env: BaseEnv,
+        policies: Dict[str, Policy],
+        episode: Episode,
+        env_index: int,
+        **kwargs,
+    ):
+        assert episode.length == 0, (
+            "ERROR: `on_episode_start()` callback should be called right "
+            "after `env.reset()`."
+        )
+
+        episode.user_data["intrinsic_reward"] = []
+        episode.user_data["novelty"] = []
+        episode.user_data["novelty_next"] = []
+        episode.user_data["state_counts_total"] = []
+        episode.user_data["state_counts_avg"] = []
+
+    def on_episode_step(
+        self,
+        *,
+        worker: "RolloutWorker",
+        base_env: BaseEnv,
+        policies: Dict[str, Policy],
+        episode: Episode,
+        env_index: int,
+        **kwargs,
+    ):
+        assert episode.length > 0, (
+            "ERROR: `on_episode_step()` callback should not be called right "
+            "after `env.reset()`."
+        )
+
+        # Get the actual state values of the NovelD exploration.
+        (
+            intrinsic_reward,
+            novelty,
+            novelty_next,
+            state_counts_total,
+            state_counts_avg,
+        ) = policies["default_policy"].get_exploration_state()
+
+        # Average over batch.
+        episode.user_data["intrinsic_reward"].append(np.mean(intrinsic_reward))
+        episode.user_data["novelty"].append(np.mean(novelty))
+        episode.user_data["novelty_next"].append(np.mean(novelty_next))
+        episode.user_data["state_counts_total"].append(np.mean(state_counts_total))
+        episode.user_data["state_counts_avg"].append(np.mean(state_counts_avg))
+
+    def on_episode_end(
+        self,
+        *,
+        worker: "RolloutWorker",
+        base_env: BaseEnv,
+        policies: Dict[str, Policy],
+        episode: Episode,
+        env_index: int,
+        **kwargs,
+    ):
+        # Average over episode.
+        episode.custom_metrics["noveld/intrinsic_reward"] = np.mean(
+            episode.user_data["intrinsic_reward"]
+        )
+        episode.custom_metrics["noveld/novelty"] = np.mean(episode.user_data["novelty"])
+        episode.custom_metrics["noveld/novelty_next"] = np.mean(
+            episode.user_data["novelty_next"]
+        )
+        episode.custom_metrics["noveld/state_counts_total"] = np.mean(
+            episode.user_data["state_counts_total"]
+        )
+        episode.custom_metrics["noveld/state_counts_avg"] = np.mean(
+            episode.user_data["state_counts_avg"]
+        )
+
+        # Show also histograms of episodic intrinsic rewards.
+        episode.hist_data["noveld/intrinsic_reward"] = episode.user_data[
+            "intrinsic_reward"
+        ]
+        episode.hist_data["noveld/novelty"] = episode.user_data["novelty"]
+        episode.hist_data["noveld/novelty_next"] = episode.user_data["novelty_next"]
+        episode.hist_data["noveld/state_counts_total"] = episode.user_data[
+            "state_counts_total"
+        ]
+        episode.hist_data["noveld/state_counts_avg"] = episode.user_data[
+            "state_counts_avg"
+        ]
