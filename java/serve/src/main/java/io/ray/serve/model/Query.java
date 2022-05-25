@@ -1,4 +1,4 @@
-package io.ray.serve;
+package io.ray.serve.model;
 
 import io.ray.serve.generated.RequestMetadata;
 

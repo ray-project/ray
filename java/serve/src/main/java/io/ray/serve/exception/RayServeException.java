@@ -1,4 +1,4 @@
-package io.ray.serve;
+package io.ray.serve.exception;
 
 import io.ray.runtime.exception.RayException;
 

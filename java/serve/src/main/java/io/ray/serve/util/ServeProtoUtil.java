@@ -4,15 +4,16 @@ import com.google.common.collect.Lists;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
 import io.ray.runtime.serializer.MessagePackSerializer;
-import io.ray.serve.Constants;
-import io.ray.serve.DeploymentConfig;
-import io.ray.serve.DeploymentVersion;
-import io.ray.serve.RayServeException;
+import io.ray.serve.exception.RayServeException;
 import io.ray.serve.generated.DeploymentLanguage;
 import io.ray.serve.generated.EndpointInfo;
 import io.ray.serve.generated.EndpointSet;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.generated.RequestWrapper;
+import io.ray.serve.model.Constants;
+import io.ray.serve.model.DeploymentConfig;
+import io.ray.serve.model.DeploymentVersion;
+
 import java.util.Map;
 import org.apache.commons.lang3.StringUtils;
 

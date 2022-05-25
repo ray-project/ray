@@ -1,9 +1,10 @@
 package io.ray.serve.poll;
 
-import io.ray.serve.RayServeException;
 import java.io.Serializable;
 import java.util.Objects;
 import org.apache.commons.lang3.StringUtils;
+
+import io.ray.serve.exception.RayServeException;
 
 /** Key type of long poll. */
 public class KeyType implements Serializable {

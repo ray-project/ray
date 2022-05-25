@@ -8,6 +8,14 @@ import io.ray.serve.api.Serve;
 import io.ray.serve.generated.DeploymentLanguage;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.generated.RequestWrapper;
+import io.ray.serve.model.Constants;
+import io.ray.serve.model.DeploymentConfig;
+import io.ray.serve.model.DeploymentInfo;
+import io.ray.serve.model.DeploymentVersion;
+import io.ray.serve.model.RayServeConfig;
+import io.ray.serve.replica.DummyReplica;
+import io.ray.serve.replica.RayServeWrappedReplica;
+
 import java.io.IOException;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.testng.Assert;

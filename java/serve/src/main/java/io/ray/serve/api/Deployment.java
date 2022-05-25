@@ -4,8 +4,8 @@ import java.util.Map;
 
 import com.google.common.base.Preconditions;
 
-import io.ray.serve.DeploymentConfig;
-import io.ray.serve.RayServeHandle;
+import io.ray.serve.handle.RayServeHandle;
+import io.ray.serve.model.DeploymentConfig;
 
 /**
  * Construct a Deployment. CONSTRUCTOR SHOULDN'T BE USED DIRECTLY.

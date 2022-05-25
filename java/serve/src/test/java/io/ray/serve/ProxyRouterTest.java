@@ -1,15 +1,21 @@
 package io.ray.serve;
 
+import java.util.HashMap;
+import java.util.Map;
+
+import org.apache.commons.lang3.RandomStringUtils;
+import org.testng.Assert;
+import org.testng.annotations.Test;
+
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
 import io.ray.serve.api.Serve;
 import io.ray.serve.generated.EndpointInfo;
+import io.ray.serve.handle.RayServeHandle;
+import io.ray.serve.model.Constants;
+import io.ray.serve.model.RayServeConfig;
+import io.ray.serve.router.ProxyRouter;
 import io.ray.serve.util.CommonUtil;
-import java.util.HashMap;
-import java.util.Map;
-import org.apache.commons.lang3.RandomStringUtils;
-import org.testng.Assert;
-import org.testng.annotations.Test;
 
 public class ProxyRouterTest {
 
@@ -38,7 +44,7 @@ public class ProxyRouterTest {
           endpointName2, EndpointInfo.newBuilder().setEndpointName(endpointName2).build());
       controllerHandle.task(DummyServeController::setEndpoints, endpointInfos).remote();
 
-      Serve.setInternalReplicaContext(null, null, controllerName, null);
+      Serve.setInternalReplicaContext(null, null, controllerName, null, null);
       Serve.getReplicaContext()
           .setRayServeConfig(
               new RayServeConfig().setConfig(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false"));

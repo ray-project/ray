@@ -1,4 +1,4 @@
-package io.ray.serve;
+package io.ray.serve.model;
 
 import java.io.Serializable;
 import org.apache.commons.lang3.RandomStringUtils;

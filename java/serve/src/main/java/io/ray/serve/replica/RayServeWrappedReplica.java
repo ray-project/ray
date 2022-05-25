@@ -1,11 +1,17 @@
-package io.ray.serve;
+package io.ray.serve.replica;
 
 import com.google.common.base.Preconditions;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.Ray;
 import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.api.Serve;
+import io.ray.serve.exception.RayServeException;
 import io.ray.serve.generated.RequestMetadata;
+import io.ray.serve.metrics.RayServeMetrics;
+import io.ray.serve.model.DeploymentConfig;
+import io.ray.serve.model.DeploymentInfo;
+import io.ray.serve.model.DeploymentVersion;
+import io.ray.serve.model.RayServeConfig;
 import io.ray.serve.util.LogUtil;
 import io.ray.serve.util.ReflectUtil;
 import io.ray.serve.util.ServeProtoUtil;

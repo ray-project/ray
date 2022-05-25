@@ -1,4 +1,4 @@
-package io.ray.serve;
+package io.ray.serve.handle;
 
 import com.google.common.collect.ImmutableMap;
 import io.ray.api.BaseActorHandle;
@@ -6,6 +6,11 @@ import io.ray.api.ObjectRef;
 import io.ray.runtime.metric.Count;
 import io.ray.runtime.metric.Metrics;
 import io.ray.serve.generated.RequestMetadata;
+import io.ray.serve.metrics.RayServeMetrics;
+import io.ray.serve.model.Constants;
+import io.ray.serve.model.HandleOptions;
+import io.ray.serve.router.Router;
+
 import org.apache.commons.lang3.RandomStringUtils;
 
 public class RayServeHandle {

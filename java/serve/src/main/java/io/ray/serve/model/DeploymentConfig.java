@@ -1,9 +1,10 @@
-package io.ray.serve;
+package io.ray.serve.model;
 
 import com.google.common.base.Preconditions;
 import com.google.protobuf.ByteString;
 import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.generated.DeploymentLanguage;
+
 import java.io.Serializable;
 
 public class DeploymentConfig implements Serializable {

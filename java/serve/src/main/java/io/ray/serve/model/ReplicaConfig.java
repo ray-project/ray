@@ -1,4 +1,4 @@
-package io.ray.serve;
+package io.ray.serve.model;
 
 import com.google.common.base.Preconditions;
 import com.google.gson.Gson;

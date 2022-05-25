@@ -1,12 +1,10 @@
 package io.ray.serve;
 
-import io.ray.runtime.serializer.MessagePackSerializer;
-import io.ray.serve.api.Deployment;
-import io.ray.serve.api.Serve;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+
 import org.apache.hc.client5.http.classic.methods.HttpPut;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
@@ -16,6 +14,10 @@ import org.apache.hc.core5.http.HttpEntity;
 import org.apache.hc.core5.http.io.entity.ByteArrayEntity;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.junit.Assert;
+
+import io.ray.runtime.serializer.MessagePackSerializer;
+import io.ray.serve.api.Deployment;
+import io.ray.serve.api.Serve;
 
 public class ServeDemo2 {
 
@@ -37,7 +39,7 @@ public class ServeDemo2 {
   public static void main(String[] args) throws IOException {
     Map<String, String> proxyConfig = new HashMap<>();
     proxyConfig.put("ray.serve.proxy.http.raw", "true");
-    Serve.start(true, true, null, null);
+    Serve.start(true, true, null, null, null);
     Deployment deployment =
         Serve.deployment()
             .setName("counter")

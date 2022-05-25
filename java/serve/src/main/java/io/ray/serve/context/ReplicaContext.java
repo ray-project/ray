@@ -1,4 +1,6 @@
-package io.ray.serve;
+package io.ray.serve.context;
+
+import io.ray.serve.model.RayServeConfig;
 
 /** Stores data for Serve API calls from within deployments. */
 public class ReplicaContext {

@@ -1,4 +1,4 @@
-package io.ray.serve;
+package io.ray.serve.metrics;
 
 import io.ray.api.Ray;
 

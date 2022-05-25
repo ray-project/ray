@@ -1,4 +1,4 @@
-package io.ray.serve;
+package io.ray.serve.model;
 
 /** Options for each ServeHandle instances. These fields are immutable. */
 public class HandleOptions {

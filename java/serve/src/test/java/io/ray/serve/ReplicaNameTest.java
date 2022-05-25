@@ -4,6 +4,8 @@ import org.apache.commons.lang3.RandomStringUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+import io.ray.serve.replica.ReplicaName;
+
 public class ReplicaNameTest {
 
   @Test

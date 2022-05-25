@@ -1,4 +1,4 @@
-package io.ray.serve;
+package io.ray.serve.replica;
 
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;

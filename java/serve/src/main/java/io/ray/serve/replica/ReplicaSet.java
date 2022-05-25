@@ -1,4 +1,4 @@
-package io.ray.serve;
+package io.ray.serve.replica;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Sets;
@@ -8,7 +8,10 @@ import io.ray.api.Ray;
 import io.ray.runtime.metric.Gauge;
 import io.ray.runtime.metric.Metrics;
 import io.ray.runtime.metric.TagKey;
+import io.ray.serve.exception.RayServeException;
 import io.ray.serve.generated.ActorSet;
+import io.ray.serve.metrics.RayServeMetrics;
+import io.ray.serve.model.Query;
 import io.ray.serve.util.CollectionUtil;
 import java.util.ArrayList;
 import java.util.HashSet;

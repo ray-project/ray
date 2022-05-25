@@ -1,4 +1,4 @@
-package io.ray.serve;
+package io.ray.serve.replica;
 
 import com.google.common.collect.ImmutableMap;
 import io.ray.api.BaseActorHandle;
@@ -8,8 +8,14 @@ import io.ray.runtime.metric.Histogram;
 import io.ray.runtime.metric.Metrics;
 import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.api.Serve;
+import io.ray.serve.exception.RayServeException;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.generated.RequestWrapper;
+import io.ray.serve.metrics.RayServeMetrics;
+import io.ray.serve.model.Constants;
+import io.ray.serve.model.DeploymentConfig;
+import io.ray.serve.model.DeploymentVersion;
+import io.ray.serve.model.Query;
 import io.ray.serve.util.LogUtil;
 import io.ray.serve.util.ReflectUtil;
 import java.lang.reflect.Method;

@@ -1,28 +1,31 @@
 package io.ray.serve.poll;
 
-import com.google.common.collect.ImmutableMap;
-import io.ray.api.ActorHandle;
-import io.ray.api.ObjectRef;
-import io.ray.api.Ray;
-import io.ray.serve.Constants;
-import io.ray.serve.DummyServeController;
-import io.ray.serve.RayServeConfig;
-import io.ray.serve.ReplicaContext;
-import io.ray.serve.UpdatedObject;
-import io.ray.serve.api.Serve;
-import io.ray.serve.generated.EndpointInfo;
-import io.ray.serve.util.CommonUtil;
 import java.util.HashMap;
 import java.util.Map;
+
 import org.apache.commons.lang3.RandomStringUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
+
+import com.google.common.collect.ImmutableMap;
+
+import io.ray.api.ActorHandle;
+import io.ray.api.ObjectRef;
+import io.ray.api.Ray;
+import io.ray.serve.DummyServeController;
+import io.ray.serve.api.Serve;
+import io.ray.serve.context.ReplicaContext;
+import io.ray.serve.generated.EndpointInfo;
+import io.ray.serve.model.Constants;
+import io.ray.serve.model.RayServeConfig;
+import io.ray.serve.model.UpdatedObject;
+import io.ray.serve.util.CommonUtil;
 
 public class LongPollClientTest {
 
   @Test
   public void disableTest() throws Throwable {
-    ReplicaContext replicaContext = new ReplicaContext(null, null, null, null);
+    ReplicaContext replicaContext = new ReplicaContext(null, null, null, null, null);
     replicaContext.setRayServeConfig(
         new RayServeConfig().setConfig(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false"));
     Serve.setInternalReplicaContext(replicaContext);
@@ -48,7 +51,7 @@ public class LongPollClientTest {
       ActorHandle<DummyServeController> controllerHandle =
           Ray.actor(DummyServeController::new).setName(controllerName).remote();
 
-      Serve.setInternalReplicaContext(null, null, controllerName, null);
+      Serve.setInternalReplicaContext(null, null, controllerName, null, null);
 
       // Init route table.
       String endpointName1 = "normalTest1";

@@ -17,16 +17,16 @@ import io.ray.api.BaseActorHandle;
 import io.ray.api.PyActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.function.PyActorMethod;
-import io.ray.serve.DeploymentConfig;
-import io.ray.serve.DeploymentInfo;
-import io.ray.serve.DeploymentStatusInfo;
-import io.ray.serve.RayServeException;
-import io.ray.serve.RayServeHandle;
-import io.ray.serve.ReplicaConfig;
 import io.ray.serve.ServeController;
+import io.ray.serve.exception.RayServeException;
 import io.ray.serve.generated.DeploymentStatus;
 import io.ray.serve.generated.DeploymentStatusInfoList;
 import io.ray.serve.generated.EndpointInfo;
+import io.ray.serve.handle.RayServeHandle;
+import io.ray.serve.model.DeploymentConfig;
+import io.ray.serve.model.DeploymentInfo;
+import io.ray.serve.model.DeploymentStatusInfo;
+import io.ray.serve.model.ReplicaConfig;
 import io.ray.serve.util.LogUtil;
 import io.ray.serve.util.ServeProtoUtil;
 
@@ -219,9 +219,10 @@ public class ServeControllerClient {
 
   /**
    * Completely shut down the connected Serve instance.
+   *
    * <p>Shuts down all processes and deletes all state associated with the instance.
    */
-  public void shutdown() {
+  public synchronized void shutdown() {
     if (Ray.isInitialized() && !shutdown) {
       ((PyActorHandle) controller).task(PyActorMethod.of("shutdown")).remote();
       waitForDeploymentsShutdown(60);

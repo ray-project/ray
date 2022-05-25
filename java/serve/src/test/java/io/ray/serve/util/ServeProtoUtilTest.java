@@ -1,10 +1,12 @@
 package io.ray.serve.util;
 
 import com.google.protobuf.ByteString;
-import io.ray.serve.DeploymentConfig;
-import io.ray.serve.DeploymentVersion;
+
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.generated.RequestWrapper;
+import io.ray.serve.model.DeploymentConfig;
+import io.ray.serve.model.DeploymentVersion;
+
 import org.apache.commons.lang3.RandomStringUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;

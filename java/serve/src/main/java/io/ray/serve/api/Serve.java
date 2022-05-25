@@ -21,14 +21,14 @@ import io.ray.api.function.PyActorMethod;
 import io.ray.api.options.ActorLifetime;
 import io.ray.runtime.exception.RayActorException;
 import io.ray.runtime.exception.RayTimeoutException;
-import io.ray.serve.AutoscalingConfig;
-import io.ray.serve.Constants;
-import io.ray.serve.DeploymentConfig;
-import io.ray.serve.DeploymentInfo;
-import io.ray.serve.ProxyActor;
-import io.ray.serve.RayServeException;
-import io.ray.serve.ReplicaContext;
+import io.ray.serve.context.ReplicaContext;
+import io.ray.serve.exception.RayServeException;
 import io.ray.serve.generated.ActorNameList;
+import io.ray.serve.model.AutoscalingConfig;
+import io.ray.serve.model.Constants;
+import io.ray.serve.model.DeploymentConfig;
+import io.ray.serve.model.DeploymentInfo;
+import io.ray.serve.proxy.ProxyActor;
 import io.ray.serve.util.CollectionUtil;
 import io.ray.serve.util.CommonUtil;
 import io.ray.serve.util.LogUtil;
@@ -62,7 +62,7 @@ public class Serve {
    * @param config Configuration options for Serve.
    * @return
    */
-@SuppressWarnings("unchecked")
+  @SuppressWarnings("unchecked")
   public static synchronized ServeControllerClient start(
       boolean detached,
       boolean dedicatedCpu,
@@ -138,7 +138,7 @@ public class Serve {
         controllerNamespace);
     return client;
   }
-
+  
   private static void checkCheckpointPath(ServeControllerClient client, String checkpointPath) {
     if (StringUtils.isNotBlank(checkpointPath)
         && !StringUtils.equals(checkpointPath, client.getCheckpointPath())) {
@@ -322,7 +322,10 @@ public class Serve {
   }
 
   /**
-   * Get the global replica context.
+   * If called from a deployment, returns the deployment and replica tag.
+   *
+   * <p>A replica tag uniquely identifies a single replica for a Ray Serve deployment at runtime.
+   * Replica tags are of the form `<deployment_name>#<random letters>`.
    *
    * @return the replica context if it exists, or throw RayServeException.
    */

@@ -7,6 +7,14 @@ import io.ray.serve.api.Serve;
 import io.ray.serve.generated.ActorSet;
 import io.ray.serve.generated.DeploymentLanguage;
 import io.ray.serve.generated.RequestMetadata;
+import io.ray.serve.model.DeploymentConfig;
+import io.ray.serve.model.DeploymentInfo;
+import io.ray.serve.model.DeploymentVersion;
+import io.ray.serve.model.Query;
+import io.ray.serve.model.RayServeConfig;
+import io.ray.serve.replica.RayServeWrappedReplica;
+import io.ray.serve.replica.ReplicaSet;
+
 import java.util.Map;
 import java.util.Set;
 import org.apache.commons.lang3.RandomStringUtils;

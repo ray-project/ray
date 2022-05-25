@@ -1,7 +1,9 @@
-package io.ray.serve;
+package io.ray.serve.router;
 
 import io.ray.serve.api.Serve;
 import io.ray.serve.generated.EndpointInfo;
+import io.ray.serve.handle.RayServeHandle;
+
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;

@@ -1,5 +1,6 @@
-package io.ray.serve;
+package io.ray.serve.model;
 
+import io.ray.serve.exception.RayServeException;
 import io.ray.serve.poll.KeyType;
 import io.ray.serve.poll.LongPollClientFactory;
 import java.io.Serializable;

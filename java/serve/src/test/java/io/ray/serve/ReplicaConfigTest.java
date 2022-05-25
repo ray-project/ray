@@ -5,6 +5,8 @@ import java.util.Map;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+import io.ray.serve.model.ReplicaConfig;
+
 public class ReplicaConfigTest {
 
   static interface Validator {
