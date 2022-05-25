@@ -127,7 +127,7 @@ class TorchPredictor(Predictor):
 
             import numpy as np
             import torch
-            from ray.ml.predictors.torch import TorchPredictor
+            from ray.ml.predictors.integrations.torch import TorchPredictor
 
             model = torch.nn.Linear(2, 1)
             predictor = TorchPredictor(model=model)
@@ -139,7 +139,7 @@ class TorchPredictor(Predictor):
 
             import pandas as pd
             import torch
-            from ray.ml.predictors.torch import TorchPredictor
+            from ray.ml.predictors.integrations.torch import TorchPredictor
 
             model = torch.nn.Linear(1, 1)
             predictor = TorchPredictor(model=model)
