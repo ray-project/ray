@@ -220,6 +220,7 @@ py_test_module_list(
     "test_threaded_actor.py",
     "test_stress_failure.py",
     "test_reconstruction.py",
+    "test_reconstruction_2.py",
     "test_failure_2.py",
     "test_failure_3.py",
     "test_chaos.py",
