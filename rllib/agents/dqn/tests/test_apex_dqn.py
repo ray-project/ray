@@ -112,7 +112,6 @@ class TestApexDQN(unittest.TestCase):
                     "type": "MultiAgentPrioritizedReplayBuffer",
                     "learning_starts": 10,
                     "capacity": 100,
-                    "replay_batch_size": 10,
                     "prioritized_replay_alpha": 0.6,
                     # Beta parameter for sampling from prioritized replay buffer.
                     "prioritized_replay_beta": 0.4,

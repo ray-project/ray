@@ -125,7 +125,7 @@ class TensorflowTrainer(DataParallelTrainer):
                 )
                 model.fit(tf_dataset)
                 train.save_checkpoint(
-                    epoch=epoch, model_weights=model.get_weights())
+                    epoch=epoch, model=model.get_weights())
 
         train_dataset = ray.data.from_items(
             [{"x": x, "y": x + 1} for x in range(32)])
