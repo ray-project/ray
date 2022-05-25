@@ -226,7 +226,6 @@ class RemoteFunction:
                     "RAY_task_max_retries", v.default_value
                 )
                 v.default_value = int(v.default_value)
-                print("option", k, v.default_value)
             task_options[k] = task_options.get(k, v.default_value)
         # "max_calls" already takes effects and should not apply again.
         # Remove the default value here.
