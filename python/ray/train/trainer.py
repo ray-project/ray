@@ -22,7 +22,7 @@ from ray.train.utils import (
     construct_train_func,
     ActorWrapper,
 )
-from ray.train.checkpoint import (
+from ray.train._checkpoint import (
     CheckpointStrategy,
     TuneCheckpointManager,
     CheckpointManager,

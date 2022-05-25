@@ -13,8 +13,8 @@ from ray.train.constants import (
 from ray.train.session import TrainingResult
 from ray.train.utils import construct_path
 from ray.util.ml_utils.checkpoint_manager import (
-    CheckpointManager as CommonCheckpointManager,
-    TrackedCheckpoint,
+    _CheckpointManager as CommonCheckpointManager,
+    _TrackedCheckpoint,
     CheckpointStrategy,
     CheckpointStorage,
 )
@@ -114,7 +114,7 @@ class CheckpointManager(CommonCheckpointManager):
                 f"train.save_checkpoint."
             )
 
-        tracked_checkpoint = TrackedCheckpoint(
+        tracked_checkpoint = _TrackedCheckpoint(
             dir_or_data=checkpoint_data,
             checkpoint_id=self._latest_checkpoint_id,
             storage_mode=CheckpointStorage.MEMORY,
@@ -124,7 +124,9 @@ class CheckpointManager(CommonCheckpointManager):
 
     def _get_next_checkpoint_path(self) -> Optional[Path]:
         """Path to the next checkpoint to persist."""
-        checkpoint_file = construct_checkpoint_file_name(self._latest_checkpoint_id + 1)
+        checkpoint_file = _construct_checkpoint_file_name(
+            self._latest_checkpoint_id + 1
+        )
         return self.latest_checkpoint_dir.joinpath(checkpoint_file)
 
     def on_start_training(
@@ -158,14 +160,16 @@ class CheckpointManager(CommonCheckpointManager):
     def latest_checkpoint_file_name(self) -> Optional[str]:
         """Filename to use for the latest checkpoint."""
         if self._latest_checkpoint_id > 0:
-            return construct_checkpoint_file_name(self._latest_checkpoint_id)
+            return _construct_checkpoint_file_name(self._latest_checkpoint_id)
         else:
             return None
 
     @property
     def next_checkpoint_path(self) -> Optional[Path]:
         """Path to the next checkpoint to persist."""
-        checkpoint_file = construct_checkpoint_file_name(self._latest_checkpoint_id + 1)
+        checkpoint_file = _construct_checkpoint_file_name(
+            self._latest_checkpoint_id + 1
+        )
         return self.latest_checkpoint_dir.joinpath(checkpoint_file)
 
     @property
@@ -206,7 +210,7 @@ class TuneCheckpointManager(CheckpointManager):
         # resumed after failure or cancellation.
         checkpoint[TUNE_CHECKPOINT_ID] = self._latest_checkpoint_id
 
-    def _decide_what_to_do_with_checkpoint(self, checkpoint: TrackedCheckpoint):
+    def _process_persistent_checkpoint(self, checkpoint: _TrackedCheckpoint):
         self.add_tune_checkpoint_id(checkpoint.dir_or_data)
         # If inside a Tune Trainable, then checkpoint with Tune.
         with tune.checkpoint_dir(step=self._latest_checkpoint_id) as checkpoint_dir:
@@ -216,8 +220,8 @@ class TuneCheckpointManager(CheckpointManager):
             file_path = path.joinpath(TUNE_CHECKPOINT_FILE_NAME)
             checkpoint.commit(file_path)
 
-        return super()._decide_what_to_do_with_checkpoint(checkpoint)
+        return super()._process_persistent_checkpoint(checkpoint)
 
 
-def construct_checkpoint_file_name(checkpoint_id: int) -> str:
+def _construct_checkpoint_file_name(checkpoint_id: int) -> str:
     return f"checkpoint_{checkpoint_id:06d}"
