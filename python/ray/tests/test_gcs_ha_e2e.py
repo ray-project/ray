@@ -92,8 +92,9 @@ def test_ray_server_basic(docker_cluster):
     output = worker.exec_run(cmd=f"python -c '{check_script.format(num_replicas=1)}'")
     assert output.exit_code == 0
 
+    # Script is running on another thread so that it won't block the main thread.
     def reconfig():
-        output = worker.exec_run(cmd=f"python -c '{scripts.format(num_replicas=2)}'")
+        worker.exec_run(cmd=f"python -c '{scripts.format(num_replicas=2)}'")
 
     t = threading.Thread(target=reconfig)
     t.start()
