@@ -343,8 +343,12 @@ class Curiosity(Exploration):
             {
                 SampleBatch.OBS: torch.cat(
                     [
-                        torch.from_numpy(sample_batch[SampleBatch.OBS]),
-                        torch.from_numpy(sample_batch[SampleBatch.NEXT_OBS]),
+                        torch.from_numpy(sample_batch[SampleBatch.OBS]).to(
+                            policy.device
+                        ),
+                        torch.from_numpy(sample_batch[SampleBatch.NEXT_OBS]).to(
+                            policy.device
+                        ),
                     ]
                 )
             }
