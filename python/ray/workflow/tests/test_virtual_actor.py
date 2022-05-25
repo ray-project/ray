@@ -10,6 +10,11 @@ from ray import workflow
 from ray.workflow import virtual_actor_class
 
 
+def skip_client_tests():
+    if ray._private.client_mode_hook.is_client_mode_enabled:
+        pytest.skip("skip test in client mode")
+
+
 @workflow.virtual_actor
 class Counter:
     def __init__(self, x: int):
@@ -57,6 +62,7 @@ def init_virtual_actor(x):
     indirect=True,
 )
 def test_readonly_actor(workflow_start_regular):
+    skip_client_tests()
     actor = Counter.get_or_create("Counter", 42)
     ray.get(actor.ready())
     assert actor.readonly_get.run() == 42
@@ -107,6 +113,7 @@ class SlowInit:
     indirect=True,
 )
 def test_actor_ready(workflow_start_regular):
+    skip_client_tests()
     actor = SlowInit.get_or_create("SlowInit", 42)
     with pytest.raises(virtual_actor_class.VirtualActorNotInitializedError):
         actor.readonly_get.run()
@@ -125,6 +132,7 @@ def test_actor_ready(workflow_start_regular):
     indirect=True,
 )
 def test_actor_writer_1(workflow_start_regular):
+    skip_client_tests()
     actor = Counter.get_or_create("Counter", 0)
     ray.get(actor.ready())
     assert actor.readonly_get.run() == 0
@@ -149,6 +157,7 @@ def test_actor_writer_1(workflow_start_regular):
     indirect=True,
 )
 def test_actor_writer_2(workflow_start_regular, tmp_path):
+    skip_client_tests()
     g_lock = str(Path(tmp_path / "g.lock"))
     incr_lock = str(Path(tmp_path / "incr.lock"))
     val_lock = str(Path(tmp_path / "val.lock"))
@@ -260,6 +269,7 @@ def test_actor_writer_2(workflow_start_regular, tmp_path):
     indirect=True,
 )
 def test_writer_actor_pressure_test(workflow_start_regular):
+    skip_client_tests()
     actor = Counter.get_or_create("Counter", 0)
     array = []
     length = 50
@@ -280,6 +290,7 @@ def test_writer_actor_pressure_test(workflow_start_regular):
     indirect=True,
 )
 def test_default_getset(workflow_start_regular):
+    skip_client_tests()
     @workflow.virtual_actor
     class ActorWithoutSetGetState:
         def __init__(self):
@@ -335,6 +346,7 @@ def test_default_getset(workflow_start_regular):
 
 
 def test_options_update(workflow_start_regular):
+    skip_client_tests()
     actor = Counter.get_or_create("Counter", 0)
     method = actor.add.options(
         name="old_name", max_retries=3, num_cpus=1, metadata={"k": "v"}

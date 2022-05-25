@@ -6,6 +6,11 @@ from ray.tests.conftest import *  # noqa
 from ray import workflow
 
 
+def skip_client_tests():
+    if ray._private.client_mode_hook.is_client_mode_enabled:
+        pytest.skip("skip test in client mode")
+
+
 @workflow.virtual_actor
 class Counter:
     def __init__(self, x: int):
@@ -62,7 +67,6 @@ class IndirectCounter:
     def __setstate__(self, state):
         pass
 
-
 @pytest.mark.parametrize(
     "workflow_start_regular",
     [
@@ -74,6 +78,7 @@ class IndirectCounter:
     indirect=True,
 )
 def test_indirect_actor_writer(workflow_start_regular):
+    skip_client_tests()
     actor = IndirectCounter.get_or_create("indirect_counter", 0)
     ray.get(actor.ready())
     assert actor.readonly_get.run() == 0
@@ -103,6 +108,7 @@ def test_indirect_actor_writer(workflow_start_regular):
     indirect=True,
 )
 def test_wf_in_actor(workflow_start_regular, tmp_path):
+    skip_client_tests()
     fail_flag = tmp_path / "fail"
     cnt = tmp_path / "count"
     cnt.write_text(str(0))
@@ -197,6 +203,7 @@ def test_wf_in_actor(workflow_start_regular, tmp_path):
 )
 @pytest.mark.skip(reason="Return a list of virtual actor sub method is not supported.")
 def test_wf_in_actor_seq(workflow_start_regular, tmp_path):
+    skip_client_tests()
     record = tmp_path / "record"
     record.touch()
 
@@ -236,6 +243,7 @@ def test_wf_in_actor_seq(workflow_start_regular, tmp_path):
     indirect=True,
 )
 def test_wf_in_actor_seq_2(workflow_start_regular, tmp_path):
+    skip_client_tests()
     record = tmp_path / "record"
     record.touch()
 
@@ -283,6 +291,7 @@ def test_wf_in_actor_seq_2(workflow_start_regular, tmp_path):
     "reproduce it locally. Skip it temporarily."
 )
 def test_wf_in_actor_seq_3(workflow_start_regular, tmp_path):
+    skip_client_tests()
     @workflow.virtual_actor
     class Counter:
         def __init__(self):
