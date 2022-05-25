@@ -46,6 +46,7 @@ class TFActionDistribution(ActionDistribution):
         return self.sampled_action_logp_op
 
 
+@DeveloperAPI
 class Categorical(TFActionDistribution):
     """Categorical distribution for discrete action spaces."""
 

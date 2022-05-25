@@ -7,6 +7,7 @@ import traceback
 from typing import TYPE_CHECKING, Set
 
 from ray.actor import ActorHandle
+from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.spaces.space_utils import convert_element_to_space_type
 from ray.rllib.utils.typing import EnvType
 from ray.util import log_once
@@ -17,6 +18,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+@DeveloperAPI
 def check_env(env: EnvType) -> None:
     """Run pre-checks on env that uncover common errors in environments.
 
@@ -87,6 +89,7 @@ def check_env(env: EnvType) -> None:
         )
 
 
+@DeveloperAPI
 def check_gym_environments(env: gym.Env) -> None:
     """Checking for common errors in gym environments.
 
@@ -195,6 +198,7 @@ def check_gym_environments(env: gym.Env) -> None:
     _check_info(info)
 
 
+@DeveloperAPI
 def check_multiagent_environments(env: "MultiAgentEnv") -> None:
     """Checking for common errors in RLlib MultiAgentEnvs.
 
@@ -283,6 +287,7 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
         raise ValueError(error)
 
 
+@DeveloperAPI
 def check_base_env(env: "BaseEnv") -> None:
     """Checking for common errors in RLlib BaseEnvs.
 

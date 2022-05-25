@@ -17,8 +17,8 @@ from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.policy.eager_tf_policy import (
     _convert_to_tf,
     _disallow_var_creation,
-    OptimizerWrapper,
-    traced_eager_policy,
+    _OptimizerWrapper,
+    _traced_eager_policy,
 )
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
@@ -846,7 +846,7 @@ class EagerTFPolicyV2(Policy):
             # object looks like a "classic" tf.optimizer. This way, custom
             # compute_gradients_fn will work on both tf static graph
             # and tf-eager.
-            optimizer = OptimizerWrapper(tape)
+            optimizer = _OptimizerWrapper(tape)
             # More than one loss terms/optimizers.
             if self.config["_tf_policy_handles_more_than_one_loss"]:
                 grads_and_vars = self.compute_gradients_fn(
@@ -924,4 +924,4 @@ class EagerTFPolicyV2(Policy):
 
     @classmethod
     def with_tracing(cls):
-        return traced_eager_policy(cls)
+        return _traced_eager_policy(cls)
