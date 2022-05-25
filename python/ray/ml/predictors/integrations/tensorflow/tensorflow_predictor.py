@@ -87,7 +87,7 @@ class TensorflowPredictor(Predictor):
             def build_model(self):
                 return tf.keras.Sequential(
                     [
-                        tf.keras.layers.InputLayer(input_shape=(1,)),
+                        tf.keras.layers.InputLayer(input_shape=(2,)),
                         tf.keras.layers.Dense(1),
                     ]
                 )
@@ -96,9 +96,6 @@ class TensorflowPredictor(Predictor):
 
             data = np.array([[1, 2], [3, 4]])
             predictions = predictor.predict(data)
-
-            # Only use first column as the feature
-            predictions = predictor.predict(data, feature_columns=[0])
 
         .. code-block:: python
 
@@ -135,8 +132,6 @@ class TensorflowPredictor(Predictor):
             if feature_columns:
                 data = data[feature_columns]
             data = data.values
-        else:
-            data = data[:, feature_columns]
 
         tensor = tf.convert_to_tensor(data, dtype=dtype)
 
