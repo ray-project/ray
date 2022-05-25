@@ -70,9 +70,9 @@ def test_many_fractional_resources(shutdown_only):
 
     @ray.remote
     def f(block, accepted_resources):
+        resources = ray.worker.global_worker.core_worker.resource_ids()
         true_resources = {
-            resource: value[0][1]
-            for resource, value in ray.worker.get_resource_ids().items()
+            resource: value[0][1] for resource, value in resources.items()
         }
         if block:
             ray.get(g.remote())
