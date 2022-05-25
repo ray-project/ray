@@ -699,8 +699,6 @@ TEST_F(ReferenceCountTest, TestGetLocalityData) {
 
   // Include spilled locations in locality data.
   rc->RemoveObjectLocation(obj1, node1);
-  locality_data_obj1 = rc->GetLocalityData(obj1);
-  ASSERT_EQ(locality_data_obj1->nodes_containing_object, absl::flat_hash_set<NodeID>({}));
   rc->HandleObjectSpilled(obj1, "spill_loc", node1);
   locality_data_obj1 = rc->GetLocalityData(obj1);
   ASSERT_EQ(locality_data_obj1->nodes_containing_object,
