@@ -820,17 +820,19 @@ def _process_observations(
     for env_id, all_agents_obs in unfiltered_obs.items():
         is_new_episode: bool = env_id not in active_episodes
         episode: Episode = active_episodes[env_id]
-        # Check for any agent having a `episode_faulty` flag in its info dict.
-        # This is how a sub-environment can tell the caller to `poll()` that its
-        # current episode is faulty and should not be used for training.
-        # If any agent has this info -> Assume the entire episode is not good for
-        # training.
-        # TODO: We may want to insert the sub-environment faulty logic into the
-        #  BaseEnv's API, but there is currently no way of separating the ok return
-        #  values from healthy sub-environments from the errors thrown by faulty ones.
-        episode_faulty = any(
-            "episode_faulty" in i for i in infos[env_id].values()
-        )
+
+        # Check for env_id having returned an error instead of a multi-agent obs dict.
+        # This is how our BaseEnv can tell the caller to `poll()` that one of its
+        # sub-environments is faulty and should be restarted (and the ongoing episode
+        # should not be used for training).
+        episode_faulty = False
+        if isinstance(all_agents_obs, Exception):
+            episode_faulty = True
+            assert dones[env_id]["__all__"] is True,\
+                f"ERROR: When a sub-environment (env-id {env_id}) returns an error " \
+                "as observation, the dones[__all__] flag must also be set to True!"
+            # This will be filled with dummy observations below.
+            all_agents_obs = {}
 
         if not is_new_episode:
             sample_collector.episode_step(episode)

@@ -167,12 +167,13 @@ class RemoteBaseEnv(BaseEnv):
                 if self.restart_failed_sub_environments:
                     self.try_restart(env_id)
                     # Always return multi-agent data.
-                    dummy_ag_id = list(self.get_agent_ids())[0]
+                    # Set the observation to the exception, no rewards,
+                    # done[__all__]=True (episode will be discarded anyways), no infos.
                     ret = (
-                        {dummy_ag_id: self._observation_space.sample()},
-                        {dummy_ag_id: 0.0},
+                        e,
+                        {},
                         {"__all__": True},
-                        {dummy_ag_id: {"episode_faulty": True}},
+                        {},
                     )
                 # Do not try to restart. Just raise the error.
                 else:

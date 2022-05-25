@@ -283,10 +283,7 @@ class _VectorizedGymEnv(VectorEnv):
             except Exception as e:
                 if self.restart_failed_sub_environments:
                     self.restart_at(i)
-                    obs = self.envs[i].observation_space.sample()
-                    r = 0.0
-                    done = True
-                    info = {"episode_faulty": True}
+                    obs, r, done, info = e, 0.0, True, {}
                 else:
                     raise e
             if not isinstance(info, dict):
