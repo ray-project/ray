@@ -2,13 +2,14 @@ from typing import Dict, List, Type, Union
 
 import ray
 from ray.rllib.evaluation.episode import Episode
-from ray.rllib.evaluation.postprocessing import Postprocessing
+from ray.rllib.evaluation.postprocessing import (
+    compute_gae_for_sample_batch,
+    Postprocessing,
+)
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
-from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_mixins import (
-    ComputeGAEMixIn,
     EntropyCoeffSchedule,
     LearningRateSchedule,
     ValueNetworkMixin,
@@ -23,17 +24,8 @@ from ray.rllib.utils.typing import TensorType
 torch, nn = try_import_torch()
 
 
-@Deprecated(
-    old="rllib.agents.a3c.a3c_torch_policy.add_advantages",
-    new="rllib.evaluation.postprocessing.compute_gae_for_sample_batch",
-    error=True,
-)
-def add_advantages(*args, **kwargs):
-    pass
-
-
-class A3CTorchPolicy(ComputeGAEMixIn, ValueNetworkMixin, TorchPolicyV2):
-    """PyTorch policy class used with MAMLTrainer."""
+class A3CTorchPolicy(ValueNetworkMixin, TorchPolicyV2):
+    """PyTorch Policy class used with A3CTrainer."""
 
     def __init__(self, observation_space, action_space, config):
         config = dict(ray.rllib.agents.a3c.a3c.A3CConfig().to_dict(), **config)
@@ -45,12 +37,11 @@ class A3CTorchPolicy(ComputeGAEMixIn, ValueNetworkMixin, TorchPolicyV2):
             config,
             max_seq_len=config["model"]["max_seq_len"],
         )
-        ComputeGAEMixIn.__init__(self)
+        ValueNetworkMixin.__init__(self, config)
+        LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
         EntropyCoeffSchedule.__init__(
             self, config["entropy_coeff"], config["entropy_coeff_schedule"]
         )
-        LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
-        ValueNetworkMixin.__init__(self, config)
 
         # TODO: Don't require users to call this manually.
         self._initialize_loss_from_dummy_batch()
@@ -140,7 +131,26 @@ class A3CTorchPolicy(ComputeGAEMixIn, ValueNetworkMixin, TorchPolicyV2):
             "vf_loss": torch.mean(torch.stack(self.get_tower_stats("value_err"))),
         }
 
+    @override(TorchPolicyV2)
+    def postprocess_trajectory(
+        self, sample_batch, other_agent_batches=None, episode=None
+    ):
+        sample_batch = super().postprocess_trajectory(sample_batch)
+        return compute_gae_for_sample_batch(
+            self, sample_batch, other_agent_batches, episode
+        )
+
+    @override(TorchPolicyV2)
     def extra_grad_process(
         self, optimizer: "torch.optim.Optimizer", loss: TensorType
     ) -> Dict[str, TensorType]:
         return apply_grad_clipping(self, optimizer, loss)
+
+
+@Deprecated(
+    old="rllib.agents.a3c.a3c_torch_policy.add_advantages",
+    new="rllib.evaluation.postprocessing.compute_gae_for_sample_batch",
+    error=True,
+)
+def add_advantages(*args, **kwargs):
+    pass

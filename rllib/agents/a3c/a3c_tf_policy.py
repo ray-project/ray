@@ -5,6 +5,7 @@ from typing import Dict, List, Type, Union
 import ray
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.evaluation.postprocessing import (
+    compute_gae_for_sample_batch,
     Postprocessing,
 )
 from ray.rllib.models.action_dist import ActionDistribution
@@ -14,7 +15,7 @@ from ray.rllib.policy.dynamic_tf_policy_v2 import DynamicTFPolicyV2
 from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.tf_mixins import (
-    ComputeAndClipGradsMixIn,
+    compute_gradients,
     EntropyCoeffSchedule,
     LearningRateSchedule,
     ValueNetworkMixin,
@@ -24,8 +25,9 @@ from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import explained_variance
 from ray.rllib.utils.typing import (
-    TensorType,
+    LocalOptimizer,
     ModelGradients,
+    TensorType,
 )
 
 tf1, tf, tfv = try_import_tf()
@@ -38,42 +40,6 @@ tf1, tf, tfv = try_import_tf()
 )
 def postprocess_advantages(*args, **kwargs):
     pass
-
-
-class A3CLoss:
-    def __init__(
-        self,
-        action_dist: ActionDistribution,
-        actions: TensorType,
-        advantages: TensorType,
-        v_target: TensorType,
-        vf: TensorType,
-        valid_mask: TensorType,
-        vf_loss_coeff: float = 0.5,
-        entropy_coeff: float = 0.01,
-        use_critic: bool = True,
-    ):
-        log_prob = action_dist.logp(actions)
-
-        # The "policy gradients" loss
-        self.pi_loss = -tf.reduce_sum(
-            tf.boolean_mask(log_prob * advantages, valid_mask)
-        )
-
-        delta = tf.boolean_mask(vf - v_target, valid_mask)
-
-        # Compute a value function loss.
-        if use_critic:
-            self.vf_loss = 0.5 * tf.reduce_sum(tf.math.square(delta))
-        # Ignore the value function.
-        else:
-            self.vf_loss = tf.constant(0.0)
-
-        self.entropy = tf.reduce_sum(tf.boolean_mask(action_dist.entropy(), valid_mask))
-
-        self.total_loss = (
-            self.pi_loss + self.vf_loss * vf_loss_coeff - self.entropy * entropy_coeff
-        )
 
 
 def add_value_function_fetch(policy: Policy) -> Dict[str, TensorType]:
@@ -111,7 +77,7 @@ def get_a3c_tf_policy(base: type) -> type:
     """
 
     class A3CTFPolicy(
-        ComputeAndClipGradsMixIn, ValueNetworkMixin, LearningRateSchedule, EntropyCoeffSchedule, base
+        ValueNetworkMixin, LearningRateSchedule, EntropyCoeffSchedule, base
     ):
         def __init__(
             self,
@@ -136,7 +102,6 @@ def get_a3c_tf_policy(base: type) -> type:
                 existing_model=existing_model,
             )
 
-            ComputeAndClipGradsMixIn.__init__(self)
             ValueNetworkMixin.__init__(self, self.config)
             LearningRateSchedule.__init__(
                 self, self.config["lr"], self.config["lr_schedule"]
@@ -161,34 +126,63 @@ def get_a3c_tf_policy(base: type) -> type:
             action_dist = dist_class(model_out, model)
             if self.is_recurrent():
                 max_seq_len = tf.reduce_max(train_batch[SampleBatch.SEQ_LENS])
-                mask = tf.sequence_mask(train_batch[SampleBatch.SEQ_LENS], max_seq_len)
-                mask = tf.reshape(mask, [-1])
+                valid_mask = tf.sequence_mask(train_batch[SampleBatch.SEQ_LENS], max_seq_len)
+                valid_mask = tf.reshape(valid_mask, [-1])
             else:
-                mask = tf.ones_like(train_batch[SampleBatch.REWARDS])
-            self.loss = A3CLoss(
-                action_dist,
-                train_batch[SampleBatch.ACTIONS],
-                train_batch[Postprocessing.ADVANTAGES],
-                train_batch[Postprocessing.VALUE_TARGETS],
-                model.value_function(),
-                mask,
-                self.config["vf_loss_coeff"],
-                self.entropy_coeff,
-                self.config.get("use_critic", True),
+                valid_mask = tf.ones_like(train_batch[SampleBatch.REWARDS])
+
+            log_prob = action_dist.logp(train_batch[SampleBatch.ACTIONS])
+            vf = model.value_function()
+
+            # The "policy gradients" loss
+            self.pi_loss = -tf.reduce_sum(
+                tf.boolean_mask(log_prob * train_batch[Postprocessing.ADVANTAGES], valid_mask)
             )
-            return self.loss.total_loss
+
+            delta = tf.boolean_mask(vf - train_batch[Postprocessing.VALUE_TARGETS], valid_mask)
+
+            # Compute a value function loss.
+            if self.config.get("use_critic", True):
+                self.vf_loss = 0.5 * tf.reduce_sum(tf.math.square(delta))
+            # Ignore the value function.
+            else:
+                self.vf_loss = tf.constant(0.0)
+
+            self.entropy_loss = tf.reduce_sum(
+                tf.boolean_mask(action_dist.entropy(), valid_mask))
+
+            self.total_loss = (
+                self.pi_loss + self.vf_loss * self.config["vf_loss_coeff"] - self.entropy_loss * self.entropy_coeff
+            )
+
+            return self.total_loss
 
         @override(base)
         def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
             return {
                 "cur_lr": tf.cast(self.cur_lr, tf.float64),
                 "entropy_coeff": tf.cast(self.entropy_coeff, tf.float64),
-                "policy_loss": self.loss.pi_loss,
-                "policy_entropy": self.loss.entropy,
+                "policy_loss": self.pi_loss,
+                "policy_entropy": self.entropy_loss,
                 "var_gnorm": tf.linalg.global_norm(
                     list(self.model.trainable_variables())),
-                "vf_loss": self.loss.vf_loss,
+                "vf_loss": self.vf_loss,
             }
+
+        @override(base)
+        def postprocess_trajectory(
+            self, sample_batch, other_agent_batches=None, episode=None
+        ):
+            sample_batch = super().postprocess_trajectory(sample_batch)
+            return compute_gae_for_sample_batch(
+                self, sample_batch, other_agent_batches, episode
+            )
+
+        @override(base)
+        def compute_gradients_fn(
+            self, optimizer: LocalOptimizer, loss: TensorType
+        ) -> ModelGradients:
+            return compute_gradients(self, optimizer, loss)
 
     return A3CTFPolicy
 
