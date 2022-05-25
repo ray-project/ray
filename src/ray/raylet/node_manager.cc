@@ -1577,7 +1577,7 @@ void NodeManager::ProcessWaitRequestMessage(
       object_ids,
       message->timeout(),
       num_required_objects,
-      [this, resolve_objects, was_blocked, client, current_task_id](
+      [this, resolve_objects, client, current_task_id](
           std::vector<ObjectID> ready, std::vector<ObjectID> remaining) {
         // Write the data.
         flatbuffers::FlatBufferBuilder fbb;
@@ -1592,7 +1592,7 @@ void NodeManager::ProcessWaitRequestMessage(
         if (status.ok()) {
           // The client is unblocked now because the wait call has returned.
           if (resolve_objects) {
-            AsyncResolveObjectsFinish(client, current_task_id, was_blocked);
+            AsyncResolveObjectsFinish(client, current_task_id, /*was_blocked=*/false);
           }
         } else {
           // We failed to write to the client, so disconnect the client.
