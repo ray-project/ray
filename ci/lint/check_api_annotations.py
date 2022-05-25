@@ -5,7 +5,16 @@ import inspect
 import ray
 from ray.util.annotations import _is_annotated
 
-IGNORE_PATHS = {".impl.", ".backend.", ".experimental.", ".internal.", ".generated."}
+IGNORE_PATHS = {
+    ".impl.",
+    ".backend.",
+    ".experimental.",
+    ".internal.",
+    ".generated.",
+    ".test_utils.",
+    ".annotations.",
+    ".deprecation",
+}
 
 
 def _fullname(attr):
@@ -76,12 +85,13 @@ if __name__ == "__main__":
     verify(ray.data, set(), ok, output)
     # Sanity check the lint logic.
     assert len(ok) >= 60, len(ok)
+
+    verify(ray.rllib, set(), ok, output)
     # TODO(ekl) enable it for all modules.
     #    verify(ray.ml, set(), ok, output)
     #    verify(ray.train, set(), ok, output)
     #    verify(ray.serve, set(), ok, output)
-    #    verify(ray.rllib, set(), ok, output)
-    # verify(ray.tune, set(), ok, output)
+    #    verify(ray.tune, set(), ok, output)
     #    verify(ray, set(), ok, output)
 
     print("Num ok", len(ok))

@@ -12,7 +12,6 @@ https://docs.ray.io/en/master/rllib-algorithms.html#appo
 from typing import Optional, Type
 import logging
 
-from ray.rllib.agents.ppo.appo_tf_policy import AsyncPPOTFPolicy
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.agents.impala import ImpalaTrainer, ImpalaConfig
 from ray.rllib.policy.policy import Policy
@@ -246,11 +245,17 @@ class APPOTrainer(ImpalaTrainer):
         self, config: PartialTrainerConfigDict
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
-            from ray.rllib.agents.ppo.appo_torch_policy import AsyncPPOTorchPolicy
+            from ray.rllib.agents.ppo.appo_torch_policy import APPOTorchPolicy
 
-            return AsyncPPOTorchPolicy
+            return APPOTorchPolicy
+        elif config["framework"] == "tf":
+            from ray.rllib.agents.ppo.appo_tf_policy import APPOStaticGraphTFPolicy
+
+            return APPOStaticGraphTFPolicy
         else:
-            return AsyncPPOTFPolicy
+            from ray.rllib.agents.ppo.appo_tf_policy import APPOEagerTFPolicy
+
+            return APPOEagerTFPolicy
 
 
 # Deprecated: Use ray.rllib.agents.ppo.APPOConfig instead!
