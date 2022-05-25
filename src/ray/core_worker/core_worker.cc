@@ -751,11 +751,12 @@ void CoreWorker::RegisterToGcs() {
 void CoreWorker::ExitIfParentRayletDies() {
   RAY_CHECK(options_.worker_type == WorkerType::WORKER);
   RAY_CHECK(!RayConfig::instance().RAYLET_PID().empty());
-  auto raylet_pid = static_cast<pid_t>(std::stoi(RayConfig::instance().RAYLET_PID()));
+  static auto raylet_pid =
+      static_cast<pid_t>(std::stoi(RayConfig::instance().RAYLET_PID()));
   bool should_shutdown = !IsProcessAlive(raylet_pid);
 #ifndef _WIN32
   // All workers are started by raylet. In this case, the raylet becomes a zombie.
-  if (GetParentPID() == 1) {
+  if (GetParentPID() != raylet_pid) {
     should_shutdown = true;
   }
 #endif
