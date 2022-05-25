@@ -297,7 +297,7 @@ class Checkpoint:
         """Write checkpoint data to directory.
 
         Args:
-            path: Target directory to restore data in. If not specified, 
+            path: Target directory to restore data in. If not specified,
 
         Returns:
             str: Directory containing checkpoint data.
