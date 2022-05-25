@@ -182,7 +182,7 @@ class PushBasedShufflePlan(ShuffleOp):
                 *map_results,
                 reduce_args=self._reduce_args,
             )
-            metadata_ref = merge_result.pop(0)
+            metadata_ref = merge_result.pop(-1)
             return metadata_ref, merge_result
 
         # Compute all constants used for task scheduling.
@@ -365,11 +365,10 @@ class PushBasedShufflePlan(ShuffleOp):
             reduce_args = []
         for mapper_outputs in zip(*all_mapper_outputs):
             block, meta = reduce_fn(*reduce_args, *mapper_outputs)
-            merged_outputs.append(block)
-        meta = BlockAccessor.for_block(block).get_metadata(
+            yield block
+        yield BlockAccessor.for_block(block).get_metadata(
             input_files=None, exec_stats=stats.build()
         )
-        return [meta] + merged_outputs
 
     @staticmethod
     def _compute_shuffle_schedule(
