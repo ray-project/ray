@@ -379,6 +379,17 @@ py_test(
     args = ["--yaml-dir=tuned_examples/impala"]
 )
 
+# MADDPG
+py_test(
+    name = "learning_tests_two_step_game_maddpg",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:ml", "tf_only", "no_tf_eager_tracing", "learning_tests", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/maddpg/two-step-game-maddpg.yaml"],
+    args = ["--yaml-dir=tuned_examples/maddpg", "--framework=tf"]
+)
+
 # Working, but takes a long time to learn (>15min).
 # Removed due to Higher API conflicts with Pytorch-Import tests
 ## MB-MPO
@@ -682,7 +693,7 @@ py_test(
     name = "test_apex_ddpg",
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
-    srcs = ["agents/ddpg/tests/test_apex_ddpg.py"]
+    srcs = ["algorithms/ddpg/tests/test_apex_ddpg.py"]
 )
 
 # ARS
@@ -698,7 +709,7 @@ py_test(
     name = "test_bandits",
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
-    srcs = ["agents/bandit/tests/test_bandits.py"],
+    srcs = ["algorithms/bandit/tests/test_bandits.py"],
 )
 
 # CQLTrainer
@@ -714,7 +725,7 @@ py_test(
     name = "test_ddpg",
     tags = ["team:ml", "trainers_dir"],
     size = "large",
-    srcs = ["agents/ddpg/tests/test_ddpg.py"]
+    srcs = ["algorithms/ddpg/tests/test_ddpg.py"]
 )
 
 # DQNTrainer
@@ -722,14 +733,14 @@ py_test(
     name = "test_dqn",
     tags = ["team:ml", "trainers_dir"],
     size = "large",
-    srcs = ["agents/dqn/tests/test_dqn.py"]
+    srcs = ["algorithms/dqn/tests/test_dqn.py"]
 )
 
 # Dreamer
 py_test(
     name = "test_dreamer",
     tags = ["team:ml", "trainers_dir"],
-    size = "small",
+    size = "medium",
     srcs = ["algorithms/dreamer/tests/test_dreamer.py"]
 )
 
@@ -775,6 +786,14 @@ py_test(
     srcs = ["algorithms/marwil/tests/test_bc.py"]
 )
 
+# MADDPGTrainer
+py_test(
+    name = "test_maddpg",
+    tags = ["team:ml", "trainers_dir"],
+    size = "medium",
+    srcs = ["algorithms/maddpg/tests/test_maddpg.py"]
+)
+
 # MAMLTrainer
 py_test(
     name = "test_maml",
@@ -796,7 +815,7 @@ py_test(
     name = "test_pg",
     tags = ["team:ml", "trainers_dir"],
     size = "large",
-    srcs = ["agents/pg/tests/test_pg.py"]
+    srcs = ["algorithms/pg/tests/test_pg.py"]
 )
 
 # PPOTrainer
@@ -828,7 +847,7 @@ py_test(
     name = "test_qmix",
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
-    srcs = ["agents/qmix/tests/test_qmix.py"]
+    srcs = ["algorithms/qmix/tests/test_qmix.py"]
 )
 
 # R2D2Trainer
@@ -844,7 +863,7 @@ py_test(
     name = "test_rnnsac",
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
-    srcs = ["agents/sac/tests/test_rnnsac.py"]
+    srcs = ["algorithms/sac/tests/test_rnnsac.py"]
 )
 
 # SACTrainer
@@ -852,7 +871,7 @@ py_test(
     name = "test_sac",
     tags = ["team:ml", "trainers_dir"],
     size = "large",
-    srcs = ["agents/sac/tests/test_sac.py"]
+    srcs = ["algorithms/sac/tests/test_sac.py"]
 )
 
 # SimpleQTrainer
@@ -860,7 +879,7 @@ py_test(
     name = "test_simple_q",
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
-    srcs = ["agents/dqn/tests/test_simple_q.py"]
+    srcs = ["algorithms/dqn/tests/test_simple_q.py"]
 )
 
 # SlateQTrainer
@@ -868,7 +887,7 @@ py_test(
     name = "test_slateq",
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
-    srcs = ["agents/slateq/tests/test_slateq.py"]
+    srcs = ["algorithms/slateq/tests/test_slateq.py"]
 )
 
 # TD3Trainer
@@ -876,7 +895,7 @@ py_test(
     name = "test_td3",
     tags = ["team:ml", "trainers_dir"],
     size = "large",
-    srcs = ["agents/ddpg/tests/test_td3.py"]
+    srcs = ["algorithms/ddpg/tests/test_td3.py"]
 )
 
 # --------------------------------------------------------------------
@@ -1318,12 +1337,6 @@ sh_test(
     data = glob(["examples/serving/*.py"]),
 )
 
-py_test(
-    name = "env/tests/test_record_env_wrapper",
-    tags = ["team:ml", "env"],
-    size = "small",
-    srcs = ["env/tests/test_record_env_wrapper.py"]
-)
 
 py_test(
     name = "env/tests/test_remote_worker_envs",
@@ -1494,12 +1507,27 @@ py_test(
     srcs = ["policy/tests/test_sample_batch.py"]
 )
 
+py_test(
+    name = "policy/tests/test_view_requirement",
+    tags = ["team:ml", "policy"],
+    size = "small",
+    srcs = ["policy/tests/test_view_requirement.py"]
+)
+
+
 # --------------------------------------------------------------------
 # Utils:
 # rllib/utils/
 #
 # Tag: utils
 # --------------------------------------------------------------------
+
+py_test(
+    name = "test_serialization",
+    tags = ["team:ml", "utils"],
+    size = "large",
+    srcs = ["utils/tests/test_serialization.py"]
+)
 
 py_test(
     name = "test_curiosity",
@@ -1620,6 +1648,13 @@ py_test(
 # it correctly by its starting letter, e.g. tags=["tests_dir", "tests_dir_A"]
 # for `tests/test_all_stuff.py`.
 # --------------------------------------------------------------------
+
+py_test(
+    name = "tests/test_algorithm_imports",
+    tags = ["team:ml", "tests_dir", "tests_dir_C"],
+    size = "small",
+    srcs = ["tests/test_algorithm_imports.py"]
+)
 
 py_test(
     name = "tests/test_catalog",
@@ -2811,13 +2846,13 @@ py_test(
     args = ["--as-test", "--framework=torch"],
 )
 
-py_test(
-    name = "examples/remote_base_env_with_custom_api",
-    tags = ["team:ml", "examples", "examples_R"],
-    size = "medium",
-    srcs = ["examples/remote_base_env_with_custom_api.py"],
-    args = ["--stop-iters=3"]
-)
+# py_test(
+#    name = "examples/remote_base_env_with_custom_api",
+#    tags = ["team:ml", "examples", "examples_R"],
+#    size = "medium",
+#    srcs = ["examples/remote_base_env_with_custom_api.py"],
+#    args = ["--stop-iters=3"]
+# )
 
 py_test(
     name = "examples/restore_1_of_n_agents_from_checkpoint",
@@ -2948,15 +2983,6 @@ py_test(
     size = "medium",
     srcs = ["examples/two_trainer_workflow.py"],
     args = ["--as-test", "--mixed-torch-tf", "--stop-reward=450.0"]
-)
-
-py_test(
-    name = "examples/two_step_game_maddpg",
-    main = "examples/two_step_game.py",
-    tags = ["team:ml", "examples", "examples_T"],
-    size = "medium",
-    srcs = ["examples/two_step_game.py"],
-    args = ["--as-test", "--stop-reward=7.1", "--run=MADDPG"]
 )
 
 py_test(

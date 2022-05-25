@@ -18,6 +18,9 @@ from ray.serve.common import (
     EndpointInfo,
     NodeId,
     RunningReplicaInfo,
+    ApplicationStatus,
+    ApplicationStatusInfo,
+    StatusOverview,
 )
 from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
 from ray.serve.constants import (
@@ -477,22 +480,21 @@ class ServeController:
             )
         return deployment_route_list.SerializeToString()
 
-    def get_deployment_statuses(self) -> bytes:
-        """Gets the current status information about all deployments.
+    def get_serve_status(self) -> bytes:
 
-        Returns:
-            DeploymentStatusInfoList's protobuf serialized bytes
-        """
-        from ray.serve.generated.serve_pb2 import DeploymentStatusInfoList
+        # TODO (shrekris-anyscale): Replace defaults with actual REST API status
+        serve_app_status = ApplicationStatus.RUNNING
+        serve_app_message = ""
+        deployment_timestamp = time.time()
 
-        deployment_status_info_list = DeploymentStatusInfoList()
-        for (
-            name,
-            deployment_status_info,
-        ) in self.deployment_state_manager.get_deployment_statuses().items():
-            deployment_status_info_proto = deployment_status_info.to_proto()
-            deployment_status_info_proto.name = name
-            deployment_status_info_list.deployment_status_infos.append(
-                deployment_status_info_proto
-            )
-        return deployment_status_info_list.SerializeToString()
+        app_status = ApplicationStatusInfo(
+            serve_app_status, serve_app_message, deployment_timestamp
+        )
+        deployment_statuses = self.deployment_state_manager.get_deployment_statuses()
+
+        status_info = StatusOverview(
+            app_status=app_status,
+            deployment_statuses=deployment_statuses,
+        )
+
+        return status_info.to_proto().SerializeToString()

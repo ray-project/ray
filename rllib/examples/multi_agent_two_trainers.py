@@ -13,8 +13,13 @@ import gym
 import os
 
 import ray
-from ray.rllib.agents.dqn import DQNTrainer, DQNTFPolicy, DQNTorchPolicy
-from ray.rllib.agents.ppo import PPOTrainer, PPOTFPolicy, PPOTorchPolicy
+from ray.rllib.algorithms.dqn import DQNTrainer, DQNTFPolicy, DQNTorchPolicy
+from ray.rllib.agents.ppo import (
+    PPOTrainer,
+    PPOStaticGraphTFPolicy,
+    PPOEagerTFPolicy,
+    PPOTorchPolicy,
+)
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.tune.logger import pretty_print
 from ray.tune.registry import register_env
@@ -56,17 +61,33 @@ if __name__ == "__main__":
     obs_space = single_dummy_env.observation_space
     act_space = single_dummy_env.action_space
 
+    def seelct_policy(algorithm, framework):
+        if algorithm == "PPO":
+            if framework == "torch":
+                return PPOTorchPolicy
+            elif framework == "tf":
+                return PPOStaticGraphTFPolicy
+            else:
+                return PPOEagerTFPolicy
+        elif algorithm == "DQN":
+            if framework == "torch":
+                return DQNTorchPolicy
+            else:
+                return DQNTFPolicy
+        else:
+            raise ValueError("Unknown algorithm: ", algorithm)
+
     # You can also have multiple policies per trainer, but here we just
     # show one each for PPO and DQN.
     policies = {
         "ppo_policy": (
-            PPOTorchPolicy if args.framework == "torch" else PPOTFPolicy,
+            seelct_policy("PPO", args.framework),
             obs_space,
             act_space,
             {},
         ),
         "dqn_policy": (
-            DQNTorchPolicy if args.framework == "torch" else DQNTFPolicy,
+            seelct_policy("DQN", args.framework),
             obs_space,
             act_space,
             {},

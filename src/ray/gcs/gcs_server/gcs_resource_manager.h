@@ -21,11 +21,13 @@
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/raylet/scheduling/cluster_resource_data.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
+#include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
+using raylet::ClusterTaskManager;
 namespace gcs {
 /// Ideally, the logic related to resource calculation should be moved from
 /// `gcs_resoruce_manager` to `cluster_resource_manager`, and all logic related to
@@ -55,7 +57,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
       instrumented_io_context &io_context,
       std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
       ClusterResourceManager &cluster_resource_manager,
-      scheduling::NodeID local_node_id_ = scheduling::NodeID::Nil());
+      NodeID local_node_id,
+      std::shared_ptr<ClusterTaskManager> cluster_task_manager = nullptr);
 
   virtual ~GcsResourceManager() {}
 
@@ -145,6 +148,13 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   /// \param data The resource loads reported by raylet.
   void UpdateResourceLoads(const rpc::ResourcesData &data);
 
+  /// Get the resources of a specified node.
+  /// TODO(Chong-Li): This function is only used for updating PG's wildcard resources
+  /// incrementally in gcs. It should be removed when PG scheduling is refactored.
+  ///
+  /// \param node_id ID of the specified node.
+  const NodeResources &GetNodeResources(scheduling::NodeID node_id) const;
+
  private:
   /// io context. This is to ensure thread safety. Ideally, all public
   /// funciton needs to post job to this io_context.
@@ -173,7 +183,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   uint64_t counts_[CountType::CountType_MAX] = {0};
 
   ClusterResourceManager &cluster_resource_manager_;
-  scheduling::NodeID local_node_id_;
+  NodeID local_node_id_;
+  std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
 };
 
 }  // namespace gcs

@@ -8,7 +8,9 @@ import logging
 import math
 import numpy as np
 import os
+from packaging import version
 import pickle
+import pkg_resources
 import tempfile
 import time
 from typing import (
@@ -30,8 +32,7 @@ from ray.exceptions import RayError
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.env.env_context import EnvContext
-from ray.rllib.env.multi_agent_env import MultiAgentEnv
-from ray.rllib.env.utils import gym_env_creator
+from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.metrics import (
     collect_episodes,
@@ -57,6 +58,8 @@ from ray.rllib.utils.annotations import (
     DeveloperAPI,
     ExperimentalAPI,
     override,
+    OverrideToImplementCustomLogic,
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
     PublicAPI,
 )
 from ray.rllib.utils.debug import update_global_seed_if_necessary
@@ -94,7 +97,7 @@ from ray.rllib.utils.typing import (
     TrainerConfigDict,
 )
 from ray.tune.logger import Logger, UnifiedLogger
-from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
+from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.tune.resources import Resources
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.trainable import Trainable
@@ -153,7 +156,7 @@ class Trainer(Trainable):
     This allows you to override the `execution_plan` method to implement
     your own algorithm logic. You can find the different built-in
     algorithms' execution plans in their respective main py files,
-    e.g. rllib.agents.dqn.dqn.py or rllib.agents.impala.impala.py.
+    e.g. rllib.algorithms.dqn.dqn.py or rllib.agents.impala.impala.py.
 
     The most important API methods a Trainer exposes are `train()`,
     `evaluate()`, `save()` and `restore()`. Trainer objects retain internal
@@ -220,18 +223,12 @@ class Trainer(Trainable):
         if isinstance(config, TrainerConfig):
             config = config.to_dict()
 
-        # Convert `env` provided in config into a string:
-        # - If `env` is a string: `self._env_id` = `env`.
-        # - If `env` is a class: `self._env_id` = `env.__name__` -> Already
-        #   register it with a auto-generated env creator.
-        # - If `env` is None: `self._env_id` is None.
-        self._env_id: Optional[str] = self._register_if_needed(
+        # Convert `env` provided in config into a concrete env creator callable, which
+        # takes an EnvContext (config dict) as arg and returning an RLlib supported Env
+        # type (e.g. a gym.Env).
+        self._env_id, self.env_creator = self._get_env_id_and_creator(
             env or config.get("env"), config
         )
-
-        # The env creator callable, taking an EnvContext (config dict)
-        # as arg and returning an RLlib supported Env type (e.g. a gym.Env).
-        self.env_creator: Optional[EnvCreator] = None
 
         # Placeholder for a local replay buffer instance.
         self.local_replay_buffer = None
@@ -293,10 +290,12 @@ class Trainer(Trainable):
             config, logger_creator, remote_checkpoint_dir, sync_function_tpl
         )
 
+    @OverrideToImplementCustomLogic
     @classmethod
     def get_default_config(cls) -> TrainerConfigDict:
         return TrainerConfig().to_dict()
 
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
     @override(Trainable)
     def setup(self, config: PartialTrainerConfigDict):
 
@@ -309,10 +308,6 @@ class Trainer(Trainable):
 
         # Validate the framework settings in config.
         self.validate_framework(self.config)
-
-        # Setup the self.env_creator callable (to be passed
-        # e.g. to RolloutWorkers' c'tors).
-        self.env_creator = self._get_env_creator_from_env_id(self._env_id)
 
         # Set Trainer's seed after we have - if necessary - enabled
         # tf eager-execution.
@@ -466,8 +461,9 @@ class Trainer(Trainable):
 
             self.config["evaluation_config"] = eval_config
 
-            env_id = self._register_if_needed(eval_config.get("env"), eval_config)
-            env_creator = self._get_env_creator_from_env_id(env_id)
+            env_id, env_creator = self._get_env_id_and_creator(
+                eval_config.get("env"), eval_config
+            )
 
             # Create a separate evaluation worker set for evaluation.
             # If evaluation_num_workers=0, use the evaluation set's local
@@ -495,6 +491,7 @@ class Trainer(Trainable):
     def _init(self, config: TrainerConfigDict, env_creator: EnvCreator) -> None:
         raise NotImplementedError
 
+    @OverrideToImplementCustomLogic
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         """Returns a default Policy class to use, given a config.
 
@@ -853,6 +850,7 @@ class Trainer(Trainable):
         # Also return the results here for convenience.
         return self.evaluation_metrics
 
+    @OverrideToImplementCustomLogic
     @DeveloperAPI
     def training_iteration(self) -> ResultDict:
         """Default single iteration logic of an algorithm.
@@ -1475,9 +1473,12 @@ class Trainer(Trainable):
     @override(Trainable)
     def cleanup(self) -> None:
         # Stop all workers.
-        if hasattr(self, "workers"):
+        if hasattr(self, "workers") and self.workers is not None:
             self.workers.stop()
+        if hasattr(self, "evaluation_workers") and self.evaluation_workers is not None:
+            self.evaluation_workers.stop()
 
+    @OverrideToImplementCustomLogic
     @classmethod
     @override(Trainable)
     def default_resource_request(
@@ -1541,37 +1542,87 @@ class Trainer(Trainable):
         """Pre-evaluation callback."""
         pass
 
-    def _get_env_creator_from_env_id(self, env_id: Optional[str] = None) -> EnvCreator:
-        """Returns an env creator callable, given an `env_id` (e.g. "CartPole-v0").
+    @staticmethod
+    def _get_env_id_and_creator(
+        env_specifier: Union[str, EnvType, None], config: PartialTrainerConfigDict
+    ) -> Tuple[Optional[str], EnvCreator]:
+        """Returns env_id and creator callable given original env id from config.
 
         Args:
-            env_id: An already tune registered env ID, a known gym env name,
-                or None (if no env is used).
+            env_specifier: An env class, an already tune registered env ID, a known
+                gym env name, or None (if no env is used).
+            config: The Trainer's (maybe partial) config dict.
 
         Returns:
+            Tuple consisting of a) env ID string and b) env creator callable.
         """
-        if env_id:
+        # Environment is specified via a string.
+        if isinstance(env_specifier, str):
             # An already registered env.
-            if _global_registry.contains(ENV_CREATOR, env_id):
-                return _global_registry.get(ENV_CREATOR, env_id)
+            if _global_registry.contains(ENV_CREATOR, env_specifier):
+                return env_specifier, _global_registry.get(ENV_CREATOR, env_specifier)
 
             # A class path specifier.
-            elif "." in env_id:
+            elif "." in env_specifier:
 
                 def env_creator_from_classpath(env_context):
                     try:
-                        env_obj = from_config(env_id, env_context)
+                        env_obj = from_config(env_specifier, env_context)
                     except ValueError:
-                        raise EnvError(ERR_MSG_INVALID_ENV_DESCRIPTOR.format(env_id))
+                        raise EnvError(
+                            ERR_MSG_INVALID_ENV_DESCRIPTOR.format(env_specifier)
+                        )
                     return env_obj
 
-                return env_creator_from_classpath
+                return env_specifier, env_creator_from_classpath
             # Try gym/PyBullet/Vizdoom.
             else:
-                return functools.partial(gym_env_creator, env_descriptor=env_id)
+                return env_specifier, functools.partial(
+                    _gym_env_creator, env_descriptor=env_specifier
+                )
+
+        elif isinstance(env_specifier, type):
+            env_id = env_specifier  # .__name__
+
+            if config.get("remote_worker_envs"):
+                # Check gym version (0.22 or higher?).
+                # If > 0.21, can't perform auto-wrapping of the given class as this
+                # would lead to a pickle error.
+                gym_version = pkg_resources.get_distribution("gym").version
+                if version.parse(gym_version) >= version.parse("0.22"):
+                    raise ValueError(
+                        "Cannot specify a gym.Env class via `config.env` while setting "
+                        "`config.remote_worker_env=True` AND your gym version is >= "
+                        "0.22! Try installing an older version of gym or set `config."
+                        "remote_worker_env=False`."
+                    )
+
+                @ray.remote(num_cpus=1)
+                class _wrapper(env_specifier):
+                    # Add convenience `_get_spaces` and `_is_multi_agent`
+                    # methods:
+                    def _get_spaces(self):
+                        return self.observation_space, self.action_space
+
+                    def _is_multi_agent(self):
+                        from ray.rllib.env.multi_agent_env import MultiAgentEnv
+
+                        return isinstance(self, MultiAgentEnv)
+
+                return env_id, lambda cfg: _wrapper.remote(cfg)
+            else:
+                return env_id, lambda cfg: env_specifier(cfg)
+
         # No env -> Env creator always returns None.
+        elif env_specifier is None:
+            return None, lambda env_config: None
+
         else:
-            return lambda env_config: None
+            raise ValueError(
+                "{} is an invalid env specifier. ".format(env_specifier)
+                + "You can specify a custom env as either a class "
+                '(e.g., YourEnvCls) or a registered env id (e.g., "your_env").'
+            )
 
     def _sync_filters_if_needed(self, workers: WorkerSet):
         if self.config.get("observation_filter", "NoFilter") != "NoFilter":
@@ -1735,6 +1786,7 @@ class Trainer(Trainable):
         check_if_correct_nn_framework_installed()
         resolve_tf_settings()
 
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
     @DeveloperAPI
     def validate_config(self, config: TrainerConfigDict) -> None:
         """Validates a given config dict for this Trainer.
@@ -1752,16 +1804,6 @@ class Trainer(Trainable):
         model_config = config.get("model")
         if model_config is None:
             config["model"] = model_config = {}
-
-        # Monitor should be replaced by `record_env`.
-        if config.get("monitor", DEPRECATED_VALUE) != DEPRECATED_VALUE:
-            deprecation_warning("monitor", "record_env", error=False)
-            config["record_env"] = config.get("monitor", False)
-        # Empty string would fail some if-blocks checking for this setting.
-        # Set to True instead, meaning: use default output dir to store
-        # the videos.
-        if config.get("record_env") == "":
-            config["record_env"] = True
 
         # Use DefaultCallbacks class, if callbacks is None.
         if config["callbacks"] is None:
@@ -1976,8 +2018,8 @@ class Trainer(Trainable):
                 ">0!".format(config["evaluation_duration"])
             )
 
-    @ExperimentalAPI
     @staticmethod
+    @ExperimentalAPI
     def validate_env(env: EnvType, env_context: EnvContext) -> None:
         """Env validator function for this Trainer class.
 
@@ -2148,38 +2190,6 @@ class Trainer(Trainable):
         if self.local_replay_buffer is not None:
             kwargs["local_replay_buffer"] = self.local_replay_buffer
         return kwargs
-
-    def _register_if_needed(
-        self, env_object: Union[str, EnvType, None], config
-    ) -> Optional[str]:
-        if isinstance(env_object, str):
-            return env_object
-        elif isinstance(env_object, type):
-            name = env_object.__name__
-
-            if config.get("remote_worker_envs"):
-
-                @ray.remote(num_cpus=0)
-                class _wrapper(env_object):
-                    # Add convenience `_get_spaces` and `_is_multi_agent`
-                    # methods.
-                    def _get_spaces(self):
-                        return self.observation_space, self.action_space
-
-                    def _is_multi_agent(self):
-                        return isinstance(self, MultiAgentEnv)
-
-                register_env(name, lambda cfg: _wrapper.remote(cfg))
-            else:
-                register_env(name, lambda cfg: env_object(cfg))
-            return name
-        elif env_object is None:
-            return None
-        raise ValueError(
-            "{} is an invalid env specification. ".format(env_object)
-            + "You can specify a custom env as either a class "
-            '(e.g., YourEnvCls) or a registered env id (e.g., "your_env").'
-        )
 
     def _step_context(trainer):
         class StepCtx:

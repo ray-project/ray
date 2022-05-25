@@ -413,14 +413,12 @@ def debug(address):
 @click.option(
     "--dashboard-agent-listen-port",
     type=int,
-    hidden=True,
     default=0,
     help="the port for dashboard agents to listen for http on.",
 )
 @click.option(
     "--dashboard-agent-grpc-port",
     type=int,
-    hidden=True,
     default=None,
     help="the port for dashboard agents to listen for grpc on.",
 )
@@ -486,7 +484,6 @@ def debug(address):
 @click.option(
     "--metrics-export-port",
     type=int,
-    hidden=True,
     default=None,
     help="the port to use to expose Ray metrics through a Prometheus endpoint.",
 )
@@ -770,6 +767,17 @@ def start(
                 cf.bold("  ray start --address='{}'"),
                 bootstrap_addresses,
             )
+            if bootstrap_addresses.startswith("127.0.0.1:"):
+                cli_logger.print(
+                    "This Ray runtime only accepts connections from local host."
+                )
+                cli_logger.print(
+                    "To accept connections from remote hosts, "
+                    "specify a public ip when starting"
+                )
+                cli_logger.print(
+                    "the head node: ray start --head --node-ip-address=<public-ip>."
+                )
             cli_logger.newline()
             cli_logger.print("Alternatively, use the following Python code:")
             with cli_logger.indented():
@@ -973,19 +981,7 @@ def stop(force, grace_period):
             proc, proc_cmd, proc_args = candidate
             corpus = proc_cmd if filter_by_cmd else subprocess.list2cmdline(proc_args)
             if keyword in corpus:
-                # This is a way to avoid killing redis server that's not started by Ray.
-                # We are using a simple hacky solution here since
-                # Redis server will anyway removed soon from the ray repository.
-                # This feature is only supported on MacOS/Linux temporarily until
-                # Redis is removed from Ray.
-                if (
-                    keyword == "redis-server"
-                    and sys.platform != "win32"
-                    and "core/src/ray/thirdparty/redis/src/redis-server" not in corpus
-                ):
-                    continue
                 found.append(candidate)
-
         for proc, proc_cmd, proc_args in found:
             proc_string = str(subprocess.list2cmdline(proc_args))
             try:

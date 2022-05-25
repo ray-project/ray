@@ -1,7 +1,7 @@
 import unittest
 
 import ray
-from ray.rllib.agents.pg import PGTrainer, DEFAULT_CONFIG
+from ray.rllib.algorithms.pg import PGTrainer, DEFAULT_CONFIG
 from ray.rllib.utils.test_utils import framework_iterator
 
 
