@@ -1,6 +1,7 @@
 import gym
 from typing import Dict, List, Optional, Union
 
+from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.serialization import (
     gym_space_to_dict,
@@ -10,6 +11,7 @@ from ray.rllib.utils.serialization import (
 torch, _ = try_import_torch()
 
 
+@PublicAPI
 class ViewRequirement:
     """Single view requirement (for one column in an SampleBatch/input_dict).
 
