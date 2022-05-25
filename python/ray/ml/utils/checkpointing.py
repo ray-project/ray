@@ -6,14 +6,12 @@ import uuid
 from copy import copy
 from filelock import FileLock
 from pathlib import Path
-from typing import Iterator, Optional, Tuple, Type
+from typing import Iterator, Optional
 
-import ray
 import ray.cloudpickle as cpickle
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.constants import PREPROCESSOR_KEY
-from ray.util import get_node_ip_address
 
 
 def save_preprocessor_to_dir(
@@ -88,14 +86,15 @@ class _FixedDirCheckpoint(Checkpoint):
             yield temp_dir
             try:
                 os.remove(str(del_lock_path))
-                print(f"removed {del_lock_path}")
             except Exception:
                 pass
+            # In the edge case, we do not remove the directory at all
+            # since it's in /tmp, this is not that big of a deal
+
             # check if any lock files are remaining
             try:
                 with FileLock(f"{temp_dir}.lock", timeout=0):
                     if not list(Path(temp_dir).glob(".del_lock_*")):
-                        print(f"removing {temp_dir}")
                         shutil.rmtree(temp_dir, ignore_errors=True)
             except TimeoutError:
                 pass
@@ -108,32 +107,3 @@ class _FixedDirCheckpoint(Checkpoint):
         sync_checkpoint = copy(checkpoint)
         sync_checkpoint.__class__ = _FixedDirCheckpoint
         return sync_checkpoint
-
-
-@ray.remote
-class _LazyCheckpointActor:
-    def __init__(
-        self,
-        checkpoint_representation: Tuple[str, str],
-        *,
-        checkpoint_class: Type[Checkpoint] = Checkpoint,
-    ):
-        self.checkpoint_representation = checkpoint_representation
-        self.checkpoint: Checkpoint = checkpoint_class.from_internal_representation(
-            self.checkpoint_representation
-        )
-        self._checkpoint_object_ref = None
-
-    def get_object_ref(self) -> ray.ObjectRef:
-        if not self._checkpoint_object_ref:
-            self._checkpoint_object_ref = self.checkpoint.to_object_ref()
-        return self._checkpoint_object_ref
-
-    def get_checkpoint(self) -> Checkpoint:
-        return self.checkpoint
-
-    def get_checkpoint_representation(self) -> Tuple[str, str]:
-        return self.checkpoint_representation
-
-    def get_ip(self) -> str:
-        return get_node_ip_address()

@@ -504,8 +504,8 @@ class Checkpoint:
         self.__dict__.update(state)
 
     def __copy__(self) -> "Checkpoint":
-        attribute = self.get_internal_representation()
-        return self.__class__(**{attribute[0]: attribute[1]})
+        internal_representation = self.get_internal_representation()
+        return self.__class__.from_internal_representation(internal_representation)
 
 
 def _get_local_path(path: Optional[str]) -> Optional[str]:
