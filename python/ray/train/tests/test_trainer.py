@@ -531,7 +531,7 @@ def test_persisted_checkpoint_strategy(ray_start_2_cpus):
     if logdir is not None:
         assert trainer.logdir == Path(logdir).expanduser().resolve()
     assert trainer.latest_checkpoint_dir.is_dir()
-    assert trainer.best_checkpoint_path.is_file()
+    assert trainer.best_checkpoint_path.is_dir()
     assert trainer.best_checkpoint_path.name == f"checkpoint_{2:06d}"
     assert trainer.latest_checkpoint["loss"] == 5
     assert trainer.best_checkpoint["loss"] == 3
