@@ -3426,7 +3426,8 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
 
     def __len__(self) -> int:
         raise AttributeError(
-            "This operation causes a distributed query. Use `count` instead if you would really like to do this"
+            "Use `ds.count()` to compute the length of a distributed Dataset. "
+            "This may be an expensive operation."
         )
 
     def _block_num_rows(self) -> List[int]:
