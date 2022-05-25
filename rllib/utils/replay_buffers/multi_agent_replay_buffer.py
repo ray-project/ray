@@ -64,7 +64,6 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         capacity: int = 10000,
         storage_unit: str = "timesteps",
         num_shards: int = 1,
-        replay_batch_size: int = 1,
         learning_starts: int = 1000,
         replay_mode: str = "independent",
         replay_sequence_length: int = 1,
@@ -84,25 +83,18 @@ class MultiAgentReplayBuffer(ReplayBuffer):
             learning_starts: Number of timesteps after which a call to
                 `sample()` will yield samples (before that, `sample()` will
                 return None).
-            capacity: Max number of total timesteps in all policy buffers.
-                After reaching this number, older samples will be
-                dropped to make space for new ones.
-            replay_batch_size: The batch size to be sampled (in timesteps).
-                Note that if `replay_sequence_length` > 1,
-                `self.replay_batch_size` will be set to the number of
-                sequences sampled (B).
+            capacity: The capacity of the buffer, measured in `storage_unit`.
             replay_mode: One of "independent" or "lockstep". Determines,
                 whether batches are sampled independently or to an equal
                 amount.
             replay_sequence_length: The sequence length (T) of a single
                 sample. If > 1, we will sample B x T from this buffer. This
                 only has an effect if storage_unit is 'timesteps'.
-            replay_burn_in: The burn-in length in case
-                `replay_sequence_length` > 0. This is the number of timesteps
+            replay_burn_in: This is the number of timesteps
                 each sequence overlaps with the previous one to generate a
                 better internal state (=state after the burn-in), instead of
                 starting from 0.0 each RNN rollout. This only has an effect
-                if storage_unit is 'timesteps'.
+                if storage_unit is `sequences`.
             replay_zero_init_states: Whether the initial states in the
                 buffer (if replay_sequence_length > 0) are alwayas 0.0 or
                 should be updated with the previous train_batch state outputs.
@@ -122,24 +114,33 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         else:
             self.underlying_buffer_call_args = {}
 
-        if replay_sequence_length > 1 and self._storage_unit == "timesteps":
-            self.replay_batch_size = int(
-                max(1, replay_batch_size // replay_sequence_length)
-            )
-            logger.info(
-                "Since replay_sequence_length={} and replay_batch_size={}, "
-                "we will replay {} sequences at a time.".format(
-                    replay_sequence_length, replay_batch_size, self.replay_batch_size
-                )
-            )
-        else:
-            self.replay_batch_size = replay_batch_size
-
         self.replay_starts = learning_starts // num_shards
         self.replay_mode = replay_mode
         self.replay_sequence_length = replay_sequence_length
         self.replay_burn_in = replay_burn_in
         self.replay_zero_init_states = replay_zero_init_states
+
+        if (
+            replay_sequence_length > 1
+            and self._storage_unit is not StorageUnit.SEQUENCES
+        ):
+            logger.warning(
+                "MultiAgentReplayBuffer configured with "
+                "`replay_sequence_length={}`, but `storage_unit={}`. "
+                "replay_sequence_length will be ignored and set to 1.".format(
+                    replay_sequence_length, storage_unit
+                )
+            )
+            self.replay_sequence_length = 1
+
+        if replay_sequence_length == 1 and self._storage_unit is StorageUnit.SEQUENCES:
+            logger.warning(
+                "MultiAgentReplayBuffer configured with "
+                "`replay_sequence_length={}`, but `storage_unit={}`. "
+                "This will result in sequences equal to timesteps.".format(
+                    replay_sequence_length, storage_unit
+                )
+            )
 
         if replay_mode in ["lockstep", ReplayMode.LOCKSTEP]:
             self.replay_mode = ReplayMode.LOCKSTEP
@@ -156,7 +157,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
 
         if self.underlying_buffer_config:
             ctor_args = {
-                **{"capacity": shard_capacity, "storage_unit": storage_unit},
+                **{"capacity": shard_capacity, "storage_unit": StorageUnit.FRAGMENTS},
                 **self.underlying_buffer_config,
             }
 
@@ -169,7 +170,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
                 self.underlying_buffer_call_args = {}
                 return ReplayBuffer(
                     self.capacity,
-                    storage_unit=storage_unit,
+                    storage_unit=StorageUnit.FRAGMENTS,
                 )
 
         self.replay_buffers = collections.defaultdict(new_buffer)
@@ -184,12 +185,14 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         return sum(len(buffer._storage) for buffer in self.replay_buffers.values())
 
     @DeveloperAPI
-    @Deprecated(old="replay", new="sample", error=False)
+    @Deprecated(
+        old="ReplayBuffer.replay()",
+        new="ReplayBuffer.sample(num_items)",
+        error=True,
+    )
     def replay(self, num_items: int = None, **kwargs) -> Optional[SampleBatchType]:
         """Deprecated in favor of new ReplayBuffer API."""
-        if num_items is None:
-            num_items = self.replay_batch_size
-        return self.sample(num_items, **kwargs)
+        pass
 
     @DeveloperAPI
     @override(ReplayBuffer)
@@ -252,6 +255,10 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         # simply store the samples how they arrive. For sequences and
         # episodes, the underlying buffer may split them itself.
         if self._storage_unit is StorageUnit.TIMESTEPS:
+            timeslices = batch.timeslices(1)
+            for time_slice in timeslices:
+                self.replay_buffers[policy_id].add(time_slice, **kwargs)
+        elif self._storage_unit is StorageUnit.SEQUENCES:
             if self.replay_sequence_length == 1:
                 timeslices = batch.timeslices(1)
             else:
@@ -263,8 +270,10 @@ class MultiAgentReplayBuffer(ReplayBuffer):
                 )
             for time_slice in timeslices:
                 self.replay_buffers[policy_id].add(time_slice, **kwargs)
-        else:
+        elif self._storage_unit in [StorageUnit.FRAGMENTS, StorageUnit.EPISODES]:
             self.replay_buffers[policy_id].add(batch, **kwargs)
+        else:
+            raise ValueError("Unknown `storage_unit={}`".format(self._storage_unit))
 
     @DeveloperAPI
     @override(ReplayBuffer)

@@ -3,12 +3,14 @@ import numpy as np
 from typing import Union, Tuple, Any, List
 
 from ray.rllib.models.utils import get_activation_fn
+from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import TensorType
 
 torch, nn = try_import_torch()
 
 
+@DeveloperAPI
 def normc_initializer(std: float = 1.0) -> Any:
     def initializer(tensor):
         tensor.data.normal_(0, 1)
@@ -17,6 +19,7 @@ def normc_initializer(std: float = 1.0) -> Any:
     return initializer
 
 
+@DeveloperAPI
 def same_padding(
     in_size: Tuple[int, int],
     filter_size: Tuple[int, int],
@@ -61,6 +64,7 @@ def same_padding(
     return padding, output
 
 
+@DeveloperAPI
 class SlimConv2d(nn.Module):
     """Simple mock of tf.slim Conv2d"""
 
@@ -120,6 +124,7 @@ class SlimConv2d(nn.Module):
         return self._model(x)
 
 
+@DeveloperAPI
 class SlimFC(nn.Module):
     """Simple PyTorch version of `linear` function"""
 
@@ -164,6 +169,7 @@ class SlimFC(nn.Module):
         return self._model(x)
 
 
+@DeveloperAPI
 class AppendBiasLayer(nn.Module):
     """Simple bias appending layer for free_log_std."""
 
@@ -177,6 +183,7 @@ class AppendBiasLayer(nn.Module):
         return out
 
 
+@DeveloperAPI
 class Reshape(nn.Module):
     """Standard module that reshapes/views a tensor"""
 
