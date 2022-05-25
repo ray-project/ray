@@ -1,12 +1,17 @@
 import gym
-import numpy as np
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 
+from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.serialization import (
+    gym_space_to_dict,
+    gym_space_from_dict,
+)
 
 torch, _ = try_import_torch()
 
 
+@PublicAPI
 class ViewRequirement:
     """Single view requirement (for one column in an SampleBatch/input_dict).
 
@@ -74,8 +79,6 @@ class ViewRequirement:
         )
 
         self.shift = shift
-        if isinstance(self.shift, (list, tuple)):
-            self.shift = np.array(self.shift)
 
         # Special case: Providing a (probably larger) range of indices, e.g.
         # "-100:0" (past 100 timesteps plus current one).
@@ -90,3 +93,40 @@ class ViewRequirement:
 
         self.used_for_compute_actions = used_for_compute_actions
         self.used_for_training = used_for_training
+
+    def __str__(self):
+        """For easier inspection of view requirements."""
+        return "|".join(
+            [
+                str(v)
+                for v in [
+                    self.data_col,
+                    self.space,
+                    self.shift,
+                    self.shift_from,
+                    self.shift_to,
+                    self.index,
+                    self.batch_repeat_value,
+                    self.used_for_training,
+                    self.used_for_compute_actions,
+                ]
+            ]
+        )
+
+    def to_dict(self) -> Dict:
+        """Return a dict for this ViewRequirement that can be JSON serialized."""
+        return {
+            "data_col": self.data_col,
+            "space": gym_space_to_dict(self.space),
+            "shift": self.shift,
+            "index": self.index,
+            "batch_repeat_value": self.batch_repeat_value,
+            "used_for_training": self.used_for_training,
+            "used_for_compute_actions": self.used_for_compute_actions,
+        }
+
+    @classmethod
+    def from_dict(cls, d: Dict):
+        """Construct a ViewRequirement instance from JSON deserialized dict."""
+        d["space"] = gym_space_from_dict(d["space"])
+        return cls(**d)

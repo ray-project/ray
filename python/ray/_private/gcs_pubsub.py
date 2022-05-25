@@ -104,28 +104,16 @@ class _SubscriberBase:
             )
         return req
 
-    def _handle_polling_failure(self, e: grpc.RpcError) -> bool:
-        if self._close.is_set():
-            return False
-
-        if e.code() in (
-            grpc.StatusCode.UNAVAILABLE,
-            grpc.StatusCode.UNKNOWN,
-            grpc.StatusCode.DEADLINE_EXCEEDED,
-        ):
+    @staticmethod
+    def _should_terminate_polling(e: grpc.RpcError) -> None:
+        # Caller only expects polling to be terminated after deadline exceeded.
+        if e.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
             return True
-
-        raise e
-
-    def _handle_subscribe_failure(self, e: grpc.RpcError):
-        if e.code() in (
-            grpc.StatusCode.UNAVAILABLE,
-            grpc.StatusCode.UNKNOWN,
-            grpc.StatusCode.DEADLINE_EXCEEDED,
-        ):
-            time.sleep(1)
-        else:
-            raise e
+        # Could be a temporary connection issue. Suppress error.
+        # TODO: reconnect GRPC channel?
+        if e.code() == grpc.StatusCode.UNAVAILABLE:
+            return True
+        return False
 
     @staticmethod
     def _pop_error_info(queue):
@@ -223,7 +211,7 @@ class _SyncSubscriber(_SubscriberBase):
         # Type of the channel.
         self._channel = pubsub_channel_type
         # Protects multi-threaded read and write of self._queue.
-        self._lock = threading.RLock()
+        self._lock = threading.Lock()
         # A queue of received PubMessage.
         self._queue = deque()
         # Indicates whether the subscriber has closed.
@@ -236,24 +224,13 @@ class _SyncSubscriber(_SubscriberBase):
         saved for the subscriber.
         """
         with self._lock:
+            if self._close.is_set():
+                return
             req = self._subscribe_request(self._channel)
-            start = time.time()
-            from ray._raylet import Config
-
-            while True:
-                try:
-                    if self._close.is_set():
-                        return
-                    return self._stub.GcsSubscriberCommandBatch(req, timeout=30)
-                except grpc.RpcError as e:
-                    self._handle_subscribe_failure(e)
-                    if (
-                        time.time() - start
-                        > Config.gcs_rpc_server_reconnect_timeout_s()
-                    ):
-                        raise e
+            self._stub.GcsSubscriberCommandBatch(req, timeout=30)
 
     def _poll_locked(self, timeout=None) -> None:
+        assert self._lock.locked()
 
         # Poll until data becomes available.
         while len(self._queue) == 0:
@@ -280,18 +257,9 @@ class _SyncSubscriber(_SubscriberBase):
                     # GRPC has not replied, continue waiting.
                     continue
                 except grpc.RpcError as e:
-                    if (
-                        e.code() == grpc.StatusCode.DEADLINE_EXCEEDED
-                        and timeout is not None
-                    ):
+                    if self._should_terminate_polling(e):
                         return
-                    if self._handle_polling_failure(e) is True:
-                        self.subscribe()
-                        fut = self._stub.GcsSubscriberPoll.future(
-                            self._poll_request(), timeout=timeout
-                        )
-                    else:
-                        return
+                    raise
 
             if fut.done():
                 self._last_batch_size = len(fut.result().pub_messages)
@@ -309,13 +277,11 @@ class _SyncSubscriber(_SubscriberBase):
             return
         self._close.set()
         req = self._unsubscribe_request(channels=[self._channel])
-
         try:
             self._stub.GcsSubscriberCommandBatch(req, timeout=5)
         except Exception:
             pass
-        with self._lock:
-            self._stub = None
+        self._stub = None
 
 
 class GcsErrorSubscriber(_SyncSubscriber):
@@ -530,39 +496,18 @@ class _AioSubscriber(_SubscriberBase):
         if self._close.is_set():
             return
         req = self._subscribe_request(self._channel)
-        start = time.time()
-        from ray._raylet import Config
-
-        while True:
-            try:
-                return await self._stub.GcsSubscriberCommandBatch(req, timeout=30)
-            except grpc.RpcError as e:
-                self._handle_subscribe_failure(e)
-                if time.time() - start > Config.gcs_rpc_server_reconnect_timeout_s():
-                    raise
+        await self._stub.GcsSubscriberCommandBatch(req, timeout=30)
 
     async def _poll_call(self, req, timeout=None):
         # Wrap GRPC _AioCall as a coroutine.
-        while True:
-            try:
-                return await self._stub.GcsSubscriberPoll(req, timeout=timeout)
-            except grpc.RpcError as e:
-                if (
-                    e.code() == grpc.StatusCode.DEADLINE_EXCEEDED
-                    and timeout is not None
-                ):
-                    return
-                if self._handle_polling_failure(e) is True:
-                    await self.subscribe()
-                else:
-                    return
+        return await self._stub.GcsSubscriberPoll(req, timeout=timeout)
 
     async def _poll(self, timeout=None) -> None:
         req = self._poll_request()
         while len(self._queue) == 0:
             # TODO: use asyncio.create_task() after Python 3.6 is no longer
             # supported.
-            poll = asyncio.ensure_future(self._poll_call(req))
+            poll = asyncio.ensure_future(self._poll_call(req, timeout=timeout))
             close = asyncio.ensure_future(self._close.wait())
             done, _ = await asyncio.wait(
                 [poll, close], timeout=timeout, return_when=asyncio.FIRST_COMPLETED
@@ -570,9 +515,14 @@ class _AioSubscriber(_SubscriberBase):
             if poll not in done or close in done:
                 # Request timed out or subscriber closed.
                 break
-            self._last_batch_size = len(poll.result().pub_messages)
-            for msg in poll.result().pub_messages:
-                self._queue.append(msg)
+            try:
+                self._last_batch_size = len(poll.result().pub_messages)
+                for msg in poll.result().pub_messages:
+                    self._queue.append(msg)
+            except grpc.RpcError as e:
+                if self._should_terminate_polling(e):
+                    return
+                raise
 
     async def close(self) -> None:
         """Closes the subscriber and its active subscription."""
