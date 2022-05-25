@@ -1,6 +1,7 @@
 import pytest
 
 import numpy as np
+import pandas as pd
 import torch
 
 from ray.ml.predictors.integrations.torch import TorchPredictor
@@ -43,7 +44,7 @@ def test_init(model, preprocessor):
     assert not predictor.model.training
 
 
-def test_predict_no_preprocessor(model):
+def test_predict_array(model):
     predictor = TorchPredictor(model=model)
 
     data_batch = np.array([[1], [2], [3]])
@@ -53,7 +54,7 @@ def test_predict_no_preprocessor(model):
     assert predictions.to_numpy().flatten().tolist() == [2, 4, 6]
 
 
-def test_predict_with_preprocessor(model, preprocessor):
+def test_predict_array_with_preprocessor(model, preprocessor):
     predictor = TorchPredictor(model=model, preprocessor=preprocessor)
 
     data_batch = np.array([[1], [2], [3]])
@@ -63,31 +64,27 @@ def test_predict_with_preprocessor(model, preprocessor):
     assert predictions.to_numpy().flatten().tolist() == [4, 8, 12]
 
 
-def test_predict_array_output(model):
-    """Tests if predictor works if model outputs an array instead of single value."""
+def test_predict_dataframe():
+    predictor = TorchPredictor(model=torch.nn.Linear(2, 1, bias=False))
 
-    predictor = TorchPredictor(model=model)
-
-    data_batch = np.array([[1, 1], [2, 2], [3, 3]])
-    predictions = predictor.predict(data_batch)
+    data_batch = pd.DataFrame({"X0": [0.0, 0.0, 0.0], "X1": [0.0, 0.0, 0.0]})
+    predictions = predictor.predict(data_batch, dtype=torch.float)
 
     assert len(predictions) == 3
-    assert np.array_equal(
-        predictions.to_numpy().flatten().tolist(), [[2, 2], [4, 4], [6, 6]]
-    )
+    assert predictions.to_numpy().flatten().tolist() == [0.0, 0.0, 0.0]
 
 
-def test_predict_feature_columns(model):
-    predictor = TorchPredictor(model=model)
+def test_predict_dataframe_with_feature_columns():
+    predictor = TorchPredictor(model=torch.nn.Identity())
 
-    data_batch = np.array([[1, 4], [2, 5], [3, 6]])
-    predictions = predictor.predict(data_batch, feature_columns=[0])
+    data_batch = pd.DataFrame({"X0": [0.0, 0.0, 0.0], "X1": [1.0, 1.0, 1.0]})
+    predictions = predictor.predict(data_batch, feature_columns=["X0"])
 
     assert len(predictions) == 3
-    assert predictions.to_numpy().flatten().tolist() == [2, 4, 6]
+    assert predictions.to_numpy().flatten().tolist() == [0.0, 0.0, 0.0]
 
 
-def test_predict_from_checkpoint_no_preprocessor(model):
+def test_predict_array_from_checkpoint(model):
     checkpoint = Checkpoint.from_dict({MODEL_KEY: model})
     predictor = TorchPredictor.from_checkpoint(checkpoint)
 

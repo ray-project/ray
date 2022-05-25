@@ -226,7 +226,9 @@ parts:
 
   - caption: Ray Clusters
     chapters:
+      - file: cluster/index
       - file: cluster/quickstart
+      - file: cluster/key-concepts
       - file: cluster/user-guide
       - file: cluster/cloud
       - file: cluster/deploy

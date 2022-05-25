@@ -11,6 +11,7 @@ from numbers import Number
 
 from typing import Any, Callable, Optional
 
+from ray.util.annotations import DeveloperAPI
 from six.moves import queue
 
 from ray.util.debug import log_once
@@ -42,6 +43,7 @@ NULL_MARKER = ".null_marker"
 TEMP_MARKER = ".temp_marker"
 
 
+@DeveloperAPI
 class FuncCheckpointUtil:
     """Utility class holding various function-checkpointing mechanisms.
 
@@ -120,14 +122,14 @@ class FuncCheckpointUtil:
         return perm_checkpoint_dir
 
 
-class StatusReporter:
+class _StatusReporter:
     """Object passed into your function that you can report status through.
 
     Example:
-        >>> from ray.tune.function_runner import StatusReporter
-        >>> reporter = StatusReporter(...) # doctest: +SKIP
+        >>> from ray.tune.function_runner import _StatusReporter
+        >>> reporter = _StatusReporter(...) # doctest: +SKIP
         >>> def trainable_function(config, reporter): # doctest: +SKIP
-        >>>     assert isinstance(reporter, StatusReporter) # doctest: +SKIP
+        >>>     assert isinstance(reporter, _StatusReporter) # doctest: +SKIP
         >>>     reporter(timesteps_this_iter=1) # doctest: +SKIP
     """
 
@@ -169,8 +171,8 @@ class StatusReporter:
             kwargs: Latest training result status.
 
         Example:
-            >>> from ray.tune.function_runner import StatusReporter
-            >>> reporter = StatusReporter(...) # doctest: +SKIP
+            >>> from ray.tune.function_runner import _StatusReporter
+            >>> reporter = _StatusReporter(...) # doctest: +SKIP
             >>> reporter(mean_accuracy=1, training_iteration=4) # doctest: +SKIP
             >>> reporter( # doctest: +SKIP
             ...     mean_accuracy=1, training_iteration=4, done=True
@@ -299,6 +301,7 @@ class _RunnerThread(threading.Thread):
                 )
 
 
+@DeveloperAPI
 class FunctionRunner(Trainable):
     """Trainable that runs a user function reporting results.
 
@@ -323,7 +326,7 @@ class FunctionRunner(Trainable):
         # reporting to block until finished.
         self._error_queue = queue.Queue(1)
 
-        self._status_reporter = StatusReporter(
+        self._status_reporter = _StatusReporter(
             self._results_queue,
             self._continue_semaphore,
             self._end_event,

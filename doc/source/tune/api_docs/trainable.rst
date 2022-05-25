@@ -384,9 +384,3 @@ tune.with_parameters
 
 .. autofunction:: ray.tune.with_parameters
 
-
-StatusReporter
---------------
-
-.. autoclass:: ray.tune.function_runner.StatusReporter
-    :members: __call__, logdir
