@@ -37,21 +37,22 @@ serve.start(detached=True, http_options={{"location":"EveryNode"}})
 Counter.options(num_replicas={num_replicas}).deploy()
 """
 
-check_script = f"""
+check_script = """
 import requests
 import json
 b = json.loads(requests.get("http://127.0.0.1:8000/api/").text)["count"]
 for i in range(5):
     response = requests.get("http://127.0.0.1:8000/api/incr")
-    assert json.loads(response.text) == {{"count": i + b + 1}}
+    assert json.loads(response.text) == {"count": i + b + 1}
 
-pids = {{
+pids = {
     json.loads(requests.get("http://127.0.0.1:8000/api/pid").text)["pid"]
     for _ in range(5)
-}}
+}
 
 assert len(pids) == 1
 """
+
 
 def test_ray_server(docker_cluster):
     header, worker = docker_cluster
@@ -64,18 +65,18 @@ def test_ray_server(docker_cluster):
     print(">>>> SCRIPT <<<<")
     print(check_script)
 
-    output =  worker.exec_run(cmd=f"python -c '{check_script}'")
+    output = worker.exec_run(cmd=f"python -c '{check_script}'")
 
     assert output.exit_code == 0
     # Kill the head node
 
     header.kill()
     import pdb
+
     pdb.set_trace()
     # Make sure serve is still working
-    output =  worker.exec_run(cmd=f"python -c '{check_script}'")
+    output = worker.exec_run(cmd=f"python -c '{check_script}'")
     assert output.exit_code == 0
-
 
 
 if __name__ == "__main__":
