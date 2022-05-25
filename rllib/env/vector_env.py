@@ -282,6 +282,7 @@ class _VectorizedGymEnv(VectorEnv):
                 obs, r, done, info = self.envs[i].step(actions[i])
             except Exception as e:
                 if self.restart_failed_sub_environments:
+                    logger.exception(e.args[0])
                     self.restart_at(i)
                     obs, r, done, info = e, 0.0, True, {}
                 else:

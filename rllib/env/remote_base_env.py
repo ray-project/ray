@@ -165,6 +165,7 @@ class RemoteBaseEnv(BaseEnv):
                 # Something happened on the actor during stepping/resetting.
                 # Restart sub-environment (create new actor; close old one).
                 if self.restart_failed_sub_environments:
+                    logger.exception(e.args[0])
                     self.try_restart(env_id)
                     # Always return multi-agent data.
                     # Set the observation to the exception, no rewards,
@@ -248,6 +249,7 @@ class RemoteBaseEnv(BaseEnv):
     def try_restart(self, env_id: Optional[EnvID] = None) -> None:
         # Try closing down the old (possibly faulty) sub-env, but ignore errors.
         try:
+            # Close the env on the remote side.
             self.actors[env_id].close.remote()
         except Exception as e:
             if log_once("close_sub_env"):
@@ -255,6 +257,10 @@ class RemoteBaseEnv(BaseEnv):
                     "Trying to close old and replaced sub-environment (at vector "
                     f"index={env_id}), but closing resulted in error:\n{e}"
                 )
+
+        # Terminate the actor itself to free up its resources.
+        self.actors[env_id].__ray_terminate__.remote()
+
         # Re-create a new sub-environment.
         self.actors[env_id] = self._make_sub_env(env_id)
 

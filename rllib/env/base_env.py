@@ -370,7 +370,13 @@ _DUMMY_AGENT_ID = "agent0"
 def with_dummy_agent_id(
     env_id_to_values: Dict[EnvID, Any], dummy_id: "AgentID" = _DUMMY_AGENT_ID
 ) -> MultiEnvDict:
-    return {env_id: {dummy_id: value} for (env_id, value) in env_id_to_values.items()}
+    ret = {}
+    for (env_id, value) in env_id_to_values.items():
+        # If the value (e.g. the observation) is an Exception, publish this error
+        # under the env ID so the caller of `poll()` knows that the entire episode
+        # (sub-environment) has crashed.
+        ret[env_id] = value if isinstance(value, Exception) else {dummy_id: value}
+    return ret
 
 
 @DeveloperAPI

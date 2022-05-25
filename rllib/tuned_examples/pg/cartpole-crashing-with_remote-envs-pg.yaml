@@ -2,7 +2,7 @@ cartpole-crashing-with-remote-envs-pg:
     env: ray.rllib.examples.env.cartpole_crashing.CartPoleCrashing
     run: PG
     stop:
-        episode_reward_mean: 40.0
+        episode_reward_mean: 35.0
         timesteps_total: 25000
     config:
         # Works for both torch and tf.
@@ -18,8 +18,8 @@ cartpole-crashing-with-remote-envs-pg:
                 init_time_s: 2.0
         num_workers: 4
         num_envs_per_worker: 3
-        rollout_fragment_length: 20
-        train_batch_size: 64
+        rollout_fragment_length: 50
+        #train_batch_size: 32
         # Use parallel remote envs.
         remote_worker_envs: true
         # Switch on resiliency for failed sub environments (within a vectorized stack).
