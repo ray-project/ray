@@ -16,7 +16,7 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import add_mixins, force_list
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
@@ -71,7 +71,7 @@ def _convert_to_numpy(x):
         )
 
 
-def convert_eager_inputs(func):
+def _convert_eager_inputs(func):
     @functools.wraps(func)
     def _func(*args, **kwargs):
         if tf.executing_eagerly():
@@ -89,7 +89,7 @@ def convert_eager_inputs(func):
     return _func
 
 
-def convert_eager_outputs(func):
+def _convert_eager_outputs(func):
     @functools.wraps(func)
     def _func(*args, **kwargs):
         out = func(*args, **kwargs)
@@ -109,7 +109,7 @@ def _disallow_var_creation(next_creator, **kw):
     )
 
 
-def check_too_many_retraces(obj):
+def _check_too_many_retraces(obj):
     """Asserts that a given number of re-traces is not breached."""
 
     def _func(self_, *args, **kwargs):
@@ -129,13 +129,14 @@ def check_too_many_retraces(obj):
     return _func
 
 
+@DeveloperAPI
 class EagerTFPolicy(Policy):
     """Dummy class to recognize any eagerized TFPolicy by its inheritance."""
 
     pass
 
 
-def traced_eager_policy(eager_policy_cls):
+def _traced_eager_policy(eager_policy_cls):
     """Wrapper class that enables tracing for all eager policy methods.
 
     This is enabled by the `--trace`/`eager_tracing=True` config when
@@ -150,7 +151,7 @@ def traced_eager_policy(eager_policy_cls):
             self._traced_apply_gradients_helper = False
             super(TracedEagerPolicy, self).__init__(*args, **kwargs)
 
-        @check_too_many_retraces
+        @_check_too_many_retraces
         @override(Policy)
         def compute_actions_from_input_dict(
             self,
@@ -164,7 +165,7 @@ def traced_eager_policy(eager_policy_cls):
 
             # Create a traced version of `self._compute_actions_helper`.
             if self._traced_compute_actions_helper is False and not self._no_tracing:
-                self._compute_actions_helper = convert_eager_inputs(
+                self._compute_actions_helper = _convert_eager_inputs(
                     tf.function(
                         super(TracedEagerPolicy, self)._compute_actions_helper,
                         autograph=False,
@@ -183,14 +184,14 @@ def traced_eager_policy(eager_policy_cls):
                 **kwargs,
             )
 
-        @check_too_many_retraces
+        @_check_too_many_retraces
         @override(eager_policy_cls)
         def learn_on_batch(self, samples):
             """Traced version of Policy.learn_on_batch."""
 
             # Create a traced version of `self._learn_on_batch_helper`.
             if self._traced_learn_on_batch_helper is False and not self._no_tracing:
-                self._learn_on_batch_helper = convert_eager_inputs(
+                self._learn_on_batch_helper = _convert_eager_inputs(
                     tf.function(
                         super(TracedEagerPolicy, self)._learn_on_batch_helper,
                         autograph=False,
@@ -203,14 +204,14 @@ def traced_eager_policy(eager_policy_cls):
             # apply_gradients (which will call the traced helper).
             return super(TracedEagerPolicy, self).learn_on_batch(samples)
 
-        @check_too_many_retraces
+        @_check_too_many_retraces
         @override(eager_policy_cls)
         def compute_gradients(self, samples: SampleBatch) -> ModelGradients:
             """Traced version of Policy.compute_gradients."""
 
             # Create a traced version of `self._compute_gradients_helper`.
             if self._traced_compute_gradients_helper is False and not self._no_tracing:
-                self._compute_gradients_helper = convert_eager_inputs(
+                self._compute_gradients_helper = _convert_eager_inputs(
                     tf.function(
                         super(TracedEagerPolicy, self)._compute_gradients_helper,
                         autograph=False,
@@ -223,14 +224,14 @@ def traced_eager_policy(eager_policy_cls):
             # `compute_gradients()` (which will call the traced helper).
             return super(TracedEagerPolicy, self).compute_gradients(samples)
 
-        @check_too_many_retraces
+        @_check_too_many_retraces
         @override(Policy)
         def apply_gradients(self, grads: ModelGradients) -> None:
             """Traced version of Policy.apply_gradients."""
 
             # Create a traced version of `self._apply_gradients_helper`.
             if self._traced_apply_gradients_helper is False and not self._no_tracing:
-                self._apply_gradients_helper = convert_eager_inputs(
+                self._apply_gradients_helper = _convert_eager_inputs(
                     tf.function(
                         super(TracedEagerPolicy, self)._apply_gradients_helper,
                         autograph=False,
@@ -253,7 +254,7 @@ def traced_eager_policy(eager_policy_cls):
     return TracedEagerPolicy
 
 
-class OptimizerWrapper:
+class _OptimizerWrapper:
     def __init__(self, tape):
         self.tape = tape
 
@@ -261,7 +262,7 @@ class OptimizerWrapper:
         return list(zip(self.tape.gradient(loss, var_list), var_list))
 
 
-def build_eager_tf_policy(
+def _build_eager_tf_policy(
     name,
     loss_fn,
     get_default_config=None,
@@ -909,7 +910,7 @@ def build_eager_tf_policy(
                 # object looks like a "classic" tf.optimizer. This way, custom
                 # compute_gradients_fn will work on both tf static graph
                 # and tf-eager.
-                optimizer = OptimizerWrapper(tape)
+                optimizer = _OptimizerWrapper(tape)
                 # More than one loss terms/optimizers.
                 if self.config["_tf_policy_handles_more_than_one_loss"]:
                     grads_and_vars = compute_gradients_fn(
@@ -993,7 +994,7 @@ def build_eager_tf_policy(
 
         @classmethod
         def with_tracing(cls):
-            return traced_eager_policy(cls)
+            return _traced_eager_policy(cls)
 
     eager_policy_cls.__name__ = name + "_eager"
     eager_policy_cls.__qualname__ = name + "_eager"
