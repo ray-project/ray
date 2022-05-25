@@ -70,6 +70,9 @@ class _FixedDirCheckpoint(Checkpoint):
 
     def _make_dir(self, path: str) -> None:
         super()._make_dir(path)
+        # each process drops a lock file it then cleans up
+        # if there are no lock files left, the last process
+        # will remove the entire directory
         del_lock_path = self._get_del_lock_path(path)
         open(del_lock_path, "a").close()
 
