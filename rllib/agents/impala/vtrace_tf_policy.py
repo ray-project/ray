@@ -5,16 +5,25 @@ Keep in sync with changes to A3CTFPolicy and VtraceSurrogatePolicy."""
 import numpy as np
 import logging
 import gym
+from typing import Dict, List, Type, Union
 
 import ray
 from ray.rllib.agents.impala import vtrace_tf as vtrace
-from ray.rllib.models.tf.tf_action_dist import Categorical
+from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.models.tf.tf_action_dist import Categorical, TFActionDistribution
+from ray.rllib.policy.dynamic_tf_policy_v2 import DynamicTFPolicyV2
+from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.tf_mixins import LearningRateSchedule, EntropyCoeffSchedule
 from ray.rllib.utils import force_list
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import explained_variance
+from ray.rllib.utils.typing import (
+    LocalOptimizer,
+    ModelGradients,
+    TensorType,
+)
 
 tf1, tf, tfv = try_import_tf()
 
@@ -158,197 +167,275 @@ def _make_time_major(policy, seq_lens, tensor, drop_last=False):
     return res
 
 
-def build_vtrace_loss(policy, model, dist_class, train_batch):
-    model_out, _ = model(train_batch)
-    action_dist = dist_class(model_out, model)
+class VTraceClipGradients:
+    """VTrace version of gradient computation logic."""
 
-    if isinstance(policy.action_space, gym.spaces.Discrete):
-        is_multidiscrete = False
-        output_hidden_shape = [policy.action_space.n]
-    elif isinstance(policy.action_space, gym.spaces.MultiDiscrete):
-        is_multidiscrete = True
-        output_hidden_shape = policy.action_space.nvec.astype(np.int32)
-    else:
-        is_multidiscrete = False
-        output_hidden_shape = 1
+    def __init__(self):
+        """No special initialization required."""
+        pass
 
-    def make_time_major(*args, **kw):
-        return _make_time_major(
-            policy, train_batch.get(SampleBatch.SEQ_LENS), *args, **kw
-        )
+    def compute_gradients_fn(
+        self, optimizer: LocalOptimizer, loss: TensorType
+    ) -> ModelGradients:
+        # Supporting more than one loss/optimizer.
+        if self.config["_tf_policy_handles_more_than_one_loss"]:
+            optimizers = force_list(optimizer)
+            losses = force_list(loss)
+            assert len(optimizers) == len(losses)
+            clipped_grads_and_vars = []
+            for optim, loss_ in zip(optimizers, losses):
+                grads_and_vars = optim.compute_gradients(
+                    loss_, self.model.trainable_variables()
+                )
+                clipped_g_and_v = []
+                for g, v in grads_and_vars:
+                    if g is not None:
+                        clipped_g, _ = tf.clip_by_global_norm(
+                            [g], self.config["grad_clip"]
+                        )
+                        clipped_g_and_v.append((clipped_g[0], v))
+                clipped_grads_and_vars.append(clipped_g_and_v)
 
-    actions = train_batch[SampleBatch.ACTIONS]
-    dones = train_batch[SampleBatch.DONES]
-    rewards = train_batch[SampleBatch.REWARDS]
-    behaviour_action_logp = train_batch[SampleBatch.ACTION_LOGP]
-    behaviour_logits = train_batch[SampleBatch.ACTION_DIST_INPUTS]
-    unpacked_behaviour_logits = tf.split(behaviour_logits, output_hidden_shape, axis=1)
-    unpacked_outputs = tf.split(model_out, output_hidden_shape, axis=1)
-    values = model.value_function()
-
-    if policy.is_recurrent():
-        max_seq_len = tf.reduce_max(train_batch[SampleBatch.SEQ_LENS])
-        mask = tf.sequence_mask(train_batch[SampleBatch.SEQ_LENS], max_seq_len)
-        mask = tf.reshape(mask, [-1])
-    else:
-        mask = tf.ones_like(rewards)
-
-    # Prepare actions for loss
-    loss_actions = actions if is_multidiscrete else tf.expand_dims(actions, axis=1)
-
-    # Inputs are reshaped from [B * T] => [(T|T-1), B] for V-trace calc.
-    drop_last = policy.config["vtrace_drop_last_ts"]
-    policy.loss = VTraceLoss(
-        actions=make_time_major(loss_actions, drop_last=drop_last),
-        actions_logp=make_time_major(action_dist.logp(actions), drop_last=drop_last),
-        actions_entropy=make_time_major(
-            action_dist.multi_entropy(), drop_last=drop_last
-        ),
-        dones=make_time_major(dones, drop_last=drop_last),
-        behaviour_action_logp=make_time_major(
-            behaviour_action_logp, drop_last=drop_last
-        ),
-        behaviour_logits=make_time_major(
-            unpacked_behaviour_logits, drop_last=drop_last
-        ),
-        target_logits=make_time_major(unpacked_outputs, drop_last=drop_last),
-        discount=policy.config["gamma"],
-        rewards=make_time_major(rewards, drop_last=drop_last),
-        values=make_time_major(values, drop_last=drop_last),
-        bootstrap_value=make_time_major(values)[-1],
-        dist_class=Categorical if is_multidiscrete else dist_class,
-        model=model,
-        valid_mask=make_time_major(mask, drop_last=drop_last),
-        config=policy.config,
-        vf_loss_coeff=policy.config["vf_loss_coeff"],
-        entropy_coeff=policy.entropy_coeff,
-        clip_rho_threshold=policy.config["vtrace_clip_rho_threshold"],
-        clip_pg_rho_threshold=policy.config["vtrace_clip_pg_rho_threshold"],
-    )
-
-    if policy.config.get("_separate_vf_optimizer"):
-        return policy.loss.loss_wo_vf, policy.loss.vf_loss
-    else:
-        return policy.loss.total_loss
-
-
-def stats(policy, train_batch):
-    drop_last = policy.config["vtrace"] and policy.config["vtrace_drop_last_ts"]
-    values_batched = _make_time_major(
-        policy,
-        train_batch.get(SampleBatch.SEQ_LENS),
-        policy.model.value_function(),
-        drop_last=drop_last,
-    )
-
-    return {
-        "cur_lr": tf.cast(policy.cur_lr, tf.float64),
-        "policy_loss": policy.loss.mean_pi_loss,
-        "entropy": policy.loss.mean_entropy,
-        "entropy_coeff": tf.cast(policy.entropy_coeff, tf.float64),
-        "var_gnorm": tf.linalg.global_norm(policy.model.trainable_variables()),
-        "vf_loss": policy.loss.mean_vf_loss,
-        "vf_explained_var": explained_variance(
-            tf.reshape(policy.loss.value_targets, [-1]),
-            tf.reshape(values_batched, [-1]),
-        ),
-    }
-
-
-def grad_stats(policy, train_batch, grads):
-    # We have support for more than one loss (list of lists of grads).
-    if policy.config.get("_tf_policy_handles_more_than_one_loss"):
-        grad_gnorm = [tf.linalg.global_norm(g) for g in grads]
-    # Old case: We have a single list of grads (only one loss term and
-    # optimizer).
-    else:
-        grad_gnorm = tf.linalg.global_norm(grads)
-
-    return {
-        "grad_gnorm": grad_gnorm,
-    }
-
-
-def choose_optimizer(policy, config):
-    if policy.config["opt_type"] == "adam":
-        if policy.config["framework"] in ["tf2", "tfe"]:
-            optim = tf.keras.optimizers.Adam(policy.cur_lr)
-            if policy.config["_separate_vf_optimizer"]:
-                return optim, tf.keras.optimizers.Adam(policy.config["_lr_vf"])
+            self.grads = [g for g_and_v in clipped_grads_and_vars for (g, v) in g_and_v]
+        # Only one optimizer and and loss term.
         else:
-            optim = tf1.train.AdamOptimizer(policy.cur_lr)
-            if policy.config["_separate_vf_optimizer"]:
-                return optim, tf1.train.AdamOptimizer(policy.config["_lr_vf"])
-    else:
-        if policy.config["_separate_vf_optimizer"]:
-            raise ValueError(
-                "RMSProp optimizer not supported for separate"
-                "vf- and policy losses yet! Set `opt_type=adam`"
+            grads_and_vars = optimizer.compute_gradients(
+                loss, self.model.trainable_variables()
+            )
+            grads = [g for (g, v) in grads_and_vars]
+            self.grads, _ = tf.clip_by_global_norm(grads, self.config["grad_clip"])
+            clipped_grads_and_vars = list(
+                zip(self.grads, self.model.trainable_variables())
             )
 
-        if tfv == 2:
-            optim = tf.keras.optimizers.RMSprop(
-                policy.cur_lr, config["decay"], config["momentum"], config["epsilon"]
-            )
+        return clipped_grads_and_vars
+
+
+class VTraceOptimizer:
+    """Optimizer function for VTrace policies."""
+
+    def __init__(self):
+        pass
+
+    # TODO: maybe standardize this function, so the choice of optimizers are more
+    # predictable for common agents.
+    def optimizer(
+        self,
+    ) -> Union["tf.keras.optimizers.Optimizer", List["tf.keras.optimizers.Optimizer"]]:
+        config = self.config
+        if config["opt_type"] == "adam":
+            if config["framework"] in ["tf2", "tfe"]:
+                optim = tf.keras.optimizers.Adam(self.cur_lr)
+                if config["_separate_vf_optimizer"]:
+                    return optim, tf.keras.optimizers.Adam(config["_lr_vf"])
+            else:
+                optim = tf1.train.AdamOptimizer(self.cur_lr)
+                if config["_separate_vf_optimizer"]:
+                    return optim, tf1.train.AdamOptimizer(config["_lr_vf"])
         else:
-            optim = tf1.train.RMSPropOptimizer(
-                policy.cur_lr, config["decay"], config["momentum"], config["epsilon"]
+            if config["_separate_vf_optimizer"]:
+                raise ValueError(
+                    "RMSProp optimizer not supported for separate"
+                    "vf- and policy losses yet! Set `opt_type=adam`"
+                )
+
+            if tfv == 2:
+                optim = tf.keras.optimizers.RMSprop(
+                    self.cur_lr, config["decay"], config["momentum"], config["epsilon"]
+                )
+            else:
+                optim = tf1.train.RMSPropOptimizer(
+                    self.cur_lr, config["decay"], config["momentum"], config["epsilon"]
+                )
+
+        return optim
+
+
+# We need this builder function because we want to share the same
+# custom logics between TF1 dynamic and TF2 eager policies.
+def get_vtrace_tf_policy(base: type) -> type:
+    """Construct an VTraceTFPolicy inheriting either dynamic or eager base policies.
+
+    Args:
+        base: Base class for this policy. DynamicTFPolicyV2 or EagerTFPolicyV2.
+
+    Returns:
+        A TF Policy to be used with ImpalaTrainer.
+    """
+    # VTrace mixins are placed in front of more general mixins to make sure
+    # their functions like optimizer() overrides all the other implementations
+    # (e.g., LearningRateSchedule.optimizer())
+    class VTraceTFPolicy(
+        VTraceClipGradients,
+        VTraceOptimizer,
+        LearningRateSchedule,
+        EntropyCoeffSchedule,
+        base,
+    ):
+        def __init__(
+            self,
+            obs_space,
+            action_space,
+            config,
+            existing_model=None,
+            existing_inputs=None,
+        ):
+            # First thing first, enable eager execution if necessary.
+            base.enable_eager_execution_if_necessary()
+
+            config = dict(ray.rllib.agents.impala.impala.DEFAULT_CONFIG, **config)
+
+            # Initialize base class.
+            base.__init__(
+                self,
+                obs_space,
+                action_space,
+                config,
+                existing_inputs=existing_inputs,
+                existing_model=existing_model,
             )
 
-    return optim
-
-
-def clip_gradients(policy, optimizer, loss):
-    # Supporting more than one loss/optimizer.
-    if policy.config["_tf_policy_handles_more_than_one_loss"]:
-        optimizers = force_list(optimizer)
-        losses = force_list(loss)
-        assert len(optimizers) == len(losses)
-        clipped_grads_and_vars = []
-        for optim, loss_ in zip(optimizers, losses):
-            grads_and_vars = optim.compute_gradients(
-                loss_, policy.model.trainable_variables()
+            VTraceClipGradients.__init__(self)
+            VTraceOptimizer.__init__(self)
+            LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
+            EntropyCoeffSchedule.__init__(
+                self, config["entropy_coeff"], config["entropy_coeff_schedule"]
             )
-            clipped_g_and_v = []
-            for g, v in grads_and_vars:
-                if g is not None:
-                    clipped_g, _ = tf.clip_by_global_norm(
-                        [g], policy.config["grad_clip"]
-                    )
-                    clipped_g_and_v.append((clipped_g[0], v))
-            clipped_grads_and_vars.append(clipped_g_and_v)
 
-        policy.grads = [g for g_and_v in clipped_grads_and_vars for (g, v) in g_and_v]
-    # Only one optimizer and and loss term.
-    else:
-        grads_and_vars = optimizer.compute_gradients(
-            loss, policy.model.trainable_variables()
-        )
-        grads = [g for (g, v) in grads_and_vars]
-        policy.grads, _ = tf.clip_by_global_norm(grads, policy.config["grad_clip"])
-        clipped_grads_and_vars = list(
-            zip(policy.grads, policy.model.trainable_variables())
-        )
+            # Note: this is a bit ugly, but loss and optimizer initialization must
+            # happen after all the MixIns are initialized.
+            self.maybe_initialize_optimizer_and_loss()
 
-    return clipped_grads_and_vars
+        @override(base)
+        def loss(
+            self,
+            model: Union[ModelV2, "tf.keras.Model"],
+            dist_class: Type[TFActionDistribution],
+            train_batch: SampleBatch,
+        ) -> Union[TensorType, List[TensorType]]:
+            model_out, _ = model(train_batch)
+            action_dist = dist_class(model_out, model)
+
+            if isinstance(self.action_space, gym.spaces.Discrete):
+                is_multidiscrete = False
+                output_hidden_shape = [self.action_space.n]
+            elif isinstance(self.action_space, gym.spaces.MultiDiscrete):
+                is_multidiscrete = True
+                output_hidden_shape = self.action_space.nvec.astype(np.int32)
+            else:
+                is_multidiscrete = False
+                output_hidden_shape = 1
+
+            def make_time_major(*args, **kw):
+                return _make_time_major(
+                    self, train_batch.get(SampleBatch.SEQ_LENS), *args, **kw
+                )
+
+            actions = train_batch[SampleBatch.ACTIONS]
+            dones = train_batch[SampleBatch.DONES]
+            rewards = train_batch[SampleBatch.REWARDS]
+            behaviour_action_logp = train_batch[SampleBatch.ACTION_LOGP]
+            behaviour_logits = train_batch[SampleBatch.ACTION_DIST_INPUTS]
+            unpacked_behaviour_logits = tf.split(
+                behaviour_logits, output_hidden_shape, axis=1
+            )
+            unpacked_outputs = tf.split(model_out, output_hidden_shape, axis=1)
+            values = model.value_function()
+
+            if self.is_recurrent():
+                max_seq_len = tf.reduce_max(train_batch[SampleBatch.SEQ_LENS])
+                mask = tf.sequence_mask(train_batch[SampleBatch.SEQ_LENS], max_seq_len)
+                mask = tf.reshape(mask, [-1])
+            else:
+                mask = tf.ones_like(rewards)
+
+            # Prepare actions for loss
+            loss_actions = (
+                actions if is_multidiscrete else tf.expand_dims(actions, axis=1)
+            )
+
+            # Inputs are reshaped from [B * T] => [(T|T-1), B] for V-trace calc.
+            drop_last = self.config["vtrace_drop_last_ts"]
+            self.vtrace_loss = VTraceLoss(
+                actions=make_time_major(loss_actions, drop_last=drop_last),
+                actions_logp=make_time_major(
+                    action_dist.logp(actions), drop_last=drop_last
+                ),
+                actions_entropy=make_time_major(
+                    action_dist.multi_entropy(), drop_last=drop_last
+                ),
+                dones=make_time_major(dones, drop_last=drop_last),
+                behaviour_action_logp=make_time_major(
+                    behaviour_action_logp, drop_last=drop_last
+                ),
+                behaviour_logits=make_time_major(
+                    unpacked_behaviour_logits, drop_last=drop_last
+                ),
+                target_logits=make_time_major(unpacked_outputs, drop_last=drop_last),
+                discount=self.config["gamma"],
+                rewards=make_time_major(rewards, drop_last=drop_last),
+                values=make_time_major(values, drop_last=drop_last),
+                bootstrap_value=make_time_major(values)[-1],
+                dist_class=Categorical if is_multidiscrete else dist_class,
+                model=model,
+                valid_mask=make_time_major(mask, drop_last=drop_last),
+                config=self.config,
+                vf_loss_coeff=self.config["vf_loss_coeff"],
+                entropy_coeff=self.entropy_coeff,
+                clip_rho_threshold=self.config["vtrace_clip_rho_threshold"],
+                clip_pg_rho_threshold=self.config["vtrace_clip_pg_rho_threshold"],
+            )
+
+            if self.config.get("_separate_vf_optimizer"):
+                return self.vtrace_loss.loss_wo_vf, self.vtrace_loss.vf_loss
+            else:
+                return self.vtrace_loss.total_loss
+
+        @override(base)
+        def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
+            drop_last = self.config["vtrace"] and self.config["vtrace_drop_last_ts"]
+            values_batched = _make_time_major(
+                self,
+                train_batch.get(SampleBatch.SEQ_LENS),
+                self.model.value_function(),
+                drop_last=drop_last,
+            )
+
+            return {
+                "cur_lr": tf.cast(self.cur_lr, tf.float64),
+                "policy_loss": self.vtrace_loss.mean_pi_loss,
+                "entropy": self.vtrace_loss.mean_entropy,
+                "entropy_coeff": tf.cast(self.entropy_coeff, tf.float64),
+                "var_gnorm": tf.linalg.global_norm(self.model.trainable_variables()),
+                "vf_loss": self.vtrace_loss.mean_vf_loss,
+                "vf_explained_var": explained_variance(
+                    tf.reshape(self.vtrace_loss.value_targets, [-1]),
+                    tf.reshape(values_batched, [-1]),
+                ),
+            }
+
+        @override(base)
+        def grad_stats_fn(
+            self, train_batch: SampleBatch, grads: ModelGradients
+        ) -> Dict[str, TensorType]:
+            # We have support for more than one loss (list of lists of grads).
+            if self.config.get("_tf_policy_handles_more_than_one_loss"):
+                grad_gnorm = [tf.linalg.global_norm(g) for g in grads]
+            # Old case: We have a single list of grads (only one loss term and
+            # optimizer).
+            else:
+                grad_gnorm = tf.linalg.global_norm(grads)
+
+            return {
+                "grad_gnorm": grad_gnorm,
+            }
+
+        @override(base)
+        def get_batch_divisibility_req(self) -> int:
+            return self.config["rollout_fragment_length"]
+
+    return VTraceTFPolicy
 
 
-def setup_mixins(policy, obs_space, action_space, config):
-    LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
-    EntropyCoeffSchedule.__init__(
-        policy, config["entropy_coeff"], config["entropy_coeff_schedule"]
-    )
-
-
-VTraceTFPolicy = build_tf_policy(
-    name="VTraceTFPolicy",
-    get_default_config=lambda: ray.rllib.agents.impala.impala.DEFAULT_CONFIG,
-    loss_fn=build_vtrace_loss,
-    stats_fn=stats,
-    grad_stats_fn=grad_stats,
-    optimizer_fn=choose_optimizer,
-    compute_gradients_fn=clip_gradients,
-    before_loss_init=setup_mixins,
-    mixins=[LearningRateSchedule, EntropyCoeffSchedule],
-    get_batch_divisibility_req=lambda p: p.config["rollout_fragment_length"],
-)
+VTraceStaticGraphTFPolicy = get_vtrace_tf_policy(DynamicTFPolicyV2)
+VTraceEagerTFPolicy = get_vtrace_tf_policy(EagerTFPolicyV2)

@@ -821,7 +821,7 @@ class Policy(metaclass=ABCMeta):
 
         This method only exists b/c some Trainers do not use TfPolicy nor
         TorchPolicy, but inherit directly from Policy. Others inherit from
-        TfPolicy w/o using DynamicTfPolicy.
+        TfPolicy w/o using DynamicTFPolicy.
         TODO(sven): unify these cases.
 
         Returns:

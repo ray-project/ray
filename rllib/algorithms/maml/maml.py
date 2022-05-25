@@ -288,9 +288,9 @@ class MAMLTrainer(Trainer):
 
             return MAMLTorchPolicy
         elif config["framework"] == "tf":
-            from ray.rllib.algorithms.maml.maml_tf_policy import MAMLDynamicTFPolicy
+            from ray.rllib.algorithms.maml.maml_tf_policy import MAMLStaticGraphTFPolicy
 
-            return MAMLDynamicTFPolicy
+            return MAMLStaticGraphTFPolicy
         else:
             from ray.rllib.algorithms.maml.maml_tf_policy import MAMLEagerTFPolicy
 
