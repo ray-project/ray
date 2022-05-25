@@ -22,6 +22,7 @@ def test_kv_basic(ray_start_regular):
     gcs_address = ray.worker.global_worker.gcs_client.address
     gcs_client = gcs_utils.GcsClient(address=gcs_address, nums_reconnect_retry=0)
 
+    assert gcs_client.internal_kv_get(b"A", b"NS") is None
     assert gcs_client.internal_kv_put(b"A", b"B", False, b"NS") == 1
     assert gcs_client.internal_kv_get(b"A", b"NS") == b"B"
     assert gcs_client.internal_kv_put(b"A", b"C", False, b"NS") == 0
@@ -65,6 +66,7 @@ async def test_kv_basic_aio(ray_start_regular):
         address=ray.worker.global_worker.gcs_client.address
     )
 
+    assert await gcs_client.internal_kv_get(b"A", b"NS") is None
     assert await gcs_client.internal_kv_put(b"A", b"B", False, b"NS") == 1
     assert await gcs_client.internal_kv_get(b"A", b"NS") == b"B"
     assert await gcs_client.internal_kv_put(b"A", b"C", False, b"NS") == 0

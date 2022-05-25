@@ -210,7 +210,7 @@ class GcsClient:
 
     @_auto_reconnect
     def internal_kv_get(
-        self, key: bytes, namespace: Optional[bytes], timeout: Optional[int] = None
+        self, key: bytes, namespace: Optional[bytes], timeout: Optional[float] = None
     ) -> bytes:
         logger.debug(f"internal_kv_get {key} {namespace}")
         req = gcs_service_pb2.InternalKVGetRequest(namespace=namespace, key=key)
@@ -232,7 +232,7 @@ class GcsClient:
         value: bytes,
         overwrite: bool,
         namespace: Optional[bytes],
-        timeout: Optional[int] = None,
+        timeout: Optional[float] = None,
     ) -> int:
         logger.debug(f"internal_kv_put {key} {value} {overwrite} {namespace}")
         req = gcs_service_pb2.InternalKVPutRequest(
@@ -256,7 +256,7 @@ class GcsClient:
         key: bytes,
         del_by_prefix: bool,
         namespace: Optional[bytes],
-        timeout: Optional[int] = None,
+        timeout: Optional[float] = None,
     ) -> int:
         logger.debug(f"internal_kv_del {key} {del_by_prefix} {namespace}")
         req = gcs_service_pb2.InternalKVDelRequest(
@@ -272,7 +272,7 @@ class GcsClient:
 
     @_auto_reconnect
     def internal_kv_exists(
-        self, key: bytes, namespace: Optional[bytes], timeout: Optional[int] = None
+        self, key: bytes, namespace: Optional[bytes], timeout: Optional[float] = None
     ) -> bool:
         logger.debug(f"internal_kv_exists {key} {namespace}")
         req = gcs_service_pb2.InternalKVExistsRequest(namespace=namespace, key=key)
@@ -287,7 +287,7 @@ class GcsClient:
 
     @_auto_reconnect
     def internal_kv_keys(
-        self, prefix: bytes, namespace: Optional[bytes], timeout: Optional[int] = None
+        self, prefix: bytes, namespace: Optional[bytes], timeout: Optional[float] = None
     ) -> List[bytes]:
         logger.debug(f"internal_kv_keys {prefix} {namespace}")
         req = gcs_service_pb2.InternalKVKeysRequest(namespace=namespace, prefix=prefix)
@@ -340,7 +340,7 @@ class GcsAioClient:
         )
 
     async def internal_kv_get(
-        self, key: bytes, namespace: Optional[bytes], timeout: Optional[int] = None
+        self, key: bytes, namespace: Optional[bytes], timeout: Optional[float] = None
     ) -> Awaitable[bytes]:
         logger.debug(f"internal_kv_get {key} {namespace}")
         req = gcs_service_pb2.InternalKVGetRequest(namespace=namespace, key=key)
@@ -361,7 +361,7 @@ class GcsAioClient:
         value: bytes,
         overwrite: bool,
         namespace: Optional[bytes],
-        timeout: Optional[int] = None,
+        timeout: Optional[float] = None,
     ) -> Awaitable[int]:
         logger.debug(f"internal_kv_put {key} {value} {overwrite} {namespace}")
         req = gcs_service_pb2.InternalKVPutRequest(
@@ -384,7 +384,7 @@ class GcsAioClient:
         key: bytes,
         del_by_prefix: bool,
         namespace: Optional[bytes],
-        timeout: Optional[int] = None,
+        timeout: Optional[float] = None,
     ) -> Awaitable[int]:
         logger.debug(f"internal_kv_del {key} {del_by_prefix} {namespace}")
         req = gcs_service_pb2.InternalKVDelRequest(
@@ -399,7 +399,7 @@ class GcsAioClient:
             )
 
     async def internal_kv_exists(
-        self, key: bytes, namespace: Optional[bytes], timeout: Optional[int] = None
+        self, key: bytes, namespace: Optional[bytes], timeout: Optional[float] = None
     ) -> Awaitable[bool]:
         logger.debug(f"internal_kv_exists {key} {namespace}")
         req = gcs_service_pb2.InternalKVExistsRequest(namespace=namespace, key=key)
@@ -413,7 +413,7 @@ class GcsAioClient:
             )
 
     async def internal_kv_keys(
-        self, prefix: bytes, namespace: Optional[bytes], timeout: Optional[int] = None
+        self, prefix: bytes, namespace: Optional[bytes], timeout: Optional[float] = None
     ) -> Awaitable[List[bytes]]:
         logger.debug(f"internal_kv_keys {prefix} {namespace}")
         req = gcs_service_pb2.InternalKVKeysRequest(namespace=namespace, prefix=prefix)
