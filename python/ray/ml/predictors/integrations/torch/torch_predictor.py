@@ -129,11 +129,14 @@ class TorchPredictor(Predictor):
             import torch
             from ray.ml.predictors.torch import TorchPredictor
 
-            model = torch.nn.Linear(3, 1)
+            model = torch.nn.Linear(1, 1)
             predictor = TorchPredictor(model=model)
 
-            data = np.array([[1, 2, 3], [4, 5, 6]])
+            data = np.array([[1, 2], [3, 4]])
             predictions = predictor.predict(data)
+
+            # Only use first column as the feature
+            predictions = predictor.predict(data, feature_columns=[0])
 
         .. code-block:: python
 
@@ -162,10 +165,10 @@ class TorchPredictor(Predictor):
             data = self.preprocessor.transform_batch(data)
 
         if isinstance(data, np.ndarray):
-            tensor = torch.tensor(data, dtype=torch.float32)
-        else:
-            tensor = self._convert_to_tensor(
-                data, feature_columns=feature_columns, dtypes=dtype, unsqueeze=unsqueeze
-            )
+            # If numpy array, then convert to pandas dataframe.
+            data = pd.DataFrame(data)
 
+        tensor = self._convert_to_tensor(
+            data, feature_columns=feature_columns, dtypes=dtype, unsqueeze=unsqueeze
+        )
         return self._predict(tensor)
