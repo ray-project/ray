@@ -29,12 +29,14 @@ from ray import tune
 from ray.tune.registry import register_env
 from ray.rllib.utils.exploration.noveld import NovelDMetricsCallbacks
 
+
 def env_creator(config=None):
     name = config.get("name", "MiniGrid-MultiRoom-N4-S5-v0")
     env = gym.make(name)
     env = gym_minigrid.wrappers.ImgObsWrapper(env)
 
     return env
+
 
 register_env("mini-grid", env_creator)
 
@@ -63,11 +65,7 @@ config = (
         model={
             "post_fcnet_hiddens": [256, 256],
             "post_fcnet_activation": "relu",
-            "conv_filters": [
-                [32, [5, 5], 1], 
-                [128, [3, 3], 2], 
-                [512, [4, 4], 1]
-            ],
+            "conv_filters": [[32, [5, 5], 1], [128, [3, 3], 2], [512, [4, 4], 1]],
         },
     )
     .callbacks(
