@@ -1,5 +1,6 @@
 import sys
 import time
+import os
 
 import numpy as np
 import pytest
@@ -11,6 +12,7 @@ from ray._private.test_utils import (
     Semaphore,
 )
 from ray.internal.internal_api import memory_summary
+import ray.ray_constants as ray_constants
 
 # Task status.
 WAITING_FOR_DEPENDENCIES = "WAITING_FOR_DEPENDENCIES"
@@ -418,6 +420,63 @@ def test_memory_util(ray_start_cluster):
     ray.get(sema.release.remote())
     ray.get(ref)
     wait_for_condition(lambda: stats() == (0, 0, 2))
+
+
+@pytest.mark.parametrize("override_max_retries", [False, True])
+def test_override_max_retries(ray_start_cluster, override_max_retries):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1)
+    max_retries = ray_constants.DEFAULT_TASK_MAX_RETRIES
+    runtime_env = {}
+    if override_max_retries:
+        max_retries = 1
+        runtime_env["env_vars"] = {"RAY_task_max_retries": str(max_retries)}
+        os.environ["RAY_task_max_retries"] = str(max_retries)
+    # Since we're setting the OS environment variable after the driver process
+    # is already started, we need to set it a second time for the workers with
+    # runtime_env.
+    ray.init(cluster.address, runtime_env=runtime_env)
+
+    try:
+
+        @ray.remote
+        class ExecutionCounter:
+            def __init__(self):
+                self.count = 0
+
+            def inc(self):
+                self.count += 1
+
+            def pop(self):
+                count = self.count
+                self.count = 0
+                return count
+
+        @ray.remote
+        def f(counter):
+            ray.get(counter.inc.remote())
+            sys.exit(-1)
+
+        counter = ExecutionCounter.remote()
+        with pytest.raises(ray.exceptions.WorkerCrashedError):
+            ray.get(f.remote(counter))
+        assert ray.get(counter.pop.remote()) == max_retries + 1
+
+        # Check max_retries override still works.
+        with pytest.raises(ray.exceptions.WorkerCrashedError):
+            ray.get(f.options(max_retries=0).remote(counter))
+        assert ray.get(counter.pop.remote()) == 1
+
+        @ray.remote
+        def nested(counter):
+            ray.get(f.remote(counter))
+
+        # Check override works through nested tasks.
+        with pytest.raises(ray.exceptions.RayTaskError):
+            ray.get(nested.remote(counter))
+        assert ray.get(counter.pop.remote()) == max_retries + 1
+    finally:
+        del os.environ["RAY_task_max_retries"]
 
 
 if __name__ == "__main__":

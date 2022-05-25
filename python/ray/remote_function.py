@@ -2,6 +2,7 @@ from functools import wraps
 import inspect
 import logging
 import uuid
+import os
 
 from ray import cloudpickle as pickle
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -217,6 +218,15 @@ class RemoteFunction:
 
         # fill task required options
         for k, v in ray_option_utils.task_options.items():
+            if k == "max_retries":
+                # TODO(swang): We need to override max_retries here because the default
+                # value gets set at Ray import time. Ideally, we should allow setting
+                # default values from env vars for other options too.
+                v.default_value = os.environ.get(
+                    "RAY_task_max_retries", v.default_value
+                )
+                v.default_value = int(v.default_value)
+                print("option", k, v.default_value)
             task_options[k] = task_options.get(k, v.default_value)
         # "max_calls" already takes effects and should not apply again.
         # Remove the default value here.
