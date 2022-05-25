@@ -40,7 +40,7 @@ public class ServeTest {
     boolean inited = Ray.isInitialized();
     Ray.init();
     try {
-      Client client = null;
+      ServeControllerClient client = null;
       try {
         client = Serve.getGlobalClient();
         Assert.assertTrue(false, "Expect IllegalStateException here!");

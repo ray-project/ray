@@ -1,6 +1,17 @@
 package io.ray.serve.api;
 
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+
+import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.google.common.base.Preconditions;
+
 import io.ray.api.ActorHandle;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.PyActorHandle;
@@ -18,18 +29,10 @@ import io.ray.serve.generated.DeploymentStatusInfoList;
 import io.ray.serve.generated.EndpointInfo;
 import io.ray.serve.util.LogUtil;
 import io.ray.serve.util.ServeProtoUtil;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-import org.apache.commons.lang3.StringUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
-public class Client {
+public class ServeControllerClient {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(Client.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(ServeControllerClient.class);
 
   private static long CLIENT_POLLING_INTERVAL_S = 1;
 
@@ -39,6 +42,8 @@ public class Client {
 
   private boolean detached;
 
+  private String overrideControllerNamespace;
+
   private boolean shutdown;
 
   private Map<String, RayServeHandle> handleCache = new ConcurrentHashMap<>();
@@ -47,10 +52,15 @@ public class Client {
 
   private String checkpointPath;
 
-  public Client(BaseActorHandle controller, String controllerName, boolean detached) {
+  public ServeControllerClient(
+      BaseActorHandle controller,
+      String controllerName,
+      boolean detached,
+      String overrideControllerNamespace) {
     this.controller = controller;
     this.controllerName = controllerName;
     this.detached = detached;
+    this.overrideControllerNamespace = overrideControllerNamespace;
     this.rootUrl =
         (String)
             ((PyActorHandle) controller)
@@ -220,7 +230,8 @@ public class Client {
 
       long started = System.currentTimeMillis();
       while (true) {
-        String controllerNamespace = Serve.getControllerNamespace(detached);
+        String controllerNamespace =
+            Serve.getControllerNamespace(detached, overrideControllerNamespace);
         Optional<BaseActorHandle> controllerHandle =
             Ray.getActor(controllerName, controllerNamespace);
         if (!controllerHandle.isPresent()) {
