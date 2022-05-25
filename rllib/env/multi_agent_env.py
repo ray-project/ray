@@ -362,6 +362,7 @@ class MultiAgentEnv(gym.Env):
         return obs_space_check and action_space_check
 
 
+@PublicAPI
 def make_multi_agent(
     env_name_or_creator: Union[str, EnvCreator],
 ) -> Type["MultiAgentEnv"]:
@@ -472,6 +473,7 @@ def make_multi_agent(
     return MultiEnv
 
 
+@PublicAPI
 class MultiAgentEnvWrapper(BaseEnv):
     """Internal adapter of MultiAgentEnv to BaseEnv.
 

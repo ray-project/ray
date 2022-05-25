@@ -32,7 +32,7 @@ from ray.exceptions import RayActorError, RayError
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.env.env_context import EnvContext
-from ray.rllib.env.utils import gym_env_creator
+from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.metrics import (
     collect_episodes,
@@ -1602,7 +1602,7 @@ class Trainer(Trainable):
             # Try gym/PyBullet/Vizdoom.
             else:
                 return env_specifier, functools.partial(
-                    gym_env_creator, env_descriptor=env_specifier
+                    _gym_env_creator, env_descriptor=env_specifier
                 )
 
         elif isinstance(env_specifier, type):

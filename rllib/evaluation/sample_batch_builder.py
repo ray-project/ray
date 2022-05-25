@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def to_float_array(v: List[Any]) -> np.ndarray:
+def _to_float_array(v: List[Any]) -> np.ndarray:
     arr = np.array(v)
     if arr.dtype == np.float64:
         return arr.astype(np.float32)  # save some memory
@@ -58,7 +58,7 @@ class SampleBatchBuilder:
     def build_and_reset(self) -> SampleBatch:
         """Returns a sample batch including all previously added values."""
 
-        batch = SampleBatch({k: to_float_array(v) for k, v in self.buffers.items()})
+        batch = SampleBatch({k: _to_float_array(v) for k, v in self.buffers.items()})
         if SampleBatch.UNROLL_ID not in batch:
             batch[SampleBatch.UNROLL_ID] = np.repeat(
                 SampleBatchBuilder._next_unroll_id, batch.count

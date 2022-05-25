@@ -3,7 +3,7 @@ from typing import Callable, Tuple, Optional, List, Dict, Any, TYPE_CHECKING, Un
 
 import gym
 import ray
-from ray.rllib.utils.annotations import Deprecated, ExperimentalAPI, PublicAPI
+from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, override, PublicAPI
 from ray.rllib.utils.typing import AgentID, EnvID, EnvType, MultiAgentDict, MultiEnvDict
 
 if TYPE_CHECKING:
@@ -179,7 +179,7 @@ class BaseEnv:
         """
         return None
 
-    @ExperimentalAPI
+    @DeveloperAPI
     def try_restart(self, env_id: Optional[EnvID] = None) -> None:
         """Attempt to restart the sub-env with the given id or all sub-envs.
 
@@ -366,12 +366,14 @@ class BaseEnv:
 _DUMMY_AGENT_ID = "agent0"
 
 
+@PublicAPI
 def with_dummy_agent_id(
     env_id_to_values: Dict[EnvID, Any], dummy_id: "AgentID" = _DUMMY_AGENT_ID
 ) -> MultiEnvDict:
     return {env_id: {dummy_id: value} for (env_id, value) in env_id_to_values.items()}
 
 
+@DeveloperAPI
 def convert_to_base_env(
     env: EnvType,
     make_env: Callable[[int], EnvType] = None,
