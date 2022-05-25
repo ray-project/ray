@@ -556,6 +556,16 @@ def get_gpu_ids():
 
     return assigned_ids
 
+@Deprecated
+def get_resource_ids():
+    """Get the IDs of the resources that are available to the worker.
+    Returns:
+        A dictionary mapping the name of a resource to a list of pairs, where
+        each pair consists of the ID of a resource and the fraction of that
+        resource reserved for this worker.
+    """
+    raise DeprecationWarning("get_resource_ids() is deprecated")
+
 
 @Deprecated(message="Use ray.init()['webui_url'] instead.")
 def get_dashboard_url():
