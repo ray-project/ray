@@ -71,9 +71,54 @@ class NovelD(Exploration):
         """Initializes a NovelD exploration scheme.
 
         Args:
-            action_space: The action space of the environment.
-            framework: The framework used to train the model.
-            model: The model used to train the model.
+            action_space: The action space of the environment. At
+                present NovelD exploration works only with
+                (Multi)Discrete action spaces.
+            framework: The ml framework used to train the model.
+                Can be either one of ["tf", "tf2", "torch"].
+                tf: TensorFlow (static-graph); tf2: TensorFlow 2.x
+                (eager or traced, if eager_tracing=True); torch: PyTorch.
+                This should be the same framework as used in the Trainer.
+            embed_dim: The embedding dimension of the distillation networks
+                used to compute the novelty of a state. This is the output
+                size of the distillation networks. A larger embedding size
+                will generalize less and therefore states have to be very
+                similar for the intrinsic reward o shrink to zero. Note
+                that large embedding sizes will necessarily result in slower
+                training times for the agent as the distillation network is
+                trained for one iteration after each single rollout.
+            distill_net_config: An optional model configuration for the
+                distillation networks. If None, the configuration of the
+                Policy model is used.
+            lr: The learning rate of the distillation network optimizer. The
+                optimizer used is `Adam`. Note the network usually approaches
+                its target easily. Too high learning rates will result in
+                the intrinsic rewards vanishing faster and exploring similar
+                states results in smaller rewards. Learning rates too small
+                cause the opposite effect: intrinsic rewards are getting still
+                paid for highly similar states even though they are not that
+                new anymore.
+            alpha: The scaling factor of the state's novelty. Smaller values
+                increase the intrinsic rewards every time new states are visited.
+                An ablation study has shown an optimal for alpha is 0.5.
+            beta: The clipping factor of NovelD. Intrinsic rewards will be not
+                smaller than beta. A value too large will result in all intrinsic
+                rewards being the same until a specific state has been visited.
+                The ablation study in the paper shows that a value of 0 is
+                preferable.
+            intrinsic_reward_coeff: Scaling factor of the next states intrinsic
+                reward. The default value appears to be a good choice. Values
+                too high might be contraproductive leading to no signal from the
+                original (sparse) rewards. Values too low make exploration less
+                efficient as the agent has less incentive to do so.
+            normalize: Indicates, if intrinsic rewards should be normalized. In
+                experiments with distillation networks a normalization of intrinsic
+                rewards results in more stable exploration (after a burn-in).
+            random_timesteps: The number of timesteps to act fully random when the
+                default sub-exploration is used (`subexploration=None`).
+            subexploration: The config dict for the underlying Exploration
+                to use (e.g. epsilon-greedy for DQN). If None, EpsilonGreedy is
+                used with a PiecewiseSchedule, i.e. using the `random_timesteps`.
         """
         if not isinstance(action_space, (Discrete, MultiDiscrete)):
             raise ValueError(
@@ -123,9 +168,11 @@ class NovelD(Exploration):
         self._state_counts_total = 0.0
         self._state_counts_avg = 0.0
         if self.normalize:
-            from ray.rllib.utils.exploration.random_encoder import MovingMeanStd
+            # Use the `_Moving_MeanStd` class to normalize the intrinsic rewards.
+            from ray.rllib.utils.exploration.random_encoder import _MovingMeanStd
 
-            self._moving_mean_std = MovingMeanStd()
+            self._moving_mean_std = _MovingMeanStd()
+
         self.action_dim = (
             self.action_space.n
             if isinstance(self.action_space, Discrete)
