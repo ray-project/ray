@@ -1407,6 +1407,19 @@ py_test(
     size = "small",
     srcs = ["evaluation/tests/test_episode.py"]
 )
+# --------------------------------------------------------------------
+# Execution Utils
+# rllib/execution/
+#
+# Tag: execution
+# --------------------------------------------------------------------
+
+py_test(
+    name = "test_async_requests_manager",
+    tags = ["team:ml", "execution"],
+    size = "small",
+    srcs = ["execution/tests/test_async_requests_manager.py"]
+)
 
 # --------------------------------------------------------------------
 # Models and Distributions
