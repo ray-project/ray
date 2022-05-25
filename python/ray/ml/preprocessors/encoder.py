@@ -1,7 +1,9 @@
+from functools import partial
 from typing import List, Dict, Optional, Union
 
 from collections import Counter
 import pandas as pd
+import pandas.api.types
 
 from ray.data import Dataset
 from ray.ml.preprocessor import Preprocessor
@@ -30,13 +32,17 @@ class OrdinalEncoder(Preprocessor):
     def _transform_pandas(self, df: pd.DataFrame):
         _validate_df(df, *self.columns)
 
+        def encode_list(element: list, *, name: str):
+            return [self.stats_[f"unique_values({name})"][x] for x in element]
+
         def column_ordinal_encoder(s: pd.Series):
+            if _is_series_composed_of_lists(s):
+                return s.map(partial(encode_list, name=s.name))
+
             s_values = self.stats_[f"unique_values({s.name})"]
             return s.map(s_values)
 
-        df.loc[:, self.columns] = df.loc[:, self.columns].transform(
-            column_ordinal_encoder
-        )
+        df[self.columns] = df[self.columns].apply(column_ordinal_encoder)
         return df
 
     def __repr__(self):
@@ -219,13 +225,21 @@ def _get_unique_value_indices(
                 f"You set limit for {column}, which is not present in {columns}."
             )
 
+    def get_pd_value_counts_per_column(col: pd.Series):
+        # special handling for lists
+        if _is_series_composed_of_lists(col):
+            counter = Counter()
+
+            def update_counter(element):
+                counter.update(element)
+                return element
+
+            col.map(update_counter)
+            return counter
+        return Counter(col.value_counts(dropna=False).to_dict())
+
     def get_pd_value_counts(df: pd.DataFrame) -> List[Dict[str, Counter]]:
-        result = [
-            {
-                col: Counter(df[col].value_counts(dropna=False).to_dict())
-                for col in columns
-            }
-        ]
+        result = [{col: get_pd_value_counts_per_column(df[col]) for col in columns}]
         return result
 
     value_counts = dataset.map_batches(get_pd_value_counts, batch_format="pandas")
@@ -234,6 +248,8 @@ def _get_unique_value_indices(
         for col_value_counts in batch:
             for col, value_counts in col_value_counts.items():
                 final_counters[col] += value_counts
+
+    print(final_counters)
 
     # Inspect if there is any NA values.
     for col in columns:
@@ -272,3 +288,11 @@ def _validate_df(df: pd.DataFrame, *columns: str) -> None:
             f"Unable to transform columns {null_columns} because they contain "
             f"null values. Consider imputing missing values first."
         )
+
+
+def _is_series_composed_of_lists(series: pd.Series) -> bool:
+    # we assume that all elements are a list here
+    # TODO add handling for the case where first element is None
+    return pandas.api.types.is_object_dtype(series.dtype) and isinstance(
+        series[0], list
+    )
