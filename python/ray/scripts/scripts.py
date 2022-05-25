@@ -2105,7 +2105,7 @@ def kuberay_autoscaler(
         KubeRay cluster configs.
     `ray kuberay-autoscaler` is NOT a public CLI.
     """
-    run_autoscaler_with_retries(cluster_name, cluster_namespace)
+    run_autoscaler(cluster_name, cluster_namespace)
 
 
 @cli.command(name="health-check", hidden=True)
