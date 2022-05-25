@@ -1,22 +1,16 @@
-import copy
-from typing import Type, List
+import logging
+import numpy as np
+from typing import Type, List, Optional
 
-from ray.rllib.policy import Policy
-from ray.rllib.utils.typing import ResultDict, TrainerConfigDict
-from ray.rllib.utils.annotations import override
-from ray.rllib.algorithms.ddpg import DDPGTrainer
-from ray.rllib.utils.typing import PartialTrainerConfigDict
-from ray.rllib.offline.shuffled_input import ShuffledInput
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.agents.trainer import Trainer, TrainerConfig
 from ray.rllib.execution.train_ops import (
     multi_gpu_train_one_step,
     train_one_step,
 )
-
-from ray.rllib.agents.trainer import Trainer, TrainerConfig
-
-# from ray.rllib.algorithms.crr.config_crr import CRRConfig
-
+from ray.rllib.offline.shuffled_input import ShuffledInput
+from ray.rllib.policy import Policy
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
     NUM_AGENT_STEPS_TRAINED,
@@ -25,40 +19,28 @@ from ray.rllib.utils.metrics import (
     TARGET_NET_UPDATE_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
 )
-
 from ray.rllib.utils.replay_buffers.utils import update_priorities_in_replay_buffer
+from ray.rllib.utils.typing import (
+    ResultDict,
+    TrainerConfigDict,
+    PartialTrainerConfigDict,
+)
 
-
-import numpy as np
-
-
-from typing import Optional
-import logging
-from ray.rllib.algorithms.ddpg import DDPGConfig
-# from ray.rllib.algorithms.crr import CRR
-from ray.rllib.utils import merge_dicts
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
-from ray.rllib.models.catalog import MODEL_DEFAULTS
-
-from ray.rllib.utils.framework import try_import_tf, try_import_tfp
-tf1, tf, tfv = try_import_tf()
-tfp = try_import_tfp()
 logger = logging.getLogger(__name__)
 
 
 class CRRConfig(TrainerConfig):
-
     def __init__(self, trainer_class=None):
         super().__init__(trainer_class=trainer_class or CRR)
 
         # fmt: off
         # __sphinx_doc_begin__
         # CRR-specific settings.
-        self.weight_type = 'bin'  # weight type to use `bin` | `exp`
-        self.temperature = 1.0  # the exponent temperature used in exp weight type
-        self.max_weight = 20.0  # the max weight limit for exp weight type
-        self.advantage_type = 'mean'  # the way we reduce q values to v_t values `max` | `mean`
-        self.n_action_sample = 20  # the number of actions to sample for v_t estimation
+        self.weight_type = 'bin'
+        self.temperature = 1.0
+        self.max_weight = 20.0
+        self.advantage_type = 'mean'
+        self.n_action_sample = 20
         self.twin_q = True
         self.target_network_update_freq = 500
         self.replay_buffer_config = {
@@ -75,6 +57,9 @@ class CRRConfig(TrainerConfig):
         self.actor_hidden_activation = "relu"
         self.critic_hiddens = [400, 300]
         self.critic_hidden_activation = "relu"
+        self.critic_lr = 3e-4
+        self.actor_lr = 3e-4
+        self.tau = 0.002
 
         # __sphinx_doc_end__
         # fmt: on
@@ -94,9 +79,11 @@ class CRRConfig(TrainerConfig):
         actor_hidden_activation: Optional[str] = None,
         critic_hiddens: Optional[List[int]] = None,
         critic_hidden_activation: Optional[str] = None,
+        tau: Optional[float] = None,
         **kwargs,
     ) -> "CRRConfig":
 
+        # TODO: complete the documentation
         """
         === CRR configs
 
@@ -104,10 +91,19 @@ class CRRConfig(TrainerConfig):
             weight_type (str): weight type to use `bin` | `exp`
             temperature (float): the exponent temperature used in exp weight type
             max_weight (float): the max weight limit for exp weight type
-            advantage_type (str): the way we reduce q values to v_t values `max` | `mean`
+            advantage_type (str):
+                the way we reduce q values to v_t values `max` | `mean`
             n_action_sample (int): the number of actions to sample for v_t estimation
             twin_q (bool): if True, uses pessimistic q estimation
-
+            target_network_update_freq (int):
+            replay_buffer_config (dict[str, Any]):
+            actor_hiddens
+            actor_hidden_activation
+            critic_hiddens
+            critic_hidden_activation
+            tau (float):
+                Polyak averaging coefficient
+                (making it 1 is reduces it to a hard update)
             **kwargs:
 
         Returns:
@@ -139,14 +135,16 @@ class CRRConfig(TrainerConfig):
             self.critic_hiddens = critic_hiddens
         if critic_hidden_activation is not None:
             self.critic_hidden_activation = critic_hidden_activation
+        if tau is not None:
+            self.tau = tau
 
         return self
 
 
-
 class CRR(Trainer):
 
-    # TODO: we have a circular dependency for get default config. config -> Trainer -> config
+    # TODO: we have a circular dependency for get
+    #  default config. config -> Trainer -> config
 
     def setup(self, config: PartialTrainerConfigDict):
         super().setup(config)
@@ -197,9 +195,10 @@ class CRR(Trainer):
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             from ray.rllib.algorithms.crr.torch.policy_torch_crr import CRRTorchPolicy
+
             return CRRTorchPolicy
         else:
-            raise ValueError('Other frameworks are not supported yet!')
+            raise ValueError("Other frameworks are not supported yet!")
 
     @override(Trainer)
     def training_iteration(self) -> ResultDict:
