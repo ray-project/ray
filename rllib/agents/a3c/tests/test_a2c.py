@@ -40,7 +40,7 @@ class TestA2C(unittest.TestCase):
             .environment(env="CartPole-v0")\
             .reporting(min_time_s_per_reporting=0)
 
-        for _ in framework_iterator(config, frameworks="torch"):#TODO : all
+        for _ in framework_iterator(config):
             trainer = config.build()
             results = trainer.train()
             check_train_results(results)

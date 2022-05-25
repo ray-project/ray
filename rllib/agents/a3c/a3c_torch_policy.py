@@ -18,6 +18,7 @@ from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import apply_grad_clipping, sequence_mask
 from ray.rllib.utils.typing import TensorType
 
@@ -122,14 +123,14 @@ class A3CTorchPolicy(ValueNetworkMixin, TorchPolicyV2):
 
     @override(TorchPolicyV2)
     def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
-        return {
+        return convert_to_numpy({
             "cur_lr": self.cur_lr,
             "entropy_coeff": self.entropy_coeff,
             "policy_entropy": torch.mean(
                 torch.stack(self.get_tower_stats("entropy"))),
             "policy_loss": torch.mean(torch.stack(self.get_tower_stats("pi_err"))),
             "vf_loss": torch.mean(torch.stack(self.get_tower_stats("value_err"))),
-        }
+        })
 
     @override(TorchPolicyV2)
     def postprocess_trajectory(
