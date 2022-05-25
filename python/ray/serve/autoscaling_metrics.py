@@ -46,8 +46,11 @@ def start_metrics_pusher(
                 return
 
             if last_ref:
-                ready_refs, _ = ray.wait([last_ref], timeout=0)
-                last_send_succeeded = len(ready_refs) == 1
+                try:
+                    ready_refs, _ = ray.wait([last_ref], timeout=0)
+                    last_send_succeeded = len(ready_refs) == 1
+                except Exception:
+                    pass
             if last_send_succeeded:
                 last_ref = send_once()
 
