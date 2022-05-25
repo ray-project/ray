@@ -2096,9 +2096,7 @@ def global_gc(address):
     help="The Kubernetes namespace the Ray Cluster lives in.\n"
     "Should coincide with the `metadata.namespace` of the RayCluster CR.",
 )
-def kuberay_autoscaler(
-    cluster_name: str, cluster_namespace: str, redis_password: str
-) -> None:
+def kuberay_autoscaler(cluster_name: str, cluster_namespace: str) -> None:
     """Runs the autoscaler for a Ray cluster managed by the KubeRay operator.
 
     `ray kuberay-autoscaler` is meant to be used as an entry point in
