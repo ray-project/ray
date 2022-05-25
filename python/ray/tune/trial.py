@@ -4,7 +4,7 @@ import json
 import logging
 from numbers import Number
 import os
-import pathlib
+from pathlib import Path
 import platform
 import re
 import shutil
@@ -161,23 +161,16 @@ class TrialInfo:
         self._trial_resources = new_resources
 
 
-def create_logdir(dirname, local_dir):
-    local_dir = pathlib.Path(local_dir).expanduser()
-    logdir = local_dir.joinpath(dirname)
-    if logdir.exists():
-        old_dirname = dirname
-        dirname += "_" + uuid.uuid4().hex[:4]
+def create_unique_logdir_name(root: str, relative_logdir: str) -> str:
+    candidate = Path(root).expanduser().joinpath(relative_logdir)
+    if candidate.exists():
+        relative_logdir_old = relative_logdir
+        relative_logdir += "_" + uuid.uuid4().hex[:4]
         logger.info(
-            f"Creating a new dirname {dirname} because "
-            f"trial dirname '{old_dirname}' already exists."
+            f"Creating a new dirname {relative_logdir} because "
+            f"trial dirname '{relative_logdir_old}' already exists."
         )
-        logdir = local_dir.joinpath(dirname)
-
-    logdir.mkdir(parents=True, exist_ok=True)
-    # Return also a relative path to ensure later changes
-    # in the local_base_dir.
-    rel_logdir = logdir.relative_to(local_dir.parent)
-    return str(logdir), str(rel_logdir)
+    return relative_logdir
 
 
 def _to_pg_factory(
@@ -352,8 +345,7 @@ class Trial:
         self.export_formats = export_formats
         self.status = Trial.PENDING
         self.start_time = None
-        self.logdir = None
-        self.rel_logdir = None
+        self.relative_logdir = None
         self.runner = None
         self.last_debug = 0
         self.error_file = None
@@ -454,6 +446,22 @@ class Trial:
         self._last_result = val
 
     @property
+    def logdir(self):
+        if not self.relative_logdir:
+            return None
+        return str(Path(self.local_dir).joinpath(self.relative_logdir))
+
+    @logdir.setter
+    def logdir(self, logdir):
+        relative_logdir = Path(logdir).relative_to(self.local_dir)
+        assert str(relative_logdir).find("..") == -1
+        logger.warning(
+            "Deprecated. In future versions only the relative logdir "
+            "will be used and calling logdir will raise an error."
+        )
+        self.relative_logdir = relative_logdir
+
+    @property
     def has_reported_at_least_once(self) -> bool:
         return bool(self._last_result)
 
@@ -489,8 +497,7 @@ class Trial:
         assert self.logdir, "Trial {}: logdir not initialized.".format(self)
         if not self.remote_checkpoint_dir_prefix:
             return None
-        logdir_name = os.path.basename(self.logdir)
-        return os.path.join(self.remote_checkpoint_dir_prefix, logdir_name)
+        return os.path.join(self.remote_checkpoint_dir_prefix, self.relative_logdir)
 
     @property
     def uses_cloud_checkpointing(self):
@@ -536,13 +543,13 @@ class Trial:
 
     def init_logdir(self):
         """Init logdir."""
-        if not self.logdir:
-            self.logdir, self.rel_logdir = create_logdir(
-                self._generate_dirname(), self.local_dir
+        if not self.relative_logdir:
+            self.relative_logdir = create_unique_logdir_name(
+                self.local_dir, self._generate_dirname()
             )
-        else:
-            pathlib.Path(self.logdir).mkdir(parents=True, exist_ok=True)
-            # os.makedirs(self.logdir, exist_ok=True)
+        assert self.logdir
+        logdir_path = Path(self.logdir)
+        logdir_path.mkdir(parents=True, exist_ok=True)
 
         self.invalidate_json_state()
 
