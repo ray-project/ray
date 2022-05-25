@@ -288,6 +288,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   private static native byte[] nativeGetActorIdOfNamedActor(String actorName, String namespace);
 
+  private static native void nativeSetCoreWorker(byte[] workerId);
+
   private static native Map<String, List<ResourceValue>> nativeGetResourceIds();
 
   private static native String nativeGetNamespace();
