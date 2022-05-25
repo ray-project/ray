@@ -22,7 +22,7 @@ import ray
 from ray import tune
 from ray.rllib.agents.ppo.ppo import PPOTrainer
 from ray.rllib.agents.ppo.ppo_tf_policy import (
-    PPODynamicTFPolicy,
+    PPOStaticGraphTFPolicy,
     PPOEagerTFPolicy,
 )
 from ray.rllib.agents.ppo.ppo_torch_policy import PPOTorchPolicy
@@ -184,6 +184,10 @@ def get_ccppo_policy(base):
 
         @override(base)
         def loss(self, model, dist_class, train_batch):
+            # Use super() to get to the base PPO policy.
+            # This special loss function utilizes a shared
+            # value function defined on self, and the loss function
+            # defined on PPO policies.
             return loss_with_central_critic(
                 self, super(), model, dist_class, train_batch
             )
@@ -205,7 +209,7 @@ def get_ccppo_policy(base):
     return CCPPOTFPolicy
 
 
-CCPPODynamicTFPolicy = get_ccppo_policy(PPODynamicTFPolicy)
+CCPPOStaticGraphTFPolicy = get_ccppo_policy(PPOStaticGraphTFPolicy)
 CCPPOEagerTFPolicy = get_ccppo_policy(PPOEagerTFPolicy)
 
 
@@ -233,7 +237,7 @@ class CCTrainer(PPOTrainer):
         if config["framework"] == "torch":
             return CCPPOTorchPolicy
         elif config["framework"] == "tf":
-            return CCPPODynamicTFPolicy
+            return CCPPOStaticGraphTFPolicy
         else:
             return CCPPOEagerTFPolicy
 

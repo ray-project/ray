@@ -16,7 +16,7 @@ from ray.rllib.agents.impala.vtrace_torch_policy import (
     make_time_major,
     VTraceOptimizer,
 )
-from ray.rllib.agents.ppo.appo_tf_policy import MakeAPPOModel
+from ray.rllib.agents.ppo.appo_tf_policy import make_appo_model
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import (
     compute_gae_for_sample_batch,
@@ -32,7 +32,6 @@ from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_mixins import (
     EntropyCoeffSchedule,
-    GradClippingMixin,
     LearningRateSchedule,
     KLCoeffMixin,
     ValueNetworkMixin,
@@ -43,6 +42,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import (
+    apply_grad_clipping,
     explained_variance,
     global_norm,
     sequence_mask,
@@ -57,8 +57,6 @@ logger = logging.getLogger(__name__)
 # We need this builder function because we want to share the same
 # custom logics between TF1 dynamic and TF2 eager policies.
 class APPOTorchPolicy(
-    MakeAPPOModel,
-    GradClippingMixin,
     VTraceOptimizer,
     LearningRateSchedule,
     EntropyCoeffSchedule,
@@ -74,8 +72,6 @@ class APPOTorchPolicy(
 
         # Although this is a no-op, we call __init__ here to make it clear
         # that base.__init__ will use the make_model() call.
-        MakeAPPOModel.__init__(self)
-        GradClippingMixin.__init__(self)
         VTraceOptimizer.__init__(self)
         LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
 
@@ -102,6 +98,10 @@ class APPOTorchPolicy(
     @override(TorchPolicyV2)
     def init_view_requirements(self):
         self.view_requirements = self._get_default_view_requirements()
+
+    @override(TorchPolicyV2)
+    def make_model(self) -> ModelV2:
+        return make_appo_model(self)
 
     @override(TorchPolicyV2)
     def loss(
@@ -399,6 +399,12 @@ class APPOTorchPolicy(
                     self, sample_batch, other_agent_batches, episode
                 )
         return sample_batch
+
+    @override(TorchPolicyV2)
+    def extra_grad_process(
+        self, optimizer: "torch.optim.Optimizer", loss: TensorType
+    ) -> Dict[str, TensorType]:
+        return apply_grad_clipping(self, optimizer, loss)
 
     @override(TorchPolicyV2)
     def get_batch_divisibility_req(self) -> int:

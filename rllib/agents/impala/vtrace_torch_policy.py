@@ -11,7 +11,6 @@ from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_mixins import (
     EntropyCoeffSchedule,
-    GradClippingMixin,
     LearningRateSchedule,
 )
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
@@ -19,6 +18,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import (
+    apply_grad_clipping,
     explained_variance,
     global_norm,
     sequence_mask,
@@ -189,18 +189,16 @@ class VTraceOptimizer:
 # their functions like optimizer() overrides all the other implementations
 # (e.g., LearningRateSchedule.optimizer())
 class VTraceTorchPolicy(
-    GradClippingMixin,
     VTraceOptimizer,
     LearningRateSchedule,
     EntropyCoeffSchedule,
     TorchPolicyV2,
 ):
-    """PyTorch policy class used with PPOTrainer."""
+    """PyTorch policy class used with ImpalaTrainer."""
 
     def __init__(self, observation_space, action_space, config):
         config = dict(ray.rllib.agents.impala.impala.DEFAULT_CONFIG, **config)
 
-        GradClippingMixin.__init__(self)
         VTraceOptimizer.__init__(self)
         # Need to initialize learning rate variable before calling
         # TorchPolicyV2.__init__.
@@ -227,16 +225,6 @@ class VTraceTorchPolicy(
         dist_class: Type[ActionDistribution],
         train_batch: SampleBatch,
     ) -> Union[TensorType, List[TensorType]]:
-        """Compute loss for Impala Policy Objective.
-
-        Args:
-            model: The Model to calculate the loss for.
-            dist_class: The action distr. class.
-            train_batch: The training data.
-
-        Returns:
-            The PPO loss tensor given the input batch.
-        """
         model_out, _ = model(train_batch)
         action_dist = dist_class(model_out, model)
 
@@ -354,6 +342,12 @@ class VTraceTorchPolicy(
                 ),
             }
         )
+
+    @override(TorchPolicyV2)
+    def extra_grad_process(
+        self, optimizer: "torch.optim.Optimizer", loss: TensorType
+    ) -> Dict[str, TensorType]:
+        return apply_grad_clipping(self, optimizer, loss)
 
     @override(TorchPolicyV2)
     def get_batch_divisibility_req(self) -> int:

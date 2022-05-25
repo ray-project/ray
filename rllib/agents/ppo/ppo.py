@@ -369,9 +369,9 @@ class PPOTrainer(Trainer):
 
             return PPOTorchPolicy
         elif config["framework"] == "tf":
-            from ray.rllib.agents.ppo.ppo_tf_policy import PPODynamicTFPolicy
+            from ray.rllib.agents.ppo.ppo_tf_policy import PPOStaticGraphTFPolicy
 
-            return PPODynamicTFPolicy
+            return PPOStaticGraphTFPolicy
         else:
             from ray.rllib.agents.ppo.ppo_tf_policy import PPOEagerTFPolicy
 

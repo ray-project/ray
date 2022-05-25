@@ -16,7 +16,7 @@ import ray
 from ray.rllib.algorithms.dqn import DQNTrainer, DQNTFPolicy, DQNTorchPolicy
 from ray.rllib.agents.ppo import (
     PPOTrainer,
-    PPODynamicTFPolicy,
+    PPOStaticGraphTFPolicy,
     PPOEagerTFPolicy,
     PPOTorchPolicy,
 )
@@ -66,7 +66,7 @@ if __name__ == "__main__":
             if framework == "torch":
                 return PPOTorchPolicy
             elif framework == "tf":
-                return PPODynamicTFPolicy
+                return PPOStaticGraphTFPolicy
             else:
                 return PPOEagerTFPolicy
         elif algorithm == "DQN":

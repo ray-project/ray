@@ -217,6 +217,8 @@ class VTraceOptimizer:
     def __init__(self):
         pass
 
+    # TODO: maybe standardize this function, so the choice of optimizers are more
+    # predictable for common agents.
     def optimizer(
         self,
     ) -> Union["tf.keras.optimizers.Optimizer", List["tf.keras.optimizers.Optimizer"]]:
@@ -435,5 +437,5 @@ def get_vtrace_tf_policy(base: type) -> type:
     return VTraceTFPolicy
 
 
-VTraceDynamicTFPolicy = get_vtrace_tf_policy(DynamicTFPolicyV2)
+VTraceStaticGraphTFPolicy = get_vtrace_tf_policy(DynamicTFPolicyV2)
 VTraceEagerTFPolicy = get_vtrace_tf_policy(EagerTFPolicyV2)

@@ -249,9 +249,9 @@ class APPOTrainer(ImpalaTrainer):
 
             return APPOTorchPolicy
         elif config["framework"] == "tf":
-            from ray.rllib.agents.ppo.appo_tf_policy import APPODynamicTFPolicy
+            from ray.rllib.agents.ppo.appo_tf_policy import APPOStaticGraphTFPolicy
 
-            return APPODynamicTFPolicy
+            return APPOStaticGraphTFPolicy
         else:
             from ray.rllib.agents.ppo.appo_tf_policy import APPOEagerTFPolicy
 

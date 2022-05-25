@@ -2,7 +2,6 @@ import gym
 import logging
 from typing import Dict, List, Union
 
-from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -278,55 +277,6 @@ class ValueNetworkMixin:
         return self._cached_extra_action_fetches
 
 
-class ComputeGAEMixIn:
-    """Postprocess SampleBatch to Compute GAE before they get used for training."""
-
-    def __init__(self):
-        pass
-
-    @DeveloperAPI
-    def postprocess_trajectory(
-        self, sample_batch, other_agent_batches=None, episode=None
-    ):
-        sample_batch = super().postprocess_trajectory(sample_batch)
-        return compute_gae_for_sample_batch(
-            self, sample_batch, other_agent_batches, episode
-        )
-
-
-class ComputeAndClipGradsMixIn:
-    """Compute and maybe clip gradients."""
-
-    def __init__(self):
-        pass
-
-    @DeveloperAPI
-    def compute_gradients_fn(
-        self, optimizer: LocalOptimizer, loss: TensorType
-    ) -> ModelGradients:
-        # Compute the gradients.
-        variables = self.model.trainable_variables
-        if isinstance(self.model, ModelV2):
-            variables = variables()
-        grads_and_vars = optimizer.compute_gradients(loss, variables)
-
-        # Clip by global norm, if necessary.
-        if self.config["grad_clip"] is not None:
-            # Defuse inf gradients (due to super large losses).
-            grads = [g for (g, v) in grads_and_vars]
-            grads, _ = tf.clip_by_global_norm(grads, self.config["grad_clip"])
-            # If the global_norm is inf -> All grads will be NaN. Stabilize this
-            # here by setting them to 0.0. This will simply ignore destructive loss
-            # calculations.
-            self.grads = [
-                tf.where(tf.math.is_nan(g), tf.zeros_like(g), g) for g in grads
-            ]
-            clipped_grads_and_vars = list(zip(self.grads, variables))
-            return clipped_grads_and_vars
-        else:
-            return grads_and_vars
-
-
 class TargetNetworkMixin:
     """Assign the `update_target` method to the SimpleQTFPolicy
 
@@ -371,3 +321,29 @@ class TargetNetworkMixin:
     @override(TFPolicy)
     def variables(self):
         return self.q_func_vars + self.target_q_func_vars
+
+
+# TODO: find a better place for this util, since it's not technically MixIns.
+@DeveloperAPI
+def compute_gradients(
+    policy, optimizer: LocalOptimizer, loss: TensorType
+) -> ModelGradients:
+    # Compute the gradients.
+    variables = policy.model.trainable_variables
+    if isinstance(policy.model, ModelV2):
+        variables = variables()
+    grads_and_vars = optimizer.compute_gradients(loss, variables)
+
+    # Clip by global norm, if necessary.
+    if policy.config["grad_clip"] is not None:
+        # Defuse inf gradients (due to super large losses).
+        grads = [g for (g, v) in grads_and_vars]
+        grads, _ = tf.clip_by_global_norm(grads, policy.config["grad_clip"])
+        # If the global_norm is inf -> All grads will be NaN. Stabilize this
+        # here by setting them to 0.0. This will simply ignore destructive loss
+        # calculations.
+        policy.grads = [tf.where(tf.math.is_nan(g), tf.zeros_like(g), g) for g in grads]
+        clipped_grads_and_vars = list(zip(policy.grads, variables))
+        return clipped_grads_and_vars
+    else:
+        return grads_and_vars

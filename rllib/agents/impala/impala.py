@@ -451,10 +451,10 @@ class ImpalaTrainer(Trainer):
         elif config["framework"] == "tf":
             if config["vtrace"]:
                 from ray.rllib.agents.impala.vtrace_tf_policy import (
-                    VTraceDynamicTFPolicy,
+                    VTraceStaticGraphTFPolicy,
                 )
 
-                return VTraceDynamicTFPolicy
+                return VTraceStaticGraphTFPolicy
             else:
                 from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
 

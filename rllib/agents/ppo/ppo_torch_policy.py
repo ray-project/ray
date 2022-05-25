@@ -3,12 +3,14 @@ from typing import Dict, List, Type, Union
 
 import ray
 from ray.rllib.agents.ppo.ppo_tf_policy import validate_config
-from ray.rllib.evaluation.postprocessing import Postprocessing
+from ray.rllib.evaluation.postprocessing import (
+    Postprocessing,
+    compute_gae_for_sample_batch,
+)
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_mixins import (
-    ComputeGAEMixIn,
     EntropyCoeffSchedule,
     KLCoeffMixin,
     LearningRateSchedule,
@@ -31,7 +33,6 @@ logger = logging.getLogger(__name__)
 
 
 class PPOTorchPolicy(
-    ComputeGAEMixIn,
     ValueNetworkMixin,
     LearningRateSchedule,
     EntropyCoeffSchedule,
@@ -52,7 +53,6 @@ class PPOTorchPolicy(
             max_seq_len=config["model"]["max_seq_len"],
         )
 
-        ComputeGAEMixIn.__init__(self)
         ValueNetworkMixin.__init__(self, config)
         LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
         EntropyCoeffSchedule.__init__(
@@ -200,3 +200,16 @@ class PPOTorchPolicy(
                 "entropy_coeff": self.entropy_coeff,
             }
         )
+
+    @override(TorchPolicyV2)
+    def postprocess_trajectory(
+        self, sample_batch, other_agent_batches=None, episode=None
+    ):
+        # Do all post-processing always with no_grad().
+        # Not using this here will introduce a memory leak
+        # in torch (issue #6962).
+        # TODO: no_grad still necessary?
+        with torch.no_grad():
+            return compute_gae_for_sample_batch(
+                self, sample_batch, other_agent_batches, episode
+            )

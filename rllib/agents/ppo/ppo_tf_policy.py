@@ -6,24 +6,28 @@ import logging
 from typing import Dict, List, Type, Union
 
 import ray
-from ray.rllib.evaluation.postprocessing import Postprocessing
+from ray.rllib.evaluation.postprocessing import (
+    Postprocessing,
+    compute_gae_for_sample_batch,
+)
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.policy.dynamic_tf_policy_v2 import DynamicTFPolicyV2
 from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_mixins import (
-    ComputeAndClipGradsMixIn,
-    ComputeGAEMixIn,
     EntropyCoeffSchedule,
     LearningRateSchedule,
     KLCoeffMixin,
     ValueNetworkMixin,
+    compute_gradients,
 )
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import explained_variance
 from ray.rllib.utils.typing import (
+    LocalOptimizer,
+    ModelGradients,
     TensorType,
     TrainerConfigDict,
 )
@@ -59,8 +63,6 @@ def get_ppo_tf_policy(base: type) -> type:
     """
 
     class PPOTFPolicy(
-        ComputeGAEMixIn,
-        ComputeAndClipGradsMixIn,
         EntropyCoeffSchedule,
         LearningRateSchedule,
         KLCoeffMixin,
@@ -92,8 +94,6 @@ def get_ppo_tf_policy(base: type) -> type:
             )
 
             # Initialize MixIns.
-            ComputeGAEMixIn.__init__(self)
-            ComputeAndClipGradsMixIn.__init__(self)
             ValueNetworkMixin.__init__(self, config)
             KLCoeffMixin.__init__(self, config)
             EntropyCoeffSchedule.__init__(
@@ -222,8 +222,23 @@ def get_ppo_tf_policy(base: type) -> type:
                 "entropy_coeff": tf.cast(self.entropy_coeff, tf.float64),
             }
 
+        @override(base)
+        def postprocess_trajectory(
+            self, sample_batch, other_agent_batches=None, episode=None
+        ):
+            sample_batch = super().postprocess_trajectory(sample_batch)
+            return compute_gae_for_sample_batch(
+                self, sample_batch, other_agent_batches, episode
+            )
+
+        @override(base)
+        def compute_gradients_fn(
+            self, optimizer: LocalOptimizer, loss: TensorType
+        ) -> ModelGradients:
+            return compute_gradients(self, optimizer, loss)
+
     return PPOTFPolicy
 
 
-PPODynamicTFPolicy = get_ppo_tf_policy(DynamicTFPolicyV2)
+PPOStaticGraphTFPolicy = get_ppo_tf_policy(DynamicTFPolicyV2)
 PPOEagerTFPolicy = get_ppo_tf_policy(EagerTFPolicyV2)

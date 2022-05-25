@@ -35,7 +35,10 @@ from ray.rllib.policy.tf_mixins import (
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import (
+    DeveloperAPI,
+    override,
+)
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import explained_variance, make_tf_callable
 from ray.rllib.utils.typing import TensorType
@@ -48,47 +51,44 @@ TARGET_POLICY_SCOPE = "target_func"
 logger = logging.getLogger(__name__)
 
 
-class MakeAPPOModel:
-    def __init__(self):
-        pass
+@DeveloperAPI
+def make_appo_model(policy) -> ModelV2:
+    """Builds model and target model for APPO.
 
-    def make_model(self) -> ModelV2:
-        """Builds model and target model for APPO.
+    Returns:
+        ModelV2: The Model for the Policy to use.
+            Note: The target model will not be returned, just assigned to
+            `policy.target_model`.
+    """
+    # Get the num_outputs for the following model construction calls.
+    _, logit_dim = ModelCatalog.get_action_dist(
+        policy.action_space, policy.config["model"]
+    )
 
-        Returns:
-            ModelV2: The Model for the Policy to use.
-                Note: The target model will not be returned, just assigned to
-                `policy.target_model`.
-        """
-        # Get the num_outputs for the following model construction calls.
-        _, logit_dim = ModelCatalog.get_action_dist(
-            self.action_space, self.config["model"]
-        )
+    # Construct the (main) model.
+    policy.model = ModelCatalog.get_model_v2(
+        policy.observation_space,
+        policy.action_space,
+        logit_dim,
+        policy.config["model"],
+        name=POLICY_SCOPE,
+        framework=policy.framework,
+    )
+    policy.model_variables = policy.model.variables()
 
-        # Construct the (main) model.
-        self.model = ModelCatalog.get_model_v2(
-            self.observation_space,
-            self.action_space,
-            logit_dim,
-            self.config["model"],
-            name=POLICY_SCOPE,
-            framework=self.framework,
-        )
-        self.model_variables = self.model.variables()
+    # Construct the target model.
+    policy.target_model = ModelCatalog.get_model_v2(
+        policy.observation_space,
+        policy.action_space,
+        logit_dim,
+        policy.config["model"],
+        name=TARGET_POLICY_SCOPE,
+        framework=policy.framework,
+    )
+    policy.target_model_variables = policy.target_model.variables()
 
-        # Construct the target model.
-        self.target_model = ModelCatalog.get_model_v2(
-            self.observation_space,
-            self.action_space,
-            logit_dim,
-            self.config["model"],
-            name=TARGET_POLICY_SCOPE,
-            framework=self.framework,
-        )
-        self.target_model_variables = self.target_model.variables()
-
-        # Return only the model (not the target model).
-        return self.model
+    # Return only the model (not the target model).
+    return policy.model
 
 
 class TargetNetworkMixin:
@@ -133,7 +133,6 @@ def get_appo_tf_policy(base: type) -> type:
         KLCoeffMixin,
         EntropyCoeffSchedule,
         ValueNetworkMixin,
-        MakeAPPOModel,
         TargetNetworkMixin,
         base,
     ):
@@ -152,7 +151,6 @@ def get_appo_tf_policy(base: type) -> type:
 
             # Although this is a no-op, we call __init__ here to make it clear
             # that base.__init__ will use the make_model() call.
-            MakeAPPOModel.__init__(self)
             VTraceClipGradients.__init__(self)
             VTraceOptimizer.__init__(self)
             LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
@@ -179,6 +177,10 @@ def get_appo_tf_policy(base: type) -> type:
 
             # Initiate TargetNetwork ops after loss initialization.
             TargetNetworkMixin.__init__(self, obs_space, action_space, config)
+
+        @override(base)
+        def make_model(self) -> ModelV2:
+            return make_appo_model(self)
 
         @override(base)
         def loss(
@@ -468,5 +470,5 @@ def get_appo_tf_policy(base: type) -> type:
     return APPOTFPolicy
 
 
-APPODynamicTFPolicy = get_appo_tf_policy(DynamicTFPolicyV2)
+APPOStaticGraphTFPolicy = get_appo_tf_policy(DynamicTFPolicyV2)
 APPOEagerTFPolicy = get_appo_tf_policy(EagerTFPolicyV2)
