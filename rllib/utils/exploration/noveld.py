@@ -150,7 +150,7 @@ class NovelD(Exploration):
                 "visited states in exploration as it offers higher performance "
                 "and can provide hashing for larger observation spaces."
             )
-        except ImportError as e:
+        except ImportError:
             self._hash_state = self._defaulthash_state
             logger.warning(
                 "Initializing NovelD: `xxhash` not found. Falling back to "
@@ -383,8 +383,10 @@ class NovelD(Exploration):
             phi_target, _ = self._distill_target_net({SampleBatch.OBS: obs})
             # Avoid dividing by zero in the gradient by adding a small epsilon.
             novelty = tf.norm(phi - phi_target + 1e-12, axis=1)
-            # TODO: @simonsays1980: Check, if using the NEXT_OBS here in the loss is better.
-            # TODO: @simonsays1980: Should be probably mean over dim=1 and then sum over batches.
+            # TODO: @simonsays1980: Check, if using the NEXT_OBS here in the loss
+            # is better.
+            # TODO: @simonsays1980: Should be probably mean over dim=1 and then
+            # sum over batches.
             distill_loss = tf.reduce_mean(novelty, axis=-1)
 
             # Step the optimizer
