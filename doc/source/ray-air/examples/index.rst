@@ -34,7 +34,7 @@ Hugging Face Examples
 .. air-tabular-training-serving-examples:
 
 Tabular data training to serving example
----------------------
+----------------------------------------
 
 - :doc:`/ray-air/examples/tfx_tabular_train_to_serve`: How to use Ray AIR to train a Keras model on tabular data and serve it.
 
