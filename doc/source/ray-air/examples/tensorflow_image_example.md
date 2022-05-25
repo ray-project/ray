@@ -102,11 +102,6 @@ Now that we've created our datasets, let's define the training logic.
 ```{code-cell} python3
 def build_model():
     model = models.Sequential()
-
-    def squeeze(input):
-        return tf.squeeze(input, axis=1)
-
-    model.add(layers.Lambda(squeeze))
     model.add(layers.Conv2D(6, (5, 5), activation='relu', input_shape=(32, 32, 3)))
     model.add(layers.MaxPooling2D((2, 2)))
     model.add(layers.Conv2D(16, (5, 5), activation='relu'))
@@ -145,7 +140,7 @@ def train_loop_per_worker(config):
                 feature_columns=["image"],
                 label_column="label",
                 output_signature=(
-                    tf.TensorSpec(shape=(None, 1, 32, 32, 3), dtype=tf.float32),
+                    tf.TensorSpec(shape=(None, 32, 32, 3), dtype=tf.float32),
                     tf.TensorSpec(shape=(None, 1), dtype=tf.uint8),
                 ),
                 batch_size=config["batch_size"],
@@ -197,8 +192,6 @@ batch_predictor = BatchPredictor.from_checkpoint(
 
 outputs: ray.data.Dataset = batch_predictor.predict(
     data=test_dataset, feature_columns=["image"])
-
-outputs.show(1)
 ```
 
 ```{code-cell} python3
