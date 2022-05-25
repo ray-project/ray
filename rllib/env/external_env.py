@@ -337,6 +337,7 @@ class _ExternalEnvEpisode:
             self.results_avail_condition.notify()
 
 
+@PublicAPI
 class ExternalEnvWrapper(BaseEnv):
     """Internal adapter of ExternalEnv to BaseEnv."""
 

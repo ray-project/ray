@@ -12,7 +12,7 @@ from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.exploration.random_encoder import (
-    MovingMeanStd,
+    _MovingMeanStd,
     compute_states_entropy,
     update_beta,
 )
@@ -529,7 +529,7 @@ class RE3UpdateCallbacks(DefaultCallbacks):
         self.beta = beta
         self.rho = rho
         self.beta_schedule = beta_schedule
-        self._rms = MovingMeanStd()
+        self._rms = _MovingMeanStd()
         super().__init__(*args, **kwargs)
 
     def on_learn_on_batch(

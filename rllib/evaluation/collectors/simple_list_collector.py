@@ -12,7 +12,7 @@ from ray.rllib.evaluation.episode import Episode
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def to_float_np_array(v: List[Any]) -> np.ndarray:
+def _to_float_np_array(v: List[Any]) -> np.ndarray:
     if torch and torch.is_tensor(v[0]):
         raise ValueError
     arr = np.array(v)
@@ -229,7 +229,7 @@ class _AgentCollector:
             # np-array for different view_cols using to the same data_col.
             if data_col not in np_data:
                 np_data[data_col] = [
-                    to_float_np_array(d) for d in self.buffers[data_col]
+                    _to_float_np_array(d) for d in self.buffers[data_col]
                 ]
 
             # Range of indices on time-axis, e.g. "-50:-1". Together with
@@ -335,7 +335,7 @@ class _AgentCollector:
                 # Shift is positive: We still need to 0-pad at the end.
                 elif shift > 0:
                     data = [
-                        to_float_np_array(
+                        _to_float_np_array(
                             np.concatenate(
                                 [
                                     d[self.shift_before + shift :],
@@ -519,6 +519,7 @@ class _PolicyCollectorGroup:
         self.agent_steps = 0
 
 
+@PublicAPI
 class SimpleListCollector(SampleCollector):
     """Util to build SampleBatches for each policy in a multi-agent env.
 
