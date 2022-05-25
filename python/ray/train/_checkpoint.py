@@ -124,10 +124,10 @@ class CheckpointManager(CommonCheckpointManager):
 
     def _get_next_checkpoint_path(self) -> Optional[Path]:
         """Path to the next checkpoint to persist."""
-        checkpoint_file = _construct_checkpoint_file_name(
+        checkpoint_path = _construct_checkpoint_path_name(
             self._latest_checkpoint_id + 1
         )
-        return self.latest_checkpoint_dir.joinpath(checkpoint_file)
+        return self.latest_checkpoint_dir.joinpath(checkpoint_path)
 
     def on_start_training(
         self,
@@ -160,14 +160,14 @@ class CheckpointManager(CommonCheckpointManager):
     def latest_checkpoint_file_name(self) -> Optional[str]:
         """Filename to use for the latest checkpoint."""
         if self._latest_checkpoint_id > 0:
-            return _construct_checkpoint_file_name(self._latest_checkpoint_id)
+            return _construct_checkpoint_path_name(self._latest_checkpoint_id)
         else:
             return None
 
     @property
     def next_checkpoint_path(self) -> Optional[Path]:
         """Path to the next checkpoint to persist."""
-        checkpoint_file = _construct_checkpoint_file_name(
+        checkpoint_file = _construct_checkpoint_path_name(
             self._latest_checkpoint_id + 1
         )
         return self.latest_checkpoint_dir.joinpath(checkpoint_file)
@@ -223,5 +223,5 @@ class TuneCheckpointManager(CheckpointManager):
         return super()._process_persistent_checkpoint(checkpoint)
 
 
-def _construct_checkpoint_file_name(checkpoint_id: int) -> str:
+def _construct_checkpoint_path_name(checkpoint_id: int) -> str:
     return f"checkpoint_{checkpoint_id:06d}"
