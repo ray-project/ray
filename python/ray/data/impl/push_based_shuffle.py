@@ -138,6 +138,7 @@ class PushBasedShufflePlan(ShuffleOp):
         # The placement strategy for reduce tasks is overwritten to colocate
         # them with their inputs from the merge stage, so remove any
         # pre-specified scheduling strategy here.
+        reduce_ray_remote_args = reduce_ray_remote_args.copy()
         reduce_ray_remote_args.pop("scheduling_strategy", None)
 
         map_fn = self._map_partition
@@ -249,6 +250,7 @@ class PushBasedShufflePlan(ShuffleOp):
                 last_merge_metadata_results,
                 merge_args,
             )
+            shuffle_merge_metadata += prev_merge_metadata
             for merge_idx, merge_result in enumerate(merge_results):
                 all_merge_results[merge_idx].append(merge_result)
             del merge_results

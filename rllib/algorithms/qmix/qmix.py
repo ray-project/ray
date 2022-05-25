@@ -71,7 +71,6 @@ class QMixConfig(SimpleQConfig):
         self.optim_alpha = 0.99
         self.optim_eps = 0.00001
         self.grad_norm_clipping = 10
-        self.worker_side_prioritization = False
 
         # Override some of TrainerConfig's default values with QMix-specific values.
         # .training()
@@ -136,6 +135,8 @@ class QMixConfig(SimpleQConfig):
         # __sphinx_doc_end__
         # fmt: on
 
+        self.worker_side_prioritization = DEPRECATED_VALUE
+
     @override(SimpleQConfig)
     def training(
         self,
@@ -148,7 +149,6 @@ class QMixConfig(SimpleQConfig):
         optim_alpha: Optional[float] = None,
         optim_eps: Optional[float] = None,
         grad_norm_clipping: Optional[float] = None,
-        worker_side_prioritization: Optional[bool] = None,
         **kwargs,
     ) -> "QMixConfig":
         """Sets the training related configuration.
@@ -164,8 +164,6 @@ class QMixConfig(SimpleQConfig):
             optim_eps: RMSProp epsilon.
             grad_norm_clipping: If not None, clip gradients during optimization at
                 this value.
-            worker_side_prioritization: Whether to compute priorities for the replay
-                buffer on worker side.
 
         Returns:
             This updated TrainerConfig object.
@@ -189,8 +187,6 @@ class QMixConfig(SimpleQConfig):
             self.optim_eps = optim_eps
         if grad_norm_clipping is not None:
             self.grad_norm_clipping = grad_norm_clipping
-        if worker_side_prioritization is not None:
-            self.worker_side_prioritization = worker_side_prioritization
 
         return self
 

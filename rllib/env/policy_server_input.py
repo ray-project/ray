@@ -22,6 +22,7 @@ from ray.rllib.utils.typing import SampleBatchType
 logger = logging.getLogger(__name__)
 
 
+@PublicAPI
 class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
     """REST policy server that acts as an offline data source.
 

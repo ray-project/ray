@@ -27,25 +27,25 @@ Code in this package is adapted from https://github.com/openai/baselines/tree/ma
 
     **[Detailed Documentation](https://docs.ray.io/en/master/rllib-algorithms.html#dqn)**
 
-    **[Implementation](https://github.com/ray-project/ray/blob/master/rllib/agents/dqn/simple_q.py)**
+    **[Implementation](https://github.com/ray-project/ray/blob/master/rllib/algorithms/dqn/simple_q.py)**
 
 2) Double DQN.
 
     **[Detailed Documentation](https://docs.ray.io/en/master/rllib-algorithms.html#dqn)**
 
-    **[Implementation](https://github.com/ray-project/ray/blob/master/rllib/agents/dqn/dqn.py)**
+    **[Implementation](https://github.com/ray-project/ray/blob/master/rllib/algorithms/dqn/dqn.py)**
 
 3) Dueling DQN
 
     **[Detailed Documentation](https://docs.ray.io/en/master/rllib-algorithms.html#dqn)**
 
-    **[Implementation](https://github.com/ray-project/ray/blob/master/rllib/agents/dqn/dqn.py)**
+    **[Implementation](https://github.com/ray-project/ray/blob/master/rllib/algorithms/dqn/dqn.py)**
 
 3) Distributional DQN
 
     **[Detailed Documentation](https://docs.ray.io/en/master/rllib-algorithms.html#dqn)**
 
-    **[Implementation](https://github.com/ray-project/ray/blob/master/rllib/agents/dqn/dqn.py)**
+    **[Implementation](https://github.com/ray-project/ray/blob/master/rllib/algorithms/dqn/dqn.py)**
     
 4) APEX DQN
 
@@ -57,4 +57,4 @@ Code in this package is adapted from https://github.com/openai/baselines/tree/ma
 
     **[Detailed Documentation](https://docs.ray.io/en/master/rllib-algorithms.html#dqn)**
 
-    **[Implementation](https://github.com/ray-project/ray/blob/master/rllib/agents/dqn/dqn.py)**
+    **[Implementation](https://github.com/ray-project/ray/blob/master/rllib/algorithms/dqn/dqn.py)**

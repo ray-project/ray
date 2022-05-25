@@ -1,17 +1,23 @@
+import higher
 import logging
+from typing import Dict, List, Type, Union
 
 import ray
+from ray.rllib.agents.ppo.ppo_tf_policy import validate_config
 from ray.rllib.evaluation.postprocessing import (
-    compute_gae_for_sample_batch,
     Postprocessing,
+    compute_gae_for_sample_batch,
 )
-from ray.rllib.policy.policy_template import build_policy_class
+from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_mixins import ValueNetworkMixin
-from ray.rllib.agents.a3c.a3c_torch_policy import vf_preds_fetches
-from ray.rllib.agents.ppo.ppo_tf_policy import setup_config
+from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import apply_grad_clipping
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.typing import TensorType
 
 torch, nn = try_import_torch()
 
@@ -145,9 +151,6 @@ class MAMLLoss(object):
         vf_loss_coeff=1.0,
         use_gae=True,
     ):
-
-        import higher
-
         self.config = config
         self.num_tasks = num_tasks
         self.inner_adaptation_steps = inner_adaptation_steps
@@ -266,86 +269,6 @@ class MAMLLoss(object):
         return placeholder_list
 
 
-def maml_loss(policy, model, dist_class, train_batch):
-    logits, state = model(train_batch)
-    policy.cur_lr = policy.config["lr"]
-
-    if policy.config["worker_index"]:
-        policy.loss_obj = WorkerLoss(
-            model=model,
-            dist_class=dist_class,
-            actions=train_batch[SampleBatch.ACTIONS],
-            curr_logits=logits,
-            behaviour_logits=train_batch[SampleBatch.ACTION_DIST_INPUTS],
-            advantages=train_batch[Postprocessing.ADVANTAGES],
-            value_fn=model.value_function(),
-            value_targets=train_batch[Postprocessing.VALUE_TARGETS],
-            vf_preds=train_batch[SampleBatch.VF_PREDS],
-            cur_kl_coeff=0.0,
-            entropy_coeff=policy.config["entropy_coeff"],
-            clip_param=policy.config["clip_param"],
-            vf_clip_param=policy.config["vf_clip_param"],
-            vf_loss_coeff=policy.config["vf_loss_coeff"],
-            clip_loss=False,
-        )
-    else:
-        policy.var_list = model.named_parameters()
-
-        # `split` may not exist yet (during test-loss call), use a dummy value.
-        # Cannot use get here due to train_batch being a TrackingDict.
-        if "split" in train_batch:
-            split = train_batch["split"]
-        else:
-            split_shape = (
-                policy.config["inner_adaptation_steps"],
-                policy.config["num_workers"],
-            )
-            split_const = int(
-                train_batch["obs"].shape[0] // (split_shape[0] * split_shape[1])
-            )
-            split = torch.ones(split_shape, dtype=int) * split_const
-        policy.loss_obj = MAMLLoss(
-            model=model,
-            dist_class=dist_class,
-            value_targets=train_batch[Postprocessing.VALUE_TARGETS],
-            advantages=train_batch[Postprocessing.ADVANTAGES],
-            actions=train_batch[SampleBatch.ACTIONS],
-            behaviour_logits=train_batch[SampleBatch.ACTION_DIST_INPUTS],
-            vf_preds=train_batch[SampleBatch.VF_PREDS],
-            cur_kl_coeff=policy.kl_coeff_val,
-            policy_vars=policy.var_list,
-            obs=train_batch[SampleBatch.CUR_OBS],
-            num_tasks=policy.config["num_workers"],
-            split=split,
-            config=policy.config,
-            inner_adaptation_steps=policy.config["inner_adaptation_steps"],
-            entropy_coeff=policy.config["entropy_coeff"],
-            clip_param=policy.config["clip_param"],
-            vf_clip_param=policy.config["vf_clip_param"],
-            vf_loss_coeff=policy.config["vf_loss_coeff"],
-            use_gae=policy.config["use_gae"],
-            meta_opt=policy.meta_opt,
-        )
-
-    return policy.loss_obj.loss
-
-
-def maml_stats(policy, train_batch):
-    if policy.config["worker_index"]:
-        return {"worker_loss": policy.loss_obj.loss}
-    else:
-        return {
-            "cur_kl_coeff": policy.kl_coeff_val,
-            "cur_lr": policy.cur_lr,
-            "total_loss": policy.loss_obj.loss,
-            "policy_loss": policy.loss_obj.mean_policy_loss,
-            "vf_loss": policy.loss_obj.mean_vf_loss,
-            "kl_loss": policy.loss_obj.mean_kl_loss,
-            "inner_kl": policy.loss_obj.mean_inner_kl,
-            "entropy": policy.loss_obj.mean_entropy,
-        }
-
-
 class KLCoeffMixin:
     def __init__(self, config):
         self.kl_coeff_val = (
@@ -364,33 +287,153 @@ class KLCoeffMixin:
         return self.kl_coeff_val
 
 
-def maml_optimizer_fn(policy, config):
-    """
-    Workers use simple SGD for inner adaptation
-    Meta-Policy uses Adam optimizer for meta-update
-    """
-    if not config["worker_index"]:
-        policy.meta_opt = torch.optim.Adam(policy.model.parameters(), lr=config["lr"])
-        return policy.meta_opt
-    return torch.optim.SGD(policy.model.parameters(), lr=config["inner_lr"])
+class MAMLTorchPolicy(ValueNetworkMixin, KLCoeffMixin, TorchPolicyV2):
+    """PyTorch policy class used with MAMLTrainer."""
 
+    def __init__(self, observation_space, action_space, config):
+        config = dict(ray.rllib.algorithms.maml.maml.DEFAULT_CONFIG, **config)
+        validate_config(config)
 
-def setup_mixins(policy, obs_space, action_space, config):
-    ValueNetworkMixin.__init__(policy, config)
-    KLCoeffMixin.__init__(policy, config)
+        TorchPolicyV2.__init__(
+            self,
+            observation_space,
+            action_space,
+            config,
+            max_seq_len=config["model"]["max_seq_len"],
+        )
 
+        KLCoeffMixin.__init__(self, config)
+        ValueNetworkMixin.__init__(self, config)
 
-MAMLTorchPolicy = build_policy_class(
-    name="MAMLTorchPolicy",
-    framework="torch",
-    get_default_config=lambda: ray.rllib.algorithms.maml.maml.DEFAULT_CONFIG,
-    loss_fn=maml_loss,
-    stats_fn=maml_stats,
-    optimizer_fn=maml_optimizer_fn,
-    extra_action_out_fn=vf_preds_fetches,
-    postprocess_fn=compute_gae_for_sample_batch,
-    extra_grad_process_fn=apply_grad_clipping,
-    before_init=setup_config,
-    after_init=setup_mixins,
-    mixins=[KLCoeffMixin],
-)
+        # TODO: Don't require users to call this manually.
+        self._initialize_loss_from_dummy_batch()
+
+    @override(TorchPolicyV2)
+    def loss(
+        self,
+        model: ModelV2,
+        dist_class: Type[TorchDistributionWrapper],
+        train_batch: SampleBatch,
+    ) -> Union[TensorType, List[TensorType]]:
+        """Constructs the loss function.
+
+        Args:
+            model: The Model to calculate the loss for.
+            dist_class: The action distr. class.
+            train_batch: The training data.
+
+        Returns:
+            The PPO loss tensor given the input batch.
+        """
+        logits, state = model(train_batch)
+        self.cur_lr = self.config["lr"]
+
+        if self.config["worker_index"]:
+            self.loss_obj = WorkerLoss(
+                model=model,
+                dist_class=dist_class,
+                actions=train_batch[SampleBatch.ACTIONS],
+                curr_logits=logits,
+                behaviour_logits=train_batch[SampleBatch.ACTION_DIST_INPUTS],
+                advantages=train_batch[Postprocessing.ADVANTAGES],
+                value_fn=model.value_function(),
+                value_targets=train_batch[Postprocessing.VALUE_TARGETS],
+                vf_preds=train_batch[SampleBatch.VF_PREDS],
+                cur_kl_coeff=0.0,
+                entropy_coeff=self.config["entropy_coeff"],
+                clip_param=self.config["clip_param"],
+                vf_clip_param=self.config["vf_clip_param"],
+                vf_loss_coeff=self.config["vf_loss_coeff"],
+                clip_loss=False,
+            )
+        else:
+            self.var_list = model.named_parameters()
+
+            # `split` may not exist yet (during test-loss call), use a dummy value.
+            # Cannot use get here due to train_batch being a TrackingDict.
+            if "split" in train_batch:
+                split = train_batch["split"]
+            else:
+                split_shape = (
+                    self.config["inner_adaptation_steps"],
+                    self.config["num_workers"],
+                )
+                split_const = int(
+                    train_batch["obs"].shape[0] // (split_shape[0] * split_shape[1])
+                )
+                split = torch.ones(split_shape, dtype=int) * split_const
+            self.loss_obj = MAMLLoss(
+                model=model,
+                dist_class=dist_class,
+                value_targets=train_batch[Postprocessing.VALUE_TARGETS],
+                advantages=train_batch[Postprocessing.ADVANTAGES],
+                actions=train_batch[SampleBatch.ACTIONS],
+                behaviour_logits=train_batch[SampleBatch.ACTION_DIST_INPUTS],
+                vf_preds=train_batch[SampleBatch.VF_PREDS],
+                cur_kl_coeff=self.kl_coeff_val,
+                policy_vars=self.var_list,
+                obs=train_batch[SampleBatch.CUR_OBS],
+                num_tasks=self.config["num_workers"],
+                split=split,
+                config=self.config,
+                inner_adaptation_steps=self.config["inner_adaptation_steps"],
+                entropy_coeff=self.config["entropy_coeff"],
+                clip_param=self.config["clip_param"],
+                vf_clip_param=self.config["vf_clip_param"],
+                vf_loss_coeff=self.config["vf_loss_coeff"],
+                use_gae=self.config["use_gae"],
+                meta_opt=self.meta_opt,
+            )
+
+        return self.loss_obj.loss
+
+    @override(TorchPolicyV2)
+    def optimizer(
+        self,
+    ) -> Union[List["torch.optim.Optimizer"], "torch.optim.Optimizer"]:
+        """
+        Workers use simple SGD for inner adaptation
+        Meta-Policy uses Adam optimizer for meta-update
+        """
+        if not self.config["worker_index"]:
+            self.meta_opt = torch.optim.Adam(
+                self.model.parameters(), lr=self.config["lr"]
+            )
+            return self.meta_opt
+        return torch.optim.SGD(self.model.parameters(), lr=self.config["inner_lr"])
+
+    @override(TorchPolicyV2)
+    def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
+        if self.config["worker_index"]:
+            return convert_to_numpy({"worker_loss": self.loss_obj.loss})
+        else:
+            return convert_to_numpy(
+                {
+                    "cur_kl_coeff": self.kl_coeff_val,
+                    "cur_lr": self.cur_lr,
+                    "total_loss": self.loss_obj.loss,
+                    "policy_loss": self.loss_obj.mean_policy_loss,
+                    "vf_loss": self.loss_obj.mean_vf_loss,
+                    "kl_loss": self.loss_obj.mean_kl_loss,
+                    "inner_kl": self.loss_obj.mean_inner_kl,
+                    "entropy": self.loss_obj.mean_entropy,
+                }
+            )
+
+    def extra_grad_process(
+        self, optimizer: "torch.optim.Optimizer", loss: TensorType
+    ) -> Dict[str, TensorType]:
+        return apply_grad_clipping(self, optimizer, loss)
+
+    @override(TorchPolicyV2)
+    def postprocess_trajectory(
+        self, sample_batch, other_agent_batches=None, episode=None
+    ):
+        # Do all post-processing always with no_grad().
+        # Not using this here will introduce a memory leak
+        # in torch (issue #6962).
+        # TODO: no_grad still necessary?
+        with torch.no_grad():
+            return compute_gae_for_sample_batch(
+                self, sample_batch, other_agent_batches, episode
+            )

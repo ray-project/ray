@@ -3,9 +3,11 @@ import os
 import random
 from typing import Optional
 
+from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
 
+@DeveloperAPI
 def update_global_seed_if_necessary(
     framework: Optional[str] = None, seed: Optional[int] = None
 ) -> None:

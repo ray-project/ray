@@ -258,6 +258,7 @@ class _VectorizedGymEnv(VectorEnv):
         return self.envs[index].render()
 
 
+@PublicAPI
 class VectorEnvWrapper(BaseEnv):
     """Internal adapter of VectorEnv to BaseEnv.
 

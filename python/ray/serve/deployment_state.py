@@ -941,7 +941,7 @@ class DeploymentState:
         self._replica_constructor_retry_counter: int = 0
         self._replicas: ReplicaStateContainer = ReplicaStateContainer()
         self._curr_status_info: DeploymentStatusInfo = DeploymentStatusInfo(
-            DeploymentStatus.UPDATING
+            self._name, DeploymentStatus.UPDATING
         )
 
     def get_target_state_checkpoint_data(self):
@@ -1045,7 +1045,9 @@ class DeploymentState:
         else:
             self._target_replicas = 0
 
-        self._curr_status_info = DeploymentStatusInfo(DeploymentStatus.UPDATING)
+        self._curr_status_info = DeploymentStatusInfo(
+            self._name, DeploymentStatus.UPDATING
+        )
 
         version_str = (
             deployment_info if deployment_info is None else deployment_info.version
@@ -1306,6 +1308,7 @@ class DeploymentState:
                 self._replica_constructor_retry_counter = -1
             else:
                 self._curr_status_info = DeploymentStatusInfo(
+                    name=self._name,
                     status=DeploymentStatus.UNHEALTHY,
                     message=(
                         "The Deployment constructor failed "
@@ -1333,7 +1336,9 @@ class DeploymentState:
 
             # Check for a non-zero number of deployments.
             elif target_replica_count == running_at_target_version_replica_cnt:
-                self._curr_status_info = DeploymentStatusInfo(DeploymentStatus.HEALTHY)
+                self._curr_status_info = DeploymentStatusInfo(
+                    self._name, DeploymentStatus.HEALTHY
+                )
                 return False
 
         return False
@@ -1412,7 +1417,7 @@ class DeploymentState:
                 # recovered or a new deploy happens.
                 if replica.version == self._target_version:
                     self._curr_status_info: DeploymentStatusInfo = DeploymentStatusInfo(
-                        DeploymentStatus.UNHEALTHY
+                        self._name, DeploymentStatus.UNHEALTHY
                     )
 
         slow_start_replicas = []
@@ -1505,6 +1510,7 @@ class DeploymentState:
             deleted = self._check_curr_status()
         except Exception:
             self._curr_status_info = DeploymentStatusInfo(
+                name=self._name,
                 status=DeploymentStatus.UNHEALTHY,
                 message="Failed to update deployment:" f"\n{traceback.format_exc()}",
             )
@@ -1690,11 +1696,10 @@ class DeploymentStateManager:
         else:
             return None
 
-    def get_deployment_statuses(self) -> Dict[str, DeploymentStatusInfo]:
-        return {
-            name: state.curr_status_info
-            for name, state in self._deployment_states.items()
-        }
+    def get_deployment_statuses(self) -> List[DeploymentStatusInfo]:
+        return list(
+            map(lambda state: state.curr_status_info, self._deployment_states.values())
+        )
 
     def deploy(self, deployment_name: str, deployment_info: DeploymentInfo) -> bool:
         """Deploy the deployment.
