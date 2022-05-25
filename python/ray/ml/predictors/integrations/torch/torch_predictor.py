@@ -152,7 +152,6 @@ class TorchPredictor(Predictor):
             # Only use first column as the feature
             predictions = predictor.predict(data, feature_columns=["A"])
 
-
         Returns:
             DataBatchType: Prediction result.
         """
