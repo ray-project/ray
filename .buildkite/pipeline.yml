@@ -301,6 +301,7 @@
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - bash ./ci/ci.sh prepare_docker
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --test_tag_filters=client_tests,small_size_python_tests
       -- python/ray/tests/...
