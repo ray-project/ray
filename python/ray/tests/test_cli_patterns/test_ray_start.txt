@@ -1,4 +1,5 @@
-Usage stats collection will be enabled by default in the next release\. See https://github.com/ray-project/ray/issues/20857 for more details\.
+Usage stats collection is enabled by default without user confirmation because this stdin is detected to be non-interactively\..+
+
 Local node IP: .+
 
 --------------------

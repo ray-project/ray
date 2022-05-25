@@ -75,6 +75,7 @@ def is_non_local_path_uri(uri: str) -> bool:
         return True
     # Keep manual check for prefixes for backwards compatibility with the
     # TrialCheckpoint class. Remove once fully deprecated.
+    # Deprecated: Remove in Ray > 1.13
     if any(uri.startswith(p) for p in ALLOWED_REMOTE_PREFIXES):
         return True
     return False

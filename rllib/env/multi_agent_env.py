@@ -17,6 +17,7 @@ from ray.rllib.utils.typing import (
     MultiAgentDict,
     MultiEnvDict,
 )
+from ray.util import log_once
 
 # If the obs space is Dict type, look for the global state under this key.
 ENV_STATE = "state"
@@ -156,7 +157,8 @@ class MultiAgentEnv(gym.Env):
         if self._spaces_in_preferred_format:
             return self.action_space.contains(x)
 
-        logger.warning("action_space_contains() has not been implemented")
+        if log_once("action_space_contains"):
+            logger.warning("action_space_contains() has not been implemented")
         return True
 
     @ExperimentalAPI
@@ -219,7 +221,8 @@ class MultiAgentEnv(gym.Env):
             samples = self.observation_space.sample()
             samples = {agent_id: samples[agent_id] for agent_id in agent_ids}
             return samples
-        logger.warning("observation_space_sample() has not been implemented")
+        if log_once("observation_space_sample"):
+            logger.warning("observation_space_sample() has not been implemented")
         return {}
 
     @PublicAPI
@@ -242,7 +245,6 @@ class MultiAgentEnv(gym.Env):
 
     # fmt: off
     # __grouping_doc_begin__
-    @ExperimentalAPI
     def with_agent_groups(
         self,
         groups: Dict[str, List[AgentID]],
@@ -262,16 +264,17 @@ class MultiAgentEnv(gym.Env):
 
         Agent grouping is required to leverage algorithms such as Q-Mix.
 
-        This API is experimental.
-
         Args:
             groups: Mapping from group id to a list of the agent ids
                 of group members. If an agent id is not present in any group
-                value, it will be left ungrouped.
+                value, it will be left ungrouped. The group id becomes a new agent ID
+                in the final environment.
             obs_space: Optional observation space for the grouped
-                env. Must be a tuple space.
+                env. Must be a tuple space. If not provided, will infer this to be a
+                Tuple of n individual agents spaces (n=num agents in a group).
             act_space: Optional action space for the grouped env.
-                Must be a tuple space.
+                Must be a tuple space. If not provided, will infer this to be a Tuple
+                of n individual agents spaces (n=num agents in a group).
 
         Examples:
             >>> from ray.rllib.env.multi_agent_env import MultiAgentEnv

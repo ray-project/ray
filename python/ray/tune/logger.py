@@ -747,16 +747,6 @@ class TBXLoggerCallback(LoggerCallback):
             )
 
 
-# Maintain backwards compatibility.
-from ray.tune.integration.mlflow import (  # noqa: E402
-    MLflowLogger as _MLflowLogger,
-)
-
-MLflowLogger = _MLflowLogger
-# The capital L is a typo, but needs to remain for backwards compatibility.
-MLFLowLogger = _MLflowLogger
-
-
 def pretty_print(result):
     result = result.copy()
     result.update(config=None)  # drop config from pretty print

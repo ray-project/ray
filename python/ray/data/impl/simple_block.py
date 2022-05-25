@@ -36,7 +36,13 @@ class SimpleBlockBuilder(BlockBuilder[T]):
         self._size_estimator.add(item)
 
     def add_block(self, block: List[T]) -> None:
-        assert isinstance(block, list), block
+        if not isinstance(block, list):
+            raise TypeError(
+                f"Got a block of type {type(block)}, expected list. "
+                "If you are mapping a function, ensure it returns an "
+                "object with the expected type. Block:\n"
+                f"{block}"
+            )
         self._items.extend(block)
         for item in block:
             self._size_estimator.add(item)

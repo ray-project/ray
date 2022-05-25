@@ -134,6 +134,9 @@ class LazyBlockList(BlockList):
         ]
         self._cached_metadata = [None for _ in self._cached_metadata]
 
+    def is_cleared(self) -> bool:
+        return all(ref is None for ref in self._block_partition_refs)
+
     def _check_if_cleared(self):
         pass  # LazyBlockList can always be re-computed.
 
@@ -158,7 +161,6 @@ class LazyBlockList(BlockList):
 
     # Note: does not force execution prior to splitting.
     def split_by_bytes(self, bytes_per_split: int) -> List["BlockList"]:
-        self._check_if_cleared()
         output = []
         cur_tasks, cur_blocks, cur_blocks_meta = [], [], []
         cur_size = 0

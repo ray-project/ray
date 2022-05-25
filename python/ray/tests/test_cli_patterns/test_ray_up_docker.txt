@@ -1,4 +1,3 @@
-Usage stats collection will be enabled by default in the next release\. See https://github.com/ray-project/ray/issues/20857 for more details\.
 Cluster: test-cli
 
 Checking AWS environment settings
@@ -10,6 +9,8 @@ AWS config
   EC2 AMI \(all available node types\): ami-.+ \[dlami\]
 
 No head node found\. Launching a new cluster\. Confirm \[y/N\]: y \[automatic, due to --yes\]
+
+Usage stats collection is enabled by default without user confirmation because this stdin is detected to be non-interactively\..+
 
 Acquiring an up-to-date head node
   Launched 1 nodes \[subnet_id=subnet-.+\]

@@ -10,7 +10,7 @@ import queue
 import pickle
 
 import threading
-from typing import Any
+from typing import Any, List
 from typing import Dict
 from typing import Set
 from typing import Optional
@@ -34,7 +34,6 @@ from ray.util.client.common import (
 )
 from ray import ray_constants
 from ray.util.client.server.proxier import serve_proxier
-from ray.util.client.server.server_pickler import convert_from_arg
 from ray.util.client.server.server_pickler import dumps_from_server
 from ray.util.client.server.server_pickler import loads_from_client
 from ray.util.client.server.dataservicer import DataServicer
@@ -548,9 +547,12 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             remaining_object_ids=remaining_object_ids,
         )
 
-    @_use_response_cache
     def Schedule(
-        self, task: ray_client_pb2.ClientTask, context=None
+        self,
+        task: ray_client_pb2.ClientTask,
+        arglist: List[Any],
+        kwargs: Dict[str, Any],
+        context=None,
     ) -> ray_client_pb2.ClientTaskTicket:
         logger.debug(
             "schedule: %s %s"
@@ -559,11 +561,11 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         try:
             with disable_client_hook():
                 if task.type == ray_client_pb2.ClientTask.FUNCTION:
-                    result = self._schedule_function(task, context)
+                    result = self._schedule_function(task, arglist, kwargs, context)
                 elif task.type == ray_client_pb2.ClientTask.ACTOR:
-                    result = self._schedule_actor(task, context)
+                    result = self._schedule_actor(task, arglist, kwargs, context)
                 elif task.type == ray_client_pb2.ClientTask.METHOD:
-                    result = self._schedule_method(task, context)
+                    result = self._schedule_method(task, arglist, kwargs, context)
                 elif task.type == ray_client_pb2.ClientTask.NAMED_ACTOR:
                     result = self._schedule_named_actor(task, context)
                 else:
@@ -574,18 +576,21 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 result.valid = True
                 return result
         except Exception as e:
-            logger.exception("Caught schedule exception")
+            logger.debug("Caught schedule exception", exc_info=True)
             return ray_client_pb2.ClientTaskTicket(
                 valid=False, error=cloudpickle.dumps(e)
             )
 
     def _schedule_method(
-        self, task: ray_client_pb2.ClientTask, context=None
+        self,
+        task: ray_client_pb2.ClientTask,
+        arglist: List[Any],
+        kwargs: Dict[str, Any],
+        context=None,
     ) -> ray_client_pb2.ClientTaskTicket:
         actor_handle = self.actor_refs.get(task.payload_id)
         if actor_handle is None:
             raise Exception("Can't run an actor the server doesn't have a handle for")
-        arglist, kwargs = self._convert_args(task.args, task.kwargs)
         method = getattr(actor_handle, task.name)
         opts = decode_options(task.options)
         if opts is not None:
@@ -595,13 +600,15 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         return ray_client_pb2.ClientTaskTicket(return_ids=ids)
 
     def _schedule_actor(
-        self, task: ray_client_pb2.ClientTask, context=None
+        self,
+        task: ray_client_pb2.ClientTask,
+        arglist: List[Any],
+        kwargs: Dict[str, Any],
+        context=None,
     ) -> ray_client_pb2.ClientTaskTicket:
         remote_class = self.lookup_or_register_actor(
             task.payload_id, task.client_id, decode_options(task.baseline_options)
         )
-
-        arglist, kwargs = self._convert_args(task.args, task.kwargs)
         opts = decode_options(task.options)
         if opts is not None:
             remote_class = remote_class.options(**opts)
@@ -612,12 +619,15 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         return ray_client_pb2.ClientTaskTicket(return_ids=[actor._actor_id.binary()])
 
     def _schedule_function(
-        self, task: ray_client_pb2.ClientTask, context=None
+        self,
+        task: ray_client_pb2.ClientTask,
+        arglist: List[Any],
+        kwargs: Dict[str, Any],
+        context=None,
     ) -> ray_client_pb2.ClientTaskTicket:
         remote_func = self.lookup_or_register_func(
             task.payload_id, task.client_id, decode_options(task.baseline_options)
         )
-        arglist, kwargs = self._convert_args(task.args, task.kwargs)
         opts = decode_options(task.options)
         if opts is not None:
             remote_func = remote_func.options(**opts)
@@ -637,16 +647,6 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         self.actor_owners[task.client_id].add(bin_actor_id)
         self.named_actors.add(bin_actor_id)
         return ray_client_pb2.ClientTaskTicket(return_ids=[actor._actor_id.binary()])
-
-    def _convert_args(self, arg_list, kwarg_map):
-        argout = []
-        for arg in arg_list:
-            t = convert_from_arg(arg, self)
-            argout.append(t)
-        kwargout = {}
-        for k in kwarg_map:
-            kwargout[k] = convert_from_arg(kwarg_map[k], self)
-        return argout, kwargout
 
     def lookup_or_register_func(
         self, id: bytes, client_id: str, options: Optional[Dict]

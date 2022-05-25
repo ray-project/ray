@@ -7,7 +7,6 @@ import argparse
 import json
 import os
 from pprint import pformat
-import py_dep_analysis as pda
 import re
 import subprocess
 import sys
@@ -74,11 +73,10 @@ if __name__ == "__main__":
 
     RAY_CI_ML_AFFECTED = 0
     RAY_CI_TUNE_AFFECTED = 0
-    RAY_CI_SGD_AFFECTED = 0
     RAY_CI_TRAIN_AFFECTED = 0
     # Whether only the most important (high-level) RLlib tests should be run.
     # Set to 1 for any changes to Ray Tune or python source files that are
-    # NOT related to Serve, Dashboard, SGD, or Train.
+    # NOT related to Serve, Dashboard or Train.
     RAY_CI_RLLIB_AFFECTED = 0
     # Whether all RLlib tests should be run.
     # Set to 1 only when a source file in `ray/rllib` has been changed.
@@ -103,6 +101,8 @@ if __name__ == "__main__":
 
         # Dry run py_dep_analysis.py to see which tests we would have run.
         try:
+            import py_dep_analysis as pda
+
             graph = pda.build_dep_graph()
             rllib_tests = pda.list_rllib_tests()
             print("Total # of RLlib tests: ", len(rllib_tests), file=sys.stderr)
@@ -127,7 +127,6 @@ if __name__ == "__main__":
             if changed_file.startswith("python/ray/ml"):
                 RAY_CI_ML_AFFECTED = 1
                 RAY_CI_TRAIN_AFFECTED = 1
-                RAY_CI_SGD_AFFECTED = 1
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_RLLIB_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
@@ -138,10 +137,6 @@ if __name__ == "__main__":
                 RAY_CI_RLLIB_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
-            elif changed_file.startswith("python/ray/util/sgd"):
-                RAY_CI_SGD_AFFECTED = 1
-                RAY_CI_LINUX_WHEELS_AFFECTED = 1
-                RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif changed_file.startswith("python/ray/train"):
                 RAY_CI_TRAIN_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
@@ -149,7 +144,6 @@ if __name__ == "__main__":
             elif changed_file.startswith("python/ray/util/ml_utils"):
                 RAY_CI_TRAIN_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
-                RAY_CI_SGD_AFFECTED = 1
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_RLLIB_AFFECTED = 1
                 RAY_CI_ML_UTILS_AFFECTED = 1
@@ -176,7 +170,6 @@ if __name__ == "__main__":
             elif changed_file.startswith("python/"):
                 RAY_CI_ML_AFFECTED = 1
                 RAY_CI_TUNE_AFFECTED = 1
-                RAY_CI_SGD_AFFECTED = 1
                 RAY_CI_TRAIN_AFFECTED = 1
                 RAY_CI_RLLIB_AFFECTED = 1
                 RAY_CI_SERVE_AFFECTED = 1
@@ -210,7 +203,6 @@ if __name__ == "__main__":
             elif changed_file.startswith("src/"):
                 RAY_CI_ML_AFFECTED = 1
                 RAY_CI_TUNE_AFFECTED = 1
-                RAY_CI_SGD_AFFECTED = 1
                 RAY_CI_TRAIN_AFFECTED = 1
                 RAY_CI_RLLIB_AFFECTED = 1
                 RAY_CI_SERVE_AFFECTED = 1
@@ -225,7 +217,6 @@ if __name__ == "__main__":
             else:
                 RAY_CI_ML_AFFECTED = 1
                 RAY_CI_TUNE_AFFECTED = 1
-                RAY_CI_SGD_AFFECTED = 1
                 RAY_CI_TRAIN_AFFECTED = 1
                 RAY_CI_RLLIB_AFFECTED = 1
                 RAY_CI_SERVE_AFFECTED = 1
@@ -240,7 +231,6 @@ if __name__ == "__main__":
     else:
         RAY_CI_ML_AFFECTED = 1
         RAY_CI_TUNE_AFFECTED = 1
-        RAY_CI_SGD_AFFECTED = 1
         RAY_CI_TRAIN_AFFECTED = 1
         RAY_CI_RLLIB_AFFECTED = 1
         RAY_CI_RLLIB_DIRECTLY_AFFECTED = 1
@@ -259,7 +249,6 @@ if __name__ == "__main__":
         [
             "RAY_CI_ML_AFFECTED={}".format(RAY_CI_ML_AFFECTED),
             "RAY_CI_TUNE_AFFECTED={}".format(RAY_CI_TUNE_AFFECTED),
-            "RAY_CI_SGD_AFFECTED={}".format(RAY_CI_SGD_AFFECTED),
             "RAY_CI_TRAIN_AFFECTED={}".format(RAY_CI_TRAIN_AFFECTED),
             "RAY_CI_RLLIB_AFFECTED={}".format(RAY_CI_RLLIB_AFFECTED),
             "RAY_CI_RLLIB_DIRECTLY_AFFECTED={}".format(RAY_CI_RLLIB_DIRECTLY_AFFECTED),

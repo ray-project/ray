@@ -121,20 +121,6 @@ class UtilMonitor(Thread):
         self.stopped = True
 
 
-def pin_in_object_store(obj):
-    """Deprecated, use ray.put(value) instead."""
-
-    obj_ref = ray.put(obj)
-    _pinned_objects.append(obj_ref)
-    return obj_ref
-
-
-def get_pinned_object(pinned_id):
-    """Deprecated."""
-
-    return ray.get(pinned_id)
-
-
 def retry_fn(
     fn: Callable[[], Any],
     exception_type: Type[Exception],
@@ -456,7 +442,6 @@ def wait_for_gpu(
         retry: Number of times to check GPU limit. Sleeps `delay_s`
             seconds between checks.
         delay_s: Seconds to wait before check.
-        gpu_memory_limit: Deprecated.
 
     Returns:
         bool: True if free.
@@ -476,8 +461,7 @@ def wait_for_gpu(
         tune.run(tune_func, resources_per_trial={"GPU": 1}, num_samples=10)
     """
     GPUtil = _import_gputil()
-    if gpu_memory_limit:
-        raise ValueError("'gpu_memory_limit' is deprecated. Use 'target_util' instead.")
+
     if GPUtil is None:
         raise RuntimeError("GPUtil must be installed if calling `wait_for_gpu`.")
 
@@ -700,11 +684,3 @@ def validate_warmstart(
                 + " and points_to_evaluate {}".format(points_to_evaluate)
                 + " do not match."
             )
-
-
-if __name__ == "__main__":
-    ray.init()
-    X = pin_in_object_store("hello")
-    print(X)
-    result = get_pinned_object(X)
-    print(result)

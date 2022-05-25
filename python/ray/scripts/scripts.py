@@ -39,6 +39,7 @@ from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.autoscaler._private.kuberay.run_autoscaler import run_autoscaler_with_retries
 from ray.internal.internal_api import memory_summary
+from ray.internal.storage import _load_class
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger, cf
 from ray.dashboard.modules.job.cli import job_cli_group
 from ray.experimental.state.state_cli import list_state_cli_group
@@ -512,6 +513,12 @@ def debug(address):
     help="Make the Ray debugger available externally to the node. This is only"
     "safe to activate if the node is behind a firewall.",
 )
+@click.option(
+    "--disable-usage-stats",
+    is_flag=True,
+    default=False,
+    help="If True, the usage stats collection will be disabled.",
+)
 @add_click_logging_options
 @PublicAPI
 def start(
@@ -554,6 +561,7 @@ def start(
     no_monitor,
     tracing_startup_hook,
     ray_debugger_external,
+    disable_usage_stats,
 ):
     """Start Ray processes manually on the local machine."""
 
@@ -624,10 +632,16 @@ def start(
         ray_debugger_external=ray_debugger_external,
     )
 
+    if ray_constants.RAY_START_HOOK in os.environ:
+        _load_class(os.environ[ray_constants.RAY_START_HOOK])(ray_params, head)
+
     if head:
         # Start head node.
 
-        usage_lib.print_usage_stats_heads_up_message()
+        if disable_usage_stats:
+            usage_lib.set_usage_stats_enabled_via_env_var(False)
+        usage_lib.show_usage_stats_prompt()
+        cli_logger.newline()
 
         if port is None:
             port = ray_constants.DEFAULT_PORT
@@ -1124,6 +1138,12 @@ def stop(force, grace_period):
         "this can be disabled for a better user experience."
     ),
 )
+@click.option(
+    "--disable-usage-stats",
+    is_flag=True,
+    default=False,
+    help="If True, the usage stats collection will be disabled.",
+)
 @add_click_logging_options
 @PublicAPI
 def up(
@@ -1137,9 +1157,11 @@ def up(
     no_config_cache,
     redirect_command_output,
     use_login_shells,
+    disable_usage_stats,
 ):
     """Create or update a Ray cluster."""
-    usage_lib.print_usage_stats_heads_up_message()
+    if disable_usage_stats:
+        usage_lib.set_usage_stats_enabled_via_env_var(False)
 
     if restart_only or no_restart:
         cli_logger.doassert(
@@ -1409,6 +1431,19 @@ def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes):
     help="(deprecated) Use '-- --arg1 --arg2' for script args.",
 )
 @click.argument("script_args", nargs=-1)
+@click.option(
+    "--disable-usage-stats",
+    is_flag=True,
+    default=False,
+    help="If True, the usage stats collection will be disabled.",
+)
+@click.option(
+    "--extra-screen-args",
+    default=None,
+    help="if screen is enabled, add the provided args to it. A useful example "
+    "usage scenario is passing --extra-screen-args='-Logfile /full/path/blah_log.txt'"
+    " as it redirects screen output also to a custom file",
+)
 @add_click_logging_options
 def submit(
     cluster_config_file,
@@ -1422,6 +1457,8 @@ def submit(
     script,
     args,
     script_args,
+    disable_usage_stats,
+    extra_screen_args: Optional[str] = None,
 ):
     """Uploads and runs a script on the specified cluster.
 
@@ -1449,6 +1486,11 @@ def submit(
     assert not (screen and tmux), "Can specify only one of `screen` or `tmux`."
     assert not (script_args and args), "Use -- --arg1 --arg2 for script args."
 
+    if (extra_screen_args is not None) and (not screen):
+        cli_logger.abort(
+            "To use extra_screen_args, it is required to use the --screen flag"
+        )
+
     if args:
         cli_logger.warning(
             "`{}` is deprecated and will be removed in the future.", cf.bold("--args")
@@ -1461,7 +1503,8 @@ def submit(
         cli_logger.newline()
 
     if start:
-        usage_lib.print_usage_stats_heads_up_message()
+        if disable_usage_stats:
+            usage_lib.set_usage_stats_enabled_via_env_var(False)
 
         create_or_update_cluster(
             config_file=cluster_config_file,
@@ -1505,6 +1548,7 @@ def submit(
         override_cluster_name=cluster_name,
         no_config_cache=no_config_cache,
         port_forward=port_forward,
+        extra_screen_args=extra_screen_args,
     )
 
 
@@ -1553,6 +1597,12 @@ def submit(
     type=int,
     help="Port to forward. Use this multiple times to forward multiple ports.",
 )
+@click.option(
+    "--disable-usage-stats",
+    is_flag=True,
+    default=False,
+    help="If True, the usage stats collection will be disabled.",
+)
 @add_click_logging_options
 def exec(
     cluster_config_file,
@@ -1565,12 +1615,14 @@ def exec(
     cluster_name,
     no_config_cache,
     port_forward,
+    disable_usage_stats,
 ):
     """Execute a command via SSH on a Ray cluster."""
     port_forward = [(port, port) for port in list(port_forward)]
 
     if start:
-        usage_lib.print_usage_stats_heads_up_message()
+        if disable_usage_stats:
+            usage_lib.set_usage_stats_enabled_via_env_var(False)
 
     exec_cluster(
         cluster_config_file,
@@ -1614,6 +1666,34 @@ def get_worker_ips(cluster_config_file, cluster_name):
     """Return the list of worker IPs of a Ray cluster."""
     worker_ips = get_worker_node_ips(cluster_config_file, cluster_name)
     click.echo("\n".join(worker_ips))
+
+
+@cli.command()
+def disable_usage_stats():
+    """Disable usage stats collection.
+
+    This will not affect the current running clusters
+    but clusters launched in the future.
+    """
+    usage_lib.set_usage_stats_enabled_via_config(enabled=False)
+    print(
+        "Usage stats disabled for future clusters. "
+        "Restart any current running clusters for this to take effect."
+    )
+
+
+@cli.command()
+def enable_usage_stats():
+    """Enable usage stats collection.
+
+    This will not affect the current running clusters
+    but clusters launched in the future.
+    """
+    usage_lib.set_usage_stats_enabled_via_config(enabled=True)
+    print(
+        "Usage stats enabled for future clusters. "
+        "Restart any current running clusters for this to take effect."
+    )
 
 
 @cli.command()
@@ -2260,6 +2340,8 @@ cli.add_command(global_gc)
 cli.add_command(timeline)
 cli.add_command(install_nightly)
 cli.add_command(cpp)
+cli.add_command(disable_usage_stats)
+cli.add_command(enable_usage_stats)
 add_command_alias(job_cli_group, name="job", hidden=True)
 add_command_alias(list_state_cli_group, name="list", hidden=True)
 

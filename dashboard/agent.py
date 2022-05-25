@@ -53,6 +53,7 @@ class DashboardAgent(object):
         object_store_name=None,
         raylet_name=None,
         logging_params=None,
+        disable_metrics_collection: bool = False,
     ):
         """Initialize the DashboardAgent object."""
         # Public attributes are accessible for all agent modules.
@@ -74,6 +75,7 @@ class DashboardAgent(object):
         self.raylet_name = raylet_name
         self.logging_params = logging_params
         self.node_id = os.environ["RAY_NODE_ID"]
+        self.metrics_collection_disabled = disable_metrics_collection
         # TODO(edoakes): RAY_RAYLET_PID isn't properly set on Windows. This is
         # only used for fate-sharing with the raylet and we need a different
         # fate-sharing mechanism for Windows anyways.
@@ -83,7 +85,7 @@ class DashboardAgent(object):
             logger.info("Parent pid is %s", self.ppid)
 
         # Setup raylet channel
-        options = (("grpc.enable_http_proxy", 0),)
+        options = ray_constants.GLOBAL_GRPC_OPTIONS
         self.aiogrpc_raylet_channel = ray._private.utils.init_grpc_channel(
             f"{self.ip}:{self.node_manager_port}", options, asynchronous=True
         )
@@ -347,6 +349,11 @@ if __name__ == "__main__":
             "by `pip install ray[default]`."
         ),
     )
+    parser.add_argument(
+        "--disable-metrics-collection",
+        action="store_true",
+        help=("If this arg is set, metrics report won't be enabled from the agent."),
+    )
 
     args = parser.parse_args()
     try:
@@ -375,6 +382,7 @@ if __name__ == "__main__":
             object_store_name=args.object_store_name,
             raylet_name=args.raylet_name,
             logging_params=logging_params,
+            disable_metrics_collection=args.disable_metrics_collection,
         )
         if os.environ.get("_RAY_AGENT_FAILING"):
             raise Exception("Failure injection failure.")

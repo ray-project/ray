@@ -18,7 +18,7 @@ from ray.util import metrics
 from ray._private.async_compat import sync_to_async
 
 from ray.serve.autoscaling_metrics import start_metrics_pusher
-from ray.serve.common import ReplicaTag
+from ray.serve.common import HEALTH_CHECK_CONCURRENCY_GROUP, ReplicaTag
 from ray.serve.config import DeploymentConfig
 from ray.serve.constants import (
     HEALTH_CHECK_METHOD,
@@ -219,6 +219,7 @@ def create_replica_wrapper(
             if self.replica is not None:
                 return await self.replica.prepare_for_shutdown()
 
+        @ray.method(concurrency_group=HEALTH_CHECK_CONCURRENCY_GROUP)
         async def check_health(self):
             await self.replica.check_health()
 
@@ -414,9 +415,18 @@ class RayServeReplica:
             if len(inspect.signature(runner_method).parameters) > 0:
                 result = await method_to_call(*args, **kwargs)
             else:
-                # The method doesn't take in anything, including the request
-                # information, so we pass nothing into it
-                result = await method_to_call()
+                # When access via http http_arg_is_pickled with no args:
+                # args = (<starlette.requests.Request object at 0x7fe900694cc0>,)
+                # When access via python with no args:
+                # args = ()
+                if len(args) == 1 and isinstance(args[0], starlette.requests.Request):
+                    # The method doesn't take in anything, including the request
+                    # information, so we pass nothing into it
+                    result = await method_to_call()
+                else:
+                    # Will throw due to signature mismatch if user attempts to
+                    # call with non-empty args
+                    result = await method_to_call(*args, **kwargs)
 
             result = await self.ensure_serializable_response(result)
             self.request_counter.inc()

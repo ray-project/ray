@@ -27,6 +27,8 @@ namespace rpc {
 #define RAY_NODE_MANAGER_RPC_HANDLERS                                 \
   RPC_SERVICE_HANDLER(NodeManagerService, UpdateResourceUsage, -1)    \
   RPC_SERVICE_HANDLER(NodeManagerService, RequestResourceReport, -1)  \
+  RPC_SERVICE_HANDLER(NodeManagerService, GetResourceLoad, -1)        \
+  RPC_SERVICE_HANDLER(NodeManagerService, NotifyGCSRestart, -1)       \
   RPC_SERVICE_HANDLER(NodeManagerService, RequestWorkerLease, -1)     \
   RPC_SERVICE_HANDLER(NodeManagerService, ReportWorkerBacklog, -1)    \
   RPC_SERVICE_HANDLER(NodeManagerService, ReturnWorker, -1)           \
@@ -69,6 +71,14 @@ class NodeManagerServiceHandler {
       const rpc::RequestResourceReportRequest &request,
       rpc::RequestResourceReportReply *reply,
       rpc::SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetResourceLoad(const rpc::GetResourceLoadRequest &request,
+                                     rpc::GetResourceLoadReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleNotifyGCSRestart(const rpc::NotifyGCSRestartRequest &request,
+                                      rpc::NotifyGCSRestartReply *reply,
+                                      rpc::SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleRequestWorkerLease(const RequestWorkerLeaseRequest &request,
                                         RequestWorkerLeaseReply *reply,

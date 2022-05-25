@@ -3,7 +3,12 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DATA_PROCESSING_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-gpu python/ray/ml/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-gpu,-needs_credentials python/ray/ml/...
+    # Only setup credentials in branch builds
+    - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
+    - python ./ci/env/setup_credentials.py wandb comet_ml
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-gpu,needs_credentials python/ray/ml/...
+    - python ./ci/env/cleanup_test_state.py wandb comet_ml
 
 - label: ":brain: RLlib: Learning discr. actions TF2-static-graph"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
@@ -309,17 +314,8 @@
     - TRAIN_TESTING=1 TUNE_TESTING=1 ./ci/env/install-dependencies.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=tune,-gpu_only python/ray/train/...
 
-- label: ":octopus: SGD tests and examples"
-  conditions: ["RAY_CI_SGD_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - SGD_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=tf,-pytorch,-py37,-client,-gpu_only python/ray/util/sgd/...
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-tf,pytorch,-py37,-client,-gpu_only python/ray/util/sgd/...
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=client_unit_tests,-gpu_only --test_env=RAY_CLIENT_MODE=1 python/ray/util/sgd/...
-
-- label: ":octopus: Tune/SGD/Modin/Dask tests and examples. Python 3.7"
-  conditions: ["RAY_CI_TUNE_AFFECTED", "RAY_CI_SGD_AFFECTED"]
+- label: ":octopus: Tune/Modin/Dask tests and examples. Python 3.7"
+  conditions: ["RAY_CI_TUNE_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - TUNE_TESTING=1 PYTHON=3.7 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
@@ -329,21 +325,20 @@
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only python/ray/util/ray_lightning/...
 
 - label: ":octopus: Ludwig tests and examples. Python 3.7"
-  conditions: ["RAY_CI_TUNE_AFFECTED", "RAY_CI_SGD_AFFECTED"]
+  conditions: ["RAY_CI_TUNE_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - SGD_TESTING=1 PYTHON=3.7 INSTALL_LUDWIG=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
+    - PYTHON=3.7 INSTALL_LUDWIG=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only python/ray/tests/ludwig/...
 
 - label: ":tropical_fish: ML Libraries w/ Ray Client Examples (Python 3.7)."
-  conditions: ["RAY_CI_TUNE_AFFECTED", "RAY_CI_SGD_AFFECTED"]
+  conditions: ["RAY_CI_TUNE_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - TUNE_TESTING=1 PYTHON=3.7 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
     - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/ci.sh build
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=client --test_env=RAY_CLIENT_MODE=1 python/ray/util/dask/...
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=client python/ray/tune/...
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=client,-client_unit_tests python/ray/util/sgd/...
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=client python/ray/util/xgboost/...
 
 - label: ":potable_water: Modin/Dask tests and examples. Python 3.7"
@@ -378,7 +373,7 @@
 
 - label: ":book: Doc tests and examples"
   conditions:
-    ["RAY_CI_PYTHON_AFFECTED", "RAY_CI_TUNE_AFFECTED", "RAY_CI_DOC_AFFECTED"]
+    ["RAY_CI_PYTHON_AFFECTED", "RAY_CI_TUNE_AFFECTED", "RAY_CI_DOC_AFFECTED", "RAY_CI_SERVE_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DOC_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh

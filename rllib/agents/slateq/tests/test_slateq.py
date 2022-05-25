@@ -23,24 +23,22 @@ class TestSlateQ(unittest.TestCase):
 
     def test_slateq_compilation(self):
         """Test whether a SlateQTrainer can be built with both frameworks."""
-        config = {
-            "env": InterestEvolutionRecSimEnv,
-            "learning_starts": 1000,
-        }
+        config = (
+            slateq.SlateQConfig()
+            .environment(env=InterestEvolutionRecSimEnv)
+            .training(replay_buffer_config={"learning_starts": 1000})
+        )
 
         num_iterations = 1
 
         for _ in framework_iterator(config, with_eager_tracing=True):
-            trainer = slateq.SlateQTrainer(config=config)
+            trainer = config.build()
             for i in range(num_iterations):
                 results = trainer.train()
                 check_train_results(results)
                 print(results)
             check_compute_single_action(trainer)
             trainer.stop()
-
-    def test_slateq_loss_function(self):
-        pass
 
 
 if __name__ == "__main__":

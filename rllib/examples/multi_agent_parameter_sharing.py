@@ -32,7 +32,7 @@ if __name__ == "__main__":
             "lr": 0.0001,
             "prioritized_replay_alpha": 0.5,
             "target_network_update_freq": 50000,
-            "timesteps_per_iteration": 25000,
+            "min_sample_timesteps_per_reporting": 25000,
             # Method specific.
             "multiagent": {
                 # We only have one policy (calling it "shared").

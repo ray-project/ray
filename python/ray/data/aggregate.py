@@ -17,6 +17,7 @@ from ray.data.impl.null_aggregate import (
     _null_wrap_merge,
     _null_wrap_accumulate_block,
     _null_wrap_finalize,
+    _null_wrap_accumulate_row,
 )
 
 if TYPE_CHECKING:
@@ -282,6 +283,25 @@ class Std(_AggregateOnKeyBase):
             ),
             finalize=_null_wrap_finalize(finalize),
             name=(f"std({str(on)})"),
+        )
+
+
+@PublicAPI
+class AbsMax(_AggregateOnKeyBase):
+    """Defines absolute max aggregation."""
+
+    def __init__(self, on: Optional[KeyFn] = None, ignore_nulls: bool = True):
+        self._set_key_fn(on)
+        on_fn = _to_on_fn(on)
+
+        super().__init__(
+            init=_null_wrap_init(lambda k: 0),
+            merge=_null_wrap_merge(ignore_nulls, max),
+            accumulate_row=_null_wrap_accumulate_row(
+                ignore_nulls, on_fn, lambda a, r: max(a, abs(r))
+            ),
+            finalize=_null_wrap_finalize(lambda a: a),
+            name=(f"abs_max({str(on)})"),
         )
 
 

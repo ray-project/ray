@@ -129,6 +129,12 @@ def check_too_many_retraces(obj):
     return _func
 
 
+class EagerTFPolicy(Policy):
+    """Dummy class to recognize any eagerized TFPolicy by its inheritance."""
+
+    pass
+
+
 def traced_eager_policy(eager_policy_cls):
     """Wrapper class that enables tracing for all eager policy methods.
 
@@ -237,6 +243,11 @@ def traced_eager_policy(eager_policy_cls):
             # `apply_gradients()` (which will call the traced helper).
             return super(TracedEagerPolicy, self).apply_gradients(grads)
 
+        @classmethod
+        def with_tracing(cls):
+            # Already traced -> Return same class.
+            return cls
+
     TracedEagerPolicy.__name__ = eager_policy_cls.__name__ + "_traced"
     TracedEagerPolicy.__qualname__ = eager_policy_cls.__qualname__ + "_traced"
     return TracedEagerPolicy
@@ -287,7 +298,7 @@ def build_eager_tf_policy(
 
     This has the same signature as build_tf_policy()."""
 
-    base = add_mixins(Policy, mixins)
+    base = add_mixins(EagerTFPolicy, mixins)
 
     if obs_include_prev_action_reward != DEPRECATED_VALUE:
         deprecation_warning(old="obs_include_prev_action_reward", error=False)
@@ -309,7 +320,7 @@ def build_eager_tf_policy(
             if not tf1.executing_eagerly():
                 tf1.enable_eager_execution()
             self.framework = config.get("framework", "tfe")
-            Policy.__init__(self, observation_space, action_space, config)
+            EagerTFPolicy.__init__(self, observation_space, action_space, config)
 
             # Global timestep should be a tensor.
             self.global_timestep = tf.Variable(0, trainable=False, dtype=tf.int64)
@@ -516,8 +527,8 @@ def build_eager_tf_policy(
                 _is_training=tf.constant(False),
             )
             if state_batches is not None:
-                for s in enumerate(state_batches):
-                    input_dict["state_in_{i}"] = s
+                for i, s in enumerate(state_batches):
+                    input_dict[f"state_in_{i}"] = s
             if prev_action_batch is not None:
                 input_dict[SampleBatch.PREV_ACTIONS] = prev_action_batch
             if prev_reward_batch is not None:
@@ -594,7 +605,7 @@ def build_eager_tf_policy(
         ):
             assert tf.executing_eagerly()
             # Call super's postprocess_trajectory first.
-            sample_batch = Policy.postprocess_trajectory(self, sample_batch)
+            sample_batch = EagerTFPolicy.postprocess_trajectory(self, sample_batch)
             if postprocess_fn:
                 return postprocess_fn(self, sample_batch, other_agent_batches, episode)
             return sample_batch
@@ -763,9 +774,7 @@ def build_eager_tf_policy(
             # Use Exploration object.
             with tf.variable_creator_scope(_disallow_var_creation):
                 if action_sampler_fn:
-                    dist_inputs = None
-                    state_out = []
-                    actions, logp = action_sampler_fn(
+                    action_sampler_outputs = action_sampler_fn(
                         self,
                         self.model,
                         input_dict[SampleBatch.CUR_OBS],
@@ -773,6 +782,12 @@ def build_eager_tf_policy(
                         timestep=timestep,
                         episodes=episodes,
                     )
+                    if len(action_sampler_outputs) == 4:
+                        actions, logp, dist_inputs, state_out = action_sampler_outputs
+                    else:
+                        dist_inputs = None
+                        state_out = []
+                        actions, logp = action_sampler_outputs
                 else:
                     if action_distribution_fn:
 
@@ -848,7 +863,11 @@ def build_eager_tf_policy(
 
             return actions, state_out, extra_fetches
 
-        def _learn_on_batch_helper(self, samples):
+        # TODO: Figure out, why _ray_trace_ctx=None helps to prevent a crash in
+        #  AlphaStar w/ framework=tf2; eager_tracing=True on the policy learner actors.
+        #  It seems there may be a clash between the traced-by-tf function and the
+        #  traced-by-ray functions (for making the policy class a ray actor).
+        def _learn_on_batch_helper(self, samples, _ray_trace_ctx=None):
             # Increase the tracing counter to make sure we don't re-trace too
             # often. If eager_tracing=True, this counter should only get
             # incremented during the @tf.function trace operations, never when

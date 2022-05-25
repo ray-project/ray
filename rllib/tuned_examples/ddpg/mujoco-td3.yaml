@@ -23,5 +23,5 @@ mujoco-td3:
             random_timesteps: 10000
 
         # === Evaluation ===
-        evaluation_interval: 5
+        evaluation_interval: 10
         evaluation_num_episodes: 10

@@ -920,11 +920,6 @@ def init(
         logger.debug("Could not import resource module (on Windows)")
         pass
 
-    if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ:
-        runtime_env = _load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
-            runtime_env
-        )
-
     if RAY_JOB_CONFIG_JSON_ENV_VAR in os.environ:
         if runtime_env:
             logger.warning(
@@ -937,13 +932,26 @@ def init(
         # ray job submission with driver script executed in subprocess
         job_config_json = json.loads(os.environ.get(RAY_JOB_CONFIG_JSON_ENV_VAR))
         job_config = ray.job_config.JobConfig.from_json(job_config_json)
+
+        if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ:
+            runtime_env = _load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
+                job_config.runtime_env
+            )
+            job_config.set_runtime_env(runtime_env)
+
     # RAY_JOB_CONFIG_JSON_ENV_VAR is only set at ray job manager level and has
     # higher priority in case user also provided runtime_env for ray.init()
-    elif runtime_env:
-        # Set runtime_env in job_config if passed in as part of ray.init()
-        if job_config is None:
-            job_config = ray.job_config.JobConfig()
-        job_config.set_runtime_env(runtime_env)
+    else:
+        if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ:
+            runtime_env = _load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
+                runtime_env
+            )
+
+        if runtime_env:
+            # Set runtime_env in job_config if passed in as part of ray.init()
+            if job_config is None:
+                job_config = ray.job_config.JobConfig()
+            job_config.set_runtime_env(runtime_env)
 
     if _node_ip_address is not None:
         node_ip_address = services.resolve_ip_for_localhost(_node_ip_address)
@@ -987,6 +995,12 @@ def init(
 
     if bootstrap_address is None:
         # In this case, we need to start a new cluster.
+
+        # Don't collect usage stats in ray.init().
+        from ray._private.usage import usage_lib
+
+        usage_lib.set_usage_stats_enabled_via_env_var(False)
+
         # Use a random port by not specifying Redis port / GCS server port.
         ray_params = ray._private.parameter.RayParams(
             node_ip_address=node_ip_address,
@@ -1050,6 +1064,11 @@ def init(
                 "When connecting to an existing cluster, "
                 "object_store_memory must not be provided."
             )
+        if storage is not None:
+            raise ValueError(
+                "When connecting to an existing cluster, "
+                "storage must not be provided."
+            )
         if _system_config is not None and len(_system_config) != 0:
             raise ValueError(
                 "When connecting to an existing cluster, "
@@ -1074,7 +1093,6 @@ def init(
             redis_address=redis_address,
             redis_password=_redis_password,
             object_ref_seed=None,
-            storage=storage,
             temp_dir=_temp_dir,
             _system_config=_system_config,
             enable_object_reconstruction=_enable_object_reconstruction,
@@ -2204,7 +2222,7 @@ def remote(*args, **kwargs):
             the remote function invocation.
         num_cpus (float): The quantity of CPU cores to reserve
             for this task or for the lifetime of the actor.
-        num_gpus (int): The quantity of GPUs to reserve
+        num_gpus (float): The quantity of GPUs to reserve
             for this task or for the lifetime of the actor.
         resources (Dict[str, float]): The quantity of various custom resources
             to reserve for this task or for the lifetime of the actor.

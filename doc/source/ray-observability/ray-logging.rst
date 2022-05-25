@@ -1,3 +1,5 @@
+.. _ray-logging:
+
 Logging
 =======
 This document will explain Ray's logging system and its best practices.
@@ -35,6 +37,26 @@ When logs are printed, the process id (pid) and an IP address of the node that e
 .. code-block:: bash
 
     (pid=45601) task
+
+Actor log messages look like the following by default.
+
+.. code-block:: bash
+
+    (MyActor pid=480956) actor log message
+
+Customizing Actor logs prefixes
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+It is often useful to distinguish between log messages from different actors. For example, suppose you have a large number of worker actors. In this case, you may want to be able to easily see the index of the actor that logged a particular message. This can be achieved by defining the `__repr__ <https://docs.python.org/3/library/functions.html#repr>`__ method for an actor class. When defined, the actor repr will be used in place of the actor name. For example:
+
+.. literalinclude:: /ray-core/doc_code/actor-repr.py
+
+This produces the following output:
+
+.. code-block:: bash
+
+    (MyActor(index=2) pid=482120) hello there
+    (MyActor(index=1) pid=482119) hello there
 
 How to set up loggers
 ~~~~~~~~~~~~~~~~~~~~~

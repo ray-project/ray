@@ -30,4 +30,4 @@ dueling-ddqn:
           final_epsilon: 0.01
         prioritized_replay_alpha: 0.5
         num_gpus: 0.2
-        timesteps_per_iteration: 10000
+        min_sample_timesteps_per_reporting: 10000

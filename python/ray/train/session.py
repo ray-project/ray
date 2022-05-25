@@ -25,7 +25,8 @@ from ray.train.constants import (
     RESULT_FETCH_TIMEOUT,
     SESSION_MISUSE_LOG_ONCE_KEY,
 )
-from ray.train.utils import PropagatingThread, RayDataset
+from ray.train.utils import PropagatingThread
+from ray.train.impl.dataset_spec import RayDataset
 from ray.util import PublicAPI, log_once
 
 

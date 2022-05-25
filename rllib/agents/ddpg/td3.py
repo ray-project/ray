@@ -3,12 +3,13 @@
 By default, this uses a near-identical configuration to that reported in the
 TD3 paper.
 """
-from ray.rllib.agents.ddpg.ddpg import DDPGTrainer, DEFAULT_CONFIG as DDPG_CONFIG
+from ray.rllib.agents.ddpg.ddpg import DDPGConfig, DDPGTrainer
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 TD3_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
-    DDPG_CONFIG,
+    DDPGConfig().to_dict(),
     {
         # largest changes: twin Q functions, delayed policy updates, and target
         # smoothing
@@ -51,10 +52,15 @@ TD3_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
         "num_workers": 0,
         "num_gpus_per_worker": 0,
         "worker_side_prioritization": False,
-        "buffer_size": 1000000,
-        "prioritized_replay": False,
         "clip_rewards": False,
         "use_state_preprocessor": False,
+        # Size of the replay buffer (in time steps).
+        "buffer_size": DEPRECATED_VALUE,
+        "replay_buffer_config": {
+            "_enable_replay_buffer_api": True,
+            "type": "MultiAgentReplayBuffer",
+            "capacity": 1000000,
+        },
     },
 )
 
