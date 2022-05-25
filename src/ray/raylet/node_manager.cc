@@ -1532,8 +1532,7 @@ void NodeManager::ProcessFetchOrReconstructMessage(
     AsyncResolveObjects(client,
                         refs,
                         task_id,
-                        /*ray_get=*/true,
-                        /*mark_worker_blocked*/ message->mark_worker_blocked());
+                        /*ray_get=*/true);
   }
 }
 
@@ -1563,7 +1562,6 @@ void NodeManager::ProcessWaitRequestMessage(
   }
 
   const TaskID &current_task_id = from_flatbuf<TaskID>(*message->task_id());
-  bool was_blocked = message->mark_worker_blocked();
   if (resolve_objects) {
     // Resolve any missing objects. This is a no-op for any objects that are
     // already local. Missing objects will be pulled from remote node managers.
@@ -1572,8 +1570,7 @@ void NodeManager::ProcessWaitRequestMessage(
     AsyncResolveObjects(client,
                         refs,
                         current_task_id,
-                        /*ray_get=*/false,
-                        /*mark_worker_blocked*/ was_blocked);
+                        /*ray_get=*/false);
   }
   uint64_t num_required_objects = static_cast<uint64_t>(message->num_ready_objects());
   wait_manager_.Wait(
@@ -1621,8 +1618,7 @@ void NodeManager::ProcessWaitForDirectActorCallArgsRequestMessage(
   AsyncResolveObjects(client,
                       refs,
                       TaskID::Nil(),
-                      /*ray_get=*/false,
-                      /*mark_worker_blocked*/ false);
+                      /*ray_get=*/false);
   wait_manager_.Wait(
       object_ids,
       -1,
@@ -2064,8 +2060,7 @@ void NodeManager::AsyncResolveObjects(
     const std::shared_ptr<ClientConnection> &client,
     const std::vector<rpc::ObjectReference> &required_object_refs,
     const TaskID &current_task_id,
-    bool ray_get,
-    bool mark_worker_blocked) {
+    bool ray_get) {
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   if (!worker) {
     // The client is a driver. Drivers do not hold resources, so we simply mark

@@ -174,8 +174,6 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
       raylet_client_->FetchOrReconstruct(batch_ids,
                                          owner_addresses,
                                          fetch_only,
-                                         // TODO(qwang): Remove from RPC request due to it's always false.
-                                         /*mark_worker_blocked*/ false,
                                          task_id));
 
   std::vector<plasma::ObjectBuffer> plasma_results;
@@ -397,7 +395,6 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
                              owner_addresses,
                              num_objects,
                              call_timeout,
-                             /*mark_worker_blocked*/ !false,
                              ctx.GetCurrentTaskID(),
                              &result_pair));
 
