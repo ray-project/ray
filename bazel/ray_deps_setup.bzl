@@ -317,5 +317,5 @@ def ray_deps_setup():
         url = "https://github.com/hedronvision/bazel-compile-commands-extractor/archive/cfd16a16cb4c4f27337ef652aa8510dcf1dd01ce.tar.gz",
         strip_prefix = "bazel-compile-commands-extractor-cfd16a16cb4c4f27337ef652aa8510dcf1dd01ce",
         # When you first run this tool, it'll recommend a sha256 hash to put here with a message like: "DEBUG: Rule 'hedron_compile_commands' indicated that a canonical reproducible form can be obtained by modifying arguments sha256 = ..."
-        sha256 = "4c2753a8d446f561391b7968a6d0eed748e8bb0f40adeda51301c57e829c7696"
+        sha256 = "4c2753a8d446f561391b7968a6d0eed748e8bb0f40adeda51301c57e829c7696",
     )
