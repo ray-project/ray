@@ -443,8 +443,8 @@ class SSHCommandRunner(CommandRunnerInterface):
                 Full command to run. Should include SSH options and other
                 processing that we do.
             with_output (bool):
-                If `with_output` is `True`, command stdout and stderr
-                will be captured and returned.
+                If `with_output` is `True`, command stdout will be captured and
+                returned.
             exit_on_fail (bool):
                 If `exit_on_fail` is `True`, the process will exit
                 if the command fails (exits with a code other than 0).
@@ -465,10 +465,8 @@ class SSHCommandRunner(CommandRunnerInterface):
                     silent=silent,
                     use_login_shells=is_using_login_shells(),
                 )
-            if with_output:
-                return self.process_runner.check_output(final_cmd)
             else:
-                return self.process_runner.check_call(final_cmd)
+                return self.process_runner.check_output(final_cmd)
         except subprocess.CalledProcessError as e:
             joined_cmd = " ".join(final_cmd)
             if not is_using_login_shells():
@@ -488,6 +486,11 @@ class SSHCommandRunner(CommandRunnerInterface):
                 if is_output_redirected():
                     fail_msg += " See above for the output from the failure."
                 raise click.ClickException(fail_msg) from None
+        finally:
+            # Do our best to flush output to terminal.
+            # See https://github.com/ray-project/ray/pull/19473.
+            sys.stdout.flush()
+            sys.stderr.flush()
 
     def run(
         self,

@@ -19,15 +19,6 @@ public interface WorkerContext {
   /** ID of the current actor. */
   ActorId getCurrentActorId();
 
-  /**
-   * The class loader that is associated with the current job. It's used for locating classes when
-   * dealing with serialization and deserialization in {@link Serializer}.
-   */
-  ClassLoader getCurrentClassLoader();
-
-  /** Set the current class loader. */
-  void setCurrentClassLoader(ClassLoader currentClassLoader);
-
   /** Type of the current task. */
   TaskType getCurrentTaskType();
 

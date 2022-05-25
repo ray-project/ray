@@ -10,7 +10,6 @@ from typing import Optional, Type, List, Dict, Union, DefaultDict, Set, Callable
 import ray
 from ray.actor import ActorHandle
 from ray.rllib import SampleBatch
-from ray.rllib.agents.impala.vtrace_tf_policy import VTraceTFPolicy
 from ray.rllib.agents.trainer import Trainer, TrainerConfig
 from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
 from ray.rllib.execution.learner_thread import LearnerThread
@@ -449,9 +448,22 @@ class ImpalaTrainer(Trainer):
                 from ray.rllib.agents.a3c.a3c_torch_policy import A3CTorchPolicy
 
                 return A3CTorchPolicy
+        elif config["framework"] == "tf":
+            if config["vtrace"]:
+                from ray.rllib.agents.impala.vtrace_tf_policy import (
+                    VTraceStaticGraphTFPolicy,
+                )
+
+                return VTraceStaticGraphTFPolicy
+            else:
+                from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
+
+                return A3CTFPolicy
         else:
             if config["vtrace"]:
-                return VTraceTFPolicy
+                from ray.rllib.agents.impala.vtrace_tf_policy import VTraceEagerTFPolicy
+
+                return VTraceEagerTFPolicy
             else:
                 from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
 
@@ -585,20 +597,7 @@ class ImpalaTrainer(Trainer):
 
         self.update_workers_if_necessary()
 
-        # Callback for APPO to use to update KL, target network periodically.
-        # The input to the callback is the learner fetches dict.
-        self.after_train_step(train_results)
-
         return train_results
-
-    def after_train_step(self, train_results: ResultDict) -> None:
-        """Called by the training_iteration method after each train step.
-
-        Args:
-            train_results: The train results dict.
-        """
-        # By default, do nothing.
-        pass
 
     @staticmethod
     @override(Trainer)

@@ -37,7 +37,7 @@ from ray.tune.sync_client import (
     SyncClient,
     RemoteTaskClient,
 )
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import PublicAPI, DeveloperAPI
 
 if TYPE_CHECKING:
     from ray.tune.trial import Trial
@@ -208,6 +208,7 @@ class SyncConfig:
         validate_sync_config(self)
 
 
+@DeveloperAPI
 class Syncer:
     def __init__(self, local_dir: str, remote_dir: str, sync_client: SyncClient = NOOP):
         """Syncs between two directories with the sync_function.
@@ -321,6 +322,7 @@ class Syncer:
         return self._remote_dir
 
 
+@DeveloperAPI
 class CloudSyncer(Syncer):
     """Syncer for syncing files to/from the cloud."""
 
@@ -336,6 +338,7 @@ class CloudSyncer(Syncer):
         )
 
 
+@DeveloperAPI
 class NodeSyncer(Syncer):
     """Syncer for syncing files to/from a remote dir to a local dir."""
 
@@ -407,6 +410,7 @@ class NodeSyncer(Syncer):
         return "{}@{}:{}/".format(ssh_user, self.worker_ip, self._remote_dir)
 
 
+@DeveloperAPI
 def get_cloud_syncer(
     local_dir: str,
     remote_dir: Optional[str] = None,
@@ -460,6 +464,7 @@ def get_cloud_syncer(
     return _syncers[key]
 
 
+@DeveloperAPI
 def get_node_syncer(
     local_dir: str,
     remote_dir: Optional[str] = None,
@@ -507,6 +512,7 @@ def get_node_syncer(
     return _syncers[key]
 
 
+@DeveloperAPI
 class SyncerCallback(Callback):
     def __init__(self, sync_function: Optional[Union[bool, Callable]]):
         self._sync_function = sync_function

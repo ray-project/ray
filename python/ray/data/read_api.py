@@ -24,14 +24,14 @@ if TYPE_CHECKING:
 
 import ray
 from ray.types import ObjectRef
-from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.util.annotations import PublicAPI, DeveloperAPI, Deprecated
 from ray.data.block import (
     Block,
     BlockAccessor,
     BlockMetadata,
     BlockExecStats,
 )
-from ray.data.context import DatasetContext
+from ray.data.context import DatasetContext, DEFAULT_SCHEDULING_STRATEGY
 from ray.data.dataset import Dataset
 from ray.data.datasource import (
     Datasource,
@@ -159,6 +159,7 @@ def range_table(n: int, *, parallelism: int = 200) -> Dataset[ArrowRow]:
     )
 
 
+@Deprecated
 def range_arrow(*args, **kwargs):
     raise DeprecationWarning("range_arrow() is deprecated, use range_table() instead.")
 
@@ -173,10 +174,10 @@ def range_tensor(
         >>> import ray
         >>> ds = ray.data.range_tensor(1000, shape=(3, 10)) # doctest: +SKIP
         >>> ds.map_batches( # doctest: +SKIP
-        ...     lambda arr: arr * 2, batch_format="pandas").show()
+        ...     lambda arr: arr * 2).show()
 
     This is similar to range_table(), but uses the ArrowTensorArray extension
-    type. The dataset elements take the form {"value": array(N, shape=shape)}.
+    type. The dataset elements take the form {VALUE_COL_NAME: array(N, shape=shape)}.
 
     Args:
         n: The upper bound of the range of integer records.
@@ -216,6 +217,7 @@ def read_datasource(
     Returns:
         Dataset holding the data read from the datasource.
     """
+    ctx = DatasetContext.get_current()
     # TODO(ekl) remove this feature flag.
     force_local = "RAY_DATASET_FORCE_LOCAL_METADATA" in os.environ
     pa_ds = _lazy_import_pyarrow_dataset()
@@ -233,7 +235,6 @@ def read_datasource(
     else:
         # Prepare read in a remote task so that in Ray client mode, we aren't
         # attempting metadata resolution from the client machine.
-        ctx = DatasetContext.get_current()
         prepare_read = cached_remote_fn(
             _prepare_read, retry_exceptions=False, num_cpus=0
         )
@@ -258,7 +259,10 @@ def read_datasource(
 
     if ray_remote_args is None:
         ray_remote_args = {}
-    if "scheduling_strategy" not in ray_remote_args:
+    if (
+        "scheduling_strategy" not in ray_remote_args
+        and ctx.scheduling_strategy == DEFAULT_SCHEDULING_STRATEGY
+    ):
         ray_remote_args["scheduling_strategy"] = "SPREAD"
 
     block_list = LazyBlockList(read_tasks, ray_remote_args=ray_remote_args)
@@ -1016,16 +1020,11 @@ def _df_to_block(df: "pandas.DataFrame") -> Block[ArrowRow]:
 
 def _ndarray_to_block(ndarray: np.ndarray) -> Block[np.ndarray]:
     stats = BlockExecStats.builder()
-    import pyarrow as pa
-    from ray.data.extensions import TensorArray
-
-    table = pa.Table.from_pydict({"value": TensorArray(ndarray)})
-    return (
-        table,
-        BlockAccessor.for_block(table).get_metadata(
-            input_files=None, exec_stats=stats.build()
-        ),
+    block = BlockAccessor.batch_to_block(ndarray)
+    metadata = BlockAccessor.for_block(block).get_metadata(
+        input_files=None, exec_stats=stats.build()
     )
+    return block, metadata
 
 
 def _get_metadata(table: Union["pyarrow.Table", "pandas.DataFrame"]) -> BlockMetadata:

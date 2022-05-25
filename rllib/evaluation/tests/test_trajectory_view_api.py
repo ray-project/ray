@@ -6,7 +6,7 @@ import unittest
 
 import ray
 from ray.rllib.agents.callbacks import DefaultCallbacks
-import ray.rllib.agents.dqn as dqn
+import ray.rllib.algorithms.dqn as dqn
 import ray.rllib.agents.ppo as ppo
 from ray.rllib.examples.env.debug_counter_env import MultiAgentDebugCounterEnv
 from ray.rllib.examples.env.multi_agent import MultiAgentPendulum

@@ -201,10 +201,17 @@ class _WandbLoggingProcess(Process):
     """
 
     def __init__(
-        self, queue: Queue, exclude: List[str], to_config: List[str], *args, **kwargs
+        self,
+        logdir: str,
+        queue: Queue,
+        exclude: List[str],
+        to_config: List[str],
+        *args,
+        **kwargs,
     ):
         super(_WandbLoggingProcess, self).__init__()
 
+        os.chdir(logdir)
         self.queue = queue
         self._exclude = set(exclude)
         self._to_config = set(to_config)
@@ -214,9 +221,10 @@ class _WandbLoggingProcess(Process):
         self._trial_name = self.kwargs.get("name", "unknown")
 
     def run(self):
-        wandb.require("service")
+        # Since we're running in a separate process already, use threads.
+        os.environ["WANDB_START_METHOD"] = "thread"
         wandb.init(*self.args, **self.kwargs)
-        wandb.setup()
+
         while True:
             item_type, item_content = self.queue.get()
             if item_type == _QueueItem.END:
@@ -400,6 +408,7 @@ class WandbLoggerCallback(LoggerCallback):
 
         self._trial_queues[trial] = Queue()
         self._trial_processes[trial] = self._logger_process_cls(
+            logdir=trial.logdir,
             queue=self._trial_queues[trial],
             exclude=exclude_results,
             to_config=self._config_results,
@@ -605,6 +614,6 @@ class WandbTrainableMixin:
         self.wandb = self._wandb.init(**wandb_init_kwargs)
 
     def stop(self):
-        self._wandb.join()
+        self._wandb.finish()
         if hasattr(super(), "stop"):
             super().stop()

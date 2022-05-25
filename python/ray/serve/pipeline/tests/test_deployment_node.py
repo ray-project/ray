@@ -2,7 +2,7 @@ import pytest
 
 import ray
 from ray import serve
-from ray.experimental.dag.input_node import InputNode
+from ray.serve.dag import InputNode
 from ray.serve.pipeline.deployment_node import (
     DeploymentNode,
 )
@@ -43,7 +43,7 @@ class Actor:
         return self.i
 
 
-@pytest.mark.asyncio
+@pytest.mark.skip(reason="async handle not enabled yet")
 async def test_simple_deployment_async(serve_instance):
     """Internal testing only for simple creation and execution.
 
@@ -128,21 +128,6 @@ def test_no_input_node_as_init_args():
             {},
             {},
             other_args_to_resolve={"arg": {"options_a": InputNode()}},
-        )
-
-
-def test_invalid_use_sync_handle():
-    with pytest.raises(
-        ValueError,
-        match=f"{USE_SYNC_HANDLE_KEY} should only be set with a boolean value",
-    ):
-        _ = DeploymentNode(
-            Actor,
-            "test",
-            [],
-            {},
-            {},
-            other_args_to_resolve={USE_SYNC_HANDLE_KEY: {"options_a": "hii"}},
         )
 
 

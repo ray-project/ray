@@ -893,6 +893,7 @@ class DynamicTFPolicy(TFPolicy):
         return losses
 
 
+@DeveloperAPI
 class TFMultiGPUTowerStack:
     """Optimizer that runs in parallel across multiple local devices.
 
@@ -1002,7 +1003,7 @@ class TFMultiGPUTowerStack:
         if self.policy.config["_tf_policy_handles_more_than_one_loss"]:
             avgs = []
             for i, optim in enumerate(self.optimizers):
-                avg = average_gradients([t.grads[i] for t in self._towers])
+                avg = _average_gradients([t.grads[i] for t in self._towers])
                 if grad_norm_clipping:
                     clipped = []
                     for grad, _ in avg:
@@ -1031,7 +1032,7 @@ class TFMultiGPUTowerStack:
                     [o.apply_gradients(a) for o, a in zip(self.optimizers, avgs)]
                 )
         else:
-            avg = average_gradients([t.grads for t in self._towers])
+            avg = _average_gradients([t.grads for t in self._towers])
             if grad_norm_clipping:
                 clipped = []
                 for grad, _ in avg:
@@ -1133,7 +1134,7 @@ class TFMultiGPUTowerStack:
 
         if len(smallest_array) < sequences_per_minibatch:
             # Dynamically shrink the batch size if insufficient data
-            sequences_per_minibatch = make_divisible_by(
+            sequences_per_minibatch = _make_divisible_by(
                 len(smallest_array), len(self.devices)
             )
 
@@ -1160,7 +1161,7 @@ class TFMultiGPUTowerStack:
         if len(state_inputs) > 0:
             # First truncate the RNN state arrays to the sequences_per_minib.
             state_inputs = [
-                make_divisible_by(arr, sequences_per_minibatch) for arr in state_inputs
+                _make_divisible_by(arr, sequences_per_minibatch) for arr in state_inputs
             ]
             # Then truncate the data inputs to match
             inputs = [arr[: len(state_inputs[0]) * seq_len] for arr in inputs]
@@ -1176,7 +1177,7 @@ class TFMultiGPUTowerStack:
         else:
             truncated_len = 0
             for ph, arr in zip(self.loss_inputs, inputs):
-                truncated_arr = make_divisible_by(arr, sequences_per_minibatch)
+                truncated_arr = _make_divisible_by(arr, sequences_per_minibatch)
                 feed_dict[ph] = truncated_arr
                 if truncated_len == 0:
                     truncated_len = len(truncated_arr)
@@ -1259,7 +1260,7 @@ class TFMultiGPUTowerStack:
                     device_input_slices.append(current_slice)
                 graph_obj = self.policy_copy(device_input_slices)
                 device_grads = graph_obj.gradients(self.optimizers, graph_obj._losses)
-            return Tower(
+            return _Tower(
                 tf.group(*[batch.initializer for batch in device_input_batches]),
                 device_grads,
                 graph_obj,
@@ -1267,16 +1268,16 @@ class TFMultiGPUTowerStack:
 
 
 # Each tower is a copy of the loss graph pinned to a specific device.
-Tower = namedtuple("Tower", ["init_op", "grads", "loss_graph"])
+_Tower = namedtuple("Tower", ["init_op", "grads", "loss_graph"])
 
 
-def make_divisible_by(a, n):
+def _make_divisible_by(a, n):
     if type(a) is int:
         return a - a % n
     return a[0 : a.shape[0] - a.shape[0] % n]
 
 
-def average_gradients(tower_grads):
+def _average_gradients(tower_grads):
     """Averages gradients across towers.
 
     Calculate the average gradient for each shared variable across all towers.

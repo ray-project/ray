@@ -4,7 +4,7 @@ from typing import Optional, Any
 
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import deprecation_warning
-from ray.rllib.utils.annotations import ExperimentalAPI
+from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
@@ -120,23 +120,28 @@ def sample_min_n_steps_from_buffer(
     train_batches = []
     while train_batch_size < min_steps:
         batch = replay_buffer.sample(num_items=1)
-        if batch is None:
-            return None
+        batch_len = batch.agent_steps() if count_by_agent_steps else batch.env_steps()
+        if batch_len == 0:
+            # Replay has not started, so we can't accumulate timesteps here
+            return batch
         train_batches.append(batch)
-        train_batch_size += (
-            train_batches[-1].agent_steps()
-            if count_by_agent_steps
-            else train_batches[-1].env_steps()
-        )
+        train_batch_size += batch_len
     # All batch types are the same type, hence we can use any concat_samples()
     train_batch = SampleBatch.concat_samples(train_batches)
     return train_batch
 
 
-@ExperimentalAPI
+@DeveloperAPI
 def validate_buffer_config(config: dict):
     if config.get("replay_buffer_config", None) is None:
         config["replay_buffer_config"] = {}
+
+    if config.get("worker_side_prioritization", DEPRECATED_VALUE) != DEPRECATED_VALUE:
+        deprecation_warning(
+            old="config['worker_side_prioritization']",
+            new="config['replay_buffer_config']['worker_side_prioritization']",
+            error=True,
+        )
 
     prioritized_replay = config.get("prioritized_replay", DEPRECATED_VALUE)
     if prioritized_replay != DEPRECATED_VALUE:
@@ -171,6 +176,22 @@ def validate_buffer_config(config: dict):
             help="config['replay_buffer_config']['replay_burn_in']",
         )
 
+    replay_batch_size = config.get("replay_batch_size", DEPRECATED_VALUE)
+    if replay_batch_size == DEPRECATED_VALUE:
+        replay_batch_size = config["replay_buffer_config"].get(
+            "replay_batch_size", DEPRECATED_VALUE
+        )
+    if replay_batch_size != DEPRECATED_VALUE:
+        deprecation_warning(
+            old="config['replay_batch_size'] or config['replay_buffer_config']["
+            "'replay_batch_size']",
+            help="Specification of replay_batch_size is not supported anymore but is "
+            "derived from `train_batch_size`. Specify the number of "
+            "items you want to replay upon calling the sample() method of replay "
+            "buffers if this does not work for you.",
+            error=True,
+        )
+
     # Deprecation of old-style replay buffer args
     # Warnings before checking of we need local buffer so that algorithms
     # Without local buffer also get warned
@@ -179,7 +200,6 @@ def validate_buffer_config(config: dict):
         "prioritized_replay_beta",
         "prioritized_replay_eps",
         "no_local_replay_buffer",
-        "replay_batch_size",
         "replay_zero_init_states",
         "learning_starts",
         "replay_buffer_shards_colocated_with_driver",
@@ -234,15 +254,6 @@ def validate_buffer_config(config: dict):
         config["replay_buffer_config"]["type"] = (
             "ray.rllib.utils.replay_buffers." + buffer_type
         )
-
-    if config["replay_buffer_config"].get("replay_batch_size", None) is None:
-        # Fall back to train batch size if no replay batch size was provided
-        logger.info(
-            "No value for key `replay_batch_size` in replay_buffer_config. "
-            "config['replay_buffer_config']['replay_batch_size'] will be "
-            "automatically set to config['train_batch_size']"
-        )
-        config["replay_buffer_config"]["replay_batch_size"] = config["train_batch_size"]
 
     # Instantiate a dummy buffer to fail early on misconfiguration and find out about
     # inferred buffer class
@@ -322,7 +333,7 @@ def patch_buffer_with_fake_sampling_method(
     ):
         fake_sample_output = SampleBatch(fake_sample_output).as_multi_agent()
 
-    def fake_sample(_: Any, __: Any = None, **kwargs) -> Optional[SampleBatchType]:
+    def fake_sample(_: Any = None, **kwargs) -> Optional[SampleBatchType]:
         """Always returns a predefined batch.
 
         Args:

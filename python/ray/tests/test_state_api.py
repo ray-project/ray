@@ -1,13 +1,17 @@
 import json
 import sys
 import pytest
+import yaml
 
 from typing import List
 from dataclasses import fields
 
 from unittest.mock import MagicMock
 
-from asyncmock import AsyncMock
+if sys.version_info > (3, 7, 0):
+    from unittest.mock import AsyncMock
+else:
+    from asyncmock import AsyncMock
 
 import ray
 import ray.ray_constants as ray_constants
@@ -40,7 +44,11 @@ from ray.core.generated.runtime_env_common_pb2 import (
 )
 from ray.core.generated.runtime_env_agent_pb2 import GetRuntimeEnvsInfoReply
 import ray.dashboard.consts as dashboard_consts
-from ray.dashboard.state_aggregator import StateAPIManager
+from ray.dashboard.state_aggregator import (
+    StateAPIManager,
+    GCS_QUERY_FAILURE_WARNING,
+    NODE_QUERY_FAILURE_WARNING,
+)
 from ray.experimental.state.api import (
     list_actors,
     list_placement_groups,
@@ -63,11 +71,15 @@ from ray.experimental.state.common import (
     DEFAULT_RPC_TIMEOUT,
     DEFAULT_LIMIT,
 )
+from ray.experimental.state.exception import DataSourceUnavailable, RayStateApiException
 from ray.experimental.state.state_manager import (
     StateDataSourceClient,
-    StateSourceNetworkException,
 )
-from ray.experimental.state.state_cli import list_state_cli_group
+from ray.experimental.state.state_cli import (
+    list_state_cli_group,
+    get_state_api_output_to_print,
+    AvailableFormat,
+)
 from ray.runtime_env import RuntimeEnv
 from ray._private.test_utils import wait_for_condition
 from ray.job_submission import JobSubmissionClient
@@ -183,7 +195,7 @@ def generate_runtime_env_info(runtime_env, creation_time=None):
 
 
 def list_api_options(timeout: int = DEFAULT_RPC_TIMEOUT, limit: int = DEFAULT_LIMIT):
-    return ListApiOptions(limit=limit, timeout=timeout)
+    return ListApiOptions(limit=limit, timeout=timeout, _server_timeout_multiplier=1.0)
 
 
 @pytest.mark.asyncio
@@ -194,15 +206,25 @@ async def test_api_manager_list_actors(state_api_manager):
         actor_table_data=[generate_actor_data(actor_id), generate_actor_data(b"12345")]
     )
     result = await state_api_manager.list_actors(option=list_api_options())
-    actor_data = list(result.values())[0]
+    data = result.result
+    actor_data = list(data.values())[0]
     verify_schema(ActorState, actor_data)
 
     """
     Test limit
     """
-    assert len(result) == 2
+    assert len(data) == 2
     result = await state_api_manager.list_actors(option=list_api_options(limit=1))
-    assert len(result) == 1
+    data = result.result
+    assert len(data) == 1
+
+    """
+    Test error handling
+    """
+    data_source_client.get_all_actor_info.side_effect = DataSourceUnavailable()
+    with pytest.raises(DataSourceUnavailable) as exc_info:
+        result = await state_api_manager.list_actors(option=list_api_options(limit=1))
+    assert exc_info.value.args[0] == GCS_QUERY_FAILURE_WARNING
 
 
 @pytest.mark.asyncio
@@ -218,17 +240,31 @@ async def test_api_manager_list_pgs(state_api_manager):
         )
     )
     result = await state_api_manager.list_placement_groups(option=list_api_options())
-    data = list(result.values())[0]
+    data = result.result
+    data = list(data.values())[0]
     verify_schema(PlacementGroupState, data)
 
     """
     Test limit
     """
-    assert len(result) == 2
+    assert len(data) == 2
     result = await state_api_manager.list_placement_groups(
         option=list_api_options(limit=1)
     )
-    assert len(result) == 1
+    data = result.result
+    assert len(data) == 1
+
+    """
+    Test error handling
+    """
+    data_source_client.get_all_placement_group_info.side_effect = (
+        DataSourceUnavailable()
+    )
+    with pytest.raises(DataSourceUnavailable) as exc_info:
+        result = await state_api_manager.list_placement_groups(
+            option=list_api_options(limit=1)
+        )
+    assert exc_info.value.args[0] == GCS_QUERY_FAILURE_WARNING
 
 
 @pytest.mark.asyncio
@@ -239,15 +275,25 @@ async def test_api_manager_list_nodes(state_api_manager):
         node_info_list=[generate_node_data(id), generate_node_data(b"12345")]
     )
     result = await state_api_manager.list_nodes(option=list_api_options())
-    data = list(result.values())[0]
+    data = result.result
+    data = list(data.values())[0]
     verify_schema(NodeState, data)
 
     """
     Test limit
     """
-    assert len(result) == 2
+    assert len(data) == 2
     result = await state_api_manager.list_nodes(option=list_api_options(limit=1))
-    assert len(result) == 1
+    data = result.result
+    assert len(data) == 1
+
+    """
+    Test error handling
+    """
+    data_source_client.get_all_node_info.side_effect = DataSourceUnavailable()
+    with pytest.raises(DataSourceUnavailable) as exc_info:
+        result = await state_api_manager.list_nodes(option=list_api_options(limit=1))
+    assert exc_info.value.args[0] == GCS_QUERY_FAILURE_WARNING
 
 
 @pytest.mark.asyncio
@@ -261,19 +307,30 @@ async def test_api_manager_list_workers(state_api_manager):
         ]
     )
     result = await state_api_manager.list_workers(option=list_api_options())
-    data = list(result.values())[0]
+    data = result.result
+    data = list(data.values())[0]
     verify_schema(WorkerState, data)
 
     """
     Test limit
     """
-    assert len(result) == 2
+    assert len(result.result) == 2
     result = await state_api_manager.list_workers(option=list_api_options(limit=1))
-    assert len(result) == 1
+    data = result.result
+    assert len(data) == 1
+
+    """
+    Test error handling
+    """
+    data_source_client.get_all_worker_info.side_effect = DataSourceUnavailable()
+    with pytest.raises(DataSourceUnavailable) as exc_info:
+        result = await state_api_manager.list_workers(option=list_api_options(limit=1))
+    assert exc_info.value.args[0] == GCS_QUERY_FAILURE_WARNING
 
 
-@pytest.mark.skip(
-    reason=("Not passing in CI although it works locally. Will handle it later.")
+@pytest.mark.skipif(
+    sys.version_info <= (3, 7, 0),
+    reason=("Not passing in CI although it works locally. Will handle it later."),
 )
 @pytest.mark.asyncio
 async def test_api_manager_list_tasks(state_api_manager):
@@ -283,17 +340,19 @@ async def test_api_manager_list_tasks(state_api_manager):
 
     first_task_name = "1"
     second_task_name = "2"
+    data_source_client.get_task_info = AsyncMock()
     data_source_client.get_task_info.side_effect = [
         generate_task_data(b"1234", first_task_name),
         generate_task_data(b"2345", second_task_name),
     ]
     result = await state_api_manager.list_tasks(option=list_api_options())
-    data_source_client.get_task_info.assert_any_call("1", timeout=DEFAULT_RPC_TIMEOUT)
-    data_source_client.get_task_info.assert_any_call("2", timeout=DEFAULT_RPC_TIMEOUT)
-    result = list(result.values())
-    assert len(result) == 2
-    verify_schema(TaskState, result[0])
-    verify_schema(TaskState, result[1])
+    data_source_client.get_task_info.assert_any_await("1", timeout=DEFAULT_RPC_TIMEOUT)
+    data_source_client.get_task_info.assert_any_await("2", timeout=DEFAULT_RPC_TIMEOUT)
+    data = result.result
+    data = list(data.values())
+    assert len(data) == 2
+    verify_schema(TaskState, data[0])
+    verify_schema(TaskState, data[1])
 
     """
     Test limit
@@ -303,11 +362,38 @@ async def test_api_manager_list_tasks(state_api_manager):
         generate_task_data(b"2345", second_task_name),
     ]
     result = await state_api_manager.list_tasks(option=list_api_options(limit=1))
-    assert len(result) == 1
+    data = result.result
+    assert len(data) == 1
+
+    """
+    Test error handling
+    """
+    data_source_client.get_task_info.side_effect = [
+        DataSourceUnavailable(),
+        generate_task_data(b"2345", second_task_name),
+    ]
+    result = await state_api_manager.list_tasks(option=list_api_options(limit=1))
+    # Make sure warnings are returned.
+    warning = result.partial_failure_warning
+    assert (
+        NODE_QUERY_FAILURE_WARNING.format(
+            type="raylet", total=2, network_failures=1, log_command="raylet.out"
+        )
+        in warning
+    )
+
+    # Test if all RPCs fail, it will raise an exception.
+    data_source_client.get_task_info.side_effect = [
+        DataSourceUnavailable(),
+        DataSourceUnavailable(),
+    ]
+    with pytest.raises(DataSourceUnavailable):
+        result = await state_api_manager.list_tasks(option=list_api_options(limit=1))
 
 
-@pytest.mark.skip(
-    reason=("Not passing in CI although it works locally. Will handle it later.")
+@pytest.mark.skipif(
+    sys.version_info <= (3, 7, 0),
+    reason=("Not passing in CI although it works locally. Will handle it later."),
 )
 @pytest.mark.asyncio
 async def test_api_manager_list_objects(state_api_manager):
@@ -317,17 +403,23 @@ async def test_api_manager_list_objects(state_api_manager):
     data_source_client.get_all_registered_raylet_ids = MagicMock()
     data_source_client.get_all_registered_raylet_ids.return_value = ["1", "2"]
 
+    data_source_client.get_object_info = AsyncMock()
     data_source_client.get_object_info.side_effect = [
         GetNodeStatsReply(core_workers_stats=[generate_object_info(obj_1_id)]),
         GetNodeStatsReply(core_workers_stats=[generate_object_info(obj_2_id)]),
     ]
     result = await state_api_manager.list_objects(option=list_api_options())
-    data_source_client.get_object_info.assert_any_call("1", timeout=DEFAULT_RPC_TIMEOUT)
-    data_source_client.get_object_info.assert_any_call("2", timeout=DEFAULT_RPC_TIMEOUT)
-    result = list(result.values())
-    assert len(result) == 2
-    verify_schema(ObjectState, result[0])
-    verify_schema(ObjectState, result[1])
+    data = result.result
+    data_source_client.get_object_info.assert_any_await(
+        "1", timeout=DEFAULT_RPC_TIMEOUT
+    )
+    data_source_client.get_object_info.assert_any_await(
+        "2", timeout=DEFAULT_RPC_TIMEOUT
+    )
+    data = list(data.values())
+    assert len(data) == 2
+    verify_schema(ObjectState, data[0])
+    verify_schema(ObjectState, data[1])
 
     """
     Test limit
@@ -337,11 +429,38 @@ async def test_api_manager_list_objects(state_api_manager):
         GetNodeStatsReply(core_workers_stats=[generate_object_info(obj_2_id)]),
     ]
     result = await state_api_manager.list_objects(option=list_api_options(limit=1))
-    assert len(result) == 1
+    data = result.result
+    assert len(data) == 1
+
+    """
+    Test error handling
+    """
+    data_source_client.get_object_info.side_effect = [
+        DataSourceUnavailable(),
+        GetNodeStatsReply(core_workers_stats=[generate_object_info(obj_2_id)]),
+    ]
+    result = await state_api_manager.list_objects(option=list_api_options(limit=1))
+    # Make sure warnings are returned.
+    warning = result.partial_failure_warning
+    assert (
+        NODE_QUERY_FAILURE_WARNING.format(
+            type="raylet", total=2, network_failures=1, log_command="raylet.out"
+        )
+        in warning
+    )
+
+    # Test if all RPCs fail, it will raise an exception.
+    data_source_client.get_object_info.side_effect = [
+        DataSourceUnavailable(),
+        DataSourceUnavailable(),
+    ]
+    with pytest.raises(DataSourceUnavailable):
+        result = await state_api_manager.list_objects(option=list_api_options(limit=1))
 
 
-@pytest.mark.skip(
-    reason=("Not passing in CI although it works locally. Will handle it later.")
+@pytest.mark.skipif(
+    sys.version_info <= (3, 7, 0),
+    reason=("Not passing in CI although it works locally. Will handle it later."),
 )
 @pytest.mark.asyncio
 async def test_api_manager_list_runtime_envs(state_api_manager):
@@ -349,6 +468,7 @@ async def test_api_manager_list_runtime_envs(state_api_manager):
     data_source_client.get_all_registered_agent_ids = MagicMock()
     data_source_client.get_all_registered_agent_ids.return_value = ["1", "2", "3"]
 
+    data_source_client.get_runtime_envs_info = AsyncMock()
     data_source_client.get_runtime_envs_info.side_effect = [
         generate_runtime_env_info(RuntimeEnv(**{"pip": ["requests"]})),
         generate_runtime_env_info(
@@ -357,23 +477,25 @@ async def test_api_manager_list_runtime_envs(state_api_manager):
         generate_runtime_env_info(RuntimeEnv(**{"pip": ["ray"]}), creation_time=10),
     ]
     result = await state_api_manager.list_runtime_envs(option=list_api_options())
-    data_source_client.get_runtime_envs_info.assert_any_call(
+    data = result.result
+    data_source_client.get_runtime_envs_info.assert_any_await(
         "1", timeout=DEFAULT_RPC_TIMEOUT
     )
-    data_source_client.get_runtime_envs_info.assert_any_call(
+    data_source_client.get_runtime_envs_info.assert_any_await(
         "2", timeout=DEFAULT_RPC_TIMEOUT
     )
-    data_source_client.get_runtime_envs_info.assert_any_call(
+
+    data_source_client.get_runtime_envs_info.assert_any_await(
         "3", timeout=DEFAULT_RPC_TIMEOUT
     )
-    assert len(result) == 3
-    verify_schema(RuntimeEnvState, result[0])
-    verify_schema(RuntimeEnvState, result[1])
-    verify_schema(RuntimeEnvState, result[2])
+    assert len(data) == 3
+    verify_schema(RuntimeEnvState, data[0])
+    verify_schema(RuntimeEnvState, data[1])
+    verify_schema(RuntimeEnvState, data[2])
 
     # Make sure the higher creation time is sorted first.
-    assert "creation_time_ms" not in result[0]
-    result[1]["creation_time_ms"] > result[2]["creation_time_ms"]
+    assert "creation_time_ms" not in data[0]
+    data[1]["creation_time_ms"] > data[2]["creation_time_ms"]
 
     """
     Test limit
@@ -386,7 +508,38 @@ async def test_api_manager_list_runtime_envs(state_api_manager):
         generate_runtime_env_info(RuntimeEnv(**{"pip": ["ray"]})),
     ]
     result = await state_api_manager.list_runtime_envs(option=list_api_options(limit=1))
-    assert len(result) == 1
+    data = result.result
+    assert len(data) == 1
+
+    """
+    Test error handling
+    """
+    data_source_client.get_runtime_envs_info.side_effect = [
+        DataSourceUnavailable(),
+        generate_runtime_env_info(RuntimeEnv(**{"pip": ["ray"]})),
+        generate_runtime_env_info(RuntimeEnv(**{"pip": ["ray"]})),
+    ]
+    result = await state_api_manager.list_runtime_envs(option=list_api_options(limit=1))
+    # Make sure warnings are returned.
+    warning = result.partial_failure_warning
+    print(warning)
+    assert (
+        NODE_QUERY_FAILURE_WARNING.format(
+            type="agent", total=3, network_failures=1, log_command="dashboard_agent.log"
+        )
+        in warning
+    )
+
+    # Test if all RPCs fail, it will raise an exception.
+    data_source_client.get_runtime_envs_info.side_effect = [
+        DataSourceUnavailable(),
+        DataSourceUnavailable(),
+        DataSourceUnavailable(),
+    ]
+    with pytest.raises(DataSourceUnavailable):
+        result = await state_api_manager.list_runtime_envs(
+            option=list_api_options(limit=1)
+        )
 
 
 """
@@ -490,7 +643,7 @@ async def test_state_data_source_client(ray_start_cluster):
     """
     with pytest.raises(ValueError):
         # Since we didn't register this node id, it should raise an exception.
-        result = await client.get_object_info("1234")
+        result = await client.get_runtime_envs_info("1234")
     wait_for_condition(lambda: len(ray.nodes()) == 2)
     for node in ray.nodes():
         node_id = node["NodeID"]
@@ -522,10 +675,9 @@ async def test_state_data_source_client(ray_start_cluster):
         if node["Alive"]:
             continue
 
-        # Querying to the dead node raises gRPC error, which should be
-        # translated into `StateSourceNetworkException`
-        with pytest.raises(StateSourceNetworkException):
-            result = await client.get_object_info(node_id)
+        # Querying to the dead node raises gRPC error, which should raise an exception.
+        with pytest.raises(DataSourceUnavailable):
+            await client.get_object_info(node_id)
 
         # Make sure unregister API works as expected.
         client.unregister_raylet_client(node_id)
@@ -680,6 +832,7 @@ def test_list_jobs(shutdown_only):
 
     def verify():
         job_data = list(list_jobs().values())[0]
+        print(job_data)
         job_id_from_api = list(list_jobs().keys())[0]
         correct_state = job_data["status"] == "SUCCEEDED"
         correct_id = job_id == job_id_from_api
@@ -907,6 +1060,115 @@ def test_limit(shutdown_only):
 
     # Make sure the output is deterministic.
     assert output == list_actors(limit=2)
+
+
+def test_network_failure(shutdown_only):
+    """When the request fails due to network failure,
+    verifies it raises an exception."""
+    ray.init()
+
+    @ray.remote
+    def f():
+        import time
+
+        time.sleep(30)
+
+    a = [f.remote() for _ in range(4)]  # noqa
+    wait_for_condition(lambda: len(list_tasks()) == 4)
+
+    # Kill raylet so that list_tasks will have network error on querying raylets.
+    ray.worker._global_node.kill_raylet()
+
+    with pytest.raises(RayStateApiException):
+        list_tasks(_explain=True)
+
+
+def test_network_partial_failures(ray_start_cluster):
+    """When the request fails due to network failure,
+    verifies it prints proper warning."""
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=2)
+    ray.init(address=cluster.address)
+    n = cluster.add_node(num_cpus=2)
+
+    @ray.remote
+    def f():
+        import time
+
+        time.sleep(30)
+
+    a = [f.remote() for _ in range(4)]  # noqa
+    wait_for_condition(lambda: len(list_tasks()) == 4)
+
+    # Make sure when there's 0 node failure, it doesn't print the error.
+    with pytest.warns(None) as record:
+        list_tasks(_explain=True)
+    assert len(record) == 0
+
+    # Kill raylet so that list_tasks will have network error on querying raylets.
+    cluster.remove_node(n, allow_graceful=False)
+
+    with pytest.warns(RuntimeWarning):
+        list_tasks(_explain=True)
+
+    # Make sure when _explain == False, warning is not printed.
+    with pytest.warns(None) as record:
+        list_tasks(_explain=False)
+    assert len(record) == 0
+
+
+def test_network_partial_failures_timeout(monkeypatch, ray_start_cluster):
+    """When the request fails due to network timeout,
+    verifies it prints proper warning."""
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=2)
+    ray.init(address=cluster.address)
+    with monkeypatch.context() as m:
+        # defer for 10s for the second node.
+        m.setenv(
+            "RAY_testing_asio_delay_us",
+            "NodeManagerService.grpc_server.GetTasksInfo=10000000:10000000",
+        )
+        cluster.add_node(num_cpus=2)
+
+    @ray.remote
+    def f():
+        import time
+
+        time.sleep(30)
+
+    a = [f.remote() for _ in range(4)]  # noqa
+
+    def verify():
+        with pytest.warns(None) as record:
+            list_tasks(_explain=True, timeout=5)
+        return len(record) == 1
+
+    wait_for_condition(verify)
+
+
+@pytest.mark.asyncio
+async def test_cli_format_print(state_api_manager):
+    data_source_client = state_api_manager.data_source_client
+    actor_id = b"1234"
+    data_source_client.get_all_actor_info.return_value = GetAllActorInfoReply(
+        actor_table_data=[generate_actor_data(actor_id), generate_actor_data(b"12345")]
+    )
+    result = await state_api_manager.list_actors(option=list_api_options())
+    result = result.result
+    # If the format is not yaml, it will raise an exception.
+    yaml.load(
+        get_state_api_output_to_print(result, format=AvailableFormat.YAML),
+        Loader=yaml.FullLoader,
+    )
+    # If the format is not json, it will raise an exception.
+    json.loads(get_state_api_output_to_print(result, format=AvailableFormat.JSON))
+    # Verify the default format is yaml
+    yaml.load(get_state_api_output_to_print(result), Loader=yaml.FullLoader)
+    with pytest.raises(ValueError):
+        get_state_api_output_to_print(result, format="random_format")
+    with pytest.raises(NotImplementedError):
+        get_state_api_output_to_print(result, format=AvailableFormat.TABLE)
 
 
 if __name__ == "__main__":

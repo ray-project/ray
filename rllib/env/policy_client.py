@@ -345,7 +345,7 @@ def _auto_wrap_external(real_env_creator):
             else:
                 external_cls = ExternalEnv
 
-            class ExternalEnvWrapper(external_cls):
+            class _ExternalEnvWrapper(external_cls):
                 def __init__(self, real_env):
                     super().__init__(
                         observation_space=real_env.observation_space,
@@ -357,7 +357,7 @@ def _auto_wrap_external(real_env_creator):
                     # client, run doesn't need to do anything.
                     time.sleep(999999)
 
-            return ExternalEnvWrapper(real_env)
+            return _ExternalEnvWrapper(real_env)
         return real_env
 
     return wrapped_creator

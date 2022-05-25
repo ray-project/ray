@@ -64,6 +64,12 @@ def make_global_state_accessor(ray_context):
     return global_state_accessor
 
 
+def test_external_redis():
+    import os
+
+    return os.environ.get("TEST_EXTERNAL_REDIS") == "1"
+
+
 def _pid_alive(pid):
     """Check if the process with this PID is alive or not.
 
