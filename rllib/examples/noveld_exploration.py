@@ -23,11 +23,11 @@ way as the Policy Network (and should use the same input layer).
 import gym
 import gym_minigrid
 import ray
-from ray.rllib.agents.callbacks import NovelDMetricsCallbacks
-from ray.rllib.agents.ppo import ppo
+
+from ray.rllib.agents.ppo.ppo import PPOConfig
 from ray import tune
 from ray.tune.registry import register_env
-
+from ray.rllib.utils.exploration.noveld import NovelDMetricsCallbacks
 
 def env_creator(config=None):
     name = config.get("name", "MiniGrid-MultiRoom-N4-S5-v0")
@@ -36,48 +36,61 @@ def env_creator(config=None):
 
     return env
 
-
 register_env("mini-grid", env_creator)
 
-CONV_FILTERS = [[32, [5, 5], 1], [128, [3, 3], 2], [512, [4, 4], 1]]
-config = ppo.DEFAULT_CONFIG.copy()
-config["framework"] = "tf"
-config["env"] = "mini-grid"
-# For other environment in the MiniGrid world use:
-# config["env_config"] = {
-#     "name": "MiniGrid-Empty-8x8-v0",
-# }
-config["num_envs_per_worker"] = 4
-config["model"]["post_fcnet_hiddens"] = [256, 256]
-config["model"]["post_fcnet_activation"] = "relu"
-config["gamma"] = 0.999
-config["num_sgd_iter"] = 8
-config["entropy_coeff"] = 0.0005
-# This is important: NovelD (as of now) does not work
-# asynchronously.
-config["num_workers"] = 0
-# In practice using standardized observations in the distillation
-# results in a more stable training.
-config["observation_filter"] = tune.grid_search(["NoFilter", "MeanStdFilter"])
-config["lr"] = 1e-5
-config["model"]["conv_filters"] = CONV_FILTERS
-config["record_env"] = "videos"
-config["exploration_config"] = {
-    "type": "NovelD",
-    "embed_dim": 128,
-    "lr": 0.0001,
-    "intrinsic_reward_coeff": 0.005,
-    "sub_exploration": {
-        "type": "StochasticSampling",
-    },
-}
-# Use the callbacks for the NovelD metrics in TensorBoard.
-config["callbacks"] = NovelDMetricsCallbacks
+config = (
+    PPOConfig()
+    .framework(framework="tf")
+    .environment(env="mini-grid")
+    # For other environment in the MiniGrid world use:
+    #   env_config = {
+    #       "name": "MiniGrid-Empty-8x8-v0",
+    #   }
+    .rollouts(
+        num_envs_per_worker=4,
+        # This is important: NovelD (as of now) does not work
+        # asynchronously.
+        num_rollout_workers=0,
+        # In practice using standardized observations in the distillation
+        # results in a more stable training.
+        observation_filter=lambda _: tune.grid_search(["NoFilter", "MeanStdFilter"]),
+    )
+    .training(
+        gamma=0.999,
+        lr=1e-5,
+        num_sgd_iter=8,
+        entropy_coeff=0.0005,
+        model={
+            "post_fcnet_hiddens": [256, 256],
+            "post_fcnet_activation": "relu",
+            "conv_filters": [
+                [32, [5, 5], 1], 
+                [128, [3, 3], 2], 
+                [512, [4, 4], 1]
+            ],
+        },
+    )
+    .callbacks(
+        # Use the callbacks for the NovelD metrics in TensorBoard.
+        callbacks_class=NovelDMetricsCallbacks,
+    )
+    .exploration(
+        exploration_config={
+            "type": "NovelD",
+            "embed_dim": 128,
+            "lr": 0.0001,
+            "intrinsic_reward_coeff": 0.005,
+            "sub_exploration": {
+                "type": "StochasticSampling",
+            },
+        },
+    )
+)
 
 ray.init(local_mode=True, ignore_reinit_error=True)
 tune.run(
     "PPO",
-    config=config,
+    config=config.to_dict(),
     stop={
         # "training_iteration": 10000,
         "num_env_steps_sampled": 10000,

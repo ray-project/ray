@@ -19,6 +19,7 @@ from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.tf_utils import get_placeholder
 from ray.rllib.utils.typing import FromConfigSpec, ModelConfigDict, TensorType
 
+
 if TYPE_CHECKING:
     from ray.rllib.evaluation import RolloutWorker
     
