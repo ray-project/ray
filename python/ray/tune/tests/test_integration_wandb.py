@@ -18,7 +18,7 @@ from ray.tune.integration.wandb import (
     _QueueItem,
 )
 from ray.tune.result import TRIAL_INFO
-from ray.tune.trial import TrialInfo
+from ray.tune.trial import _TrialInfo
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 
 
@@ -228,7 +228,7 @@ class WandbIntegrationTest(unittest.TestCase):
             PlacementGroupFactory([{"CPU": 1}]),
             "/tmp",
         )
-        trial_info = TrialInfo(trial)
+        trial_info = _TrialInfo(trial)
 
         config[TRIAL_INFO] = trial_info
 
@@ -290,7 +290,7 @@ class WandbIntegrationTest(unittest.TestCase):
             PlacementGroupFactory([{"CPU": 1}]),
             "/tmp",
         )
-        trial_info = TrialInfo(trial)
+        trial_info = _TrialInfo(trial)
 
         @wandb_mixin
         def train_fn(config):

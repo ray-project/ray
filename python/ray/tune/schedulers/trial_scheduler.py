@@ -3,8 +3,10 @@ from typing import Dict, Optional
 from ray.tune import trial_runner
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.trial import Trial
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
+@DeveloperAPI
 class TrialScheduler:
     """Interface for implementing a Trial Scheduler class."""
 
@@ -121,6 +123,7 @@ class TrialScheduler:
         raise NotImplementedError
 
 
+@PublicAPI
 class FIFOScheduler(TrialScheduler):
     """Simple scheduler that just runs trials in submission order."""
 

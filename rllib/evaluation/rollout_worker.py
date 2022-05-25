@@ -39,6 +39,7 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.torch_policy import TorchPolicy
+from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils import force_list, merge_dicts, check_env
 from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI
 from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
@@ -48,7 +49,7 @@ from ray.rllib.utils.filter import get_filter, Filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.tf_utils import get_gpu_devices as get_tf_gpu_devices
-from ray.rllib.utils.tf_run_builder import TFRunBuilder
+from ray.rllib.utils.tf_run_builder import _TFRunBuilder
 from ray.rllib.utils.typing import (
     AgentID,
     EnvConfigDict,
@@ -937,7 +938,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 policy = self.policy_map[pid]
                 tf_session = policy.get_session()
                 if tf_session and hasattr(policy, "_build_learn_on_batch"):
-                    builders[pid] = TFRunBuilder(tf_session, "learn_on_batch")
+                    builders[pid] = _TFRunBuilder(tf_session, "learn_on_batch")
                     to_fetch[pid] = policy._build_learn_on_batch(builders[pid], batch)
                 else:
                     info_out[pid] = policy.learn_on_batch(batch)
@@ -1059,7 +1060,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 if not self.is_policy_to_train(pid, samples):
                     continue
                 policy = self.policy_map[pid]
-                builder = TFRunBuilder(policy.get_session(), "compute_gradients")
+                builder = _TFRunBuilder(policy.get_session(), "compute_gradients")
                 grad_out[pid], info_out[pid] = policy._build_compute_gradients(
                     builder, batch
                 )
@@ -1698,7 +1699,7 @@ class RolloutWorker(ParallelIteratorWorker):
         )
 
         for pid, policy in self.policy_map.items():
-            if not isinstance(policy, TorchPolicy):
+            if not isinstance(policy, (TorchPolicy, TorchPolicyV2)):
                 raise ValueError(
                     "This policy does not support torch distributed", policy
                 )
