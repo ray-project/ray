@@ -1507,12 +1507,27 @@ py_test(
     srcs = ["policy/tests/test_sample_batch.py"]
 )
 
+py_test(
+    name = "policy/tests/test_view_requirement",
+    tags = ["team:ml", "policy"],
+    size = "small",
+    srcs = ["policy/tests/test_view_requirement.py"]
+)
+
+
 # --------------------------------------------------------------------
 # Utils:
 # rllib/utils/
 #
 # Tag: utils
 # --------------------------------------------------------------------
+
+py_test(
+    name = "test_serialization",
+    tags = ["team:ml", "utils"],
+    size = "large",
+    srcs = ["utils/tests/test_serialization.py"]
+)
 
 py_test(
     name = "test_curiosity",

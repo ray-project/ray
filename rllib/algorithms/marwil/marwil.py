@@ -239,10 +239,10 @@ class MARWILTrainer(Trainer):
             return MARWILTorchPolicy
         elif config["framework"] == "tf":
             from ray.rllib.algorithms.marwil.marwil_tf_policy import (
-                MARWILDynamicTFPolicy,
+                MARWILStaticGraphTFPolicy,
             )
 
-            return MARWILDynamicTFPolicy
+            return MARWILStaticGraphTFPolicy
         else:
             from ray.rllib.algorithms.marwil.marwil_tf_policy import MARWILEagerTFPolicy
 
