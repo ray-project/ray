@@ -1,7 +1,21 @@
 package io.ray.serve;
 
+import java.lang.reflect.InvocationTargetException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.ServiceLoader;
+import java.util.concurrent.ConcurrentHashMap;
+
+import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
+
 import io.ray.api.BaseActorHandle;
 import io.ray.api.Ray;
 import io.ray.serve.api.Serve;
@@ -14,17 +28,6 @@ import io.ray.serve.poll.LongPollNamespace;
 import io.ray.serve.util.CollectionUtil;
 import io.ray.serve.util.LogUtil;
 import io.ray.serve.util.ReflectUtil;
-import java.lang.reflect.InvocationTargetException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.ServiceLoader;
-import java.util.concurrent.ConcurrentHashMap;
-import org.apache.commons.lang3.StringUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public class ProxyActor {
 

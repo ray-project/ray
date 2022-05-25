@@ -44,7 +44,7 @@ public class ClientTest {
       controllerHandle.task(DummyServeController::setEndpoints, endpoints).remote();
 
       // Client.
-      Client client = new Client(controllerHandle, controllerName, true);
+      ServeControllerClient client = new ServeControllerClient(controllerHandle, controllerName, true);
 
       // Get handle.
       RayServeHandle rayServeHandle = client.getHandle(endpointName, false);
