@@ -2,14 +2,13 @@ import pytest
 
 import ray
 from ray import serve
-from ray.serve.handle import RayServeLazySyncHandle
 from ray.experimental.dag import InputNode
+from ray.serve.handle import RayServeLazySyncHandle
 from ray.serve.pipeline.generate import (
     transform_ray_dag_to_serve_dag,
     extract_deployments_from_serve_dag,
     get_pipeline_input_node,
 )
-from ray.serve.pipeline.api import build
 from ray.serve.pipeline.tests.resources.test_modules import (
     Model,
     NESTED_HANDLE_KEY,
@@ -238,12 +237,21 @@ def test_get_pipeline_input_node():
         get_pipeline_input_node(serve_dag)
 
 
-def test_unique_name_reset_upon_build():
+def test_unique_name_reset_upon_build(serve_instance):
     ray_dag, _ = get_multi_instantiation_class_deployment_in_init_args_dag()
-    deployments = build(ray_dag)
+    with DAGNodeNameGenerator() as node_name_generator:
+        serve_root_dag = ray_dag.apply_recursive(
+            lambda node: transform_ray_dag_to_serve_dag(node, node_name_generator)
+        )
+    deployments = extract_deployments_from_serve_dag(serve_root_dag)
     assert deployments[0].name == "Model"
     assert deployments[1].name == "Model_1"
-    deployments = build(ray_dag)
+
+    with DAGNodeNameGenerator() as node_name_generator:
+        serve_root_dag = ray_dag.apply_recursive(
+            lambda node: transform_ray_dag_to_serve_dag(node, node_name_generator)
+        )
+    deployments = extract_deployments_from_serve_dag(serve_root_dag)
     # Assert we don't keep increasing suffix id between build() calls
     assert deployments[0].name == "Model"
     assert deployments[1].name == "Model_1"
