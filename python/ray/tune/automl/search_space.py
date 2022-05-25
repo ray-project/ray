@@ -14,7 +14,7 @@ class ParameterSpace:
         """Initialize ParameterSpace.
 
         Arguments:
-            name (str): Name of the parameter. Name can be dot separated,
+            name: Name of the parameter. Name can be dot separated,
                 which will be interpreted as path of a nested config
         """
         self.name = name
@@ -27,8 +27,8 @@ class DiscreteSpace(ParameterSpace):
         """Initialize DiscreteSpace.
 
         Arguments:
-            name (str): Name of the parameter.
-            choices (list): List of all possible choices.
+            name: Name of the parameter.
+            choices: List of all possible choices.
         """
         super(DiscreteSpace, self).__init__(name)
         self.choices = choices
@@ -69,7 +69,7 @@ class ContinuousSpace(ParameterSpace):
         """Initialize ContinuousSpace.
 
         Arguments:
-            name (str): Name of the parameter.
+            name: Name of the parameter.
             start: Start of the continuous space included.
             end: End of the continuous space included.
             num: Sampling count if possible.
@@ -161,7 +161,7 @@ class SearchSpace:
 
 
         Arguments:
-            one_hot_encoding (list): A list of one hot encodings,
+            one_hot_encoding: A list of one hot encodings,
                 1 for each parameter. The shape of each encoding
                 should match that ``ParameterSpace``
 
