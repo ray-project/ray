@@ -35,7 +35,9 @@ class Counter:
     def pid(self):
         import os
         return {{"pid": os.getpid()}}
-serve.start(detached=True, http_options={{"location":"EveryNode"}})
+
+serve.start(detached=True, dedicated_cpu=True)
+
 Counter.options(num_replicas={num_replicas}).deploy()
 """
 
@@ -58,7 +60,19 @@ assert len(pids) == {num_replicas}
 """
 
 
-def test_ray_server(docker_cluster):
+def test_ray_server_basic(docker_cluster):
+    # This test covers the basic cases for gcs ha (serve ha)
+    # - It starts the serve on worker nodes.
+    # - Check the deployment is OK
+    # - Stop headnode
+    # - Check the serve app is running healthy
+    # - Start a reconfig (2 replicas) and it'll hang
+    # - Start head node. The script will continue once GCS is back
+    # - Make sure two replicas are there
+
+    # TODO(iycheng): Update serve to better integrate with GCS HA:
+    #   - Make sure no task can run in the raylet where GCS is deployed.
+
     header, worker = docker_cluster
     output = worker.exec_run(cmd=f"python -c '{scripts.format(num_replicas=1)}'")
     assert output.exit_code == 0
@@ -80,7 +94,6 @@ def test_ray_server(docker_cluster):
 
     def reconfig():
         output = worker.exec_run(cmd=f"python -c '{scripts.format(num_replicas=2)}'")
-        assert output.exit_code == 0
 
     t = threading.Thread(target=reconfig)
     t.start()
