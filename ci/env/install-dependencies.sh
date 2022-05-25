@@ -379,7 +379,7 @@ install_dependencies() {
   # dependencies with Modin.
   if [ "${INSTALL_LUDWIG-}" = 1 ]; then
     # TODO: eventually pin this to master.
-    pip install -U "ludwig[test]">=0.4
+    pip install -U "ludwig[test]">=0.4 jsonschema>=4
   fi
 
   # Data processing test dependencies.

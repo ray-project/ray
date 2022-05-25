@@ -207,7 +207,7 @@ via ``ray.init()``, making your script on your laptop the "driver".
     # configure how checkpoints are sync'd to the scheduler/sampler
     # we recommend cloud storage checkpointing as it survives the cluster when
     # instances are terminated, and has better performance
-    sync_config = tune.syncConfig(
+    sync_config = tune.SyncConfig(
         upload_dir="s3://my-checkpoints-bucket/path/",  # requires AWS credentials
     )
 

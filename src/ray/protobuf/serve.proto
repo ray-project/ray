@@ -198,3 +198,20 @@ message DeploymentStatusInfo {
 message DeploymentStatusInfoList {
   repeated DeploymentStatusInfo deployment_status_infos = 1;
 }
+
+enum ApplicationStatus {
+  DEPLOYING = 0;
+  RUNNING = 1;
+  DEPLOY_FAILED = 2;
+}
+
+message ApplicationStatusInfo {
+  ApplicationStatus status = 1;
+  string message = 2;
+  double deployment_timestamp = 3;
+}
+
+message StatusOverview {
+  ApplicationStatusInfo app_status = 1;
+  DeploymentStatusInfoList deployment_statuses = 2;
+}
