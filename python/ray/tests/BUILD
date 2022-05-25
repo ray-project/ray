@@ -173,6 +173,7 @@ py_test_module_list(
     "test_raylet_output.py",
     "test_scheduling_performance.py",
     "test_get_or_create_actor.py",
+    "test_gcs_ha_e2e.py",
   ],
   size = "small",
   extra_srcs = SRCS,

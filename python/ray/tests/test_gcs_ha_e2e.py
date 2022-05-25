@@ -1,5 +1,5 @@
 import pytest
-import requests
+import sys
 
 scripts = """
 import ray
@@ -37,6 +37,22 @@ serve.start(detached=True, http_options={{"location":"EveryNode"}})
 Counter.options(num_replicas={num_replicas}).deploy()
 """
 
+check_script = f"""
+import requests
+import json
+b = json.loads(requests.get("http://127.0.0.1:8000/api/").text)["count"]
+for i in range(5):
+    response = requests.get("http://127.0.0.1:8000/api/incr")
+    assert json.loads(response.text) == {{"count": i + b + 1}}
+
+pids = {{
+    json.loads(requests.get("http://127.0.0.1:8000/api/pid").text)["pid"]
+    for _ in range(5)
+}}
+
+assert len(pids) == 1
+"""
+
 def test_ray_server(docker_cluster):
     header, worker = docker_cluster
     output = worker.exec_run(cmd=f"python -c '{scripts.format(num_replicas=1)}'")
@@ -45,18 +61,21 @@ def test_ray_server(docker_cluster):
     # somehow this is not working and the port is not exposed to the host.
     # worker_cli = worker.client()
     # print(worker_cli.request("GET", "/api/incr"))
+    print(">>>> SCRIPT <<<<")
+    print(check_script)
 
-    print(worker.exec_run(cmd="""
-curl -w "\n" -s localhost:8000/api/incr
-curl -w "\n" -s localhost:8000/api/incr
-curl -w "\n" -s localhost:8000/api/incr
-curl -w "\n" -s localhost:8000/api/incr
-curl -w "\n" -s localhost:8000/api/pid
-curl -w "\n" -s localhost:8000/api/pid
-curl -w "\n" -s localhost:8000/api/pid
-curl -w "\n" -s localhost:8000/api/pid
-"""))
-    
+    output =  worker.exec_run(cmd=f"python -c '{check_script}'")
+
+    assert output.exit_code == 0
+    # Kill the head node
+
+    header.kill()
+    import pdb
+    pdb.set_trace()
+    # Make sure serve is still working
+    output =  worker.exec_run(cmd=f"python -c '{check_script}'")
+    assert output.exit_code == 0
+
 
 
 if __name__ == "__main__":
