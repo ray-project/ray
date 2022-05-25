@@ -3649,12 +3649,9 @@ def test_column_name_type_check(ray_start_regular_shared):
 
 
 def test_len(ray_start_regular_shared):
-    ds = ray.data.range(10)
-    assert len(ds) == 10
-    ds = ray.data.range(0)
-    assert len(ds) == 0
-    ds = ray.data.range(10, parallelism=4)
-    assert len(ds) == 10
+    ds = ray.data.range(1)
+    with pytest.raises(AttributeError):
+        len(ds)
 
 
 def test_random_sample(ray_start_regular_shared):
