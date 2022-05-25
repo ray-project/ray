@@ -47,27 +47,30 @@ class _ShufflePartitionOp(ShuffleOp):
                 block = blocks[0]
         block = BlockAccessor.for_block(block)
 
-        # Randomize the distribution of records to blocks.
-        if random_shuffle:
-            seed_i = random_seed + idx if random_seed is not None else None
-            block = block.random_shuffle(seed_i)
-            block = BlockAccessor.for_block(block)
+        ## Randomize the distribution of records to blocks.
+        # if random_shuffle:
+        #    seed_i = random_seed + idx if random_seed is not None else None
+        #    block = block.random_shuffle(seed_i)
+        #    block = BlockAccessor.for_block(block)
 
         slice_sz = max(1, math.ceil(block.num_rows() / output_num_blocks))
-        slices = []
+        seed_i = random_seed + idx if random_seed is not None else 0
+        random = np.random.RandomState(seed_i)
+        permutation = random.permutation(block.num_rows())
         for i in range(output_num_blocks):
-            slices.append(block.slice(i * slice_sz, (i + 1) * slice_sz, copy=True))
+            yield block.take(permutation[i * slice_sz : (i + 1) * slice_sz])
 
-        # Randomize the distribution order of the blocks (this prevents empty
-        # outputs when input blocks are very small).
-        if random_shuffle:
-            random = np.random.RandomState(seed_i)
-            random.shuffle(slices)
+        ## Randomize the distribution order of the blocks (this prevents empty
+        ## outputs when input blocks are very small).
+        # if random_shuffle:
+        #    random = np.random.RandomState(seed_i)
+        #    random.shuffle(slices)
 
-        num_rows = sum(BlockAccessor.for_block(s).num_rows() for s in slices)
-        assert num_rows == block.num_rows(), (num_rows, block.num_rows())
+        # num_rows = sum(BlockAccessor.for_block(s).num_rows() for s in slices)
+        # assert num_rows == block.num_rows(), (num_rows, block.num_rows())
         metadata = block.get_metadata(input_files=None, exec_stats=stats.build())
-        return [metadata] + slices
+        yield metadata
+        # return [metadata] + slices
 
     @staticmethod
     def reduce(

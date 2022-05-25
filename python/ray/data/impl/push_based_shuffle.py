@@ -170,7 +170,7 @@ class PushBasedShufflePlan(ShuffleOp):
                 schedule,
                 *self._map_args,
             )
-            metadata_ref = map_result.pop(0)
+            metadata_ref = map_result.pop(-1)
             return metadata_ref, map_result
 
         def submit_merge_task(arg):
@@ -334,20 +334,14 @@ class PushBasedShufflePlan(ShuffleOp):
         *map_args: List[Any],
     ) -> List[Union[BlockMetadata, Block]]:
         mapper_outputs = map_fn(idx, block, output_num_blocks, *map_args)
-        meta = mapper_outputs.pop(0)
 
-        parts = []
         merge_idx = 0
-        while mapper_outputs:
+        while merge_idx < schedule.num_merge_tasks_per_round:
             partition_size = schedule.get_num_reducers_per_merge_idx(merge_idx)
-            parts.append(mapper_outputs[:partition_size])
-            mapper_outputs = mapper_outputs[partition_size:]
+            yield [next(mapper_outputs) for _ in range(partition_size)]
             merge_idx += 1
-        assert len(parts) == schedule.num_merge_tasks_per_round, (
-            len(parts),
-            schedule.num_merge_tasks_per_round,
-        )
-        return [meta] + parts
+        meta = next(mapper_outputs)
+        yield meta
 
     @staticmethod
     def _merge(
@@ -362,7 +356,6 @@ class PushBasedShufflePlan(ShuffleOp):
             len({len(mapper_outputs) for mapper_outputs in all_mapper_outputs}) == 1
         ), "Received different number of map inputs"
         stats = BlockExecStats.builder()
-        merged_outputs = []
         if not reduce_args:
             reduce_args = []
         for mapper_outputs in zip(*all_mapper_outputs):
