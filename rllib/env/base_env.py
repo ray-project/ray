@@ -462,6 +462,7 @@ def convert_to_base_env(
                 remote_env_batch_wait_ms=remote_env_batch_wait_ms,
                 existing_envs=[env],
                 worker=worker,
+                restart_failed_sub_environments=restart_failed_sub_environments,
             )
         # Sub-environments are not ray.remote actors.
         else:

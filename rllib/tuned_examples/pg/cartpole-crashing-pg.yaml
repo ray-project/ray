@@ -1,4 +1,4 @@
-cartpole-pg:
+cartpole-crashing-pg:
     env: ray.rllib.examples.env.cartpole_crashing.CartPoleCrashing
     run: PG
     stop:
