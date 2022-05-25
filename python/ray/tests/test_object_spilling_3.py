@@ -357,6 +357,9 @@ def test_spill_reconstruction_errors(ray_start_cluster, object_spilling_config):
     for x in xs:
         ray.get(x, timeout=10)
 
+    with pytest.raises(ray.exceptions.ObjectLostError):
+        ray.get(ref)
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
