@@ -290,10 +290,11 @@ def test_ordinal_encoder():
     col_a = ["red", "green", "blue", "red"]
     col_b = ["warm", "cold", "hot", "cold"]
     col_c = [1, 10, 5, 10]
-    in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b, "C": col_c})
+    col_d = [["warm"], [], ["hot", "warm", "cold"], ["cold", "cold"]]
+    in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b, "C": col_c, "D": col_d})
     ds = ray.data.from_pandas(in_df)
 
-    encoder = OrdinalEncoder(["B", "C"])
+    encoder = OrdinalEncoder(["B", "C", "D"])
 
     # Transform with unfitted preprocessor.
     with pytest.raises(PreprocessorNotFittedException):
@@ -304,6 +305,7 @@ def test_ordinal_encoder():
     assert encoder.stats_ == {
         "unique_values(B)": {"cold": 0, "hot": 1, "warm": 2},
         "unique_values(C)": {1: 0, 5: 1, 10: 2},
+        "unique_values(D)": {"cold": 0, "hot": 1, "warm": 2},
     }
 
     # Transform data.
@@ -313,8 +315,14 @@ def test_ordinal_encoder():
     processed_col_a = col_a
     processed_col_b = [2, 0, 1, 0]
     processed_col_c = [0, 2, 1, 2]
+    processed_col_d = [[2], [], [1, 2, 0], [0, 0]]
     expected_df = pd.DataFrame.from_dict(
-        {"A": processed_col_a, "B": processed_col_b, "C": processed_col_c}
+        {
+            "A": processed_col_a,
+            "B": processed_col_b,
+            "C": processed_col_c,
+            "D": processed_col_d,
+        }
     )
 
     assert out_df.equals(expected_df)
@@ -323,8 +331,9 @@ def test_ordinal_encoder():
     pred_col_a = ["blue", "yellow", None]
     pred_col_b = ["cold", "warm", "other"]
     pred_col_c = [10, 1, 20]
+    pred_col_d = [["cold", "warm"], [], ["other", "cold"]]
     pred_in_df = pd.DataFrame.from_dict(
-        {"A": pred_col_a, "B": pred_col_b, "C": pred_col_c}
+        {"A": pred_col_a, "B": pred_col_b, "C": pred_col_c, "D": pred_col_d}
     )
 
     pred_out_df = encoder.transform_batch(pred_in_df)
@@ -332,11 +341,13 @@ def test_ordinal_encoder():
     pred_processed_col_a = pred_col_a
     pred_processed_col_b = [0, 2, None]
     pred_processed_col_c = [2, 0, None]
+    pred_processed_col_d = [[0, 2], [], [None, 0]]
     pred_expected_df = pd.DataFrame.from_dict(
         {
             "A": pred_processed_col_a,
             "B": pred_processed_col_b,
             "C": pred_processed_col_c,
+            "D": pred_processed_col_d,
         }
     )
 
@@ -372,10 +383,11 @@ def test_one_hot_encoder():
     col_a = ["red", "green", "blue", "red"]
     col_b = ["warm", "cold", "hot", "cold"]
     col_c = [1, 10, 5, 10]
-    in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b, "C": col_c})
+    col_d = [["warm"], [], ["hot", "warm", "cold"], ["cold", "cold"]]
+    in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b, "C": col_c, "D": col_d})
     ds = ray.data.from_pandas(in_df)
 
-    encoder = OneHotEncoder(["B", "C"])
+    encoder = OneHotEncoder(["B", "C", "D"])
 
     # Transform with unfitted preprocessor.
     with pytest.raises(PreprocessorNotFittedException):
@@ -387,6 +399,7 @@ def test_one_hot_encoder():
     assert encoder.stats_ == {
         "unique_values(B)": {"cold": 0, "hot": 1, "warm": 2},
         "unique_values(C)": {1: 0, 5: 1, 10: 2},
+        "unique_values(D)": {"cold": 0, "hot": 1, "warm": 2},
     }
 
     # Transform data.
@@ -400,9 +413,11 @@ def test_one_hot_encoder():
     processed_col_c_1 = [1, 0, 0, 0]
     processed_col_c_5 = [0, 0, 1, 0]
     processed_col_c_10 = [0, 1, 0, 1]
+    processed_col_d = [[0, 0, 1], [0, 0, 0], [1, 1, 1], [2, 0, 0]]
     expected_df = pd.DataFrame.from_dict(
         {
             "A": processed_col_a,
+            "D": processed_col_d,
             "B_cold": processed_col_b_cold,
             "B_hot": processed_col_b_hot,
             "B_warm": processed_col_b_warm,
@@ -418,8 +433,9 @@ def test_one_hot_encoder():
     pred_col_a = ["blue", "yellow", None]
     pred_col_b = ["cold", "warm", "other"]
     pred_col_c = [10, 1, 20]
+    pred_col_d = [["cold", "warm"], [], ["other", "cold"]]
     pred_in_df = pd.DataFrame.from_dict(
-        {"A": pred_col_a, "B": pred_col_b, "C": pred_col_c}
+        {"A": pred_col_a, "B": pred_col_b, "C": pred_col_c, "D": pred_col_d}
     )
 
     pred_out_df = encoder.transform_batch(pred_in_df)
@@ -431,9 +447,11 @@ def test_one_hot_encoder():
     pred_processed_col_c_1 = [0, 1, 0]
     pred_processed_col_c_5 = [0, 0, 0]
     pred_processed_col_c_10 = [1, 0, 0]
+    pred_processed_col_d = [[1, 0, 1], [0, 0, 0], [1, 0, 0]]
     pred_expected_df = pd.DataFrame.from_dict(
         {
             "A": pred_processed_col_a,
+            "D": pred_processed_col_d,
             "B_cold": pred_processed_col_b_cold,
             "B_hot": pred_processed_col_b_hot,
             "B_warm": pred_processed_col_b_warm,

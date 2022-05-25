@@ -1,5 +1,5 @@
 from functools import partial
-from typing import List, Dict, Optional, Union
+from typing import List, Dict, Optional, OrderedDict, Union
 
 from collections import Counter
 import pandas as pd
@@ -33,7 +33,7 @@ class OrdinalEncoder(Preprocessor):
         _validate_df(df, *self.columns)
 
         def encode_list(element: list, *, name: str):
-            return [self.stats_[f"unique_values({name})"][x] for x in element]
+            return [self.stats_[f"unique_values({name})"].get(x) for x in element]
 
         def column_ordinal_encoder(s: pd.Series):
             if _is_series_composed_of_lists(s):
@@ -105,15 +105,27 @@ class OneHotEncoder(Preprocessor):
 
     def _transform_pandas(self, df: pd.DataFrame):
         _validate_df(df, *self.columns)
+
+        def encode_list(element: list, *, name: str):
+            stats = self.stats_[f"unique_values({name})"]
+            counter = Counter(element)
+            return [counter.get(x, 0) for x in stats]
+
+        columns_to_drop = set(self.columns)
+
         # Compute new one-hot encoded columns
         for column in self.columns:
             column_values = self.stats_[f"unique_values({column})"]
-            for column_value in column_values:
-                df[f"{column}_{column_value}"] = (df[column] == column_value).astype(
-                    int
-                )
+            if _is_series_composed_of_lists(df[column]):
+                columns_to_drop.remove(column)
+                df[column] = df[column].map(partial(encode_list, name=column))
+            else:
+                for column_value in column_values:
+                    df[f"{column}_{column_value}"] = (
+                        df[column] == column_value
+                    ).astype(int)
         # Drop original unencoded columns.
-        df = df.drop(columns=self.columns)
+        df = df.drop(columns=list(columns_to_drop))
         return df
 
     def __repr__(self):
@@ -216,7 +228,7 @@ def _get_unique_value_indices(
     drop_na_values: bool = False,
     key_format: str = "unique_values({0})",
     limit: Optional[Dict[str, int]] = None,
-) -> Dict[str, Dict[str, int]]:
+) -> OrderedDict[str, Dict[str, int]]:
     """If drop_na_values is True, will silently drop NA values."""
     limit = limit or {}
     for column in limit:
@@ -249,8 +261,6 @@ def _get_unique_value_indices(
             for col, value_counts in col_value_counts.items():
                 final_counters[col] += value_counts
 
-    print(final_counters)
-
     # Inspect if there is any NA values.
     for col in columns:
         if drop_na_values:
@@ -265,7 +275,7 @@ def _get_unique_value_indices(
                     f" values. Consider imputing missing values first."
                 )
 
-    unique_values_with_indices = dict()
+    unique_values_with_indices = OrderedDict()
     for column in columns:
         if column in limit:
             # Output sorted by freq.
