@@ -289,6 +289,14 @@ py_test(
 )
 
 py_test(
+    name = "test_trial_relative_logdir",
+    size = "small",
+    srcs = ["tests/test_trial_relative_logdir.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_T"],
+)
+
+py_test(
     name = "test_trial_runner",
     size = "medium",
     srcs = ["tests/test_trial_runner.py"],

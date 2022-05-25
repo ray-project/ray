@@ -664,7 +664,7 @@ class ExperimentAnalysis:
                 based on `mode`, and compare trials based on `mode=[min,max]`.
         """
         best_trial = self.get_best_trial(metric, mode, scope)
-        if best_trial and best_trial.relative_logdir:
+        if best_trial and getattr(best_trial, "relative_logdir", None):
             # Newer experiments contain a relative logdir.
             return str(self._local_base_dir.joinpath(best_trial.relative_logdir))
         elif best_trial and best_trial.logdir:
@@ -771,7 +771,7 @@ class ExperimentAnalysis:
             # for changes in the self._local_base_dir.
             _trial_paths = [
                 str(self._local_base_dir.joinpath(t.relative_logdir))
-                if t.relative_logdir
+                if getattr(t, "relative_logdir", None)
                 else t.logdir
                 for t in self.trials
             ]

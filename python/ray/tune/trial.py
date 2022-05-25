@@ -210,7 +210,7 @@ class Trial:
         local_dir: ``local_dir`` as passed to ``tune.run`` joined
             with the name of the experiment.
         logdir: Directory where the trial logs are saved.
-        rel_logdir: Same as ``logdir``, but relative to the parent of
+        relative_logdir: Same as ``logdir``, but relative to the parent of
             the ``local_dir`` (equal to ``local_dir`` argument passed
             to ``tune.run``).
         evaluated_params: Evaluated parameters by search algorithm,
@@ -454,8 +454,9 @@ class Trial:
     @logdir.setter
     def logdir(self, logdir):
         relative_logdir = Path(logdir).relative_to(self.local_dir)
-        assert str(relative_logdir).find("..") == -1
-        logger.warning(
+        if str(relative_logdir).find("..") != -1:
+            raise ValueError("logdir must not contain `..`")
+        logger.log_once(
             "Deprecated. In future versions only the relative logdir "
             "will be used and calling logdir will raise an error."
         )

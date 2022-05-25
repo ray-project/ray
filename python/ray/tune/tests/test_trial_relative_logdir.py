@@ -43,7 +43,7 @@ class TrialRelativeLogdirTest(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             trial.logdir = "/tmp/test_rel/../dots"
-        with self.assertRaises(AssertionError):
+        with self.assertRaises(ValueError):
             trial.logdir = local_dir + "/../"
 
         if shutil.rmtree.avoids_symlink_attacks:
