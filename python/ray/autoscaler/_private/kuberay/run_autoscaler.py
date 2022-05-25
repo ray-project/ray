@@ -1,5 +1,5 @@
 import logging
-import multiprocessing as mp
+import subprocess
 import os
 import time
 
@@ -10,51 +10,32 @@ from ray._private.services import get_node_ip_address
 from ray.autoscaler._private.kuberay.autoscaling_config import AutoscalingConfigProducer
 from ray.autoscaler._private.monitor import Monitor
 
+logger = logging.getLogger(__name__)
 
 BACKOFF_S = 5
 
 
-def run_autoscaler_with_retries(
-    cluster_name: str, cluster_namespace: str, redis_password: str = ""
-):
-    """Keep trying to start the autoscaler until it runs.
-    We need to retry until the Ray head is running.
-
-    This script also has the effect of restarting the autoscaler if it fails.
-
-    Autoscaler-starting attempts are run in subprocesses out of fear that a
-    failed Monitor.run() attempt could leave dangling half-initialized global
-    Python state.
-    """
-    while True:
-        autoscaler_process = mp.Process(
-            target=_run_autoscaler,
-            args=(cluster_name, cluster_namespace, redis_password),
-        )
-        autoscaler_process.start()
-        autoscaler_process.join()
-        print(
-            "WARNING: The autoscaler stopped with exit code "
-            f"{autoscaler_process.exitcode}.\n"
-            f"Restarting in {BACKOFF_S} seconds."
-        )
-        # The error will be logged by the subprocess.
-        time.sleep(BACKOFF_S)
-
-
-def _run_autoscaler(
-    cluster_name: str, cluster_namespace: str, redis_password: str = ""
-):
+def run_autoscaler(cluster_name: str, cluster_namespace: str):
+    """Wait until the Ray head container is ready. Then start the autoscaler."""
     _setup_logging()
     head_ip = get_node_ip_address()
+    ray_address = f"{head_ip}:6379"
+    while True:
+        try:
+            subprocess.check_call(["ray", "health-check", "--address", ray_address])
+            logger.info("Ray head is ready. Starting autoscaler.")
+            break
+        except subprocess.CalledProcessError:
+            logger.warning("Ray head is not yet ready.")
+            logger.warning(f"Will check again in {BACKOFF_S} seconds.")
+            time.sleep(BACKOFF_S)
 
     autoscaling_config_producer = AutoscalingConfigProducer(
         cluster_name, cluster_namespace
     )
 
     Monitor(
-        address=f"{head_ip}:6379",
-        redis_password=redis_password,
+        address=ray_address,
         # The `autoscaling_config` arg can be a dict or a `Callable: () -> dict`.
         # In this case, it's a callable.
         autoscaling_config=autoscaling_config_producer,
