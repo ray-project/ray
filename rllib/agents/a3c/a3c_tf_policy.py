@@ -33,40 +33,9 @@ from ray.rllib.utils.typing import (
 tf1, tf, tfv = try_import_tf()
 
 
-@Deprecated(
-    old="rllib.agents.a3c.a3c_tf_policy.postprocess_advantages",
-    new="rllib.evaluation.postprocessing.compute_gae_for_sample_batch",
-    error=True,
-)
-def postprocess_advantages(*args, **kwargs):
-    pass
-
-
-def add_value_function_fetch(policy: Policy) -> Dict[str, TensorType]:
-    return {SampleBatch.VF_PREDS: policy.model.value_function()}
-
-
-
-def grad_stats(
-    policy: Policy, train_batch: SampleBatch, grads: ModelGradients
-) -> Dict[str, TensorType]:
-    return {
-        "grad_gnorm": tf.linalg.global_norm(grads),
-        "vf_explained_var": explained_variance(
-            train_batch[Postprocessing.VALUE_TARGETS], policy.model.value_function()
-        ),
-    }
-
-
-#TODO: Where would these go?
-#A3CTFPolicy = build_tf_policy(
-#    grad_stats_fn=grad_stats,
-#)
-
-
 # We need this builder function because we want to share the same
 # custom logics between TF1 dynamic and TF2 eager policies.
-def get_a3c_tf_policy(base: type) -> type:
+def get_a3c_tf_policy(base: Type[Union[DynamicTFPolicyV2, EagerTFPolicyV2]]) -> Type[Union[DynamicTFPolicyV2, EagerTFPolicyV2]]:
     """Construct a A3CTFPolicy inheriting either dynamic or eager base policies.
 
     Args:
@@ -170,6 +139,18 @@ def get_a3c_tf_policy(base: type) -> type:
             }
 
         @override(base)
+        def grad_stats_fn(
+            self, train_batch: SampleBatch, grads: ModelGradients
+        ) -> Dict[str, TensorType]:
+            return {
+                "grad_gnorm": tf.linalg.global_norm(grads),
+                "vf_explained_var": explained_variance(
+                    train_batch[Postprocessing.VALUE_TARGETS],
+                    self.model.value_function()
+                ),
+            }
+
+        @override(base)
         def postprocess_trajectory(
             self, sample_batch, other_agent_batches=None, episode=None
         ):
@@ -189,3 +170,12 @@ def get_a3c_tf_policy(base: type) -> type:
 
 A3CDynamicTFPolicy = get_a3c_tf_policy(DynamicTFPolicyV2)
 A3CEagerTFPolicy = get_a3c_tf_policy(EagerTFPolicyV2)
+
+
+@Deprecated(
+    old="rllib.agents.a3c.a3c_tf_policy.postprocess_advantages",
+    new="rllib.evaluation.postprocessing.compute_gae_for_sample_batch",
+    error=True,
+)
+def postprocess_advantages(*args, **kwargs):
+    pass

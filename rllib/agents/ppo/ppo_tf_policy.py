@@ -52,7 +52,7 @@ def validate_config(config: TrainerConfigDict) -> None:
 
 # We need this builder function because we want to share the same
 # custom logics between TF1 dynamic and TF2 eager policies.
-def get_ppo_tf_policy(base: Type[DynamicTFPolicyV2, EagerTFPolicyV2]) -> type:
+def get_ppo_tf_policy(base: Type[Union[DynamicTFPolicyV2, EagerTFPolicyV2]]) -> Type[Union[DynamicTFPolicyV2, EagerTFPolicyV2]]:
     """Construct a PPOTFPolicy inheriting either dynamic or eager base policies.
 
     Args:
