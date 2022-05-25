@@ -556,6 +556,7 @@ def get_gpu_ids():
 
     return assigned_ids
 
+
 @Deprecated
 def get_resource_ids():
     """Get the IDs of the resources that are available to the worker.
@@ -565,7 +566,9 @@ def get_resource_ids():
         each pair consists of the ID of a resource and the fraction of that
         resource reserved for this worker.
     """
-    raise DeprecationWarning("get_resource_ids() is deprecated")
+    raise DeprecationWarning(
+        "get_resource_ids() is deprecated, use get_gpu_ids() to get the IDs of GPUs"
+    )
 
 
 @Deprecated(message="Use ray.init()['webui_url'] instead.")
