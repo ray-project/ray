@@ -1,4 +1,5 @@
 import os
+import sys
 import contextlib
 import signal
 import pytest
@@ -40,6 +41,7 @@ def test_kv_basic(ray_start_regular):
     assert gcs_client.internal_kv_del(b"A", False, b"NSS") == 0
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows doesn't have signals.")
 def test_kv_timeout(ray_start_regular):
     gcs_address = ray.worker.global_worker.gcs_client.address
     gcs_client = gcs_utils.GcsClient(address=gcs_address, nums_reconnect_retry=0)
@@ -86,6 +88,7 @@ async def test_kv_basic_aio(ray_start_regular):
     assert await gcs_client.internal_kv_del(b"A", False, b"NSS") == 0
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows doesn't have signals.")
 @pytest.mark.asyncio
 async def test_kv_timeout_aio(ray_start_regular):
     gcs_client = gcs_utils.GcsAioClient(
