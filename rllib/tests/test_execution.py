@@ -210,7 +210,6 @@ class TestExecution(unittest.TestCase):
             num_shards=1,
             learning_starts=200,
             capacity=1000,
-            replay_batch_size=100,
             prioritized_replay_alpha=0.6,
             prioritized_replay_beta=0.4,
             prioritized_replay_eps=0.0001,
@@ -226,7 +225,7 @@ class TestExecution(unittest.TestCase):
         next(b)
         assert buf.sample(100).count == 100
 
-        replay_op = Replay(local_buffer=buf)
+        replay_op = Replay(local_buffer=buf, num_items_to_replay=100)
         assert next(replay_op).count == 100
 
     def test_store_to_replay_actor(self):
@@ -235,7 +234,6 @@ class TestExecution(unittest.TestCase):
             num_shards=1,
             learning_starts=200,
             capacity=1000,
-            replay_batch_size=100,
             prioritized_replay_alpha=0.6,
             prioritized_replay_beta=0.4,
             prioritized_replay_eps=0.0001,
@@ -251,7 +249,7 @@ class TestExecution(unittest.TestCase):
         next(b)
         assert ray.get(actor.sample.remote(100)).count == 100
 
-        replay_op = Replay(actors=[actor])
+        replay_op = Replay(actors=[actor], num_items_to_replay=100)
         assert next(replay_op).count == 100
 
 

@@ -35,6 +35,7 @@ from ray.rllib.utils.test_utils import (
 from ray.tune.utils import merge_dicts, deep_update
 
 
+@DeveloperAPI
 def add_mixins(base, mixins, reversed=False):
     """Returns a new class with mixins applied in priority order."""
 
@@ -56,6 +57,7 @@ def add_mixins(base, mixins, reversed=False):
     return base
 
 
+@DeveloperAPI
 def force_list(elements=None, to_tuple=False):
     """
     Makes sure `elements` is returned as a list, whether `elements` is a single
@@ -83,6 +85,7 @@ def force_list(elements=None, to_tuple=False):
     )
 
 
+@DeveloperAPI
 class NullContextManager(contextlib.AbstractContextManager):
     """No-op context manager"""
 

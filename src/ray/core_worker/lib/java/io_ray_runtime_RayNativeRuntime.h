@@ -81,6 +81,14 @@ Java_io_ray_runtime_RayNativeRuntime_nativeGetActorIdOfNamedActor(JNIEnv *,
 
 /*
  * Class:     io_ray_runtime_RayNativeRuntime
+ * Method:    nativeSetCoreWorker
+ * Signature: ([B)V
+ */
+JNIEXPORT void JNICALL
+Java_io_ray_runtime_RayNativeRuntime_nativeSetCoreWorker(JNIEnv *, jclass, jbyteArray);
+
+/*
+ * Class:     io_ray_runtime_RayNativeRuntime
  * Method:    nativeGetResourceIds
  * Signature: ()Ljava/util/Map;
  */
