@@ -9,9 +9,9 @@ import json
 from fastapi import FastAPI
 app = FastAPI()
 from ray import serve
-ray.init(address="auto", namespace="gcs")
+ray.init(address="auto", namespace="g")
 
-@serve.deployment(name="Counter", route_prefix="/api")
+@serve.deployment(name="Counter", route_prefix="/api", version="v1")
 @serve.ingress(app)
 class Counter:
     def __init__(self):
@@ -53,6 +53,7 @@ pids = {{
     for _ in range(5)
 }}
 
+print(pids)
 assert len(pids) == {num_replicas}
 """
 
@@ -94,7 +95,6 @@ def test_ray_server(docker_cluster):
 
     output = worker.exec_run(cmd=f"python -c '{check_script.format(num_replicas=2)}'")
     assert output.exit_code == 0
-
 
 
 if __name__ == "__main__":
