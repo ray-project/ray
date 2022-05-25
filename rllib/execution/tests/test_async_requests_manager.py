@@ -215,7 +215,7 @@ class TestAsyncRequestsManager(unittest.TestCase):
         if not len(results) == 1 and workers[0] not in results:
             raise Exception(
                 "We should return the 1 ready requests in this case from the worker we "
-                "callted to"
+                "called to"
             )
         with pytest.raises(ValueError, match=".*has not been added to the manager.*"):
             manager.call(lambda w: w.task(), actor=worker_not_in_manager)

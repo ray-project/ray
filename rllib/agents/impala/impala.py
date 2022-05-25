@@ -560,7 +560,7 @@ class ImpalaTrainer(Trainer):
                 self._aggregator_workers = [
                     actor for actor_groups in all_co_located for actor in actor_groups
                 ]
-                self._replay_actor_manager = AsyncRequestsManager(
+                self._aggregator_actor_manager = AsyncRequestsManager(
                     self._aggregator_workers,
                     max_remote_requests_in_flight_per_worker=self.config[
                         "max_requests_in_flight_per_aggregator_worker"
@@ -836,13 +836,13 @@ class ImpalaTrainer(Trainer):
         ]
         ready_processed_batches = []
         for batch in batches:
-            self._replay_actor_manager.call(
+            self._aggregator_actor_manager.call(
                 lambda actor, b: actor.process_episodes(b), fn_kwargs={"b": batch}
             )
 
         waiting_processed_sample_batches: Dict[
             ActorHandle, List[ObjectRef]
-        ] = self._replay_actor_manager.get_ready()
+        ] = self._aggregator_actor_manager.get_ready()
         for ready_sub_batches in waiting_processed_sample_batches.values():
             ready_processed_batches.extend(ready_sub_batches)
 

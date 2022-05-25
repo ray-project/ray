@@ -243,7 +243,6 @@ class AsyncRequestsManager:
         self._all_workers = (
             list(workers) if not isinstance(workers, list) else workers.copy()
         )
-        self._actor_to_ptr = {worker: i for i, worker in enumerate(self._all_workers)}
         self._curr_actor_ptr = 0
 
     def call(
@@ -301,7 +300,6 @@ class AsyncRequestsManager:
         else:
             if not actor_available(actor):
                 return False
-            self._curr_actor_ptr = self._actor_to_ptr[actor]
         req = actor.apply.remote(remote_fn, *fn_args, **fn_kwargs)
         self._remote_requests_in_flight[actor].add(req)
         self._pending_to_actor[req] = actor
@@ -372,7 +370,6 @@ class AsyncRequestsManager:
         for new_worker in new_workers:
             if new_worker not in self._all_workers:
                 self._all_workers.append(new_worker)
-                self._actor_to_ptr[new_worker] = len(self._all_workers) - 1
 
     def remove_workers(self, workers: Union[List[ActorHandle], ActorHandle]) -> None:
         """Make workers unschedulable and remove them from this manager.
@@ -386,11 +383,15 @@ class AsyncRequestsManager:
         """
         if isinstance(workers, ActorHandle):
             workers = [workers]
-        for worker in workers:
-            if worker in self._all_workers:
-                del self._all_workers[self._actor_to_ptr[worker]]
-        self._curr_actor_ptr = 0
-        self._actor_to_ptr = {worker: i for i, worker in enumerate(self._all_workers)}
+        workers_to_remove = set(workers)
+        self._all_workers[:] = [
+            el for el in self._all_workers if el not in workers_to_remove
+        ]
+        if self._all_workers and (self._curr_actor_ptr >= len(self._all_workers)):
+            # Move current pointer to the new tail of the list.
+            self._curr_actor_ptr = len(self._all_workers) - 1
+        elif not self._all_workers:
+            self._curr_actor_ptr = 0
 
     def get_manager_statistics(self) -> Dict[str, Any]:
         """Get statistics about the the manager
