@@ -47,11 +47,11 @@ class RuntimeEnvContext:
 
         if language == Language.PYTHON and sys.platform == "win32":
             executable = f'"{self.py_executable}"'  # Path may contain spaces
-        elif language == Language.PYTHON:
-            executable = f"exec {self.py_executable}"
             for i, arg in enumerate(passthrough_args):
                 if os.path.isfile(arg) or os.path.isdir(arg):
                     passthrough_args[i] = f'"{arg}"'  # Some arguments may be files, which may contain spaces
+        elif language == Language.PYTHON:
+            executable = f"exec {self.py_executable}"
         elif language == Language.JAVA:
             executable = "java"
             ray_jars = os.path.join(get_ray_jars_dir(), "*")
