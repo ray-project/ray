@@ -3,7 +3,6 @@ import time
 from typing import (
     TypeVar,
     List,
-    Dict,
     Generic,
     Iterator,
     Tuple,
@@ -82,10 +81,6 @@ def _validate_key_fn(ds: "Dataset", key: KeyFn) -> None:
 # Block data can be accessed in a uniform way via ``BlockAccessors`` such as
 # ``SimpleBlockAccessor`` and ``ArrowBlockAccessor``.
 Block = Union[List[T], "pyarrow.Table", "pandas.DataFrame", bytes]
-
-# User-facing data batch type. This is the data type for data that is supplied to and
-# returned from batch UDFs.
-DataBatch = Union[Block, np.ndarray]
 
 # A list of block references pending computation by a single task. For example,
 # this may be the output of a task reading a file.
@@ -215,13 +210,11 @@ class BlockAccessor(Generic[T]):
         """Convert this block into a Pandas dataframe."""
         raise NotImplementedError
 
-    def to_numpy(
-        self, columns: Optional[Union[str, List[str]]] = None
-    ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
-        """Convert this block (or columns of block) into a NumPy ndarray.
+    def to_numpy(self, column: str = None) -> np.ndarray:
+        """Convert this block (or column of block) into a NumPy ndarray.
 
         Args:
-            columns: Name of columns to convert, or None if converting all columns.
+            column: Name of column to convert, or None.
         """
         raise NotImplementedError
 
@@ -232,10 +225,6 @@ class BlockAccessor(Generic[T]):
     def to_block(self) -> Block:
         """Return the base block that this accessor wraps."""
         raise NotImplementedError
-
-    def to_native(self) -> Block:
-        """Return the native data format for this accessor."""
-        return self.to_block()
 
     def size_bytes(self) -> int:
         """Return the approximate size in bytes of this block."""
@@ -265,15 +254,6 @@ class BlockAccessor(Generic[T]):
     def builder() -> "BlockBuilder[T]":
         """Create a builder for this block type."""
         raise NotImplementedError
-
-    @staticmethod
-    def batch_to_block(batch: DataBatch) -> Block:
-        """Create a block from user-facing data formats."""
-        if isinstance(batch, np.ndarray):
-            from ray.data.impl.arrow_block import ArrowBlockAccessor
-
-            return ArrowBlockAccessor.numpy_to_block(batch)
-        return batch
 
     @staticmethod
     def for_block(block: Block) -> "BlockAccessor[T]":
