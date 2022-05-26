@@ -235,6 +235,9 @@ class TestDeployAppBasic:
             == "9 pizzas please!"
         )
 
+        serve.shutdown()
+        ray.shutdown()
+
 
 def test_shutdown_remote(start_and_shutdown_ray_cli):
     """Check that serve.shutdown() works on a remote Ray cluster."""
