@@ -294,6 +294,48 @@ class ReplicaConfig:
             self.ray_actor_options["num_cpus"] = 1
         self.resource_dict = resources_from_ray_options(self.ray_actor_options)
 
+    @property
+    def deployment_def(self) -> Union[Callable, str]:
+        """The code, or a reference to the code, that this replica runs.
+
+        For Python replicas, this can be one of the following:
+            - Function (Callable)
+            - Class (Callable)
+            - Import path (str)
+
+        For Java replicas, this can be one of the following:
+            - Class path (str)
+        """
+        if self._deployment_def is None:
+            self._deployment_def = cloudpickle.loads(self.serialized_deployment_def)
+
+        return self._deployment_def
+
+    @property
+    def init_args(self) -> Optional[Tuple[Any]]:
+        """The init_args for a Python class.
+
+        This property is only meaningful if deployment_def is a Python class.
+        Otherwise, it is None.
+        """
+        if self._init_args is None and self.serialized_init_args is not None:
+            self._init_args = cloudpickle.loads(self.serialized_init_args)
+
+        return self._init_args
+
+    @property
+    def init_kwargs(self) -> Optional[Tuple[Any]]:
+        """The init_kwargs for a Python class.
+
+        This property is only meaningful if deployment_def is a Python class.
+        Otherwise, it is None.
+        """
+
+        if self._init_kwargs is None and self.serialized_init_kwargs is not None:
+            self._init_kwargs = cloudpickle.loads(self.serialized_init_kwargs)
+
+        return self._init_kwargs
+
     @classmethod
     def from_proto(
         cls, proto: ReplicaConfigProto, deployment_language: DeploymentLanguage
