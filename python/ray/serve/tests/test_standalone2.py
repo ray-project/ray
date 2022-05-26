@@ -369,6 +369,36 @@ class TestDeployAppBasic:
         updated_actors = ray.util.list_named_actors(all_namespaces=True)
         assert len(updated_actors) == len(actors) + 3
 
+    def test_deploy_app_update_timestamp(self, client: ServeControllerClient):
+        assert client.get_serve_status().app_status.deployment_timestamp == 0
+
+        config = ServeApplicationSchema.parse_obj(self.get_basic_config())
+        client.deploy_app(config)
+
+        wait_for_condition(
+            lambda: client.get_serve_status().app_status.deployment_timestamp > 0
+        )
+
+        first_deploy_time = client.get_serve_status().app_status.deployment_timestamp
+
+        config = self.get_basic_config()
+        config["deployments"] = [
+            {
+                "name": "Adder",
+                "num_replicas": 2,
+            },
+        ]
+        client.deploy_app(ServeApplicationSchema.parse_obj(config))
+
+        wait_for_condition(
+            lambda: client.get_serve_status().app_status.deployment_timestamp
+            > first_deploy_time
+        )
+        assert client.get_serve_status().app_status.status in {
+            ApplicationStatus.DEPLOYING,
+            ApplicationStatus.RUNNING,
+        }
+
 
 def test_shutdown_remote(start_and_shutdown_ray_cli_function):
     """Check that serve.shutdown() works on a remote Ray cluster."""
