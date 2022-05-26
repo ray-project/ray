@@ -226,7 +226,7 @@ class Trainer(Trainable):
             env or config.get("env"), config
         )
         env_descr = (
-            self._env_id if isinstance(self._env_id, str) else self._env_id.__name__
+            self._env_id.__name__ if isinstance(self._env_id, type) else self._env_id
         )
 
         # Placeholder for a local replay buffer instance.

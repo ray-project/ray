@@ -159,7 +159,6 @@ class TestTrainer(unittest.TestCase):
                 evaluation_config={
                     "gamma": 0.98,
                 },
-                always_attach_evaluation_results=True,
             )
             .callbacks(callbacks_class=AssertEvalCallback)
         )
