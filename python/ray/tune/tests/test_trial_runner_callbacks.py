@@ -13,8 +13,8 @@ from ray.rllib import _register_all
 from ray.tune.checkpoint_manager import _TuneCheckpoint
 from ray.tune.logger import DEFAULT_LOGGERS, LoggerCallback, LegacyLoggerCallback
 from ray.tune.ray_trial_executor import (
-    ExecutorEvent,
-    ExecutorEventType,
+    _ExecutorEvent,
+    _ExecutorEventType,
     RayTrialExecutor,
 )
 from ray.tune.result import TRAINING_ITERATION
@@ -110,8 +110,8 @@ class TrialRunnerCallbacks(unittest.TestCase):
         for t in trials:
             self.trial_runner.add_trial(t)
 
-        self.executor.next_future_result = ExecutorEvent(
-            event_type=ExecutorEventType.PG_READY
+        self.executor.next_future_result = _ExecutorEvent(
+            event_type=_ExecutorEventType.PG_READY
         )
         self.trial_runner.step()
 
@@ -134,8 +134,8 @@ class TrialRunnerCallbacks(unittest.TestCase):
             )
         )
 
-        self.executor.next_future_result = ExecutorEvent(
-            event_type=ExecutorEventType.PG_READY
+        self.executor.next_future_result = _ExecutorEvent(
+            event_type=_ExecutorEventType.PG_READY
         )
         self.trial_runner.step()
 
@@ -156,10 +156,10 @@ class TrialRunnerCallbacks(unittest.TestCase):
         trials[0].saving_to = cp
 
         # Let the first trial save a checkpoint
-        self.executor.next_future_result = ExecutorEvent(
-            event_type=ExecutorEventType.SAVING_RESULT,
+        self.executor.next_future_result = _ExecutorEvent(
+            event_type=_ExecutorEventType.SAVING_RESULT,
             trial=trials[0],
-            result={ExecutorEvent.KEY_FUTURE_RESULT: "__checkpoint"},
+            result={_ExecutorEvent.KEY_FUTURE_RESULT: "__checkpoint"},
         )
         self.trial_runner.step()
         self.assertEqual(self.callback.state["trial_save"]["iteration"], 2)
@@ -167,8 +167,8 @@ class TrialRunnerCallbacks(unittest.TestCase):
 
         # Let the second trial send a result
         result = {TRAINING_ITERATION: 1, "metric": 800, "done": False}
-        self.executor.next_future_result = ExecutorEvent(
-            event_type=ExecutorEventType.TRAINING_RESULT,
+        self.executor.next_future_result = _ExecutorEvent(
+            event_type=_ExecutorEventType.TRAINING_RESULT,
             trial=trials[1],
             result={"future_result": result},
         )
@@ -181,8 +181,8 @@ class TrialRunnerCallbacks(unittest.TestCase):
 
         # Let the second trial restore from a checkpoint
         trials[1].restoring_from = cp
-        self.executor.next_future_result = ExecutorEvent(
-            event_type=ExecutorEventType.RESTORING_RESULT, trial=trials[1]
+        self.executor.next_future_result = _ExecutorEvent(
+            event_type=_ExecutorEventType.RESTORING_RESULT, trial=trials[1]
         )
         self.trial_runner.step()
         self.assertEqual(self.callback.state["trial_restore"]["iteration"], 4)
@@ -190,11 +190,11 @@ class TrialRunnerCallbacks(unittest.TestCase):
 
         # Let the second trial finish
         trials[1].restoring_from = None
-        self.executor.next_future_result = ExecutorEvent(
-            event_type=ExecutorEventType.TRAINING_RESULT,
+        self.executor.next_future_result = _ExecutorEvent(
+            event_type=_ExecutorEventType.TRAINING_RESULT,
             trial=trials[1],
             result={
-                ExecutorEvent.KEY_FUTURE_RESULT: {
+                _ExecutorEvent.KEY_FUTURE_RESULT: {
                     TRAINING_ITERATION: 2,
                     "metric": 900,
                     "done": True,
@@ -206,10 +206,10 @@ class TrialRunnerCallbacks(unittest.TestCase):
         self.assertEqual(self.callback.state["trial_complete"]["trial"].trial_id, "two")
 
         # Let the first trial error
-        self.executor.next_future_result = ExecutorEvent(
-            event_type=ExecutorEventType.ERROR,
+        self.executor.next_future_result = _ExecutorEvent(
+            event_type=_ExecutorEventType.ERROR,
             trial=trials[0],
-            result={ExecutorEvent.KEY_EXCEPTION: Exception()},
+            result={_ExecutorEvent.KEY_EXCEPTION: Exception()},
         )
         self.trial_runner.step()
         self.assertEqual(self.callback.state["trial_fail"]["iteration"], 6)

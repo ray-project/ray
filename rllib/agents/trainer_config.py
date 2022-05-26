@@ -19,6 +19,7 @@ from ray.rllib.offline.estimators.importance_sampling import ImportanceSampling
 from ray.rllib.offline.estimators.weighted_importance_sampling import (
     WeightedImportanceSampling,
 )
+from ray.rllib.utils import deep_update, merge_dicts
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.typing import (
     EnvConfigDict,
@@ -714,7 +715,7 @@ class TrainerConfig:
         if model is not None:
             self.model = model
         if optimizer is not None:
-            self.optimizer = optimizer
+            self.optimizer = merge_dicts(self.optimizer, optimizer)
 
         return self
 
@@ -754,7 +755,16 @@ class TrainerConfig:
         if explore is not None:
             self.explore = explore
         if exploration_config is not None:
-            self.exploration_config = exploration_config
+            # Override entire `exploration_config` if `type` key changes.
+            # Update, if `type` key remains the same or is not specified.
+            new_exploration_config = deep_update(
+                {"exploration_config": self.exploration_config},
+                {"exploration_config": exploration_config},
+                False,
+                ["exploration_config"],
+                ["exploration_config"],
+            )
+            self.exploration_config = new_exploration_config["exploration_config"]
 
         return self
 
@@ -1051,7 +1061,7 @@ class TrainerConfig:
                 timestep count has not been reached, will perform n more
                 `step_attempt()` calls until the minimum timesteps have been executed.
                 Set to 0 for no minimum timesteps.
-            min_sample_timesteps_per_reporting: Minimum env samplingtimesteps to
+            min_sample_timesteps_per_reporting: Minimum env sampling timesteps to
                 accumulate within a single `train()` call. This value does not affect
                 learning, only the number of times `Trainer.step_attempt()` is called by
                 `Trauber.train()`. If - after one `step_attempt()`, the env sampling

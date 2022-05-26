@@ -195,6 +195,26 @@ def test_refresh_controller_after_death(shutdown_ray, detached):
     ray.shutdown()
 
 
+def test_get_serve_status(shutdown_ray):
+
+    ray.init()
+    client = serve.start()
+
+    @serve.deployment
+    def f(*args):
+        return "Hello world"
+
+    f.deploy()
+
+    status_info_1 = client.get_serve_status()
+    assert status_info_1.app_status.status == "RUNNING"
+    assert status_info_1.deployment_statuses[0].name == "f"
+    assert status_info_1.deployment_statuses[0].status in {"UPDATING", "HEALTHY"}
+
+    serve.shutdown()
+    ray.shutdown()
+
+
 def test_shutdown_remote(start_and_shutdown_ray_cli):
     """Check that serve.shutdown() works on a remote Ray cluster."""
 

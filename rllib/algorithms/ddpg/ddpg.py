@@ -21,7 +21,7 @@ class DDPGConfig(SimpleQConfig):
         >>> config = DDPGConfig().training(lr=0.01).resources(num_gpus=1)
         >>> print(config.to_dict())
         >>> # Build a Trainer object from the config and run one training iteration.
-        >>> trainer = config.build(env="CartPole-v1")
+        >>> trainer = config.build(env="Pendulum-v1")
         >>> trainer.train()
 
     Example:
@@ -29,12 +29,12 @@ class DDPGConfig(SimpleQConfig):
         >>> from ray import tune
         >>> config = DDPGConfig()
         >>> # Print out some default values.
-        >>> print(config.lr)
-            0.0004
+        >>> print(config.lr) # doctest: +SKIP
+        0.0004
         >>> # Update the config object.
         >>> config.training(lr=tune.grid_search([0.001, 0.0001]))
         >>> # Set the config object's env.
-        >>> config.environment(env="CartPole-v1")
+        >>> config.environment(env="Pendulum-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
         >>> tune.run(
