@@ -1,6 +1,7 @@
 import contextlib
 import io
 import os
+import platform
 import shutil
 import tarfile
 import tempfile
@@ -295,23 +296,13 @@ class Checkpoint:
     def _get_temporary_checkpoint_dir(self) -> str:
         """Return the name for the temporary checkpoint dir."""
         if self._obj_ref:
-            return os.path.join(tempfile.gettempdir(), self._obj_ref.hex())
+            tmp_dir_path = tempfile.gettempdir()
+            checkpoint_dir_name = f"checkpoint_tmp_{self._obj_ref.hex()}"
+            if platform.system() == "Windows":
+                # Max path on Windows is 260 chars, -1 for joining \
+                checkpoint_dir_name = checkpoint_dir_name[: 259 - len(tmp_dir_path)]
+            return os.path.join(tmp_dir_path, checkpoint_dir_name)
         return _temporary_checkpoint_dir()
-
-    def _make_dir(self, path: str) -> None:
-        """Create the temporary checkpoint dir at ``path``."""
-        os.makedirs(path, exist_ok=True)
-        # Drop marker
-        open(os.path.join(path, ".is_checkpoint"), "a").close()
-
-        # each process drops a lock file it then cleans up
-        # if there are no lock files left, the last process
-        # will remove the entire directory
-        del_lock_path = self._get_del_lock_path(path)
-        open(del_lock_path, "a").close()
-
-    def _get_del_lock_path(self, path: str) -> str:
-        return os.path.join(path, f".del_lock_{os.getpid()}")
 
     def _to_directory(self, path: str) -> None:
         if self._data_dict or self._obj_ref:
@@ -354,13 +345,13 @@ class Checkpoint:
         """
         path = path if path is not None else self._get_temporary_checkpoint_dir()
 
-        self._make_dir(path)
+        _make_dir(path)
 
         try:
             with FileLock(f"{path}.lock", timeout=0):
                 self._to_directory(path)
         except TimeoutError:
-            # if the directory is already locked, then wait but do not do anything
+            # if the directory is already locked, then wait but do not do anything.
             with FileLock(f"{path}.lock", timeout=-1):
                 pass
             if not os.path.exists(path):
@@ -379,6 +370,14 @@ class Checkpoint:
         the existing path. If it is not, it will create a temporary directory,
         which will be deleted after the context is exited.
 
+        If the checkpoint has been created from an object reference, the directory name
+        will be constant and based on the object reference ID. This allows for multiple
+        processes to use the same files for improved performance. The directory
+        will be deleted after exiting the context only if no other processes are using
+        it.
+        In any other case, a new temporary directory will be created with each call
+        to ``as_directory``.
+
         Users should treat the returned checkpoint directory as read-only and avoid
         changing any data within it, as it might get deleted when exiting the context.
 
@@ -396,18 +395,20 @@ class Checkpoint:
             yield self._local_path
         else:
             temp_dir = self.to_directory()
-            del_lock_path = self._get_del_lock_path(temp_dir)
+            del_lock_path = _get_del_lock_path(temp_dir)
             yield temp_dir
+
+            # Cleanup
             try:
                 os.remove(del_lock_path)
             except Exception:
                 pass
-            # In the edge case, we do not remove the directory at all
-            # since it's in /tmp, this is not that big of a deal
 
-            # check if any lock files are remaining
+            # In the edge case, we do not remove the directory at all.
+            # Since it's in /tmp, this is not that big of a deal.
             try:
                 with FileLock(f"{temp_dir}.lock", timeout=0):
+                    # check if any lock files are remaining
                     if not list(Path(temp_dir).glob(".del_lock_*")):
                         shutil.rmtree(temp_dir, ignore_errors=True)
             except TimeoutError:
@@ -487,13 +488,6 @@ class Checkpoint:
                 "Cannot get internal representation of empty checkpoint."
             )
 
-    @DeveloperAPI
-    @classmethod
-    def from_internal_representation(
-        cls, internal_representation: Tuple[str, Union[dict, str, ray.ObjectRef]]
-    ):
-        return cls(**{internal_representation[0]: internal_representation[1]})
-
     def __getstate__(self):
         if self._local_path:
             blob = self.to_bytes()
@@ -541,3 +535,22 @@ def _unpack(stream: bytes, path: str) -> str:
     with tarfile.open(fileobj=io.BytesIO(stream)) as tar:
         tar.extractall(path)
     return path
+
+
+def _get_del_lock_path(path: str) -> str:
+    """Get the path to the deletion lock file."""
+    return os.path.join(path, f".del_lock_{os.getpid()}")
+
+
+def _make_dir(path: str, drop_del_lock: bool = True) -> None:
+    """Create the temporary checkpoint dir in ``path``."""
+    os.makedirs(path, exist_ok=True)
+    # Drop marker
+    open(os.path.join(path, ".is_checkpoint"), "a").close()
+
+    if drop_del_lock:
+        # Each process drops a deletion lock file it then cleans up.
+        # If there are no lock files left, the last process
+        # will remove the entire directory.
+        del_lock_path = _get_del_lock_path(path)
+        open(del_lock_path, "a").close()
