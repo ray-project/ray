@@ -200,22 +200,27 @@ def test_generator_returns(ray_start_regular):
 
     # Check cases when num_returns does not match the number of values returned
     # by the generator.
-    try:
-        ray.get(generator.remote(2))
-    except ray.exceptions.RayTaskError as e:
-        assert isinstance(e.as_instanceof_cause(), ValueError)
-
     num_returns = 3
 
     try:
         ray.get(generator.options(num_returns=num_returns).remote(num_returns - 1))
+        assert False
     except ray.exceptions.RayTaskError as e:
         assert isinstance(e.as_instanceof_cause(), ValueError)
 
     try:
         ray.get(generator.options(num_returns=num_returns).remote(num_returns + 1))
+        assert False
     except ray.exceptions.RayTaskError as e:
         assert isinstance(e.as_instanceof_cause(), ValueError)
+
+    # Check num_returns=1 case, should receive TypeError because generator
+    # cannot be pickled.
+    try:
+        ray.get(generator.remote(num_returns))
+        assert False
+    except ray.exceptions.RayTaskError as e:
+        assert isinstance(e.as_instanceof_cause(), TypeError)
 
     # Check return values.
     ray.get(generator.options(num_returns=num_returns).remote(num_returns)) == list(
