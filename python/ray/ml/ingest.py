@@ -1,7 +1,8 @@
 from typing import List, Dict
 
 from ray.actor import ActorHandle
-from ray.data import Dataset, DatasetPipeline
+from ray.data import Dataset, DatasetPipeline, set_progress_bars
+from ray.data.context import DatasetContext
 from ray.ml.constants import TRAIN_DATASET_KEY
 
 
@@ -18,7 +19,7 @@ class IngestStrategy:
 class StreamedIngest(IngestStrategy):
     def __init__(self, global_shuffle: bool = False):
         # TODO: calculate this as 1GiB per worker.
-        self._window_size_bytes = 1e9
+        self._window_size_bytes = 1024 * 1024 * 1024
         self._fitted_preprocessor = None
         self._global_shuffle = global_shuffle
 
@@ -44,12 +45,24 @@ class StreamedIngest(IngestStrategy):
         self._world_size = len(worker_handles)
         splits = [datasets.copy() for _ in worker_handles]
 
-        # TODO disable read fusion if pipeline size is small enough
-        transform_fn = self._fitted_preprocessor.transform_batch
+        if datasets[TRAIN_DATASET_KEY].size_bytes() <= 2 * self._window_size_bytes:
+            print("Disabling re-read")
+            context = DatasetContext.get_current()
+            context.optimize_fuse_read_stages = False
+        else:
+            print("Re-read")
+
+        set_progress_bars(False)
+        prep = self._fitted_preprocessor
+
+        def transform_fn(x):
+            return prep.transform_batch(x)
+
+
         train_pipe = (
             datasets[TRAIN_DATASET_KEY]
             .window(bytes_per_window=self._window_size_bytes)
-            .map_batches(lambda x: x, batch_format="pandas")
+            .map_batches(transform_fn, batch_format="pandas")
             .repeat()
         )
 
@@ -122,12 +135,9 @@ class BulkIngest(IngestStrategy):
 
 def _choose_ingest_strategy(dataset: Dict[str, Dataset]) -> IngestStrategy:
     sz = dataset.size_bytes()
-    if sz < 1e9:
-        print("Chose bulk ingest by default, dataset size", sz)
-        return BulkIngest()
-    else:
-        print("Chose streamed ingest by default, dataset size", sz)
-        return StreamedIngest()
+    if sz > 1e9 and sz > 0.2 * ray.available_resources["object_store_memory"]:
+        print("WARNING: large size, consider streamed ingest")
+    return BulkIngest()
 
 
 def _default_dataset_split_fn(
