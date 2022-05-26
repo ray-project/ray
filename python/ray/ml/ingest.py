@@ -1,22 +1,94 @@
 from typing import List, Dict
 
+import ray
 from ray.actor import ActorHandle
-from ray.data import Dataset, DatasetPipeline, set_progress_bars
+from ray.data import Dataset, DatasetPipeline
 from ray.data.context import DatasetContext
 from ray.ml.constants import TRAIN_DATASET_KEY
+from ray.ml import Preprocessor
 
 
 class IngestStrategy:
-    def preprocess_datasets(self, preprocessor, datasets):
-        """Call to preprocess datasets."""
+    """Defines how AIR loads and transforms data for a Trainer.
+
+    You can specify a custom ingest strategy for an AIR Trainer by specifying
+    ``YourTrainer(ingest=IngestStrategy)``. By default, the ``BulkIngest`` strategy
+    is used, which loads the entire source Dataset in memory in bulk. The
+    ``StreamingIngest`` strategy loads data into memory in fixed sized windows,
+    reducing the peak memory usage.
+    """
+
+    def preprocess_datasets(
+        self, prep: Preprocessor, datasets: Dict[str, Dataset]
+    ) -> Dict[str, Dataset]:
+        """Fit and transform the given datasets.
+
+        This method is called prior to the start of training. The ingest strategy can
+        decide to preprocess the datasets at this point, or return them unprocessed
+        for later processing (i.e., for streaming ingest).
+
+        Args:
+            prep: The preprocessor to fit and transform datasets with.
+            dataset: The dict of datasets to preprocessor.
+        """
         raise NotImplementedError
 
-    def create_readers(self, datasets, workers) -> Dict[str, DatasetPipeline]:
-        """Call to create dataset readers."""
+    def create_readers(
+        self, datasets: Dict[str, Dataset], workers: List[ActorHandle]
+    ) -> Dict[str, DatasetPipeline]:
+        """Create pipeline readers for each training worker.
+
+        This method is called after training workers have been launched to generate
+        dataset readers. Each reader is a DatasetPipeline, which in the simplest case
+        independently loops over the source dataset. In the most general case, the
+        readers can share a common pipeline structure (e.g., data is globally shuffled
+        and then split between training workers).
+        """
         raise NotImplementedError
 
 
-class StreamedIngest(IngestStrategy):
+class BulkIngest(IngestStrategy):
+    """A simple ingest strategy that loads all data blocks into memory.
+
+    Data is loaded into memory, and then split equally between training workers. Each
+    worker sees a different sub-set of the original data.
+
+    This strategy is optimal for small datasets, and also the best if you want to
+    perform per-epoch global shuffles over the entire Dataset (which involves loading
+    the entire thing into memory in any case).
+
+    However, Datasets larger than memory can lead to disk spilling, slowing ingest.
+    """
+
+    def preprocess_datasets(
+        self, prep: Preprocessor, datasets: Dict[str, Dataset]
+    ) -> Dict[str, Dataset]:
+
+        # Fit only the training dataset.
+        train_dataset = datasets.get(TRAIN_DATASET_KEY, None)
+        if train_dataset:
+            prep.fit(train_dataset)
+
+        # Transform the auxiliary datasets after fit.
+        new_datasets = {}
+        for key, dataset in datasets.items():
+            new_datasets[key] = prep.transform(dataset)
+        return new_datasets
+
+    def create_readers(
+        self, datasets: Dict[str, Dataset], workers: List[ActorHandle]
+    ) -> Dict[str, DatasetPipeline]:
+
+        # Divide the dataset blocks up among training workers.
+        splits = _default_dataset_split_fn(datasets, workers)
+
+        # Wrap each split in a trivial pipeline that just loops over its blocks.
+        for i in range(len(splits)):
+            splits[i] = {k: ds.repeat() for k, ds in splits[i].items()}
+        return splits
+
+
+class StreamingIngest(IngestStrategy):
     def __init__(self, global_shuffle: bool = False):
         # TODO: calculate this as 1GiB per worker.
         self._window_size_bytes = 1024 * 1024 * 1024
@@ -52,12 +124,10 @@ class StreamedIngest(IngestStrategy):
         else:
             print("Re-read")
 
-        set_progress_bars(False)
         prep = self._fitted_preprocessor
 
         def transform_fn(x):
             return prep.transform_batch(x)
-
 
         train_pipe = (
             datasets[TRAIN_DATASET_KEY]
@@ -81,55 +151,6 @@ class StreamedIngest(IngestStrategy):
 
         for i in range(self._world_size):
             splits[i] = {k: to_reader(i, k, v) for k, v in splits[i].items()}
-        return splits
-
-
-class BulkIngest(IngestStrategy):
-    def __init__(
-        self,
-        local_shuffle_buffer_size: int = 0,
-        global_shuffle: bool = False,
-        split: bool = True,
-    ):
-        self._local_shuffle_buffer_size = local_shuffle_buffer_size
-        self._global_shuffle = global_shuffle
-        if self._global_shuffle and self._local_shuffle_buffer_size:
-            raise ValueError("Cannot specify both global and local shuffle.")
-        self._split = split
-        self._world_size = 1
-
-    def preprocess_datasets(self, preprocessor, datasets):
-        train_dataset = datasets.get(TRAIN_DATASET_KEY, None)
-        if train_dataset:
-            preprocessor.fit(train_dataset)
-
-        # Execute dataset transformations serially for now.
-        # Cannot execute them in remote tasks due to dataset ownership model:
-        # if datasets are created on a remote node, then if that node fails,
-        # we cannot recover the dataset.
-        new_datasets = {}
-        for key, dataset in datasets.items():
-            new_datasets[key] = preprocessor.transform(dataset)
-
-        return new_datasets
-
-    def create_readers(self, datasets, worker_handles) -> Dict[str, DatasetPipeline]:
-        self._world_size = len(worker_handles)
-        if self._split:
-            splits = _default_dataset_split_fn(datasets, worker_handles)
-        else:
-            splits = [datasets.copy() for _ in worker_handles]
-
-        def to_reader(k, ds):
-            pipe = ds.repeat()
-            if self._global_shuffle and k == TRAIN_DATASET_KEY:
-                pipe = pipe.random_shuffle_each_window()
-            if self._local_shuffle_buffer_size > 0:
-                raise NotImplementedError
-            return pipe
-
-        for i in range(self._world_size):
-            splits[i] = {k: to_reader(k, v) for k, v in splits[i].items()}
         return splits
 
 

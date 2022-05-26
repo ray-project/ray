@@ -53,10 +53,11 @@ def batch_blocks(
         An iterator over record batches.
     """
     batcher = Batcher(batch_size=batch_size)
+    from ray.internal.internal_api import free
 
-    def batch_block(block: ObjectRef[Block]):
+    def batch_block(block_ref: ObjectRef[Block]):
         with stats.iter_get_s.timer():
-            block = ray.get(block)
+            block = ray.get(block_ref)
         batcher.add(block)
         while batcher.has_batch():
             with stats.iter_format_batch_s.timer():
