@@ -4,15 +4,27 @@ Replay Buffer API
 ==================
 
 RLlib comes with a set of extendable replay buffers which are used mostly in Q-Learning algorithms.
-The base :py:class:`~ray.rllib.utils.replay_buffers.replay_buffer.ReplayBuffer` class (link) only supports storing experiences in different storage units (link).
+The base :py:class:`~ray.rllib.utils.replay_buffers.replay_buffer.ReplayBuffer` class (link) only supports storing and replaying
+experiences in different storage units (link).
 Advanced types add functionality while retaining compatibility through inheritance.
 You can find buffer types and arguments to modify their behaviour as part of RLlib's default parameters. They are part of
 the replay buffer config (link).
 
+ReplayBuffer Base Class
+-----------------------
+
+A base :py:class:`~ray.rllib.utils.replay_buffers.replay_buffer.ReplayBuffer` class also serves as an interface that other buffers adhere to.
+The following documentation only shows how to instantiate, add to and sample from a replay buffer.
+
+.. autoclass:: ray.rllib.utils.replay_buffers.replay_buffer.ReplayBuffer
+
+    .. automethod:: __init__
+    .. automethod:: add
+    .. automethod:: sample
+
 Basic Usage
 ------------
-
-Here is a full example of running the R2D2 algorithm, which runs without prioritized replay by default, with prioritzed replay:
+Here is an example of configuring the R2D2 algorithm, which runs without `PER <https://arxiv.org/abs/1511.05952>`__ by default, with PER:
 
 .. dropdown:: **Changing a replay buffer configuration**
     :animate: fade-in-slide-down
@@ -38,7 +50,7 @@ Apart from specifying a type, other parameters in that config are:
    * e.g. "worker_side_prioritization" to decide where to compute priorities
 
 * Constructor arguments to instantiate the replay buffer
-   * e.g. "capacity" to limit the buffers size
+   * e.g. "capacity" to limit the buffer's size
 
 * Call arguments for underlying replay buffer methods
    * e.g. "prioritized_replay_beta" is used by the :py:class:`~ray.rllib.utils.replay_buffers.multi_agent_prioritized_replay_buffer.PrioritizedMultiAgentReplayBuffer` to call the sample method of every underlying :py:class:`~ray.rllib.utils.replay_buffers.prioritized_replay_buffer.PrioritizedReplayBuffer`
@@ -53,7 +65,19 @@ Here is an example of how to implement your own toy example of a ReplayBuffer cl
    :language: python
 
 ..   start-after: __sphinx_doc_replay_buffer_own_buffer__begin__
-..   end-before: __sphinx_doc_replay_buffer_own_buffer__begin__
+..   end-before: __sphinx_doc_replay_buffer_own_buffer__end__
+
+For an extensive example, here is our implementation of `reservoir sampling <https://www.cs.umd.edu/~samir/498/vitter.pdf>`__:
+
+.. dropdown:: **Changing a replay buffer configuration**
+    :animate: fade-in-slide-down
+
+    .. literalinclude:: ../../../../rllib/utils/replay_buffers/reservoir_buffer.py
+        :language: python
+
+    ..   start-after: __sphinx_doc_reservoir_buffer__begin__
+    ..   end-before: __sphinx_doc_reservoir_buffer__end__
+
 
 Advanced Usage
 ---------------

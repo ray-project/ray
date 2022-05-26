@@ -23,12 +23,14 @@ config = {
 
 another_config = {
     "env": "CartPole-v1",
-    "replay_buffer_config": {"type": "ReplayBuffer"}  # Specify buffer type name as it can be found in the buffers directory
+    "replay_buffer_config": {"type": "ReplayBuffer"}  # Specify buffer type name as
+    # it can be found in RLlib's buffer module
 }
 
 yet_another_config = {
     "env": "CartPole-v1",
-    "replay_buffer_config": {"type": "ray.rllib.utils.ReplayBuffer"}  # Specify buffer through explicit path
+    "replay_buffer_config": {"type": "ray.rllib.utils.ReplayBuffer"}  # Specify
+    # buffer by path
 }
 
 # These three configurations all yield the same effective config

@@ -13,8 +13,9 @@ from ray.rllib.utils.replay_buffers.replay_buffer import (
 from ray.rllib.utils.typing import SampleBatchType
 
 
+# __sphinx_doc_reservoir_buffer__begin__
 @ExperimentalAPI
-class ReservoirBuffer(ReplayBuffer):
+class ReservoirReplayBuffer(ReplayBuffer):
     """This buffer implements reservoir sampling.
 
     The algorithm has been described by Jeffrey S. Vitter in "Random sampling
@@ -127,3 +128,4 @@ class ReservoirBuffer(ReplayBuffer):
         self._num_evicted = state["num_evicted"]
         self._num_add_calls = state["num_add_calls"]
         ReplayBuffer.set_state(self, state)
+# __sphinx_doc_reservoir_buffer__end__

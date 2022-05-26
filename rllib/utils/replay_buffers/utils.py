@@ -316,7 +316,6 @@ def warn_replay_buffer_capacity(*, item: SampleBatchType, capacity: int) -> None
             logger.info(msg)
 
 
-@DeveloperAPI
 def patch_buffer_with_fake_sampling_method(
     buffer: ReplayBuffer, fake_sample_output: SampleBatchType
 ) -> None:
