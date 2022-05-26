@@ -1,20 +1,26 @@
-from typing import List, Dict
+import logging
+from typing import List, Dict, Optional
 
 import ray
+from ray.util.annotations import PublicAPI
 from ray.actor import ActorHandle
 from ray.data import Dataset, DatasetPipeline
 from ray.data.context import DatasetContext
 from ray.ml.constants import TRAIN_DATASET_KEY
+from ray.ml.train.data_parallel_trainer import _default_dataset_split_fn
 from ray.ml import Preprocessor
 
+logger = logging.getLogger(__name__)
 
+
+@PublicAPI(stability="alpha")
 class IngestStrategy:
     """Defines how AIR loads and transforms data for a Trainer.
 
     You can specify a custom ingest strategy for an AIR Trainer by specifying
     ``YourTrainer(ingest=IngestStrategy)``. By default, the ``BulkIngest`` strategy
     is used, which loads the entire source Dataset in memory in bulk. The
-    ``StreamingIngest`` strategy loads data into memory in fixed sized windows,
+    ``PipelinedIngest`` strategy loads data into memory in fixed sized windows,
     reducing the peak memory usage.
     """
 
@@ -25,7 +31,7 @@ class IngestStrategy:
 
         This method is called prior to the start of training. The ingest strategy can
         decide to preprocess the datasets at this point, or return them unprocessed
-        for later processing (i.e., for streaming ingest).
+        for later processing (i.e., for pipelined ingest).
 
         Args:
             prep: The preprocessor to fit and transform datasets with.
@@ -47,6 +53,7 @@ class IngestStrategy:
         raise NotImplementedError
 
 
+@PublicAPI(stability="alpha")
 class BulkIngest(IngestStrategy):
     """A simple ingest strategy that loads all data blocks into memory.
 
@@ -59,6 +66,16 @@ class BulkIngest(IngestStrategy):
 
     However, Datasets larger than memory can lead to disk spilling, slowing ingest.
     """
+
+    def __init__(self, global_shuffle: bool):
+        """Create a bulk ingest strategy.
+
+        Args:
+            global_shuffle: Whether to shuffle the dataset globally each epoch. Note
+                that this is an expensive distributed operation. Prefer to use local
+                shuffles instead unless you really need this.
+        """
+        self._global_shuffle = global_shuffle
 
     def preprocess_datasets(
         self, prep: Preprocessor, datasets: Dict[str, Dataset]
@@ -82,116 +99,138 @@ class BulkIngest(IngestStrategy):
         # Divide the dataset blocks up among training workers.
         splits = _default_dataset_split_fn(datasets, workers)
 
+        def to_reader(k: str, ds: Dataset) -> DatasetPipeline:
+            pipe = ds.repeat()
+            if k == TRAIN_DATASET_KEY and self._global_shuffle:
+                pipe = pipe.random_shuffle_each_window()
+            return pipe
+
         # Wrap each split in a trivial pipeline that just loops over its blocks.
+        # If global shuffle is enabled, the dataset is also shuffled each epoch.
         for i in range(len(splits)):
-            splits[i] = {k: ds.repeat() for k, ds in splits[i].items()}
+            splits[i] = {k: to_reader(k, ds) for k, ds in splits[i].items()}
         return splits
 
 
-class StreamingIngest(IngestStrategy):
-    def __init__(self, global_shuffle: bool = False):
-        # TODO: calculate this as 1GiB per worker.
-        self._window_size_bytes = 1024 * 1024 * 1024
-        self._fitted_preprocessor = None
-        self._global_shuffle = global_shuffle
+@PublicAPI(stability="alpha")
+class PipelinedIngest(IngestStrategy):
+    """A pipelined ingest strategy.
 
-    def preprocess_datasets(self, preprocessor, datasets):
+    This strategy loads *windows* of data at a time for processing in a pipelined way.
+    Each window can optionally be shuffled. Then, each window is split into equal
+    sized pieces and routed to the training workers for read.
+
+    When the window size is set to infinity, this is similar to BulkIngest.
+
+    Note that pipelined reads are only made available for the main "train" dataset.
+    Other datasets are still loaded via the bulk strategy. Additionally, it is not
+    allowed to call `train.get_dataset_shard` on the "train" dataset, to avoid
+    accidental use of non-pipelined reads for the base dataset.
+    """
+
+    def __init__(
+        self,
+        window_size_bytes: int = 1024 * 1024 * 1024,
+        shuffle_each_window: bool = False,
+    ):
+        """Create a pipelined ingest strategy.
+
+        Args:
+            window_size_bytes: Set the pipeline window size. The ingest strategy will
+                target loading this many bytes at a time from storage for processing.
+                Set this to a value that comfortably fits into object store memory,
+                e.g., 20-25%, to avoid unnecessary disk spilling.
+            shuffle_each_window: Whether to shuffle each window loaded from disk. Note
+                that this is an expensive distributed operation. Prefer to use local
+                shuffles instead unless you really need this.
+        """
+        self._window_size_bytes = window_size_bytes
+        self._shuffle_each_window = shuffle_each_window
+        # Set after preprocessing.
+        self._fitted_preprocessor: Optional[Preprocessor] = None
+        self._train_dataset: Optional[Dataset] = None
+
+    def preprocess_datasets(
+        self, prep: Preprocessor, datasets: Dict[str, Dataset]
+    ) -> Dict[str, Dataset]:
         train_dataset = datasets.get(TRAIN_DATASET_KEY, None)
-        if train_dataset:
-            # TODO(ekl) support streaming fit?
-            preprocessor.fit(train_dataset)
-            self._fitted_preprocessor = preprocessor
 
-        # Only transform non-train datasets. In the future, we might support streaming
-        # transform of those as well.
+        # Fit only the training dataset, but do not transform it yet.
+        if train_dataset:
+            if prep.fit_status() != Preprocessor.FitStatus.NOT_FITTABLE:
+                # TODO(ekl) implement and remove this check.
+                raise NotImplementedError(
+                    "PipelinedIngest does not support fittable preprocessors yet."
+                )
+            prep.fit(train_dataset)
+            self._fitted_preprocessor = prep
+            self._train_dataset = train_dataset
+
+        # Only transform auxiliary datasets. In the future, we might support pipelined
+        # transform of these as well.
         for k, dataset in datasets.items():
-            if k == TRAIN_DATASET_KEY:
-                pass
-            else:
+            if k != TRAIN_DATASET_KEY:
                 datasets[k] = self._fitted_preprocessor.transform(dataset)
 
+        # Remove the ability to fetch the train dataset explicitly. It can only be
+        # read in a streaming way via get_dataset_reader().
+        datasets = datasets.copy()
+        del datasets[TRAIN_DATASET_KEY]
         return datasets
 
-    def create_readers(self, datasets, worker_handles) -> Dict[str, DatasetPipeline]:
-        # TODO: implement independent reads per worker
-        self._world_size = len(worker_handles)
-        splits = [datasets.copy() for _ in worker_handles]
+    def create_readers(
+        self, datasets: Dict[str, Dataset], workers: List[ActorHandle]
+    ) -> Dict[str, DatasetPipeline]:
+        splits = [datasets.copy() for _ in workers]
 
-        if datasets[TRAIN_DATASET_KEY].size_bytes() <= 2 * self._window_size_bytes:
-            print("Disabling re-read")
+        train_ds_size = datasets[TRAIN_DATASET_KEY].size_bytes()
+        if train_ds_size < self._window_size_bytes:
+            logger.warning(
+                f"The `train` dataset is {train_ds_size} bytes, which is less than "
+                f"the pipeline window size of {self._window_size_bytes} bytes. "
+                "PipelinedIngest will act the same as BulkIngest in this case."
+            )
+            # The user should really use BulkIngest, but disable re-reads from
+            # external storage in this case to help optimize.
             context = DatasetContext.get_current()
             context.optimize_fuse_read_stages = False
-        else:
-            print("Re-read")
 
+        # Setup the preprocessing pipeline for the train dataset.
         prep = self._fitted_preprocessor
-
-        def transform_fn(x):
-            return prep.transform_batch(x)
-
         train_pipe = (
             datasets[TRAIN_DATASET_KEY]
             .window(bytes_per_window=self._window_size_bytes)
-            .map_batches(transform_fn, batch_format="pandas")
+            .map_batches(prep.transform_batch, batch_format="pandas")
             .repeat()
         )
-
-        if self._global_shuffle:
+        if self._shuffle_each_window:
             train_pipe = train_pipe.random_shuffle_each_window()
 
         train_pipe_splits = train_pipe.split(
-            self._world_size, equal=True, locality_hints=worker_handles
+            len(workers), equal=True, locality_hints=workers
         )
 
-        def to_reader(i, k, ds):
+        def to_reader(i: int, k: str, ds: Dataset) -> DatasetPipeline:
             if k == TRAIN_DATASET_KEY:
                 return train_pipe_splits[i]
-            else:
-                return ds.repeat()
+            return ds.repeat()
 
-        for i in range(self._world_size):
+        for i in range(len(splits)):
             splits[i] = {k: to_reader(i, k, v) for k, v in splits[i].items()}
         return splits
 
 
 def _choose_ingest_strategy(dataset: Dict[str, Dataset]) -> IngestStrategy:
-    sz = dataset.size_bytes()
-    if sz > 1e9 and sz > 0.2 * ray.available_resources["object_store_memory"]:
-        print("WARNING: large size, consider streamed ingest")
-    return BulkIngest()
-
-
-def _default_dataset_split_fn(
-    dataset_dict: Dict[str, "Dataset"], training_worker_handles: List[ActorHandle]
-) -> List[Dict[str, "Dataset"]]:
-    """Defines splitting logic of Datasets passed into ``DataParallelTrainer``.
-
-    By default only training dataset will be split. All other datasets will not be
-    split and passed through directly to the training workers. This is because
-    validation implementation is often done on just the rank 0 worker.
-
-    Args:
-        dataset_dict: A dictionary of Datasets.
-        training_worker_handles: The actor handles of the training workers to use for
-            locality hints.
-
-    Returns:
-        A list of dataset dictionaries for each training worker.
-    """
-    dataset_dict_splits = [{} for _ in range(len(training_worker_handles))]
-
-    for key, dataset in dataset_dict.items():
-        if key == TRAIN_DATASET_KEY:
-            dataset_splits = dataset.split(
-                len(training_worker_handles),
-                equal=True,
-                locality_hints=training_worker_handles,
+    train_ds = dataset.get(TRAIN_DATASET_KEY)
+    if train_ds:
+        sz = train_ds.size_bytes()
+        if (
+            sz > 1024 * 1024 * 1024
+            and sz > 0.2 * ray.available_resources["object_store_memory"]
+        ):
+            logger.warning(
+                "The `train` dataset is larger than 20% of available object store "
+                "memory. Consider using `ingest=PipelinedIngest()` to stream data "
+                "from storage to optimize memory usage."
             )
-        else:
-            # Only shard the training dataset.
-            dataset_splits = [dataset] * len(training_worker_handles)
-
-        for i in range(len(dataset_splits)):
-            dataset_dict_splits[i][key] = dataset_splits[i]
-
-    return dataset_dict_splits
+    return BulkIngest()
