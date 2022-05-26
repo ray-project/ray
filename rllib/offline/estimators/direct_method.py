@@ -8,6 +8,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import SampleBatchType
+from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel
 from ray.rllib.offline.estimators.qreg_torch_model import QRegTorchModel
 from gym.spaces import Discrete
 import numpy as np
@@ -43,15 +44,14 @@ def k_fold_cv(batch: SampleBatchType, k: int):
 
 
 class DirectMethod(OffPolicyEstimator):
-    """The Direct Method (Q-Reg) estimator.
+    """The Direct Method estimator.
 
     config: {
         model: ModelConfigDict,
         k: k-fold cross validation for training model and evaluating OPE
     }
 
-    Q-Reg estimator described in https://arxiv.org/pdf/1511.03722.pdf,
-    https://arxiv.org/pdf/1911.06854.pdf"""
+    DM estimator described in https://arxiv.org/pdf/1511.03722.pdf"""
 
     @override(OffPolicyEstimator)
     def __init__(self, policy: Policy, gamma: float, config: Dict):
@@ -65,8 +65,17 @@ class DirectMethod(OffPolicyEstimator):
         assert (
             policy.framework == "torch"
         ), "DM estimator only supports `framework`=`torch`"
-        # TODO (rohan): Add support for QRegTF, FQETorch, FQETF
-        model_cls = QRegTorchModel
+
+        # TODO (rohan): Add support for QRegTF, FQETF, custom QModel types!
+        q_model_type = config.get("q_model_type", "qreg")
+        if policy.framework == "torch":
+            if q_model_type == "qreg":
+                model_cls = QRegTorchModel
+            elif q_model_type == "fqe":
+                model_cls = FQETorchModel
+            else:
+                raise ValueError(f"Unknown `q_model_type`= {q_model_type}")
+
         self.model = model_cls(
             policy=policy,
             gamma=gamma,
@@ -85,7 +94,7 @@ class DirectMethod(OffPolicyEstimator):
 
             # Train Q-function
             if train_episodes:
-                train_batch = train_episodes[0].concat_samples(train_episodes)
+                train_batch = SampleBatch.concat_samples(train_episodes)
                 losses = self.train(train_batch)  # noqa: F841
 
             # Calculate direct method OPE estimates

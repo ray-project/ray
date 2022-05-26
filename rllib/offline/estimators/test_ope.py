@@ -64,7 +64,13 @@ class TestOPE(unittest.TestCase):
             estimator = estimator_cls(
                 trainer.get_policy(),
                 gamma=0.99,
-                config={"k": 5, "n_iters": 80, "lr": 1e-3, "delta": 1e-5},
+                config={
+                    "q_model_type": "fqe",
+                    "k": 5,
+                    "n_iters": 80,
+                    "lr": 1e-3,
+                    "delta": 1e-5,
+                },
             )
             estimates = estimator.estimate(batch)
             assert len(estimates) == n_episodes

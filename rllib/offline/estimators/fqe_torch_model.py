@@ -11,14 +11,14 @@ from ray.rllib.utils.typing import TensorType
 torch, nn = try_import_torch()
 
 
-class QRegTorchModel:
-    """Pytorch implementation of the Q-Reg model from
+class FQETorchModel:
+    """Pytorch implementation of the Fitted Q-Evaluation (FQE) model from
     https://arxiv.org/pdf/1911.06854.pdf
 
     Arguments:
         policy: The Policy object correspodning to the target policy in OPE
         gamma: The discount factor for the environment
-        config: Optional config settings for Q-Reg
+        config: Optional config settings for FQE
         config = {
             # The ModelConfigDict for self.q_model
             "model": {"fcnet_hiddens": [32, 32], "fcnet_activation": "relu"},
@@ -71,11 +71,9 @@ class QRegTorchModel:
         Returns:
             A list of losses for each training iteration
         """
-        obs = torch.tensor(batch[SampleBatch.OBS], device=self.device)
-        actions = torch.tensor(batch[SampleBatch.ACTIONS], device=self.device)
-        ps = torch.zeros([batch.count], device=self.device)
-        returns = torch.zeros([batch.count], device=self.device)
-        discounts = torch.zeros([batch.count], device=self.device)
+        rewards = torch.tensor(batch[SampleBatch.REWARDS], device=self.device)
+        next_obs = torch.tensor(batch[SampleBatch.NEXT_OBS], device=self.device)
+        dones = torch.tensor(batch[SampleBatch.DONES], device=self.device)
 
         # Neccessary if policy uses recurrent/attention model
         num_state_inputs = 0
@@ -84,46 +82,25 @@ class QRegTorchModel:
                 num_state_inputs += 1
         state_keys = ["state_in_{}".format(i) for i in range(num_state_inputs)]
 
-        eps_begin = 0
-        for episode in batch.split_by_episode():
-            eps_end = eps_begin + episode.count
-
-            # get rewards, old_prob, new_prob
-            rewards = episode[SampleBatch.REWARDS]
-            old_prob = episode[SampleBatch.ACTION_PROB]
-            new_prob = self.policy.compute_log_likelihoods(
-                actions=episode[SampleBatch.ACTIONS],
-                obs_batch=episode[SampleBatch.OBS],
-                state_batches=[episode[k] for k in state_keys],
-                prev_action_batch=episode.get(SampleBatch.PREV_ACTIONS),
-                prev_reward_batch=episode.get(SampleBatch.PREV_REWARDS),
-                actions_normalized=False,
-            )
-            new_prob = torch.exp(new_prob)
-
-            # calculate importance ratios and returns
-            for t in range(episode.count):
-                discounts[eps_begin + t] = self.gamma ** t
-                if t == 0:
-                    pt_prev = 1.0
-                    pt_next = 1.0
-                    returns[eps_end - 1] = rewards[-1]
-                else:
-                    pt_prev = ps[eps_begin + t - 1]
-                    pt_next = pt_next * new_prob[-t] / old_prob[-t]
-                    returns[eps_end - t - 1] = (
-                        rewards[-t - 1] + self.gamma * pt_next * returns[eps_end - t]
-                    )
-                ps[eps_begin + t] = pt_prev * new_prob[t] / old_prob[t]
-
-            # Update before next episode
-            eps_begin = eps_end
+        # Compute action_probs for next_obs as in FQE
+        all_actions = torch.zeros([batch.count, self.policy.action_space.n])
+        all_actions[:] = torch.arange(self.policy.action_space.n)
+        next_action_prob = self.policy.compute_log_likelihoods(
+            actions=all_actions.T,
+            obs_batch=next_obs,
+            state_batches=[batch[k] for k in state_keys],
+            prev_action_batch=batch[SampleBatch.ACTIONS],
+            prev_reward_batch=batch[SampleBatch.REWARDS],
+            actions_normalized=False,
+        )
+        next_action_prob = torch.exp(next_action_prob.T).to(self.device)
 
         losses = []
         for _ in range(self.n_iters):
-            q_values, _ = self.q_model({"obs": obs}, [], None)
-            q_acts = torch.gather(q_values, -1, actions.unsqueeze(-1))
-            loss = discounts * ps * (returns - q_acts) ** 2
+            q_acts = self.estimate_q(batch[SampleBatch.OBS], batch[SampleBatch.ACTIONS])
+            next_v = self.estimate_v(batch[SampleBatch.NEXT_OBS], next_action_prob)
+            targets = rewards + ~dones * self.gamma * next_v
+            loss = (targets - q_acts) ** 2
             loss = torch.mean(loss)
             self.optimizer.zero_grad()
             self.optimizer.step()

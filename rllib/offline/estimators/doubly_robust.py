@@ -8,10 +8,9 @@ import numpy as np
 
 
 class DoublyRobust(DirectMethod):
-    """The Doubly Robust (DR) estimator with Q-Reg Q-function.
+    """The Doubly Robust (DR) estimator.
 
-    DR estimator described in https://arxiv.org/pdf/1511.03722.pdf,
-    Q-Reg DR in https://arxiv.org/pdf/1911.06854.pdf"""
+    DR estimator described in https://arxiv.org/pdf/1511.03722.pdf"""
 
     @override(DirectMethod)
     def estimate(self, batch: SampleBatchType) -> OffPolicyEstimate:
@@ -24,7 +23,7 @@ class DoublyRobust(DirectMethod):
 
             # Train Q-function
             if train_episodes:
-                train_batch = train_episodes[0].concat_samples(train_episodes)
+                train_batch = SampleBatch.concat_samples(train_episodes)
                 losses = self.train(train_batch)  # noqa: F841
 
             # Calculate doubly robust OPE estimates
