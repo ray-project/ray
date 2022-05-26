@@ -223,7 +223,7 @@ class RemoteFunction:
                 # value gets set at Ray import time. Ideally, we should allow setting
                 # default values from env vars for other options too.
                 v.default_value = os.environ.get(
-                    "RAY_task_max_retries", v.default_value
+                    "RAY_TASK_MAX_RETRIES", v.default_value
                 )
                 v.default_value = int(v.default_value)
             task_options[k] = task_options.get(k, v.default_value)

@@ -10,7 +10,7 @@ exceeded. The default number of retries is 3 and can be overridden by
 specifying ``max_retries`` in the ``@ray.remote`` decorator. Specifying -1
 allows infinite retries, and 0 disables retries. To override the default number
 of retries for all tasks submitted, set the OS environment variable
-``RAY_task_max_retries``. e.g., by passing this to your driver script or by
+``RAY_TASK_MAX_RETRIES``. e.g., by passing this to your driver script or by
 using :ref:`runtime environments<runtime-environments>`.
 
 You can experiment with this behavior by running the following code.

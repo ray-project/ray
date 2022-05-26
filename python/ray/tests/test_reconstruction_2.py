@@ -430,8 +430,8 @@ def test_override_max_retries(ray_start_cluster, override_max_retries):
     runtime_env = {}
     if override_max_retries:
         max_retries = 1
-        runtime_env["env_vars"] = {"RAY_task_max_retries": str(max_retries)}
-        os.environ["RAY_task_max_retries"] = str(max_retries)
+        runtime_env["env_vars"] = {"RAY_TASK_MAX_RETRIES": str(max_retries)}
+        os.environ["RAY_TASK_MAX_RETRIES"] = str(max_retries)
     # Since we're setting the OS environment variable after the driver process
     # is already started, we need to set it a second time for the workers with
     # runtime_env.
@@ -476,7 +476,7 @@ def test_override_max_retries(ray_start_cluster, override_max_retries):
             ray.get(nested.remote(counter))
         assert ray.get(counter.pop.remote()) == max_retries + 1
     finally:
-        del os.environ["RAY_task_max_retries"]
+        del os.environ["RAY_TASK_MAX_RETRIES"]
 
 
 if __name__ == "__main__":
