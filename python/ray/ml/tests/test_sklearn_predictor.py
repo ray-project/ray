@@ -11,8 +11,9 @@ import ray.cloudpickle as cpickle
 from ray.ml.predictors.integrations.sklearn import SklearnPredictor
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
-from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY
+from ray.ml.constants import MODEL_KEY
 from ray.ml.batch_predictor import BatchPredictor
+from ray.ml.utils.checkpointing import save_preprocessor_to_dir
 
 
 @pytest.fixture
@@ -44,8 +45,7 @@ def test_init():
     with tempfile.TemporaryDirectory() as tmpdir:
         with open(os.path.join(tmpdir, MODEL_KEY), "wb") as f:
             cpickle.dump(model, f)
-        with open(os.path.join(tmpdir, PREPROCESSOR_KEY), "wb") as f:
-            cpickle.dump(preprocessor, f)
+        save_preprocessor_to_dir(preprocessor, tmpdir)
 
         checkpoint = Checkpoint.from_directory(tmpdir)
         checkpoint_predictor = SklearnPredictor.from_checkpoint(checkpoint)

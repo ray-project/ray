@@ -4,7 +4,8 @@ import pytest
 from ray.ml.predictors.integrations.lightgbm import LightGBMPredictor
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
-from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY
+from ray.ml.constants import MODEL_KEY
+from ray.ml.utils.checkpointing import save_preprocessor_to_dir
 
 import numpy as np
 import pandas as pd
@@ -39,8 +40,7 @@ def test_init():
         # following save to disk logic. GBDT models are small
         # enough that IO should not be an issue.
         model.save_model(os.path.join(tmpdir, MODEL_KEY))
-        checkpoint = Checkpoint.from_dict({PREPROCESSOR_KEY: preprocessor})
-        checkpoint.to_directory(path=tmpdir)
+        save_preprocessor_to_dir(preprocessor, tmpdir)
 
         checkpoint = Checkpoint.from_directory(tmpdir)
         checkpoint_predictor = LightGBMPredictor.from_checkpoint(checkpoint)
