@@ -84,7 +84,7 @@ MultiAgentPolicyConfigDict = Dict[PolicyID, "PolicySpec"]
 PolicyState = Dict[str, TensorStructType]
 
 # Any tf Policy type (static-graph or eager Policy).
-TFPolicyV2Type = Type[Union[DynamicTFPolicyV2, EagerTFPolicyV2]]
+TFPolicyV2Type = Type[Union["DynamicTFPolicyV2", "EagerTFPolicyV2"]]
 
 # Represents an episode id.
 EpisodeID = int
