@@ -3,6 +3,7 @@ import shutil
 import tempfile
 import random
 import os
+from pathlib import Path
 import pickle
 import pandas as pd
 from numpy import nan
@@ -92,7 +93,12 @@ class ExperimentAnalysisSuite(unittest.TestCase):
     def testTrialDataframe(self):
         checkpoints = self.ea._checkpoints
         idx = random.randint(0, len(checkpoints) - 1)
-        trial_df = self.ea.trial_dataframes[checkpoints[idx]["logdir"]]
+        logdir_from_checkpoint = str(Path(checkpoints[idx]["local_dir"]).joinpath(checkpoints[idx]["relative_logdir"]))
+        logdir_from_trial = self.ea.trials[idx].logdir 
+        
+        self.assertEqual(logdir_from_checkpoint, logdir_from_trial)
+        
+        trial_df = self.ea.trial_dataframes[logdir_from_checkpoint]
 
         self.assertTrue(isinstance(trial_df, pd.DataFrame))
         self.assertEqual(trial_df.shape[0], 1)
