@@ -236,8 +236,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         return std::shared_ptr<rpc::CoreWorkerClient>(
             new rpc::CoreWorkerClient(addr, *client_call_manager_));
       });
-
-  if (options_.worker_type == WorkerType::WORKER) {
+  if (options_.worker_type != WorkerType::DRIVER) {
     periodical_runner_.RunFnPeriodically(
         [this] { ExitIfParentRayletDies(); },
         RayConfig::instance().raylet_death_check_interval_milliseconds());
@@ -749,7 +748,6 @@ void CoreWorker::RegisterToGcs() {
 }
 
 void CoreWorker::ExitIfParentRayletDies() {
-  RAY_CHECK(options_.worker_type == WorkerType::WORKER);
   RAY_CHECK(!RayConfig::instance().RAYLET_PID().empty());
   static auto raylet_pid =
       static_cast<pid_t>(std::stoi(RayConfig::instance().RAYLET_PID()));
