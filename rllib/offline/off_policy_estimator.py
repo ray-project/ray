@@ -14,7 +14,9 @@ from typing import List
 
 logger = logging.getLogger(__name__)
 
-OffPolicyEstimate = namedtuple("OffPolicyEstimate", ["estimator_name", "metrics"])
+OffPolicyEstimate = DeveloperAPI(
+    namedtuple("OffPolicyEstimate", ["estimator_name", "metrics"])
+)
 
 
 @DeveloperAPI
@@ -32,8 +34,8 @@ class OffPolicyEstimator:
         self.gamma = gamma
         self.new_estimates = []
 
-    @DeveloperAPI
     @classmethod
+    @DeveloperAPI
     def create_from_io_context(cls, ioctx: IOContext) -> "OffPolicyEstimator":
         """Creates an off-policy estimator from an IOContext object.
 

@@ -4,7 +4,7 @@ import json
 import os
 import subprocess
 import time
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Tuple
 
 import requests
 from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
@@ -14,7 +14,7 @@ from ray_release.logger import logger
 ANYSCALE_HOST = os.environ.get("ANYSCALE_HOST", "https://console.anyscale.com")
 
 
-def deep_update(d, u):
+def deep_update(d, u) -> Dict:
     for k, v in u.items():
         if isinstance(v, collections.abc.Mapping):
             d[k] = deep_update(d.get(k, {}), v)
@@ -30,11 +30,15 @@ def dict_hash(dt: Dict[Any, Any]) -> str:
     return sha.hexdigest()
 
 
-def url_exists(url: str):
+def url_exists(url: str) -> bool:
     return requests.head(url, allow_redirects=True).status_code == 200
 
 
-def format_link(link: str):
+def resolve_url(url: str) -> str:
+    return requests.head(url, allow_redirects=True).url
+
+
+def format_link(link: str) -> str:
     # Use ANSI escape code to allow link to be clickable
     # https://buildkite.com/docs/pipelines/links-and-images
     # -in-log-output
@@ -44,7 +48,7 @@ def format_link(link: str):
     return link
 
 
-def anyscale_project_url(project_id: str):
+def anyscale_project_url(project_id: str) -> str:
     return (
         f"{ANYSCALE_HOST}"
         f"/o/anyscale-internal/projects/{project_id}"
@@ -52,7 +56,7 @@ def anyscale_project_url(project_id: str):
     )
 
 
-def anyscale_cluster_url(project_id: str, session_id: str):
+def anyscale_cluster_url(project_id: str, session_id: str) -> str:
     return (
         f"{ANYSCALE_HOST}"
         f"/o/anyscale-internal/projects/{project_id}"
@@ -60,7 +64,7 @@ def anyscale_cluster_url(project_id: str, session_id: str):
     )
 
 
-def anyscale_cluster_compute_url(compute_tpl_id: str):
+def anyscale_cluster_compute_url(compute_tpl_id: str) -> str:
     return (
         f"{ANYSCALE_HOST}"
         f"/o/anyscale-internal/configurations/cluster-computes"
@@ -68,7 +72,7 @@ def anyscale_cluster_compute_url(compute_tpl_id: str):
     )
 
 
-def anyscale_cluster_env_build_url(build_id: str):
+def anyscale_cluster_env_build_url(build_id: str) -> str:
     return (
         f"{ANYSCALE_HOST}"
         f"/o/anyscale-internal/configurations/app-config-details"
@@ -88,7 +92,9 @@ def get_anyscale_sdk() -> AnyscaleSDK:
     return _anyscale_sdk
 
 
-def exponential_backoff_retry(f, retry_exceptions, initial_retry_delay_s, max_retries):
+def exponential_backoff_retry(
+    f, retry_exceptions, initial_retry_delay_s, max_retries
+) -> None:
     retry_cnt = 0
     retry_delay_s = initial_retry_delay_s
     while True:
@@ -106,11 +112,11 @@ def exponential_backoff_retry(f, retry_exceptions, initial_retry_delay_s, max_re
             retry_delay_s *= 2
 
 
-def run_bash_script(bash_script: str):
+def run_bash_script(bash_script: str) -> None:
     subprocess.run(f"bash {bash_script}", shell=True, check=True)
 
 
-def reinstall_anyscale_dependencies():
+def reinstall_anyscale_dependencies() -> None:
     logger.info("Re-installing `anyscale` package")
 
     subprocess.check_output(
@@ -124,3 +130,8 @@ def get_pip_packages() -> List[str]:
     from pip._internal.operations import freeze
 
     return list(freeze.freeze())
+
+
+def python_version_str(python_version: Tuple[int, int]) -> str:
+    """From (X, Y) to XY"""
+    return "".join([str(x) for x in python_version])

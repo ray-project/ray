@@ -21,7 +21,7 @@ import urllib.request
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_PYTHONS = [(3, 6), (3, 7), (3, 8), (3, 9)]
+SUPPORTED_PYTHONS = [(3, 6), (3, 7), (3, 8), (3, 9), (3, 10)]
 # When the bazel version is updated, make sure to update it
 # in WORKSPACE file as well.
 SUPPORTED_BAZEL = (4, 2, 1)
@@ -255,6 +255,15 @@ if setup_spec.type == SetupType.RAY:
         "scipy",
     ]
 
+    # Ray AI Runtime should encompass Data, Tune, and Serve.
+    setup_spec.extras["air"] = list(
+        set(
+            setup_spec.extras["tune"]
+            + setup_spec.extras["data"]
+            + setup_spec.extras["serve"]
+        )
+    )
+
     setup_spec.extras["all"] = list(
         set(chain.from_iterable(setup_spec.extras.values()))
     )
@@ -268,12 +277,12 @@ if setup_spec.type == SetupType.RAY:
         "click >= 7.0, <= 8.0.4",
         "dataclasses; python_version < '3.7'",
         "filelock",
-        "grpcio >= 1.28.1, != 1.44.0",
+        "grpcio >= 1.28.1, <= 1.43.0",
         "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",
         "numpy >= 1.16; python_version < '3.9'",
         "numpy >= 1.19.3; python_version >= '3.9'",
-        "protobuf >= 3.15.3",
+        "protobuf >= 3.15.3, < 4.0.0",
         "pyyaml",
         "aiosignal",
         "frozenlist",

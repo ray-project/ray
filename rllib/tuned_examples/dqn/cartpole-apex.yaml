@@ -17,13 +17,15 @@ cartpole-apex-dqn-training-itr:
         # Make this work with only 5 CPUs and 0 GPUs:
         num_workers: 3
         optimizer:
-            num_replay_buffer_shards: 2
+          num_replay_buffer_shards: 2
+        replay_buffer_config:
+          type: MultiAgentPrioritizedReplayBuffer
+          capacity: 20000
+          learning_starts: 1000
 
         num_gpus: 0
 
         min_time_s_per_reporting: 5
         target_network_update_freq: 500
-        learning_starts: 1000
         min_sample_timesteps_per_reporting: 1000
-        buffer_size: 20000
         training_intensity: 4

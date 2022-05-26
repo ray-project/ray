@@ -2,7 +2,7 @@ import unittest
 
 import ray
 from ray.rllib.agents.callbacks import DefaultCallbacks, MultiCallbacks
-import ray.rllib.agents.dqn as dqn
+import ray.rllib.algorithms.dqn as dqn
 from ray.rllib.utils.test_utils import framework_iterator
 
 
