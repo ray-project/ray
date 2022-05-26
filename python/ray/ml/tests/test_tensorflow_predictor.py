@@ -53,7 +53,7 @@ def test_predict():
     predictions = predictor.predict(data_batch)
 
     assert len(predictions) == 3
-    assert predictions.to_numpy().flatten().astype(float).round().tolist() == [2, 4, 6]
+    assert predictions.to_numpy().flatten().tolist() == [2, 4, 6]
     assert hasattr(predictor.preprocessor, "_batch_transformed")
 
 
@@ -67,7 +67,7 @@ def test_predict_feature_columns():
     predictions = predictor.predict(data_batch, feature_columns=[0])
 
     assert len(predictions) == 3
-    assert predictions.to_numpy().flatten().astype(float).round().tolist() == [2, 4, 6]
+    assert predictions.to_numpy().flatten().tolist() == [2, 4, 6]
     assert hasattr(predictor.preprocessor, "_batch_transformed")
 
 
@@ -82,10 +82,6 @@ def test_predict_no_preprocessor():
 
     assert len(predictions) == 3
     assert predictions.to_numpy().flatten().tolist() == [1, 2, 3]
-
-
-def test_fail():
-    assert False
 
 
 if __name__ == "__main__":
