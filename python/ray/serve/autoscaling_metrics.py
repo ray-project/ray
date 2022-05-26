@@ -56,7 +56,9 @@ def start_metrics_pusher(
                         last_ref = send_once()
                 except Exception as e:
                     logger.warning(
-                        f"Autoscaling metrics pusher thread is having issue to send metrics: {e}"
+                        "Autoscaling metrics pusher thread "
+                        "is having issue to send metrics: %s",
+                        e,
                     )
                     pass
 
