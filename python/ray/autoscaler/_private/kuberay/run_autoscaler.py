@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 BACKOFF_S = 5
 
 
-def run_autoscaler(cluster_name: str, cluster_namespace: str):
+def run_kuberay_autoscaler(cluster_name: str, cluster_namespace: str):
     """Wait until the Ray head container is ready. Then start the autoscaler."""
     _setup_logging()
     head_ip = get_node_ip_address()
@@ -30,6 +30,8 @@ def run_autoscaler(cluster_name: str, cluster_namespace: str):
             logger.warning(f"Will check again in {BACKOFF_S} seconds.")
             time.sleep(BACKOFF_S)
 
+    # autoscaling_config_producer reads the RayCluster CR from K8s and uses the CR
+    # to output an autoscaling config.
     autoscaling_config_producer = AutoscalingConfigProducer(
         cluster_name, cluster_namespace
     )
