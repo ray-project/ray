@@ -37,7 +37,7 @@ from ray.autoscaler._private.commands import (
 )
 from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
-from ray.autoscaler._private.kuberay.run_autoscaler import run_autoscaler
+from ray.autoscaler._private.kuberay.run_autoscaler import run_kuberay_autoscaler
 from ray.internal.internal_api import memory_summary
 from ray.internal.storage import _load_class
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger, cf
@@ -2103,7 +2103,7 @@ def kuberay_autoscaler(cluster_name: str, cluster_namespace: str) -> None:
         KubeRay cluster configs.
     `ray kuberay-autoscaler` is NOT a public CLI.
     """
-    run_autoscaler(cluster_name, cluster_namespace)
+    run_kuberay_autoscaler(cluster_name, cluster_namespace)
 
 
 @cli.command(name="health-check", hidden=True)
