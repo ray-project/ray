@@ -62,47 +62,42 @@ class ReplayBuffer(ParallelIteratorWorker):
     This class implements a basic ring-type of buffer with random sampling.
 
     Examples:
-        >>> from ray.rllib.utils.replay_buffers import ReplayBuffer # doctest: +SK
-        >>> buffer = ReplayBuffer(capacity=10, storage_unit=StorageUnit.TIMESTEPS) # doctest: +SK # noqa: E501
-        >>> env = MyBaseEnv() # doctest: +SK
-        >>> obs, rewards, dones, infos, off_policy_actions = env.poll() # doctest: +SKIP
-        >>> print(obs) # doctest: +SKIP
-        {
-            "env_0": {
-                "car_0": [2.4, 1.6],
-                "car_1": [3.4, -3.2],
-            },
-            "env_1": {
-                "car_0": [8.0, 4.1],
-            },
-            "env_2": {
-                "car_0": [2.3, 3.3],
-                "car_1": [1.4, -0.2],
-                "car_3": [1.2, 0.1],
-            },
-        }
-        >>> env.send_actions({ # doctest: +SKIP
-        ...   "env_0": { # doctest: +SKIP
-        ...     "car_0": 0, # doctest: +SKIP
-        ...     "car_1": 1, # doctest: +SKIP
-        ...   }, ... # doctest: +SKIP
-        ... }) # doctest: +SKIP
-        >>> obs, rewards, dones, infos, off_policy_actions = env.poll() # doctest: +SKIP
-        >>> print(obs) # doctest: +SKIP
-        {
-            "env_0": {
-                "car_0": [4.1, 1.7],
-                "car_1": [3.2, -4.2],
-            }, ...
-        }
-        >>> print(dones) # doctest: +SKIP
-        {
-            "env_0": {
-                "__all__": False,
-                "car_0": False,
-                "car_1": True,
-            }, ...
-        }
+        >>> from ray.rllib.utils.replay_buffers import ReplayBuffer, StorageUnit
+        >>> from ray.rllib.policy.sample_batch import SampleBatch
+
+        # Store any batch as a whole
+        >>> buffer = ReplayBuffer(capacity=10, storage_unit=StorageUnit.FRAGMENTS)
+        >>> buffer.add(SampleBatch({"a": [1], "b": [2]}))
+        >>> print(b.sample(1))
+        SampleBatch(1: ['a', 'b'])
+
+        # Store only complete episodes
+        >>> buffer = ReplayBuffer(capacity=10, storage_unit=StorageUnit.EPISODES)
+        >>> buffer.add(SampleBatch({"c": [1, 2, 3, 4],
+        ...                        SampleBatch.T: [0, 1, 0, 1],
+        ...                        SampleBatch.DONES: [False, True, False, True],
+        ...                        SampleBatch.EPS_ID: [0, 0, 1, 1]}))
+        >>> eps_n = buffer.sample(1)
+        >>> print(eps_n[SampleBatch.EPS_ID])
+        [1 1]
+
+        # Store single timesteps
+        >>> buffer = ReplayBuffer(capacity=1, storage_unit=StorageUnit.TIMESTEPS)
+        >>> buffer.add(SampleBatch({"a": [1, 2], SampleBatch.T: [0, 1]}))
+        >>> t_n = buffer.sample(1)
+        >>> print(t_n[SampleBatch["a"]])
+        [1 1]
+
+        >>> buffer = ReplayBuffer(capacity=10, storage_unit=StorageUnit.EPISODES)
+        >>> buffer.add(SampleBatch({"a": [1, 2], "b": [3, 4], SampleBatch.EPS_ID: [0, 1]})) # noqa: E501
+        >>> buffer.add(SampleBatch({"c": [1, 2, 3, 4],
+        ...                        SampleBatch.T: [0, 1, 0, 1],
+        ...                        SampleBatch.DONES: [False, True, False, True],
+        ...                        SampleBatch.EPS_ID: [0, 0, 1, 1]}))
+        >>> eps_n = b.sample(1)
+        >>> print(eps_n[SampleBatch.EPS_ID])
+        [1 1]
+
     """
 
     def __init__(
@@ -284,6 +279,8 @@ class ReplayBuffer(ParallelIteratorWorker):
         Returns:
             Concatenated batch of items.
         """
+        if len(self) == 0:
+            raise ValueError("Trying to sample from an empty buffer.")
         idxes = [random.randint(0, len(self) - 1) for _ in range(num_items)]
         sample = self._encode_sample(idxes)
         self._num_timesteps_sampled += sample.count

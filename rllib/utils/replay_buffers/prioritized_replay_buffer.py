@@ -125,6 +125,9 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         """
         assert beta >= 0.0
 
+        if len(self) == 0:
+            raise ValueError("Trying to sample from an empty buffer.")
+
         idxes = self._sample_proportional(num_items)
 
         weights = []

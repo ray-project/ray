@@ -4,28 +4,32 @@ Replay Buffer API
 ==================
 
 RLlib comes with a set of extendable replay buffers which are used mostly in Q-Learning algorithms.
-The base :py:class:`~ray.rllib.utils.replay_buffers.replay_buffer.ReplayBuffer` class (link) only supports storing and replaying
-experiences in different storage units (link).
-Advanced types add functionality while retaining compatibility through inheritance.
+We provide a base :py:class:`~ray.rllib.utils.replay_buffers.replay_buffer.ReplayBuffer` class from which you can build your own buffer.
+Some use cases may require :py:class:`~ray.rllib.utils.replay_buffers.multi_agent_replay_buffer.MultiAgentReplayBuffer`\s.
 You can find buffer types and arguments to modify their behaviour as part of RLlib's default parameters. They are part of
 the replay buffer config (link).
 
 ReplayBuffer Base Class
 -----------------------
 
-We provide a base :py:class:`~ray.rllib.utils.replay_buffers.replay_buffer.ReplayBuffer` class.
+The base :py:class:`~ray.rllib.utils.replay_buffers.replay_buffer.ReplayBuffer` class (link) only supports storing and replaying
+experiences in different storage units (link).
+Advanced types add functionality while retaining compatibility through inheritance.
 The following excerpt only shows how to construct, sample from and add to a replay buffer.
 If you plan on implementing your own buffer, these are also the main places to look at.
 
-.. autoclass:: ray.rllib.utils.replay_buffers.replay_buffer.ReplayBuffer
-    :noindex:
+.. dropdown:: **Changing a replay buffer configuration**
+    :animate: fade-in-slide-down
 
-    .. automethod:: __init__
+    .. autoclass:: ray.rllib.utils.replay_buffers.replay_buffer.ReplayBuffer
         :noindex:
-    .. automethod:: add
-        :noindex:
-    .. automethod:: sample
-        :noindex:
+
+        .. automethod:: __init__
+            :noindex:
+        .. automethod:: add
+            :noindex:
+        .. automethod:: sample
+            :noindex:
 
 Basic Usage
 ------------
@@ -74,6 +78,7 @@ Here is an example of how to implement your own toy example of a ReplayBuffer cl
 ..   start-after: __sphinx_doc_replay_buffer_own_buffer__begin__
 ..   end-before: __sphinx_doc_replay_buffer_own_buffer__end__
 
+If you want to also make a subclassed replay buffer stateful, simply add more state to the get_state() and set_state() methods.
 A more extensive example is our implementation of `reservoir sampling <https://www.cs.umd.edu/~samir/498/vitter.pdf>`__:
 
 .. dropdown:: **Changing a replay buffer configuration**

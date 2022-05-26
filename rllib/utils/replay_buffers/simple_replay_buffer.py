@@ -32,6 +32,8 @@ class SimpleReplayBuffer(ReplayBuffer):
     @DeveloperAPI
     @override(ReplayBuffer)
     def sample(self, num_items: int, **kwargs) -> SampleBatchType:
+        if len(self.replay_batches) == 0:
+            raise ValueError("Trying to sample from an empty buffer.")
         return random.choice(self.replay_batches)
 
     @DeveloperAPI
