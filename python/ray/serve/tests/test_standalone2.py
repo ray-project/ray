@@ -15,6 +15,8 @@ import ray.state
 from ray import serve
 from ray.serve.context import get_global_client
 from ray.serve.schema import ServeApplicationSchema
+from ray.serve.client import ServeControllerClient
+from ray.serve.common import ApplicationStatus
 from ray._private.test_utils import wait_for_condition
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 
@@ -243,7 +245,7 @@ class TestDeployAppBasic:
     def get_basic_config(self) -> Dict:
         return {"import_path": "ray.serve.tests.test_config_files.pizza.serve_dag"}
 
-    def test_deploy_app_basic(self, client):
+    def test_deploy_app_basic(self, client: ServeControllerClient):
 
         config = ServeApplicationSchema.parse_obj(self.get_basic_config())
         client.deploy_app(config)
@@ -257,7 +259,7 @@ class TestDeployAppBasic:
             == "9 pizzas please!"
         )
 
-    def test_deploy_app_with_overriden_config(self, client):
+    def test_deploy_app_with_overriden_config(self, client: ServeControllerClient):
 
         config = self.get_basic_config()
         config["deployments"] = [
@@ -286,7 +288,7 @@ class TestDeployAppBasic:
             == "8 pizzas please!"
         )
 
-    def test_deploy_app_update_config(self, client):
+    def test_deploy_app_update_config(self, client: ServeControllerClient):
         config = ServeApplicationSchema.parse_obj(self.get_basic_config())
         client.deploy_app(config)
 
@@ -312,7 +314,7 @@ class TestDeployAppBasic:
             == "1 pizzas please!"
         )
 
-    def test_deploy_app_update_num_replicas(self, client):
+    def test_deploy_app_update_num_replicas(self, client: ServeControllerClient):
         config = ServeApplicationSchema.parse_obj(self.get_basic_config())
         client.deploy_app(config)
 
@@ -350,11 +352,17 @@ class TestDeployAppBasic:
         client.deploy_app(ServeApplicationSchema.parse_obj(config))
 
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
+            lambda: client.get_serve_status().app_status.status
+            == ApplicationStatus.RUNNING,
+            timeout=15,
+        )
+
+        assert (
+            requests.post("http://localhost:8000/", json=["ADD", 2]).json()
             == "2 pizzas please!"
         )
-        wait_for_condition(
-            lambda: requests.post("http://localhost:8000/", json=["MUL", 3]).json()
+        assert (
+            requests.post("http://localhost:8000/", json=["MUL", 3]).json()
             == "0 pizzas please!"
         )
 
