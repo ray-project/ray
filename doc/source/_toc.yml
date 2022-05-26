@@ -138,6 +138,7 @@ parts:
                   - file: serve/deployment-graph/deployment-graph-e2e-tutorial
                   - file: serve/deployment-graph/chain_nodes_same_class_different_args
                   - file: serve/deployment-graph/combine_two_nodes_with_passing_input_parallel
+                  - file: serve/deployment-graph/control_flow_based_on_user_inputs
           - file: serve/architecture
           - file: serve/tutorials/index
           - file: serve/faq
@@ -224,7 +225,9 @@ parts:
 
   - caption: Ray Clusters
     chapters:
+      - file: cluster/index
       - file: cluster/quickstart
+      - file: cluster/key-concepts
       - file: cluster/user-guide
       - file: cluster/cloud
       - file: cluster/deploy
