@@ -234,11 +234,17 @@ scores = test_dataset.zip(predictions).map_batches(calculate_prediction_scores)
 scores.show(1)
 ```
 
+To compute our test accuracy, we'll count how many images the model classified 
+correctly and divide that number by the total number of test images. 
+
 ```{code-cell} python3
 scores.sum(on="correct") / scores.count()
 ```
 
 ## Deploy the network and make a prediction
+
+Our model seems to perform decently, so let's deploy the model to an 
+endpoint. This'll allow us to make predictions over the Internet.
 
 ```{code-cell} python3
 from ray import serve
