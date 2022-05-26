@@ -66,7 +66,11 @@ class CheckpointManager(CommonCheckpointManager):
 
     _persist_memory_checkpoints = True
 
-    def __init__(self, run_dir: Path, checkpoint_strategy: CheckpointStrategy):
+    def __init__(
+        self,
+        run_dir: Optional[Path] = None,
+        checkpoint_strategy: Optional[CheckpointStrategy] = None,
+    ):
         self.run_dir = run_dir
 
         super().__init__(checkpoint_strategy=checkpoint_strategy)
