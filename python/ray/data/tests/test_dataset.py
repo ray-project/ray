@@ -1827,6 +1827,26 @@ def test_to_tf(ray_start_regular_shared, pipelined):
     assert np.array_equal(df.values, combined_iterations)
 
 
+def test_to_tf_unsqueeze_label_tensor():
+    import tensorflow as tf
+
+    df = pd.DataFrame({"features": [0, 0], "label": [0, 0]})
+    ds = ray.data.from_pandas(df)
+
+    dataset = ds.to_tf(
+        label_column="label",
+        output_signature=(
+            tf.TensorSpec(shape=(None, 1)),
+            tf.TensorSpec(shape=(None, 1), dtype=tf.int32),
+        ),
+        unsqueeze_label_tensor=True,
+        batch_size=2,
+    )
+
+    _, labels = next(iter(dataset))
+    tf.debugging.assert_equal(labels, tf.constant([[0], [0]]))
+
+
 def test_to_tf_feature_columns_list(ray_start_regular_shared):
     import tensorflow as tf
 
