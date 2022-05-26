@@ -352,18 +352,18 @@ class TestDeployAppBasic:
         client.deploy_app(ServeApplicationSchema.parse_obj(config))
 
         wait_for_condition(
+            lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
+            == "2 pizzas please!"
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/", json=["MUL", 3]).json()
+            == "0 pizzas please!"
+        )
+
+        wait_for_condition(
             lambda: client.get_serve_status().app_status.status
             == ApplicationStatus.RUNNING,
             timeout=15,
-        )
-
-        assert (
-            requests.post("http://localhost:8000/", json=["ADD", 2]).json()
-            == "2 pizzas please!"
-        )
-        assert (
-            requests.post("http://localhost:8000/", json=["MUL", 3]).json()
-            == "0 pizzas please!"
         )
 
         updated_actors = ray.util.list_named_actors(all_namespaces=True)
