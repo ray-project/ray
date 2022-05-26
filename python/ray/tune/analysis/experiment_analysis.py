@@ -4,6 +4,7 @@ import os
 import warnings
 import traceback
 from numbers import Number
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from ray.ml.checkpoint import Checkpoint
@@ -115,6 +116,8 @@ class ExperimentAnalysis:
             # If only a mode was passed, use anonymous metric
             self.default_metric = DEFAULT_METRIC
 
+        self._local_base_dir = Path(latest_checkpoint[0]).parents[1] 
+        
         if not pd:
             logger.warning(
                 "pandas not installed. Run `pip install pandas` for "
@@ -123,9 +126,6 @@ class ExperimentAnalysis:
         else:
             self.fetch_trial_dataframes()
 
-        self._local_base_dir = os.path.abspath(
-            os.path.join(os.path.dirname(experiment_checkpoint_path), "..")
-        )
         self._sync_config = sync_config
 
         # If True, will return a legacy TrialCheckpoint class.
@@ -137,7 +137,9 @@ class ExperimentAnalysis:
         if not self._sync_config or not self._sync_config.upload_dir:
             return None
 
-        return local_path.replace(self._local_base_dir, self._sync_config.upload_dir)
+        return local_path.replace(
+            str(self._local_base_dir), self._sync_config.upload_dir
+        )
 
     def _get_latest_checkpoint(self, experiment_checkpoint_path: str) -> List[str]:
         if os.path.isdir(experiment_checkpoint_path):
@@ -762,6 +764,8 @@ class ExperimentAnalysis:
 
     def _get_trial_paths(self) -> List[str]:
         if self.trials:
+            # Get the relative paths from the trials to allow
+            # for changes in the self._local_base_dir.
             _trial_paths = [
                 str(self._local_base_dir.joinpath(t.relative_logdir))
                 if getattr(t, "relative_logdir", None)
@@ -773,7 +777,7 @@ class ExperimentAnalysis:
                 "No `self.trials`. Drawing logdirs from checkpoint "
                 "file. This may result in some information that is "
                 "out of sync, as checkpointing is periodic."
-            )
+            )            
             _trial_paths = [
                 str(self._local_base_dir.joinpath(checkpoint["relative_logdir"]))
                 if checkpoint.get("relative_logdir")
