@@ -57,6 +57,19 @@ def test_predict_array_with_preprocessor():
     assert hasattr(predictor.preprocessor, "_batch_transformed")
 
 
+def test_predict_array_with_input_shape_unspecified():
+    def model_definition():
+        return tf.keras.models.Sequential(tf.keras.layers.Lambda(lambda tensor: tensor))
+
+    predictor = TensorflowPredictor(model_definition=model_definition, model_weights=[])
+
+    data_batch = np.array([[1], [2], [3]])
+    predictions = predictor.predict(data_batch)
+
+    assert len(predictions) == 3
+    assert predictions.to_numpy().flatten().tolist() == [1, 2, 3]
+
+    
 def test_predict_array():
     checkpoint = {MODEL_KEY: weights}
     predictor = TensorflowPredictor.from_checkpoint(

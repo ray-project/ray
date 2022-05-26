@@ -139,7 +139,14 @@ class TensorflowPredictor(Predictor):
         # a callable that returns the model and initialize it here,
         # instead of having an initialized model object as an attribute.
         model = self.model_definition()
-        if self.model_weights:
+
+        if self.model_weights is not None:
+            input_shape = list(tensor.shape)
+            # The batch axis can contain varying number of elements, so we set
+            # the shape along the axis to `None`.
+            input_shape[0] = None
+
+            model.build(input_shape=input_shape)
             model.set_weights(self.model_weights)
 
         prediction = list(model(tensor).numpy())
