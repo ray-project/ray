@@ -3,7 +3,7 @@ from typing import Any
 from ray.workflow.common import WORKFLOW_OPTIONS, WorkflowStepRuntimeOptions, StepType
 
 from ray.experimental.dag import DAGNode, FunctionNode, InputNode
-from ray.experimental.dag.input_node import InputAtrributeNode, DAGInputData
+from ray.experimental.dag.input_node import InputAttributeNode, DAGInputData
 
 
 def _make_workflow_step_function(node: FunctionNode):
@@ -52,7 +52,7 @@ def transform_ray_dag_to_workflow(dag_node: DAGNode, input_context: DAGInputData
             workflow_step = _make_workflow_step_function(node)
             wf = workflow_step.step(*node._bound_args, **node._bound_kwargs)
             return wf
-        if isinstance(node, InputAtrributeNode):
+        if isinstance(node, InputAttributeNode):
             return node._execute_impl()  # get data from input node
         if isinstance(node, InputNode):
             return input_context  # replace input node with input data

@@ -45,7 +45,13 @@ class TableBlockBuilder(BlockBuilder[T]):
         self._uncompacted_size.add(item)
 
     def add_block(self, block: Any) -> None:
-        assert isinstance(block, self._block_type), block
+        if not isinstance(block, self._block_type):
+            raise TypeError(
+                f"Got a block of type {type(block)}, expected {self._block_type}."
+                "If you are mapping a function, ensure it returns an "
+                "object with the expected type. Block:\n"
+                f"{block}"
+            )
         accessor = BlockAccessor.for_block(block)
         self._tables.append(block)
         self._tables_size_bytes += accessor.size_bytes()

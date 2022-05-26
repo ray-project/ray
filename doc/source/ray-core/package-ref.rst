@@ -29,6 +29,12 @@ ray.remote
 
 .. autofunction:: ray.actor.ActorClass.options
 
+.. _scheduling-strategy-ref:
+
+.. autofunction:: ray.util.scheduling_strategies.PlacementGroupSchedulingStrategy
+
+.. autofunction:: ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy
+
 .. _ray-get-ref:
 
 ray.get
@@ -313,4 +319,16 @@ The Ray Command Line API
 
 .. click:: ray.scripts.scripts:debug
    :prog: ray debug
+   :show-nested:
+
+.. _ray-disable-usage-stats-doc:
+
+.. click:: ray.scripts.scripts:disable_usage_stats
+   :prog: ray disable-usage-stats
+   :show-nested:
+
+.. _ray-enable-usage-stats-doc:
+
+.. click:: ray.scripts.scripts:enable_usage_stats
+   :prog: ray enable-usage-stats
    :show-nested:

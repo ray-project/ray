@@ -50,7 +50,7 @@ from ray.tune.utils.util import (
     get_checkpoint_from_remote_node,
     delete_external_checkpoint,
 )
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated, PublicAPI
 
 logger = logging.getLogger(__name__)
 
@@ -458,16 +458,10 @@ class Trainable:
             trainable_state=trainable_state,
         )
 
-        self._postprocess_checkpoint(checkpoint_dir)
-
         # Maybe sync to cloud
         self._maybe_save_to_cloud(checkpoint_dir)
 
         return checkpoint_path
-
-    def _postprocess_checkpoint(self, checkpoint_dir: str):
-        """Run extra postprocessing before the checkpoint is saved to cloud."""
-        pass
 
     def _maybe_save_to_cloud(self, checkpoint_dir: str):
         # Derived classes like the FunctionRunner might call this
@@ -1053,21 +1047,15 @@ class Trainable:
         return hasattr(self, key) and callable(getattr(self, key))
 
 
-@PublicAPI
+@Deprecated
 class DistributedTrainable(Trainable):
     """Common Trainable class for distributed training."""
 
-    def build_config(self, config: Dict):
-        """Builds config for distributed training.
-
-        Builds a deep copy of the input config and populates it with
-        metadata from this Trainable.
-
-        Useful for passing this Trainable's configs to each distributed
-        Trainable instance.
-        """
-        new_config = copy.deepcopy(config)
-        new_config[TRIAL_INFO] = self._trial_info
-        new_config[STDOUT_FILE] = self._stdout_file
-        new_config[STDERR_FILE] = self._stderr_file
-        return new_config
+    def __init__(self, *args, **kwargs):
+        raise DeprecationWarning(
+            "Ray Tune's `DistributedTrainableCreator` has been deprecated as of Ray "
+            "2.0, and will be replaced by Ray AI Runtime (Ray AIR). Ray AIR ("
+            "https://docs.ray.io/en/latest/ray-air/getting-started.html) will "
+            "provide greater functionality than `DistributedTrainableCreator`, "
+            "and with a more flexible and easy-to-use API.",
+        )

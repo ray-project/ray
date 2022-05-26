@@ -67,11 +67,20 @@ DEFAULT_PORT = 6379
 RAY_ADDRESS_ENVIRONMENT_VARIABLE = "RAY_ADDRESS"
 RAY_NAMESPACE_ENVIRONMENT_VARIABLE = "RAY_NAMESPACE"
 RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE = "RAY_RUNTIME_ENV"
+RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR = (
+    "RAY_RUNTIME_ENV_TEMPORARY_REFERENCE_EXPIRATION_S"
+)
+# Defaults to 30 seconds. This should be enough time for the job to start.
+RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT = 30
 RAY_STORAGE_ENVIRONMENT_VARIABLE = "RAY_STORAGE"
 # Hook for running a user-specified runtime-env hook. This hook will be called
 # unconditionally given the runtime_env dict passed for ray.init. It must return
 # a rewritten runtime_env dict. Example: "your.module.runtime_env_hook".
 RAY_RUNTIME_ENV_HOOK = "RAY_RUNTIME_ENV_HOOK"
+# Hook that is invoked on `ray start`. It will be given the cluster parameters and
+# whether we are the head node as arguments. The function can modify the params class,
+# but otherwise returns void. Example: "your.module.ray_start_hook".
+RAY_START_HOOK = "RAY_START_HOOK"
 
 DEFAULT_DASHBOARD_IP = "127.0.0.1"
 DEFAULT_DASHBOARD_PORT = 8265
@@ -328,6 +337,14 @@ CALL_STACK_LINE_DELIMITER = " | "
 # NOTE: This is equal to the C++ limit of (RAY_CONFIG::max_grpc_message_size)
 GRPC_CPP_MAX_MESSAGE_SIZE = 100 * 1024 * 1024
 
+# GRPC options
+GRPC_ENABLE_HTTP_PROXY = (
+    1
+    if os.environ.get("RAY_grpc_enable_http_proxy", "0").lower() in ("1", "true")
+    else 0
+)
+GLOBAL_GRPC_OPTIONS = (("grpc.enable_http_proxy", GRPC_ENABLE_HTTP_PROXY),)
+
 # Internal kv namespaces
 KV_NAMESPACE_DASHBOARD = b"dashboard"
 KV_NAMESPACE_SESSION = b"session"
@@ -344,3 +361,5 @@ KV_NAMESPACE_SERVE = b"serve"
 KV_NAMESPACE_FUNCTION_TABLE = b"fun"
 
 LANGUAGE_WORKER_TYPES = ["python", "java", "cpp"]
+
+NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"

@@ -1,5 +1,6 @@
-from typing import List, Dict, Set
+from typing import List, Dict, Optional, Union
 
+from collections import Counter
 import pandas as pd
 
 from ray.data import Dataset
@@ -23,7 +24,7 @@ class OrdinalEncoder(Preprocessor):
         self.columns = columns
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
-        self.stats_ = _get_unique_value_indices(dataset, *self.columns)
+        self.stats_ = _get_unique_value_indices(dataset, self.columns)
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
@@ -50,19 +51,50 @@ class OneHotEncoder(Preprocessor):
     for each of the values from the fitted dataset. The value of a column will
     be set to 1 if the value matches, otherwise 0.
 
-    Transforming values not included in the fitted dataset will result in all
-    of the encoded column values being 0.
+    Transforming values not included in the fitted dataset or not among
+    the top popular values (see ``limit``) will result in all of the encoded column
+    values being 0.
+
+    Example:
+
+    .. code-block:: python
+
+        ohe = OneHotEncoder(
+            columns=[
+                "trip_start_hour",
+                "trip_start_day",
+                "trip_start_month",
+                "dropoff_census_tract",
+                "pickup_community_area",
+                "dropoff_community_area",
+                "payment_type",
+                "company",
+            ],
+            limit={
+                "dropoff_census_tract": 25,
+                "pickup_community_area": 20,
+                "dropoff_community_area": 20,
+                "payment_type": 2,
+                "company": 7,
+            },
+        )
 
     Args:
         columns: The columns that will individually be encoded.
+        limit: If set, only the top "limit" number of most popular values become
+            categorical variables. The less frequent ones will result in all
+            the encoded column values being 0. This is a dict of column to
+            its corresponding limit. The column in this dictionary has to be
+            in ``columns``.
     """
 
-    def __init__(self, columns: List[str]):
+    def __init__(self, columns: List[str], limit: Optional[Dict[str, int]] = None):
         # TODO: add `drop` parameter.
         self.columns = columns
+        self.limit = limit
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
-        self.stats_ = _get_unique_value_indices(dataset, *self.columns)
+        self.stats_ = _get_unique_value_indices(dataset, self.columns, limit=self.limit)
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
@@ -99,7 +131,7 @@ class LabelEncoder(Preprocessor):
         self.label_column = label_column
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
-        self.stats_ = _get_unique_value_indices(dataset, self.label_column)
+        self.stats_ = _get_unique_value_indices(dataset, [self.label_column])
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
@@ -117,38 +149,120 @@ class LabelEncoder(Preprocessor):
         return f"LabelEncoder(label_column={self.label_column}, stats={stats})"
 
 
-def _get_unique_value_indices(
-    dataset: Dataset, *columns: str
-) -> Dict[str, Dict[str, int]]:
-    results = {}
-    for column in columns:
-        values = _get_unique_values(dataset, column)
-        if any(pd.isnull(v) for v in values):
-            raise ValueError(
-                f"Unable to fit column '{column}' because it contains null values. "
-                f"Consider imputing missing values first."
-            )
-        value_to_index = _sorted_value_indices(values)
-        results[f"unique_values({column})"] = value_to_index
-    return results
+class Categorizer(Preprocessor):
+    """Transform Dataset columns to Categorical data type.
 
+    Note that in case of automatic inferrence, you will most
+    likely want to run this preprocessor on the entire dataset
+    before splitting it (e.g. into train and test sets), so
+    that all of the categories are inferred. There is no risk
+    of data leakage when using this preprocessor.
 
-def _get_unique_values(dataset: Dataset, column: str) -> Set[str]:
-    agg_ds = dataset.groupby(column).count()
-    # TODO: Support an upper limit by using `agg_ds.take(N)` instead.
-    return {row[column] for row in agg_ds.iter_rows()}
-
-
-def _sorted_value_indices(values: Set) -> Dict[str, int]:
-    """Converts values to a Dict mapping to unique indexes.
-
-    Values will be sorted.
-
-    Example:
-        >>> _sorted_value_indices({"b", "a", "c", "a"})
-        {"a": 0, "b": 1, "c": 2}
+    Args:
+        columns: The columns whose data type to change. Can be
+            either a list of columns, in which case the categories
+            will be inferred automatically from the data, or
+            a dict of `column:pd.CategoricalDtype or None` -
+            if specified, the dtype will be applied, and if not,
+            it will be automatically inferred.
     """
-    return {value: i for i, value in enumerate(sorted(values))}
+
+    def __init__(
+        self, columns: Union[List[str], Dict[str, Optional[pd.CategoricalDtype]]]
+    ):
+        self.columns = columns
+
+    def _fit(self, dataset: Dataset) -> Preprocessor:
+        columns_to_get = (
+            self.columns
+            if isinstance(self.columns, list)
+            else [
+                column for column, cat_type in self.columns.items() if cat_type is None
+            ]
+        )
+        if columns_to_get:
+            unique_indices = _get_unique_value_indices(
+                dataset, columns_to_get, drop_na_values=True, key_format="{0}"
+            )
+            unique_indices = {
+                column: pd.CategoricalDtype(values_indices.keys())
+                for column, values_indices in unique_indices.items()
+            }
+        else:
+            unique_indices = {}
+        if isinstance(self.columns, dict):
+            unique_indices = {**self.columns, **unique_indices}
+        self.stats_: Dict[str, pd.CategoricalDtype] = unique_indices
+        return self
+
+    def _transform_pandas(self, df: pd.DataFrame):
+        df = df.astype(self.stats_)
+        return df
+
+    def __repr__(self):
+        stats = getattr(self, "stats_", None)
+        return f"<Categorizer columns={self.columns} stats={stats}>"
+
+
+def _get_unique_value_indices(
+    dataset: Dataset,
+    columns: List[str],
+    drop_na_values: bool = False,
+    key_format: str = "unique_values({0})",
+    limit: Optional[Dict[str, int]] = None,
+) -> Dict[str, Dict[str, int]]:
+    """If drop_na_values is True, will silently drop NA values."""
+    limit = limit or {}
+    for column in limit:
+        if column not in columns:
+            raise ValueError(
+                f"You set limit for {column}, which is not present in {columns}."
+            )
+
+    def get_pd_value_counts(df: pd.DataFrame) -> List[Dict[str, Counter]]:
+        result = [
+            {
+                col: Counter(df[col].value_counts(dropna=False).to_dict())
+                for col in columns
+            }
+        ]
+        return result
+
+    value_counts = dataset.map_batches(get_pd_value_counts, batch_format="pandas")
+    final_counters = {col: Counter() for col in columns}
+    for batch in value_counts.iter_batches():
+        for col_value_counts in batch:
+            for col, value_counts in col_value_counts.items():
+                final_counters[col] += value_counts
+
+    # Inspect if there is any NA values.
+    for col in columns:
+        if drop_na_values:
+            counter = final_counters[col]
+            counter_dict = dict(counter)
+            sanitized_dict = {k: v for k, v in counter_dict.items() if not pd.isnull(k)}
+            final_counters[col] = Counter(sanitized_dict)
+        else:
+            if any(pd.isnull(k) for k in final_counters[col]):
+                raise ValueError(
+                    f"Unable to fit column '{col}' because it contains null"
+                    f" values. Consider imputing missing values first."
+                )
+
+    unique_values_with_indices = dict()
+    for column in columns:
+        if column in limit:
+            # Output sorted by freq.
+            unique_values_with_indices[key_format.format(column)] = {
+                k[0]: j
+                for j, k in enumerate(final_counters[column].most_common(limit[column]))
+            }
+        else:
+            # Output sorted by column name.
+            unique_values_with_indices[key_format.format(column)] = {
+                k: j for j, k in enumerate(sorted(dict(final_counters[column]).keys()))
+            }
+    return unique_values_with_indices
 
 
 def _validate_df(df: pd.DataFrame, *columns: str) -> None:

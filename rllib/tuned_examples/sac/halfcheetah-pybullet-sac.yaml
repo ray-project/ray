@@ -8,10 +8,10 @@ halfcheetah-pybullet-sac:
         framework: tf
         horizon: 1000
         soft_horizon: false
-        Q_model:
+        q_model_config:
           fcnet_activation: relu
           fcnet_hiddens: [256, 256]
-        policy_model:
+        policy_model_config:
           fcnet_activation: relu
           fcnet_hiddens: [256, 256]
         tau: 0.005
@@ -19,11 +19,12 @@ halfcheetah-pybullet-sac:
         no_done_at_end: false
         n_step: 3
         rollout_fragment_length: 1
-        prioritized_replay: true
         train_batch_size: 256
         target_network_update_freq: 1
-        timesteps_per_iteration: 1000
-        learning_starts: 10000
+        min_sample_timesteps_per_reporting: 1000
+        replay_buffer_config:
+          type: MultiAgentPrioritizedReplayBuffer
+          learning_starts: 10000
         optimization:
           actor_learning_rate: 0.0003
           critic_learning_rate: 0.0003

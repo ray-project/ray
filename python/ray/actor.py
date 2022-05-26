@@ -547,7 +547,9 @@ class ActorClass:
         # "concurrency_groups" could not be used in ".options()",
         # we should remove it before merging options from '@ray.remote'.
         default_options.pop("concurrency_groups", None)
-        updated_options = {**default_options, **actor_options}
+        updated_options = ray_option_utils.update_options(
+            default_options, actor_options
+        )
         ray_option_utils.validate_actor_options(updated_options, in_options=True)
 
         # only update runtime_env when ".options()" specifies new runtime_env
@@ -558,11 +560,6 @@ class ActorClass:
 
         class ActorOptionWrapper:
             def remote(self, *args, **kwargs):
-                # Handle the get-or-create case.
-                if updated_options.get("get_if_exists"):
-                    return self._get_or_create_impl(args, kwargs)
-
-                # Normal create case.
                 return actor_cls._remote(args=args, kwargs=kwargs, **updated_options)
 
             def bind(self, *args, **kwargs):
@@ -580,27 +577,6 @@ class ActorClass:
                     kwargs,
                     updated_options,
                 )
-
-            def _get_or_create_impl(self, args, kwargs):
-                name = updated_options["name"]
-                try:
-                    return ray.get_actor(
-                        name, namespace=updated_options.get("namespace")
-                    )
-                except ValueError:
-                    # Attempt to create it (may race with other attempts).
-                    try:
-                        return actor_cls._remote(
-                            args=args,
-                            kwargs=kwargs,
-                            **updated_options,
-                        )
-                    except ValueError:
-                        # We lost the creation race, ignore.
-                        pass
-                    return ray.get_actor(
-                        name, namespace=updated_options.get("namespace")
-                    )
 
         return ActorOptionWrapper()
 
@@ -667,6 +643,31 @@ class ActorClass:
         Returns:
             A handle to the newly created actor.
         """
+        name = actor_options.get("name")
+        namespace = actor_options.get("namespace")
+        if name is not None:
+            if not isinstance(name, str):
+                raise TypeError(f"name must be None or a string, got: '{type(name)}'.")
+            elif name == "":
+                raise ValueError("Actor name cannot be an empty string.")
+        if namespace is not None:
+            ray._private.utils.validate_namespace(namespace)
+
+        # Handle the get-or-create case.
+        if actor_options.get("get_if_exists"):
+            try:
+                return ray.get_actor(name, namespace=namespace)
+            except ValueError:
+                # Attempt to create it (may race with other attempts).
+                updated_options = actor_options.copy()
+                updated_options["get_if_exists"] = False  # prevent infinite loop
+                try:
+                    return self._remote(args, kwargs, **updated_options)
+                except ValueError:
+                    # We lost the creation race, ignore.
+                    pass
+                return ray.get_actor(name, namespace=namespace)
+
         # We pop the "concurrency_groups" coming from "@ray.remote" here. We no longer
         # need it in "_remote()".
         actor_options.pop("concurrency_groups", None)
@@ -701,8 +702,6 @@ class ActorClass:
 
         # TODO(suquark): cleanup these fields
         max_concurrency = actor_options["max_concurrency"]
-        name = actor_options["name"]
-        namespace = actor_options["namespace"]
         lifetime = actor_options["lifetime"]
         runtime_env = actor_options["runtime_env"]
         placement_group = actor_options["placement_group"]
@@ -717,14 +716,6 @@ class ActorClass:
 
         worker = ray.worker.global_worker
         worker.check_connected()
-
-        if name is not None:
-            if not isinstance(name, str):
-                raise TypeError(f"name must be None or a string, got: '{type(name)}'.")
-            elif name == "":
-                raise ValueError("Actor name cannot be an empty string.")
-        if namespace is not None:
-            ray._private.utils.validate_namespace(namespace)
 
         # Check whether the name is already taken.
         # TODO(edoakes): this check has a race condition because two drivers
@@ -1304,6 +1295,7 @@ def exit_actor():
         # reduces log verbosity.
         exit = SystemExit(0)
         exit.is_ray_terminate = True
+        exit.ray_terminate_msg = "exit_actor() is called."
         raise exit
         assert False, "This process should have terminated."
     else:

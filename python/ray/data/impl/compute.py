@@ -1,3 +1,4 @@
+import collections
 from typing import TypeVar, Any, Union, Callable, List, Tuple, Optional
 
 import ray
@@ -36,6 +37,7 @@ class TaskPoolStrategy(ComputeStrategy):
         remote_args: dict,
         block_list: BlockList,
         clear_input_blocks: bool,
+        name: Optional[str] = None,
     ) -> BlockList:
         context = DatasetContext.get_current()
 
@@ -44,7 +46,10 @@ class TaskPoolStrategy(ComputeStrategy):
             return block_list
 
         blocks = block_list.get_blocks_with_metadata()
-        map_bar = ProgressBar("Map Progress", total=len(blocks))
+        if name is None:
+            name = "map"
+        name = name.title()
+        map_bar = ProgressBar(name, total=len(blocks))
 
         if context.block_splitting_enabled:
             map_block = cached_remote_fn(_map_block_split).options(**remote_args)
@@ -103,15 +108,42 @@ class ActorPoolStrategy(ComputeStrategy):
     To autoscale from ``m`` to ``n`` actors, specify
     ``compute=ActorPoolStrategy(m, n)``.
     For a fixed-sized pool of size ``n``, specify ``compute=ActorPoolStrategy(n, n)``.
+
+    To increase opportunities for pipelining task dependency prefetching with
+    computation and avoiding actor startup delays, set max_tasks_in_flight_per_actor
+    to 2 or greater; to try to decrease the delay due to queueing of tasks on the worker
+    actors, set max_tasks_in_flight_per_actor to 1.
     """
 
-    def __init__(self, min_size: int = 1, max_size: Optional[int] = None):
+    def __init__(
+        self,
+        min_size: int = 1,
+        max_size: Optional[int] = None,
+        max_tasks_in_flight_per_actor: Optional[int] = 2,
+    ):
+        """Construct ActorPoolStrategy for a Dataset transform.
+
+        Args:
+            min_size: The minimize size of the actor pool.
+            max_size: The maximum size of the actor pool.
+            max_tasks_in_flight_per_actor: The maximum number of tasks to concurrently
+                send to a single actor worker. Increasing this will increase
+                opportunities for pipelining task dependency prefetching with
+                computation and avoiding actor startup delays, but will also increase
+                queueing delay.
+        """
         if min_size < 1:
             raise ValueError("min_size must be > 1", min_size)
         if max_size is not None and min_size > max_size:
             raise ValueError("min_size must be <= max_size", min_size, max_size)
+        if max_tasks_in_flight_per_actor < 1:
+            raise ValueError(
+                "max_tasks_in_flight_per_actor must be >= 1, got: ",
+                max_tasks_in_flight_per_actor,
+            )
         self.min_size = min_size
         self.max_size = max_size or float("inf")
+        self.max_tasks_in_flight_per_actor = max_tasks_in_flight_per_actor
 
     def _apply(
         self,
@@ -119,6 +151,7 @@ class ActorPoolStrategy(ComputeStrategy):
         remote_args: dict,
         block_list: BlockList,
         clear_input_blocks: bool,
+        name: Optional[str] = None,
     ) -> BlockList:
         """Note: this is not part of the Dataset public API."""
         context = DatasetContext.get_current()
@@ -131,7 +164,10 @@ class ActorPoolStrategy(ComputeStrategy):
 
         orig_num_blocks = len(blocks_in)
         results = []
-        map_bar = ProgressBar("Map Progress", total=orig_num_blocks)
+        if name is None:
+            name = "map"
+        name = name.title()
+        map_bar = ProgressBar(name, total=orig_num_blocks)
 
         class BlockWorker:
             def ready(self):
@@ -151,17 +187,20 @@ class ActorPoolStrategy(ComputeStrategy):
         if not remote_args:
             remote_args["num_cpus"] = 1
 
+        remote_args["scheduling_strategy"] = context.scheduling_strategy
+
         BlockWorker = ray.remote(**remote_args)(BlockWorker)
 
         workers = [BlockWorker.remote() for _ in range(self.min_size)]
         tasks = {w.ready.remote(): w for w in workers}
+        tasks_in_flight = collections.defaultdict(int)
         metadata_mapping = {}
         block_indices = {}
         ready_workers = set()
 
         while len(results) < orig_num_blocks:
             ready, _ = ray.wait(
-                list(tasks), timeout=0.01, num_returns=1, fetch_local=False
+                list(tasks.keys()), timeout=0.01, num_returns=1, fetch_local=False
             )
             if not ready:
                 if (
@@ -179,12 +218,12 @@ class ActorPoolStrategy(ComputeStrategy):
                 continue
 
             [obj_id] = ready
-            worker = tasks[obj_id]
-            del tasks[obj_id]
+            worker = tasks.pop(obj_id)
 
             # Process task result.
             if worker in ready_workers:
                 results.append(obj_id)
+                tasks_in_flight[worker] -= 1
                 map_bar.update(1)
             else:
                 ready_workers.add(worker)
@@ -195,7 +234,10 @@ class ActorPoolStrategy(ComputeStrategy):
                 )
 
             # Schedule a new task.
-            if blocks_in:
+            while (
+                blocks_in
+                and tasks_in_flight[worker] < self.max_tasks_in_flight_per_actor
+            ):
                 block, meta = blocks_in.pop()
                 if context.block_splitting_enabled:
                     ref = worker.map_block_split.remote(block, meta.input_files)
@@ -206,6 +248,7 @@ class ActorPoolStrategy(ComputeStrategy):
                     metadata_mapping[ref] = meta_ref
                 tasks[ref] = worker
                 block_indices[ref] = len(blocks_in)
+                tasks_in_flight[worker] += 1
 
         map_bar.close()
         new_blocks, new_metadata = [], []

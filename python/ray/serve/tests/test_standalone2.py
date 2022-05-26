@@ -105,6 +105,28 @@ def test_deploy_with_overriden_namespace(shutdown_ray, detached):
 
 
 @pytest.mark.parametrize("detached", [True, False])
+def test_update_num_replicas_anonymous_namespace(shutdown_ray, detached):
+    """Test updating num_replicas with anonymous namespace."""
+
+    ray.init()
+    serve.start(detached=detached)
+
+    @serve.deployment(num_replicas=1)
+    def f(*args):
+        return "got f"
+
+    f.deploy()
+
+    num_actors = len(ray.util.list_named_actors(all_namespaces=True))
+
+    for _ in range(5):
+        f.deploy()
+        assert num_actors == len(ray.util.list_named_actors(all_namespaces=True))
+
+    serve.shutdown()
+
+
+@pytest.mark.parametrize("detached", [True, False])
 def test_update_num_replicas_with_overriden_namespace(shutdown_ray, detached):
     """Test updating num_replicas with overriden namespace."""
 
@@ -168,6 +190,26 @@ def test_refresh_controller_after_death(shutdown_ray, detached):
 
     # Health check should not error
     ray.get(new_handle.check_alive.remote())
+
+    serve.shutdown()
+    ray.shutdown()
+
+
+def test_get_serve_status(shutdown_ray):
+
+    ray.init()
+    client = serve.start()
+
+    @serve.deployment
+    def f(*args):
+        return "Hello world"
+
+    f.deploy()
+
+    status_info_1 = client.get_serve_status()
+    assert status_info_1.app_status.status == "RUNNING"
+    assert status_info_1.deployment_statuses[0].name == "f"
+    assert status_info_1.deployment_statuses[0].status in {"UPDATING", "HEALTHY"}
 
     serve.shutdown()
     ray.shutdown()
@@ -240,8 +282,7 @@ def test_autoscaler_shutdown_node_http_everynode(
         idle_timeout_minutes=0.05,
     )
     cluster.start()
-    # Somehow Ray can't find active cluster after start, adding a retry here.
-    wait_for_condition(lambda: ray.init(address="auto"))
+    ray.init(address="auto")
 
     serve.start(http_options={"location": "EveryNode"})
 

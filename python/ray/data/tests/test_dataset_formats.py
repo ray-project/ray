@@ -21,9 +21,15 @@ from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.datasource import (
     Datasource,
     DummyOutputDatasource,
+    BaseFileMetadataProvider,
+    DefaultFileMetadataProvider,
+    DefaultParquetMetadataProvider,
+    FastFileMetadataProvider,
     PathPartitionFilter,
     PathPartitionEncoder,
     PartitionStyle,
+    SimpleTensorFlowDatasource,
+    SimpleTorchDatasource,
     WriteResult,
 )
 from ray.data.impl.arrow_block import ArrowRow
@@ -162,7 +168,7 @@ def test_from_arrow_refs(ray_start_regular_shared):
 def test_to_pandas(ray_start_regular_shared):
     n = 5
     df = pd.DataFrame({"value": list(range(n))})
-    ds = ray.data.range_arrow(n)
+    ds = ray.data.range_table(n)
     dfds = ds.to_pandas()
     assert df.equals(dfds)
 
@@ -178,7 +184,7 @@ def test_to_pandas(ray_start_regular_shared):
 def test_to_pandas_refs(ray_start_regular_shared):
     n = 5
     df = pd.DataFrame({"value": list(range(n))})
-    ds = ray.data.range_arrow(n)
+    ds = ray.data.range_table(n)
     dfds = pd.concat(ray.get(ds.to_pandas_refs()), ignore_index=True)
     assert df.equals(dfds)
 
@@ -195,7 +201,7 @@ def test_to_numpy_refs(ray_start_regular_shared):
     np.testing.assert_equal(arr, np.expand_dims(np.arange(0, 10), 1))
 
     # Table Dataset
-    ds = ray.data.range_arrow(10)
+    ds = ray.data.range_table(10)
     arr = np.concatenate(ray.get(ds.to_numpy_refs(column="value")))
     np.testing.assert_equal(arr, np.arange(0, 10))
 
@@ -205,7 +211,7 @@ def test_to_arrow_refs(ray_start_regular_shared):
 
     # Zero-copy.
     df = pd.DataFrame({"value": list(range(n))})
-    ds = ray.data.range_arrow(n)
+    ds = ray.data.range_table(n)
     dfds = pd.concat(
         [t.to_pandas() for t in ray.get(ds.to_arrow_refs())], ignore_index=True
     )
@@ -275,6 +281,20 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     assert ds_df.equals(df)
 
 
+def test_read_example_data(ray_start_regular_shared, tmp_path):
+    ds = ray.data.read_csv("example://iris.csv")
+    assert ds.count() == 150
+    assert ds.take(1) == [
+        {
+            "sepal.length": 5.1,
+            "sepal.width": 3.5,
+            "petal.length": 1.4,
+            "petal.width": 0.2,
+            "variety": "Setosa",
+        }
+    ]
+
+
 @pytest.mark.parametrize(
     "fs,data_path",
     [
@@ -336,6 +356,202 @@ def test_parquet_read_basic(ray_start_regular_shared, fs, data_path):
     values = [s["one"] for s in ds.take()]
     assert sorted(values) == [1, 2, 3, 4, 5, 6]
     assert ds.schema().names == ["one"]
+
+
+@pytest.mark.parametrize(
+    "fs,data_path",
+    [
+        (None, lazy_fixture("local_path")),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+    ],
+)
+def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    table = pa.Table.from_pandas(df1)
+    setup_data_path = _unwrap_protocol(data_path)
+    path1 = os.path.join(setup_data_path, "test1.parquet")
+    pq.write_table(table, path1, filesystem=fs)
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    table = pa.Table.from_pandas(df2)
+    path2 = os.path.join(setup_data_path, "test2.parquet")
+    pq.write_table(table, path2, filesystem=fs)
+
+    class TestMetadataProvider(DefaultParquetMetadataProvider):
+        def prefetch_file_metadata(self, pieces):
+            return None
+
+    ds = ray.data.read_parquet(
+        data_path,
+        filesystem=fs,
+        meta_provider=TestMetadataProvider(),
+    )
+
+    # Expect precomputed row counts and block sizes to be missing.
+    assert ds._meta_count() is None
+    assert ds._plan._snapshot_blocks.size_bytes() == -1
+
+    # Expect to lazily compute all metadata correctly.
+    assert ds._plan.execute()._num_computed() == 1
+    assert ds.count() == 6
+    assert ds.size_bytes() > 0
+    assert ds.schema() is not None
+    input_files = ds.input_files()
+    assert len(input_files) == 2, input_files
+    assert "test1.parquet" in str(input_files)
+    assert "test2.parquet" in str(input_files)
+    assert (
+        str(ds) == "Dataset(num_blocks=2, num_rows=6, "
+        "schema={one: int64, two: string})"
+    ), ds
+    assert (
+        repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
+        "schema={one: int64, two: string})"
+    ), ds
+    assert ds._plan.execute()._num_computed() == 2
+
+    # Forces a data read.
+    values = [[s["one"], s["two"]] for s in ds.take()]
+    assert ds._plan.execute()._num_computed() == 2
+    assert sorted(values) == [
+        [1, "a"],
+        [2, "b"],
+        [3, "c"],
+        [4, "e"],
+        [5, "f"],
+        [6, "g"],
+    ]
+
+
+@pytest.mark.parametrize(
+    "fs,data_path",
+    [
+        (None, lazy_fixture("local_path")),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (
+            lazy_fixture("s3_fs_with_space"),
+            lazy_fixture("s3_path_with_space"),
+        ),  # Path contains space.
+    ],
+)
+def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    table = pa.Table.from_pandas(df1)
+    setup_data_path = _unwrap_protocol(data_path)
+    path1 = os.path.join(setup_data_path, "test1.parquet")
+    pq.write_table(table, path1, filesystem=fs)
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    table = pa.Table.from_pandas(df2)
+    path2 = os.path.join(setup_data_path, "test2.parquet")
+    pq.write_table(table, path2, filesystem=fs)
+
+    # Expect directory path expansion to fail.
+    with pytest.raises(OSError):
+        ray.data.read_parquet_bulk(data_path, filesystem=fs)
+
+    # Expect individual file paths to be processed successfully.
+    paths = [path1, path2]
+    ds = ray.data.read_parquet_bulk(paths, filesystem=fs)
+
+    # Expect precomputed row counts to be missing.
+    assert ds._meta_count() is None
+
+    # Expect to lazily compute all metadata correctly.
+    assert ds._plan.execute()._num_computed() == 1
+    assert ds.count() == 6
+    assert ds.size_bytes() > 0
+    assert ds.schema() is not None
+    input_files = ds.input_files()
+    assert len(input_files) == 2, input_files
+    assert "test1.parquet" in str(input_files)
+    assert "test2.parquet" in str(input_files)
+    assert (
+        str(ds) == "Dataset(num_blocks=2, num_rows=6, "
+        "schema={one: int64, two: string})"
+    ), ds
+    assert (
+        repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
+        "schema={one: int64, two: string})"
+    ), ds
+    assert ds._plan.execute()._num_computed() == 2
+
+    # Forces a data read.
+    values = [[s["one"], s["two"]] for s in ds.take()]
+    assert ds._plan.execute()._num_computed() == 2
+    assert sorted(values) == [
+        [1, "a"],
+        [2, "b"],
+        [3, "c"],
+        [4, "e"],
+        [5, "f"],
+        [6, "g"],
+    ]
+
+
+@pytest.mark.parametrize(
+    "fs,data_path",
+    [
+        (None, lazy_fixture("local_path")),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (
+            lazy_fixture("s3_fs_with_space"),
+            lazy_fixture("s3_path_with_space"),
+        ),  # Path contains space.
+    ],
+)
+def test_parquet_read_bulk_meta_provider(ray_start_regular_shared, fs, data_path):
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    table = pa.Table.from_pandas(df1)
+    setup_data_path = _unwrap_protocol(data_path)
+    path1 = os.path.join(setup_data_path, "test1.parquet")
+    pq.write_table(table, path1, filesystem=fs)
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    table = pa.Table.from_pandas(df2)
+    path2 = os.path.join(setup_data_path, "test2.parquet")
+    pq.write_table(table, path2, filesystem=fs)
+
+    # Expect directory path expansion to succeed with the default metadata provider.
+    ds = ray.data.read_parquet_bulk(
+        data_path,
+        filesystem=fs,
+        meta_provider=DefaultFileMetadataProvider(),
+    )
+
+    # Expect precomputed row counts to be missing.
+    assert ds._meta_count() is None
+
+    # Expect to lazily compute all metadata correctly.
+    assert ds._plan.execute()._num_computed() == 1
+    assert ds.count() == 6
+    assert ds.size_bytes() > 0
+    assert ds.schema() is not None
+    input_files = ds.input_files()
+    assert len(input_files) == 2, input_files
+    assert "test1.parquet" in str(input_files)
+    assert "test2.parquet" in str(input_files)
+    assert (
+        str(ds) == "Dataset(num_blocks=2, num_rows=6, "
+        "schema={one: int64, two: string})"
+    ), ds
+    assert (
+        repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
+        "schema={one: int64, two: string})"
+    ), ds
+    assert ds._plan.execute()._num_computed() == 2
+
+    # Forces a data read.
+    values = [[s["one"], s["two"]] for s in ds.take()]
+    assert ds._plan.execute()._num_computed() == 2
+    assert sorted(values) == [
+        [1, "a"],
+        [2, "b"],
+        [3, "c"],
+        [4, "e"],
+        [5, "f"],
+        [6, "g"],
+    ]
 
 
 @pytest.mark.parametrize(
@@ -799,6 +1015,25 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     assert str(ds.take(2)) == "[{'value': array([0])}, {'value': array([1])}]"
 
 
+def test_numpy_read_meta_provider(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "test_np_dir")
+    os.mkdir(path)
+    path = os.path.join(path, "test.npy")
+    np.save(path, np.expand_dims(np.arange(0, 10), 1))
+    ds = ray.data.read_numpy(path, meta_provider=FastFileMetadataProvider())
+    assert str(ds) == (
+        "Dataset(num_blocks=1, num_rows=10, "
+        "schema={value: <ArrowTensorType: shape=(1,), dtype=int64>})"
+    )
+    assert str(ds.take(2)) == "[{'value': array([0])}, {'value': array([1])}]"
+
+    with pytest.raises(NotImplementedError):
+        ray.data.read_binary_files(
+            path,
+            meta_provider=BaseFileMetadataProvider(),
+        )
+
+
 def test_numpy_read_partitioned_with_filter(
     ray_start_regular_shared,
     tmp_path,
@@ -942,6 +1177,30 @@ def test_read_text(ray_start_regular_shared, tmp_path):
     assert ds.count() == 5
 
 
+def test_read_text_meta_provider(
+    ray_start_regular_shared,
+    tmp_path,
+):
+    path = os.path.join(tmp_path, "test_text")
+    os.mkdir(path)
+    path = os.path.join(path, "file1.txt")
+    with open(path, "w") as f:
+        f.write("hello\n")
+        f.write("world\n")
+        f.write("goodbye\n")
+        f.write("ray\n")
+    ds = ray.data.read_text(path, meta_provider=FastFileMetadataProvider())
+    assert sorted(ds.take()) == ["goodbye", "hello", "ray", "world"]
+    ds = ray.data.read_text(path, drop_empty_lines=False)
+    assert ds.count() == 5
+
+    with pytest.raises(NotImplementedError):
+        ray.data.read_text(
+            path,
+            meta_provider=BaseFileMetadataProvider(),
+        )
+
+
 def test_read_text_partitioned_with_filter(
     ray_start_regular_shared,
     tmp_path,
@@ -1017,6 +1276,31 @@ def test_read_binary_snappy_inferred(ray_start_regular_shared, tmp_path):
         snappy.stream_compress(bytes, f)
     ds = ray.data.read_binary_files(path)
     assert sorted(ds.take()) == [byte_str]
+
+
+def test_read_binary_meta_provider(
+    ray_start_regular_shared,
+    tmp_path,
+):
+    path = os.path.join(tmp_path, "test_binary_snappy")
+    os.mkdir(path)
+    path = os.path.join(path, "file")
+    with open(path, "wb") as f:
+        byte_str = "hello, world".encode()
+        bytes = BytesIO(byte_str)
+        snappy.stream_compress(bytes, f)
+    ds = ray.data.read_binary_files(
+        path,
+        arrow_open_stream_args=dict(compression="snappy"),
+        meta_provider=FastFileMetadataProvider(),
+    )
+    assert sorted(ds.take()) == [byte_str]
+
+    with pytest.raises(NotImplementedError):
+        ray.data.read_binary_files(
+            path,
+            meta_provider=BaseFileMetadataProvider(),
+        )
 
 
 def test_read_binary_snappy_partitioned_with_filter(
@@ -1266,6 +1550,47 @@ def test_zipped_json_read(ray_start_regular_shared, tmp_path):
     dsdf = ds.to_pandas()
     assert df.equals(dsdf)
     shutil.rmtree(dir_path)
+
+
+@pytest.mark.parametrize(
+    "fs,data_path,endpoint_url",
+    [
+        (None, lazy_fixture("local_path"), None),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+    ],
+)
+def test_json_read_meta_provider(
+    ray_start_regular_shared,
+    fs,
+    data_path,
+    endpoint_url,
+):
+    if endpoint_url is None:
+        storage_options = {}
+    else:
+        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
+
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    path1 = os.path.join(data_path, "test1.json")
+    df1.to_json(path1, orient="records", lines=True, storage_options=storage_options)
+    ds = ray.data.read_json(
+        path1,
+        filesystem=fs,
+        meta_provider=FastFileMetadataProvider(),
+    )
+
+    # Expect to lazily compute all metadata correctly.
+    assert ds.count() == 3
+    assert ds.input_files() == [_unwrap_protocol(path1)]
+    assert "{one: int64, two: string}" in str(ds), ds
+
+    with pytest.raises(NotImplementedError):
+        ray.data.read_json(
+            path1,
+            filesystem=fs,
+            meta_provider=BaseFileMetadataProvider(),
+        )
 
 
 @pytest.mark.parametrize(
@@ -1624,6 +1949,50 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
     ],
 )
+def test_csv_read_meta_provider(
+    ray_start_regular_shared,
+    fs,
+    data_path,
+    endpoint_url,
+):
+    if endpoint_url is None:
+        storage_options = {}
+    else:
+        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
+
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    path1 = os.path.join(data_path, "test1.csv")
+    df1.to_csv(path1, index=False, storage_options=storage_options)
+    ds = ray.data.read_csv(
+        path1,
+        filesystem=fs,
+        meta_provider=FastFileMetadataProvider(),
+    )
+
+    dsdf = ds.to_pandas()
+    assert df1.equals(dsdf)
+
+    # Expect to lazily compute all metadata correctly.
+    assert ds.count() == 3
+    assert ds.input_files() == [_unwrap_protocol(path1)]
+    assert "{one: int64, two: string}" in str(ds), ds
+
+    with pytest.raises(NotImplementedError):
+        ray.data.read_csv(
+            path1,
+            filesystem=fs,
+            meta_provider=BaseFileMetadataProvider(),
+        )
+
+
+@pytest.mark.parametrize(
+    "fs,data_path,endpoint_url",
+    [
+        (None, lazy_fixture("local_path"), None),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+    ],
+)
 def test_csv_read_partitioned_hive_implicit(
     ray_start_regular_shared,
     fs,
@@ -1971,6 +2340,65 @@ def test_csv_write_block_path_provider(
     assert df.equals(ds_df)
 
 
+def test_tensorflow_datasource(ray_start_regular_shared):
+    import tensorflow as tf
+    import tensorflow_datasets as tfds
+
+    tf_dataset = tfds.load("mnist", split=["train"], as_supervised=True)[0]
+
+    def dataset_factory():
+        return tfds.load("mnist", split=["train"], as_supervised=True)[0]
+
+    ray_dataset = ray.data.read_datasource(
+        SimpleTensorFlowDatasource(), parallelism=1, dataset_factory=dataset_factory
+    ).fully_executed()
+
+    assert ray_dataset.num_blocks() == 1
+
+    actual_data = ray_dataset.take_all()
+    expected_data = list(tf_dataset)
+    for (expected_features, expected_label), (actual_features, actual_label) in zip(
+        expected_data, actual_data
+    ):
+        tf.debugging.assert_equal(expected_features, actual_features)
+        tf.debugging.assert_equal(expected_label, actual_label)
+
+
+def test_torch_datasource(ray_start_regular_shared, local_path):
+    import torchvision
+
+    # Download datasets to separate folders to prevent interference.
+    torch_dataset_root = os.path.join(local_path, "torch")
+    ray_dataset_root = os.path.join(local_path, "ray")
+
+    torch_dataset = torchvision.datasets.MNIST(torch_dataset_root, download=True)
+    expected_data = list(torch_dataset)
+
+    def dataset_factory():
+        return torchvision.datasets.MNIST(ray_dataset_root, download=True)
+
+    ray_dataset = ray.data.read_datasource(
+        SimpleTorchDatasource(), parallelism=1, dataset_factory=dataset_factory
+    )
+    actual_data = list(next(ray_dataset.iter_batches(batch_size=None)))
+
+    assert actual_data == expected_data
+
+
+def test_torch_datasource_value_error(ray_start_regular_shared, local_path):
+    import torchvision
+
+    dataset = torchvision.datasets.MNIST(local_path, download=True)
+
+    with pytest.raises(ValueError):
+        # `dataset_factory` should be a function, not a Torch dataset.
+        ray.data.read_datasource(
+            SimpleTorchDatasource(),
+            parallelism=1,
+            dataset_factory=dataset,
+        )
+
+
 # NOTE: The last test using the shared ray_start_regular_shared cluster must use the
 # shutdown_only fixture so the shared cluster is shut down, otherwise the below
 # test_write_datasource_ray_remote_args test, which uses a cluster_utils cluster, will
@@ -1987,6 +2415,34 @@ def test_csv_read_no_header(shutdown_only, tmp_path):
     )
     out_df = ds.to_pandas()
     assert df.equals(out_df)
+
+
+def test_csv_read_with_column_type_specified(shutdown_only, tmp_path):
+    from pyarrow import csv
+
+    file_path = os.path.join(tmp_path, "test.csv")
+    df = pd.DataFrame({"one": [1, 2, 3e1], "two": ["a", "b", "c"]})
+    df.to_csv(file_path, index=False)
+
+    # Incorrect to parse scientific notation in int64 as PyArrow represents
+    # it as double.
+    with pytest.raises(pa.lib.ArrowInvalid):
+        ray.data.read_csv(
+            file_path,
+            convert_options=csv.ConvertOptions(
+                column_types={"one": "int64", "two": "string"}
+            ),
+        )
+
+    # Parsing scientific notation in double shoud work.
+    ds = ray.data.read_csv(
+        file_path,
+        convert_options=csv.ConvertOptions(
+            column_types={"one": "float64", "two": "string"}
+        ),
+    )
+    expected_df = pd.DataFrame({"one": [1.0, 2.0, 30.0], "two": ["a", "b", "c"]})
+    assert ds.to_pandas().equals(expected_df)
 
 
 class NodeLoggerOutputDatasource(Datasource[Union[ArrowRow, int]]):

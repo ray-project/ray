@@ -1,7 +1,10 @@
-from typing import Dict, Any
+from typing import Dict, Any, Optional, Tuple
 import os
 
+from ray.ml.checkpoint import Checkpoint
+from ray.ml.preprocessor import Preprocessor
 from ray.ml.train.gbdt_trainer import GBDTTrainer
+from ray.ml.utils.checkpointing import load_preprocessor_from_dir
 from ray.util.annotations import PublicAPI
 from ray.ml.constants import MODEL_KEY
 
@@ -16,6 +19,10 @@ class LightGBMTrainer(GBDTTrainer):
 
     This Trainer runs the LightGBM training loop in a distributed manner
     using multiple Ray Actors.
+
+    If you would like to take advantage of LightGBM's built-in handling
+    for features with the categorical data type, consider using the
+    :class:`Categorizer` preprocessor to set the dtypes in the dataset.
 
     Example:
         .. code-block:: python
@@ -69,9 +76,32 @@ class LightGBMTrainer(GBDTTrainer):
     }
     _init_model_arg_name: str = "init_model"
 
-    def _load_model_from_checkpoint(self):
-        init_model_path = self.resume_from_checkpoint.to_directory()
-        return lightgbm.Booster(model_file=os.path.join(init_model_path, MODEL_KEY))
-
     def _train(self, **kwargs):
         return lightgbm_ray.train(**kwargs)
+
+    def _load_checkpoint(
+        self, checkpoint: Checkpoint
+    ) -> Tuple[lightgbm.Booster, Optional[Preprocessor]]:
+        return load_checkpoint(checkpoint)
+
+
+def load_checkpoint(
+    checkpoint: Checkpoint,
+) -> Tuple[lightgbm.Booster, Optional[Preprocessor]]:
+    """Load a Checkpoint from ``LightGBMTrainer``.
+
+    Args:
+        checkpoint: The checkpoint to load the model and
+            preprocessor from. It is expected to be from the result of a
+            ``LightGBMTrainer`` run.
+
+    Returns:
+        The model and AIR preprocessor contained within.
+    """
+    with checkpoint.as_directory() as checkpoint_path:
+        lgbm_model = lightgbm.Booster(
+            model_file=os.path.join(checkpoint_path, MODEL_KEY)
+        )
+        preprocessor = load_preprocessor_from_dir(checkpoint_path)
+
+    return lgbm_model, preprocessor

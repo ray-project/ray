@@ -89,26 +89,22 @@ class MinimalClusterManager(ClusterManager):
         error_message = None
         config_json = None
         result = self.sdk.list_cluster_environment_builds(self.cluster_env_id)
-        for build in sorted(result.results, key=lambda b: b.created_at):
-            build_id = build.id
-            last_status = build.status
-            error_message = build.error_message
-            config_json = build.config_json
+        if not result or not result.results:
+            raise ClusterEnvBuildError(f"No build found for cluster env: {result}")
 
-            if build.status == "failed":
-                continue
+        build = sorted(result.results, key=lambda b: b.created_at)[-1]
+        build_id = build.id
+        last_status = build.status
+        error_message = build.error_message
+        config_json = build.config_json
 
-            elif build.status == "succeeded":
-                logger.info(
-                    f"Link to cluster env build: "
-                    f"{format_link(anyscale_cluster_env_build_url(build_id))}"
-                )
-                self.cluster_env_build_id = build_id
-                return
-            else:
-                # If the build is neither failed nor succeeded, it is still
-                # going on
-                break
+        if last_status == "succeeded":
+            logger.info(
+                f"Link to succeeded cluster env build: "
+                f"{format_link(anyscale_cluster_env_build_url(build_id))}"
+            )
+            self.cluster_env_build_id = build_id
+            return
 
         if last_status == "failed":
             logger.info(f"Previous cluster env build failed: {error_message}")
@@ -123,12 +119,9 @@ class MinimalClusterManager(ClusterManager):
             build_id = result.result.id
 
             logger.info(
-                f"Link to cluster env build: "
+                f"Link to created cluster env build: "
                 f"{format_link(anyscale_cluster_env_build_url(build_id))}"
             )
-
-        if not build_id:
-            raise ClusterEnvBuildError("No build found for cluster env.")
 
         # Build found but not failed/finished yet
         completed = False

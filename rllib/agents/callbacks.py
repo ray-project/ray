@@ -1,7 +1,7 @@
 import numpy as np
 import os
 import tracemalloc
-from typing import Dict, Optional, TYPE_CHECKING
+from typing import Dict, Optional, Tuple, TYPE_CHECKING
 
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
@@ -12,11 +12,12 @@ from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.exploration.random_encoder import (
-    MovingMeanStd,
+    _MovingMeanStd,
     compute_states_entropy,
     update_beta,
 )
 from ray.rllib.utils.typing import AgentID, EnvType, PolicyID
+from ray.tune.callback import _CallbackMeta
 
 # Import psutil after ray so the packaged version is used.
 import psutil
@@ -27,7 +28,7 @@ if TYPE_CHECKING:
 
 
 @PublicAPI
-class DefaultCallbacks:
+class DefaultCallbacks(metaclass=_CallbackMeta):
     """Abstract base class for RLlib callbacks (similar to Keras callbacks).
 
     These callbacks can be used for custom metrics and custom postprocessing.
@@ -196,7 +197,7 @@ class DefaultCallbacks:
         policy_id: PolicyID,
         policies: Dict[PolicyID, Policy],
         postprocessed_batch: SampleBatch,
-        original_batches: Dict[AgentID, SampleBatch],
+        original_batches: Dict[AgentID, Tuple[Policy, SampleBatch]],
         **kwargs,
     ) -> None:
         """Called immediately after a policy's postprocess_fn is called.
@@ -368,6 +369,8 @@ class MultiCallbacks(DefaultCallbacks):
             ])
     """
 
+    IS_CALLBACK_CONTAINER = True
+
     def __init__(self, callback_class_list):
         super().__init__()
         self._callback_class_list = callback_class_list
@@ -470,7 +473,7 @@ class MultiCallbacks(DefaultCallbacks):
         policy_id: PolicyID,
         policies: Dict[PolicyID, Policy],
         postprocessed_batch: SampleBatch,
-        original_batches: Dict[AgentID, SampleBatch],
+        original_batches: Dict[AgentID, Tuple[Policy, SampleBatch]],
         **kwargs,
     ) -> None:
         for callback in self._callback_list:
@@ -526,7 +529,7 @@ class RE3UpdateCallbacks(DefaultCallbacks):
         self.beta = beta
         self.rho = rho
         self.beta_schedule = beta_schedule
-        self._rms = MovingMeanStd()
+        self._rms = _MovingMeanStd()
         super().__init__(*args, **kwargs)
 
     def on_learn_on_batch(

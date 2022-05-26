@@ -3,7 +3,7 @@ import gym
 import logging
 import re
 import tree  # pip install dm_tree
-from typing import Callable, Dict, List, Optional, Tuple, Type
+from typing import Callable, Dict, List, Optional, Tuple, Type, Union
 
 from ray.util.debug import log_once
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
@@ -71,7 +71,13 @@ class DynamicTFPolicy(TFPolicy):
             ]
         ] = None,
         action_sampler_fn: Optional[
-            Callable[[TensorType, List[TensorType]], Tuple[TensorType, TensorType]]
+            Callable[
+                [TensorType, List[TensorType]],
+                Union[
+                    Tuple[TensorType, TensorType],
+                    Tuple[TensorType, TensorType, TensorType, List[TensorType]],
+                ],
+            ]
         ] = None,
         action_distribution_fn: Optional[
             Callable[
@@ -120,9 +126,10 @@ class DynamicTFPolicy(TFPolicy):
                 given policy, obs_space, action_space, and policy config.
                 All policy variables should be created in this function. If not
                 specified, a default model will be created.
-            action_sampler_fn: A callable returning a sampled action and its
-                log-likelihood given Policy, ModelV2, observation inputs,
-                explore, and is_training.
+            action_sampler_fn: A callable returning either a sampled action and
+                its log-likelihood or a sampled action, its log-likelihood,
+                action distribution inputs and updated state given Policy,
+                ModelV2, observation inputs, explore, and is_training.
                 Provide `action_sampler_fn` if you would like to have full
                 control over the action computation step, including the
                 model forward pass, possible sampling from a distribution,
@@ -292,7 +299,7 @@ class DynamicTFPolicy(TFPolicy):
 
             # Fully customized action generation (e.g., custom policy).
             if action_sampler_fn:
-                sampled_action, sampled_action_logp = action_sampler_fn(
+                action_sampler_outputs = action_sampler_fn(
                     self,
                     self.model,
                     obs_batch=self._input_dict[SampleBatch.CUR_OBS],
@@ -303,6 +310,17 @@ class DynamicTFPolicy(TFPolicy):
                     explore=explore,
                     is_training=self._input_dict.is_training,
                 )
+                if len(action_sampler_outputs) == 4:
+                    (
+                        sampled_action,
+                        sampled_action_logp,
+                        dist_inputs,
+                        self._state_out,
+                    ) = action_sampler_outputs
+                else:
+                    dist_inputs = None
+                    self._state_out = []
+                    sampled_action, sampled_action_logp = action_sampler_outputs
             # Distribution generation is customized, e.g., DQN, DDPG.
             else:
                 if action_distribution_fn:
@@ -875,6 +893,7 @@ class DynamicTFPolicy(TFPolicy):
         return losses
 
 
+@DeveloperAPI
 class TFMultiGPUTowerStack:
     """Optimizer that runs in parallel across multiple local devices.
 
@@ -984,7 +1003,7 @@ class TFMultiGPUTowerStack:
         if self.policy.config["_tf_policy_handles_more_than_one_loss"]:
             avgs = []
             for i, optim in enumerate(self.optimizers):
-                avg = average_gradients([t.grads[i] for t in self._towers])
+                avg = _average_gradients([t.grads[i] for t in self._towers])
                 if grad_norm_clipping:
                     clipped = []
                     for grad, _ in avg:
@@ -1013,7 +1032,7 @@ class TFMultiGPUTowerStack:
                     [o.apply_gradients(a) for o, a in zip(self.optimizers, avgs)]
                 )
         else:
-            avg = average_gradients([t.grads for t in self._towers])
+            avg = _average_gradients([t.grads for t in self._towers])
             if grad_norm_clipping:
                 clipped = []
                 for grad, _ in avg:
@@ -1115,7 +1134,7 @@ class TFMultiGPUTowerStack:
 
         if len(smallest_array) < sequences_per_minibatch:
             # Dynamically shrink the batch size if insufficient data
-            sequences_per_minibatch = make_divisible_by(
+            sequences_per_minibatch = _make_divisible_by(
                 len(smallest_array), len(self.devices)
             )
 
@@ -1142,7 +1161,7 @@ class TFMultiGPUTowerStack:
         if len(state_inputs) > 0:
             # First truncate the RNN state arrays to the sequences_per_minib.
             state_inputs = [
-                make_divisible_by(arr, sequences_per_minibatch) for arr in state_inputs
+                _make_divisible_by(arr, sequences_per_minibatch) for arr in state_inputs
             ]
             # Then truncate the data inputs to match
             inputs = [arr[: len(state_inputs[0]) * seq_len] for arr in inputs]
@@ -1158,7 +1177,7 @@ class TFMultiGPUTowerStack:
         else:
             truncated_len = 0
             for ph, arr in zip(self.loss_inputs, inputs):
-                truncated_arr = make_divisible_by(arr, sequences_per_minibatch)
+                truncated_arr = _make_divisible_by(arr, sequences_per_minibatch)
                 feed_dict[ph] = truncated_arr
                 if truncated_len == 0:
                     truncated_len = len(truncated_arr)
@@ -1241,7 +1260,7 @@ class TFMultiGPUTowerStack:
                     device_input_slices.append(current_slice)
                 graph_obj = self.policy_copy(device_input_slices)
                 device_grads = graph_obj.gradients(self.optimizers, graph_obj._losses)
-            return Tower(
+            return _Tower(
                 tf.group(*[batch.initializer for batch in device_input_batches]),
                 device_grads,
                 graph_obj,
@@ -1249,16 +1268,16 @@ class TFMultiGPUTowerStack:
 
 
 # Each tower is a copy of the loss graph pinned to a specific device.
-Tower = namedtuple("Tower", ["init_op", "grads", "loss_graph"])
+_Tower = namedtuple("Tower", ["init_op", "grads", "loss_graph"])
 
 
-def make_divisible_by(a, n):
+def _make_divisible_by(a, n):
     if type(a) is int:
         return a - a % n
     return a[0 : a.shape[0] - a.shape[0] % n]
 
 
-def average_gradients(tower_grads):
+def _average_gradients(tower_grads):
     """Averages gradients across towers.
 
     Calculate the average gradient for each shared variable across all towers.

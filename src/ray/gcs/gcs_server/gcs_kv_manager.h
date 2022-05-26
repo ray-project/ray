@@ -130,38 +130,6 @@ class RedisInternalKV : public InternalKVInterface {
   boost::asio::io_service::work work_;
 };
 
-class MemoryInternalKV : public InternalKVInterface {
- public:
-  MemoryInternalKV(instrumented_io_context &io_context) : io_context_(io_context) {}
-  void Get(const std::string &ns,
-           const std::string &key,
-           std::function<void(std::optional<std::string>)> callback) override;
-
-  void Put(const std::string &ns,
-           const std::string &key,
-           const std::string &value,
-           bool overwrite,
-           std::function<void(bool)> callback) override;
-
-  void Del(const std::string &ns,
-           const std::string &key,
-           bool del_by_prefix,
-           std::function<void(int64_t)> callback) override;
-
-  void Exists(const std::string &ns,
-              const std::string &key,
-              std::function<void(bool)> callback) override;
-
-  void Keys(const std::string &ns,
-            const std::string &prefix,
-            std::function<void(std::vector<std::string>)> callback) override;
-
- private:
-  instrumented_io_context &io_context_;
-  absl::Mutex mu_;
-  absl::btree_map<std::string, std::string> map_ GUARDED_BY(mu_);
-};
-
 /// This implementation class of `InternalKVHandler`.
 class GcsInternalKVManager : public rpc::InternalKVHandler {
  public:

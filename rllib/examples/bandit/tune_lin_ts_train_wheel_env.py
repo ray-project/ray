@@ -10,7 +10,7 @@ import time
 
 import ray
 from ray import tune
-from ray.rllib.agents.bandit.bandit import BanditLinTSTrainer
+from ray.rllib.algorithms.bandit.bandit import BanditLinTSTrainer
 from ray.rllib.examples.env.bandit_envs_discrete import WheelBanditEnv
 
 
@@ -50,8 +50,8 @@ if __name__ == "__main__":
         "eager_tracing": (args.framework == "tf2"),
     }
 
-    # Actual training_iterations will be 10 * timesteps_per_iteration
-    # (100 by default) = 2,000
+    # Actual env steps per `train()` call will be
+    # 10 * `min_sample_timesteps_per_reporting` (100 by default) = 1,000
     training_iterations = 10
 
     print("Running training for %s time steps" % training_iterations)

@@ -449,7 +449,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
         filtered = self._filter_names_smoke(
             tests,
             frequency=Frequency.NIGHTLY,
-            test_attr_regex_filters={"name": "other"},
+            test_attr_regex_filters={"name": "other.*"},
         )
         self.assertSequenceEqual(
             filtered,
@@ -459,18 +459,32 @@ class BuildkiteSettingsTest(unittest.TestCase):
         )
 
         filtered = self._filter_names_smoke(
-            tests, frequency=Frequency.NIGHTLY, test_attr_regex_filters={"name": "test"}
+            tests,
+            frequency=Frequency.NIGHTLY,
+            test_attr_regex_filters={"name": "test.*"},
         )
         self.assertSequenceEqual(
             filtered, [("test_1", False), ("test_2", True), ("test_3", False)]
         )
 
         filtered = self._filter_names_smoke(
+            tests, frequency=Frequency.NIGHTLY, test_attr_regex_filters={"name": "test"}
+        )
+        self.assertSequenceEqual(filtered, [])
+
+        filtered = self._filter_names_smoke(
             tests,
             frequency=Frequency.NIGHTLY,
-            test_attr_regex_filters={"name": "test", "team": "team_1"},
+            test_attr_regex_filters={"name": "test.*", "team": "team_1"},
         )
         self.assertSequenceEqual(filtered, [("test_1", False)])
+
+        filtered = self._filter_names_smoke(
+            tests,
+            frequency=Frequency.NIGHTLY,
+            test_attr_regex_filters={"name": "test_1|test_2"},
+        )
+        self.assertSequenceEqual(filtered, [("test_1", False), ("test_2", True)])
 
     def testGroupTests(self):
         tests = [
@@ -573,7 +587,9 @@ class BuildkiteSettingsTest(unittest.TestCase):
         test_concurrency(12800, 9, "large-gpu")
         test_concurrency(12800, 8, "small-gpu")
         test_concurrency(12800, 1, "small-gpu")
-        test_concurrency(12800, 0, "large")
+        test_concurrency(12800, 0, "enormous")
+        test_concurrency(1025, 0, "enormous")
+        test_concurrency(1024, 0, "large")
         test_concurrency(513, 0, "large")
         test_concurrency(512, 0, "medium")
         test_concurrency(129, 0, "medium")

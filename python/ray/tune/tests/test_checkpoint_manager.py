@@ -1,13 +1,13 @@
 # coding: utf-8
+import itertools
 import os
-import random
 import sys
 import tempfile
 import unittest
 from unittest.mock import patch
 
 from ray.tune.result import TRAINING_ITERATION
-from ray.tune.checkpoint_manager import _TuneCheckpoint, CheckpointManager, logger
+from ray.tune.checkpoint_manager import _TuneCheckpoint, _CheckpointManager, logger
 
 
 class CheckpointManagerTest(unittest.TestCase):
@@ -16,7 +16,7 @@ class CheckpointManagerTest(unittest.TestCase):
         return {"i": metric, TRAINING_ITERATION: i}
 
     def checkpoint_manager(self, keep_checkpoints_num):
-        return CheckpointManager(keep_checkpoints_num, "i", delete_fn=lambda c: None)
+        return _CheckpointManager(keep_checkpoints_num, "i", delete_fn=lambda c: None)
 
     def testNewestCheckpoint(self):
         checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num=1)
@@ -89,46 +89,44 @@ class CheckpointManagerTest(unittest.TestCase):
         Tests that the best checkpoints are tracked and ordered correctly.
         """
         keep_checkpoints_num = 4
-        checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num)
         checkpoints = [
             _TuneCheckpoint(_TuneCheckpoint.PERSISTENT, i, self.mock_result(i, i))
-            for i in range(16)
+            for i in range(8)
         ]
-        random.shuffle(checkpoints)
 
-        for checkpoint in checkpoints:
-            checkpoint_manager.on_checkpoint(checkpoint)
+        for permutation in itertools.permutations(checkpoints):
+            checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num)
 
-        best_checkpoints = checkpoint_manager.best_checkpoints()
-        self.assertEqual(len(best_checkpoints), keep_checkpoints_num)
-        for i in range(len(best_checkpoints)):
-            self.assertEqual(best_checkpoints[i].value, i + 12)
+            for checkpoint in permutation:
+                checkpoint_manager.on_checkpoint(checkpoint)
+
+            best_checkpoints = checkpoint_manager.best_checkpoints()
+            self.assertEqual(len(best_checkpoints), keep_checkpoints_num)
+            for i in range(len(best_checkpoints)):
+                self.assertEqual(best_checkpoints[i].value, i + 4)
 
     def testBestCheckpointsWithNan(self):
         """
         Tests that checkpoints with nan priority are handled correctly.
         """
         keep_checkpoints_num = 2
-        checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num)
         checkpoints = [
             _TuneCheckpoint(
                 _TuneCheckpoint.PERSISTENT, None, self.mock_result(float("nan"), i)
             )
             for i in range(2)
-        ]
-        checkpoints += [
-            _TuneCheckpoint(_TuneCheckpoint.PERSISTENT, 3, self.mock_result(0, 3))
-        ]
-        random.shuffle(checkpoints)
+        ] + [_TuneCheckpoint(_TuneCheckpoint.PERSISTENT, 3, self.mock_result(0, 3))]
 
-        for checkpoint in checkpoints:
-            checkpoint_manager.on_checkpoint(checkpoint)
+        for permutation in itertools.permutations(checkpoints):
+            checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num)
+            for checkpoint in permutation:
+                checkpoint_manager.on_checkpoint(checkpoint)
 
-        best_checkpoints = checkpoint_manager.best_checkpoints()
-        # best_checkpoints is sorted from worst to best
-        self.assertEqual(len(best_checkpoints), keep_checkpoints_num)
-        self.assertEqual(best_checkpoints[0].value, None)
-        self.assertEqual(best_checkpoints[1].value, 3)
+            best_checkpoints = checkpoint_manager.best_checkpoints()
+            # best_checkpoints is sorted from worst to best
+            self.assertEqual(len(best_checkpoints), keep_checkpoints_num)
+            self.assertEqual(best_checkpoints[0].value, None)
+            self.assertEqual(best_checkpoints[1].value, 3)
 
     def testBestCheckpointsOnlyNan(self):
         """
@@ -182,7 +180,7 @@ class CheckpointManagerTest(unittest.TestCase):
         self.assertEqual(checkpoint_manager.best_checkpoints(), [])
 
     def testSameCheckpoint(self):
-        checkpoint_manager = CheckpointManager(
+        checkpoint_manager = _CheckpointManager(
             1, "i", delete_fn=lambda c: os.remove(c.value)
         )
 

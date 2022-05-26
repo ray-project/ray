@@ -8,8 +8,10 @@ if TYPE_CHECKING:
 
 from ray.data.block import BlockAccessor
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI
 class NumpyDatasource(FileBasedDatasource):
     """Numpy datasource, for reading and writing Numpy files.
 
@@ -43,7 +45,7 @@ class NumpyDatasource(FileBasedDatasource):
         block: BlockAccessor,
         column: str,
         writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
-        **writer_args
+        **writer_args,
     ):
         value = block.to_numpy(column)
         np.save(f, value)

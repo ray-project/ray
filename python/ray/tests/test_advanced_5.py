@@ -147,9 +147,8 @@ def test_schedule_many_actors_and_normal_tasks(ray_start_cluster):
         assert object == 1
 
 
-# This case tests whether gcs-based actor scheduler distributes actors
-# in a balanced way. By default, it uses the `SPREAD` strategy of
-# gcs resource scheduler.
+# This case tests whether gcs actor scheduler distributes actors
+# in a balanced way if using `SPREAD` policy.
 @pytest.mark.parametrize("args", [[5, 20], [5, 3]])
 def test_actor_distribution_balance(ray_start_cluster_enabled, args):
     cluster = ray_start_cluster_enabled
@@ -165,7 +164,7 @@ def test_actor_distribution_balance(ray_start_cluster_enabled, args):
     ray.init(address=cluster.address)
     cluster.wait_for_nodes()
 
-    @ray.remote(memory=100 * 1024 ** 2, num_cpus=0.01)
+    @ray.remote(memory=100 * 1024 ** 2, num_cpus=0.01, scheduling_strategy="SPREAD")
     class Foo:
         def method(self):
             return ray.worker.global_worker.node.unique_id
@@ -194,16 +193,17 @@ def test_worker_lease_reply_with_resources(ray_start_cluster_enabled):
     cluster = ray_start_cluster_enabled
     cluster.add_node(
         memory=2000 * 1024 ** 2,
+        num_cpus=1,
         _system_config={
             "gcs_resource_report_poll_period_ms": 1000000,
             "gcs_actor_scheduling_enabled": True,
         },
     )
-    node2 = cluster.add_node(memory=1000 * 1024 ** 2)
+    node2 = cluster.add_node(memory=1000 * 1024 ** 2, num_cpus=1)
     ray.init(address=cluster.address)
     cluster.wait_for_nodes()
 
-    @ray.remote(memory=1500 * 1024 ** 2)
+    @ray.remote(memory=1500 * 1024 ** 2, num_cpus=0.01)
     def fun(signal):
         signal.send.remote()
         time.sleep(30)
@@ -214,7 +214,7 @@ def test_worker_lease_reply_with_resources(ray_start_cluster_enabled):
     # Make sure that the `fun` is running.
     ray.get(signal.wait.remote())
 
-    @ray.remote(memory=800 * 1024 ** 2)
+    @ray.remote(memory=800 * 1024 ** 2, num_cpus=0.01)
     class Foo:
         def method(self):
             return ray.worker.global_worker.node.unique_id

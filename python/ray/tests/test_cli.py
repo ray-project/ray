@@ -262,7 +262,45 @@ def test_ray_start(configure_lang, monkeypatch, tmp_path):
 
     _die_on_error(runner.invoke(scripts.stop))
 
-    _check_output_via_pattern("test_ray_start.txt", result)
+    if ray.util.get_node_ip_address() == "127.0.0.1":
+        _check_output_via_pattern("test_ray_start_localhost.txt", result)
+    else:
+        _check_output_via_pattern("test_ray_start.txt", result)
+
+
+def _ray_start_hook(ray_params, head):
+    os.makedirs(ray_params.temp_dir, exist_ok=True)
+    with open(os.path.join(ray_params.temp_dir, "ray_hook_ok"), "w") as f:
+        f.write("HOOK_OK")
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
+    reason=("Mac builds don't provide proper locale support"),
+)
+def test_ray_start_hook(configure_lang, monkeypatch, tmp_path):
+    monkeypatch.setenv("RAY_START_HOOK", "ray.tests.test_cli._ray_start_hook")
+    runner = CliRunner()
+    temp_dir = os.path.join("/tmp", uuid.uuid4().hex)
+    runner.invoke(
+        scripts.start,
+        [
+            "--head",
+            "--log-style=pretty",
+            "--log-color",
+            "False",
+            "--port",
+            "0",
+            "--temp-dir",
+            temp_dir,
+        ],
+    )
+
+    # Check that the hook executed.
+    assert os.path.exists(temp_dir)
+    assert os.path.exists(os.path.join(temp_dir, "ray_hook_ok"))
+
+    _die_on_error(runner.invoke(scripts.stop))
 
 
 @pytest.mark.skipif(

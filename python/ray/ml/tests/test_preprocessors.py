@@ -18,6 +18,7 @@ from ray.ml.preprocessors import (
     SimpleImputer,
     Chain,
 )
+from ray.ml.preprocessors.encoder import Categorizer
 from ray.ml.preprocessors.hasher import FeatureHasher
 from ray.ml.preprocessors.normalizer import Normalizer
 from ray.ml.preprocessors.scaler import MaxAbsScaler, RobustScaler
@@ -469,6 +470,20 @@ def test_one_hot_encoder():
     null_encoder.transform_batch(nonnull_df)
 
 
+def test_one_hot_encoder_with_limit():
+    """Tests basic OneHotEncoder functionality with limit."""
+    col_a = ["red", "green", "blue", "red"]
+    col_b = ["warm", "cold", "hot", "cold"]
+    col_c = [1, 10, 5, 10]
+    in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b, "C": col_c})
+    ds = ray.data.from_pandas(in_df)
+
+    encoder = OneHotEncoder(["B", "C"], limit={"B": 2})
+
+    ds_out = encoder.fit_transform(ds)
+    assert len(ds_out.to_pandas().columns) == 1 + 2 + 3
+
+
 def test_label_encoder():
     """Tests basic LabelEncoder functionality."""
     col_a = ["red", "green", "blue", "red"]
@@ -545,6 +560,64 @@ def test_label_encoder():
     with pytest.raises(ValueError):
         null_encoder.transform_batch(null_df)
     null_encoder.transform_batch(nonnull_df)
+
+
+@pytest.mark.parametrize("predefined_dtypes", [True, False])
+def test_categorizer(predefined_dtypes):
+    """Tests basic Categorizer functionality."""
+    col_a = ["red", "green", "blue", "red", "red"]
+    col_b = ["warm", "cold", "hot", "cold", None]
+    col_c = [1, 10, 5, 10, 1]
+    in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b, "C": col_c})
+    ds = ray.data.from_pandas(in_df)
+
+    if predefined_dtypes:
+        expected_dtypes = {
+            "B": pd.CategoricalDtype(["cold", "hot", "warm"], ordered=True),
+            "C": pd.CategoricalDtype([1, 5, 10]),
+        }
+        columns = {
+            "B": pd.CategoricalDtype(["cold", "hot", "warm"], ordered=True),
+            "C": None,
+        }
+    else:
+        expected_dtypes = {
+            "B": pd.CategoricalDtype(["cold", "hot", "warm"]),
+            "C": pd.CategoricalDtype([1, 5, 10]),
+        }
+        columns = ["B", "C"]
+
+    encoder = Categorizer(columns)
+
+    # Transform with unfitted preprocessor.
+    with pytest.raises(PreprocessorNotFittedException):
+        encoder.transform(ds)
+
+    # Fit data.
+    encoder.fit(ds)
+    assert encoder.stats_ == expected_dtypes
+
+    # Transform data.
+    transformed = encoder.transform(ds)
+    out_df = transformed.to_pandas()
+
+    assert out_df.dtypes["A"] == np.object_
+    assert out_df.dtypes["B"] == expected_dtypes["B"]
+    assert out_df.dtypes["C"] == expected_dtypes["C"]
+
+    # Transform batch.
+    pred_col_a = ["blue", "yellow", None]
+    pred_col_b = ["cold", "warm", "other"]
+    pred_col_c = [10, 1, 20]
+    pred_in_df = pd.DataFrame.from_dict(
+        {"A": pred_col_a, "B": pred_col_b, "C": pred_col_c}
+    )
+
+    pred_out_df = encoder.transform_batch(pred_in_df)
+
+    assert pred_out_df.dtypes["A"] == np.object_
+    assert pred_out_df.dtypes["B"] == expected_dtypes["B"]
+    assert pred_out_df.dtypes["C"] == expected_dtypes["C"]
 
 
 def test_simple_imputer():

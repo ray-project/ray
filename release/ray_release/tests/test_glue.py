@@ -68,6 +68,8 @@ class MockReturn:
         return object.__getattribute__(self, item)
 
 
+@patch("ray_release.glue.reinstall_anyscale_dependencies", lambda: None)
+@patch("ray_release.glue.get_pip_packages", lambda: ["pip-packages"])
 class GlueTest(unittest.TestCase):
     def writeClusterEnv(self, content: str):
         with open(os.path.join(self.tempdir, "cluster_env.yaml"), "wt") as fp:
@@ -519,6 +521,18 @@ class GlueTest(unittest.TestCase):
 
         # Ensure cluster was terminated
         self.assertGreaterEqual(self.sdk.call_counter["terminate_cluster"], 1)
+
+    def testSmokeUnstableTest(self):
+        result = Result()
+
+        self._succeed_until("complete")
+
+        self.test["stable"] = False
+        self._run(result, smoke_test=True)
+
+        # Ensure stable and smoke_test are set correctly.
+        assert not result.stable
+        assert result.smoke_test
 
     def testFetchResultFails(self):
         result = Result()

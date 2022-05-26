@@ -1,11 +1,22 @@
 import inspect
 import logging
 from pathlib import Path
-from typing import Dict, Callable, Optional, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Union,
+    Type,
+    TYPE_CHECKING,
+)
 
 import ray
 from ray import tune
-from ray.ml.constants import TRAIN_DATASET_KEY, PREPROCESSOR_KEY
+from ray.actor import ActorHandle
+from ray.ml.constants import MODEL_KEY, TRAIN_DATASET_KEY, PREPROCESSOR_KEY
 from ray.ml.trainer import Trainer
 from ray.ml.config import ScalingConfig, RunConfig
 from ray.ml.trainer import GenDataset
@@ -14,10 +25,36 @@ from ray.ml.checkpoint import Checkpoint
 from ray.train import BackendConfig, TrainingIterator
 from ray.train.backend import BackendExecutor
 from ray.train.checkpoint import TuneCheckpointManager
+from ray.train.impl.dataset_spec import _RayDatasetSpec
 from ray.train.utils import construct_train_func
 from ray.util.annotations import DeveloperAPI
 
+if TYPE_CHECKING:
+    from ray.data import Dataset
+
 logger = logging.getLogger(__name__)
+
+
+# TODO(team-ml): Refactor checkpoint management along with Tune.
+class _DataParallelCheckpointManager(TuneCheckpointManager):
+    def on_init(self, preprocessor: Preprocessor):
+        self.preprocessor = preprocessor
+        super(_DataParallelCheckpointManager, self).on_init()
+
+    def write_checkpoint(self, checkpoint: Dict):
+        self.add_tune_checkpoint_id(checkpoint)
+
+        # Add the preprocessor to the checkpoint.
+        checkpoint[PREPROCESSOR_KEY] = self.preprocessor
+
+        checkpoint_obj = Checkpoint.from_dict(checkpoint)
+        # If inside a Tune Trainable, then checkpoint with Tune.
+        with tune.checkpoint_dir(step=self._latest_checkpoint_id) as checkpoint_dir:
+            checkpoint_obj.to_directory(path=checkpoint_dir)
+
+    @property
+    def latest_checkpoint_dir(self) -> Optional[Path]:
+        raise NotImplementedError
 
 
 @DeveloperAPI
@@ -159,7 +196,9 @@ class DataParallelTrainer(Trainer):
             def __init__(self, train_loop_per_worker, my_backend_config:
                 MyBackendConfig, **kwargs):
 
-                super().__init__(train_loop_per_worker, my_backend_config, **kwargs)
+                super().__init__(
+                    train_loop_per_worker,
+                    backend_config=my_backend_config, **kwargs)
 
     Args:
         train_loop_per_worker: The training function to execute.
@@ -181,7 +220,11 @@ class DataParallelTrainer(Trainer):
         resume_from_checkpoint: A checkpoint to resume training from.
     """
 
-    _scaling_config_allowed_keys = [
+    _checkpoint_manager_cls: Type[
+        TuneCheckpointManager
+    ] = _DataParallelCheckpointManager
+
+    _scaling_config_allowed_keys = Trainer._scaling_config_allowed_keys + [
         "num_workers",
         "num_cpus_per_worker",
         "num_gpus_per_worker",
@@ -191,8 +234,8 @@ class DataParallelTrainer(Trainer):
 
     def __init__(
         self,
-        *,
         train_loop_per_worker: Union[Callable[[], None], Callable[[Dict], None]],
+        *,
         train_loop_config: Optional[Dict] = None,
         backend_config: Optional[BackendConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
@@ -281,7 +324,7 @@ class DataParallelTrainer(Trainer):
             max_retries=0,
         )
 
-        checkpoint_manager = _DataParallelCheckpointManager()
+        checkpoint_manager = self._checkpoint_manager_cls()
         checkpoint_manager.on_init(preprocessor=self.preprocessor)
 
         # Start the remote actors.
@@ -292,19 +335,9 @@ class DataParallelTrainer(Trainer):
         else:
             resume_checkpoint_dict = None
 
-        # Tell Ray Train to only shard the train dataset and not the other datasets.
-        # This is purely an implementation detail and users do not need to know about
-        # this.
-        # TODO(amog): Refactor this to remove hack and make this more modular.
-        #  TrainingIterator should accept a generic custom_ingest_func that contains
-        #  the logic for how to split the Datasets.
-        updated_dataset_dict = {}
-        for key, value in self.datasets.items():
-            if key == TRAIN_DATASET_KEY:
-                updated_dataset_dict[key] = value
-            else:
-                # Ray Train will strip out the added string before exposing to users.
-                updated_dataset_dict[key + "_NO-SHARD"] = value
+        dataset_spec = _RayDatasetSpec(
+            dataset_or_dict=self.datasets, dataset_split_fn=_default_dataset_split_fn
+        )
 
         # TODO(amog): Have TrainingIterator also accept a checkpoint ObjectRef instead
         #  of just a Dict.
@@ -312,7 +345,7 @@ class DataParallelTrainer(Trainer):
             backend_executor=backend_executor,
             backend_config=self.backend_config,
             train_func=train_loop_per_worker,
-            dataset=updated_dataset_dict if len(updated_dataset_dict) > 0 else None,
+            dataset_spec=dataset_spec,
             checkpoint_manager=checkpoint_manager,
             checkpoint=resume_checkpoint_dict,
             checkpoint_strategy=None,
@@ -328,23 +361,65 @@ class DataParallelTrainer(Trainer):
         backend_executor.shutdown()
 
 
-# TODO(team-ml): Refactor checkpoint management along with Tune.
-class _DataParallelCheckpointManager(TuneCheckpointManager):
-    def on_init(self, preprocessor: Preprocessor):
-        self.preprocessor = preprocessor
-        super(_DataParallelCheckpointManager, self).on_init()
+def _load_checkpoint(
+    checkpoint: Checkpoint, trainer_name: str
+) -> Tuple[Any, Optional[Preprocessor]]:
+    """Load a Ray Train Checkpoint.
 
-    def write_checkpoint(self, checkpoint: Dict):
-        self.add_tune_checkpoint_id(checkpoint)
+    This is a private API.
 
-        # Add the preprocessor to the checkpoint.
-        checkpoint[PREPROCESSOR_KEY] = self.preprocessor
+    Args:
+        checkpoint: The checkpoint to load the weights and
+            preprocessor from.
+        trainer_name: Trainer class name to use in error
+            message.
 
-        checkpoint_obj = Checkpoint.from_dict(checkpoint)
-        # If inside a Tune Trainable, then checkpoint with Tune.
-        with tune.checkpoint_dir(step=self._latest_checkpoint_id) as checkpoint_dir:
-            checkpoint_obj.to_directory(path=checkpoint_dir)
+    Returns:
+        The model or weights and AIR preprocessor contained within.
+    """
+    checkpoint_dict = checkpoint.to_dict()
+    preprocessor = checkpoint_dict.get(PREPROCESSOR_KEY, None)
+    if MODEL_KEY not in checkpoint_dict:
+        raise RuntimeError(
+            f"No item with key: {MODEL_KEY} is found in the "
+            f"Checkpoint. Make sure this key exists when saving the "
+            f"checkpoint in ``{trainer_name}``."
+        )
+    model = checkpoint_dict[MODEL_KEY]
+    return model, preprocessor
 
-    @property
-    def latest_checkpoint_dir(self) -> Optional[Path]:
-        raise NotImplementedError
+
+def _default_dataset_split_fn(
+    dataset_dict: Dict[str, "Dataset"], training_worker_handles: List[ActorHandle]
+) -> List[Dict[str, "Dataset"]]:
+    """Defines splitting logic of Datasets passed into ``DataParallelTrainer``.
+
+    By default only training dataset will be split. All other datasets will not be
+    split and passed through directly to the training workers. This is because
+    validation implementation is often done on just the rank 0 worker.
+
+    Args:
+        dataset_dict: A dictionary of Datasets.
+        training_worker_handles: The actor handles of the training workers to use for
+            locality hints.
+
+    Returns:
+        A list of dataset dictionaries for each training worker.
+    """
+    dataset_dict_splits = [{} for _ in range(len(training_worker_handles))]
+
+    for key, dataset in dataset_dict.items():
+        if key == TRAIN_DATASET_KEY:
+            dataset_splits = dataset.split(
+                len(training_worker_handles),
+                equal=True,
+                locality_hints=training_worker_handles,
+            )
+        else:
+            # Only shard the training dataset.
+            dataset_splits = [dataset] * len(training_worker_handles)
+
+        for i in range(len(dataset_splits)):
+            dataset_dict_splits[i][key] = dataset_splits[i]
+
+    return dataset_dict_splits

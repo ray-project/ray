@@ -20,16 +20,19 @@ If all nodes are infeasible, the actor cannot be scheduled until feasible nodes 
 
 Placement Group
 ---------------
-If ``placement_group`` option is set then the actor will be scheduled where the placement group is located.
+If :ref:`scheduling_strategy=PlacementGroupSchedulingStrategy <scheduling-strategy-ref>` option is set then the actor will be scheduled where the placement group is located.
 See :ref:`Placement Group <ray-placement-group-doc-ref>` for more details.
 
 Scheduling Strategy
 -------------------
 Actors support a ``scheduling_strategy`` option to specify the strategy used to decide the best node among available nodes.
-Currently the supported strategies for actors are ``"DEFAULT"`` and ``ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(node_id, soft: bool)``.
+Currently the supported strategies for actors are ``"DEFAULT"``, ``"SPREAD"`` and
+``ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(node_id, soft: bool)``.
 
 ``"DEFAULT"`` is the default strategy used by Ray. With the current implementation, Ray will try to pack actors on nodes
 until the resource utilization is beyond a certain threshold and spread actors afterwards.
+
+"SPREAD" strategy will try to spread the actors among available nodes.
 
 NodeAffinitySchedulingStrategy is a low-level strategy that allows an actor to be scheduled onto a particular node specified by its node id.
 The ``soft`` flag specifies whether the actor is allowed to run somewhere else if the specified node doesn't exist (e.g. if the node dies)
@@ -48,7 +51,7 @@ Since nodes are randomly chosen, actors that don't require any resources are eff
 
     .. code-block:: python
 
-        @ray.remote
+        @ray.remote(num_cpus=1)
         class Actor:
             pass
 
@@ -65,3 +68,6 @@ Since nodes are randomly chosen, actors that don't require any resources are eff
                 soft = False,
             )
         ).remote()
+
+        # Spread actors across the cluster.
+        actors = [Actor.options(scheduling_strategy="SPREAD").remote() for i in range(100)]

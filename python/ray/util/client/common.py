@@ -216,7 +216,7 @@ class ClientActorRef(raylet.ActorID):
                 if not self.is_nil():
                     self._worker.call_release(self.id)
             except Exception:
-                logger.info(
+                logger.debug(
                     "Exception from actor creation is ignored in destructor. "
                     "To receive this exception in application code, call "
                     "a method on the actor reference before its destructor "

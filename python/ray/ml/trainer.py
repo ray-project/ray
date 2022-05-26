@@ -136,7 +136,7 @@ class Trainer(abc.ABC):
         resume_from_checkpoint: A checkpoint to resume training from.
     """
 
-    _scaling_config_allowed_keys: List[str] = []
+    _scaling_config_allowed_keys: List[str] = ["trainer_resources"]
 
     def __init__(
         self,
@@ -257,9 +257,9 @@ class Trainer(abc.ABC):
         If the ``Trainer`` has both a datasets dict and
         a preprocessor, the datasets dict contains a training dataset (denoted by
         the "train" key), and the preprocessor has not yet
-        been fit, then it will be fit on the train.
+        been fit, then it will be fit on the train dataset.
 
-        Then, the Trainer's datasets will be transformed by the preprocessor.
+        Then, all Trainer's datasets will be transformed by the preprocessor.
 
         The transformed datasets will be set back in the ``self.datasets`` attribute
         of the Trainer to be used when overriding ``training_loop``.

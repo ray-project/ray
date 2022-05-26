@@ -21,6 +21,7 @@
 #include "ray/common/id.h"
 #include "ray/common/task/task.h"
 #include "ray/common/ray_object.h"
+#include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/client_connection.h"
 #include "ray/common/task/task_common.h"
 #include "ray/common/task/scheduling_resources.h"
@@ -138,7 +139,9 @@ class HeartbeatSender {
   uint64_t last_heartbeat_at_ms_;
 };
 
-class NodeManager : public rpc::NodeManagerServiceHandler {
+class NodeManager : public rpc::NodeManagerServiceHandler,
+                    public syncer::ReporterInterface,
+                    public syncer::ReceiverInterface {
  public:
   /// Create a node manager.
   ///
@@ -187,6 +190,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Get the port of the node manager rpc server.
   int GetServerPort() const { return node_manager_server_.GetPort(); }
+
+  void ConsumeSyncMessage(std::shared_ptr<const syncer::RaySyncMessage> message) override;
+
+  std::optional<syncer::RaySyncMessage> CreateSyncMessage(
+      int64_t after_version, syncer::MessageType message_type) const override;
 
   int GetObjectManagerPort() const { return object_manager_.GetServerPort(); }
 
@@ -359,10 +367,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// We will disconnect the worker connection first and then kill the worker.
   ///
   /// \param worker The worker to destroy.
+  /// \param disconnect_type The reason why this worker process is disconnected.
+  /// \param disconnect_detail The detailed reason for a given exit.
   /// \return Void.
-  void DestroyWorker(
-      std::shared_ptr<WorkerInterface> worker,
-      rpc::WorkerExitType disconnect_type = rpc::WorkerExitType::SYSTEM_ERROR_EXIT);
+  void DestroyWorker(std::shared_ptr<WorkerInterface> worker,
+                     rpc::WorkerExitType disconnect_type,
+                     const std::string &disconnect_detail);
 
   /// When a job finished, loop over all of the queued tasks for that job and
   /// treat them as failed.
@@ -593,6 +603,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                             rpc::GetObjectsInfoReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `HandleGCSRestart` request
+  void HandleNotifyGCSRestart(const rpc::NotifyGCSRestartRequest &request,
+                              rpc::NotifyGCSRestartReply *reply,
+                              rpc::SendReplyCallback send_reply_callback) override;
+
   /// Trigger local GC on each worker of this raylet.
   void DoLocalGC(bool triggered_by_global_gc = false);
 
@@ -640,12 +655,15 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   ///
   /// \param client The client that sent the message.
   /// \param disconnect_type The reason to disconnect the specified client.
+  /// \param disconnect_detail Disconnection information in details.
   /// \param client_error_message Extra error messages about this disconnection
   /// \return Void.
-  void DisconnectClient(
-      const std::shared_ptr<ClientConnection> &client,
-      rpc::WorkerExitType disconnect_type = rpc::WorkerExitType::SYSTEM_ERROR_EXIT,
-      const rpc::RayException *creation_task_exception = nullptr);
+  void DisconnectClient(const std::shared_ptr<ClientConnection> &client,
+                        rpc::WorkerExitType disconnect_type,
+                        const std::string &disconnect_detail,
+                        const rpc::RayException *creation_task_exception = nullptr);
+
+  bool TryLocalGC();
 
   /// ID of this node.
   NodeID self_node_id_;
@@ -797,6 +815,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Whether or not if the node draining process has already received.
   bool is_node_drained_ = false;
+
+  /// Ray syncer for synchronization
+  syncer::RaySyncer ray_syncer_;
+
+  /// RaySyncerService for gRPC
+  syncer::RaySyncerService ray_syncer_service_;
 };
 
 }  // namespace raylet

@@ -93,11 +93,13 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
             "APEX",
             {
                 "num_workers": 2,
-                "timesteps_per_iteration": 100,
+                "min_sample_timesteps_per_reporting": 100,
                 "num_gpus": 0,
-                "buffer_size": 1000,
+                "replay_buffer_config": {
+                    "capacity": 1000,
+                    "learning_starts": 10,
+                },
                 "min_time_s_per_reporting": 1,
-                "learning_starts": 10,
                 "target_network_update_freq": 100,
                 "optimizer": {
                     "num_replay_buffer_shards": 1,
@@ -110,11 +112,13 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
             "APEX_DDPG",
             {
                 "num_workers": 2,
-                "timesteps_per_iteration": 100,
-                "buffer_size": 1000,
+                "min_sample_timesteps_per_reporting": 100,
+                "replay_buffer_config": {
+                    "capacity": 1000,
+                    "learning_starts": 10,
+                },
                 "num_gpus": 0,
                 "min_time_s_per_reporting": 1,
-                "learning_starts": 10,
                 "target_network_update_freq": 100,
                 "use_state_preprocessor": True,
             },
@@ -124,10 +128,12 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
         check_support_multiagent(
             "DDPG",
             {
-                "timesteps_per_iteration": 1,
-                "buffer_size": 1000,
+                "min_sample_timesteps_per_reporting": 1,
+                "replay_buffer_config": {
+                    "capacity": 1000,
+                    "learning_starts": 500,
+                },
                 "use_state_preprocessor": True,
-                "learning_starts": 500,
             },
         )
 
@@ -135,8 +141,10 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
         check_support_multiagent(
             "DQN",
             {
-                "timesteps_per_iteration": 1,
-                "buffer_size": 1000,
+                "min_sample_timesteps_per_reporting": 1,
+                "replay_buffer_config": {
+                    "capacity": 1000,
+                },
             },
         )
 
@@ -145,7 +153,9 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
             "SAC",
             {
                 "num_workers": 0,
-                "buffer_size": 1000,
+                "replay_buffer_config": {
+                    "capacity": 1000,
+                },
                 "normalize_actions": False,
             },
         )

@@ -1171,5 +1171,36 @@ def test_actor_mro(ray_start_regular_shared):
     assert obj.get_x() == 1
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="differing deletion behaviors")
+def test_keep_calling_get_actor(ray_start_regular_shared):
+    """
+    Test keep calling get_actor.
+    """
+
+    @ray.remote
+    class Actor:
+        def hello(self):
+            return "hello"
+
+    actor = Actor.options(name="ABC").remote()
+    assert ray.get(actor.hello.remote()) == "hello"
+
+    for _ in range(10):
+        actor = ray.get_actor("ABC")
+        assert ray.get(actor.hello.remote()) == "hello"
+
+    del actor
+
+    # Verify the actor is killed
+    def actor_removed():
+        try:
+            ray.get_actor("ABC")
+            return False
+        except ValueError:
+            return True
+
+    wait_for_condition(actor_removed)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

@@ -62,8 +62,8 @@ if __name__ == "__main__":
         "simple_optimizer": True,
     }
 
-    # Actual training_iterations will be 10 * timesteps_per_iteration
-    # (100 by default) = 2,000
+    # Actual env timesteps per `train()` call will be
+    # 10 * min_sample_timesteps_per_reporting (100 by default) = 1,000.
     training_iterations = 10
 
     print("Running training for %s time steps" % training_iterations)

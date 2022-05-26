@@ -21,10 +21,35 @@ namespace ray {
 namespace gcs {
 
 GcsResourceManager::GcsResourceManager(
+    instrumented_io_context &io_context,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-    ClusterResourceManager &cluster_resource_manager)
-    : gcs_table_storage_(gcs_table_storage),
-      cluster_resource_manager_(cluster_resource_manager) {}
+    ClusterResourceManager &cluster_resource_manager,
+    NodeID local_node_id,
+    std::shared_ptr<ClusterTaskManager> cluster_task_manager)
+    : io_context_(io_context),
+      gcs_table_storage_(gcs_table_storage),
+      cluster_resource_manager_(cluster_resource_manager),
+      local_node_id_(std::move(local_node_id)),
+      cluster_task_manager_(std::move(cluster_task_manager)) {}
+
+void GcsResourceManager::ConsumeSyncMessage(
+    std::shared_ptr<const syncer::RaySyncMessage> message) {
+  // ConsumeSyncMessage is called by ray_syncer which might not run
+  // in a dedicated thread for performance.
+  // GcsResourceManager is a module always run in the main thread, so we just
+  // delegate the work to the main thread for thread safety.
+  // Ideally, all public api in GcsResourceManager need to be put into this
+  // io context for thread safety.
+  io_context_.dispatch(
+      [this, message]() {
+        rpc::ResourcesData resources;
+        resources.ParseFromString(message->sync_message());
+        resources.set_node_id(message->node_id());
+        RAY_CHECK(message->message_type() == syncer::MessageType::RESOURCE_VIEW);
+        UpdateFromResourceReport(resources);
+      },
+      "GcsResourceManager::Update");
+}
 
 void GcsResourceManager::HandleGetResources(const rpc::GetResourcesRequest &request,
                                             rpc::GetResourcesReply *reply,
@@ -129,15 +154,32 @@ void GcsResourceManager::HandleGetAllAvailableResources(
     const rpc::GetAllAvailableResourcesRequest &request,
     rpc::GetAllAvailableResourcesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  auto local_scheduling_node_id = scheduling::NodeID(local_node_id_.Binary());
   for (const auto &node_resources_entry : cluster_resource_manager_.GetResourceView()) {
-    const auto &node_id = node_resources_entry.first;
-    const auto &node_resources = node_resources_entry.second.GetLocalView();
+    if (node_resources_entry.first == local_scheduling_node_id) {
+      continue;
+    }
     rpc::AvailableResources resource;
-    resource.set_node_id(node_id.Binary());
-
+    resource.set_node_id(node_resources_entry.first.Binary());
+    const auto &node_resources = node_resources_entry.second.GetLocalView();
+    const auto node_id = NodeID::FromBinary(node_resources_entry.first.Binary());
+    bool using_resource_reports = RayConfig::instance().gcs_actor_scheduling_enabled() &&
+                                  node_resource_usages_.contains(node_id);
     for (const auto &resource_id : node_resources.available.ResourceIds()) {
-      const auto &resource_value = node_resources.available.Get(resource_id);
       const auto &resource_name = resource_id.Binary();
+      // Because gcs scheduler does not directly update the available resources of
+      // `cluster_resource_manager_`, use the record from resource reports (stored in
+      // `node_resource_usages_`) instead.
+      if (using_resource_reports) {
+        auto resource_iter =
+            node_resource_usages_[node_id].resources_available().find(resource_name);
+        if (resource_iter != node_resource_usages_[node_id].resources_available().end()) {
+          resource.mutable_resources_available()->insert(
+              {resource_name, resource_iter->second});
+          continue;
+        }
+      }
+      const auto &resource_value = node_resources.available.Get(resource_id);
       resource.mutable_resources_available()->insert(
           {resource_name, resource_value.Double()});
     }
@@ -190,6 +232,11 @@ void GcsResourceManager::HandleGetAllResourceUsage(
     const rpc::GetAllResourceUsageRequest &request,
     rpc::GetAllResourceUsageReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  if (cluster_task_manager_ && RayConfig::instance().gcs_actor_scheduling_enabled()) {
+    rpc::ResourcesData resources_data;
+    cluster_task_manager_->FillPendingActorInfo(resources_data);
+    node_resource_usages_[local_node_id_].CopyFrom(resources_data);
+  }
   if (!node_resource_usages_.empty()) {
     auto batch = std::make_shared<rpc::ResourceUsageBatchData>();
     std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
@@ -344,6 +391,11 @@ std::string GcsResourceManager::ToString() const {
   }
   ostr << indent_0 << "}\n";
   return ostr.str();
+}
+
+const NodeResources &GcsResourceManager::GetNodeResources(
+    scheduling::NodeID node_id) const {
+  return cluster_resource_manager_.GetNodeResources(node_id);
 }
 
 }  // namespace gcs
