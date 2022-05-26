@@ -455,11 +455,16 @@ class Trial:
     def logdir(self, logdir):
         relative_logdir = Path(logdir).relative_to(self.local_dir)
         if ".." in str(relative_logdir):
-            raise ValueError("logdir must not contain `..`")
-        logger.log_once(
-            "Deprecated. In future versions only the relative logdir "
-            "will be used and calling logdir will raise an error."
-        )
+            raise ValueError(
+                f"The `logdir` points to a directory outside the trial's `local_dir` "
+                f"({self.local_dir}), which is unsupported. Use a logdir within the "
+                f"local directory instead. Got: {logdir}"
+            )
+        if log_once("logdir_setter"):
+            logger.warning(
+                f"Deprecated. In future versions only the relative logdir "
+                f"will be used and calling logdir will raise an error."
+            )
         self.relative_logdir = relative_logdir
 
     @property
