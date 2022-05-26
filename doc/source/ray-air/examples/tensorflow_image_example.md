@@ -193,6 +193,9 @@ outputs: ray.data.Dataset = batch_predictor.predict(
     data=test_dataset, feature_columns=["image"])
 ```
 
+Our models outputs a list of energies for each class. To classify an image, we
+choose the class that has the highest energy.
+
 ```{code-cell} python3
 import numpy as np
 
@@ -208,6 +211,12 @@ predictions = outputs.map_batches(
 predictions.show(1)
 ```
 
+Now that we've classified all of the images, let's figure out which images were
+classified correctly. The ``predictions`` dataset contains predicted labels and 
+the ``test_dataset`` contains the true labels. To determine whether an image 
+was classified correctly, we join the two datasets and check if the predicted 
+labels are the same as the actual labels.
+
 ```{code-cell} python3
 def calculate_prediction_scores(df):
     df["correct"] = df["prediction"] == df["label"]
@@ -218,11 +227,17 @@ scores = test_dataset.zip(predictions).map_batches(calculate_prediction_scores)
 scores.show(1)
 ```
 
+To compute our test accuracy, we'll count how many images the model classified 
+correctly and divide that number by the total number of test images. 
+
 ```{code-cell} python3
 scores.sum(on="correct") / scores.count()
 ```
 
 ## Deploy the network and make a prediction
+
+Our model seems to perform decently, so let's deploy the model to an 
+endpoint. This'll allow us to make predictions over the Internet.
 
 ```{code-cell} python3
 from ray import serve
