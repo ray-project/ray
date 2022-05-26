@@ -7,6 +7,7 @@ from pytest_docker_tools import container, fetch, network
 from pytest_docker_tools import wrappers
 from http.client import HTTPConnection
 
+
 class Container(wrappers.Container):
     def ready(self):
         self._container.reload()
@@ -35,6 +36,7 @@ class Container(wrappers.Container):
         port = self.ports["8000/tcp"][0]
         return HTTPConnection(f"localhost:{port}")
 
+
 gcs_network = network(driver="bridge")
 
 redis_image = fetch(repository="redis:latest")
@@ -43,8 +45,7 @@ redis = container(
     image="{redis_image.id}",
     network="{gcs_network.name}",
     command=(
-        "redis-server --save 60 1 --loglevel"
-        " warning --requirepass 5241590000000000"
+        "redis-server --save 60 1 --loglevel" " warning --requirepass 5241590000000000"
     ),
 )
 
@@ -70,6 +71,7 @@ worker_node = container(
         "8000/tcp": None,
     },
 )
+
 
 @pytest.fixture
 def docker_cluster(header_node, worker_node):
