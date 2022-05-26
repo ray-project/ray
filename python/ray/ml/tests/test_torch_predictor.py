@@ -74,6 +74,27 @@ def test_predict_dataframe():
     assert predictions.to_numpy().flatten().tolist() == [0.0, 0.0, 0.0]
 
 
+@pytest.mark.parametrize(
+    ("input_dtype", "expected_output_dtype"),
+    (
+        (torch.float16, np.float16),
+        (torch.float64, np.float64),
+        (torch.int32, np.int32),
+        (torch.int64, np.int64),
+    ),
+)
+def test_predict_array_with_different_dtypes(input_dtype, expected_output_dtype):
+    predictor = TorchPredictor(model=torch.nn.Identity())
+
+    data_batch = np.array([[1], [2], [3]])
+    predictions = predictor.predict(data_batch, dtype=input_dtype)
+
+    assert all(
+        prediction.dtype == expected_output_dtype
+        for prediction in predictions["predictions"]
+    )
+
+
 def test_predict_dataframe_with_feature_columns():
     predictor = TorchPredictor(model=torch.nn.Identity())
 

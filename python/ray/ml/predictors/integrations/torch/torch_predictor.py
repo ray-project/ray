@@ -161,7 +161,7 @@ class TorchPredictor(Predictor):
             data = self.preprocessor.transform_batch(data)
 
         if isinstance(data, np.ndarray):
-            tensor = torch.tensor(data, dtype=torch.float32)
+            tensor = torch.tensor(data, dtype=dtype)
         else:
             tensor = self._convert_to_tensor(
                 data, feature_columns=feature_columns, dtypes=dtype, unsqueeze=unsqueeze
