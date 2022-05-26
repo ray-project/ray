@@ -84,6 +84,10 @@ def test_predict_no_preprocessor():
     assert predictions.to_numpy().flatten().tolist() == [1, 2, 3]
 
 
+def test_fail():
+    assert False
+
+
 if __name__ == "__main__":
     import pytest
     import sys
