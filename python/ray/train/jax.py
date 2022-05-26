@@ -26,14 +26,17 @@ class JaxConfig(BackendConfig):
 def setup_jax_environment(master_addr_with_port: str, num_workers: int, index: int):
     """Set up distributed jax training information.
 
-    This function should be called on each worker.
+    This function should be called on each worker. Only multi-gpu instances need 
+    to set up the distributed connections currently!
 
     Args:
         master_addr_with_port (str): The master work's address plus the port. 
         num_workers (int): Total number of all the workers.
         index (int): Index (i.e. world rank) of the current worker.
     """
-    jax.distributed.initialize(master_addr_with_port, num_workers, index)
+    use_gpu = len(ray.get_gpu_ids())
+    if use_gpu: 
+        jax.distributed.initialize(master_addr_with_port, num_workers, index)
     # TODO
     # cpu parallel: https://github.com/google/jax/issues/1408
     # os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count=200"
