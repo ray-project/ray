@@ -8,7 +8,6 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import SampleBatchType
-from ray.rllib.offline.estimators.qreg_tf_model import QRegTFModel
 from ray.rllib.offline.estimators.qreg_torch_model import QRegTorchModel
 from gym.spaces import Discrete
 import numpy as np
@@ -63,7 +62,11 @@ class DirectMethod(OffPolicyEstimator):
         assert (
             policy.config["batch_mode"] == "complete_episodes"
         ), "DM Estimator only supports batch_mode=`complete_episodes`"
-        model_cls = QRegTorchModel if policy.framework == "torch" else QRegTFModel
+        assert (
+            policy.framework == "torch"
+        ), "DM estimator only supports `framework`=`torch`"
+        # TODO (rohan): Add support for QRegTF, FQETorch, FQETF
+        model_cls = QRegTorchModel
         self.model = model_cls(
             policy=policy,
             gamma=gamma,
@@ -88,9 +91,9 @@ class DirectMethod(OffPolicyEstimator):
             # Calculate direct method OPE estimates
             for episode in test_episodes:
                 rewards = episode["rewards"]
-                V_prev, V_DM = 0.0, 0.0
+                v_old, v_dm = 0.0, 0.0
                 for t in range(episode.count):
-                    V_prev += rewards[t] * self.gamma ** t
+                    v_old += rewards[t] * self.gamma ** t
 
                 init_step = episode[0:1]
                 init_obs = np.array([init_step[SampleBatch.OBS]])
@@ -100,15 +103,15 @@ class DirectMethod(OffPolicyEstimator):
                 init_step[SampleBatch.ACTIONS] = all_actions
                 action_probs = np.exp(self.action_log_likelihood(init_step))
                 v_value = self.model.estimate_v(init_obs, action_probs)
-                V_DM = convert_to_numpy(v_value).item()
+                v_dm = convert_to_numpy(v_value).item()
 
                 estimates.append(
                     OffPolicyEstimate(
                         "direct_method",
                         {
-                            "V_prev": V_prev,
-                            "V_DM": V_DM,
-                            "V_gain_est": V_DM / max(1e-8, V_prev),
+                            "v_old": v_old,
+                            "v_dm": v_dm,
+                            "v_gain": v_dm / max(1e-8, v_old),
                         },
                     )
                 )

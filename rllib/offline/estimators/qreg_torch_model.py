@@ -11,7 +11,7 @@ from ray.rllib.utils.typing import TensorType
 torch, nn = try_import_torch()
 
 
-class QRegTorchModel(TorchModelV2):
+class QRegTorchModel:
     """Pytorch implementation of the Q-Reg model from
     https://arxiv.org/pdf/1911.06854.pdf
 
