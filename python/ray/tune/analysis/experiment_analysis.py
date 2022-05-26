@@ -784,7 +784,7 @@ class ExperimentAnalysis:
 
             _trial_paths = [
                 str(self._local_base_dir.joinpath(checkpoint["relative_logdir"]))
-                if checkpoint["relative_logdir"]
+                if checkpoint.get("relative_logdir")
                 else checkpoint["logdir"]
                 for checkpoint in self._checkpoints
             ]

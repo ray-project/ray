@@ -454,7 +454,7 @@ class Trial:
     @logdir.setter
     def logdir(self, logdir):
         relative_logdir = Path(logdir).relative_to(self.local_dir)
-        if str(relative_logdir).find("..") != -1:
+        if ".." in str(relative_logdir):
             raise ValueError("logdir must not contain `..`")
         logger.log_once(
             "Deprecated. In future versions only the relative logdir "
