@@ -52,7 +52,7 @@ def test_predict_array_with_preprocessor():
     predictions = predictor.predict(data_batch)
 
     assert len(predictions) == 3
-    assert predictions.to_numpy().astype(float).flatten().round().tolist() == [2, 4, 6]
+    assert predictions.to_numpy().flatten().tolist() == [2, 4, 6]
     assert hasattr(predictor.preprocessor, "_batch_transformed")
 
 
@@ -66,4 +66,11 @@ def test_predict_array():
     predictions = predictor.predict(data_batch)
 
     assert len(predictions) == 3
-    assert predictions.to_numpy().astype(float).flatten().tolist() == [1, 2, 3]
+    assert predictions.to_numpy().flatten().tolist() == [1, 2, 3]
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))
