@@ -124,14 +124,16 @@ if __name__ == "__main__":
             "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
             "num_workers": 1,
             "multiagent": {
-                # Use a simple set of policy IDs. Spaces for the individual policies will
-                # be inferred automatically using reverse lookup via the policy_mapping_fn
-                # and the env provided spaces for the different agents.
-                # Alternatively, you could use:
+                # Use a simple set of policy IDs. Spaces for the individual policies
+                # will be inferred automatically using reverse lookup via the
+                # `policy_mapping_fn` and the env provided spaces for the different
+                # agents. Alternatively, you could use:
                 # policies: {main0: PolicySpec(...), main1: PolicySpec}
                 "policies": {"main0", "main1"},
                 # Simple mapping fn, mapping agent0 to main0 and agent1 to main1.
-                "policy_mapping_fn": lambda aid, episode, worker, **kw: f"main{aid[-1]}",
+                "policy_mapping_fn": (
+                    lambda aid, episode, worker, **kw: f"main{aid[-1]}"
+                ),
                 # Only train main0.
                 "policies_to_train": ["main0"]
             },

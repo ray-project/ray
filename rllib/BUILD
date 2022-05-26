@@ -2636,7 +2636,7 @@ py_test(
     name = "examples/multi_agent_different_spaces_for_agents_tf2",
     main = "examples/multi_agent_different_spaces_for_agents.py",
     tags = ["team:ml", "examples", "examples_M"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/multi_agent_different_spaces_for_agents.py"],
     args = ["--stop-iters=4", "--framework=tf2", "--eager-tracing"]
 )
@@ -2645,7 +2645,7 @@ py_test(
     name = "examples/multi_agent_different_spaces_for_agents_torch",
     main = "examples/multi_agent_different_spaces_for_agents.py",
     tags = ["team:ml", "examples", "examples_M"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/multi_agent_different_spaces_for_agents.py"],
     args = ["--stop-iters=4", "--framework=torch"]
 )
