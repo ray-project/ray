@@ -25,7 +25,7 @@ DEFAULT_OPTIMIZE_FUSE_STAGES = True
 
 # Whether to furthermore fuse read stages. When this is enabled, data will also be
 # re-read from the base dataset in each repetition of a DatasetPipeline.
-DEFAULT_OPTIMIZE_FUSE_READ_STAGES = True
+DEFAULT_OPTIMIZE_FUSE_READ_STAGES = False
 
 # Whether to furthermore fuse prior map tasks with shuffle stages.
 DEFAULT_OPTIMIZE_FUSE_SHUFFLE_STAGES = True

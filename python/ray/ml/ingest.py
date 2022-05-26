@@ -27,7 +27,7 @@ class StreamedIngest(IngestStrategy):
         if train_dataset:
             # TODO(ekl) support streaming fit?
             preprocessor.fit(train_dataset)
-            self._fitted_preprocessor = train_dataset
+            self._fitted_preprocessor = preprocessor
 
         # Only transform non-train datasets. In the future, we might support streaming
         # transform of those as well.
@@ -44,9 +44,12 @@ class StreamedIngest(IngestStrategy):
         self._world_size = len(worker_handles)
         splits = [datasets.copy() for _ in worker_handles]
 
+        # TODO disable read fusion if pipeline size is small enough
+        transform_fn = self._fitted_preprocessor.transform_batch
         train_pipe = (
             datasets[TRAIN_DATASET_KEY]
             .window(bytes_per_window=self._window_size_bytes)
+            .map_batches(lambda x: x, batch_format="pandas")
             .repeat()
         )
 

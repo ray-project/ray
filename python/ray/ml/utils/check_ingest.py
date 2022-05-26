@@ -9,7 +9,7 @@ import ray
 from ray import train
 from ray.ml.preprocessors import Chain, BatchMapper
 from ray.ml.train.data_parallel_trainer import DataParallelTrainer
-from ray.ml.ingest import StreamedIngest
+from ray.ml.ingest import StreamedIngest, BulkIngest
 
 
 class DummyTrainer(DataParallelTrainer):
@@ -136,13 +136,13 @@ if __name__ == "__main__":
     # Setup the dummy trainer that prints ingest stats.
     # Run and print ingest stats.
     trainer = DummyTrainer(
-        scaling_config={"num_workers": 1, "use_gpu": False},
+        scaling_config={"num_workers": 2, "use_gpu": False},
         datasets={"train": dataset},
         preprocessor=preprocessor,
-        runtime_seconds=10,  # Stop after this amount or time or 1 epoch is read.
+        runtime_seconds=100,  # Stop after this amount or time or 1 epoch is read.
         prefetch_blocks=1,  # Number of blocks to prefetch when reading data.
         batch_size=None,
-        ingest=StreamedIngest(global_shuffle=True),
+        ingest=StreamedIngest(),
     )
     trainer.fit()
 
