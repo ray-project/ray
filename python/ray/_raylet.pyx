@@ -935,7 +935,8 @@ cdef int64_t restore_spilled_objects_handler(
         except Exception as err:
             exception_str = (
                 "An unexpected internal error occurred while the IO worker "
-                "was restoring spilled objects. Attempted to restore URLS: {}, got {}".format(err))
+                "was restoring spilled objects. "
+                "Attempted to restore URLS: {}, got {}".format(err))
             logger.exception(exception_str)
             ray._private.utils.push_error_to_driver(
                 ray.worker.global_worker,
