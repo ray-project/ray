@@ -547,12 +547,27 @@ class Trainer(Trainable):
             and - if required - evaluation.
         """
         step_attempt_results = None
-
+        self._rollout_worker_metrics = []
+        local_worker = (
+            self.workers.local_worker()
+            if hasattr(self.workers, "local_worker")
+            else None
+        )
         with self._step_context() as step_ctx:
             while not step_ctx.should_stop(step_attempt_results):
                 # Try to train one step.
                 try:
                     step_attempt_results = self.step_attempt()
+                    # Collect rollout worker metrics.
+                    episodes, self._episodes_to_be_collected = collect_episodes(
+                        local_worker,
+                        self._remote_workers_for_metrics,
+                        self._episodes_to_be_collected,
+                        timeout_seconds=self.config[
+                            "metrics_episode_collection_timeout_s"
+                        ],
+                    )
+                    self._rollout_worker_metrics.extend(episodes)
                 # @ray.remote RolloutWorker failure.
                 except RayError as e:
                     # Try to recover w/o the failed worker.
@@ -2076,11 +2091,13 @@ class Trainer(Trainable):
         if not isinstance(workers, WorkerSet):
             return
 
+        removed_workers, new_workers = [], []
         # Search for failed workers and try to recover (restart) them.
         if self.config["recreate_failed_workers"] is True:
-            workers.recreate_failed_workers()
+            removed_workers, new_workers = workers.recreate_failed_workers()
         elif self.config["ignore_worker_failures"] is True:
-            workers.remove_failed_workers()
+            removed_workers = workers.remove_failed_workers()
+        self.on_worker_failures(removed_workers, new_workers)
 
         if not self.config.get("_disable_execution_plan_api") and callable(
             self.execution_plan
@@ -2089,6 +2106,17 @@ class Trainer(Trainable):
             self.train_exec_impl = self.execution_plan(
                 workers, self.config, **self._kwargs_for_execution_plan()
             )
+
+    def on_worker_failures(
+        self, removed_workers: List[ActorHandle], new_workers: List[ActorHandle]
+    ):
+        """Called after a worker failure is detected.
+
+        Args:
+            removed_workers: List of removed workers.
+            new_workers: List of new workers.
+        """
+        pass
 
     @override(Trainable)
     def _export_model(
@@ -2321,13 +2349,7 @@ class Trainer(Trainable):
         # Learner info.
         results["info"] = {LEARNER_INFO: step_attempt_results}
 
-        # Collect rollout worker metrics.
-        episodes, self._episodes_to_be_collected = collect_episodes(
-            self.workers.local_worker(),
-            self._remote_workers_for_metrics,
-            self._episodes_to_be_collected,
-            timeout_seconds=self.config["metrics_episode_collection_timeout_s"],
-        )
+        episodes = self._rollout_worker_metrics
         orig_episodes = list(episodes)
         missing = self.config["metrics_num_episodes_for_smoothing"] - len(episodes)
         if missing > 0:

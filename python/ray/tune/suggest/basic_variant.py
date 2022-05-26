@@ -21,6 +21,7 @@ from ray.tune.suggest.variant_generator import (
 )
 from ray.tune.suggest.search import SearchAlgorithm
 from ray.tune.utils.util import atomic_save, load_newest_checkpoint
+from ray.util import PublicAPI
 
 SERIALIZATION_THRESHOLD = 1e6
 
@@ -184,6 +185,7 @@ class _TrialIterator:
         return self
 
 
+@PublicAPI
 class BasicVariantGenerator(SearchAlgorithm):
     """Uses Tune's variant generation for resolving variables.
 

@@ -1456,6 +1456,26 @@ py_test(
     srcs = ["evaluation/tests/test_trajectory_view_api.py"]
 )
 
+py_test(
+    name = "evaluation/tests/test_episode",
+    tags = ["team:ml", "evaluation"],
+    size = "small",
+    srcs = ["evaluation/tests/test_episode.py"]
+)
+# --------------------------------------------------------------------
+# Execution Utils
+# rllib/execution/
+#
+# Tag: execution
+# --------------------------------------------------------------------
+
+py_test(
+    name = "test_async_requests_manager",
+    tags = ["team:ml", "execution"],
+    size = "small",
+    srcs = ["execution/tests/test_async_requests_manager.py"]
+)
+
 # --------------------------------------------------------------------
 # Models and Distributions
 # rllib/models/

@@ -282,13 +282,14 @@ class WorkerSet:
 
     def remove_failed_workers(self):
         faulty_indices = self._worker_health_check()
-
+        removed_workers = []
         # Terminate faulty workers.
         for worker_index in faulty_indices:
             worker = self.remote_workers()[worker_index - 1]
             logger.info(f"Trying to terminate faulty worker {worker_index}.")
             try:
                 worker.__ray_terminate__.remote()
+                removed_workers.append(worker)
             except Exception:
                 logger.exception("Error terminating faulty worker.")
 
@@ -303,12 +304,15 @@ class WorkerSet:
                 f"No healthy workers remaining (worker indices {faulty_indices} have "
                 f"died)! Can't continue training."
             )
+        return removed_workers
 
-    def recreate_failed_workers(self):
+    def recreate_failed_workers(self) -> Tuple[List[ActorHandle], List[ActorHandle]]:
         faulty_indices = self._worker_health_check()
-
+        removed_workers = []
+        new_workers = []
         for worker_index in faulty_indices:
             worker = self.remote_workers()[worker_index - 1]
+            removed_workers.append(worker)
             logger.info(f"Trying to recreate faulty worker {worker_index}")
             try:
                 worker.__ray_terminate__.remote()
@@ -332,6 +336,8 @@ class WorkerSet:
             )
             # Add new worker to list of remote workers.
             self._remote_workers[worker_index - 1] = new_worker
+            new_workers.append(new_worker)
+        return removed_workers, new_workers
 
     def stop(self) -> None:
         """Calls `stop` on all rollout workers (including the local one)."""
