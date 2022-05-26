@@ -13,7 +13,6 @@ from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.policy.sample_batch import SampleBatch
 
 
-
 # __sphinx_doc_replay_buffer_type_specification__begin__
 
 config = {
@@ -34,28 +33,35 @@ yet_another_config = {
 }
 
 # These three configurations all yield the same effective config
-print(validate_buffer_config(config) == validate_buffer_config(another_config) == validate_buffer_config(yet_another_config))
+print(
+    validate_buffer_config(config)
+    == validate_buffer_config(another_config)
+    == validate_buffer_config(yet_another_config)
+)
 
 
 # __sphinx_doc_replay_buffer_type_specification__end__
 
 # __sphinx_doc_replay_buffer_own_buffer__begin__
 
+
 class LessSampledReplayBuffer(ReplayBuffer):
     @PublicAPI
     @override(ReplayBuffer)
-    def sample(self, num_items: int, evict_sampled_more_then: int = 100,
-               **kwargs) -> Optional[SampleBatchType]:
+    def sample(
+        self, num_items: int, evict_sampled_more_then: int = 100, **kwargs
+    ) -> Optional[SampleBatchType]:
         """Evicts experiences that have been sampled > evict_sampled_more_then times."""
         idxes = [random.randint(0, len(self) - 1) for _ in range(num_items)]
-        often_sampled_idxes = list(filter(lambda x: self._hit_count[x] >=
-                                                     evict_sampled_more_then))
+        often_sampled_idxes = list(
+            filter(lambda x: self._hit_count[x] >= evict_sampled_more_then)
+        )
 
         for idx in often_sampled_idxes:
             del self._storage[idx]
-            self._hit_count[idx] = np.append(self._hit_count[:idx], self._hit_count[
-                                                                    idx +
-                                                                                1:])
+            self._hit_count[idx] = np.append(
+                self._hit_count[:idx], self._hit_count[idx + 1 :]
+            )
 
         sample = self._encode_sample(idxes)
         self._num_timesteps_sampled += sample.count
@@ -91,9 +97,6 @@ for i in range(3):
 
 
 # __sphinx_doc_replay_buffer_advanced_usage_underlying_buffers__begin__
-
-
-
 
 
 # __sphinx_doc_replay_buffer_advanced_usage_underlying_buffers__end__

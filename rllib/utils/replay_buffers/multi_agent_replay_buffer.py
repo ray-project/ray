@@ -108,7 +108,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
             underlying_buffer_config: A config that contains all necessary
                 constructor arguments and arguments for methods to call on
                 the underlying buffers.
-            **kwargs: Forward compatibility kwargs.
+            ``**kwargs``: Forward compatibility kwargs.
         """
         shard_capacity = capacity // num_shards
         ReplayBuffer.__init__(self, capacity, storage_unit)
@@ -213,7 +213,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
 
         Args:
             batch : The batch to be added.
-            **kwargs: Forward compatibility kwargs.
+            ``**kwargs``: Forward compatibility kwargs.
         """
         if batch is None:
             if log_once("empty_batch_added_to_buffer"):
@@ -254,7 +254,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
             policy_id: ID of the policy that corresponds to the underlying
             buffer
             batch: SampleBatch to add to the underlying buffer
-            **kwargs: Forward compatibility kwargs.
+            ``**kwargs``: Forward compatibility kwargs.
         """
         # Merge kwargs, overwriting standard call arguments
         kwargs = merge_dicts_with_warning(self.underlying_buffer_call_args, kwargs)
@@ -318,7 +318,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
 
         Returns:
             Concatenated MultiAgentBatch of items.
-            **kwargs: Forward compatibility kwargs.
+            ``**kwargs``: Forward compatibility kwargs.
         """
         # Merge kwargs, overwriting standard call arguments
         kwargs = merge_dicts_with_warning(self.underlying_buffer_call_args, kwargs)

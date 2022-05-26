@@ -11,7 +11,6 @@ import os
 
 import ray
 from ray import tune
-from ray.rllib.agents.ppo import PPOTrainer
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check_learning_achieved
 
@@ -46,9 +45,7 @@ if __name__ == "__main__":
     config = {
         "env": "CartPole-v0",
         "lr": 0.0005,
-        "exploration_config": {
-            "epsilon_timesteps": 50000
-        },
+        "exploration_config": {"epsilon_timesteps": 50000},
         "model": {
             "fcnet_hiddens": [64],
             "fcnet_activation": "linear",
@@ -71,7 +68,7 @@ if __name__ == "__main__":
     results = tune.run(
         "R2D2",
         config=config,
-        stop = {
+        stop={
             "episode_reward_mean": args.stop_reward,
             "timesteps_total": args.stop_timesteps,
             "training_iteration": args.stop_iters,

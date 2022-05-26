@@ -62,8 +62,8 @@ class ReplayBuffer(ParallelIteratorWorker):
     This class implements a basic ring-type of buffer with random sampling.
 
     Examples:
-        >>> from ray.rllib.utils.replay_buffers import ReplayBuffer
-        >>> buffer = ReplayBuffer(capacity=10, storage_unit=StorageUnit.TIMESTEPS)
+        >>> from ray.rllib.utils.replay_buffers import ReplayBuffer # doctest: +SK
+        >>> buffer = ReplayBuffer(capacity=10, storage_unit=StorageUnit.TIMESTEPS) # doctest: +SK # noqa: E501
         >>> env = MyBaseEnv() # doctest: +SK
         >>> obs, rewards, dones, infos, off_policy_actions = env.poll() # doctest: +SKIP
         >>> print(obs) # doctest: +SKIP
@@ -117,9 +117,9 @@ class ReplayBuffer(ParallelIteratorWorker):
             capacity: Max number of timesteps to store in this FIFO
                 buffer. After reaching this number, older samples will be
                 dropped to make space for new ones.
-            storage_unit: Either 'timesteps', `sequences` or
-                `episodes`. Specifies how experiences are stored.
-            **kwargs: Forward compatibility kwargs.
+            storage_unit: Either 'timesteps', 'sequences' or
+                'episodes'. Specifies how experiences are stored.
+            ``**kwargs``: Forward compatibility kwargs.
         """
 
         if storage_unit in ["timesteps", StorageUnit.TIMESTEPS]:
@@ -132,8 +132,8 @@ class ReplayBuffer(ParallelIteratorWorker):
             self._storage_unit = StorageUnit.FRAGMENTS
         else:
             raise ValueError(
-                "storage_unit must be either 'timesteps', `sequences` or `episodes` "
-                "or `fragments`, but is {}".format(storage_unit)
+                "storage_unit must be either 'timesteps', 'sequences' or 'episodes' "
+                "or 'fragments', but is {}".format(storage_unit)
             )
 
         # The actual storage (list of SampleBatches or MultiAgentBatches).
@@ -178,13 +178,13 @@ class ReplayBuffer(ParallelIteratorWorker):
     def add(self, batch: SampleBatchType, **kwargs) -> None:
         """Adds a batch of experiences to this buffer.
 
-        Also splits experiences into chunks of timesteps, sequences
-        or episodes, depending on self._storage_unit. Calls
-        self._add_single_batch.
+        Splits experiences into chunks of timesteps, sequences
+        or episodes, depending on `self._storage_unit`. Calls
+        `self._add_single_batch`.
 
         Args:
-            batch: Batch to add to this buffer's storage.
-            **kwargs: Forward compatibility kwargs.
+            batch: Batch to add.
+            ``**kwargs``: Forward compatibility kwargs.
         """
         if not batch.count > 0:
             return
@@ -231,7 +231,7 @@ class ReplayBuffer(ParallelIteratorWorker):
 
         Args:
             item: The batch to be added.
-            **kwargs: Forward compatibility kwargs.
+            ``**kwargs``: Forward compatibility kwargs.
         """
         self._num_timesteps_added += item.count
         self._num_timesteps_added_wrap += item.count
@@ -260,12 +260,12 @@ class ReplayBuffer(ParallelIteratorWorker):
 
     @DeveloperAPI
     def sample(self, num_items: int, **kwargs) -> Optional[SampleBatchType]:
-        """Samples `num_items` items from this buffer.
+        """Samples 'num_items' items from this buffer.
 
         Samples in the results may be repeated.
 
         Examples for storage of SamplesBatches:
-        - If storage unit `timesteps` has been chosen and batches of
+        - If storage unit 'timesteps' has been chosen and batches of
         size 5 have been added, sample(5) will yield a concatenated batch of
         15 timesteps.
         - If storage unit 'sequences' has been chosen and sequences of
@@ -279,7 +279,7 @@ class ReplayBuffer(ParallelIteratorWorker):
 
         Args:
             num_items: Number of items to sample from this buffer.
-            **kwargs: Forward compatibility kwargs.
+            ``**kwargs``: Forward compatibility kwargs.
 
         Returns:
             Concatenated batch of items.
@@ -325,11 +325,11 @@ class ReplayBuffer(ParallelIteratorWorker):
 
     @DeveloperAPI
     def set_state(self, state: Dict[str, Any]) -> None:
-        """Restores all local state to the provided `state`.
+        """Restores all local state to the provided 'state'.
 
         Args:
             state: The new state to set this buffer. Can be
-                obtained by calling `self.get_state()`.
+                obtained by calling 'self.get_state()'.
         """
         # The actual storage.
         self._storage = state["_storage"]
@@ -372,7 +372,7 @@ class ReplayBuffer(ParallelIteratorWorker):
     def apply(
         self,
         func: Callable[["ReplayBuffer", Optional[Any], Optional[Any]], T],
-        *_args,
+        *args,
         **kwargs,
     ) -> T:
         """Calls the given function with this ReplayBuffer instance.
@@ -381,13 +381,13 @@ class ReplayBuffer(ParallelIteratorWorker):
 
         Args:
             func: A callable that accepts the replay buffer itself, args and kwargs
-            *_arkgs: Any args to pass to func
-            **kwargs: Any kwargs to pass to func
+            ``*args``: Any args to pass to func
+            ``**kwargs``: Any kwargs to pass to func
 
         Returns:
             Return value of the induced function call
         """
-        return func(self, *_args, **kwargs)
+        return func(self, *args, **kwargs)
 
     @Deprecated(old="ReplayBuffer.add_batch()", new="ReplayBuffer.add()", error=False)
     def add_batch(self, *args, **kwargs):

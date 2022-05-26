@@ -341,7 +341,7 @@ def patch_buffer_with_fake_sampling_method(
         Args:
             _: dummy arg to match signature of sample() method
             __: dummy arg to match signature of sample() method
-            **kwargs: dummy args to match signature of sample() method
+            ``**kwargs``: dummy args to match signature of sample() method
 
         Returns:
             Predefined MultiAgentBatch fake_sample_output
