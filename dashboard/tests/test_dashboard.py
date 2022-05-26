@@ -698,6 +698,32 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
 
 
 @pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+def test_gcs_check_alive(fast_gcs_failure_detection, ray_start_with_dashboard):
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
+
+    all_processes = ray.worker._global_node.all_processes
+    dashboard_info = all_processes[ray_constants.PROCESS_TYPE_DASHBOARD][0]
+    dashboard_proc = psutil.Process(dashboard_info.process.pid)
+    gcs_server_info = all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER][0]
+    gcs_server_proc = psutil.Process(gcs_server_info.process.pid)
+
+    assert dashboard_proc.status() in [
+        psutil.STATUS_RUNNING,
+        psutil.STATUS_SLEEPING,
+        psutil.STATUS_DISK_SLEEP,
+    ]
+
+    gcs_server_proc.kill()
+    gcs_server_proc.wait()
+
+    # The dashboard exits by os._exit(-1)
+    assert dashboard_proc.wait(10) == 255
+
+
+@pytest.mark.skipif(
     os.environ.get("RAY_DEFAULT") != "1",
     reason="This test only works for default installation.",
 )

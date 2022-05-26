@@ -62,7 +62,7 @@ class _TuneCheckpoint:
         return f"Checkpoint({self.storage}, {self.value})"
 
 
-class QueueItem:
+class _QueueItem:
     def __init__(self, priority, value):
         self.priority = priority
         self.value = value
@@ -74,7 +74,7 @@ class QueueItem:
         return f"QueueItem({repr(self.value)})"
 
 
-class CheckpointManager:
+class _CheckpointManager:
     """Manages checkpoints on the driver for a trial."""
 
     def __init__(
@@ -184,7 +184,7 @@ class CheckpointManager:
             # The tuple structure is (not is_nan(), metric), which makes
             # the nan values to be always considered as the worst
             # metrics by the heap
-            queue_item = QueueItem(self._priority(checkpoint), checkpoint)
+            queue_item = _QueueItem(self._priority(checkpoint), checkpoint)
         except KeyError:
             logger.error(
                 "Result dict has no key: {}. "

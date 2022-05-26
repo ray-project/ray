@@ -21,7 +21,6 @@ import io.ray.api.options.CallOptions;
 import io.ray.api.options.PlacementGroupCreationOptions;
 import io.ray.api.parallelactor.ParallelActorContext;
 import io.ray.api.placementgroup.PlacementGroup;
-import io.ray.api.runtime.RayRuntime;
 import io.ray.api.runtimecontext.RuntimeContext;
 import io.ray.api.runtimeenv.RuntimeEnv;
 import io.ray.runtime.config.RayConfig;
@@ -32,7 +31,6 @@ import io.ray.runtime.functionmanager.FunctionDescriptor;
 import io.ray.runtime.functionmanager.FunctionManager;
 import io.ray.runtime.functionmanager.PyFunctionDescriptor;
 import io.ray.runtime.functionmanager.RayFunction;
-import io.ray.runtime.gcs.GcsClient;
 import io.ray.runtime.generated.Common.Language;
 import io.ray.runtime.object.ObjectRefImpl;
 import io.ray.runtime.object.ObjectStore;
@@ -52,7 +50,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /** Core functionality to implement Ray APIs. */
-public abstract class AbstractRayRuntime implements RayRuntime {
+public abstract class AbstractRayRuntime implements RayRuntimeInternal {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(AbstractRayRuntime.class);
   public static final String PYTHON_INIT_METHOD_NAME = "__init__";
@@ -83,12 +81,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
         (Class<T>) (obj == null ? Object.class : obj.getClass()),
         /*skipAddingLocalRef=*/ true);
   }
-
-  public abstract GcsClient getGcsClient();
-
-  public abstract void start();
-
-  public abstract void run();
 
   @Override
   public <T> ObjectRef<T> put(T obj, BaseActorHandle ownerActor) {
@@ -363,22 +355,27 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   abstract List<ObjectId> getCurrentReturnIds(int numReturns, ActorId actorId);
 
+  @Override
   public WorkerContext getWorkerContext() {
     return workerContext;
   }
 
+  @Override
   public ObjectStore getObjectStore() {
     return objectStore;
   }
 
+  @Override
   public TaskExecutor getTaskExecutor() {
     return taskExecutor;
   }
 
+  @Override
   public FunctionManager getFunctionManager() {
     return functionManager;
   }
 
+  @Override
   public RayConfig getRayConfig() {
     return rayConfig;
   }

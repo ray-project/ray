@@ -5,7 +5,7 @@ from ray.rllib.algorithms.marwil.marwil import (
     MARWILTrainer,
 )
 from ray.rllib.algorithms.marwil.marwil_tf_policy import (
-    MARWILDynamicTFPolicy,
+    MARWILStaticGraphTFPolicy,
     MARWILEagerTFPolicy,
 )
 from ray.rllib.algorithms.marwil.marwil_torch_policy import MARWILTorchPolicy
@@ -14,7 +14,7 @@ __all__ = [
     "BCConfig",
     "BCTrainer",
     "MARWILConfig",
-    "MARWILDynamicTFPolicy",
+    "MARWILStaticGraphTFPolicy",
     "MARWILEagerTFPolicy",
     "MARWILTorchPolicy",
     "MARWILTrainer",

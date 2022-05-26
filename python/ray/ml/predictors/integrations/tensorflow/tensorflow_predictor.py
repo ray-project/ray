@@ -154,5 +154,5 @@ class TensorflowPredictor(Predictor):
             model.build(input_shape=input_shape)
             model.set_weights(self.model_weights)
 
-        prediction = model(tensor).numpy().ravel()
-        return pd.DataFrame(prediction, columns=["predictions"])
+        prediction = list(model(tensor).numpy())
+        return pd.DataFrame({"predictions": prediction}, columns=["predictions"])
