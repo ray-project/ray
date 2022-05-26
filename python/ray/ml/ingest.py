@@ -220,8 +220,8 @@ class PipelinedIngest(IngestStrategy):
         return splits
 
 
-def _choose_ingest_strategy(dataset: Dict[str, Dataset]) -> IngestStrategy:
-    train_ds = dataset.get(TRAIN_DATASET_KEY)
+def _choose_ingest_strategy(datasets: Dict[str, Dataset]) -> IngestStrategy:
+    train_ds = datasets.get(TRAIN_DATASET_KEY)
     if train_ds:
         sz = train_ds.size_bytes()
         if (
