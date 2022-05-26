@@ -15,7 +15,7 @@ class Operation(str, Enum):
     MULTIPLICATION = "MUL"
 
 
-@serve.deployment
+@serve.deployment(ray_actor_options={"num_cpus": 0.15})
 class Router:
     def __init__(self, multiplier: RayHandleLike, adder: RayHandleLike):
         self.adder = adder
@@ -31,7 +31,8 @@ class Router:
 @serve.deployment(
     user_config={
         "factor": 3,
-    }
+    },
+    ray_actor_options={"num_cpus": 0.15},
 )
 class Multiplier:
     def __init__(self, factor: int):
@@ -47,7 +48,8 @@ class Multiplier:
 @serve.deployment(
     user_config={
         "increment": 2,
-    }
+    },
+    ray_actor_options={"num_cpus": 0.15},
 )
 class Adder:
     def __init__(self, increment: int):
@@ -60,7 +62,7 @@ class Adder:
         return input + self.increment
 
 
-@serve.deployment
+@serve.deployment(ray_actor_options={"num_cpus": 0.15})
 def create_order(amount: int) -> str:
     return f"{amount} pizzas please!"
 
