@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 class ParameterSpace:
     """Base class of a single parameter's search space."""
 
-    def __init__(self, name):
+    def __init__(self, name: str):
         """Initialize ParameterSpace.
 
         Arguments:
@@ -23,7 +23,7 @@ class ParameterSpace:
 class DiscreteSpace(ParameterSpace):
     """Search space with discrete choices."""
 
-    def __init__(self, name, choices):
+    def __init__(self, name: str, choices: list):
         """Initialize DiscreteSpace.
 
         Arguments:
@@ -65,7 +65,7 @@ class ContinuousSpace(ParameterSpace):
 
     # TODO: logspace
 
-    def __init__(self, name, start, end, num, distribution=LINEAR):
+    def __init__(self, name: str, start, end, num, distribution=LINEAR):
         """Initialize ContinuousSpace.
 
         Arguments:
