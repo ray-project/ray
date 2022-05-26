@@ -1,16 +1,16 @@
 {
-    "avg_pg_create_time_ms": 0.8077638078081524,
-    "avg_pg_remove_time_ms": 3.345739328828607,
+    "avg_pg_create_time_ms": 0.7482831261267203,
+    "avg_pg_remove_time_ms": 3.330852815315871,
     "perf_metrics": [
         {
             "perf_metric_name": "avg_pg_create_time_ms",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 0.8077638078081524
+            "perf_metric_value": 0.7482831261267203
         },
         {
             "perf_metric_name": "avg_pg_remove_time_ms",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 3.345739328828607
+            "perf_metric_value": 3.330852815315871
         }
     ],
     "success": 1
