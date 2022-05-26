@@ -34,7 +34,6 @@ RELEASE_RESULTS_DIR=${RELEASE_RESULTS_DIR-/tmp/artifacts}
 export RAY_TEST_REPO RAY_TEST_BRANCH RELEASE_RESULTS_DIR
 
 if [ -z "${NO_INSTALL}" ]; then
-  pip install -U "protobuf<4"
   pip install -q -r requirements.txt
   pip install -q -U boto3 botocore
 fi
