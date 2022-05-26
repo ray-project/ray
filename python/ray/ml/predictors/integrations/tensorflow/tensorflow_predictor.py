@@ -145,7 +145,7 @@ class TensorflowPredictor(Predictor):
         # instead of having an initialized model object as an attribute.
         model = self.model_definition()
 
-        if self.model_weights:
+        if self.model_weights is not None:
             input_shape = list(tensor.shape)
             # The batch axis can contain varying number of elements, so we set
             # the shape along the axis to `None`.
