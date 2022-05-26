@@ -1,9 +1,16 @@
 import gym
 import numpy as np
-from typing import Union, Type, List, cast
+
+from typing import (
+    cast,
+    List,
+    Tuple,
+    Type,
+    Union,
+)
 
 from ray.rllib.agents import TrainerConfig
-from ray.rllib.algorithms.crr.torch.model_torch_crr import CRRModelContinuous
+from ray.rllib.algorithms.crr.torch.model_torch_crr import CRRModel
 from ray.rllib.algorithms.ddpg.noop_model import TorchNoopModel
 from ray.rllib.algorithms.sac.sac_torch_policy import TargetNetworkMixin
 from ray.rllib.models.catalog import ModelCatalog
@@ -29,6 +36,7 @@ class CRRTorchPolicy(TorchPolicyV2, TargetNetworkMixin):
     ):
 
         self.target_model = None  # assign it in self.make_model
+        self._is_action_discrete = isinstance(action_space, gym.spaces.Discrete)
         TorchPolicyV2.__init__(
             self,
             observation_space,
@@ -54,6 +62,22 @@ class CRRTorchPolicy(TorchPolicyV2, TargetNetworkMixin):
         4. for each critic it should have a target model copy
         """
 
+    def action_distribution_fn(
+        self,
+        model: ModelV2,
+        *,
+        obs_batch: TensorType,
+        state_batches: TensorType,
+        **kwargs,
+    ) -> Tuple[TensorType, type, List[TensorType]]:
+
+        model_out, _ = model(obs_batch)
+        dist_input = model.get_policy_output(model_out)
+        dist_class = self.dist_class
+
+        return dist_input, dist_class, []
+
+
     def make_model(self) -> ModelV2:
         # copying ddpg build model to here to be explicit
         model_config = self.config["model"]
@@ -76,7 +100,7 @@ class CRRTorchPolicy(TorchPolicyV2, TargetNetworkMixin):
             model_config=model_config,
             framework=self.config["framework"],
             # use this model for interface (get_q, get_q_twin, .etc)
-            model_interface=CRRModelContinuous,
+            model_interface=CRRModel,
             default_model=TorchNoopModel,
             name="model",
         )
@@ -90,7 +114,7 @@ class CRRTorchPolicy(TorchPolicyV2, TargetNetworkMixin):
             model_config=model_config,
             framework=self.config["framework"],
             # use this model for interface (get_q, get_q_twin, .etc)
-            model_interface=CRRModelContinuous,
+            model_interface=CRRModel,
             default_model=TorchNoopModel,
             name="target_model",
         )
@@ -171,12 +195,21 @@ class CRRTorchPolicy(TorchPolicyV2, TargetNetworkMixin):
         # construct pi(s_t) for sampling actions
         pi_s_t = dist_class(model.get_policy_output(out_t), model)
         policy_actions = pi_s_t.dist.sample((n_action_sample,))  # samples
-        flat_actions = policy_actions.view(-1, *self.action_space.shape)
+
+        if self._is_action_discrete:
+            flat_actions = policy_actions.reshape(-1)
+        else:
+            flat_actions = policy_actions.reshape(-1, *self.action_space.shape)
 
         # compute the logp of the actions in the dataset
-        train_batch[SampleBatch.ACTION_LOGP] = pi_s_t.dist.log_prob(
+        action_logp = pi_s_t.dist.log_prob(
             train_batch[SampleBatch.ACTIONS]
         )
+
+        # fix the shape if it's not canonical
+        if len(action_logp.shape) <= 1:
+            action_logp.unsqueeze_(-1)
+        train_batch[SampleBatch.ACTION_LOGP] = action_logp
 
         reshaped_s_t = train_batch[SampleBatch.OBS].view(
             1, batch_size, *self.observation_space.shape
@@ -238,8 +271,9 @@ class CRRTorchPolicy(TorchPolicyV2, TargetNetworkMixin):
         train_batch: SampleBatch,
     ) -> Union[TensorType, List[TensorType]]:
         loss = -(
-            train_batch["action_weights"] * train_batch[SampleBatch.ACTION_LOGP]
-        ).mean()
+            train_batch["action_weights"] *
+            train_batch[SampleBatch.ACTION_LOGP]
+        ).mean(0)
         return loss
 
     def _compute_critic_loss(
@@ -252,7 +286,7 @@ class CRRTorchPolicy(TorchPolicyV2, TargetNetworkMixin):
 
         # Compute bellman targets to regress on
         # target, use target model to compute the target
-        target_model = cast(CRRModelContinuous, self.target_models[model])
+        target_model = cast(CRRModel, self.target_models[model])
         target_out_next, _ = target_model(
             {SampleBatch.OBS: train_batch[SampleBatch.NEXT_OBS]}
         )
@@ -263,10 +297,11 @@ class CRRTorchPolicy(TorchPolicyV2, TargetNetworkMixin):
                 target_model.get_policy_output(target_out_next), target_model
             )
             target_a_next = pi_s_next.sample()
-            target_a_next = target_a_next.clamp(
-                torch.from_numpy(self.action_space.low).to(target_a_next),
-                torch.from_numpy(self.action_space.high).to(target_a_next),
-            )
+            if not self._is_action_discrete:
+                target_a_next = target_a_next.clamp(
+                    torch.from_numpy(self.action_space.low).to(target_a_next),
+                    torch.from_numpy(self.action_space.high).to(target_a_next),
+                )
 
             q1_target = target_model.get_q_values(target_out_next, target_a_next)
             q2_target = target_model.get_twin_q_values(target_out_next, target_a_next)
@@ -280,7 +315,7 @@ class CRRTorchPolicy(TorchPolicyV2, TargetNetworkMixin):
             )
 
         # compute the predicted output
-        model = cast(CRRModelContinuous, model)
+        model = cast(CRRModel, model)
         model_out_next, _ = model({SampleBatch.OBS: train_batch[SampleBatch.OBS]})
         q1 = model.get_q_values(
             model_out_next, train_batch[SampleBatch.ACTIONS]
@@ -291,7 +326,7 @@ class CRRTorchPolicy(TorchPolicyV2, TargetNetworkMixin):
 
         # compute the MSE loss for all q-functions
         loss = 0.5 * ((target - q1) ** 2 + (target - q2) ** 2)
-        loss = loss.mean(-1)
+        loss = loss.mean(0)
 
         return loss
 

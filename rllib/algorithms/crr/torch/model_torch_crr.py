@@ -14,7 +14,7 @@ from ray.rllib.models.utils import get_activation_fn
 
 torch, nn = try_import_torch()
 
-class CRRModelContinuous(TorchModelV2, nn.Module):
+class CRRModel(TorchModelV2, nn.Module):
 
     def __init__(
         self,
@@ -28,6 +28,8 @@ class CRRModelContinuous(TorchModelV2, nn.Module):
             self, obs_space, action_space, num_outputs, model_config, name
         )
         nn.Module.__init__(self)
+
+        self._is_action_discrete = isinstance(action_space, gym.spaces.Discrete)
 
         # TODO: I don't know why this is true yet? (in = num_outputs)
         self.obs_ins = num_outputs
@@ -61,11 +63,14 @@ class CRRModelContinuous(TorchModelV2, nn.Module):
             )
             ins = n
 
+        # also includes log_std in continuous case
+        n_act_out = self.action_space.n if self._is_action_discrete \
+            else 2 * self.action_dim
         actor_net.add_module(
             f"{name_}_out",
             SlimFC(
                 ins,
-                2 * self.action_dim,  # also includes log_std
+                n_act_out,
                 initializer=torch.nn.init.xavier_uniform_,
                 activation_fn=None,
             ),
@@ -81,7 +86,8 @@ class CRRModelContinuous(TorchModelV2, nn.Module):
 
         activation = get_activation_fn(critic_hidden_activation, framework="torch")
         q_net = nn.Sequential()
-        ins = self.obs_ins + self.action_dim
+        ins = self.obs_ins if self._is_action_discrete else \
+            self.obs_ins + self.action_dim
         for i, n in enumerate(critic_hiddens):
             q_net.add_module(
                 f"{name_}_hidden_{i}",
@@ -98,12 +104,25 @@ class CRRModelContinuous(TorchModelV2, nn.Module):
             f"{name_}_out",
             SlimFC(
                 ins,
-                1,
+                self.action_space.n if self._is_action_discrete else 1,
                 initializer=torch.nn.init.xavier_uniform_,
                 activation_fn=None,
             ),
         )
         return q_net
+
+    def _get_q_value(self,
+                     model_out: TensorType,
+                     actions: TensorType,
+                     q_model: TorchModelV2) -> TensorType:
+
+        if self._is_action_discrete:
+            rows = torch.arange(len(actions)).to(actions)
+            q_vals = q_model(model_out)[rows, actions].unsqueeze(-1)
+        else:
+            q_vals = q_model(torch.cat([model_out, actions], -1))
+
+        return q_vals
 
     def get_q_values(self, model_out: TensorType, actions: TensorType) -> TensorType:
         """Return the Q estimates for the most recent forward pass.
@@ -119,8 +138,7 @@ class CRRModelContinuous(TorchModelV2, nn.Module):
         Returns:
             tensor of shape [BATCH_SIZE].
         """
-        return self.q_model(torch.cat([model_out, actions], -1))
-
+        return self._get_q_value(model_out, actions, self.q_model)
 
     def get_twin_q_values(
         self, model_out: TensorType, actions: TensorType
@@ -138,7 +156,7 @@ class CRRModelContinuous(TorchModelV2, nn.Module):
         Returns:
             tensor of shape [BATCH_SIZE].
         """
-        return self.twin_q_model(torch.cat([model_out, actions], -1))
+        return  self._get_q_value(model_out, actions, self.twin_q_model)
 
     def get_policy_output(self, model_out: TensorType) -> TensorType:
         """Return the action output for the most recent forward pass.
