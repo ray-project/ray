@@ -132,7 +132,7 @@ def train_loop_per_worker(config):
         model = build_model()
         model.compile(optimizer='adam',
                     loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
-                    metrics=['accuracy'])
+                    metrics=['categorical_accuracy'])
 
     for epoch in range(2):
         tf_dataset = prepare_dataset_shard(
@@ -141,10 +141,9 @@ def train_loop_per_worker(config):
                 label_column="label",
                 output_signature=(
                     tf.TensorSpec(shape=(None, 32, 32, 3), dtype=tf.float32),
-                    tf.TensorSpec(shape=(None, 1), dtype=tf.uint8),
+                    tf.TensorSpec(shape=(None,), dtype=tf.uint8),
                 ),
                 batch_size=config["batch_size"],
-                unsqueeze_label_tensor=True,
             )
         )
         model.fit(tf_dataset)
