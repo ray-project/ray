@@ -2,7 +2,7 @@ import copy
 import logging
 import re
 from collections.abc import Mapping
-from typing import Any, Dict, Generator, List, Optional, Tuple
+from typing import Any, Dict, Generator, Iterable, List, Optional, Tuple
 
 import numpy
 import random
@@ -58,14 +58,13 @@ def generate_variants(
         yield resolved_vars, spec
 
 
-def grid_search(values: List) -> Dict[str, List]:
+def grid_search(values: Iterable) -> Dict[str, List]:
     """Convenience method for specifying grid search over a value.
 
     Arguments:
         values: An iterable whose parameters will be gridded.
     """
-
-    return {"grid_search": values}
+    return {"grid_search": list(values)}
 
 
 _STANDARD_IMPORTS = {
