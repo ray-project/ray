@@ -1,11 +1,14 @@
 import threading
 import bisect
 from collections import defaultdict
+import logging
 import time
 from typing import Callable, DefaultDict, Dict, List, Optional
 from dataclasses import dataclass, field
 
 import ray
+
+logger = logging.getLogger(__file__)
 
 
 def start_metrics_pusher(
@@ -41,18 +44,21 @@ def start_metrics_pusher(
 
         while True:
             start = time.time()
-
             if stop_event and stop_event.is_set():
                 return
 
-            if last_ref:
+            if ray.is_initialized():
                 try:
-                    ready_refs, _ = ray.wait([last_ref], timeout=0)
-                    last_send_succeeded = len(ready_refs) == 1
-                except Exception:
+                    if last_ref:
+                        ready_refs, _ = ray.wait([last_ref], timeout=0)
+                        last_send_succeeded = len(ready_refs) == 1
+                    if last_send_succeeded:
+                        last_ref = send_once()
+                except Exception as e:
+                    logger.warning(
+                        f"Autoscaling metrics pusher thread is having issue to send metrics: {e}"
+                    )
                     pass
-            if last_send_succeeded:
-                last_ref = send_once()
 
             duration_s = time.time() - start
             remaining_time = interval_s - duration_s
