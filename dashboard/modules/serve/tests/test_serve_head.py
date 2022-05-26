@@ -176,11 +176,13 @@ def test_put_new_rest_api(ray_start_stop):
     assert put_response.status_code == 200
     wait_for_condition(
         lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
-        == "3 pizzas please!"
+        == "3 pizzas please!",
+        timeout=30,
     )
     wait_for_condition(
         lambda: requests.post("http://localhost:8000/", json=["MUL", 2]).json()
-        == "2 pizzas please!"
+        == "2 pizzas please!",
+        timeout=30,
     )
 
 
