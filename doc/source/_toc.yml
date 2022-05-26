@@ -195,6 +195,8 @@ parts:
                   - file: ray-air/examples/xgboost_example
                   - file: ray-air/examples/huggingface_text_classification
                     title: "Fine-tune a 🤗 Transformers model"
+                  - file: ray-air/examples/tfx_tabular_train_to_serve
+                    title: "Train a Keras model with Tabular data and serve it"
               - file: ray-air/package-ref
           - file: ray-more-libs/joblib
           - file: ray-more-libs/lightgbm-ray
