@@ -32,7 +32,7 @@ from ray.exceptions import RayError
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.env.env_context import EnvContext
-from ray.rllib.env.utils import gym_env_creator
+from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.metrics import (
     collect_episodes,
@@ -58,6 +58,8 @@ from ray.rllib.utils.annotations import (
     DeveloperAPI,
     ExperimentalAPI,
     override,
+    OverrideToImplementCustomLogic,
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
     PublicAPI,
 )
 from ray.rllib.utils.debug import update_global_seed_if_necessary
@@ -288,10 +290,12 @@ class Trainer(Trainable):
             config, logger_creator, remote_checkpoint_dir, sync_function_tpl
         )
 
+    @OverrideToImplementCustomLogic
     @classmethod
     def get_default_config(cls) -> TrainerConfigDict:
         return TrainerConfig().to_dict()
 
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
     @override(Trainable)
     def setup(self, config: PartialTrainerConfigDict):
 
@@ -487,6 +491,7 @@ class Trainer(Trainable):
     def _init(self, config: TrainerConfigDict, env_creator: EnvCreator) -> None:
         raise NotImplementedError
 
+    @OverrideToImplementCustomLogic
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         """Returns a default Policy class to use, given a config.
 
@@ -518,12 +523,27 @@ class Trainer(Trainable):
             and - if required - evaluation.
         """
         step_attempt_results = None
-
+        self._rollout_worker_metrics = []
+        local_worker = (
+            self.workers.local_worker()
+            if hasattr(self.workers, "local_worker")
+            else None
+        )
         with self._step_context() as step_ctx:
             while not step_ctx.should_stop(step_attempt_results):
                 # Try to train one step.
                 try:
                     step_attempt_results = self.step_attempt()
+                    # Collect rollout worker metrics.
+                    episodes, self._episodes_to_be_collected = collect_episodes(
+                        local_worker,
+                        self._remote_workers_for_metrics,
+                        self._episodes_to_be_collected,
+                        timeout_seconds=self.config[
+                            "metrics_episode_collection_timeout_s"
+                        ],
+                    )
+                    self._rollout_worker_metrics.extend(episodes)
                 # @ray.remote RolloutWorker failure.
                 except RayError as e:
                     # Try to recover w/o the failed worker.
@@ -845,6 +865,7 @@ class Trainer(Trainable):
         # Also return the results here for convenience.
         return self.evaluation_metrics
 
+    @OverrideToImplementCustomLogic
     @DeveloperAPI
     def training_iteration(self) -> ResultDict:
         """Default single iteration logic of an algorithm.
@@ -1467,9 +1488,12 @@ class Trainer(Trainable):
     @override(Trainable)
     def cleanup(self) -> None:
         # Stop all workers.
-        if hasattr(self, "workers"):
+        if hasattr(self, "workers") and self.workers is not None:
             self.workers.stop()
+        if hasattr(self, "evaluation_workers") and self.evaluation_workers is not None:
+            self.evaluation_workers.stop()
 
+    @OverrideToImplementCustomLogic
     @classmethod
     @override(Trainable)
     def default_resource_request(
@@ -1569,7 +1593,7 @@ class Trainer(Trainable):
             # Try gym/PyBullet/Vizdoom.
             else:
                 return env_specifier, functools.partial(
-                    gym_env_creator, env_descriptor=env_specifier
+                    _gym_env_creator, env_descriptor=env_specifier
                 )
 
         elif isinstance(env_specifier, type):
@@ -1777,6 +1801,7 @@ class Trainer(Trainable):
         check_if_correct_nn_framework_installed()
         resolve_tf_settings()
 
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
     @DeveloperAPI
     def validate_config(self, config: TrainerConfigDict) -> None:
         """Validates a given config dict for this Trainer.
@@ -2042,11 +2067,13 @@ class Trainer(Trainable):
         if not isinstance(workers, WorkerSet):
             return
 
+        removed_workers, new_workers = [], []
         # Search for failed workers and try to recover (restart) them.
         if self.config["recreate_failed_workers"] is True:
-            workers.recreate_failed_workers()
+            removed_workers, new_workers = workers.recreate_failed_workers()
         elif self.config["ignore_worker_failures"] is True:
-            workers.remove_failed_workers()
+            removed_workers = workers.remove_failed_workers()
+        self.on_worker_failures(removed_workers, new_workers)
 
         if not self.config.get("_disable_execution_plan_api") and callable(
             self.execution_plan
@@ -2055,6 +2082,17 @@ class Trainer(Trainable):
             self.train_exec_impl = self.execution_plan(
                 workers, self.config, **self._kwargs_for_execution_plan()
             )
+
+    def on_worker_failures(
+        self, removed_workers: List[ActorHandle], new_workers: List[ActorHandle]
+    ):
+        """Called after a worker failure is detected.
+
+        Args:
+            removed_workers: List of removed workers.
+            new_workers: List of new workers.
+        """
+        pass
 
     @override(Trainable)
     def _export_model(
@@ -2276,13 +2314,7 @@ class Trainer(Trainable):
         # Learner info.
         results["info"] = {LEARNER_INFO: step_attempt_results}
 
-        # Collect rollout worker metrics.
-        episodes, self._episodes_to_be_collected = collect_episodes(
-            self.workers.local_worker(),
-            self._remote_workers_for_metrics,
-            self._episodes_to_be_collected,
-            timeout_seconds=self.config["metrics_episode_collection_timeout_s"],
-        )
+        episodes = self._rollout_worker_metrics
         orig_episodes = list(episodes)
         missing = self.config["metrics_num_episodes_for_smoothing"] - len(episodes)
         if missing > 0:

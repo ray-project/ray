@@ -1,24 +1,26 @@
 import sys
-import requests
+import time
 import pytest
+import requests
 from pydantic import ValidationError
 from typing import List, Dict
 
 import ray
 from ray import serve
+from ray.serve.common import (
+    StatusOverview,
+    DeploymentStatusInfo,
+    ApplicationStatusInfo,
+)
 from ray.serve.schema import (
     RayActorOptionsSchema,
     DeploymentSchema,
-    DeploymentStatusSchema,
     ServeApplicationSchema,
-    ServeApplicationStatusSchema,
-    status_info_to_schema,
-    serve_application_status_to_schema,
+    ServeStatusSchema,
+    serve_status_to_schema,
 )
 from ray.util.accelerators.accelerators import NVIDIA_TESLA_V100, NVIDIA_TESLA_P4
 from ray.serve.config import AutoscalingConfig
-from ray.serve.common import DeploymentStatus, DeploymentStatusInfo
-from ray.serve.api import get_deployment_statuses
 from ray.serve.deployment import (
     deployment_to_schema,
     schema_to_deployment,
@@ -503,91 +505,49 @@ class TestServeApplicationSchema:
             ServeApplicationSchema.parse_obj(serve_application_schema)
 
 
-class TestDeploymentStatusSchema:
-    def get_valid_deployment_status_schema(self):
-        return {
-            "deployment_1": DeploymentStatusInfo(DeploymentStatus.HEALTHY),
-            "deployment_2": DeploymentStatusInfo(
-                DeploymentStatus.UNHEALTHY, "This is an unhealthy deployment."
+class TestServeStatusSchema:
+    def get_valid_serve_status_schema(self):
+        return StatusOverview(
+            app_status=ApplicationStatusInfo(
+                status="DEPLOYING",
+                message="",
+                deployment_timestamp=time.time(),
             ),
-            "deployment_3": DeploymentStatusInfo(DeploymentStatus.UPDATING),
-        }
+            deployment_statuses=[
+                DeploymentStatusInfo(
+                    name="deployment_1",
+                    status="HEALTHY",
+                    message="",
+                ),
+                DeploymentStatusInfo(
+                    name="deployment_2",
+                    status="UNHEALTHY",
+                    message="this deployment is deeply unhealthy",
+                ),
+            ],
+        )
 
-    def test_valid_deployment_status_schema(self):
-        # Ensure valid DeploymentStatusSchemas can be generated
+    def test_valid_serve_status_schema(self):
+        # Ensure a valid ServeStatusSchema can be generated
 
-        deployment_status_schemas = self.get_valid_deployment_status_schema()
+        serve_status_schema = self.get_valid_serve_status_schema()
+        serve_status_to_schema(serve_status_schema)
 
-        for name, status_info in deployment_status_schemas.items():
-            status_info_to_schema(name, status_info)
-
-    def test_invalid_status(self):
-        # Ensure a DeploymentStatusSchema cannot be initialized with an invalid status
-
-        status_info = {
-            "status": "nonexistent status",
-            "message": "welcome to nonexistence",
-        }
-        with pytest.raises(ValidationError):
-            status_info_to_schema("deployment name", status_info)
-
-    def test_extra_fields_invalid_deployment_status_schema(self):
+    def test_extra_fields_invalid_serve_status_schema(self):
         # Undefined fields should be forbidden in the schema
 
-        deployment_status_schemas = self.get_valid_deployment_status_schema()
+        serve_status_schema = self.get_valid_serve_status_schema()
 
         # Schema should be createable with valid fields
-        for name, status_info in deployment_status_schemas.items():
-            DeploymentStatusSchema(
-                name=name, status=status_info.status, message=status_info.message
+        serve_status_to_schema(serve_status_schema)
+
+        # Schema should raise error when a nonspecified field is included
+        with pytest.raises(ValidationError):
+            ServeStatusSchema(
+                app_status=serve_status_schema.app_status,
+                deployment_statuses=[],
+                fake_field=None,
             )
-
-        # Schema should raise error when a nonspecified field is included
-        for name, status_info in deployment_status_schemas.items():
-            with pytest.raises(ValidationError):
-                DeploymentStatusSchema(
-                    name=name,
-                    status=status_info.status,
-                    message=status_info.message,
-                    fake_field=None,
-                )
-
-
-class TestServeApplicationStatusSchema:
-    def get_valid_serve_application_status_schema(self):
-        return {
-            "deployment_1": {"status": "HEALTHY", "message": ""},
-            "deployment_2": {
-                "status": "UNHEALTHY",
-                "message": "this deployment is deeply unhealthy",
-            },
-        }
-
-    def test_valid_serve_application_status_schema(self):
-        # Ensure a valid ServeApplicationStatusSchema can be generated
-
-        serve_application_status_schema = (
-            self.get_valid_serve_application_status_schema()
-        )
-        serve_application_status_to_schema(serve_application_status_schema)
-
-    def test_extra_fields_invalid_serve_application_status_schema(self):
-        # Undefined fields should be forbidden in the schema
-
-        serve_application_status_schema = (
-            self.get_valid_serve_application_status_schema()
-        )
-
-        # Schema should be createable with valid fields
-        serve_application_status_to_schema(serve_application_status_schema)
-
-        # Schema should raise error when a nonspecified field is included
-        with pytest.raises(ValidationError):
-            statuses = [
-                status_info_to_schema(name, status_info)
-                for name, status_info in serve_application_status_schema.items()
-            ]
-            ServeApplicationStatusSchema(statuses=statuses, fake_field=None)
 
 
 # This function is defined globally to be accessible via import path
@@ -680,13 +640,13 @@ def test_status_schema_helpers():
     f1._func_or_class = "ray.serve.tests.test_schema.global_f"
     f2._func_or_class = "ray.serve.tests.test_schema.global_f"
 
-    serve.start()
+    client = serve.start()
 
     f1.deploy()
     f2.deploy()
 
     # Check statuses
-    statuses = serve_application_status_to_schema(get_deployment_statuses()).statuses
+    statuses = serve_status_to_schema(client.get_serve_status()).deployment_statuses
     deployment_names = {"f1", "f2"}
     for deployment_status in statuses:
         assert deployment_status.status in {"UPDATING", "HEALTHY"}

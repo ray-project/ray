@@ -20,7 +20,6 @@ def build_model() -> tf.keras.Model:
             tf.keras.layers.Dense(1),
         ]
     )
-
     return model
 
 
@@ -43,7 +42,7 @@ def test_init():
     assert checkpoint_predictor.preprocessor == predictor.preprocessor
 
 
-def test_predict():
+def test_predict_array_with_preprocessor():
     preprocessor = DummyPreprocessor()
     predictor = TensorflowPredictor(
         model_definition=build_model, preprocessor=preprocessor, model_weights=weights
@@ -53,25 +52,11 @@ def test_predict():
     predictions = predictor.predict(data_batch)
 
     assert len(predictions) == 3
-    assert predictions.to_numpy().flatten().round().tolist() == [2, 4, 6]
+    assert predictions.to_numpy().astype(float).flatten().round().tolist() == [2, 4, 6]
     assert hasattr(predictor.preprocessor, "_batch_transformed")
 
 
-def test_predict_feature_columns():
-    preprocessor = DummyPreprocessor()
-    predictor = TensorflowPredictor(
-        model_definition=build_model, preprocessor=preprocessor, model_weights=weights
-    )
-
-    data_batch = np.array([[1, 4], [2, 5], [3, 6]])
-    predictions = predictor.predict(data_batch, feature_columns=[0])
-
-    assert len(predictions) == 3
-    assert predictions.to_numpy().flatten().round().tolist() == [2, 4, 6]
-    assert hasattr(predictor.preprocessor, "_batch_transformed")
-
-
-def test_predict_no_preprocessor():
+def test_predict_array():
     checkpoint = {MODEL_KEY: weights}
     predictor = TensorflowPredictor.from_checkpoint(
         Checkpoint.from_dict(checkpoint), build_model
@@ -81,4 +66,4 @@ def test_predict_no_preprocessor():
     predictions = predictor.predict(data_batch)
 
     assert len(predictions) == 3
-    assert predictions.to_numpy().flatten().tolist() == [1, 2, 3]
+    assert predictions.to_numpy().astype(float).flatten().tolist() == [1, 2, 3]
