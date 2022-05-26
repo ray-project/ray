@@ -11,7 +11,7 @@ import requests
 from starlette.requests import Request
 
 import ray
-import ray.rllib.agents.dqn as dqn
+import ray.rllib.algorithms.dqn as dqn
 from ray.rllib.env.wrappers.atari_wrappers import FrameStack, WarpFrame
 from ray import serve
 

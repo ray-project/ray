@@ -4,20 +4,25 @@ from typing import Dict, Tuple
 
 import gym
 import ray
-from ray.rllib.agents.dqn.dqn_tf_policy import PRIO_WEIGHTS, postprocess_nstep_and_prio
-from ray.rllib.agents.dqn.dqn_torch_policy import (
+from ray.rllib.algorithms.dqn.dqn_tf_policy import (
+    PRIO_WEIGHTS,
+    postprocess_nstep_and_prio,
+)
+from ray.rllib.algorithms.dqn.dqn_torch_policy import (
     adam_optimizer,
     build_q_model_and_distribution,
     compute_q_values,
 )
 from ray.rllib.agents.dqn.r2d2_tf_policy import get_distribution_inputs_and_class
-from ray.rllib.agents.dqn.simple_q_torch_policy import TargetNetworkMixin
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_mixins import LearningRateSchedule
+from ray.rllib.policy.torch_mixins import (
+    LearningRateSchedule,
+    TargetNetworkMixin,
+)
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import (
     apply_grad_clipping,

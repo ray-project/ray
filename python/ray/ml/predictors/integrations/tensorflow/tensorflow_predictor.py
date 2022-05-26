@@ -147,5 +147,5 @@ class TensorflowPredictor(Predictor):
         if self.model_weights:
             model.set_weights(self.model_weights)
 
-        prediction = model(tensor).numpy().ravel()
-        return pd.DataFrame(prediction, columns=["predictions"])
+        prediction = list(model(tensor).numpy())
+        return pd.DataFrame({"predictions": prediction}, columns=["predictions"])

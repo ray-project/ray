@@ -201,6 +201,10 @@ if __name__ == "__main__":
             elif any(changed_file.startswith(prefix) for prefix in skip_prefix_list):
                 # nothing is run but linting in these cases
                 pass
+            elif changed_file.startswith("release/ray_release/"):
+                # Tests for release/ray_release always run, so it is unnecessary to
+                # tag affected tests.
+                pass
             elif changed_file.endswith("build-docker-images.py"):
                 RAY_CI_DOCKER_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1

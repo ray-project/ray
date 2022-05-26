@@ -14,7 +14,9 @@ from ray.rllib.algorithms.alpha_star.league_builder import AlphaStarLeagueBuilde
 from ray.rllib.agents.trainer import Trainer
 import ray.rllib.agents.ppo.appo as appo
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.execution.parallel_requests import asynchronous_parallel_requests
+from ray.rllib.execution.parallel_requests import (
+    AsyncRequestsManager,
+)
 from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch
@@ -86,8 +88,15 @@ class AlphaStarConfig(appo.APPOConfig):
         # AlphaStar specific settings:
         self.replay_buffer_capacity = 20
         self.replay_buffer_replay_ratio = 0.5
-        self.sample_wait_timeout = 0.01
-        self.learn_wait_timeout = 0.1
+        # Tuning max_requests_in_flight_per_sampler_worker and
+        # max_requests_in_flight_per_learner_worker is important so backpressure is
+        # created on the remote workers and the object store doesn't fill up
+        # unexpectedly. If the workers spend time idle, consider increasing these.
+        self.max_requests_in_flight_per_sampler_worker = 2
+        self.max_requests_in_flight_per_learner_worker = 2
+
+        self.timeout_s_sampler_manager = 0.0
+        self.timeout_s_learner_manager = 0.0
 
         # League-building parameters.
         # The LeagueBuilder class to be used for league building logic.
@@ -132,6 +141,7 @@ class AlphaStarConfig(appo.APPOConfig):
         # values.
         self.vtrace_drop_last_ts = False
         self.min_time_s_per_reporting = 2
+        self._disable_execution_plan_api = True
         # __sphinx_doc_end__
         # fmt: on
 
@@ -141,8 +151,10 @@ class AlphaStarConfig(appo.APPOConfig):
         *,
         replay_buffer_capacity: Optional[int] = None,
         replay_buffer_replay_ratio: Optional[float] = None,
-        sample_wait_timeout: Optional[float] = None,
-        learn_wait_timeout: Optional[float] = None,
+        max_requests_in_flight_per_sampler_worker: Optional[int] = None,
+        max_requests_in_flight_per_learner_worker: Optional[int] = None,
+        timeout_s_sampler_manager: Optional[float] = None,
+        timeout_s_learner_manager: Optional[float] = None,
         league_builder_config: Optional[Dict[str, Any]] = None,
         max_num_policies_to_train: Optional[int] = None,
         **kwargs,
@@ -154,15 +166,26 @@ class AlphaStarConfig(appo.APPOConfig):
                 policy.
             replay_buffer_replay_ratio: For example, ratio=0.2 -> 20% of samples in
                 each train batch are old (replayed) ones.
-            sample_wait_timeout: Timeout to use for `ray.wait()` when waiting for
+            timeout_s_sampler_manager: Timeout to use for `ray.wait()` when waiting for
                 samplers to have placed new data into the buffers. If no samples are
                 ready within the timeout, the buffers used for mixin-sampling will
                 return only older samples.
-            learn_wait_timeout: Timeout to use for `ray.wait()` when waiting for the
-                policy learner actors to have performed an update and returned learning
-                stats. If no learner actors have produced any learning results in the
-                meantime, their learner-stats in the results will be empty for that
-                iteration.
+            timeout_s_learner_manager: Timeout to use for `ray.wait()` when waiting for
+                the policy learner actors to have performed an update and returned
+                learning stats. If no learner actors have produced any learning
+                results in the meantime, their learner-stats in the results will be
+                empty for that iteration.
+            max_requests_in_flight_per_sampler_worker: Maximum number of ray remote
+                calls that can be run in parallel for each sampler worker. This is
+                particularly important when dealing with many sampler workers or
+                sample batches that are large, and when could potentially fill up
+                the object store.
+            max_requests_in_flight_per_learner_worker: Maximum number of ray remote
+                calls that can be run in parallel for each learner worker. This is
+                important to tune when dealing with many learner workers so that the
+                object store doesn't fill up and so that learner actors don't become
+                backed up with too many requests that could become stale if not
+                attended to in a timely manner.
             league_builder_config: League-building config dict.
                 The dict Must contain a `type` key indicating the LeagueBuilder class
                 to be used for league building logic. All other keys (that are not
@@ -189,14 +212,22 @@ class AlphaStarConfig(appo.APPOConfig):
             self.replay_buffer_capacity = replay_buffer_capacity
         if replay_buffer_replay_ratio is not None:
             self.replay_buffer_replay_ratio = replay_buffer_replay_ratio
-        if sample_wait_timeout is not None:
-            self.sample_wait_timeout = sample_wait_timeout
-        if learn_wait_timeout is not None:
-            self.learn_wait_timeout = learn_wait_timeout
+        if timeout_s_sampler_manager is not None:
+            self.timeout_s_sampler_manager = timeout_s_sampler_manager
+        if timeout_s_learner_manager is not None:
+            self.timeout_s_learner_manager = timeout_s_learner_manager
         if league_builder_config is not None:
             self.league_builder_config = league_builder_config
         if max_num_policies_to_train is not None:
             self.max_num_policies_to_train = max_num_policies_to_train
+        if max_requests_in_flight_per_sampler_worker is not None:
+            self.max_requests_in_flight_per_sampler_worker = (
+                max_requests_in_flight_per_sampler_worker
+            )
+        if max_requests_in_flight_per_learner_worker is not None:
+            self.max_requests_in_flight_per_learner_worker = (
+                max_requests_in_flight_per_learner_worker
+            )
 
         return self
 
@@ -356,6 +387,21 @@ class AlphaStarTrainer(appo.APPOTrainer):
         )
 
         self.distributed_learners = distributed_learners
+        self._sampling_actor_manager = AsyncRequestsManager(
+            self.workers.remote_workers(),
+            max_remote_requests_in_flight_per_worker=self.config[
+                "max_requests_in_flight_per_sampler_worker"
+            ],
+            ray_wait_timeout_s=self.config["timeout_s_sampler_manager"],
+        )
+        policy_actors = [policy_actor for _, policy_actor, _ in distributed_learners]
+        self._learner_worker_manager = AsyncRequestsManager(
+            workers=policy_actors,
+            max_remote_requests_in_flight_per_worker=self.config[
+                "max_requests_in_flight_per_learner_worker"
+            ],
+            ray_wait_timeout_s=self.config["timeout_s_learner_manager"],
+        )
 
     @override(Trainer)
     def step(self) -> ResultDict:
@@ -374,13 +420,16 @@ class AlphaStarTrainer(appo.APPOTrainer):
         # - Rollout results are sent directly to correct replay buffer
         #   shards, instead of here (to the driver).
         with self._timers[SAMPLE_TIMER]:
-            sample_results = asynchronous_parallel_requests(
-                remote_requests_in_flight=self.remote_requests_in_flight,
-                actors=self.workers.remote_workers() or [self.workers.local_worker()],
-                ray_wait_timeout_s=self.config["sample_wait_timeout"],
-                max_remote_requests_in_flight_per_actor=2,
-                remote_fn=self._sample_and_send_to_buffer,
-            )
+            # if there are no remote workers (e.g. num_workers=0)
+            if not self.workers.remote_workers():
+                worker = self.workers.local_worker()
+                statistics = worker.apply(self._sample_and_send_to_buffer)
+                sample_results = {worker: [statistics]}
+            else:
+                self._sampling_actor_manager.call_on_all_available(
+                    self._sample_and_send_to_buffer
+                )
+                sample_results = self._sampling_actor_manager.get_ready()
         # Update sample counters.
         for sample_result in sample_results.values():
             for (env_steps, agent_steps) in sample_result:
@@ -390,19 +439,13 @@ class AlphaStarTrainer(appo.APPOTrainer):
         # Trigger asynchronous training update requests on all learning
         # policies.
         with self._timers[LEARN_ON_BATCH_TIMER]:
-            pol_actors = []
-            args = []
             for pid, pol_actor, repl_actor in self.distributed_learners:
-                pol_actors.append(pol_actor)
-                args.append([repl_actor, pid])
-            train_results = asynchronous_parallel_requests(
-                remote_requests_in_flight=self.remote_requests_in_flight,
-                actors=pol_actors,
-                ray_wait_timeout_s=self.config["learn_wait_timeout"],
-                max_remote_requests_in_flight_per_actor=2,
-                remote_fn=self._update_policy,
-                remote_args=args,
-            )
+                if pol_actor not in self._learner_worker_manager.workers:
+                    self._learner_worker_manager.add_workers(pol_actor)
+                self._learner_worker_manager.call(
+                    self._update_policy, actor=pol_actor, fn_args=[repl_actor, pid]
+                )
+            train_results = self._learner_worker_manager.get_ready()
 
         # Update sample counters.
         for train_result in train_results.values():

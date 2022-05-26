@@ -53,12 +53,14 @@ class PlacementGroup:
         It is compatible to ray.get and ray.wait.
 
         Example:
-        >>> import ray
-        >>> from ray.util.placement_group import PlacementGroup
-        >>> pg = PlacementGroup([{"CPU": 1}]) # doctest: +SKIP
-        >>> ray.get(pg.ready()) # doctest: +SKIP
-        >>> pg = PlacementGroup([{"CPU": 1}]) # doctest: +SKIP
-        >>> ray.wait([pg.ready()], timeout=0) # doctest: +SKIP
+
+            >>> import ray
+            >>> from ray.util.placement_group import PlacementGroup
+            >>> pg = PlacementGroup([{"CPU": 1}]) # doctest: +SKIP
+            >>> ray.get(pg.ready()) # doctest: +SKIP
+            >>> pg = PlacementGroup([{"CPU": 1}]) # doctest: +SKIP
+            >>> ray.wait([pg.ready()], timeout=0) # doctest: +SKIP
+
         """
         self._fill_bundle_cache_if_needed()
 

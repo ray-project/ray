@@ -83,7 +83,7 @@ Distributed Prioritized Experience Replay (Ape-X)
 |pytorch| |tensorflow|
 `[paper] <https://arxiv.org/abs/1803.00933>`__
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/dqn/apex.py>`__
-Ape-X variations of DQN and DDPG (`APEX_DQN <https://github.com/ray-project/ray/blob/master/rllib/agents/dqn/apex.py>`__, `APEX_DDPG <https://github.com/ray-project/ray/blob/master/rllib/agents/ddpg/apex.py>`__) use a single GPU learner and many CPU workers for experience collection. Experience collection can scale to hundreds of CPU workers due to the distributed prioritization of experience prior to storage in replay buffers.
+Ape-X variations of DQN and DDPG (`APEX_DQN <https://github.com/ray-project/ray/blob/master/rllib/agents/dqn/apex.py>`__, `APEX_DDPG <https://github.com/ray-project/ray/blob/master/rllib/algorithms/ddpg/apex.py>`__) use a single GPU learner and many CPU workers for experience collection. Experience collection can scale to hundreds of CPU workers due to the distributed prioritization of experience prior to storage in replay buffers.
 
 .. figure:: images/apex-arch.svg
 
@@ -270,7 +270,7 @@ SpaceInvaders  692                       ~600
 Deep Deterministic Policy Gradients (DDPG, TD3)
 -----------------------------------------------
 |pytorch| |tensorflow|
-`[paper] <https://arxiv.org/abs/1509.02971>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/ddpg/ddpg.py>`__
+`[paper] <https://arxiv.org/abs/1509.02971>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/ddpg/ddpg.py>`__
 DDPG is implemented similarly to DQN (below). The algorithm can be scaled by increasing the number of workers or using Ape-X. The improvements from `TD3 <https://spinningup.openai.com/en/latest/algorithms/td3.html>`__ are available as ``TD3``.
 
 .. figure:: images/dqn-arch.svg
@@ -281,7 +281,7 @@ Tuned examples: `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rll
 
 **DDPG-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/agents/ddpg/ddpg.py
+.. literalinclude:: ../../../rllib/algorithms/ddpg/ddpg.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -291,7 +291,7 @@ Tuned examples: `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rll
 Deep Q Networks (DQN, Rainbow, Parametric DQN)
 ----------------------------------------------
 |pytorch| |tensorflow|
-`[paper] <https://arxiv.org/abs/1312.5602>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/dqn/dqn.py>`__
+`[paper] <https://arxiv.org/abs/1312.5602>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/dqn/dqn.py>`__
 DQN can be scaled by increasing the number of workers or using Ape-X. Memory usage is reduced by compressing samples in the replay buffer with LZ4. All of the DQN improvements evaluated in `Rainbow <https://arxiv.org/abs/1710.02298>`__ are available, though not all are enabled by default. See also how to use `parametric-actions in DQN <rllib-models.html#variable-length-parametric-action-spaces>`__.
 
 .. figure:: images/dqn-arch.svg
@@ -326,7 +326,7 @@ SpaceInvaders  650                       1001                           1025    
 
 **DQN-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/agents/dqn/dqn.py
+.. literalinclude:: ../../../rllib/algorithms/dqn/dqn.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -349,7 +349,7 @@ Policy Gradients
 ----------------
 |pytorch| |tensorflow|
 `[paper] <https://papers.nips.cc/paper/1713-policy-gradient-methods-for-reinforcement-learning-with-function-approximation.pdf>`__
-`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/pg/pg.py>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/pg/pg.py>`__
 We include a vanilla policy gradients implementation as an example algorithm.
 
 .. figure:: images/a2c-arch.svg
@@ -360,7 +360,7 @@ Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rll
 
 **PG-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/agents/pg/pg.py
+.. literalinclude:: ../../../rllib/algorithms/pg/pg.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -431,14 +431,14 @@ Soft Actor Critic (SAC)
 ------------------------
 |pytorch| |tensorflow|
 `[original paper] <https://arxiv.org/pdf/1801.01290>`__, `[follow up paper] <https://arxiv.org/pdf/1812.05905.pdf>`__, `[discrete actions paper] <https://arxiv.org/pdf/1910.07207v2.pdf>`__
-`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/sac/sac.py>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/sac/sac.py>`__
 
 .. figure:: images/dqn-arch.svg
 
     SAC architecture (same as DQN)
 
 RLlib's soft-actor critic implementation is ported from the `official SAC repo <https://github.com/rail-berkeley/softlearning>`__ to better integrate with RLlib APIs.
-Note that SAC has two fields to configure for custom models: ``policy_model`` and ``Q_model``, the ``model`` field of the config will be ignored.
+Note that SAC has two fields to configure for custom models: ``policy_model_config`` and ``q_model_config``, the ``model`` field of the config will be ignored.
 
 Tuned examples (continuous actions):
 `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/sac/pendulum-sac.yaml>`__,
@@ -456,7 +456,7 @@ HalfCheetah    13000       ~15000
 
 **SAC-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/agents/sac/sac.py
+.. literalinclude:: ../../../rllib/algorithms/sac/sac.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -488,7 +488,7 @@ Model-Based Meta-Policy-Optimization (MB-MPO)
 |pytorch|
 `[paper] <https://arxiv.org/pdf/1809.05214.pdf>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/mbmpo/mbmpo.py>`__
 
-RLlib's MBMPO implementation is a Dyna-styled model-based RL method that learns based on the predictions of an ensemble of transition-dynamics models. Similar to MAML, MBMPO metalearns an optimial policy by treating each dynamics model as a different task. Code here is adapted from https://github.com/jonasrothfuss/model_ensemble_meta_learning. Similar to the original paper, MBMPO is evaluated on MuJoCo, with the horizon set to 200 instead of the default 1000.
+RLlib's MBMPO implementation is a Dyna-styled model-based RL method that learns based on the predictions of an ensemble of transition-dynamics models. Similar to MAML, MBMPO metalearns an optimal policy by treating each dynamics model as a different task. Code here is adapted from https://github.com/jonasrothfuss/model_ensemble_meta_learning. Similar to the original paper, MBMPO is evaluated on MuJoCo, with the horizon set to 200 instead of the default 1000.
 
 Additional statistics are logged in MBMPO. Each MBMPO iteration corresponds to multiple MAML iterations, and ``MAMLIter$i$_DynaTrajInner_$j$_episode_reward_mean`` measures the agent's returns across the dynamics models at iteration ``i`` of MAML and step ``j`` of inner adaptation. Examples can be seen `here <https://github.com/ray-project/rl-experiments/tree/master/mbmpo>`__.
 
@@ -549,7 +549,7 @@ Cheetah-Run    640             ~800
 SlateQ
 -------
 |pytorch|
-`[paper] <https://storage.googleapis.com/pub-tools-public-publication-data/pdf/9f91de1fa0ac351ecb12e4062a37afb896aa1463.pdf>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/slateq/slateq.py>`__
+`[paper] <https://storage.googleapis.com/pub-tools-public-publication-data/pdf/9f91de1fa0ac351ecb12e4062a37afb896aa1463.pdf>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/slateq/slateq.py>`__
 
 SlateQ is a model-free RL method that builds on top of DQN and generates recommendation slates for recommender system environments. Since these types of environments come with large combinatorial action spaces, SlateQ mitigates this by decomposing the Q-value into single-item Q-values and solves the decomposed objective via mixing integer programming and deep learning optimization. SlateQ can be evaluated on Google's RecSim `environment <https://github.com/google-research/recsim>`__. `An RLlib wrapper for RecSim can be found here < <https://github.com/ray-project/ray/blob/master/rllib/env/wrappers/recsim_wrapper.py>`__.
 
@@ -557,7 +557,7 @@ RecSim environment wrapper: `Google RecSim <https://github.com/ray-project/ray/b
 
 **SlateQ-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/agents/slateq/slateq.py
+.. literalinclude:: ../../../rllib/algorithms/slateq/slateq.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -703,7 +703,7 @@ Linear Upper Confidence Bound (BanditLinUCBTrainer)
 ---------------------------------------------------
 |pytorch|
 `[paper] <http://rob.schapire.net/papers/www10.pdf>`__ `[implementation]
-<https://github.com/ray-project/ray/blob/master/rllib/agents/bandit/bandit.py>`__
+<https://github.com/ray-project/ray/blob/master/rllib/algorithms/bandit/bandit.py>`__
 LinUCB assumes a linear dependency between the expected reward of an action and
 its context. It estimates the Q value of each action using ridge regression.
 It constructs a confidence region around the weights of the linear
@@ -711,14 +711,14 @@ regression model and uses this confidence ellipsoid to estimate the
 uncertainty of action values.
 
 Tuned examples:
-`SimpleContextualBandit <https://github.com/ray-project/ray/blob/master/rllib/agents/bandit/tests/test_bandits.py>`__,
+`SimpleContextualBandit <https://github.com/ray-project/ray/blob/master/rllib/algorithms/bandit/tests/test_bandits.py>`__,
 `UCB Bandit on RecSim <https://github.com/ray-project/ray/blob/master/rllib/examples/bandit/tune_lin_ucb_train_recsim_env.py>`__.
 `ParametricItemRecoEnv <https://github.com/ray-project/ray/blob/master/rllib/examples/bandit/tune_lin_ucb_train_recommendation.py>`__.
 
 **LinUCB-specific configs** (see also `common configs <rllib-training
 .html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/agents/bandit/bandit.py
+.. literalinclude:: ../../../rllib/algorithms/bandit/bandit.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -730,7 +730,7 @@ Linear Thompson Sampling (BanditLinTSTrainer)
 ---------------------------------------------
 |pytorch|
 `[paper] <http://proceedings.mlr.press/v28/agrawal13.pdf>`__
-`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/bandit/bandit.py>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/bandit/bandit.py>`__
 Like LinUCB, LinTS also assumes a linear dependency between the expected
 reward of an action and its context and uses online ridge regression to
 estimate the Q values of actions given the context. It assumes a Gaussian
@@ -739,12 +739,12 @@ action to take, the agent samples weights for each arm, using
 the posterior distributions, and plays the arm that produces the highest reward.
 
 Tuned examples:
-`SimpleContextualBandit <https://github.com/ray-project/ray/blob/master/rllib/agents/bandit/tests/test_bandits.py>`__,
+`SimpleContextualBandit <https://github.com/ray-project/ray/blob/master/rllib/algorithms/bandit/tests/test_bandits.py>`__,
 `WheelBandit <https://github.com/ray-project/ray/blob/master/rllib/examples/bandit/tune_lin_ts_train_wheel_env.py>`__.
 
 **LinTS-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/agents/bandit/bandit.py
+.. literalinclude:: ../../../rllib/algorithms/bandit/bandit.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -755,7 +755,7 @@ Tuned examples:
 Single-Player Alpha Zero (AlphaZero)
 ------------------------------------
 |pytorch|
-`[paper] <https://arxiv.org/abs/1712.01815>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/alpha_zero>`__ AlphaZero is an RL agent originally designed for two-player games. This version adapts it to handle single player games. The code can be sscaled to any number of workers. It also implements the ranked rewards `(R2) <https://arxiv.org/abs/1807.01672>`__ strategy to enable self-play even in the one-player setting. The code is mainly purposed to be used for combinatorial optimization.
+`[paper] <https://arxiv.org/abs/1712.01815>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/alpha_zero>`__ AlphaZero is an RL agent originally designed for two-player games. This version adapts it to handle single player games. The code can be scaled to any number of workers. It also implements the ranked rewards `(R2) <https://arxiv.org/abs/1807.01672>`__ strategy to enable self-play even in the one-player setting. The code is mainly purposed to be used for combinatorial optimization.
 
 Tuned examples: `Sparse reward CartPole <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/alpha_zero/cartpole-sparse-rewards-alpha-zero.yaml>`__
 
@@ -775,13 +775,13 @@ Multi-Agent Methods
 QMIX Monotonic Value Factorisation (QMIX, VDN, IQN)
 ---------------------------------------------------
 |pytorch|
-`[paper] <https://arxiv.org/abs/1803.11485>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/qmix/qmix.py>`__ Q-Mix is a specialized multi-agent algorithm. Code here is adapted from https://github.com/oxwhirl/pymarl_alpha  to integrate with RLlib multi-agent APIs. To use Q-Mix, you must specify an agent `grouping <rllib-env.html#grouping-agents>`__ in the environment (see the `two-step game example <https://github.com/ray-project/ray/blob/master/rllib/examples/two_step_game.py>`__). Currently, all agents in the group must be homogeneous. The algorithm can be scaled by increasing the number of workers or using Ape-X.
+`[paper] <https://arxiv.org/abs/1803.11485>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/qmix/qmix.py>`__ Q-Mix is a specialized multi-agent algorithm. Code here is adapted from https://github.com/oxwhirl/pymarl_alpha  to integrate with RLlib multi-agent APIs. To use Q-Mix, you must specify an agent `grouping <rllib-env.html#grouping-agents>`__ in the environment (see the `two-step game example <https://github.com/ray-project/ray/blob/master/rllib/examples/two_step_game.py>`__). Currently, all agents in the group must be homogeneous. The algorithm can be scaled by increasing the number of workers or using Ape-X.
 
 Tuned examples: `Two-step game <https://github.com/ray-project/ray/blob/master/rllib/examples/two_step_game.py>`__
 
 **QMIX-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../../rllib/agents/qmix/qmix.py
+.. literalinclude:: ../../../rllib/algorithms/qmix/qmix.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -791,13 +791,13 @@ Tuned examples: `Two-step game <https://github.com/ray-project/ray/blob/master/r
 Multi-Agent Deep Deterministic Policy Gradient (MADDPG)
 -------------------------------------------------------
 |tensorflow|
-`[paper] <https://arxiv.org/abs/1706.02275>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/maddpg/maddpg.py>`__ MADDPG is a DDPG centralized/shared critic algorithm. Code here is adapted from https://github.com/openai/maddpg to integrate with RLlib multi-agent APIs. Please check `justinkterry/maddpg-rllib <https://github.com/jkterry1/maddpg-rllib>`__ for examples and more information. Note that the implementation here is based on OpenAI's, and is intended for use with the discrete MPE environments. Please also note that people typically find this method difficult to get to work, even with all applicable optimizations for their environment applied. This method should be viewed as for research purposes, and for reproducing the results of the paper introducing it.
+`[paper] <https://arxiv.org/abs/1706.02275>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/maddpg/maddpg.py>`__ MADDPG is a DDPG centralized/shared critic algorithm. Code here is adapted from https://github.com/openai/maddpg to integrate with RLlib multi-agent APIs. Please check `justinkterry/maddpg-rllib <https://github.com/jkterry1/maddpg-rllib>`__ for examples and more information. Note that the implementation here is based on OpenAI's, and is intended for use with the discrete MPE environments. Please also note that people typically find this method difficult to get to work, even with all applicable optimizations for their environment applied. This method should be viewed as for research purposes, and for reproducing the results of the paper introducing it.
 
 **MADDPG-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
 Tuned examples: `Multi-Agent Particle Environment <https://github.com/wsjeon/maddpg-rllib/tree/master/plots>`__, `Two-step game <https://github.com/ray-project/ray/blob/master/rllib/examples/two_step_game.py>`__
 
-.. literalinclude:: ../../../rllib/agents/maddpg/maddpg.py
+.. literalinclude:: ../../../rllib/algorithms/maddpg/maddpg.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__

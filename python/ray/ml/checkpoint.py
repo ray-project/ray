@@ -14,13 +14,14 @@ from ray.ml.utils.remote_storage import (
     is_non_local_path_uri,
     upload_to_uri,
 )
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 _DICT_CHECKPOINT_FILE_NAME = "dict_checkpoint.pkl"
 _FS_CHECKPOINT_KEY = "fs_checkpoint"
 _BYTES_DATA_KEY = "bytes_data"
 
 
+@PublicAPI
 class Checkpoint:
     """Ray ML Checkpoint.
 
@@ -478,7 +479,7 @@ def _temporary_checkpoint_dir() -> str:
 def _pack(path: str) -> bytes:
     """Pack directory in ``path`` into an archive, return as bytes string."""
     stream = io.BytesIO()
-    with tarfile.open(fileobj=stream, mode="w:gz", format=tarfile.PAX_FORMAT) as tar:
+    with tarfile.open(fileobj=stream, mode="w", format=tarfile.PAX_FORMAT) as tar:
         tar.add(path, arcname="")
 
     return stream.getvalue()

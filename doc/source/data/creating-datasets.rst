@@ -74,15 +74,15 @@ serving as pointers to a collection of distributed data blocks.
     :start-after: __gen_synth_int_range_begin__
     :end-before: __gen_synth_int_range_end__
 
-.. tabbed:: Arrow Range
+.. tabbed:: Tabular Range
 
   Create an Arrow (tabular) ``Dataset`` from a range of integers,
   with a single column containing this integer range.
 
   .. literalinclude:: ./doc_code/creating_datasets.py
     :language: python
-    :start-after: __gen_synth_arrow_range_begin__
-    :end-before: __gen_synth_arrow_range_end__
+    :start-after: __gen_synth_tabular_range_begin__
+    :end-before: __gen_synth_tabular_range_end__
 
 .. tabbed:: Tensor Range
 
@@ -302,6 +302,8 @@ up a distributed Ray Dataset.
 This default parallelism can be overridden via the ``parallelism`` argument; see the
 :ref:`performance guide <data_performance_tips>`  for tips on how to tune this read
 parallelism.
+
+.. _dataset_deferred_reading:
 
 Deferred Read Task Execution
 ============================

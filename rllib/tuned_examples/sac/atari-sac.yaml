@@ -14,10 +14,10 @@ atari-sac-tf-and-torch:
         framework:
             grid_search: [tf, torch]
         gamma: 0.99
-        Q_model:
+        q_model_config:
             hidden_activation: relu
             hidden_layer_sizes: [512]
-        policy_model:
+        policy_model_config:
             hidden_activation: relu
             hidden_layer_sizes: [512]
         # Do hard syncs.
