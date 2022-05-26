@@ -48,6 +48,8 @@ def _setup_logging() -> None:
     (typically, /tmp/ray/session_latest/logs/monitor.*)
 
     Also log to pod stdout (logs viewable with `kubectl logs <head-pod> -c autoscaler`).
+
+    All logging is handled by the root logger.
     """
     # Write logs at info level to monitor.log.
     setup_component_logger(
@@ -59,14 +61,8 @@ def _setup_logging() -> None:
         filename=ray_constants.MONITOR_LOG_FILE_NAME,  # monitor.log
         max_bytes=ray_constants.LOGGING_ROTATE_BYTES,
         backup_count=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
+        logger_name="ray",  # Root logger for Ray code.
     )
-
-    # Also log to stdout for debugging with `kubectl logs`.
-    root_logger = logging.getLogger("")
-    root_logger.setLevel(logging.INFO)
-
-    root_handler = logging.StreamHandler()
-    root_handler.setLevel(logging.INFO)
-    root_handler.setFormatter(logging.Formatter(ray_constants.LOGGER_FORMAT))
-
-    root_logger.addHandler(root_handler)
+    # Logs will also be written to the container's stdout.
+    # The stdout handler was set up in the cli entry point.
+    # See ray.scripts.scripts::cli().
