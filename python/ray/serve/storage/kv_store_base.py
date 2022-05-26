@@ -1,6 +1,6 @@
 import abc
 from abc import abstractmethod
-from typing import Optional
+from typing import Awaitable, Optional
 
 from ray.util.annotations import DeveloperAPI
 
@@ -12,7 +12,7 @@ class KVStoreBase(metaclass=abc.ABCMeta):
     """
 
     @abstractmethod
-    def get_storage_key(self, key: str) -> str:
+    def get_storage_key(self, key: str) -> Awaitable[str]:
         """Get internal key for storage.
 
         Args:
@@ -25,7 +25,7 @@ class KVStoreBase(metaclass=abc.ABCMeta):
         raise NotImplementedError("get_storage_key() has to be implemented")
 
     @abstractmethod
-    def put(self, key: str, val: bytes) -> bool:
+    async def put(self, key: str, val: bytes) -> Awaitable[bool]:
         """Put object into kv store, bytes only.
 
         Args:
@@ -35,7 +35,7 @@ class KVStoreBase(metaclass=abc.ABCMeta):
         raise NotImplementedError("put() has to be implemented")
 
     @abstractmethod
-    def get(self, key: str) -> Optional[bytes]:
+    async def get(self, key: str) -> Awaitable[Optional[bytes]]:
         """Get object from storage.
 
         Args:
@@ -47,7 +47,7 @@ class KVStoreBase(metaclass=abc.ABCMeta):
         raise NotImplementedError("get() has to be implemented")
 
     @abstractmethod
-    def delete(self, key: str) -> None:
+    async def delete(self, key: str) -> Awaitable[None]:
         """Delete an object.
 
         Args:

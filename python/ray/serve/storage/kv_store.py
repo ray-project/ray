@@ -1,7 +1,7 @@
 import logging
 import os
 import sqlite3
-from typing import Optional
+from typing import Awaitable, Optional
 
 try:
     import boto3
@@ -36,10 +36,10 @@ class RayInternalKVStore(KVStoreBase):
 
         self.namespace = namespace or ""
 
-    def get_storage_key(self, key: str) -> str:
+    async def get_storage_key(self, key: str) -> Awaitable[str]:
         return "{ns}-{key}".format(ns=self.namespace, key=key)
 
-    def put(self, key: str, val: bytes) -> bool:
+    async def put(self, key: str, val: bytes) -> Awaitable[bool]:
         """Put the key-value pair into the store.
 
         Args:
@@ -58,7 +58,7 @@ class RayInternalKVStore(KVStoreBase):
             namespace=ray_constants.KV_NAMESPACE_SERVE,
         )
 
-    def get(self, key: str) -> Optional[bytes]:
+    async def get(self, key: str) -> Awaitable[Optional[bytes]]:
         """Get the value associated with the given key from the store.
 
         Args:
@@ -74,7 +74,7 @@ class RayInternalKVStore(KVStoreBase):
             self.get_storage_key(key), namespace=ray_constants.KV_NAMESPACE_SERVE
         )
 
-    def delete(self, key: str):
+    async def delete(self, key: str) -> Awaitable[None]:
         """Delete the value associated with the given key from the store.
 
         Args:
@@ -121,7 +121,7 @@ class RayLocalKVStore(KVStoreBase):
     def get_storage_key(self, key: str) -> str:
         return "{ns}-{key}".format(ns=self._namespace, key=key)
 
-    def put(self, key: str, val: bytes) -> bool:
+    async def put(self, key: str, val: bytes) -> Awaitable[bool]:
         """Put the key-value pair into the store.
 
         Args:
@@ -141,7 +141,7 @@ class RayLocalKVStore(KVStoreBase):
         self._conn.commit()
         return True
 
-    def get(self, key: str) -> Optional[bytes]:
+    async def get(self, key: str) -> Awaitable[Optional[bytes]]:
         """Get the value associated with the given key from the store.
 
         Args:
@@ -167,7 +167,7 @@ class RayLocalKVStore(KVStoreBase):
             value, *_ = result[0]
             return value
 
-    def delete(self, key: str):
+    async def delete(self, key: str) -> Awaitable[None]:
         """Delete the value associated with the given key from the store.
 
         Args:
@@ -219,10 +219,10 @@ class RayS3KVStore(KVStoreBase):
             aws_session_token=aws_session_token,
         )
 
-    def get_storage_key(self, key: str) -> str:
+    async def get_storage_key(self, key: str) -> Awaitable[str]:
         return f"{self._prefix}/{self._namespace}-{key}"
 
-    def put(self, key: str, val: bytes) -> bool:
+    async def put(self, key: str, val: bytes) -> Awaitable[bool]:
         """Put the key-value pair into the store.
 
         Args:
@@ -246,7 +246,7 @@ class RayS3KVStore(KVStoreBase):
             )
             raise e
 
-    def get(self, key: str) -> Optional[bytes]:
+    async def get(self, key: str) -> Awaitable[Optional[bytes]]:
         """Get the value associated with the given key from the store.
 
         Args:
@@ -275,7 +275,7 @@ class RayS3KVStore(KVStoreBase):
                 )
                 raise e
 
-    def delete(self, key: str):
+    async def delete(self, key: str) -> Awaitable[None]:
         """Delete the value associated with the given key from the store.
 
         Args:
