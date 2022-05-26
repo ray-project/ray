@@ -4,12 +4,14 @@ import os
 import sys
 from typing import Any, Optional
 
+from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.typing import TensorShape, TensorType
 
 logger = logging.getLogger(__name__)
 
 
+@PublicAPI
 def try_import_jax(error: bool = False):
     """Tries importing JAX and FLAX and returns both modules (or Nones).
 
@@ -41,6 +43,7 @@ def try_import_jax(error: bool = False):
     return jax, flax
 
 
+@PublicAPI
 def try_import_tf(error: bool = False):
     """Tries importing tf and returns the module (or None).
 
@@ -105,6 +108,7 @@ def try_import_tf(error: bool = False):
     return tf1_module, tf_module, version
 
 
+@DeveloperAPI
 def tf_function(tf_module):
     """Conditional decorator for @tf.function.
 
@@ -121,6 +125,7 @@ def tf_function(tf_module):
     return decorator
 
 
+@PublicAPI
 def try_import_tfp(error: bool = False):
     """Tries importing tfp and returns the module (or None).
 
@@ -148,19 +153,20 @@ def try_import_tfp(error: bool = False):
 
 
 # Fake module for torch.nn.
-class NNStub:
+class _NNStub:
     def __init__(self, *a, **kw):
         # Fake nn.functional module within torch.nn.
         self.functional = None
-        self.Module = ModuleStub
+        self.Module = _ModuleStub
 
 
 # Fake class for torch.nn.Module to allow it to be inherited from.
-class ModuleStub:
+class _ModuleStub:
     def __init__(self, *a, **kw):
         raise ImportError("Could not import `torch`.")
 
 
+@PublicAPI
 def try_import_torch(error: bool = False):
     """Tries importing torch and returns the module (or None).
 
@@ -193,10 +199,11 @@ def try_import_torch(error: bool = False):
 
 
 def _torch_stubs():
-    nn = NNStub()
+    nn = _NNStub()
     return None, nn
 
 
+@DeveloperAPI
 def get_variable(
     value: Any,
     framework: str = "tf",

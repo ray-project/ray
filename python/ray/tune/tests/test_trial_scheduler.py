@@ -25,7 +25,7 @@ from ray.tune.schedulers import (
     HyperBandForBOHB,
 )
 
-from ray.tune.schedulers.pbt import explore, PopulationBasedTrainingReplay
+from ray.tune.schedulers.pbt import _explore, PopulationBasedTrainingReplay
 from ray.tune.suggest._mock import _MockSearcher
 from ray.tune.suggest.suggestion import ConcurrencyLimiter
 from ray.tune.trial import Trial, _TuneCheckpoint
@@ -1164,38 +1164,38 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         # Categorical case
         assertProduces(
-            lambda: explore({"v": 4}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x), {3, 8}
+            lambda: _explore({"v": 4}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x), {3, 8}
         )
         assertProduces(
-            lambda: explore({"v": 3}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x), {3, 4}
+            lambda: _explore({"v": 3}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x), {3, 4}
         )
         assertProduces(
-            lambda: explore({"v": 10}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x), {8, 10}
+            lambda: _explore({"v": 10}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x), {8, 10}
         )
         assertProduces(
-            lambda: explore({"v": 7}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x),
+            lambda: _explore({"v": 7}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x),
             {3, 4, 8, 10},
         )
         assertProduces(
-            lambda: explore({"v": 4}, {"v": [3, 4, 8, 10]}, 1.0, lambda x: x),
+            lambda: _explore({"v": 4}, {"v": [3, 4, 8, 10]}, 1.0, lambda x: x),
             {3, 4, 8, 10},
         )
 
         # Continuous case
         assertProduces(
-            lambda: explore(
+            lambda: _explore(
                 {"v": 100}, {"v": lambda: random.choice([10, 100])}, 0.0, lambda x: x
             ),
             {80, 120},
         )
         assertProduces(
-            lambda: explore(
+            lambda: _explore(
                 {"v": 100.0}, {"v": lambda: random.choice([10, 100])}, 0.0, lambda x: x
             ),
             {80.0, 120.0},
         )
         assertProduces(
-            lambda: explore(
+            lambda: _explore(
                 {"v": 100.0}, {"v": lambda: random.choice([10, 100])}, 1.0, lambda x: x
             ),
             {10.0, 100.0},
@@ -1224,7 +1224,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         # Nested mutation and spec
         assertNestedProduces(
-            lambda: explore(
+            lambda: _explore(
                 {
                     "a": {"b": 4},
                     "1": {"2": {"3": 100}},
@@ -1246,7 +1246,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         # Nested mutation and spec
         assertNestedProduces(
-            lambda: explore(
+            lambda: _explore(
                 {
                     "a": {"b": 4},
                     "1": {"2": {"3": 100}},
