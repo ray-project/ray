@@ -1,4 +1,6 @@
 import os
+import pytest
+
 from ray.ml.predictors.integrations.lightgbm import LightGBMPredictor
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
@@ -102,3 +104,9 @@ def test_predict_no_preprocessor():
     predictions = predictor.predict(data_batch)
 
     assert len(predictions) == 3
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))

@@ -137,3 +137,9 @@ def test_batch_prediction_with_set_cpus(ray_start_4_cpus):
         batch_predictor.predict(
             test_dataset, num_cpus_per_worker=2, num_estimator_cpus=2
         )
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))

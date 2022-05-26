@@ -49,3 +49,9 @@ def test_predict(preprocessor, tmpdir):
     assert len(predictions) == 3
     if preprocessor:
         assert hasattr(predictor.preprocessor, "_batch_transformed")
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))
