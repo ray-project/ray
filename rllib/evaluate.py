@@ -4,7 +4,6 @@ import argparse
 import collections
 import copy
 import gym
-from gym import wrappers as gym_wrappers
 import json
 import os
 from pathlib import Path
@@ -339,7 +338,6 @@ def run(args, parser):
         deprecation_warning(old="--no-render", new="--render", error=False)
         args.render = False
     config["render_env"] = args.render
-    config["record_env"] = args.video_dir
 
     ray.init(local_mode=args.local_mode)
 
@@ -354,12 +352,6 @@ def run(args, parser):
     num_steps = int(args.steps)
     num_episodes = int(args.episodes)
 
-    # Determine the video output directory.
-    video_dir = None
-    # Allow user to specify a video output path.
-    if args.video_dir:
-        video_dir = os.path.expanduser(args.video_dir)
-
     # Do the actual rollout.
     with RolloutSaver(
         args.out,
@@ -369,9 +361,7 @@ def run(args, parser):
         target_episodes=num_episodes,
         save_info=args.save_info,
     ) as saver:
-        rollout(
-            agent, args.env, num_steps, num_episodes, saver, not args.render, video_dir
-        )
+        rollout(agent, args.env, num_steps, num_episodes, saver, not args.render)
     agent.stop()
 
 
@@ -406,7 +396,6 @@ def rollout(
     num_episodes=0,
     saver=None,
     no_render=True,
-    video_dir=None,
 ):
     policy_agent_mapping = default_policy_agent_mapping
 
@@ -472,13 +461,6 @@ def rollout(
         p: flatten_to_single_ndarray(m.action_space.sample())
         for p, m in policy_map.items()
     }
-
-    # If monitoring has been requested, manually wrap our environment with a
-    # gym monitor, which is set to record every episode.
-    if video_dir:
-        env = gym_wrappers.Monitor(
-            env=env, directory=video_dir, video_callable=lambda _: True, force=True
-        )
 
     steps = 0
     episodes = 0

@@ -1,6 +1,6 @@
 from typing import Optional
 
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.schedules.schedule import Schedule
 from ray.rllib.utils.typing import TensorType
@@ -9,6 +9,7 @@ tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 
+@PublicAPI
 class PolynomialSchedule(Schedule):
     """Polynomial interpolation between `initial_p` and `final_p`.
 

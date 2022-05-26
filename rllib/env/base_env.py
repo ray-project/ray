@@ -3,7 +3,7 @@ from typing import Callable, Tuple, Optional, List, Dict, Any, TYPE_CHECKING, Un
 
 import gym
 import ray
-from ray.rllib.utils.annotations import Deprecated, override, PublicAPI
+from ray.rllib.utils.annotations import Deprecated, override, PublicAPI, DeveloperAPI
 from ray.rllib.utils.typing import AgentID, EnvID, EnvType, MultiAgentDict, MultiEnvDict
 
 if TYPE_CHECKING:
@@ -366,6 +366,7 @@ def _with_dummy_agent_id(
     return {k: {dummy_id: v} for (k, v) in env_id_to_values.items()}
 
 
+@PublicAPI
 def with_dummy_agent_id(
     env_id_to_values: Dict[EnvID, Any], dummy_id: "AgentID" = _DUMMY_AGENT_ID
 ) -> MultiEnvDict:
@@ -720,6 +721,7 @@ class _MultiAgentEnvState:
         return self.last_obs
 
 
+@DeveloperAPI
 def convert_to_base_env(
     env: EnvType,
     make_env: Callable[[int], EnvType] = None,
