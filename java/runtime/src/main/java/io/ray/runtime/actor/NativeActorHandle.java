@@ -8,7 +8,7 @@ import io.ray.api.BaseActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
-import io.ray.runtime.RayRuntimeInternal;
+import io.ray.runtime.AbstractRayRuntime;
 import io.ray.runtime.generated.Common.Language;
 import java.io.Externalizable;
 import java.io.IOException;
@@ -122,7 +122,7 @@ public abstract class NativeActorHandle implements BaseActorHandle, Externalizab
     public NativeActorHandleReference(NativeActorHandle handle) {
       super(handle, REFERENCE_QUEUE);
       this.actorId = handle.actorId;
-      RayRuntimeInternal runtime = (RayRuntimeInternal) Ray.internal();
+      AbstractRayRuntime runtime = (AbstractRayRuntime) Ray.internal();
       this.workerId = runtime.getWorkerContext().getCurrentWorkerId().getBytes();
       this.removed = new AtomicBoolean(false);
       REFERENCES.add(this);
