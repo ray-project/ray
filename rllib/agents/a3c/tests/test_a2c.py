@@ -36,9 +36,11 @@ class TestA2C(unittest.TestCase):
                 trainer.stop()
 
     def test_a2c_exec_impl(self):
-        config = a3c.A2CConfig()\
-            .environment(env="CartPole-v0")\
+        config = (
+            a3c.A2CConfig()
+            .environment(env="CartPole-v0")
             .reporting(min_time_s_per_reporting=0)
+        )
 
         for _ in framework_iterator(config):
             trainer = config.build()
