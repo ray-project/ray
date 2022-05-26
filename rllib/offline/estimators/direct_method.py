@@ -91,7 +91,8 @@ class DirectMethod(OffPolicyEstimator):
             # Calculate direct method OPE estimates
             for episode in test_episodes:
                 rewards = episode["rewards"]
-                v_old, v_dm = 0.0, 0.0
+                v_old = 0.0
+                v_dm = 0.0
                 for t in range(episode.count):
                     v_old += rewards[t] * self.gamma ** t
 

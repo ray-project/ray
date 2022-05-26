@@ -32,7 +32,8 @@ class DoublyRobust(DirectMethod):
                 rewards, old_prob = episode["rewards"], episode["action_prob"]
                 new_prob = np.exp(self.action_log_likelihood(episode))
 
-                v_old, v_dr = 0.0, 0.0
+                v_old = 0.0
+                v_dr = 0.0
                 q_values = self.model.estimate_q(
                     episode[SampleBatch.OBS], episode[SampleBatch.ACTIONS]
                 )
