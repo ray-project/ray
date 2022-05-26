@@ -194,61 +194,6 @@ class DeploymentSchema(BaseModel, extra=Extra.forbid):
     )
 
     @root_validator
-    def application_sufficiently_specified(cls, values):
-        """
-        Some application information, such as the path to the function or class
-        must be specified. Additionally, some attributes only work in specific
-        languages (e.g. init_args and init_kwargs make sense in Python but not
-        Java). Specifying attributes that belong to different languages is
-        invalid.
-        """
-
-        # Ensure that an application path is set
-        application_paths = {"import_path"}
-
-        specified_path = None
-        for path in application_paths:
-            if path in values and values[path] is not None:
-                specified_path = path
-
-        if specified_path is None:
-            raise ValueError(
-                "A path to the application's class or function must be specified."
-            )
-
-        # Ensure that only attributes belonging to the application path's
-        # language are specified.
-
-        # language_attributes contains all attributes in this schema related to
-        # the application's language
-        language_attributes = {"import_path", "init_args", "init_kwargs"}
-
-        # corresponding_attributes maps application_path attributes to all the
-        # attributes that may be set in that path's language
-        corresponding_attributes = {
-            # Python
-            "import_path": {"import_path", "init_args", "init_kwargs"}
-        }
-
-        possible_attributes = corresponding_attributes[specified_path]
-        for attribute in values:
-            if (
-                attribute not in possible_attributes
-                and attribute in language_attributes
-            ):
-                raise ValueError(
-                    f'Got "{values[specified_path]}" for '
-                    f"{specified_path} and {values[attribute]} "
-                    f"for {attribute}. {specified_path} and "
-                    f"{attribute} do not belong to the same "
-                    f"language and cannot be specified at the "
-                    f"same time. Expected one of these to be "
-                    f"null."
-                )
-
-        return values
-
-    @root_validator
     def num_replicas_and_autoscaling_config_mutually_exclusive(cls, values):
         if (
             values.get("num_replicas", None) is not None

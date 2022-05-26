@@ -272,12 +272,8 @@ class TestDeploymentSchema:
 
         # Python requires an import path
         deployment_schema = self.get_minimal_deployment_schema()
-        del deployment_schema["import_path"]
 
-        with pytest.raises(ValueError, match="must be specified"):
-            DeploymentSchema.parse_obj(deployment_schema)
-
-        # DeploymentSchema should be generated once import_path is set
+        # DeploymentSchema should be generated with valid import_paths
         for path in get_valid_import_paths():
             deployment_schema["import_path"] = path
             DeploymentSchema.parse_obj(deployment_schema)
