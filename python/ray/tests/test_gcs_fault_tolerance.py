@@ -9,15 +9,10 @@ from time import sleep
 
 from ray._private.test_utils import (
     generate_system_config_map,
-    run_string_as_driver_nonblocking,
     wait_for_condition,
     wait_for_pid_to_exit,
     convert_actor_state,
 )
-
-import logging
-
-logger = logging.getLogger(__name__)
 
 
 @ray.remote
@@ -352,72 +347,31 @@ def test_core_worker_resubscription(tmp_path, ray_start_regular_with_external_re
     ],
     indirect=True,
 )
-def test_py_resubscription(tmp_path, ray_start_regular_with_external_redis):
-    # This test is to ensure python pubsub works
-    from filelock import FileLock
+def test_detached_actor_restarts(ray_start_regular_with_external_redis):
+    # Detached actors are owned by GCS. This test is to ensure detached actors
+    # can restart even GCS restarts.
 
-    lock_file1 = str(tmp_path / "lock1")
-    lock1 = FileLock(lock_file1)
-    lock1.acquire()
+    @ray.remote
+    class A:
+        def ready(self):
+            import os
 
-    lock_file2 = str(tmp_path / "lock2")
-    lock2 = FileLock(lock_file2)
+            return os.getpid()
 
-    script = f"""
-from filelock import FileLock
-import ray
+    a = A.options(name="a", lifetime="detached", max_restarts=-1).remote()
 
-@ray.remote
-def f():
-    print("OK1", flush=True)
-    # wait until log_monitor push this
-    from time import sleep
-    sleep(2)
-    lock1 = FileLock(r"{lock_file1}")
-    lock2 = FileLock(r"{lock_file2}")
-
-    lock2.acquire()
-    lock1.acquire()
-
-    # wait until log_monitor push this
-    from time import sleep
-    sleep(2)
-    print("OK2", flush=True)
-
-ray.init(address='auto')
-ray.get(f.remote())
-ray.shutdown()
-"""
-    proc = run_string_as_driver_nonblocking(script)
-
-    def condition():
-        import filelock
-
-        try:
-            lock2.acquire(timeout=1)
-        except filelock.Timeout:
-            return True
-
-        lock2.release()
-        return False
-
-    # make sure the script has printed "OK1"
-    wait_for_condition(condition, timeout=10)
-
+    pid = ray.get(a.ready.remote())
     ray.worker._global_node.kill_gcs_server()
-    import time
-
-    time.sleep(2)
+    p = psutil.Process(pid)
+    p.kill()
     ray.worker._global_node.start_gcs_server()
 
-    lock1.release()
-    proc.wait()
-    output = proc.stdout.read()
-    # Print logs which are useful for debugging in CI
-    print("=================== OUTPUTS ============")
-    print(output.decode())
-    assert b"OK1" in output
-    assert b"OK2" in output
+    while True:
+        try:
+            assert ray.get(a.ready.remote()) != pid
+            break
+        except ray.exceptions.RayActorError:
+            continue
 
 
 @pytest.mark.parametrize("auto_reconnect", [True, False])

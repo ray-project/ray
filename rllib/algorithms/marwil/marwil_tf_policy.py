@@ -11,11 +11,18 @@ from ray.rllib.policy.dynamic_tf_policy_v2 import DynamicTFPolicyV2
 from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.tf_mixins import ComputeAndClipGradsMixIn, ValueNetworkMixin
+from ray.rllib.policy.tf_mixins import (
+    ValueNetworkMixin,
+    compute_gradients,
+)
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf, get_variable
 from ray.rllib.utils.tf_utils import explained_variance
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import (
+    LocalOptimizer,
+    ModelGradients,
+    TensorType,
+)
 
 tf1, tf, tfv = try_import_tf()
 
@@ -155,9 +162,7 @@ def get_marwil_tf_policy(base: type) -> type:
         A TF Policy to be used with MAMLTrainer.
     """
 
-    class MARWILTFPolicy(
-        ComputeAndClipGradsMixIn, ValueNetworkMixin, PostprocessAdvantages, base
-    ):
+    class MARWILTFPolicy(ValueNetworkMixin, PostprocessAdvantages, base):
         def __init__(
             self,
             obs_space,
@@ -181,7 +186,6 @@ def get_marwil_tf_policy(base: type) -> type:
                 existing_model=existing_model,
             )
 
-            ComputeAndClipGradsMixIn.__init__(self)
             ValueNetworkMixin.__init__(self, config)
             PostprocessAdvantages.__init__(self)
 
@@ -235,8 +239,14 @@ def get_marwil_tf_policy(base: type) -> type:
 
             return stats
 
+        @override(base)
+        def compute_gradients_fn(
+            self, optimizer: LocalOptimizer, loss: TensorType
+        ) -> ModelGradients:
+            return compute_gradients(self, optimizer, loss)
+
     return MARWILTFPolicy
 
 
-MARWILDynamicTFPolicy = get_marwil_tf_policy(DynamicTFPolicyV2)
+MARWILStaticGraphTFPolicy = get_marwil_tf_policy(DynamicTFPolicyV2)
 MARWILEagerTFPolicy = get_marwil_tf_policy(EagerTFPolicyV2)
