@@ -3,7 +3,6 @@ from typing import Type, Optional, Dict, Any
 import ray
 from ray.ml import Checkpoint
 from ray.ml.predictor import Predictor
-from ray.ml.utils.checkpointing import _FixedDirCheckpoint
 
 
 class BatchPredictor(Predictor):
@@ -31,7 +30,6 @@ class BatchPredictor(Predictor):
         self.checkpoint_ref = checkpoint.to_object_ref()
         self.predictor_cls = predictor_cls
         self.predictor_kwargs = predictor_kwargs
-        self._tmp_dir_name = _FixedDirCheckpoint.get_tmp_dir_name()
 
     @classmethod
     def from_checkpoint(
@@ -74,13 +72,10 @@ class BatchPredictor(Predictor):
         predictor_cls = self.predictor_cls
         checkpoint_ref = self.checkpoint_ref
         predictor_kwargs = self.predictor_kwargs
-        tmp_dir_name = self._tmp_dir_name
 
         class ScoringWrapper:
             def __init__(self):
-                checkpoint = _FixedDirCheckpoint.from_object_ref(checkpoint_ref)
-                # set the name to the same one for all workers
-                checkpoint.tmp_dir_name = tmp_dir_name
+                checkpoint = Checkpoint.from_object_ref(checkpoint_ref)
                 self.predictor = predictor_cls.from_checkpoint(
                     checkpoint, **predictor_kwargs
                 )

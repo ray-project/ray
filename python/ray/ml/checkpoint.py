@@ -5,7 +5,8 @@ import shutil
 import tarfile
 import tempfile
 from filelock import FileLock
-from typing import Iterator, Optional, Tuple, Union
+from pathlib import Path
+from typing import Any, Dict, Iterator, Optional, Tuple, Union
 
 import ray
 from ray import cloudpickle as pickle
@@ -177,10 +178,10 @@ class Checkpoint:
         else:
             raise ValueError("Cannot create checkpoint without data.")
 
-        self._local_path = local_path
-        self._data_dict = data_dict
-        self._uri = uri
-        self._obj_ref = obj_ref
+        self._local_path: str = local_path
+        self._data_dict: Dict[str, Any] = data_dict
+        self._uri: str = uri
+        self._obj_ref: ray.ObjectRef = obj_ref
 
     @classmethod
     def from_bytes(cls, data: bytes) -> "Checkpoint":
@@ -293,6 +294,8 @@ class Checkpoint:
 
     def _get_temporary_checkpoint_dir(self) -> str:
         """Return the name for the temporary checkpoint dir."""
+        if self._obj_ref:
+            return os.path.join(tempfile.gettempdir(), self._obj_ref.hex())
         return _temporary_checkpoint_dir()
 
     def _make_dir(self, path: str) -> None:
@@ -300,6 +303,15 @@ class Checkpoint:
         os.makedirs(path, exist_ok=True)
         # Drop marker
         open(os.path.join(path, ".is_checkpoint"), "a").close()
+
+        # each process drops a lock file it then cleans up
+        # if there are no lock files left, the last process
+        # will remove the entire directory
+        del_lock_path = self._get_del_lock_path(path)
+        open(del_lock_path, "a").close()
+
+    def _get_del_lock_path(self, path: str) -> str:
+        return os.path.join(path, f".del_lock_{os.getpid()}")
 
     def _to_directory(self, path: str) -> None:
         if self._data_dict or self._obj_ref:
@@ -384,14 +396,22 @@ class Checkpoint:
             yield self._local_path
         else:
             temp_dir = self.to_directory()
+            del_lock_path = self._get_del_lock_path(temp_dir)
+            yield temp_dir
             try:
-                yield temp_dir
-            finally:
-                try:
-                    with FileLock(f"{temp_dir}.lock", timeout=0):
+                os.remove(del_lock_path)
+            except Exception:
+                pass
+            # In the edge case, we do not remove the directory at all
+            # since it's in /tmp, this is not that big of a deal
+
+            # check if any lock files are remaining
+            try:
+                with FileLock(f"{temp_dir}.lock", timeout=0):
+                    if not list(Path(temp_dir).glob(".del_lock_*")):
                         shutil.rmtree(temp_dir, ignore_errors=True)
-                except TimeoutError:
-                    pass
+            except TimeoutError:
+                pass
 
     @classmethod
     def from_uri(cls, uri: str) -> "Checkpoint":
@@ -482,10 +502,6 @@ class Checkpoint:
 
     def __setstate__(self, state):
         self.__dict__.update(state)
-
-    def __copy__(self) -> "Checkpoint":
-        internal_representation = self.get_internal_representation()
-        return self.__class__.from_internal_representation(internal_representation)
 
 
 def _get_local_path(path: Optional[str]) -> Optional[str]:
