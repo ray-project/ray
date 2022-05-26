@@ -13,8 +13,7 @@ import os
 import time
 import traceback
 from collections import namedtuple
-from dataclasses import fields, is_dataclass
-from typing import Any, Callable, TypeVar
+from typing import Any, Callable
 
 import ray
 import ray.dashboard.consts as dashboard_consts
@@ -284,27 +283,3 @@ def init_ray_and_catch_exceptions(connect_to_serve: bool = False) -> Callable:
         return decorator
 
     return decorator_factory
-
-
-T = TypeVar("T")  # Declare type variable
-
-
-def to_schema(req: aiohttp.web.Request, Dataclass: T) -> T:
-    """Converts a aiohttp Request into the given dataclass
-
-    Args:
-        req: the request to extract the fields from
-        Dataclass: the dataclass to instantiate from the request
-    """
-    kwargs = {}
-    for field in fields(Dataclass):
-        if is_dataclass(field.type):
-            # recursively resolve the dataclass
-            kwargs[field.name] = to_schema(req, field.type)
-        else:
-            value = req.query.get(field.name) or req.match_info.get(field.name)
-            # Note: This is brittle as the class needs to be
-            # instantiable from the str
-            kwargs[field.name] = field.type(value) if value else None
-    return Dataclass(**kwargs)
-

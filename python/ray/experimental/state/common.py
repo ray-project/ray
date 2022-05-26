@@ -1,7 +1,7 @@
 import logging
 
 from dataclasses import dataclass, fields
-from typing import List, Dict, Union
+from typing import List, Dict, Union, Literal, Optional
 
 from ray.dashboard.modules.job.common import JobInfo
 
@@ -38,6 +38,57 @@ class ListApiOptions:
         # we need to have a timeout that's smaller than the users' timeout.
         # 80% is configured arbitrarily.
         self.timeout = int(self.timeout * self._server_timeout_multiplier)
+
+
+@dataclass(init=True)
+class GetLogOptions:
+    timeout: int
+    node_id: Optional[str] = None
+    node_ip: Optional[str] = None
+    # One of {file, stream}. File means it will return the whole log.
+    # stream means it will keep the connection and streaming the log.
+    media_type: Literal["file", "stream"] = "file"
+    # The file name of the log.
+    filename: Optional[str] = None
+    # The actor id of the log. It is used only for worker logs.
+    actor_id: Optional[str] = None
+    # The task id of the log. It is used only for worker logs.
+    # This is currently not working. TODO(sang): Support task log.
+    task_id: Optional[str] = None
+    # The pid of the log. It is used only for worker logs.
+    pid: Optional[int] = None
+    # Total log lines to return.
+    lines: int = 1000
+    # The interval where new logs are streamed to.
+    # Should be used only when media_type == stream.
+    interval: Optional[float] = None
+
+    def __post_init__(self):
+        if self.pid:
+            self.pid = int(self.pid)
+        if self.interval:
+            self.interval = float(self.interval)
+        self.lines = int(self.lines)
+
+        if self.media_type == "file":
+            assert self.interval is None
+        if self.media_type not in ["file", "stream"]:
+            raise ValueError(f"Invalid media type: {self.media_type}")
+        if self.node_id and self.node_ip:
+            raise ValueError(
+                "Both node_id and node_ip are given. Only one of them can be provided. "
+                f"Given node id: {self.node_id}, given node ip: {self.node_ip}"
+            )
+        if not (self.node_id or self.node_ip):
+            raise ValueError(
+                "Both node_id and node_ip is not given. "
+                "At least one of the should be provided."
+            )
+        if not (self.actor_id or self.task_id or self.pid or self.filename):
+            raise ValueError(
+                "None of actor_id, task_id, pid, or filename is provided. "
+                "At least one of them is required to fetch logs."
+            )
 
 
 # TODO(sang): Replace it with Pydantic or gRPC schema (once interface is finalized).

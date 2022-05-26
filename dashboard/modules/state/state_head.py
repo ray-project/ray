@@ -1,5 +1,4 @@
 import logging
-from multiprocessing.sharedctypes import Value
 
 import aiohttp.web
 
@@ -14,10 +13,13 @@ import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray.dashboard.optional_utils import rest_response
 from ray.dashboard.modules.log.log_manager import (
     LogsManager,
-    LogStreamOptions,
 )
 from ray.dashboard.state_aggregator import StateAPIManager
-from ray.experimental.state.common import ListApiOptions
+from ray.experimental.state.common import (
+    ListApiOptions,
+    GetLogOptions,
+    DEFAULT_RPC_TIMEOUT,
+)
 from ray.experimental.state.exception import DataSourceUnavailable
 from ray.experimental.state.state_manager import StateDataSourceClient
 
@@ -102,9 +104,8 @@ class StateHead(dashboard_utils.DashboardHeadModule):
             )
 
     async def _handle_list_api(
-            self,
-            list_api_fn: Callable[[ListApiOptions], dict],
-            req: aiohttp.web.Request):
+        self, list_api_fn: Callable[[ListApiOptions], dict], req: aiohttp.web.Request
+    ):
         try:
             result = await list_api_fn(option=self._options_from_req(req))
             return self._reply(
@@ -141,7 +142,9 @@ class StateHead(dashboard_utils.DashboardHeadModule):
         return await self._handle_list_api(self._state_api.list_nodes, req)
 
     @routes.get("/api/v0/placement_groups")
-    async def list_placement_groups(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+    async def list_placement_groups(
+        self, req: aiohttp.web.Request
+    ) -> aiohttp.web.Response:
         return await self._handle_list_api(self._state_api.list_placement_groups, req)
 
     @routes.get("/api/v0/workers")
@@ -167,9 +170,10 @@ class StateHead(dashboard_utils.DashboardHeadModule):
         Note that the semantic of this "list" is different from other
         list state API's such as actor, placement group, or task.
         """
-        glob_filter = req.query.get("glob", None)
+        glob_filter = req.query.get("glob", "*")
         node_id = req.query.get("node_id", None)
         node_ip = req.query.get("node_ip", None)
+        timeout = req.query.get("timeout", DEFAULT_RPC_TIMEOUT)
 
         # TODO(sang): Do input validation from the middleware instead.
         if not node_id and not node_ip:
@@ -177,8 +181,10 @@ class StateHead(dashboard_utils.DashboardHeadModule):
                 success=False,
                 error_message=(
                     "Both node id and node ip are not provided. "
-                    "Please provide at least one of them."),
-                result=None)
+                    "Please provide at least one of them."
+                ),
+                result=None,
+            )
 
         node_id = node_id or self.resolve_node_id(node_ip)
         if not node_id:
@@ -187,10 +193,13 @@ class StateHead(dashboard_utils.DashboardHeadModule):
                 error_message=(
                     f"Cannot find matching node_id for a given node ip {node_ip}"
                 ),
-                result=None)
+                result=None,
+            )
 
         try:
-            result = await self._log_api.list_logs(node_id, glob_filter)
+            result = await self._log_api.list_logs(
+                node_id, timeout, glob_filter=glob_filter
+            )
         except DataSourceUnavailable as e:
             return self._reply(success=False, error_message=str(e), result=None)
 
@@ -203,10 +212,17 @@ class StateHead(dashboard_utils.DashboardHeadModule):
         the HTTP connection is not closed. Else, if `media_type = file`, the stream
         ends once all the lines in the file requested are transmitted.
         """
-        # SANG-TODO
-        stream = await self._log_api.create_log_stream(
-            identifiers=dashboard_optional_utils.to_schema(req, FileIdentifiers),
-            stream_options=dashboard_optional_utils.to_schema(req, LogStreamOptions),
+        options = GetLogOptions(
+            timeout=req.query.get("timeout", DEFAULT_RPC_TIMEOUT),
+            node_id=req.query.get("node_id"),
+            node_ip=req.query.get("node_ip"),
+            media_type=req.query.get("media_type", "file"),
+            filename=req.query.get("filename"),
+            actor_id=req.query.get("actor_id"),
+            task_id=req.query.get("task_id"),
+            pid=req.query.get("pid"),
+            lines=req.query.get("lines", 1000),
+            interval=req.query.get("interval"),
         )
 
         response = aiohttp.web.StreamResponse()
@@ -215,8 +231,8 @@ class StateHead(dashboard_utils.DashboardHeadModule):
 
         # try-except here in order to properly handle ongoing HTTP stream
         try:
-            async for log_response in stream:
-                await response.write(log_response.data)
+            async for logs_in_bytes in self._log_api.stream_logs(options):
+                await response.write(logs_in_bytes)
             await response.write_eof()
             return response
         except Exception as e:

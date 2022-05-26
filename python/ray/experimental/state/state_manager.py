@@ -35,7 +35,7 @@ from ray.core.generated.runtime_env_agent_pb2 import (
 from ray.core.generated.reporter_pb2 import (
     ListLogsReply,
     StreamLogRequest,
-    ListLogsRequest
+    ListLogsRequest,
 )
 from ray.core.generated.reporter_pb2_grpc import LogServiceStub
 from ray.core.generated.runtime_env_agent_pb2_grpc import RuntimeEnvServiceStub
@@ -94,20 +94,20 @@ class IdToIpMap:
         self._ip_to_node_id = defaultdict(str)
         # Node ID to node IP mapping.
         self._node_id_to_ip = defaultdict(str)
-    
+
     def put(self, node_id: str, address: str):
         self._ip_to_node_id[address] = node_id
         self._node_id_to_ip[node_id] = address
 
     def get_ip(self, node_id: str):
         return self._node_id_to_ip.get(node_id)
-    
+
     def get_node_id(self, address: str):
         return self._ip_to_node_id.get(address)
 
     def pop(self, node_id: str):
         """Pop the given node id.
-        
+
         Returns:
             False if the corresponding node id doesn't exist.
             True if it pops correctly.
@@ -193,7 +193,7 @@ class StateDataSourceClient:
 
     def ip_to_node_id(self, ip: Optional[str]) -> Optional[str]:
         """Return the node id that corresponds to the given ip.
-        
+
         Args:
             ip: The ip address.
 
@@ -301,12 +301,14 @@ class StateDataSourceClient:
         return reply
 
     @handle_grpc_network_errors
-    async def list_logs(self, node_id: str, timeout: int = None) -> ListLogsReply:
+    async def list_logs(
+        self, node_id: str, glob_filter: str, timeout: int = None
+    ) -> ListLogsReply:
         stub = self._log_agent_stub.get(node_id)
         if not stub:
             raise ValueError(f"Agent for node id: {node_id} doesn't exist.")
         return await stub.ListLogs(
-            ListLogsRequest(), timeout=timeout
+            ListLogsRequest(glob_filter=glob_filter), timeout=timeout
         )
 
     @handle_grpc_network_errors
@@ -316,7 +318,8 @@ class StateDataSourceClient:
         log_file_name: str,
         keep_alive: bool,
         lines: int,
-        interval: float,
+        interval: Optional[float],
+        timeout: int,
     ) -> UnaryStreamCall:
         stub = self._log_agent_stub.get(node_id)
         if not stub:
@@ -327,7 +330,8 @@ class StateDataSourceClient:
                 log_file_name=log_file_name,
                 lines=lines,
                 interval=interval,
-            )
+            ),
+            timeout=timeout,
         )
         await self._validate_stream(stream)
         return stream
@@ -337,4 +341,3 @@ class StateDataSourceClient:
         metadata = await stream.initial_metadata()
         if metadata.get(log_consts.LOG_GRPC_ERROR) == log_consts.FILE_NOT_FOUND:
             raise ValueError('File "{log_file_name}" not found on node {node_id}')
-

@@ -4,11 +4,14 @@ import ray.dashboard.modules.log.log_utils as log_utils
 import ray.dashboard.modules.log.log_consts as log_consts
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
-from ray.core.generated import reporter_pb2
-from ray.core.generated import reporter_pb2_grpc
 import asyncio
 import io
 import os
+
+from pathlib import Path
+
+from ray.core.generated import reporter_pb2
+from ray.core.generated import reporter_pb2_grpc
 
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.ClassMethodRouteTable
@@ -53,20 +56,15 @@ class LogAgentV1Grpc(
 
         NOTE: These RPCs are used by state_head.py, not log_head.py
         """
-        logger.info(f"initiated ListLogs:\n{request}")
-
-        def on_exit(self):
-            logger.info(f"terminated ListLogs:\n{request}")
-
-        context.add_done_callback(on_exit)
-        if os.path.exists(self._dashboard_agent.log_dir):
-            log_files = os.listdir(self._dashboard_agent.log_dir)
-        else:
-            logger.exception(
+        path = Path(self._dashboard_agent.log_dir)
+        if not path.exists():
+            raise FileNotFoundError(
                 f"Could not find log dir at path: {self._dashboard_agent.log_dir}"
                 "It is unexpected. Please report an issue to Ray Github."
             )
-            log_files = []
+        log_files = []
+        for p in path.glob(request.glob_filter):
+            log_files.append(p.name)
         return reporter_pb2.ListLogsReply(log_files=log_files)
 
     async def StreamLog(self, request, context):
