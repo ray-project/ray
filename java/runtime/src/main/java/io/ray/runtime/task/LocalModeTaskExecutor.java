@@ -1,7 +1,7 @@
 package io.ray.runtime.task;
 
 import io.ray.api.id.UniqueId;
-import io.ray.runtime.AbstractRayRuntime;
+import io.ray.runtime.RayRuntimeInternal;
 
 /** Task executor for local mode. */
 public class LocalModeTaskExecutor extends TaskExecutor<LocalModeTaskExecutor.LocalActorContext> {
@@ -20,7 +20,7 @@ public class LocalModeTaskExecutor extends TaskExecutor<LocalModeTaskExecutor.Lo
     }
   }
 
-  public LocalModeTaskExecutor(AbstractRayRuntime runtime) {
+  public LocalModeTaskExecutor(RayRuntimeInternal runtime) {
     super(runtime);
   }
 

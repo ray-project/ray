@@ -390,6 +390,12 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeKillActor(
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
 }
 
+JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeSetCoreWorker(
+    JNIEnv *env, jclass, jbyteArray workerId) {
+  const auto worker_id = JavaByteArrayToId<WorkerID>(env, workerId);
+  CoreWorkerProcess::SetCurrentThreadWorkerId(worker_id);
+}
+
 JNIEXPORT jobject JNICALL
 Java_io_ray_runtime_RayNativeRuntime_nativeGetResourceIds(JNIEnv *env, jclass) {
   auto key_converter = [](JNIEnv *env, const std::string &str) -> jstring {

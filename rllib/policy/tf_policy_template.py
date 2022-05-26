@@ -370,7 +370,7 @@ def build_tf_policy(
         return build_tf_policy(**dict(original_kwargs, **overrides))
 
     def as_eager():
-        return eager_tf_policy.build_eager_tf_policy(**original_kwargs)
+        return eager_tf_policy._build_eager_tf_policy(**original_kwargs)
 
     policy_cls.with_updates = staticmethod(with_updates)
     policy_cls.as_eager = staticmethod(as_eager)
