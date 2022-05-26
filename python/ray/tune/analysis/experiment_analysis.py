@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-from pathlib import Path
 import warnings
 import traceback
 from numbers import Number
@@ -116,9 +115,6 @@ class ExperimentAnalysis:
             # If only a mode was passed, use anonymous metric
             self.default_metric = DEFAULT_METRIC
 
-        # get the <local_dir> from <local_dir>/<exp_name>/experiment_state.json
-        self._local_base_dir = Path(latest_checkpoint[0]).parent
-
         if not pd:
             logger.warning(
                 "pandas not installed. Run `pip install pandas` for "
@@ -127,6 +123,9 @@ class ExperimentAnalysis:
         else:
             self.fetch_trial_dataframes()
 
+        self._local_base_dir = os.path.abspath(
+            os.path.join(os.path.dirname(experiment_checkpoint_path), "..")
+        )
         self._sync_config = sync_config
 
         # If True, will return a legacy TrialCheckpoint class.
@@ -138,9 +137,7 @@ class ExperimentAnalysis:
         if not self._sync_config or not self._sync_config.upload_dir:
             return None
 
-        return local_path.replace(
-            str(self._local_base_dir), self._sync_config.upload_dir
-        )
+        return local_path.replace(self._local_base_dir, self._sync_config.upload_dir)
 
     def _get_latest_checkpoint(self, experiment_checkpoint_path: str) -> List[str]:
         if os.path.isdir(experiment_checkpoint_path):
@@ -665,10 +662,8 @@ class ExperimentAnalysis:
         """
         best_trial = self.get_best_trial(metric, mode, scope)
         if best_trial and getattr(best_trial, "relative_logdir", None):
-            # Newer experiments contain a relative logdir.
             return str(self._local_base_dir.joinpath(best_trial.relative_logdir))
-        elif best_trial and best_trial.logdir:
-            # For older experiments there might be only a logdir.
+        elif best_trial and getattr(best_trial, "logdir", None):
             return best_trial.logdir
         else:
             return None
@@ -767,12 +762,10 @@ class ExperimentAnalysis:
 
     def _get_trial_paths(self) -> List[str]:
         if self.trials:
-            # Get the relative paths from the trials to allow
-            # for changes in the self._local_base_dir.
             _trial_paths = [
                 str(self._local_base_dir.joinpath(t.relative_logdir))
                 if getattr(t, "relative_logdir", None)
-                else t.logdir
+                else str(t.logdir)
                 for t in self.trials
             ]
         else:
@@ -781,14 +774,12 @@ class ExperimentAnalysis:
                 "file. This may result in some information that is "
                 "out of sync, as checkpointing is periodic."
             )
-
             _trial_paths = [
                 str(self._local_base_dir.joinpath(checkpoint["relative_logdir"]))
                 if checkpoint.get("relative_logdir")
-                else checkpoint["logdir"]
+                else str(checkpoint["logdir"])
                 for checkpoint in self._checkpoints
             ]
-
             self.trials = []
             for experiment_state in self._experiment_states:
                 try:
