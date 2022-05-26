@@ -134,7 +134,7 @@ print(pids)
 assert len(pids) == {num_replicas}
 """
 
-
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
 def test_ray_server_basic(docker_cluster):
     # This test covers the basic cases for gcs ha (serve ha)
     # - It starts the serve on worker nodes.
