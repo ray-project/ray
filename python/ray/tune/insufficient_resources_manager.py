@@ -86,7 +86,7 @@ def _get_insufficient_resources_error_msg(trial: Trial) -> str:
     )
 
 
-class InsufficientResourcesManager:
+class _InsufficientResourcesManager:
     """Insufficient resources manager.
 
     Makes best effort, conservative guesses about if Tune loop is stuck due to
