@@ -9,6 +9,7 @@ from ray.serve.deployment_graph import InputNode
 
 RayHandleLike = TypeVar("RayHandleLike")
 
+
 class Operation(str, Enum):
     ADDITION = "ADD"
     MULTIPLICATION = "MUL"
@@ -16,11 +17,10 @@ class Operation(str, Enum):
 
 @serve.deployment
 class Router:
-
     def __init__(self, multiplier: RayHandleLike, adder: RayHandleLike):
         self.adder = adder
         self.multiplier = multiplier
-    
+
     def route(self, op: Operation, input: int) -> int:
         if op == Operation.ADDITION:
             return ray.get(self.adder.add.remote(input))
@@ -34,13 +34,12 @@ class Router:
     }
 )
 class Multiplier:
-
     def __init__(self, factor: int):
         self.factor = factor
-    
+
     def reconfigure(self, config: Dict):
         self.factor = config.get("factor", -1)
-    
+
     def multiply(self, input_factor: int) -> int:
         return input_factor * self.factor
 
@@ -51,13 +50,12 @@ class Multiplier:
     }
 )
 class Adder:
-
     def __init__(self, increment: int):
         self.increment = increment
 
     def reconfigure(self, config: Dict):
         self.increment = config.get("increment", -1)
-    
+
     def add(self, input: int) -> int:
         return input + self.increment
 

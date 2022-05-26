@@ -544,7 +544,9 @@ class ServeController:
         deployment_timestamp = self.deployment_timestamp
 
         if self.config_deployment_request_ref:
-            finished, pending = ray.wait([self.config_deployment_request_ref], timeout=0)
+            finished, pending = ray.wait(
+                [self.config_deployment_request_ref], timeout=0
+            )
 
             if pending:
                 serve_app_status = ApplicationStatus.DEPLOYING
