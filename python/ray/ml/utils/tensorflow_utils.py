@@ -21,7 +21,7 @@ def convert_pandas_to_tf_tensor(df: pd.DataFrame) -> tf.Tensor:
         >>>
         >>> df = pd.DataFrame({"X1": [1, 2, 3], "X2": [4, 5, 6]})
         >>> convert_pandas_to_tf_tensor(df[["X1"]]).shape
-        TensorShape([3])
+        TensorShape([3, 1])
         >>> convert_pandas_to_tf_tensor(df[["X1", "X2"]]).shape
         TensorShape([3, 2])
 
@@ -49,6 +49,9 @@ def convert_pandas_to_tf_tensor(df: pd.DataFrame) -> tf.Tensor:
         tensor = tf.cast(tensor, dtype=tf.dtypes.float32)
 
         tensors.append(tensor)
+
+    if len(tensors) == 1 and tensors[0].ndim == 1:
+        return tf.expand_dims(tensors[0], axis=1)
 
     if len(tensors) > 1:
         tensors = [tf.expand_dims(tensor, axis=-1) for tensor in tensors]

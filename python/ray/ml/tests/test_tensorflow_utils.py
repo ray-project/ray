@@ -14,7 +14,7 @@ def test_convert_simple_df_to_tensor():
     tf.debugging.assert_equal(actual_tensor, expected_tensor)
 
     actual_tensor = convert_pandas_to_tf_tensor(df[["X1"]])
-    expected_tensor = tf.constant([1, 3], dtype=tf.dtypes.float32)
+    expected_tensor = tf.constant([[1], [3]], dtype=tf.dtypes.float32)
     tf.debugging.assert_equal(actual_tensor, expected_tensor)
 
 
