@@ -70,7 +70,7 @@ def test_predict_array():
     assert predictions.to_numpy().flatten().tolist() == [1, 2, 3]
 
 
-def test_predict_dataframe():
+def test_predict_dataframe_with_feature_columns():
     predictor = TensorflowPredictor(model_definition=build_model, model_weights=weights)
 
     data = pd.DataFrame([[1, 2], [3, 4]], columns=["A", "B"])
