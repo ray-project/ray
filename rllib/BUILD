@@ -2591,7 +2591,7 @@ py_test(
     tags = ["team:ml", "examples", "examples_M"],
     size = "small",
     srcs = ["examples/multi_agent_different_spaces_for_agents.py"],
-    args = ["--stop-iters=4", "--framework=tf2", "--eager-tracing=True"]
+    args = ["--stop-iters=4", "--framework=tf2", "--eager-tracing"]
 )
 
 py_test(
