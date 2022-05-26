@@ -40,6 +40,13 @@ def test_init(model, preprocessor):
     assert checkpoint_predictor.model == predictor.model
     assert checkpoint_predictor.preprocessor == predictor.preprocessor
 
+
+def test_predict_model_not_training(model):
+    predictor = TorchPredictor(model=model)
+
+    data_batch = np.array([1])
+    predictor.predict(data_batch)
+
     assert not predictor.model.training
 
 
