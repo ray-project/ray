@@ -78,10 +78,11 @@ class CoreWorkerProcess {
   /// \param[in] options The various initialization options.
   static void Initialize(const CoreWorkerOptions &options);
 
-  /// Get the core worker associated with the current thread.
+  /// Get the core worker.
   /// NOTE (kfstorm): Here we return a reference instead of a `shared_ptr` to make sure
+  /// Do we need to remain TryGetWorker?
   /// `CoreWorkerProcess` has full control of the destruction timing of `CoreWorker`.
-  static CoreWorker &GetCoreWorker();
+  static std::shared_ptr<CoreWorker> GetCoreWorker();
 
   /// Whether the current process has been initialized for core worker.
   static bool IsInitialized();
