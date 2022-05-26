@@ -12,6 +12,7 @@ import ray
 import ray.state
 from ray import serve
 from ray.serve.context import get_global_client
+from ray.serve.schema import ServeApplicationSchema
 from ray._private.test_utils import wait_for_condition
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 
@@ -213,6 +214,26 @@ def test_get_serve_status(shutdown_ray):
 
     serve.shutdown()
     ray.shutdown()
+
+
+class TestDeployAppBasic:
+    def get_basic_config(self) -> ServeApplicationSchema:
+        config = {"import_path": "ray.serve.tests.test_config_files.pizza.serve_dag"}
+        return ServeApplicationSchema.parse_obj(config)
+
+    def test_deploy_app_basic(self, start_and_shutdown_ray_cli):
+        ray.init(address="auto", namespace="serve")
+        client = serve.start(detached=True)
+        client.deploy_app(self.get_basic_config())
+
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
+            == "4 pizzas please!"
+        )
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/", json=["MUL", 3]).json()
+            == "9 pizzas please!"
+        )
 
 
 def test_shutdown_remote(start_and_shutdown_ray_cli):

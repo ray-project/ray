@@ -544,16 +544,16 @@ class ServeController:
         deployment_timestamp = self.deployment_timestamp
 
         if self.config_deployment_request_ref:
-            finished, pending = ray.wait([self.deploy_config_task_ref], timeout=0)
+            finished, pending = ray.wait([self.config_deployment_request_ref], timeout=0)
 
-        if pending:
-            serve_app_status = ApplicationStatus.DEPLOYING
-        else:
-            try:
-                ray.get(finished[0])
-            except RayTaskError:
-                serve_app_status = ApplicationStatus.DEPLOY_FAILED
-                serve_app_message = f"Deployment failed:\n{traceback.format_exc()}"
+            if pending:
+                serve_app_status = ApplicationStatus.DEPLOYING
+            else:
+                try:
+                    ray.get(finished[0])
+                except RayTaskError:
+                    serve_app_status = ApplicationStatus.DEPLOY_FAILED
+                    serve_app_message = f"Deployment failed:\n{traceback.format_exc()}"
 
         app_status = ApplicationStatusInfo(
             serve_app_status, serve_app_message, deployment_timestamp
