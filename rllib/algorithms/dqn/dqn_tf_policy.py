@@ -6,14 +6,16 @@ import gym
 import numpy as np
 import ray
 from ray.rllib.algorithms.dqn.distributional_q_tf_model import DistributionalQTFModel
-from ray.rllib.algorithms.dqn.simple_q_tf_policy import TargetNetworkMixin
 from ray.rllib.evaluation.postprocessing import adjust_nstep
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.tf_mixins import LearningRateSchedule
+from ray.rllib.policy.tf_mixins import (
+    LearningRateSchedule,
+    TargetNetworkMixin,
+)
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.exploration import ParameterNoise
