@@ -295,11 +295,13 @@ class TargetNetworkMixin:
             # update_target_fn will be called periodically to copy Q network to
             # target Q network
             update_target_expr = []
-            assert len(self.q_func_vars) == len(self.target_q_func_vars), (
-                self.q_func_vars,
-                self.target_q_func_vars,
+            q_func_vars = self.model.trainable_variables()
+            target_q_func_vars = self.target_model.target_trainable_variables()
+            assert len(q_func_vars) == len(target_q_func_vars), (
+                q_func_vars,
+                target_q_func_vars,
             )
-            for var, var_target in zip(self.q_func_vars, self.target_q_func_vars):
+            for var, var_target in zip(q_func_vars, target_q_func_vars):
                 update_target_expr.append(var_target.assign(var))
                 logger.debug("Update target op {}".format(var_target))
             return tf.group(*update_target_expr)
