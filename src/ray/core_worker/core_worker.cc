@@ -754,12 +754,6 @@ void CoreWorker::ExitIfParentRayletDies() {
   static auto raylet_pid =
       static_cast<pid_t>(std::stoi(RayConfig::instance().RAYLET_PID()));
   bool should_shutdown = !IsProcessAlive(raylet_pid);
-#ifndef _WIN32
-  // All workers are started by raylet. In this case, the raylet becomes a zombie.
-  if (GetParentPID() != raylet_pid) {
-    should_shutdown = true;
-  }
-#endif
   if (should_shutdown) {
     RAY_LOG(WARNING) << "Shutting down the core worker because the local raylet failed. "
                      << "Check out the raylet.out log file. Raylet pid: " << raylet_pid;
