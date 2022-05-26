@@ -4,6 +4,7 @@ from ray.ml.checkpoint import Checkpoint
 from ray.ml.constants import PREPROCESSOR_KEY, MODEL_KEY
 
 import numpy as np
+import pandas as pd
 import tensorflow as tf
 
 
@@ -67,6 +68,16 @@ def test_predict_array():
 
     assert len(predictions) == 3
     assert predictions.to_numpy().flatten().tolist() == [1, 2, 3]
+
+
+def test_predict_dataframe():
+    predictor = TensorflowPredictor(model_definition=build_model, model_weights=weights)
+
+    data = pd.DataFrame([[1, 2], [3, 4]], columns=["A", "B"])
+    predictions = predictor.predict(data, feature_columns=["A"])
+
+    assert len(predictions) == 2
+    assert predictions.to_numpy().flatten().tolist() == [1, 3]
 
 
 if __name__ == "__main__":
