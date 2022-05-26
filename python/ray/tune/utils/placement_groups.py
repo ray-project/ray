@@ -263,7 +263,7 @@ def resource_dict_to_pg_factory(spec: Optional[Dict[str, float]]):
     return PlacementGroupFactory([bundle])
 
 
-class PlacementGroupManager:
+class _PlacementGroupManager:
     """PlacementGroupManager to stage and manage placement groups.
 
     .. versionadded:: 1.3.0

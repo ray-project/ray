@@ -7,7 +7,7 @@ stateless-cartpole-r2d2:
     config:
         # Works for both torch and tf.
         framework: tf
-        num_workers: 0
+        num_workers: 4
         # R2D2 settings.
         replay_buffer_config:
           type: MultiAgentReplayBuffer

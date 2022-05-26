@@ -6,7 +6,7 @@ import io.ray.api.id.ActorId;
 import io.ray.api.id.BaseId;
 import io.ray.api.id.ObjectId;
 import io.ray.api.id.UniqueId;
-import io.ray.runtime.RayRuntimeInternal;
+import io.ray.runtime.AbstractRayRuntime;
 import io.ray.runtime.context.WorkerContext;
 import io.ray.runtime.generated.Common.Address;
 import java.util.HashMap;
@@ -40,7 +40,7 @@ public class NativeObjectStore extends ObjectStore {
   @Override
   public ObjectId putRaw(NativeRayObject obj, ActorId ownerActorId) {
     byte[] serializedOwnerAddressBytes =
-        ((RayRuntimeInternal) Ray.internal()).getGcsClient().getActorAddress(ownerActorId);
+        ((AbstractRayRuntime) Ray.internal()).getGcsClient().getActorAddress(ownerActorId);
     return new ObjectId(nativePut(obj, serializedOwnerAddressBytes));
   }
 

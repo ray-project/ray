@@ -117,6 +117,7 @@ class RecurrentNetwork(TFModelV2):
         raise NotImplementedError("You must implement this for a RNN model")
 
 
+@DeveloperAPI
 class LSTMWrapper(RecurrentNetwork):
     """An LSTM wrapper serving as an interface for ModelV2s that set use_lstm."""
 
@@ -280,6 +281,7 @@ class LSTMWrapper(RecurrentNetwork):
         return tf.reshape(self._value_out, [-1])
 
 
+@DeveloperAPI
 class Keras_LSTMWrapper(tf.keras.Model if tf else object):
     """A tf keras auto-LSTM wrapper used when `use_lstm`=True."""
 
