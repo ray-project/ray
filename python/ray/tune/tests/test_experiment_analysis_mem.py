@@ -65,7 +65,7 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
                 {
                     "trainable_name": "MockTrainable",
                     "logdir": "/mock/test/MockTrainable_0_id=3_2020-07-12",
-                    "rel_logdir": "test/MockTrainable_0_id=3_2020-07-12",
+                    "relative_logdir": "test/MockTrainable_0_id=3_2020-07-12",
                 }
             ]
         }
@@ -87,7 +87,7 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
                     {
                         "trainable_name": "MockTrainable",
                         "logdir": "/mock/test/MockTrainable_0_id=3_2020-07-12",
-                        "rel_logdir": "test/MockTrainable_0_id=3_2020-07-12",
+                        "relative_logdir": "test/MockTrainable_0_id=3_2020-07-12",
                     },
                     cls=TuneFunctionEncoder,
                 )
