@@ -26,6 +26,8 @@ class TorchPredictor(Predictor):
         self.model = model
         self.preprocessor = preprocessor
 
+        self.model.eval()
+
     @classmethod
     def from_checkpoint(
         cls, checkpoint: Checkpoint, model: Optional[torch.nn.Module] = None
@@ -159,8 +161,6 @@ class TorchPredictor(Predictor):
         Returns:
             DataBatchType: Prediction result.
         """
-        self.model.eval()
-
         if self.preprocessor:
             data = self.preprocessor.transform_batch(data)
 

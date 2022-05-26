@@ -96,3 +96,10 @@ def test_predict_from_checkpoint_no_preprocessor(model):
 
     assert len(predictions) == 3
     assert predictions.to_numpy().flatten().tolist() == [2, 4, 6]
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))
