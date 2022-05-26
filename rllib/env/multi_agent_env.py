@@ -573,7 +573,9 @@ class MultiAgentEnvWrapper(BaseEnv):
                 self.dones.remove(idx)
 
     @override(BaseEnv)
-    def get_sub_environments(self, as_dict: bool = False) -> Union[Dict[str, EnvType], List[EnvType]]:
+    def get_sub_environments(
+        self, as_dict: bool = False
+    ) -> Union[Dict[str, EnvType], List[EnvType]]:
         if as_dict:
             return {_id: env_state for _id, env_state in enumerate(self.env_states)}
         return [state.env for state in self.env_states]

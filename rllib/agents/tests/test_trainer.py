@@ -149,15 +149,20 @@ class TestTrainer(unittest.TestCase):
     def test_evaluation_option(self):
         # Use a custom callback that asserts that we are running the
         # configured exact number of episodes per evaluation.
-        config = dqn.DQNConfig().environment(env="CartPole-v0").evaluation(
-            evaluation_interval=2,
-            evaluation_duration=2,
-            evaluation_duration_unit="episodes",
-            evaluation_config={
-                "gamma": 0.98,
-            },
-            always_attach_evaluation_results=True
-        ).callbacks(callbacks_class=AssertEvalCallback)
+        config = (
+            dqn.DQNConfig()
+            .environment(env="CartPole-v0")
+            .evaluation(
+                evaluation_interval=2,
+                evaluation_duration=2,
+                evaluation_duration_unit="episodes",
+                evaluation_config={
+                    "gamma": 0.98,
+                },
+                always_attach_evaluation_results=True,
+            )
+            .callbacks(callbacks_class=AssertEvalCallback)
+        )
 
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
             trainer = config.build()
@@ -183,15 +188,20 @@ class TestTrainer(unittest.TestCase):
     def test_evaluation_option_always_attach_eval_metrics(self):
         # Use a custom callback that asserts that we are running the
         # configured exact number of episodes per evaluation.
-        config = dqn.DQNConfig().environment(env="CartPole-v0").evaluation(
-            evaluation_interval=2,
-            evaluation_duration=2,
-            evaluation_duration_unit="episodes",
-            evaluation_config={
-                "gamma": 0.98,
-            },
-            always_attach_evaluation_results=True
-        ).callbacks(callbacks_class=AssertEvalCallback)
+        config = (
+            dqn.DQNConfig()
+            .environment(env="CartPole-v0")
+            .evaluation(
+                evaluation_interval=2,
+                evaluation_duration=2,
+                evaluation_duration_unit="episodes",
+                evaluation_config={
+                    "gamma": 0.98,
+                },
+                always_attach_evaluation_results=True,
+            )
+            .callbacks(callbacks_class=AssertEvalCallback)
+        )
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
             trainer = config.build()
             # Should always see latest available eval results.
@@ -212,7 +222,11 @@ class TestTrainer(unittest.TestCase):
     def test_evaluation_wo_evaluation_worker_set(self):
         # Use a custom callback that asserts that we are running the
         # configured exact number of episodes per evaluation.
-        config = a3c.A3CConfig().environment(env="CartPole-v0").callbacks(callbacks_class=AssertEvalCallback)
+        config = (
+            a3c.A3CConfig()
+            .environment(env="CartPole-v0")
+            .callbacks(callbacks_class=AssertEvalCallback)
+        )
 
         for _ in framework_iterator(frameworks=("tf", "torch")):
             # Setup trainer w/o evaluation worker set and still call

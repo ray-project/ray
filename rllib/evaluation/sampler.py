@@ -828,9 +828,10 @@ def _process_observations(
         episode_faulty = False
         if isinstance(all_agents_obs, Exception):
             episode_faulty = True
-            assert dones[env_id]["__all__"] is True,\
-                f"ERROR: When a sub-environment (env-id {env_id}) returns an error " \
+            assert dones[env_id]["__all__"] is True, (
+                f"ERROR: When a sub-environment (env-id {env_id}) returns an error "
                 "as observation, the dones[__all__] flag must also be set to True!"
+            )
             # This will be filled with dummy observations below.
             all_agents_obs = {}
 
