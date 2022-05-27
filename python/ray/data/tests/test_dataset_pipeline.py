@@ -109,6 +109,11 @@ def test_window_by_bytes(ray_start_regular_shared):
     )
     assert str(pipe) == "DatasetPipeline(num_windows=8, num_stages=1)"
 
+    context = DatasetContext.get_current()
+    context.optimize_fuse_stages = False
+    dataset = ray.data.range(10).window(bytes_per_window=1)
+    assert dataset.take(10) == list(range(10))
+
 
 def test_epoch(ray_start_regular_shared):
     # Test dataset repeat.
