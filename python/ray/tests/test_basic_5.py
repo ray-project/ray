@@ -192,24 +192,47 @@ def test_generator_oom(ray_start_regular):
     )
 
 
-def test_generator_returns(ray_start_regular):
-    @ray.remote(max_retries=0)
-    def generator(num_returns):
-        for i in range(num_returns):
-            yield i
+@pytest.mark.parametrize("use_actors", [False, True])
+def test_generator_returns(ray_start_regular, use_actors):
+    remote_generator_fn = None
+    if use_actors:
+
+        @ray.remote
+        class Generator:
+            def __init__(self):
+                pass
+
+            def generator(self, num_returns):
+                for i in range(num_returns):
+                    yield i
+
+        g = Generator.remote()
+        remote_generator_fn = g.generator
+    else:
+
+        @ray.remote(max_retries=0)
+        def generator(num_returns):
+            for i in range(num_returns):
+                yield i
+
+        remote_generator_fn = generator
 
     # Check cases when num_returns does not match the number of values returned
     # by the generator.
     num_returns = 3
 
     try:
-        ray.get(generator.options(num_returns=num_returns).remote(num_returns - 1))
+        ray.get(
+            remote_generator_fn.options(num_returns=num_returns).remote(num_returns - 1)
+        )
         assert False
     except ray.exceptions.RayTaskError as e:
         assert isinstance(e.as_instanceof_cause(), ValueError)
 
     try:
-        ray.get(generator.options(num_returns=num_returns).remote(num_returns + 1))
+        ray.get(
+            remote_generator_fn.options(num_returns=num_returns).remote(num_returns + 1)
+        )
         assert False
     except ray.exceptions.RayTaskError as e:
         assert isinstance(e.as_instanceof_cause(), ValueError)
@@ -217,15 +240,15 @@ def test_generator_returns(ray_start_regular):
     # Check num_returns=1 case, should receive TypeError because generator
     # cannot be pickled.
     try:
-        ray.get(generator.remote(num_returns))
+        ray.get(remote_generator_fn.remote(num_returns))
         assert False
     except ray.exceptions.RayTaskError as e:
         assert isinstance(e.as_instanceof_cause(), TypeError)
 
     # Check return values.
-    ray.get(generator.options(num_returns=num_returns).remote(num_returns)) == list(
-        range(num_returns)
-    )
+    ray.get(
+        remote_generator_fn.options(num_returns=num_returns).remote(num_returns)
+    ) == list(range(num_returns))
 
 
 if __name__ == "__main__":
