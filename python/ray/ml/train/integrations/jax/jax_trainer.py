@@ -193,8 +193,8 @@ class JaxTrainer(DataParallelTrainer):
 
 
 def load_checkpoint(
-    checkpoint: Checkpoint, model: Optional[jax.nn.Module] = None
-) -> Tuple[jax.nn.Module, Optional[Preprocessor]]:
+    checkpoint: Checkpoint, model: Optional[Any] = None
+) -> Tuple[Any, Optional[Preprocessor]]:
     """Load a Checkpoint from ``JaxTrainer``.
 
     Args:
