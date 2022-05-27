@@ -67,7 +67,7 @@ class CQLConfig(SACConfig):
 
         # Changes to Trainer's/SACConfig's default:
         # .offline_data()
-        self.input_evaluation = []
+        self.off_policy_estimation_methods = []
 
         # .reporting()
         self.min_sample_timesteps_per_reporting = 0

@@ -51,7 +51,7 @@ class CombinedStopper(Stopper):
     """Combine several stoppers via 'OR'.
 
     Args:
-        *stoppers (Stopper): Stoppers to be combined.
+        *stoppers: Stoppers to be combined.
 
     Example:
 

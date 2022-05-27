@@ -116,7 +116,7 @@ class TorchPredictor(Predictor):
                 format of ``feature_columns``, or be a single dtype, in which
                 case it will be applied to all tensors.
                 If None, then automatically infer the dtype.
-            unsqueeze (bool): If set to True, the features tensors will be unsqueezed
+            unsqueeze: If set to True, the features tensors will be unsqueezed
                 (reshaped to (N, 1)) before being concatenated into the final features
                 tensor. Otherwise, they will be left as is, that is (N, ).
                 Defaults to True.
