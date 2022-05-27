@@ -61,7 +61,7 @@ def _setup_logging() -> None:
         filename=ray_constants.MONITOR_LOG_FILE_NAME,  # monitor.log
         max_bytes=ray_constants.LOGGING_ROTATE_BYTES,
         backup_count=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
-        logger_name="ray",  # Root logger for Ray code.
+        logger_name="ray",  # Root of the logging hierachy for Ray code.
     )
     # Logs will also be written to the container's stdout.
     # The stdout handler was set up in the cli entry point.
