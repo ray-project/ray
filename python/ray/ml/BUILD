@@ -195,7 +195,7 @@ py_test(
 
 py_test(
     name = "test_huggingface_predictor",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_huggingface_predictor.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
