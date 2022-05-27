@@ -88,7 +88,7 @@ class ExperimentAnalysis:
         latest_checkpoint = self._get_latest_checkpoint(experiment_checkpoint_path)
 
         self._experiment_states = []
-        self._checkpoints: List[Tuple[dict, os.PathLike]] = []
+        self._checkpoints_and_paths: List[Tuple[dict, os.PathLike]] = []
         for path in latest_checkpoint:
             with open(path) as f:
                 experiment_state = json.load(f, cls=TuneFunctionDecoder)
@@ -96,7 +96,7 @@ class ExperimentAnalysis:
 
             if "checkpoints" not in experiment_state:
                 raise TuneError("Experiment state invalid; no checkpoints found.")
-            self._checkpoints += [
+            self._checkpoints_and_paths += [
                 (_decode_checkpoint_from_experiment_state(cp), Path(path).parent)
                 for cp in experiment_state["checkpoints"]
             ]
@@ -770,7 +770,7 @@ class ExperimentAnalysis:
             )
             self.trials = []
             _trial_paths = []
-            for checkpoint, path in self._checkpoints:
+            for checkpoint, path in self._checkpoints_and_paths:
                 try:
                     trial = load_trial_from_checkpoint(
                         checkpoint, stub=True, local_dir=str(path)

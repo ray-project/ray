@@ -76,7 +76,7 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
             f.write(json.dumps(checkpoint_data))
 
         experiment_analysis = ExperimentAnalysis(experiment_checkpoint_path)
-        self.assertEqual(len(experiment_analysis._checkpoints), 1)
+        self.assertEqual(len(experiment_analysis._checkpoints_and_paths), 1)
         self.assertTrue(experiment_analysis.trials)
 
     def testInit(self):
@@ -101,7 +101,7 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
             f.write(json.dumps(checkpoint_data))
 
         experiment_analysis = ExperimentAnalysis(experiment_checkpoint_path)
-        self.assertEqual(len(experiment_analysis._checkpoints), 1)
+        self.assertEqual(len(experiment_analysis._checkpoints_and_paths), 1)
         self.assertTrue(experiment_analysis.trials)
 
     def testInitException(self):
