@@ -560,7 +560,7 @@ class MultiAgentEnvWrapper(BaseEnv):
     @override(BaseEnv)
     def get_sub_environments(self, as_dict: bool = False) -> List[EnvType]:
         if as_dict:
-            return {_id: env_state for _id, env_state in enumerate(self.env_states)}
+            return {_id: env_state.env for _id, env_state in enumerate(self.env_states)}
         return [state.env for state in self.env_states]
 
     @override(BaseEnv)
