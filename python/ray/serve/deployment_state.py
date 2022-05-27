@@ -1705,7 +1705,9 @@ class DeploymentStateManager:
             map(lambda state: state.curr_status_info, self._deployment_states.values())
         )
 
-    def deploy(self, deployment_name: str, deployment_info: DeploymentInfo) -> bool:
+    async def deploy(
+        self, deployment_name: str, deployment_info: DeploymentInfo
+    ) -> bool:
         """Deploy the deployment.
 
         If the deployment already exists with the same version and config,
@@ -1722,13 +1724,13 @@ class DeploymentStateManager:
                 deployment_name
             )
 
-        return self._deployment_states[deployment_name].deploy(deployment_info)
+        return await self._deployment_states[deployment_name].deploy(deployment_info)
 
-    def delete_deployment(self, deployment_name: str):
+    async def delete_deployment(self, deployment_name: str):
         # This method must be idempotent. We should validate that the
         # specified deployment exists on the client.
         if deployment_name in self._deployment_states:
-            self._deployment_states[deployment_name].delete()
+            await self._deployment_states[deployment_name].delete()
 
     def update(self):
         """Updates the state of all deployments to match their goal state."""

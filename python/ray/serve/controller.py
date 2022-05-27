@@ -317,7 +317,7 @@ class ServeController:
             self.endpoint_state.shutdown()
             self.http_state.shutdown()
 
-    def deploy(
+    async def deploy(
         self,
         name: str,
         deployment_config_proto_bytes: bytes,
@@ -376,17 +376,17 @@ class ServeController:
         # the only change was num_replicas, the start_time_ms is refreshed.
         # Is this the desired behaviour?
 
-        updating = self.deployment_state_manager.deploy(name, deployment_info)
+        updating = await self.deployment_state_manager.deploy(name, deployment_info)
 
         if route_prefix is not None:
             endpoint_info = EndpointInfo(route=route_prefix)
-            self.endpoint_state.update_endpoint(name, endpoint_info)
+            await self.endpoint_state.update_endpoint(name, endpoint_info)
         else:
-            self.endpoint_state.delete_endpoint(name)
+            await self.endpoint_state.delete_endpoint(name)
 
         return updating
 
-    def deploy_group(self, deployment_args_list: List[Dict]) -> List[bool]:
+    async def deploy_group(self, deployment_args_list: List[Dict]) -> List[bool]:
         """
         Takes in a list of dictionaries that contain keyword arguments for the
         controller's deploy() function. Calls deploy on all the argument
@@ -394,15 +394,15 @@ class ServeController:
         group of deployments.
         """
 
-        return [self.deploy(**args) for args in deployment_args_list]
+        return [await self.deploy(**args) for args in deployment_args_list]
 
-    def delete_deployment(self, name: str):
-        self.endpoint_state.delete_endpoint(name)
-        return self.deployment_state_manager.delete_deployment(name)
+    async def delete_deployment(self, name: str):
+        await self.endpoint_state.delete_endpoint(name)
+        return await self.deployment_state_manager.delete_deployment(name)
 
-    def delete_deployments(self, names: Iterable[str]) -> None:
+    async def delete_deployments(self, names: Iterable[str]) -> None:
         for name in names:
-            self.delete_deployment(name)
+            await self.delete_deployment(name)
 
     def get_deployment_info(self, name: str) -> bytes:
         """Get the current information about a deployment.
