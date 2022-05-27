@@ -470,6 +470,20 @@ def test_one_hot_encoder():
     null_encoder.transform_batch(nonnull_df)
 
 
+def test_one_hot_encoder_with_limit():
+    """Tests basic OneHotEncoder functionality with limit."""
+    col_a = ["red", "green", "blue", "red"]
+    col_b = ["warm", "cold", "hot", "cold"]
+    col_c = [1, 10, 5, 10]
+    in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b, "C": col_c})
+    ds = ray.data.from_pandas(in_df)
+
+    encoder = OneHotEncoder(["B", "C"], limit={"B": 2})
+
+    ds_out = encoder.fit_transform(ds)
+    assert len(ds_out.to_pandas().columns) == 1 + 2 + 3
+
+
 def test_label_encoder():
     """Tests basic LabelEncoder functionality."""
     col_a = ["red", "green", "blue", "red"]

@@ -4,7 +4,7 @@ import numpy as np
 import gym
 from typing import Any, List
 
-from ray.rllib.utils.annotations import override, PublicAPI
+from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils.spaces.repeated import Repeated
 from ray.rllib.utils.typing import TensorType
 from ray.rllib.utils.images import resize
@@ -30,7 +30,7 @@ class Preprocessor:
 
     @PublicAPI
     def __init__(self, obs_space: gym.Space, options: dict = None):
-        legacy_patch_shapes(obs_space)
+        _legacy_patch_shapes(obs_space)
         self._obs_space = obs_space
         if not options:
             from ray.rllib.models.catalog import MODEL_DEFAULTS
@@ -109,6 +109,7 @@ class Preprocessor:
         return obs_space
 
 
+@DeveloperAPI
 class GenericPixelPreprocessor(Preprocessor):
     """Generic image preprocessor.
 
@@ -151,6 +152,7 @@ class GenericPixelPreprocessor(Preprocessor):
         return scaled
 
 
+@DeveloperAPI
 class AtariRamPreprocessor(Preprocessor):
     @override(Preprocessor)
     def _init_shape(self, obs_space: gym.Space, options: dict) -> List[int]:
@@ -162,6 +164,7 @@ class AtariRamPreprocessor(Preprocessor):
         return (observation.astype("float32") - 128) / 128
 
 
+@DeveloperAPI
 class OneHotPreprocessor(Preprocessor):
     """One-hot preprocessor for Discrete and MultiDiscrete spaces.
 
@@ -195,6 +198,7 @@ class OneHotPreprocessor(Preprocessor):
         array[offset : offset + self.size] = self.transform(observation)
 
 
+@PublicAPI
 class NoPreprocessor(Preprocessor):
     @override(Preprocessor)
     def _init_shape(self, obs_space: gym.Space, options: dict) -> List[int]:
@@ -215,6 +219,7 @@ class NoPreprocessor(Preprocessor):
         return self._obs_space
 
 
+@DeveloperAPI
 class TupleFlatteningPreprocessor(Preprocessor):
     """Preprocesses each tuple element, then flattens it all into a vector.
 
@@ -254,6 +259,7 @@ class TupleFlatteningPreprocessor(Preprocessor):
             offset += p.size
 
 
+@DeveloperAPI
 class DictFlatteningPreprocessor(Preprocessor):
     """Preprocesses each dict value, then flattens it all into a vector.
 
@@ -297,6 +303,7 @@ class DictFlatteningPreprocessor(Preprocessor):
             offset += p.size
 
 
+@DeveloperAPI
 class RepeatedValuesPreprocessor(Preprocessor):
     """Pads and batches the variable-length list value."""
 
@@ -345,7 +352,7 @@ class RepeatedValuesPreprocessor(Preprocessor):
 def get_preprocessor(space: gym.Space) -> type:
     """Returns an appropriate preprocessor class for the given space."""
 
-    legacy_patch_shapes(space)
+    _legacy_patch_shapes(space)
     obs_shape = space.shape
 
     if isinstance(space, (gym.spaces.Discrete, gym.spaces.MultiDiscrete)):
@@ -366,7 +373,7 @@ def get_preprocessor(space: gym.Space) -> type:
     return preprocessor
 
 
-def legacy_patch_shapes(space: gym.Space) -> List[int]:
+def _legacy_patch_shapes(space: gym.Space) -> List[int]:
     """Assigns shapes to spaces that don't have shapes.
 
     This is only needed for older gym versions that don't set shapes properly
@@ -379,7 +386,7 @@ def legacy_patch_shapes(space: gym.Space) -> List[int]:
         elif isinstance(space, gym.spaces.Tuple):
             shapes = []
             for s in space.spaces:
-                shape = legacy_patch_shapes(s)
+                shape = _legacy_patch_shapes(s)
                 shapes.append(shape)
             space.shape = tuple(shapes)
 

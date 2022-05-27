@@ -112,7 +112,6 @@ class TestApexDQN(unittest.TestCase):
                     "type": "MultiAgentPrioritizedReplayBuffer",
                     "learning_starts": 10,
                     "capacity": 100,
-                    "replay_batch_size": 10,
                     "prioritized_replay_alpha": 0.6,
                     # Beta parameter for sampling from prioritized replay buffer.
                     "prioritized_replay_beta": 0.4,
@@ -146,7 +145,7 @@ class TestApexDQN(unittest.TestCase):
         for _ in framework_iterator(config):
             trainer = config.build(env="CartPole-v0")
 
-            lr = _step_n_times(trainer, 5)  # 50 timesteps
+            lr = _step_n_times(trainer, 3)  # 50 timesteps
             # Close to 0.2
             self.assertGreaterEqual(lr, 0.1)
 

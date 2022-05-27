@@ -1,14 +1,15 @@
-import json
-import subprocess
-import sys
 import os
+import sys
+import json
+import time
+import pytest
+import requests
+import subprocess
 from typing import List, Dict, Set
 
-import pytest
-
-import requests
 import ray
 from ray import serve
+from ray._private.test_utils import wait_for_condition
 
 
 GET_OR_PUT_URL = "http://localhost:8265/api/serve/deployments/"
@@ -124,6 +125,14 @@ def test_put_get_success(ray_start_stop):
             GET_OR_PUT_URL, json={"deployments": deployments}, timeout=30
         )
         assert put_response.status_code == 200
+
+        # Use wait_for_condition() to ensure "deep" deployment deleted
+        wait_for_condition(
+            lambda: len(requests.get(GET_OR_PUT_URL, timeout=3).json()["deployments"])
+            == 2,
+            timeout=10,
+        )
+
         assert (
             requests.get("http://localhost:8000/shallow", timeout=30).text
             == "Hello shallow world!"
@@ -176,9 +185,12 @@ def test_delete_success(ray_start_stop):
         delete_response = requests.delete(GET_OR_PUT_URL, timeout=30)
         assert delete_response.status_code == 200
 
-        # Make sure no deployments exist
-        get_response = requests.get(GET_OR_PUT_URL, timeout=30)
-        assert len(get_response.json()["deployments"]) == 0
+        # Make sure all deployments are deleted
+        wait_for_condition(
+            lambda: len(requests.get(GET_OR_PUT_URL, timeout=3).json()["deployments"])
+            == 0,
+            timeout=10,
+        )
 
 
 def test_get_status_info(ray_start_stop):
@@ -216,18 +228,23 @@ def test_get_status_info(ray_start_stop):
 
     status_response = requests.get(STATUS_URL, timeout=30)
     assert status_response.status_code == 200
+    serve_status = status_response.json()
 
-    statuses = status_response.json()["statuses"]
-    assert len(statuses) == len(deployments)
+    deployment_statuses = serve_status["deployment_statuses"]
+    assert len(deployment_statuses) == len(deployments)
     expected_deployment_names = {deployment["name"] for deployment in deployments}
-    for deployment_status in statuses:
+    for deployment_status in deployment_statuses:
         assert deployment_status["name"] in expected_deployment_names
         expected_deployment_names.remove(deployment_status["name"])
         assert deployment_status["status"] in {"UPDATING", "HEALTHY"}
         assert deployment_status["message"] == ""
     assert len(expected_deployment_names) == 0
 
-    print(statuses)
+    assert serve_status["app_status"]["status"] in {"DEPLOYING", "RUNNING"}
+    wait_for_condition(
+        lambda: time.time() > serve_status["app_status"]["deployment_timestamp"],
+        timeout=2,
+    )
 
 
 def test_serve_namespace(ray_start_stop):

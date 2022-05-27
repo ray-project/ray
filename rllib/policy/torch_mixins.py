@@ -1,13 +1,11 @@
 from typing import Dict, List, Union
 
-from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.schedules import PiecewiseSchedule
-from ray.rllib.utils.torch_utils import apply_grad_clipping
 from ray.rllib.utils.typing import (
     TensorType,
 )
@@ -199,36 +197,3 @@ class TargetNetworkMixin:
         # at the same time.
         TorchPolicy.set_weights(self, weights)
         self.update_target()
-
-
-class ComputeGAEMixIn:
-    """Postprocess SampleBatch to Compute GAE before they get used for training."""
-
-    def __init__(self):
-        pass
-
-    @DeveloperAPI
-    def postprocess_trajectory(
-        self, sample_batch, other_agent_batches=None, episode=None
-    ):
-        # Do all post-processing always with no_grad().
-        # Not using this here will introduce a memory leak
-        # in torch (issue #6962).
-        # TODO: no_grad still necessary?
-        with torch.no_grad():
-            return compute_gae_for_sample_batch(
-                self, sample_batch, other_agent_batches, episode
-            )
-
-
-class GradClippingMixin:
-    """Apply gradient clipping."""
-
-    def __init__(self):
-        pass
-
-    @DeveloperAPI
-    def extra_grad_process(
-        self, optimizer: "torch.optim.Optimizer", loss: TensorType
-    ) -> Dict[str, TensorType]:
-        return apply_grad_clipping(self, optimizer, loss)

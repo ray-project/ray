@@ -10,6 +10,7 @@ import ray.cloudpickle as cloudpickle
 from ray.tune import TuneError
 from ray.tune.suggest import BasicVariantGenerator
 from ray._private.utils import binary_to_hex, hex_to_binary
+from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     from ray.tune.trial_runner import TrialRunner
@@ -26,6 +27,7 @@ except ImportError:
     )
 
 
+@DeveloperAPI
 class TuneClient:
     """Client to interact with an ongoing Tune experiment.
 
@@ -93,6 +95,7 @@ class TuneClient:
         return parsed
 
 
+@DeveloperAPI
 def RunnerHandler(runner):
     class Handler(SimpleHTTPRequestHandler):
         """A Handler is a custom handler for TuneServer.
@@ -224,6 +227,7 @@ def RunnerHandler(runner):
     return Handler
 
 
+@DeveloperAPI
 class TuneServer(threading.Thread):
     """A TuneServer is a thread that initializes and runs a HTTPServer.
 

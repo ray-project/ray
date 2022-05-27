@@ -37,7 +37,7 @@ class SklearnPredictor(Predictor):
         The checkpoint is expected to be a result of ``SklearnTrainer``.
 
         Args:
-            checkpoint (Checkpoint): The checkpoint to load the model and
+            checkpoint: The checkpoint to load the model and
                 preprocessor from. It is expected to be from the result of a
                 ``SklearnTrainer`` run.
 

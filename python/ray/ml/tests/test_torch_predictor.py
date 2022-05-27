@@ -40,6 +40,13 @@ def test_init(model, preprocessor):
     assert checkpoint_predictor.model == predictor.model
     assert checkpoint_predictor.preprocessor == predictor.preprocessor
 
+
+def test_predict_model_not_training(model):
+    predictor = TorchPredictor(model=model)
+
+    data_batch = np.array([1])
+    predictor.predict(data_batch)
+
     assert not predictor.model.training
 
 
@@ -96,3 +103,10 @@ def test_predict_from_checkpoint_no_preprocessor(model):
 
     assert len(predictions) == 3
     assert predictions.to_numpy().flatten().tolist() == [2, 4, 6]
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))
