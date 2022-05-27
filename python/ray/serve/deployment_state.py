@@ -1054,7 +1054,7 @@ class DeploymentState:
         )
         logger.debug(f"Deploying new version of {self._name}: {version_str}")
 
-    def deploy(self, deployment_info: DeploymentInfo) -> bool:
+    async def deploy(self, deployment_info: DeploymentInfo) -> bool:
         """Deploy the deployment.
 
         If the deployment already exists with the same version and config,
@@ -1084,13 +1084,13 @@ class DeploymentState:
         # NOTE(edoakes): we must write a checkpoint before starting new
         # or pushing the updated config to avoid inconsistent state if we
         # crash while making the change.
-        self._save_checkpoint_func()
+        await self._save_checkpoint_func()
 
         return True
 
-    def delete(self) -> None:
+    async def delete(self) -> None:
         self._set_deployment_goal(None)
-        self._save_checkpoint_func()
+        await self._save_checkpoint_func()
 
     def _stop_wrong_version_replicas(self) -> bool:
         """Stops replicas with outdated versions to implement rolling updates.
@@ -1534,7 +1534,7 @@ class DeploymentStateManager:
     called with a lock held.
     """
 
-    def __init__(
+    async def __init__(
         self,
         controller_name: str,
         detached: bool,
@@ -1559,7 +1559,7 @@ class DeploymentStateManager:
         self._deployment_states: Dict[str, DeploymentState] = dict()
         self._deleted_deployment_metadata: Dict[str, DeploymentInfo] = OrderedDict()
 
-        self._recover_from_checkpoint(all_current_actor_names)
+        await self._recover_from_checkpoint(all_current_actor_names)
 
     def _map_actor_names_to_deployment(
         self, all_current_actor_names: List[str]
@@ -1593,7 +1593,9 @@ class DeploymentStateManager:
 
         return deployment_to_current_replicas
 
-    def _recover_from_checkpoint(self, all_current_actor_names: List[str]) -> None:
+    async def _recover_from_checkpoint(
+        self, all_current_actor_names: List[str]
+    ) -> None:
         """
         Recover from checkpoint upon controller failure with all actor names
         found in current cluster.
@@ -1606,7 +1608,7 @@ class DeploymentStateManager:
         deployment_to_current_replicas = self._map_actor_names_to_deployment(
             all_current_actor_names
         )
-        checkpoint = self._kv_store.get(CHECKPOINT_KEY)
+        checkpoint = await self._kv_store.get(CHECKPOINT_KEY)
         if checkpoint is not None:
             (
                 deployment_state_info,
@@ -1626,7 +1628,7 @@ class DeploymentStateManager:
                     )
                 self._deployment_states[deployment_tag] = deployment_state
 
-    def shutdown(self):
+    async def shutdown(self):
         """
         Shutdown all running replicas by notifying the controller, and leave
         it to the controller event loop to take actions afterwards.
@@ -1644,17 +1646,17 @@ class DeploymentStateManager:
         # TODO(jiaodong): This might not be 100% safe since we deleted
         # everything without ensuring all shutdown goals are completed
         # yet. Need to address in follow-up PRs.
-        self._kv_store.delete(CHECKPOINT_KEY)
+        await self._kv_store.delete(CHECKPOINT_KEY)
 
         # TODO(jiaodong): Need to add some logic to prevent new replicas
         # from being created once shutdown signal is sent.
 
-    def _save_checkpoint_func(self) -> None:
+    async def _save_checkpoint_func(self) -> None:
         deployment_state_info = {
             deployment_name: deployment_state.get_checkpoint_data()
             for deployment_name, deployment_state in self._deployment_states.items()
         }
-        self._kv_store.put(
+        await self._kv_store.put(
             CHECKPOINT_KEY,
             cloudpickle.dumps(
                 (deployment_state_info, self._deleted_deployment_metadata)

@@ -9,8 +9,9 @@ try:
 except ImportError:
     boto3 = None
 
+import ray
 from ray import ray_constants
-import ray.experimental.internal_kv as ray_kv
+from ray._private.gcs_utils import GcsAioClient
 
 from ray.serve.constants import SERVE_LOGGER_NAME
 from ray.serve.storage.kv_store_base import KVStoreBase
@@ -29,11 +30,16 @@ class RayInternalKVStore(KVStoreBase):
     Supports string keys and bytes values, caller must handle serialization.
     """
 
-    def __init__(self, namespace: str = None):
-        assert ray_kv._internal_kv_initialized()
+    def __init__(
+        self,
+        timeout: Optional[float] = None,
+        namespace: str = None,
+    ):
         if namespace is not None and not isinstance(namespace, str):
             raise TypeError("namespace must a string, got: {}.".format(type(namespace)))
-
+        self.gcs_aio_client = GcsAioClient(
+            address=ray.get_runtime_context().gcs_address
+        )
         self.namespace = namespace or ""
 
     async def get_storage_key(self, key: str) -> Awaitable[str]:
@@ -51,11 +57,12 @@ class RayInternalKVStore(KVStoreBase):
         if not isinstance(val, bytes):
             raise TypeError("val must be bytes, got: {}.".format(type(val)))
 
-        ray_kv._internal_kv_put(
-            self.get_storage_key(key),
+        return await self.gcs_aio_client.internal_kv_put(
+            self.get_storage_key(key).encode(),
             val,
             overwrite=True,
-            namespace=ray_constants.KV_NAMESPACE_SERVE,
+            namespace=ray_constants.KV_NAMESPACE_SERVE.encode(),
+            timeout=self.timeout,
         )
 
     async def get(self, key: str) -> Awaitable[Optional[bytes]]:
@@ -70,8 +77,10 @@ class RayInternalKVStore(KVStoreBase):
         if not isinstance(key, str):
             raise TypeError("key must be a string, got: {}.".format(type(key)))
 
-        return ray_kv._internal_kv_get(
-            self.get_storage_key(key), namespace=ray_constants.KV_NAMESPACE_SERVE
+        return await self.internal_kv_get(
+            self.get_storage_key(key).encode(),
+            namespace=ray_constants.KV_NAMESPACE_SERVE.encode(),
+            timeout=self.timeout,
         )
 
     async def delete(self, key: str) -> Awaitable[None]:
@@ -83,8 +92,10 @@ class RayInternalKVStore(KVStoreBase):
 
         if not isinstance(key, str):
             raise TypeError("key must be a string, got: {}.".format(type(key)))
-        return ray_kv._internal_kv_del(
-            self.get_storage_key(key), namespace=ray_constants.KV_NAMESPACE_SERVE
+        return await self.gcs_aio_client.internal_kv_del(
+            self.get_storage_key(key).encode(),
+            namespace=ray_constants.KV_NAMESPACE_SERVE.encode(),
+            timeout=self.timeout,
         )
 
 
