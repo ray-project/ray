@@ -2,11 +2,12 @@ import os
 from ray.ml.predictors.integrations.xgboost import XGBoostPredictor
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
-from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY
+from ray.ml.constants import MODEL_KEY
 import json
 
 import numpy as np
 import pandas as pd
+from ray.ml.utils.checkpointing import save_preprocessor_to_dir
 import xgboost as xgb
 import tempfile
 
@@ -39,8 +40,7 @@ def test_init():
         # following save to disk logic. GBDT models are small
         # enough that IO should not be an issue.
         model.save_model(os.path.join(tmpdir, MODEL_KEY))
-        checkpoint = Checkpoint.from_dict({PREPROCESSOR_KEY: preprocessor})
-        checkpoint.to_directory(path=tmpdir)
+        save_preprocessor_to_dir(preprocessor, tmpdir)
 
         checkpoint = Checkpoint.from_directory(tmpdir)
         checkpoint_predictor = XGBoostPredictor.from_checkpoint(checkpoint)

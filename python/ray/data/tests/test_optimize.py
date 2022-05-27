@@ -81,6 +81,7 @@ class OnesSource(Datasource):
         return read_tasks
 
 
+@pytest.mark.skip(reason="Flaky, see https://github.com/ray-project/ray/issues/24757")
 @pytest.mark.parametrize("lazy_input", [True, False])
 def test_memory_release_pipeline(shutdown_only, lazy_input):
     context = DatasetContext.get_current()

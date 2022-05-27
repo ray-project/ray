@@ -1,3 +1,7 @@
+from typing import List
+
+from ray.actor import ActorHandle
+from ray.rllib.agents import Trainer
 from ray.rllib.agents.dqn.apex import ApexTrainer
 from ray.rllib.algorithms.ddpg.ddpg import DDPGConfig, DDPGTrainer
 from ray.rllib.evaluation.worker_set import WorkerSet
@@ -44,6 +48,22 @@ APEX_DDPG_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
         "target_network_update_freq": 500000,
         "min_sample_timesteps_per_reporting": 25000,
         "min_time_s_per_reporting": 30,
+        "training_intensity": 1,
+        # max number of inflight requests to each sampling worker
+        # see the AsyncRequestsManager class for more details
+        # Tuning these values is important when running experimens with large sample
+        # batches. If the sample batches are large in size, then there is the risk that
+        # the object store may fill up, causing the store to spill objects to disk.
+        # This can cause any asynchronous requests to become very slow, making your
+        # experiment run slowly. You can inspect the object store during your
+        # experiment via a call to ray memory on your headnode, and by using the ray
+        # dashboard. If you're seeing that the object store is filling up, turn down
+        # the number of remote requests in flight, or enable compression in your
+        # experiment of timesteps.
+        "max_requests_in_flight_per_sampler_worker": 2,
+        "max_requests_in_flight_per_replay_worker": float("inf"),
+        "timeout_s_sampler_manager": 0.0,
+        "timeout_s_replay_manager": 0.0,
     },
     _allow_unknown_configs=True,
 )
@@ -63,6 +83,19 @@ class ApexDDPGTrainer(DDPGTrainer, ApexTrainer):
     def training_iteration(self) -> ResultDict:
         """Use APEX-DQN's training iteration function."""
         return ApexTrainer.training_iteration(self)
+
+    @override(Trainer)
+    def on_worker_failures(
+        self, removed_workers: List[ActorHandle], new_workers: List[ActorHandle]
+    ):
+        """Handle the failures of remote sampling workers
+
+        Args:
+            removed_workers: removed worker ids.
+            new_workers: ids of newly created workers.
+        """
+        self._sampling_actor_manager.remove_workers(removed_workers)
+        self._sampling_actor_manager.add_workers(new_workers)
 
     @staticmethod
     @override(DDPGTrainer)

@@ -1,20 +1,27 @@
 import logging
+from typing import Dict, List, Type, Union
 
 import ray
-from ray.rllib.agents.ppo.ppo_tf_policy import (
-    vf_preds_fetches,
-    compute_and_clip_gradients,
-    setup_config,
-)
+from ray.rllib.agents.ppo.ppo_tf_policy import validate_config
 from ray.rllib.evaluation.postprocessing import (
-    compute_gae_for_sample_batch,
     Postprocessing,
+    compute_gae_for_sample_batch,
 )
+from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.models.utils import get_activation_fn
+from ray.rllib.policy.dynamic_tf_policy_v2 import DynamicTFPolicyV2
+from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.policy.tf_mixins import ValueNetworkMixin
+from ray.rllib.policy.tf_mixins import (
+    LocalOptimizer,
+    ModelGradients,
+    ValueNetworkMixin,
+    compute_gradients,
+)
 from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.typing import TensorType
 
 tf1, tf, tfv = try_import_tf()
 
@@ -326,72 +333,6 @@ class MAMLLoss(object):
         return placeholder_list
 
 
-def maml_loss(policy, model, dist_class, train_batch):
-    logits, state = model(train_batch)
-    policy.cur_lr = policy.config["lr"]
-
-    if policy.config["worker_index"]:
-        policy.loss_obj = WorkerLoss(
-            dist_class=dist_class,
-            actions=train_batch[SampleBatch.ACTIONS],
-            curr_logits=logits,
-            behaviour_logits=train_batch[SampleBatch.ACTION_DIST_INPUTS],
-            advantages=train_batch[Postprocessing.ADVANTAGES],
-            value_fn=model.value_function(),
-            value_targets=train_batch[Postprocessing.VALUE_TARGETS],
-            vf_preds=train_batch[SampleBatch.VF_PREDS],
-            cur_kl_coeff=0.0,
-            entropy_coeff=policy.config["entropy_coeff"],
-            clip_param=policy.config["clip_param"],
-            vf_clip_param=policy.config["vf_clip_param"],
-            vf_loss_coeff=policy.config["vf_loss_coeff"],
-            clip_loss=False,
-        )
-    else:
-        policy.var_list = tf1.get_collection(
-            tf1.GraphKeys.TRAINABLE_VARIABLES, tf1.get_variable_scope().name
-        )
-        policy.loss_obj = MAMLLoss(
-            model=model,
-            dist_class=dist_class,
-            value_targets=train_batch[Postprocessing.VALUE_TARGETS],
-            advantages=train_batch[Postprocessing.ADVANTAGES],
-            actions=train_batch[SampleBatch.ACTIONS],
-            behaviour_logits=train_batch[SampleBatch.ACTION_DIST_INPUTS],
-            vf_preds=train_batch[SampleBatch.VF_PREDS],
-            cur_kl_coeff=policy.kl_coeff,
-            policy_vars=policy.var_list,
-            obs=train_batch[SampleBatch.CUR_OBS],
-            num_tasks=policy.config["num_workers"],
-            split=train_batch["split"],
-            config=policy.config,
-            inner_adaptation_steps=policy.config["inner_adaptation_steps"],
-            entropy_coeff=policy.config["entropy_coeff"],
-            clip_param=policy.config["clip_param"],
-            vf_clip_param=policy.config["vf_clip_param"],
-            vf_loss_coeff=policy.config["vf_loss_coeff"],
-            use_gae=policy.config["use_gae"],
-        )
-
-    return policy.loss_obj.loss
-
-
-def maml_stats(policy, train_batch):
-    if policy.config["worker_index"]:
-        return {"worker_loss": policy.loss_obj.loss}
-    else:
-        return {
-            "cur_kl_coeff": tf.cast(policy.kl_coeff, tf.float64),
-            "cur_lr": tf.cast(policy.cur_lr, tf.float64),
-            "total_loss": policy.loss_obj.loss,
-            "policy_loss": policy.loss_obj.mean_policy_loss,
-            "vf_loss": policy.loss_obj.mean_vf_loss,
-            "kl": policy.loss_obj.mean_kl,
-            "inner_kl": policy.loss_obj.mean_inner_kl,
-            "entropy": policy.loss_obj.mean_entropy,
-        }
-
-
 class KLCoeffMixin:
     def __init__(self, config):
         self.kl_coeff_val = [config["kl_coeff"]] * config["inner_adaptation_steps"]
@@ -415,41 +356,165 @@ class KLCoeffMixin:
         return self.kl_coeff_val
 
 
-def maml_optimizer_fn(policy, config):
+# We need this builder function because we want to share the same
+# custom logics between TF1 dynamic and TF2 eager policies.
+def get_maml_tf_policy(base: type) -> type:
+    """Construct a MAMLTFPolicy inheriting either dynamic or eager base policies.
+
+    Args:
+        base: Base class for this policy. DynamicTFPolicyV2 or EagerTFPolicyV2.
+
+    Returns:
+        A TF Policy to be used with MAMLTrainer.
     """
-    Workers use simple SGD for inner adaptation
-    Meta-Policy uses Adam optimizer for meta-update
-    """
-    if not config["worker_index"]:
-        return tf1.train.AdamOptimizer(learning_rate=config["lr"])
-    return tf1.train.GradientDescentOptimizer(learning_rate=config["inner_lr"])
+
+    class MAMLTFPolicy(KLCoeffMixin, ValueNetworkMixin, base):
+        def __init__(
+            self,
+            obs_space,
+            action_space,
+            config,
+            existing_model=None,
+            existing_inputs=None,
+        ):
+            # First thing first, enable eager execution if necessary.
+            base.enable_eager_execution_if_necessary()
+
+            config = dict(ray.rllib.algorithms.maml.maml.DEFAULT_CONFIG, **config)
+            validate_config(config)
+
+            # Initialize base class.
+            base.__init__(
+                self,
+                obs_space,
+                action_space,
+                config,
+                existing_inputs=existing_inputs,
+                existing_model=existing_model,
+            )
+
+            KLCoeffMixin.__init__(self, config)
+            ValueNetworkMixin.__init__(self, config)
+
+            # Create the `split` placeholder before initialize loss.
+            if self.framework == "tf":
+                self._loss_input_dict["split"] = tf1.placeholder(
+                    tf.int32,
+                    name="Meta-Update-Splitting",
+                    shape=(
+                        self.config["inner_adaptation_steps"] + 1,
+                        self.config["num_workers"],
+                    ),
+                )
+
+            # Note: this is a bit ugly, but loss and optimizer initialization must
+            # happen after all the MixIns are initialized.
+            self.maybe_initialize_optimizer_and_loss()
+
+        @override(base)
+        def loss(
+            self,
+            model: Union[ModelV2, "tf.keras.Model"],
+            dist_class: Type[TFActionDistribution],
+            train_batch: SampleBatch,
+        ) -> Union[TensorType, List[TensorType]]:
+            logits, state = model(train_batch)
+            self.cur_lr = self.config["lr"]
+
+            if self.config["worker_index"]:
+                self.loss_obj = WorkerLoss(
+                    dist_class=dist_class,
+                    actions=train_batch[SampleBatch.ACTIONS],
+                    curr_logits=logits,
+                    behaviour_logits=train_batch[SampleBatch.ACTION_DIST_INPUTS],
+                    advantages=train_batch[Postprocessing.ADVANTAGES],
+                    value_fn=model.value_function(),
+                    value_targets=train_batch[Postprocessing.VALUE_TARGETS],
+                    vf_preds=train_batch[SampleBatch.VF_PREDS],
+                    cur_kl_coeff=0.0,
+                    entropy_coeff=self.config["entropy_coeff"],
+                    clip_param=self.config["clip_param"],
+                    vf_clip_param=self.config["vf_clip_param"],
+                    vf_loss_coeff=self.config["vf_loss_coeff"],
+                    clip_loss=False,
+                )
+            else:
+                self.var_list = tf1.get_collection(
+                    tf1.GraphKeys.TRAINABLE_VARIABLES, tf1.get_variable_scope().name
+                )
+                self.loss_obj = MAMLLoss(
+                    model=model,
+                    dist_class=dist_class,
+                    value_targets=train_batch[Postprocessing.VALUE_TARGETS],
+                    advantages=train_batch[Postprocessing.ADVANTAGES],
+                    actions=train_batch[SampleBatch.ACTIONS],
+                    behaviour_logits=train_batch[SampleBatch.ACTION_DIST_INPUTS],
+                    vf_preds=train_batch[SampleBatch.VF_PREDS],
+                    cur_kl_coeff=self.kl_coeff,
+                    policy_vars=self.var_list,
+                    obs=train_batch[SampleBatch.CUR_OBS],
+                    num_tasks=self.config["num_workers"],
+                    split=train_batch["split"],
+                    config=self.config,
+                    inner_adaptation_steps=self.config["inner_adaptation_steps"],
+                    entropy_coeff=self.config["entropy_coeff"],
+                    clip_param=self.config["clip_param"],
+                    vf_clip_param=self.config["vf_clip_param"],
+                    vf_loss_coeff=self.config["vf_loss_coeff"],
+                    use_gae=self.config["use_gae"],
+                )
+
+            return self.loss_obj.loss
+
+        @override(base)
+        def optimizer(
+            self,
+        ) -> Union[
+            "tf.keras.optimizers.Optimizer", List["tf.keras.optimizers.Optimizer"]
+        ]:
+            """
+            Workers use simple SGD for inner adaptation
+            Meta-Policy uses Adam optimizer for meta-update
+            """
+            if not self.config["worker_index"]:
+                return tf1.train.AdamOptimizer(learning_rate=self.config["lr"])
+            return tf1.train.GradientDescentOptimizer(
+                learning_rate=self.config["inner_lr"]
+            )
+
+        @override(base)
+        def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
+            if self.config["worker_index"]:
+                return {"worker_loss": self.loss_obj.loss}
+            else:
+                return {
+                    "cur_kl_coeff": tf.cast(self.kl_coeff, tf.float64),
+                    "cur_lr": tf.cast(self.cur_lr, tf.float64),
+                    "total_loss": self.loss_obj.loss,
+                    "policy_loss": self.loss_obj.mean_policy_loss,
+                    "vf_loss": self.loss_obj.mean_vf_loss,
+                    "kl": self.loss_obj.mean_kl,
+                    "inner_kl": self.loss_obj.mean_inner_kl,
+                    "entropy": self.loss_obj.mean_entropy,
+                }
+
+        @override(base)
+        def postprocess_trajectory(
+            self, sample_batch, other_agent_batches=None, episode=None
+        ):
+            sample_batch = super().postprocess_trajectory(sample_batch)
+            return compute_gae_for_sample_batch(
+                self, sample_batch, other_agent_batches, episode
+            )
+
+        @override(base)
+        def compute_gradients_fn(
+            self, optimizer: LocalOptimizer, loss: TensorType
+        ) -> ModelGradients:
+            return compute_gradients(self, optimizer, loss)
+
+    return MAMLTFPolicy
 
 
-def setup_mixins(policy, obs_space, action_space, config):
-    ValueNetworkMixin.__init__(policy, config)
-    KLCoeffMixin.__init__(policy, config)
-
-    # Create the `split` placeholder.
-    policy._loss_input_dict["split"] = tf1.placeholder(
-        tf.int32,
-        name="Meta-Update-Splitting",
-        shape=(
-            policy.config["inner_adaptation_steps"] + 1,
-            policy.config["num_workers"],
-        ),
-    )
-
-
-MAMLTFPolicy = build_tf_policy(
-    name="MAMLTFPolicy",
-    get_default_config=lambda: ray.rllib.algorithms.maml.maml.DEFAULT_CONFIG,
-    loss_fn=maml_loss,
-    stats_fn=maml_stats,
-    optimizer_fn=maml_optimizer_fn,
-    extra_action_out_fn=vf_preds_fetches,
-    postprocess_fn=compute_gae_for_sample_batch,
-    compute_gradients_fn=compute_and_clip_gradients,
-    before_init=setup_config,
-    before_loss_init=setup_mixins,
-    mixins=[KLCoeffMixin],
-)
+MAMLStaticGraphTFPolicy = get_maml_tf_policy(DynamicTFPolicyV2)
+MAMLEagerTFPolicy = get_maml_tf_policy(EagerTFPolicyV2)

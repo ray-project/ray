@@ -59,6 +59,12 @@ def _internal_kv_exists(
 
 
 @client_mode_hook(auto_init=False)
+def _pin_runtime_env_uri(uri: str, *, expiration_s: int) -> None:
+    """Pin a runtime_env URI for expiration_s."""
+    return global_gcs_client.pin_runtime_env_uri(uri, expiration_s)
+
+
+@client_mode_hook(auto_init=False)
 def _internal_kv_put(
     key: Union[str, bytes],
     value: Union[str, bytes],

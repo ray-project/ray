@@ -3685,33 +3685,47 @@ def test_random_shuffle_check_random(shutdown_only):
             prev = x
 
 
-def test_random_shuffle_spread(ray_start_cluster):
-    cluster = ray_start_cluster
-    cluster.add_node(
-        resources={"bar:1": 100},
-        num_cpus=10,
-        _system_config={"max_direct_call_object_size": 0},
-    )
-    cluster.add_node(resources={"bar:2": 100}, num_cpus=10)
-    cluster.add_node(resources={"bar:3": 100}, num_cpus=0)
+@pytest.mark.parametrize("use_push_based_shuffle", [False, True])
+def test_random_shuffle_spread(ray_start_cluster, use_push_based_shuffle):
+    ctx = ray.data.context.DatasetContext.get_current()
+    try:
+        original = ctx.use_push_based_shuffle
+        ctx.use_push_based_shuffle = use_push_based_shuffle
 
-    ray.init(cluster.address)
+        cluster = ray_start_cluster
+        cluster.add_node(
+            resources={"bar:1": 100},
+            num_cpus=10,
+            _system_config={"max_direct_call_object_size": 0},
+        )
+        cluster.add_node(resources={"bar:2": 100}, num_cpus=10)
+        cluster.add_node(resources={"bar:3": 100}, num_cpus=0)
 
-    @ray.remote
-    def get_node_id():
-        return ray.get_runtime_context().node_id.hex()
+        ray.init(cluster.address)
 
-    node1_id = ray.get(get_node_id.options(resources={"bar:1": 1}).remote())
-    node2_id = ray.get(get_node_id.options(resources={"bar:2": 1}).remote())
+        @ray.remote
+        def get_node_id():
+            return ray.get_runtime_context().node_id.hex()
 
-    ds = ray.data.range(100, parallelism=2).random_shuffle()
-    blocks = ds.get_internal_block_refs()
-    ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
-    location_data = ray.experimental.get_object_locations(blocks)
-    locations = []
-    for block in blocks:
-        locations.extend(location_data[block]["node_ids"])
-    assert set(locations) == {node1_id, node2_id}
+        node1_id = ray.get(get_node_id.options(resources={"bar:1": 1}).remote())
+        node2_id = ray.get(get_node_id.options(resources={"bar:2": 1}).remote())
+
+        ds = ray.data.range(100, parallelism=2).random_shuffle()
+        blocks = ds.get_internal_block_refs()
+        ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
+        location_data = ray.experimental.get_object_locations(blocks)
+        locations = []
+        for block in blocks:
+            locations.extend(location_data[block]["node_ids"])
+        assert "2 nodes used" in ds.stats()
+
+        if not use_push_based_shuffle:
+            # We don't check this for push-based shuffle since it will try to
+            # colocate reduce tasks to improve locality.
+            assert set(locations) == {node1_id, node2_id}
+
+    finally:
+        ctx.use_push_based_shuffle = original
 
 
 def test_parquet_read_spread(ray_start_cluster, tmp_path):
