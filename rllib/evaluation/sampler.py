@@ -60,8 +60,8 @@ if TYPE_CHECKING:
 tf1, tf, _ = try_import_tf()
 logger = logging.getLogger(__name__)
 
-PolicyEvalData = namedtuple(
-    "PolicyEvalData",
+_PolicyEvalData = namedtuple(
+    "_PolicyEvalData",
     ["env_id", "agent_id", "obs", "info", "rnn_state", "prev_action", "prev_reward"],
 )
 
@@ -69,7 +69,7 @@ PolicyEvalData = namedtuple(
 StateBatch = List[List[Any]]
 
 
-class NewEpisodeDefaultDict(defaultdict):
+class _NewEpisodeDefaultDict(defaultdict):
     def __missing__(self, env_id):
         if self.default_factory is None:
             raise KeyError(env_id)
@@ -650,7 +650,7 @@ def _env_runner(
         )
         return episode
 
-    active_episodes: Dict[EnvID, Episode] = NewEpisodeDefaultDict(new_episode)
+    active_episodes: Dict[EnvID, Episode] = _NewEpisodeDefaultDict(new_episode)
 
     while True:
         perf_stats.iters += 1
@@ -666,7 +666,7 @@ def _env_runner(
 
         # Process observations and prepare for policy evaluation.
         t1 = time.time()
-        # types: Set[EnvID], Dict[PolicyID, List[PolicyEvalData]],
+        # types: Set[EnvID], Dict[PolicyID, List[_PolicyEvalData]],
         #       List[Union[RolloutMetrics, SampleBatchType]]
         active_envs, to_eval, outputs = _process_observations(
             worker=worker,
@@ -771,7 +771,7 @@ def _process_observations(
     sample_collector: SampleCollector,
 ) -> Tuple[
     Set[EnvID],
-    Dict[PolicyID, List[PolicyEvalData]],
+    Dict[PolicyID, List[_PolicyEvalData]],
     List[Union[RolloutMetrics, SampleBatchType]],
 ]:
     """Record new data from the environment and prepare for policy evaluation.
@@ -806,13 +806,13 @@ def _process_observations(
 
     Returns:
         Tuple consisting of 1) active_envs: Set of non-terminated env ids.
-        2) to_eval: Map of policy_id to list of agent PolicyEvalData.
+        2) to_eval: Map of policy_id to list of agent _PolicyEvalData.
         3) outputs: List of metrics and samples to return from the sampler.
     """
 
     # Output objects.
     active_envs: Set[EnvID] = set()
-    to_eval: Dict[PolicyID, List[PolicyEvalData]] = defaultdict(list)
+    to_eval: Dict[PolicyID, List[_PolicyEvalData]] = defaultdict(list)
     outputs: List[Union[RolloutMetrics, SampleBatchType]] = []
 
     # For each (vectorized) sub-environment.
@@ -959,7 +959,7 @@ def _process_observations(
                 )
 
             if not agent_done:
-                item = PolicyEvalData(
+                item = _PolicyEvalData(
                     env_id,
                     agent_id,
                     filtered_obs,
@@ -1086,7 +1086,7 @@ def _process_observations(
                         filtered_obs,
                     )
 
-                    item = PolicyEvalData(
+                    item = _PolicyEvalData(
                         env_id,
                         agent_id,
                         filtered_obs,
@@ -1110,7 +1110,7 @@ def _process_observations(
 
 def _do_policy_eval(
     *,
-    to_eval: Dict[PolicyID, List[PolicyEvalData]],
+    to_eval: Dict[PolicyID, List[_PolicyEvalData]],
     policies: PolicyMap,
     sample_collector: SampleCollector,
     active_episodes: Dict[EnvID, Episode],
@@ -1118,7 +1118,7 @@ def _do_policy_eval(
     """Call compute_actions on collected episode/model data to get next action.
 
     Args:
-        to_eval: Mapping of policy IDs to lists of PolicyEvalData objects
+        to_eval: Mapping of policy IDs to lists of _PolicyEvalData objects
             (items in these lists will be the batch's items for the model
             forward pass).
         policies: Mapping from policy ID to Policy obj.
@@ -1167,7 +1167,7 @@ def _do_policy_eval(
 
 def _process_policy_eval_results(
     *,
-    to_eval: Dict[PolicyID, List[PolicyEvalData]],
+    to_eval: Dict[PolicyID, List[_PolicyEvalData]],
     eval_results: Dict[PolicyID, Tuple[TensorStructType, StateBatch, dict]],
     active_episodes: Dict[EnvID, Episode],
     active_envs: Set[int],
@@ -1182,7 +1182,7 @@ def _process_policy_eval_results(
     returns replies to send back to agents in the env.
 
     Args:
-        to_eval: Mapping of policy IDs to lists of PolicyEvalData objects.
+        to_eval: Mapping of policy IDs to lists of _PolicyEvalData objects.
         eval_results: Mapping of policy IDs to list of
             actions, rnn-out states, extra-action-fetches dicts.
         active_episodes: Mapping from episode ID to currently ongoing
@@ -1206,7 +1206,7 @@ def _process_policy_eval_results(
     for env_id in active_envs:
         actions_to_send[env_id] = {}  # at minimum send empty dict
 
-    # types: PolicyID, List[PolicyEvalData]
+    # types: PolicyID, List[_PolicyEvalData]
     for policy_id, eval_data in to_eval.items():
         actions: TensorStructType = eval_results[policy_id][0]
         actions = convert_to_numpy(actions)

@@ -48,7 +48,7 @@ Then, we can tell DQN to train using these previously generated experiences with
         --env=CartPole-v0 \
         --config='{
             "input": "/tmp/cartpole-out",
-            "input_evaluation": [],
+            "off_policy_estimation_methods": [],
             "explore": false}'
 
 .. _is:
@@ -62,7 +62,7 @@ Then, we can tell DQN to train using these previously generated experiences with
         --env=CartPole-v0 \
         --config='{
             "input": "/tmp/cartpole-out",
-            "input_evaluation": ["is", "wis"],
+            "off_policy_estimation_methods": ["is", "wis"],
             "exploration_config": {
                 "type": "SoftQ",
                 "temperature": 1.0,
@@ -90,7 +90,7 @@ This example plot shows the Q-value metric in addition to importance sampling (I
             print(estimator.estimate(episode))
 
 
-**Simulation-based estimation:** If true simulation is also possible (i.e., your env supports ``step()``), you can also set ``"input_evaluation": ["simulation"]`` to tell RLlib to run background simulations to estimate current policy performance. The output of these simulations will not be used for learning. Note that in all cases you still need to specify an environment object to define the action and observation spaces. However, you don't need to implement functions like reset() and step().
+**Simulation-based estimation:** If true simulation is also possible (i.e., your env supports ``step()``), you can also set ``"off_policy_estimation_methods": ["simulation"]`` to tell RLlib to run background simulations to estimate current policy performance. The output of these simulations will not be used for learning. Note that in all cases you still need to specify an environment object to define the action and observation spaces. However, you don't need to implement functions like reset() and step().
 
 Example: Converting external experiences to batch format
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -270,7 +270,7 @@ You can configure experience input for an agent using the following options:
     #  - Any subclass of OffPolicyEstimator, e.g.
     #    ray.rllib.offline.estimators.is::ImportanceSampling or your own custom
     #    subclass.
-    "input_evaluation": [
+    "off_policy_estimation_methods": [
         ImportanceSampling,
         WeightedImportanceSampling,
     ],

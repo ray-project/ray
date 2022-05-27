@@ -131,7 +131,7 @@ class Preprocessor(abc.ABC):
         """Transform a single batch of data.
 
         Args:
-            df (DataBatchType): Input data batch.
+            df: Input data batch.
 
         Returns:
             DataBatchType: The transformed data batch.

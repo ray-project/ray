@@ -135,6 +135,7 @@ class WorkflowManagementActor:
         self._step_output_cache: Dict[Tuple[str, str], LatestWorkflowOutput] = {}
         self._actor_initialized: Dict[str, ray.ObjectRef] = {}
         self._step_status: Dict[str, Dict[str, common.WorkflowStatus]] = {}
+        self._workflow_status: Dict[str, common.WorkflowStatus] = {}
 
     def get_cached_step_output(
         self, workflow_id: str, step_id: "StepID"
@@ -194,9 +195,7 @@ class WorkflowManagementActor:
         )
         self._step_output_cache[(workflow_id, step_id)] = latest_output
 
-        wf_store.save_workflow_meta(
-            common.WorkflowMetaData(common.WorkflowStatus.RUNNING)
-        )
+        self._update_workflow_status(workflow_id, common.WorkflowStatus.RUNNING)
 
         if workflow_id not in self._step_status:
             self._step_status[workflow_id] = {}
@@ -210,6 +209,11 @@ class WorkflowManagementActor:
             return step_name
         else:
             return f"{step_name}_{idx}"
+
+    def _update_workflow_status(self, workflow_id: str, status: common.WorkflowStatus):
+        wf_store = workflow_storage.WorkflowStorage(workflow_id)
+        wf_store.update_workflow_status(status)
+        self._workflow_status[workflow_id] = status
 
     def update_step_status(
         self,
@@ -233,30 +237,21 @@ class WorkflowManagementActor:
         if status != common.WorkflowStatus.FAILED and remaining != 0:
             return
 
-        wf_store = workflow_storage.WorkflowStorage(workflow_id)
-
         if status == common.WorkflowStatus.FAILED:
             if workflow_id in self._workflow_outputs:
                 cancel_job(self._workflow_outputs.pop(workflow_id).output)
-            wf_store.save_workflow_meta(
-                common.WorkflowMetaData(common.WorkflowStatus.FAILED)
-            )
+            self._update_workflow_status(workflow_id, common.WorkflowStatus.FAILED)
             self._step_status.pop(workflow_id)
         else:
-            wf_store.save_workflow_meta(
-                common.WorkflowMetaData(common.WorkflowStatus.SUCCESSFUL)
-            )
+            self._update_workflow_status(workflow_id, common.WorkflowStatus.SUCCESSFUL)
             self._step_status.pop(workflow_id)
-        workflow_postrun_metadata = {"end_time": time.time()}
-        wf_store.save_workflow_postrun_metadata(workflow_postrun_metadata)
+        wf_store = workflow_storage.WorkflowStorage(workflow_id)
+        wf_store.save_workflow_postrun_metadata({"end_time": time.time()})
 
     def cancel_workflow(self, workflow_id: str) -> None:
         self._step_status.pop(workflow_id)
         cancel_job(self._workflow_outputs.pop(workflow_id).output)
-        wf_store = workflow_storage.WorkflowStorage(workflow_id)
-        wf_store.save_workflow_meta(
-            common.WorkflowMetaData(common.WorkflowStatus.CANCELED)
-        )
+        self._update_workflow_status(workflow_id, common.WorkflowStatus.CANCELED)
 
     def is_workflow_running(self, workflow_id: str) -> bool:
         return (
@@ -318,15 +313,15 @@ class WorkflowManagementActor:
         if workflow_id in self._workflow_outputs and name is None:
             return self._workflow_outputs[workflow_id].output
         wf_store = workflow_storage.WorkflowStorage(workflow_id)
-        meta = wf_store.load_workflow_meta()
-        if meta is None:
+        status = wf_store.load_workflow_status()
+        if status == common.WorkflowStatus.NONE:
             raise ValueError(f"No such workflow {workflow_id}")
-        if meta == common.WorkflowStatus.CANCELED:
+        if status == common.WorkflowStatus.CANCELED:
             raise ValueError(f"Workflow {workflow_id} is canceled")
         if name is None:
             # For resumable workflow, the workflow result is not ready.
             # It has to be resumed first.
-            if meta == common.WorkflowStatus.RESUMABLE:
+            if status == common.WorkflowStatus.RESUMABLE:
                 raise ValueError(
                     f"Workflow {workflow_id} is in resumable status, "
                     "please resume it"
