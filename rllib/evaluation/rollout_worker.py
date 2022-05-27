@@ -1946,7 +1946,6 @@ def _determine_spaces_for_multi_agent_dict(
         if env_act_space is None:
             env_act_space = spaces.get("__env__", [None, None])[1]
 
-
     for pid, policy_spec in multi_agent_policies_dict.copy().items():
         if policy_spec.observation_space is None:
             if spaces is not None and pid in spaces:
@@ -1957,8 +1956,9 @@ def _determine_spaces_for_multi_agent_dict(
                 # policy IDs.
                 if isinstance(env, MultiAgentEnv) and env._spaces_in_preferred_format:
                     obs_space = None
-                    mapping_fn = policy_config.get("multiagent", {})\
-                        .get("policy_mapping_fn", None)
+                    mapping_fn = policy_config.get("multiagent", {}).get(
+                        "policy_mapping_fn", None
+                    )
                     if mapping_fn:
                         for aid in env.get_agent_ids():
                             # Match: Assign spaces for this agentID to the policy ID.
@@ -2003,8 +2003,9 @@ def _determine_spaces_for_multi_agent_dict(
                 # policy IDs.
                 if isinstance(env, MultiAgentEnv) and env._spaces_in_preferred_format:
                     act_space = None
-                    mapping_fn = policy_config.get("multiagent", {})\
-                        .get("policy_mapping_fn", None)
+                    mapping_fn = policy_config.get("multiagent", {}).get(
+                        "policy_mapping_fn", None
+                    )
                     if mapping_fn:
                         for aid in env.get_agent_ids():
                             # Match: Assign spaces for this agentID to the policy ID.

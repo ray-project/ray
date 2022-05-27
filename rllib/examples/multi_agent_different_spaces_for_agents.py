@@ -30,6 +30,7 @@ class BasicMultiAgentMultiSpaces(MultiAgentEnv):
     is to show how one can use multi-agent envs, in which the different agents utilize
     different obs- and action spaces.
     """
+
     def __init__(self, config=None):
         self.agents = {"agent0", "agent1"}
         self._agent_ids = set(self.agents)
@@ -40,10 +41,14 @@ class BasicMultiAgentMultiSpaces(MultiAgentEnv):
         # mapping agent IDs to the individual agents' spaces.
         self._spaces_in_preferred_format = True
         self.observation_space = gym.spaces.Dict(
-            {"agent0": gym.spaces.Box(low=-1.0, high=1.0, shape=(10,)),
-             "agent1": gym.spaces.Box(low=-1.0, high=1.0, shape=(20,))})
+            {
+                "agent0": gym.spaces.Box(low=-1.0, high=1.0, shape=(10,)),
+                "agent1": gym.spaces.Box(low=-1.0, high=1.0, shape=(20,)),
+            }
+        )
         self.action_space = gym.spaces.Dict(
-            {"agent0": gym.spaces.Discrete(2), "agent1": gym.spaces.Discrete(3)})
+            {"agent0": gym.spaces.Discrete(2), "agent1": gym.spaces.Discrete(3)}
+        )
 
         super().__init__()
 
@@ -135,9 +140,9 @@ if __name__ == "__main__":
                     lambda aid, episode, worker, **kw: f"main{aid[-1]}"
                 ),
                 # Only train main0.
-                "policies_to_train": ["main0"]
+                "policies_to_train": ["main0"],
             },
             "framework": args.framework,
             "eager_tracing": args.eager_tracing,
-        }
+        },
     )
