@@ -25,7 +25,9 @@ from ray.rllib.utils.typing import AgentID, TensorType
 torch, nn = try_import_torch()
 
 
-class A3CTorchPolicy(ValueNetworkMixin, TorchPolicyV2):
+class A3CTorchPolicy(
+    ValueNetworkMixin, LearningRateSchedule, EntropyCoeffSchedule, TorchPolicyV2
+):
     """PyTorch Policy class used with A3CTrainer."""
 
     def __init__(self, observation_space, action_space, config):
