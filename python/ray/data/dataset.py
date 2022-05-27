@@ -2447,6 +2447,184 @@ class Dataset(Generic[T]):
 
         return TorchIterableDataset(make_generator)
 
+    def to_jax(
+        self,
+        *,
+        label_column: Optional[str] = None,
+        feature_columns: Optional[
+            Union[List[str], List[List[str]], Dict[str, List[str]]]
+        ] = None,
+        label_column_dtype: Optional["jax.dtype"] = None,
+        feature_column_dtypes: Optional[
+            Union["jax.dtype", List["jax.dtype"], Dict[str, "jax.dtype"]]
+        ] = None,
+        batch_size: int = 1,
+        prefetch_blocks: int = 0,
+        drop_last: bool = False,
+        unsqueeze_label_tensor: bool = True,
+        unsqueeze_feature_tensors: bool = True,
+    ) -> "jax.utils.data.IterableDataset":
+        """Return a jax IterableDataset over this dataset.
+
+        This is only supported for datasets convertible to Arrow records.
+
+        It is recommended to use the returned ``IterableDataset`` directly
+        instead of passing it into a jax ``DataLoader``.
+
+        Each element in IterableDataset will be a tuple consisting of 2
+        elements. The first item contains the feature tensor(s), and the
+        second item is the label tensor. Those can take on different
+        forms, depending on the specified arguments.
+
+        For the features tensor (N is the ``batch_size`` and n, m, k
+        are the number of features per tensor):
+
+        * If ``feature_columns`` is a ``List[str]``, the features will be
+          a tensor of shape (N, n), with columns corresponding to
+          ``feature_columns``
+
+        * If ``feature_columns`` is a ``List[List[str]]``, the features will be
+          a list of tensors of shape [(N, m),...,(N, k)], with columns of each
+          tensor corresponding to the elements of ``feature_columns``
+
+        * If ``feature_columns`` is a ``Dict[str, List[str]]``, the features
+          will be a dict of key-tensor pairs of shape
+          {key1: (N, m),..., keyN: (N, k)}, with columns of each
+          tensor corresponding to the value of ``feature_columns`` under the
+          key.
+
+        If ``unsqueeze_label_tensor=True`` (default), the label tensor will be
+        of shape (N, 1). Otherwise, it will be of shape (N,).
+        If ``label_column`` is specified as ``None``, then no column from the
+        ``Dataset`` will be treated as the label, and the output label tensor
+        will be ``None``.
+
+        Note that you probably want to call ``.split()`` on this dataset if
+        there are to be multiple jax workers consuming the data.
+
+        Time complexity: O(1)
+
+        Args:
+            label_column (Optional[str]): The name of the column used as the
+                label (second element of the output list). Can be None for
+                prediction, in which case the second element of returned
+                tuple will also be None.
+            feature_columns (Union[None, List[str], List[List[str]], \
+Dict[str, List[str]]]): The names of the columns
+                to use as the features. Can be a list of lists or
+                a dict of string-list pairs for multi-tensor output.
+                If None, then use all columns except the label column as
+                the features.
+            label_column_dtype (Optional[jax.dtype]): The jax dtype to
+                use for the label column. If None, then automatically infer
+                the dtype.
+            feature_column_dtypes (Union[None, jax.dtype, List[jax.dtype],\
+ Dict[str, jax.dtype]]): The dtypes to use for the feature
+                tensors. This should match the format of ``feature_columns``,
+                or be a single dtype, in which case it will be applied to
+                all tensors. If None, then automatically infer the dtype.
+            batch_size (int): How many samples per batch to yield at a time.
+                Defaults to 1.
+            prefetch_blocks (int): The number of blocks to prefetch ahead of
+                the current block during the scan.
+            drop_last (bool): Set to True to drop the last incomplete batch,
+                if the dataset size is not divisible by the batch size. If
+                False and the size of dataset is not divisible by the batch
+                size, then the last batch will be smaller. Defaults to False.
+            unsqueeze_label_tensor (bool): If set to True, the label tensor
+                will be unsqueezed (reshaped to (N, 1)). Otherwise, it will
+                be left as is, that is (N, ). In general, regression loss
+                functions expect an unsqueezed tensor, while classification
+                loss functions expect a squeezed one. Defaults to True.
+            unsqueeze_feature_tensors (bool): If set to True, the features tensors
+                will be unsqueezed (reshaped to (N, 1)) before being concatenated into
+                the final features tensor. Otherwise, they will be left as is, that is
+                (N, ). Defaults to True.
+
+        Returns:
+            A jax IterableDataset.
+        """
+        import jax
+
+        from ray.data.impl.jax_iterable_dataset import JaxIterableDataset
+        from ray.ml.utils.jax_utils import convert_pandas_to_jax_tensor
+
+        # If an empty collection is passed in, treat it the same as None
+        if not feature_columns:
+            feature_columns = None
+
+        if feature_column_dtypes and not isinstance(feature_column_dtypes, jax.dtype):
+            if isinstance(feature_columns, dict):
+                if not isinstance(feature_column_dtypes, dict):
+                    raise TypeError(
+                        "If `feature_columns` is a dict, "
+                        "`feature_column_dtypes` must be None, `jax.dtype`,"
+                        f" or dict, got {type(feature_column_dtypes)}."
+                    )
+                if set(feature_columns) != set(feature_column_dtypes):
+                    raise ValueError(
+                        "`feature_columns` and `feature_column_dtypes` "
+                        "must have the same keys."
+                    )
+                if any(not subcolumns for subcolumns in feature_columns.values()):
+                    raise ValueError("column list may not be empty")
+            elif isinstance(feature_columns[0], (list, tuple)):
+                if not isinstance(feature_column_dtypes, (list, tuple)):
+                    raise TypeError(
+                        "If `feature_columns` is a list of lists, "
+                        "`feature_column_dtypes` must be None, `jax.dtype`,"
+                        f" or a sequence, got {type(feature_column_dtypes)}."
+                    )
+                if len(feature_columns) != len(feature_column_dtypes):
+                    raise ValueError(
+                        "`feature_columns` and `feature_column_dtypes` "
+                        "must have the same length."
+                    )
+                if any(not subcolumns for subcolumns in feature_columns):
+                    raise ValueError("column list may not be empty")
+
+        def make_generator():
+            for batch in self.iter_batches(
+                batch_size=batch_size,
+                batch_format="pandas",
+                prefetch_blocks=prefetch_blocks,
+                drop_last=drop_last,
+            ):
+                if label_column:
+                    label_tensor = convert_pandas_to_jax_tensor(
+                        batch,
+                        [label_column],
+                        label_column_dtype,
+                        unsqueeze=unsqueeze_label_tensor,
+                    )
+                    batch.pop(label_column)
+                else:
+                    label_tensor = None
+
+                if isinstance(feature_columns, dict):
+                    features_tensor = {
+                        key: convert_pandas_to_jax_tensor(
+                            batch,
+                            feature_columns[key],
+                            feature_column_dtypes[key]
+                            if isinstance(feature_column_dtypes, dict)
+                            else feature_column_dtypes,
+                            unsqueeze=unsqueeze_feature_tensors,
+                        )
+                        for key in feature_columns
+                    }
+                else:
+                    features_tensor = convert_pandas_to_jax_tensor(
+                        batch,
+                        columns=feature_columns,
+                        column_dtypes=feature_column_dtypes,
+                        unsqueeze=unsqueeze_feature_tensors,
+                    )
+
+                yield (features_tensor, label_tensor)
+
+        return JaxIterableDataset(make_generator)
+
     def to_tf(
         self,
         *,
