@@ -30,7 +30,7 @@ def convert_pandas_to_tf_tensor(df: pd.DataFrame) -> tf.Tensor:
         >>>
         >>> df = pd.DataFrame({"X1": [1, 2, 3], "X2": [4, 5, 6]})
         >>> convert_pandas_to_tf_tensor(df[["X1"]]).shape
-        TensorShape([3, 1])
+        TensorShape([3])
         >>> convert_pandas_to_tf_tensor(df[["X1", "X2"]]).shape
         TensorShape([3, 2])
 
@@ -73,17 +73,14 @@ def convert_pandas_to_tf_tensor(df: pd.DataFrame) -> tf.Tensor:
 
         tensors.append(tensor)
 
-    if len(tensors) == 1 and tensors[0].ndim == 1:
-        return tf.expand_dims(tensors[0], axis=1)
-
     if len(tensors) > 1:
         tensors = [tf.expand_dims(tensor, axis=-1) for tensor in tensors]
 
-    for i, tensor in enumerate(tensors):
+    for column, tensor in zip(df.columns, tensors):
         if tensor.shape != tensors[0].shape:
             raise ValueError(
                 "Expected tensorized columns to have same shape, but shape of "
-                f"column '{df.columns[i]}' {tensor.shape} is different than "
-                f"the shape of column '{df.columns[0]}' {tensors[0].shape}.")
+                f"column '{column}' {tensor.shape} is different than shape of "
+                f"column '{df.columns[0]}' {tensors[0].shape}.")
 
     return tf.concat(tensors, axis=-1)

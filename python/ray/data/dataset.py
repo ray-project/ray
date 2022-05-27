@@ -2574,6 +2574,9 @@ class Dataset(Generic[T]):
                         f"but got a `{type(feature_columns).__name__}` instead."
                     )
 
+                if features.ndim == 1:
+                    features = tf.expand_dims(features, axis=1)
+
                 if label_column:
                     yield features, targets
                 else:
