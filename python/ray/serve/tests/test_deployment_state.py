@@ -211,8 +211,15 @@ def mock_deployment_state() -> Tuple[DeploymentState, Mock, Mock]:
         "ray.serve.long_poll.LongPollHost"
     ) as mock_long_poll:
 
+        async def save_checkpoint_func():
+            pass
+
         deployment_state = DeploymentState(
-            "name", "name", True, mock_long_poll, lambda: None
+            "name",
+            "name",
+            True,
+            mock_long_poll,
+            save_checkpoint_func,
         )
         yield deployment_state, timer
 
@@ -457,11 +464,12 @@ def check_counts(
             assert curr_count == count, msg
 
 
-def test_create_delete_single_replica(mock_deployment_state):
+@pytest.mark.asyncio
+async def test_create_delete_single_replica(mock_deployment_state):
     deployment_state, timer = mock_deployment_state
 
     b_info_1, b_version_1 = deployment_info()
-    updating = deployment_state.deploy(b_info_1)
+    updating = await deployment_state.deploy(b_info_1)
     assert updating
 
     # Single replica should be created.
@@ -480,7 +488,7 @@ def test_create_delete_single_replica(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
     # Removing the replica should transition it to stopping.
-    deployment_state.delete()
+    await deployment_state.delete()
     deployment_state.update()
     check_counts(deployment_state, total=1, by_state=[(ReplicaState.STOPPING, 1)])
     assert deployment_state._replicas.get()[0]._actor.stopped
@@ -496,18 +504,19 @@ def test_create_delete_single_replica(mock_deployment_state):
     assert replica._actor.cleaned_up
 
 
-def test_force_kill(mock_deployment_state):
+@pytest.mark.asyncio
+async def test_force_kill(mock_deployment_state):
     deployment_state, timer = mock_deployment_state
 
     grace_period_s = 10
     b_info_1, b_version_1 = deployment_info(graceful_shutdown_timeout_s=grace_period_s)
 
     # Create and delete the deployment.
-    deployment_state.deploy(b_info_1)
+    await deployment_state.deploy(b_info_1)
     deployment_state.update()
     deployment_state._replicas.get()[0]._actor.set_ready()
     deployment_state.update()
-    deployment_state.delete()
+    await deployment_state.delete()
     deployment_state.update()
 
     # Replica should remain in STOPPING until it finishes.
@@ -546,12 +555,13 @@ def test_force_kill(mock_deployment_state):
     assert replica._actor.cleaned_up
 
 
-def test_redeploy_same_version(mock_deployment_state):
+@pytest.mark.asyncio
+async def test_redeploy_same_version(mock_deployment_state):
     # Redeploying with the same version and code should do nothing.
     deployment_state, timer = mock_deployment_state
 
     b_info_1, b_version_1 = deployment_info(version="1")
-    updating = deployment_state.deploy(b_info_1)
+    updating = await deployment_state.deploy(b_info_1)
     assert updating
 
     deployment_state.update()
@@ -564,7 +574,7 @@ def test_redeploy_same_version(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
 
     # Test redeploying while the initial deployment is still pending.
-    updating = deployment_state.deploy(b_info_1)
+    updating = await deployment_state.deploy(b_info_1)
     assert not updating
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
 
@@ -588,7 +598,7 @@ def test_redeploy_same_version(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
     # Test redeploying after the initial deployment has finished.
-    updating = deployment_state.deploy(b_info_1)
+    updating = await deployment_state.deploy(b_info_1)
     assert not updating
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
     check_counts(
@@ -600,13 +610,14 @@ def test_redeploy_same_version(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
-def test_redeploy_no_version(mock_deployment_state):
+@pytest.mark.asyncio
+async def test_redeploy_no_version(mock_deployment_state):
     # Redeploying with no version specified (`None`) should always redeploy
     # the replicas.
     deployment_state, timer = mock_deployment_state
 
     b_info_1, b_version_1 = deployment_info(version=None)
-    updating = deployment_state.deploy(b_info_1)
+    updating = await deployment_state.deploy(b_info_1)
     assert updating
 
     deployment_state.update()
@@ -614,7 +625,7 @@ def test_redeploy_no_version(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
 
     # Test redeploying while the initial deployment is still pending.
-    updating = deployment_state.deploy(b_info_1)
+    updating = await deployment_state.deploy(b_info_1)
     assert updating
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
 
@@ -646,7 +657,7 @@ def test_redeploy_no_version(mock_deployment_state):
 
     # Now deploy a third version after the transition has finished.
     b_info_3, b_version_3 = deployment_info(version="3")
-    updating = deployment_state.deploy(b_info_3)
+    updating = await deployment_state.deploy(b_info_3)
     assert updating
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
 
@@ -673,12 +684,13 @@ def test_redeploy_no_version(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
-def test_redeploy_new_version(mock_deployment_state):
+@pytest.mark.asyncio
+async def test_redeploy_new_version(mock_deployment_state):
     # Redeploying with a new version should start a new replica.
     deployment_state, timer = mock_deployment_state
 
     b_info_1, b_version_1 = deployment_info(version="1")
-    updating = deployment_state.deploy(b_info_1)
+    updating = await deployment_state.deploy(b_info_1)
     assert updating
 
     deployment_state.update()
@@ -692,7 +704,7 @@ def test_redeploy_new_version(mock_deployment_state):
 
     # Test redeploying while the initial deployment is still pending.
     b_info_2, b_version_2 = deployment_info(version="2")
-    updating = deployment_state.deploy(b_info_2)
+    updating = await deployment_state.deploy(b_info_2)
     assert updating
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
 
@@ -738,7 +750,7 @@ def test_redeploy_new_version(mock_deployment_state):
 
     # Now deploy a third version after the transition has finished.
     b_info_3, b_version_3 = deployment_info(version="3")
-    updating = deployment_state.deploy(b_info_3)
+    updating = await deployment_state.deploy(b_info_3)
     assert updating
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
 
@@ -779,13 +791,14 @@ def test_redeploy_new_version(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
-def test_deploy_new_config_same_version(mock_deployment_state):
+@pytest.mark.asyncio
+async def test_deploy_new_config_same_version(mock_deployment_state):
     # Deploying a new config with the same version should not deploy a new
     # replica.
     deployment_state, timer = mock_deployment_state
 
     b_info_1, b_version_1 = deployment_info(version="1")
-    updated = deployment_state.deploy(b_info_1)
+    updated = await deployment_state.deploy(b_info_1)
     assert updated
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
 
@@ -803,7 +816,7 @@ def test_deploy_new_config_same_version(mock_deployment_state):
 
     # Update to a new config without changing the version.
     b_info_2, b_version_2 = deployment_info(version="1", user_config={"hello": "world"})
-    updated = deployment_state.deploy(b_info_2)
+    updated = await deployment_state.deploy(b_info_2)
     assert updated
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
     check_counts(
@@ -836,12 +849,13 @@ def test_deploy_new_config_same_version(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
-def test_deploy_new_config_new_version(mock_deployment_state):
+@pytest.mark.asyncio
+async def test_deploy_new_config_new_version(mock_deployment_state):
     # Deploying a new config with a new version should deploy a new replica.
     deployment_state, timer = mock_deployment_state
 
     b_info_1, b_version_1 = deployment_info(version="1")
-    updating = deployment_state.deploy(b_info_1)
+    updating = await deployment_state.deploy(b_info_1)
     assert updating
 
     # Create the replica initially.
@@ -858,7 +872,7 @@ def test_deploy_new_config_new_version(mock_deployment_state):
 
     # Update to a new config and a new version.
     b_info_2, b_version_2 = deployment_info(version="2", user_config={"hello": "world"})
-    updating = deployment_state.deploy(b_info_2)
+    updating = await deployment_state.deploy(b_info_2)
     assert updating
 
     # New version shouldn't start until old version is stopped.
@@ -898,12 +912,13 @@ def test_deploy_new_config_new_version(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
-def test_initial_deploy_no_throttling(mock_deployment_state):
+@pytest.mark.asyncio
+async def test_initial_deploy_no_throttling(mock_deployment_state):
     # All replicas should be started at once for a new deployment.
     deployment_state, timer = mock_deployment_state
 
     b_info_1, b_version_1 = deployment_info(num_replicas=10, version="1")
-    updating = deployment_state.deploy(b_info_1)
+    updating = await deployment_state.deploy(b_info_1)
     assert updating
 
     deployment_state.update()
@@ -919,7 +934,8 @@ def test_initial_deploy_no_throttling(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
-def test_new_version_deploy_throttling(mock_deployment_state):
+@pytest.mark.asyncio
+async def test_new_version_deploy_throttling(mock_deployment_state):
     # All replicas should be started at once for a new deployment.
     # When the version is updated, it should be throttled. The throttling
     # should apply to both code version and user config updates.
@@ -928,7 +944,7 @@ def test_new_version_deploy_throttling(mock_deployment_state):
     b_info_1, b_version_1 = deployment_info(
         num_replicas=10, version="1", user_config="1"
     )
-    updating = deployment_state.deploy(b_info_1)
+    updating = await deployment_state.deploy(b_info_1)
     assert updating
 
     deployment_state.update()
@@ -947,7 +963,7 @@ def test_new_version_deploy_throttling(mock_deployment_state):
     b_info_2, b_version_2 = deployment_info(
         num_replicas=10, version="2", user_config="2"
     )
-    updating = deployment_state.deploy(b_info_2)
+    updating = await deployment_state.deploy(b_info_2)
     assert updating
     deployment_state.update()
     check_counts(
@@ -1211,7 +1227,8 @@ def test_new_version_deploy_throttling(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
-def test_reconfigure_throttling(mock_deployment_state):
+@pytest.mark.asyncio
+async def test_reconfigure_throttling(mock_deployment_state):
     # All replicas should be started at once for a new deployment.
     # When the version is updated, it should be throttled.
     deployment_state, timer = mock_deployment_state
@@ -1219,7 +1236,7 @@ def test_reconfigure_throttling(mock_deployment_state):
     b_info_1, b_version_1 = deployment_info(
         num_replicas=2, version="1", user_config="1"
     )
-    updating = deployment_state.deploy(b_info_1)
+    updating = await deployment_state.deploy(b_info_1)
     assert updating
 
     deployment_state.update()
@@ -1238,7 +1255,7 @@ def test_reconfigure_throttling(mock_deployment_state):
     b_info_2, b_version_2 = deployment_info(
         num_replicas=2, version="1", user_config="2"
     )
-    updating = deployment_state.deploy(b_info_2)
+    updating = await deployment_state.deploy(b_info_2)
     assert updating
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
 
@@ -1299,14 +1316,15 @@ def test_reconfigure_throttling(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
-def test_new_version_and_scale_down(mock_deployment_state):
+@pytest.mark.asyncio
+async def test_new_version_and_scale_down(mock_deployment_state):
     # Test the case when we reduce the number of replicas and change the
     # version at the same time. First the number of replicas should be
     # turned down, then the rolling update should happen.
     deployment_state, timer = mock_deployment_state
 
     b_info_1, b_version_1 = deployment_info(num_replicas=10, version="1")
-    updating = deployment_state.deploy(b_info_1)
+    updating = await deployment_state.deploy(b_info_1)
     assert updating
 
     deployment_state.update()
@@ -1324,7 +1342,7 @@ def test_new_version_and_scale_down(mock_deployment_state):
     # Now deploy a new version and scale down the number of replicas to 2.
     # First, 8 old replicas should be stopped to bring it down to the target.
     b_info_2, b_version_2 = deployment_info(num_replicas=2, version="2")
-    updating = deployment_state.deploy(b_info_2)
+    updating = await deployment_state.deploy(b_info_2)
     assert updating
     deployment_state.update()
     check_counts(
@@ -1469,14 +1487,15 @@ def test_new_version_and_scale_down(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
-def test_new_version_and_scale_up(mock_deployment_state):
+@pytest.mark.asyncio
+async def test_new_version_and_scale_up(mock_deployment_state):
     # Test the case when we increase the number of replicas and change the
     # version at the same time. The new replicas should all immediately be
     # turned up. When they're up, rolling update should trigger.
     deployment_state, timer = mock_deployment_state
 
     b_info_1, b_version_1 = deployment_info(num_replicas=2, version="1")
-    updating = deployment_state.deploy(b_info_1)
+    updating = await deployment_state.deploy(b_info_1)
     assert updating
 
     deployment_state.update()
@@ -1494,7 +1513,7 @@ def test_new_version_and_scale_up(mock_deployment_state):
     # Now deploy a new version and scale up the number of replicas to 10.
     # 8 new replicas should be started.
     b_info_2, b_version_2 = deployment_info(num_replicas=10, version="2")
-    updating = deployment_state.deploy(b_info_2)
+    updating = await deployment_state.deploy(b_info_2)
     assert updating
     deployment_state.update()
     check_counts(
@@ -1583,11 +1602,12 @@ def test_new_version_and_scale_up(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
-def test_health_check(mock_deployment_state):
+@pytest.mark.asyncio
+async def test_health_check(mock_deployment_state):
     deployment_state, timer = mock_deployment_state
 
     b_info_1, b_version_1 = deployment_info(num_replicas=2, version="1")
-    updating = deployment_state.deploy(b_info_1)
+    updating = await deployment_state.deploy(b_info_1)
     assert updating
 
     deployment_state.update()
@@ -1642,11 +1662,12 @@ def test_health_check(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
-def test_update_while_unhealthy(mock_deployment_state):
+@pytest.mark.asyncio
+async def test_update_while_unhealthy(mock_deployment_state):
     deployment_state, timer = mock_deployment_state
 
     b_info_1, b_version_1 = deployment_info(num_replicas=2, version="1")
-    updating = deployment_state.deploy(b_info_1)
+    updating = await deployment_state.deploy(b_info_1)
     assert updating
 
     deployment_state.update()
@@ -1688,7 +1709,7 @@ def test_update_while_unhealthy(mock_deployment_state):
     # Now deploy a new version (e.g., a rollback). This should update the status
     # to UPDATING and then it should eventually become healthy.
     b_info_2, b_version_2 = deployment_info(num_replicas=2, version="2")
-    updating = deployment_state.deploy(b_info_2)
+    updating = await deployment_state.deploy(b_info_2)
     assert updating
 
     deployment_state.update()
@@ -1779,7 +1800,8 @@ def _constructor_failure_loop_two_replica(deployment_state, num_loops):
         check_counts(deployment_state, total=0)
 
 
-def test_deploy_with_consistent_constructor_failure(mock_deployment_state):
+@pytest.mark.asyncio
+async def test_deploy_with_consistent_constructor_failure(mock_deployment_state):
     """
     Test deploy() multiple replicas with consistent constructor failure.
 
@@ -1788,7 +1810,7 @@ def test_deploy_with_consistent_constructor_failure(mock_deployment_state):
     deployment_state, timer = mock_deployment_state
 
     b_info_1, b_version_1 = deployment_info(num_replicas=2)
-    updating = deployment_state.deploy(b_info_1)
+    updating = await deployment_state.deploy(b_info_1)
     assert updating
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
     _constructor_failure_loop_two_replica(deployment_state, 3)
@@ -1799,7 +1821,8 @@ def test_deploy_with_consistent_constructor_failure(mock_deployment_state):
     assert deployment_state.curr_status_info.message != ""
 
 
-def test_deploy_with_partial_constructor_failure(mock_deployment_state):
+@pytest.mark.asyncio
+async def test_deploy_with_partial_constructor_failure(mock_deployment_state):
     """
     Test deploy() multiple replicas with constructor failure exceedining
     pre-set limit but achieved partial success with at least 1 running replica.
@@ -1816,7 +1839,7 @@ def test_deploy_with_partial_constructor_failure(mock_deployment_state):
     deployment_state, timer = mock_deployment_state
 
     b_info_1, b_version_1 = deployment_info(num_replicas=2)
-    updating = deployment_state.deploy(b_info_1)
+    updating = await deployment_state.deploy(b_info_1)
     assert updating
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
 
@@ -1890,7 +1913,8 @@ def test_deploy_with_partial_constructor_failure(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
-def test_deploy_with_transient_constructor_failure(mock_deployment_state):
+@pytest.mark.asyncio
+async def test_deploy_with_transient_constructor_failure(mock_deployment_state):
     """
     Test deploy() multiple replicas with transient constructor failure.
     Ensures:
@@ -1905,7 +1929,7 @@ def test_deploy_with_transient_constructor_failure(mock_deployment_state):
     deployment_state, timer = mock_deployment_state
 
     b_info_1, b_version_1 = deployment_info(num_replicas=2)
-    updating = deployment_state.deploy(b_info_1)
+    updating = await deployment_state.deploy(b_info_1)
     assert updating
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
 
@@ -1932,7 +1956,7 @@ def test_deploy_with_transient_constructor_failure(mock_deployment_state):
 
 
 @pytest.fixture
-def mock_deployment_state_manager() -> Tuple[DeploymentStateManager, Mock]:
+async def mock_deployment_state_manager() -> Tuple[DeploymentStateManager, Mock]:
     timer = MockTimer()
     with patch(
         "ray.serve.deployment_state.ActorReplicaWrapper", new=MockReplicaActorWrapper
@@ -1942,7 +1966,7 @@ def mock_deployment_state_manager() -> Tuple[DeploymentStateManager, Mock]:
 
         kv_store = RayLocalKVStore("TEST_DB", "test_kv_store.db")
         all_current_actor_names = []
-        deployment_state_manager = DeploymentStateManager(
+        deployment_state_manager = await DeploymentStateManager.create(
             "name",
             True,
             kv_store,
@@ -1957,7 +1981,8 @@ def mock_deployment_state_manager() -> Tuple[DeploymentStateManager, Mock]:
             os.remove("test_kv_store.db")
 
 
-def test_shutdown(mock_deployment_state_manager):
+@pytest.mark.asyncio
+async def test_shutdown(mock_deployment_state_manager):
     """
     Test that shutdown waits for all deployments to be deleted and they
     are force-killed without a grace period.
@@ -1968,7 +1993,7 @@ def test_shutdown(mock_deployment_state_manager):
 
     grace_period_s = 10
     b_info_1, b_version_1 = deployment_info(graceful_shutdown_timeout_s=grace_period_s)
-    updating = deployment_state_manager.deploy(tag, b_info_1)
+    updating = await deployment_state_manager.deploy(tag, b_info_1)
     assert updating
 
     deployment_state = deployment_state_manager._deployment_states[tag]
@@ -1985,7 +2010,7 @@ def test_shutdown(mock_deployment_state_manager):
     # Test shutdown flow
     assert not deployment_state._replicas.get()[0]._actor.stopped
 
-    deployment_state_manager.shutdown()
+    await deployment_state_manager.shutdown()
 
     timer.advance(grace_period_s + 0.1)
     deployment_state_manager.update()
@@ -2004,14 +2029,15 @@ def test_shutdown(mock_deployment_state_manager):
     assert len(deployment_state_manager.get_deployment_statuses()) == 0
 
 
-def test_resume_deployment_state_from_replica_tags(mock_deployment_state_manager):
+@pytest.mark.asyncio
+async def test_resume_deployment_state_from_replica_tags(mock_deployment_state_manager):
     deployment_state_manager, timer = mock_deployment_state_manager
 
     tag = "test"
 
     # Step 1: Create some deployment info with actors in running state
     b_info_1, b_version_1 = deployment_info(version="1")
-    updating = deployment_state_manager.deploy(tag, b_info_1)
+    updating = await deployment_state_manager.deploy(tag, b_info_1)
     assert updating
 
     deployment_state = deployment_state_manager._deployment_states[tag]
@@ -2041,7 +2067,7 @@ def test_resume_deployment_state_from_replica_tags(mock_deployment_state_manager
     deployment_state._replicas = ReplicaStateContainer()
     # Step 3: Create new deployment_state by resuming from passed in replicas
 
-    deployment_state_manager._recover_from_checkpoint(
+    await deployment_state_manager._recover_from_checkpoint(
         [ReplicaName.prefix + mocked_replica.replica_tag]
     )
 
