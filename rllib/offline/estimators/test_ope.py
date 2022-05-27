@@ -45,7 +45,7 @@ class TestOPE(unittest.TestCase):
         trainer = config.build()
 
         timesteps_total = 200000
-        n_batches = 100
+        n_batches = 20
         while trainer._timesteps_total and trainer._timesteps_total < timesteps_total:
             trainer.train()
         reader = JsonReader(data_file)
@@ -74,9 +74,10 @@ class TestOPE(unittest.TestCase):
                     "clip_grad_norm": 100,
                     "k": 5,
                     "n_iters": 160,
-                    "lr": 1e-4,
+                    "lr": 1e-3,
                     "delta": 1e-5,
                     "batch_size": 32,
+                    "tau": 0.01,
                 },
             )
             estimates = estimator.estimate(batch)

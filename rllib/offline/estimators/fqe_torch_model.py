@@ -52,14 +52,32 @@ class FQETorchModel:
             framework="torch",
             name="TorchQModel",
         )
+        self.target_q_model: TorchModelV2 = ModelCatalog.get_model_v2(
+            self.observation_space,
+            self.action_space,
+            self.action_space.n,
+            config.get(
+                "model",
+                {
+                    "fcnet_hiddens": [8, 8],
+                    "fcnet_activation": "relu",
+                    "vf_share_layers": True,
+                },
+            ),
+            framework="torch",
+            name="TargetTorchQModel",
+        )
         self.device = self.policy.device
         self.n_iters = config.get("n_iters", 160)
         self.lr = config.get("lr", 1e-3)
         self.delta = config.get("delta", 1e-4)
         self.clip_grad_norm = config.get("clip_grad_norm", 100)
         self.batch_size = config.get("batch_size", 32)
+        self.tau = config.get("tau", 0.1)
         self.optimizer = torch.optim.Adam(self.q_model.variables(), self.lr)
         initializer = get_initializer("xavier_uniform", framework="torch")
+        # Hard update target
+        self.update_target(tau=1.0)
 
         def f(m):
             if isinstance(m, nn.Linear):
@@ -113,8 +131,8 @@ class FQETorchModel:
                 
                 q_values, _ = self.q_model({"obs": obs}, [], None)
                 q_acts = torch.gather(q_values, -1, actions.unsqueeze(-1)).squeeze()
-                next_q_values, _ = self.q_model({"obs": next_obs}, [], None)
-                next_v = torch.sum(next_q_values * next_action_prob, axis=-1).detach()
+                next_q_values, _ = self.target_q_model({"obs": next_obs}, [], None)
+                next_v = torch.sum(next_q_values * next_action_prob, axis=-1)
                 targets = rewards + ~dones * self.gamma * next_v
                 loss = (targets - q_acts) ** 2
                 loss = torch.mean(loss)
@@ -129,6 +147,7 @@ class FQETorchModel:
             losses.append(iter_loss)
             if iter_loss < self.delta:
                 break
+            self.update_target()
         return losses
 
     def estimate_q(
@@ -161,3 +180,18 @@ class FQETorchModel:
         q_values = self.estimate_q(obs)
         v_values = torch.sum(q_values * action_probs, axis=-1)
         return v_values.detach()
+    
+    def update_target(self, tau=None):
+        # Update_target will be called periodically to copy Q network to
+        # target Q network, using (soft) tau-synching.
+        tau = tau or self.tau
+        model_state_dict = self.q_model.state_dict()
+        # Support partial (soft) synching.
+        # If tau == 1.0: Full sync from Q-model to target Q-model.
+        target_state_dict = self.target_q_model.state_dict()
+        model_state_dict = {
+            k: tau * model_state_dict[k] + (1 - tau) * v
+            for k, v in target_state_dict.items()
+        }
+
+        self.target_q_model.load_state_dict(model_state_dict)
