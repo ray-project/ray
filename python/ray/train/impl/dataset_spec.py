@@ -1,9 +1,11 @@
 from dataclasses import dataclass
-from typing import Optional, Union, Dict, Callable, List
+from typing import Optional, Union, Dict, Callable, List, TYPE_CHECKING
 
 from ray.actor import ActorHandle
-from ray.ml.ingest import IngestStrategy
 from ray.data import Dataset, DatasetPipeline
+
+if TYPE_CHECKING:
+    from ray.ml.ingest import IngestStrategy
 
 RayDataset = Union["Dataset", "DatasetPipeline"]
 
@@ -38,7 +40,7 @@ class _RayDatasetSpec:
             List[Union[RayDataset, Dict[str, RayDataset]]],
         ]
     ] = None
-    ingest: Optional[IngestStrategy] = None
+    ingest: Optional["IngestStrategy"] = None
 
     def _default_split_fn(
         self, training_worker_handles: List[ActorHandle]

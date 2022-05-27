@@ -67,7 +67,7 @@ class BulkIngest(IngestStrategy):
     However, Datasets larger than memory can lead to disk spilling, slowing ingest.
     """
 
-    def __init__(self, global_shuffle: bool):
+    def __init__(self, global_shuffle: bool = False):
         """Create a bulk ingest strategy.
 
         Args:
@@ -172,8 +172,6 @@ class PipelinedIngest(IngestStrategy):
             if k != TRAIN_DATASET_KEY:
                 datasets[k] = self._fitted_preprocessor.transform(dataset)
 
-        # Remove the ability to fetch the train dataset explicitly. It can only be
-        # read in a streaming way via get_dataset_reader().
         datasets = datasets.copy()
         del datasets[TRAIN_DATASET_KEY]
         return datasets
@@ -183,11 +181,11 @@ class PipelinedIngest(IngestStrategy):
     ) -> Dict[str, DatasetPipeline]:
         splits = [datasets.copy() for _ in workers]
 
-        train_ds_size = datasets[TRAIN_DATASET_KEY].size_bytes()
+        train_ds_size = self._train_dataset.size_bytes()
         if train_ds_size < self._window_size_bytes:
             logger.warning(
-                f"The `train` dataset is {train_ds_size} bytes, which is less than "
-                f"the pipeline window size of {self._window_size_bytes} bytes. "
+                f"The `train` dataset is {_in_gb(train_ds_size)}, which is less than "
+                f"the pipeline window size of {_in_gb(self._window_size_bytes)}. "
                 "PipelinedIngest will act the same as BulkIngest in this case."
             )
             # The user should really use BulkIngest, but disable re-reads from
@@ -198,8 +196,7 @@ class PipelinedIngest(IngestStrategy):
         # Setup the preprocessing pipeline for the train dataset.
         prep = self._fitted_preprocessor
         train_pipe = (
-            datasets[TRAIN_DATASET_KEY]
-            .window(bytes_per_window=self._window_size_bytes)
+            self._train_dataset.window(bytes_per_window=self._window_size_bytes)
             .map_batches(prep.transform_batch, batch_format="pandas")
             .repeat()
         )
@@ -210,27 +207,27 @@ class PipelinedIngest(IngestStrategy):
             len(workers), equal=True, locality_hints=workers
         )
 
-        def to_reader(i: int, k: str, ds: Dataset) -> DatasetPipeline:
-            if k == TRAIN_DATASET_KEY:
-                return train_pipe_splits[i]
-            return ds.repeat()
-
         for i in range(len(splits)):
-            splits[i] = {k: to_reader(i, k, v) for k, v in splits[i].items()}
+            splits[i] = {k: ds.repeat() for k, ds in splits[i].items()}
+            splits[i][TRAIN_DATASET_KEY] = train_pipe_splits[i]
         return splits
+
+
+def _in_gb(num: int) -> str:
+    gb = round(num / (1024 * 1024 * 1024), 2)
+    return f"{gb} GiB"
 
 
 def _choose_ingest_strategy(datasets: Dict[str, Dataset]) -> IngestStrategy:
     train_ds = datasets.get(TRAIN_DATASET_KEY)
     if train_ds:
         sz = train_ds.size_bytes()
-        if (
-            sz > 1024 * 1024 * 1024
-            and sz > 0.2 * ray.available_resources["object_store_memory"]
-        ):
+        obj_mem = ray.available_resources().get("object_store_memory", 0)
+        if sz > 1024 * 1024 * 1024 and sz > 0.2 * obj_mem:
             logger.warning(
-                "The `train` dataset is larger than 20% of available object store "
-                "memory. Consider using `ingest=PipelinedIngest()` to stream data "
-                "from storage to optimize memory usage."
+                f"The `train` dataset ({_in_gb(sz)}) is larger than 20% of available "
+                f"object store memory ({_in_gb(obj_mem)}). Disk spilling may occur. "
+                "To optimize memory usage, use `ingest=PipelinedIngest()`, which "
+                "streams data from storage."
             )
     return BulkIngest()

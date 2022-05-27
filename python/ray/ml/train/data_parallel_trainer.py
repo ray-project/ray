@@ -17,7 +17,6 @@ import ray
 from ray import tune
 from ray.actor import ActorHandle
 from ray.ml.constants import MODEL_KEY, TRAIN_DATASET_KEY, PREPROCESSOR_KEY
-from ray.ml.ingest import IngestStrategy
 from ray.ml.trainer import Trainer
 from ray.ml.config import ScalingConfig, RunConfig
 from ray.ml.trainer import GenDataset
@@ -32,6 +31,7 @@ from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     from ray.data import Dataset
+    from ray.ml.ingest import IngestStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -244,7 +244,7 @@ class DataParallelTrainer(Trainer):
         datasets: Optional[Dict[str, GenDataset]] = None,
         preprocessor: Optional[Preprocessor] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
-        ingest: Optional[IngestStrategy] = None,
+        ingest: Optional["IngestStrategy"] = None,
     ):
         if not ray.is_initialized():
             ray.init()

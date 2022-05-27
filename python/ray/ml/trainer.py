@@ -7,7 +7,6 @@ import ray
 from ray.util import PublicAPI
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.config import RunConfig, ScalingConfig, ScalingConfigDataClass
-from ray.ml.ingest import _choose_ingest_strategy, IngestStrategy
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.result import Result
 from ray.ml.utils.config import (
@@ -22,6 +21,7 @@ from ray.util.ml_utils.dict import merge_dicts
 
 if TYPE_CHECKING:
     from ray.data import Dataset
+    from ray.ml.ingest import IngestStrategy
 
 # A type representing either a ray.data.Dataset or a function that returns a
 # ray.data.Dataset and accepts no arguments.
@@ -149,7 +149,7 @@ class Trainer(abc.ABC):
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
         preprocessor: Optional[Preprocessor] = None,
-        ingest: Optional[IngestStrategy] = None,
+        ingest: Optional["IngestStrategy"] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
 
@@ -254,6 +254,8 @@ class Trainer(abc.ABC):
         pass
 
     def setup_ingest(self) -> None:
+        from ray.ml.ingest import _choose_ingest_strategy
+
         # Evaluate all datasets first.
         self.datasets = {k: d() if callable(d) else d for k, d in self.datasets.items()}
         if self.ingest is None:
