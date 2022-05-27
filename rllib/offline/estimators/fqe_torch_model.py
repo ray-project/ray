@@ -108,9 +108,15 @@ class FQETorchModel:
             for idx in range(0, batch.count, self.batch_size):
                 minibatch = batch[idx : idx + self.batch_size]
                 obs = torch.tensor(minibatch[SampleBatch.OBS], device=self.device)
-                actions = torch.tensor(minibatch[SampleBatch.ACTIONS], device=self.device)
-                rewards = torch.tensor(minibatch[SampleBatch.REWARDS], device=self.device)
-                next_obs = torch.tensor(minibatch[SampleBatch.NEXT_OBS], device=self.device)
+                actions = torch.tensor(
+                    minibatch[SampleBatch.ACTIONS], device=self.device
+                )
+                rewards = torch.tensor(
+                    minibatch[SampleBatch.REWARDS], device=self.device
+                )
+                next_obs = torch.tensor(
+                    minibatch[SampleBatch.NEXT_OBS], device=self.device
+                )
                 dones = torch.tensor(minibatch[SampleBatch.DONES], device=self.device)
 
                 # Neccessary if policy uses recurrent/attention model
@@ -131,8 +137,10 @@ class FQETorchModel:
                     prev_reward_batch=minibatch[SampleBatch.REWARDS],
                     actions_normalized=False,
                 )
-                next_action_prob = torch.exp(next_action_prob.T).to(self.device).detach()
-                
+                next_action_prob = (
+                    torch.exp(next_action_prob.T).to(self.device).detach()
+                )
+
                 q_values, _ = self.q_model({"obs": obs}, [], None)
                 q_acts = torch.gather(q_values, -1, actions.unsqueeze(-1)).squeeze()
                 next_q_values, _ = self.target_q_model({"obs": next_obs}, [], None)
@@ -184,7 +192,7 @@ class FQETorchModel:
         q_values = self.estimate_q(obs)
         v_values = torch.sum(q_values * action_probs, axis=-1)
         return v_values.detach()
-    
+
     def update_target(self, tau=None):
         # Update_target will be called periodically to copy Q network to
         # target Q network, using (soft) tau-synching.
