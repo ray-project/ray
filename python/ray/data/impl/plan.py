@@ -376,6 +376,7 @@ class ExecutionPlan:
             self.has_lazy_input()
             and not self._stages_before_snapshot
             and not self._stages_after_snapshot
+            and not self._snapshot_blocks
         )
 
     def has_computed_output(self) -> bool:
