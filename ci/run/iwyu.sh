@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-ROOT_DIR=$(python -c "import os; print(os.path.dirname(os.path.realpath('${BASH_SOURCE}')));")
+ROOT_DIR=$(python -c "import os; print(os.path.dirname(os.path.realpath('${BASH_SOURCE:-$0}')));")
 WORKSPACE_DIR="${ROOT_DIR}/../.."
 
 if [ "${OSTYPE-}" = msys ] && [ -z "${MINGW_DIR+x}" ]; then

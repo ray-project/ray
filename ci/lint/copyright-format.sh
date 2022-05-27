@@ -2,7 +2,7 @@
 
 set -e
 
-ROOT_DIR=$(python -c "import os; print(os.path.dirname(os.path.realpath('${BASH_SOURCE}')));")
+ROOT_DIR=$(python -c "import os; print(os.path.dirname(os.path.realpath('${BASH_SOURCE:-$0}')));")
 
 function usage()
 {
