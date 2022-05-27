@@ -90,7 +90,7 @@ class FQETorchModel:
         self.q_model.apply(self.initializer)
 
     def train_q(self, batch: SampleBatch) -> TensorType:
-        """Trains self.q_model using Q-Reg loss on given batch.
+        """Trains self.q_model using FQE loss on given batch.
 
         Args:
             batch: A SampleBatch of episodes to train on
