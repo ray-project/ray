@@ -109,7 +109,7 @@ class RayServeHandle:
         self._pusher = start_metrics_pusher(
             interval_s=10,  # Queue handle metrcis
             collection_callback=self._collect_handle_queue_metrics,
-            metrics_process_func=self.controller_handle.record_handle_metrics,
+            metrics_process_func=self.controller_handle.record_handle_metrics.remote,
             stop_event=self._stop_event,
         )
 

@@ -742,6 +742,12 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
     wait_for_condition(lambda: get_num_running_replicas(controller, A) < 1)
     assert get_num_running_replicas(controller, A) == 0
 
+    # scale up
+    [handle.remote() for _ in range(400)]
+    wait_for_condition(lambda: get_num_running_replicas(controller, A) > 0)
+    signal.send.remote()
+    wait_for_condition(lambda: get_num_running_replicas(controller, A) < 1)
+
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_e2e_raise_min_replicas(serve_instance):

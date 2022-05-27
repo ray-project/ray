@@ -2,26 +2,33 @@ import threading
 import bisect
 from collections import defaultdict
 import logging
+from threading import Event
+from typing import Type
 import time
 from typing import Callable, DefaultDict, Dict, List, Optional
 from dataclasses import dataclass, field
 
 import ray
+from ray.serve.constants import SERVE_LOGGER_NAME
 
-logger = logging.getLogger(__file__)
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 def start_metrics_pusher(
     interval_s: float,
     collection_callback: Callable[[], Dict[str, float]],
-    metrics_process_func,
-    stop_event=None,
+    metrics_process_func: Callable[[Dict[str, float], float], ray.ObjectRef],
+    stop_event: Type[Event] = None,
 ):
     """Start a background thread to push metrics to controller.
 
     We use this background so it will be not blocked by user's code and ensure
     consistently metrics delivery. Python GIL will ensure that this thread gets
     fair timeshare to execute and run.
+
+    For handle background thread usecase, when the handle is GCed or shutting down
+    the serve instance, stop_event is supposed to be set true.
 
     Args:
         interval_s(float): the push interval.
@@ -30,13 +37,15 @@ def start_metrics_pusher(
           no argument and returns a dictionary of str_key -> float_value.
         metrics_process_func: actor handle function.
         stop_event: the daemon thread will be closed when the stop event is set
+    Returns:
+        timer: return the metrics pusher background thread object
     """
 
     def send_once():
         data = collection_callback()
 
         # TODO(simon): maybe wait for ack or handle controller failure?
-        return metrics_process_func.remote(data=data, send_timestamp=time.time())
+        return metrics_process_func(data=data, send_timestamp=time.time())
 
     def send_forever(stop_event):
         last_ref: Optional[ray.ObjectRef] = None
@@ -57,10 +66,9 @@ def start_metrics_pusher(
                 except Exception as e:
                     logger.warning(
                         "Autoscaling metrics pusher thread "
-                        "is having issue to send metrics: %s",
-                        e,
+                        "is failing to send metrics to the controller, "
+                        f": {e}"
                     )
-                    pass
 
             duration_s = time.time() - start
             remaining_time = interval_s - duration_s
@@ -103,6 +111,7 @@ class InMemoryMetricsStore:
 
     def _get_datapoints(self, key: str, window_start_timestamp_s: float) -> List[float]:
         """Get all data points given key after window_start_timestamp_s"""
+
         datapoints = self.data[key]
 
         idx = bisect.bisect(
@@ -148,7 +157,7 @@ class InMemoryMetricsStore:
               start of the window. The computed average will use all datapoints
               from this timestamp until now.
         Returns:
-            max value of the data pointes for the key on and after time
+            Max value of the data points for the key on and after time
             window_start_timestamp_s, or None if there are no such points.
         """
         points_after_idx = self._get_datapoints(key, window_start_timestamp_s)

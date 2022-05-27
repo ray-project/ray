@@ -81,7 +81,8 @@ class AutoscalingPolicy:
             curr_target_num_replicas: The number of replicas that the
                 deployment is currently trying to scale to.
             current_handle_queued_queries (float): The number of handle queued queries,
-            if there are multiple handles, the max one should be passed in
+            if there are multiple handles, the max number of queries at a single handle
+            should be passed in
 
         Returns:
             int: The new number of replicas to scale to.
@@ -130,10 +131,10 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
         current_handle_queued_queries: float,
     ) -> int:
 
-        if current_handle_queued_queries > 0 and len(current_num_ongoing_requests) == 0:
-            return max(1, curr_target_num_replicas)
-
         if len(current_num_ongoing_requests) == 0:
+            # When 0 replica and queries queued, scale up the replicas
+            if current_handle_queued_queries > 0:
+                return max(1, curr_target_num_replicas)
             return curr_target_num_replicas
 
         decision_num_replicas = curr_target_num_replicas

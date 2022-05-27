@@ -447,14 +447,16 @@ def deployment(
         Deployment
     """
 
+    # Num of replicas should not be 0.
+    # TODO(Sihan) seperate num_replicas attribute from internal and api
+    if num_replicas == 0:
+        raise ValueError("num_replicas is expected to larger than 0")
+
     if num_replicas is not None and _autoscaling_config is not None:
         raise ValueError(
             "Manually setting num_replicas is not allowed when "
             "_autoscaling_config is provided."
         )
-
-    if num_replicas == 0:
-        raise ValueError("num_replicas is expected to larger than 0")
 
     config = DeploymentConfig.from_default(
         ignore_none=True,
