@@ -34,18 +34,18 @@ class ImportanceSampling(OffPolicyEstimator):
 
             # calculate stepwise IS estimate
             v_old = 0.0
-            v_step_is = 0.0
+            v_new = 0.0
             for t in range(sub_batch.count):
                 v_old += rewards[t] * self.gamma ** t
-                v_step_is += p[t] * rewards[t] * self.gamma ** t
+                v_new += p[t] * rewards[t] * self.gamma ** t
 
             estimates.append(
                 OffPolicyEstimate(
                     "importance_sampling",
                     {
                         "v_old": v_old,
-                        "v_step_is": v_step_is,
-                        "v_gain": v_step_is / max(1e-8, v_old),
+                        "v_new": v_new,
+                        "v_gain": v_new / max(1e-8, v_old),
                     },
                 )
             )

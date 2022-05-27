@@ -111,7 +111,7 @@ class DirectMethod(OffPolicyEstimator):
             for episode in test_episodes:
                 rewards = episode["rewards"]
                 v_old = 0.0
-                v_dm = 0.0
+                v_new = 0.0
                 for t in range(episode.count):
                     v_old += rewards[t] * self.gamma ** t
 
@@ -123,15 +123,15 @@ class DirectMethod(OffPolicyEstimator):
                 init_step[SampleBatch.ACTIONS] = all_actions
                 action_probs = np.exp(self.action_log_likelihood(init_step))
                 v_value = self.model.estimate_v(init_obs, action_probs)
-                v_dm = convert_to_numpy(v_value).item()
+                v_new = convert_to_numpy(v_value).item()
 
                 estimates.append(
                     OffPolicyEstimate(
                         "direct_method",
                         {
                             "v_old": v_old,
-                            "v_dm": v_dm,
-                            "v_gain": v_dm / max(1e-8, v_old),
+                            "v_new": v_new,
+                            "v_gain": v_new / max(1e-8, v_old),
                         },
                     )
                 )

@@ -48,19 +48,19 @@ class WeightedImportanceSampling(OffPolicyEstimator):
 
             # calculate stepwise weighted IS estimate
             v_old = 0.0
-            v_step_wis = 0.0
+            v_new = 0.0
             for t in range(sub_batch.count):
                 v_old += rewards[t] * self.gamma ** t
                 w_t = self.filter_values[t] / self.filter_counts[t]
-                v_step_wis += p[t] / w_t * rewards[t] * self.gamma ** t
+                v_new += p[t] / w_t * rewards[t] * self.gamma ** t
 
             estimates.append(
                 OffPolicyEstimate(
                     "weighted_importance_sampling",
                     {
                         "v_old": v_old,
-                        "v_step_wis": v_step_wis,
-                        "v_gain": v_step_wis / max(1e-8, v_old),
+                        "v_new": v_new,
+                        "v_gain": v_new / max(1e-8, v_old),
                     },
                 )
             )

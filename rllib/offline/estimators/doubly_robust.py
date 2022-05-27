@@ -35,7 +35,7 @@ class DoublyRobust(DirectMethod):
                 new_prob = np.exp(self.action_log_likelihood(episode))
 
                 v_old = 0.0
-                v_dr = 0.0
+                v_new = 0.0
                 q_values = self.model.estimate_q(
                     episode[SampleBatch.OBS], episode[SampleBatch.ACTIONS]
                 )
@@ -52,18 +52,18 @@ class DoublyRobust(DirectMethod):
 
                 for t in reversed(range(episode.count)):
                     v_old = rewards[t] + self.gamma * v_old
-                    v_dr = v_values[t] + (new_prob[t] / old_prob[t]) * (
-                        rewards[t] + self.gamma * v_dr - q_values[t]
+                    v_new = v_values[t] + (new_prob[t] / old_prob[t]) * (
+                        rewards[t] + self.gamma * v_new - q_values[t]
                     )
-                v_dr = v_dr.item()
+                v_new = v_new.item()
 
                 estimates.append(
                     OffPolicyEstimate(
                         "doubly_robust",
                         {
                             "v_old": v_old,
-                            "v_dr": v_dr,
-                            "v_gain": v_dr / max(1e-8, v_old),
+                            "v_new": v_new,
+                            "v_gain": v_new / max(1e-8, v_old),
                         },
                     )
                 )
