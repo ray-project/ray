@@ -215,6 +215,7 @@ class RayS3KVStore(KVStoreBase):
         aws_access_key_id=None,
         aws_secret_access_key=None,
         aws_session_token=None,
+        endpoint_url=None,
     ):
         self._namespace = namespace
         self._bucket = bucket
@@ -230,6 +231,7 @@ class RayS3KVStore(KVStoreBase):
             aws_access_key_id=aws_access_key_id,
             aws_secret_access_key=aws_secret_access_key,
             aws_session_token=aws_session_token,
+            endpoint_url=endpoint_url,
         )
 
     def get_storage_key(self, key: str) -> Awaitable[str]:

@@ -176,7 +176,7 @@ class ServeController:
         )
         return actor_name_list.SerializeToString()
 
-    def autoscale(self) -> None:
+    async def autoscale(self) -> None:
         """Updates autoscaling deployments with calculated num_replicas."""
         for deployment_name, (
             deployment_info,
@@ -217,7 +217,9 @@ class ServeController:
             new_deployment_info = copy(deployment_info)
             new_deployment_info.deployment_config = new_deployment_config
 
-            self.deployment_state_manager.deploy(deployment_name, new_deployment_info)
+            await self.deployment_state_manager.deploy(
+                deployment_name, new_deployment_info
+            )
 
     async def run_control_loop(self) -> None:
         # NOTE(edoakes): we catch all exceptions here and simply log them,
@@ -225,7 +227,7 @@ class ServeController:
         # halt, which should *never* happen.
         while True:
             try:
-                self.autoscale()
+                await self.autoscale()
             except Exception:
                 logger.exception("Exception in autoscaling.")
 
@@ -241,12 +243,12 @@ class ServeController:
                     logger.exception("Exception updating deployment state.")
 
             try:
-                self._put_serve_snapshot()
+                await self._put_serve_snapshot()
             except Exception:
                 logger.exception("Exception putting serve snapshot.")
             await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
 
-    def _put_serve_snapshot(self) -> None:
+    async def _put_serve_snapshot(self) -> None:
         val = dict()
         for deployment_name, (
             deployment_info,
@@ -287,7 +289,7 @@ class ServeController:
                     }
 
             val[deployment_name] = entry
-        self.snapshot_store.put(SNAPSHOT_KEY, json.dumps(val).encode("utf-8"))
+        await self.snapshot_store.put(SNAPSHOT_KEY, json.dumps(val).encode("utf-8"))
 
     def _all_running_replicas(self) -> Dict[str, List[RunningReplicaInfo]]:
         """Used for testing."""
@@ -394,7 +396,9 @@ class ServeController:
         group of deployments.
         """
 
-        return [await self.deploy(**args) for args in deployment_args_list]
+        return await asyncio.gather(
+            self.deploy(**args) for args in deployment_args_list
+        )
 
     async def delete_deployment(self, name: str):
         await self.endpoint_state.delete_endpoint(name)
