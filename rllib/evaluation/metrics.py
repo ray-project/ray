@@ -17,22 +17,24 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-RolloutMetrics = collections.namedtuple(
-    "RolloutMetrics",
-    [
-        "episode_length",
-        "episode_reward",
-        "agent_rewards",
-        "custom_metrics",
-        "perf_stats",
-        "hist_data",
-        "media",
-    ],
+RolloutMetrics = DeveloperAPI(
+    collections.namedtuple(
+        "RolloutMetrics",
+        [
+            "episode_length",
+            "episode_reward",
+            "agent_rewards",
+            "custom_metrics",
+            "perf_stats",
+            "hist_data",
+            "media",
+        ],
+    )
 )
 RolloutMetrics.__new__.__defaults__ = (0, 0, {}, {}, {}, {}, {})
 
 
-def extract_stats(stats: Dict, key: str) -> Dict[str, Any]:
+def _extract_stats(stats: Dict, key: str) -> Dict[str, Any]:
     if key in stats:
         return stats[key]
 

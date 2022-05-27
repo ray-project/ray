@@ -3,12 +3,13 @@ from ray.rllib.offline.estimators.off_policy_estimator import (
     OffPolicyEstimate,
 )
 from ray.rllib.policy import Policy
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.typing import SampleBatchType
 import numpy as np
 from typing import Dict
 
 
+@DeveloperAPI
 class WeightedImportanceSampling(OffPolicyEstimator):
     """The weighted step-wise IS estimator.
 

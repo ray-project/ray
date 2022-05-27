@@ -11,7 +11,9 @@ from typing import Dict, List
 
 logger = logging.getLogger(__name__)
 
-OffPolicyEstimate = namedtuple("OffPolicyEstimate", ["estimator_name", "metrics"])
+OffPolicyEstimate = DeveloperAPI(
+    namedtuple("OffPolicyEstimate", ["estimator_name", "metrics"])
+)
 
 
 @DeveloperAPI
@@ -142,6 +144,7 @@ class OffPolicyEstimator:
 
     @Deprecated(help="OffPolicyEstimator.__init__(policy, gamma, config)", error=False)
     @classmethod
+    @DeveloperAPI
     def create_from_io_context(cls, ioctx: IOContext) -> "OffPolicyEstimator":
         """Creates an off-policy estimator from an IOContext object.
         Extracts Policy and gamma (discount factor) information from the
@@ -165,9 +168,11 @@ class OffPolicyEstimator:
         return cls(policy, gamma, config)
 
     @Deprecated(new="OffPolicyEstimator.create_from_io_context", error=True)
+    @DeveloperAPI
     def create(self, *args, **kwargs):
         return self.create_from_io_context(*args, **kwargs)
 
     @Deprecated(new="OffPolicyEstimator.compute_log_likelihoods", error=False)
+    @DeveloperAPI
     def action_prob(self, *args, **kwargs):
         return self.compute_log_likelihoods(*args, **kwargs)
