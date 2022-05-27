@@ -21,8 +21,6 @@ __all__ = [
     "DQNTrainer",
     "R2D2TorchPolicy",
     "R2D2Trainer",
-    "R2D2_DEFAULT_CONFIG",
-    "SIMPLE_Q_DEFAULT_CONFIG",
     "SimpleQConfig",
     "SimpleQTFPolicy",
     "SimpleQTorchPolicy",

@@ -3,7 +3,6 @@ from ray.rllib.algorithms.ddpg.ddpg import DDPGConfig, DDPGTrainer, DEFAULT_CONF
 from ray.rllib.algorithms.ddpg.td3 import TD3Trainer
 
 
-
 __all__ = [
     "ApexDDPGTrainer",
     "DDPGConfig",
