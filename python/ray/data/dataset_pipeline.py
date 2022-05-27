@@ -669,7 +669,7 @@ class DatasetPipeline(Generic[T]):
             def __iter__(self):
                 return self
 
-        return EpochDelimitedIterator(self)
+        return EpochDelimitedIterator(self, max_epoch)
 
     @DeveloperAPI
     def iter_datasets(self) -> Iterator[Dataset[T]]:
