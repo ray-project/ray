@@ -20,11 +20,11 @@ class DoublyRobust(DirectMethod):
         estimates = []
         # Split data into train and test using k-fold cross validation
         for train_episodes, test_episodes in k_fold_cv(batch, self.k, should_train):
-            # Reinitialize model
-            self.model.reset()
 
             # Train Q-function
             if train_episodes:
+                # Reinitialize model
+                self.model.reset()
                 train_batch = SampleBatch.concat_samples(train_episodes)
                 losses = self.train(train_batch)  # noqa: F841
                 self.losses.append(losses)
