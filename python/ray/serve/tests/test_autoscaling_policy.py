@@ -170,7 +170,8 @@ def get_deployment_start_time(controller: ServeController, deployment: Deploymen
     return deployment_info.start_time_ms
 
 
-def test_e2e_basic_scale_up_down(serve_instance):
+@pytest.mark.parametrize("min_replicas", [0, 1])
+def test_e2e_basic_scale_up_down(min_replicas, serve_instance):
     """Send 100 requests and check that we autoscale up, and then back down."""
 
     signal = SignalActor.remote()
@@ -178,7 +179,7 @@ def test_e2e_basic_scale_up_down(serve_instance):
     @serve.deployment(
         _autoscaling_config={
             "metrics_interval_s": 0.1,
-            "min_replicas": 0,
+            "min_replicas": min_replicas,
             "max_replicas": 2,
             "look_back_period_s": 0.2,
             "downscale_delay_s": 0,
@@ -206,7 +207,7 @@ def test_e2e_basic_scale_up_down(serve_instance):
     signal.send.remote()
 
     # As the queue is drained, we should scale back down.
-    wait_for_condition(lambda: get_num_running_replicas(controller, A) < 1)
+    wait_for_condition(lambda: get_num_running_replicas(controller, A) <= min_replicas)
 
     # Make sure start time did not change for the deployment
     assert get_deployment_start_time(controller, A) == start_time

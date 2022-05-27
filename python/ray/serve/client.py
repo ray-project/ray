@@ -121,7 +121,7 @@ class ServeControllerClient:
         instance.
         """
 
-        # shutdown handles
+        # Shut down handles
         for k in list(self.handle_cache):
             self.handle_cache[k].stop_metrics_pusher()
             del self.handle_cache[k]

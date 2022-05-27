@@ -17,6 +17,7 @@ from ray.serve.utils import (
     DEFAULT,
 )
 from ray.serve.autoscaling_metrics import start_metrics_pusher
+from ray.serve.constants import HANDLE_METRIC_PUSH_INTERVAL_S
 from ray.serve.router import Router, RequestMetadata
 from ray.util import metrics
 
@@ -107,13 +108,13 @@ class RayServeHandle:
 
         self._stop_event = threading.Event()
         self._pusher = start_metrics_pusher(
-            interval_s=10,  # Queue handle metrcis
+            interval_s= HANDLE_METRIC_PUSH_INTERVAL_S,
             collection_callback=self._collect_handle_queue_metrics,
             metrics_process_func=self.controller_handle.record_handle_metrics.remote,
             stop_event=self._stop_event,
         )
 
-    def _collect_handle_queue_metrics(self):
+    def _collect_handle_queue_metrics(self) -> Dict[str, int]:
         return {self.deployment_name: self.router.get_num_queued_queries()}
 
     def _make_router(self) -> Router:
