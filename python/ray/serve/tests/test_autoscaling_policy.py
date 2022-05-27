@@ -260,7 +260,7 @@ def test_upscale_downscale_delay():
 
     overload_requests = [100]
 
-    # scale up when there is 0 replica and current_handle_queued_queries > 0
+    # Scale up when there are 0 replicas and current_handle_queued_queries > 0
     new_num_replicas = policy.get_decision_num_replicas(
         current_num_ongoing_requests=[],
         curr_target_num_replicas=0,
