@@ -1534,8 +1534,9 @@ class DeploymentStateManager:
     called with a lock held.
     """
 
-    async def __init__(
-        self,
+    @classmethod
+    async def create(
+        cls,
         controller_name: str,
         detached: bool,
         kv_store: KVStoreBase,
@@ -1543,7 +1544,7 @@ class DeploymentStateManager:
         all_current_actor_names: List[str],
         _override_controller_namespace: Optional[str] = None,
     ):
-
+        self = cls()
         self._controller_name = controller_name
         self._detached = detached
         self._kv_store = kv_store
@@ -1560,6 +1561,7 @@ class DeploymentStateManager:
         self._deleted_deployment_metadata: Dict[str, DeploymentInfo] = OrderedDict()
 
         await self._recover_from_checkpoint(all_current_actor_names)
+        return self
 
     def _map_actor_names_to_deployment(
         self, all_current_actor_names: List[str]

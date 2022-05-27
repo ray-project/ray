@@ -16,7 +16,9 @@ class EndpointState:
     called with a lock held.
     """
 
-    async def __init__(self, kv_store: KVStoreBase, long_poll_host: LongPollHost):
+    @classmethod
+    async def create(cls, kv_store: KVStoreBase, long_poll_host: LongPollHost):
+        self = cls()
         self._kv_store = kv_store
         self._long_poll_host = long_poll_host
         self._endpoints: Dict[EndpointTag, EndpointInfo] = dict()
@@ -26,12 +28,13 @@ class EndpointState:
             self._endpoints = cloudpickle.loads(checkpoint)
 
         self._notify_route_table_changed()
+        return self
 
-    def shutdown(self):
-        self._kv_store.delete(CHECKPOINT_KEY)
+    async def shutdown(self):
+        await self._kv_store.delete(CHECKPOINT_KEY)
 
-    def _checkpoint(self):
-        self._kv_store.put(CHECKPOINT_KEY, cloudpickle.dumps(self._endpoints))
+    async def _checkpoint(self):
+        await self._kv_store.put(CHECKPOINT_KEY, cloudpickle.dumps(self._endpoints))
 
     def _notify_route_table_changed(self):
         self._long_poll_host.notify_changed(
@@ -45,7 +48,7 @@ class EndpointState:
 
         return None
 
-    def update_endpoint(
+    async def update_endpoint(
         self, endpoint: EndpointTag, endpoint_info: EndpointInfo
     ) -> None:
         """Create or update the given endpoint.
@@ -66,7 +69,7 @@ class EndpointState:
 
         self._endpoints[endpoint] = endpoint_info
 
-        self._checkpoint()
+        await self._checkpoint()
         self._notify_route_table_changed()
 
     def get_endpoint_route(self, endpoint: EndpointTag) -> Optional[str]:
@@ -82,7 +85,7 @@ class EndpointState:
             }
         return endpoints
 
-    def delete_endpoint(self, endpoint: EndpointTag) -> None:
+    async def delete_endpoint(self, endpoint: EndpointTag) -> None:
         # This method must be idempotent. We should validate that the
         # specified endpoint exists on the client.
         if endpoint not in self._endpoints:
@@ -90,5 +93,5 @@ class EndpointState:
 
         del self._endpoints[endpoint]
 
-        self._checkpoint()
+        await self._checkpoint()
         self._notify_route_table_changed()

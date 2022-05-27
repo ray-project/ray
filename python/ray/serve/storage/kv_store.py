@@ -32,8 +32,8 @@ class RayInternalKVStore(KVStoreBase):
 
     def __init__(
         self,
-        timeout: Optional[float] = None,
         namespace: str = None,
+        timeout: Optional[float] = None,
     ):
         if namespace is not None and not isinstance(namespace, str):
             raise TypeError("namespace must a string, got: {}.".format(type(namespace)))
@@ -41,8 +41,9 @@ class RayInternalKVStore(KVStoreBase):
             address=ray.get_runtime_context().gcs_address
         )
         self.namespace = namespace or ""
+        self.timeout = timeout
 
-    async def get_storage_key(self, key: str) -> Awaitable[str]:
+    def get_storage_key(self, key: str) -> Awaitable[str]:
         return "{ns}-{key}".format(ns=self.namespace, key=key)
 
     async def put(self, key: str, val: bytes) -> Awaitable[bool]:
@@ -61,7 +62,7 @@ class RayInternalKVStore(KVStoreBase):
             self.get_storage_key(key).encode(),
             val,
             overwrite=True,
-            namespace=ray_constants.KV_NAMESPACE_SERVE.encode(),
+            namespace=ray_constants.KV_NAMESPACE_SERVE,
             timeout=self.timeout,
         )
 
@@ -77,9 +78,9 @@ class RayInternalKVStore(KVStoreBase):
         if not isinstance(key, str):
             raise TypeError("key must be a string, got: {}.".format(type(key)))
 
-        return await self.internal_kv_get(
+        return await self.gcs_aio_client.internal_kv_get(
             self.get_storage_key(key).encode(),
-            namespace=ray_constants.KV_NAMESPACE_SERVE.encode(),
+            namespace=ray_constants.KV_NAMESPACE_SERVE,
             timeout=self.timeout,
         )
 
@@ -94,7 +95,7 @@ class RayInternalKVStore(KVStoreBase):
             raise TypeError("key must be a string, got: {}.".format(type(key)))
         return await self.gcs_aio_client.internal_kv_del(
             self.get_storage_key(key).encode(),
-            namespace=ray_constants.KV_NAMESPACE_SERVE.encode(),
+            namespace=ray_constants.KV_NAMESPACE_SERVE,
             timeout=self.timeout,
         )
 
@@ -230,7 +231,7 @@ class RayS3KVStore(KVStoreBase):
             aws_session_token=aws_session_token,
         )
 
-    async def get_storage_key(self, key: str) -> Awaitable[str]:
+    def get_storage_key(self, key: str) -> Awaitable[str]:
         return f"{self._prefix}/{self._namespace}-{key}"
 
     async def put(self, key: str, val: bytes) -> Awaitable[bool]:
