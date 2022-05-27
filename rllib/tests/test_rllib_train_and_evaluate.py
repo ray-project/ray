@@ -19,7 +19,7 @@ def evaluate_test(algo, env="CartPole-v0", test_episode_rollout=False):
             ',"episodes_per_batch": 1,"train_batch_size": 10, ' '"noise_size": 250000'
         )
 
-    for fw in framework_iterator(frameworks=("torch", "tf")):
+    for fw in framework_iterator(frameworks=("tf", "torch")):
         fw_ = ', "framework": "{}"'.format(fw)
 
         tmp_dir = os.popen("mktemp -d").read()[:-1]
@@ -123,7 +123,7 @@ def learn_test_plus_evaluate(algo, env="CartPole-v0"):
         result = os.popen(
             "python {}/evaluate.py --run={} "
             "--steps=400 "
-            '--out="{}/rollouts_n_steps.pkl {}"'.format(
+            '--out="{}/rollouts_n_steps.pkl" "{}"'.format(
                 rllib_dir, algo, tmp_dir, last_checkpoint
             )
         ).read()[:-1]
@@ -209,7 +209,7 @@ def learn_test_multi_agent_plus_evaluate(algo):
         result = os.popen(
             "python {}/evaluate.py --run={} "
             "--steps=400 "
-            '--out="{}/rollouts_n_steps.pkl {}"'.format(
+            '--out="{}/rollouts_n_steps.pkl" "{}"'.format(
                 rllib_dir, algo, tmp_dir, last_checkpoint
             )
         ).read()[:-1]
