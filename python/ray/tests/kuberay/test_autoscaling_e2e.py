@@ -17,6 +17,7 @@ from ray.tests.kuberay.utils import (
     ray_client_port_forward,
     ray_job_submit,
     kubectl_exec_python_script,
+    kubectl_logs,
     kubectl_patch,
     kubectl_delete,
     wait_for_pods,
@@ -257,18 +258,23 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         logger.info("Scaling up to one worker via Ray resource request.")
         # The request for 2 cpus should give us a 1-cpu head (already present) and a
         # 1-cpu worker (will await scale-up).
-        kubectl_exec_python_script(  # Interaction mode #1: `kubectl exec`
+        out = kubectl_exec_python_script(  # Interaction mode #1: `kubectl exec`
             script_name="scale_up.py",
             pod=head_pod,
             container="ray-head",
             namespace="default",
         )
+        # Check that autoscaler events are piped to the driver.
+        assert "Adding 1 nodes of type small-group." in out
+        # Check that stdout autoscaler logging is working.
+        logs = kubectl_logs(head_pod, namespace="default", container="autoscaler")
+        assert "Adding 1 nodes of type small-group." in logs
         logger.info("Confirming number of workers.")
         wait_for_pods(goal_num_pods=2, namespace=RAY_CLUSTER_NAMESPACE)
 
         # Pods marked for deletion are ignored.
         logger.info(
-            "Confirming that operator and autoscaler ignore pods marked for"
+            "Confirming that operator and autoscaler ignore pods marked for "
             "termination."
         )
         worker_pod = get_pod(
