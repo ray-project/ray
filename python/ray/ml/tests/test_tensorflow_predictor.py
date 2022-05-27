@@ -69,7 +69,7 @@ def test_predict_array_with_input_shape_unspecified():
     assert len(predictions) == 3
     assert predictions.to_numpy().flatten().tolist() == [1, 2, 3]
 
-    
+
 def test_predict_array():
     checkpoint = {MODEL_KEY: weights}
     predictor = TensorflowPredictor.from_checkpoint(
