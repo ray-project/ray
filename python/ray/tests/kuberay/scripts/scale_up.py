@@ -6,7 +6,7 @@ def main():
     """Submits CPU request."""
     ray.autoscaler.sdk.request_resources(num_cpus=2)
     # Hold the driver for a bit to allow the message
-    # "Adding 1 nodes of type small-group" to reach the driver.
+    # "Adding 1 nodes of type small-group" to reach the driver's stdout.
     time.sleep(15)
     # 15 seconds is overkill meant to avoid test flakiness.
     # It should take at most 5 seconds (the autoscaler update interval)
