@@ -13,11 +13,13 @@ class DoublyRobust(DirectMethod):
     DR estimator described in https://arxiv.org/pdf/1511.03722.pdf"""
 
     @override(DirectMethod)
-    def estimate(self, batch: SampleBatchType) -> OffPolicyEstimate:
+    def estimate(
+        self, batch: SampleBatchType, should_train: bool = True
+    ) -> OffPolicyEstimate:
         self.check_can_estimate_for(batch)
         estimates = []
         # Split data into train and test using k-fold cross validation
-        for train_episodes, test_episodes in k_fold_cv(batch, self.k):
+        for train_episodes, test_episodes in k_fold_cv(batch, self.k, should_train):
             # Reinitialize model
             self.model.reset()
 

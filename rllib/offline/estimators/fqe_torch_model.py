@@ -143,7 +143,8 @@ class FQETorchModel:
 
                 q_values, _ = self.q_model({"obs": obs}, [], None)
                 q_acts = torch.gather(q_values, -1, actions.unsqueeze(-1)).squeeze()
-                next_q_values, _ = self.target_q_model({"obs": next_obs}, [], None)
+                with torch.no_grad:
+                    next_q_values, _ = self.target_q_model({"obs": next_obs}, [], None)
                 next_v = torch.sum(next_q_values * next_action_prob, axis=-1)
                 targets = rewards + ~dones * self.gamma * next_v
                 loss = (targets - q_acts) ** 2

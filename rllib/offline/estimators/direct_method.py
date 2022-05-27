@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, Tuple, List, Generator
 from ray.rllib.offline.estimators.off_policy_estimator import (
     OffPolicyEstimator,
     OffPolicyEstimate,
@@ -13,22 +13,28 @@ from ray.rllib.offline.estimators.qreg_torch_model import QRegTorchModel
 from gym.spaces import Discrete
 import numpy as np
 
+
 # TODO (rohan): replace with AIR/parallel workers
-def k_fold_cv(batch: SampleBatchType, k: int):
+# (And find a better name than `should_train`)
+def k_fold_cv(
+    batch: SampleBatchType, k: int, should_train: bool = True
+) -> Generator[Tuple[List[SampleBatch]]]:
     """Utility function that returns a k-fold cross validation generator
-    over episodes from the given batch.
+    over episodes from the given batch. If the number of episodes in the
+    batch is less than `k` or `should_train` is set to False, yields an empty
+    list for train_episodes and all the episodes in test_episodes.
 
     Args:
         batch: A SampleBatch of episodes to split
         k: Number of cross-validation splits
+        should_train: True by default. If False, yield [], [episodes].
 
     Returns:
-        A tuple of SampleBatches (train_episodes, test_episodes)
+        A tuple with two lists of SampleBatches (train_episodes, test_episodes)
     """
     episodes = batch.split_by_episode()
     n_episodes = len(episodes)
-    if n_episodes < k:
-        # TODO (rohan): print warning: "len(batch) < k, running OPE without training"
+    if n_episodes < k or not should_train:
         yield [], episodes
         return
     n_fold = n_episodes // k
@@ -85,11 +91,13 @@ class DirectMethod(OffPolicyEstimator):
         self.losses = []
 
     @override(OffPolicyEstimator)
-    def estimate(self, batch: SampleBatchType) -> OffPolicyEstimate:
+    def estimate(
+        self, batch: SampleBatchType, should_train: bool = True
+    ) -> OffPolicyEstimate:
         self.check_can_estimate_for(batch)
         estimates = []
         # Split data into train and test using k-fold cross validation
-        for train_episodes, test_episodes in k_fold_cv(batch, self.k):
+        for train_episodes, test_episodes in k_fold_cv(batch, self.k, should_train):
             # Reinitialize model
             self.model.reset()
 
