@@ -25,6 +25,7 @@ class DoublyRobust(DirectMethod):
             if train_episodes:
                 train_batch = SampleBatch.concat_samples(train_episodes)
                 losses = self.train(train_batch)  # noqa: F841
+                self.losses.append(losses)
 
             # Calculate doubly robust OPE estimates
             for episode in test_episodes:
@@ -47,11 +48,12 @@ class DoublyRobust(DirectMethod):
                 v_values = self.model.estimate_v(episode[SampleBatch.OBS], action_probs)
                 v_values = convert_to_numpy(v_values)
 
-                for t in range(episode.count - 1, -1, -1):
+                for t in reversed(range(episode.count)):
                     v_old = rewards[t] + self.gamma * v_old
                     v_dr = v_values[t] + (new_prob[t] / old_prob[t]) * (
                         rewards[t] + self.gamma * v_dr - q_values[t]
                     )
+                v_dr = v_dr.item()
 
                 estimates.append(
                     OffPolicyEstimate(

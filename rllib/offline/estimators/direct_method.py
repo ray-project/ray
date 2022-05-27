@@ -82,6 +82,7 @@ class DirectMethod(OffPolicyEstimator):
             config=config,
         )
         self.k = config.get("k", 5)
+        self.losses = []
 
     @override(OffPolicyEstimator)
     def estimate(self, batch: SampleBatchType) -> OffPolicyEstimate:
@@ -96,6 +97,7 @@ class DirectMethod(OffPolicyEstimator):
             if train_episodes:
                 train_batch = SampleBatch.concat_samples(train_episodes)
                 losses = self.train(train_batch)  # noqa: F841
+                self.losses.append(losses)
 
             # Calculate direct method OPE estimates
             for episode in test_episodes:

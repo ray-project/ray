@@ -53,7 +53,7 @@ class TestOPE(unittest.TestCase):
         for _ in range(n_batches - 1):
             batch = batch.concat(reader.next())
         n_episodes = len(batch.split_by_episode())
-        print("Episodes:", n_episodes)
+        print("Episodes:", n_episodes, "Steps:", batch.count)
         estimators = [
             ImportanceSampling,
             WeightedImportanceSampling,
@@ -65,11 +65,18 @@ class TestOPE(unittest.TestCase):
                 trainer.get_policy(),
                 gamma=0.99,
                 config={
+                    "model": {
+                        "fcnet_hiddens": [8, 4],
+                        "fcnet_activation": "relu",
+                        "vf_share_layers": True,
+                    },
                     "q_model_type": "fqe",
+                    "clip_grad_norm": 100,
                     "k": 5,
-                    "n_iters": 80,
-                    "lr": 1e-3,
+                    "n_iters": 160,
+                    "lr": 1e-4,
                     "delta": 1e-5,
+                    "batch_size": 32,
                 },
             )
             estimates = estimator.estimate(batch)
