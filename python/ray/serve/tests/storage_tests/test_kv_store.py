@@ -86,14 +86,20 @@ async def test_external_kv_local_disk():
 
 @pytest.mark.asyncio
 async def test_external_kv_aws_s3():
-    with simulate_storage("s3", "serve-test") as url:
-        # s3://serve-test/checkpoint?region=us-west-2&endpoint_override=http://localhost:5002
+    with simulate_storage("s3", "serve-test") as uri:
+        from urllib.parse import urlparse, parse_qs
+
+        o = urlparse(uri)
+        qs = parse_qs(o.query)
+        region_name = qs["region"][0]
+        endpoint_url = qs["endpoint_override"][0]
+
         import boto3
 
         s3 = boto3.client(
             "s3",
-            region_name="us-west-2",
-            endpoint_url="http://localhost:5002",
+            region_name=region_name,
+            endpoint_url=endpoint_url,
         )
         s3.create_bucket(Bucket="serve-test")
 
@@ -101,8 +107,8 @@ async def test_external_kv_aws_s3():
             "namespace",
             bucket="serve-test",
             prefix="checkpoint",
-            region_name="us-west-2",
-            endpoint_url="http://localhost:5002",
+            region_name=region_name,
+            endpoint_url=endpoint_url,
         )
 
         await _test_operations(kv_store)
