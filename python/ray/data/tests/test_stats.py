@@ -208,6 +208,7 @@ Stage N map: N/N blocks executed in T
 
 == Pipeline Window N ==
 Stage N read->map_batches: [execution cached]
+
 Stage N map: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
@@ -217,6 +218,7 @@ Stage N map: N/N blocks executed in T
 
 == Pipeline Window N ==
 Stage N read->map_batches: [execution cached]
+
 Stage N map: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
