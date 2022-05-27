@@ -3,7 +3,8 @@ import os
 from collections import namedtuple
 from typing import Tuple, Optional, Dict
 
-from ray_release.config import Test, RELEASE_PACKAGE_DIR, load_test_cluster_compute
+from ray_release.config import Test, RELEASE_PACKAGE_DIR
+from ray_release.template import load_test_cluster_compute
 from ray_release.logger import logger
 
 # Keep 10% for the buffer.

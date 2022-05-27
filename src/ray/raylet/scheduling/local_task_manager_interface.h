@@ -71,5 +71,68 @@ class ILocalTaskManager {
   virtual size_t GetNumWaitingTaskSpilled() const = 0;
   virtual size_t GetNumUnschedulableTaskSpilled() const = 0;
 };
+
+/// A noop local task manager. It is a no-op class. We need this because there's no
+/// "LocalTaskManager" when the `ClusterTaskManager` is used within GCS. In the long term,
+/// we should make `ClusterTaskManager` not aware of `LocalTaskManager`.
+class NoopLocalTaskManager : public ILocalTaskManager {
+ public:
+  NoopLocalTaskManager() {}
+
+  /// Queue task and schedule.
+  void QueueAndScheduleTask(std::shared_ptr<internal::Work> work) override {
+    RAY_CHECK(false)
+        << "This function should never be called by gcs' local task manager.";
+  }
+
+  // Schedule and dispatch tasks.
+  void ScheduleAndDispatchTasks() override {}
+
+  /// Attempt to cancel an already queued task.
+  ///
+  /// \param task_id: The id of the task to remove.
+  /// \param failure_type: The failure type.
+  ///
+  /// \return True if task was successfully removed. This function will return
+  /// false if the task is already running.
+  bool CancelTask(const TaskID &task_id,
+                  rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
+                      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
+                  const std::string &scheduling_failure_message = "") override {
+    return false;
+  }
+
+  const absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
+      &GetTaskToDispatch() const override {
+    static const absl::flat_hash_map<SchedulingClass,
+                                     std::deque<std::shared_ptr<internal::Work>>>
+        tasks_to_dispatch;
+    return tasks_to_dispatch;
+  }
+
+  const absl::flat_hash_map<SchedulingClass, absl::flat_hash_map<WorkerID, int64_t>>
+      &GetBackLogTracker() const override {
+    static const absl::flat_hash_map<SchedulingClass,
+                                     absl::flat_hash_map<WorkerID, int64_t>>
+        backlog_tracker;
+    return backlog_tracker;
+  }
+
+  bool AnyPendingTasksForResourceAcquisition(RayTask *example,
+                                             bool *any_pending,
+                                             int *num_pending_actor_creation,
+                                             int *num_pending_tasks) const override {
+    return false;
+  }
+
+  void RecordMetrics() const override{};
+
+  void DebugStr(std::stringstream &buffer) const override {}
+
+  size_t GetNumTaskSpilled() const override { return 0; }
+  size_t GetNumWaitingTaskSpilled() const override { return 0; }
+  size_t GetNumUnschedulableTaskSpilled() const override { return 0; }
+};
+
 }  // namespace raylet
 }  // namespace ray

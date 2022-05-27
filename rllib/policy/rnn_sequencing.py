@@ -360,6 +360,7 @@ def chop_into_sequences(
     return feature_sequences, initial_states, seq_lens
 
 
+@DeveloperAPI
 def timeslice_along_seq_lens_with_overlap(
     sample_batch: SampleBatchType,
     seq_lens: Optional[List[int]] = None,

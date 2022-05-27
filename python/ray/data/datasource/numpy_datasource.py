@@ -8,8 +8,10 @@ if TYPE_CHECKING:
 
 from ray.data.block import BlockAccessor
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI
 class NumpyDatasource(FileBasedDatasource):
     """Numpy datasource, for reading and writing Numpy files.
 

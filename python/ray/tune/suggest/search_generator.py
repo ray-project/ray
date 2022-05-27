@@ -16,6 +16,7 @@ from ray.tune.utils.util import (
     atomic_save,
     load_newest_checkpoint,
 )
+from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,7 @@ def _warn_on_repeater(searcher, total_samples):
     _warn_num_samples(searcher, total_samples)
 
 
+@DeveloperAPI
 class SearchGenerator(SearchAlgorithm):
     """Generates trials to be passed to the TrialRunner.
 

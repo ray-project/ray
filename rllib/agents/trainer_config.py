@@ -15,11 +15,8 @@ from ray.rllib.env.env_context import EnvContext
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
 from ray.rllib.evaluation.collectors.simple_list_collector import SimpleListCollector
 from ray.rllib.models import MODEL_DEFAULTS
-from ray.rllib.offline.estimators.importance_sampling import ImportanceSampling
-from ray.rllib.offline.estimators.weighted_importance_sampling import (
-    WeightedImportanceSampling,
-)
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils import deep_update, merge_dicts
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.typing import (
     EnvConfigDict,
     EnvType,
@@ -108,7 +105,6 @@ class TrainerConfig:
         self.action_space = None
         self.env_task_fn = None
         self.render_env = False
-        self.record_env = False
         self.clip_rewards = None
         self.normalize_actions = True
         self.clip_actions = False
@@ -170,10 +166,7 @@ class TrainerConfig:
         self.input_ = "sampler"
         self.input_config = {}
         self.actions_in_input_normalized = False
-        self.input_evaluation = [
-            ImportanceSampling,
-            WeightedImportanceSampling,
-        ]
+        self.off_policy_estimation_methods = []
         self.postprocess_inputs = False
         self.shuffle_buffer_size = 0
         self.output = None
@@ -226,6 +219,17 @@ class TrainerConfig:
         self.timesteps_per_iteration = DEPRECATED_VALUE
         self.min_iter_time_s = DEPRECATED_VALUE
         self.collect_metrics_timeout = DEPRECATED_VALUE
+        # The following values have moved because of the new ReplayBuffer API
+        self.buffer_size = DEPRECATED_VALUE
+        self.prioritized_replay = DEPRECATED_VALUE
+        self.learning_starts = DEPRECATED_VALUE
+        self.replay_batch_size = DEPRECATED_VALUE
+        # -1 = DEPRECATED_VALUE is a valid value for replay_sequence_length
+        self.replay_sequence_length = None
+        self.prioritized_replay_alpha = DEPRECATED_VALUE
+        self.prioritized_replay_beta = DEPRECATED_VALUE
+        self.prioritized_replay_eps = DEPRECATED_VALUE
+        self.input_evaluation = DEPRECATED_VALUE
 
     def to_dict(self) -> TrainerConfigDict:
         """Converts all settings into a legacy config dict for backward compatibility.
@@ -448,7 +452,6 @@ class TrainerConfig:
         action_space: Optional[gym.spaces.Space] = None,
         env_task_fn: Optional[Callable[[ResultDict, EnvType, EnvContext], Any]] = None,
         render_env: Optional[bool] = None,
-        record_env: Optional[bool] = None,
         clip_rewards: Optional[Union[bool, float]] = None,
         normalize_actions: Optional[bool] = None,
         clip_actions: Optional[bool] = None,
@@ -479,11 +482,6 @@ class TrainerConfig:
                 `render()` method which either:
                 a) handles window generation and rendering itself (returning True) or
                 b) returns a numpy uint8 image of shape [height x width x 3 (RGB)].
-            record_env: If True, stores videos in this relative directory inside the
-                default output dir (~/ray_results/...). Alternatively, you can
-                specify an absolute path (str), in which the env recordings should be
-                stored instead. Set to False for not recording anything.
-                Note: This setting replaces the deprecated `monitor` key.
             clip_rewards: Whether to clip rewards during Policy's postprocessing.
                 None (default): Clip for Atari only (r=sign(r)).
                 True: r=sign(r): Fixed rewards -1.0, 1.0, or 0.0.
@@ -514,8 +512,6 @@ class TrainerConfig:
             self.env_task_fn = env_task_fn
         if render_env is not None:
             self.render_env = render_env
-        if record_env is not None:
-            self.record_env = record_env
         if clip_rewards is not None:
             self.clip_rewards = clip_rewards
         if normalize_actions is not None:
@@ -713,7 +709,7 @@ class TrainerConfig:
         if model is not None:
             self.model = model
         if optimizer is not None:
-            self.optimizer = optimizer
+            self.optimizer = merge_dicts(self.optimizer, optimizer)
 
         return self
 
@@ -753,7 +749,16 @@ class TrainerConfig:
         if explore is not None:
             self.explore = explore
         if exploration_config is not None:
-            self.exploration_config = exploration_config
+            # Override entire `exploration_config` if `type` key changes.
+            # Update, if `type` key remains the same or is not specified.
+            new_exploration_config = deep_update(
+                {"exploration_config": self.exploration_config},
+                {"exploration_config": exploration_config},
+                False,
+                ["exploration_config"],
+                ["exploration_config"],
+            )
+            self.exploration_config = new_exploration_config["exploration_config"]
 
         return self
 
@@ -839,7 +844,7 @@ class TrainerConfig:
             self.evaluation_num_workers = evaluation_num_workers
         if custom_evaluation_function is not None:
             self.custom_evaluation_function = custom_evaluation_function
-        if self.always_attach_evaluation_results:
+        if always_attach_evaluation_results:
             self.always_attach_evaluation_results = always_attach_evaluation_results
 
         return self
@@ -851,6 +856,7 @@ class TrainerConfig:
         input_config=None,
         actions_in_input_normalized=None,
         input_evaluation=None,
+        off_policy_estimation_methods=None,
         postprocess_inputs=None,
         shuffle_buffer_size=None,
         output=None,
@@ -895,7 +901,8 @@ class TrainerConfig:
                 are already normalized (between -1.0 and 1.0). This is usually the case
                 when the offline file has been generated by another RLlib algorithm
                 (e.g. PPO or SAC), while "normalize_actions" was set to True.
-            input_evaluation: Specify how to evaluate the current policy.
+            input_evaluation: DEPRECATED: Use `off_policy_estimation_methods` instead!
+            off_policy_estimation_methods: Specify how to evaluate the current policy.
                 This only has an effect when reading offline experiences
                 ("input" is not "sampler").
                 Available options:
@@ -927,14 +934,23 @@ class TrainerConfig:
         Returns:
             This updated TrainerConfig object.
         """
-        if input is not None:
+        if input_ is not None:
             self.input_ = input_
         if input_config is not None:
             self.input_config = input_config
         if actions_in_input_normalized is not None:
             self.actions_in_input_normalized = actions_in_input_normalized
         if input_evaluation is not None:
-            self.input_evaluation = input_evaluation
+            deprecation_warning(
+                old="offline_data(input_evaluation={})".format(input_evaluation),
+                new="offline_data(off_policy_estimation_methods={})".format(
+                    input_evaluation
+                ),
+                error=True,
+            )
+            self.off_policy_estimation_methods = input_evaluation
+        if off_policy_estimation_methods is not None:
+            self.off_policy_estimation_methods = off_policy_estimation_methods
         if postprocess_inputs is not None:
             self.postprocess_inputs = postprocess_inputs
         if shuffle_buffer_size is not None:
@@ -1050,7 +1066,7 @@ class TrainerConfig:
                 timestep count has not been reached, will perform n more
                 `step_attempt()` calls until the minimum timesteps have been executed.
                 Set to 0 for no minimum timesteps.
-            min_sample_timesteps_per_reporting: Minimum env samplingtimesteps to
+            min_sample_timesteps_per_reporting: Minimum env sampling timesteps to
                 accumulate within a single `train()` call. This value does not affect
                 learning, only the number of times `Trainer.step_attempt()` is called by
                 `Trauber.train()`. If - after one `step_attempt()`, the env sampling

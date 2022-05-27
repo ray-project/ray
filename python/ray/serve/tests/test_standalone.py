@@ -36,6 +36,7 @@ from ray.serve.utils import block_until_http_ready, get_all_node_ids, format_act
 # Explicitly importing it here because it is a ray core tests utility (
 # not in the tree)
 from ray.tests.conftest import ray_start_with_dashboard  # noqa: F401
+from ray.tests.conftest import maybe_external_redis  # noqa: F401
 
 
 @pytest.fixture

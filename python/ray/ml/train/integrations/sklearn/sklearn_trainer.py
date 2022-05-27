@@ -156,8 +156,6 @@ class SklearnTrainer(Trainer):
             method.
     """
 
-    _scaling_config_allowed_keys = ["trainer_resources"]
-
     def __init__(
         self,
         *,
@@ -454,7 +452,7 @@ def load_checkpoint(
     with checkpoint.as_directory() as checkpoint_path:
         estimator_path = os.path.join(checkpoint_path, MODEL_KEY)
         with open(estimator_path, "rb") as f:
-            estimator_path = cpickle.load(f)
+            estimator = cpickle.load(f)
         preprocessor = load_preprocessor_from_dir(checkpoint_path)
 
-    return estimator_path, preprocessor
+    return estimator, preprocessor

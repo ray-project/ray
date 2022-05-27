@@ -1,7 +1,7 @@
 import unittest
 
 import ray
-from ray.rllib.agents.dqn import DQNTrainer, DEFAULT_CONFIG
+from ray.rllib.algorithms.dqn import DQNTrainer, DEFAULT_CONFIG
 from ray.rllib.utils.test_utils import check, framework_iterator
 
 

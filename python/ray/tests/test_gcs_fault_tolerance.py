@@ -3,7 +3,10 @@ import sys
 import ray
 import ray._private.gcs_utils as gcs_utils
 import pytest
+import psutil
+
 from time import sleep
+
 from ray._private.test_utils import (
     generate_system_config_map,
     wait_for_condition,
@@ -164,6 +167,46 @@ def test_node_failure_detector_when_gcs_server_restart(
     ],
     indirect=True,
 )
+def test_actor_raylet_resubscription(ray_start_regular_with_external_redis):
+    # stat an actor
+    @ray.remote
+    class A:
+        def ready(self):
+            import os
+
+            return os.getpid()
+
+    actor = A.options(name="abc", max_restarts=0).remote()
+    pid = ray.get(actor.ready.remote())
+    print("actor is ready and kill gcs")
+
+    ray.worker._global_node.kill_gcs_server()
+
+    print("make actor exit")
+    import psutil
+
+    p = psutil.Process(pid)
+    p.kill()
+    from time import sleep
+
+    sleep(1)
+    print("start gcs")
+    ray.worker._global_node.start_gcs_server()
+
+    print("try actor method again")
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(actor.ready.remote())
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular_with_external_redis",
+    [
+        generate_system_config_map(
+            num_heartbeats_timeout=20, gcs_rpc_server_reconnect_timeout_s=60
+        )
+    ],
+    indirect=True,
+)
 def test_del_actor_after_gcs_server_restart(ray_start_regular_with_external_redis):
     actor = Increase.options(name="abc").remote()
     result = ray.get(actor.method.remote(1))
@@ -189,6 +232,146 @@ def test_del_actor_after_gcs_server_restart(ray_start_regular_with_external_redi
     # name should be properly deleted.
     with pytest.raises(ValueError):
         ray.get_actor("abc")
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular_with_external_redis",
+    [
+        generate_system_config_map(
+            num_heartbeats_timeout=20, gcs_rpc_server_reconnect_timeout_s=60
+        )
+    ],
+    indirect=True,
+)
+def test_worker_raylet_resubscription(tmp_path, ray_start_regular_with_external_redis):
+    # This test is to make sure resubscription in raylet is working.
+    # When subscription failed, raylet will not get worker failure error
+    # and thus, it won't kill the worker which is fate sharing with the failed
+    # one.
+
+    @ray.remote
+    def long_run():
+        from time import sleep
+
+        print("LONG_RUN")
+        import os
+
+        (tmp_path / "long_run.pid").write_text(str(os.getpid()))
+        sleep(10000)
+
+    @ray.remote
+    def bar():
+        import os
+
+        return (
+            os.getpid(),
+            # Use runtime env to make sure task is running in a different
+            # ray worker
+            long_run.options(runtime_env={"env_vars": {"P": ""}}).remote(),
+        )
+
+    (pid, obj_ref) = ray.get(bar.remote())
+
+    long_run_pid = None
+
+    def condition():
+        nonlocal long_run_pid
+        long_run_pid = int((tmp_path / "long_run.pid").read_text())
+        return True
+
+    wait_for_condition(condition, timeout=5)
+
+    # kill the gcs
+    ray.worker._global_node.kill_gcs_server()
+    ray.worker._global_node.start_gcs_server()
+    # make sure resubscription is done
+    # TODO(iycheng): The current way of resubscription potentially will lose
+    # worker failure message because we don't ask for the snapshot of worker
+    # status for now. We need to fix it.
+    sleep(4)
+
+    # then kill the owner
+    p = psutil.Process(pid)
+    p.kill()
+
+    # The long_run_pid should exit
+    wait_for_pid_to_exit(long_run_pid, 5)
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular_with_external_redis",
+    [
+        generate_system_config_map(
+            num_heartbeats_timeout=20, gcs_rpc_server_reconnect_timeout_s=60
+        )
+    ],
+    indirect=True,
+)
+def test_core_worker_resubscription(tmp_path, ray_start_regular_with_external_redis):
+    # This test is to ensure core worker will resubscribe to GCS after GCS
+    # restarts.
+    from filelock import FileLock
+
+    lock_file = str(tmp_path / "lock")
+    lock = FileLock(lock_file)
+    lock.acquire()
+
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            lock = FileLock(lock_file)
+            lock.acquire()
+
+        def ready(self):
+            return
+
+    a = Actor.remote()
+    r = a.ready.remote()
+    # Actor is not ready before GCS is down.
+    ray.worker._global_node.kill_gcs_server()
+
+    lock.release()
+    # Actor is ready after GCS starts
+    ray.worker._global_node.start_gcs_server()
+    # Test the resubscribe works: if not, it'll timeout because worker
+    # will think the actor is not ready.
+    ray.get(r, timeout=5)
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular_with_external_redis",
+    [
+        generate_system_config_map(
+            num_heartbeats_timeout=20, gcs_rpc_server_reconnect_timeout_s=60
+        )
+    ],
+    indirect=True,
+)
+def test_detached_actor_restarts(ray_start_regular_with_external_redis):
+    # Detached actors are owned by GCS. This test is to ensure detached actors
+    # can restart even GCS restarts.
+
+    @ray.remote
+    class A:
+        def ready(self):
+            import os
+
+            return os.getpid()
+
+    a = A.options(name="a", lifetime="detached", max_restarts=-1).remote()
+
+    pid = ray.get(a.ready.remote())
+    ray.worker._global_node.kill_gcs_server()
+    p = psutil.Process(pid)
+    p.kill()
+    ray.worker._global_node.start_gcs_server()
+
+    while True:
+        try:
+            assert ray.get(a.ready.remote()) != pid
+            break
+        except ray.exceptions.RayActorError:
+            continue
 
 
 @pytest.mark.parametrize("auto_reconnect", [True, False])

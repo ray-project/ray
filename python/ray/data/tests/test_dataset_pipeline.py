@@ -77,12 +77,12 @@ def test_pipeline_is_parallel(shutdown_only):
 
 def test_window_by_bytes(ray_start_regular_shared):
     with pytest.raises(ValueError):
-        ray.data.range_arrow(10).window(blocks_per_window=2, bytes_per_window=2)
+        ray.data.range_table(10).window(blocks_per_window=2, bytes_per_window=2)
 
-    pipe = ray.data.range_arrow(10000000, parallelism=100).window(blocks_per_window=2)
+    pipe = ray.data.range_table(10000000, parallelism=100).window(blocks_per_window=2)
     assert str(pipe) == "DatasetPipeline(num_windows=50, num_stages=2)"
 
-    pipe = ray.data.range_arrow(10000000, parallelism=100).window(
+    pipe = ray.data.range_table(10000000, parallelism=100).window(
         bytes_per_window=10 * 1024 * 1024
     )
     assert str(pipe) == "DatasetPipeline(num_windows=8, num_stages=2)"
@@ -91,19 +91,19 @@ def test_window_by_bytes(ray_start_regular_shared):
     for ds in dss[:-1]:
         assert ds.num_blocks() in [12, 13]
 
-    pipe = ray.data.range_arrow(10000000, parallelism=100).window(bytes_per_window=1)
+    pipe = ray.data.range_table(10000000, parallelism=100).window(bytes_per_window=1)
     assert str(pipe) == "DatasetPipeline(num_windows=100, num_stages=2)"
     for ds in pipe.iter_datasets():
         assert ds.num_blocks() == 1
 
-    pipe = ray.data.range_arrow(10000000, parallelism=100).window(bytes_per_window=1e9)
+    pipe = ray.data.range_table(10000000, parallelism=100).window(bytes_per_window=1e9)
     assert str(pipe) == "DatasetPipeline(num_windows=1, num_stages=2)"
     for ds in pipe.iter_datasets():
         assert ds.num_blocks() == 100
 
     # Test creating from non-lazy BlockList.
     pipe = (
-        ray.data.range_arrow(10000000, parallelism=100)
+        ray.data.range_table(10000000, parallelism=100)
         .map_batches(lambda x: x)
         .window(bytes_per_window=10 * 1024 * 1024)
     )

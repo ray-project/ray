@@ -1,7 +1,11 @@
 from pydantic import BaseModel, Field, Extra, root_validator, validator
 from typing import Union, Tuple, List, Dict
 from ray._private.runtime_env.packaging import parse_uri
-from ray.serve.common import DeploymentStatus, DeploymentStatusInfo
+from ray.serve.common import (
+    DeploymentStatusInfo,
+    ApplicationStatusInfo,
+    StatusOverview,
+)
 from ray.serve.utils import DEFAULT
 
 
@@ -88,9 +92,6 @@ class DeploymentSchema(BaseModel, extra=Extra.forbid):
             'MyClassOrFunction". Only works with Python '
             "applications."
         ),
-        # This regex checks that there is at least one character, followed by
-        # a dot, followed by at least one more character.
-        regex=r".+\..+",
     )
     init_args: Union[Tuple, List] = Field(
         default=None,
@@ -293,51 +294,132 @@ class DeploymentSchema(BaseModel, extra=Extra.forbid):
 
         return v
 
+    @validator("import_path")
+    def import_path_format_valid(cls, v: str):
+        if ":" in v:
+            if v.count(":") > 1:
+                raise ValueError(
+                    f'Got invalid import path "{v}". An '
+                    "import path may have at most one colon."
+                )
+            if v.rfind(":") == 0 or v.rfind(":") == len(v) - 1:
+                raise ValueError(
+                    f'Got invalid import path "{v}". An '
+                    "import path may not start or end with a colon."
+                )
+            return v
+        else:
+            if v.count(".") == 0:
+                raise ValueError(
+                    f'Got invalid import path "{v}". An '
+                    "import path must contain at least one dot or colon "
+                    "separating the module (and potentially submodules) from "
+                    'the deployment graph. E.g.: "module.deployment_graph".'
+                )
+            if v.rfind(".") == 0 or v.rfind(".") == len(v) - 1:
+                raise ValueError(
+                    f'Got invalid import path "{v}". An '
+                    "import path may not start or end with a dot."
+                )
+        return v
+
 
 class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
+    import_path: str = Field(
+        default=None,
+        description=(
+            "An import path to a bound deployment node. Should be of the "
+            'form "module.submodule_1...submodule_n.'
+            'dag_node". This is equivalent to '
+            '"from module.submodule_1...submodule_n import '
+            'dag_node". Only works with Python '
+            "applications. This field is REQUIRED when deploying Serve config "
+            "to a Ray cluster."
+        ),
+    )
+    runtime_env: dict = Field(
+        default={},
+        description=(
+            "The runtime_env that the deployment graph will be run in. "
+            "Per-deployment runtime_envs will inherit from this. working_dir "
+            "and py_modules may contain only remote URIs."
+        ),
+    )
     deployments: List[DeploymentSchema] = Field(...)
 
+    @validator("runtime_env")
+    def runtime_env_contains_remote_uris(cls, v):
+        # Ensure that all uris in py_modules and working_dir are remote
 
-class DeploymentStatusSchema(BaseModel, extra=Extra.forbid):
-    name: str = Field(..., description="The deployment's name.")
-    status: DeploymentStatus = Field(
-        default=None, description="The deployment's status."
+        if v is None:
+            return
+
+        uris = v.get("py_modules", [])
+        if "working_dir" in v:
+            uris.append(v["working_dir"])
+
+        for uri in uris:
+            if uri is not None:
+                parse_uri(uri)
+
+        return v
+
+    @validator("import_path")
+    def import_path_format_valid(cls, v: str):
+
+        if v is None:
+            return
+
+        if ":" in v:
+            if v.count(":") > 1:
+                raise ValueError(
+                    f'Got invalid import path "{v}". An '
+                    "import path may have at most one colon."
+                )
+            if v.rfind(":") == 0 or v.rfind(":") == len(v) - 1:
+                raise ValueError(
+                    f'Got invalid import path "{v}". An '
+                    "import path may not start or end with a colon."
+                )
+            return v
+        else:
+            if v.count(".") < 1:
+                raise ValueError(
+                    f'Got invalid import path "{v}". An '
+                    "import path must contain at least on dot or colon "
+                    "separating the module (and potentially submodules) from "
+                    'the deployment graph. E.g.: "module.deployment_graph".'
+                )
+            if v.rfind(".") == 0 or v.rfind(".") == len(v) - 1:
+                raise ValueError(
+                    f'Got invalid import path "{v}". An '
+                    "import path may not start or end with a dot."
+                )
+
+
+class ServeStatusSchema(BaseModel, extra=Extra.forbid):
+    app_status: ApplicationStatusInfo = Field(
+        ...,
+        description=(
+            "Describes if the Serve application is DEPLOYING, if the "
+            "DEPLOY_FAILED, or if the app is RUNNING. Includes a timestamp of "
+            "when the application was deployed."
+        ),
     )
-    message: str = Field(
-        default="", description="Information about the deployment's status."
+    deployment_statuses: List[DeploymentStatusInfo] = Field(
+        default=[],
+        description=(
+            "List of statuses for all the deployments running in this Serve "
+            "application. Each status contains the deployment name, the "
+            "deployment's status, and a message providing extra context on "
+            "the status."
+        ),
     )
 
 
-class ServeApplicationStatusSchema(BaseModel, extra=Extra.forbid):
-    statuses: List[DeploymentStatusSchema] = Field(...)
+def serve_status_to_schema(serve_status: StatusOverview) -> ServeStatusSchema:
 
-
-def status_info_to_schema(
-    deployment_name: str, status_info: Union[DeploymentStatusInfo, Dict]
-) -> DeploymentStatusSchema:
-    if isinstance(status_info, DeploymentStatusInfo):
-        return DeploymentStatusSchema(
-            name=deployment_name, status=status_info.status, message=status_info.message
-        )
-    elif isinstance(status_info, dict):
-        return DeploymentStatusSchema(
-            name=deployment_name,
-            status=status_info["status"],
-            message=status_info["message"],
-        )
-    else:
-        raise TypeError(
-            f"Got {type(status_info)} as status_info's "
-            "type. Expected status_info to be either a "
-            "DeploymentStatusInfo or a dictionary."
-        )
-
-
-def serve_application_status_to_schema(
-    status_infos: Dict[str, Union[DeploymentStatusInfo, Dict]]
-) -> ServeApplicationStatusSchema:
-    schemas = [
-        status_info_to_schema(deployment_name, status_info)
-        for deployment_name, status_info in status_infos.items()
-    ]
-    return ServeApplicationStatusSchema(statuses=schemas)
+    return ServeStatusSchema(
+        app_status=serve_status.app_status,
+        deployment_statuses=serve_status.deployment_statuses,
+    )

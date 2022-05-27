@@ -37,3 +37,9 @@ class TableRow(Mapping):
 
     def __repr__(self):
         return str(self)
+
+    def _repr_pretty_(self, p, cycle):
+        from IPython.lib.pretty import _dict_pprinter_factory
+
+        pprinter = _dict_pprinter_factory(f"{type(self).__name__}({{", "})")
+        return pprinter(self, p, cycle)
