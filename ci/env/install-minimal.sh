@@ -19,7 +19,7 @@ else
 fi
 echo "Python version is ${PYTHON_VERSION}"
 
-ROOT_DIR=$(python -c "import os; print(os.path.dirname(os.path.realpath('${BASH_SOURCE:-$0}')));")
+ROOT_DIR=$(python -c "import os; print(os.path.dirname(os.path.realpath(r'${BASH_SOURCE:-$0}')));")
 WORKSPACE_DIR="${ROOT_DIR}/../.."
 
 # Installs conda and python 3.7
