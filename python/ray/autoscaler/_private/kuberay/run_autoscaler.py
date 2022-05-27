@@ -50,8 +50,6 @@ def _setup_logging() -> None:
     (typically, /tmp/ray/session_latest/logs/monitor.*)
 
     Also log to pod stdout (logs viewable with `kubectl logs <head-pod> -c autoscaler`).
-
-    All logging is handled by the root logger.
     """
     # Write logs at info level to monitor.log.
     setup_component_logger(
