@@ -1407,6 +1407,19 @@ py_test(
     size = "small",
     srcs = ["evaluation/tests/test_episode.py"]
 )
+# --------------------------------------------------------------------
+# Execution Utils
+# rllib/execution/
+#
+# Tag: execution
+# --------------------------------------------------------------------
+
+py_test(
+    name = "test_async_requests_manager",
+    tags = ["team:ml", "execution"],
+    size = "small",
+    srcs = ["execution/tests/test_async_requests_manager.py"]
+)
 
 # --------------------------------------------------------------------
 # Models and Distributions
@@ -1507,12 +1520,27 @@ py_test(
     srcs = ["policy/tests/test_sample_batch.py"]
 )
 
+py_test(
+    name = "policy/tests/test_view_requirement",
+    tags = ["team:ml", "policy"],
+    size = "small",
+    srcs = ["policy/tests/test_view_requirement.py"]
+)
+
+
 # --------------------------------------------------------------------
 # Utils:
 # rllib/utils/
 #
 # Tag: utils
 # --------------------------------------------------------------------
+
+py_test(
+    name = "test_serialization",
+    tags = ["team:ml", "utils"],
+    size = "large",
+    srcs = ["utils/tests/test_serialization.py"]
+)
 
 py_test(
     name = "test_curiosity",

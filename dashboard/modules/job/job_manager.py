@@ -415,10 +415,16 @@ class JobManager:
         runtime_env = (
             copy.deepcopy(user_runtime_env) if user_runtime_env is not None else {}
         )
+
+        # NOTE(edoakes): Can't use .get(, {}) here because we need to handle the case
+        # where env_vars is explicitly set to `None`.
+        env_vars = runtime_env.get("env_vars")
+        if env_vars is None:
+            env_vars = {}
+
         # Don't set CUDA_VISIBLE_DEVICES for the supervisor actor so the
         # driver can use GPUs if it wants to. This will be removed from
         # the driver's runtime_env so it isn't inherited by tasks & actors.
-        env_vars = runtime_env.get("env_vars", {})
         env_vars[ray_constants.NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR] = "1"
         runtime_env["env_vars"] = env_vars
         return runtime_env

@@ -27,7 +27,7 @@ from ray.tune.result import (
     TIMESTEPS_TOTAL,
     AUTO_RESULT_KEYS,
 )
-from ray.tune.trial import DEBUG_PRINT_INTERVAL, Trial, Location
+from ray.tune.trial import DEBUG_PRINT_INTERVAL, Trial, _Location
 from ray.tune.utils import unflattened_lookup
 from ray.tune.utils.log import Verbosity, has_verbosity
 
@@ -1021,12 +1021,12 @@ def _fair_filter_trials(
     return filtered_trials
 
 
-def _get_trial_location(trial: Trial, result: dict) -> Location:
+def _get_trial_location(trial: Trial, result: dict) -> _Location:
     # we get the location from the result, as the one in trial will be
     # reset when trial terminates
     node_ip, pid = result.get(NODE_IP, None), result.get(PID, None)
     if node_ip and pid:
-        location = Location(node_ip, pid)
+        location = _Location(node_ip, pid)
     else:
         # fallback to trial location if there hasn't been a report yet
         location = trial.location
