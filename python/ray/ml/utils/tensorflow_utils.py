@@ -1,5 +1,8 @@
+import numpy as np
 import pandas as pd
 import tensorflow as tf
+
+from ray.data.extensions.tensor_extension import TensorDtype
 
 
 def convert_pandas_to_tf_tensor(df: pd.DataFrame) -> tf.Tensor:
@@ -10,10 +13,16 @@ def convert_pandas_to_tf_tensor(df: pd.DataFrame) -> tf.Tensor:
     2. Concatenate the resulting tensors along the last axis.
 
     Arguments:
-        df: The dataframe to convert to a TensorFlow tensor.
+        df: The dataframe to convert to a TensorFlow tensor. Columns must have
+            a numeric dtype, ``TensorDtype``, or object dtype. If a column has
+            an object dtype, the column must contain ``ndarray`` objects.
 
     Returns:
         A tensor of data type ``float32`` constructed from the dataframe.
+
+    Raises:
+        ValueError: if a column has an invalid dtype.
+        ValueError: if the columns can't be combined into a single tensor.
 
     Examples:
         >>> import pandas as pd
@@ -31,6 +40,20 @@ def convert_pandas_to_tf_tensor(df: pd.DataFrame) -> tf.Tensor:
         >>> convert_pandas_to_tf_tensor(df).shape
         TensorShape([4, 3, 32, 32])
     """
+    def is_valid_dtype(series) -> bool:
+        if pd.api.types.is_numeric_dtype(series) or isinstance(series, TensorDtype):
+            return True
+
+        is_ndarray = series.map(lambda obj: isinstance(obj, np.ndarray))
+        return all(is_ndarray)
+
+    for column, series in df.iteritems():
+        if not is_valid_dtype(series):
+            raise ValueError(
+                f"Expected column {column} to have numeric dtype, "
+                "`TensorDtype`, or object dtype with `ndarray` elements. "
+                f"Instead, received dtype {series.dtype}."
+            )
 
     def tensorize(series):
         try:
@@ -55,5 +78,12 @@ def convert_pandas_to_tf_tensor(df: pd.DataFrame) -> tf.Tensor:
 
     if len(tensors) > 1:
         tensors = [tf.expand_dims(tensor, axis=-1) for tensor in tensors]
+
+    for i, tensor in enumerate(tensors):
+        if tensor.shape != tensors[0].shape:
+            raise ValueError(
+                "Expected tensorized columns to have same shape, but shape of "
+                f"column '{df.columns[i]}' {tensor.shape} is different than "
+                f"the shape of column '{df.columns[0]}' {tensors[0].shape}.")
 
     return tf.concat(tensors, axis=-1)
