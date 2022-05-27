@@ -337,7 +337,6 @@ def get_dataset_shard(dataset_name: Optional[str] = None) -> Optional[RayDataset
         dataset_name (Optional[str]): If a Dictionary of Datasets was passed to
             ``Trainer``, then specifies which dataset shard to return.
 
-
     Returns:
         The ``Dataset`` or ``DatasetPipeline`` shard to use for this worker.
         If no dataset is passed into Trainer, then return None.
