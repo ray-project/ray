@@ -6,6 +6,7 @@ import numpy as np
 
 from ray.tune.suggest.suggestion import Searcher
 from ray.tune.suggest.util import set_search_properties_backwards_compatible
+from ray.util import PublicAPI
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +71,7 @@ class _TrialGroup:
         return len(self._trials)
 
 
+@PublicAPI
 class Repeater(Searcher):
     """A wrapper algorithm for repeating trials of same parameters.
 
