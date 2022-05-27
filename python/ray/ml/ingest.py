@@ -5,7 +5,6 @@ import ray
 from ray.util.annotations import PublicAPI
 from ray.actor import ActorHandle
 from ray.data import Dataset, DatasetPipeline
-from ray.data.context import DatasetContext
 from ray.ml.constants import TRAIN_DATASET_KEY
 from ray.ml.train.data_parallel_trainer import _default_dataset_split_fn
 from ray.ml import Preprocessor
@@ -181,6 +180,7 @@ class PipelinedIngest(IngestStrategy):
     ) -> Dict[str, DatasetPipeline]:
         splits = [datasets.copy() for _ in workers]
 
+        prep = self._fitted_preprocessor
         train_ds_size = self._train_dataset.size_bytes()
         if train_ds_size < self._window_size_bytes:
             logger.warning(
@@ -188,18 +188,18 @@ class PipelinedIngest(IngestStrategy):
                 f"the pipeline window size of {_in_gb(self._window_size_bytes)}. "
                 "PipelinedIngest will act the same as BulkIngest in this case."
             )
-            # The user should really use BulkIngest, but disable re-reads from
-            # external storage in this case to help optimize.
-            context = DatasetContext.get_current()
-            context.optimize_fuse_read_stages = False
+            # The base data fits into one window, so cache it in memory for repeat.
+            train_pipe = self._train_dataset.map_batches(
+                prep.transform_batch, batch_format="pandas"
+            ).repeat()
+        else:
+            # Base data doesn't fit into one window, so setup the full pipeline.
+            train_pipe = (
+                self._train_dataset.window(bytes_per_window=self._window_size_bytes)
+                .map_batches(prep.transform_batch, batch_format="pandas")
+                .repeat()
+            )
 
-        # Setup the preprocessing pipeline for the train dataset.
-        prep = self._fitted_preprocessor
-        train_pipe = (
-            self._train_dataset.window(bytes_per_window=self._window_size_bytes)
-            .map_batches(prep.transform_batch, batch_format="pandas")
-            .repeat()
-        )
         if self._shuffle_each_window:
             train_pipe = train_pipe.random_shuffle_each_window()
 
