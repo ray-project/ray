@@ -588,7 +588,6 @@ class TorchPolicyV2(Policy):
             # Action dist class and inputs are generated via custom function.
             if is_overridden(self.action_distribution_fn):
                 dist_inputs, dist_class, state_out = self.action_distribution_fn(
-                    self,
                     self.model,
                     input_dict=input_dict,
                     state_batches=state_batches,
@@ -1025,9 +1024,8 @@ class TorchPolicyV2(Policy):
             self.exploration.before_compute_actions(explore=explore, timestep=timestep)
             if is_overridden(self.action_distribution_fn):
                 dist_inputs, dist_class, state_out = self.action_distribution_fn(
-                    self,
                     self.model,
-                    input_dict=input_dict,
+                    obs_batch=input_dict,
                     state_batches=state_batches,
                     seq_lens=seq_lens,
                     explore=explore,
