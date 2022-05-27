@@ -1,9 +1,6 @@
-from .algorithm_crr import CRR
-from .config_crr import CRRConfig
-from rllib.algorithms.crr.torch.policy_torch_crr import CRRTorchPolicy
+from .algorithm_crr import CRR, CRRConfig
 
 __all__ = [
     "CRR",
     "CRRConfig",
-    "CRRTorchPolicy",
 ]

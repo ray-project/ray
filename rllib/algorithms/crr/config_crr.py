@@ -17,9 +17,9 @@ class CRRConfig(TrainerConfig):
         self.temperature = 1.0
         self.max_weight = 20.0
         self.advantage_type = 'mean'
-        self.n_action_sample = 20
+        self.n_action_sample = 4
         self.twin_q = True
-        self.target_network_update_freq = 500
+        self.target_network_update_freq = 100
         self.replay_buffer_config = {
             "type": "MultiAgentReplayBuffer",
             "capacity": 50000,
@@ -30,13 +30,13 @@ class CRRConfig(TrainerConfig):
             # may be set to greater than 1 to support recurrent models.
             "replay_sequence_length": 1,
         }
-        self.actor_hiddens = [400, 300]
+        self.actor_hiddens = [256, 256]
         self.actor_hidden_activation = "relu"
-        self.critic_hiddens = [400, 300]
+        self.critic_hiddens = [256, 256]
         self.critic_hidden_activation = "relu"
         self.critic_lr = 3e-4
         self.actor_lr = 3e-4
-        self.tau = 0.002
+        self.tau = 5e-3
 
         # __sphinx_doc_end__
         # fmt: on
