@@ -172,7 +172,7 @@ class ReplayBuffer(ParallelIteratorWorker):
                             "to be added to it. Some samples may be "
                             "dropped."
                         )
-                        
+
         elif self._storage_unit == StorageUnit.FRAGMENTS:
             self._add_single_batch(batch, **kwargs)
 
